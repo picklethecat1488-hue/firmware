@@ -60,7 +60,7 @@ jobs:
       - name: Build Target MCU Binaries (Debug & Release)
         run: |
           cargo build --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --bins --target thumbv6m-none-eabi
-          cargo build --release $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --bins --target thumbv6m-none-eabi
+          cargo build --workspace --release $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --bins --target thumbv6m-none-eabi
 
       - name: Build Host Tools
         run: cargo build --release $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "-p " + .name')
