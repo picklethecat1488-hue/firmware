@@ -5,6 +5,8 @@
 
 /// Battery status and telemetry controller.
 pub mod battery_controller;
+/// Flat filesystem and storage controller.
+pub mod filesystem_controller;
 /// Controller loops and state-machine coordinators.
 pub mod fountain_controller;
 /// Thermal monitoring and regulation controller.
