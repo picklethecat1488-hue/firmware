@@ -146,8 +146,14 @@ async fn main(spawner: Spawner) {
         .unwrap();
 
     // Print welcome text using the CLI's internal writer
+    let banner = r#"
+       |\      _,,,---,,_
+ Zzz   /,`.-'`'    -.  ;-;;,_
+      |,4-  ) )-,_. ,\ (  `'-'
+     '---''(_/--'  `-'\_)  
+"#;
     let _ = cli.write(|writer| {
-        let _ = core::writeln!(writer, "\r\n--- RP2040 Interactive Bringup Shell ---");
+        let _ = core::writeln!(writer, "{}", banner);
         let _ = core::writeln!(writer, "Type 'help' to print usage.");
         Ok(())
     });
