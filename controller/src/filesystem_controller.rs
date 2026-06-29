@@ -254,3 +254,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
         self.read_file(".dir", out_buf).await
     }
 }
+
+#[cfg(test)]
+#[path = "filesystem_controller_test.rs"]
+mod tests;
