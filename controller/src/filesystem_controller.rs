@@ -97,6 +97,8 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
         Self { flash, range }
     }
 
+
+
     /// Helper to convert a string path into a fixed-size 32-byte key.
     fn string_to_key(name: &str) -> [u8; 32] {
         let mut key = [0u8; 32];
@@ -254,3 +256,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
         self.read_file(".dir", out_buf).await
     }
 }
+
+#[cfg(test)]
+#[path = "filesystem_controller_test.rs"]
+mod tests;
