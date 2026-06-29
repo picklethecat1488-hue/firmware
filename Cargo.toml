@@ -5,12 +5,14 @@ members = [
     "peripherals",
     "controller",
     "projects/cat_detector",
+    "tools/fs_tool",
 ]
 default-members = [
     "model",
     "peripherals",
     "controller",
     "projects/cat_detector",
+    "tools/fs_tool",
 ]
 
 [profile.release]
