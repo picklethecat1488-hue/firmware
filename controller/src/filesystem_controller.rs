@@ -7,7 +7,9 @@ use heapless::String;
 
 /// A profiling wrapper around a flash driver that counts and times page erases.
 pub struct ProfilingFlash<F: NorFlash> {
+    /// The inner flash driver instance being profiled
     inner: F,
+    /// Total number of page erases performed since system boot
     erase_count: u32,
 }
 
@@ -83,7 +85,9 @@ impl<F: NorFlash + MultiwriteNorFlash> MultiwriteNorFlash for ProfilingFlash<F> 
 
 /// File Controller managing raw files/telemetry in flash using sequential-storage map.
 pub struct FilesystemController<F: NorFlash + MultiwriteNorFlash> {
+    /// The underlying flash driver instance (possibly wrapped in profiling)
     flash: F,
+    /// The physical partition address range in flash (start..end byte offsets)
     range: Range<u32>,
 }
 
