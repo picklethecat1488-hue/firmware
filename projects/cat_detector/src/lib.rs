@@ -1,0 +1,54 @@
+//! Board configuration library for the Cat Detector project.
+//!
+//! Defines the single source of truth for pin assignments and helper
+//! initialization functions for sharing hardware setup between the main
+//! controller and bringup shell binaries.
+
+#![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
+#![deny(missing_docs)]
+
+/// Onboard LED pin (GPIO 25)
+pub const LED_PIN: u32 = 25;
+/// Pump control pin (uses Pin 25 / Onboard LED for status feedback)
+pub const PUMP_PIN: u32 = 25;
+/// I2C SDA pin (GPIO 4)
+pub const I2C_SDA_PIN: u32 = 4;
+/// I2C SCL pin (GPIO 5)
+pub const I2C_SCL_PIN: u32 = 5;
+/// UART TX pin (GPIO 0)
+pub const UART_TX_PIN: u32 = 0;
+/// UART RX pin (GPIO 1)
+pub const UART_RX_PIN: u32 = 1;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+mod bsp_target;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub use bsp_target::*;
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+mod bsp_host;
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+pub use bsp_host::*;
+
+/// Shared command channel for the Fountain Controller.
+pub static FOUNTAIN_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    controller::fountain_controller::FountainCommand,
+    4,
+> = embassy_sync::channel::Channel::new();
+
+/// Shared command channel for the Thermal Controller.
+pub static THERMAL_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    controller::thermal_controller::ThermalCommand,
+    4,
+> = embassy_sync::channel::Channel::new();
+
+/// Shared command channel for the Battery Controller.
+pub static BATTERY_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    controller::battery_controller::BatteryCommand,
+    4,
+> = embassy_sync::channel::Channel::new();

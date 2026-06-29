@@ -1,0 +1,54 @@
+name: CI Gate Validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: thumbv6m-none-eabi
+          components: clippy, rustfmt
+
+      - name: Check Formatting
+        run: cargo fmt --all --check
+
+      - name: Run Host Tests
+        run: cargo test | tee test_report.txt
+
+      - name: Run Clippy (Host Targets)
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Run Clippy (Target MCU)
+        run: cargo clippy --workspace --lib --bins --target thumbv6m-none-eabi -- -D warnings
+
+      - name: Build Debug MCU Binaries
+        run: cargo build --workspace --bins --target thumbv6m-none-eabi
+
+      - name: Build Release MCU Binaries
+        run: cargo build --release --workspace --bins --target thumbv6m-none-eabi
+
+      - name: Binary Size Report
+        run: |
+          echo "=== Debug Binaries Size ===" | tee size_report.txt
+          find target/thumbv6m-none-eabi/debug -maxdepth 1 -type f -exec size {} + | tee -a size_report.txt
+          echo "=== Release Binaries Size ===" | tee -a size_report.txt
+          find target/thumbv6m-none-eabi/release -maxdepth 1 -type f -exec size {} + | tee -a size_report.txt
+
+      - name: Upload Size and Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-reports
+          path: |
+            test_report.txt
+            size_report.txt
