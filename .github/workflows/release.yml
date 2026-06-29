@@ -1,0 +1,85 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: thumbv6m-none-eabi
+          components: clippy, rustfmt
+
+      - name: Run Host Tests
+        run: |
+          cargo test | tee test_report.txt
+
+      - name: Run Clippy Verification (Host)
+        run: |
+          cargo clippy --all-targets -- -D warnings | tee clippy_host_report.txt
+
+      - name: Run Clippy Verification (Target MCU)
+        run: |
+          cargo clippy --workspace --lib --bins --target thumbv6m-none-eabi -- -D warnings | tee clippy_target_report.txt
+
+      - name: Build Target MCU Binaries (Debug & Release)
+        run: |
+          cargo build --workspace --bins --target thumbv6m-none-eabi
+          cargo build --release --workspace --bins --target thumbv6m-none-eabi
+
+      - name: Organize Build Outputs
+        run: |
+          mkdir -p build/debug build/release
+          # Dynamically copy all compiled top-level target binaries
+          find target/thumbv6m-none-eabi/debug -maxdepth 1 -type f -exec cp {} build/debug/ \;
+          find target/thumbv6m-none-eabi/release -maxdepth 1 -type f -exec cp {} build/release/ \;
+          # Include verification reports in the package
+          cp test_report.txt build/
+          cp clippy_host_report.txt build/
+          cp clippy_target_report.txt build/
+
+      - name: Binary Size Report
+        run: |
+          echo "=== Debug Binaries Size ===" | tee build/size_report.txt
+          find target/thumbv6m-none-eabi/debug -maxdepth 1 -type f -exec size {} + | tee -a build/size_report.txt
+          echo "=== Release Binaries Size ===" | tee -a build/size_report.txt
+          find target/thumbv6m-none-eabi/release -maxdepth 1 -type f -exec size {} + | tee -a build/size_report.txt
+
+      - name: Package Firmware Binaries and Reports
+        run: |
+          zip -r firmware.zip build/
+
+      - name: Draft Release Notes
+        id: release-drafter
+        uses: release-drafter/release-drafter@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body: ${{ steps.release-drafter.outputs.body }}
+          files: |
+            firmware.zip
+
+      - name: Upload Test and Size Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-validation-reports
+          path: |
+            test_report.txt
+            clippy_host_report.txt
+            clippy_target_report.txt
+            build/size_report.txt

@@ -1,0 +1,19 @@
+[package]
+name = "controller"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+model = { path = "../model" }
+peripherals = { path = "../peripherals" }
+embassy-sync = "0.6.2"
+
+[target.'cfg(all(target_arch = "arm", target_os = "none"))'.dependencies]
+embassy-time = { version = "0.4.0", features = ["defmt"] }
+defmt = "0.3"
+
+[target.'cfg(not(all(target_arch = "arm", target_os = "none")))'.dependencies]
+embassy-time = { version = "0.4.0", features = ["std"] }
+
+[dev-dependencies]
+peripherals = { path = "../peripherals", features = ["mock"] }

@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = [
+    "model",
+    "peripherals",
+    "controller",
+    "projects/cat_detector",
+]
+default-members = [
+    "model",
+    "peripherals",
+    "controller",
+    "projects/cat_detector",
+]
+
+[profile.release]
+opt-level = "s"      # Optimize for size
+lto = true           # Enable Link-Time Optimization
+codegen-units = 1    # Reduce codegen units to improve size optimizations
+panic = "abort"      # Abort on panic to remove stack unwinding tables
+strip = true         # Strip symbols and debug info from the binary
