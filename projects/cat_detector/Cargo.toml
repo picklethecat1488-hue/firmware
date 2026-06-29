@@ -28,6 +28,9 @@ embedded-hal = "1.0.0"
 embassy-sync = "0.6.2"
 embedded-cli = "0.2.1"
 embedded-io = "0.6.0"
+sequential-storage = "3.0.0"
+minicbor = { version = "0.20.0", features = ["derive"] }
+quick-protobuf = { version = "0.8.0", default-features = false }
 
 [target.'cfg(all(target_arch = "arm", target_os = "none"))'.dependencies]
 embassy-executor = { version = "0.7.0", features = ["task-arena-size-32768", "arch-cortex-m", "executor-thread"] }

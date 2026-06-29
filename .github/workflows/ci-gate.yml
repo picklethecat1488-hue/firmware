@@ -29,13 +29,16 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Run Clippy (Target MCU)
-        run: cargo clippy --workspace --lib --bins --target thumbv6m-none-eabi -- -D warnings
+        run: cargo clippy --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --lib --bins --target thumbv6m-none-eabi -- -D warnings
 
       - name: Build Debug MCU Binaries
-        run: cargo build --workspace --bins --target thumbv6m-none-eabi
+        run: cargo build --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --bins --target thumbv6m-none-eabi
 
       - name: Build Release MCU Binaries
-        run: cargo build --release --workspace --bins --target thumbv6m-none-eabi
+        run: cargo build --release --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --bins --target thumbv6m-none-eabi
+
+      - name: Build Host Tools
+        run: cargo build --release $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "-p " + .name')
 
       - name: Binary Size Report
         run: |

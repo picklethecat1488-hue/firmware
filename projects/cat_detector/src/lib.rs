@@ -21,6 +21,28 @@ pub const UART_TX_PIN: u32 = 0;
 pub const UART_RX_PIN: u32 = 1;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+extern "C" {
+    static _storage_start: u8;
+    static _storage_end: u8;
+}
+
+/// Start address of the filesystem storage partition in flash (offset from start of flash).
+pub fn storage_partition_start() -> u32 {
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    unsafe { &_storage_start as *const u8 as u32 }
+    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+    0x1C_0000
+}
+
+/// End address of the filesystem storage partition in flash (2.00 MB limit).
+pub fn storage_partition_end() -> u32 {
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    unsafe { &_storage_end as *const u8 as u32 }
+    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+    0x20_0000
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 mod bsp_target;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]

@@ -31,12 +31,15 @@ jobs:
 
       - name: Run Clippy Verification (Target MCU)
         run: |
-          cargo clippy --workspace --lib --bins --target thumbv6m-none-eabi -- -D warnings | tee clippy_target_report.txt
+          cargo clippy --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --lib --bins --target thumbv6m-none-eabi -- -D warnings | tee clippy_target_report.txt
 
       - name: Build Target MCU Binaries (Debug & Release)
         run: |
-          cargo build --workspace --bins --target thumbv6m-none-eabi
-          cargo build --release --workspace --bins --target thumbv6m-none-eabi
+          cargo build --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --bins --target thumbv6m-none-eabi
+          cargo build --release $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --bins --target thumbv6m-none-eabi
+
+      - name: Build Host Tools
+        run: cargo build --release $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "-p " + .name')
 
       - name: Organize Build Outputs
         run: |
@@ -44,6 +47,10 @@ jobs:
           # Dynamically copy all compiled top-level target binaries
           find target/thumbv6m-none-eabi/debug -maxdepth 1 -type f -exec cp {} build/debug/ \;
           find target/thumbv6m-none-eabi/release -maxdepth 1 -type f -exec cp {} build/release/ \;
+          # Copy host tool utilities dynamically
+          for tool in $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | .name'); do
+            cp target/release/$tool build/release/$tool
+          done
           # Include verification reports in the package
           cp test_report.txt build/
           cp clippy_host_report.txt build/
