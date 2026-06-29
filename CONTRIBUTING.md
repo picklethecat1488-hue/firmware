@@ -202,6 +202,38 @@ This completely isolates hardware registers from concurrent access issues.
 
 ---
 
+## Logging & Instrumentation Standards
+
+To ensure debugging, status tracking, and performance monitoring are unified across all binaries and target applications, we enforce the following logging and instrumentation standards:
+
+### 1. Mandatory Task & Loop Instrumentation
+All asynchronously executed tasks, controller loops, and main entry points (`main`) must be instrumented by default:
+*   **Startup/Initialization**: Log when a subsystem or peripheral is initializing (e.g., `defmt::info!("Initializing hardware...")`).
+*   **Loop Ticks/Telemetry**: Periodically log sensor reads, state updates, or telemetry changes (e.g. `defmt::info!("Battery Controller: Voltage is {} mV, State: {:?}", voltage, defmt::Debug2Format(&self.state))`).
+*   **Command Receipts**: Log when a task receives an external command or interrupt event (e.g. `defmt::debug!("Received command Stop")`).
+
+### 2. Standard Logging Macros
+*   Use `defmt::info!` for general application lifecycle updates and telemetry.
+*   Use `defmt::debug!` for verbose diagnostic checks (e.g., individual register states) to avoid spamming production logs.
+*   Use `defmt::warn!` and `defmt::error!` to log hardware warnings, low voltage conditions, and thermal thresholds.
+
+### 3. Debug Adapter formatting
+When printing custom enums or structs that do not implement `defmt::Format` directly:
+*   Derive `Debug` on the types and wrap them in `defmt::Debug2Format(&value)` to prevent compiler errors.
+
+### 4. Profiling Blocking Peripheral Calls via `#[instrument]`
+To identify latencies, stuck buses, or slow I/O polling, any potentially blocking operations (such as peripheral reads/writes, ADC polling, or I2C/SPI bus transactions) must be instrumented using `tracing`'s `#[instrument]` macro:
+*   **Purpose**: Automatically registers a trace span upon function entry/exit, collecting argument parameters and allowing tracing subscribers (such as `defmt-tracing`) to calculate execution elapsed time.
+*   **Example**:
+    ```rust
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn read_voltage_mv(&mut self) -> Result<u32, Error> {
+        // Potentially blocking I/O/ADC read
+    }
+    ```
+
+---
+
 ## Developer Workflows
 
 ### Formatting and Linting
