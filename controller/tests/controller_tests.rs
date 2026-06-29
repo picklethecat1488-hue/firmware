@@ -27,7 +27,9 @@ struct MockFlash {
 
 impl MockFlash {
     fn new() -> Self {
-        Self { data: [0xFF; 1024 * 64] }
+        Self {
+            data: [0xFF; 1024 * 64],
+        }
     }
 }
 
@@ -70,7 +72,10 @@ fn test_filesystem_controller_flow() {
     futures::executor::block_on(async {
         let flash = MockFlash::new();
         let profiling_flash = controller::filesystem_controller::ProfilingFlash::new(flash);
-        let mut fs = controller::filesystem_controller::FilesystemController::new(profiling_flash, 0..1024 * 64);
+        let mut fs = controller::filesystem_controller::FilesystemController::new(
+            profiling_flash,
+            0..1024 * 64,
+        );
 
         // Initially no files
         let mut buf = [0u8; 128];
@@ -106,4 +111,3 @@ fn test_filesystem_controller_flow() {
         assert_eq!(fs.read_file("test.txt", &mut buf).await.unwrap(), None);
     });
 }
-

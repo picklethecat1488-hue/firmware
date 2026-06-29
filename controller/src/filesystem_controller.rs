@@ -7,14 +7,19 @@ use heapless::String;
 
 /// A profiling wrapper around a flash driver that counts and times page erases.
 pub struct ProfilingFlash<F: NorFlash> {
+    /// The inner flash driver instance being profiled
     inner: F,
+    /// Total number of page erases performed since system boot
     erase_count: u32,
 }
 
 impl<F: NorFlash> ProfilingFlash<F> {
     /// Create a new ProfilingFlash wrapper.
     pub fn new(inner: F) -> Self {
-        Self { inner, erase_count: 0 }
+        Self {
+            inner,
+            erase_count: 0,
+        }
     }
 
     /// Get total page erases performed since boot.
@@ -49,32 +54,40 @@ impl<F: NorFlash> embedded_storage_async::nor_flash::NorFlash for ProfilingFlash
 
     async fn erase(&mut self, from: u32, to: u32) -> Result<(), Self::Error> {
         self.erase_count += 1;
-        
+
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         let start = embassy_time::Instant::now();
-        
+
         #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!("[Profile] Flash erase starting at 0x{:X} to 0x{:X}", from, to);
-        
+        defmt::info!(
+            "[Profile] Flash erase starting at 0x{:X} to 0x{:X}",
+            from,
+            to
+        );
+
         let res = self.inner.erase(from, to).await;
-        
+
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         {
             let duration = start.elapsed();
-            defmt::info!("[Profile] Flash erase completed in {} ms (Total erases: {})", duration.as_millis(), self.erase_count);
+            defmt::info!(
+                "[Profile] Flash erase completed in {} ms (Total erases: {})",
+                duration.as_millis(),
+                self.erase_count
+            );
         }
-        
+
         res
     }
 }
 
 impl<F: NorFlash + MultiwriteNorFlash> MultiwriteNorFlash for ProfilingFlash<F> {}
 
-
-
 /// File Controller managing raw files/telemetry in flash using sequential-storage map.
 pub struct FilesystemController<F: NorFlash + MultiwriteNorFlash> {
+    /// The underlying flash driver instance (possibly wrapped in profiling)
     flash: F,
+    /// The physical partition address range in flash (start..end byte offsets)
     range: Range<u32>,
 }
 
@@ -138,7 +151,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
                     let _ = current_dir.push('\n');
                 }
                 let _ = current_dir.push_str(name);
-                
+
                 // Write directory directly to avoid async recursion cycle
                 let dir_key = Self::string_to_key(".dir");
                 let mut dir_write_buf = [0u8; 1024];
@@ -158,7 +171,11 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     }
 
     /// Fetches a file's content.
-    pub async fn read_file<'a>(&mut self, name: &str, out_buf: &'a mut [u8]) -> Result<Option<&'a [u8]>, ()> {
+    pub async fn read_file<'a>(
+        &mut self,
+        name: &str,
+        out_buf: &'a mut [u8],
+    ) -> Result<Option<&'a [u8]>, ()> {
         let mut cache = sequential_storage::cache::NoCache::new();
         let key = Self::string_to_key(name);
         let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
@@ -236,5 +253,4 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     pub async fn list_files<'a>(&mut self, out_buf: &'a mut [u8]) -> Result<Option<&'a [u8]>, ()> {
         self.read_file(".dir", out_buf).await
     }
-
 }

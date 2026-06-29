@@ -1,3 +1,6 @@
+//! Host command-line utility for querying and exploring flash storage dumps
+//! extracted from the RP2040 microcontroller's sequential-storage partition.
+
 use std::cmp;
 use std::fs::File;
 use std::io::{self, Read};
@@ -5,11 +8,15 @@ use clap::{Parser, Subcommand};
 use embedded_storage::nor_flash::NorFlashErrorKind;
 use embedded_storage_async::nor_flash::ReadNorFlash;
 
+/// A mock flash driver that implements the embedded-storage-async traits
+/// over an in-memory buffer containing the pulled raw flash binary image.
 struct HostFlash {
+    /// In-memory buffer representing the flash contents
     data: Vec<u8>,
 }
 
 impl HostFlash {
+    /// Creates a new HostFlash instance with the provided byte buffer.
     fn new(data: Vec<u8>) -> Self {
         Self { data }
     }
@@ -67,6 +74,8 @@ impl embedded_storage_async::nor_flash::NorFlash for HostFlash {
 
 impl embedded_storage_async::nor_flash::MultiwriteNorFlash for HostFlash {}
 
+/// Helper utility to hash or pad a string filename into a 32-byte key
+/// used by the sequential-storage map.
 fn string_to_key(name: &str) -> [u8; 32] {
     let mut key = [0u8; 32];
     let bytes = name.as_bytes();
@@ -77,13 +86,18 @@ fn string_to_key(name: &str) -> [u8; 32] {
 
 /// Known semantic data types stored in our flash filesystem.
 enum DataType {
+    /// Protobuf calibration parameters
     Calibration,
+    /// CBOR periodic telemetry recordings
     Telemetry,
+    /// Saved stack traces and panic info from MCU crash logs
     CrashLog,
+    /// Untyped or arbitrary raw binary data
     Unknown,
 }
 
 impl DataType {
+    /// Maps a filename to its known semantic data type.
     fn from_filename(name: &str) -> Self {
         match name {
             "calibration.bin" | "calibration.protobuf" => DataType::Calibration,
@@ -93,6 +107,7 @@ impl DataType {
         }
     }
 
+    /// Returns a human-readable description of the data type.
     fn to_str(&self) -> &'static str {
         match self {
             DataType::Calibration => "Protobuf Calibration Data",
@@ -110,6 +125,7 @@ struct Cli {
     #[arg(short, long)]
     dump: String,
 
+    /// Subcommand to run against the dump
     #[command(subcommand)]
     command: Commands,
 }
@@ -125,6 +141,7 @@ enum Commands {
     },
 }
 
+/// Main entry point for the host-side fs_tool utility.
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
 

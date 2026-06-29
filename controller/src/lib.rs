@@ -5,12 +5,12 @@
 
 /// Battery status and telemetry controller.
 pub mod battery_controller;
+/// Flat filesystem and storage controller.
+pub mod filesystem_controller;
 /// Controller loops and state-machine coordinators.
 pub mod fountain_controller;
 /// Thermal monitoring and regulation controller.
 pub mod thermal_controller;
-/// Flat filesystem and storage controller.
-pub mod filesystem_controller;
 
 /// A macro to define and spawn the Thermal Controller task.
 ///

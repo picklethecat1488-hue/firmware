@@ -23,7 +23,7 @@ pub const UART_RX_PIN: u32 = 1;
 /// Start address of the filesystem storage partition in flash (offset from start of flash).
 pub const STORAGE_PARTITION_START: u32 = 0x1C_0000; // 1.75 MB
 /// End address of the filesystem storage partition in flash (2.00 MB limit).
-pub const STORAGE_PARTITION_END: u32 = 0x20_0000;   // 2.00 MB
+pub const STORAGE_PARTITION_END: u32 = 0x20_0000; // 2.00 MB
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 mod bsp_target;
