@@ -58,6 +58,7 @@ pub struct SystemController<MutexRaw: RawMutex + 'static, const N: usize> {
     battery_critical: bool,
     thermal_critical: bool,
     gesture_detector: GestureDetector,
+    proximity_active: bool,
     boot_power_down: bool,
 }
 
@@ -89,6 +90,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
             battery_critical: true,
             thermal_critical: false,
             gesture_detector: GestureDetector::new(100),
+            proximity_active: false,
             boot_power_down: true,
         }
     }
@@ -109,6 +111,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                     self.handle_command(SystemCommand::PowerDown);
                 }
                 Some(Gesture::ProximityDetected) => {
+                    self.proximity_active = true;
                     self.inactivity_seconds = 0;
                     if self.status == SystemStatus::Sleep {
                         self.handle_command(SystemCommand::Wake);
@@ -117,7 +120,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                         let _ = self.motor_tx.try_send(MotorCommand::SetSpeed(100));
                     }
                 }
-                Some(Gesture::ProximityNotDetected) => {}
+                Some(Gesture::ProximityNotDetected) => {
+                    self.proximity_active = false;
+                }
                 _ => {}
             }
         }
@@ -252,7 +257,14 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
     pub fn tick(&mut self) {
         if self.status == SystemStatus::Active {
             self.time_in_active += 1;
-            self.inactivity_seconds += 1;
+
+            // Stay in Active state as long as proximity is detected
+            if self.proximity_active {
+                self.inactivity_seconds = 0;
+            } else {
+                self.inactivity_seconds += 1;
+            }
+
             // Sleep after 30 seconds of inactivity
             if self.inactivity_seconds >= 30 {
                 self.handle_command(SystemCommand::Sleep);
