@@ -54,18 +54,25 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: thumbv6m-none-eabi
-          components: llvm-tools
+          components: llvm-tools-preview
 
       - name: Build and Organize Firmware
         run: ./scripts/build_firmware.sh --out-dir build
 
-      - name: Binary Size Report
-        run: ./scripts/generate_size_report.sh build/size_report.txt
+      - name: Analyze cat_detector Memory
+        if: ${{ !env.ACT }}
+        uses: membrowse/membrowse-action@v1
+        with:
+          elf: build/release/cat_detector
+          target_name: rp2040
+          api_key: ${{ secrets.MEMBROWSE_API_KEY }}
 
       - name: Download Test Reports
         uses: actions/download-artifact@v4
