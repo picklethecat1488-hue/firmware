@@ -21,6 +21,12 @@ The workspace is organized into target-agnostic crates for logic/simulation and 
 
 ---
 
+## Projects
+
+*   **[Cat Detector](file:///Users/daparker/gh/firmware/projects/cat_detector.md)**: A low-power water fountain and cat proximity detector system running on the Raspberry Pi Pico (RP2040). It integrates Time-of-Flight distance sensors, battery charger/fuel gauge telemetry, thermal shutdown checks, and indicator NeoPixels to control the fountain pump state.
+
+---
+
 ## Getting Started
 
 ### Prerequisites

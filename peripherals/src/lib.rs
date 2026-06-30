@@ -3,12 +3,21 @@
 #![cfg_attr(not(test), no_std)]
 #![deny(missing_docs)]
 
-/// Generic battery peripheral traits.
-pub mod battery;
-/// Generic and platform-specific pump peripherals.
-pub mod pump;
-/// Generic and platform-specific water sensor peripherals.
-pub mod water_sensor;
+/// Generic and platform-specific motor peripherals.
+pub mod motor;
+
+/// Concrete driver implementation for the ATtiny816 custom LED driver.
+pub mod attiny816;
+/// Concrete driver implementation for the BQ25185 battery charger.
+pub mod bq25185;
+/// Concrete driver implementation for the INA219 current monitor.
+pub mod ina219;
+/// Concrete driver implementation for the L9110S motor driver.
+pub mod l9110s;
+/// Concrete driver implementation for the MAX17048 fuel gauge.
+pub mod max17048;
+/// Concrete driver implementation for the VL53L0X proximity sensor.
+pub mod vl53l0x;
 
 /// Mock implementations of peripherals for host-based testing.
 #[cfg(any(test, feature = "mock"))]

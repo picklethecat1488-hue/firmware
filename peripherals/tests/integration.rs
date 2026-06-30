@@ -1,6 +1,5 @@
 use embedded_hal::digital::{ErrorType, InputPin, OutputPin};
-use peripherals::pump::{GpioPump, Pump};
-use peripherals::water_sensor::{GpioWaterSensor, WaterSensor};
+use peripherals::motor::{GpioMotor, Motor};
 
 struct MockPin {
     is_high: bool,
@@ -31,16 +30,18 @@ impl InputPin for MockPin {
 }
 
 #[test]
-fn test_gpio_pump_compilation() {
+fn test_gpio_motor_compilation() {
     let pin = MockPin { is_high: false };
-    let mut pump = GpioPump::new(pin);
-    assert!(pump.stop().is_ok());
-    assert!(pump.set_speed(100).is_ok());
+    let mut motor = GpioMotor::new(pin);
+    assert!(motor.stop().is_ok());
+    assert!(motor.set_speed(100).is_ok());
 }
 
 #[test]
-fn test_gpio_water_sensor_compilation() {
-    let pin = MockPin { is_high: true };
-    let mut sensor = GpioWaterSensor::new(pin);
-    assert!(sensor.is_water_detected().unwrap());
+fn test_l9110s_compilation() {
+    let pin_ia = MockPin { is_high: false };
+    let pin_ib = MockPin { is_high: false };
+    let mut motor = peripherals::l9110s::L9110s::new(pin_ia, pin_ib);
+    assert!(motor.stop().is_ok());
+    assert!(motor.set_speed(100).is_ok());
 }
