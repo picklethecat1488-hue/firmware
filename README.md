@@ -44,10 +44,13 @@ To build and run this firmware, you need the following tools installed on your h
 
 ### Running Tests (Host-Based Validation)
 
-Our decoupled architecture allows you to validate all business logic and control loops directly on your host machine without flashing a microcontroller:
+Our decoupled architecture allows you to validate all business logic and control loops directly on your host machine without flashing a microcontroller. We use `cargo-nextest` for faster, parallelized, and less noisy test execution:
 
 ```bash
-# Run all unit tests (in model) and integration tests (in peripherals/controller) on host
+# Run tests using cargo-nextest (highly recommended)
+cargo nextest run
+
+# Or fall back to standard cargo tests
 cargo test
 ```
 
