@@ -24,18 +24,24 @@ pub static CRASH_LOG_BUFFER: critical_section::Mutex<core::cell::RefCell<LogBuff
 pub fn log_system(args: core::fmt::Arguments) {
     critical_section::with(|cs| {
         let mut buffer = CRASH_LOG_BUFFER.borrow(cs).borrow_mut();
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        {
+            // Read lower 32 bits of RP2040 microsecond hardware timer
+            let micros = unsafe { *(0x4005_400c as *const u32) };
+            let _ = core::fmt::write(&mut *buffer, format_args!("[{:010} us] ", micros));
+        }
         let _ = core::fmt::write(&mut *buffer, args);
         let _ = buffer.write_str("\n");
     });
 }
 
-/// Helper macro for logging system events.
+/// Helper macro for logging system events with compile-time module prefixing.
 #[macro_export]
 macro_rules! log_info {
-    ($($arg:tt)*) => {
-        $crate::log_system(format_args!($($arg)*));
+    ($fmt:literal $(, $arg:expr)* $(,)?) => {
+        $crate::log_system(format_args!(concat!("[", core::module_path!(), "] ", $fmt) $(, $arg)*));
         #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!($($arg)*);
+        defmt::info!($fmt $(, $arg)*);
     }
 }
 
@@ -146,7 +152,14 @@ pub fn init(
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Shared panic handler logic executing crash dump logging to flash memory.
-pub fn handle_panic<const FLASH_SIZE: usize>(info: &core::panic::PanicInfo) -> ! {
+pub fn handle_panic<
+    const FLASH_SIZE: usize,
+    const STACK_TOP: u32,
+    const FLASH_START: u32,
+    const FLASH_END: u32,
+>(
+    info: &core::panic::PanicInfo,
+) -> ! {
     let r0: u32;
     let r1: u32;
     let r2: u32;
@@ -171,13 +184,13 @@ pub fn handle_panic<const FLASH_SIZE: usize>(info: &core::panic::PanicInfo) -> !
     unsafe {
         core::arch::asm!("mov {}, sp", out(reg) sp);
     }
-    let stack_top = 0x2004_0000;
+    let stack_top = STACK_TOP;
     let mut pcs = [0u32; 16];
     let mut pc_count = 0;
     let mut current_addr = sp;
     while current_addr < stack_top && pc_count < 16 {
         let val = unsafe { *(current_addr as *const u32) };
-        if val >= 0x1000_0000 && val < 0x1020_0000 && val % 2 == 1 {
+        if (FLASH_START..FLASH_END).contains(&val) && val % 2 == 1 {
             pcs[pc_count] = val & !1;
             pc_count += 1;
         }
@@ -209,8 +222,8 @@ pub fn handle_panic<const FLASH_SIZE: usize>(info: &core::panic::PanicInfo) -> !
     let _ = core::fmt::write(content, format_args!("  R3: 0x{:08X}\n\n", r3));
 
     let _ = core::fmt::write(content, format_args!("Backtrace:\n"));
-    for i in 0..pc_count {
-        let _ = core::fmt::write(content, format_args!("  0x{:08X}\n", pcs[i]));
+    for &pc in pcs.iter().take(pc_count) {
+        let _ = core::fmt::write(content, format_args!("  0x{:08X}\n", pc));
     }
 
     let _ = core::fmt::write(content, format_args!("\nSystem Logs:\n"));
@@ -277,7 +290,7 @@ pub fn handle_panic<const FLASH_SIZE: usize>(info: &core::panic::PanicInfo) -> !
             let _ = core::fmt::write(&mut filename, format_args!("crash_{}.log", current_idx));
             let log_key = string_to_key(filename.as_str());
 
-            let _ = block_on(async {
+            block_on(async {
                 let _ = sequential_storage::map::store_item(
                     &mut mut_flash,
                     config.range.clone(),
@@ -293,7 +306,7 @@ pub fn handle_panic<const FLASH_SIZE: usize>(info: &core::panic::PanicInfo) -> !
             let next_idx = (current_idx + 1) % 5;
             let next_bytes = next_idx.to_le_bytes();
             let idx_key = string_to_key("crash_idx");
-            let _ = block_on(async {
+            block_on(async {
                 let _ = sequential_storage::map::store_item(
                     &mut mut_flash,
                     config.range.clone(),
@@ -345,7 +358,7 @@ pub fn handle_panic<const FLASH_SIZE: usize>(info: &core::panic::PanicInfo) -> !
 
                 // Store updated dir
                 let dir_write_buf = unsafe { &mut SCRATCH_BUF };
-                let _ = block_on(async {
+                block_on(async {
                     let _ = sequential_storage::map::store_item(
                         &mut mut_flash,
                         config.range.clone(),

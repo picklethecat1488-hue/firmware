@@ -22,7 +22,12 @@ use {
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    cat_detector::handle_panic::<{ cat_detector::FLASH_SIZE }>(info);
+    cat_detector::handle_panic::<
+        { cat_detector::FLASH_SIZE },
+        { cat_detector::STACK_TOP },
+        { cat_detector::FLASH_START },
+        { cat_detector::FLASH_END },
+    >(info);
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
