@@ -13,17 +13,13 @@ The workspace is organized into target-agnostic crates for logic/simulation and 
 *   **[model/](file:///Users/daparker/gh/firmware/model)**: Core platform-independent system models, state machines, protocols, and calculations. Written using `#![no_std]` and has zero dependencies, making it extremely fast to compile and test on the host. Exposes modular components like the state machine.
 *   **[peripherals/](file:///Users/daparker/gh/firmware/peripherals)**: Abstractions (traits) for peripheral wrappers (e.g., `Pump`, `WaterSensor`) and their corresponding generic implementations based on `embedded-hal`. Also contains mock implementations for testing.
 *   **[controller/](file:///Users/daparker/gh/firmware/controller)**: Project-agnostic control loop coordinators. Coordinates the state machines and driver traits in a decoupled fashion.
-*   **[projects/](file:///Users/daparker/gh/firmware/projects)**: Concrete firmware applications targeted at specific microcontrollers:
-    *   **[cat_detector](file:///Users/daparker/gh/firmware/projects/cat_detector)**: Raspberry Pi Pico deployment target containing:
-        *   **Library (`src/lib.rs`)**: Single source of truth for board peripheral configurations (UART, I2C, GPIO).
-        *   **Main Application (`src/main.rs`)**: Runs the actual async Cat Detector controller logic.
-        *   **Bringup Shell (`src/bin/shell.rs`)**: Dynamic interactive console for GPIO and I2C diagnostics.
+*   **[projects/](file:///Users/daparker/gh/firmware/projects)**: Concrete firmware applications targeted at specific microcontrollers
 
 ---
 
 ## Projects
 
-*   **[Cat Detector](file:///Users/daparker/gh/firmware/projects/cat_detector.md)**: A low-power water fountain and cat proximity detector system running on the Raspberry Pi Pico (RP2040). It integrates Time-of-Flight distance sensors, battery charger/fuel gauge telemetry, thermal shutdown checks, and indicator NeoPixels to control the fountain pump state.
+*   **[Cat Detector](file:///Users/daparker/gh/firmware/projects/cat_detector.md)**: A low-power water fountain and cat proximity detector system running on the Raspberry Pi Pico (RP2040).
 
 ---
 
