@@ -4,7 +4,7 @@
 
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::mutex::Mutex;
-use peripherals::battery::Battery;
+use model::interfaces::TemperatureSensor;
 
 /// Current thermal status of the system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,16 +16,34 @@ pub enum ThermalState {
 }
 
 /// A controller that periodically monitors system temperature from battery sensors.
-pub struct ThermalController<'a, M: RawMutex, B> {
+pub struct ThermalController<'a, M: RawMutex, B, Cmd = ()> {
     battery: &'a Mutex<M, B>,
+    system_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
+    shutdown_cmd: Option<Cmd>,
     state: ThermalState,
 }
 
-impl<'a, M: RawMutex, B: Battery> ThermalController<'a, M, B> {
-    /// Creates a new thermal controller referencing a shared battery peripheral.
+impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone> ThermalController<'a, M, B, Cmd> {
+    /// Creates a new thermal controller referencing a shared battery peripheral without shutdown coordination.
     pub fn new(battery: &'a Mutex<M, B>) -> Self {
         Self {
             battery,
+            system_tx: None,
+            shutdown_cmd: None,
+            state: ThermalState::Normal,
+        }
+    }
+
+    /// Creates a new thermal controller with safety shutdown capabilities.
+    pub fn new_with_shutdown(
+        battery: &'a Mutex<M, B>,
+        system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        shutdown_cmd: Cmd,
+    ) -> Self {
+        Self {
+            battery,
+            system_tx: Some(system_tx),
+            shutdown_cmd: Some(shutdown_cmd),
             state: ThermalState::Normal,
         }
     }
@@ -46,6 +64,15 @@ impl<'a, M: RawMutex, B: Battery> ThermalController<'a, M, B> {
             self.state = ThermalState::Overheating;
         } else {
             self.state = ThermalState::Normal;
+        }
+
+        // Critical threshold check: shut down system if temp > 60°C (60000 mC)
+        if temp > 60000 {
+            if let (Some(tx), Some(cmd)) = (&self.system_tx, &self.shutdown_cmd) {
+                let _ = tx.try_send(cmd.clone());
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::error!("Thermal Controller: Critical temperature exceeded ({} mC). Dispatching safety shutdown.", temp);
+            }
         }
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]

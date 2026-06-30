@@ -42,3 +42,44 @@ pub struct ThermalStatus {
     /// Whether the system is currently overheating.
     pub is_overheating: bool,
 }
+
+/// Operating mode of the system (Active or Sleep).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SystemStatus {
+    /// System is fully awake and processing sensors/motor.
+    #[default]
+    Active,
+    /// System is in low-power sleep state.
+    Sleep,
+}
+
+/// Telemetry data from the battery fuel gauge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FuelGaugeTelemetry {
+    /// Battery cell voltage in millivolts (mV).
+    pub voltage_mv: u32,
+    /// Battery state of charge as a percentage (0-100).
+    pub state_of_charge: u8,
+}
+
+/// Telemetry data from the proximity (ToF) sensors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ProximityTelemetry {
+    /// Measured distance from the North sensor in millimeters.
+    pub distance_north_mm: u16,
+    /// Measured distance from the East sensor in millimeters.
+    pub distance_east_mm: u16,
+    /// Measured distance from the West sensor in millimeters.
+    pub distance_west_mm: u16,
+}
+
+/// State of the indicator system LEDs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct SystemLedState {
+    /// Red channel value (0-255).
+    pub r: u8,
+    /// Green channel value (0-255).
+    pub g: u8,
+    /// Blue channel value (0-255).
+    pub b: u8,
+}

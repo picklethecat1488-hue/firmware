@@ -4,7 +4,7 @@
 
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::mutex::Mutex;
-use peripherals::battery::Battery;
+use model::interfaces::FuelGauge;
 
 /// Current operating state of the battery.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -21,7 +21,7 @@ pub struct BatteryController<'a, M: RawMutex, B> {
     state: BatteryState,
 }
 
-impl<'a, M: RawMutex, B: Battery> BatteryController<'a, M, B> {
+impl<'a, M: RawMutex, B: FuelGauge> BatteryController<'a, M, B> {
     /// Creates a new battery controller referencing a shared battery peripheral.
     pub fn new(battery: &'a Mutex<M, B>) -> Self {
         Self {
