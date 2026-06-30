@@ -23,7 +23,9 @@ pub struct BatteryController<'a, M: RawMutex, B, Cmd = ()> {
     update_fn: Option<fn(u8, bool) -> Cmd>,
 }
 
-impl<'a, M: RawMutex, B: FuelGauge, Cmd: Clone> BatteryController<'a, M, B, Cmd> {
+impl<'a, M: RawMutex, B: FuelGauge, Cmd: Clone + core::fmt::Debug>
+    BatteryController<'a, M, B, Cmd>
+{
     /// Creates a new battery controller referencing a shared battery peripheral.
     pub fn new(battery: &'a Mutex<M, B>) -> Self {
         Self {
@@ -80,7 +82,7 @@ impl<'a, M: RawMutex, B: FuelGauge, Cmd: Clone> BatteryController<'a, M, B, Cmd>
         }
 
         if let (Some(tx), Some(f)) = (&self.system_tx, self.update_fn) {
-            let _ = tx.try_send(f(soc, charging));
+            tx.try_send(f(soc, charging)).unwrap();
         }
 
         if let Some(tx) = telemetry_tx {

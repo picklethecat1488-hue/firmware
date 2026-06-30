@@ -119,7 +119,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                         self.handle_command(SystemCommand::Wake);
                     }
                     if self.status == SystemStatus::Active && !self.battery_critical {
-                        let _ = self.motor_tx.try_send(MotorCommand::SetSpeed(100));
+                        self.motor_tx.try_send(MotorCommand::SetSpeed(100)).unwrap();
                     }
                 }
                 Some(Gesture::ProximityNotDetected) => {
@@ -147,7 +147,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                     self.time_in_active = 0;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     crate::log_info!("SystemController: waking up to Active mode.");
-                    let _ = self.led_tx.try_send(SystemLedState::SolidGreen);
+                    self.led_tx.try_send(SystemLedState::SolidGreen).unwrap();
                 }
             }
             SystemCommand::Sleep => {
@@ -161,16 +161,16 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                     crate::log_telemetry(TelemetryRecord::System(SystemStatus::Sleep));
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     crate::log_info!("SystemController: entering low-power Sleep mode.");
-                    let _ = self.motor_tx.try_send(MotorCommand::Stop);
-                    let _ = self.led_tx.try_send(SystemLedState::SolidBlue);
+                    self.motor_tx.try_send(MotorCommand::Stop).unwrap();
+                    self.led_tx.try_send(SystemLedState::SolidBlue).unwrap();
                 }
             }
             SystemCommand::PowerDown => {
                 if self.status != SystemStatus::PowerDown {
                     self.status = SystemStatus::PowerDown;
                     crate::log_telemetry(TelemetryRecord::System(SystemStatus::PowerDown));
-                    let _ = self.motor_tx.try_send(MotorCommand::Stop);
-                    let _ = self.led_tx.try_send(SystemLedState::Off);
+                    self.motor_tx.try_send(MotorCommand::Stop).unwrap();
+                    self.led_tx.try_send(SystemLedState::Off).unwrap();
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     crate::log_info!("SystemController: entering PowerDown state. Motor locked.");
                 }
@@ -183,7 +183,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
             }
             SystemCommand::AlertTriggered => {
                 self.thermal_critical = true;
-                let _ = self.led_tx.try_send(SystemLedState::BlinksRedFourTimes);
+                self.led_tx
+                    .try_send(SystemLedState::BlinksRedFourTimes)
+                    .unwrap();
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 crate::log_info!("SystemController: Alert triggered. LED indicator set to RED.");
                 if self.status != SystemStatus::PowerDown {
@@ -196,13 +198,13 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
             } => {
                 if state_of_charge < 10 && !charging {
                     self.battery_critical = true;
-                    let _ = self
-                        .led_tx
-                        .try_send(SystemLedState::BlinksRedOncePerThirtySeconds);
+                    self.led_tx
+                        .try_send(SystemLedState::BlinksRedOncePerThirtySeconds)
+                        .unwrap();
                     if self.status != SystemStatus::PowerDown {
                         self.handle_command(SystemCommand::PowerDown);
                     } else {
-                        let _ = self.motor_tx.try_send(MotorCommand::Stop);
+                        self.motor_tx.try_send(MotorCommand::Stop).unwrap();
                     }
                 } else {
                     self.battery_critical = false;
@@ -224,9 +226,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                         self.inactivity_seconds = 0;
                         self.time_in_active = 0;
                         if charging {
-                            let _ = self.led_tx.try_send(SystemLedState::SolidYellow);
+                            self.led_tx.try_send(SystemLedState::SolidYellow).unwrap();
                         } else {
-                            let _ = self.led_tx.try_send(SystemLedState::SolidGreen);
+                            self.led_tx.try_send(SystemLedState::SolidGreen).unwrap();
                         }
                         #[cfg(all(target_arch = "arm", target_os = "none"))]
                         crate::log_info!(
@@ -235,11 +237,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                     } else if self.status != SystemStatus::PowerDown {
                         self.boot_power_down = false;
                         if charging {
-                            let _ = self.led_tx.try_send(SystemLedState::SolidYellow);
+                            self.led_tx.try_send(SystemLedState::SolidYellow).unwrap();
                         } else if state_of_charge < 20 {
-                            let _ = self.led_tx.try_send(SystemLedState::SolidOrange);
+                            self.led_tx.try_send(SystemLedState::SolidOrange).unwrap();
                         } else if self.status == SystemStatus::Active {
-                            let _ = self.led_tx.try_send(SystemLedState::SolidGreen);
+                            self.led_tx.try_send(SystemLedState::SolidGreen).unwrap();
                         }
                     }
                 }
@@ -292,7 +294,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
         command_rx: embassy_sync::channel::Receiver<'static, MutexRaw, SystemCommand, N>,
     ) -> ! {
         // Initialize LED to Off (as we start in PowerDown)
-        let _ = self.led_tx.try_send(SystemLedState::Off);
+        self.led_tx.try_send(SystemLedState::Off).unwrap();
         crate::log_telemetry(TelemetryRecord::System(SystemStatus::PowerDown));
 
         loop {
@@ -308,12 +310,20 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                 Err(_timeout) => {
                     self.tick();
                     // Coordinate periodic telemetry reads across other controllers
-                    let _ = self.battery_tx.try_send(BatteryCommand::CheckStatus);
-                    let _ = self.thermal_tx.try_send(ThermalCommand::CheckTemp);
+                    self.battery_tx
+                        .try_send(BatteryCommand::CheckStatus)
+                        .unwrap();
+                    self.thermal_tx.try_send(ThermalCommand::CheckTemp).unwrap();
                     if self.status == SystemStatus::Active {
-                        let _ = self.sensor_north_tx.try_send(SensorCommand::ReadSensors);
-                        let _ = self.sensor_east_tx.try_send(SensorCommand::ReadSensors);
-                        let _ = self.sensor_west_tx.try_send(SensorCommand::ReadSensors);
+                        self.sensor_north_tx
+                            .try_send(SensorCommand::ReadSensors)
+                            .unwrap();
+                        self.sensor_east_tx
+                            .try_send(SensorCommand::ReadSensors)
+                            .unwrap();
+                        self.sensor_west_tx
+                            .try_send(SensorCommand::ReadSensors)
+                            .unwrap();
                     }
                 }
             }

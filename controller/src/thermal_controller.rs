@@ -23,7 +23,9 @@ pub struct ThermalController<'a, M: RawMutex, B, Cmd = ()> {
     state: ThermalState,
 }
 
-impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone> ThermalController<'a, M, B, Cmd> {
+impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
+    ThermalController<'a, M, B, Cmd>
+{
     /// Creates a new thermal controller referencing a shared battery peripheral without shutdown coordination.
     pub fn new(battery: &'a Mutex<M, B>) -> Self {
         Self {
@@ -79,7 +81,7 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone> ThermalController<'a, M,
         // Critical threshold check: shut down system if temp > 60°C (60000 mC)
         if temp > 60000 {
             if let (Some(tx), Some(cmd)) = (&self.system_tx, &self.shutdown_cmd) {
-                let _ = tx.try_send(cmd.clone());
+                tx.try_send(cmd.clone()).unwrap();
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::error!("Thermal Controller: Critical temperature exceeded ({} mC). Dispatching safety shutdown.", temp);
             }
