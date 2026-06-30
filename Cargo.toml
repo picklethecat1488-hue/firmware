@@ -4,6 +4,7 @@ members = [
     "model",
     "peripherals",
     "controller",
+    "panic_handler",
     "projects/cat_detector",
     "tools/fs_tool",
 ]
@@ -11,6 +12,7 @@ default-members = [
     "model",
     "peripherals",
     "controller",
+    "panic_handler",
     "projects/cat_detector",
     "tools/fs_tool",
 ]

@@ -16,10 +16,15 @@ use {
     embassy_executor::Spawner,
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     embassy_sync::mutex::Mutex,
-    panic_probe as _,
     peripherals::mock::{DummyCurrentSensor, DummyProximitySensor, MockBattery, MockLed},
     peripherals::motor::GpioMotor,
 };
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    cat_detector::handle_panic::<{ cat_detector::FLASH_SIZE }>(info);
+}
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 // Define raw statically allocated Mutex for thread-safe/multi-core peripheral sharing
@@ -29,11 +34,17 @@ static SHARED_BATTERY: Mutex<CriticalSectionRawMutex, MockBattery> =
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    defmt::info!("Initializing hardware for cat detector...");
+    cat_detector::log_info!("Initializing hardware for cat detector...");
     let p = embassy_rp::init(Default::default());
 
     // Initialize board peripherals using the unified board configuration
     let mut board = cat_detector::Board::init(p);
+
+    // Initialize the modular panic handler
+    cat_detector::init_panic_handler(
+        board.flash,
+        cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
+    );
 
     // Extract the motor control pin from the board configuration array
     let motor_pin = board.gpio_pins[cat_detector::LED_PIN as usize]

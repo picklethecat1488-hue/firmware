@@ -24,6 +24,8 @@ pub const UART_RX_PIN: u32 = 1;
 pub const STORAGE_PARTITION_START: u32 = 0x1C_0000; // 1.75 MB
 /// End address of the filesystem storage partition in flash (2.00 MB limit).
 pub const STORAGE_PARTITION_END: u32 = 0x20_0000; // 2.00 MB
+/// Total QSPI flash memory capacity on the board (2.00 MB).
+pub const FLASH_SIZE: usize = 2 * 1024 * 1024;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 mod bsp_target;
@@ -95,3 +97,15 @@ pub static LED_CHANNEL: embassy_sync::channel::Channel<
     model::types::SystemLedState,
     4,
 > = embassy_sync::channel::Channel::new();
+/// Re-export the modular panic handler function
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub use rp2040_panic_handler::handle_panic;
+
+/// Re-export the modular panic handler initialization
+pub use rp2040_panic_handler::init as init_panic_handler;
+
+/// Re-export the modular logging helper function
+pub use rp2040_panic_handler::log_system;
+
+/// Re-export the modular log_info! macro from the panic handler crate
+pub use rp2040_panic_handler::log_info;
