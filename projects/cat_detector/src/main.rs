@@ -8,6 +8,7 @@
 use {
     cat_detector::system_controller::SystemController,
     controller::battery_controller::BatteryController,
+    controller::led_controller::LedController,
     controller::motor_controller::MotorController,
     controller::sensor_controller::SensorController,
     controller::thermal_controller::ThermalController,
@@ -15,10 +16,20 @@ use {
     embassy_executor::Spawner,
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     embassy_sync::mutex::Mutex,
-    panic_probe as _,
-    peripherals::mock::{DummyCurrentSensor, DummyProximitySensor, MockBattery},
+    peripherals::mock::{DummyCurrentSensor, DummyProximitySensor, MockBattery, MockLed},
     peripherals::motor::GpioMotor,
 };
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    cat_detector::handle_panic::<
+        { cat_detector::FLASH_SIZE },
+        { cat_detector::STACK_TOP },
+        { cat_detector::FLASH_START },
+        { cat_detector::FLASH_END },
+    >(info);
+}
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 // Define raw statically allocated Mutex for thread-safe/multi-core peripheral sharing
@@ -28,11 +39,17 @@ static SHARED_BATTERY: Mutex<CriticalSectionRawMutex, MockBattery> =
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    defmt::info!("Initializing hardware for cat detector...");
+    cat_detector::log_info!("Initializing hardware for cat detector...");
     let p = embassy_rp::init(Default::default());
 
     // Initialize board peripherals using the unified board configuration
     let mut board = cat_detector::Board::init(p);
+
+    // Initialize the modular panic handler
+    cat_detector::init_panic_handler(
+        board.flash,
+        cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
+    );
 
     // Extract the motor control pin from the board configuration array
     let motor_pin = board.gpio_pins[cat_detector::LED_PIN as usize]
@@ -48,7 +65,36 @@ async fn main(spawner: Spawner) {
     let tof_north = DummyProximitySensor::new(100);
     let tof_east = DummyProximitySensor::new(150);
     let tof_west = DummyProximitySensor::new(200);
-    let sensor_ctrl = SensorController::new(tof_north, tof_east, tof_west);
+
+    let sensor_ctrl_north = SensorController::new_with_fusion(
+        0,
+        tof_north,
+        cat_detector::SYSTEM_CHANNEL.sender(),
+        |id, dist| cat_detector::system_controller::SystemCommand::SensorUpdate {
+            sensor_id: id,
+            distance_mm: dist,
+        },
+    );
+
+    let sensor_ctrl_east = SensorController::new_with_fusion(
+        1,
+        tof_east,
+        cat_detector::SYSTEM_CHANNEL.sender(),
+        |id, dist| cat_detector::system_controller::SystemCommand::SensorUpdate {
+            sensor_id: id,
+            distance_mm: dist,
+        },
+    );
+
+    let sensor_ctrl_west = SensorController::new_with_fusion(
+        2,
+        tof_west,
+        cat_detector::SYSTEM_CHANNEL.sender(),
+        |id, dist| cat_detector::system_controller::SystemCommand::SensorUpdate {
+            sensor_id: id,
+            distance_mm: dist,
+        },
+    );
 
     let thermal_ctrl = ThermalController::new_with_shutdown(
         &SHARED_BATTERY,
@@ -57,10 +103,16 @@ async fn main(spawner: Spawner) {
     );
     let power_ctrl = BatteryController::new(&SHARED_BATTERY);
 
+    // Initialize simulated LED driver and its controller
+    let led_driver = MockLed::new();
+    let led_ctrl = LedController::new(led_driver);
+
     // Initialize SystemController to coordinate all loops
     let system_ctrl = SystemController::new(
         cat_detector::MOTOR_CHANNEL.sender(),
-        cat_detector::SENSOR_CHANNEL.sender(),
+        cat_detector::SENSOR_NORTH_CHANNEL.sender(),
+        cat_detector::SENSOR_EAST_CHANNEL.sender(),
+        cat_detector::SENSOR_WEST_CHANNEL.sender(),
         cat_detector::BATTERY_CHANNEL.sender(),
         cat_detector::THERMAL_CHANNEL.sender(),
         cat_detector::LED_CHANNEL.sender(),
@@ -93,14 +145,45 @@ async fn main(spawner: Spawner) {
         DummyCurrentSensor
     );
 
+    // Spawn the three proximity sensor tasks
     controller::run_sensor_task!(
         spawner,
-        sensor_task,
-        sensor_ctrl,
-        cat_detector::SENSOR_CHANNEL.receiver(),
+        sensor_north_task,
+        sensor_ctrl_north,
+        cat_detector::SENSOR_NORTH_CHANNEL.receiver(),
         DummyProximitySensor,
+        CriticalSectionRawMutex,
+        cat_detector::system_controller::SystemCommand
+    );
+
+    controller::run_sensor_task!(
+        spawner,
+        sensor_east_task,
+        sensor_ctrl_east,
+        cat_detector::SENSOR_EAST_CHANNEL.receiver(),
         DummyProximitySensor,
-        DummyProximitySensor
+        CriticalSectionRawMutex,
+        cat_detector::system_controller::SystemCommand
+    );
+
+    controller::run_sensor_task!(
+        spawner,
+        sensor_west_task,
+        sensor_ctrl_west,
+        cat_detector::SENSOR_WEST_CHANNEL.receiver(),
+        DummyProximitySensor,
+        CriticalSectionRawMutex,
+        cat_detector::system_controller::SystemCommand
+    );
+
+    // Spawn the LED controller task
+    controller::run_led_task!(
+        spawner,
+        led_task,
+        led_ctrl,
+        cat_detector::LED_CHANNEL.receiver(),
+        MockLed,
+        CriticalSectionRawMutex
     );
 
     cat_detector::run_system_task!(

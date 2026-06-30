@@ -5,14 +5,19 @@ use embassy_sync::channel::Channel;
 #[test]
 fn test_system_controller_flow() {
     static MOTOR_CHANNEL: Channel<CriticalSectionRawMutex, MotorCommand, 4> = Channel::new();
-    static SENSOR_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
+    static SENSOR_NORTH_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> =
+        Channel::new();
+    static SENSOR_EAST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
+    static SENSOR_WEST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
     static BATTERY_CHANNEL: Channel<CriticalSectionRawMutex, BatteryCommand, 4> = Channel::new();
     static THERMAL_CHANNEL: Channel<CriticalSectionRawMutex, ThermalCommand, 4> = Channel::new();
     static LED_CHANNEL: Channel<CriticalSectionRawMutex, SystemLedState, 4> = Channel::new();
 
     let mut controller = SystemController::new(
         MOTOR_CHANNEL.sender(),
-        SENSOR_CHANNEL.sender(),
+        SENSOR_NORTH_CHANNEL.sender(),
+        SENSOR_EAST_CHANNEL.sender(),
+        SENSOR_WEST_CHANNEL.sender(),
         BATTERY_CHANNEL.sender(),
         THERMAL_CHANNEL.sender(),
         LED_CHANNEL.sender(),
@@ -39,7 +44,7 @@ fn test_system_controller_flow() {
 
     // Verify LED was updated to Sleep blue
     let led_state = LED_CHANNEL.try_receive().unwrap();
-    assert_eq!(led_state, SystemLedState::Rgb(0, 0, 64));
+    assert_eq!(led_state, SystemLedState::SolidBlue);
 
     // Verify motor stop command was dispatched
     let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
@@ -51,18 +56,96 @@ fn test_system_controller_flow() {
 
     // Verify LED was updated to Active green
     let led_state = LED_CHANNEL.try_receive().unwrap();
-    assert_eq!(led_state, SystemLedState::Rgb(0, 128, 0));
+    assert_eq!(led_state, SystemLedState::SolidGreen);
 
-    // Trigger an alert
+    // Trigger an alert (thermal critical)
     controller.handle_command(SystemCommand::AlertTriggered);
     let led_state = LED_CHANNEL.try_receive().unwrap();
-    assert_eq!(led_state, SystemLedState::Rgb(255, 0, 0));
+    assert_eq!(led_state, SystemLedState::BlinksRedFourTimes);
 
-    // Trigger a battery charging update
-    controller.handle_command(SystemCommand::BatteryUpdate {
-        state_of_charge: 50,
-        charging: true,
-    });
+    // Since alert was triggered, it forces immediate sleep (LED turns blue)
     let led_state = LED_CHANNEL.try_receive().unwrap();
-    assert_eq!(led_state, SystemLedState::Rgb(128, 128, 0));
+    assert_eq!(led_state, SystemLedState::SolidBlue);
+    assert_eq!(controller.status(), SystemStatus::Sleep);
+
+    // Clear channel receivers for clean state
+    while MOTOR_CHANNEL.try_receive().is_ok() {}
+    while LED_CHANNEL.try_receive().is_ok() {}
+
+    // Use a fresh controller instance to test ToF proximity data fusion and active delay gating
+    let mut controller = SystemController::new(
+        MOTOR_CHANNEL.sender(),
+        SENSOR_NORTH_CHANNEL.sender(),
+        SENSOR_EAST_CHANNEL.sender(),
+        SENSOR_WEST_CHANNEL.sender(),
+        BATTERY_CHANNEL.sender(),
+        THERMAL_CHANNEL.sender(),
+        LED_CHANNEL.sender(),
+    );
+
+    // Tick to 30s to let the fresh controller sleep
+    for _ in 0..30 {
+        controller.tick();
+    }
+    assert_eq!(controller.status(), SystemStatus::Sleep);
+    let _ = LED_CHANNEL.try_receive().unwrap(); // consume Sleep LED command (SolidBlue)
+    let _ = MOTOR_CHANNEL.try_receive().unwrap(); // consume stop motor command
+
+    // Wake up via Activity
+    controller.handle_command(SystemCommand::ActivityDetected);
+    assert_eq!(controller.status(), SystemStatus::Active);
+    let led_state = LED_CHANNEL.try_receive().unwrap();
+    assert_eq!(led_state, SystemLedState::SolidGreen); // consume Active green LED command
+
+    // Try to transition to sleep immediately (ignored because time_in_active = 0 < 30)
+    controller.handle_command(SystemCommand::Sleep);
+    assert_eq!(controller.status(), SystemStatus::Active);
+
+    // Tick to 30s
+    for _ in 0..30 {
+        controller.tick();
+    }
+    // Now it should be allowed to sleep, and does so automatically after 30s inactivity
+    assert_eq!(controller.status(), SystemStatus::Sleep);
+    let led_state = LED_CHANNEL.try_receive().unwrap();
+    assert_eq!(led_state, SystemLedState::SolidBlue);
+
+    // Clear channels
+    while MOTOR_CHANNEL.try_receive().is_ok() {}
+    while LED_CHANNEL.try_receive().is_ok() {}
+
+    // Send SensorUpdate showing a cat detected on North ToF (distance_mm = 150 < 300)
+    controller.handle_command(SystemCommand::SensorUpdate {
+        sensor_id: 0,
+        distance_mm: 150,
+    });
+
+    assert_eq!(controller.status(), SystemStatus::Active);
+    let led_state = LED_CHANNEL.try_receive().unwrap();
+    assert_eq!(led_state, SystemLedState::SolidGreen);
+
+    let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
+    assert_eq!(motor_cmd, MotorCommand::SetSpeed(100));
+
+    // Test critical battery state
+    controller.handle_command(SystemCommand::BatteryUpdate {
+        state_of_charge: 5,
+        charging: false,
+    });
+    // System remains Active (system is still running)
+    assert_eq!(controller.status(), SystemStatus::Active);
+    // LED should blink once per 30 seconds
+    let led_state = LED_CHANNEL.try_receive().unwrap();
+    assert_eq!(led_state, SystemLedState::BlinksRedOncePerThirtySeconds);
+    // Motor stop should be sent to disable the pump
+    let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
+    assert_eq!(motor_cmd, MotorCommand::Stop);
+
+    // Send another SensorUpdate showing a cat detected
+    controller.handle_command(SystemCommand::SensorUpdate {
+        sensor_id: 0,
+        distance_mm: 150,
+    });
+    // The pump should NOT start since battery is critical (no SetSpeed command in queue)
+    assert!(MOTOR_CHANNEL.try_receive().is_err());
 }

@@ -3,20 +3,24 @@ use peripherals::mock::MockProximitySensor;
 
 #[test]
 fn test_sensor_controller_flow() {
-    let sensor_n = MockProximitySensor::new(10);
-    let sensor_e = MockProximitySensor::new(20);
-    let sensor_w = MockProximitySensor::new(30);
+    let sensor = MockProximitySensor::new(10);
+    let mut controller = SensorController::new(0, sensor);
 
-    let mut controller = SensorController::new(sensor_n, sensor_e, sensor_w);
-
-    let initial_telemetry = controller.telemetry();
-    assert_eq!(initial_telemetry, ProximityTelemetry::Triple(0, 0, 0));
+    assert_eq!(controller.latest_distance(), 1000);
+    assert_eq!(
+        controller.telemetry(),
+        model::types::ProximityTelemetry::OutRange(1000)
+    );
+    assert_eq!(controller.sensor_id(), 0);
 
     // Call update to sample ToF measurements
     controller.update().unwrap();
 
-    let updated_telemetry = controller.telemetry();
-    assert_eq!(updated_telemetry, ProximityTelemetry::Triple(10, 20, 30));
+    assert_eq!(controller.latest_distance(), 10);
+    assert_eq!(
+        controller.telemetry(),
+        model::types::ProximityTelemetry::InRange(10)
+    );
 
     // Verify periodic state
     assert!(controller.is_periodic_enabled());

@@ -24,6 +24,14 @@ pub const UART_RX_PIN: u32 = 1;
 pub const STORAGE_PARTITION_START: u32 = 0x1C_0000; // 1.75 MB
 /// End address of the filesystem storage partition in flash (2.00 MB limit).
 pub const STORAGE_PARTITION_END: u32 = 0x20_0000; // 2.00 MB
+/// Total QSPI flash memory capacity on the board (2.00 MB).
+pub const FLASH_SIZE: usize = 2 * 1024 * 1024;
+/// Top address of the stack/SRAM (RP2040 has 264 KB SRAM, ending at 0x2004_0000).
+pub const STACK_TOP: u32 = 0x2004_0000;
+/// Start address of flash memory mapping (XIP address space).
+pub const FLASH_START: u32 = 0x1000_0000;
+/// End address of flash memory mapping (FLASH_START + FLASH_SIZE).
+pub const FLASH_END: u32 = 0x1020_0000;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 mod bsp_target;
@@ -54,8 +62,22 @@ pub static SYSTEM_CHANNEL: embassy_sync::channel::Channel<
     4,
 > = embassy_sync::channel::Channel::new();
 
-/// Shared command channel for the Sensor Controller.
-pub static SENSOR_CHANNEL: embassy_sync::channel::Channel<
+/// Shared command channel for the North Sensor Controller.
+pub static SENSOR_NORTH_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    controller::sensor_controller::SensorCommand,
+    4,
+> = embassy_sync::channel::Channel::new();
+
+/// Shared command channel for the East Sensor Controller.
+pub static SENSOR_EAST_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    controller::sensor_controller::SensorCommand,
+    4,
+> = embassy_sync::channel::Channel::new();
+
+/// Shared command channel for the West Sensor Controller.
+pub static SENSOR_WEST_CHANNEL: embassy_sync::channel::Channel<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     controller::sensor_controller::SensorCommand,
     4,
@@ -81,3 +103,35 @@ pub static LED_CHANNEL: embassy_sync::channel::Channel<
     model::types::SystemLedState,
     4,
 > = embassy_sync::channel::Channel::new();
+/// Re-export the modular panic handler function
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub use rp2040_panic_handler::handle_panic;
+
+/// Re-export the modular panic handler initialization
+pub use rp2040_panic_handler::init as init_panic_handler;
+
+/// Re-export the modular logging helper function
+pub use rp2040_panic_handler::log_system;
+
+/// Re-export the modular log_info! macro from the panic handler crate
+pub use rp2040_panic_handler::log_info;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Returns the current system uptime in microseconds since boot (64-bit precision).
+pub fn system_time() -> u64 {
+    unsafe {
+        let timer_high_addr = 0x4005_4008 as *const u32;
+        let timer_low_addr = 0x4005_400c as *const u32;
+        let mut high = *timer_high_addr;
+        let mut low = *timer_low_addr;
+        let high2 = *timer_high_addr;
+        if high != high2 {
+            high = high2;
+            low = *timer_low_addr;
+        }
+        ((high as u64) << 32) | (low as u64)
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+defmt::timestamp!("{=u64:us}", system_time());

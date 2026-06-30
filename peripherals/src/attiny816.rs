@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 use embedded_hal::i2c::I2c;
+use model::interfaces::LedDriver;
 
 /// Driver for the ATtiny816 custom NeoPixel LED driver over I2C.
 pub struct Attiny816<I> {
@@ -20,5 +21,13 @@ impl<I: I2c> Attiny816<I> {
     /// Writes the RGB values to the custom I2C device starting at register address 0x00.
     pub fn set_led_color(&mut self, r: u8, g: u8, b: u8) -> Result<(), I::Error> {
         self.i2c.write(self.address, &[0x00, r, g, b])
+    }
+}
+
+impl<I: I2c> LedDriver for Attiny816<I> {
+    type Error = I::Error;
+
+    fn set_color(&mut self, r: u8, g: u8, b: u8) -> Result<(), Self::Error> {
+        self.set_led_color(r, g, b)
     }
 }

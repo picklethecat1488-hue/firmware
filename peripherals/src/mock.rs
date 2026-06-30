@@ -1,5 +1,5 @@
 use model::interfaces::{
-    Charger, CurrentSensor, FuelGauge, Motor, ProximitySensor, TemperatureSensor,
+    Charger, CurrentSensor, FuelGauge, LedDriver, Motor, ProximitySensor, TemperatureSensor,
 };
 
 /// A mock implementation of a Motor for unit testing on the host.
@@ -205,5 +205,33 @@ impl Charger for MockCharger {
 
     fn is_charging_input_present(&mut self) -> Result<bool, Self::Error> {
         Ok(self.input_present)
+    }
+}
+
+/// A mock implementation of an LedDriver for unit testing.
+pub struct MockLed {
+    /// Currently set RGB color.
+    pub color: (u8, u8, u8),
+}
+
+impl Default for MockLed {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MockLed {
+    /// Creates a new mock LED driver.
+    pub const fn new() -> Self {
+        Self { color: (0, 0, 0) }
+    }
+}
+
+impl LedDriver for MockLed {
+    type Error = ();
+
+    fn set_color(&mut self, r: u8, g: u8, b: u8) -> Result<(), Self::Error> {
+        self.color = (r, g, b);
+        Ok(())
     }
 }

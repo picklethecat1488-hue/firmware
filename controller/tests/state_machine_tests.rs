@@ -6,11 +6,14 @@ fn test_motor_transitions() {
     assert_eq!(fsm.state(), MotorState::Off);
 
     fsm.transition(MotorEvent::PowerOn);
-    assert_eq!(fsm.state(), MotorState::Ramping);
+    assert_eq!(fsm.state(), MotorState::RampUp);
 
     fsm.transition(MotorEvent::RampComplete);
     assert_eq!(fsm.state(), MotorState::On);
 
     fsm.transition(MotorEvent::PowerOff);
+    assert_eq!(fsm.state(), MotorState::RampDown);
+
+    fsm.transition(MotorEvent::RampComplete);
     assert_eq!(fsm.state(), MotorState::Off);
 }

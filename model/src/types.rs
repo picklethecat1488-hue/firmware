@@ -23,6 +23,8 @@ pub enum BatteryState {
     Low,
     /// Battery is charging.
     Charging,
+    /// Battery is critically low (system runs, but pump is disabled).
+    Critical,
 }
 
 /// Telemetry status of the motor (pump) system.
@@ -77,25 +79,34 @@ impl Default for FuelGaugeTelemetry {
 /// Telemetry data from the proximity (ToF) sensors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProximityTelemetry {
-    /// Measured distance range values (in mm) for North, East, and West sensors.
-    Triple(u16, u16, u16),
+    /// Target is detected within active range (value in mm).
+    InRange(u16),
+    /// Target is out of range (value in mm).
+    OutRange(u16),
 }
 
 impl Default for ProximityTelemetry {
     fn default() -> Self {
-        Self::Triple(0, 0, 0)
+        Self::OutRange(1000)
     }
 }
 
-/// State of the indicator system LEDs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// State patterns of the indicator system LEDs representing operating status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SystemLedState {
-    /// Red, green, and blue channel intensity values (0-255).
-    Rgb(u8, u8, u8),
-}
-
-impl Default for SystemLedState {
-    fn default() -> Self {
-        Self::Rgb(0, 0, 0)
-    }
+    /// LED is powered off.
+    #[default]
+    Off,
+    /// Solid green indicating Active/Normal status.
+    SolidGreen,
+    /// Solid blue indicating low-power Sleep status.
+    SolidBlue,
+    /// Solid yellow indicating battery is charging.
+    SolidYellow,
+    /// Solid orange indicating battery level is low.
+    SolidOrange,
+    /// Four quick red blinks indicating a critical system alert.
+    BlinksRedFourTimes,
+    /// One red blink once every 30 seconds indicating critical battery low.
+    BlinksRedOncePerThirtySeconds,
 }

@@ -17,6 +17,8 @@ pub struct Board<'d> {
     pub uart: Uart<'d, embassy_rp::peripherals::UART0, embassy_rp::uart::Blocking>,
     /// Blocking I2C0 instance for sensor communications
     pub i2c: I2c<'d, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Blocking>,
+    /// The onboard flash peripheral
+    pub flash: embassy_rp::peripherals::FLASH,
     /// Lookup array containing Flex instances for dynamic GPIO diagnostics
     pub gpio_pins: [Option<Flex<'d>>; 30],
 }
@@ -64,6 +66,7 @@ impl<'d> Board<'d> {
         Self {
             uart,
             i2c,
+            flash: p.FLASH,
             gpio_pins,
         }
     }

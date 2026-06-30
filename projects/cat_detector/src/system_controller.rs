@@ -19,7 +19,7 @@ pub enum SystemCommand {
     Sleep,
     /// Notify system of activity, resetting inactivity timer and waking up if asleep.
     ActivityDetected,
-    /// Low water warning or thermal safety alert occurred.
+    /// Thermal safety or motor stall alert occurred.
     AlertTriggered,
     /// Battery level updates from the fuel gauge.
     BatteryUpdate {
@@ -28,6 +28,13 @@ pub enum SystemCommand {
         /// Charger status (whether currently charging).
         charging: bool,
     },
+    /// Proximity telemetry update from individual ToF sensors.
+    SensorUpdate {
+        /// Sensor ID (0 = North, 1 = East, 2 = West).
+        sensor_id: u8,
+        /// Measured distance in mm.
+        distance_mm: u16,
+    },
 }
 
 /// Controller responsible for tracking global status and coordinating other subsystems.
@@ -35,17 +42,27 @@ pub struct SystemController<MutexRaw: RawMutex + 'static, const N: usize> {
     status: SystemStatus,
     inactivity_seconds: u32,
     motor_tx: Sender<'static, MutexRaw, MotorCommand, N>,
-    sensor_tx: Sender<'static, MutexRaw, SensorCommand, N>,
+    sensor_north_tx: Sender<'static, MutexRaw, SensorCommand, N>,
+    sensor_east_tx: Sender<'static, MutexRaw, SensorCommand, N>,
+    sensor_west_tx: Sender<'static, MutexRaw, SensorCommand, N>,
     battery_tx: Sender<'static, MutexRaw, BatteryCommand, N>,
     thermal_tx: Sender<'static, MutexRaw, ThermalCommand, N>,
     led_tx: Sender<'static, MutexRaw, SystemLedState, N>,
+    distance_north: u16,
+    distance_east: u16,
+    distance_west: u16,
+    time_in_active: u32,
+    battery_critical: bool,
+    thermal_critical: bool,
 }
 
 impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N> {
     /// Creates a new SystemController instance.
     pub const fn new(
         motor_tx: Sender<'static, MutexRaw, MotorCommand, N>,
-        sensor_tx: Sender<'static, MutexRaw, SensorCommand, N>,
+        sensor_north_tx: Sender<'static, MutexRaw, SensorCommand, N>,
+        sensor_east_tx: Sender<'static, MutexRaw, SensorCommand, N>,
+        sensor_west_tx: Sender<'static, MutexRaw, SensorCommand, N>,
         battery_tx: Sender<'static, MutexRaw, BatteryCommand, N>,
         thermal_tx: Sender<'static, MutexRaw, ThermalCommand, N>,
         led_tx: Sender<'static, MutexRaw, SystemLedState, N>,
@@ -54,10 +71,18 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
             status: SystemStatus::Active,
             inactivity_seconds: 0,
             motor_tx,
-            sensor_tx,
+            sensor_north_tx,
+            sensor_east_tx,
+            sensor_west_tx,
             battery_tx,
             thermal_tx,
             led_tx,
+            distance_north: 1000,
+            distance_east: 1000,
+            distance_west: 1000,
+            time_in_active: 0,
+            battery_critical: false,
+            thermal_critical: false,
         }
     }
 
@@ -70,23 +95,29 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
     pub fn handle_command(&mut self, cmd: SystemCommand) {
         match cmd {
             SystemCommand::Wake => {
-                if self.status != SystemStatus::Active {
+                if !self.battery_critical
+                    && !self.thermal_critical
+                    && self.status != SystemStatus::Active
+                {
                     self.status = SystemStatus::Active;
                     self.inactivity_seconds = 0;
+                    self.time_in_active = 0;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    defmt::info!("SystemController: waking up to Active mode.");
-                    let _ = self.led_tx.try_send(SystemLedState::Rgb(0, 128, 0));
+                    crate::log_info!("SystemController: waking up to Active mode.");
+                    let _ = self.led_tx.try_send(SystemLedState::SolidGreen);
                     // Active green
                 }
             }
             SystemCommand::Sleep => {
-                if self.status != SystemStatus::Sleep {
+                let can_sleep =
+                    self.time_in_active >= 30 || self.battery_critical || self.thermal_critical;
+                if can_sleep && self.status != SystemStatus::Sleep {
                     self.status = SystemStatus::Sleep;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    defmt::info!("SystemController: entering low-power Sleep mode.");
+                    crate::log_info!("SystemController: entering low-power Sleep mode.");
                     // Stop motor to preserve energy in sleep state
                     let _ = self.motor_tx.try_send(MotorCommand::Stop);
-                    let _ = self.led_tx.try_send(SystemLedState::Rgb(0, 0, 64));
+                    let _ = self.led_tx.try_send(SystemLedState::SolidBlue);
                     // Sleep dim blue
                 }
             }
@@ -97,32 +128,69 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                 }
             }
             SystemCommand::AlertTriggered => {
+                self.thermal_critical = true;
                 // Trigger warning alert (Red LED indicator)
-                let _ = self.led_tx.try_send(SystemLedState::Rgb(255, 0, 0));
+                let _ = self.led_tx.try_send(SystemLedState::BlinksRedFourTimes);
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::warn!("SystemController: Alert triggered. LED indicator set to RED.");
+                crate::log_info!("SystemController: Alert triggered. LED indicator set to RED.");
+                self.handle_command(SystemCommand::Sleep);
             }
             SystemCommand::BatteryUpdate {
                 state_of_charge,
                 charging,
             } => {
-                if charging {
-                    let _ = self.led_tx.try_send(SystemLedState::Rgb(128, 128, 0));
-                // Charging yellow
-                } else if state_of_charge < 20 {
-                    let _ = self.led_tx.try_send(SystemLedState::Rgb(128, 64, 0));
-                // Battery low orange
-                } else if self.status == SystemStatus::Active {
-                    let _ = self.led_tx.try_send(SystemLedState::Rgb(0, 128, 0));
-                    // Active green
+                if state_of_charge < 10 && !charging {
+                    self.battery_critical = true;
+                    // Stop motor immediately to disable pump
+                    let _ = self.motor_tx.try_send(MotorCommand::Stop);
+                    // Trigger critical low battery blink pattern
+                    let _ = self
+                        .led_tx
+                        .try_send(SystemLedState::BlinksRedOncePerThirtySeconds);
+                } else {
+                    self.battery_critical = false;
+                    if charging {
+                        let _ = self.led_tx.try_send(SystemLedState::SolidYellow);
+                    // Charging yellow
+                    } else if state_of_charge < 20 {
+                        let _ = self.led_tx.try_send(SystemLedState::SolidOrange);
+                    // Battery low orange
+                    } else if self.status == SystemStatus::Active {
+                        let _ = self.led_tx.try_send(SystemLedState::SolidGreen);
+                        // Active green
+                    }
+                }
+            }
+            SystemCommand::SensorUpdate {
+                sensor_id,
+                distance_mm,
+            } => {
+                match sensor_id {
+                    0 => self.distance_north = distance_mm,
+                    1 => self.distance_east = distance_mm,
+                    2 => self.distance_west = distance_mm,
+                    _ => {}
+                }
+
+                // Data fusion: if any sensor detects range < 300 mm, system wakes up and runs pump.
+                if self.distance_north < 300 || self.distance_east < 300 || self.distance_west < 300
+                {
+                    self.inactivity_seconds = 0;
+                    if self.status == SystemStatus::Sleep {
+                        self.handle_command(SystemCommand::Wake);
+                    }
+                    if self.status == SystemStatus::Active && !self.battery_critical {
+                        let _ = self.motor_tx.try_send(MotorCommand::SetSpeed(100));
+                    }
                 }
             }
         }
     }
 
-    /// Ticks the inactivity timer (called once per second).
+    /// Ticks the inactivity timer and active mode duration timer (called once per second).
     pub fn tick(&mut self) {
         if self.status == SystemStatus::Active {
+            self.time_in_active += 1;
             self.inactivity_seconds += 1;
             // Sleep after 30 seconds of inactivity
             if self.inactivity_seconds >= 30 {
@@ -137,7 +205,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
         command_rx: embassy_sync::channel::Receiver<'static, MutexRaw, SystemCommand, N>,
     ) -> ! {
         // Initialize LED to green at start
-        let _ = self.led_tx.try_send(SystemLedState::Rgb(0, 128, 0));
+        let _ = self.led_tx.try_send(SystemLedState::SolidGreen);
 
         loop {
             match embassy_time::with_timeout(
@@ -155,7 +223,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                     let _ = self.battery_tx.try_send(BatteryCommand::CheckStatus);
                     let _ = self.thermal_tx.try_send(ThermalCommand::CheckTemp);
                     if self.status == SystemStatus::Active {
-                        let _ = self.sensor_tx.try_send(SensorCommand::ReadSensors);
+                        let _ = self.sensor_north_tx.try_send(SensorCommand::ReadSensors);
+                        let _ = self.sensor_east_tx.try_send(SensorCommand::ReadSensors);
+                        let _ = self.sensor_west_tx.try_send(SensorCommand::ReadSensors);
                     }
                 }
             }
