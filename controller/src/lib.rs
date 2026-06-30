@@ -7,6 +7,8 @@
 pub mod battery_controller;
 /// Flat filesystem and storage controller.
 pub mod filesystem_controller;
+/// LED controller to drive indicator RGB LEDs.
+pub mod led_controller;
 /// Motor status and telemetry controller.
 pub mod motor_controller;
 /// Sensor controller for Time-of-Flight sensors.
@@ -140,7 +142,7 @@ macro_rules! run_motor_task {
 
 /// A macro to define and spawn the Sensor Controller task.
 ///
-/// Generates the task definition generic over the proximity sensors,
+/// Generates the task definition generic over the proximity sensor,
 /// then spawns it on the provided Embassy spawner.
 #[macro_export]
 macro_rules! run_sensor_task {
@@ -149,9 +151,9 @@ macro_rules! run_sensor_task {
         $task_module:ident,
         $controller:expr,
         $rx:expr,
-        $north_type:ty,
-        $east_type:ty,
-        $west_type:ty
+        $sensor_type:ty,
+        $raw_mutex:ty,
+        $cmd_type:ty
     ) => {
         mod $task_module {
             use super::*;
@@ -159,14 +161,52 @@ macro_rules! run_sensor_task {
             #[embassy_executor::task]
             pub async fn task(
                 controller: $crate::sensor_controller::SensorController<
-                    $north_type,
-                    $east_type,
-                    $west_type,
+                    'static,
+                    $sensor_type,
+                    $raw_mutex,
+                    $cmd_type,
                 >,
                 rx: embassy_sync::channel::Receiver<
                     'static,
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    $raw_mutex,
                     $crate::sensor_controller::SensorCommand,
+                    4,
+                >,
+            ) {
+                controller.run(rx).await;
+            }
+        }
+
+        $spawner
+            .spawn($task_module::task($controller, $rx))
+            .unwrap();
+    };
+}
+
+/// A macro to define and spawn the LED Controller task.
+///
+/// Generates the task definition generic over the LED driver,
+/// then spawns it on the provided Embassy spawner.
+#[macro_export]
+macro_rules! run_led_task {
+    (
+        $spawner:expr,
+        $task_module:ident,
+        $controller:expr,
+        $rx:expr,
+        $driver_type:ty,
+        $raw_mutex:ty
+    ) => {
+        mod $task_module {
+            use super::*;
+
+            #[embassy_executor::task]
+            pub async fn task(
+                controller: $crate::led_controller::LedController<$driver_type>,
+                rx: embassy_sync::channel::Receiver<
+                    'static,
+                    $raw_mutex,
+                    model::types::SystemLedState,
                     4,
                 >,
             ) {

@@ -54,8 +54,22 @@ pub static SYSTEM_CHANNEL: embassy_sync::channel::Channel<
     4,
 > = embassy_sync::channel::Channel::new();
 
-/// Shared command channel for the Sensor Controller.
-pub static SENSOR_CHANNEL: embassy_sync::channel::Channel<
+/// Shared command channel for the North Sensor Controller.
+pub static SENSOR_NORTH_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    controller::sensor_controller::SensorCommand,
+    4,
+> = embassy_sync::channel::Channel::new();
+
+/// Shared command channel for the East Sensor Controller.
+pub static SENSOR_EAST_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    controller::sensor_controller::SensorCommand,
+    4,
+> = embassy_sync::channel::Channel::new();
+
+/// Shared command channel for the West Sensor Controller.
+pub static SENSOR_WEST_CHANNEL: embassy_sync::channel::Channel<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     controller::sensor_controller::SensorCommand,
     4,

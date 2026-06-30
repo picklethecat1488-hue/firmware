@@ -3,32 +3,86 @@
 #![deny(missing_docs)]
 
 use model::interfaces::ProximitySensor;
-use model::types::ProximityTelemetry;
 
-/// A controller that coordinates readings from multiple proximity (ToF) sensors.
-pub struct SensorController<N, E, W> {
-    sensor_north: N,
-    sensor_east: E,
-    sensor_west: W,
-    telemetry: ProximityTelemetry,
-    periodic_enabled: bool,
+/// One-way commands sent to the Sensor Controller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SensorCommand {
+    /// Force proximity sensor check and print telemetry logs
+    ReadSensors,
+    /// Enable periodic automatic readings
+    EnablePeriodic,
+    /// Disable periodic automatic readings (runs only via manual commands)
+    DisablePeriodic,
 }
 
-impl<N: ProximitySensor, E: ProximitySensor, W: ProximitySensor> SensorController<N, E, W> {
-    /// Creates a new SensorController managing North, East, and West proximity sensors.
-    pub const fn new(sensor_north: N, sensor_east: E, sensor_west: W) -> Self {
+/// A controller that coordinates readings from a single proximity (ToF) sensor.
+pub struct SensorController<
+    'a,
+    S,
+    M: embassy_sync::blocking_mutex::raw::RawMutex = embassy_sync::blocking_mutex::raw::NoopRawMutex,
+    Cmd = (),
+> {
+    sensor_id: u8,
+    sensor: S,
+    latest_distance: u16,
+    periodic_enabled: bool,
+    system_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
+    make_cmd: Option<fn(u8, u16) -> Cmd>,
+}
+
+impl<'a, S: ProximitySensor>
+    SensorController<'a, S, embassy_sync::blocking_mutex::raw::NoopRawMutex, ()>
+{
+    /// Creates a new SensorController managing a single proximity sensor.
+    pub const fn new(sensor_id: u8, sensor: S) -> Self {
         Self {
-            sensor_north,
-            sensor_east,
-            sensor_west,
-            telemetry: ProximityTelemetry::Triple(0, 0, 0),
+            sensor_id,
+            sensor,
+            latest_distance: 1000,
             periodic_enabled: true,
+            system_tx: None,
+            make_cmd: None,
+        }
+    }
+}
+
+impl<'a, S: ProximitySensor, M: embassy_sync::blocking_mutex::raw::RawMutex, Cmd: Clone>
+    SensorController<'a, S, M, Cmd>
+{
+    /// Creates a new SensorController with upstream system notification.
+    pub fn new_with_fusion(
+        sensor_id: u8,
+        sensor: S,
+        system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        make_cmd: fn(u8, u16) -> Cmd,
+    ) -> Self {
+        Self {
+            sensor_id,
+            sensor,
+            latest_distance: 1000,
+            periodic_enabled: true,
+            system_tx: Some(system_tx),
+            make_cmd: Some(make_cmd),
         }
     }
 
-    /// Gets the latest read proximity telemetry.
-    pub fn telemetry(&self) -> ProximityTelemetry {
-        self.telemetry
+    /// Gets the current proximity telemetry reading.
+    pub fn telemetry(&self) -> model::types::ProximityTelemetry {
+        if self.latest_distance < 300 {
+            model::types::ProximityTelemetry::InRange(self.latest_distance)
+        } else {
+            model::types::ProximityTelemetry::OutRange(self.latest_distance)
+        }
+    }
+
+    /// Gets the latest read proximity telemetry distance.
+    pub fn latest_distance(&self) -> u16 {
+        self.latest_distance
+    }
+
+    /// Gets the sensor ID.
+    pub fn sensor_id(&self) -> u8 {
+        self.sensor_id
     }
 
     /// Gets whether periodic monitoring is enabled.
@@ -36,35 +90,24 @@ impl<N: ProximitySensor, E: ProximitySensor, W: ProximitySensor> SensorControlle
         self.periodic_enabled
     }
 
-    /// Ticks the sensor control loop, updating proximity distances.
-    #[allow(clippy::type_complexity)]
-    pub fn update(&mut self) -> Result<(), SensorError<N::Error, E::Error, W::Error>> {
-        let dist_north = self
-            .sensor_north
-            .read_distance_mm()
-            .map_err(SensorError::North)?;
-
-        let dist_east = self
-            .sensor_east
-            .read_distance_mm()
-            .map_err(SensorError::East)?;
-
-        let dist_west = self
-            .sensor_west
-            .read_distance_mm()
-            .map_err(SensorError::West)?;
-
-        self.telemetry = ProximityTelemetry::Triple(dist_north, dist_east, dist_west);
+    /// Ticks the sensor control loop, updating proximity distance.
+    pub fn update(&mut self) -> Result<u16, S::Error> {
+        let dist = self.sensor.read_distance_mm()?;
+        self.latest_distance = dist;
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         defmt::info!(
-            "Sensor Controller: North={} mm, East={} mm, West={} mm",
-            dist_north,
-            dist_east,
-            dist_west
+            "Sensor Controller (ID={}): distance={} mm",
+            self.sensor_id,
+            dist
         );
 
-        Ok(())
+        if let (Some(tx), Some(make_cmd)) = (&self.system_tx, &self.make_cmd) {
+            let cmd = make_cmd(self.sensor_id, dist);
+            let _ = tx.try_send(cmd);
+        }
+
+        Ok(dist)
     }
 
     /// Handles a SensorCommand.
@@ -83,9 +126,9 @@ impl<N: ProximitySensor, E: ProximitySensor, W: ProximitySensor> SensorControlle
     }
 
     /// Runs the controller's main run loop, executing periodic telemetry updates.
-    pub async fn run<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex, const SIZE: usize>(
+    pub async fn run(
         mut self,
-        command_rx: embassy_sync::channel::Receiver<'static, MutexRaw, SensorCommand, SIZE>,
+        command_rx: embassy_sync::channel::Receiver<'static, M, SensorCommand, 4>,
     ) -> ! {
         loop {
             match embassy_time::with_timeout(
@@ -105,28 +148,6 @@ impl<N: ProximitySensor, E: ProximitySensor, W: ProximitySensor> SensorControlle
             }
         }
     }
-}
-
-/// One-way commands sent to the Sensor Controller.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SensorCommand {
-    /// Force proximity sensors check and print telemetry logs
-    ReadSensors,
-    /// Enable periodic automatic readings
-    EnablePeriodic,
-    /// Disable periodic automatic readings (runs only via manual commands)
-    DisablePeriodic,
-}
-
-/// Errors returned by the sensor controller loop.
-#[derive(Debug)]
-pub enum SensorError<NE, EE, WE> {
-    /// Error from the North proximity sensor.
-    North(NE),
-    /// Error from the East proximity sensor.
-    East(EE),
-    /// Error from the West proximity sensor.
-    West(WE),
 }
 
 #[cfg(test)]
