@@ -17,38 +17,22 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: thumbv6m-none-eabi
-          components: clippy, rustfmt
+          components: clippy, rustfmt, llvm-tools
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
-      - name: Check Formatting
-        run: cargo fmt --all --check
+      - name: Run Formatting and Clippy Lints
+        run: ./scripts/run_clippy.sh
 
-      - name: Run Host Tests
-        run: cargo nextest run | tee test_report.txt
+      - name: Run Tests
+        run: ./scripts/run_tests.sh test_report.txt
 
-      - name: Run Clippy (Host Targets)
-        run: cargo clippy --all-targets -- -D warnings
-
-      - name: Run Clippy (Target MCU)
-        run: cargo clippy --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --lib --bins --target thumbv6m-none-eabi -- -D warnings
-
-      - name: Build Debug MCU Binaries
-        run: cargo build --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --bins --target thumbv6m-none-eabi
-
-      - name: Build Release MCU Binaries
-        run: cargo build --release --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --bins --target thumbv6m-none-eabi
-
-      - name: Build Host Tools
-        run: cargo build --release $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "-p " + .name')
+      - name: Build Firmware and Tools
+        run: ./scripts/build_firmware.sh
 
       - name: Binary Size Report
-        run: |
-          echo "=== Debug Binaries Size ===" | tee size_report.txt
-          find target/thumbv6m-none-eabi/debug -maxdepth 1 -type f -exec size {} + | tee -a size_report.txt
-          echo "=== Release Binaries Size ===" | tee -a size_report.txt
-          find target/thumbv6m-none-eabi/release -maxdepth 1 -type f -exec size {} + | tee -a size_report.txt
+        run: ./scripts/generate_size_report.sh size_report.txt
 
       - name: Upload Size and Test Reports
         if: always()
