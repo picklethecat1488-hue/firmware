@@ -27,8 +27,8 @@ jobs:
       - name: Check Formatting
         run: cargo fmt --all --check | tee format_report.txt
 
-      - name: Run Host Tests
-        run: cargo nextest run | tee test_report.txt
+      - name: Run Tests
+        run: ./scripts/run_tests.sh test_report.txt
 
       - name: Run Clippy (Host Targets)
         run: cargo clippy --all-targets -- -D warnings | tee clippy_host_report.txt
@@ -59,32 +59,13 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: thumbv6m-none-eabi
+          components: llvm-tools
 
-      - name: Build Target MCU Binaries (Debug & Release)
-        run: |
-          cargo build --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --bins --target thumbv6m-none-eabi
-          cargo build --workspace --release $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --bins --target thumbv6m-none-eabi
-
-      - name: Build Host Tools
-        run: cargo build --release $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "-p " + .name')
-
-      - name: Organize Build Outputs
-        run: |
-          mkdir -p build/debug build/release
-          # Dynamically copy all compiled top-level target binaries
-          find target/thumbv6m-none-eabi/debug -maxdepth 1 -type f -exec cp {} build/debug/ \;
-          find target/thumbv6m-none-eabi/release -maxdepth 1 -type f -exec cp {} build/release/ \;
-          # Copy host tool utilities dynamically
-          for tool in $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | .name'); do
-            cp target/release/$tool build/release/$tool
-          done
+      - name: Build and Organize Firmware
+        run: ./scripts/build_firmware.sh --out-dir build
 
       - name: Binary Size Report
-        run: |
-          echo "=== Debug Binaries Size ===" | tee build/size_report.txt
-          find target/thumbv6m-none-eabi/debug -maxdepth 1 -type f -exec size {} + | tee -a build/size_report.txt
-          echo "=== Release Binaries Size ===" | tee -a build/size_report.txt
-          find target/thumbv6m-none-eabi/release -maxdepth 1 -type f -exec size {} + | tee -a build/size_report.txt
+        run: ./scripts/generate_size_report.sh build/size_report.txt
 
       - name: Download Test Reports
         uses: actions/download-artifact@v4
