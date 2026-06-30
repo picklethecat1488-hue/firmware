@@ -49,8 +49,8 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
         // Read current sensor (torque proxy)
         let current = self.read_torque_ma().map_err(MotorError::CurrentSensor)?;
 
-        // If the motor is ramping, auto-transition to On
-        if self.fsm.state() == MotorState::Ramping {
+        // Auto-transition ramping states
+        if self.fsm.state() == MotorState::RampUp || self.fsm.state() == MotorState::RampDown {
             self.fsm.transition(MotorEvent::RampComplete);
         }
 

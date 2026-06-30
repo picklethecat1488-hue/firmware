@@ -116,9 +116,16 @@ impl<W: IoWrite<Error = E>, E: embedded_io::Error> CommandProcessor<W, E> for Cl
                 let _ = core::writeln!(writer, "\r\nSent ThermalCommand::CheckTemp to controller");
             }
             Ok(CliCommand::Proximity) => {
-                let _ = cat_detector::SENSOR_CHANNEL
+                let _ = cat_detector::SENSOR_NORTH_CHANNEL
                     .try_send(controller::sensor_controller::SensorCommand::ReadSensors);
-                let _ = core::writeln!(writer, "\r\nSent SensorCommand::ReadSensors to controller");
+                let _ = cat_detector::SENSOR_EAST_CHANNEL
+                    .try_send(controller::sensor_controller::SensorCommand::ReadSensors);
+                let _ = cat_detector::SENSOR_WEST_CHANNEL
+                    .try_send(controller::sensor_controller::SensorCommand::ReadSensors);
+                let _ = core::writeln!(
+                    writer,
+                    "\r\nSent SensorCommand::ReadSensors to all three sensor controllers"
+                );
             }
             Ok(CliCommand::Wake) => {
                 let _ = cat_detector::SYSTEM_CHANNEL

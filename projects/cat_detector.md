@@ -14,18 +14,20 @@ graph TD
         MC["MotorController"]
         BC["BatteryController"]
         TC["ThermalController"]
+        SC["SensorController (instances: North, East, West)"]
+        LC["LedController"]
         FSC["FilesystemController"]
     end
 
     subgraph Model Crate [model]
         FSM["FountainStateMachine"]
-        TS["Telemetry Types (Battery/Motor/Thermal Status)"]
+        TS["Telemetry Types (Battery/Motor/Thermal/Proximity/LED Status)"]
     end
 
     subgraph Peripherals Crate [peripherals]
-        PT["Motor / CurrentSensor / WaterSensor Traits"]
+        PT["Motor / CurrentSensor / ProximitySensor / LedDriver Traits"]
         BT["Battery Trait"]
-        GM["GpioMotor / GpioWaterSensor"]
+        GM["GpioMotor / VL53L0X / ATtiny816"]
     end
 
     subgraph BSP / Target [projects/cat_detector]
@@ -33,9 +35,9 @@ graph TD
         Main["main.rs (Embassy Spawner)"]
     end
 
-    Main -->|Orchestrates| MC & BC & TC & FSC
+    Main -->|Orchestrates| MC & BC & TC & SC & LC & FSC
     MC -->|Transitions| FSM
-    MC -->|Drives| PT
+    MC & SC & LC -->|Drives| PT
     BC & TC -->|Queries| BT
     BC & TC -->|Updates| TS
     FSC -->|Persists Data| Flash[("Flash Memory")]
@@ -49,13 +51,14 @@ graph TD
 The `model` crate contains pure, target-agnostic domain models, status telemetry types, and hardware peripheral interfaces (traits). It has **no dependency** on hardware, Embassy, or I/O.
 
 *   **Telemetry Models**:
-    *   `BatteryStatus`: Enum tracking voltage (mV), temperature (mC), and status state (e.g. `VolTempState`).
+    *   `BatteryStatus`: Enum tracking voltage (mV), temperature (mC), and battery state (e.g. `VolTempState` containing `BatteryState`).
+    *   `BatteryState`: Enum representing the battery charge state: `Ok`, `Low`, `Charging`, or `Critical` (system runs but pump is disabled due to critical low charge).
     *   `MotorStatus`: Enum tracking speed percent, run status, and motor temperature (e.g. `SpeedRunTemp`).
     *   `ThermalStatus`: Enum tracking ambient system temperature and overheating flags (e.g. `TempOverheating`).
     *   `SystemStatus`: Enum representing the operating mode of the system (`Active` or `Sleep`).
     *   `FuelGaugeTelemetry`: Enum representing cell voltage and state-of-charge percentage (e.g. `VolSoc`).
-    *   `ProximityTelemetry`: Enum containing North, East, and West distance range values (e.g. `Triple`).
-    *   `SystemLedState`: Enum holding active NeoPixel color values (e.g. `Rgb`).
+    *   `ProximityTelemetry`: Enum containing the single range reading representing target state: `InRange(u16)` or `OutRange(u16)`.
+    *   `SystemLedState`: Enum holding active NeoPixel color patterns (e.g. `SolidGreen`, `SolidBlue`, `SolidYellow`, `SolidOrange`, `BlinksRedFourTimes`, or `BlinksRedOncePerThirtySeconds` for critical battery).
 
 *   **Hardware Interfaces (Traits)**:
     *   `Motor`: Defines interfaces for motor driver control (`set_speed`, `stop`).
@@ -65,13 +68,14 @@ The `model` crate contains pure, target-agnostic domain models, status telemetry
     *   `ProximitySensor`: Defines interfaces for range measurements (`read_distance_mm`) and exposes proximity events (detection/non-detection) to controllers via callbacks.
     *   `TemperatureSensor`: Defines transactions for thermal monitoring (`read_temperature_milli_c`).
     *   `Charger`: Defines interfaces for controlling battery charging (`set_charging_enabled`) and checking charging status (`is_charging_input_present`).
+    *   `LedDriver`: Defines interfaces for setting LED RGB indicator colors (`set_color`).
 
 ---
 
 ### 2.2. Peripherals Crate (`peripherals`)
 The `peripherals` crate implements the concrete, platform-independent drivers and wrappers using `embedded-hal` primitives. This abstraction allows easy mocking of peripherals for host-based testing.
 
-*   **`GpioMotor`**: A concrete wrapper that implements `Motor` by toggles a digital output pin (`OutputPin`) high/low.
+*   **`GpioMotor`**: A concrete wrapper that implements `Motor` by toggling a digital output pin (`OutputPin`) high/low.
 
 **Concrete Driver Implementations**:
 *   `max17048::Max17048`: Implements `TemperatureSensor` and `FuelGauge` traits, scaling registers to VCELL mV and SOC %. [MAX17048 Datasheet](https://www.analog.com/media/en/technical-documentation/data-sheets/MAX17048-MAX17049.pdf)
@@ -79,7 +83,7 @@ The `peripherals` crate implements the concrete, platform-independent drivers an
 *   `ina219::Ina219`: Implements `CurrentSensor` and `PowerSensor` traits, calibrating shunt voltage calculations for current monitoring. [INA219 Datasheet](https://www.ti.com/lit/ds/symlink/ina219.pdf)
 *   `vl53l0x::Vl53l0x`: Implements `ProximitySensor` trait, driving ranges and supporting dynamic address assignment at register `0x8A`. [VL53L0X Datasheet](https://www.st.com/resource/en/datasheet/vl53l0x.pdf)
 *   `l9110s::L9110s`: Implements `Motor` trait for h-bridge motor driver control using two `OutputPin` channels. [L9110S Datasheet](https://www.elecrow.com/download/datasheet-l9110.pdf)
-*   `attiny816::Attiny816`: Manages indicator NeoPixel outputs by writing RGB color packets over I2C. [ATtiny816 Datasheet](https://cdn-learn.adafruit.com/downloads/pdf/adafruit-neodriver-i2c-to-neopixel-driver.pdf)
+*   `attiny816::Attiny816`: Manages indicator NeoPixel outputs by writing RGB color packets over I2C, implementing the `LedDriver` interface. [ATtiny816 Datasheet](https://cdn-learn.adafruit.com/downloads/pdf/adafruit-neodriver-i2c-to-neopixel-driver.pdf)
 
 ---
 
@@ -89,12 +93,14 @@ The `controller` crate houses the active orchestrators and asynchronous loop run
 *   **`MotorController`**: Generalizes motor driver control and current sensor monitoring. Directly exposes the `read_torque_ma` method to read motor load torque (current draw in mA) from the current sensor, and shuts down the motor if safety thresholds are exceeded.
 *   **`MotorStateMachine` (Struct)**: A deterministic state machine managed by `MotorController` handling states:
     *   `Off`: Motor is inactive.
-    *   `Ramping`: Motor is starting up and ramping speed.
+    *   `RampUp`: Motor is starting up and ramping speed up.
     *   `On`: Motor is running continuously at target speed.
+    *   `RampDown`: Motor is shutting down and ramping speed down.
     *   Transitions are driven by `MotorEvent` triggers (`PowerOn`, `PowerOff`, `RampComplete`).
 *   **`BatteryController`**: Coordinates periodic voltage queries from the power system.
 *   **`ThermalController`**: Periodically updates and monitors safety thresholds for thermal limits, and shuts down the system (sending a sleep signal to `SystemController`) if critical thresholds (>60°C) are reached.
-*   **`SensorController`**: Gathers spatial telemetry across multiple distance sensors, supporting either one-shot or periodic readings.
+*   **`SensorController`**: Manages spatial telemetry for a *single* proximity (ToF) sensor (instantiated separately for North, East, and West). Dispatches proximity events upstream to the `SystemController` for central data fusion.
+*   **`LedController`**: Receives RGB indicators status updates from the `SystemController` and drives the underlying NeoPixel/ATtiny816 driver.
 *   **`FilesystemController`**: Implements flat file storage on the persistent flash partition. Uses `sequential-storage` to execute read/write/delete operations with zero heap allocation.
     *   *Profiling Wrapper (`ProfilingFlash`)*: Intercepts lower-level erase instructions to log execution durations and erase counts to prevent flash wear.
 
@@ -103,7 +109,11 @@ The `controller` crate houses the active orchestrators and asynchronous loop run
 ### 2.4. Application & BSP Crate (`projects/cat_detector`)
 The top-level application and Board Support Package (BSP) defines pin configurations, spawns the controller tasks, and hosts the application-specific orchestrator:
 
-*   **`SystemController`**: Coordinates low-power mode transitions (`Active` vs `Sleep`) by disabling/enabling/polling the other peripheral controllers and handling inactivity timeouts. Integrates sensor proximity events, thermal/motor safety alerts, and battery state-of-charge updates to drive the hardware system states and notify the user via the `ATtiny816` LED controller.
+*   **`SystemController`**: Coordinates low-power mode transitions (`Active` vs `Sleep`) by disabling/enabling/polling the other peripheral controllers and handling inactivity timeouts. It performs **sensor data fusion** across the three proximity controllers (North, East, West): if any sensor detects target proximity (<300 mm), it wakes up the system, resets the inactivity timer, starts the motor, and updates the `LedController` state.
+    *   *Active Duration & Safety Gating*: Once the system enters `Active` mode, a minimum 30-second active mode duration is enforced before it is permitted to return to `Sleep`. This duration is gated/overridden by safety and proximity rules:
+        *   **Thermal Limits**: If the temperature exceeds 60°C, the system enters `Sleep` immediately to prevent thermal damage, overriding the 30-second delay.
+        *   **Battery State of Charge**: If the battery drops below 10% and is not charging, the system enters `Sleep` immediately to prevent deep discharge, overriding the 30-second delay.
+        *   **Cat Proximity**: As long as a cat remains detected (<300 mm) on any of the ToF sensors, the inactivity timer is reset, preventing transition to `Sleep`.
 
 ---
 
@@ -116,8 +126,8 @@ The Cat Detector firmware integrates with the following hardware nodes connected
 | **MAX17048 Fuel Gauge** | `0x36` | SDA (GP4) / SCL (GP5)<br>Alert (GP10) | `FuelGauge` & `TemperatureSensor` Traits / `BatteryController` | Monitored by the battery loop to update state of charge and dispatch alerts. |
 | **BQ25185 Charger & Boost** | `0x6B` | SDA (GP4) / SCL (GP5) | `Bq25185` / `Charger` Trait | Tracks battery charging state and configures input current limits. |
 | **INA219 Current Sensor** | `0x40` | SDA (GP4) / SCL (GP5) | `CurrentSensor` / I2C Bus | Monitors N20 motor current to detect dry running (torque drop) or stall conditions. |
-| **VL53L0X Time-of-Flight Sensors** | `0x29` (boot)<br>*Dynamic re-addressing to `0x30`, `0x31`, `0x32`* | SDA (GP4) / SCL (GP5)<br>XSHUT Pins (GP2, GP3, GP4)<br>Interrupts (GP5, GP6, GP7) | `ProximitySensor` / Proximity Driver | Used to calculate target approach and activate water flow. |
-| **ATtiny816 LED Driver** | `0x60` | SDA (GP4) / SCL (GP5) | NeoPixel Driver | Drives visual state-of-charge and error alerts on the RGB indicator. |
+| **VL53L0X Time-of-Flight Sensors** | `0x29` (boot)<br>*Dynamic re-addressing to `0x30`, `0x31`, `0x32`* | SDA (GP4) / SCL (GP5)<br>XSHUT Pins (GP2, GP3, GP4)<br>Interrupts (GP5, GP6, GP7) | `ProximitySensor` / `SensorController` | Used to calculate target approach and activate water flow via data fusion. |
+| **ATtiny816 LED Driver** | `0x60` | SDA (GP4) / SCL (GP5) | `LedDriver` / `LedController` | Drives visual state-of-charge and error alerts on the RGB indicator. |
 | **L9110S Motor Driver** | *Analog* | GP14, GP15 (PWM) | `GpioMotor` / `Motor` Driver | Toggled by the motor controller loop to regulate the N20 motor impeller speed. |
 
 ---
@@ -143,14 +153,20 @@ sequenceDiagram
     participant Main as main.rs
     participant SC as SystemController
     participant MC as MotorController
-    participant SE as SensorController
+    participant SN as SensorController (North)
+    participant SE as SensorController (East)
+    participant SW as SensorController (West)
+    participant LC as LedController
     participant BC as BatteryController
     participant TC as ThermalController
 
     Main->>Main: Board::init() (Pico Pins/I2C Setup)
     Main->>SC: Spawn run_system_task
     Main->>MC: Spawn run_motor_task
-    Main->>SE: Spawn run_sensor_task
+    Main->>SN: Spawn run_sensor_task (North)
+    Main->>SE: Spawn run_sensor_task (East)
+    Main->>SW: Spawn run_sensor_task (West)
+    Main->>LC: Spawn run_led_task
     Main->>BC: Spawn run_battery_task
     Main->>TC: Spawn run_thermal_task
 
@@ -161,8 +177,13 @@ sequenceDiagram
         MC->>MC: Read INA219 Current Sensor
         MC->>MC: Update FSM (Stall & Dry Run Protection)
         MC->>MC: Adjust PWM Speed
-    and Proximity Sensor Loop
-        SE->>SE: Query North/East/West VL53L0X ToF Sensors
+    and Proximity Sensor Loops
+        SN->>SC: SensorUpdate (0, distance_mm)
+        SE->>SC: SensorUpdate (1, distance_mm)
+        SW->>SC: SensorUpdate (2, distance_mm)
+        Note over SC: Perform Data Fusion:<br/>If any sensor < 300mm,<br/>trigger Active status & start Pump.
+    and LED Loop
+        LC->>LC: Process RGB updates from SystemController
     and Battery Loop
         BC->>BC: Read MAX17048 Fuel Gauge
         BC->>BC: Log BatteryStatus
