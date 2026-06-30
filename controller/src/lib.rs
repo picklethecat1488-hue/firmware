@@ -219,3 +219,39 @@ macro_rules! run_led_task {
             .unwrap();
     };
 }
+
+/// A macro to define and spawn the Filesystem Controller task.
+///
+/// Generates the task definition generic over the flash type,
+/// then spawns it on the provided Embassy spawner.
+#[macro_export]
+macro_rules! run_filesystem_task {
+    (
+        $spawner:expr,
+        $task_module:ident,
+        $controller:expr,
+        $rx:expr,
+        $flash_type:ty
+    ) => {
+        mod $task_module {
+            use super::*;
+
+            #[embassy_executor::task]
+            pub async fn task(
+                fs: $crate::filesystem_controller::FilesystemController<$flash_type>,
+                rx: embassy_sync::channel::Receiver<
+                    'static,
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    $crate::filesystem_controller::FsRequest,
+                    16,
+                >,
+            ) {
+                $crate::filesystem_controller::run_filesystem_task(fs, rx).await;
+            }
+        }
+
+        $spawner
+            .spawn($task_module::task($controller, $rx))
+            .unwrap();
+    };
+}

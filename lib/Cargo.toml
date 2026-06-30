@@ -6,14 +6,20 @@ publish = false
 
 [dependencies]
 model = { path = "../model" }
+controller = { path = "../controller" }
 embassy-sync = "0.6.2"
+embassy-time = "0.4.0"
 sequential-storage = "3.0.0"
 embedded-storage = "0.3"
 embedded-storage-async = "0.4.1"
 critical-section = "1.1"
 heapless = "0.8.0"
 defmt = "0.3"
+minicbor = "0.20.0"
 
 [target.'cfg(all(target_arch = "arm", target_os = "none"))'.dependencies]
 embassy-rp = { version = "0.3.0", features = ["defmt", "rp2040", "time-driver"] }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+
+[dev-dependencies]
+futures = "0.3"

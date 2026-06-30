@@ -2,6 +2,8 @@
 
 use core::cmp;
 use core::ops::Range;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
 use heapless::String;
 
@@ -252,6 +254,124 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     /// Returns a newline-separated string listing all files currently stored.
     pub async fn list_files<'a>(&mut self, out_buf: &'a mut [u8]) -> Result<Option<&'a [u8]>, ()> {
         self.read_file(".dir", out_buf).await
+    }
+}
+
+/// Request command for pipelining filesystem operations from different runloops.
+#[allow(clippy::type_complexity)]
+pub enum FsRequest {
+    /// Write file request
+    WriteFile {
+        /// File name
+        name: &'static str,
+        /// Raw pointer to the content buffer
+        content_ptr: *const u8,
+        /// Length of the content buffer
+        content_len: usize,
+        /// Raw pointer to the signal for response notification
+        signal: *const Signal<CriticalSectionRawMutex, Result<(), ()>>,
+    },
+    /// Read file request
+    ReadFile {
+        /// File name
+        name: &'static str,
+        /// Raw pointer to the output buffer
+        buf_ptr: *mut u8,
+        /// Length of the output buffer
+        buf_len: usize,
+        /// Raw pointer to the signal for response notification
+        signal: *const Signal<CriticalSectionRawMutex, Result<Option<(usize, usize)>, ()>>,
+    },
+}
+
+unsafe impl Send for FsRequest {}
+unsafe impl Sync for FsRequest {}
+
+/// Client interface for interacting with the pipelined filesystem.
+#[derive(Clone, Copy)]
+pub struct FilesystemClient {
+    sender: embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, FsRequest, 16>,
+}
+
+impl FilesystemClient {
+    /// Create a new FilesystemClient.
+    pub fn new(
+        sender: embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, FsRequest, 16>,
+    ) -> Self {
+        Self { sender }
+    }
+
+    /// Stores/overwrites a file with the given name and contents asynchronously.
+    pub async fn write_file(&self, name: &'static str, content: &[u8]) -> Result<(), ()> {
+        let signal = Signal::new();
+        let request = FsRequest::WriteFile {
+            name,
+            content_ptr: content.as_ptr(),
+            content_len: content.len(),
+            signal: &signal as *const _,
+        };
+        self.sender.send(request).await;
+        signal.wait().await
+    }
+
+    /// Fetches a file's content asynchronously.
+    pub async fn read_file<'a>(
+        &self,
+        name: &'static str,
+        out_buf: &'a mut [u8],
+    ) -> Result<Option<&'a [u8]>, ()> {
+        let signal = Signal::new();
+        let request = FsRequest::ReadFile {
+            name,
+            buf_ptr: out_buf.as_mut_ptr(),
+            buf_len: out_buf.len(),
+            signal: &signal as *const _,
+        };
+        self.sender.send(request).await;
+        match signal.wait().await {
+            Ok(Some((start, len))) => Ok(Some(&out_buf[start..start + len])),
+            Ok(None) => Ok(None),
+            Err(()) => Err(()),
+        }
+    }
+}
+
+/// Task loop for the filesystem pipeline.
+pub async fn run_filesystem_task<F: NorFlash + MultiwriteNorFlash>(
+    mut fs: FilesystemController<F>,
+    rx: embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, FsRequest, 16>,
+) -> ! {
+    loop {
+        let req = rx.receive().await;
+        match req {
+            FsRequest::WriteFile {
+                name,
+                content_ptr,
+                content_len,
+                signal,
+            } => {
+                let content = unsafe { core::slice::from_raw_parts(content_ptr, content_len) };
+                let res = fs.write_file(name, content).await;
+                unsafe { &*signal }.signal(res);
+            }
+            FsRequest::ReadFile {
+                name,
+                buf_ptr,
+                buf_len,
+                signal,
+            } => {
+                let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr, buf_len) };
+                let base_ptr = buf.as_ptr() as usize;
+                let res = fs.read_file(name, buf).await;
+                let mapped_res = res.map(|opt| {
+                    opt.map(|slice| {
+                        let start = slice.as_ptr() as usize - base_ptr;
+                        (start, slice.len())
+                    })
+                });
+                unsafe { &*signal }.signal(mapped_res);
+            }
+        }
     }
 }
 

@@ -104,8 +104,33 @@ pub static LED_CHANNEL: embassy_sync::channel::Channel<
     4,
 > = embassy_sync::channel::Channel::new();
 
-/// Rerun-based telemetry pipeline submodule.
-pub mod telemetry;
+/// Shared command channel for telemetry records.
+pub static TELEMETRY_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    model::types::TelemetryRecord,
+    16,
+> = embassy_sync::channel::Channel::new();
+
+/// Shared command channel for filesystem operations.
+pub static FILESYSTEM_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    controller::filesystem_controller::FsRequest,
+    16,
+> = embassy_sync::channel::Channel::new();
+
+/// Log a telemetry record to the global asynchronous pipeline.
+pub fn log_telemetry(record: model::types::TelemetryRecord) {
+    let _ = TELEMETRY_CHANNEL.try_send(record);
+}
+
+/// Re-export the telemetry module from the shared library
+pub use firmware_lib::telemetry;
+
+/// Re-export the run_telemetry_task macro from the shared library
+pub use firmware_lib::run_telemetry_task;
+
+/// Re-export the run_filesystem_task macro from the controller crate
+pub use controller::run_filesystem_task;
 
 /// Re-export the modular panic handler function
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -116,6 +141,9 @@ pub use firmware_lib::panic_handler::init as init_panic_handler;
 
 /// Re-export the modular logging helper function
 pub use firmware_lib::panic_handler::log_system;
+
+/// Re-export the modular log_info! macro from the panic handler
+pub use firmware_lib::log_info;
 
 /// Returns the current system uptime in microseconds since boot (64-bit precision).
 pub fn system_time() -> u64 {

@@ -206,18 +206,30 @@ async fn main(spawner: Spawner) {
         cat_detector::SYSTEM_CHANNEL.receiver()
     );
 
-    cat_detector::run_telemetry_task!(
+    cat_detector::run_filesystem_task!(
         spawner,
-        telemetry_task,
+        filesystem_task,
         fs_controller,
-        cat_detector::TELEMETRY_CHANNEL.receiver(),
+        cat_detector::FILESYSTEM_CHANNEL.receiver(),
         firmware_lib::panic_handler::BlockingAsyncFlash<
             embassy_rp::flash::Flash<
+                'static,
                 embassy_rp::peripherals::FLASH,
                 embassy_rp::flash::Blocking,
                 { cat_detector::FLASH_SIZE },
             >,
         >
+    );
+
+    let client = controller::filesystem_controller::FilesystemClient::new(
+        cat_detector::FILESYSTEM_CHANNEL.sender(),
+    );
+    cat_detector::run_telemetry_task!(
+        spawner,
+        telemetry_task,
+        client,
+        cat_detector::TELEMETRY_CHANNEL.receiver(),
+        45
     );
 }
 
