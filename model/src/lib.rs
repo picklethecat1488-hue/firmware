@@ -5,5 +5,5 @@
 
 /// Pure state machine domain model.
 pub mod state_machine;
-/// Domain status models for telemetry and state tracking.
-pub mod status;
+/// Domain types.
+pub mod types;
