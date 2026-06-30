@@ -259,8 +259,12 @@ To maintain code quality and style standards, run these checks before committing
 4.  Link the new project in the root [Cargo.toml](file:///Users/daparker/gh/firmware/Cargo.toml) workspace members list.
 
 ### Running Tests
-Validate all logic (including host-compatible board mocks) on host via:
+Validate all logic (including host-compatible board mocks) on the host. We use `cargo-nextest` for faster, parallel, and clean test execution:
 ```bash
+# Run all tests using cargo-nextest (faster & cleaner)
+cargo nextest run
+
+# Alternatively, run standard cargo tests (e.g. for doctests)
 cargo test
 ```
 

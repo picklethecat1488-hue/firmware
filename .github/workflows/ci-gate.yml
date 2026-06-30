@@ -19,11 +19,14 @@ jobs:
           target: thumbv6m-none-eabi
           components: clippy, rustfmt
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
       - name: Check Formatting
         run: cargo fmt --all --check
 
       - name: Run Host Tests
-        run: cargo test | tee test_report.txt
+        run: cargo nextest run | tee test_report.txt
 
       - name: Run Clippy (Host Targets)
         run: cargo clippy --all-targets -- -D warnings
