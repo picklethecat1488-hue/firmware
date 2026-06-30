@@ -22,3 +22,6 @@ pub use temperature::TemperatureSensor;
 
 pub mod charger;
 pub use charger::Charger;
+
+pub mod led;
+pub use led::LedDriver;

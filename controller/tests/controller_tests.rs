@@ -12,16 +12,20 @@ fn test_motor_controller_flow() {
 
     // Turn on the motor using handle_command
     controller.handle_command(MotorCommand::SetSpeed(100));
-    assert_eq!(controller.state(), MotorState::Ramping);
+    assert_eq!(controller.state(), MotorState::RampUp);
     assert_eq!(controller.motor.speed, 100);
 
-    // Run update under normal load -> transitions from Ramping to On
+    // Run update under normal load -> transitions from RampUp to On
     controller.update().unwrap();
     assert_eq!(controller.state(), MotorState::On);
     assert_eq!(controller.motor.speed, 100);
 
     // Simulate dry run (low current draw)
     controller.current_sensor.current_ma = 10; // below 15mA threshold
+    controller.update().unwrap(); // triggers PowerOff -> state becomes RampDown
+    assert_eq!(controller.state(), MotorState::RampDown);
+    
+    // Ramping down auto-transitions to Off on next update
     controller.update().unwrap();
     assert_eq!(controller.state(), MotorState::Off);
     assert_eq!(controller.motor.speed, 0); // motor should be stopped
@@ -29,7 +33,7 @@ fn test_motor_controller_flow() {
     // Restart the motor
     controller.current_sensor.current_ma = 150; // reset to healthy current
     controller.handle_command(MotorCommand::SetSpeed(100));
-    assert_eq!(controller.state(), MotorState::Ramping);
+    assert_eq!(controller.state(), MotorState::RampUp);
     assert_eq!(controller.motor.speed, 100);
 
     // Transition to On
@@ -38,7 +42,10 @@ fn test_motor_controller_flow() {
 
     // Simulate stall (high current draw)
     controller.current_sensor.current_ma = 900; // above 800mA threshold
+    controller.update().unwrap(); // triggers PowerOff -> state becomes RampDown
+    assert_eq!(controller.state(), MotorState::RampDown);
+
     controller.update().unwrap();
-    assert_eq!(controller.state(), MotorState::Off); // fallback safety transition
+    assert_eq!(controller.state(), MotorState::Off); // fallback safety transition complete
     assert_eq!(controller.motor.speed, 0); // motor should be stopped
 }
