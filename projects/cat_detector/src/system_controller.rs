@@ -103,7 +103,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                     self.inactivity_seconds = 0;
                     self.time_in_active = 0;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    defmt::info!("SystemController: waking up to Active mode.");
+                    crate::log_info!("SystemController: waking up to Active mode.");
                     let _ = self.led_tx.try_send(SystemLedState::SolidGreen);
                     // Active green
                 }
@@ -114,7 +114,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                 if can_sleep && self.status != SystemStatus::Sleep {
                     self.status = SystemStatus::Sleep;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    defmt::info!("SystemController: entering low-power Sleep mode.");
+                    crate::log_info!("SystemController: entering low-power Sleep mode.");
                     // Stop motor to preserve energy in sleep state
                     let _ = self.motor_tx.try_send(MotorCommand::Stop);
                     let _ = self.led_tx.try_send(SystemLedState::SolidBlue);
@@ -132,7 +132,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                 // Trigger warning alert (Red LED indicator)
                 let _ = self.led_tx.try_send(SystemLedState::BlinksRedFourTimes);
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::warn!("SystemController: Alert triggered. LED indicator set to RED.");
+                crate::log_info!("SystemController: Alert triggered. LED indicator set to RED.");
                 self.handle_command(SystemCommand::Sleep);
             }
             SystemCommand::BatteryUpdate {

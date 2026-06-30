@@ -7,6 +7,8 @@
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_main)]
 #![deny(missing_docs)]
 
+use embedded_cli::Command;
+
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
     defmt_rtt as _,
@@ -15,9 +17,13 @@ use {
     embedded_cli::cli::{CliBuilder, CliHandle},
     embedded_cli::command::RawCommand,
     embedded_cli::service::{CommandProcessor, FromRaw},
-    embedded_cli::Command,
-    panic_probe as _,
 };
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    cat_detector::handle_panic::<{ cat_detector::FLASH_SIZE }>(info);
+}
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use core::fmt::Write as FmtWrite;
@@ -52,8 +58,8 @@ impl<'d, T: embassy_rp::uart::Instance, M: embassy_rp::uart::Mode> IoWrite
 }
 
 /// Derived command enum representing all supported user commands.
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-#[derive(Command)]
+#[allow(dead_code)]
+#[derive(Debug, Command)]
 enum CliCommand {
     /// Motor speed control (motor <speed>)
     Motor {
@@ -74,6 +80,8 @@ enum CliCommand {
     Sleep,
     /// Simulate activity event
     Activity,
+    /// Trigger a panic to test the crash dump / panic flow
+    Crash,
     /// Show help and usage summary
     Help,
 }
@@ -145,6 +153,9 @@ impl<W: IoWrite<Error = E>, E: embedded_io::Error> CommandProcessor<W, E> for Cl
                     "\r\nSent SystemCommand::ActivityDetected to controller"
                 );
             }
+            Ok(CliCommand::Crash) => {
+                panic!("Simulated crash dump flow");
+            }
             Ok(CliCommand::Help) => {
                 let _ = core::writeln!(writer, "\r\nCommands:");
                 let _ = core::writeln!(writer, "  motor <speed>    : Set motor speed (0-100)");
@@ -160,6 +171,10 @@ impl<W: IoWrite<Error = E>, E: embedded_io::Error> CommandProcessor<W, E> for Cl
                 let _ = core::writeln!(
                     writer,
                     "  activity         : Simulate user/cat activity event"
+                );
+                let _ = core::writeln!(
+                    writer,
+                    "  crash            : Trigger a panic to test crash dump"
                 );
                 let _ = core::writeln!(writer, "  help             : Show this help summary");
             }
@@ -205,6 +220,12 @@ async fn main(spawner: Spawner) {
         Ok(())
     });
 
+    // Initialize the modular panic handler
+    cat_detector::init_panic_handler(
+        board.flash,
+        cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
+    );
+
     let mut processor = CliProcessor;
 
     // Run the main input loop feeding bytes to the embedded-cli processor
@@ -219,3 +240,7 @@ async fn main(spawner: Spawner) {
 /// Dummy host entry point to satisfy Cargo compilation requirements.
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 fn main() {}
+
+#[cfg(test)]
+#[path = "../shell_tests.rs"]
+mod shell_tests;
