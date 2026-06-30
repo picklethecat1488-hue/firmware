@@ -3,7 +3,7 @@
 #![cfg_attr(not(test), no_std)]
 #![deny(missing_docs)]
 
-/// Domain types.
-pub mod types;
 /// Hardware peripheral interfaces.
 pub mod interfaces;
+/// Domain types.
+pub mod types;

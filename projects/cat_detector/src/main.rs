@@ -6,11 +6,11 @@
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
+    cat_detector::system_controller::SystemController,
     controller::battery_controller::BatteryController,
     controller::motor_controller::MotorController,
     controller::sensor_controller::SensorController,
     controller::thermal_controller::ThermalController,
-    cat_detector::system_controller::SystemController,
     defmt_rtt as _,
     embassy_executor::Spawner,
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,

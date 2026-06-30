@@ -1,6 +1,6 @@
-use controller::motor_controller::{MotorController, MotorCommand};
+use controller::motor_controller::{MotorCommand, MotorController};
 use controller::state_machine::MotorState;
-use peripherals::mock::{MockMotor, MockCurrentSensor};
+use peripherals::mock::{MockCurrentSensor, MockMotor};
 
 #[test]
 fn test_motor_controller_flow() {

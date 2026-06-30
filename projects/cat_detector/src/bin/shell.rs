@@ -91,9 +91,8 @@ impl<W: IoWrite<Error = E>, E: embedded_io::Error> CommandProcessor<W, E> for Cl
         let writer = cli.writer();
         match CliCommand::parse(raw) {
             Ok(CliCommand::Motor { speed }) => {
-                let _ = cat_detector::MOTOR_CHANNEL.try_send(
-                    controller::motor_controller::MotorCommand::SetSpeed(speed),
-                );
+                let _ = cat_detector::MOTOR_CHANNEL
+                    .try_send(controller::motor_controller::MotorCommand::SetSpeed(speed));
                 let _ = core::writeln!(
                     writer,
                     "\r\nSent MotorCommand::SetSpeed({}) to controller",
@@ -134,7 +133,10 @@ impl<W: IoWrite<Error = E>, E: embedded_io::Error> CommandProcessor<W, E> for Cl
             Ok(CliCommand::Activity) => {
                 let _ = cat_detector::SYSTEM_CHANNEL
                     .try_send(cat_detector::system_controller::SystemCommand::ActivityDetected);
-                let _ = core::writeln!(writer, "\r\nSent SystemCommand::ActivityDetected to controller");
+                let _ = core::writeln!(
+                    writer,
+                    "\r\nSent SystemCommand::ActivityDetected to controller"
+                );
             }
             Ok(CliCommand::Help) => {
                 let _ = core::writeln!(writer, "\r\nCommands:");
@@ -142,10 +144,16 @@ impl<W: IoWrite<Error = E>, E: embedded_io::Error> CommandProcessor<W, E> for Cl
                 let _ = core::writeln!(writer, "  stop             : Stop the motor");
                 let _ = core::writeln!(writer, "  battery          : Trigger battery status check");
                 let _ = core::writeln!(writer, "  thermal          : Trigger thermal temp check");
-                let _ = core::writeln!(writer, "  proximity        : Trigger proximity sensors check");
+                let _ = core::writeln!(
+                    writer,
+                    "  proximity        : Trigger proximity sensors check"
+                );
                 let _ = core::writeln!(writer, "  wake             : Wake system to active state");
                 let _ = core::writeln!(writer, "  sleep            : Force system to sleep state");
-                let _ = core::writeln!(writer, "  activity         : Simulate user/cat activity event");
+                let _ = core::writeln!(
+                    writer,
+                    "  activity         : Simulate user/cat activity event"
+                );
                 let _ = core::writeln!(writer, "  help             : Show this help summary");
             }
             Err(e) => {

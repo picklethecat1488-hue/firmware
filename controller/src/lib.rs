@@ -16,7 +16,6 @@ pub mod state_machine;
 /// Thermal monitoring and regulation controller.
 pub mod thermal_controller;
 
-
 /// A macro to define and spawn the Thermal Controller task.
 ///
 /// Generates the task definition generic over the battery driver type,
@@ -180,4 +179,3 @@ macro_rules! run_sensor_task {
             .unwrap();
     };
 }
-

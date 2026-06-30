@@ -14,10 +14,7 @@ pub struct Bq25185<I> {
 impl<I: I2c> Bq25185<I> {
     /// Creates a new BQ25185 instance with default address 0x6B.
     pub const fn new(i2c: I) -> Self {
-        Self {
-            i2c,
-            address: 0x6B,
-        }
+        Self { i2c, address: 0x6B }
     }
 }
 

@@ -3,7 +3,7 @@
 #![deny(missing_docs)]
 
 use embedded_hal::i2c::I2c;
-use model::interfaces::{TemperatureSensor, FuelGauge};
+use model::interfaces::{FuelGauge, TemperatureSensor};
 
 /// Driver for the MAX17048 fuel gauge communicating over I2C.
 pub struct Max17048<I> {
@@ -14,10 +14,7 @@ pub struct Max17048<I> {
 impl<I: I2c> Max17048<I> {
     /// Creates a new MAX17048 driver instance with the default I2C address (0x36).
     pub const fn new(i2c: I) -> Self {
-        Self {
-            i2c,
-            address: 0x36,
-        }
+        Self { i2c, address: 0x36 }
     }
 
     /// Read a 16-bit register value from the device.

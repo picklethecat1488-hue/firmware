@@ -1,4 +1,6 @@
-use model::interfaces::{Motor, CurrentSensor, TemperatureSensor, FuelGauge, ProximitySensor, Charger};
+use model::interfaces::{
+    Charger, CurrentSensor, FuelGauge, Motor, ProximitySensor, TemperatureSensor,
+};
 
 /// A mock implementation of a Motor for unit testing on the host.
 #[derive(Default)]

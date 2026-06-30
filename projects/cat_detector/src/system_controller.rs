@@ -2,13 +2,13 @@
 
 #![deny(missing_docs)]
 
-use embassy_sync::blocking_mutex::raw::RawMutex;
-use embassy_sync::channel::Sender;
-use model::types::{SystemStatus, SystemLedState};
+use controller::battery_controller::BatteryCommand;
 use controller::motor_controller::MotorCommand;
 use controller::sensor_controller::SensorCommand;
-use controller::battery_controller::BatteryCommand;
 use controller::thermal_controller::ThermalCommand;
+use embassy_sync::blocking_mutex::raw::RawMutex;
+use embassy_sync::channel::Sender;
+use model::types::{SystemLedState, SystemStatus};
 
 /// One-way commands to control the global system state and notify it of events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,7 +75,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                     self.inactivity_seconds = 0;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::info!("SystemController: waking up to Active mode.");
-                    let _ = self.led_tx.try_send(SystemLedState { r: 0, g: 128, b: 0 }); // Active green
+                    let _ = self.led_tx.try_send(SystemLedState::Rgb(0, 128, 0));
+                    // Active green
                 }
             }
             SystemCommand::Sleep => {
@@ -85,7 +86,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                     defmt::info!("SystemController: entering low-power Sleep mode.");
                     // Stop motor to preserve energy in sleep state
                     let _ = self.motor_tx.try_send(MotorCommand::Stop);
-                    let _ = self.led_tx.try_send(SystemLedState { r: 0, g: 0, b: 64 }); // Sleep dim blue
+                    let _ = self.led_tx.try_send(SystemLedState::Rgb(0, 0, 64));
+                    // Sleep dim blue
                 }
             }
             SystemCommand::ActivityDetected => {
@@ -96,17 +98,23 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
             }
             SystemCommand::AlertTriggered => {
                 // Trigger warning alert (Red LED indicator)
-                let _ = self.led_tx.try_send(SystemLedState { r: 255, g: 0, b: 0 });
+                let _ = self.led_tx.try_send(SystemLedState::Rgb(255, 0, 0));
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::warn!("SystemController: Alert triggered. LED indicator set to RED.");
             }
-            SystemCommand::BatteryUpdate { state_of_charge, charging } => {
+            SystemCommand::BatteryUpdate {
+                state_of_charge,
+                charging,
+            } => {
                 if charging {
-                    let _ = self.led_tx.try_send(SystemLedState { r: 128, g: 128, b: 0 }); // Charging yellow
+                    let _ = self.led_tx.try_send(SystemLedState::Rgb(128, 128, 0));
+                // Charging yellow
                 } else if state_of_charge < 20 {
-                    let _ = self.led_tx.try_send(SystemLedState { r: 128, g: 64, b: 0 }); // Battery low orange
+                    let _ = self.led_tx.try_send(SystemLedState::Rgb(128, 64, 0));
+                // Battery low orange
                 } else if self.status == SystemStatus::Active {
-                    let _ = self.led_tx.try_send(SystemLedState { r: 0, g: 128, b: 0 }); // Active green
+                    let _ = self.led_tx.try_send(SystemLedState::Rgb(0, 128, 0));
+                    // Active green
                 }
             }
         }
@@ -129,7 +137,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
         command_rx: embassy_sync::channel::Receiver<'static, MutexRaw, SystemCommand, N>,
     ) -> ! {
         // Initialize LED to green at start
-        let _ = self.led_tx.try_send(SystemLedState { r: 0, g: 128, b: 0 });
+        let _ = self.led_tx.try_send(SystemLedState::Rgb(0, 128, 0));
 
         loop {
             match embassy_time::with_timeout(

@@ -2,8 +2,8 @@
 
 #![deny(missing_docs)]
 
-use model::interfaces::{Motor, CurrentSensor};
 use crate::state_machine::{MotorEvent, MotorState, MotorStateMachine};
+use model::interfaces::{CurrentSensor, Motor};
 
 /// A generalized motor controller that orchestrates motor driver outputs and current sensor monitoring.
 pub struct MotorController<M, C> {
@@ -61,13 +61,19 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
                 self.fsm.transition(MotorEvent::PowerOff);
                 self.motor.stop().map_err(MotorError::Motor)?;
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::warn!("Motor Controller: Low load / dry detected (current: {} mA). Stopped motor.", current);
+                defmt::warn!(
+                    "Motor Controller: Low load / dry detected (current: {} mA). Stopped motor.",
+                    current
+                );
             } else if current > 800 {
                 // Check for motor stall (current is too high, e.g. > 800mA)
                 self.fsm.transition(MotorEvent::PowerOff);
                 self.motor.stop().map_err(MotorError::Motor)?;
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::error!("Motor Controller: Motor stall detected (current: {} mA). Stopped motor.", current);
+                defmt::error!(
+                    "Motor Controller: Motor stall detected (current: {} mA). Stopped motor.",
+                    current
+                );
             }
         }
 

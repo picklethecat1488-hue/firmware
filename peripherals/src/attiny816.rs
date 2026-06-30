@@ -13,10 +13,7 @@ pub struct Attiny816<I> {
 impl<I: I2c> Attiny816<I> {
     /// Creates a new ATtiny816 LED driver instance with default address (0x60).
     pub const fn new(i2c: I) -> Self {
-        Self {
-            i2c,
-            address: 0x60,
-        }
+        Self { i2c, address: 0x60 }
     }
 
     /// Sets the color of the connected NeoPixel LED.
