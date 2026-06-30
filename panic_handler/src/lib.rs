@@ -24,18 +24,24 @@ pub static CRASH_LOG_BUFFER: critical_section::Mutex<core::cell::RefCell<LogBuff
 pub fn log_system(args: core::fmt::Arguments) {
     critical_section::with(|cs| {
         let mut buffer = CRASH_LOG_BUFFER.borrow(cs).borrow_mut();
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        {
+            // Read lower 32 bits of RP2040 microsecond hardware timer
+            let micros = unsafe { *(0x4005_400c as *const u32) };
+            let _ = core::fmt::write(&mut *buffer, format_args!("[{:010} us] ", micros));
+        }
         let _ = core::fmt::write(&mut *buffer, args);
         let _ = buffer.write_str("\n");
     });
 }
 
-/// Helper macro for logging system events.
+/// Helper macro for logging system events with compile-time module prefixing.
 #[macro_export]
 macro_rules! log_info {
-    ($($arg:tt)*) => {
-        $crate::log_system(format_args!($($arg)*));
+    ($fmt:literal $(, $arg:expr)* $(,)?) => {
+        $crate::log_system(format_args!(concat!("[", core::module_path!(), "] ", $fmt) $(, $arg)*));
         #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!($($arg)*);
+        defmt::info!($fmt $(, $arg)*);
     }
 }
 
