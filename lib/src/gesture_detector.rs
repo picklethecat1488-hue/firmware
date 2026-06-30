@@ -1,9 +1,8 @@
 //! Gesture detection library for proximity-based system states.
 
-#![no_std]
 #![deny(missing_docs)]
 
-/// GestureDetector tracks Time-of-Flight (ToF) proximity sensor inputs
+/// GestureDetector tracks Time-of-Flight (ToF) proximity sensor inputs.
 /// A debounce state machine that tracks continuous proximity sensor holds using absolute system time in microseconds.
 pub struct GestureDetector {
     press_start_time_us: Option<u64>,
@@ -23,9 +22,9 @@ impl GestureDetector {
 
     /// Updates the state machine with current sensor distances and the current absolute system time in microseconds.
     /// Returns:
-    /// - Some(Gesture::DualLongPress) if held continuously for 5 seconds.
+    /// - Some(Gesture::DualLongPress) if held continuously for 5 seconds (5_000_000 us).
     /// - Some(Gesture::ProximityDetected) if any sensor is < 300 mm.
-    /// - None otherwise.
+    /// - Some(Gesture::ProximityNotDetected) otherwise.
     pub fn update(
         &mut self,
         gesture: model::types::Gesture,

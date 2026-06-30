@@ -51,6 +51,19 @@ async fn main(spawner: Spawner) {
         cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
     );
 
+    // Initialize the FilesystemController using stolen FLASH peripheral (safe because panic handler only reads/writes on panic)
+    let fs_flash = unsafe { embassy_rp::peripherals::FLASH::steal() };
+    let raw_flash = embassy_rp::flash::Flash::<
+        _,
+        embassy_rp::flash::Blocking,
+        { cat_detector::FLASH_SIZE },
+    >::new_blocking(fs_flash);
+    let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(raw_flash);
+    let fs_controller = controller::filesystem_controller::FilesystemController::new(
+        async_flash,
+        cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
+    );
+
     // Extract the motor control pin from the board configuration array
     let motor_pin = board.gpio_pins[cat_detector::LED_PIN as usize]
         .take()
@@ -191,6 +204,20 @@ async fn main(spawner: Spawner) {
         system_task,
         system_ctrl,
         cat_detector::SYSTEM_CHANNEL.receiver()
+    );
+
+    cat_detector::run_telemetry_task!(
+        spawner,
+        telemetry_task,
+        fs_controller,
+        cat_detector::TELEMETRY_CHANNEL.receiver(),
+        firmware_lib::panic_handler::BlockingAsyncFlash<
+            embassy_rp::flash::Flash<
+                embassy_rp::peripherals::FLASH,
+                embassy_rp::flash::Blocking,
+                { cat_detector::FLASH_SIZE },
+            >,
+        >
     );
 }
 

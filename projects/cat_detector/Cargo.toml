@@ -22,10 +22,9 @@ bench = false
 
 [dependencies]
 model = { path = "../../model" }
+firmware_lib = { path = "../../lib" }
 peripherals = { path = "../../peripherals", features = ["mock"] }
 controller = { path = "../../controller" }
-rp2040_panic_handler = { path = "../../panic_handler" }
-gesture_detector = { path = "../../gesture_detector" }
 embedded-hal = "1.0.0"
 embassy-sync = "0.6.2"
 embedded-cli = "0.2.1"

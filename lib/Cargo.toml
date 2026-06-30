@@ -1,10 +1,11 @@
 [package]
-name = "rp2040_panic_handler"
+name = "firmware_lib"
 version = "0.1.0"
 edition = "2021"
 publish = false
 
 [dependencies]
+model = { path = "../model" }
 embassy-sync = "0.6.2"
 sequential-storage = "3.0.0"
 embedded-storage = "0.3"

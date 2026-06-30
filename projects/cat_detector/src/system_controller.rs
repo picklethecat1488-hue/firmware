@@ -2,13 +2,13 @@
 
 #![deny(missing_docs)]
 
+use firmware_lib::gesture_detector::GestureDetector;
 use controller::battery_controller::BatteryCommand;
 use controller::motor_controller::MotorCommand;
 use controller::sensor_controller::SensorCommand;
 use controller::thermal_controller::ThermalCommand;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
-use gesture_detector::GestureDetector;
 use model::types::{Gesture, SystemLedState, SystemStatus};
 
 /// One-way commands to control the global system state and notify it of events.

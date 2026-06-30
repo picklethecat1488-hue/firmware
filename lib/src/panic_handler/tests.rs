@@ -28,6 +28,6 @@ fn test_log_info_module_prefixing() {
         let buffer = CRASH_LOG_BUFFER.borrow(cs).borrow();
         let end = buffer.head;
         let logged_str = core::str::from_utf8(&buffer.buffer[..end]).unwrap();
-        assert!(logged_str.contains("[rp2040_panic_handler::tests] Test prefix"));
+        assert!(logged_str.contains("[firmware_lib::panic_handler::tests] Test prefix"));
     });
 }

@@ -103,18 +103,19 @@ pub static LED_CHANNEL: embassy_sync::channel::Channel<
     model::types::SystemLedState,
     4,
 > = embassy_sync::channel::Channel::new();
+
+/// Rerun-based telemetry pipeline submodule.
+pub mod telemetry;
+
 /// Re-export the modular panic handler function
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-pub use rp2040_panic_handler::handle_panic;
+pub use firmware_lib::panic_handler::handle_panic;
 
 /// Re-export the modular panic handler initialization
-pub use rp2040_panic_handler::init as init_panic_handler;
+pub use firmware_lib::panic_handler::init as init_panic_handler;
 
 /// Re-export the modular logging helper function
-pub use rp2040_panic_handler::log_system;
-
-/// Re-export the modular log_info! macro from the panic handler crate
-pub use rp2040_panic_handler::log_info;
+pub use firmware_lib::panic_handler::log_system;
 
 /// Returns the current system uptime in microseconds since boot (64-bit precision).
 pub fn system_time() -> u64 {

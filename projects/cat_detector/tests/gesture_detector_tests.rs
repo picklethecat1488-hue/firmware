@@ -1,4 +1,4 @@
-use gesture_detector::GestureDetector;
+use firmware_lib::gesture_detector::GestureDetector;
 use model::types::Gesture;
 
 #[test]
