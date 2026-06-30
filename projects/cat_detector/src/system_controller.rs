@@ -9,7 +9,7 @@ use controller::thermal_controller::ThermalCommand;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
 use firmware_lib::gesture_detector::GestureDetector;
-use model::types::{Gesture, SystemLedState, SystemStatus};
+use model::types::{Gesture, ProximityTelemetry, SystemLedState, SystemStatus, TelemetryRecord};
 
 /// One-way commands to control the global system state and notify it of events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,9 +108,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                 current_time_us,
             ) {
                 Some(Gesture::DualLongPress) => {
+                    crate::log_telemetry(TelemetryRecord::Gesture(Gesture::DualLongPress));
                     self.handle_command(SystemCommand::PowerDown);
                 }
                 Some(Gesture::ProximityDetected) => {
+                    crate::log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityDetected));
                     self.proximity_active = true;
                     self.inactivity_seconds = 0;
                     if self.status == SystemStatus::Sleep {
@@ -121,6 +123,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                     }
                 }
                 Some(Gesture::ProximityNotDetected) => {
+                    crate::log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityNotDetected));
                     self.proximity_active = false;
                 }
                 _ => {}
@@ -139,6 +142,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                     && self.status != SystemStatus::PowerDown
                 {
                     self.status = SystemStatus::Active;
+                    crate::log_telemetry(TelemetryRecord::System(SystemStatus::Active));
                     self.inactivity_seconds = 0;
                     self.time_in_active = 0;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -154,6 +158,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                     && self.status != SystemStatus::PowerDown
                 {
                     self.status = SystemStatus::Sleep;
+                    crate::log_telemetry(TelemetryRecord::System(SystemStatus::Sleep));
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     crate::log_info!("SystemController: entering low-power Sleep mode.");
                     let _ = self.motor_tx.try_send(MotorCommand::Stop);
@@ -163,6 +168,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
             SystemCommand::PowerDown => {
                 if self.status != SystemStatus::PowerDown {
                     self.status = SystemStatus::PowerDown;
+                    crate::log_telemetry(TelemetryRecord::System(SystemStatus::PowerDown));
                     let _ = self.motor_tx.try_send(MotorCommand::Stop);
                     let _ = self.led_tx.try_send(SystemLedState::Off);
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -213,6 +219,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
 
                     if should_exit_power_down {
                         self.status = SystemStatus::Active;
+                        crate::log_telemetry(TelemetryRecord::System(SystemStatus::Active));
                         self.boot_power_down = false;
                         self.inactivity_seconds = 0;
                         self.time_in_active = 0;
@@ -248,6 +255,13 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                     _ => {}
                 }
 
+                let prox = if distance_mm < 300 {
+                    ProximityTelemetry::InRange(distance_mm)
+                } else {
+                    ProximityTelemetry::OutRange(distance_mm)
+                };
+                crate::log_telemetry(TelemetryRecord::Proximity(prox));
+
                 self.update_gesture(crate::system_time());
             }
         }
@@ -279,6 +293,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
     ) -> ! {
         // Initialize LED to Off (as we start in PowerDown)
         let _ = self.led_tx.try_send(SystemLedState::Off);
+        crate::log_telemetry(TelemetryRecord::System(SystemStatus::PowerDown));
 
         loop {
             match embassy_time::with_timeout(

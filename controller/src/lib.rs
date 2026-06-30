@@ -29,6 +29,7 @@ macro_rules! run_thermal_task {
         $task_module:ident,
         $controller:expr,
         $rx:expr,
+        $telemetry_tx:expr,
         $battery_type:ty,
         $cmd_type:ty
     ) => {
@@ -49,13 +50,19 @@ macro_rules! run_thermal_task {
                     $crate::thermal_controller::ThermalCommand,
                     4,
                 >,
+                telemetry_tx: embassy_sync::channel::Sender<
+                    'static,
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    model::telemetry::TelemetryRecord,
+                    16,
+                >,
             ) {
-                controller.run(rx).await;
+                controller.run(rx, telemetry_tx).await;
             }
         }
 
         $spawner
-            .spawn($task_module::task($controller, $rx))
+            .spawn($task_module::task($controller, $rx, $telemetry_tx))
             .unwrap();
     };
 }
@@ -71,7 +78,9 @@ macro_rules! run_battery_task {
         $task_module:ident,
         $controller:expr,
         $rx:expr,
-        $battery_type:ty
+        $telemetry_tx:expr,
+        $battery_type:ty,
+        $cmd_type:ty
     ) => {
         mod $task_module {
             use super::*;
@@ -82,6 +91,7 @@ macro_rules! run_battery_task {
                     'static,
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                     $battery_type,
+                    $cmd_type,
                 >,
                 rx: embassy_sync::channel::Receiver<
                     'static,
@@ -89,13 +99,19 @@ macro_rules! run_battery_task {
                     $crate::battery_controller::BatteryCommand,
                     4,
                 >,
+                telemetry_tx: embassy_sync::channel::Sender<
+                    'static,
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    model::telemetry::TelemetryRecord,
+                    16,
+                >,
             ) {
-                controller.run(rx).await;
+                controller.run(rx, telemetry_tx).await;
             }
         }
 
         $spawner
-            .spawn($task_module::task($controller, $rx))
+            .spawn($task_module::task($controller, $rx, $telemetry_tx))
             .unwrap();
     };
 }
@@ -111,6 +127,7 @@ macro_rules! run_motor_task {
         $task_module:ident,
         $controller:expr,
         $rx:expr,
+        $telemetry_tx:expr,
         $motor_type:ty,
         $current_sensor_type:ty
     ) => {
@@ -129,13 +146,19 @@ macro_rules! run_motor_task {
                     $crate::motor_controller::MotorCommand,
                     4,
                 >,
+                telemetry_tx: embassy_sync::channel::Sender<
+                    'static,
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    model::telemetry::TelemetryRecord,
+                    16,
+                >,
             ) {
-                controller.run(rx).await;
+                controller.run(rx, telemetry_tx).await;
             }
         }
 
         $spawner
-            .spawn($task_module::task($controller, $rx))
+            .spawn($task_module::task($controller, $rx, $telemetry_tx))
             .unwrap();
     };
 }
@@ -194,6 +217,7 @@ macro_rules! run_led_task {
         $task_module:ident,
         $controller:expr,
         $rx:expr,
+        $telemetry_tx:expr,
         $driver_type:ty,
         $raw_mutex:ty
     ) => {
@@ -209,13 +233,19 @@ macro_rules! run_led_task {
                     model::types::SystemLedState,
                     4,
                 >,
+                telemetry_tx: embassy_sync::channel::Sender<
+                    'static,
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    model::telemetry::TelemetryRecord,
+                    16,
+                >,
             ) {
-                controller.run(rx).await;
+                controller.run(rx, telemetry_tx).await;
             }
         }
 
         $spawner
-            .spawn($task_module::task($controller, $rx))
+            .spawn($task_module::task($controller, $rx, $telemetry_tx))
             .unwrap();
     };
 }

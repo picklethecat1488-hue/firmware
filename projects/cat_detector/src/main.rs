@@ -114,7 +114,14 @@ async fn main(spawner: Spawner) {
         cat_detector::SYSTEM_CHANNEL.sender(),
         cat_detector::system_controller::SystemCommand::Sleep,
     );
-    let power_ctrl = BatteryController::new(&SHARED_BATTERY);
+    let power_ctrl = BatteryController::new_with_system(
+        &SHARED_BATTERY,
+        cat_detector::SYSTEM_CHANNEL.sender(),
+        |soc, chg| cat_detector::system_controller::SystemCommand::BatteryUpdate {
+            state_of_charge: soc,
+            charging: chg,
+        },
+    );
 
     // Initialize simulated LED driver and its controller
     let led_driver = MockLed::new();
@@ -137,6 +144,7 @@ async fn main(spawner: Spawner) {
         thermal_task,
         thermal_ctrl,
         cat_detector::THERMAL_CHANNEL.receiver(),
+        cat_detector::TELEMETRY_CHANNEL.sender(),
         MockBattery,
         cat_detector::system_controller::SystemCommand
     );
@@ -146,7 +154,9 @@ async fn main(spawner: Spawner) {
         power_task,
         power_ctrl,
         cat_detector::BATTERY_CHANNEL.receiver(),
-        MockBattery
+        cat_detector::TELEMETRY_CHANNEL.sender(),
+        MockBattery,
+        cat_detector::system_controller::SystemCommand
     );
 
     controller::run_motor_task!(
@@ -154,6 +164,7 @@ async fn main(spawner: Spawner) {
         motor_task,
         controller,
         cat_detector::MOTOR_CHANNEL.receiver(),
+        cat_detector::TELEMETRY_CHANNEL.sender(),
         GpioMotor<embassy_rp::gpio::Flex<'static>>,
         DummyCurrentSensor
     );
@@ -195,6 +206,7 @@ async fn main(spawner: Spawner) {
         led_task,
         led_ctrl,
         cat_detector::LED_CHANNEL.receiver(),
+        cat_detector::TELEMETRY_CHANNEL.sender(),
         MockLed,
         CriticalSectionRawMutex
     );
