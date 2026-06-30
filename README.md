@@ -21,6 +21,12 @@ The workspace is organized into target-agnostic crates for logic/simulation and 
 
 ---
 
+## Projects
+
+*   **[Cat Detector](file:///Users/daparker/gh/firmware/projects/cat_detector.md)**: A low-power water fountain and cat proximity detector system running on the Raspberry Pi Pico (RP2040). It integrates Time-of-Flight distance sensors, battery charger/fuel gauge telemetry, thermal shutdown checks, and indicator NeoPixels to control the fountain pump state.
+
+---
+
 ## Getting Started
 
 ### Prerequisites
@@ -38,10 +44,13 @@ To build and run this firmware, you need the following tools installed on your h
 
 ### Running Tests (Host-Based Validation)
 
-Our decoupled architecture allows you to validate all business logic and control loops directly on your host machine without flashing a microcontroller:
+Our decoupled architecture allows you to validate all business logic and control loops directly on your host machine without flashing a microcontroller. We use `cargo-nextest` for faster, parallelized, and less noisy test execution:
 
 ```bash
-# Run all unit tests (in model) and integration tests (in peripherals/controller) on host
+# Run tests using cargo-nextest (highly recommended)
+cargo nextest run
+
+# Or fall back to standard cargo tests
 cargo test
 ```
 

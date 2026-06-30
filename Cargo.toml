@@ -21,3 +21,10 @@ lto = true           # Enable Link-Time Optimization
 codegen-units = 1    # Reduce codegen units to improve size optimizations
 panic = "abort"      # Abort on panic to remove stack unwinding tables
 strip = true         # Strip symbols and debug info from the binary
+
+[profile.dev]
+debug = 1            # Line tables only, much faster compilation and linking
+
+[profile.test]
+debug = 1            # Line tables only, speeds up test compilation and linking
+

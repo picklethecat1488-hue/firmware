@@ -1,17 +1,18 @@
-use crate::pump::Pump;
-use crate::water_sensor::WaterSensor;
+use model::interfaces::{
+    Charger, CurrentSensor, FuelGauge, Motor, ProximitySensor, TemperatureSensor,
+};
 
-/// A mock implementation of a Pump for unit testing on the host.
+/// A mock implementation of a Motor for unit testing on the host.
 #[derive(Default)]
-pub struct MockPump {
-    /// Currently configured speed of the mock pump.
+pub struct MockMotor {
+    /// Currently configured speed of the mock motor.
     pub speed: u8,
-    /// Indicates if the mock pump is currently running.
+    /// Indicates if the mock motor is currently running.
     pub is_running: bool,
 }
 
-impl MockPump {
-    /// Creates a new inactive mock pump.
+impl MockMotor {
+    /// Creates a new inactive mock motor.
     pub const fn new() -> Self {
         Self {
             speed: 0,
@@ -20,7 +21,7 @@ impl MockPump {
     }
 }
 
-impl Pump for MockPump {
+impl Motor for MockMotor {
     type Error = ();
 
     /// Sets mock speed and updates run status.
@@ -30,7 +31,7 @@ impl Pump for MockPump {
         Ok(())
     }
 
-    /// Stops the mock pump.
+    /// Stops the mock motor.
     fn stop(&mut self) -> Result<(), Self::Error> {
         self.speed = 0;
         self.is_running = false;
@@ -38,25 +39,24 @@ impl Pump for MockPump {
     }
 }
 
-/// A mock implementation of a WaterSensor for unit testing on the host.
-pub struct MockWaterSensor {
-    /// Tracks if water presence is simulated.
-    pub water_present: bool,
+/// A mock implementation of a CurrentSensor for unit testing on the host.
+pub struct MockCurrentSensor {
+    /// Current draw in mA.
+    pub current_ma: i32,
 }
 
-impl MockWaterSensor {
-    /// Creates a new mock water sensor with specified initial presence.
-    pub const fn new(water_present: bool) -> Self {
-        Self { water_present }
+impl MockCurrentSensor {
+    /// Creates a new mock current sensor.
+    pub const fn new(current_ma: i32) -> Self {
+        Self { current_ma }
     }
 }
 
-impl WaterSensor for MockWaterSensor {
+impl CurrentSensor for MockCurrentSensor {
     type Error = ();
 
-    /// Returns the simulated water presence value.
-    fn is_water_detected(&mut self) -> Result<bool, Self::Error> {
-        Ok(self.water_present)
+    fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
+        Ok(self.current_ma)
     }
 }
 
@@ -78,49 +78,132 @@ impl MockBattery {
     }
 }
 
-impl crate::battery::Battery for MockBattery {
+impl TemperatureSensor for MockBattery {
     type Error = ();
-
-    fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
-        Ok(self.voltage_mv)
-    }
 
     fn read_temperature_milli_c(&mut self) -> Result<i32, Self::Error> {
         Ok(self.temperature_milli_c)
     }
 }
 
-/// A mock input pin that implements embedded-hal digital input traits.
-pub struct DummyInputPin;
+impl FuelGauge for MockBattery {
+    type Error = ();
 
-impl embedded_hal::digital::ErrorType for DummyInputPin {
-    type Error = core::convert::Infallible;
-}
-
-impl embedded_hal::digital::InputPin for DummyInputPin {
-    /// Always returns true to simulate active input.
-    fn is_high(&mut self) -> Result<bool, Self::Error> {
-        Ok(true)
+    fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
+        Ok(self.voltage_mv)
     }
 
-    /// Always returns false.
-    fn is_low(&mut self) -> Result<bool, Self::Error> {
-        Ok(false)
+    fn read_state_of_charge(&mut self) -> Result<u8, Self::Error> {
+        Ok(50) // Default 50% state of charge
     }
 }
 
-/// A simulated water sensor wrapping a dummy input pin.
-pub struct DummyWaterSensor {
-    /// The nested dummy input pin.
-    pub pin: DummyInputPin,
-}
+/// A simulated current sensor that always returns a healthy current draw.
+pub struct DummyCurrentSensor;
 
-impl WaterSensor for DummyWaterSensor {
+impl CurrentSensor for DummyCurrentSensor {
     type Error = core::convert::Infallible;
 
-    /// Checks for water by querying the simulated input pin.
-    fn is_water_detected(&mut self) -> Result<bool, Self::Error> {
-        use embedded_hal::digital::InputPin;
-        self.pin.is_high()
+    fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
+        Ok(150) // Simulate a healthy current draw of 150mA
+    }
+}
+
+/// A mock implementation of a ProximitySensor for unit testing.
+pub struct MockProximitySensor {
+    /// Simulated distance value in millimeters.
+    pub distance_mm: u16,
+    /// Proximity callback function.
+    pub callback: Option<fn(bool)>,
+}
+
+impl MockProximitySensor {
+    /// Creates a new mock proximity sensor with specified initial distance.
+    pub const fn new(distance_mm: u16) -> Self {
+        Self {
+            distance_mm,
+            callback: None,
+        }
+    }
+}
+
+impl ProximitySensor for MockProximitySensor {
+    type Error = ();
+
+    fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
+        if let Some(cb) = self.callback {
+            cb(self.distance_mm < 300);
+        }
+        Ok(self.distance_mm)
+    }
+
+    fn register_proximity_callback(&mut self, callback: fn(bool)) -> Result<(), Self::Error> {
+        self.callback = Some(callback);
+        Ok(())
+    }
+}
+
+/// A simulated proximity sensor that returns a default distance.
+pub struct DummyProximitySensor {
+    /// Distance in millimeters.
+    pub distance_mm: u16,
+    /// Proximity callback function.
+    pub callback: Option<fn(bool)>,
+}
+
+impl DummyProximitySensor {
+    /// Creates a new dummy proximity sensor.
+    pub const fn new(distance_mm: u16) -> Self {
+        Self {
+            distance_mm,
+            callback: None,
+        }
+    }
+}
+
+impl ProximitySensor for DummyProximitySensor {
+    type Error = core::convert::Infallible;
+
+    fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
+        if let Some(cb) = self.callback {
+            cb(self.distance_mm < 300);
+        }
+        Ok(self.distance_mm)
+    }
+
+    fn register_proximity_callback(&mut self, callback: fn(bool)) -> Result<(), Self::Error> {
+        self.callback = Some(callback);
+        Ok(())
+    }
+}
+
+/// A mock implementation of a Charger for unit testing.
+pub struct MockCharger {
+    /// Tracks if charging is enabled.
+    pub charging_enabled: bool,
+    /// Tracks if a charging input is present.
+    pub input_present: bool,
+}
+
+impl MockCharger {
+    /// Creates a new MockCharger instance.
+    pub const fn new(charging_enabled: bool, input_present: bool) -> Self {
+        Self {
+            charging_enabled,
+            input_present,
+        }
+    }
+}
+
+impl Charger for MockCharger {
+    type Error = ();
+
+    fn set_charging_enabled(&mut self, enabled: bool) -> Result<(), Self::Error> {
+        self.charging_enabled = enabled;
+        Ok(())
+    }
+
+    fn is_charging_input_present(&mut self) -> Result<bool, Self::Error> {
+        Ok(self.input_present)
     }
 }

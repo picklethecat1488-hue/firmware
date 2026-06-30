@@ -21,9 +21,12 @@ jobs:
           target: thumbv6m-none-eabi
           components: clippy, rustfmt
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
       - name: Run Host Tests
         run: |
-          cargo test | tee test_report.txt
+          cargo nextest run | tee test_report.txt
 
       - name: Run Clippy Verification (Host)
         run: |

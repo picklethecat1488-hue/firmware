@@ -6,16 +6,18 @@
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
+    cat_detector::system_controller::SystemController,
     controller::battery_controller::BatteryController,
-    controller::fountain_controller::FountainController,
+    controller::motor_controller::MotorController,
+    controller::sensor_controller::SensorController,
     controller::thermal_controller::ThermalController,
     defmt_rtt as _,
     embassy_executor::Spawner,
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     embassy_sync::mutex::Mutex,
     panic_probe as _,
-    peripherals::mock::{DummyInputPin, DummyWaterSensor, MockBattery},
-    peripherals::pump::GpioPump,
+    peripherals::mock::{DummyCurrentSensor, DummyProximitySensor, MockBattery},
+    peripherals::motor::GpioMotor,
 };
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -32,18 +34,37 @@ async fn main(spawner: Spawner) {
     // Initialize board peripherals using the unified board configuration
     let mut board = cat_detector::Board::init(p);
 
-    // Extract the pump control pin from the board configuration array
-    let pump_pin = board.gpio_pins[cat_detector::LED_PIN as usize]
+    // Extract the motor control pin from the board configuration array
+    let motor_pin = board.gpio_pins[cat_detector::LED_PIN as usize]
         .take()
-        .expect("Pump pin must be available");
+        .expect("Motor pin must be available");
 
-    let pump = GpioPump::new(pump_pin);
-    let sensor = DummyWaterSensor { pin: DummyInputPin };
+    let motor = GpioMotor::new(motor_pin);
+    let current_sensor = DummyCurrentSensor;
 
-    let controller = FountainController::new(pump, sensor);
+    let controller = MotorController::new(motor, current_sensor);
 
-    let thermal_ctrl = ThermalController::new(&SHARED_BATTERY);
+    // Initialize simulated proximity sensors for North, East, West ToFs
+    let tof_north = DummyProximitySensor::new(100);
+    let tof_east = DummyProximitySensor::new(150);
+    let tof_west = DummyProximitySensor::new(200);
+    let sensor_ctrl = SensorController::new(tof_north, tof_east, tof_west);
+
+    let thermal_ctrl = ThermalController::new_with_shutdown(
+        &SHARED_BATTERY,
+        cat_detector::SYSTEM_CHANNEL.sender(),
+        cat_detector::system_controller::SystemCommand::Sleep,
+    );
     let power_ctrl = BatteryController::new(&SHARED_BATTERY);
+
+    // Initialize SystemController to coordinate all loops
+    let system_ctrl = SystemController::new(
+        cat_detector::MOTOR_CHANNEL.sender(),
+        cat_detector::SENSOR_CHANNEL.sender(),
+        cat_detector::BATTERY_CHANNEL.sender(),
+        cat_detector::THERMAL_CHANNEL.sender(),
+        cat_detector::LED_CHANNEL.sender(),
+    );
 
     // Spawn controllers selectively and concurrently using separate macros
     controller::run_thermal_task!(
@@ -51,7 +72,8 @@ async fn main(spawner: Spawner) {
         thermal_task,
         thermal_ctrl,
         cat_detector::THERMAL_CHANNEL.receiver(),
-        MockBattery
+        MockBattery,
+        cat_detector::system_controller::SystemCommand
     );
 
     controller::run_battery_task!(
@@ -62,13 +84,30 @@ async fn main(spawner: Spawner) {
         MockBattery
     );
 
-    controller::run_fountain_task!(
+    controller::run_motor_task!(
         spawner,
-        fountain_task,
+        motor_task,
         controller,
-        cat_detector::FOUNTAIN_CHANNEL.receiver(),
-        GpioPump<embassy_rp::gpio::Flex<'static>>,
-        DummyWaterSensor
+        cat_detector::MOTOR_CHANNEL.receiver(),
+        GpioMotor<embassy_rp::gpio::Flex<'static>>,
+        DummyCurrentSensor
+    );
+
+    controller::run_sensor_task!(
+        spawner,
+        sensor_task,
+        sensor_ctrl,
+        cat_detector::SENSOR_CHANNEL.receiver(),
+        DummyProximitySensor,
+        DummyProximitySensor,
+        DummyProximitySensor
+    );
+
+    cat_detector::run_system_task!(
+        spawner,
+        system_task,
+        system_ctrl,
+        cat_detector::SYSTEM_CHANNEL.receiver()
     );
 }
 
