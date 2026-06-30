@@ -25,6 +25,7 @@ panic = "abort"      # Abort on panic to remove stack unwinding tables
 strip = true         # Strip symbols and debug info from the binary
 
 [profile.dev]
+opt-level = 1        # Enable light optimization to drastically reduce async/embassy code size
 debug = 1            # Line tables only, much faster compilation and linking
 
 [profile.test]

@@ -10,17 +10,14 @@ else
     LLVM_SIZE=""
 fi
 
-# Fallback to system size command if llvm-size is not found
+# Find size command or error out if neither llvm-size nor arm-none-eabi-size is available
 if [ -n "$LLVM_SIZE" ] && [ -f "$LLVM_SIZE" ]; then
     SIZE_CMD="$LLVM_SIZE"
+elif command -v arm-none-eabi-size >/dev/null 2>&1; then
+    SIZE_CMD="arm-none-eabi-size"
 else
-    if command -v size >/dev/null 2>&1; then
-        echo "Warning: llvm-size not found. Falling back to system 'size' command." >&2
-        SIZE_CMD="size"
-    else
-        echo "Error: Neither llvm-size nor system 'size' command was found." >&2
-        exit 1
-    fi
+    echo "Error: Neither llvm-size nor arm-none-eabi-size was found. Please install the llvm-tools component or the GNU ARM toolchain." >&2
+    exit 1
 fi
 
 report_size() {
