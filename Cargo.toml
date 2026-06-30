@@ -5,6 +5,7 @@ members = [
     "peripherals",
     "controller",
     "panic_handler",
+    "gesture_detector",
     "projects/cat_detector",
     "tools/fs_tool",
 ]
@@ -13,6 +14,7 @@ default-members = [
     "peripherals",
     "controller",
     "panic_handler",
+    "gesture_detector",
     "projects/cat_detector",
     "tools/fs_tool",
 ]

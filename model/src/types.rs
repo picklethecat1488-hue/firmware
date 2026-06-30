@@ -53,11 +53,13 @@ impl Default for ThermalStatus {
     }
 }
 
-/// Operating mode of the system (Active or Sleep).
+/// Operating mode of the system (Active, Sleep, or PowerDown).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SystemStatus {
-    /// System is fully awake and processing sensors/motor.
+    /// System is powered down for safe transport/boot constraints.
     #[default]
+    PowerDown,
+    /// System is fully awake and processing sensors/motor.
     Active,
     /// System is in low-power sleep state.
     Sleep,
@@ -109,4 +111,17 @@ pub enum SystemLedState {
     BlinksRedFourTimes,
     /// One red blink once every 30 seconds indicating critical battery low.
     BlinksRedOncePerThirtySeconds,
+}
+
+/// Gestures representing proximity sensor states (North, East, West) in mm.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gesture {
+    /// Proximity readings from North, East, and West sensors in mm (north, east, west).
+    Proximity(u16, u16, u16),
+    /// A completed dual-sensor long press gesture.
+    DualLongPress,
+    /// Proximity detection (any sensor < 300 mm).
+    ProximityDetected,
+    /// Proximity not detected (all sensors >= 300 mm).
+    ProximityNotDetected,
 }

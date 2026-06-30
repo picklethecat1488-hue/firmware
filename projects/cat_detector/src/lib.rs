@@ -116,20 +116,28 @@ pub use rp2040_panic_handler::log_system;
 /// Re-export the modular log_info! macro from the panic handler crate
 pub use rp2040_panic_handler::log_info;
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Returns the current system uptime in microseconds since boot (64-bit precision).
 pub fn system_time() -> u64 {
-    unsafe {
-        let timer_high_addr = 0x4005_4008 as *const u32;
-        let timer_low_addr = 0x4005_400c as *const u32;
-        let mut high = *timer_high_addr;
-        let mut low = *timer_low_addr;
-        let high2 = *timer_high_addr;
-        if high != high2 {
-            high = high2;
-            low = *timer_low_addr;
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    {
+        unsafe {
+            let timer_high_addr = 0x4005_4008 as *const u32;
+            let timer_low_addr = 0x4005_400c as *const u32;
+            let mut high = *timer_high_addr;
+            let mut low = *timer_low_addr;
+            let high2 = *timer_high_addr;
+            if high != high2 {
+                high = high2;
+                low = *timer_low_addr;
+            }
+            ((high as u64) << 32) | (low as u64)
         }
-        ((high as u64) << 32) | (low as u64)
+    }
+    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+    {
+        static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let start = *START.get_or_init(std::time::Instant::now);
+        std::time::Instant::now().duration_since(start).as_micros() as u64
     }
 }
 
