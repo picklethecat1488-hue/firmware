@@ -20,10 +20,10 @@ To make peripheral and controller implementations target-independent, we use **G
 *   This pattern ensures that we can easily write `mock` implementations of peripherals for host-based testing.
 
 ### 3. Separation of Concerns
-*   **Domain Logic (`model/`)**: Pure states, state machines, and business rules. Target-agnostic.
-*   **Peripheral Interfaces (`peripherals/`)**: Platform-independent peripheral traits and their `embedded-hal` generic implementations.
+*   **Domain Logic (`model/`)**: Pure states and traits interfaces. Target-agnostic.
+*   **Peripheral Interfaces (`peripherals/`)**: `embedded-hal` generic implementations of peripheral traits.
 *   **Control Loop Coordinators (`controller/`)**: Project-agnostic orchestrators. Connects peripherals and models together.
-*   **Hardware Bringup (`projects/`)**: Binds microcontroller HAL pins/peripherals to the generic wrappers and runs control loops.
+*   **Projects (`projects/`)**: Binds microcontroller HAL pins/peripherals to the generic wrappers and implements system behavior.
 
 ### 4. Platform-Specific Naming Conventions
 *   **Peripherals & Controllers**: Do **not** prefix files or structs with microcontroller model numbers (e.g., do not name them `rp2040_pump.rs`). Since they only interact with generic `embedded-hal` traits, they are completely platform-independent and compile on any target (including the host).
@@ -194,7 +194,7 @@ If controllers are stored in separate tasks/structs and must hold a reference to
     ```
 
 ### 3. The Actor / Message-Passing Pattern
-For complex systems running separate asynchronous tasks, run the shared peripheral inside its own isolated task (the "Actor"). Other controllers communicate with the actor by sending request/response messages over channels (e.g. `embassy_sync::channel::Channel`):
+For complex systems running separate asynchronous tasks, run the shared peripheral inside its own isolated task (the "Controller"). Other controllers communicate by sending request/response messages over channels (e.g. `embassy_sync::channel::Channel`):
 *   The `ThermalController` sends a `BatteryQuery::GetTemperature` message over a channel.
 *   The `PowerController` sends a `BatteryQuery::GetVoltage` message.
 *   The battery task polls the channel, performs the I2C/ADC reads, and sends results back.
