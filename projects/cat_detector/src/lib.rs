@@ -37,10 +37,27 @@ mod bsp_host;
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 pub use bsp_host::*;
 
-/// Shared command channel for the Fountain Controller.
-pub static FOUNTAIN_CHANNEL: embassy_sync::channel::Channel<
+/// System state and orchestration controller.
+pub mod system_controller;
+
+/// Shared command channel for the Motor Controller.
+pub static MOTOR_CHANNEL: embassy_sync::channel::Channel<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    controller::fountain_controller::FountainCommand,
+    controller::motor_controller::MotorCommand,
+    4,
+> = embassy_sync::channel::Channel::new();
+
+/// Shared command channel for the System Controller.
+pub static SYSTEM_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    crate::system_controller::SystemCommand,
+    4,
+> = embassy_sync::channel::Channel::new();
+
+/// Shared command channel for the Sensor Controller.
+pub static SENSOR_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    controller::sensor_controller::SensorCommand,
     4,
 > = embassy_sync::channel::Channel::new();
 
@@ -55,5 +72,12 @@ pub static THERMAL_CHANNEL: embassy_sync::channel::Channel<
 pub static BATTERY_CHANNEL: embassy_sync::channel::Channel<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     controller::battery_controller::BatteryCommand,
+    4,
+> = embassy_sync::channel::Channel::new();
+
+/// Shared command channel for the System LED status updates.
+pub static LED_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    model::types::SystemLedState,
     4,
 > = embassy_sync::channel::Channel::new();

@@ -55,17 +55,25 @@ impl<'d, T: embassy_rp::uart::Instance, M: embassy_rp::uart::Mode> IoWrite
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[derive(Command)]
 enum CliCommand {
-    /// Fountain pump speed control (fountain <speed>)
-    Fountain {
+    /// Motor speed control (motor <speed>)
+    Motor {
         /// Speed value (0-100)
         speed: u8,
     },
-    /// Stop the fountain pump
+    /// Stop the motor
     Stop,
     /// Query battery voltage and status
     Battery,
     /// Query thermal sensor and status
     Thermal,
+    /// Query proximity (ToF) sensors
+    Proximity,
+    /// Wake the system to Active state
+    Wake,
+    /// Put the system to Sleep state
+    Sleep,
+    /// Simulate activity event
+    Activity,
     /// Show help and usage summary
     Help,
 }
@@ -82,20 +90,20 @@ impl<W: IoWrite<Error = E>, E: embedded_io::Error> CommandProcessor<W, E> for Cl
     ) -> Result<(), embedded_cli::service::ProcessError<'a, E>> {
         let writer = cli.writer();
         match CliCommand::parse(raw) {
-            Ok(CliCommand::Fountain { speed }) => {
-                let _ = cat_detector::FOUNTAIN_CHANNEL.try_send(
-                    controller::fountain_controller::FountainCommand::SetSpeed(speed),
+            Ok(CliCommand::Motor { speed }) => {
+                let _ = cat_detector::MOTOR_CHANNEL.try_send(
+                    controller::motor_controller::MotorCommand::SetSpeed(speed),
                 );
                 let _ = core::writeln!(
                     writer,
-                    "\r\nSent FountainCommand::SetSpeed({}) to controller",
+                    "\r\nSent MotorCommand::SetSpeed({}) to controller",
                     speed
                 );
             }
             Ok(CliCommand::Stop) => {
-                let _ = cat_detector::FOUNTAIN_CHANNEL
-                    .try_send(controller::fountain_controller::FountainCommand::Stop);
-                let _ = core::writeln!(writer, "\r\nSent FountainCommand::Stop to controller");
+                let _ = cat_detector::MOTOR_CHANNEL
+                    .try_send(controller::motor_controller::MotorCommand::Stop);
+                let _ = core::writeln!(writer, "\r\nSent MotorCommand::Stop to controller");
             }
             Ok(CliCommand::Battery) => {
                 let _ = cat_detector::BATTERY_CHANNEL
@@ -108,12 +116,36 @@ impl<W: IoWrite<Error = E>, E: embedded_io::Error> CommandProcessor<W, E> for Cl
                     .try_send(controller::thermal_controller::ThermalCommand::CheckTemp);
                 let _ = core::writeln!(writer, "\r\nSent ThermalCommand::CheckTemp to controller");
             }
+            Ok(CliCommand::Proximity) => {
+                let _ = cat_detector::SENSOR_CHANNEL
+                    .try_send(controller::sensor_controller::SensorCommand::ReadSensors);
+                let _ = core::writeln!(writer, "\r\nSent SensorCommand::ReadSensors to controller");
+            }
+            Ok(CliCommand::Wake) => {
+                let _ = cat_detector::SYSTEM_CHANNEL
+                    .try_send(cat_detector::system_controller::SystemCommand::Wake);
+                let _ = core::writeln!(writer, "\r\nSent SystemCommand::Wake to controller");
+            }
+            Ok(CliCommand::Sleep) => {
+                let _ = cat_detector::SYSTEM_CHANNEL
+                    .try_send(cat_detector::system_controller::SystemCommand::Sleep);
+                let _ = core::writeln!(writer, "\r\nSent SystemCommand::Sleep to controller");
+            }
+            Ok(CliCommand::Activity) => {
+                let _ = cat_detector::SYSTEM_CHANNEL
+                    .try_send(cat_detector::system_controller::SystemCommand::ActivityDetected);
+                let _ = core::writeln!(writer, "\r\nSent SystemCommand::ActivityDetected to controller");
+            }
             Ok(CliCommand::Help) => {
                 let _ = core::writeln!(writer, "\r\nCommands:");
-                let _ = core::writeln!(writer, "  fountain <speed> : Set pump speed (0-100)");
-                let _ = core::writeln!(writer, "  stop             : Stop the pump");
+                let _ = core::writeln!(writer, "  motor <speed>    : Set motor speed (0-100)");
+                let _ = core::writeln!(writer, "  stop             : Stop the motor");
                 let _ = core::writeln!(writer, "  battery          : Trigger battery status check");
                 let _ = core::writeln!(writer, "  thermal          : Trigger thermal temp check");
+                let _ = core::writeln!(writer, "  proximity        : Trigger proximity sensors check");
+                let _ = core::writeln!(writer, "  wake             : Wake system to active state");
+                let _ = core::writeln!(writer, "  sleep            : Force system to sleep state");
+                let _ = core::writeln!(writer, "  activity         : Simulate user/cat activity event");
                 let _ = core::writeln!(writer, "  help             : Show this help summary");
             }
             Err(e) => {

@@ -7,10 +7,15 @@
 pub mod battery_controller;
 /// Flat filesystem and storage controller.
 pub mod filesystem_controller;
-/// Controller loops and state-machine coordinators.
-pub mod fountain_controller;
+/// Motor status and telemetry controller.
+pub mod motor_controller;
+/// Sensor controller for Time-of-Flight sensors.
+pub mod sensor_controller;
+/// Fountain state machine.
+pub mod state_machine;
 /// Thermal monitoring and regulation controller.
 pub mod thermal_controller;
+
 
 /// A macro to define and spawn the Thermal Controller task.
 ///
@@ -23,7 +28,8 @@ macro_rules! run_thermal_task {
         $task_module:ident,
         $controller:expr,
         $rx:expr,
-        $battery_type:ty
+        $battery_type:ty,
+        $cmd_type:ty
     ) => {
         mod $task_module {
             use super::*;
@@ -34,6 +40,7 @@ macro_rules! run_thermal_task {
                     'static,
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                     $battery_type,
+                    $cmd_type,
                 >,
                 rx: embassy_sync::channel::Receiver<
                     'static,
@@ -92,33 +99,33 @@ macro_rules! run_battery_task {
     };
 }
 
-/// A macro to define and spawn the Fountain Controller task.
+/// A macro to define and spawn the Motor Controller task.
 ///
-/// Generates the task definition generic over the pump and sensor types,
+/// Generates the task definition generic over the motor and current sensor types,
 /// then spawns it on the provided Embassy spawner.
 #[macro_export]
-macro_rules! run_fountain_task {
+macro_rules! run_motor_task {
     (
         $spawner:expr,
         $task_module:ident,
         $controller:expr,
         $rx:expr,
-        $pump_type:ty,
-        $sensor_type:ty
+        $motor_type:ty,
+        $current_sensor_type:ty
     ) => {
         mod $task_module {
             use super::*;
 
             #[embassy_executor::task]
             pub async fn task(
-                controller: $crate::fountain_controller::FountainController<
-                    $pump_type,
-                    $sensor_type,
+                controller: $crate::motor_controller::MotorController<
+                    $motor_type,
+                    $current_sensor_type,
                 >,
                 rx: embassy_sync::channel::Receiver<
                     'static,
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    $crate::fountain_controller::FountainCommand,
+                    $crate::motor_controller::MotorCommand,
                     4,
                 >,
             ) {
@@ -131,3 +138,46 @@ macro_rules! run_fountain_task {
             .unwrap();
     };
 }
+
+/// A macro to define and spawn the Sensor Controller task.
+///
+/// Generates the task definition generic over the proximity sensors,
+/// then spawns it on the provided Embassy spawner.
+#[macro_export]
+macro_rules! run_sensor_task {
+    (
+        $spawner:expr,
+        $task_module:ident,
+        $controller:expr,
+        $rx:expr,
+        $north_type:ty,
+        $east_type:ty,
+        $west_type:ty
+    ) => {
+        mod $task_module {
+            use super::*;
+
+            #[embassy_executor::task]
+            pub async fn task(
+                controller: $crate::sensor_controller::SensorController<
+                    $north_type,
+                    $east_type,
+                    $west_type,
+                >,
+                rx: embassy_sync::channel::Receiver<
+                    'static,
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    $crate::sensor_controller::SensorCommand,
+                    4,
+                >,
+            ) {
+                controller.run(rx).await;
+            }
+        }
+
+        $spawner
+            .spawn($task_module::task($controller, $rx))
+            .unwrap();
+    };
+}
+
