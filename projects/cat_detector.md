@@ -49,13 +49,13 @@ graph TD
 The `model` crate contains pure, target-agnostic domain models, status telemetry types, and hardware peripheral interfaces (traits). It has **no dependency** on hardware, Embassy, or I/O.
 
 *   **Telemetry Models**:
-    *   `BatteryStatus`: Struct tracking voltage (mV), temperature (mC), and status state.
-    *   `MotorStatus`: Struct tracking speed percent, run status, and motor temperature.
-    *   `ThermalStatus`: Struct tracking ambient system temperature and overheating flags.
+    *   `BatteryStatus`: Enum tracking voltage (mV), temperature (mC), and status state (e.g. `VolTempState`).
+    *   `MotorStatus`: Enum tracking speed percent, run status, and motor temperature (e.g. `SpeedRunTemp`).
+    *   `ThermalStatus`: Enum tracking ambient system temperature and overheating flags (e.g. `TempOverheating`).
     *   `SystemStatus`: Enum representing the operating mode of the system (`Active` or `Sleep`).
-    *   `FuelGaugeTelemetry`: Struct representing cell `voltage_mv` and `state_of_charge` percentage.
-    *   `ProximityTelemetry`: Struct containing North, East, and West distance range values (in mm).
-    *   `SystemLedState`: Struct holding active NeoPixel color values (`r`, `g`, `b`).
+    *   `FuelGaugeTelemetry`: Enum representing cell voltage and state-of-charge percentage (e.g. `VolSoc`).
+    *   `ProximityTelemetry`: Enum containing North, East, and West distance range values (e.g. `Triple`).
+    *   `SystemLedState`: Enum holding active NeoPixel color values (e.g. `Rgb`).
 
 *   **Hardware Interfaces (Traits)**:
     *   `Motor`: Defines interfaces for motor driver control (`set_speed`, `stop`).

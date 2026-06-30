@@ -21,11 +21,7 @@ impl<N: ProximitySensor, E: ProximitySensor, W: ProximitySensor> SensorControlle
             sensor_north,
             sensor_east,
             sensor_west,
-            telemetry: ProximityTelemetry {
-                distance_north_mm: 0,
-                distance_east_mm: 0,
-                distance_west_mm: 0,
-            },
+            telemetry: ProximityTelemetry::Triple(0, 0, 0),
             periodic_enabled: true,
         }
     }
@@ -58,11 +54,7 @@ impl<N: ProximitySensor, E: ProximitySensor, W: ProximitySensor> SensorControlle
             .read_distance_mm()
             .map_err(SensorError::West)?;
 
-        self.telemetry = ProximityTelemetry {
-            distance_north_mm: dist_north,
-            distance_east_mm: dist_east,
-            distance_west_mm: dist_west,
-        };
+        self.telemetry = ProximityTelemetry::Triple(dist_north, dist_east, dist_west);
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         defmt::info!(

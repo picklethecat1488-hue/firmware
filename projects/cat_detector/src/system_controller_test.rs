@@ -39,9 +39,7 @@ fn test_system_controller_flow() {
 
     // Verify LED was updated to Sleep blue
     let led_state = LED_CHANNEL.try_receive().unwrap();
-    assert_eq!(led_state.r, 0);
-    assert_eq!(led_state.g, 0);
-    assert_eq!(led_state.b, 64);
+    assert_eq!(led_state, SystemLedState::Rgb(0, 0, 64));
 
     // Verify motor stop command was dispatched
     let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
@@ -53,16 +51,12 @@ fn test_system_controller_flow() {
 
     // Verify LED was updated to Active green
     let led_state = LED_CHANNEL.try_receive().unwrap();
-    assert_eq!(led_state.r, 0);
-    assert_eq!(led_state.g, 128);
-    assert_eq!(led_state.b, 0);
+    assert_eq!(led_state, SystemLedState::Rgb(0, 128, 0));
 
     // Trigger an alert
     controller.handle_command(SystemCommand::AlertTriggered);
     let led_state = LED_CHANNEL.try_receive().unwrap();
-    assert_eq!(led_state.r, 255);
-    assert_eq!(led_state.g, 0);
-    assert_eq!(led_state.b, 0);
+    assert_eq!(led_state, SystemLedState::Rgb(255, 0, 0));
 
     // Trigger a battery charging update
     controller.handle_command(SystemCommand::BatteryUpdate {
@@ -70,7 +64,5 @@ fn test_system_controller_flow() {
         charging: true,
     });
     let led_state = LED_CHANNEL.try_receive().unwrap();
-    assert_eq!(led_state.r, 128);
-    assert_eq!(led_state.g, 128);
-    assert_eq!(led_state.b, 0);
+    assert_eq!(led_state, SystemLedState::Rgb(128, 128, 0));
 }
