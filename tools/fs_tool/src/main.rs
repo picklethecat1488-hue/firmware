@@ -569,6 +569,9 @@ fn main() -> io::Result<()> {
                                     }
                                 }
                             }
+                            if !found_crash {
+                                println!("No stored crash logs found in filesystem.");
+                            }
                         }
                     }
                     Ok(None) => {

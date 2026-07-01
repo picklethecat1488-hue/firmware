@@ -86,3 +86,35 @@ Or when using the `probe-rs` tool to watch logs from an already running device:
 probe-rs run --chip RP2040
 ```
 Alternatively, for UART-based logging, configure the microcontroller's UART TX/RX pins using the hardware HAL (`embassy-rp::uart`).
+
+---
+
+## Flash Diagnostics Tool (`fs_tool`)
+
+We provide a host command-line utility, `fs_tool`, to inspect, query, and decode flash memory dumps from the microcontroller's sequential-storage partition.
+
+### 1. Build host fs_tool
+```bash
+cargo build --bin fs_tool --release
+```
+
+### 2. Extract flash partition
+To pull a raw binary flash memory dump from the Pico target using `probe-rs`:
+```bash
+probe-rs read-mem --chip RP2040 0x101C0000 262144 flash_dump.bin
+```
+
+### 3. Query directory files
+```bash
+cargo run --bin fs_tool -- --dump flash_dump.bin ls
+```
+
+### 4. Export telemetry to Rerun-compatible CSV
+```bash
+cargo run --bin fs_tool -- --dump flash_dump.bin export-telemetry telemetry.csv
+```
+
+### 5. Decode crash dumps to symbolicated backtraces
+```bash
+cargo run --bin fs_tool -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector
+```
