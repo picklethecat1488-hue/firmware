@@ -20,6 +20,23 @@ pub const UART_TX_PIN: u32 = 0;
 /// UART RX pin (GPIO 1)
 pub const UART_RX_PIN: u32 = 1;
 
+/// ToF Sensor 1 (North) XSHUT pin (GPIO 2)
+pub const TOF_NORTH_XSHUT_PIN: u32 = 2;
+/// ToF Sensor 2 (East) XSHUT pin (GPIO 3)
+pub const TOF_EAST_XSHUT_PIN: u32 = 3;
+/// ToF Sensor 3 (West) XSHUT pin (GPIO 6)
+pub const TOF_WEST_XSHUT_PIN: u32 = 6;
+
+/// ToF Sensor 1 (North) Interrupt pin (GPIO 7)
+pub const TOF_NORTH_INT_PIN: u32 = 7;
+/// ToF Sensor 2 (East) Interrupt pin (GPIO 8)
+pub const TOF_EAST_INT_PIN: u32 = 8;
+/// ToF Sensor 3 (West) Interrupt pin (GPIO 9)
+pub const TOF_WEST_INT_PIN: u32 = 9;
+
+/// Fuel Gauge Interrupt/Alert pin (GPIO 10)
+pub const FUEL_GAUGE_INT_PIN: u32 = 10;
+
 /// Start address of the filesystem storage partition in flash (offset from start of flash).
 pub const STORAGE_PARTITION_START: u32 = 0x1C_0000; // 1.75 MB
 /// End address of the filesystem storage partition in flash (2.00 MB limit).
