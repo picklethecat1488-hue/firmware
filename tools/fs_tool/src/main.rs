@@ -156,6 +156,18 @@ enum Commands {
 fn main() -> io::Result<()> {
     let cli = Cli::parse();
 
+    // Initialize the progress spinner
+    let spinner = indicatif::ProgressBar::new_spinner();
+    spinner.set_style(
+        indicatif::ProgressStyle::default_spinner()
+            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+            .template("{spinner:.green} {msg}")
+            .unwrap(),
+    );
+    spinner.enable_steady_tick(std::time::Duration::from_millis(80));
+
+    spinner.set_message("Loading flash dump file...");
+
     // Read flash dump file
     let mut file = File::open(&cli.dump)?;
     let mut data = Vec::new();
@@ -165,19 +177,24 @@ fn main() -> io::Result<()> {
     let flash_range = 0..flash.capacity() as u32;
 
     // Outer-scope variables to manage ELF file lifespans for Context references
-    let file_data;
-    let object_file;
+    #[allow(unused_assignments)]
+    let mut file_data = Vec::new();
+    #[allow(unused_assignments)]
+    let mut object_file = None;
     let mut context = None;
 
     if let Commands::CrashLog {
         elf: Some(elf_path),
     } = &cli.command
     {
+        spinner.set_message("Loading ELF and DWARF debug symbols...");
         file_data = std::fs::read(elf_path)?;
-        object_file = object::File::parse(&*file_data)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        object_file = Some(
+            object::File::parse(&*file_data)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
+        );
         context = Some(
-            addr2line::Context::new(&object_file)
+            addr2line::Context::new(object_file.as_ref().unwrap())
                 .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?,
         );
     }
@@ -187,6 +204,7 @@ fn main() -> io::Result<()> {
 
         match &cli.command {
             Commands::Ls => {
+                spinner.set_message("Reading directory (.dir)...");
                 let mut dir_buf = [0u8; 512];
                 let key = string_to_key(".dir");
                 let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
@@ -197,6 +215,8 @@ fn main() -> io::Result<()> {
                     &key,
                 )
                 .await;
+
+                spinner.finish_and_clear();
 
                 match res {
                     Ok(Some(list)) => {
@@ -220,6 +240,7 @@ fn main() -> io::Result<()> {
                 }
             }
             Commands::Cat { filename } => {
+                spinner.set_message(format!("Reading {}...", filename));
                 let key = string_to_key(filename);
                 let mut out_buf = vec![0u8; 1024 * 16]; // support up to 16KB files
 
@@ -231,6 +252,8 @@ fn main() -> io::Result<()> {
                     &key,
                 )
                 .await;
+
+                spinner.finish_and_clear();
 
                 match res {
                     Ok(Some(content)) => {
@@ -259,6 +282,7 @@ fn main() -> io::Result<()> {
                 }
             }
             Commands::ExportTelemetry { out_csv } => {
+                spinner.set_message("Fetching telemetry.rrd from filesystem...");
                 let key = string_to_key("telemetry.rrd");
                 let mut out_buf = vec![0u8; 1024 * 16]; // support up to 16KB files
 
@@ -274,6 +298,7 @@ fn main() -> io::Result<()> {
                 match res {
                     Ok(Some(content)) => {
                         if content.len() < 12 {
+                            spinner.finish_and_clear();
                             eprintln!(
                                 "Error: Telemetry file is too short ({} bytes)",
                                 content.len()
@@ -281,8 +306,10 @@ fn main() -> io::Result<()> {
                             std::process::exit(1);
                         }
 
+                        spinner.set_message("Parsing CBOR telemetry records...");
                         let len = content[0] as usize;
                         if len == 0 || len > 11 {
+                            spinner.finish_and_clear();
                             eprintln!("Error: Invalid telemetry header length byte ({})", len);
                             std::process::exit(1);
                         }
@@ -300,13 +327,9 @@ fn main() -> io::Result<()> {
                             }
                         }
 
-                        println!(
-                            "Parsed telemetry header: count={}, next_idx={}",
-                            count, next_idx
-                        );
-
                         let max_records = 45;
                         if count > max_records || next_idx > max_records {
+                            spinner.finish_and_clear();
                             eprintln!("Error: Invalid header count/next_idx in telemetry file");
                             std::process::exit(1);
                         }
@@ -336,6 +359,7 @@ fn main() -> io::Result<()> {
                             }
                         }
 
+                        spinner.set_message(format!("Writing records to {}...", out_csv));
                         let mut csv_file = File::create(out_csv)?;
                         writeln!(csv_file, "timestamp_us,record_type,val1,val2,val3,val4")?;
 
@@ -407,22 +431,25 @@ fn main() -> io::Result<()> {
                             }
                         }
 
-                        println!(
+                        spinner.finish_with_message(format!(
                             "Successfully exported {} telemetry records to {}",
                             count, out_csv
-                        );
+                        ));
                     }
                     Ok(None) => {
+                        spinner.finish_and_clear();
                         eprintln!("File not found: telemetry.rrd");
                         std::process::exit(1);
                     }
                     Err(e) => {
+                        spinner.finish_and_clear();
                         eprintln!("Error reading file: {:?}", e);
                         std::process::exit(1);
                     }
                 }
             }
             Commands::CrashLog { elf: _ } => {
+                spinner.set_message("Fetching directory list (.dir)...");
                 let mut dir_buf = [0u8; 512];
                 let key = string_to_key(".dir");
                 let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
@@ -434,6 +461,8 @@ fn main() -> io::Result<()> {
                 )
                 .await;
 
+                spinner.finish_and_clear();
+
                 match res {
                     Ok(Some(list)) => {
                         if let Ok(s) = std::str::from_utf8(list) {
@@ -441,8 +470,6 @@ fn main() -> io::Result<()> {
                             for filename in s.split('\n') {
                                 if filename.starts_with("crash_") && filename.ends_with(".log") {
                                     found_crash = true;
-                                    println!("Reading crash dump: {}", filename);
-
                                     let log_key = string_to_key(filename);
                                     let mut out_buf = vec![0u8; 1024 * 16];
                                     let content_res =
@@ -541,9 +568,6 @@ fn main() -> io::Result<()> {
                                         }
                                     }
                                 }
-                            }
-                            if !found_crash {
-                                println!("No stored crash logs found in filesystem.");
                             }
                         }
                     }

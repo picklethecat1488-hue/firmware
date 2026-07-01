@@ -16,3 +16,4 @@ addr2line = { version = "0.22", features = ["std-object"] }
 gimli = "0.29"
 object = "0.35"
 rustc-demangle = "0.1"
+indicatif = "0.17"
