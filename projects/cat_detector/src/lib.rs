@@ -49,6 +49,10 @@ pub const STACK_TOP: u32 = 0x2004_0000;
 pub const FLASH_START: u32 = 0x1000_0000;
 /// End address of flash memory mapping (FLASH_START + FLASH_SIZE).
 pub const FLASH_END: u32 = 0x1020_0000;
+/// Flash page write size in bytes.
+pub const FLASH_WRITE_SIZE: usize = 256;
+/// Flash erase block size in bytes.
+pub const FLASH_ERASE_SIZE: usize = 4096;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 mod bsp_target;
@@ -151,10 +155,13 @@ pub use controller::run_filesystem_task;
 
 /// Re-export the modular panic handler function
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-pub use firmware_lib::panic_handler::handle_panic;
+pub use firmware_lib::panic_handler::handle_panic_with_sizes;
 
 /// Re-export the modular panic handler initialization
 pub use firmware_lib::panic_handler::init as init_panic_handler;
+
+/// Re-export the modular panic handler time registration
+pub use firmware_lib::panic_handler::set_time_fn;
 
 /// Re-export the modular logging helper function
 pub use firmware_lib::panic_handler::log_system;

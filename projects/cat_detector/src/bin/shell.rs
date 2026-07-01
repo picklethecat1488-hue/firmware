@@ -6,6 +6,7 @@
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_main)]
 #![deny(missing_docs)]
+#![allow(static_mut_refs)]
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
@@ -20,11 +21,13 @@ use {
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    cat_detector::handle_panic::<
+    cat_detector::handle_panic_with_sizes::<
         { cat_detector::FLASH_SIZE },
         { cat_detector::STACK_TOP },
         { cat_detector::FLASH_START },
         { cat_detector::FLASH_END },
+        { cat_detector::FLASH_WRITE_SIZE },
+        { cat_detector::FLASH_ERASE_SIZE },
     >(info);
 }
 
@@ -197,9 +200,24 @@ async fn main(spawner: Spawner) {
         Ok(())
     });
 
+    // Register system time function for the panic handler
+    cat_detector::set_time_fn(cat_detector::system_time);
+
     // Initialize the modular panic handler
+    static mut PANIC_FLASH: Option<
+        embassy_rp::flash::Flash<
+            'static,
+            embassy_rp::peripherals::FLASH,
+            embassy_rp::flash::Blocking,
+            { cat_detector::FLASH_SIZE },
+        >,
+    > = None;
+    let panic_flash = unsafe {
+        PANIC_FLASH = Some(embassy_rp::flash::Flash::new_blocking(board.flash));
+        PANIC_FLASH.as_mut().unwrap()
+    };
     cat_detector::init_panic_handler(
-        board.flash,
+        panic_flash,
         cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
     );
 

@@ -147,8 +147,8 @@ Persistent files (such as calibration variables or telemetry logs) are stored in
 > [!IMPORTANT]
 > The `FilesystemController` wraps the underlying raw flash in `ProfilingFlash`. This interceptor automatically monitors flash write health and logs exact erase telemetry.
 
-### 4.1. Diagnostics & Crash Logging (`rp2040_panic_handler`)
-To capture system crash data reliably without relying on active runtime loops, a dedicated **Panic Handler Crate** (`rp2040_panic_handler`) is integrated. It operates directly at the low-level panic/NMI boundary:
+### 4.1. Diagnostics & Crash Logging (`firmware_lib::panic_handler`)
+To capture system crash data reliably without relying on active runtime loops, a generalized **ARMv6m+ (Thumb) Panic Handler** module (`firmware_lib::panic_handler`) is integrated. It operates directly at the low-level panic/NMI boundary:
 1.  **Stack Scanner**: Performs a heuristic stack scan on the Cortex-M0+ stack, extracting candidate return program counters (PCs) within the flash code segment.
 2.  **Revision & Info Capture**: Retrieves the package version/revision hash and detailed panic information (file, line number, panic message).
 3.  **Circular System Logs**: Captures the last 1024 bytes of diagnostic logs from a global, critical-section protected `CRASH_LOG_BUFFER`.
