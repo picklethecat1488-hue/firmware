@@ -33,6 +33,16 @@ impl controller::battery_controller::BatteryAlertPin for AlertPinWrapper {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+struct ProximityPinWrapper(embassy_rp::gpio::Flex<'static>);
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl controller::sensor_controller::DataReadyPin for ProximityPinWrapper {
+    async fn wait_for_data_ready(&mut self) {
+        self.0.wait_for_low().await;
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     cat_detector::handle_panic_with_sizes::<
@@ -110,7 +120,17 @@ async fn main(spawner: Spawner) {
     let tof_east = DummyProximitySensor::new(150);
     let tof_west = DummyProximitySensor::new(200);
 
-    let sensor_ctrl_north = SensorController::new_with_fusion(
+    let pin_north = board.gpio_pins[cat_detector::TOF_NORTH_INT_PIN as usize]
+        .take()
+        .expect("North ToF interrupt pin must be available");
+    let pin_east = board.gpio_pins[cat_detector::TOF_EAST_INT_PIN as usize]
+        .take()
+        .expect("East ToF interrupt pin must be available");
+    let pin_west = board.gpio_pins[cat_detector::TOF_WEST_INT_PIN as usize]
+        .take()
+        .expect("West ToF interrupt pin must be available");
+
+    let sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
         0,
         tof_north,
         cat_detector::SYSTEM_CHANNEL.sender(),
@@ -118,9 +138,10 @@ async fn main(spawner: Spawner) {
             sensor_id: id,
             distance_mm: dist,
         },
+        ProximityPinWrapper(pin_north),
     );
 
-    let sensor_ctrl_east = SensorController::new_with_fusion(
+    let sensor_ctrl_east = SensorController::new_with_fusion_and_interrupt(
         1,
         tof_east,
         cat_detector::SYSTEM_CHANNEL.sender(),
@@ -128,9 +149,10 @@ async fn main(spawner: Spawner) {
             sensor_id: id,
             distance_mm: dist,
         },
+        ProximityPinWrapper(pin_east),
     );
 
-    let sensor_ctrl_west = SensorController::new_with_fusion(
+    let sensor_ctrl_west = SensorController::new_with_fusion_and_interrupt(
         2,
         tof_west,
         cat_detector::SYSTEM_CHANNEL.sender(),
@@ -138,6 +160,7 @@ async fn main(spawner: Spawner) {
             sensor_id: id,
             distance_mm: dist,
         },
+        ProximityPinWrapper(pin_west),
     );
 
     let thermal_ctrl = ThermalController::new_with_shutdown(
@@ -216,6 +239,7 @@ async fn main(spawner: Spawner) {
         cat_detector::SENSOR_NORTH_CHANNEL.receiver(),
         DummyProximitySensor,
         CriticalSectionRawMutex,
+        ProximityPinWrapper,
         cat_detector::system_controller::SystemCommand
     );
 
@@ -226,6 +250,7 @@ async fn main(spawner: Spawner) {
         cat_detector::SENSOR_EAST_CHANNEL.receiver(),
         DummyProximitySensor,
         CriticalSectionRawMutex,
+        ProximityPinWrapper,
         cat_detector::system_controller::SystemCommand
     );
 
@@ -236,6 +261,7 @@ async fn main(spawner: Spawner) {
         cat_detector::SENSOR_WEST_CHANNEL.receiver(),
         DummyProximitySensor,
         CriticalSectionRawMutex,
+        ProximityPinWrapper,
         cat_detector::system_controller::SystemCommand
     );
 

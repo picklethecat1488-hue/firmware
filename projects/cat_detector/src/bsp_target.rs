@@ -128,6 +128,20 @@ impl<'d> Board<'d> {
             pin.set_pull(Pull::Up);
         }
 
+        // 4. Configure ToF Sensor Interrupt pins (GP7, GP8, GP9) as inputs with pull-ups (active-low, open-drain)
+        if let Some(ref mut pin) = gpio_pins[crate::TOF_NORTH_INT_PIN as usize] {
+            pin.set_as_input();
+            pin.set_pull(Pull::Up);
+        }
+        if let Some(ref mut pin) = gpio_pins[crate::TOF_EAST_INT_PIN as usize] {
+            pin.set_as_input();
+            pin.set_pull(Pull::Up);
+        }
+        if let Some(ref mut pin) = gpio_pins[crate::TOF_WEST_INT_PIN as usize] {
+            pin.set_as_input();
+            pin.set_pull(Pull::Up);
+        }
+
         Self {
             uart,
             i2c,

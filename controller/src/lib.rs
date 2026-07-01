@@ -180,6 +180,7 @@ macro_rules! run_sensor_task {
         $rx:expr,
         $sensor_type:ty,
         $raw_mutex:ty,
+        $pin_type:ty,
         $cmd_type:ty
     ) => {
         mod $task_module {
@@ -191,6 +192,7 @@ macro_rules! run_sensor_task {
                     'static,
                     $sensor_type,
                     $raw_mutex,
+                    $pin_type,
                     $cmd_type,
                 >,
                 rx: embassy_sync::channel::Receiver<
