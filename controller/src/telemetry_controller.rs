@@ -2,7 +2,7 @@
 
 #![deny(missing_docs)]
 
-use controller::filesystem_controller::FilesystemClient;
+use crate::filesystem_controller::FilesystemClient;
 use model::telemetry::TelemetryRecord;
 
 /// Returns the current system uptime in microseconds since boot (64-bit precision).
@@ -18,7 +18,7 @@ pub fn system_time() -> u64 {
 }
 
 /// Struct that maintains all of the telemetry state, RRD buffer, and filesystem client reference.
-pub struct Telemetry<const MAX_RECORDS: usize = 45, const BUFFER_SIZE: usize = 1024> {
+pub struct TelemetryController<const MAX_RECORDS: usize = 45, const BUFFER_SIZE: usize = 1024> {
     file_buf: [u8; BUFFER_SIZE],
     count: u32,
     next_idx: u32,
@@ -26,18 +26,24 @@ pub struct Telemetry<const MAX_RECORDS: usize = 45, const BUFFER_SIZE: usize = 1
     fs: FilesystemClient,
 }
 
-impl Default for Telemetry<45, 1024> {
+/// Type alias for compatibility with the old Telemetry struct name.
+pub type Telemetry<const MAX_RECORDS: usize = 45, const BUFFER_SIZE: usize = 1024> =
+    TelemetryController<MAX_RECORDS, BUFFER_SIZE>;
+
+impl Default for TelemetryController<45, 1024> {
     fn default() -> Self {
         static DUMMY_CHANNEL: embassy_sync::channel::Channel<
             embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-            controller::filesystem_controller::FsRequest,
+            crate::filesystem_controller::FsRequest,
             16,
         > = embassy_sync::channel::Channel::new();
         Self::new(FilesystemClient::new(DUMMY_CHANNEL.sender()), system_time)
     }
 }
 
-impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize> Telemetry<MAX_RECORDS, BUFFER_SIZE> {
+impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
+    TelemetryController<MAX_RECORDS, BUFFER_SIZE>
+{
     /// Total size of the RRD file including the 12-byte CBOR header.
     pub const FILE_SIZE: usize = 12 + MAX_RECORDS * 20;
 
@@ -47,7 +53,7 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize> Telemetry<MAX_RECORDS, 
         }
     };
 
-    /// Creates a new `Telemetry` instance, initializing the buffer, indices, timestamp function, and filesystem client.
+    /// Creates a new `TelemetryController` instance, initializing the buffer, indices, timestamp function, and filesystem client.
     pub const fn new(fs: FilesystemClient, time_fn: fn() -> u64) -> Self {
         #[allow(path_statements)]
         Self::_CHECK;
@@ -123,7 +129,8 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize> Telemetry<MAX_RECORDS, 
                 self.next_idx = 0;
             }
         } else {
-            crate::log_info!("Telemetry: telemetry.rrd not found or invalid, initializing...");
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::info!("Telemetry: telemetry.rrd not found or invalid, initializing...");
             self.file_buf.fill(0);
             self.count = 0;
             self.next_idx = 0;
@@ -205,37 +212,21 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize> Telemetry<MAX_RECORDS, 
         }
         true
     }
-}
 
-/// A macro to define and spawn the Telemetry task.
-#[macro_export]
-macro_rules! run_telemetry_task {
-    ($spawner:expr, $task_module:ident, $client:expr, $rx:expr, $max_records:expr) => {
-        mod $task_module {
-            use super::*;
-
-            #[embassy_executor::task]
-            pub async fn task(
-                client: controller::filesystem_controller::FilesystemClient,
-                rx: embassy_sync::channel::Receiver<
-                    'static,
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    model::telemetry::TelemetryRecord,
-                    16,
-                >,
-            ) {
-                let mut telemetry = $crate::telemetry::Telemetry::<
-                    $max_records,
-                    { 12 + $max_records * 20 + 128 },
-                >::new(client, $crate::telemetry::system_time);
-                let _ = telemetry.init().await;
-                loop {
-                    let record = rx.receive().await;
-                    let _ = telemetry.push_record(record).await;
-                }
-            }
+    /// Starts the controller's main run loop, processing records.
+    pub async fn run(
+        mut self,
+        rx: embassy_sync::channel::Receiver<
+            'static,
+            embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+            TelemetryRecord,
+            16,
+        >,
+    ) -> ! {
+        let _ = self.init().await;
+        loop {
+            let record = rx.receive().await;
+            let _ = self.push_record(record).await;
         }
-
-        $spawner.spawn($task_module::task($client, $rx)).unwrap();
-    };
+    }
 }

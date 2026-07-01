@@ -17,6 +17,7 @@ graph TD
         SC["SensorController (instances: North, East, West)"]
         LC["LedController"]
         FSC["FilesystemController"]
+        TMC["TelemetryController"]
     end
 
     subgraph Model Crate [model]
@@ -35,12 +36,13 @@ graph TD
         Main["main.rs (Embassy Spawner)"]
     end
 
-    Main -->|Orchestrates| MC & BC & TC & SC & LC & FSC
+    Main -->|Orchestrates| MC & BC & TC & SC & LC & FSC & TMC
     MC -->|Transitions| FSM
     MC & SC & LC -->|Drives| PT
     BC & TC -->|Queries| BT
     BC & TC -->|Updates| TS
     FSC -->|Persists Data| Flash[("Flash Memory")]
+    TMC -->|Writes Ring Buffer| FSC
 ```
 
 ---
@@ -166,6 +168,7 @@ sequenceDiagram
     participant LC as LedController
     participant BC as BatteryController
     participant TC as ThermalController
+    participant TMC as TelemetryController
 
     Main->>Main: Board::init() (Pico Pins/I2C Setup)
     Main->>SC: Spawn run_system_task
@@ -176,6 +179,7 @@ sequenceDiagram
     Main->>LC: Spawn run_led_task
     Main->>BC: Spawn run_battery_task
     Main->>TC: Spawn run_thermal_task
+    Main->>TMC: Spawn run_telemetry_task
 
     par System Control Loop
         SC->>SC: Monitor inactivity (30s timeout)
@@ -184,6 +188,7 @@ sequenceDiagram
         MC->>MC: Read INA219 Current Sensor
         MC->>MC: Update FSM (Stall & Dry Run Protection)
         MC->>MC: Adjust PWM Speed
+        MC->>TMC: Send TelemetryRecord
     and Proximity Sensor Loops
         SN->>SC: SensorUpdate (0, distance_mm)
         SE->>SC: SensorUpdate (1, distance_mm)
@@ -191,12 +196,17 @@ sequenceDiagram
         Note over SC: Perform Data Fusion:<br/>If any sensor < 300mm,<br/>trigger Active status & start Pump.
     and LED Loop
         LC->>LC: Process RGB updates from SystemController
+        LC->>TMC: Send TelemetryRecord
     and Battery Loop
         BC->>BC: Read MAX17048 Fuel Gauge
-        BC->>BC: Log BatteryStatus
+        BC->>TMC: Send TelemetryRecord
     and Thermal Loop
         TC->>TC: Read Temp Sensor
         TC->>TC: Check for Overheating (>45°C)
+        TC->>TMC: Send TelemetryRecord
+    and Telemetry Loop
+        TMC->>TMC: Receive TelemetryRecord
+        TMC->>FSC: Write telemetry.rrd (via FsRequest)
     end
 ```
 

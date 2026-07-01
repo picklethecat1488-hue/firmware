@@ -15,6 +15,8 @@ pub mod motor_controller;
 pub mod sensor_controller;
 /// Fountain state machine.
 pub mod state_machine;
+/// Telemetry storage pipeline and task.
+pub mod telemetry_controller;
 /// Thermal monitoring and regulation controller.
 pub mod thermal_controller;
 
@@ -277,6 +279,45 @@ macro_rules! run_filesystem_task {
                 >,
             ) {
                 $crate::filesystem_controller::run_filesystem_task(fs, rx).await;
+            }
+        }
+
+        $spawner
+            .spawn($task_module::task($controller, $rx))
+            .unwrap();
+    };
+}
+
+/// A macro to define and spawn the Telemetry Controller task.
+///
+/// Generates the task definition generic over the max record count and buffer size,
+/// then spawns it on the provided Embassy spawner.
+#[macro_export]
+macro_rules! run_telemetry_task {
+    (
+        $spawner:expr,
+        $task_module:ident,
+        $controller:expr,
+        $rx:expr,
+        $max_records:expr
+    ) => {
+        mod $task_module {
+            use super::*;
+
+            #[embassy_executor::task]
+            pub async fn task(
+                controller: $crate::telemetry_controller::TelemetryController<
+                    $max_records,
+                    { 12 + $max_records * 20 + 128 },
+                >,
+                rx: embassy_sync::channel::Receiver<
+                    'static,
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    model::telemetry::TelemetryRecord,
+                    16,
+                >,
+            ) {
+                controller.run(rx).await;
             }
         }
 

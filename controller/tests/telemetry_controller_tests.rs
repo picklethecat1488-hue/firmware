@@ -1,5 +1,5 @@
 use controller::filesystem_controller::{FilesystemClient, FilesystemController};
-use firmware_lib::telemetry::Telemetry;
+use controller::telemetry_controller::TelemetryController;
 use model::types::{BatteryState, BatteryStatus, TelemetryRecord};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -56,7 +56,7 @@ impl embedded_storage_async::nor_flash::NorFlash for MockFlash {
 impl embedded_storage_async::nor_flash::MultiwriteNorFlash for MockFlash {}
 
 #[test]
-fn test_telemetry_ring_buffer() {
+fn test_telemetry_controller_ring_buffer() {
     futures::executor::block_on(async {
         let flash = MockFlash::new();
         let fs = FilesystemController::new(flash, 0..1024 * 64);
@@ -68,7 +68,7 @@ fn test_telemetry_ring_buffer() {
         > = embassy_sync::channel::Channel::new();
 
         let client = FilesystemClient::new(FS_CHANNEL.sender());
-        let mut telemetry = Telemetry::<45, 1024>::new(client, get_mock_time);
+        let mut telemetry = TelemetryController::<45, 1024>::new(client, get_mock_time);
 
         let fs_fut =
             controller::filesystem_controller::run_filesystem_task(fs, FS_CHANNEL.receiver());

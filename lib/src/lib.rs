@@ -9,5 +9,8 @@ pub mod gesture_detector;
 /// RP2040 panic handler module.
 pub mod panic_handler;
 
-/// Telemetry ring buffer and task.
-pub mod telemetry;
+/// Telemetry storage pipeline and task.
+pub use controller::telemetry_controller as telemetry;
+
+/// Re-export run_telemetry_task macro.
+pub use controller::run_telemetry_task;

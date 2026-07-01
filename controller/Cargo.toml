@@ -11,6 +11,7 @@ sequential-storage = "3.0.0"
 embedded-storage-async = "0.4.1"
 heapless = "0.8.0"
 embedded-io = "0.6.0"
+minicbor = "0.20.0"
 
 [target.'cfg(all(target_arch = "arm", target_os = "none"))'.dependencies]
 embassy-time = { version = "0.4.0", features = ["defmt"] }

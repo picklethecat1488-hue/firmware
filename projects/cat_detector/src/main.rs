@@ -11,6 +11,7 @@ use {
     controller::led_controller::LedController,
     controller::motor_controller::MotorController,
     controller::sensor_controller::SensorController,
+    controller::telemetry_controller::TelemetryController,
     controller::thermal_controller::ThermalController,
     defmt_rtt as _,
     embassy_executor::Spawner,
@@ -240,10 +241,12 @@ async fn main(spawner: Spawner) {
     let client = controller::filesystem_controller::FilesystemClient::new(
         cat_detector::FILESYSTEM_CHANNEL.sender(),
     );
+    let telemetry_ctrl =
+        TelemetryController::<45, { 12 + 45 * 20 + 128 }>::new(client, cat_detector::system_time);
     cat_detector::run_telemetry_task!(
         spawner,
         telemetry_task,
-        client,
+        telemetry_ctrl,
         cat_detector::TELEMETRY_CHANNEL.receiver(),
         45
     );
