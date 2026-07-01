@@ -1,6 +1,11 @@
-use super::*;
+use cat_detector::system_controller::{SystemCommand, SystemController};
+use controller::battery_controller::BatteryCommand;
+use controller::motor_controller::MotorCommand;
+use controller::sensor_controller::SensorCommand;
+use controller::thermal_controller::ThermalCommand;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
+use model::types::{SystemLedState, SystemStatus};
 
 #[test]
 fn test_system_controller_flow() {
@@ -210,13 +215,13 @@ fn test_power_down_and_gesture_detection() {
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::SolidGreen);
 
-    // Clear motor/LED channels
-    while MOTOR_CHANNEL.try_receive().is_ok() {}
-    while LED_CHANNEL.try_receive().is_ok() {}
-
     // 4. Simulate simultaneous press on East & West ToF sensors (distance < 100mm)
     controller.distance_east = 50;
     controller.distance_west = 50;
+
+    // Clear motor/LED channels
+    while MOTOR_CHANNEL.try_receive().is_ok() {}
+    while LED_CHANNEL.try_receive().is_ok() {}
 
     // Start gesture at t = 0
     controller.update_gesture(0);

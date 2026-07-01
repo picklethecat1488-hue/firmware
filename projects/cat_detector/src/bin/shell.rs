@@ -7,8 +7,6 @@
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_main)]
 #![deny(missing_docs)]
 
-use embedded_cli::Command;
-
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
     defmt_rtt as _,
@@ -62,34 +60,8 @@ impl<'d, T: embassy_rp::uart::Instance, M: embassy_rp::uart::Mode> IoWrite
     }
 }
 
-/// Derived command enum representing all supported user commands.
-#[allow(dead_code)]
-#[derive(Debug, Command)]
-enum CliCommand {
-    /// Motor speed control (motor <speed>)
-    Motor {
-        /// Speed value (0-100)
-        speed: u8,
-    },
-    /// Stop the motor
-    Stop,
-    /// Query battery voltage and status
-    Battery,
-    /// Query thermal sensor and status
-    Thermal,
-    /// Query proximity (ToF) sensors
-    Proximity,
-    /// Wake the system to Active state
-    Wake,
-    /// Put the system to Sleep state
-    Sleep,
-    /// Simulate activity event
-    Activity,
-    /// Trigger a panic to test the crash dump / panic flow
-    Crash,
-    /// Show help and usage summary
-    Help,
-}
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+use cat_detector::CliCommand;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 struct CliProcessor;
@@ -245,7 +217,3 @@ async fn main(spawner: Spawner) {
 /// Dummy host entry point to satisfy Cargo compilation requirements.
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 fn main() {}
-
-#[cfg(test)]
-#[path = "../shell_tests.rs"]
-mod shell_tests;

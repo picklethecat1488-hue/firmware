@@ -1,5 +1,5 @@
-use super::*;
-use controller::filesystem_controller::FilesystemController;
+use controller::filesystem_controller::{FilesystemClient, FilesystemController};
+use firmware_lib::telemetry::Telemetry;
 use model::types::{BatteryState, BatteryStatus, TelemetryRecord};
 use std::sync::atomic::{AtomicU64, Ordering};
 

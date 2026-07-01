@@ -207,10 +207,6 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize> Telemetry<MAX_RECORDS, 
     }
 }
 
-#[cfg(test)]
-#[path = "telemetry_test.rs"]
-mod tests;
-
 /// A macro to define and spawn the Telemetry task.
 #[macro_export]
 macro_rules! run_telemetry_task {

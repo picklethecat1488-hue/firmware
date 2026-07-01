@@ -1,4 +1,4 @@
-use super::*;
+use controller::filesystem_controller::{FilesystemController, ProfilingFlash};
 
 struct MockFlash {
     data: [u8; 1024 * 64],
@@ -57,7 +57,7 @@ fn test_filesystem_controller_flow() {
         assert_eq!(fs.flash.erase_count(), 0);
         // Trigger a manual page erase via the controller's flash interface
         use embedded_storage_async::nor_flash::NorFlash;
-        fs.flash.erase(0, 1024).await.unwrap();
+        assert!(fs.flash.erase(0, 1024).await.is_ok());
         assert_eq!(fs.flash.erase_count(), 1);
 
         // Initially no files

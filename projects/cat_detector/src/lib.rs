@@ -189,3 +189,31 @@ pub fn system_time() -> u64 {
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 defmt::timestamp!("{=u64:us}", system_time());
+
+/// Derived command enum representing all supported user commands.
+#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
+pub enum CliCommand {
+    /// Motor speed control (motor <speed>)
+    Motor {
+        /// Speed value (0-100)
+        speed: u8,
+    },
+    /// Stop the motor
+    Stop,
+    /// Query battery voltage and status
+    Battery,
+    /// Query thermal sensor and status
+    Thermal,
+    /// Query proximity (ToF) sensors
+    Proximity,
+    /// Wake the system to Active state
+    Wake,
+    /// Put the system to Sleep state
+    Sleep,
+    /// Simulate activity event
+    Activity,
+    /// Trigger a panic to test the crash dump / panic flow
+    Crash,
+    /// Show help and usage summary
+    Help,
+}

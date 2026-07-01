@@ -1,4 +1,5 @@
-use super::*;
+use model::telemetry::TelemetryRecord;
+use model::types::*;
 
 #[test]
 fn test_cbor_serialization() {

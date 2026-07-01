@@ -49,3 +49,25 @@ fn test_motor_controller_flow() {
     assert_eq!(controller.state(), MotorState::Off); // fallback safety transition complete
     assert_eq!(controller.motor.speed, 0); // motor should be stopped
 }
+
+#[test]
+fn test_led_controller_flow() {
+    futures::executor::block_on(async {
+        let mock_led = peripherals::mock::MockLed::new();
+        let mut controller = controller::led_controller::LedController::new(mock_led);
+
+        assert_eq!(
+            controller.current_state(),
+            model::types::SystemLedState::Off
+        );
+
+        controller
+            .set_pattern(model::types::SystemLedState::SolidGreen)
+            .await
+            .unwrap();
+        assert_eq!(
+            controller.current_state(),
+            model::types::SystemLedState::SolidGreen
+        );
+    });
+}

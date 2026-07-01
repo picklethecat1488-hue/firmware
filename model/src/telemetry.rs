@@ -65,7 +65,3 @@ impl TelemetryRecord {
         Some((timestamp_us, record))
     }
 }
-
-#[cfg(test)]
-#[path = "telemetry_test.rs"]
-mod tests;

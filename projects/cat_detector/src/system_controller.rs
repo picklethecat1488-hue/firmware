@@ -51,9 +51,12 @@ pub struct SystemController<MutexRaw: RawMutex + 'static, const N: usize> {
     battery_tx: Sender<'static, MutexRaw, BatteryCommand, N>,
     thermal_tx: Sender<'static, MutexRaw, ThermalCommand, N>,
     led_tx: Sender<'static, MutexRaw, SystemLedState, N>,
-    distance_north: u16,
-    distance_east: u16,
-    distance_west: u16,
+    /// Distance reading from the North sensor.
+    pub distance_north: u16,
+    /// Distance reading from the East sensor.
+    pub distance_east: u16,
+    /// Distance reading from the West sensor.
+    pub distance_west: u16,
     time_in_active: u32,
     battery_critical: bool,
     thermal_critical: bool,
@@ -367,7 +370,3 @@ macro_rules! run_system_task {
             .unwrap();
     };
 }
-
-#[cfg(test)]
-#[path = "system_controller_test.rs"]
-mod tests;

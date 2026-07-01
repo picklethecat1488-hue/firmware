@@ -127,7 +127,7 @@ impl<F: NorFlash + MultiwriteNorFlash> MultiwriteNorFlash for ProfilingFlash<F> 
 /// File Controller managing raw files/telemetry in flash using sequential-storage map.
 pub struct FilesystemController<F: NorFlash + MultiwriteNorFlash> {
     /// The underlying flash driver instance (possibly wrapped in profiling)
-    flash: F,
+    pub flash: F,
     /// The physical partition address range in flash (start..end byte offsets)
     range: Range<u32>,
 }
@@ -428,7 +428,3 @@ pub async fn run_filesystem_task<F: NorFlash + MultiwriteNorFlash>(
         }
     }
 }
-
-#[cfg(test)]
-#[path = "filesystem_controller_test.rs"]
-mod tests;

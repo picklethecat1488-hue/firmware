@@ -372,6 +372,3 @@ pub fn handle_panic<
 
     cortex_m::asm::udf();
 }
-
-#[cfg(test)]
-mod tests;

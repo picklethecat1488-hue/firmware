@@ -1,4 +1,4 @@
-use super::*;
+use cat_detector::CliCommand;
 use embedded_cli::cli::CliBuilder;
 use embedded_cli::command::RawCommand;
 use embedded_cli::service::{CommandProcessor, FromRaw, ProcessError};

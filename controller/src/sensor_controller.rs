@@ -153,7 +153,3 @@ impl<
         }
     }
 }
-
-#[cfg(test)]
-#[path = "sensor_controller_test.rs"]
-mod tests;
