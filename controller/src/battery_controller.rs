@@ -158,6 +158,12 @@ impl<'a, M: RawMutex, B: FuelGauge, Pin: BatteryAlertPin, Cmd: Clone + core::fmt
             16,
         >,
     ) -> ! {
+        // Configure alerts on boot (3.0V low threshold, 4.2V high threshold, 10% SOC empty alert, enable 1% SOC change alert)
+        {
+            let mut bat = self.battery.lock().await;
+            let _ = bat.configure_alerts(3000, 4200, 10, true);
+        }
+
         loop {
             let rx_fut = command_rx.receive();
             let alert_fut = async {
@@ -178,7 +184,29 @@ impl<'a, M: RawMutex, B: FuelGauge, Pin: BatteryAlertPin, Cmd: Clone + core::fmt
                 },
                 // Fuel gauge alert interrupt triggered
                 embassy_futures::select::Either3::Second(_) => {
-                    let _ = self.update(Some(&telemetry_tx)).await;
+                    let mut is_voltage_alert = false;
+                    let mut is_soc_alert = false;
+                    {
+                        let mut bat = self.battery.lock().await;
+                        if let Ok((v_alert, soc_alert)) = bat.check_and_clear_alerts() {
+                            is_voltage_alert = v_alert;
+                            is_soc_alert = soc_alert;
+                        }
+                    }
+
+                    if is_voltage_alert {
+                        // Put the system into PowerOff/PowerDown mode by treating it like a critical battery alert
+                        self.state = BatteryState::Low;
+                        if let (Some(tx), Some(f)) = (&self.system_tx, self.update_fn) {
+                            // SOC = 0, charging = false triggers battery_critical and SystemCommand::PowerDown in SystemController
+                            let _ = tx.try_send(f(0, false));
+                        }
+                    } else if is_soc_alert {
+                        let _ = self.update(Some(&telemetry_tx)).await;
+                    } else {
+                        // Default fallback
+                        let _ = self.update(Some(&telemetry_tx)).await;
+                    }
                 }
                 // Periodic update interval elapsed
                 embassy_futures::select::Either3::Third(_) => {
