@@ -2,7 +2,7 @@
 
 #![deny(missing_docs)]
 
-use embassy_sync::blocking_mutex::raw::RawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use model::interfaces::FuelGauge;
 
@@ -16,17 +16,37 @@ pub enum BatteryState {
 }
 
 /// A controller that periodically monitors battery status.
-pub struct BatteryController<'a, M: RawMutex, B> {
+pub struct BatteryController<'a, M: RawMutex, B, Cmd = ()> {
     battery: &'a Mutex<M, B>,
     state: BatteryState,
+    system_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
+    update_fn: Option<fn(u8, bool) -> Cmd>,
 }
 
-impl<'a, M: RawMutex, B: FuelGauge> BatteryController<'a, M, B> {
+impl<'a, M: RawMutex, B: FuelGauge, Cmd: Clone + core::fmt::Debug>
+    BatteryController<'a, M, B, Cmd>
+{
     /// Creates a new battery controller referencing a shared battery peripheral.
     pub fn new(battery: &'a Mutex<M, B>) -> Self {
         Self {
             battery,
             state: BatteryState::Ok,
+            system_tx: None,
+            update_fn: None,
+        }
+    }
+
+    /// Creates a new battery controller with system notification capabilities.
+    pub fn new_with_system(
+        battery: &'a Mutex<M, B>,
+        system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        update_fn: fn(u8, bool) -> Cmd,
+    ) -> Self {
+        Self {
+            battery,
+            state: BatteryState::Ok,
+            system_tx: Some(system_tx),
+            update_fn: Some(update_fn),
         }
     }
 
@@ -36,16 +56,45 @@ impl<'a, M: RawMutex, B: FuelGauge> BatteryController<'a, M, B> {
     }
 
     /// Updates the battery status by locking and reading the peripheral.
-    pub async fn update(&mut self) -> Result<(), B::Error> {
-        let voltage = {
+    pub async fn update(
+        &mut self,
+        telemetry_tx: Option<
+            &embassy_sync::channel::Sender<
+                '_,
+                CriticalSectionRawMutex,
+                model::telemetry::TelemetryRecord,
+                16,
+            >,
+        >,
+    ) -> Result<(), B::Error> {
+        let (voltage, soc) = {
             let mut bat = self.battery.lock().await;
-            bat.read_voltage_mv()?
+            let v = bat.read_voltage_mv()?;
+            let soc = bat.read_state_of_charge().unwrap_or(100);
+            (v, soc)
         };
+        let charging = false;
 
         if voltage < 3500 {
             self.state = BatteryState::Low;
         } else {
             self.state = BatteryState::Ok;
+        }
+
+        if let (Some(tx), Some(f)) = (&self.system_tx, self.update_fn) {
+            tx.try_send(f(soc, charging)).unwrap();
+        }
+
+        if let Some(tx) = telemetry_tx {
+            let battery_state = match self.state {
+                BatteryState::Ok => model::types::BatteryState::Ok,
+                BatteryState::Low => model::types::BatteryState::Low,
+            };
+            let status = model::types::BatteryStatus::VolTempState(voltage, 25000, battery_state);
+            let _ = tx.try_send(model::telemetry::TelemetryRecord::Battery(status));
+            let _ = tx.try_send(model::telemetry::TelemetryRecord::FuelGauge(
+                model::types::FuelGaugeTelemetry::VolSoc(voltage, soc),
+            ));
         }
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -62,6 +111,12 @@ impl<'a, M: RawMutex, B: FuelGauge> BatteryController<'a, M, B> {
     pub async fn run(
         mut self,
         command_rx: embassy_sync::channel::Receiver<'static, M, BatteryCommand, 4>,
+        telemetry_tx: embassy_sync::channel::Sender<
+            'static,
+            CriticalSectionRawMutex,
+            model::telemetry::TelemetryRecord,
+            16,
+        >,
     ) -> ! {
         loop {
             match embassy_time::with_timeout(
@@ -72,11 +127,11 @@ impl<'a, M: RawMutex, B: FuelGauge> BatteryController<'a, M, B> {
             {
                 Ok(cmd) => match cmd {
                     BatteryCommand::CheckStatus => {
-                        let _ = self.update().await;
+                        let _ = self.update(Some(&telemetry_tx)).await;
                     }
                 },
                 Err(_timeout) => {
-                    let _ = self.update().await;
+                    let _ = self.update(Some(&telemetry_tx)).await;
                 }
             }
         }

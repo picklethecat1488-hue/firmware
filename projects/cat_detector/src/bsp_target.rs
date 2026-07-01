@@ -29,9 +29,53 @@ impl<'d> Board<'d> {
     /// # Arguments
     /// * `p` - The RP2040 peripheral set.
     pub fn init(p: Peripherals) -> Self {
+        // 1. Perform I2C bus unstuck on I2C0 (GP4 SDA, GP5 SCL) using raw registers
+        // to avoid taking ownership of Pin types before constructing I2c.
+        unsafe {
+            const SIO_BASE: u32 = 0xd000_0000;
+            const SIO_GPIO_OUT_SET: *mut u32 = (SIO_BASE + 0x14) as *mut u32;
+            const SIO_GPIO_OUT_CLR: *mut u32 = (SIO_BASE + 0x18) as *mut u32;
+            const SIO_GPIO_OE_SET: *mut u32 = (SIO_BASE + 0x24) as *mut u32;
+            const SIO_GPIO_IN: *const u32 = (SIO_BASE + 0x04) as *const u32;
+
+            const IO_BANK0_BASE: u32 = 0x4001_4000;
+            const IO_BANK0_GPIO4_CTRL: *mut u32 = (IO_BANK0_BASE + 0x24) as *mut u32;
+            const IO_BANK0_GPIO5_CTRL: *mut u32 = (IO_BANK0_BASE + 0x2c) as *mut u32;
+
+            const PADS_BANK0_BASE: u32 = 0x4001_c000;
+            const PADS_BANK0_GPIO4: *mut u32 = (PADS_BANK0_BASE + 0x14) as *mut u32;
+            const PADS_BANK0_GPIO5: *mut u32 = (PADS_BANK0_BASE + 0x18) as *mut u32;
+
+            // Set pin functions to SIO (GPIO function is 5 on RP2040)
+            core::ptr::write_volatile(IO_BANK0_GPIO5_CTRL, 5);
+            core::ptr::write_volatile(IO_BANK0_GPIO4_CTRL, 5);
+
+            // Enable pull-ups on SCL/SDA pads
+            core::ptr::write_volatile(PADS_BANK0_GPIO5, 0x5a);
+            core::ptr::write_volatile(PADS_BANK0_GPIO4, 0x5a);
+
+            // Set SCL (GP5) as output high
+            core::ptr::write_volatile(SIO_GPIO_OUT_SET, 1 << 5);
+            core::ptr::write_volatile(SIO_GPIO_OE_SET, 1 << 5);
+
+            // Toggle SCL up to 9 times or until SDA releases (goes high)
+            for _ in 0..9 {
+                let sda_val = core::ptr::read_volatile(SIO_GPIO_IN);
+                if (sda_val & (1 << 4)) != 0 {
+                    break;
+                }
+                // Drive SCL low
+                core::ptr::write_volatile(SIO_GPIO_OUT_CLR, 1 << 5);
+                cortex_m::asm::delay(200);
+                // Drive SCL high
+                core::ptr::write_volatile(SIO_GPIO_OUT_SET, 1 << 5);
+                cortex_m::asm::delay(200);
+            }
+        }
+
         let uart = Uart::new_blocking(p.UART0, p.PIN_0, p.PIN_1, UartConfig::default());
         let i2c = I2c::new_blocking(p.I2C0, p.PIN_5, p.PIN_4, I2cConfig::default());
-        let gpio_pins: [Option<Flex<'d>>; 30] = [
+        let mut gpio_pins: [Option<Flex<'d>>; 30] = [
             None, // 0 - UART TX
             None, // 1 - UART RX
             Some(Flex::new(p.PIN_2.degrade())),
@@ -63,6 +107,21 @@ impl<'d> Board<'d> {
             Some(Flex::new(p.PIN_28.degrade())),
             Some(Flex::new(p.PIN_29.degrade())),
         ];
+
+        // 2. Assert XSHUT (active low) on all ToF sensors (GP2, GP3, GP6)
+        if let Some(ref mut pin) = gpio_pins[2] {
+            pin.set_as_output();
+            pin.set_low();
+        }
+        if let Some(ref mut pin) = gpio_pins[3] {
+            pin.set_as_output();
+            pin.set_low();
+        }
+        if let Some(ref mut pin) = gpio_pins[6] {
+            pin.set_as_output();
+            pin.set_low();
+        }
+
         Self {
             uart,
             i2c,

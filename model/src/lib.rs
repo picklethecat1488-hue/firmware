@@ -5,5 +5,7 @@
 
 /// Hardware peripheral interfaces.
 pub mod interfaces;
+/// Telemetry types and serialization.
+pub mod telemetry;
 /// Domain types.
 pub mod types;

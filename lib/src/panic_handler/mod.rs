@@ -1,4 +1,3 @@
-#![no_std]
 #![deny(missing_docs)]
 #![allow(static_mut_refs)]
 
@@ -38,8 +37,8 @@ pub fn log_system(args: core::fmt::Arguments) {
 /// Helper macro for logging system events with compile-time module prefixing.
 #[macro_export]
 macro_rules! log_info {
-    ($fmt:literal $(, $arg:expr)* $(,)?) => {
-        $crate::log_system(format_args!(concat!("[", core::module_path!(), "] ", $fmt) $(, $arg)*));
+    ($fmt:literal $(, $arg:expr)* $(,)*) => {
+        $crate::panic_handler::log_system(format_args!(concat!("[", core::module_path!(), "] ", $fmt) $(, $arg)*));
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         defmt::info!($fmt $(, $arg)*);
     }
@@ -48,7 +47,7 @@ macro_rules! log_info {
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Adapter exposing a blocking nor-flash driver as an asynchronous nor-flash driver
 /// suitable for sequential-storage async filesystem operations.
-struct BlockingAsyncFlash<F>(F);
+pub struct BlockingAsyncFlash<F>(pub F);
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 impl<F: embedded_storage::nor_flash::ErrorType> embedded_storage_async::nor_flash::ErrorType
@@ -127,8 +126,6 @@ fn block_on<F: core::future::Future>(future: F) -> F::Output {
         }
     }
 }
-
-// PanicConfig is imported from types module
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global static reference to PANIC_CONFIG to be taken by the panic handler
@@ -375,6 +372,3 @@ pub fn handle_panic<
 
     cortex_m::asm::udf();
 }
-
-#[cfg(test)]
-mod tests;

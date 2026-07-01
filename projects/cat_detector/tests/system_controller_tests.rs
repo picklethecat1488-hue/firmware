@@ -1,6 +1,11 @@
-use super::*;
+use cat_detector::system_controller::{SystemCommand, SystemController};
+use controller::battery_controller::BatteryCommand;
+use controller::motor_controller::MotorCommand;
+use controller::sensor_controller::SensorCommand;
+use controller::thermal_controller::ThermalCommand;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
+use model::types::{SystemLedState, SystemStatus};
 
 #[test]
 fn test_system_controller_flow() {
@@ -23,7 +28,15 @@ fn test_system_controller_flow() {
         LED_CHANNEL.sender(),
     );
 
+    assert_eq!(controller.status(), SystemStatus::PowerDown);
+
+    // Send a battery update showing battery is ok -> transitions to Active
+    controller.handle_command(SystemCommand::BatteryUpdate {
+        state_of_charge: 50,
+        charging: false,
+    });
     assert_eq!(controller.status(), SystemStatus::Active);
+    let _ = LED_CHANNEL.try_receive().unwrap(); // Consume initial SolidGreen
 
     // Tick it 29 times, should remain Active
     for _ in 0..29 {
@@ -83,6 +96,16 @@ fn test_system_controller_flow() {
         LED_CHANNEL.sender(),
     );
 
+    assert_eq!(controller.status(), SystemStatus::PowerDown);
+
+    // Send a battery update showing battery is ok -> transitions to Active
+    controller.handle_command(SystemCommand::BatteryUpdate {
+        state_of_charge: 50,
+        charging: false,
+    });
+    assert_eq!(controller.status(), SystemStatus::Active);
+    let _ = LED_CHANNEL.try_receive().unwrap(); // Consume initial SolidGreen
+
     // Tick to 30s to let the fresh controller sleep
     for _ in 0..30 {
         controller.tick();
@@ -132,8 +155,8 @@ fn test_system_controller_flow() {
         state_of_charge: 5,
         charging: false,
     });
-    // System remains Active (system is still running)
-    assert_eq!(controller.status(), SystemStatus::Active);
+    // System enters PowerDown state because battery became critical
+    assert_eq!(controller.status(), SystemStatus::PowerDown);
     // LED should blink once per 30 seconds
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::BlinksRedOncePerThirtySeconds);
@@ -146,6 +169,95 @@ fn test_system_controller_flow() {
         sensor_id: 0,
         distance_mm: 150,
     });
-    // The pump should NOT start since battery is critical (no SetSpeed command in queue)
+    // The pump should NOT start since system is in PowerDown (no SetSpeed command in queue)
     assert!(MOTOR_CHANNEL.try_receive().is_err());
+}
+
+#[test]
+fn test_power_down_and_gesture_detection() {
+    static MOTOR_CHANNEL: Channel<CriticalSectionRawMutex, MotorCommand, 4> = Channel::new();
+    static SENSOR_NORTH_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> =
+        Channel::new();
+    static SENSOR_EAST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
+    static SENSOR_WEST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
+    static BATTERY_CHANNEL: Channel<CriticalSectionRawMutex, BatteryCommand, 4> = Channel::new();
+    static THERMAL_CHANNEL: Channel<CriticalSectionRawMutex, ThermalCommand, 4> = Channel::new();
+    static LED_CHANNEL: Channel<CriticalSectionRawMutex, SystemLedState, 4> = Channel::new();
+
+    let mut controller = SystemController::new(
+        MOTOR_CHANNEL.sender(),
+        SENSOR_NORTH_CHANNEL.sender(),
+        SENSOR_EAST_CHANNEL.sender(),
+        SENSOR_WEST_CHANNEL.sender(),
+        BATTERY_CHANNEL.sender(),
+        THERMAL_CHANNEL.sender(),
+        LED_CHANNEL.sender(),
+    );
+
+    // 1. Verify booting into PowerDown
+    assert_eq!(controller.status(), SystemStatus::PowerDown);
+
+    // 2. Stay in PowerDown while battery level is critical
+    controller.handle_command(SystemCommand::BatteryUpdate {
+        state_of_charge: 5,
+        charging: false,
+    });
+    assert_eq!(controller.status(), SystemStatus::PowerDown);
+    let led_state = LED_CHANNEL.try_receive().unwrap();
+    assert_eq!(led_state, SystemLedState::BlinksRedOncePerThirtySeconds);
+
+    // 3. Transition to Active when battery level is no longer critical
+    controller.handle_command(SystemCommand::BatteryUpdate {
+        state_of_charge: 15,
+        charging: false,
+    });
+    assert_eq!(controller.status(), SystemStatus::Active);
+    let led_state = LED_CHANNEL.try_receive().unwrap();
+    assert_eq!(led_state, SystemLedState::SolidGreen);
+
+    // 4. Simulate simultaneous press on East & West ToF sensors (distance < 100mm)
+    controller.distance_east = 50;
+    controller.distance_west = 50;
+
+    // Clear motor/LED channels
+    while MOTOR_CHANNEL.try_receive().is_ok() {}
+    while LED_CHANNEL.try_receive().is_ok() {}
+
+    // Start gesture at t = 0
+    controller.update_gesture(0);
+    assert_eq!(controller.status(), SystemStatus::Active);
+    let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
+    assert_eq!(motor_cmd, MotorCommand::SetSpeed(100));
+
+    // Tick gesture to 2 seconds -> should not power down yet
+    controller.update_gesture(2_000_000);
+    assert_eq!(controller.status(), SystemStatus::Active);
+    let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
+    assert_eq!(motor_cmd, MotorCommand::SetSpeed(100));
+
+    // Tick gesture to 5 seconds -> total 5 seconds simultaneous press -> triggers PowerDown
+    controller.update_gesture(5_000_000);
+    assert_eq!(controller.status(), SystemStatus::PowerDown);
+
+    // Verify LED is turned Off and motor is stopped/locked
+    let led_state = LED_CHANNEL.try_receive().unwrap();
+    assert_eq!(led_state, SystemLedState::Off);
+    let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
+    assert_eq!(motor_cmd, MotorCommand::Stop);
+
+    // 5. Normal battery status update when in manual PowerDown should be ignored
+    controller.handle_command(SystemCommand::BatteryUpdate {
+        state_of_charge: 50,
+        charging: false,
+    });
+    assert_eq!(controller.status(), SystemStatus::PowerDown);
+
+    // 6. Connecting the charger (charging = true) must trigger exit from PowerDown
+    controller.handle_command(SystemCommand::BatteryUpdate {
+        state_of_charge: 50,
+        charging: true,
+    });
+    assert_eq!(controller.status(), SystemStatus::Active);
+    let led_state = LED_CHANNEL.try_receive().unwrap();
+    assert_eq!(led_state, SystemLedState::SolidYellow);
 }

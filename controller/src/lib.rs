@@ -15,6 +15,8 @@ pub mod motor_controller;
 pub mod sensor_controller;
 /// Fountain state machine.
 pub mod state_machine;
+/// Telemetry storage pipeline and task.
+pub mod telemetry_controller;
 /// Thermal monitoring and regulation controller.
 pub mod thermal_controller;
 
@@ -29,6 +31,7 @@ macro_rules! run_thermal_task {
         $task_module:ident,
         $controller:expr,
         $rx:expr,
+        $telemetry_tx:expr,
         $battery_type:ty,
         $cmd_type:ty
     ) => {
@@ -49,13 +52,19 @@ macro_rules! run_thermal_task {
                     $crate::thermal_controller::ThermalCommand,
                     4,
                 >,
+                telemetry_tx: embassy_sync::channel::Sender<
+                    'static,
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    model::telemetry::TelemetryRecord,
+                    16,
+                >,
             ) {
-                controller.run(rx).await;
+                controller.run(rx, telemetry_tx).await;
             }
         }
 
         $spawner
-            .spawn($task_module::task($controller, $rx))
+            .spawn($task_module::task($controller, $rx, $telemetry_tx))
             .unwrap();
     };
 }
@@ -71,7 +80,9 @@ macro_rules! run_battery_task {
         $task_module:ident,
         $controller:expr,
         $rx:expr,
-        $battery_type:ty
+        $telemetry_tx:expr,
+        $battery_type:ty,
+        $cmd_type:ty
     ) => {
         mod $task_module {
             use super::*;
@@ -82,6 +93,7 @@ macro_rules! run_battery_task {
                     'static,
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                     $battery_type,
+                    $cmd_type,
                 >,
                 rx: embassy_sync::channel::Receiver<
                     'static,
@@ -89,13 +101,19 @@ macro_rules! run_battery_task {
                     $crate::battery_controller::BatteryCommand,
                     4,
                 >,
+                telemetry_tx: embassy_sync::channel::Sender<
+                    'static,
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    model::telemetry::TelemetryRecord,
+                    16,
+                >,
             ) {
-                controller.run(rx).await;
+                controller.run(rx, telemetry_tx).await;
             }
         }
 
         $spawner
-            .spawn($task_module::task($controller, $rx))
+            .spawn($task_module::task($controller, $rx, $telemetry_tx))
             .unwrap();
     };
 }
@@ -111,6 +129,7 @@ macro_rules! run_motor_task {
         $task_module:ident,
         $controller:expr,
         $rx:expr,
+        $telemetry_tx:expr,
         $motor_type:ty,
         $current_sensor_type:ty
     ) => {
@@ -129,13 +148,19 @@ macro_rules! run_motor_task {
                     $crate::motor_controller::MotorCommand,
                     4,
                 >,
+                telemetry_tx: embassy_sync::channel::Sender<
+                    'static,
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    model::telemetry::TelemetryRecord,
+                    16,
+                >,
             ) {
-                controller.run(rx).await;
+                controller.run(rx, telemetry_tx).await;
             }
         }
 
         $spawner
-            .spawn($task_module::task($controller, $rx))
+            .spawn($task_module::task($controller, $rx, $telemetry_tx))
             .unwrap();
     };
 }
@@ -194,6 +219,7 @@ macro_rules! run_led_task {
         $task_module:ident,
         $controller:expr,
         $rx:expr,
+        $telemetry_tx:expr,
         $driver_type:ty,
         $raw_mutex:ty
     ) => {
@@ -208,6 +234,87 @@ macro_rules! run_led_task {
                     $raw_mutex,
                     model::types::SystemLedState,
                     4,
+                >,
+                telemetry_tx: embassy_sync::channel::Sender<
+                    'static,
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    model::telemetry::TelemetryRecord,
+                    16,
+                >,
+            ) {
+                controller.run(rx, telemetry_tx).await;
+            }
+        }
+
+        $spawner
+            .spawn($task_module::task($controller, $rx, $telemetry_tx))
+            .unwrap();
+    };
+}
+
+/// A macro to define and spawn the Filesystem Controller task.
+///
+/// Generates the task definition generic over the flash type,
+/// then spawns it on the provided Embassy spawner.
+#[macro_export]
+macro_rules! run_filesystem_task {
+    (
+        $spawner:expr,
+        $task_module:ident,
+        $controller:expr,
+        $rx:expr,
+        $flash_type:ty
+    ) => {
+        mod $task_module {
+            use super::*;
+
+            #[embassy_executor::task]
+            pub async fn task(
+                fs: $crate::filesystem_controller::FilesystemController<$flash_type>,
+                rx: embassy_sync::channel::Receiver<
+                    'static,
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    $crate::filesystem_controller::FsRequest,
+                    16,
+                >,
+            ) {
+                $crate::filesystem_controller::run_filesystem_task(fs, rx).await;
+            }
+        }
+
+        $spawner
+            .spawn($task_module::task($controller, $rx))
+            .unwrap();
+    };
+}
+
+/// A macro to define and spawn the Telemetry Controller task.
+///
+/// Generates the task definition generic over the max record count and buffer size,
+/// then spawns it on the provided Embassy spawner.
+#[macro_export]
+macro_rules! run_telemetry_task {
+    (
+        $spawner:expr,
+        $task_module:ident,
+        $controller:expr,
+        $rx:expr,
+        $max_records:expr
+    ) => {
+        mod $task_module {
+            use super::*;
+
+            #[embassy_executor::task]
+            pub async fn task(
+                controller: $crate::telemetry_controller::TelemetryController<
+                    $max_records,
+                    { 12 + $max_records * 20 + 128 },
+                >,
+                rx: embassy_sync::channel::Receiver<
+                    'static,
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    model::telemetry::TelemetryRecord,
+                    16,
                 >,
             ) {
                 controller.run(rx).await;
