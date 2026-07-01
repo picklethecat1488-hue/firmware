@@ -23,6 +23,7 @@ pub struct ThermalController<'a, M: RawMutex, B, Cmd = ()> {
     state: ThermalState,
     overheating_temp_milli_c: i32,
     critical_temp_milli_c: i32,
+    hysteresis_temp_milli_c: i32,
 }
 
 impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
@@ -37,6 +38,7 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
             state: ThermalState::Normal,
             overheating_temp_milli_c: 45000,
             critical_temp_milli_c: 60000,
+            hysteresis_temp_milli_c: 2000,
         }
     }
 
@@ -53,6 +55,7 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
             state: ThermalState::Normal,
             overheating_temp_milli_c: 45000,
             critical_temp_milli_c: 60000,
+            hysteresis_temp_milli_c: 2000,
         }
     }
 
@@ -81,6 +84,16 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
         self.critical_temp_milli_c = temp;
     }
 
+    /// Gets the hysteresis temperature range in milli-degrees Celsius.
+    pub fn hysteresis_temp_milli_c(&self) -> i32 {
+        self.hysteresis_temp_milli_c
+    }
+
+    /// Sets the hysteresis temperature range in milli-degrees Celsius.
+    pub fn set_hysteresis_temp_milli_c(&mut self, val: i32) {
+        self.hysteresis_temp_milli_c = val;
+    }
+
     /// Updates the thermal status by locking and reading the peripheral.
     pub async fn update(
         &mut self,
@@ -98,10 +111,17 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
             sensor.read_temperature_milli_c()?
         };
 
-        if temp > self.overheating_temp_milli_c {
-            self.state = ThermalState::Overheating;
-        } else {
-            self.state = ThermalState::Normal;
+        match self.state {
+            ThermalState::Normal => {
+                if temp > self.overheating_temp_milli_c {
+                    self.state = ThermalState::Overheating;
+                }
+            }
+            ThermalState::Overheating => {
+                if temp < self.overheating_temp_milli_c - self.hysteresis_temp_milli_c {
+                    self.state = ThermalState::Normal;
+                }
+            }
         }
 
         // Critical threshold check: shut down system if temp > critical_temp_milli_c

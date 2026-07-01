@@ -63,6 +63,10 @@ pub struct SystemController<MutexRaw: RawMutex + 'static, const N: usize> {
     gesture_detector: GestureDetector,
     proximity_active: bool,
     boot_power_down: bool,
+    /// State of charge threshold under which the battery is considered critical.
+    pub critical_soc_threshold: u8,
+    /// Hysteresis to prevent rapid battery state toggling.
+    pub soc_hysteresis: u8,
 }
 
 impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N> {
@@ -95,6 +99,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
             gesture_detector: GestureDetector::new(20),
             proximity_active: false,
             boot_power_down: true,
+            critical_soc_threshold: 10,
+            soc_hysteresis: 2,
         }
     }
 
@@ -203,7 +209,15 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                 let is_fault = charger_state == model::types::ChargeState::RecoverableFault
                     || charger_state == model::types::ChargeState::NonRecoverableFault;
 
-                if is_fault || (state_of_charge < 10 && !charging) {
+                let entered_critical = if self.battery_critical {
+                    is_fault
+                        || (state_of_charge < (self.critical_soc_threshold + self.soc_hysteresis)
+                            && !charging)
+                } else {
+                    is_fault || (state_of_charge < self.critical_soc_threshold && !charging)
+                };
+
+                if entered_critical {
                     self.battery_critical = true;
                     self.led_tx
                         .try_send(SystemLedState::BlinksRedOncePerThirtySeconds)
