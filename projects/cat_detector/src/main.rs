@@ -81,6 +81,32 @@ static SHARED_TEMP_SENSOR: Mutex<CriticalSectionRawMutex, SafeRp2040TempSensor> 
     Mutex::new(SafeRp2040TempSensor(None));
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+struct SafeBq25185(
+    Option<
+        peripherals::bq25185::Bq25185<
+            embassy_rp::gpio::Flex<'static>,
+            embassy_rp::gpio::Flex<'static>,
+        >,
+    >,
+);
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl model::interfaces::ChargeStatus for SafeBq25185 {
+    type Error = ();
+
+    fn get_charge_state(&mut self) -> Result<model::types::ChargeState, Self::Error> {
+        if let Some(ref mut chg) = self.0 {
+            Ok(chg.get_state())
+        } else {
+            Ok(model::types::ChargeState::DoneOrStandbyOrUnplugged)
+        }
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+static SHARED_CHARGER: Mutex<CriticalSectionRawMutex, SafeBq25185> = Mutex::new(SafeBq25185(None));
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     cat_detector::log_info!("Initializing hardware for cat detector...");
@@ -189,6 +215,12 @@ async fn main(spawner: Spawner) {
         sensor.0 = board.temp_sensor.take();
     }
 
+    // Initialize the real Bq25185 in SHARED_CHARGER
+    {
+        let mut chg = SHARED_CHARGER.lock().await;
+        chg.0 = board.charger.take();
+    }
+
     let thermal_ctrl = ThermalController::new_with_shutdown(
         &SHARED_TEMP_SENSOR,
         cat_detector::SYSTEM_CHANNEL.sender(),
@@ -202,10 +234,11 @@ async fn main(spawner: Spawner) {
 
     let power_ctrl = BatteryController::new_with_system_and_alert(
         &SHARED_BATTERY,
+        &SHARED_CHARGER,
         cat_detector::SYSTEM_CHANNEL.sender(),
-        |soc, chg| cat_detector::system_controller::SystemCommand::BatteryUpdate {
+        |soc, state| cat_detector::system_controller::SystemCommand::BatteryUpdate {
             state_of_charge: soc,
-            charging: chg,
+            charger_state: state,
         },
         alert_wrapper,
     );
@@ -243,6 +276,7 @@ async fn main(spawner: Spawner) {
         cat_detector::BATTERY_CHANNEL.receiver(),
         cat_detector::TELEMETRY_CHANNEL.sender(),
         MockBattery,
+        SafeBq25185,
         AlertPinWrapper,
         cat_detector::system_controller::SystemCommand
     );

@@ -33,7 +33,7 @@ fn test_system_controller_flow() {
     // Send a battery update showing battery is ok -> transitions to Active
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 50,
-        charging: false,
+        charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     assert_eq!(controller.status(), SystemStatus::Active);
     let _ = LED_CHANNEL.try_receive().unwrap(); // Consume initial SolidGreen
@@ -101,7 +101,7 @@ fn test_system_controller_flow() {
     // Send a battery update showing battery is ok -> transitions to Active
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 50,
-        charging: false,
+        charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     assert_eq!(controller.status(), SystemStatus::Active);
     let _ = LED_CHANNEL.try_receive().unwrap(); // Consume initial SolidGreen
@@ -153,7 +153,7 @@ fn test_system_controller_flow() {
     // Test critical battery state
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 5,
-        charging: false,
+        charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     // System enters PowerDown state because battery became critical
     assert_eq!(controller.status(), SystemStatus::PowerDown);
@@ -200,7 +200,7 @@ fn test_power_down_and_gesture_detection() {
     // 2. Stay in PowerDown while battery level is critical
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 5,
-        charging: false,
+        charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     assert_eq!(controller.status(), SystemStatus::PowerDown);
     let led_state = LED_CHANNEL.try_receive().unwrap();
@@ -209,7 +209,7 @@ fn test_power_down_and_gesture_detection() {
     // 3. Transition to Active when battery level is no longer critical
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 15,
-        charging: false,
+        charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     assert_eq!(controller.status(), SystemStatus::Active);
     let led_state = LED_CHANNEL.try_receive().unwrap();
@@ -248,14 +248,14 @@ fn test_power_down_and_gesture_detection() {
     // 5. Normal battery status update when in manual PowerDown should be ignored
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 50,
-        charging: false,
+        charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     assert_eq!(controller.status(), SystemStatus::PowerDown);
 
     // 6. Connecting the charger (charging = true) must trigger exit from PowerDown
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 50,
-        charging: true,
+        charger_state: model::types::ChargeState::Charging,
     });
     assert_eq!(controller.status(), SystemStatus::Active);
     let led_state = LED_CHANNEL.try_receive().unwrap();

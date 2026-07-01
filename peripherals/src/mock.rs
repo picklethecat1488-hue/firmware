@@ -1,5 +1,5 @@
 use model::interfaces::{
-    Charger, CurrentSensor, FuelGauge, LedDriver, Motor, ProximitySensor, TemperatureSensor,
+    ChargeStatus, CurrentSensor, FuelGauge, LedDriver, Motor, ProximitySensor, TemperatureSensor,
 };
 
 /// A mock implementation of a Motor for unit testing on the host.
@@ -177,34 +177,24 @@ impl ProximitySensor for DummyProximitySensor {
     }
 }
 
-/// A mock implementation of a Charger for unit testing.
+/// A mock implementation of a ChargeStatus for unit testing.
 pub struct MockCharger {
-    /// Tracks if charging is enabled.
-    pub charging_enabled: bool,
-    /// Tracks if a charging input is present.
-    pub input_present: bool,
+    /// The mock charger state.
+    pub state: model::types::ChargeState,
 }
 
 impl MockCharger {
     /// Creates a new MockCharger instance.
-    pub const fn new(charging_enabled: bool, input_present: bool) -> Self {
-        Self {
-            charging_enabled,
-            input_present,
-        }
+    pub const fn new(state: model::types::ChargeState) -> Self {
+        Self { state }
     }
 }
 
-impl Charger for MockCharger {
+impl ChargeStatus for MockCharger {
     type Error = ();
 
-    fn set_charging_enabled(&mut self, enabled: bool) -> Result<(), Self::Error> {
-        self.charging_enabled = enabled;
-        Ok(())
-    }
-
-    fn is_charging_input_present(&mut self) -> Result<bool, Self::Error> {
-        Ok(self.input_present)
+    fn get_charge_state(&mut self) -> Result<model::types::ChargeState, Self::Error> {
+        Ok(self.state)
     }
 }
 

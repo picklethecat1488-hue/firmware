@@ -56,6 +56,8 @@ pub struct Board {
     pub gpio_pins: [Option<MockFlex>; 30],
     /// Mock temperature sensor
     pub temp_sensor: Option<Rp2040TempSensor>,
+    /// Mock charger driver instance
+    pub charger: Option<peripherals::mock::MockCharger>,
 }
 
 impl Board {
@@ -76,9 +78,13 @@ impl Board {
             pin.set_low();
         }
         let temp_sensor = Some(Rp2040TempSensor);
+        let charger = Some(peripherals::mock::MockCharger::new(
+            model::types::ChargeState::DoneOrStandbyOrUnplugged,
+        ));
         Self {
             gpio_pins,
             temp_sensor,
+            charger,
         }
     }
 }

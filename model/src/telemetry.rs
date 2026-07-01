@@ -30,6 +30,9 @@ pub enum TelemetryRecord {
     /// Flash operations telemetry.
     #[n(8)]
     FlashTelemetry(#[n(0)] FlashEraseTelemetry),
+    /// Charger state telemetry.
+    #[n(9)]
+    ChargerState(#[n(0)] ChargeState),
 }
 
 impl TelemetryRecord {

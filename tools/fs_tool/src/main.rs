@@ -283,6 +283,9 @@ fn main() -> io::Result<()> {
                                         ts, ft.sector, ft.duration_ms, ft.erase_count
                                     )?;
                                 }
+                                model::telemetry::TelemetryRecord::ChargerState(state) => {
+                                    writeln!(csv_file, "{},ChargerState,{:?},,,", ts, state)?;
+                                }
                             }
                         }
 

@@ -165,4 +165,22 @@ pub struct FlashEraseTelemetry {
     pub erase_count: u32,
 }
 
+/// State of the battery charger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+pub enum ChargeState {
+    /// S1=HIGH, S2=LOW: Normal Charging.
+    #[n(0)]
+    Charging,
+    /// S1=HIGH, S2=HIGH: Charging Done, Standby, or Unplugged.
+    #[default]
+    #[n(1)]
+    DoneOrStandbyOrUnplugged,
+    /// S1=LOW, S2=HIGH: Recoverable Fault.
+    #[n(2)]
+    RecoverableFault,
+    /// S1=LOW, S2=LOW: Non-Recoverable Fault.
+    #[n(3)]
+    NonRecoverableFault,
+}
+
 pub use crate::telemetry::TelemetryRecord;

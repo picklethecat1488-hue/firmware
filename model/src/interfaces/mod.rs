@@ -20,8 +20,8 @@ pub use proximity::ProximitySensor;
 pub mod temperature;
 pub use temperature::TemperatureSensor;
 
-pub mod charger;
-pub use charger::Charger;
+pub mod charge_status;
+pub use charge_status::ChargeStatus;
 
 pub mod led;
 pub use led::LedDriver;

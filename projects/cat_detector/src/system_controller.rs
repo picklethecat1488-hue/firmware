@@ -28,8 +28,8 @@ pub enum SystemCommand {
     BatteryUpdate {
         /// Battery capacity percentage (0-100).
         state_of_charge: u8,
-        /// Charger status (whether currently charging).
-        charging: bool,
+        /// Charger state.
+        charger_state: model::types::ChargeState,
     },
     /// Proximity telemetry update from individual ToF sensors.
     SensorUpdate {
@@ -197,9 +197,13 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
             }
             SystemCommand::BatteryUpdate {
                 state_of_charge,
-                charging,
+                charger_state,
             } => {
-                if state_of_charge < 10 && !charging {
+                let charging = charger_state == model::types::ChargeState::Charging;
+                let is_fault = charger_state == model::types::ChargeState::RecoverableFault
+                    || charger_state == model::types::ChargeState::NonRecoverableFault;
+
+                if is_fault || (state_of_charge < 10 && !charging) {
                     self.battery_critical = true;
                     self.led_tx
                         .try_send(SystemLedState::BlinksRedOncePerThirtySeconds)

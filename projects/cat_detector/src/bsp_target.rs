@@ -23,6 +23,8 @@ pub struct Board<'d> {
     pub gpio_pins: [Option<Flex<'d>>; 30],
     /// Internal RP2040 temperature sensor
     pub temp_sensor: Option<Rp2040TempSensor>,
+    /// Concrete charger driver instance using S1/S2 GPIO pins
+    pub charger: Option<peripherals::bq25185::Bq25185<Flex<'d>, Flex<'d>>>,
 }
 
 impl<'d> Board<'d> {
@@ -171,6 +173,24 @@ impl<'d> Board<'d> {
             let _ = sensor.set_address(0x32);
         }
 
+        // 5. Configure Charger Status pins S1 (GP12) and S2 (GP13) as inputs with pull-ups
+        if let Some(ref mut pin) = gpio_pins[crate::CHARGER_S1_PIN as usize] {
+            pin.set_as_input();
+            pin.set_pull(Pull::Up);
+        }
+        if let Some(ref mut pin) = gpio_pins[crate::CHARGER_S2_PIN as usize] {
+            pin.set_as_input();
+            pin.set_pull(Pull::Up);
+        }
+
+        let s1 = gpio_pins[crate::CHARGER_S1_PIN as usize]
+            .take()
+            .expect("S1 pin must be available");
+        let s2 = gpio_pins[crate::CHARGER_S2_PIN as usize]
+            .take()
+            .expect("S2 pin must be available");
+        let charger = Some(peripherals::bq25185::Bq25185::new(s1, s2));
+
         let temp_sensor = Some(Rp2040TempSensor::new(p.ADC, p.ADC_TEMP_SENSOR));
 
         Self {
@@ -179,6 +199,7 @@ impl<'d> Board<'d> {
             flash: p.FLASH,
             gpio_pins,
             temp_sensor,
+            charger,
         }
     }
 }
