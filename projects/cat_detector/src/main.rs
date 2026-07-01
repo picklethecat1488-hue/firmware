@@ -61,6 +61,26 @@ static SHARED_BATTERY: Mutex<CriticalSectionRawMutex, MockBattery> =
     Mutex::new(MockBattery::new(3700, 25000));
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+struct SafeRp2040TempSensor(Option<cat_detector::Rp2040TempSensor>);
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl model::interfaces::TemperatureSensor for SafeRp2040TempSensor {
+    type Error = ();
+
+    fn read_temperature_milli_c(&mut self) -> Result<i32, Self::Error> {
+        if let Some(ref mut sensor) = self.0 {
+            sensor.read_temperature_milli_c().map_err(|_| ())
+        } else {
+            Ok(25000)
+        }
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+static SHARED_TEMP_SENSOR: Mutex<CriticalSectionRawMutex, SafeRp2040TempSensor> =
+    Mutex::new(SafeRp2040TempSensor(None));
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     cat_detector::log_info!("Initializing hardware for cat detector...");
@@ -163,8 +183,14 @@ async fn main(spawner: Spawner) {
         ProximityPinWrapper(pin_west),
     );
 
+    // Initialize the real Rp2040TempSensor in SHARED_TEMP_SENSOR
+    {
+        let mut sensor = SHARED_TEMP_SENSOR.lock().await;
+        sensor.0 = board.temp_sensor.take();
+    }
+
     let thermal_ctrl = ThermalController::new_with_shutdown(
-        &SHARED_BATTERY,
+        &SHARED_TEMP_SENSOR,
         cat_detector::SYSTEM_CHANNEL.sender(),
         cat_detector::system_controller::SystemCommand::Sleep,
     );
@@ -206,7 +232,7 @@ async fn main(spawner: Spawner) {
         thermal_ctrl,
         cat_detector::THERMAL_CHANNEL.receiver(),
         cat_detector::TELEMETRY_CHANNEL.sender(),
-        MockBattery,
+        SafeRp2040TempSensor,
         cat_detector::system_controller::SystemCommand
     );
 

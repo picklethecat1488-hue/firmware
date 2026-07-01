@@ -54,6 +54,8 @@ impl embedded_hal::digital::OutputPin for MockFlex {
 pub struct Board {
     /// Lookup array containing MockFlex instances for dynamic GPIO diagnostics
     pub gpio_pins: [Option<MockFlex>; 30],
+    /// Mock temperature sensor
+    pub temp_sensor: Option<Rp2040TempSensor>,
 }
 
 impl Board {
@@ -73,6 +75,21 @@ impl Board {
         if let Some(ref mut pin) = gpio_pins[6] {
             pin.set_low();
         }
-        Self { gpio_pins }
+        let temp_sensor = Some(Rp2040TempSensor);
+        Self {
+            gpio_pins,
+            temp_sensor,
+        }
+    }
+}
+
+/// Mock temperature sensor for host.
+pub struct Rp2040TempSensor;
+
+impl model::interfaces::TemperatureSensor for Rp2040TempSensor {
+    type Error = core::convert::Infallible;
+
+    fn read_temperature_milli_c(&mut self) -> Result<i32, Self::Error> {
+        Ok(25000)
     }
 }
