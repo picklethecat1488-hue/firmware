@@ -15,44 +15,70 @@ pub enum ThermalState {
     Overheating,
 }
 
-/// A controller that periodically monitors system temperature from battery sensors.
+/// A controller that periodically monitors system temperature from temperature sensors.
 pub struct ThermalController<'a, M: RawMutex, B, Cmd = ()> {
-    battery: &'a Mutex<M, B>,
+    temp: &'a Mutex<M, B>,
     system_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
     shutdown_cmd: Option<Cmd>,
     state: ThermalState,
+    overheating_temp_milli_c: i32,
+    critical_temp_milli_c: i32,
 }
 
 impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
     ThermalController<'a, M, B, Cmd>
 {
-    /// Creates a new thermal controller referencing a shared battery peripheral without shutdown coordination.
-    pub fn new(battery: &'a Mutex<M, B>) -> Self {
+    /// Creates a new thermal controller referencing a shared temperature peripheral without shutdown coordination.
+    pub fn new(temp: &'a Mutex<M, B>) -> Self {
         Self {
-            battery,
+            temp,
             system_tx: None,
             shutdown_cmd: None,
             state: ThermalState::Normal,
+            overheating_temp_milli_c: 45000,
+            critical_temp_milli_c: 60000,
         }
     }
 
     /// Creates a new thermal controller with safety shutdown capabilities.
     pub fn new_with_shutdown(
-        battery: &'a Mutex<M, B>,
+        temp: &'a Mutex<M, B>,
         system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
         shutdown_cmd: Cmd,
     ) -> Self {
         Self {
-            battery,
+            temp,
             system_tx: Some(system_tx),
             shutdown_cmd: Some(shutdown_cmd),
             state: ThermalState::Normal,
+            overheating_temp_milli_c: 45000,
+            critical_temp_milli_c: 60000,
         }
     }
 
     /// Gets the current state of the thermal system.
     pub fn state(&self) -> ThermalState {
         self.state
+    }
+
+    /// Gets the overheating temperature threshold in milli-degrees Celsius.
+    pub fn overheating_temp_milli_c(&self) -> i32 {
+        self.overheating_temp_milli_c
+    }
+
+    /// Sets the overheating temperature threshold in milli-degrees Celsius.
+    pub fn set_overheating_temp_milli_c(&mut self, temp: i32) {
+        self.overheating_temp_milli_c = temp;
+    }
+
+    /// Gets the critical temperature threshold in milli-degrees Celsius.
+    pub fn critical_temp_milli_c(&self) -> i32 {
+        self.critical_temp_milli_c
+    }
+
+    /// Sets the critical temperature threshold in milli-degrees Celsius.
+    pub fn set_critical_temp_milli_c(&mut self, temp: i32) {
+        self.critical_temp_milli_c = temp;
     }
 
     /// Updates the thermal status by locking and reading the peripheral.
@@ -68,18 +94,18 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
         >,
     ) -> Result<(), B::Error> {
         let temp = {
-            let mut bat = self.battery.lock().await;
-            bat.read_temperature_milli_c()?
+            let mut sensor = self.temp.lock().await;
+            sensor.read_temperature_milli_c()?
         };
 
-        if temp > 45000 {
+        if temp > self.overheating_temp_milli_c {
             self.state = ThermalState::Overheating;
         } else {
             self.state = ThermalState::Normal;
         }
 
-        // Critical threshold check: shut down system if temp > 60°C (60000 mC)
-        if temp > 60000 {
+        // Critical threshold check: shut down system if temp > critical_temp_milli_c
+        if temp > self.critical_temp_milli_c {
             if let (Some(tx), Some(cmd)) = (&self.system_tx, &self.shutdown_cmd) {
                 tx.try_send(cmd.clone()).unwrap();
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
