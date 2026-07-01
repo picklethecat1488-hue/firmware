@@ -18,10 +18,10 @@ graph TD
         LC["LedController"]
         FSC["FilesystemController"]
         TMC["TelemetryController"]
+        MSM["MotorStateMachine"]
     end
 
     subgraph Model Crate [model]
-        FSM["FountainStateMachine"]
         TS["Telemetry Types (Battery/Motor/Thermal/Proximity/LED Status)"]
     end
 
@@ -34,15 +34,18 @@ graph TD
     subgraph BSP / Target [projects/cat_detector]
         Board["Board (UART / I2C / Pins)"]
         Main["main.rs (Embassy Spawner)"]
+        SysC["SystemController"]
     end
 
-    Main -->|Orchestrates| MC & BC & TC & SC & LC & FSC & TMC
-    MC -->|Transitions| FSM
+    Main -->|Spawns| MC & BC & TC & SC & LC & FSC & TMC & SysC
+    SysC -->|Coordinates| MC & SC & LC & BC & TC
+    MC -->|Transitions| MSM
     MC & SC & LC -->|Drives| PT
     BC & TC -->|Queries| BT
-    BC & TC -->|Updates| TS
-    FSC -->|Persists Data| Flash[("Flash Memory")]
+    MC & BC & TC & LC & FSC -->|Sends Telemetry| TMC
     TMC -->|Writes Ring Buffer| FSC
+    FSC -->|Persists Data| Flash[("Flash Memory")]
+    TMC -.->|Serializes| TS
 ```
 
 ---
