@@ -10,7 +10,7 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "cat_detector"
-path = "src/main.rs"
+path = "src/bin/main.rs"
 test = false
 bench = false
 
