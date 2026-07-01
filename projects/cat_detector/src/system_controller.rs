@@ -92,7 +92,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
             time_in_active: 0,
             battery_critical: true,
             thermal_critical: false,
-            gesture_detector: GestureDetector::new(100),
+            gesture_detector: GestureDetector::new(20),
             proximity_active: false,
             boot_power_down: true,
         }

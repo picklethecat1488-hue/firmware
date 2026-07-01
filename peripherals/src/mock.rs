@@ -130,8 +130,8 @@ impl PowerSensor for DummyCurrentSensor {
 pub struct MockProximitySensor {
     /// Simulated distance value in millimeters.
     pub distance_mm: u16,
-    /// Proximity callback function.
-    pub callback: Option<fn(bool)>,
+    /// Proximity threshold in millimeters.
+    pub threshold_mm: u16,
 }
 
 impl MockProximitySensor {
@@ -139,7 +139,7 @@ impl MockProximitySensor {
     pub const fn new(distance_mm: u16) -> Self {
         Self {
             distance_mm,
-            callback: None,
+            threshold_mm: 300,
         }
     }
 }
@@ -148,15 +148,7 @@ impl ProximitySensor for MockProximitySensor {
     type Error = ();
 
     fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
-        if let Some(cb) = self.callback {
-            cb(self.distance_mm < 300);
-        }
         Ok(self.distance_mm)
-    }
-
-    fn register_proximity_callback(&mut self, callback: fn(bool)) -> Result<(), Self::Error> {
-        self.callback = Some(callback);
-        Ok(())
     }
 }
 
@@ -164,8 +156,8 @@ impl ProximitySensor for MockProximitySensor {
 pub struct DummyProximitySensor {
     /// Distance in millimeters.
     pub distance_mm: u16,
-    /// Proximity callback function.
-    pub callback: Option<fn(bool)>,
+    /// Proximity threshold in millimeters.
+    pub threshold_mm: u16,
 }
 
 impl DummyProximitySensor {
@@ -173,7 +165,7 @@ impl DummyProximitySensor {
     pub const fn new(distance_mm: u16) -> Self {
         Self {
             distance_mm,
-            callback: None,
+            threshold_mm: 300,
         }
     }
 }
@@ -182,15 +174,7 @@ impl ProximitySensor for DummyProximitySensor {
     type Error = core::convert::Infallible;
 
     fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
-        if let Some(cb) = self.callback {
-            cb(self.distance_mm < 300);
-        }
         Ok(self.distance_mm)
-    }
-
-    fn register_proximity_callback(&mut self, callback: fn(bool)) -> Result<(), Self::Error> {
-        self.callback = Some(callback);
-        Ok(())
     }
 }
 

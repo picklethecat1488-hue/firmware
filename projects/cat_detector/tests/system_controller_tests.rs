@@ -215,9 +215,9 @@ fn test_power_down_and_gesture_detection() {
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::SolidGreen);
 
-    // 4. Simulate simultaneous press on East & West ToF sensors (distance < 100mm)
-    controller.distance_east = 50;
-    controller.distance_west = 50;
+    // 4. Simulate simultaneous press on East & West ToF sensors (distance < 20mm)
+    controller.distance_east = 15;
+    controller.distance_west = 15;
 
     // Clear motor/LED channels
     while MOTOR_CHANNEL.try_receive().is_ok() {}
