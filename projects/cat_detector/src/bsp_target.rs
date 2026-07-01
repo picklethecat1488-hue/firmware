@@ -74,7 +74,7 @@ impl<'d> Board<'d> {
         }
 
         let uart = Uart::new_blocking(p.UART0, p.PIN_0, p.PIN_1, UartConfig::default());
-        let i2c = I2c::new_blocking(p.I2C0, p.PIN_5, p.PIN_4, I2cConfig::default());
+        let mut i2c = I2c::new_blocking(p.I2C0, p.PIN_5, p.PIN_4, I2cConfig::default());
         let mut gpio_pins: [Option<Flex<'d>>; 30] = [
             None, // 0 - UART TX
             None, // 1 - UART RX
@@ -140,6 +140,33 @@ impl<'d> Board<'d> {
         if let Some(ref mut pin) = gpio_pins[crate::TOF_WEST_INT_PIN as usize] {
             pin.set_as_input();
             pin.set_pull(Pull::Up);
+        }
+
+        // Wait for sensors to register reset state
+        cortex_m::asm::delay(20_000);
+
+        // Bring North sensor out of shutdown (GP2 high) and assign address 0x30
+        if let Some(ref mut pin) = gpio_pins[crate::TOF_NORTH_XSHUT_PIN as usize] {
+            pin.set_high();
+            cortex_m::asm::delay(20_000); // Wait for sensor to boot
+            let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x29);
+            let _ = sensor.set_address(0x30);
+        }
+
+        // Bring East sensor out of shutdown (GP3 high) and assign address 0x31
+        if let Some(ref mut pin) = gpio_pins[crate::TOF_EAST_XSHUT_PIN as usize] {
+            pin.set_high();
+            cortex_m::asm::delay(20_000); // Wait for sensor to boot
+            let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x29);
+            let _ = sensor.set_address(0x31);
+        }
+
+        // Bring West sensor out of shutdown (GP6 high) and assign address 0x32
+        if let Some(ref mut pin) = gpio_pins[crate::TOF_WEST_XSHUT_PIN as usize] {
+            pin.set_high();
+            cortex_m::asm::delay(20_000); // Wait for sensor to boot
+            let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x29);
+            let _ = sensor.set_address(0x32);
         }
 
         Self {
