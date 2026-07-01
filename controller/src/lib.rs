@@ -13,8 +13,6 @@ pub mod led_controller;
 pub mod motor_controller;
 /// Sensor controller for Time-of-Flight sensors.
 pub mod sensor_controller;
-/// Fountain state machine.
-pub mod state_machine;
 /// Telemetry storage pipeline and task.
 pub mod telemetry_controller;
 /// Thermal monitoring and regulation controller.

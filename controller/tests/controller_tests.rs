@@ -1,5 +1,4 @@
-use controller::motor_controller::{MotorCommand, MotorController};
-use controller::state_machine::MotorState;
+use controller::motor_controller::{MotorCommand, MotorController, MotorState};
 use peripherals::mock::{MockCurrentSensor, MockMotor};
 
 #[test]
@@ -12,41 +11,25 @@ fn test_motor_controller_flow() {
 
     // Turn on the motor using handle_command
     controller.handle_command(MotorCommand::SetSpeed(100), None);
-    assert_eq!(controller.state(), MotorState::RampUp);
-    assert_eq!(controller.motor.speed, 100);
-
-    // Run update under normal load -> transitions from RampUp to On
-    controller.update(None).unwrap();
     assert_eq!(controller.state(), MotorState::On);
     assert_eq!(controller.motor.speed, 100);
 
     // Simulate dry run (low current draw)
     controller.current_sensor.current_ma = 10; // below 15mA threshold
-    controller.update(None).unwrap(); // triggers PowerOff -> state becomes RampDown
-    assert_eq!(controller.state(), MotorState::RampDown);
-
-    // Ramping down auto-transitions to Off on next update
-    controller.update(None).unwrap();
+    controller.update(None).unwrap(); // triggers PowerOff -> state becomes Off
     assert_eq!(controller.state(), MotorState::Off);
     assert_eq!(controller.motor.speed, 0); // motor should be stopped
 
     // Restart the motor
     controller.current_sensor.current_ma = 150; // reset to healthy current
     controller.handle_command(MotorCommand::SetSpeed(100), None);
-    assert_eq!(controller.state(), MotorState::RampUp);
-    assert_eq!(controller.motor.speed, 100);
-
-    // Transition to On
-    controller.update(None).unwrap();
     assert_eq!(controller.state(), MotorState::On);
+    assert_eq!(controller.motor.speed, 100);
 
     // Simulate stall (high current draw)
     controller.current_sensor.current_ma = 900; // above 800mA threshold
-    controller.update(None).unwrap(); // triggers PowerOff -> state becomes RampDown
-    assert_eq!(controller.state(), MotorState::RampDown);
-
-    controller.update(None).unwrap();
-    assert_eq!(controller.state(), MotorState::Off); // fallback safety transition complete
+    controller.update(None).unwrap(); // triggers PowerOff -> state becomes Off
+    assert_eq!(controller.state(), MotorState::Off);
     assert_eq!(controller.motor.speed, 0); // motor should be stopped
 }
 
