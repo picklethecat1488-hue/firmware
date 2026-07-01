@@ -1,5 +1,6 @@
 use model::interfaces::{
-    ChargeStatus, CurrentSensor, FuelGauge, LedDriver, Motor, ProximitySensor, TemperatureSensor,
+    ChargeStatus, FuelGauge, LedDriver, Motor, PowerMeasurementMode, PowerSensor, ProximitySensor,
+    TemperatureSensor,
 };
 
 /// A mock implementation of a Motor for unit testing on the host.
@@ -52,11 +53,19 @@ impl MockCurrentSensor {
     }
 }
 
-impl CurrentSensor for MockCurrentSensor {
+impl PowerSensor for MockCurrentSensor {
     type Error = ();
 
     fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
         Ok(self.current_ma)
+    }
+
+    fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
+        Ok(3700)
+    }
+
+    fn set_measurement_mode(&mut self, _mode: PowerMeasurementMode) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 
@@ -101,11 +110,19 @@ impl FuelGauge for MockBattery {
 /// A simulated current sensor that always returns a healthy current draw.
 pub struct DummyCurrentSensor;
 
-impl CurrentSensor for DummyCurrentSensor {
+impl PowerSensor for DummyCurrentSensor {
     type Error = core::convert::Infallible;
 
     fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
         Ok(150) // Simulate a healthy current draw of 150mA
+    }
+
+    fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
+        Ok(3700)
+    }
+
+    fn set_measurement_mode(&mut self, _mode: PowerMeasurementMode) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 

@@ -230,16 +230,11 @@ fn main() -> io::Result<()> {
                                     }
                                 },
                                 model::telemetry::TelemetryRecord::Motor(m) => match m {
-                                    model::types::MotorStatus::SpeedRunTemp(
-                                        speed,
-                                        running,
-                                        temp,
-                                    ) => {
-                                        writeln!(
-                                            csv_file,
-                                            "{},Motor,{},{},{},",
-                                            ts, speed, running, temp
-                                        )?;
+                                    model::types::MotorStatus::Brake => {
+                                        writeln!(csv_file, "{},Motor,0,false,25000,", ts)?;
+                                    }
+                                    model::types::MotorStatus::Running(speed) => {
+                                        writeln!(csv_file, "{},Motor,{},true,25000,", ts, speed)?;
                                     }
                                 },
                                 model::telemetry::TelemetryRecord::Thermal(t) => match t {

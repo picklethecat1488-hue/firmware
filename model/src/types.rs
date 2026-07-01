@@ -33,17 +33,15 @@ pub enum BatteryState {
 }
 
 /// Telemetry status of the motor (pump) system.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
 pub enum MotorStatus {
-    /// Pump speed as a percentage (0-100), run status, and temperature (mC).
+    /// Motor is braked/stopped.
+    #[default]
     #[n(0)]
-    SpeedRunTemp(#[n(0)] u8, #[n(1)] bool, #[n(2)] i32),
-}
-
-impl Default for MotorStatus {
-    fn default() -> Self {
-        Self::SpeedRunTemp(0, false, 0)
-    }
+    Brake,
+    /// Motor is running at the specified speed (0-100).
+    #[n(1)]
+    Running(#[n(0)] u8),
 }
 
 /// Telemetry status of the thermal monitoring system.

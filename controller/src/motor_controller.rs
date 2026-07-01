@@ -4,7 +4,7 @@
 
 use crate::state_machine::{MotorEvent, MotorState, MotorStateMachine};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use model::interfaces::{CurrentSensor, Motor};
+use model::interfaces::{Motor, PowerMeasurementMode, PowerSensor};
 
 /// A generalized motor controller that orchestrates motor driver outputs and current sensor monitoring.
 pub struct MotorController<M, C> {
@@ -18,7 +18,7 @@ pub struct MotorController<M, C> {
     speed: u8,
 }
 
-impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
+impl<M: Motor, C: PowerSensor> MotorController<M, C> {
     /// Creates a new motor controller managing the specified motor and current sensor.
     pub const fn new(motor: M, current_sensor: C) -> Self {
         Self {
@@ -59,8 +59,16 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
             >,
         >,
     ) -> Result<(), MotorError<M::Error, C::Error>> {
-        // Read current sensor (torque proxy)
-        let current = self.read_torque_ma().map_err(MotorError::CurrentSensor)?;
+        let is_running = self.fsm.state() == MotorState::On
+            || self.fsm.state() == MotorState::RampUp
+            || self.fsm.state() == MotorState::RampDown;
+
+        let current = if is_running {
+            // Read current sensor (torque proxy)
+            self.read_torque_ma().map_err(MotorError::CurrentSensor)?
+        } else {
+            0
+        };
 
         // Auto-transition ramping states
         if self.fsm.state() == MotorState::RampUp || self.fsm.state() == MotorState::RampDown {
@@ -74,6 +82,9 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
                 self.fsm.transition(MotorEvent::PowerOff);
                 self.speed = 0;
                 self.motor.stop().map_err(MotorError::Motor)?;
+                let _ = self
+                    .current_sensor
+                    .set_measurement_mode(PowerMeasurementMode::PowerDown);
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::warn!(
                     "Motor Controller: Low load / dry detected (current: {} mA). Stopped motor.",
@@ -84,6 +95,9 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
                 self.fsm.transition(MotorEvent::PowerOff);
                 self.speed = 0;
                 self.motor.stop().map_err(MotorError::Motor)?;
+                let _ = self
+                    .current_sensor
+                    .set_measurement_mode(PowerMeasurementMode::PowerDown);
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::error!(
                     "Motor Controller: Motor stall detected (current: {} mA). Stopped motor.",
@@ -95,7 +109,11 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
         if let Some(tx) = telemetry_tx {
             let running =
                 self.fsm.state() == MotorState::On || self.fsm.state() == MotorState::RampUp;
-            let status = model::types::MotorStatus::SpeedRunTemp(self.speed, running, 25000);
+            let status = if running {
+                model::types::MotorStatus::Running(self.speed)
+            } else {
+                model::types::MotorStatus::Brake
+            };
             let _ = tx.try_send(model::telemetry::TelemetryRecord::Motor(status));
         }
 
@@ -120,6 +138,9 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
                 if speed > 0 {
                     if self.fsm.state() == MotorState::Off {
                         self.fsm.transition(MotorEvent::PowerOn);
+                        let _ = self
+                            .current_sensor
+                            .set_measurement_mode(PowerMeasurementMode::Continuous(true, true));
                     }
                     self.speed = speed;
                     let _ = self.motor.set_speed(speed);
@@ -127,19 +148,29 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
                     self.fsm.transition(MotorEvent::PowerOff);
                     self.speed = 0;
                     let _ = self.motor.stop();
+                    let _ = self
+                        .current_sensor
+                        .set_measurement_mode(PowerMeasurementMode::PowerDown);
                 }
             }
             MotorCommand::Stop => {
                 self.fsm.transition(MotorEvent::PowerOff);
                 self.speed = 0;
                 let _ = self.motor.stop();
+                let _ = self
+                    .current_sensor
+                    .set_measurement_mode(PowerMeasurementMode::PowerDown);
             }
         }
 
         if let Some(tx) = telemetry_tx {
             let running =
                 self.fsm.state() == MotorState::On || self.fsm.state() == MotorState::RampUp;
-            let status = model::types::MotorStatus::SpeedRunTemp(self.speed, running, 25000);
+            let status = if running {
+                model::types::MotorStatus::Running(self.speed)
+            } else {
+                model::types::MotorStatus::Brake
+            };
             let _ = tx.try_send(model::telemetry::TelemetryRecord::Motor(status));
         }
     }
@@ -155,6 +186,11 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
             16,
         >,
     ) -> ! {
+        // Put the current sensor into power-down mode on startup since the motor is off
+        let _ = self
+            .current_sensor
+            .set_measurement_mode(PowerMeasurementMode::PowerDown);
+
         loop {
             match embassy_time::with_timeout(
                 embassy_time::Duration::from_millis(1000),
