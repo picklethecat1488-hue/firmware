@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::state_machine::{MotorEvent, MotorState, MotorStateMachine};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use model::interfaces::{CurrentSensor, Motor};
 
 /// A generalized motor controller that orchestrates motor driver outputs and current sensor monitoring.
@@ -14,6 +15,7 @@ pub struct MotorController<M, C> {
     pub current_sensor: C,
     /// Telemetry: last measured current in mA.
     last_current_ma: i32,
+    speed: u8,
 }
 
 impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
@@ -24,6 +26,7 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
             motor,
             current_sensor,
             last_current_ma: 0,
+            speed: 0,
         }
     }
 
@@ -45,7 +48,17 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
     }
 
     /// Ticks the control loop, reading current sensor input and updating safety states.
-    pub fn update(&mut self) -> Result<(), MotorError<M::Error, C::Error>> {
+    pub fn update(
+        &mut self,
+        telemetry_tx: Option<
+            &embassy_sync::channel::Sender<
+                '_,
+                CriticalSectionRawMutex,
+                model::telemetry::TelemetryRecord,
+                16,
+            >,
+        >,
+    ) -> Result<(), MotorError<M::Error, C::Error>> {
         // Read current sensor (torque proxy)
         let current = self.read_torque_ma().map_err(MotorError::CurrentSensor)?;
 
@@ -59,6 +72,7 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
             // Check for dry running (current is unusually low when running, e.g. < 15mA)
             if current < 15 {
                 self.fsm.transition(MotorEvent::PowerOff);
+                self.speed = 0;
                 self.motor.stop().map_err(MotorError::Motor)?;
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::warn!(
@@ -68,6 +82,7 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
             } else if current > 800 {
                 // Check for motor stall (current is too high, e.g. > 800mA)
                 self.fsm.transition(MotorEvent::PowerOff);
+                self.speed = 0;
                 self.motor.stop().map_err(MotorError::Motor)?;
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::error!(
@@ -77,27 +92,55 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
             }
         }
 
+        if let Some(tx) = telemetry_tx {
+            let running =
+                self.fsm.state() == MotorState::On || self.fsm.state() == MotorState::RampUp;
+            let status = model::types::MotorStatus::SpeedRunTemp(self.speed, running, 25000);
+            let _ = tx.try_send(model::telemetry::TelemetryRecord::Motor(status));
+        }
+
         Ok(())
     }
 
     /// Handles a received MotorCommand.
-    pub fn handle_command(&mut self, cmd: MotorCommand) {
+    pub fn handle_command(
+        &mut self,
+        cmd: MotorCommand,
+        telemetry_tx: Option<
+            &embassy_sync::channel::Sender<
+                '_,
+                CriticalSectionRawMutex,
+                model::telemetry::TelemetryRecord,
+                16,
+            >,
+        >,
+    ) {
         match cmd {
             MotorCommand::SetSpeed(speed) => {
                 if speed > 0 {
                     if self.fsm.state() == MotorState::Off {
                         self.fsm.transition(MotorEvent::PowerOn);
                     }
+                    self.speed = speed;
                     let _ = self.motor.set_speed(speed);
                 } else {
                     self.fsm.transition(MotorEvent::PowerOff);
+                    self.speed = 0;
                     let _ = self.motor.stop();
                 }
             }
             MotorCommand::Stop => {
                 self.fsm.transition(MotorEvent::PowerOff);
+                self.speed = 0;
                 let _ = self.motor.stop();
             }
+        }
+
+        if let Some(tx) = telemetry_tx {
+            let running =
+                self.fsm.state() == MotorState::On || self.fsm.state() == MotorState::RampUp;
+            let status = model::types::MotorStatus::SpeedRunTemp(self.speed, running, 25000);
+            let _ = tx.try_send(model::telemetry::TelemetryRecord::Motor(status));
         }
     }
 
@@ -105,6 +148,12 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
     pub async fn run<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex, const N: usize>(
         mut self,
         command_rx: embassy_sync::channel::Receiver<'static, MutexRaw, MotorCommand, N>,
+        telemetry_tx: embassy_sync::channel::Sender<
+            'static,
+            CriticalSectionRawMutex,
+            model::telemetry::TelemetryRecord,
+            16,
+        >,
     ) -> ! {
         loop {
             match embassy_time::with_timeout(
@@ -114,10 +163,10 @@ impl<M: Motor, C: CurrentSensor> MotorController<M, C> {
             .await
             {
                 Ok(cmd) => {
-                    self.handle_command(cmd);
+                    self.handle_command(cmd, Some(&telemetry_tx));
                 }
                 Err(_timeout) => {
-                    let _ = self.update();
+                    let _ = self.update(Some(&telemetry_tx));
                 }
             }
         }

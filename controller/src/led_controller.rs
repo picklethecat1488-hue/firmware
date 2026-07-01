@@ -2,7 +2,7 @@
 
 #![deny(missing_docs)]
 
-use embassy_sync::blocking_mutex::raw::RawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use model::interfaces::LedDriver;
 use model::types::SystemLedState;
 
@@ -66,12 +66,23 @@ impl<D: LedDriver> LedController<D> {
     pub async fn run<M: RawMutex, const SIZE: usize>(
         mut self,
         command_rx: embassy_sync::channel::Receiver<'static, M, SystemLedState, SIZE>,
+        telemetry_tx: embassy_sync::channel::Sender<
+            'static,
+            CriticalSectionRawMutex,
+            model::telemetry::TelemetryRecord,
+            16,
+        >,
     ) -> ! {
         let mut state = SystemLedState::Off;
         let mut blink_timer = embassy_time::Instant::now();
         let mut led_on = false;
 
+        // Log the initial state
+        let _ = telemetry_tx.try_send(model::telemetry::TelemetryRecord::Led(state));
+
         loop {
+            let prev_state = state;
+
             match state {
                 SystemLedState::BlinksRedOncePerThirtySeconds => {
                     let now = embassy_time::Instant::now();
@@ -140,6 +151,10 @@ impl<D: LedDriver> LedController<D> {
                     state = new_cmd;
                     self.current_state = state;
                 }
+            }
+
+            if state != prev_state {
+                let _ = telemetry_tx.try_send(model::telemetry::TelemetryRecord::Led(state));
             }
         }
     }

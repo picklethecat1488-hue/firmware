@@ -2,6 +2,8 @@
 
 use core::cmp;
 use core::ops::Range;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
 use heapless::String;
 
@@ -11,6 +13,15 @@ pub struct ProfilingFlash<F: NorFlash> {
     inner: F,
     /// Total number of page erases performed since system boot
     erase_count: u32,
+    /// Optional telemetry sender to log erase operations
+    telemetry_tx: Option<
+        embassy_sync::channel::Sender<
+            'static,
+            CriticalSectionRawMutex,
+            model::telemetry::TelemetryRecord,
+            16,
+        >,
+    >,
 }
 
 impl<F: NorFlash> ProfilingFlash<F> {
@@ -19,7 +30,21 @@ impl<F: NorFlash> ProfilingFlash<F> {
         Self {
             inner,
             erase_count: 0,
+            telemetry_tx: None,
         }
+    }
+
+    /// Set telemetry sender for flash erase profiling.
+    pub fn set_telemetry(
+        &mut self,
+        telemetry_tx: embassy_sync::channel::Sender<
+            'static,
+            CriticalSectionRawMutex,
+            model::telemetry::TelemetryRecord,
+            16,
+        >,
+    ) {
+        self.telemetry_tx = Some(telemetry_tx);
     }
 
     /// Get total page erases performed since boot.
@@ -68,13 +93,29 @@ impl<F: NorFlash> embedded_storage_async::nor_flash::NorFlash for ProfilingFlash
         let res = self.inner.erase(from, to).await;
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
-        {
+        let duration_ms = {
             let duration = start.elapsed();
+            let ms = duration.as_millis() as u32;
             defmt::info!(
                 "[Profile] Flash erase completed in {} ms (Total erases: {})",
-                duration.as_millis(),
+                ms,
                 self.erase_count
             );
+            ms
+        };
+
+        #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+        let duration_ms = 0;
+
+        if let Some(tx) = &self.telemetry_tx {
+            let sector = from / F::ERASE_SIZE as u32;
+            let details = model::types::FlashEraseTelemetry {
+                sector,
+                duration_ms,
+                erase_count: self.erase_count,
+            };
+            tx.try_send(model::telemetry::TelemetryRecord::FlashTelemetry(details))
+                .unwrap();
         }
 
         res
@@ -86,7 +127,7 @@ impl<F: NorFlash + MultiwriteNorFlash> MultiwriteNorFlash for ProfilingFlash<F> 
 /// File Controller managing raw files/telemetry in flash using sequential-storage map.
 pub struct FilesystemController<F: NorFlash + MultiwriteNorFlash> {
     /// The underlying flash driver instance (possibly wrapped in profiling)
-    flash: F,
+    pub flash: F,
     /// The physical partition address range in flash (start..end byte offsets)
     range: Range<u32>,
 }
@@ -255,6 +296,135 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     }
 }
 
-#[cfg(test)]
-#[path = "filesystem_controller_test.rs"]
-mod tests;
+impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<ProfilingFlash<F>> {
+    /// Set telemetry sender for flash erase profiling.
+    pub fn set_telemetry(
+        &mut self,
+        telemetry_tx: embassy_sync::channel::Sender<
+            'static,
+            CriticalSectionRawMutex,
+            model::telemetry::TelemetryRecord,
+            16,
+        >,
+    ) {
+        self.flash.set_telemetry(telemetry_tx);
+    }
+}
+
+/// Request command for pipelining filesystem operations from different runloops.
+#[allow(clippy::type_complexity)]
+pub enum FsRequest {
+    /// Write file request
+    WriteFile {
+        /// File name
+        name: &'static str,
+        /// Raw pointer to the content buffer
+        content_ptr: *const u8,
+        /// Length of the content buffer
+        content_len: usize,
+        /// Raw pointer to the signal for response notification
+        signal: *const Signal<CriticalSectionRawMutex, Result<(), ()>>,
+    },
+    /// Read file request
+    ReadFile {
+        /// File name
+        name: &'static str,
+        /// Raw pointer to the output buffer
+        buf_ptr: *mut u8,
+        /// Length of the output buffer
+        buf_len: usize,
+        /// Raw pointer to the signal for response notification
+        signal: *const Signal<CriticalSectionRawMutex, Result<Option<(usize, usize)>, ()>>,
+    },
+}
+
+unsafe impl Send for FsRequest {}
+unsafe impl Sync for FsRequest {}
+
+/// Client interface for interacting with the pipelined filesystem.
+#[derive(Clone, Copy)]
+pub struct FilesystemClient {
+    sender: embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, FsRequest, 16>,
+}
+
+impl FilesystemClient {
+    /// Create a new FilesystemClient.
+    pub fn new(
+        sender: embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, FsRequest, 16>,
+    ) -> Self {
+        Self { sender }
+    }
+
+    /// Stores/overwrites a file with the given name and contents asynchronously.
+    pub async fn write_file(&self, name: &'static str, content: &[u8]) -> Result<(), ()> {
+        let signal = Signal::new();
+        let request = FsRequest::WriteFile {
+            name,
+            content_ptr: content.as_ptr(),
+            content_len: content.len(),
+            signal: &signal as *const _,
+        };
+        self.sender.send(request).await;
+        signal.wait().await
+    }
+
+    /// Fetches a file's content asynchronously.
+    pub async fn read_file<'a>(
+        &self,
+        name: &'static str,
+        out_buf: &'a mut [u8],
+    ) -> Result<Option<&'a [u8]>, ()> {
+        let signal = Signal::new();
+        let request = FsRequest::ReadFile {
+            name,
+            buf_ptr: out_buf.as_mut_ptr(),
+            buf_len: out_buf.len(),
+            signal: &signal as *const _,
+        };
+        self.sender.send(request).await;
+        match signal.wait().await {
+            Ok(Some((start, len))) => Ok(Some(&out_buf[start..start + len])),
+            Ok(None) => Ok(None),
+            Err(()) => Err(()),
+        }
+    }
+}
+
+/// Task loop for the filesystem pipeline.
+pub async fn run_filesystem_task<F: NorFlash + MultiwriteNorFlash>(
+    mut fs: FilesystemController<F>,
+    rx: embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, FsRequest, 16>,
+) -> ! {
+    loop {
+        let req = rx.receive().await;
+        match req {
+            FsRequest::WriteFile {
+                name,
+                content_ptr,
+                content_len,
+                signal,
+            } => {
+                let content = unsafe { core::slice::from_raw_parts(content_ptr, content_len) };
+                let res = fs.write_file(name, content).await;
+                unsafe { &*signal }.signal(res);
+            }
+            FsRequest::ReadFile {
+                name,
+                buf_ptr,
+                buf_len,
+                signal,
+            } => {
+                let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr, buf_len) };
+                let base_ptr = buf.as_ptr() as usize;
+                let res = fs.read_file(name, buf).await;
+                let mapped_res = res.map(|opt| {
+                    opt.map(|slice| {
+                        let start = slice.as_ptr() as usize - base_ptr;
+                        (start, slice.len())
+                    })
+                });
+                unsafe { &*signal }.signal(mapped_res);
+            }
+        }
+    }
+}

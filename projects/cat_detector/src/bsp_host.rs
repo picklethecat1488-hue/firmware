@@ -63,6 +63,16 @@ impl Board {
         for item in gpio_pins.iter_mut() {
             *item = Some(MockFlex::new());
         }
+        // Mock asserting XSHUT (active low) on ToF sensors (GP2, GP3, GP6)
+        if let Some(ref mut pin) = gpio_pins[2] {
+            pin.set_low();
+        }
+        if let Some(ref mut pin) = gpio_pins[3] {
+            pin.set_low();
+        }
+        if let Some(ref mut pin) = gpio_pins[6] {
+            pin.set_low();
+        }
         Self { gpio_pins }
     }
 }

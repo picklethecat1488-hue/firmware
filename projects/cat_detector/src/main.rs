@@ -11,6 +11,7 @@ use {
     controller::led_controller::LedController,
     controller::motor_controller::MotorController,
     controller::sensor_controller::SensorController,
+    controller::telemetry_controller::TelemetryController,
     controller::thermal_controller::ThermalController,
     defmt_rtt as _,
     embassy_executor::Spawner,
@@ -50,6 +51,21 @@ async fn main(spawner: Spawner) {
         board.flash,
         cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
     );
+
+    // Initialize the FilesystemController using stolen FLASH peripheral (safe because panic handler only reads/writes on panic)
+    let fs_flash = unsafe { embassy_rp::peripherals::FLASH::steal() };
+    let raw_flash = embassy_rp::flash::Flash::<
+        _,
+        embassy_rp::flash::Blocking,
+        { cat_detector::FLASH_SIZE },
+    >::new_blocking(fs_flash);
+    let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(raw_flash);
+    let profiling_flash = controller::filesystem_controller::ProfilingFlash::new(async_flash);
+    let mut fs_controller = controller::filesystem_controller::FilesystemController::new(
+        profiling_flash,
+        cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
+    );
+    fs_controller.set_telemetry(cat_detector::TELEMETRY_CHANNEL.sender());
 
     // Extract the motor control pin from the board configuration array
     let motor_pin = board.gpio_pins[cat_detector::LED_PIN as usize]
@@ -101,7 +117,14 @@ async fn main(spawner: Spawner) {
         cat_detector::SYSTEM_CHANNEL.sender(),
         cat_detector::system_controller::SystemCommand::Sleep,
     );
-    let power_ctrl = BatteryController::new(&SHARED_BATTERY);
+    let power_ctrl = BatteryController::new_with_system(
+        &SHARED_BATTERY,
+        cat_detector::SYSTEM_CHANNEL.sender(),
+        |soc, chg| cat_detector::system_controller::SystemCommand::BatteryUpdate {
+            state_of_charge: soc,
+            charging: chg,
+        },
+    );
 
     // Initialize simulated LED driver and its controller
     let led_driver = MockLed::new();
@@ -124,6 +147,7 @@ async fn main(spawner: Spawner) {
         thermal_task,
         thermal_ctrl,
         cat_detector::THERMAL_CHANNEL.receiver(),
+        cat_detector::TELEMETRY_CHANNEL.sender(),
         MockBattery,
         cat_detector::system_controller::SystemCommand
     );
@@ -133,7 +157,9 @@ async fn main(spawner: Spawner) {
         power_task,
         power_ctrl,
         cat_detector::BATTERY_CHANNEL.receiver(),
-        MockBattery
+        cat_detector::TELEMETRY_CHANNEL.sender(),
+        MockBattery,
+        cat_detector::system_controller::SystemCommand
     );
 
     controller::run_motor_task!(
@@ -141,6 +167,7 @@ async fn main(spawner: Spawner) {
         motor_task,
         controller,
         cat_detector::MOTOR_CHANNEL.receiver(),
+        cat_detector::TELEMETRY_CHANNEL.sender(),
         GpioMotor<embassy_rp::gpio::Flex<'static>>,
         DummyCurrentSensor
     );
@@ -182,6 +209,7 @@ async fn main(spawner: Spawner) {
         led_task,
         led_ctrl,
         cat_detector::LED_CHANNEL.receiver(),
+        cat_detector::TELEMETRY_CHANNEL.sender(),
         MockLed,
         CriticalSectionRawMutex
     );
@@ -191,6 +219,36 @@ async fn main(spawner: Spawner) {
         system_task,
         system_ctrl,
         cat_detector::SYSTEM_CHANNEL.receiver()
+    );
+
+    cat_detector::run_filesystem_task!(
+        spawner,
+        filesystem_task,
+        fs_controller,
+        cat_detector::FILESYSTEM_CHANNEL.receiver(),
+        controller::filesystem_controller::ProfilingFlash<
+            firmware_lib::panic_handler::BlockingAsyncFlash<
+                embassy_rp::flash::Flash<
+                    'static,
+                    embassy_rp::peripherals::FLASH,
+                    embassy_rp::flash::Blocking,
+                    { cat_detector::FLASH_SIZE },
+                >,
+            >,
+        >
+    );
+
+    let client = controller::filesystem_controller::FilesystemClient::new(
+        cat_detector::FILESYSTEM_CHANNEL.sender(),
+    );
+    let telemetry_ctrl =
+        TelemetryController::<45, { 12 + 45 * 20 + 128 }>::new(client, cat_detector::system_time);
+    cat_detector::run_telemetry_task!(
+        spawner,
+        telemetry_task,
+        telemetry_ctrl,
+        cat_detector::TELEMETRY_CHANNEL.receiver(),
+        45
     );
 }
 

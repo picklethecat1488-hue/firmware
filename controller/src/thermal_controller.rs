@@ -2,7 +2,7 @@
 
 #![deny(missing_docs)]
 
-use embassy_sync::blocking_mutex::raw::RawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use model::interfaces::TemperatureSensor;
 
@@ -23,7 +23,9 @@ pub struct ThermalController<'a, M: RawMutex, B, Cmd = ()> {
     state: ThermalState,
 }
 
-impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone> ThermalController<'a, M, B, Cmd> {
+impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
+    ThermalController<'a, M, B, Cmd>
+{
     /// Creates a new thermal controller referencing a shared battery peripheral without shutdown coordination.
     pub fn new(battery: &'a Mutex<M, B>) -> Self {
         Self {
@@ -54,7 +56,17 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone> ThermalController<'a, M,
     }
 
     /// Updates the thermal status by locking and reading the peripheral.
-    pub async fn update(&mut self) -> Result<(), B::Error> {
+    pub async fn update(
+        &mut self,
+        telemetry_tx: Option<
+            &embassy_sync::channel::Sender<
+                '_,
+                CriticalSectionRawMutex,
+                model::telemetry::TelemetryRecord,
+                16,
+            >,
+        >,
+    ) -> Result<(), B::Error> {
         let temp = {
             let mut bat = self.battery.lock().await;
             bat.read_temperature_milli_c()?
@@ -69,10 +81,16 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone> ThermalController<'a, M,
         // Critical threshold check: shut down system if temp > 60°C (60000 mC)
         if temp > 60000 {
             if let (Some(tx), Some(cmd)) = (&self.system_tx, &self.shutdown_cmd) {
-                let _ = tx.try_send(cmd.clone());
+                tx.try_send(cmd.clone()).unwrap();
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::error!("Thermal Controller: Critical temperature exceeded ({} mC). Dispatching safety shutdown.", temp);
             }
+        }
+
+        if let Some(tx) = telemetry_tx {
+            let overheating = self.state == ThermalState::Overheating;
+            let status = model::types::ThermalStatus::TempOverheating(temp, overheating);
+            let _ = tx.try_send(model::telemetry::TelemetryRecord::Thermal(status));
         }
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -89,6 +107,12 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone> ThermalController<'a, M,
     pub async fn run(
         mut self,
         command_rx: embassy_sync::channel::Receiver<'static, M, ThermalCommand, 4>,
+        telemetry_tx: embassy_sync::channel::Sender<
+            'static,
+            CriticalSectionRawMutex,
+            model::telemetry::TelemetryRecord,
+            16,
+        >,
     ) -> ! {
         loop {
             match embassy_time::with_timeout(
@@ -99,11 +123,11 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone> ThermalController<'a, M,
             {
                 Ok(cmd) => match cmd {
                     ThermalCommand::CheckTemp => {
-                        let _ = self.update().await;
+                        let _ = self.update(Some(&telemetry_tx)).await;
                     }
                 },
                 Err(_timeout) => {
-                    let _ = self.update().await;
+                    let _ = self.update(Some(&telemetry_tx)).await;
                 }
             }
         }

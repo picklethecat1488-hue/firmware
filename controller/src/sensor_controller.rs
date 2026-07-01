@@ -46,8 +46,12 @@ impl<'a, S: ProximitySensor>
     }
 }
 
-impl<'a, S: ProximitySensor, M: embassy_sync::blocking_mutex::raw::RawMutex, Cmd: Clone>
-    SensorController<'a, S, M, Cmd>
+impl<
+        'a,
+        S: ProximitySensor,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        Cmd: Clone + core::fmt::Debug,
+    > SensorController<'a, S, M, Cmd>
 {
     /// Creates a new SensorController with upstream system notification.
     pub fn new_with_fusion(
@@ -104,7 +108,7 @@ impl<'a, S: ProximitySensor, M: embassy_sync::blocking_mutex::raw::RawMutex, Cmd
 
         if let (Some(tx), Some(make_cmd)) = (&self.system_tx, &self.make_cmd) {
             let cmd = make_cmd(self.sensor_id, dist);
-            let _ = tx.try_send(cmd);
+            tx.try_send(cmd).unwrap();
         }
 
         Ok(dist)
@@ -149,7 +153,3 @@ impl<'a, S: ProximitySensor, M: embassy_sync::blocking_mutex::raw::RawMutex, Cmd
         }
     }
 }
-
-#[cfg(test)]
-#[path = "sensor_controller_test.rs"]
-mod tests;

@@ -20,6 +20,23 @@ pub const UART_TX_PIN: u32 = 0;
 /// UART RX pin (GPIO 1)
 pub const UART_RX_PIN: u32 = 1;
 
+/// ToF Sensor 1 (North) XSHUT pin (GPIO 2)
+pub const TOF_NORTH_XSHUT_PIN: u32 = 2;
+/// ToF Sensor 2 (East) XSHUT pin (GPIO 3)
+pub const TOF_EAST_XSHUT_PIN: u32 = 3;
+/// ToF Sensor 3 (West) XSHUT pin (GPIO 6)
+pub const TOF_WEST_XSHUT_PIN: u32 = 6;
+
+/// ToF Sensor 1 (North) Interrupt pin (GPIO 7)
+pub const TOF_NORTH_INT_PIN: u32 = 7;
+/// ToF Sensor 2 (East) Interrupt pin (GPIO 8)
+pub const TOF_EAST_INT_PIN: u32 = 8;
+/// ToF Sensor 3 (West) Interrupt pin (GPIO 9)
+pub const TOF_WEST_INT_PIN: u32 = 9;
+
+/// Fuel Gauge Interrupt/Alert pin (GPIO 10)
+pub const FUEL_GAUGE_INT_PIN: u32 = 10;
+
 /// Start address of the filesystem storage partition in flash (offset from start of flash).
 pub const STORAGE_PARTITION_START: u32 = 0x1C_0000; // 1.75 MB
 /// End address of the filesystem storage partition in flash (2.00 MB limit).
@@ -103,35 +120,100 @@ pub static LED_CHANNEL: embassy_sync::channel::Channel<
     model::types::SystemLedState,
     4,
 > = embassy_sync::channel::Channel::new();
+
+/// Shared command channel for telemetry records.
+pub static TELEMETRY_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    model::types::TelemetryRecord,
+    16,
+> = embassy_sync::channel::Channel::new();
+
+/// Shared command channel for filesystem operations.
+pub static FILESYSTEM_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    controller::filesystem_controller::FsRequest,
+    16,
+> = embassy_sync::channel::Channel::new();
+
+/// Log a telemetry record to the global asynchronous pipeline.
+pub fn log_telemetry(record: model::types::TelemetryRecord) {
+    let _ = TELEMETRY_CHANNEL.try_send(record);
+}
+
+/// Re-export the telemetry module from the shared library
+pub use firmware_lib::telemetry;
+
+/// Re-export the run_telemetry_task macro from the shared library
+pub use firmware_lib::run_telemetry_task;
+
+/// Re-export the run_filesystem_task macro from the controller crate
+pub use controller::run_filesystem_task;
+
 /// Re-export the modular panic handler function
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-pub use rp2040_panic_handler::handle_panic;
+pub use firmware_lib::panic_handler::handle_panic;
 
 /// Re-export the modular panic handler initialization
-pub use rp2040_panic_handler::init as init_panic_handler;
+pub use firmware_lib::panic_handler::init as init_panic_handler;
 
 /// Re-export the modular logging helper function
-pub use rp2040_panic_handler::log_system;
+pub use firmware_lib::panic_handler::log_system;
 
-/// Re-export the modular log_info! macro from the panic handler crate
-pub use rp2040_panic_handler::log_info;
+/// Re-export the modular log_info! macro from the panic handler
+pub use firmware_lib::log_info;
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Returns the current system uptime in microseconds since boot (64-bit precision).
 pub fn system_time() -> u64 {
-    unsafe {
-        let timer_high_addr = 0x4005_4008 as *const u32;
-        let timer_low_addr = 0x4005_400c as *const u32;
-        let mut high = *timer_high_addr;
-        let mut low = *timer_low_addr;
-        let high2 = *timer_high_addr;
-        if high != high2 {
-            high = high2;
-            low = *timer_low_addr;
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    {
+        unsafe {
+            let timer_high_addr = 0x4005_4008 as *const u32;
+            let timer_low_addr = 0x4005_400c as *const u32;
+            let mut high = *timer_high_addr;
+            let mut low = *timer_low_addr;
+            let high2 = *timer_high_addr;
+            if high != high2 {
+                high = high2;
+                low = *timer_low_addr;
+            }
+            ((high as u64) << 32) | (low as u64)
         }
-        ((high as u64) << 32) | (low as u64)
+    }
+    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+    {
+        static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let start = *START.get_or_init(std::time::Instant::now);
+        std::time::Instant::now().duration_since(start).as_micros() as u64
     }
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 defmt::timestamp!("{=u64:us}", system_time());
+
+/// Derived command enum representing all supported user commands.
+#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
+pub enum CliCommand {
+    /// Motor speed control (motor <speed>)
+    Motor {
+        /// Speed value (0-100)
+        speed: u8,
+    },
+    /// Stop the motor
+    Stop,
+    /// Query battery voltage and status
+    Battery,
+    /// Query thermal sensor and status
+    Thermal,
+    /// Query proximity (ToF) sensors
+    Proximity,
+    /// Wake the system to Active state
+    Wake,
+    /// Put the system to Sleep state
+    Sleep,
+    /// Simulate activity event
+    Activity,
+    /// Trigger a panic to test the crash dump / panic flow
+    Crash,
+    /// Show help and usage summary
+    Help,
+}
