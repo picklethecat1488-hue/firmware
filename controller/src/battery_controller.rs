@@ -6,6 +6,23 @@ use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use model::interfaces::FuelGauge;
 
+/// Trait for waiting on a battery alert pin.
+#[allow(async_fn_in_trait)]
+pub trait BatteryAlertPin {
+    /// Wait for the alert pin to go low (active state).
+    async fn wait_for_alert(&mut self);
+}
+
+/// A dummy mock implementation of BatteryAlertPin that waits forever.
+pub struct DummyAlertPin;
+
+impl BatteryAlertPin for DummyAlertPin {
+    async fn wait_for_alert(&mut self) {
+        // Sleep forever to let the periodic timeout drive updates
+        embassy_time::Timer::after_secs(3600 * 24).await;
+    }
+}
+
 /// Current operating state of the battery.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BatteryState {
@@ -15,16 +32,17 @@ pub enum BatteryState {
     Low,
 }
 
-/// A controller that periodically monitors battery status.
-pub struct BatteryController<'a, M: RawMutex, B, Cmd = ()> {
+/// A controller that periodically monitors battery status and wakes on alerts.
+pub struct BatteryController<'a, M: RawMutex, B, Pin = DummyAlertPin, Cmd = ()> {
     battery: &'a Mutex<M, B>,
     state: BatteryState,
     system_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
     update_fn: Option<fn(u8, bool) -> Cmd>,
+    alert_pin: Option<Pin>,
 }
 
 impl<'a, M: RawMutex, B: FuelGauge, Cmd: Clone + core::fmt::Debug>
-    BatteryController<'a, M, B, Cmd>
+    BatteryController<'a, M, B, DummyAlertPin, Cmd>
 {
     /// Creates a new battery controller referencing a shared battery peripheral.
     pub fn new(battery: &'a Mutex<M, B>) -> Self {
@@ -33,6 +51,7 @@ impl<'a, M: RawMutex, B: FuelGauge, Cmd: Clone + core::fmt::Debug>
             state: BatteryState::Ok,
             system_tx: None,
             update_fn: None,
+            alert_pin: None,
         }
     }
 
@@ -47,6 +66,27 @@ impl<'a, M: RawMutex, B: FuelGauge, Cmd: Clone + core::fmt::Debug>
             state: BatteryState::Ok,
             system_tx: Some(system_tx),
             update_fn: Some(update_fn),
+            alert_pin: None,
+        }
+    }
+}
+
+impl<'a, M: RawMutex, B: FuelGauge, Pin: BatteryAlertPin, Cmd: Clone + core::fmt::Debug>
+    BatteryController<'a, M, B, Pin, Cmd>
+{
+    /// Creates a new battery controller with system notification and alert pin support.
+    pub fn new_with_system_and_alert(
+        battery: &'a Mutex<M, B>,
+        system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        update_fn: fn(u8, bool) -> Cmd,
+        alert_pin: Pin,
+    ) -> Self {
+        Self {
+            battery,
+            state: BatteryState::Ok,
+            system_tx: Some(system_tx),
+            update_fn: Some(update_fn),
+            alert_pin: Some(alert_pin),
         }
     }
 
@@ -119,18 +159,29 @@ impl<'a, M: RawMutex, B: FuelGauge, Cmd: Clone + core::fmt::Debug>
         >,
     ) -> ! {
         loop {
-            match embassy_time::with_timeout(
-                embassy_time::Duration::from_millis(2000),
-                command_rx.receive(),
-            )
-            .await
-            {
-                Ok(cmd) => match cmd {
+            let rx_fut = command_rx.receive();
+            let alert_fut = async {
+                if let Some(ref mut pin) = self.alert_pin {
+                    pin.wait_for_alert().await;
+                } else {
+                    core::future::pending::<()>().await;
+                }
+            };
+            let timeout_fut = embassy_time::Timer::after(embassy_time::Duration::from_millis(2000));
+
+            match embassy_futures::select::select3(rx_fut, alert_fut, timeout_fut).await {
+                // Command received from system shell/console
+                embassy_futures::select::Either3::First(cmd) => match cmd {
                     BatteryCommand::CheckStatus => {
                         let _ = self.update(Some(&telemetry_tx)).await;
                     }
                 },
-                Err(_timeout) => {
+                // Fuel gauge alert interrupt triggered
+                embassy_futures::select::Either3::Second(_) => {
+                    let _ = self.update(Some(&telemetry_tx)).await;
+                }
+                // Periodic update interval elapsed
+                embassy_futures::select::Either3::Third(_) => {
                     let _ = self.update(Some(&telemetry_tx)).await;
                 }
             }

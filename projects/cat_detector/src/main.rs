@@ -23,6 +23,16 @@ use {
 };
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+struct AlertPinWrapper(embassy_rp::gpio::Flex<'static>);
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl controller::battery_controller::BatteryAlertPin for AlertPinWrapper {
+    async fn wait_for_alert(&mut self) {
+        self.0.wait_for_low().await;
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     cat_detector::handle_panic_with_sizes::<
@@ -135,13 +145,20 @@ async fn main(spawner: Spawner) {
         cat_detector::SYSTEM_CHANNEL.sender(),
         cat_detector::system_controller::SystemCommand::Sleep,
     );
-    let power_ctrl = BatteryController::new_with_system(
+
+    let fg_alert_pin = board.gpio_pins[cat_detector::FUEL_GAUGE_INT_PIN as usize]
+        .take()
+        .expect("Fuel gauge alert pin must be available");
+    let alert_wrapper = AlertPinWrapper(fg_alert_pin);
+
+    let power_ctrl = BatteryController::new_with_system_and_alert(
         &SHARED_BATTERY,
         cat_detector::SYSTEM_CHANNEL.sender(),
         |soc, chg| cat_detector::system_controller::SystemCommand::BatteryUpdate {
             state_of_charge: soc,
             charging: chg,
         },
+        alert_wrapper,
     );
 
     // Initialize simulated LED driver and its controller
@@ -177,6 +194,7 @@ async fn main(spawner: Spawner) {
         cat_detector::BATTERY_CHANNEL.receiver(),
         cat_detector::TELEMETRY_CHANNEL.sender(),
         MockBattery,
+        AlertPinWrapper,
         cat_detector::system_controller::SystemCommand
     );
 

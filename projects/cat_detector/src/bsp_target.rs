@@ -6,7 +6,7 @@
 #![cfg(all(target_arch = "arm", target_os = "none"))]
 #![deny(missing_docs)]
 
-use embassy_rp::gpio::{Flex, Pin};
+use embassy_rp::gpio::{Flex, Pin, Pull};
 use embassy_rp::i2c::{Config as I2cConfig, I2c};
 use embassy_rp::uart::{Config as UartConfig, Uart};
 use embassy_rp::Peripherals;
@@ -109,17 +109,23 @@ impl<'d> Board<'d> {
         ];
 
         // 2. Assert XSHUT (active low) on all ToF sensors (GP2, GP3, GP6)
-        if let Some(ref mut pin) = gpio_pins[2] {
+        if let Some(ref mut pin) = gpio_pins[crate::TOF_NORTH_XSHUT_PIN as usize] {
             pin.set_as_output();
             pin.set_low();
         }
-        if let Some(ref mut pin) = gpio_pins[3] {
+        if let Some(ref mut pin) = gpio_pins[crate::TOF_EAST_XSHUT_PIN as usize] {
             pin.set_as_output();
             pin.set_low();
         }
-        if let Some(ref mut pin) = gpio_pins[6] {
+        if let Some(ref mut pin) = gpio_pins[crate::TOF_WEST_XSHUT_PIN as usize] {
             pin.set_as_output();
             pin.set_low();
+        }
+
+        // 3. Configure Fuel Gauge Alert pin (GP10) as input with pull-up (active-low, open-drain)
+        if let Some(ref mut pin) = gpio_pins[crate::FUEL_GAUGE_INT_PIN as usize] {
+            pin.set_as_input();
+            pin.set_pull(Pull::Up);
         }
 
         Self {
