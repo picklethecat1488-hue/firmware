@@ -82,6 +82,7 @@ macro_rules! run_battery_task {
         $rx:expr,
         $telemetry_tx:expr,
         $battery_type:ty,
+        $pin_type:ty,
         $cmd_type:ty
     ) => {
         mod $task_module {
@@ -93,6 +94,7 @@ macro_rules! run_battery_task {
                     'static,
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                     $battery_type,
+                    $pin_type,
                     $cmd_type,
                 >,
                 rx: embassy_sync::channel::Receiver<
@@ -178,6 +180,7 @@ macro_rules! run_sensor_task {
         $rx:expr,
         $sensor_type:ty,
         $raw_mutex:ty,
+        $pin_type:ty,
         $cmd_type:ty
     ) => {
         mod $task_module {
@@ -189,6 +192,7 @@ macro_rules! run_sensor_task {
                     'static,
                     $sensor_type,
                     $raw_mutex,
+                    $pin_type,
                     $cmd_type,
                 >,
                 rx: embassy_sync::channel::Receiver<

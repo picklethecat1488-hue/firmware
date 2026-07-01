@@ -3,6 +3,7 @@
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_main)]
 #![deny(missing_docs)]
+#![allow(static_mut_refs)]
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
@@ -22,13 +23,35 @@ use {
 };
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+struct AlertPinWrapper(embassy_rp::gpio::Flex<'static>);
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl controller::battery_controller::BatteryAlertPin for AlertPinWrapper {
+    async fn wait_for_alert(&mut self) {
+        self.0.wait_for_low().await;
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+struct ProximityPinWrapper(embassy_rp::gpio::Flex<'static>);
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl controller::sensor_controller::DataReadyPin for ProximityPinWrapper {
+    async fn wait_for_data_ready(&mut self) {
+        self.0.wait_for_low().await;
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    cat_detector::handle_panic::<
+    cat_detector::handle_panic_with_sizes::<
         { cat_detector::FLASH_SIZE },
         { cat_detector::STACK_TOP },
         { cat_detector::FLASH_START },
         { cat_detector::FLASH_END },
+        { cat_detector::FLASH_WRITE_SIZE },
+        { cat_detector::FLASH_ERASE_SIZE },
     >(info);
 }
 
@@ -46,9 +69,24 @@ async fn main(spawner: Spawner) {
     // Initialize board peripherals using the unified board configuration
     let mut board = cat_detector::Board::init(p);
 
+    // Register system time function for the panic handler
+    cat_detector::set_time_fn(cat_detector::system_time);
+
     // Initialize the modular panic handler
+    static mut PANIC_FLASH: Option<
+        embassy_rp::flash::Flash<
+            'static,
+            embassy_rp::peripherals::FLASH,
+            embassy_rp::flash::Blocking,
+            { cat_detector::FLASH_SIZE },
+        >,
+    > = None;
+    let panic_flash = unsafe {
+        PANIC_FLASH = Some(embassy_rp::flash::Flash::new_blocking(board.flash));
+        PANIC_FLASH.as_mut().unwrap()
+    };
     cat_detector::init_panic_handler(
-        board.flash,
+        panic_flash,
         cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
     );
 
@@ -82,7 +120,17 @@ async fn main(spawner: Spawner) {
     let tof_east = DummyProximitySensor::new(150);
     let tof_west = DummyProximitySensor::new(200);
 
-    let sensor_ctrl_north = SensorController::new_with_fusion(
+    let pin_north = board.gpio_pins[cat_detector::TOF_NORTH_INT_PIN as usize]
+        .take()
+        .expect("North ToF interrupt pin must be available");
+    let pin_east = board.gpio_pins[cat_detector::TOF_EAST_INT_PIN as usize]
+        .take()
+        .expect("East ToF interrupt pin must be available");
+    let pin_west = board.gpio_pins[cat_detector::TOF_WEST_INT_PIN as usize]
+        .take()
+        .expect("West ToF interrupt pin must be available");
+
+    let sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
         0,
         tof_north,
         cat_detector::SYSTEM_CHANNEL.sender(),
@@ -90,9 +138,10 @@ async fn main(spawner: Spawner) {
             sensor_id: id,
             distance_mm: dist,
         },
+        ProximityPinWrapper(pin_north),
     );
 
-    let sensor_ctrl_east = SensorController::new_with_fusion(
+    let sensor_ctrl_east = SensorController::new_with_fusion_and_interrupt(
         1,
         tof_east,
         cat_detector::SYSTEM_CHANNEL.sender(),
@@ -100,9 +149,10 @@ async fn main(spawner: Spawner) {
             sensor_id: id,
             distance_mm: dist,
         },
+        ProximityPinWrapper(pin_east),
     );
 
-    let sensor_ctrl_west = SensorController::new_with_fusion(
+    let sensor_ctrl_west = SensorController::new_with_fusion_and_interrupt(
         2,
         tof_west,
         cat_detector::SYSTEM_CHANNEL.sender(),
@@ -110,6 +160,7 @@ async fn main(spawner: Spawner) {
             sensor_id: id,
             distance_mm: dist,
         },
+        ProximityPinWrapper(pin_west),
     );
 
     let thermal_ctrl = ThermalController::new_with_shutdown(
@@ -117,13 +168,20 @@ async fn main(spawner: Spawner) {
         cat_detector::SYSTEM_CHANNEL.sender(),
         cat_detector::system_controller::SystemCommand::Sleep,
     );
-    let power_ctrl = BatteryController::new_with_system(
+
+    let fg_alert_pin = board.gpio_pins[cat_detector::FUEL_GAUGE_INT_PIN as usize]
+        .take()
+        .expect("Fuel gauge alert pin must be available");
+    let alert_wrapper = AlertPinWrapper(fg_alert_pin);
+
+    let power_ctrl = BatteryController::new_with_system_and_alert(
         &SHARED_BATTERY,
         cat_detector::SYSTEM_CHANNEL.sender(),
         |soc, chg| cat_detector::system_controller::SystemCommand::BatteryUpdate {
             state_of_charge: soc,
             charging: chg,
         },
+        alert_wrapper,
     );
 
     // Initialize simulated LED driver and its controller
@@ -159,6 +217,7 @@ async fn main(spawner: Spawner) {
         cat_detector::BATTERY_CHANNEL.receiver(),
         cat_detector::TELEMETRY_CHANNEL.sender(),
         MockBattery,
+        AlertPinWrapper,
         cat_detector::system_controller::SystemCommand
     );
 
@@ -180,6 +239,7 @@ async fn main(spawner: Spawner) {
         cat_detector::SENSOR_NORTH_CHANNEL.receiver(),
         DummyProximitySensor,
         CriticalSectionRawMutex,
+        ProximityPinWrapper,
         cat_detector::system_controller::SystemCommand
     );
 
@@ -190,6 +250,7 @@ async fn main(spawner: Spawner) {
         cat_detector::SENSOR_EAST_CHANNEL.receiver(),
         DummyProximitySensor,
         CriticalSectionRawMutex,
+        ProximityPinWrapper,
         cat_detector::system_controller::SystemCommand
     );
 
@@ -200,6 +261,7 @@ async fn main(spawner: Spawner) {
         cat_detector::SENSOR_WEST_CHANNEL.receiver(),
         DummyProximitySensor,
         CriticalSectionRawMutex,
+        ProximityPinWrapper,
         cat_detector::system_controller::SystemCommand
     );
 

@@ -4,6 +4,23 @@
 
 use model::interfaces::ProximitySensor;
 
+/// Trait for waiting on a data-ready interrupt pin.
+#[allow(async_fn_in_trait)]
+pub trait DataReadyPin {
+    /// Wait for the data-ready pin to trigger (active state).
+    async fn wait_for_data_ready(&mut self);
+}
+
+/// A dummy mock implementation of DataReadyPin that waits forever.
+pub struct DummyDataReadyPin;
+
+impl DataReadyPin for DummyDataReadyPin {
+    async fn wait_for_data_ready(&mut self) {
+        // Sleep forever to let the periodic timeout drive updates
+        embassy_time::Timer::after_secs(3600 * 24).await;
+    }
+}
+
 /// One-way commands sent to the Sensor Controller.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SensorCommand {
@@ -20,6 +37,7 @@ pub struct SensorController<
     'a,
     S,
     M: embassy_sync::blocking_mutex::raw::RawMutex = embassy_sync::blocking_mutex::raw::NoopRawMutex,
+    Pin = DummyDataReadyPin,
     Cmd = (),
 > {
     sensor_id: u8,
@@ -28,10 +46,11 @@ pub struct SensorController<
     periodic_enabled: bool,
     system_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
     make_cmd: Option<fn(u8, u16) -> Cmd>,
+    interrupt_pin: Option<Pin>,
 }
 
 impl<'a, S: ProximitySensor>
-    SensorController<'a, S, embassy_sync::blocking_mutex::raw::NoopRawMutex, ()>
+    SensorController<'a, S, embassy_sync::blocking_mutex::raw::NoopRawMutex, DummyDataReadyPin, ()>
 {
     /// Creates a new SensorController managing a single proximity sensor.
     pub const fn new(sensor_id: u8, sensor: S) -> Self {
@@ -42,6 +61,7 @@ impl<'a, S: ProximitySensor>
             periodic_enabled: true,
             system_tx: None,
             make_cmd: None,
+            interrupt_pin: None,
         }
     }
 }
@@ -51,7 +71,7 @@ impl<
         S: ProximitySensor,
         M: embassy_sync::blocking_mutex::raw::RawMutex,
         Cmd: Clone + core::fmt::Debug,
-    > SensorController<'a, S, M, Cmd>
+    > SensorController<'a, S, M, DummyDataReadyPin, Cmd>
 {
     /// Creates a new SensorController with upstream system notification.
     pub fn new_with_fusion(
@@ -67,6 +87,35 @@ impl<
             periodic_enabled: true,
             system_tx: Some(system_tx),
             make_cmd: Some(make_cmd),
+            interrupt_pin: None,
+        }
+    }
+}
+
+impl<
+        'a,
+        S: ProximitySensor,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        Pin: DataReadyPin,
+        Cmd: Clone + core::fmt::Debug,
+    > SensorController<'a, S, M, Pin, Cmd>
+{
+    /// Creates a new SensorController with upstream system notification and interrupt pin support.
+    pub fn new_with_fusion_and_interrupt(
+        sensor_id: u8,
+        sensor: S,
+        system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        make_cmd: fn(u8, u16) -> Cmd,
+        interrupt_pin: Pin,
+    ) -> Self {
+        Self {
+            sensor_id,
+            sensor,
+            latest_distance: 1000,
+            periodic_enabled: true,
+            system_tx: Some(system_tx),
+            make_cmd: Some(make_cmd),
+            interrupt_pin: Some(interrupt_pin),
         }
     }
 
@@ -135,16 +184,29 @@ impl<
         command_rx: embassy_sync::channel::Receiver<'static, M, SensorCommand, 4>,
     ) -> ! {
         loop {
-            match embassy_time::with_timeout(
-                embassy_time::Duration::from_millis(1000),
-                command_rx.receive(),
-            )
-            .await
-            {
-                Ok(cmd) => {
+            let rx_fut = command_rx.receive();
+            let interrupt_fut = async {
+                if let Some(ref mut pin) = self.interrupt_pin {
+                    pin.wait_for_data_ready().await;
+                } else {
+                    core::future::pending::<()>().await;
+                }
+            };
+            let timeout_fut = embassy_time::Timer::after(embassy_time::Duration::from_millis(1000));
+
+            match embassy_futures::select::select3(rx_fut, interrupt_fut, timeout_fut).await {
+                // Command received from system shell/console
+                embassy_futures::select::Either3::First(cmd) => {
                     self.handle_command(cmd);
                 }
-                Err(_timeout) => {
+                // Proximity interrupt triggered (GPIO1 output from ToF went low)
+                embassy_futures::select::Either3::Second(_) => {
+                    if self.periodic_enabled {
+                        let _ = self.update();
+                    }
+                }
+                // Periodic update interval elapsed
+                embassy_futures::select::Either3::Third(_) => {
                     if self.periodic_enabled {
                         let _ = self.update();
                     }

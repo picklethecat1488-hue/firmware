@@ -12,6 +12,7 @@ The Cat Detector firmware is a `no_std` embedded application built on the **Emba
 graph TD
     subgraph Controller Crate [controller]
         MC["MotorController"]
+        MSM["MotorStateMachine"]
         BC["BatteryController"]
         TC["ThermalController"]
         SC["SensorController (instances: North, East, West)"]
@@ -21,7 +22,6 @@ graph TD
     end
 
     subgraph Model Crate [model]
-        FSM["FountainStateMachine"]
         TS["Telemetry Types (Battery/Motor/Thermal/Proximity/LED Status)"]
     end
 
@@ -39,7 +39,7 @@ graph TD
 
     Main -->|Spawns| MC & BC & TC & SC & LC & FSC & TMC & SysC
     SysC -->|Coordinates| MC & SC & LC & BC & TC
-    MC -->|Transitions| FSM
+    MC -->|Manages| MSM
     MC & SC & LC -->|Drives| PT
     BC & TC -->|Queries| BT
     MC & BC & TC & LC & FSC -->|Sends Telemetry| TMC
@@ -86,7 +86,7 @@ The `peripherals` crate implements the concrete, platform-independent drivers an
 *   `max17048::Max17048`: Implements `TemperatureSensor` and `FuelGauge` traits, scaling registers to VCELL mV and SOC %. [MAX17048 Datasheet](https://www.analog.com/media/en/technical-documentation/data-sheets/MAX17048-MAX17049.pdf)
 *   `bq25185::Bq25185`: Implements `Charger` trait for linear charger and power path management. [BQ25185 Datasheet](https://www.ti.com/lit/ds/symlink/bq25185.pdf)
 *   `ina219::Ina219`: Implements `CurrentSensor` and `PowerSensor` traits, calibrating shunt voltage calculations for current monitoring. [INA219 Datasheet](https://www.ti.com/lit/ds/symlink/ina219.pdf)
-*   `vl53l0x::Vl53l0x`: Implements `ProximitySensor` trait, driving ranges and supporting dynamic address assignment at register `0x8A`. [VL53L0X Datasheet](https://www.st.com/resource/en/datasheet/vl53l0x.pdf)
+*   `vl53l0x::Vl53l0x`: Implements `ProximitySensor` trait, driving ranges and supporting dynamic address assignment at register `0x8A`. [VL53L0X Datasheet](https://www.st.com/resource/en/datasheet/vl53l0x.pdf) | [VL53L0X API Guide (UM2039)](https://www.st.com/resource/en/user_manual/um2039-world-smallest-timeofflight-ranging-and-gesture-detection-sensor-application-programming-interface-stmicroelectronics.pdf)
 *   `l9110s::L9110s`: Implements `Motor` trait for h-bridge motor driver control using two `OutputPin` channels. [L9110S Datasheet](https://www.elecrow.com/download/datasheet-l9110.pdf)
 *   `attiny816::Attiny816`: Manages indicator NeoPixel outputs by writing RGB color packets over I2C, implementing the `LedDriver` interface. [ATtiny816 Datasheet](https://cdn-learn.adafruit.com/downloads/pdf/adafruit-neodriver-i2c-to-neopixel-driver.pdf)
 
@@ -147,8 +147,8 @@ Persistent files (such as calibration variables or telemetry logs) are stored in
 > [!IMPORTANT]
 > The `FilesystemController` wraps the underlying raw flash in `ProfilingFlash`. This interceptor automatically monitors flash write health and logs exact erase telemetry.
 
-### 4.1. Diagnostics & Crash Logging (`rp2040_panic_handler`)
-To capture system crash data reliably without relying on active runtime loops, a dedicated **Panic Handler Crate** (`rp2040_panic_handler`) is integrated. It operates directly at the low-level panic/NMI boundary:
+### 4.1. Diagnostics & Crash Logging (`firmware_lib::panic_handler`)
+To capture system crash data reliably without relying on active runtime loops, a generalized **ARMv6m+ (Thumb) Panic Handler** module (`firmware_lib::panic_handler`) is integrated. It operates directly at the low-level panic/NMI boundary:
 1.  **Stack Scanner**: Performs a heuristic stack scan on the Cortex-M0+ stack, extracting candidate return program counters (PCs) within the flash code segment.
 2.  **Revision & Info Capture**: Retrieves the package version/revision hash and detailed panic information (file, line number, panic message).
 3.  **Circular System Logs**: Captures the last 1024 bytes of diagnostic logs from a global, critical-section protected `CRASH_LOG_BUFFER`.

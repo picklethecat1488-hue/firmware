@@ -1,9 +1,9 @@
 #![deny(missing_docs)]
 #![allow(static_mut_refs)]
 
-//! Modular panic handler for RP2040 microcontrollers.
-//! Automatically dumps panics, stack traces, and circular system log buffers
-//! to a rolling flash memory file buffer.
+//! Generalized modular panic handler for ARMv6+ architectures (e.g. Cortex-M).
+//! Automatically dumps panics, stack traces, register dumps, and circular system log buffers
+//! to a rolling flash memory partition using target-agnostic flash abstractions.
 
 use core::fmt::Write;
 
@@ -19,15 +19,26 @@ pub use types::PanicConfig;
 pub static CRASH_LOG_BUFFER: critical_section::Mutex<core::cell::RefCell<LogBuffer>> =
     critical_section::Mutex::new(core::cell::RefCell::new(LogBuffer::new()));
 
+/// Static function pointer for retrieving microsecond-level system time.
+static mut TIME_FN: Option<fn() -> u64> = None;
+
+/// Sets the function used to retrieve the system time for logs.
+pub fn set_time_fn(f: fn() -> u64) {
+    critical_section::with(|_| unsafe {
+        TIME_FN = Some(f);
+    });
+}
+
 /// Log a formatted string to the global circular buffer.
 pub fn log_system(args: core::fmt::Arguments) {
     critical_section::with(|cs| {
         let mut buffer = CRASH_LOG_BUFFER.borrow(cs).borrow_mut();
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         {
-            // Read lower 32 bits of RP2040 microsecond hardware timer
-            let micros = unsafe { *(0x4005_400c as *const u32) };
-            let _ = core::fmt::write(&mut *buffer, format_args!("[{:010} us] ", micros));
+            let micros = unsafe { TIME_FN.map(|f| f()) };
+            if let Some(t) = micros {
+                let _ = core::fmt::write(&mut *buffer, format_args!("[{:010} us] ", t));
+            }
         }
         let _ = core::fmt::write(&mut *buffer, args);
         let _ = buffer.write_str("\n");
@@ -97,6 +108,73 @@ impl<F: embedded_storage::nor_flash::MultiwriteNorFlash>
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Error type for `PanicFlashAsyncAdapter`.
+#[derive(Debug, Copy, Clone)]
+pub struct PanicFlashError;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl embedded_storage::nor_flash::NorFlashError for PanicFlashError {
+    fn kind(&self) -> embedded_storage::nor_flash::NorFlashErrorKind {
+        embedded_storage::nor_flash::NorFlashErrorKind::Other
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Adapter exposing a target-agnostic PanicFlash trait object as an asynchronous nor-flash driver
+/// suitable for sequential-storage async filesystem operations.
+pub struct PanicFlashAsyncAdapter<'a, const WRITE_SIZE: usize = 256, const ERASE_SIZE: usize = 4096>(
+    pub &'a mut dyn types::PanicFlash,
+);
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl<'a, const WRITE_SIZE: usize, const ERASE_SIZE: usize>
+    embedded_storage_async::nor_flash::ErrorType
+    for PanicFlashAsyncAdapter<'a, WRITE_SIZE, ERASE_SIZE>
+{
+    type Error = PanicFlashError;
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl<'a, const WRITE_SIZE: usize, const ERASE_SIZE: usize>
+    embedded_storage_async::nor_flash::ReadNorFlash
+    for PanicFlashAsyncAdapter<'a, WRITE_SIZE, ERASE_SIZE>
+{
+    const READ_SIZE: usize = 1;
+
+    async fn read(&mut self, offset: u32, bytes: &mut [u8]) -> Result<(), Self::Error> {
+        self.0.read(offset, bytes).map_err(|_| PanicFlashError)
+    }
+
+    fn capacity(&self) -> usize {
+        self.0.capacity()
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl<'a, const WRITE_SIZE: usize, const ERASE_SIZE: usize>
+    embedded_storage_async::nor_flash::NorFlash
+    for PanicFlashAsyncAdapter<'a, WRITE_SIZE, ERASE_SIZE>
+{
+    const WRITE_SIZE: usize = WRITE_SIZE;
+    const ERASE_SIZE: usize = ERASE_SIZE;
+
+    async fn write(&mut self, offset: u32, bytes: &[u8]) -> Result<(), Self::Error> {
+        self.0.write(offset, bytes).map_err(|_| PanicFlashError)
+    }
+
+    async fn erase(&mut self, from: u32, to: u32) -> Result<(), Self::Error> {
+        self.0.erase(from, to).map_err(|_| PanicFlashError)
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl<'a, const WRITE_SIZE: usize, const ERASE_SIZE: usize>
+    embedded_storage_async::nor_flash::MultiwriteNorFlash
+    for PanicFlashAsyncAdapter<'a, WRITE_SIZE, ERASE_SIZE>
+{
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Micro-executor function to block synchronously on async operations,
 /// using a custom no-op waker loop.
 fn block_on<F: core::future::Future>(future: F) -> F::Output {
@@ -136,7 +214,7 @@ pub static PANIC_CONFIG: embassy_sync::blocking_mutex::Mutex<
 
 /// Initialize the panic handler with flash access and target partition settings.
 pub fn init(
-    #[cfg(all(target_arch = "arm", target_os = "none"))] flash: embassy_rp::peripherals::FLASH,
+    #[cfg(all(target_arch = "arm", target_os = "none"))] flash: &'static mut dyn types::PanicFlash,
     #[cfg(all(target_arch = "arm", target_os = "none"))] range: core::ops::Range<u32>,
 ) {
     #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -148,12 +226,14 @@ pub fn init(
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Shared panic handler logic executing crash dump logging to flash memory.
-pub fn handle_panic<
+/// Shared panic handler logic executing crash dump logging to flash memory with customizable write/erase sizes.
+pub fn handle_panic_with_sizes<
     const FLASH_SIZE: usize,
     const STACK_TOP: u32,
     const FLASH_START: u32,
     const FLASH_END: u32,
+    const WRITE_SIZE: usize,
+    const ERASE_SIZE: usize,
 >(
     info: &core::panic::PanicInfo,
 ) -> ! {
@@ -241,13 +321,8 @@ pub fn handle_panic<
     // 3. Write crash log to storage partition using rolling index
     critical_section::with(|cs| {
         if let Some(config) = PANIC_CONFIG.borrow(cs).take() {
-            // Build filesystem controller inside panic context
-            let raw_flash = embassy_rp::flash::Flash::<
-                _,
-                embassy_rp::flash::Blocking,
-                FLASH_SIZE,
-            >::new_blocking(config.flash);
-            let flash = BlockingAsyncFlash(raw_flash);
+            // Build filesystem controller inside panic context using the adapter
+            let flash = PanicFlashAsyncAdapter::<WRITE_SIZE, ERASE_SIZE>(config.flash);
             let mut cache = sequential_storage::cache::NoCache::new();
             static mut SCRATCH_BUF: [u8; 1024] = [0u8; 1024];
             let buf = unsafe { &mut SCRATCH_BUF };
