@@ -13,6 +13,15 @@ pub struct ProfilingFlash<F: NorFlash> {
     inner: F,
     /// Total number of page erases performed since system boot
     erase_count: u32,
+    /// Optional telemetry sender to log erase operations
+    telemetry_tx: Option<
+        embassy_sync::channel::Sender<
+            'static,
+            CriticalSectionRawMutex,
+            model::telemetry::TelemetryRecord,
+            16,
+        >,
+    >,
 }
 
 impl<F: NorFlash> ProfilingFlash<F> {
@@ -21,7 +30,21 @@ impl<F: NorFlash> ProfilingFlash<F> {
         Self {
             inner,
             erase_count: 0,
+            telemetry_tx: None,
         }
+    }
+
+    /// Set telemetry sender for flash erase profiling.
+    pub fn set_telemetry(
+        &mut self,
+        telemetry_tx: embassy_sync::channel::Sender<
+            'static,
+            CriticalSectionRawMutex,
+            model::telemetry::TelemetryRecord,
+            16,
+        >,
+    ) {
+        self.telemetry_tx = Some(telemetry_tx);
     }
 
     /// Get total page erases performed since boot.
@@ -70,13 +93,29 @@ impl<F: NorFlash> embedded_storage_async::nor_flash::NorFlash for ProfilingFlash
         let res = self.inner.erase(from, to).await;
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
-        {
+        let duration_ms = {
             let duration = start.elapsed();
+            let ms = duration.as_millis() as u32;
             defmt::info!(
                 "[Profile] Flash erase completed in {} ms (Total erases: {})",
-                duration.as_millis(),
+                ms,
                 self.erase_count
             );
+            ms
+        };
+
+        #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+        let duration_ms = 0;
+
+        if let Some(tx) = &self.telemetry_tx {
+            let sector = from / F::ERASE_SIZE as u32;
+            let details = model::types::FlashEraseTelemetry {
+                sector,
+                duration_ms,
+                erase_count: self.erase_count,
+            };
+            tx.try_send(model::telemetry::TelemetryRecord::FlashTelemetry(details))
+                .unwrap();
         }
 
         res
@@ -254,6 +293,21 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     /// Returns a newline-separated string listing all files currently stored.
     pub async fn list_files<'a>(&mut self, out_buf: &'a mut [u8]) -> Result<Option<&'a [u8]>, ()> {
         self.read_file(".dir", out_buf).await
+    }
+}
+
+impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<ProfilingFlash<F>> {
+    /// Set telemetry sender for flash erase profiling.
+    pub fn set_telemetry(
+        &mut self,
+        telemetry_tx: embassy_sync::channel::Sender<
+            'static,
+            CriticalSectionRawMutex,
+            model::telemetry::TelemetryRecord,
+            16,
+        >,
+    ) {
+        self.flash.set_telemetry(telemetry_tx);
     }
 }
 

@@ -150,4 +150,19 @@ pub enum Gesture {
     ProximityNotDetected,
 }
 
+/// Telemetry data from the flash storage/filesystem.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[cbor(array)]
+pub struct FlashEraseTelemetry {
+    /// Erased sector index (offset / 4096).
+    #[n(0)]
+    pub sector: u32,
+    /// Erase duration in milliseconds.
+    #[n(1)]
+    pub duration_ms: u32,
+    /// Total erases since boot.
+    #[n(2)]
+    pub erase_count: u32,
+}
+
 pub use crate::telemetry::TelemetryRecord;

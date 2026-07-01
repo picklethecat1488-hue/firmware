@@ -59,10 +59,12 @@ async fn main(spawner: Spawner) {
         { cat_detector::FLASH_SIZE },
     >::new_blocking(fs_flash);
     let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(raw_flash);
-    let fs_controller = controller::filesystem_controller::FilesystemController::new(
-        async_flash,
+    let profiling_flash = controller::filesystem_controller::ProfilingFlash::new(async_flash);
+    let mut fs_controller = controller::filesystem_controller::FilesystemController::new(
+        profiling_flash,
         cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
     );
+    fs_controller.set_telemetry(cat_detector::TELEMETRY_CHANNEL.sender());
 
     // Extract the motor control pin from the board configuration array
     let motor_pin = board.gpio_pins[cat_detector::LED_PIN as usize]
@@ -223,12 +225,14 @@ async fn main(spawner: Spawner) {
         filesystem_task,
         fs_controller,
         cat_detector::FILESYSTEM_CHANNEL.receiver(),
-        firmware_lib::panic_handler::BlockingAsyncFlash<
-            embassy_rp::flash::Flash<
-                'static,
-                embassy_rp::peripherals::FLASH,
-                embassy_rp::flash::Blocking,
-                { cat_detector::FLASH_SIZE },
+        controller::filesystem_controller::ProfilingFlash<
+            firmware_lib::panic_handler::BlockingAsyncFlash<
+                embassy_rp::flash::Flash<
+                    'static,
+                    embassy_rp::peripherals::FLASH,
+                    embassy_rp::flash::Blocking,
+                    { cat_detector::FLASH_SIZE },
+                >,
             >,
         >
     );

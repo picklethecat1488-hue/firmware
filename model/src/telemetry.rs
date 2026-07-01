@@ -27,6 +27,9 @@ pub enum TelemetryRecord {
     /// Detected gesture.
     #[n(7)]
     Gesture(#[n(0)] Gesture),
+    /// Flash operations telemetry.
+    #[n(8)]
+    FlashTelemetry(#[n(0)] FlashEraseTelemetry),
 }
 
 impl TelemetryRecord {
