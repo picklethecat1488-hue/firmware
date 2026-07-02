@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Print and unset RUSTFLAGS if set, as it overrides the linker configs in .cargo/config.toml
+if [ -n "${RUSTFLAGS:-}" ]; then
+    echo "Warning: RUSTFLAGS is set to '${RUSTFLAGS}'."
+    echo "This overrides the workspace linker configuration in .cargo/config.toml and causes MCU binaries to be miscompiled (missing .text/.data sections)."
+    echo "Unsetting RUSTFLAGS for the build..."
+    unset RUSTFLAGS
+fi
+
 # Find all tool packages to exclude from target build, and include in host build
 TOOL_PACKAGES=()
 EXCLUDE_ARGS=()
