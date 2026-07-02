@@ -26,13 +26,14 @@ fn test_system_controller_flow() {
         BATTERY_CHANNEL.sender(),
         THERMAL_CHANNEL.sender(),
         LED_CHANNEL.sender(),
+        300,
     );
 
     assert_eq!(controller.status(), SystemStatus::PowerDown);
 
     // Send a battery update showing battery is ok -> transitions to Active
     controller.handle_command(SystemCommand::BatteryUpdate {
-        state_of_charge: 50,
+        state_of_charge: 85,
         charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     assert_eq!(controller.status(), SystemStatus::Active);
@@ -94,13 +95,14 @@ fn test_system_controller_flow() {
         BATTERY_CHANNEL.sender(),
         THERMAL_CHANNEL.sender(),
         LED_CHANNEL.sender(),
+        300,
     );
 
     assert_eq!(controller.status(), SystemStatus::PowerDown);
 
     // Send a battery update showing battery is ok -> transitions to Active
     controller.handle_command(SystemCommand::BatteryUpdate {
-        state_of_charge: 50,
+        state_of_charge: 85,
         charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     assert_eq!(controller.status(), SystemStatus::Active);
@@ -192,6 +194,7 @@ fn test_power_down_and_gesture_detection() {
         BATTERY_CHANNEL.sender(),
         THERMAL_CHANNEL.sender(),
         LED_CHANNEL.sender(),
+        300,
     );
 
     // 1. Verify booting into PowerDown
@@ -208,7 +211,7 @@ fn test_power_down_and_gesture_detection() {
 
     // 3. Transition to Active when battery level is no longer critical
     controller.handle_command(SystemCommand::BatteryUpdate {
-        state_of_charge: 15,
+        state_of_charge: 85,
         charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     assert_eq!(controller.status(), SystemStatus::Active);
@@ -245,19 +248,47 @@ fn test_power_down_and_gesture_detection() {
     let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
     assert_eq!(motor_cmd, MotorCommand::Stop);
 
-    // 5. Normal battery status update when in manual PowerDown should be ignored
+    // 5. Normal battery status update when in manual PowerDown should be ignored (and LED stays Off)
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 50,
         charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     assert_eq!(controller.status(), SystemStatus::PowerDown);
+    assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
 
-    // 6. Connecting the charger (charging = true) must trigger exit from PowerDown
+    // 6. Connecting the charger (charging = true) must trigger transition/remain in PowerDown (and show SoC LED)
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 50,
         charger_state: model::types::ChargeState::Charging,
     });
+    assert_eq!(controller.status(), SystemStatus::PowerDown);
+    assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
+
+    // 7. Trying to unlock with 2F long press while charger is connected should be ignored
+    controller.distance_east = 15;
+    controller.distance_west = 15;
+    controller.update_gesture(6_000_000);
+    controller.update_gesture(8_000_000);
+    controller.update_gesture(11_000_000);
+    assert_eq!(controller.status(), SystemStatus::PowerDown);
+
+    // 8. Disconnect charger (should still remain in PowerDown and set LED Off)
+    controller.handle_command(SystemCommand::BatteryUpdate {
+        state_of_charge: 50,
+        charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
+    });
+    assert_eq!(controller.status(), SystemStatus::PowerDown);
+    assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
+
+    // 9. Unlock with 2F long press gesture after charger is disconnected
+    controller.distance_east = 15;
+    controller.distance_west = 15;
+    controller.update_gesture(12_000_000);
+    controller.update_gesture(14_000_000);
+    controller.update_gesture(17_000_000);
     assert_eq!(controller.status(), SystemStatus::Active);
+
+    // Verify LED is SolidYellow (SoC = 50% is between 21% and 79%)
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::SolidYellow);
 }
@@ -282,6 +313,7 @@ fn test_invalid_critical_soc_threshold_panic() {
         BATTERY_CHANNEL.sender(),
         THERMAL_CHANNEL.sender(),
         LED_CHANNEL.sender(),
+        300,
     );
 
     // Set critical threshold to a value greater than LOW_BATTERY_SOC_THRESHOLD (20)

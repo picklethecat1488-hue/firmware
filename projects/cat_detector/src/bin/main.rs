@@ -185,6 +185,7 @@ async fn main(spawner: Spawner) {
             distance_mm: dist,
         },
         ProximityPinWrapper(pin_north),
+        cat_detector::DEFAULT_PROXIMITY_THRESHOLD_MM,
     );
 
     let sensor_ctrl_east = SensorController::new_with_fusion_and_interrupt(
@@ -196,6 +197,7 @@ async fn main(spawner: Spawner) {
             distance_mm: dist,
         },
         ProximityPinWrapper(pin_east),
+        cat_detector::DEFAULT_PROXIMITY_THRESHOLD_MM,
     );
 
     let sensor_ctrl_west = SensorController::new_with_fusion_and_interrupt(
@@ -207,6 +209,7 @@ async fn main(spawner: Spawner) {
             distance_mm: dist,
         },
         ProximityPinWrapper(pin_west),
+        cat_detector::DEFAULT_PROXIMITY_THRESHOLD_MM,
     );
 
     // Initialize the real Rp2040TempSensor in SHARED_TEMP_SENSOR
@@ -256,6 +259,7 @@ async fn main(spawner: Spawner) {
         cat_detector::BATTERY_CHANNEL.sender(),
         cat_detector::THERMAL_CHANNEL.sender(),
         cat_detector::LED_CHANNEL.sender(),
+        cat_detector::DEFAULT_PROXIMITY_THRESHOLD_MM,
     );
 
     // Spawn controllers selectively and concurrently using separate macros

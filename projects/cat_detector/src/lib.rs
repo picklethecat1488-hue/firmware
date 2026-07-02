@@ -37,6 +37,9 @@ pub const TOF_WEST_INT_PIN: u32 = 9;
 /// Fuel Gauge Interrupt/Alert pin (GPIO 10)
 pub const FUEL_GAUGE_INT_PIN: u32 = 10;
 
+/// The default proximity threshold in millimeters under which target presence is detected.
+pub const DEFAULT_PROXIMITY_THRESHOLD_MM: u16 = 300;
+
 /// Charger Status 1 (S1 / STAT1 / FAULT) pin (GPIO 12)
 pub const CHARGER_S1_PIN: u32 = 12;
 /// Charger Status 2 (S2 / STAT2 / CHG) pin (GPIO 13)
