@@ -162,25 +162,17 @@ This is automatically enabled in dev builds (`cargo build`) and completely optim
 
 ## Sharing Peripherals Between Controllers
 
-In Rust, strict ownership rules prevent a peripheral driver from being owned by multiple controllers simultaneously. To share a peripheral (such as a battery sensor) between multiple controllers (such as thermal and power controllers), use one of the following three patterns depending on your concurrency model:
+In Rust, strict ownership rules prevent a peripheral driver from being owned by multiple controllers simultaneously. To share a peripheral (such as a battery sensor) between multiple controllers (such as thermal and power controllers), use one of the following two patterns depending on the context (we never use the Reference Passing pattern):
 
-### 1. The Reference Passing Pattern (Recommended, Zero-Cost)
-If your controllers are updated sequentially in the same thread or execution tick, do not store the peripheral inside the controllers. Instead, pass a reference to the peripheral dynamically during the `update` or `tick` call:
-```rust
-// In your controller traits/implementations:
-pub fn update(&mut self, battery: &impl BatteryPeripheral) -> Result<(), Error>;
+### 1. The Actor / Message-Passing Pattern (Standard for System Integration)
+For complex systems running separate asynchronous tasks, run the shared peripheral inside its own isolated task (the "Controller"). Other controllers communicate by sending request/response messages over channels (e.g. `embassy_sync::channel::Channel`):
+*   The `ThermalController` sends a `BatteryQuery::GetTemperature` message over a channel.
+*   The `PowerController` sends a `BatteryQuery::GetVoltage` message.
+*   The battery task polls the channel, performs the I2C/ADC reads, and sends results back.
+This completely isolates hardware registers from concurrent access issues.
 
-// In the main execution loop:
-loop {
-    thermal_controller.update(&battery)?;
-    power_controller.update(&battery)?;
-    Timer::after_millis(100).await;
-}
-```
-*   **Benefits**: Zero runtime overhead, no allocations, and fully checked at compile-time by the borrow checker.
-
-### 2. Interior Mutability & Shared References (`Rc` + `RefCell` or `Mutex`)
-If controllers are stored in separate tasks/structs and must hold a reference to the peripheral driver over their entire lifetime:
+### 2. Interior Mutability & Shared References (`Rc` + `RefCell` or `Mutex`) (Standard for the Shell)
+If controllers are stored in separate tasks/structs and must hold a reference to the peripheral driver over their entire lifetime (typically used in the bringup shell):
 *   **Single-Threaded Async Executor (Embassy default)**: Wrap the peripheral in a reference-counted `Rc` pointer with a `RefCell` for interior mutability:
     ```rust
     let battery = Rc::new(RefCell::new(Battery::new(pin)));
@@ -192,13 +184,6 @@ If controllers are stored in separate tasks/structs and must hold a reference to
     ```rust
     let battery = Arc::new(embassy_sync::mutex::Mutex::new(Battery::new(pin)));
     ```
-
-### 3. The Actor / Message-Passing Pattern
-For complex systems running separate asynchronous tasks, run the shared peripheral inside its own isolated task (the "Controller"). Other controllers communicate by sending request/response messages over channels (e.g. `embassy_sync::channel::Channel`):
-*   The `ThermalController` sends a `BatteryQuery::GetTemperature` message over a channel.
-*   The `PowerController` sends a `BatteryQuery::GetVoltage` message.
-*   The battery task polls the channel, performs the I2C/ADC reads, and sends results back.
-This completely isolates hardware registers from concurrent access issues.
 
 ---
 
