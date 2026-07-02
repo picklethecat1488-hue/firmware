@@ -33,7 +33,7 @@ fn test_system_controller_flow() {
     // Send a battery update showing battery is ok -> transitions to Active
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 50,
-        charging: false,
+        charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     assert_eq!(controller.status(), SystemStatus::Active);
     let _ = LED_CHANNEL.try_receive().unwrap(); // Consume initial SolidGreen
@@ -46,7 +46,7 @@ fn test_system_controller_flow() {
 
     // Register activity, resets timer
     controller.handle_command(SystemCommand::ActivityDetected);
-    for _ in 0..29 {
+    for _ in 0..(cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS - 1) {
         controller.tick();
     }
     assert_eq!(controller.status(), SystemStatus::Active);
@@ -101,13 +101,13 @@ fn test_system_controller_flow() {
     // Send a battery update showing battery is ok -> transitions to Active
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 50,
-        charging: false,
+        charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     assert_eq!(controller.status(), SystemStatus::Active);
     let _ = LED_CHANNEL.try_receive().unwrap(); // Consume initial SolidGreen
 
-    // Tick to 30s to let the fresh controller sleep
-    for _ in 0..30 {
+    // Tick to INACTIVITY_TIMEOUT_SECONDS to let the fresh controller sleep
+    for _ in 0..cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS {
         controller.tick();
     }
     assert_eq!(controller.status(), SystemStatus::Sleep);
@@ -124,8 +124,8 @@ fn test_system_controller_flow() {
     controller.handle_command(SystemCommand::Sleep);
     assert_eq!(controller.status(), SystemStatus::Active);
 
-    // Tick to 30s
-    for _ in 0..30 {
+    // Tick to INACTIVITY_TIMEOUT_SECONDS
+    for _ in 0..cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS {
         controller.tick();
     }
     // Now it should be allowed to sleep, and does so automatically after 30s inactivity
@@ -153,7 +153,7 @@ fn test_system_controller_flow() {
     // Test critical battery state
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 5,
-        charging: false,
+        charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     // System enters PowerDown state because battery became critical
     assert_eq!(controller.status(), SystemStatus::PowerDown);
@@ -200,7 +200,7 @@ fn test_power_down_and_gesture_detection() {
     // 2. Stay in PowerDown while battery level is critical
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 5,
-        charging: false,
+        charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     assert_eq!(controller.status(), SystemStatus::PowerDown);
     let led_state = LED_CHANNEL.try_receive().unwrap();
@@ -209,15 +209,15 @@ fn test_power_down_and_gesture_detection() {
     // 3. Transition to Active when battery level is no longer critical
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 15,
-        charging: false,
+        charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     assert_eq!(controller.status(), SystemStatus::Active);
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::SolidGreen);
 
-    // 4. Simulate simultaneous press on East & West ToF sensors (distance < 100mm)
-    controller.distance_east = 50;
-    controller.distance_west = 50;
+    // 4. Simulate simultaneous press on East & West ToF sensors (distance < 20mm)
+    controller.distance_east = 15;
+    controller.distance_west = 15;
 
     // Clear motor/LED channels
     while MOTOR_CHANNEL.try_receive().is_ok() {}
@@ -248,16 +248,48 @@ fn test_power_down_and_gesture_detection() {
     // 5. Normal battery status update when in manual PowerDown should be ignored
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 50,
-        charging: false,
+        charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     assert_eq!(controller.status(), SystemStatus::PowerDown);
 
     // 6. Connecting the charger (charging = true) must trigger exit from PowerDown
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 50,
-        charging: true,
+        charger_state: model::types::ChargeState::Charging,
     });
     assert_eq!(controller.status(), SystemStatus::Active);
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::SolidYellow);
+}
+
+#[test]
+#[should_panic(expected = "Critical SoC threshold must be lower than the low battery threshold")]
+fn test_invalid_critical_soc_threshold_panic() {
+    static MOTOR_CHANNEL: Channel<CriticalSectionRawMutex, MotorCommand, 4> = Channel::new();
+    static SENSOR_NORTH_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> =
+        Channel::new();
+    static SENSOR_EAST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
+    static SENSOR_WEST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
+    static BATTERY_CHANNEL: Channel<CriticalSectionRawMutex, BatteryCommand, 4> = Channel::new();
+    static THERMAL_CHANNEL: Channel<CriticalSectionRawMutex, ThermalCommand, 4> = Channel::new();
+    static LED_CHANNEL: Channel<CriticalSectionRawMutex, SystemLedState, 4> = Channel::new();
+
+    let mut controller = SystemController::new(
+        MOTOR_CHANNEL.sender(),
+        SENSOR_NORTH_CHANNEL.sender(),
+        SENSOR_EAST_CHANNEL.sender(),
+        SENSOR_WEST_CHANNEL.sender(),
+        BATTERY_CHANNEL.sender(),
+        THERMAL_CHANNEL.sender(),
+        LED_CHANNEL.sender(),
+    );
+
+    // Set critical threshold to a value greater than LOW_BATTERY_SOC_THRESHOLD (20)
+    controller.critical_soc_threshold = 25;
+
+    // This should panic
+    controller.handle_command(SystemCommand::BatteryUpdate {
+        state_of_charge: 50,
+        charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
+    });
 }

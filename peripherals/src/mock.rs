@@ -1,5 +1,6 @@
 use model::interfaces::{
-    Charger, CurrentSensor, FuelGauge, LedDriver, Motor, ProximitySensor, TemperatureSensor,
+    ChargeStatus, FuelGauge, LedDriver, Motor, PowerMeasurementMode, PowerSensor, ProximitySensor,
+    TemperatureSensor,
 };
 
 /// A mock implementation of a Motor for unit testing on the host.
@@ -52,11 +53,19 @@ impl MockCurrentSensor {
     }
 }
 
-impl CurrentSensor for MockCurrentSensor {
+impl PowerSensor for MockCurrentSensor {
     type Error = ();
 
     fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
         Ok(self.current_ma)
+    }
+
+    fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
+        Ok(3700)
+    }
+
+    fn set_measurement_mode(&mut self, _mode: PowerMeasurementMode) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 
@@ -66,6 +75,8 @@ pub struct MockBattery {
     pub voltage_mv: u32,
     /// Simulated temperature in milli-degrees Celsius.
     pub temperature_milli_c: i32,
+    /// Simulated state of charge in percent.
+    pub state_of_charge: u8,
 }
 
 impl MockBattery {
@@ -74,6 +85,7 @@ impl MockBattery {
         Self {
             voltage_mv,
             temperature_milli_c,
+            state_of_charge: 50,
         }
     }
 }
@@ -94,18 +106,26 @@ impl FuelGauge for MockBattery {
     }
 
     fn read_state_of_charge(&mut self) -> Result<u8, Self::Error> {
-        Ok(50) // Default 50% state of charge
+        Ok(self.state_of_charge)
     }
 }
 
 /// A simulated current sensor that always returns a healthy current draw.
 pub struct DummyCurrentSensor;
 
-impl CurrentSensor for DummyCurrentSensor {
+impl PowerSensor for DummyCurrentSensor {
     type Error = core::convert::Infallible;
 
     fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
         Ok(150) // Simulate a healthy current draw of 150mA
+    }
+
+    fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
+        Ok(3700)
+    }
+
+    fn set_measurement_mode(&mut self, _mode: PowerMeasurementMode) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 
@@ -113,8 +133,8 @@ impl CurrentSensor for DummyCurrentSensor {
 pub struct MockProximitySensor {
     /// Simulated distance value in millimeters.
     pub distance_mm: u16,
-    /// Proximity callback function.
-    pub callback: Option<fn(bool)>,
+    /// Proximity threshold in millimeters.
+    pub threshold_mm: u16,
 }
 
 impl MockProximitySensor {
@@ -122,7 +142,7 @@ impl MockProximitySensor {
     pub const fn new(distance_mm: u16) -> Self {
         Self {
             distance_mm,
-            callback: None,
+            threshold_mm: 300,
         }
     }
 }
@@ -131,15 +151,7 @@ impl ProximitySensor for MockProximitySensor {
     type Error = ();
 
     fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
-        if let Some(cb) = self.callback {
-            cb(self.distance_mm < 300);
-        }
         Ok(self.distance_mm)
-    }
-
-    fn register_proximity_callback(&mut self, callback: fn(bool)) -> Result<(), Self::Error> {
-        self.callback = Some(callback);
-        Ok(())
     }
 }
 
@@ -147,8 +159,8 @@ impl ProximitySensor for MockProximitySensor {
 pub struct DummyProximitySensor {
     /// Distance in millimeters.
     pub distance_mm: u16,
-    /// Proximity callback function.
-    pub callback: Option<fn(bool)>,
+    /// Proximity threshold in millimeters.
+    pub threshold_mm: u16,
 }
 
 impl DummyProximitySensor {
@@ -156,7 +168,7 @@ impl DummyProximitySensor {
     pub const fn new(distance_mm: u16) -> Self {
         Self {
             distance_mm,
-            callback: None,
+            threshold_mm: 300,
         }
     }
 }
@@ -165,46 +177,28 @@ impl ProximitySensor for DummyProximitySensor {
     type Error = core::convert::Infallible;
 
     fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
-        if let Some(cb) = self.callback {
-            cb(self.distance_mm < 300);
-        }
         Ok(self.distance_mm)
-    }
-
-    fn register_proximity_callback(&mut self, callback: fn(bool)) -> Result<(), Self::Error> {
-        self.callback = Some(callback);
-        Ok(())
     }
 }
 
-/// A mock implementation of a Charger for unit testing.
+/// A mock implementation of a ChargeStatus for unit testing.
 pub struct MockCharger {
-    /// Tracks if charging is enabled.
-    pub charging_enabled: bool,
-    /// Tracks if a charging input is present.
-    pub input_present: bool,
+    /// The mock charger state.
+    pub state: model::types::ChargeState,
 }
 
 impl MockCharger {
     /// Creates a new MockCharger instance.
-    pub const fn new(charging_enabled: bool, input_present: bool) -> Self {
-        Self {
-            charging_enabled,
-            input_present,
-        }
+    pub const fn new(state: model::types::ChargeState) -> Self {
+        Self { state }
     }
 }
 
-impl Charger for MockCharger {
+impl ChargeStatus for MockCharger {
     type Error = ();
 
-    fn set_charging_enabled(&mut self, enabled: bool) -> Result<(), Self::Error> {
-        self.charging_enabled = enabled;
-        Ok(())
-    }
-
-    fn is_charging_input_present(&mut self) -> Result<bool, Self::Error> {
-        Ok(self.input_present)
+    fn get_charge_state(&mut self) -> Result<model::types::ChargeState, Self::Error> {
+        Ok(self.state)
     }
 }
 

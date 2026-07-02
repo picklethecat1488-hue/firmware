@@ -3,23 +3,18 @@
 #![deny(missing_docs)]
 
 use embedded_hal::i2c::I2c;
-use model::interfaces::{CurrentSensor, PowerSensor};
+use model::interfaces::{PowerMeasurementMode, PowerSensor};
 
 /// Driver for the INA219 current and power monitor communicating over I2C.
 pub struct Ina219<I> {
     i2c: I,
     address: u8,
-    alert_callback: Option<fn()>,
 }
 
 impl<I: I2c> Ina219<I> {
     /// Creates a new INA219 driver instance with the default address (0x40).
     pub const fn new(i2c: I) -> Self {
-        Self {
-            i2c,
-            address: 0x40,
-            alert_callback: None,
-        }
+        Self { i2c, address: 0x40 }
     }
 
     /// Initializes the INA219 by writing the default calibration (e.g. 4096).
@@ -45,22 +40,13 @@ impl<I: I2c> Ina219<I> {
     }
 }
 
-impl<I: I2c> CurrentSensor for Ina219<I> {
+impl<I: I2c> PowerSensor for Ina219<I> {
     type Error = I::Error;
 
     /// Reads the current draw in milliamperes (mA).
     fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
         let val = self.read_register(0x04)? as i16;
         Ok(val as i32)
-    }
-}
-
-impl<I: I2c> PowerSensor for Ina219<I> {
-    type Error = I::Error;
-
-    /// Reads current in mA.
-    fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
-        CurrentSensor::read_current_ma(self)
     }
 
     /// Reads the bus voltage in millivolts (mV).
@@ -71,9 +57,26 @@ impl<I: I2c> PowerSensor for Ina219<I> {
         Ok(voltage_mv)
     }
 
-    /// Registers the power alert callback.
-    fn register_alert_callback(&mut self, callback: fn()) -> Result<(), Self::Error> {
-        self.alert_callback = Some(callback);
+    /// Sets the operating mode of the sensor.
+    fn set_measurement_mode(&mut self, mode: PowerMeasurementMode) -> Result<(), Self::Error> {
+        let config = self.read_register(0x00)?;
+        let mode_val = match mode {
+            PowerMeasurementMode::PowerDown => 0,
+            PowerMeasurementMode::OneShot(voltage, current) => match (voltage, current) {
+                (false, true) => 1,
+                (true, false) => 2,
+                (true, true) => 3,
+                (false, false) => 4,
+            },
+            PowerMeasurementMode::Continuous(voltage, current) => match (voltage, current) {
+                (false, true) => 5,
+                (true, false) => 6,
+                (true, true) => 7,
+                (false, false) => 4,
+            },
+        };
+        let new_config = (config & 0xFFF8) | mode_val;
+        self.write_register(0x00, new_config)?;
         Ok(())
     }
 }

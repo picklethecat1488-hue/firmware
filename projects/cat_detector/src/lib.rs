@@ -37,6 +37,11 @@ pub const TOF_WEST_INT_PIN: u32 = 9;
 /// Fuel Gauge Interrupt/Alert pin (GPIO 10)
 pub const FUEL_GAUGE_INT_PIN: u32 = 10;
 
+/// Charger Status 1 (S1 / STAT1 / FAULT) pin (GPIO 12)
+pub const CHARGER_S1_PIN: u32 = 12;
+/// Charger Status 2 (S2 / STAT2 / CHG) pin (GPIO 13)
+pub const CHARGER_S2_PIN: u32 = 13;
+
 /// Start address of the filesystem storage partition in flash (offset from start of flash).
 pub const STORAGE_PARTITION_START: u32 = 0x1C_0000; // 1.75 MB
 /// End address of the filesystem storage partition in flash (2.00 MB limit).
