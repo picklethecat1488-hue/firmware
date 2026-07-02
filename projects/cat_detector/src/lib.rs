@@ -147,11 +147,6 @@ pub static FILESYSTEM_CHANNEL: embassy_sync::channel::Channel<
     16,
 > = embassy_sync::channel::Channel::new();
 
-/// Log a telemetry record to the global asynchronous pipeline.
-pub fn log_telemetry(record: model::types::TelemetryRecord) {
-    let _ = TELEMETRY_CHANNEL.try_send(record);
-}
-
 /// Re-export the telemetry module from the shared library
 pub use firmware_lib::telemetry;
 

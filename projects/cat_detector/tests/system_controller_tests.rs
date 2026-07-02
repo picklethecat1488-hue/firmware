@@ -5,7 +5,10 @@ use controller::sensor_controller::SensorCommand;
 use controller::thermal_controller::ThermalCommand;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use model::types::{SystemLedState, SystemStatus};
+use model::types::{SystemLedState, SystemStatus, TelemetryRecord};
+
+static MOCK_TELEMETRY_CHANNEL: Channel<CriticalSectionRawMutex, TelemetryRecord, 16> =
+    Channel::new();
 
 #[test]
 fn test_system_controller_flow() {
@@ -26,6 +29,7 @@ fn test_system_controller_flow() {
         BATTERY_CHANNEL.sender(),
         THERMAL_CHANNEL.sender(),
         LED_CHANNEL.sender(),
+        MOCK_TELEMETRY_CHANNEL.sender(),
         300,
     );
 
@@ -95,6 +99,7 @@ fn test_system_controller_flow() {
         BATTERY_CHANNEL.sender(),
         THERMAL_CHANNEL.sender(),
         LED_CHANNEL.sender(),
+        MOCK_TELEMETRY_CHANNEL.sender(),
         300,
     );
 
@@ -139,9 +144,8 @@ fn test_system_controller_flow() {
     while MOTOR_CHANNEL.try_receive().is_ok() {}
     while LED_CHANNEL.try_receive().is_ok() {}
 
-    // Send SensorUpdate showing a cat detected on North ToF (distance_mm = 150 < 300)
     controller.handle_command(SystemCommand::SensorUpdate {
-        sensor_id: 0,
+        direction: model::types::Direction::North,
         distance_mm: 150,
     });
 
@@ -166,9 +170,8 @@ fn test_system_controller_flow() {
     let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
     assert_eq!(motor_cmd, MotorCommand::Stop);
 
-    // Send another SensorUpdate showing a cat detected
     controller.handle_command(SystemCommand::SensorUpdate {
-        sensor_id: 0,
+        direction: model::types::Direction::North,
         distance_mm: 150,
     });
     // The pump should NOT start since system is in PowerDown (no SetSpeed command in queue)
@@ -194,6 +197,7 @@ fn test_power_down_and_gesture_detection() {
         BATTERY_CHANNEL.sender(),
         THERMAL_CHANNEL.sender(),
         LED_CHANNEL.sender(),
+        MOCK_TELEMETRY_CHANNEL.sender(),
         300,
     );
 
@@ -313,11 +317,12 @@ fn test_invalid_critical_soc_threshold_panic() {
         BATTERY_CHANNEL.sender(),
         THERMAL_CHANNEL.sender(),
         LED_CHANNEL.sender(),
+        MOCK_TELEMETRY_CHANNEL.sender(),
         300,
     );
 
     // Set critical threshold to a value greater than LOW_BATTERY_SOC_THRESHOLD (20)
-    controller.critical_soc_threshold = 25;
+    controller.set_critical_soc_threshold(25);
 
     // This should panic
     controller.handle_command(SystemCommand::BatteryUpdate {
