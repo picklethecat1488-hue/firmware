@@ -27,6 +27,7 @@ pub struct MotorController<M, C> {
     speed: u8,
     min_current_ma: i32,
     max_current_ma: i32,
+    calibration_present: bool,
 }
 
 impl<M: Motor, C: PowerSensor> MotorController<M, C> {
@@ -40,6 +41,7 @@ impl<M: Motor, C: PowerSensor> MotorController<M, C> {
             speed: 0,
             min_current_ma: 15,
             max_current_ma: 800,
+            calibration_present: false,
         }
     }
 
@@ -157,6 +159,13 @@ impl<M: Motor, C: PowerSensor> MotorController<M, C> {
         match cmd {
             MotorCommand::SetSpeed(speed) => {
                 if speed > 0 {
+                    if !self.calibration_present {
+                        #[cfg(all(target_arch = "arm", target_os = "none"))]
+                        defmt::error!(
+                            "Motor Controller: Cannot start motor, calibration is not present!"
+                        );
+                        return;
+                    }
                     if self.state == MotorState::Off {
                         self.state = MotorState::On;
                         let _ = self
@@ -245,4 +254,24 @@ pub enum MotorError<ME, CE> {
     Motor(ME),
     /// Error originating from the current sensor driver.
     CurrentSensor(CE),
+}
+
+impl<M: Motor, C: PowerSensor> model::calibration::Calibration for MotorController<M, C> {
+    #[allow(clippy::single_match)]
+    fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
+        match calibration {
+            model::calibration::CalibrationType::MotorCal(min, max) => {
+                self.calibration_present = true;
+                self.min_current_ma = min;
+                self.max_current_ma = max;
+            }
+            _ => {}
+        }
+    }
+}
+
+impl<M: Motor, C: PowerSensor> crate::BlockingMotorReader for MotorController<M, C> {
+    fn read_current_ma_blocking(&mut self) -> Option<i32> {
+        self.read_torque_ma().ok()
+    }
 }

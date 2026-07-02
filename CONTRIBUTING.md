@@ -202,6 +202,23 @@ This completely isolates hardware registers from concurrent access issues.
 
 ---
 
+## Interactive Bringup CLI / Diagnostic Reads
+
+To support hardware bringup and diagnostics without requiring active asynchronous runtime loop schedulers:
+1. **Blocking Reader Traits**:
+   Subsystem controllers (e.g. `BatteryController`, `ThermalController`, `SensorController`, `MotorController`) must implement target-independent blocking reader traits defined in `controller/src/lib.rs` (e.g. `BlockingBatteryReader`, `BlockingThermalReader`, `BlockingProximityReader`, `BlockingMotorReader`).
+2. **Mutex Try-Locking**:
+   These blocking implementations must use non-blocking mutex try-locking (`try_lock()`) on shared peripheral drivers to inspect status/sensors immediately without yielding or blocking the current CPU thread.
+3. **Dummy/Unit Type Implementations**:
+   Provide implementations of the blocking reader traits for the unit type `()` to enable compiling the bringup shell and test suites under different hardware or mock targets without instantiating full subsystem controllers.
+4. **Shell Output Formatting**:
+   CLI commands must be designed to execute and report a standard `Result<(), &'static str>` code:
+   - On success, the command prints the required output and writes `Command succeeded` to the console.
+   - On failure, it outputs the error reason and writes `Command failed: <reason>`.
+   Repetitive debug logs (like `Sent command to controller`) should be omitted to keep bringup console outputs clean.
+
+---
+
 ## Logging & Instrumentation Standards
 
 To ensure debugging, status tracking, and performance monitoring are unified across all binaries and target applications, we enforce the following logging and instrumentation standards:

@@ -63,7 +63,14 @@ The `model` crate contains pure, target-agnostic domain models, status telemetry
     *   `SystemStatus`: Enum representing the operating mode of the system (`Active` or `Sleep`).
     *   `FuelGaugeTelemetry`: Enum representing cell voltage and state-of-charge percentage (e.g. `VolSoc`).
     *   `ProximityTelemetry`: Enum containing the single range reading representing target state: `InRange(u16)` or `OutRange(u16)`.
-    *   `SystemLedState`: Enum holding active NeoPixel color patterns (e.g. `SolidGreen`, `SolidBlue`, `SolidYellow`, `SolidOrange`, `BlinksRedFourTimes`, or `BlinksRedOncePerThirtySeconds` for critical battery).
+    *   `SystemLedState`: Enum holding active NeoPixel color patterns based on battery state of charge:
+        *   `BlinksRedOncePerThirtySeconds`: Critical low charge (SoC < critical threshold).
+        *   `SolidOrange`: Low charge (SoC < 20%).
+        *   `SolidYellow`: Medium charge (SoC between 21% and 79%).
+        *   `SolidGreen`: High charge (SoC >= 80%).
+        *   `SolidBlue`: Indicates low-power `Sleep` state.
+        *   `BlinksRedFourTimes`: Indicates thermal critical alert state.
+        *   `Off`: Indicates system locked / `PowerDown` state.
 
 *   **Hardware Interfaces (Traits)**:
     *   `Motor`: Defines interfaces for motor driver control (`set_speed`, `stop`).
@@ -104,21 +111,25 @@ The `controller` crate houses the active orchestrators and asynchronous loop run
     *   Transitions are driven by `MotorEvent` triggers (`PowerOn`, `PowerOff`, `RampComplete`).
 *   **`BatteryController`**: Coordinates periodic voltage queries from the power system.
 *   **`ThermalController`**: Periodically updates and monitors safety thresholds for thermal limits (overheating and critical temperature thresholds are parameterized, defaulting to 45°C and 60°C respectively, with a 2°C hysteresis to prevent rapid toggling). Replaces battery monitoring with temp sensor reads, and shuts down the system (sending a sleep/shutdown signal to `SystemController`) if critical thresholds are reached.
-*   **`SensorController`**: Manages spatial telemetry for a *single* proximity (ToF) sensor (instantiated separately for North, East, and West). Dispatches proximity events upstream to the `SystemController` for central data fusion.
+*   **`SensorController`**: Manages spatial telemetry for a *single* proximity (ToF) sensor (instantiated separately for North, East, and West). Dispatches proximity events upstream to the `SystemController` for central data fusion. The proximity detection threshold (`proximity_threshold_mm`) is passed as a constructor parameter. Supports two-point linear distance calibration using per-sensor `cal_near` and `cal_100` calibration points, mapping the raw sensor cover distance to `0` mm and the raw `100` mm distance target correctly.
 *   **`LedController`**: Receives RGB indicators status updates from the `SystemController` and drives the underlying NeoPixel/ATtiny816 driver. Supports smooth fade-in and fade-out transitions when turning on/off, parameterized with `FADE_STEPS = 10` and `FADE_DELAY_MS = 20` (total 200ms fade transition).
 *   **`FilesystemController`**: Implements flat file storage on the persistent flash partition. Uses `sequential-storage` to execute read/write/delete operations with zero heap allocation.
     *   *Profiling Wrapper (`ProfilingFlash`)*: Intercepts lower-level erase instructions to log execution durations and erase counts to prevent flash wear.
+    *   *Calibration Storage (`vl53l0x_cal.cbor`)*: Stores the CBOR-serialized `TofCalibration` struct, which is loaded at boot by the main application to apply calibration to each sensor.
 
 ---
 
 ### 2.4. Application & BSP Crate (`projects/cat_detector`)
 The top-level application and Board Support Package (BSP) defines pin configurations, spawns the controller tasks, and hosts the application-specific orchestrator:
 
-*   **`SystemController`**: Coordinates low-power mode transitions (`Active` vs `Sleep`) by disabling/enabling/polling the other peripheral controllers and handling inactivity timeouts. It performs **sensor data fusion** across the three proximity controllers (North, East, West): if any sensor detects target proximity (<300 mm), it wakes up the system, resets the inactivity timer, starts the motor, and updates the `LedController` state. It also supports dual long press gesture detection on East and West proximity sensors with a threshold of 20mm to trigger `PowerDown`.
+*   **`SystemController`**: Coordinates low-power mode transitions (`Active` vs `Sleep`) by disabling/enabling/polling the other peripheral controllers and handling inactivity timeouts. It performs **sensor data fusion** across the three proximity controllers (North, East, West): if any sensor detects target proximity (less than `proximity_threshold_mm`) while the system is not locked, it wakes up the system, resets the inactivity timer, starts the motor, and updates the `LedController` state. It also supports dual long press gesture detection on East and West proximity sensors with a threshold of 20mm to control the system power and lock states.
+    *   **Charger-Connected Safety Lock**: When a charger connection is detected, the system immediately transitions to `PowerDown` mode (locked) and displays the constant state of charge status color on the LED. When the charger is disconnected while remaining in `PowerDown` mode, the LED turns `Off`. The system remains locked in `PowerDown` mode for the entire duration the charger is connected.
+    *   **Gesture Unlock**: To unlock the system and exit `PowerDown` mode after the charger has been disconnected, the user must perform a 2-finger (2F) long press gesture (continuous dual-sensor proximity on East and West sensors for 5 seconds). Once unlocked, the system wakes to `Active` mode and updates the LED to the state of charge color.
+    *   **Dynamic Runloop Tick rate**: To ensure high responsiveness and recall rate for 2F long press gestures when proximity is active, the system runloop timeout automatically decreases from 1 second to 200 milliseconds (`0.2s`). Inactivity seconds and other 1-second timings are tracked via an internal millisecond accumulator (`tick_ms_accumulator`) to preserve correct timer intervals.
     *   *Active Duration & Safety Gating*: Once the system enters `Active` mode, a minimum 30-second active mode duration is enforced before it is permitted to return to `Sleep`. This duration is gated/overridden by safety and proximity rules:
         *   **Thermal Limits**: If the temperature exceeds the critical threshold, the system enters `Sleep` immediately to prevent thermal damage, overriding the 30-second delay.
-        *   **Battery State of Charge**: If the battery drops below the critical threshold and is not charging, the system enters `Sleep` immediately to prevent deep discharge, overriding the 30-second delay. Implements a 2% state-of-charge hysteresis to prevent rapid state-toggling around the threshold.
-        *   **Cat Proximity**: As long as a cat remains detected (<300 mm) on any of the ToF sensors, the inactivity timer is reset, preventing transition to `Sleep`.
+        *   **Battery State of Charge**: If the battery drops below the critical threshold and is not charging, the system enters `Sleep` immediately to prevent deep discharge, overriding the 30-second delay. Implements a 2% state-of-charge hysteresis to prevent rapid state-toggling around the threshold. Validates at compile time and runtime that `critical_soc_threshold` < `LOW_BATTERY_SOC_THRESHOLD` < `MID_BATTERY_SOC_THRESHOLD` < `HIGH_BATTERY_SOC_THRESHOLD`.
+        *   **Cat Proximity**: As long as a cat remains detected (distance < `proximity_threshold_mm`) on any of the ToF sensors, the inactivity timer is reset, preventing transition to `Sleep`.
 
 ---
 
@@ -230,37 +241,72 @@ To ensure the hardware and firmware designs are fully validated and operating co
 ---
 
 ### 6.2. Ordered Functional Test Commands (Via Bringup Shell)
-Execute the following commands sequentially inside the interactive serial shell (`shell> `) to verify individual components:
+Execute the following commands sequentially inside the interactive serial shell (`shell> `) to verify individual components. Every command execution concludes with a catch-all result code message: `Command succeeded` on success, or `Command failed: <reason>` on failure.
 
 1. **Verify Fuel Gauge Communication**:
    ```bash
    battery
    ```
-   * *Expected Output*: Shows the battery voltage in millivolts and state-of-charge percentage queried from the MAX17048 fuel gauge (e.g. `3820 mV, 85%`).
+   * *Expected Output*: Directly queries the `BatteryController` using the blocking trait `read_battery_blocking()`, showing the battery voltage and state-of-charge percentage (e.g. `Direct battery reading: 3820 mV, 85% state of charge`).
 
 2. **Verify Thermal Monitoring**:
    ```bash
    thermal
    ```
-   * *Expected Output*: Shows the current ambient temperature in millidegrees Celsius from the internal sensor (e.g. `24500 mC` / `24.5°C`).
+   * *Expected Output*: Directly queries the `ThermalController` using the blocking trait `read_temperature_blocking()`, showing the current ambient temperature in Celsius (e.g. `Direct thermal reading (ThermalController): 24.500 C`).
 
 3. **Verify Time-of-Flight (Proximity) Sensors**:
    ```bash
    proximity
    ```
-   * *Expected Output*: Scans the three proximity sensors (North, East, West) and reports distances in millimeters. Ensures the sensors have completed dynamic re-addressing successfully (addresses `0x30`, `0x31`, `0x32`).
+   * *Expected Output*: Directly queries each of the three `SensorController` instances sequentially using the blocking trait `read_distance_blocking()`, reporting distances in millimeters (e.g. `Direct proximity readings: North = 100 mm, East = 200 mm, West = 300 mm`).
 
-4. **Verify Actuator (Pump Motor) Control**:
+4. **Verify RP2040 Microcontroller Temperature**:
+   ```bash
+   mcu_temp
+   ```
+   * *Expected Output*: Queries the RP2040 internal ADC temperature sensor directly on the board support level, reporting the core temperature in Celsius (e.g. `Direct system temperature reading (RP2040): 22.000 C`).
+
+5. **Calibrate Time-of-Flight Offset**:
+   * *Procedure*: During bringup, place the unit in a dark room. 
+     - Place a white target directly over the cover of a sensor (e.g. `north`) and run:
+       ```bash
+       cal_near north
+       ```
+     - Move the target out to approximately 100mm and run:
+       ```bash
+       cal_far north
+       ```
+     - Repeat for `east` and `west`.
+   * *Expected Output*: Records the raw sensor reading, performs two-point linear distance mapping, and saves the calibrated offsets to `vl53l0x_cal.cbor` in flash.
+
+6. **Verify Actuator (Pump Motor) Control**:
    ```bash
    motor 50
    ```
-   * *Expected Output*: Commands the motor driver to start the pump impeller at 50% PWM speed. Verify the motor runs smoothly.
+   * *Expected Output*: Commands the motor driver to start the pump impeller at 50% PWM speed, and reads/reports the active current draw from `MotorController` using `read_current_ma_blocking()` (e.g. `Motor current: 120 mA`). Verify the motor runs smoothly.
    ```bash
    stop
    ```
    * *Expected Output*: Stops the pump impeller motor. Verify the motor halts immediately.
 
-5. **Verify System Power States**:
+7. **Calibrate Motor Current (Water Detection)**:
+   * *Procedure*:
+     - Empty the water bowl, and run:
+       ```bash
+       cal_motor empty
+       ```
+     - Fill the water bowl with 100ml of water, and run:
+       ```bash
+       cal_motor 100ml
+       ```
+     - Fill the water bowl completely, and run:
+       ```bash
+       cal_motor full
+       ```
+   * *Expected Output*: Starts the motor, waits 1 second for it to ramp up, measures/records average current draw (e.g., simulating empty = 50mA, 100ml = 150mA, full = 300mA), stops the motor, and saves the calibration to `motor_cal.cbor` in flash. These values are used to gate/ungate the motor and detect dry-run/empty water states at runtime.
+
+8. **Verify System Power States**:
    ```bash
    sleep
    ```
@@ -274,15 +320,15 @@ Execute the following commands sequentially inside the interactive serial shell 
    ```
    * *Expected Output*: Simulates a cat proximity detection interrupt event to verify automatic wakeup logic.
 
-6. **Verify ToF Proximity Interrupts (GP7, GP8, GP9)**:
+8. **Verify ToF Proximity Interrupts (GP7, GP8, GP9)**:
    * *Procedure*: Put the system into `Sleep` mode (via `sleep`). Temporarily pull one of the ToF interrupt lines (GP7, GP8, or GP9) to ground (since interrupts are active-low).
    * *Expected Output*: The hardware interrupt triggers the RP2040 wake-up path, causing the system to transition to `Active` state, reset the inactivity timer, and wake up the motor and LED controllers.
 
-7. **Verify Fuel Gauge Alert Interrupt (GP10)**:
+9. **Verify Fuel Gauge Alert Interrupt (GP10)**:
    * *Procedure*: Pull the fuel gauge Alert line (GP10) to ground to trigger an active-low alert event.
    * *Expected Output*: The RP2040 wakes up if sleeping, detects the low-voltage/charge alert interrupt, dispatches a battery alert, and triggers the `BlinksRedOncePerThirtySeconds` NeoPixel error indicator.
 
-8. **Verify Panic and Crash Log Capture**:
+10. **Verify Panic and Crash Log Capture**:
    ```bash
    crash
    ```

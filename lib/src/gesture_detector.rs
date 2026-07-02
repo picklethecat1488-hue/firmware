@@ -8,15 +8,17 @@ pub struct GestureDetector {
     press_start_time_us: Option<u64>,
     last_press_duration_us: u64,
     threshold_mm: u16,
+    proximity_threshold_mm: u16,
 }
 
 impl GestureDetector {
-    /// Creates a new `GestureDetector` with a custom proximity threshold in mm.
-    pub const fn new(threshold_mm: u16) -> Self {
+    /// Creates a new `GestureDetector` with custom thresholds in mm.
+    pub const fn new(threshold_mm: u16, proximity_threshold_mm: u16) -> Self {
         Self {
             press_start_time_us: None,
             last_press_duration_us: 0,
             threshold_mm,
+            proximity_threshold_mm,
         }
     }
 
@@ -55,7 +57,10 @@ impl GestureDetector {
             self.last_press_duration_us = 0;
         }
 
-        if dist_north_mm < 300 || dist_east_mm < 300 || dist_west_mm < 300 {
+        if dist_north_mm < self.proximity_threshold_mm
+            || dist_east_mm < self.proximity_threshold_mm
+            || dist_west_mm < self.proximity_threshold_mm
+        {
             Some(model::types::Gesture::ProximityDetected)
         } else {
             Some(model::types::Gesture::ProximityNotDetected)

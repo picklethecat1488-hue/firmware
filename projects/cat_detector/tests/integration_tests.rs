@@ -56,20 +56,24 @@ fn test_system_integration_flow() {
 
         // Controllers
         let mut motor_ctrl = MotorController::new(mock_motor, DummyCurrentSensor);
+        use model::calibration::{Calibration, CalibrationType};
+        motor_ctrl.set_calibration(CalibrationType::MotorCal(80, 800));
         let mut led_ctrl = LedController::new(mock_led);
-        let mut system_ctrl = SystemController::new(
-            MOTOR_CHANNEL.sender(),
-            SENSOR_NORTH_CHANNEL.sender(),
-            SENSOR_EAST_CHANNEL.sender(),
-            SENSOR_WEST_CHANNEL.sender(),
-            BATTERY_CHANNEL.sender(),
-            THERMAL_CHANNEL.sender(),
-            LED_CHANNEL.sender(),
-        );
+        let channels = cat_detector::system_controller::SystemControllerChannels {
+            motor_tx: MOTOR_CHANNEL.sender(),
+            sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
+            sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
+            sensor_west_tx: SENSOR_WEST_CHANNEL.sender(),
+            battery_tx: BATTERY_CHANNEL.sender(),
+            thermal_tx: THERMAL_CHANNEL.sender(),
+            led_tx: LED_CHANNEL.sender(),
+            telemetry_tx: TELEMETRY_CHANNEL.sender(),
+        };
+        let mut system_ctrl = SystemController::new(channels, 300);
 
         // Set system controller thresholds
-        system_ctrl.critical_soc_threshold = 10;
-        system_ctrl.soc_hysteresis = 2;
+        system_ctrl.set_critical_soc_threshold(10);
+        system_ctrl.set_soc_hysteresis(2);
 
         let mut battery_ctrl = BatteryController::new_with_system_and_alert(
             &mock_battery,
@@ -95,20 +99,21 @@ fn test_system_integration_flow() {
             0,
             mock_tof_north,
             SYSTEM_CHANNEL.sender(),
-            |id, dist| SystemCommand::SensorUpdate {
-                sensor_id: id,
+            |_id, dist| SystemCommand::SensorUpdate {
+                direction: model::types::Direction::North,
                 distance_mm: dist,
             },
             MockPin,
+            300,
         );
 
         // Verify initial state is PowerDown
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
 
-        // 1. Simulate battery status report: SoC = 50% -> triggers system wake-up to Active
+        // 1. Simulate battery status report: SoC = 85% -> triggers system wake-up to Active
         {
             let mut bat = mock_battery.lock().await;
-            bat.state_of_charge = 50;
+            bat.state_of_charge = 85;
         }
         battery_ctrl
             .update(Some(&TELEMETRY_CHANNEL.sender()))
@@ -178,15 +183,37 @@ fn test_system_integration_flow() {
             Ok(SystemLedState::BlinksRedOncePerThirtySeconds)
         );
 
-        // Now set SoC to 13% and state to Charging
+        // Now set SoC to 13% and state to Charging (should enter PowerDown and show Orange)
         let cmd = SystemCommand::BatteryUpdate {
             state_of_charge: 13,
             charger_state: ChargeState::Charging,
         };
         system_ctrl.handle_command(cmd);
-        // Exits PowerDown to Active
+        assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
+        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidOrange));
+
+        // Disconnect charger and set SoC to 50% (should remain in PowerDown and set LED Off)
+        let cmd = SystemCommand::BatteryUpdate {
+            state_of_charge: 50,
+            charger_state: ChargeState::DoneOrStandbyOrUnplugged,
+        };
+        system_ctrl.handle_command(cmd);
+        assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
+        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
+
+        // Unlock with 2F long press gesture
+        system_ctrl.distance_east = 15;
+        system_ctrl.distance_west = 15;
+        system_ctrl.update_gesture(0);
+        system_ctrl.update_gesture(2_000_000);
+        system_ctrl.update_gesture(5_000_000);
         assert_eq!(system_ctrl.status(), SystemStatus::Active);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
+
+        // Release buttons
+        system_ctrl.distance_east = 1000;
+        system_ctrl.distance_west = 1000;
+        system_ctrl.update_gesture(6_000_000);
 
         // 5. Simulate thermal critical: Temp reaches 61°C (61000 mC)
         {
@@ -212,12 +239,15 @@ fn test_system_integration_flow() {
 
         // 6. Simulate Sleep -> Active -> PowerDown -> Active (Charging) -> Sleep transition
         // Simulate cool down
-        system_ctrl.thermal_critical = false;
+        system_ctrl.set_thermal_critical(false);
 
         // Wake up from Sleep to Active
         system_ctrl.handle_command(SystemCommand::ActivityDetected);
         assert_eq!(system_ctrl.status(), SystemStatus::Active);
-        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidGreen));
+        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
+
+        // Drain motor channel for a clean state before simulated long press
+        while MOTOR_CHANNEL.try_receive().is_ok() {}
 
         // Simulate long press (East & West distance < 20mm for 5s)
         system_ctrl.distance_east = 15;
@@ -227,14 +257,34 @@ fn test_system_integration_flow() {
         system_ctrl.update_gesture(5_000_000);
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
+        assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::SetSpeed(100)));
+        assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::SetSpeed(100)));
         assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::Stop));
 
-        // Connect charger (exits PowerDown to Active)
+        // Connect charger (should remain/enter PowerDown and show SoC LED)
         let cmd = SystemCommand::BatteryUpdate {
             state_of_charge: 50,
             charger_state: ChargeState::Charging,
         };
         system_ctrl.handle_command(cmd);
+        assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
+        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
+
+        // Disconnect charger (should still remain in PowerDown and LED off)
+        let cmd = SystemCommand::BatteryUpdate {
+            state_of_charge: 50,
+            charger_state: ChargeState::DoneOrStandbyOrUnplugged,
+        };
+        system_ctrl.handle_command(cmd);
+        assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
+        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
+
+        // Unlock with 2F long press gesture after charger is disconnected
+        system_ctrl.distance_east = 15;
+        system_ctrl.distance_west = 15;
+        system_ctrl.update_gesture(6_000_000);
+        system_ctrl.update_gesture(8_000_000);
+        system_ctrl.update_gesture(11_000_000);
         assert_eq!(system_ctrl.status(), SystemStatus::Active);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
 
@@ -246,7 +296,7 @@ fn test_system_integration_flow() {
 
         system_ctrl.distance_east = 1000;
         system_ctrl.distance_west = 1000;
-        system_ctrl.update_gesture(6_000_000);
+        system_ctrl.update_gesture(12_000_000);
 
         // Drain motor channel for a clean state
         while MOTOR_CHANNEL.try_receive().is_ok() {}

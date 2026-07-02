@@ -244,6 +244,19 @@ impl<
     }
 }
 
+impl<'a, M: RawMutex, B: FuelGauge, C: model::interfaces::ChargeStatus, Pin, Cmd>
+    crate::BlockingBatteryReader for BatteryController<'a, M, B, C, Pin, Cmd>
+{
+    fn read_battery_blocking(&self) -> Option<(u32, u8)> {
+        if let Ok(mut bat) = self.battery.try_lock() {
+            if let (Ok(v), Ok(soc)) = (bat.read_voltage_mv(), bat.read_state_of_charge()) {
+                return Some((v, soc));
+            }
+        }
+        None
+    }
+}
+
 /// One-way commands sent to the Battery Controller from the shell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BatteryCommand {
