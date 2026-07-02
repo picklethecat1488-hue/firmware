@@ -47,13 +47,14 @@ pub struct SensorController<
     system_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
     make_cmd: Option<fn(u8, u16) -> Cmd>,
     interrupt_pin: Option<Pin>,
+    proximity_threshold_mm: u16,
 }
 
 impl<'a, S: ProximitySensor>
     SensorController<'a, S, embassy_sync::blocking_mutex::raw::NoopRawMutex, DummyDataReadyPin, ()>
 {
     /// Creates a new SensorController managing a single proximity sensor.
-    pub const fn new(sensor_id: u8, sensor: S) -> Self {
+    pub const fn new(sensor_id: u8, sensor: S, proximity_threshold_mm: u16) -> Self {
         Self {
             sensor_id,
             sensor,
@@ -62,6 +63,7 @@ impl<'a, S: ProximitySensor>
             system_tx: None,
             make_cmd: None,
             interrupt_pin: None,
+            proximity_threshold_mm,
         }
     }
 }
@@ -79,6 +81,7 @@ impl<
         sensor: S,
         system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
         make_cmd: fn(u8, u16) -> Cmd,
+        proximity_threshold_mm: u16,
     ) -> Self {
         Self {
             sensor_id,
@@ -88,6 +91,7 @@ impl<
             system_tx: Some(system_tx),
             make_cmd: Some(make_cmd),
             interrupt_pin: None,
+            proximity_threshold_mm,
         }
     }
 }
@@ -107,6 +111,7 @@ impl<
         system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
         make_cmd: fn(u8, u16) -> Cmd,
         interrupt_pin: Pin,
+        proximity_threshold_mm: u16,
     ) -> Self {
         Self {
             sensor_id,
@@ -116,6 +121,7 @@ impl<
             system_tx: Some(system_tx),
             make_cmd: Some(make_cmd),
             interrupt_pin: Some(interrupt_pin),
+            proximity_threshold_mm,
         }
     }
     /// Gets a mutable reference to the underlying sensor.
@@ -124,7 +130,7 @@ impl<
     }
     /// Gets the current proximity telemetry reading.
     pub fn telemetry(&self) -> model::types::ProximityTelemetry {
-        if self.latest_distance < 300 {
+        if self.latest_distance < self.proximity_threshold_mm {
             model::types::ProximityTelemetry::InRange(self.latest_distance)
         } else {
             model::types::ProximityTelemetry::OutRange(self.latest_distance)

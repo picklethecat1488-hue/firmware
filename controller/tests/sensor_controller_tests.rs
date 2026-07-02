@@ -5,7 +5,7 @@ use peripherals::mock::MockProximitySensor;
 #[test]
 fn test_sensor_controller_flow() {
     let sensor = MockProximitySensor::new(10);
-    let mut controller = SensorController::new(0, sensor);
+    let mut controller = SensorController::new(0, sensor, 300);
 
     assert_eq!(controller.latest_distance(), 1000);
     assert_eq!(controller.telemetry(), ProximityTelemetry::OutRange(1000));
