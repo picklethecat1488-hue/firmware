@@ -205,6 +205,31 @@ pub fn system_time() -> u64 {
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 defmt::timestamp!("{=u64:us}", system_time());
 
+/// Represents the physical directions of ToF proximity sensors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SensorDirection {
+    /// North sensor
+    North,
+    /// East sensor
+    East,
+    /// West sensor
+    West,
+}
+
+impl<'a> embedded_cli::arguments::FromArgument<'a> for SensorDirection {
+    fn from_arg(arg: &'a str) -> Result<Self, embedded_cli::arguments::FromArgumentError<'a>> {
+        match arg {
+            "north" => Ok(SensorDirection::North),
+            "east" => Ok(SensorDirection::East),
+            "west" => Ok(SensorDirection::West),
+            _ => Err(embedded_cli::arguments::FromArgumentError {
+                value: arg,
+                expected: "one of 'north', 'east', or 'west'",
+            }),
+        }
+    }
+}
+
 /// Derived command enum representing all supported user commands.
 #[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
 pub enum CliCommand {
@@ -229,6 +254,18 @@ pub enum CliCommand {
     Activity,
     /// Trigger a panic to test the crash dump / panic flow
     Crash,
+    /// Calibrate ToF sensors with target held at the cover (0mm)
+    #[command(name = "cal_near")]
+    CalNear {
+        /// Sensor direction ('north', 'east', or 'west')
+        direction: SensorDirection,
+    },
+    /// Calibrate ToF sensors with target held at 100mm
+    #[command(name = "cal_far")]
+    CalFar {
+        /// Sensor direction ('north', 'east', or 'west')
+        direction: SensorDirection,
+    },
     /// Show help and usage summary
     Help,
 }

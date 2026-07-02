@@ -56,3 +56,37 @@ fn test_stop_command_parsing() {
 
     assert!(matches!(processor.cmd, Some(CliCommand::Stop)));
 }
+
+#[test]
+fn test_cal_near_command_parsing() {
+    let mut cli = CliBuilder::default().writer(DummyWriter).build().unwrap();
+
+    let mut processor = TestProcessor { cmd: None };
+    for byte in b"cal_near north\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*byte, &mut processor);
+    }
+
+    assert!(matches!(
+        processor.cmd,
+        Some(CliCommand::CalNear {
+            direction: cat_detector::SensorDirection::North
+        })
+    ));
+}
+
+#[test]
+fn test_cal_far_command_parsing() {
+    let mut cli = CliBuilder::default().writer(DummyWriter).build().unwrap();
+
+    let mut processor = TestProcessor { cmd: None };
+    for byte in b"cal_far east\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*byte, &mut processor);
+    }
+
+    assert!(matches!(
+        processor.cmd,
+        Some(CliCommand::CalFar {
+            direction: cat_detector::SensorDirection::East
+        })
+    ));
+}

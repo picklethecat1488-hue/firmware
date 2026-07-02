@@ -20,12 +20,18 @@ pub enum InterruptMode {
     NewSampleReady = 4,
 }
 
+/// The default minimum safety buffer/error margin (in millimeters) between the calibration cover reading
+/// and the hardware interrupt threshold, preventing the cover itself from triggering the sensor.
+pub const THRESHOLD_ERROR_MM: u16 = 20;
+
 /// Driver for the VL53L0X Time-of-Flight sensor communicating over I2C.
 pub struct Vl53l0x<I> {
     i2c: I,
     address: u8,
     threshold_mm: u16,
     hysteresis_mm: u16,
+    cal_near: u16,
+    cal_100: u16,
 }
 
 impl<I: I2c> Vl53l0x<I> {
@@ -36,6 +42,8 @@ impl<I: I2c> Vl53l0x<I> {
             address,
             threshold_mm: 300,
             hysteresis_mm: 50,
+            cal_near: 0,
+            cal_100: 100,
         }
     }
 
@@ -54,6 +62,13 @@ impl<I: I2c> Vl53l0x<I> {
 
     /// Sets the near distance threshold in millimeters.
     pub fn set_threshold_mm(&mut self, threshold_mm: u16) {
+        assert!(
+            threshold_mm > self.cal_near + THRESHOLD_ERROR_MM,
+            "threshold_mm ({}) must be greater than cal_near ({}) + THRESHOLD_ERROR_MM ({})",
+            threshold_mm,
+            self.cal_near,
+            THRESHOLD_ERROR_MM
+        );
         self.threshold_mm = threshold_mm;
     }
 
@@ -119,11 +134,38 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
         // Read 16-bit range result from register 0x1E (High Byte) and 0x1F (Low Byte)
         let mut buf = [0u8; 2];
         self.i2c.write_read(self.address, &[0x1E], &mut buf)?;
-        let distance = u16::from_be_bytes(buf);
+        let mut distance = u16::from_be_bytes(buf);
 
         // Clear interrupt status so the pin can trigger again (write 0x01 to register 0x0B)
         self.clear_interrupt()?;
 
+        // Apply two-point calibration
+        if self.cal_100 > self.cal_near {
+            if distance <= self.cal_near {
+                distance = 0;
+            } else {
+                distance = (((distance - self.cal_near) as u32 * 100)
+                    / (self.cal_100 - self.cal_near) as u32) as u16;
+            }
+        }
         Ok(distance)
+    }
+}
+
+impl<I: I2c> model::calibration::Calibration for Vl53l0x<I> {
+    fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
+        match calibration {
+            model::calibration::CalibrationType::ProximityCal(near, far) => {
+                assert!(
+                    self.threshold_mm > near + THRESHOLD_ERROR_MM,
+                    "threshold_mm ({}) must be greater than cal_near ({}) + THRESHOLD_ERROR_MM ({})",
+                    self.threshold_mm,
+                    near,
+                    THRESHOLD_ERROR_MM
+                );
+                self.cal_near = near;
+                self.cal_100 = far;
+            }
+        }
     }
 }

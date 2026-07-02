@@ -181,6 +181,8 @@ impl ProximitySensor for DummyProximitySensor {
     }
 }
 
+impl model::calibration::Calibration for DummyProximitySensor {}
+
 /// A mock implementation of a ChargeStatus for unit testing.
 pub struct MockCharger {
     /// The mock charger state.

@@ -67,6 +67,21 @@ impl<'d, T: embassy_rp::uart::Instance, M: embassy_rp::uart::Mode> IoWrite
 use cat_detector::CliCommand;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+static mut BOARD_I2C: Option<
+    *mut embassy_rp::i2c::I2c<'static, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Blocking>,
+> = None;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+static mut PANIC_FLASH: Option<
+    embassy_rp::flash::Flash<
+        'static,
+        embassy_rp::peripherals::FLASH,
+        embassy_rp::flash::Blocking,
+        { cat_detector::FLASH_SIZE },
+    >,
+> = None;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 struct CliProcessor;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -136,6 +151,144 @@ impl<W: IoWrite<Error = E>, E: embedded_io::Error> CommandProcessor<W, E> for Cl
             Ok(CliCommand::Crash) => {
                 panic!("Simulated crash dump flow");
             }
+            Ok(CliCommand::CalNear { direction }) => {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                {
+                    let i2c = unsafe { &mut *BOARD_I2C.unwrap() };
+                    let (addr, name) = match direction {
+                        cat_detector::SensorDirection::North => (0x30, "North"),
+                        cat_detector::SensorDirection::East => (0x31, "East"),
+                        cat_detector::SensorDirection::West => (0x32, "West"),
+                    };
+
+                    let d_raw = {
+                        let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut *i2c, addr);
+                        use model::interfaces::ProximitySensor;
+                        sensor.read_distance_mm().unwrap_or(1000)
+                    };
+
+                    let _ = core::writeln!(
+                        writer,
+                        "\r\nCalibrating cover (near) for {} sensor: Raw distance = {} mm",
+                        name,
+                        d_raw
+                    );
+
+                    let flash_ref = unsafe { PANIC_FLASH.as_mut().unwrap() };
+                    let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+                    let mut fs = controller::filesystem_controller::FilesystemController::new(
+                        async_flash,
+                        cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
+                    );
+
+                    let mut buf = [0u8; 128];
+                    let mut proximity_cal =
+                        match embassy_futures::block_on(fs.read_file("vl53l0x_cal.cbor", &mut buf))
+                        {
+                            Ok(Some(bytes)) => {
+                                minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes)
+                                    .unwrap_or_default()
+                            }
+                            _ => model::calibration::Vl53l0xCalibration::default(),
+                        };
+
+                    match direction {
+                        cat_detector::SensorDirection::North => proximity_cal.north_near = d_raw,
+                        cat_detector::SensorDirection::East => proximity_cal.east_near = d_raw,
+                        cat_detector::SensorDirection::West => proximity_cal.west_near = d_raw,
+                    }
+
+                    let mut write_buf = [0u8; 128];
+                    let cursor = minicbor::encode::write::Cursor::new(&mut write_buf[..]);
+                    let mut encoder = minicbor::Encoder::new(cursor);
+                    encoder.encode(proximity_cal).unwrap();
+                    let len = encoder.into_writer().position();
+
+                    match embassy_futures::block_on(
+                        fs.write_file("vl53l0x_cal.cbor", &write_buf[..len]),
+                    ) {
+                        Ok(_) => {
+                            let _ = core::writeln!(
+                                writer,
+                                "Saved cover calibration for {} to flash.",
+                                name
+                            );
+                        }
+                        Err(_) => {
+                            let _ = core::writeln!(writer, "Error saving calibration to flash.");
+                        }
+                    }
+                }
+            }
+            Ok(CliCommand::CalFar { direction }) => {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                {
+                    let i2c = unsafe { &mut *BOARD_I2C.unwrap() };
+                    let (addr, name) = match direction {
+                        cat_detector::SensorDirection::North => (0x30, "North"),
+                        cat_detector::SensorDirection::East => (0x31, "East"),
+                        cat_detector::SensorDirection::West => (0x32, "West"),
+                    };
+
+                    let d_raw = {
+                        let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut *i2c, addr);
+                        use model::interfaces::ProximitySensor;
+                        sensor.read_distance_mm().unwrap_or(1000)
+                    };
+
+                    let _ = core::writeln!(
+                        writer,
+                        "\r\nCalibrating 100mm (far) for {} sensor: Raw distance = {} mm",
+                        name,
+                        d_raw
+                    );
+
+                    let flash_ref = unsafe { PANIC_FLASH.as_mut().unwrap() };
+                    let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+                    let mut fs = controller::filesystem_controller::FilesystemController::new(
+                        async_flash,
+                        cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
+                    );
+
+                    let mut buf = [0u8; 128];
+                    let mut proximity_cal =
+                        match embassy_futures::block_on(fs.read_file("vl53l0x_cal.cbor", &mut buf))
+                        {
+                            Ok(Some(bytes)) => {
+                                minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes)
+                                    .unwrap_or_default()
+                            }
+                            _ => model::calibration::Vl53l0xCalibration::default(),
+                        };
+
+                    match direction {
+                        cat_detector::SensorDirection::North => proximity_cal.north_100 = d_raw,
+                        cat_detector::SensorDirection::East => proximity_cal.east_100 = d_raw,
+                        cat_detector::SensorDirection::West => proximity_cal.west_100 = d_raw,
+                    }
+
+                    let mut write_buf = [0u8; 128];
+                    let cursor = minicbor::encode::write::Cursor::new(&mut write_buf[..]);
+                    let mut encoder = minicbor::Encoder::new(cursor);
+                    encoder.encode(proximity_cal).unwrap();
+                    let len = encoder.into_writer().position();
+
+                    match embassy_futures::block_on(
+                        fs.write_file("vl53l0x_cal.cbor", &write_buf[..len]),
+                    ) {
+                        Ok(_) => {
+                            let _ = core::writeln!(
+                                writer,
+                                "Saved 100mm calibration for {} to flash.",
+                                name
+                            );
+                        }
+                        Err(_) => {
+                            let _ = core::writeln!(writer, "Error saving calibration to flash.");
+                        }
+                    }
+                }
+            }
             Ok(CliCommand::Help) => {
                 let _ = core::writeln!(writer, "\r\nCommands:");
                 let _ = core::writeln!(writer, "  motor <speed>    : Set motor speed (0-100)");
@@ -156,6 +309,14 @@ impl<W: IoWrite<Error = E>, E: embedded_io::Error> CommandProcessor<W, E> for Cl
                     writer,
                     "  crash            : Trigger a panic to test crash dump"
                 );
+                let _ = core::writeln!(
+                    writer,
+                    "  cal_near <north|east|west> : Calibrate sensor cover (0mm)"
+                );
+                let _ = core::writeln!(
+                    writer,
+                    "  cal_far <north|east|west>  : Calibrate sensor 100mm target"
+                );
                 let _ = core::writeln!(writer, "  help             : Show this help summary");
             }
             Err(e) => {
@@ -174,7 +335,11 @@ async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
     // Initialize board peripherals using the unified board configuration
-    let board = cat_detector::Board::init(p);
+    let mut board = cat_detector::Board::init(p);
+
+    unsafe {
+        BOARD_I2C = Some(&mut board.i2c as *mut _ as *mut _);
+    }
 
     // Split the UART into TX and RX parts to satisfy the borrow checker
     let (tx, mut rx) = board.uart.split();
@@ -204,14 +369,6 @@ async fn main(spawner: Spawner) {
     cat_detector::set_time_fn(cat_detector::system_time);
 
     // Initialize the modular panic handler
-    static mut PANIC_FLASH: Option<
-        embassy_rp::flash::Flash<
-            'static,
-            embassy_rp::peripherals::FLASH,
-            embassy_rp::flash::Blocking,
-            { cat_detector::FLASH_SIZE },
-        >,
-    > = None;
     let panic_flash = unsafe {
         PANIC_FLASH = Some(embassy_rp::flash::Flash::new_blocking(board.flash));
         PANIC_FLASH.as_mut().unwrap()

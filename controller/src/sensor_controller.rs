@@ -155,6 +155,7 @@ impl<
     /// Ticks the sensor control loop, updating proximity distance.
     pub fn update(&mut self) -> Result<u16, S::Error> {
         let dist = self.sensor.read_distance_mm()?;
+
         self.latest_distance = dist;
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -222,5 +223,18 @@ impl<
                 }
             }
         }
+    }
+}
+
+impl<
+        'a,
+        S: ProximitySensor + model::calibration::Calibration,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        Pin,
+        Cmd,
+    > model::calibration::Calibration for SensorController<'a, S, M, Pin, Cmd>
+{
+    fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
+        self.sensor.set_calibration(calibration);
     }
 }
