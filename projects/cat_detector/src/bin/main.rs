@@ -218,8 +218,8 @@ async fn main(spawner: Spawner) {
         0,
         tof_north,
         cat_detector::SYSTEM_CHANNEL.sender(),
-        |id, dist| cat_detector::system_controller::SystemCommand::SensorUpdate {
-            sensor_id: id,
+        |_id, dist| cat_detector::system_controller::SystemCommand::SensorUpdate {
+            direction: model::types::Direction::North,
             distance_mm: dist,
         },
         ProximityPinWrapper(pin_north),
@@ -234,8 +234,8 @@ async fn main(spawner: Spawner) {
         1,
         tof_east,
         cat_detector::SYSTEM_CHANNEL.sender(),
-        |id, dist| cat_detector::system_controller::SystemCommand::SensorUpdate {
-            sensor_id: id,
+        |_id, dist| cat_detector::system_controller::SystemCommand::SensorUpdate {
+            direction: model::types::Direction::East,
             distance_mm: dist,
         },
         ProximityPinWrapper(pin_east),
@@ -250,8 +250,8 @@ async fn main(spawner: Spawner) {
         2,
         tof_west,
         cat_detector::SYSTEM_CHANNEL.sender(),
-        |id, dist| cat_detector::system_controller::SystemCommand::SensorUpdate {
-            sensor_id: id,
+        |_id, dist| cat_detector::system_controller::SystemCommand::SensorUpdate {
+            direction: model::types::Direction::West,
             distance_mm: dist,
         },
         ProximityPinWrapper(pin_west),
@@ -309,6 +309,7 @@ async fn main(spawner: Spawner) {
         cat_detector::BATTERY_CHANNEL.sender(),
         cat_detector::THERMAL_CHANNEL.sender(),
         cat_detector::LED_CHANNEL.sender(),
+        cat_detector::TELEMETRY_CHANNEL.sender(),
         cat_detector::DEFAULT_PROXIMITY_THRESHOLD_MM,
     );
 

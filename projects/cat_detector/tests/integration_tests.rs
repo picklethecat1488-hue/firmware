@@ -67,12 +67,13 @@ fn test_system_integration_flow() {
             BATTERY_CHANNEL.sender(),
             THERMAL_CHANNEL.sender(),
             LED_CHANNEL.sender(),
+            TELEMETRY_CHANNEL.sender(),
             300,
         );
 
         // Set system controller thresholds
-        system_ctrl.critical_soc_threshold = 10;
-        system_ctrl.soc_hysteresis = 2;
+        system_ctrl.set_critical_soc_threshold(10);
+        system_ctrl.set_soc_hysteresis(2);
 
         let mut battery_ctrl = BatteryController::new_with_system_and_alert(
             &mock_battery,
@@ -98,8 +99,8 @@ fn test_system_integration_flow() {
             0,
             mock_tof_north,
             SYSTEM_CHANNEL.sender(),
-            |id, dist| SystemCommand::SensorUpdate {
-                sensor_id: id,
+            |_id, dist| SystemCommand::SensorUpdate {
+                direction: model::types::Direction::North,
                 distance_mm: dist,
             },
             MockPin,
@@ -238,7 +239,7 @@ fn test_system_integration_flow() {
 
         // 6. Simulate Sleep -> Active -> PowerDown -> Active (Charging) -> Sleep transition
         // Simulate cool down
-        system_ctrl.thermal_critical = false;
+        system_ctrl.set_thermal_critical(false);
 
         // Wake up from Sleep to Active
         system_ctrl.handle_command(SystemCommand::ActivityDetected);
