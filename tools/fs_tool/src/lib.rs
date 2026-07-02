@@ -1,75 +1,12 @@
 //! Library module for host-side flash storage tools.
 
 use clap::{Parser, Subcommand};
-use embedded_storage::nor_flash::NorFlashErrorKind;
-
 use std::cmp;
 
-/// A mock flash driver that implements the embedded-storage-async traits
-/// over an in-memory buffer containing the pulled raw flash binary image.
-pub struct HostFlash {
-    /// In-memory buffer representing the flash contents
-    pub data: Vec<u8>,
-}
+pub mod commands;
+pub mod flash;
 
-impl HostFlash {
-    /// Creates a new HostFlash instance with the provided byte buffer.
-    pub fn new(data: Vec<u8>) -> Self {
-        Self { data }
-    }
-}
-
-impl embedded_storage_async::nor_flash::ErrorType for HostFlash {
-    type Error = NorFlashErrorKind;
-}
-
-impl embedded_storage_async::nor_flash::ReadNorFlash for HostFlash {
-    const READ_SIZE: usize = 1;
-
-    async fn read(&mut self, offset: u32, bytes: &mut [u8]) -> Result<(), Self::Error> {
-        let start = offset as usize;
-        let end = start + bytes.len();
-        if end <= self.data.len() {
-            bytes.copy_from_slice(&self.data[start..end]);
-            Ok(())
-        } else {
-            Err(NorFlashErrorKind::OutOfBounds)
-        }
-    }
-
-    fn capacity(&self) -> usize {
-        self.data.len()
-    }
-}
-
-impl embedded_storage_async::nor_flash::NorFlash for HostFlash {
-    const WRITE_SIZE: usize = 4;
-    const ERASE_SIZE: usize = 1024;
-
-    async fn write(&mut self, offset: u32, bytes: &[u8]) -> Result<(), Self::Error> {
-        let start = offset as usize;
-        let end = start + bytes.len();
-        if end <= self.data.len() {
-            self.data[start..end].copy_from_slice(bytes);
-            Ok(())
-        } else {
-            Err(NorFlashErrorKind::OutOfBounds)
-        }
-    }
-
-    async fn erase(&mut self, from: u32, to: u32) -> Result<(), Self::Error> {
-        let start = from as usize;
-        let end = to as usize;
-        if end <= self.data.len() {
-            self.data[start..end].fill(0xFF);
-            Ok(())
-        } else {
-            Err(NorFlashErrorKind::OutOfBounds)
-        }
-    }
-}
-
-impl embedded_storage_async::nor_flash::MultiwriteNorFlash for HostFlash {}
+pub use flash::{HostFlash, ProbeFlash};
 
 /// Helper utility to hash or pad a string filename into a 32-byte key
 /// used by the sequential-storage map.
@@ -119,9 +56,14 @@ impl DataType {
 #[derive(Parser)]
 #[command(author, version, about = "Host utility for querying sequential-storage filesystem dumps from RP2040", long_about = None)]
 pub struct Cli {
-    /// Path to the binary flash dump file (e.g. flash_dump.bin)
+    /// Path to the binary flash dump file (e.g. flash_dump.bin).
+    /// If not specified, direct attachment to the device via probe-rs is used.
     #[arg(short, long)]
-    pub dump: String,
+    pub dump: Option<String>,
+
+    /// Project name to load target chip and flash partition settings from
+    #[arg(short, long, required_unless_present = "dump")]
+    pub project: Option<String>,
 
     /// Subcommand to run against the dump
     #[command(subcommand)]
@@ -147,5 +89,12 @@ pub enum Commands {
         /// Optional path to the ELF binary containing debug symbols (e.g. target/thumbv6m-none-eabi/debug/cat_detector)
         #[arg(short, long)]
         elf: Option<String>,
+    },
+    /// Copy a file to or from the device flash partition
+    Cp {
+        /// Source path (prefix with 'dev:' for device files, e.g. dev:telemetry.rrd)
+        src: String,
+        /// Destination path (prefix with 'dev:' for device files, e.g. dev:telemetry.rrd)
+        dest: String,
     },
 }
