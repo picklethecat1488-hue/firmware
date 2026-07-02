@@ -241,27 +241,33 @@ To ensure the hardware and firmware designs are fully validated and operating co
 ---
 
 ### 6.2. Ordered Functional Test Commands (Via Bringup Shell)
-Execute the following commands sequentially inside the interactive serial shell (`shell> `) to verify individual components:
+Execute the following commands sequentially inside the interactive serial shell (`shell> `) to verify individual components. Every command execution concludes with a catch-all result code message: `Command succeeded` on success, or `Command failed: <reason>` on failure.
 
 1. **Verify Fuel Gauge Communication**:
    ```bash
    battery
    ```
-   * *Expected Output*: Shows the battery voltage in millivolts and state-of-charge percentage queried from the MAX17048 fuel gauge (e.g. `3820 mV, 85%`).
+   * *Expected Output*: Directly queries the `BatteryController` using the blocking trait `read_battery_blocking()`, showing the battery voltage and state-of-charge percentage (e.g. `Direct battery reading: 3820 mV, 85% state of charge`).
 
 2. **Verify Thermal Monitoring**:
    ```bash
    thermal
    ```
-   * *Expected Output*: Shows the current ambient temperature in millidegrees Celsius from the internal sensor (e.g. `24500 mC` / `24.5°C`).
+   * *Expected Output*: Directly queries the `ThermalController` using the blocking trait `read_temperature_blocking()`, showing the current ambient temperature in Celsius (e.g. `Direct thermal reading (ThermalController): 24.500 C`).
 
 3. **Verify Time-of-Flight (Proximity) Sensors**:
    ```bash
    proximity
    ```
-   * *Expected Output*: Scans the three proximity sensors (North, East, West) and reports distances in millimeters. Ensures the sensors have completed dynamic re-addressing successfully (addresses `0x30`, `0x31`, `0x32`).
+   * *Expected Output*: Directly queries each of the three `SensorController` instances sequentially using the blocking trait `read_distance_blocking()`, reporting distances in millimeters (e.g. `Direct proximity readings: North = 100 mm, East = 200 mm, West = 300 mm`).
 
-4. **Calibrate Time-of-Flight Offset**:
+4. **Verify RP2040 Microcontroller Temperature**:
+   ```bash
+   mcu_temp
+   ```
+   * *Expected Output*: Queries the RP2040 internal ADC temperature sensor directly on the board support level, reporting the core temperature in Celsius (e.g. `Direct system temperature reading (RP2040): 22.000 C`).
+
+5. **Calibrate Time-of-Flight Offset**:
    * *Procedure*: During bringup, place the unit in a dark room. 
      - Place a white target directly over the cover of a sensor (e.g. `north`) and run:
        ```bash
@@ -274,17 +280,17 @@ Execute the following commands sequentially inside the interactive serial shell 
      - Repeat for `east` and `west`.
    * *Expected Output*: Records the raw sensor reading, performs two-point linear distance mapping, and saves the calibrated offsets to `vl53l0x_cal.cbor` in flash.
 
-5. **Verify Actuator (Pump Motor) Control**:
+6. **Verify Actuator (Pump Motor) Control**:
    ```bash
    motor 50
    ```
-   * *Expected Output*: Commands the motor driver to start the pump impeller at 50% PWM speed. Verify the motor runs smoothly.
+   * *Expected Output*: Commands the motor driver to start the pump impeller at 50% PWM speed, and reads/reports the active current draw from `MotorController` using `read_current_ma_blocking()` (e.g. `Motor current: 120 mA`). Verify the motor runs smoothly.
    ```bash
    stop
    ```
    * *Expected Output*: Stops the pump impeller motor. Verify the motor halts immediately.
 
-6. **Calibrate Motor Current (Water Detection)**:
+7. **Calibrate Motor Current (Water Detection)**:
    * *Procedure*:
      - Empty the water bowl, and run:
        ```bash
@@ -300,7 +306,7 @@ Execute the following commands sequentially inside the interactive serial shell 
        ```
    * *Expected Output*: Starts the motor, waits 1 second for it to ramp up, measures/records average current draw (e.g., simulating empty = 50mA, 100ml = 150mA, full = 300mA), stops the motor, and saves the calibration to `motor_cal.cbor` in flash. These values are used to gate/ungate the motor and detect dry-run/empty water states at runtime.
 
-7. **Verify System Power States**:
+8. **Verify System Power States**:
    ```bash
    sleep
    ```
