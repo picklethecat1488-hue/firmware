@@ -233,3 +233,39 @@ impl model::interfaces::TemperatureSensor for Rp2040TempSensor {
         Ok((temp_c * 1000.0) as i32)
     }
 }
+
+/// Configures the Cortex-M MPU to guard the bottom of the stack.
+///
+/// Uses Region 0 to protect a 256-byte area at `0x2003_C000`, giving a 16KB stack
+/// limit (from `STACK_TOP` = `0x2004_0000`). If the stack pointer exceeds this boundary,
+/// it immediately triggers a HardFault rather than silently corrupting memory.
+pub fn configure_mpu_stack_guard() {
+    let cp = unsafe { cortex_m::peripheral::Peripherals::steal() };
+    let mpu = cp.MPU;
+
+    // We choose 0x2003_C000 as the guard region address.
+    // This allows the stack to grow down to 0x2003_C000 (16KB stack from 0x2004_0000).
+    let guard_addr = 0x2003_C000;
+
+    unsafe {
+        // Disable MPU during configuration
+        mpu.ctrl.write(0);
+
+        // Configure Region 0 to guard the stack bottom
+        mpu.rnr.write(0);
+        mpu.rbar.write(guard_addr);
+        // RASR attribute:
+        // - XN (bit 28): 1 (Execute-Never)
+        // - AP (bits 26:24): 000 (No Access)
+        // - TEX, C, B: 000, 1, 1 (SRAM cache/buffer attributes) -> bit 17=1, bit 16=1
+        // - SIZE (bits 5:1): 7 (256 bytes)
+        // - ENABLE (bit 0): 1
+        // Value: (1 << 28) | (1 << 17) | (1 << 16) | (7 << 1) | 1 = 0x1003_000F
+        mpu.rasr.write(0x1003_000F);
+
+        // Enable MPU with PRIVDEFENA=1 (enables default memory map for privileged access,
+        // so that the rest of flash/RAM is accessible normally).
+        mpu.ctrl.write(1 | (1 << 2));
+    }
+    crate::log_info!("MPU stack guard configured at 0x{:08x}", guard_addr);
+}
