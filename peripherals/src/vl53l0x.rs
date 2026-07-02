@@ -153,6 +153,7 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
 }
 
 impl<I: I2c> model::calibration::Calibration for Vl53l0x<I> {
+    #[allow(clippy::single_match)]
     fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
         match calibration {
             model::calibration::CalibrationType::ProximityCal(near, far) => {
@@ -166,6 +167,7 @@ impl<I: I2c> model::calibration::Calibration for Vl53l0x<I> {
                 self.cal_near = near;
                 self.cal_100 = far;
             }
+            _ => {}
         }
     }
 }

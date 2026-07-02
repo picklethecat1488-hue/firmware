@@ -90,3 +90,20 @@ fn test_cal_far_command_parsing() {
         })
     ));
 }
+
+#[test]
+fn test_cal_motor_command_parsing() {
+    let mut cli = CliBuilder::default().writer(DummyWriter).build().unwrap();
+
+    let mut processor = TestProcessor { cmd: None };
+    for byte in b"cal_motor empty\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*byte, &mut processor);
+    }
+
+    assert!(matches!(
+        processor.cmd,
+        Some(CliCommand::CalMotor {
+            state: cat_detector::MotorCalState::Empty
+        })
+    ));
+}

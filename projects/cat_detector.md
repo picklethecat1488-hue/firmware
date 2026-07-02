@@ -261,7 +261,20 @@ Execute the following commands sequentially inside the interactive serial shell 
    ```
    * *Expected Output*: Scans the three proximity sensors (North, East, West) and reports distances in millimeters. Ensures the sensors have completed dynamic re-addressing successfully (addresses `0x30`, `0x31`, `0x32`).
 
-4. **Verify Actuator (Pump Motor) Control**:
+4. **Calibrate Time-of-Flight Offset**:
+   * *Procedure*: During bringup, place the unit in a dark room. 
+     - Place a white target directly over the cover of a sensor (e.g. `north`) and run:
+       ```bash
+       cal_near north
+       ```
+     - Move the target out to approximately 100mm and run:
+       ```bash
+       cal_far north
+       ```
+     - Repeat for `east` and `west`.
+   * *Expected Output*: Records the raw sensor reading, performs two-point linear distance mapping, and saves the calibrated offsets to `vl53l0x_cal.cbor` in flash.
+
+5. **Verify Actuator (Pump Motor) Control**:
    ```bash
    motor 50
    ```
@@ -271,7 +284,23 @@ Execute the following commands sequentially inside the interactive serial shell 
    ```
    * *Expected Output*: Stops the pump impeller motor. Verify the motor halts immediately.
 
-5. **Verify System Power States**:
+6. **Calibrate Motor Current (Water Detection)**:
+   * *Procedure*:
+     - Empty the water bowl, and run:
+       ```bash
+       cal_motor empty
+       ```
+     - Fill the water bowl with 100ml of water, and run:
+       ```bash
+       cal_motor 100ml
+       ```
+     - Fill the water bowl completely, and run:
+       ```bash
+       cal_motor full
+       ```
+   * *Expected Output*: Starts the motor, waits 1 second for it to ramp up, measures/records average current draw (e.g., simulating empty = 50mA, 100ml = 150mA, full = 300mA), stops the motor, and saves the calibration to `motor_cal.cbor` in flash. These values are used to gate/ungate the motor and detect dry-run/empty water states at runtime.
+
+7. **Verify System Power States**:
    ```bash
    sleep
    ```
@@ -285,15 +314,15 @@ Execute the following commands sequentially inside the interactive serial shell 
    ```
    * *Expected Output*: Simulates a cat proximity detection interrupt event to verify automatic wakeup logic.
 
-6. **Verify ToF Proximity Interrupts (GP7, GP8, GP9)**:
+8. **Verify ToF Proximity Interrupts (GP7, GP8, GP9)**:
    * *Procedure*: Put the system into `Sleep` mode (via `sleep`). Temporarily pull one of the ToF interrupt lines (GP7, GP8, or GP9) to ground (since interrupts are active-low).
    * *Expected Output*: The hardware interrupt triggers the RP2040 wake-up path, causing the system to transition to `Active` state, reset the inactivity timer, and wake up the motor and LED controllers.
 
-7. **Verify Fuel Gauge Alert Interrupt (GP10)**:
+9. **Verify Fuel Gauge Alert Interrupt (GP10)**:
    * *Procedure*: Pull the fuel gauge Alert line (GP10) to ground to trigger an active-low alert event.
    * *Expected Output*: The RP2040 wakes up if sleeping, detects the low-voltage/charge alert interrupt, dispatches a battery alert, and triggers the `BlinksRedOncePerThirtySeconds` NeoPixel error indicator.
 
-8. **Verify Panic and Crash Log Capture**:
+10. **Verify Panic and Crash Log Capture**:
    ```bash
    crash
    ```

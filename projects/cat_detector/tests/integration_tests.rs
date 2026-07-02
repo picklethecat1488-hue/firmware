@@ -56,6 +56,8 @@ fn test_system_integration_flow() {
 
         // Controllers
         let mut motor_ctrl = MotorController::new(mock_motor, DummyCurrentSensor);
+        use model::calibration::{Calibration, CalibrationType};
+        motor_ctrl.set_calibration(CalibrationType::MotorCal(80, 800));
         let mut led_ctrl = LedController::new(mock_led);
         let mut system_ctrl = SystemController::new(
             MOTOR_CHANNEL.sender(),

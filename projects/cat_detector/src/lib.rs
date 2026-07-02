@@ -266,6 +266,37 @@ pub enum CliCommand {
         /// Sensor direction ('north', 'east', or 'west')
         direction: SensorDirection,
     },
+    /// Calibrate motor current levels (cal_motor <empty|100ml|full>)
+    #[command(name = "cal_motor")]
+    CalMotor {
+        /// Calibration state ('empty', '100ml', or 'full')
+        state: MotorCalState,
+    },
     /// Show help and usage summary
     Help,
+}
+
+/// Represents the motor calibration target state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MotorCalState {
+    /// Empty water bowl
+    Empty,
+    /// Bowl with 100ml of water
+    Water100ml,
+    /// Full water bowl
+    Full,
+}
+
+impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
+    fn from_arg(arg: &'a str) -> Result<Self, embedded_cli::arguments::FromArgumentError<'a>> {
+        match arg {
+            "empty" => Ok(MotorCalState::Empty),
+            "100ml" => Ok(MotorCalState::Water100ml),
+            "full" => Ok(MotorCalState::Full),
+            _ => Err(embedded_cli::arguments::FromArgumentError {
+                value: arg,
+                expected: "one of 'empty', '100ml', or 'full'",
+            }),
+        }
+    }
 }
