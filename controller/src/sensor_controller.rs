@@ -226,6 +226,14 @@ impl<
     }
 }
 
+impl<'a, S: ProximitySensor, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
+    crate::BlockingProximityReader for SensorController<'a, S, M, Pin, Cmd>
+{
+    fn read_distance_blocking(&mut self) -> Option<u16> {
+        self.sensor.read_distance_mm().ok()
+    }
+}
+
 impl<
         'a,
         S: ProximitySensor + model::calibration::Calibration,

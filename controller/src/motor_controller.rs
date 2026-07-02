@@ -269,3 +269,9 @@ impl<M: Motor, C: PowerSensor> model::calibration::Calibration for MotorControll
         }
     }
 }
+
+impl<M: Motor, C: PowerSensor> crate::BlockingMotorReader for MotorController<M, C> {
+    fn read_current_ma_blocking(&mut self) -> Option<i32> {
+        self.read_torque_ma().ok()
+    }
+}
