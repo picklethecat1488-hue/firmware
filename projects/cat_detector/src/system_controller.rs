@@ -58,8 +58,10 @@ pub struct SystemController<MutexRaw: RawMutex + 'static, const N: usize> {
     /// Distance reading from the West sensor.
     pub distance_west: u16,
     time_in_active: u32,
-    battery_critical: bool,
-    thermal_critical: bool,
+    /// Indicates if the battery level is currently critical.
+    pub battery_critical: bool,
+    /// Indicates if the thermal state is currently critical.
+    pub thermal_critical: bool,
     gesture_detector: GestureDetector,
     proximity_active: bool,
     boot_power_down: bool,

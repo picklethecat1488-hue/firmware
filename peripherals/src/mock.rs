@@ -75,6 +75,8 @@ pub struct MockBattery {
     pub voltage_mv: u32,
     /// Simulated temperature in milli-degrees Celsius.
     pub temperature_milli_c: i32,
+    /// Simulated state of charge in percent.
+    pub state_of_charge: u8,
 }
 
 impl MockBattery {
@@ -83,6 +85,7 @@ impl MockBattery {
         Self {
             voltage_mv,
             temperature_milli_c,
+            state_of_charge: 50,
         }
     }
 }
@@ -103,7 +106,7 @@ impl FuelGauge for MockBattery {
     }
 
     fn read_state_of_charge(&mut self) -> Result<u8, Self::Error> {
-        Ok(50) // Default 50% state of charge
+        Ok(self.state_of_charge)
     }
 }
 

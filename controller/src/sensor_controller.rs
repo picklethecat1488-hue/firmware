@@ -118,7 +118,10 @@ impl<
             interrupt_pin: Some(interrupt_pin),
         }
     }
-
+    /// Gets a mutable reference to the underlying sensor.
+    pub fn sensor_mut(&mut self) -> &mut S {
+        &mut self.sensor
+    }
     /// Gets the current proximity telemetry reading.
     pub fn telemetry(&self) -> model::types::ProximityTelemetry {
         if self.latest_distance < 300 {

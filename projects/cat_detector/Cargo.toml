@@ -51,3 +51,6 @@ cortex-m-rt = "0.7"
 embassy-executor = { version = "0.7.0", features = ["arch-std", "executor-thread"] }
 embassy-time = "0.4.0"
 defmt = "0.3"
+
+[dev-dependencies]
+futures = "0.3"
