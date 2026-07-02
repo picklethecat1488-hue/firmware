@@ -251,8 +251,8 @@ fn test_system_integration_flow() {
         // Drain motor channel for a clean state
         while MOTOR_CHANNEL.try_receive().is_ok() {}
 
-        // Inactivity for 30s triggers Sleep
-        for _ in 0..30 {
+        // Inactivity for timeout triggers Sleep
+        for _ in 0..cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS {
             system_ctrl.tick();
         }
         assert_eq!(system_ctrl.status(), SystemStatus::Sleep);

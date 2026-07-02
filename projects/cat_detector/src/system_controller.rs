@@ -40,6 +40,12 @@ pub enum SystemCommand {
     },
 }
 
+/// The default inactivity timeout in seconds before transitioning to Sleep.
+pub const INACTIVITY_TIMEOUT_SECONDS: u32 = 30;
+
+/// The low battery state of charge threshold (below this, LED turns orange).
+pub const LOW_BATTERY_SOC_THRESHOLD: u8 = 20;
+
 /// Controller responsible for tracking global status and coordinating other subsystems.
 pub struct SystemController<MutexRaw: RawMutex + 'static, const N: usize> {
     status: SystemStatus,
@@ -162,8 +168,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                 }
             }
             SystemCommand::Sleep => {
-                let can_sleep =
-                    self.time_in_active >= 30 || self.battery_critical || self.thermal_critical;
+                let can_sleep = self.time_in_active >= INACTIVITY_TIMEOUT_SECONDS
+                    || self.battery_critical
+                    || self.thermal_critical;
                 if can_sleep
                     && self.status != SystemStatus::Sleep
                     && self.status != SystemStatus::PowerDown
@@ -207,6 +214,10 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                 state_of_charge,
                 charger_state,
             } => {
+                assert!(
+                    self.critical_soc_threshold < LOW_BATTERY_SOC_THRESHOLD,
+                    "Critical SoC threshold must be lower than the low battery threshold"
+                );
                 let charging = charger_state == model::types::ChargeState::Charging;
                 let is_fault = charger_state == model::types::ChargeState::RecoverableFault
                     || charger_state == model::types::ChargeState::NonRecoverableFault;
@@ -261,7 +272,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                         self.boot_power_down = false;
                         if charging {
                             self.led_tx.try_send(SystemLedState::SolidYellow).unwrap();
-                        } else if state_of_charge < 20 {
+                        } else if state_of_charge < LOW_BATTERY_SOC_THRESHOLD {
                             self.led_tx.try_send(SystemLedState::SolidOrange).unwrap();
                         } else if self.status == SystemStatus::Active {
                             self.led_tx.try_send(SystemLedState::SolidGreen).unwrap();
@@ -304,8 +315,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                 self.inactivity_seconds += 1;
             }
 
-            // Sleep after 30 seconds of inactivity
-            if self.inactivity_seconds >= 30 {
+            // Sleep after inactivity timeout
+            if self.inactivity_seconds >= INACTIVITY_TIMEOUT_SECONDS {
                 self.handle_command(SystemCommand::Sleep);
             }
         }
