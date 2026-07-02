@@ -66,23 +66,41 @@ pub fn transition_power_down(current_status: SystemStatus) -> Option<SystemStatu
     }
 }
 
+/// Context info containing state-of-charge measurements.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BatteryUpdateInfo {
+    /// Percentage integer (0-100)
+    pub state_of_charge: u8,
+    /// Is the charger connected?
+    pub charging: bool,
+    /// Is there a fault?
+    pub is_fault: bool,
+}
+
+/// Threshold values for battery safety transitions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BatteryThresholds {
+    /// Critical SOC percentage limit
+    pub critical_threshold: u8,
+    /// Recovery hysteresis value
+    pub hysteresis: u8,
+}
+
 /// Pure transition function for handling battery status updates.
 /// Returns the new battery critical state and the next system status.
-#[allow(clippy::too_many_arguments)]
 pub fn transition_battery_update(
     current_status: SystemStatus,
     boot_power_down: bool,
     battery_critical: bool,
-    state_of_charge: u8,
-    charging: bool,
-    is_fault: bool,
-    critical_threshold: u8,
-    hysteresis: u8,
+    info: BatteryUpdateInfo,
+    thresholds: BatteryThresholds,
 ) -> BatteryTransitionResult {
     let new_critical = if battery_critical {
-        is_fault || (state_of_charge < (critical_threshold + hysteresis) && !charging)
+        info.is_fault
+            || (info.state_of_charge < (thresholds.critical_threshold + thresholds.hysteresis)
+                && !info.charging)
     } else {
-        is_fault || (state_of_charge < critical_threshold && !charging)
+        info.is_fault || (info.state_of_charge < thresholds.critical_threshold && !info.charging)
     };
 
     let mut next_status = None;
@@ -92,12 +110,12 @@ pub fn transition_battery_update(
         }
     } else {
         let should_exit_power_down =
-            current_status == SystemStatus::PowerDown && boot_power_down && !charging;
+            current_status == SystemStatus::PowerDown && boot_power_down && !info.charging;
         if should_exit_power_down {
             next_status = Some(SystemStatus::Active);
         } else if current_status == SystemStatus::PowerDown {
             // If charging and already in PowerDown, we don't change state but stay in PowerDown
-        } else if charging {
+        } else if info.charging {
             next_status = Some(SystemStatus::PowerDown);
         }
     }
@@ -367,15 +385,22 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
         self.charger_connected = charging;
         self.latest_state_of_charge = state_of_charge;
 
+        let info = BatteryUpdateInfo {
+            state_of_charge,
+            charging,
+            is_fault,
+        };
+        let thresholds = BatteryThresholds {
+            critical_threshold: self.critical_soc_threshold,
+            hysteresis: self.soc_hysteresis,
+        };
+
         let res = transition_battery_update(
             self.status,
             self.boot_power_down,
             self.battery_critical,
-            state_of_charge,
-            charging,
-            is_fault,
-            self.critical_soc_threshold,
-            self.soc_hysteresis,
+            info,
+            thresholds,
         );
 
         let old_critical = self.battery_critical;

@@ -302,17 +302,17 @@ async fn main(spawner: Spawner) {
     let led_ctrl = LedController::new(led_driver);
 
     // Initialize SystemController to coordinate all loops
-    let system_ctrl = SystemController::new(
-        app::MOTOR_CHANNEL.sender(),
-        app::SENSOR_NORTH_CHANNEL.sender(),
-        app::SENSOR_EAST_CHANNEL.sender(),
-        app::SENSOR_WEST_CHANNEL.sender(),
-        app::BATTERY_CHANNEL.sender(),
-        app::THERMAL_CHANNEL.sender(),
-        app::LED_CHANNEL.sender(),
-        app::TELEMETRY_CHANNEL.sender(),
-        app::DEFAULT_PROXIMITY_THRESHOLD_MM,
-    );
+    let channels = app::system_controller::SystemControllerChannels {
+        motor_tx: app::MOTOR_CHANNEL.sender(),
+        sensor_north_tx: app::SENSOR_NORTH_CHANNEL.sender(),
+        sensor_east_tx: app::SENSOR_EAST_CHANNEL.sender(),
+        sensor_west_tx: app::SENSOR_WEST_CHANNEL.sender(),
+        battery_tx: app::BATTERY_CHANNEL.sender(),
+        thermal_tx: app::THERMAL_CHANNEL.sender(),
+        led_tx: app::LED_CHANNEL.sender(),
+        telemetry_tx: app::TELEMETRY_CHANNEL.sender(),
+    };
+    let system_ctrl = SystemController::new(channels, app::DEFAULT_PROXIMITY_THRESHOLD_MM);
 
     // Spawn controllers selectively and concurrently using separate macros
     controller::run_thermal_task!(

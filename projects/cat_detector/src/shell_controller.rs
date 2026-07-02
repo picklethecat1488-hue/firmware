@@ -17,6 +17,40 @@ use embedded_io::Write as IoWrite;
 use model::interfaces::{PowerSensor, ProximitySensor, TemperatureSensor};
 
 /// Controller responsible for processing shell commands.
+/// Context pointers to drivers and controllers for direct diagnostics.
+pub struct ShellControllerPointers<
+    I2c,
+    Motor,
+    Flash,
+    BatteryCtrl,
+    ThermalCtrl,
+    SensorCtrl,
+    MotorCtrl,
+    TempSensor,
+> {
+    /// Pointer to shared I2C bus driver
+    pub i2c_ptr: Option<*mut I2c>,
+    /// Pointer to physical motor peripheral
+    pub motor_ptr: Option<*mut Motor>,
+    /// Pointer to physical flash peripheral
+    pub flash_ptr: Option<*mut Flash>,
+    /// Pointer to battery controller
+    pub battery_ctrl_ptr: Option<*mut BatteryCtrl>,
+    /// Pointer to thermal controller
+    pub thermal_ctrl_ptr: Option<*mut ThermalCtrl>,
+    /// Pointer to North proximity sensor controller
+    pub sensor_north_ctrl_ptr: Option<*mut SensorCtrl>,
+    /// Pointer to East proximity sensor controller
+    pub sensor_east_ctrl_ptr: Option<*mut SensorCtrl>,
+    /// Pointer to West proximity sensor controller
+    pub sensor_west_ctrl_ptr: Option<*mut SensorCtrl>,
+    /// Pointer to motor current controller
+    pub motor_ctrl_ptr: Option<*mut MotorCtrl>,
+    /// Pointer to microcontroller temperature sensor
+    pub temp_sensor_ptr: Option<*mut TempSensor>,
+}
+
+/// Controller responsible for processing shell commands.
 pub struct ShellController<
     MutexRaw: RawMutex + 'static,
     const N: usize,
@@ -126,36 +160,35 @@ impl<
     >
 {
     /// Creates a new ShellController.
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         motor_tx: Sender<'static, MutexRaw, MotorCommand, N>,
         system_tx: Sender<'static, MutexRaw, SystemCommand, N>,
-        i2c_ptr: Option<*mut I2c>,
-        motor_ptr: Option<*mut Motor>,
-        flash_ptr: Option<*mut Flash>,
-        battery_ctrl_ptr: Option<*mut BatteryCtrl>,
-        thermal_ctrl_ptr: Option<*mut ThermalCtrl>,
-        sensor_north_ctrl_ptr: Option<*mut SensorCtrl>,
-        sensor_east_ctrl_ptr: Option<*mut SensorCtrl>,
-        sensor_west_ctrl_ptr: Option<*mut SensorCtrl>,
-        motor_ctrl_ptr: Option<*mut MotorCtrl>,
-        temp_sensor_ptr: Option<*mut TempSensor>,
+        pointers: ShellControllerPointers<
+            I2c,
+            Motor,
+            Flash,
+            BatteryCtrl,
+            ThermalCtrl,
+            SensorCtrl,
+            MotorCtrl,
+            TempSensor,
+        >,
         storage_start: u32,
         storage_end: u32,
     ) -> Self {
         Self {
             motor_tx,
             system_tx,
-            i2c_ptr,
-            motor_ptr,
-            flash_ptr,
-            battery_ctrl_ptr,
-            thermal_ctrl_ptr,
-            sensor_north_ctrl_ptr,
-            sensor_east_ctrl_ptr,
-            sensor_west_ctrl_ptr,
-            motor_ctrl_ptr,
-            temp_sensor_ptr,
+            i2c_ptr: pointers.i2c_ptr,
+            motor_ptr: pointers.motor_ptr,
+            flash_ptr: pointers.flash_ptr,
+            battery_ctrl_ptr: pointers.battery_ctrl_ptr,
+            thermal_ctrl_ptr: pointers.thermal_ctrl_ptr,
+            sensor_north_ctrl_ptr: pointers.sensor_north_ctrl_ptr,
+            sensor_east_ctrl_ptr: pointers.sensor_east_ctrl_ptr,
+            sensor_west_ctrl_ptr: pointers.sensor_west_ctrl_ptr,
+            motor_ctrl_ptr: pointers.motor_ctrl_ptr,
+            temp_sensor_ptr: pointers.temp_sensor_ptr,
             storage_start,
             storage_end,
         }
