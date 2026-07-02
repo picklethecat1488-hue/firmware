@@ -35,7 +35,7 @@ To build and run this firmware, you need the following tools installed on your h
     ```
 2.  **probe-rs** (for flashing, debugging, and RTT log reading):
     ```bash
-    cargo install probe-rs --features cli
+    cargo install probe-rs-tools
     ```
 
 ### Running Tests (Host-Based Validation)

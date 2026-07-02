@@ -113,6 +113,9 @@ async fn main(spawner: Spawner) {
     app::log_info!("Initializing hardware for cat detector...");
     let p = embassy_rp::init(Default::default());
 
+    // Configure hardware stack guard using Cortex-M MPU
+    app::configure_mpu_stack_guard();
+
     // Initialize board peripherals using the unified board configuration
     let mut board = app::Board::init(p);
 
