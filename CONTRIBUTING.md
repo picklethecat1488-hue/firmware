@@ -93,21 +93,9 @@ To inspect the RAM/Flash overhead of a build:
     ```
 *   Run the size utility to calculate the bytes allocated to `.text` (flash), `.data` (RAM), and `.bss` (uninitialized RAM) sections:
     ```bash
-    cargo size --bin cat_detector --target thumbv6m-none-eabi -- -A
-    ```
-*   Alternatively, use `cargo-bloat` to find the largest functions/sections in your binary:
-    ```bash
     cargo install cargo-bloat
     cargo bloat --bin cat_detector --target thumbv6m-none-eabi
     ```
-
-### 2. Static Stack Analysis
-To compute the maximum stack size of each function and interrupt handler at compile-time:
-*   Compile using the nightly flag `-Z emit-stack-sizes` to generate stack size metadata:
-    ```bash
-    RUSTFLAGS="-Z emit-stack-sizes" cargo build --bin cat_detector --target thumbv6m-none-eabi
-    ```
-*   Analyze the stack usage tree using `cargo-call-stack` (which leverages LLVM analysis to guarantee stack limits and detect recursion issues).
 
 ---
 
@@ -132,31 +120,6 @@ If the diagnostic logic is integrated directly into the main firmware but should
     ```bash
     cargo build --package cat_detector --target thumbv6m-none-eabi --features i2c-scan
     ```
-
-### 2. Multi-Binary Project Layout (Separate Binaries)
-If the diagnostic utility is a standalone program (e.g. you flash it *instead* of the main application to troubleshoot hardware), create a separate binary target in the same crate:
-*   Place the utility code in `src/bin/i2c_scan.rs` or declare it in `Cargo.toml`:
-    ```toml
-    [[bin]]
-    name = "i2c_scan"
-    path = "src/bin/i2c_scan.rs"
-    ```
-*   Build or flash the scanner binary:
-    ```bash
-    cargo build --package cat_detector --bin i2c_scan --target thumbv6m-none-eabi
-    cargo run --package cat_detector --bin i2c_scan
-    ```
-This is the cleanest approach for one-off utilities, as it completely prevents bloated logs and debug functions from entering your main firmware binary.
-
-### 3. Conditional Compilation by Profile (`debug_assertions`)
-To run checks only during development build profiles:
-*   Gate with the `debug_assertions` cfg flag:
-    ```rust
-    if cfg!(debug_assertions) {
-        scan_i2c_bus();
-    }
-    ```
-This is automatically enabled in dev builds (`cargo build`) and completely optimized out of release builds (`cargo build --release`).
 
 ---
 
