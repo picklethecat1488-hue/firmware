@@ -70,8 +70,8 @@ jobs:
         if: ${{ !env.ACT }}
         uses: membrowse/membrowse-action@v1
         with:
-          elf: build/release/cat_detector
-          target_name: rp2040
+          elf: build/release/embedded/cat_detector
+          target_name: cat_detector
           api_key: ${{ secrets.MEMBROWSE_API_KEY }}
 
       - name: Download Test Reports

@@ -72,21 +72,41 @@ if [ -n "$ORGANIZE_DIR" ]; then
     # Clean/create target folders
     rm -rf "$ORGANIZE_DIR"
     
+    # Determine host platform name
+    HOST_OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    case "$HOST_OS" in
+        darwin)
+            PLATFORM="macos"
+            ;;
+        linux)
+            PLATFORM="linux"
+            ;;
+        mingw*|msys*|cygwin*|windows)
+            PLATFORM="windows"
+            ;;
+        *)
+            PLATFORM="linux" # fallback
+            ;;
+    esac
+
     if [ "$BUILD_MODE" = "debug" ] || [ "$BUILD_MODE" = "both" ]; then
-        mkdir -p "$ORGANIZE_DIR/debug"
+        mkdir -p "$ORGANIZE_DIR/debug/embedded"
         # Copy target MCU debug binaries (excluding hidden files/dependency files)
-        find target/thumbv6m-none-eabi/debug -maxdepth 1 -type f ! -name "*.*" ! -name ".*" -exec cp {} "$ORGANIZE_DIR/debug/" \;
+        find target/thumbv6m-none-eabi/debug -maxdepth 1 -type f ! -name "*.*" ! -name ".*" -exec cp {} "$ORGANIZE_DIR/debug/embedded/" \;
     fi
 
     if [ "$BUILD_MODE" = "release" ] || [ "$BUILD_MODE" = "both" ]; then
-        mkdir -p "$ORGANIZE_DIR/release"
+        mkdir -p "$ORGANIZE_DIR/release/embedded"
         # Copy target MCU release binaries (excluding hidden files/dependency files)
-        find target/thumbv6m-none-eabi/release -maxdepth 1 -type f ! -name "*.*" ! -name ".*" -exec cp {} "$ORGANIZE_DIR/release/" \;
+        find target/thumbv6m-none-eabi/release -maxdepth 1 -type f ! -name "*.*" ! -name ".*" -exec cp {} "$ORGANIZE_DIR/release/embedded/" \;
         
         # Copy host tools
+        mkdir -p "$ORGANIZE_DIR/release/$PLATFORM"
         for tool in "${TOOL_PACKAGES[@]}"; do
             if [ -f "target/release/$tool" ]; then
-                cp "target/release/$tool" "$ORGANIZE_DIR/release/$tool"
+                cp "target/release/$tool" "$ORGANIZE_DIR/release/$PLATFORM/$tool"
+            elif [ -f "target/release/$tool.exe" ]; then
+                cp "target/release/$tool.exe" "$ORGANIZE_DIR/release/$PLATFORM/$tool.exe"
             fi
         done
     fi
