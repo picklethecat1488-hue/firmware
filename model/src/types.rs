@@ -33,17 +33,15 @@ pub enum BatteryState {
 }
 
 /// Telemetry status of the motor (pump) system.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
 pub enum MotorStatus {
-    /// Pump speed as a percentage (0-100), run status, and temperature (mC).
+    /// Motor is braked/stopped.
+    #[default]
     #[n(0)]
-    SpeedRunTemp(#[n(0)] u8, #[n(1)] bool, #[n(2)] i32),
-}
-
-impl Default for MotorStatus {
-    fn default() -> Self {
-        Self::SpeedRunTemp(0, false, 0)
-    }
+    Brake,
+    /// Motor is running at the specified speed (0-100).
+    #[n(1)]
+    Running(#[n(0)] u8),
 }
 
 /// Telemetry status of the thermal monitoring system.
@@ -163,6 +161,24 @@ pub struct FlashEraseTelemetry {
     /// Total erases since boot.
     #[n(2)]
     pub erase_count: u32,
+}
+
+/// State of the battery charger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+pub enum ChargeState {
+    /// S1=HIGH, S2=LOW: Normal Charging.
+    #[n(0)]
+    Charging,
+    /// S1=HIGH, S2=HIGH: Charging Done, Standby, or Unplugged.
+    #[default]
+    #[n(1)]
+    DoneOrStandbyOrUnplugged,
+    /// S1=LOW, S2=HIGH: Recoverable Fault.
+    #[n(2)]
+    RecoverableFault,
+    /// S1=LOW, S2=LOW: Non-Recoverable Fault.
+    #[n(3)]
+    NonRecoverableFault,
 }
 
 pub use crate::telemetry::TelemetryRecord;

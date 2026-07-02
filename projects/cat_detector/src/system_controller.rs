@@ -28,8 +28,8 @@ pub enum SystemCommand {
     BatteryUpdate {
         /// Battery capacity percentage (0-100).
         state_of_charge: u8,
-        /// Charger status (whether currently charging).
-        charging: bool,
+        /// Charger state.
+        charger_state: model::types::ChargeState,
     },
     /// Proximity telemetry update from individual ToF sensors.
     SensorUpdate {
@@ -39,6 +39,12 @@ pub enum SystemCommand {
         distance_mm: u16,
     },
 }
+
+/// The default inactivity timeout in seconds before transitioning to Sleep.
+pub const INACTIVITY_TIMEOUT_SECONDS: u32 = 30;
+
+/// The low battery state of charge threshold (below this, LED turns orange).
+pub const LOW_BATTERY_SOC_THRESHOLD: u8 = 20;
 
 /// Controller responsible for tracking global status and coordinating other subsystems.
 pub struct SystemController<MutexRaw: RawMutex + 'static, const N: usize> {
@@ -58,11 +64,17 @@ pub struct SystemController<MutexRaw: RawMutex + 'static, const N: usize> {
     /// Distance reading from the West sensor.
     pub distance_west: u16,
     time_in_active: u32,
-    battery_critical: bool,
-    thermal_critical: bool,
+    /// Indicates if the battery level is currently critical.
+    pub battery_critical: bool,
+    /// Indicates if the thermal state is currently critical.
+    pub thermal_critical: bool,
     gesture_detector: GestureDetector,
     proximity_active: bool,
     boot_power_down: bool,
+    /// State of charge threshold under which the battery is considered critical.
+    pub critical_soc_threshold: u8,
+    /// Hysteresis to prevent rapid battery state toggling.
+    pub soc_hysteresis: u8,
 }
 
 impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N> {
@@ -92,9 +104,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
             time_in_active: 0,
             battery_critical: true,
             thermal_critical: false,
-            gesture_detector: GestureDetector::new(100),
+            gesture_detector: GestureDetector::new(20),
             proximity_active: false,
             boot_power_down: true,
+            critical_soc_threshold: 10,
+            soc_hysteresis: 2,
         }
     }
 
@@ -154,8 +168,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                 }
             }
             SystemCommand::Sleep => {
-                let can_sleep =
-                    self.time_in_active >= 30 || self.battery_critical || self.thermal_critical;
+                let can_sleep = self.time_in_active >= INACTIVITY_TIMEOUT_SECONDS
+                    || self.battery_critical
+                    || self.thermal_critical;
                 if can_sleep
                     && self.status != SystemStatus::Sleep
                     && self.status != SystemStatus::PowerDown
@@ -197,9 +212,25 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
             }
             SystemCommand::BatteryUpdate {
                 state_of_charge,
-                charging,
+                charger_state,
             } => {
-                if state_of_charge < 10 && !charging {
+                assert!(
+                    self.critical_soc_threshold < LOW_BATTERY_SOC_THRESHOLD,
+                    "Critical SoC threshold must be lower than the low battery threshold"
+                );
+                let charging = charger_state == model::types::ChargeState::Charging;
+                let is_fault = charger_state == model::types::ChargeState::RecoverableFault
+                    || charger_state == model::types::ChargeState::NonRecoverableFault;
+
+                let entered_critical = if self.battery_critical {
+                    is_fault
+                        || (state_of_charge < (self.critical_soc_threshold + self.soc_hysteresis)
+                            && !charging)
+                } else {
+                    is_fault || (state_of_charge < self.critical_soc_threshold && !charging)
+                };
+
+                if entered_critical {
                     self.battery_critical = true;
                     self.led_tx
                         .try_send(SystemLedState::BlinksRedOncePerThirtySeconds)
@@ -241,7 +272,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                         self.boot_power_down = false;
                         if charging {
                             self.led_tx.try_send(SystemLedState::SolidYellow).unwrap();
-                        } else if state_of_charge < 20 {
+                        } else if state_of_charge < LOW_BATTERY_SOC_THRESHOLD {
                             self.led_tx.try_send(SystemLedState::SolidOrange).unwrap();
                         } else if self.status == SystemStatus::Active {
                             self.led_tx.try_send(SystemLedState::SolidGreen).unwrap();
@@ -284,8 +315,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemController<MutexRaw, N>
                 self.inactivity_seconds += 1;
             }
 
-            // Sleep after 30 seconds of inactivity
-            if self.inactivity_seconds >= 30 {
+            // Sleep after inactivity timeout
+            if self.inactivity_seconds >= INACTIVITY_TIMEOUT_SECONDS {
                 self.handle_command(SystemCommand::Sleep);
             }
         }

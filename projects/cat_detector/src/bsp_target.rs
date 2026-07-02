@@ -21,6 +21,10 @@ pub struct Board<'d> {
     pub flash: embassy_rp::peripherals::FLASH,
     /// Lookup array containing Flex instances for dynamic GPIO diagnostics
     pub gpio_pins: [Option<Flex<'d>>; 30],
+    /// Internal RP2040 temperature sensor
+    pub temp_sensor: Option<Rp2040TempSensor>,
+    /// Concrete charger driver instance using S1/S2 GPIO pins
+    pub charger: Option<peripherals::bq25185::Bq25185<Flex<'d>, Flex<'d>>>,
 }
 
 impl<'d> Board<'d> {
@@ -169,11 +173,63 @@ impl<'d> Board<'d> {
             let _ = sensor.set_address(0x32);
         }
 
+        // 5. Configure Charger Status pins S1 (GP12) and S2 (GP13) as inputs with pull-ups
+        if let Some(ref mut pin) = gpio_pins[crate::CHARGER_S1_PIN as usize] {
+            pin.set_as_input();
+            pin.set_pull(Pull::Up);
+        }
+        if let Some(ref mut pin) = gpio_pins[crate::CHARGER_S2_PIN as usize] {
+            pin.set_as_input();
+            pin.set_pull(Pull::Up);
+        }
+
+        let s1 = gpio_pins[crate::CHARGER_S1_PIN as usize]
+            .take()
+            .expect("S1 pin must be available");
+        let s2 = gpio_pins[crate::CHARGER_S2_PIN as usize]
+            .take()
+            .expect("S2 pin must be available");
+        let charger = Some(peripherals::bq25185::Bq25185::new(s1, s2));
+
+        let temp_sensor = Some(Rp2040TempSensor::new(p.ADC, p.ADC_TEMP_SENSOR));
+
         Self {
             uart,
             i2c,
             flash: p.FLASH,
             gpio_pins,
+            temp_sensor,
+            charger,
         }
+    }
+}
+
+/// Temperature sensor utilizing the RP2040 internal ADC temperature sensor.
+pub struct Rp2040TempSensor {
+    adc: embassy_rp::adc::Adc<'static, embassy_rp::adc::Blocking>,
+    channel: embassy_rp::adc::Channel<'static>,
+}
+
+impl Rp2040TempSensor {
+    /// Creates a new internal temperature sensor.
+    pub fn new(
+        adc_periph: embassy_rp::peripherals::ADC,
+        temp_sensor_periph: embassy_rp::peripherals::ADC_TEMP_SENSOR,
+    ) -> Self {
+        let adc =
+            embassy_rp::adc::Adc::new_blocking(adc_periph, embassy_rp::adc::Config::default());
+        let channel = embassy_rp::adc::Channel::new_temp_sensor(temp_sensor_periph);
+        Self { adc, channel }
+    }
+}
+
+impl model::interfaces::TemperatureSensor for Rp2040TempSensor {
+    type Error = embassy_rp::adc::Error;
+
+    fn read_temperature_milli_c(&mut self) -> Result<i32, Self::Error> {
+        let raw_temp = self.adc.blocking_read(&mut self.channel)?;
+        let voltage = (raw_temp as f32 * 3.3) / 4095.0;
+        let temp_c = 27.0 - (voltage - 0.706) / 0.001721;
+        Ok((temp_c * 1000.0) as i32)
     }
 }

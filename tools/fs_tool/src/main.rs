@@ -230,16 +230,11 @@ fn main() -> io::Result<()> {
                                     }
                                 },
                                 model::telemetry::TelemetryRecord::Motor(m) => match m {
-                                    model::types::MotorStatus::SpeedRunTemp(
-                                        speed,
-                                        running,
-                                        temp,
-                                    ) => {
-                                        writeln!(
-                                            csv_file,
-                                            "{},Motor,{},{},{},",
-                                            ts, speed, running, temp
-                                        )?;
+                                    model::types::MotorStatus::Brake => {
+                                        writeln!(csv_file, "{},Motor,0,false,25000,", ts)?;
+                                    }
+                                    model::types::MotorStatus::Running(speed) => {
+                                        writeln!(csv_file, "{},Motor,{},true,25000,", ts, speed)?;
                                     }
                                 },
                                 model::telemetry::TelemetryRecord::Thermal(t) => match t {
@@ -282,6 +277,9 @@ fn main() -> io::Result<()> {
                                         "{},FlashTelemetry,{},{},{},",
                                         ts, ft.sector, ft.duration_ms, ft.erase_count
                                     )?;
+                                }
+                                model::telemetry::TelemetryRecord::ChargerState(state) => {
+                                    writeln!(csv_file, "{},ChargerState,{:?},,,", ts, state)?;
                                 }
                             }
                         }

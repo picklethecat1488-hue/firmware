@@ -33,21 +33,28 @@ pub enum BatteryState {
 }
 
 /// A controller that periodically monitors battery status and wakes on alerts.
-pub struct BatteryController<'a, M: RawMutex, B, Pin = DummyAlertPin, Cmd = ()> {
+pub struct BatteryController<'a, M: RawMutex, B, C, Pin = DummyAlertPin, Cmd = ()> {
     battery: &'a Mutex<M, B>,
+    charger: &'a Mutex<M, C>,
     state: BatteryState,
     system_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
-    update_fn: Option<fn(u8, bool) -> Cmd>,
+    update_fn: Option<fn(u8, model::types::ChargeState) -> Cmd>,
     alert_pin: Option<Pin>,
 }
 
-impl<'a, M: RawMutex, B: FuelGauge, Cmd: Clone + core::fmt::Debug>
-    BatteryController<'a, M, B, DummyAlertPin, Cmd>
+impl<
+        'a,
+        M: RawMutex,
+        B: FuelGauge,
+        C: model::interfaces::ChargeStatus,
+        Cmd: Clone + core::fmt::Debug,
+    > BatteryController<'a, M, B, C, DummyAlertPin, Cmd>
 {
     /// Creates a new battery controller referencing a shared battery peripheral.
-    pub fn new(battery: &'a Mutex<M, B>) -> Self {
+    pub fn new(battery: &'a Mutex<M, B>, charger: &'a Mutex<M, C>) -> Self {
         Self {
             battery,
+            charger,
             state: BatteryState::Ok,
             system_tx: None,
             update_fn: None,
@@ -58,11 +65,13 @@ impl<'a, M: RawMutex, B: FuelGauge, Cmd: Clone + core::fmt::Debug>
     /// Creates a new battery controller with system notification capabilities.
     pub fn new_with_system(
         battery: &'a Mutex<M, B>,
+        charger: &'a Mutex<M, C>,
         system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
-        update_fn: fn(u8, bool) -> Cmd,
+        update_fn: fn(u8, model::types::ChargeState) -> Cmd,
     ) -> Self {
         Self {
             battery,
+            charger,
             state: BatteryState::Ok,
             system_tx: Some(system_tx),
             update_fn: Some(update_fn),
@@ -71,18 +80,26 @@ impl<'a, M: RawMutex, B: FuelGauge, Cmd: Clone + core::fmt::Debug>
     }
 }
 
-impl<'a, M: RawMutex, B: FuelGauge, Pin: BatteryAlertPin, Cmd: Clone + core::fmt::Debug>
-    BatteryController<'a, M, B, Pin, Cmd>
+impl<
+        'a,
+        M: RawMutex,
+        B: FuelGauge,
+        C: model::interfaces::ChargeStatus,
+        Pin: BatteryAlertPin,
+        Cmd: Clone + core::fmt::Debug,
+    > BatteryController<'a, M, B, C, Pin, Cmd>
 {
     /// Creates a new battery controller with system notification and alert pin support.
     pub fn new_with_system_and_alert(
         battery: &'a Mutex<M, B>,
+        charger: &'a Mutex<M, C>,
         system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
-        update_fn: fn(u8, bool) -> Cmd,
+        update_fn: fn(u8, model::types::ChargeState) -> Cmd,
         alert_pin: Pin,
     ) -> Self {
         Self {
             battery,
+            charger,
             state: BatteryState::Ok,
             system_tx: Some(system_tx),
             update_fn: Some(update_fn),
@@ -113,7 +130,11 @@ impl<'a, M: RawMutex, B: FuelGauge, Pin: BatteryAlertPin, Cmd: Clone + core::fmt
             let soc = bat.read_state_of_charge().unwrap_or(100);
             (v, soc)
         };
-        let charging = false;
+        let charger_state = {
+            let mut chg = self.charger.lock().await;
+            chg.get_charge_state()
+                .unwrap_or(model::types::ChargeState::DoneOrStandbyOrUnplugged)
+        };
 
         if voltage < 3500 {
             self.state = BatteryState::Low;
@@ -122,7 +143,7 @@ impl<'a, M: RawMutex, B: FuelGauge, Pin: BatteryAlertPin, Cmd: Clone + core::fmt
         }
 
         if let (Some(tx), Some(f)) = (&self.system_tx, self.update_fn) {
-            tx.try_send(f(soc, charging)).unwrap();
+            tx.try_send(f(soc, charger_state)).unwrap();
         }
 
         if let Some(tx) = telemetry_tx {
@@ -134,6 +155,9 @@ impl<'a, M: RawMutex, B: FuelGauge, Pin: BatteryAlertPin, Cmd: Clone + core::fmt
             let _ = tx.try_send(model::telemetry::TelemetryRecord::Battery(status));
             let _ = tx.try_send(model::telemetry::TelemetryRecord::FuelGauge(
                 model::types::FuelGaugeTelemetry::VolSoc(voltage, soc),
+            ));
+            let _ = tx.try_send(model::telemetry::TelemetryRecord::ChargerState(
+                charger_state,
             ));
         }
 
@@ -158,6 +182,12 @@ impl<'a, M: RawMutex, B: FuelGauge, Pin: BatteryAlertPin, Cmd: Clone + core::fmt
             16,
         >,
     ) -> ! {
+        // Configure alerts on boot (3.0V low threshold, 4.2V high threshold, 10% SOC empty alert, enable 1% SOC change alert)
+        {
+            let mut bat = self.battery.lock().await;
+            let _ = bat.configure_alerts(3000, 4200, 10, true);
+        }
+
         loop {
             let rx_fut = command_rx.receive();
             let alert_fut = async {
@@ -178,7 +208,32 @@ impl<'a, M: RawMutex, B: FuelGauge, Pin: BatteryAlertPin, Cmd: Clone + core::fmt
                 },
                 // Fuel gauge alert interrupt triggered
                 embassy_futures::select::Either3::Second(_) => {
-                    let _ = self.update(Some(&telemetry_tx)).await;
+                    let mut is_voltage_alert = false;
+                    let mut is_soc_alert = false;
+                    {
+                        let mut bat = self.battery.lock().await;
+                        if let Ok((v_alert, soc_alert)) = bat.check_and_clear_alerts() {
+                            is_voltage_alert = v_alert;
+                            is_soc_alert = soc_alert;
+                        }
+                    }
+
+                    if is_voltage_alert {
+                        // Put the system into PowerOff/PowerDown mode by treating it like a critical battery alert
+                        self.state = BatteryState::Low;
+                        if let (Some(tx), Some(f)) = (&self.system_tx, self.update_fn) {
+                            // SOC = 0, charging = false triggers battery_critical and SystemCommand::PowerDown in SystemController
+                            let _ = tx.try_send(f(
+                                0,
+                                model::types::ChargeState::DoneOrStandbyOrUnplugged,
+                            ));
+                        }
+                    } else if is_soc_alert {
+                        let _ = self.update(Some(&telemetry_tx)).await;
+                    } else {
+                        // Default fallback
+                        let _ = self.update(Some(&telemetry_tx)).await;
+                    }
                 }
                 // Periodic update interval elapsed
                 embassy_futures::select::Either3::Third(_) => {

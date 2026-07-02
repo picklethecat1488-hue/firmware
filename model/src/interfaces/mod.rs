@@ -5,14 +5,11 @@
 pub mod motor;
 pub use motor::Motor;
 
-pub mod current_sensor;
-pub use current_sensor::CurrentSensor;
-
 pub mod fuel_gauge;
 pub use fuel_gauge::FuelGauge;
 
 pub mod power_sensor;
-pub use power_sensor::PowerSensor;
+pub use power_sensor::{PowerMeasurementMode, PowerSensor};
 
 pub mod proximity;
 pub use proximity::ProximitySensor;
@@ -20,8 +17,8 @@ pub use proximity::ProximitySensor;
 pub mod temperature;
 pub use temperature::TemperatureSensor;
 
-pub mod charger;
-pub use charger::Charger;
+pub mod charge_status;
+pub use charge_status::ChargeStatus;
 
 pub mod led;
 pub use led::LedDriver;

@@ -13,8 +13,6 @@ pub mod led_controller;
 pub mod motor_controller;
 /// Sensor controller for Time-of-Flight sensors.
 pub mod sensor_controller;
-/// Fountain state machine.
-pub mod state_machine;
 /// Telemetry storage pipeline and task.
 pub mod telemetry_controller;
 /// Thermal monitoring and regulation controller.
@@ -82,6 +80,7 @@ macro_rules! run_battery_task {
         $rx:expr,
         $telemetry_tx:expr,
         $battery_type:ty,
+        $charger_type:ty,
         $pin_type:ty,
         $cmd_type:ty
     ) => {
@@ -94,6 +93,7 @@ macro_rules! run_battery_task {
                     'static,
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                     $battery_type,
+                    $charger_type,
                     $pin_type,
                     $cmd_type,
                 >,

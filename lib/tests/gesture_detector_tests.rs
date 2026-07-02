@@ -3,7 +3,7 @@ use model::types::Gesture;
 
 #[test]
 fn test_gesture_detector_debounce() {
-    let mut detector = GestureDetector::new(100);
+    let mut detector = GestureDetector::new(20);
 
     // 1. All out of range -> returns Some(ProximityNotDetected), no duration
     assert_eq!(
@@ -19,44 +19,44 @@ fn test_gesture_detector_debounce() {
     );
     assert_eq!(detector.press_time_ms(), 0);
 
-    // 3. Both in long press range (< 100) -> starts accumulating (returns Some(ProximityDetected) first)
+    // 3. Both in long press range (< 20) -> starts accumulating (returns Some(ProximityDetected) first)
     assert_eq!(
-        detector.update(Gesture::Proximity(1000, 50, 50), 4_000_000),
+        detector.update(Gesture::Proximity(1000, 15, 15), 4_000_000),
         Some(Gesture::ProximityDetected)
     );
     assert_eq!(detector.press_time_ms(), 0);
 
     // Accumulates 2 seconds (returns Some(ProximityDetected))
     assert_eq!(
-        detector.update(Gesture::Proximity(1000, 50, 50), 6_000_000),
+        detector.update(Gesture::Proximity(1000, 15, 15), 6_000_000),
         Some(Gesture::ProximityDetected)
     );
     assert_eq!(detector.press_time_ms(), 2000);
 
     // 4. One drops out of long press range -> reset to 0 (but proximity is still detected)
     assert_eq!(
-        detector.update(Gesture::Proximity(1000, 50, 120), 7_000_000),
+        detector.update(Gesture::Proximity(1000, 15, 25), 7_000_000),
         Some(Gesture::ProximityDetected)
     );
     assert_eq!(detector.press_time_ms(), 0);
 
     // 5. Both back in long press range -> starts accumulating again (returns Some(ProximityDetected))
     assert_eq!(
-        detector.update(Gesture::Proximity(1000, 50, 50), 10_000_000),
+        detector.update(Gesture::Proximity(1000, 15, 15), 10_000_000),
         Some(Gesture::ProximityDetected)
     );
     assert_eq!(detector.press_time_ms(), 0);
 
     // Accumulates 3 seconds (returns Some(ProximityDetected))
     assert_eq!(
-        detector.update(Gesture::Proximity(1000, 50, 50), 13_000_000),
+        detector.update(Gesture::Proximity(1000, 15, 15), 13_000_000),
         Some(Gesture::ProximityDetected)
     );
     assert_eq!(detector.press_time_ms(), 3000);
 
     // Reaches 5 seconds -> triggers Some(DualLongPress) (takes precedence over ProximityDetected)
     assert_eq!(
-        detector.update(Gesture::Proximity(1000, 50, 50), 15_000_000),
+        detector.update(Gesture::Proximity(1000, 15, 15), 15_000_000),
         Some(Gesture::DualLongPress)
     );
     assert_eq!(detector.press_time_ms(), 5000);

@@ -10,7 +10,7 @@ To maintain testability, reliability, and modularity, follow these core principl
 
 ### 1. File Structure Standards
 *   **Separation of Source Files**: Avoid grouping multiple interfaces and implementations into a single `lib.rs`. Keep each module in its own Rust listing (e.g., `model/src/state_machine.rs`). Expose them cleanly in `lib.rs` (e.g., `pub mod state_machine;`).
-*   **Test Isolation**: Keep tests in their own listings. Do not mix unit tests inside the main implementation files. Store unit and integration tests under the `tests/` directory at the crate root level (e.g., `model/tests/state_machine_tests.rs` or `peripherals/tests/integration.rs`).
+*   **Test Isolation**: Keep tests completely isolated from implementation code. Do not mix unit tests inside the main module source files. All unit tests must be separated from module code and stored in a `tests/` subfolder at the crate root level (e.g., `model/tests/state_machine_tests.rs` or `peripherals/tests/integration.rs`).
 
 ### 2. Microcontroller Decoupling (Canonical Peripherals)
 To make peripheral and controller implementations target-independent, we use **Generics and Traits** via the **`embedded-hal`** (v1.0.0) ecosystem:
