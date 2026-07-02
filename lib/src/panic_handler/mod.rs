@@ -55,19 +55,16 @@ macro_rules! log_info {
     }
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Adapter exposing a blocking nor-flash driver as an asynchronous nor-flash driver
 /// suitable for sequential-storage async filesystem operations.
 pub struct BlockingAsyncFlash<F>(pub F);
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 impl<F: embedded_storage::nor_flash::ErrorType> embedded_storage_async::nor_flash::ErrorType
     for BlockingAsyncFlash<F>
 {
     type Error = F::Error;
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 impl<F: embedded_storage::nor_flash::ReadNorFlash> embedded_storage_async::nor_flash::ReadNorFlash
     for BlockingAsyncFlash<F>
 {
@@ -83,7 +80,6 @@ impl<F: embedded_storage::nor_flash::ReadNorFlash> embedded_storage_async::nor_f
     }
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 impl<F: embedded_storage::nor_flash::NorFlash> embedded_storage_async::nor_flash::NorFlash
     for BlockingAsyncFlash<F>
 {
@@ -101,13 +97,10 @@ impl<F: embedded_storage::nor_flash::NorFlash> embedded_storage_async::nor_flash
     }
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 impl<F: embedded_storage::nor_flash::NorFlash> embedded_storage_async::nor_flash::MultiwriteNorFlash
     for BlockingAsyncFlash<F>
 {
 }
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Error type for `PanicFlashAsyncAdapter`.
 #[derive(Debug, Copy, Clone)]
 pub struct PanicFlashError;

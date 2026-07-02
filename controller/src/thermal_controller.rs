@@ -180,6 +180,18 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
     }
 }
 
+impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
+    crate::BlockingThermalReader for ThermalController<'a, M, B, Cmd>
+{
+    fn read_temperature_blocking(&self) -> Option<i32> {
+        if let Ok(mut guard) = self.temp.try_lock() {
+            guard.read_temperature_milli_c().ok()
+        } else {
+            None
+        }
+    }
+}
+
 /// One-way commands sent to the Thermal Controller from the shell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThermalCommand {

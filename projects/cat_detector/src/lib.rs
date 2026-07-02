@@ -77,6 +77,9 @@ pub use bsp_host::*;
 /// System state and orchestration controller.
 pub mod system_controller;
 
+/// Bringup serial command and shell controller.
+pub mod shell_controller;
+
 /// Shared command channel for the Motor Controller.
 pub static MOTOR_CHANNEL: embassy_sync::channel::Channel<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
@@ -267,8 +270,9 @@ pub enum CliCommand {
         /// Calibration state ('empty', '100ml', or 'full')
         state: MotorCalState,
     },
-    /// Show help and usage summary
-    Help,
+    /// Read the RP2040 system temperature
+    #[command(name = "mcu_temp")]
+    McuTemp,
 }
 
 /// Represents the motor calibration target state.
