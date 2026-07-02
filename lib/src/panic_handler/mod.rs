@@ -102,8 +102,8 @@ impl<F: embedded_storage::nor_flash::NorFlash> embedded_storage_async::nor_flash
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-impl<F: embedded_storage::nor_flash::MultiwriteNorFlash>
-    embedded_storage_async::nor_flash::MultiwriteNorFlash for BlockingAsyncFlash<F>
+impl<F: embedded_storage::nor_flash::NorFlash> embedded_storage_async::nor_flash::MultiwriteNorFlash
+    for BlockingAsyncFlash<F>
 {
 }
 

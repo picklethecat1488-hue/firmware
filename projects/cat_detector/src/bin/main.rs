@@ -176,7 +176,22 @@ async fn main(spawner: Spawner) {
         .take()
         .expect("West ToF interrupt pin must be available");
 
-    let sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
+    // Read calibration file from flash
+    let mut cal_buf = [0u8; 128];
+    let proximity_cal = match fs_controller
+        .read_file("vl53l0x_cal.cbor", &mut cal_buf)
+        .await
+    {
+        Ok(Some(bytes)) => {
+            minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes).unwrap_or_default()
+        }
+        _ => model::calibration::Vl53l0xCalibration::default(),
+    };
+
+    use model::calibration::Calibration;
+    use model::calibration::CalibrationType;
+
+    let mut sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
         0,
         tof_north,
         cat_detector::SYSTEM_CHANNEL.sender(),
@@ -187,8 +202,12 @@ async fn main(spawner: Spawner) {
         ProximityPinWrapper(pin_north),
         cat_detector::DEFAULT_PROXIMITY_THRESHOLD_MM,
     );
+    sensor_ctrl_north.set_calibration(CalibrationType::ProximityCal(
+        proximity_cal.north_near,
+        proximity_cal.north_100,
+    ));
 
-    let sensor_ctrl_east = SensorController::new_with_fusion_and_interrupt(
+    let mut sensor_ctrl_east = SensorController::new_with_fusion_and_interrupt(
         1,
         tof_east,
         cat_detector::SYSTEM_CHANNEL.sender(),
@@ -199,8 +218,12 @@ async fn main(spawner: Spawner) {
         ProximityPinWrapper(pin_east),
         cat_detector::DEFAULT_PROXIMITY_THRESHOLD_MM,
     );
+    sensor_ctrl_east.set_calibration(CalibrationType::ProximityCal(
+        proximity_cal.east_near,
+        proximity_cal.east_100,
+    ));
 
-    let sensor_ctrl_west = SensorController::new_with_fusion_and_interrupt(
+    let mut sensor_ctrl_west = SensorController::new_with_fusion_and_interrupt(
         2,
         tof_west,
         cat_detector::SYSTEM_CHANNEL.sender(),
@@ -211,6 +234,10 @@ async fn main(spawner: Spawner) {
         ProximityPinWrapper(pin_west),
         cat_detector::DEFAULT_PROXIMITY_THRESHOLD_MM,
     );
+    sensor_ctrl_west.set_calibration(CalibrationType::ProximityCal(
+        proximity_cal.west_near,
+        proximity_cal.west_100,
+    ));
 
     // Initialize the real Rp2040TempSensor in SHARED_TEMP_SENSOR
     {
