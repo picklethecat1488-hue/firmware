@@ -81,3 +81,32 @@ pub struct PanicConfig {
     /// Offset range in flash partition used for filesystem
     pub range: core::ops::Range<u32>,
 }
+
+/// Result of a battery update state transition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BatteryTransitionResult {
+    /// The new battery critical flag value.
+    pub new_battery_critical: bool,
+    /// The next system status if a transition occurred.
+    pub next_status: Option<model::types::SystemStatus>,
+}
+
+/// Context info containing state-of-charge measurements.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BatteryUpdateInfo {
+    /// Percentage integer (0-100)
+    pub state_of_charge: u8,
+    /// Is the charger connected?
+    pub charging: bool,
+    /// Is there a fault?
+    pub is_fault: bool,
+}
+
+/// Threshold values for battery safety transitions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BatteryThresholds {
+    /// Critical SOC percentage limit
+    pub critical_threshold: u8,
+    /// Recovery hysteresis value
+    pub hysteresis: u8,
+}

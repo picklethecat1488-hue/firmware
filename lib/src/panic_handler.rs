@@ -7,13 +7,10 @@
 
 use core::fmt::Write;
 
-/// Type definitions for the panic handler
-pub mod types;
-
-pub use types::LogBuffer;
+pub use crate::types::LogBuffer;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-pub use types::PanicConfig;
+pub use crate::types::PanicConfig;
 
 /// Static safe instance of the log buffer.
 pub static CRASH_LOG_BUFFER: critical_section::Mutex<core::cell::RefCell<LogBuffer>> =
@@ -116,7 +113,7 @@ impl embedded_storage::nor_flash::NorFlashError for PanicFlashError {
 /// Adapter exposing a target-agnostic PanicFlash trait object as an asynchronous nor-flash driver
 /// suitable for sequential-storage async filesystem operations.
 pub struct PanicFlashAsyncAdapter<'a, const WRITE_SIZE: usize = 256, const ERASE_SIZE: usize = 4096>(
-    pub &'a mut dyn types::PanicFlash,
+    pub &'a mut dyn crate::types::PanicFlash,
 );
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -207,7 +204,8 @@ pub static PANIC_CONFIG: embassy_sync::blocking_mutex::Mutex<
 
 /// Initialize the panic handler with flash access and target partition settings.
 pub fn init(
-    #[cfg(all(target_arch = "arm", target_os = "none"))] flash: &'static mut dyn types::PanicFlash,
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    flash: &'static mut dyn crate::types::PanicFlash,
     #[cfg(all(target_arch = "arm", target_os = "none"))] range: core::ops::Range<u32>,
 ) {
     #[cfg(all(target_arch = "arm", target_os = "none"))]
