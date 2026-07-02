@@ -12,6 +12,9 @@ pub mod panic_handler;
 /// Shared system state and power management utilities.
 pub mod system;
 
+/// Shared types and traits for the library.
+pub mod types;
+
 /// Telemetry storage pipeline and task.
 pub use controller::telemetry_controller as telemetry;
 
