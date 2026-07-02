@@ -7,7 +7,8 @@
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
-    cat_detector::system_controller::SystemController,
+    app::system_controller::SystemController,
+    cat_detector as app,
     controller::battery_controller::BatteryController,
     controller::led_controller::LedController,
     controller::motor_controller::MotorController,
@@ -45,13 +46,13 @@ impl controller::sensor_controller::DataReadyPin for ProximityPinWrapper {
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    cat_detector::handle_panic_with_sizes::<
-        { cat_detector::FLASH_SIZE },
-        { cat_detector::STACK_TOP },
-        { cat_detector::FLASH_START },
-        { cat_detector::FLASH_END },
-        { cat_detector::FLASH_WRITE_SIZE },
-        { cat_detector::FLASH_ERASE_SIZE },
+    app::handle_panic_with_sizes::<
+        { app::FLASH_SIZE },
+        { app::STACK_TOP },
+        { app::FLASH_START },
+        { app::FLASH_END },
+        { app::FLASH_WRITE_SIZE },
+        { app::FLASH_ERASE_SIZE },
     >(info);
 }
 
@@ -61,7 +62,7 @@ static SHARED_BATTERY: Mutex<CriticalSectionRawMutex, MockBattery> =
     Mutex::new(MockBattery::new(3700, 25000));
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-struct SafeRp2040TempSensor(Option<cat_detector::Rp2040TempSensor>);
+struct SafeRp2040TempSensor(Option<app::Rp2040TempSensor>);
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 impl model::interfaces::TemperatureSensor for SafeRp2040TempSensor {
@@ -109,14 +110,14 @@ static SHARED_CHARGER: Mutex<CriticalSectionRawMutex, SafeBq25185> = Mutex::new(
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    cat_detector::log_info!("Initializing hardware for cat detector...");
+    app::log_info!("Initializing hardware for cat detector...");
     let p = embassy_rp::init(Default::default());
 
     // Initialize board peripherals using the unified board configuration
-    let mut board = cat_detector::Board::init(p);
+    let mut board = app::Board::init(p);
 
     // Register system time function for the panic handler
-    cat_detector::set_time_fn(cat_detector::system_time);
+    app::set_time_fn(app::system_time);
 
     // Initialize the modular panic handler
     static mut PANIC_FLASH: Option<
@@ -124,16 +125,16 @@ async fn main(spawner: Spawner) {
             'static,
             embassy_rp::peripherals::FLASH,
             embassy_rp::flash::Blocking,
-            { cat_detector::FLASH_SIZE },
+            { app::FLASH_SIZE },
         >,
     > = None;
     let panic_flash = unsafe {
         PANIC_FLASH = Some(embassy_rp::flash::Flash::new_blocking(board.flash));
         PANIC_FLASH.as_mut().unwrap()
     };
-    cat_detector::init_panic_handler(
+    app::init_panic_handler(
         panic_flash,
-        cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
+        app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
     );
 
     // Initialize the FilesystemController using stolen FLASH peripheral (safe because panic handler only reads/writes on panic)
@@ -141,18 +142,18 @@ async fn main(spawner: Spawner) {
     let raw_flash = embassy_rp::flash::Flash::<
         _,
         embassy_rp::flash::Blocking,
-        { cat_detector::FLASH_SIZE },
+        { app::FLASH_SIZE },
     >::new_blocking(fs_flash);
     let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(raw_flash);
     let profiling_flash = controller::filesystem_controller::ProfilingFlash::new(async_flash);
     let mut fs_controller = controller::filesystem_controller::FilesystemController::new(
         profiling_flash,
-        cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
+        app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
     );
-    fs_controller.set_telemetry(cat_detector::TELEMETRY_CHANNEL.sender());
+    fs_controller.set_telemetry(app::TELEMETRY_CHANNEL.sender());
 
     // Extract the motor control pin from the board configuration array
-    let motor_pin = board.gpio_pins[cat_detector::LED_PIN as usize]
+    let motor_pin = board.gpio_pins[app::LED_PIN as usize]
         .take()
         .expect("Motor pin must be available");
 
@@ -174,13 +175,13 @@ async fn main(spawner: Spawner) {
     let tof_east = DummyProximitySensor::new(150);
     let tof_west = DummyProximitySensor::new(200);
 
-    let pin_north = board.gpio_pins[cat_detector::TOF_NORTH_INT_PIN as usize]
+    let pin_north = board.gpio_pins[app::TOF_NORTH_INT_PIN as usize]
         .take()
         .expect("North ToF interrupt pin must be available");
-    let pin_east = board.gpio_pins[cat_detector::TOF_EAST_INT_PIN as usize]
+    let pin_east = board.gpio_pins[app::TOF_EAST_INT_PIN as usize]
         .take()
         .expect("East ToF interrupt pin must be available");
-    let pin_west = board.gpio_pins[cat_detector::TOF_WEST_INT_PIN as usize]
+    let pin_west = board.gpio_pins[app::TOF_WEST_INT_PIN as usize]
         .take()
         .expect("West ToF interrupt pin must be available");
 
@@ -217,13 +218,13 @@ async fn main(spawner: Spawner) {
     let mut sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
         0,
         tof_north,
-        cat_detector::SYSTEM_CHANNEL.sender(),
-        |_id, dist| cat_detector::system_controller::SystemCommand::SensorUpdate {
+        app::SYSTEM_CHANNEL.sender(),
+        |_id, dist| app::system_controller::SystemCommand::SensorUpdate {
             direction: model::types::Direction::North,
             distance_mm: dist,
         },
         ProximityPinWrapper(pin_north),
-        cat_detector::DEFAULT_PROXIMITY_THRESHOLD_MM,
+        app::DEFAULT_PROXIMITY_THRESHOLD_MM,
     );
     sensor_ctrl_north.set_calibration(CalibrationType::ProximityCal(
         proximity_cal.north_near,
@@ -233,13 +234,13 @@ async fn main(spawner: Spawner) {
     let mut sensor_ctrl_east = SensorController::new_with_fusion_and_interrupt(
         1,
         tof_east,
-        cat_detector::SYSTEM_CHANNEL.sender(),
-        |_id, dist| cat_detector::system_controller::SystemCommand::SensorUpdate {
+        app::SYSTEM_CHANNEL.sender(),
+        |_id, dist| app::system_controller::SystemCommand::SensorUpdate {
             direction: model::types::Direction::East,
             distance_mm: dist,
         },
         ProximityPinWrapper(pin_east),
-        cat_detector::DEFAULT_PROXIMITY_THRESHOLD_MM,
+        app::DEFAULT_PROXIMITY_THRESHOLD_MM,
     );
     sensor_ctrl_east.set_calibration(CalibrationType::ProximityCal(
         proximity_cal.east_near,
@@ -249,13 +250,13 @@ async fn main(spawner: Spawner) {
     let mut sensor_ctrl_west = SensorController::new_with_fusion_and_interrupt(
         2,
         tof_west,
-        cat_detector::SYSTEM_CHANNEL.sender(),
-        |_id, dist| cat_detector::system_controller::SystemCommand::SensorUpdate {
+        app::SYSTEM_CHANNEL.sender(),
+        |_id, dist| app::system_controller::SystemCommand::SensorUpdate {
             direction: model::types::Direction::West,
             distance_mm: dist,
         },
         ProximityPinWrapper(pin_west),
-        cat_detector::DEFAULT_PROXIMITY_THRESHOLD_MM,
+        app::DEFAULT_PROXIMITY_THRESHOLD_MM,
     );
     sensor_ctrl_west.set_calibration(CalibrationType::ProximityCal(
         proximity_cal.west_near,
@@ -276,11 +277,11 @@ async fn main(spawner: Spawner) {
 
     let thermal_ctrl = ThermalController::new_with_shutdown(
         &SHARED_TEMP_SENSOR,
-        cat_detector::SYSTEM_CHANNEL.sender(),
-        cat_detector::system_controller::SystemCommand::Sleep,
+        app::SYSTEM_CHANNEL.sender(),
+        app::system_controller::SystemCommand::Sleep,
     );
 
-    let fg_alert_pin = board.gpio_pins[cat_detector::FUEL_GAUGE_INT_PIN as usize]
+    let fg_alert_pin = board.gpio_pins[app::FUEL_GAUGE_INT_PIN as usize]
         .take()
         .expect("Fuel gauge alert pin must be available");
     let alert_wrapper = AlertPinWrapper(fg_alert_pin);
@@ -288,8 +289,8 @@ async fn main(spawner: Spawner) {
     let power_ctrl = BatteryController::new_with_system_and_alert(
         &SHARED_BATTERY,
         &SHARED_CHARGER,
-        cat_detector::SYSTEM_CHANNEL.sender(),
-        |soc, state| cat_detector::system_controller::SystemCommand::BatteryUpdate {
+        app::SYSTEM_CHANNEL.sender(),
+        |soc, state| app::system_controller::SystemCommand::BatteryUpdate {
             state_of_charge: soc,
             charger_state: state,
         },
@@ -302,15 +303,15 @@ async fn main(spawner: Spawner) {
 
     // Initialize SystemController to coordinate all loops
     let system_ctrl = SystemController::new(
-        cat_detector::MOTOR_CHANNEL.sender(),
-        cat_detector::SENSOR_NORTH_CHANNEL.sender(),
-        cat_detector::SENSOR_EAST_CHANNEL.sender(),
-        cat_detector::SENSOR_WEST_CHANNEL.sender(),
-        cat_detector::BATTERY_CHANNEL.sender(),
-        cat_detector::THERMAL_CHANNEL.sender(),
-        cat_detector::LED_CHANNEL.sender(),
-        cat_detector::TELEMETRY_CHANNEL.sender(),
-        cat_detector::DEFAULT_PROXIMITY_THRESHOLD_MM,
+        app::MOTOR_CHANNEL.sender(),
+        app::SENSOR_NORTH_CHANNEL.sender(),
+        app::SENSOR_EAST_CHANNEL.sender(),
+        app::SENSOR_WEST_CHANNEL.sender(),
+        app::BATTERY_CHANNEL.sender(),
+        app::THERMAL_CHANNEL.sender(),
+        app::LED_CHANNEL.sender(),
+        app::TELEMETRY_CHANNEL.sender(),
+        app::DEFAULT_PROXIMITY_THRESHOLD_MM,
     );
 
     // Spawn controllers selectively and concurrently using separate macros
@@ -318,22 +319,22 @@ async fn main(spawner: Spawner) {
         spawner,
         thermal_task,
         thermal_ctrl,
-        cat_detector::THERMAL_CHANNEL.receiver(),
-        cat_detector::TELEMETRY_CHANNEL.sender(),
+        app::THERMAL_CHANNEL.receiver(),
+        app::TELEMETRY_CHANNEL.sender(),
         SafeRp2040TempSensor,
-        cat_detector::system_controller::SystemCommand
+        app::system_controller::SystemCommand
     );
 
     controller::run_battery_task!(
         spawner,
         power_task,
         power_ctrl,
-        cat_detector::BATTERY_CHANNEL.receiver(),
-        cat_detector::TELEMETRY_CHANNEL.sender(),
+        app::BATTERY_CHANNEL.receiver(),
+        app::TELEMETRY_CHANNEL.sender(),
         MockBattery,
         SafeBq25185,
         AlertPinWrapper,
-        cat_detector::system_controller::SystemCommand
+        app::system_controller::SystemCommand
     );
 
     #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -341,8 +342,8 @@ async fn main(spawner: Spawner) {
         spawner,
         motor_task,
         controller,
-        cat_detector::MOTOR_CHANNEL.receiver(),
-        cat_detector::TELEMETRY_CHANNEL.sender(),
+        app::MOTOR_CHANNEL.receiver(),
+        app::TELEMETRY_CHANNEL.sender(),
         GpioMotor<embassy_rp::gpio::Flex<'static>>,
         peripherals::ina219::Ina219<
             embassy_rp::i2c::I2c<'static, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Blocking>,
@@ -354,8 +355,8 @@ async fn main(spawner: Spawner) {
         spawner,
         motor_task,
         controller,
-        cat_detector::MOTOR_CHANNEL.receiver(),
-        cat_detector::TELEMETRY_CHANNEL.sender(),
+        app::MOTOR_CHANNEL.receiver(),
+        app::TELEMETRY_CHANNEL.sender(),
         GpioMotor<embassy_rp::gpio::Flex<'static>>,
         DummyCurrentSensor
     );
@@ -365,33 +366,33 @@ async fn main(spawner: Spawner) {
         spawner,
         sensor_north_task,
         sensor_ctrl_north,
-        cat_detector::SENSOR_NORTH_CHANNEL.receiver(),
+        app::SENSOR_NORTH_CHANNEL.receiver(),
         DummyProximitySensor,
         CriticalSectionRawMutex,
         ProximityPinWrapper,
-        cat_detector::system_controller::SystemCommand
+        app::system_controller::SystemCommand
     );
 
     controller::run_sensor_task!(
         spawner,
         sensor_east_task,
         sensor_ctrl_east,
-        cat_detector::SENSOR_EAST_CHANNEL.receiver(),
+        app::SENSOR_EAST_CHANNEL.receiver(),
         DummyProximitySensor,
         CriticalSectionRawMutex,
         ProximityPinWrapper,
-        cat_detector::system_controller::SystemCommand
+        app::system_controller::SystemCommand
     );
 
     controller::run_sensor_task!(
         spawner,
         sensor_west_task,
         sensor_ctrl_west,
-        cat_detector::SENSOR_WEST_CHANNEL.receiver(),
+        app::SENSOR_WEST_CHANNEL.receiver(),
         DummyProximitySensor,
         CriticalSectionRawMutex,
         ProximityPinWrapper,
-        cat_detector::system_controller::SystemCommand
+        app::system_controller::SystemCommand
     );
 
     // Spawn the LED controller task
@@ -399,46 +400,45 @@ async fn main(spawner: Spawner) {
         spawner,
         led_task,
         led_ctrl,
-        cat_detector::LED_CHANNEL.receiver(),
-        cat_detector::TELEMETRY_CHANNEL.sender(),
+        app::LED_CHANNEL.receiver(),
+        app::TELEMETRY_CHANNEL.sender(),
         MockLed,
         CriticalSectionRawMutex
     );
 
-    cat_detector::run_system_task!(
+    app::run_system_task!(
         spawner,
         system_task,
         system_ctrl,
-        cat_detector::SYSTEM_CHANNEL.receiver()
+        app::SYSTEM_CHANNEL.receiver()
     );
 
-    cat_detector::run_filesystem_task!(
+    app::run_filesystem_task!(
         spawner,
         filesystem_task,
         fs_controller,
-        cat_detector::FILESYSTEM_CHANNEL.receiver(),
+        app::FILESYSTEM_CHANNEL.receiver(),
         controller::filesystem_controller::ProfilingFlash<
             firmware_lib::panic_handler::BlockingAsyncFlash<
                 embassy_rp::flash::Flash<
                     'static,
                     embassy_rp::peripherals::FLASH,
                     embassy_rp::flash::Blocking,
-                    { cat_detector::FLASH_SIZE },
+                    { app::FLASH_SIZE },
                 >,
             >,
         >
     );
 
-    let client = controller::filesystem_controller::FilesystemClient::new(
-        cat_detector::FILESYSTEM_CHANNEL.sender(),
-    );
+    let client =
+        controller::filesystem_controller::FilesystemClient::new(app::FILESYSTEM_CHANNEL.sender());
     let telemetry_ctrl =
-        TelemetryController::<45, { 12 + 45 * 20 + 128 }>::new(client, cat_detector::system_time);
-    cat_detector::run_telemetry_task!(
+        TelemetryController::<45, { 12 + 45 * 20 + 128 }>::new(client, app::system_time);
+    app::run_telemetry_task!(
         spawner,
         telemetry_task,
         telemetry_ctrl,
-        cat_detector::TELEMETRY_CHANNEL.receiver(),
+        app::TELEMETRY_CHANNEL.receiver(),
         45
     );
 }
