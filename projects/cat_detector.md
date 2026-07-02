@@ -70,7 +70,7 @@ The `model` crate contains pure, target-agnostic domain models, status telemetry
     *   `CurrentSensor`: Defines interfaces for reading current draw (`read_current_ma`). Used to monitor load torque for dry run and stall protection.
     *   `FuelGauge`: Defines interfaces for cell voltage (`read_voltage_mv`) and charge capacity percentage (`read_state_of_charge`).
     *   `PowerSensor`: Defines interfaces for current monitoring and voltage measurements (`read_voltage_mv` / `read_current_ma`), and allows controllers (e.g. `BatteryController`) to subscribe to power alerts via callbacks.
-    *   `ProximitySensor`: Defines interfaces for range measurements (`read_distance_mm`) and exposes proximity events (detection/non-detection) to controllers via callbacks.
+    *   `ProximitySensor`: Defines interfaces for range measurements (`read_distance_mm`).
     *   `TemperatureSensor`: Defines transactions for thermal monitoring (`read_temperature_milli_c`).
     *   `Charger`: Defines interfaces for controlling battery charging (`set_charging_enabled`) and checking charging status (`is_charging_input_present`).
     *   `LedDriver`: Defines interfaces for setting LED RGB indicator colors (`set_color`).
@@ -86,7 +86,7 @@ The `peripherals` crate implements the concrete, platform-independent drivers an
 *   `max17048::Max17048`: Implements `TemperatureSensor` and `FuelGauge` traits, scaling registers to VCELL mV and SOC %. [MAX17048 Datasheet](https://www.analog.com/media/en/technical-documentation/data-sheets/MAX17048-MAX17049.pdf)
 *   `bq25185::Bq25185`: Implements `Charger` trait for linear charger and power path management. [BQ25185 Datasheet](https://www.ti.com/lit/ds/symlink/bq25185.pdf)
 *   `ina219::Ina219`: Implements `CurrentSensor` and `PowerSensor` traits, calibrating shunt voltage calculations for current monitoring. [INA219 Datasheet](https://www.ti.com/lit/ds/symlink/ina219.pdf)
-*   `vl53l0x::Vl53l0x`: Implements `ProximitySensor` trait, driving ranges and supporting dynamic address assignment at register `0x8A`. [VL53L0X Datasheet](https://www.st.com/resource/en/datasheet/vl53l0x.pdf) | [VL53L0X API Guide (UM2039)](https://www.st.com/resource/en/user_manual/um2039-world-smallest-timeofflight-ranging-and-gesture-detection-sensor-application-programming-interface-stmicroelectronics.pdf) | [VL53L0X Register Map](https://github.com/GrimbiXcode/VL53L0X-Register-Map)
+*   `vl53l0x::Vl53l0x`: Implements `ProximitySensor` trait, driving ranges and supporting dynamic address assignment at register `0x8A`. Supports GPIO interrupts (Low Level, High Level) utilizing programmed `SYSTEM_THRESH_LOW` and `SYSTEM_THRESH_HIGH` threshold registers (with parametric hysteresis), and a timing budget increased to 200ms. [VL53L0X Datasheet](https://www.st.com/resource/en/datasheet/vl53l0x.pdf) | [VL53L0X API Guide (UM2039)](https://www.st.com/resource/en/user_manual/um2039-world-smallest-timeofflight-ranging-and-gesture-detection-sensor-application-programming-interface-stmicroelectronics.pdf) | [VL53L0X Register Map](https://github.com/GrimbiXcode/VL53L0X-Register-Map)
 *   `l9110s::L9110s`: Implements `Motor` trait for h-bridge motor driver control using two `OutputPin` channels. [L9110S Datasheet](https://www.elecrow.com/download/datasheet-l9110.pdf)
 *   `attiny816::Attiny816`: Manages indicator NeoPixel outputs by writing RGB color packets over I2C, implementing the `LedDriver` interface. [ATtiny816 Datasheet](https://cdn-learn.adafruit.com/downloads/pdf/adafruit-neodriver-i2c-to-neopixel-driver.pdf)
 
@@ -103,9 +103,9 @@ The `controller` crate houses the active orchestrators and asynchronous loop run
     *   `RampDown`: Motor is shutting down and ramping speed down.
     *   Transitions are driven by `MotorEvent` triggers (`PowerOn`, `PowerOff`, `RampComplete`).
 *   **`BatteryController`**: Coordinates periodic voltage queries from the power system.
-*   **`ThermalController`**: Periodically updates and monitors safety thresholds for thermal limits, and shuts down the system (sending a sleep signal to `SystemController`) if critical thresholds (>60°C) are reached.
+*   **`ThermalController`**: Periodically updates and monitors safety thresholds for thermal limits (overheating and critical temperature thresholds are parameterized, defaulting to 45°C and 60°C respectively, with a 2°C hysteresis to prevent rapid toggling). Replaces battery monitoring with temp sensor reads, and shuts down the system (sending a sleep/shutdown signal to `SystemController`) if critical thresholds are reached.
 *   **`SensorController`**: Manages spatial telemetry for a *single* proximity (ToF) sensor (instantiated separately for North, East, and West). Dispatches proximity events upstream to the `SystemController` for central data fusion.
-*   **`LedController`**: Receives RGB indicators status updates from the `SystemController` and drives the underlying NeoPixel/ATtiny816 driver.
+*   **`LedController`**: Receives RGB indicators status updates from the `SystemController` and drives the underlying NeoPixel/ATtiny816 driver. Supports smooth fade-in and fade-out transitions when turning on/off, parameterized with `FADE_STEPS = 10` and `FADE_DELAY_MS = 20` (total 200ms fade transition).
 *   **`FilesystemController`**: Implements flat file storage on the persistent flash partition. Uses `sequential-storage` to execute read/write/delete operations with zero heap allocation.
     *   *Profiling Wrapper (`ProfilingFlash`)*: Intercepts lower-level erase instructions to log execution durations and erase counts to prevent flash wear.
 
@@ -114,10 +114,10 @@ The `controller` crate houses the active orchestrators and asynchronous loop run
 ### 2.4. Application & BSP Crate (`projects/cat_detector`)
 The top-level application and Board Support Package (BSP) defines pin configurations, spawns the controller tasks, and hosts the application-specific orchestrator:
 
-*   **`SystemController`**: Coordinates low-power mode transitions (`Active` vs `Sleep`) by disabling/enabling/polling the other peripheral controllers and handling inactivity timeouts. It performs **sensor data fusion** across the three proximity controllers (North, East, West): if any sensor detects target proximity (<300 mm), it wakes up the system, resets the inactivity timer, starts the motor, and updates the `LedController` state.
+*   **`SystemController`**: Coordinates low-power mode transitions (`Active` vs `Sleep`) by disabling/enabling/polling the other peripheral controllers and handling inactivity timeouts. It performs **sensor data fusion** across the three proximity controllers (North, East, West): if any sensor detects target proximity (<300 mm), it wakes up the system, resets the inactivity timer, starts the motor, and updates the `LedController` state. It also supports dual long press gesture detection on East and West proximity sensors with a threshold of 20mm to trigger `PowerDown`.
     *   *Active Duration & Safety Gating*: Once the system enters `Active` mode, a minimum 30-second active mode duration is enforced before it is permitted to return to `Sleep`. This duration is gated/overridden by safety and proximity rules:
-        *   **Thermal Limits**: If the temperature exceeds 60°C, the system enters `Sleep` immediately to prevent thermal damage, overriding the 30-second delay.
-        *   **Battery State of Charge**: If the battery drops below 10% and is not charging, the system enters `Sleep` immediately to prevent deep discharge, overriding the 30-second delay.
+        *   **Thermal Limits**: If the temperature exceeds the critical threshold, the system enters `Sleep` immediately to prevent thermal damage, overriding the 30-second delay.
+        *   **Battery State of Charge**: If the battery drops below the critical threshold and is not charging, the system enters `Sleep` immediately to prevent deep discharge, overriding the 30-second delay. Implements a 2% state-of-charge hysteresis to prevent rapid state-toggling around the threshold.
         *   **Cat Proximity**: As long as a cat remains detected (<300 mm) on any of the ToF sensors, the inactivity timer is reset, preventing transition to `Sleep`.
 
 ---
@@ -162,16 +162,16 @@ At start, the Embassy executor initializes the board and spawns the controller t
 
 ```mermaid
 sequenceDiagram
-    participant Main as main.rs
-    participant SC as SystemController
-    participant MC as MotorController
-    participant SN as SensorController (North)
-    participant SE as SensorController (East)
-    participant SW as SensorController (West)
-    participant LC as LedController
-    participant BC as BatteryController
-    participant TC as ThermalController
-    participant TMC as TelemetryController
+    Participant Main as projects/cat_detector/src/bin/main.rs
+    Participant SC as SystemController
+    Participant MC as MotorController
+    Participant SN as SensorController (North)
+    Participant SE as SensorController (East)
+    Participant SW as SensorController (West)
+    Participant LC as LedController
+    Participant BC as BatteryController
+    Participant TC as ThermalController
+    Participant TMC as TelemetryController
 
     Main->>Main: Board::init() (Pico Pins/I2C Setup)
     Main->>SC: Spawn run_system_task
