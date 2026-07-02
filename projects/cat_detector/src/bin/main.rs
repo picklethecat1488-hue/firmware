@@ -18,7 +18,7 @@ use {
     embassy_executor::Spawner,
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     embassy_sync::mutex::Mutex,
-    peripherals::mock::{DummyCurrentSensor, DummyProximitySensor, MockBattery, MockLed},
+    peripherals::mock::{DummyProximitySensor, MockBattery, MockLed},
     peripherals::motor::GpioMotor,
 };
 
@@ -157,9 +157,17 @@ async fn main(spawner: Spawner) {
         .expect("Motor pin must be available");
 
     let motor = GpioMotor::new(motor_pin);
-    let current_sensor = DummyCurrentSensor;
 
-    let controller = MotorController::new(motor, current_sensor);
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    let current_sensor = {
+        let mut sensor = peripherals::ina219::Ina219::new(board.i2c);
+        let _ = sensor.init();
+        sensor
+    };
+    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+    let current_sensor = peripherals::mock::DummyCurrentSensor;
+
+    let mut controller = MotorController::new(motor, current_sensor);
 
     // Initialize simulated proximity sensors for North, East, West ToFs
     let tof_north = DummyProximitySensor::new(100);
@@ -188,8 +196,23 @@ async fn main(spawner: Spawner) {
         _ => model::calibration::Vl53l0xCalibration::default(),
     };
 
+    let mut motor_cal_buf = [0u8; 128];
+    let motor_cal = match fs_controller
+        .read_file("motor_cal.cbor", &mut motor_cal_buf)
+        .await
+    {
+        Ok(Some(bytes)) => minicbor::decode::<model::calibration::MotorCalibration>(bytes).ok(),
+        _ => None,
+    };
+
     use model::calibration::Calibration;
     use model::calibration::CalibrationType;
+
+    if let Some(cal) = motor_cal {
+        let min_ma = (cal.empty_current_ma + cal.water_100ml_current_ma) / 2;
+        let max_ma = 800;
+        controller.set_calibration(CalibrationType::MotorCal(min_ma, max_ma));
+    }
 
     let mut sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
         0,
@@ -312,6 +335,20 @@ async fn main(spawner: Spawner) {
         cat_detector::system_controller::SystemCommand
     );
 
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    controller::run_motor_task!(
+        spawner,
+        motor_task,
+        controller,
+        cat_detector::MOTOR_CHANNEL.receiver(),
+        cat_detector::TELEMETRY_CHANNEL.sender(),
+        GpioMotor<embassy_rp::gpio::Flex<'static>>,
+        peripherals::ina219::Ina219<
+            embassy_rp::i2c::I2c<'static, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Blocking>,
+        >
+    );
+
+    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
     controller::run_motor_task!(
         spawner,
         motor_task,

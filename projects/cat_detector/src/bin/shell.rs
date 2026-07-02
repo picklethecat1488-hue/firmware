@@ -72,6 +72,11 @@ static mut BOARD_I2C: Option<
 > = None;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+static mut BOARD_MOTOR: Option<
+    *mut peripherals::motor::GpioMotor<embassy_rp::gpio::Flex<'static>>,
+> = None;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 static mut PANIC_FLASH: Option<
     embassy_rp::flash::Flash<
         'static,
@@ -289,6 +294,97 @@ impl<W: IoWrite<Error = E>, E: embedded_io::Error> CommandProcessor<W, E> for Cl
                     }
                 }
             }
+            Ok(CliCommand::CalMotor { state }) => {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                {
+                    let motor = unsafe { &mut *BOARD_MOTOR.unwrap() };
+                    let _ = core::writeln!(writer, "\r\nStarting motor for calibration...");
+                    use model::interfaces::Motor;
+                    let _ = motor.set_speed(100);
+
+                    let _ = core::writeln!(writer, "Waiting 1 second for motor to ramp up...");
+                    embassy_futures::block_on(embassy_time::Timer::after(
+                        embassy_time::Duration::from_millis(1000),
+                    ));
+
+                    let i2c = unsafe { &mut *BOARD_I2C.unwrap() };
+                    let mut current_sensor = peripherals::ina219::Ina219::new(&mut *i2c);
+                    if let Err(e) = current_sensor.init() {
+                        let _ =
+                            core::writeln!(writer, "Warning: Failed to initialize INA219: {:?}", e);
+                    }
+
+                    let mut sum = 0;
+                    for _ in 0..5 {
+                        use model::interfaces::PowerSensor;
+                        sum += current_sensor.read_current_ma().unwrap_or(0);
+                        embassy_futures::block_on(embassy_time::Timer::after(
+                            embassy_time::Duration::from_millis(100),
+                        ));
+                    }
+                    let current = sum / 5;
+
+                    let name = match state {
+                        cat_detector::MotorCalState::Empty => "Empty",
+                        cat_detector::MotorCalState::Water100ml => "100ml",
+                        cat_detector::MotorCalState::Full => "Full",
+                    };
+
+                    let _ = core::writeln!(
+                        writer,
+                        "Stopping motor and recording measured current for {} state: {} mA",
+                        name,
+                        current
+                    );
+                    let _ = motor.stop();
+
+                    let flash_ref = unsafe { PANIC_FLASH.as_mut().unwrap() };
+                    let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+                    let mut fs = controller::filesystem_controller::FilesystemController::new(
+                        async_flash,
+                        cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
+                    );
+
+                    let mut buf = [0u8; 128];
+                    let mut cal =
+                        match embassy_futures::block_on(fs.read_file("motor_cal.cbor", &mut buf)) {
+                            Ok(Some(bytes)) => {
+                                minicbor::decode::<model::calibration::MotorCalibration>(bytes)
+                                    .unwrap_or_default()
+                            }
+                            _ => model::calibration::MotorCalibration::default(),
+                        };
+
+                    match state {
+                        cat_detector::MotorCalState::Empty => cal.empty_current_ma = current,
+                        cat_detector::MotorCalState::Water100ml => {
+                            cal.water_100ml_current_ma = current
+                        }
+                        cat_detector::MotorCalState::Full => cal.full_current_ma = current,
+                    }
+
+                    let mut write_buf = [0u8; 128];
+                    let cursor = minicbor::encode::write::Cursor::new(&mut write_buf[..]);
+                    let mut encoder = minicbor::Encoder::new(cursor);
+                    encoder.encode(cal).unwrap();
+                    let len = encoder.into_writer().position();
+
+                    match embassy_futures::block_on(
+                        fs.write_file("motor_cal.cbor", &write_buf[..len]),
+                    ) {
+                        Ok(_) => {
+                            let _ = core::writeln!(
+                                writer,
+                                "Saved motor {} calibration to flash.",
+                                name
+                            );
+                        }
+                        Err(_) => {
+                            let _ = core::writeln!(writer, "Error saving calibration to flash.");
+                        }
+                    }
+                }
+            }
             Ok(CliCommand::Help) => {
                 let _ = core::writeln!(writer, "\r\nCommands:");
                 let _ = core::writeln!(writer, "  motor <speed>    : Set motor speed (0-100)");
@@ -317,6 +413,10 @@ impl<W: IoWrite<Error = E>, E: embedded_io::Error> CommandProcessor<W, E> for Cl
                     writer,
                     "  cal_far <north|east|west>  : Calibrate sensor 100mm target"
                 );
+                let _ = core::writeln!(
+                    writer,
+                    "  cal_motor <empty|100ml|full> : Calibrate motor current levels"
+                );
                 let _ = core::writeln!(writer, "  help             : Show this help summary");
             }
             Err(e) => {
@@ -337,8 +437,16 @@ async fn main(spawner: Spawner) {
     // Initialize board peripherals using the unified board configuration
     let mut board = cat_detector::Board::init(p);
 
+    // Extract the motor control pin from the board configuration array
+    let motor_pin = board.gpio_pins[cat_detector::LED_PIN as usize]
+        .take()
+        .expect("Motor pin must be available");
+
+    let mut motor = peripherals::motor::GpioMotor::new(motor_pin);
+
     unsafe {
         BOARD_I2C = Some(&mut board.i2c as *mut _ as *mut _);
+        BOARD_MOTOR = Some(&mut motor as *mut _);
     }
 
     // Split the UART into TX and RX parts to satisfy the borrow checker
