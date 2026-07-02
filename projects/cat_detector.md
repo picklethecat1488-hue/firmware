@@ -342,7 +342,10 @@ Execute the following commands sequentially inside the interactive serial shell 
 ---
 
 ### 6.3. System-Level Testing & Validation Commands (Offline Host Analysis)
-After triggering a panic/crash or running telemetry operations, verify data persistence and code correctness from your host system:
+After triggering a panic/crash or running telemetry operations, verify data persistence and code correctness from your host system.
+
+> [!TIP]
+> By default, if the `--dump` option is omitted, `fs_tool` will connect directly to the attached device via `probe-rs` using a project name. It dynamically resolves the target chip and partition offset from that project's `.cargo/config.toml` and `memory.x` configuration files.
 
 1. **Pull raw flash filesystem partition**:
    Dump the 256KB sequential-storage partition from the target flash memory:
@@ -369,3 +372,14 @@ After triggering a panic/crash or running telemetry operations, verify data pers
    cargo run --bin fs_tool -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector
    ```
    * Verify that the crash address points directly to the function name, source file, and line number where the panic was triggered.
+
+5. **Copy files to or from the flash partition**:
+   Use the `cp` command with the `dev:` prefix to denote device-side files:
+   - Extract/copy a file from the flash partition dump to a host file path:
+     ```bash
+     cargo run --bin fs_tool -- --dump flash_dump.bin cp dev:vl53l0x_cal.cbor local_cal.cbor
+     ```
+   - Inject/copy a local host file into the flash partition dump (and automatically update the directory index `.dir`):
+     ```bash
+     cargo run --bin fs_tool -- --dump flash_dump.bin cp local_cal.cbor dev:vl53l0x_cal.cbor
+     ```
