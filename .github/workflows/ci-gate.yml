@@ -39,7 +39,7 @@ jobs:
         uses: membrowse/membrowse-action@v1
         with:
           elf: target/thumbv6m-none-eabi/release/cat_detector
-          target_name: rp2040
+          target_name: cat_detector
           api_key: ${{ secrets.MEMBROWSE_API_KEY }}
 
       - name: Upload Test Reports
