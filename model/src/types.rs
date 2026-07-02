@@ -181,4 +181,19 @@ pub enum ChargeState {
     NonRecoverableFault,
 }
 
+/// Proximity sensor direction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, minicbor::Encode, minicbor::Decode)]
+#[repr(usize)]
+pub enum Direction {
+    /// North direction.
+    #[n(0)]
+    North = 0,
+    /// East direction.
+    #[n(1)]
+    East = 1,
+    /// West direction.
+    #[n(2)]
+    West = 2,
+}
+
 pub use crate::telemetry::TelemetryRecord;
