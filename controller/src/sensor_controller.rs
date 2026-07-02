@@ -32,114 +32,81 @@ pub enum SensorCommand {
     DisablePeriodic,
 }
 
-/// A controller that coordinates readings from a single proximity (ToF) sensor.
-pub struct SensorController<
+/// Trait for reading data from a generic sensor type.
+pub trait SensorReader<S> {
+    /// The trait-specific context block passed to the read_data method.
+    type Context;
+    /// The type of data returned by the read_data method.
+    type Data: Copy;
+    /// The error type returned by the read_data method.
+    type Error;
+
+    /// Reads data from the sensor using the provided context block.
+    fn read_data(sensor: &mut S, ctx: &Self::Context) -> Result<Self::Data, Self::Error>;
+}
+
+/// Context block for reading proximity sensors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProximityReaderContext {
+    /// The proximity threshold in millimeters.
+    pub proximity_threshold_mm: u16,
+}
+
+/// A reader adapter for proximity sensors.
+pub struct ProximityReader;
+
+impl<S: ProximitySensor> SensorReader<S> for ProximityReader {
+    type Context = ProximityReaderContext;
+    type Data = u16;
+    type Error = S::Error;
+
+    fn read_data(sensor: &mut S, _ctx: &Self::Context) -> Result<Self::Data, Self::Error> {
+        sensor.read_distance_mm()
+    }
+}
+
+/// State manager for coordinating physical sensor access, interrupts, and notifications.
+pub struct SensorStateManager<
     'a,
     S,
+    Data,
     M: embassy_sync::blocking_mutex::raw::RawMutex = embassy_sync::blocking_mutex::raw::NoopRawMutex,
     Pin = DummyDataReadyPin,
     Cmd = (),
 > {
     sensor_id: u8,
     sensor: S,
-    latest_distance: u16,
     periodic_enabled: bool,
-    system_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
-    make_cmd: Option<fn(u8, u16) -> Cmd>,
+    upstream_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
+    make_cmd: Option<fn(u8, Data) -> Cmd>,
     interrupt_pin: Option<Pin>,
-    proximity_threshold_mm: u16,
-}
-
-impl<'a, S: ProximitySensor>
-    SensorController<'a, S, embassy_sync::blocking_mutex::raw::NoopRawMutex, DummyDataReadyPin, ()>
-{
-    /// Creates a new SensorController managing a single proximity sensor.
-    pub const fn new(sensor_id: u8, sensor: S, proximity_threshold_mm: u16) -> Self {
-        Self {
-            sensor_id,
-            sensor,
-            latest_distance: 1000,
-            periodic_enabled: true,
-            system_tx: None,
-            make_cmd: None,
-            interrupt_pin: None,
-            proximity_threshold_mm,
-        }
-    }
 }
 
 impl<
         'a,
-        S: ProximitySensor,
+        S,
+        Data,
         M: embassy_sync::blocking_mutex::raw::RawMutex,
-        Cmd: Clone + core::fmt::Debug,
-    > SensorController<'a, S, M, DummyDataReadyPin, Cmd>
+        Pin,
+        Cmd,
+    > SensorStateManager<'a, S, Data, M, Pin, Cmd>
 {
-    /// Creates a new SensorController with upstream system notification.
-    pub fn new_with_fusion(
+    /// Creates a new SensorStateManager.
+    pub const fn new(
         sensor_id: u8,
         sensor: S,
-        system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
-        make_cmd: fn(u8, u16) -> Cmd,
-        proximity_threshold_mm: u16,
+        upstream_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
+        make_cmd: Option<fn(u8, Data) -> Cmd>,
+        interrupt_pin: Option<Pin>,
     ) -> Self {
         Self {
             sensor_id,
             sensor,
-            latest_distance: 1000,
             periodic_enabled: true,
-            system_tx: Some(system_tx),
-            make_cmd: Some(make_cmd),
-            interrupt_pin: None,
-            proximity_threshold_mm,
+            upstream_tx,
+            make_cmd,
+            interrupt_pin,
         }
-    }
-}
-
-impl<
-        'a,
-        S: ProximitySensor,
-        M: embassy_sync::blocking_mutex::raw::RawMutex,
-        Pin: DataReadyPin,
-        Cmd: Clone + core::fmt::Debug,
-    > SensorController<'a, S, M, Pin, Cmd>
-{
-    /// Creates a new SensorController with upstream system notification and interrupt pin support.
-    pub fn new_with_fusion_and_interrupt(
-        sensor_id: u8,
-        sensor: S,
-        system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
-        make_cmd: fn(u8, u16) -> Cmd,
-        interrupt_pin: Pin,
-        proximity_threshold_mm: u16,
-    ) -> Self {
-        Self {
-            sensor_id,
-            sensor,
-            latest_distance: 1000,
-            periodic_enabled: true,
-            system_tx: Some(system_tx),
-            make_cmd: Some(make_cmd),
-            interrupt_pin: Some(interrupt_pin),
-            proximity_threshold_mm,
-        }
-    }
-    /// Gets a mutable reference to the underlying sensor.
-    pub fn sensor_mut(&mut self) -> &mut S {
-        &mut self.sensor
-    }
-    /// Gets the current proximity telemetry reading.
-    pub fn telemetry(&self) -> model::types::ProximityTelemetry {
-        if self.latest_distance < self.proximity_threshold_mm {
-            model::types::ProximityTelemetry::InRange(self.latest_distance)
-        } else {
-            model::types::ProximityTelemetry::OutRange(self.latest_distance)
-        }
-    }
-
-    /// Gets the latest read proximity telemetry distance.
-    pub fn latest_distance(&self) -> u16 {
-        self.latest_distance
     }
 
     /// Gets the sensor ID.
@@ -147,30 +114,238 @@ impl<
         self.sensor_id
     }
 
+    /// Gets a mutable reference to the underlying sensor.
+    pub fn sensor_mut(&mut self) -> &mut S {
+        &mut self.sensor
+    }
+
+    /// Gets a reference to the underlying sensor.
+    pub fn sensor(&self) -> &S {
+        &self.sensor
+    }
+
     /// Gets whether periodic monitoring is enabled.
     pub fn is_periodic_enabled(&self) -> bool {
         self.periodic_enabled
     }
 
-    /// Ticks the sensor control loop, updating proximity distance.
-    pub fn update(&mut self) -> Result<u16, S::Error> {
-        let dist = self.sensor.read_distance_mm()?;
+    /// Sets whether periodic monitoring is enabled.
+    pub fn set_periodic_enabled(&mut self, enabled: bool) {
+        self.periodic_enabled = enabled;
+    }
+}
 
-        self.latest_distance = dist;
-
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!(
-            "Sensor Controller (ID={}): distance={} mm",
-            self.sensor_id,
-            dist
-        );
-
-        if let (Some(tx), Some(make_cmd)) = (&self.system_tx, &self.make_cmd) {
-            let cmd = make_cmd(self.sensor_id, dist);
+impl<
+        'a,
+        S,
+        Data: Copy,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        Pin,
+        Cmd: Clone + core::fmt::Debug,
+    > SensorStateManager<'a, S, Data, M, Pin, Cmd>
+{
+    /// Sends a command upstream if configured.
+    pub fn notify_upstream(&self, data: Data) {
+        if let (Some(tx), Some(make_cmd)) = (&self.upstream_tx, &self.make_cmd) {
+            let cmd = make_cmd(self.sensor_id, data);
             tx.try_send(cmd).unwrap();
         }
+    }
+}
 
-        Ok(dist)
+impl<
+        'a,
+        S,
+        Data,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        Pin: DataReadyPin,
+        Cmd,
+    > SensorStateManager<'a, S, Data, M, Pin, Cmd>
+{
+    /// Waits for the data ready interrupt to trigger if the interrupt pin is configured.
+    pub async fn wait_for_interrupt(&mut self) {
+        if let Some(ref mut pin) = self.interrupt_pin {
+            pin.wait_for_data_ready().await;
+        } else {
+            core::future::pending::<()>().await;
+        }
+    }
+}
+
+/// A controller that coordinates readings from a single proximity (ToF) sensor.
+pub struct SensorController<
+    'a,
+    S,
+    M: embassy_sync::blocking_mutex::raw::RawMutex = embassy_sync::blocking_mutex::raw::NoopRawMutex,
+    Pin = DummyDataReadyPin,
+    Cmd = (),
+    Reader: SensorReader<S> = ProximityReader,
+> {
+    state_manager: SensorStateManager<'a, S, Reader::Data, M, Pin, Cmd>,
+    latest_data: Reader::Data,
+    context: Reader::Context,
+}
+
+impl<
+        'a,
+        S,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        Pin,
+        Cmd,
+        Reader: SensorReader<S>,
+    > core::ops::Deref for SensorController<'a, S, M, Pin, Cmd, Reader>
+{
+    type Target = SensorStateManager<'a, S, Reader::Data, M, Pin, Cmd>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.state_manager
+    }
+}
+
+impl<
+        'a,
+        S,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        Pin,
+        Cmd,
+        Reader: SensorReader<S>,
+    > core::ops::DerefMut for SensorController<'a, S, M, Pin, Cmd, Reader>
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.state_manager
+    }
+}
+
+impl<'a, S: ProximitySensor>
+    SensorController<'a, S, embassy_sync::blocking_mutex::raw::NoopRawMutex, DummyDataReadyPin, (), ProximityReader>
+{
+    /// Creates a new SensorController managing a single proximity sensor.
+    pub const fn new(sensor_id: u8, sensor: S, proximity_threshold_mm: u16) -> Self {
+        Self {
+            state_manager: SensorStateManager::new(
+                sensor_id,
+                sensor,
+                None,
+                None,
+                None,
+            ),
+            latest_data: 1000,
+            context: ProximityReaderContext { proximity_threshold_mm },
+        }
+    }
+}
+
+impl<
+        'a,
+        S: ProximitySensor,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        Cmd: Clone + core::fmt::Debug,
+    > SensorController<'a, S, M, DummyDataReadyPin, Cmd, ProximityReader>
+{
+    /// Creates a new SensorController with upstream system notification.
+    pub fn new_with_fusion(
+        sensor_id: u8,
+        sensor: S,
+        upstream_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        make_cmd: fn(u8, u16) -> Cmd,
+        proximity_threshold_mm: u16,
+    ) -> Self {
+        Self {
+            state_manager: SensorStateManager::new(
+                sensor_id,
+                sensor,
+                Some(upstream_tx),
+                Some(make_cmd),
+                None,
+            ),
+            latest_data: 1000,
+            context: ProximityReaderContext { proximity_threshold_mm },
+        }
+    }
+}
+
+impl<
+        'a,
+        S,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        Pin: DataReadyPin,
+        Cmd: Clone + core::fmt::Debug,
+        Reader: SensorReader<S>,
+    > SensorController<'a, S, M, Pin, Cmd, Reader>
+{
+    /// Creates a generic SensorController.
+    pub fn new_generic(
+        sensor_id: u8,
+        sensor: S,
+        latest_data: Reader::Data,
+        interrupt_pin: Option<Pin>,
+        context: Reader::Context,
+    ) -> Self {
+        Self {
+            state_manager: SensorStateManager::new(
+                sensor_id,
+                sensor,
+                None,
+                None,
+                interrupt_pin,
+            ),
+            latest_data,
+            context,
+        }
+    }
+
+    /// Creates a generic SensorController with upstream system notification.
+    pub fn new_generic_with_fusion(
+        sensor_id: u8,
+        sensor: S,
+        latest_data: Reader::Data,
+        upstream_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        make_cmd: fn(u8, Reader::Data) -> Cmd,
+        interrupt_pin: Option<Pin>,
+        context: Reader::Context,
+    ) -> Self {
+        Self {
+            state_manager: SensorStateManager::new(
+                sensor_id,
+                sensor,
+                Some(upstream_tx),
+                Some(make_cmd),
+                interrupt_pin,
+            ),
+            latest_data,
+            context,
+        }
+    }
+
+    /// Gets a mutable reference to the underlying sensor.
+    pub fn sensor_mut(&mut self) -> &mut S {
+        self.state_manager.sensor_mut()
+    }
+
+    /// Gets the latest read sensor data.
+    pub fn latest_data(&self) -> Reader::Data {
+        self.latest_data
+    }
+
+    /// Gets the sensor ID.
+    pub fn sensor_id(&self) -> u8 {
+        self.state_manager.sensor_id()
+    }
+
+    /// Gets whether periodic monitoring is enabled.
+    pub fn is_periodic_enabled(&self) -> bool {
+        self.state_manager.is_periodic_enabled()
+    }
+
+    /// Ticks the sensor control loop, updating proximity distance.
+    pub fn update(&mut self) -> Result<Reader::Data, Reader::Error> {
+        let data = Reader::read_data(self.state_manager.sensor_mut(), &self.context)?;
+
+        self.latest_data = data;
+
+        self.notify_upstream(data);
+
+        Ok(data)
     }
 
     /// Handles a SensorCommand.
@@ -180,10 +355,10 @@ impl<
                 let _ = self.update();
             }
             SensorCommand::EnablePeriodic => {
-                self.periodic_enabled = true;
+                self.set_periodic_enabled(true);
             }
             SensorCommand::DisablePeriodic => {
-                self.periodic_enabled = false;
+                self.set_periodic_enabled(false);
             }
         }
     }
@@ -195,13 +370,7 @@ impl<
     ) -> ! {
         loop {
             let rx_fut = command_rx.receive();
-            let interrupt_fut = async {
-                if let Some(ref mut pin) = self.interrupt_pin {
-                    pin.wait_for_data_ready().await;
-                } else {
-                    core::future::pending::<()>().await;
-                }
-            };
+            let interrupt_fut = self.wait_for_interrupt();
             let timeout_fut = embassy_time::Timer::after(embassy_time::Duration::from_millis(1000));
 
             match embassy_futures::select::select3(rx_fut, interrupt_fut, timeout_fut).await {
@@ -211,13 +380,13 @@ impl<
                 }
                 // Proximity interrupt triggered (GPIO1 output from ToF went low)
                 embassy_futures::select::Either3::Second(_) => {
-                    if self.periodic_enabled {
+                    if self.is_periodic_enabled() {
                         let _ = self.update();
                     }
                 }
                 // Periodic update interval elapsed
                 embassy_futures::select::Either3::Third(_) => {
-                    if self.periodic_enabled {
+                    if self.is_periodic_enabled() {
                         let _ = self.update();
                     }
                 }
@@ -226,11 +395,56 @@ impl<
     }
 }
 
+impl<
+        'a,
+        S: ProximitySensor,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        Pin: DataReadyPin,
+        Cmd: Clone + core::fmt::Debug,
+    > SensorController<'a, S, M, Pin, Cmd, ProximityReader>
+{
+    /// Creates a new SensorController with upstream system notification and interrupt pin support.
+    pub fn new_with_fusion_and_interrupt(
+        sensor_id: u8,
+        sensor: S,
+        upstream_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        make_cmd: fn(u8, u16) -> Cmd,
+        interrupt_pin: Pin,
+        proximity_threshold_mm: u16,
+    ) -> Self {
+        Self {
+            state_manager: SensorStateManager::new(
+                sensor_id,
+                sensor,
+                Some(upstream_tx),
+                Some(make_cmd),
+                Some(interrupt_pin),
+            ),
+            latest_data: 1000,
+            context: ProximityReaderContext { proximity_threshold_mm },
+        }
+    }
+
+    /// Gets the current proximity telemetry reading.
+    pub fn telemetry(&self) -> model::types::ProximityTelemetry {
+        if self.latest_data < self.context.proximity_threshold_mm {
+            model::types::ProximityTelemetry::InRange(self.latest_data)
+        } else {
+            model::types::ProximityTelemetry::OutRange(self.latest_data)
+        }
+    }
+
+    /// Gets the latest read proximity telemetry distance.
+    pub fn latest_distance(&self) -> u16 {
+        self.latest_data
+    }
+}
+
 impl<'a, S: ProximitySensor, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
-    crate::BlockingProximityReader for SensorController<'a, S, M, Pin, Cmd>
+    crate::BlockingProximityReader for SensorController<'a, S, M, Pin, Cmd, ProximityReader>
 {
     fn read_distance_blocking(&mut self) -> Option<u16> {
-        self.sensor.read_distance_mm().ok()
+        self.sensor_mut().read_distance_mm().ok()
     }
 }
 
@@ -240,9 +454,9 @@ impl<
         M: embassy_sync::blocking_mutex::raw::RawMutex,
         Pin,
         Cmd,
-    > model::calibration::Calibration for SensorController<'a, S, M, Pin, Cmd>
+    > model::calibration::Calibration for SensorController<'a, S, M, Pin, Cmd, ProximityReader>
 {
     fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
-        self.sensor.set_calibration(calibration);
+        self.sensor_mut().set_calibration(calibration);
     }
 }
