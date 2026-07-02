@@ -230,6 +230,11 @@ sequenceDiagram
 
 To ensure the hardware and firmware designs are fully validated and operating correctly, follow this ordered checklist of functional and system-level test procedures.
 
+You can also run the interactive bringup helper script [bringup.py](file:///Users/daparker/gh/firmware/scripts/bringup.py) to guide you through this checklist, execute host commands automatically, and generate a markdown verification report:
+```bash
+python3 scripts/bringup.py --config projects/cat_detector_bringup.yaml --port /dev/tty.usbmodem101
+```
+
 ### 6.1. Verification Prerequisites
 1. Connect a debug probe (e.g. Raspberry Pi Debug Probe) to the RP2040 SWD header.
 2. Establish a UART serial connection via terminal (e.g. `minicom`, `screen`, or `picocom`) at **115200 baud (8N1)** using the board's serial pins (GP0 TX / GP1 RX).
