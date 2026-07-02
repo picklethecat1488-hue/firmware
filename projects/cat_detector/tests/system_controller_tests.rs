@@ -1,4 +1,4 @@
-use cat_detector::system_controller::{SystemCommand, SystemController};
+use cat_detector::system_controller::{SystemCommand, SystemController, SystemControllerChannels};
 use controller::battery_controller::BatteryCommand;
 use controller::motor_controller::MotorCommand;
 use controller::sensor_controller::SensorCommand;
@@ -21,17 +21,17 @@ fn test_system_controller_flow() {
     static THERMAL_CHANNEL: Channel<CriticalSectionRawMutex, ThermalCommand, 4> = Channel::new();
     static LED_CHANNEL: Channel<CriticalSectionRawMutex, SystemLedState, 4> = Channel::new();
 
-    let mut controller = SystemController::new(
-        MOTOR_CHANNEL.sender(),
-        SENSOR_NORTH_CHANNEL.sender(),
-        SENSOR_EAST_CHANNEL.sender(),
-        SENSOR_WEST_CHANNEL.sender(),
-        BATTERY_CHANNEL.sender(),
-        THERMAL_CHANNEL.sender(),
-        LED_CHANNEL.sender(),
-        MOCK_TELEMETRY_CHANNEL.sender(),
-        300,
-    );
+    let channels = SystemControllerChannels {
+        motor_tx: MOTOR_CHANNEL.sender(),
+        sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
+        sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
+        sensor_west_tx: SENSOR_WEST_CHANNEL.sender(),
+        battery_tx: BATTERY_CHANNEL.sender(),
+        thermal_tx: THERMAL_CHANNEL.sender(),
+        led_tx: LED_CHANNEL.sender(),
+        telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
+    };
+    let mut controller = SystemController::new(channels, 300);
 
     assert_eq!(controller.status(), SystemStatus::PowerDown);
 
@@ -91,17 +91,17 @@ fn test_system_controller_flow() {
     while LED_CHANNEL.try_receive().is_ok() {}
 
     // Use a fresh controller instance to test ToF proximity data fusion and active delay gating
-    let mut controller = SystemController::new(
-        MOTOR_CHANNEL.sender(),
-        SENSOR_NORTH_CHANNEL.sender(),
-        SENSOR_EAST_CHANNEL.sender(),
-        SENSOR_WEST_CHANNEL.sender(),
-        BATTERY_CHANNEL.sender(),
-        THERMAL_CHANNEL.sender(),
-        LED_CHANNEL.sender(),
-        MOCK_TELEMETRY_CHANNEL.sender(),
-        300,
-    );
+    let channels2 = SystemControllerChannels {
+        motor_tx: MOTOR_CHANNEL.sender(),
+        sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
+        sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
+        sensor_west_tx: SENSOR_WEST_CHANNEL.sender(),
+        battery_tx: BATTERY_CHANNEL.sender(),
+        thermal_tx: THERMAL_CHANNEL.sender(),
+        led_tx: LED_CHANNEL.sender(),
+        telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
+    };
+    let mut controller = SystemController::new(channels2, 300);
 
     assert_eq!(controller.status(), SystemStatus::PowerDown);
 
@@ -189,17 +189,17 @@ fn test_power_down_and_gesture_detection() {
     static THERMAL_CHANNEL: Channel<CriticalSectionRawMutex, ThermalCommand, 4> = Channel::new();
     static LED_CHANNEL: Channel<CriticalSectionRawMutex, SystemLedState, 4> = Channel::new();
 
-    let mut controller = SystemController::new(
-        MOTOR_CHANNEL.sender(),
-        SENSOR_NORTH_CHANNEL.sender(),
-        SENSOR_EAST_CHANNEL.sender(),
-        SENSOR_WEST_CHANNEL.sender(),
-        BATTERY_CHANNEL.sender(),
-        THERMAL_CHANNEL.sender(),
-        LED_CHANNEL.sender(),
-        MOCK_TELEMETRY_CHANNEL.sender(),
-        300,
-    );
+    let channels3 = SystemControllerChannels {
+        motor_tx: MOTOR_CHANNEL.sender(),
+        sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
+        sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
+        sensor_west_tx: SENSOR_WEST_CHANNEL.sender(),
+        battery_tx: BATTERY_CHANNEL.sender(),
+        thermal_tx: THERMAL_CHANNEL.sender(),
+        led_tx: LED_CHANNEL.sender(),
+        telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
+    };
+    let mut controller = SystemController::new(channels3, 300);
 
     // 1. Verify booting into PowerDown
     assert_eq!(controller.status(), SystemStatus::PowerDown);
@@ -309,17 +309,17 @@ fn test_invalid_critical_soc_threshold_panic() {
     static THERMAL_CHANNEL: Channel<CriticalSectionRawMutex, ThermalCommand, 4> = Channel::new();
     static LED_CHANNEL: Channel<CriticalSectionRawMutex, SystemLedState, 4> = Channel::new();
 
-    let mut controller = SystemController::new(
-        MOTOR_CHANNEL.sender(),
-        SENSOR_NORTH_CHANNEL.sender(),
-        SENSOR_EAST_CHANNEL.sender(),
-        SENSOR_WEST_CHANNEL.sender(),
-        BATTERY_CHANNEL.sender(),
-        THERMAL_CHANNEL.sender(),
-        LED_CHANNEL.sender(),
-        MOCK_TELEMETRY_CHANNEL.sender(),
-        300,
-    );
+    let channels4 = SystemControllerChannels {
+        motor_tx: MOTOR_CHANNEL.sender(),
+        sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
+        sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
+        sensor_west_tx: SENSOR_WEST_CHANNEL.sender(),
+        battery_tx: BATTERY_CHANNEL.sender(),
+        thermal_tx: THERMAL_CHANNEL.sender(),
+        led_tx: LED_CHANNEL.sender(),
+        telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
+    };
+    let mut controller = SystemController::new(channels4, 300);
 
     // Set critical threshold to a value greater than LOW_BATTERY_SOC_THRESHOLD (20)
     controller.set_critical_soc_threshold(25);

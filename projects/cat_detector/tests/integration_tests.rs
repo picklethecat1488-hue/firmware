@@ -59,17 +59,17 @@ fn test_system_integration_flow() {
         use model::calibration::{Calibration, CalibrationType};
         motor_ctrl.set_calibration(CalibrationType::MotorCal(80, 800));
         let mut led_ctrl = LedController::new(mock_led);
-        let mut system_ctrl = SystemController::new(
-            MOTOR_CHANNEL.sender(),
-            SENSOR_NORTH_CHANNEL.sender(),
-            SENSOR_EAST_CHANNEL.sender(),
-            SENSOR_WEST_CHANNEL.sender(),
-            BATTERY_CHANNEL.sender(),
-            THERMAL_CHANNEL.sender(),
-            LED_CHANNEL.sender(),
-            TELEMETRY_CHANNEL.sender(),
-            300,
-        );
+        let channels = cat_detector::system_controller::SystemControllerChannels {
+            motor_tx: MOTOR_CHANNEL.sender(),
+            sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
+            sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
+            sensor_west_tx: SENSOR_WEST_CHANNEL.sender(),
+            battery_tx: BATTERY_CHANNEL.sender(),
+            thermal_tx: THERMAL_CHANNEL.sender(),
+            led_tx: LED_CHANNEL.sender(),
+            telemetry_tx: TELEMETRY_CHANNEL.sender(),
+        };
+        let mut system_ctrl = SystemController::new(channels, 300);
 
         // Set system controller thresholds
         system_ctrl.set_critical_soc_threshold(10);

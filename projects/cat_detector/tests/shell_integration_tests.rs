@@ -178,6 +178,19 @@ fn test_shell_controller_integration_each_command() {
     let mut motor_ctrl = MockMotorCtrl;
     let mut temp_sensor = MockTempSensor;
 
+    let pointers = app::shell_controller::ShellControllerPointers {
+        i2c_ptr: Some(&mut i2c as *mut _),
+        motor_ptr: Some(&mut motor as *mut _),
+        flash_ptr: Some(&mut flash as *mut _),
+        battery_ctrl_ptr: Some(&mut battery_ctrl as *mut _),
+        thermal_ctrl_ptr: Some(&mut thermal_ctrl as *mut _),
+        sensor_north_ctrl_ptr: Some(&mut sensor_north_ctrl as *mut _),
+        sensor_east_ctrl_ptr: Some(&mut sensor_east_ctrl as *mut _),
+        sensor_west_ctrl_ptr: Some(&mut sensor_west_ctrl as *mut _),
+        motor_ctrl_ptr: Some(&mut motor_ctrl as *mut _),
+        temp_sensor_ptr: Some(&mut temp_sensor as *mut _),
+    };
+
     let mut shell = ShellController::<
         _,
         4,
@@ -192,16 +205,7 @@ fn test_shell_controller_integration_each_command() {
     >::new(
         MOTOR_CHANNEL.sender(),
         SYSTEM_CHANNEL.sender(),
-        Some(&mut i2c as *mut _),
-        Some(&mut motor as *mut _),
-        Some(&mut flash as *mut _),
-        Some(&mut battery_ctrl as *mut _),
-        Some(&mut thermal_ctrl as *mut _),
-        Some(&mut sensor_north_ctrl as *mut _),
-        Some(&mut sensor_east_ctrl as *mut _),
-        Some(&mut sensor_west_ctrl as *mut _),
-        Some(&mut motor_ctrl as *mut _),
-        Some(&mut temp_sensor as *mut _),
+        pointers,
         0,
         1024 * 64,
     );

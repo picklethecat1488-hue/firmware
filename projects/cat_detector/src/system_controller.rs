@@ -60,6 +60,30 @@ const _: () = {
     );
 };
 
+/// Group of channels for coordinating control tasks from SystemController.
+pub struct SystemControllerChannels<
+    MutexRaw: RawMutex + 'static,
+    const N: usize,
+    const T_CAP: usize,
+> {
+    /// Motor channel sender
+    pub motor_tx: Sender<'static, MutexRaw, MotorCommand, N>,
+    /// Sensor North channel sender
+    pub sensor_north_tx: Sender<'static, MutexRaw, SensorCommand, N>,
+    /// Sensor East channel sender
+    pub sensor_east_tx: Sender<'static, MutexRaw, SensorCommand, N>,
+    /// Sensor West channel sender
+    pub sensor_west_tx: Sender<'static, MutexRaw, SensorCommand, N>,
+    /// Battery channel sender
+    pub battery_tx: Sender<'static, MutexRaw, BatteryCommand, N>,
+    /// Thermal channel sender
+    pub thermal_tx: Sender<'static, MutexRaw, ThermalCommand, N>,
+    /// LED channel sender
+    pub led_tx: Sender<'static, MutexRaw, SystemLedState, N>,
+    /// Telemetry channel sender
+    pub telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, T_CAP>,
+}
+
 /// Controller responsible for tracking global status and coordinating other subsystems.
 /// Controller responsible for tracking global status and coordinating other subsystems.
 pub struct SystemController<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize = 16> {
@@ -105,16 +129,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
     SystemController<MutexRaw, N, T_CAP>
 {
     /// Creates a new SystemController instance.
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
-        motor_tx: Sender<'static, MutexRaw, MotorCommand, N>,
-        sensor_north_tx: Sender<'static, MutexRaw, SensorCommand, N>,
-        sensor_east_tx: Sender<'static, MutexRaw, SensorCommand, N>,
-        sensor_west_tx: Sender<'static, MutexRaw, SensorCommand, N>,
-        battery_tx: Sender<'static, MutexRaw, BatteryCommand, N>,
-        thermal_tx: Sender<'static, MutexRaw, ThermalCommand, N>,
-        led_tx: Sender<'static, MutexRaw, SystemLedState, N>,
-        telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, T_CAP>,
+        channels: SystemControllerChannels<MutexRaw, N, T_CAP>,
         proximity_threshold_mm: u16,
     ) -> Self {
         let state_manager = firmware_lib::system::SystemStateManager::new(
@@ -123,18 +139,18 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             LOW_BATTERY_SOC_THRESHOLD,
             MID_BATTERY_SOC_THRESHOLD,
             HIGH_BATTERY_SOC_THRESHOLD,
-            telemetry_tx,
+            channels.telemetry_tx,
         );
 
         Self {
             state_manager,
-            motor_tx,
-            sensor_north_tx,
-            sensor_east_tx,
-            sensor_west_tx,
-            battery_tx,
-            thermal_tx,
-            led_tx,
+            motor_tx: channels.motor_tx,
+            sensor_north_tx: channels.sensor_north_tx,
+            sensor_east_tx: channels.sensor_east_tx,
+            sensor_west_tx: channels.sensor_west_tx,
+            battery_tx: channels.battery_tx,
+            thermal_tx: channels.thermal_tx,
+            led_tx: channels.led_tx,
             distance_north: 1000,
             distance_east: 1000,
             distance_west: 1000,

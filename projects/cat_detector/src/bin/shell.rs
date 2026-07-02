@@ -146,20 +146,24 @@ async fn main(spawner: Spawner) {
 
     let temp_sensor_ptr = board.temp_sensor.as_mut().map(|s| s as *mut _);
 
+    let pointers = app::shell_controller::ShellControllerPointers {
+        i2c_ptr: unsafe { Some(BOARD_I2C.unwrap()) },
+        motor_ptr: unsafe { Some(BOARD_MOTOR.unwrap()) },
+        flash_ptr: unsafe { Some(PANIC_FLASH.as_mut().unwrap()) },
+        battery_ctrl_ptr: None,
+        thermal_ctrl_ptr: None,
+        sensor_north_ctrl_ptr: None,
+        sensor_east_ctrl_ptr: None,
+        sensor_west_ctrl_ptr: None,
+        motor_ctrl_ptr: None,
+        temp_sensor_ptr,
+    };
+
     let mut processor =
         app::shell_controller::ShellController::<_, 4, _, _, _, (), (), (), (), _>::new(
             app::MOTOR_CHANNEL.sender(),
             app::SYSTEM_CHANNEL.sender(),
-            unsafe { Some(BOARD_I2C.unwrap()) },
-            unsafe { Some(BOARD_MOTOR.unwrap()) },
-            unsafe { Some(PANIC_FLASH.as_mut().unwrap()) },
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            temp_sensor_ptr,
+            pointers,
             app::STORAGE_PARTITION_START,
             app::STORAGE_PARTITION_END,
         );
