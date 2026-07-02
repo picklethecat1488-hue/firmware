@@ -22,7 +22,7 @@ opt-level = "s"      # Optimize for size
 lto = true           # Enable Link-Time Optimization
 codegen-units = 1    # Reduce codegen units to improve size optimizations
 panic = "abort"      # Abort on panic to remove stack unwinding tables
-strip = true         # Strip symbols and debug info from the binary
+strip = false        # Keep symbols and debug info for MemBrowse analysis
 
 [profile.dev]
 opt-level = 1        # Enable light optimization to drastically reduce async/embassy code size
