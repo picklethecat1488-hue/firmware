@@ -91,30 +91,59 @@ Alternatively, for UART-based logging, configure the microcontroller's UART TX/R
 
 ## Flash Diagnostics Tool (`fs_tool`)
 
-We provide a host command-line utility, `fs_tool`, to inspect, query, and decode flash memory dumps from the microcontroller's sequential-storage partition.
+We provide a host command-line utility, `fs_tool`, to inspect, query, and decode flash memory contents from the microcontroller's sequential-storage partition. It supports two modes of operation:
+- **Direct Device Mode**: Connects directly to the attached target via `probe-rs`, using `--project <PROJECT>` to dynamically look up the target chip and flash partition mapping.
+- **Offline Dump Mode**: Reads and writes a local binary flash image file via `--dump <PATH>`.
 
 ### 1. Build host fs_tool
 ```bash
 cargo build --bin fs_tool --release
 ```
 
-### 2. Extract flash partition
-To pull a raw binary flash memory dump from the Pico target using `probe-rs`:
-```bash
-probe-rs read-mem --chip RP2040 0x101C0000 262144 flash_dump.bin
-```
+### 2. Query directory files (`ls`)
+- **Direct connection**:
+  ```bash
+  cargo run --bin fs_tool -- --project cat_detector ls
+  ```
+- **Offline dump file**:
+  ```bash
+  cargo run --bin fs_tool -- --dump flash_dump.bin ls
+  ```
 
-### 3. Query directory files
-```bash
-cargo run --bin fs_tool -- --dump flash_dump.bin ls
-```
+### 3. Copy files to/from device (`cp`)
+- **Copy telemetry from device to host**:
+  ```bash
+  cargo run --bin fs_tool -- --project cat_detector cp dev:telemetry.rrd local_telemetry.rrd
+  ```
+- **Copy new calibration config to device**:
+  ```bash
+  cargo run --bin fs_tool -- --project cat_detector cp local_cal.bin dev:calibration.bin
+  ```
 
-### 4. Export telemetry to Rerun-compatible CSV
-```bash
-cargo run --bin fs_tool -- --dump flash_dump.bin export-telemetry telemetry.csv
-```
+### 4. Export telemetry to CSV
+- **Direct connection**:
+  ```bash
+  cargo run --bin fs_tool -- --project cat_detector export-telemetry telemetry.csv
+  ```
+- **Offline dump file**:
+  ```bash
+  cargo run --bin fs_tool -- --dump flash_dump.bin export-telemetry telemetry.csv
+  ```
 
 ### 5. Decode crash dumps to symbolicated backtraces
+- **Direct connection**:
+  ```bash
+  cargo run --bin fs_tool -- --project cat_detector crash-log --elf target/thumbv6m-none-eabi/release/cat_detector
+  ```
+- **Offline dump file**:
+  ```bash
+  cargo run --bin fs_tool -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector
+  ```
+
+---
+
+### Extracting flash partition manually (Fallback)
+If you prefer to extract the raw binary flash memory partition manually from the target Pico using `probe-rs`:
 ```bash
-cargo run --bin fs_tool -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector
+probe-rs read-mem --chip RP2040 0x101C0000 262144 flash_dump.bin
 ```
