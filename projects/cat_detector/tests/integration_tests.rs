@@ -44,6 +44,13 @@ fn test_system_integration_flow() {
             16,
         > = Channel::new();
 
+        let mut telemetry_records = Vec::new();
+        let mut drain_telemetry = || {
+            while let Ok(rec) = TELEMETRY_CHANNEL.try_receive() {
+                telemetry_records.push(rec);
+            }
+        };
+
         // Mock peripherals
         let mock_motor = MockMotor::new();
         let mock_led = MockLed::new();
@@ -121,6 +128,7 @@ fn test_system_integration_flow() {
             .unwrap();
         let cmd = SYSTEM_CHANNEL.receive().await;
         system_ctrl.handle_command(cmd);
+        drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::Active);
 
         // Check that commands were sent to LED channel
@@ -138,6 +146,7 @@ fn test_system_integration_flow() {
         sensor_ctrl_north.update().unwrap();
         let cmd = SYSTEM_CHANNEL.receive().await;
         system_ctrl.handle_command(cmd);
+        drain_telemetry();
 
         // Proximity detected -> motor starts
         assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::SetSpeed(100)));
@@ -155,6 +164,7 @@ fn test_system_integration_flow() {
             .unwrap();
         let cmd = SYSTEM_CHANNEL.receive().await;
         system_ctrl.handle_command(cmd);
+        drain_telemetry();
 
         // Should transition to PowerDown, stop motor, and blink red
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
@@ -176,6 +186,7 @@ fn test_system_integration_flow() {
             charger_state: ChargeState::DoneOrStandbyOrUnplugged,
         };
         system_ctrl.handle_command(cmd);
+        drain_telemetry();
         // Should remain critical (PowerDown) because 11 < 10 + 2 (12)
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
         assert_eq!(
@@ -189,6 +200,7 @@ fn test_system_integration_flow() {
             charger_state: ChargeState::Charging,
         };
         system_ctrl.handle_command(cmd);
+        drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidOrange));
 
@@ -198,6 +210,7 @@ fn test_system_integration_flow() {
             charger_state: ChargeState::DoneOrStandbyOrUnplugged,
         };
         system_ctrl.handle_command(cmd);
+        drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
 
@@ -207,6 +220,7 @@ fn test_system_integration_flow() {
         system_ctrl.update_gesture(0);
         system_ctrl.update_gesture(2_000_000);
         system_ctrl.update_gesture(5_000_000);
+        drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::Active);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
 
@@ -214,6 +228,7 @@ fn test_system_integration_flow() {
         system_ctrl.distance_east = 1000;
         system_ctrl.distance_west = 1000;
         system_ctrl.update_gesture(6_000_000);
+        drain_telemetry();
 
         // 5. Simulate thermal critical: Temp reaches 61°C (61000 mC)
         {
@@ -227,6 +242,7 @@ fn test_system_integration_flow() {
         let cmd = SYSTEM_CHANNEL.receive().await;
         println!("Received command: {:?}", cmd);
         system_ctrl.handle_command(cmd);
+        drain_telemetry();
 
         // Critical temperature triggers safety shutdown -> Sleep state
         assert_eq!(system_ctrl.status(), SystemStatus::Sleep);
@@ -243,6 +259,7 @@ fn test_system_integration_flow() {
 
         // Wake up from Sleep to Active
         system_ctrl.handle_command(SystemCommand::ActivityDetected);
+        drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::Active);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
 
@@ -255,6 +272,7 @@ fn test_system_integration_flow() {
         system_ctrl.update_gesture(0);
         system_ctrl.update_gesture(2_000_000);
         system_ctrl.update_gesture(5_000_000);
+        drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
         assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::SetSpeed(100)));
@@ -267,6 +285,7 @@ fn test_system_integration_flow() {
             charger_state: ChargeState::Charging,
         };
         system_ctrl.handle_command(cmd);
+        drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
 
@@ -276,6 +295,7 @@ fn test_system_integration_flow() {
             charger_state: ChargeState::DoneOrStandbyOrUnplugged,
         };
         system_ctrl.handle_command(cmd);
+        drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
 
@@ -285,6 +305,7 @@ fn test_system_integration_flow() {
         system_ctrl.update_gesture(6_000_000);
         system_ctrl.update_gesture(8_000_000);
         system_ctrl.update_gesture(11_000_000);
+        drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::Active);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
 
@@ -293,10 +314,12 @@ fn test_system_integration_flow() {
         sensor_ctrl_north.update().unwrap();
         let cmd = SYSTEM_CHANNEL.receive().await;
         system_ctrl.handle_command(cmd);
+        drain_telemetry();
 
         system_ctrl.distance_east = 1000;
         system_ctrl.distance_west = 1000;
         system_ctrl.update_gesture(12_000_000);
+        drain_telemetry();
 
         // Drain motor channel for a clean state
         while MOTOR_CHANNEL.try_receive().is_ok() {}
@@ -304,9 +327,40 @@ fn test_system_integration_flow() {
         // Inactivity for timeout triggers Sleep
         for _ in 0..cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS {
             system_ctrl.tick();
+            drain_telemetry();
         }
         assert_eq!(system_ctrl.status(), SystemStatus::Sleep);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidBlue));
         assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::Stop));
+
+        // Verify that no telemetry writes were dropped and all expected events are captured
+        assert!(!telemetry_records.is_empty());
+        assert!(telemetry_records.len() >= 15);
+
+        // Filter and inspect state transitions
+        let system_states: Vec<SystemStatus> = telemetry_records
+            .iter()
+            .filter_map(|rec| {
+                if let model::telemetry::TelemetryRecord::System(status) = rec {
+                    Some(*status)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        assert_eq!(
+            system_states,
+            vec![
+                SystemStatus::Active,    // wake up from SoC = 85%
+                SystemStatus::PowerDown, // SoC drops to 5%
+                SystemStatus::Active,    // unlock gesture
+                SystemStatus::Sleep,     // thermal critical
+                SystemStatus::Active,    // activity wake
+                SystemStatus::PowerDown, // long press to lock
+                SystemStatus::Active,    // unlock after charging
+                SystemStatus::Sleep,     // inactivity timeout
+            ]
+        );
     });
 }
