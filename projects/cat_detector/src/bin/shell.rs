@@ -9,25 +9,24 @@
 #![allow(static_mut_refs)]
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+use cat_detector as app;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
-    defmt_rtt as _,
-    embassy_executor::Spawner,
-    embassy_rp::uart::UartTx,
-    embedded_cli::cli::{CliBuilder, CliHandle},
-    embedded_cli::command::RawCommand,
-    embedded_cli::service::{CommandProcessor, FromRaw},
+    defmt_rtt as _, embassy_executor::Spawner, embassy_rp::uart::UartTx,
+    embedded_cli::cli::CliBuilder,
 };
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    cat_detector::handle_panic_with_sizes::<
-        { cat_detector::FLASH_SIZE },
-        { cat_detector::STACK_TOP },
-        { cat_detector::FLASH_START },
-        { cat_detector::FLASH_END },
-        { cat_detector::FLASH_WRITE_SIZE },
-        { cat_detector::FLASH_ERASE_SIZE },
+    app::handle_panic_with_sizes::<
+        { app::FLASH_SIZE },
+        { app::STACK_TOP },
+        { app::FLASH_START },
+        { app::FLASH_END },
+        { app::FLASH_WRITE_SIZE },
+        { app::FLASH_ERASE_SIZE },
     >(info);
 }
 
@@ -64,107 +63,27 @@ impl<'d, T: embassy_rp::uart::Instance, M: embassy_rp::uart::Mode> IoWrite
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-use cat_detector::CliCommand;
+use app::CliCommand;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-struct CliProcessor;
+static mut BOARD_I2C: Option<
+    *mut embassy_rp::i2c::I2c<'static, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Blocking>,
+> = None;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-impl<W: IoWrite<Error = E>, E: embedded_io::Error> CommandProcessor<W, E> for CliProcessor {
-    fn process<'a>(
-        &mut self,
-        cli: &mut CliHandle<'_, W, E>,
-        raw: RawCommand<'a>,
-    ) -> Result<(), embedded_cli::service::ProcessError<'a, E>> {
-        let writer = cli.writer();
-        match CliCommand::parse(raw) {
-            Ok(CliCommand::Motor { speed }) => {
-                let _ = cat_detector::MOTOR_CHANNEL
-                    .try_send(controller::motor_controller::MotorCommand::SetSpeed(speed));
-                let _ = core::writeln!(
-                    writer,
-                    "\r\nSent MotorCommand::SetSpeed({}) to controller",
-                    speed
-                );
-            }
-            Ok(CliCommand::Stop) => {
-                let _ = cat_detector::MOTOR_CHANNEL
-                    .try_send(controller::motor_controller::MotorCommand::Stop);
-                let _ = core::writeln!(writer, "\r\nSent MotorCommand::Stop to controller");
-            }
-            Ok(CliCommand::Battery) => {
-                let _ = cat_detector::BATTERY_CHANNEL
-                    .try_send(controller::battery_controller::BatteryCommand::CheckStatus);
-                let _ =
-                    core::writeln!(writer, "\r\nSent BatteryCommand::CheckStatus to controller");
-            }
-            Ok(CliCommand::Thermal) => {
-                let _ = cat_detector::THERMAL_CHANNEL
-                    .try_send(controller::thermal_controller::ThermalCommand::CheckTemp);
-                let _ = core::writeln!(writer, "\r\nSent ThermalCommand::CheckTemp to controller");
-            }
-            Ok(CliCommand::Proximity) => {
-                let _ = cat_detector::SENSOR_NORTH_CHANNEL
-                    .try_send(controller::sensor_controller::SensorCommand::ReadSensors);
-                let _ = cat_detector::SENSOR_EAST_CHANNEL
-                    .try_send(controller::sensor_controller::SensorCommand::ReadSensors);
-                let _ = cat_detector::SENSOR_WEST_CHANNEL
-                    .try_send(controller::sensor_controller::SensorCommand::ReadSensors);
-                let _ = core::writeln!(
-                    writer,
-                    "\r\nSent SensorCommand::ReadSensors to all three sensor controllers"
-                );
-            }
-            Ok(CliCommand::Wake) => {
-                let _ = cat_detector::SYSTEM_CHANNEL
-                    .try_send(cat_detector::system_controller::SystemCommand::Wake);
-                let _ = core::writeln!(writer, "\r\nSent SystemCommand::Wake to controller");
-            }
-            Ok(CliCommand::Sleep) => {
-                let _ = cat_detector::SYSTEM_CHANNEL
-                    .try_send(cat_detector::system_controller::SystemCommand::Sleep);
-                let _ = core::writeln!(writer, "\r\nSent SystemCommand::Sleep to controller");
-            }
-            Ok(CliCommand::Activity) => {
-                let _ = cat_detector::SYSTEM_CHANNEL
-                    .try_send(cat_detector::system_controller::SystemCommand::ActivityDetected);
-                let _ = core::writeln!(
-                    writer,
-                    "\r\nSent SystemCommand::ActivityDetected to controller"
-                );
-            }
-            Ok(CliCommand::Crash) => {
-                panic!("Simulated crash dump flow");
-            }
-            Ok(CliCommand::Help) => {
-                let _ = core::writeln!(writer, "\r\nCommands:");
-                let _ = core::writeln!(writer, "  motor <speed>    : Set motor speed (0-100)");
-                let _ = core::writeln!(writer, "  stop             : Stop the motor");
-                let _ = core::writeln!(writer, "  battery          : Trigger battery status check");
-                let _ = core::writeln!(writer, "  thermal          : Trigger thermal temp check");
-                let _ = core::writeln!(
-                    writer,
-                    "  proximity        : Trigger proximity sensors check"
-                );
-                let _ = core::writeln!(writer, "  wake             : Wake system to active state");
-                let _ = core::writeln!(writer, "  sleep            : Force system to sleep state");
-                let _ = core::writeln!(
-                    writer,
-                    "  activity         : Simulate user/cat activity event"
-                );
-                let _ = core::writeln!(
-                    writer,
-                    "  crash            : Trigger a panic to test crash dump"
-                );
-                let _ = core::writeln!(writer, "  help             : Show this help summary");
-            }
-            Err(e) => {
-                let _ = core::writeln!(writer, "\r\nError parsing command: {:?}", e);
-            }
-        }
-        Ok(())
-    }
-}
+static mut BOARD_MOTOR: Option<
+    *mut peripherals::motor::GpioMotor<embassy_rp::gpio::Flex<'static>>,
+> = None;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+static mut PANIC_FLASH: Option<
+    embassy_rp::flash::Flash<
+        'static,
+        embassy_rp::peripherals::FLASH,
+        embassy_rp::flash::Blocking,
+        { app::FLASH_SIZE },
+    >,
+> = None;
 
 /// Main application entry point for the bringup shell.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -174,7 +93,19 @@ async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
     // Initialize board peripherals using the unified board configuration
-    let board = cat_detector::Board::init(p);
+    let mut board = app::Board::init(p);
+
+    // Extract the motor control pin from the board configuration array
+    let motor_pin = board.gpio_pins[app::LED_PIN as usize]
+        .take()
+        .expect("Motor pin must be available");
+
+    let mut motor = peripherals::motor::GpioMotor::new(motor_pin);
+
+    unsafe {
+        BOARD_I2C = Some(&mut board.i2c as *mut _ as *mut _);
+        BOARD_MOTOR = Some(&mut motor as *mut _);
+    }
 
     // Split the UART into TX and RX parts to satisfy the borrow checker
     let (tx, mut rx) = board.uart.split();
@@ -201,27 +132,37 @@ async fn main(spawner: Spawner) {
     });
 
     // Register system time function for the panic handler
-    cat_detector::set_time_fn(cat_detector::system_time);
+    app::set_time_fn(app::system_time);
 
     // Initialize the modular panic handler
-    static mut PANIC_FLASH: Option<
-        embassy_rp::flash::Flash<
-            'static,
-            embassy_rp::peripherals::FLASH,
-            embassy_rp::flash::Blocking,
-            { cat_detector::FLASH_SIZE },
-        >,
-    > = None;
     let panic_flash = unsafe {
         PANIC_FLASH = Some(embassy_rp::flash::Flash::new_blocking(board.flash));
         PANIC_FLASH.as_mut().unwrap()
     };
-    cat_detector::init_panic_handler(
+    app::init_panic_handler(
         panic_flash,
-        cat_detector::STORAGE_PARTITION_START..cat_detector::STORAGE_PARTITION_END,
+        app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
     );
 
-    let mut processor = CliProcessor;
+    let temp_sensor_ptr = board.temp_sensor.as_mut().map(|s| s as *mut _);
+
+    let mut processor =
+        app::shell_controller::ShellController::<_, 4, _, _, _, (), (), (), (), _>::new(
+            app::MOTOR_CHANNEL.sender(),
+            app::SYSTEM_CHANNEL.sender(),
+            unsafe { Some(BOARD_I2C.unwrap()) },
+            unsafe { Some(BOARD_MOTOR.unwrap()) },
+            unsafe { Some(PANIC_FLASH.as_mut().unwrap()) },
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            temp_sensor_ptr,
+            app::STORAGE_PARTITION_START,
+            app::STORAGE_PARTITION_END,
+        );
 
     // Run the main input loop feeding bytes to the embedded-cli processor
     loop {

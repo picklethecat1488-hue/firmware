@@ -37,6 +37,9 @@ pub const TOF_WEST_INT_PIN: u32 = 9;
 /// Fuel Gauge Interrupt/Alert pin (GPIO 10)
 pub const FUEL_GAUGE_INT_PIN: u32 = 10;
 
+/// The default proximity threshold in millimeters under which target presence is detected.
+pub const DEFAULT_PROXIMITY_THRESHOLD_MM: u16 = 300;
+
 /// Charger Status 1 (S1 / STAT1 / FAULT) pin (GPIO 12)
 pub const CHARGER_S1_PIN: u32 = 12;
 /// Charger Status 2 (S2 / STAT2 / CHG) pin (GPIO 13)
@@ -73,6 +76,9 @@ pub use bsp_host::*;
 
 /// System state and orchestration controller.
 pub mod system_controller;
+
+/// Bringup serial command and shell controller.
+pub mod shell_controller;
 
 /// Shared command channel for the Motor Controller.
 pub static MOTOR_CHANNEL: embassy_sync::channel::Channel<
@@ -144,11 +150,6 @@ pub static FILESYSTEM_CHANNEL: embassy_sync::channel::Channel<
     16,
 > = embassy_sync::channel::Channel::new();
 
-/// Log a telemetry record to the global asynchronous pipeline.
-pub fn log_telemetry(record: model::types::TelemetryRecord) {
-    let _ = TELEMETRY_CHANNEL.try_send(record);
-}
-
 /// Re-export the telemetry module from the shared library
 pub use firmware_lib::telemetry;
 
@@ -202,6 +203,31 @@ pub fn system_time() -> u64 {
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 defmt::timestamp!("{=u64:us}", system_time());
 
+/// Represents the physical directions of ToF proximity sensors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SensorDirection {
+    /// North sensor
+    North,
+    /// East sensor
+    East,
+    /// West sensor
+    West,
+}
+
+impl<'a> embedded_cli::arguments::FromArgument<'a> for SensorDirection {
+    fn from_arg(arg: &'a str) -> Result<Self, embedded_cli::arguments::FromArgumentError<'a>> {
+        match arg {
+            "north" => Ok(SensorDirection::North),
+            "east" => Ok(SensorDirection::East),
+            "west" => Ok(SensorDirection::West),
+            _ => Err(embedded_cli::arguments::FromArgumentError {
+                value: arg,
+                expected: "one of 'north', 'east', or 'west'",
+            }),
+        }
+    }
+}
+
 /// Derived command enum representing all supported user commands.
 #[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
 pub enum CliCommand {
@@ -226,6 +252,50 @@ pub enum CliCommand {
     Activity,
     /// Trigger a panic to test the crash dump / panic flow
     Crash,
-    /// Show help and usage summary
-    Help,
+    /// Calibrate ToF sensors with target held at the cover (0mm)
+    #[command(name = "cal_near")]
+    CalNear {
+        /// Sensor direction ('north', 'east', or 'west')
+        direction: SensorDirection,
+    },
+    /// Calibrate ToF sensors with target held at 100mm
+    #[command(name = "cal_far")]
+    CalFar {
+        /// Sensor direction ('north', 'east', or 'west')
+        direction: SensorDirection,
+    },
+    /// Calibrate motor current levels (cal_motor <empty|100ml|full>)
+    #[command(name = "cal_motor")]
+    CalMotor {
+        /// Calibration state ('empty', '100ml', or 'full')
+        state: MotorCalState,
+    },
+    /// Read the RP2040 system temperature
+    #[command(name = "mcu_temp")]
+    McuTemp,
+}
+
+/// Represents the motor calibration target state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MotorCalState {
+    /// Empty water bowl
+    Empty,
+    /// Bowl with 100ml of water
+    Water100ml,
+    /// Full water bowl
+    Full,
+}
+
+impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
+    fn from_arg(arg: &'a str) -> Result<Self, embedded_cli::arguments::FromArgumentError<'a>> {
+        match arg {
+            "empty" => Ok(MotorCalState::Empty),
+            "100ml" => Ok(MotorCalState::Water100ml),
+            "full" => Ok(MotorCalState::Full),
+            _ => Err(embedded_cli::arguments::FromArgumentError {
+                value: arg,
+                expected: "one of 'empty', '100ml', or 'full'",
+            }),
+        }
+    }
 }

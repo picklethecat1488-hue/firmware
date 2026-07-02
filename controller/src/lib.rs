@@ -18,6 +18,54 @@ pub mod telemetry_controller;
 /// Thermal monitoring and regulation controller.
 pub mod thermal_controller;
 
+/// Trait for reading battery status blocking-ly.
+pub trait BlockingBatteryReader {
+    /// Read voltage (mV) and state of charge (%).
+    fn read_battery_blocking(&self) -> Option<(u32, u8)>;
+}
+
+/// Trait for reading temperature blocking-ly.
+pub trait BlockingThermalReader {
+    /// Read temperature in milli-Celsius.
+    fn read_temperature_blocking(&self) -> Option<i32>;
+}
+
+/// Trait for reading proximity distance blocking-ly.
+pub trait BlockingProximityReader {
+    /// Read distance in millimeters.
+    fn read_distance_blocking(&mut self) -> Option<u16>;
+}
+
+impl BlockingBatteryReader for () {
+    fn read_battery_blocking(&self) -> Option<(u32, u8)> {
+        None
+    }
+}
+
+impl BlockingThermalReader for () {
+    fn read_temperature_blocking(&self) -> Option<i32> {
+        None
+    }
+}
+
+impl BlockingProximityReader for () {
+    fn read_distance_blocking(&mut self) -> Option<u16> {
+        None
+    }
+}
+
+/// Trait for reading motor current/torque blocking-ly.
+pub trait BlockingMotorReader {
+    /// Read motor current in mA.
+    fn read_current_ma_blocking(&mut self) -> Option<i32>;
+}
+
+impl BlockingMotorReader for () {
+    fn read_current_ma_blocking(&mut self) -> Option<i32> {
+        None
+    }
+}
+
 /// A macro to define and spawn the Thermal Controller task.
 ///
 /// Generates the task definition generic over the battery driver type,

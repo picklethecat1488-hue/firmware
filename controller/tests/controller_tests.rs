@@ -9,6 +9,10 @@ fn test_motor_controller_flow() {
 
     assert_eq!(controller.state(), MotorState::Off);
 
+    // Apply motor calibration so that it can be started
+    use model::calibration::{Calibration, CalibrationType};
+    controller.set_calibration(CalibrationType::MotorCal(80, 800));
+
     // Turn on the motor using handle_command
     controller.handle_command(MotorCommand::SetSpeed(100), None);
     assert_eq!(controller.state(), MotorState::On);

@@ -3,7 +3,7 @@ use model::types::Gesture;
 
 #[test]
 fn test_gesture_detector_debounce() {
-    let mut detector = GestureDetector::new(20);
+    let mut detector = GestureDetector::new(20, 300);
 
     // 1. All out of range -> returns Some(ProximityNotDetected), no duration
     assert_eq!(

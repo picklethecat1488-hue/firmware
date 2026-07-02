@@ -45,3 +45,63 @@ fn test_l9110s_compilation() {
     assert!(motor.stop().is_ok());
     assert!(motor.set_speed(100).is_ok());
 }
+
+struct DummyI2c;
+
+impl embedded_hal::i2c::ErrorType for DummyI2c {
+    type Error = core::convert::Infallible;
+}
+
+impl embedded_hal::i2c::I2c for DummyI2c {
+    fn read(&mut self, _address: u8, _read: &mut [u8]) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn write(&mut self, _address: u8, _write: &[u8]) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn write_read(
+        &mut self,
+        _address: u8,
+        _write: &[u8],
+        _read: &mut [u8],
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn transaction(
+        &mut self,
+        _address: u8,
+        _operations: &mut [embedded_hal::i2c::Operation<'_>],
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[test]
+fn test_vl53l0x_threshold_validation() {
+    use model::calibration::{Calibration, CalibrationType};
+    use peripherals::vl53l0x::Vl53l0x;
+
+    let mut sensor = Vl53l0x::new(DummyI2c, 0x30);
+    // Default threshold is 300, cal_near is 0.
+
+    // 1. Setting threshold to > cal_near + THRESHOLD_ERROR_MM should succeed.
+    sensor.set_threshold_mm(250);
+
+    // 2. Setting threshold to <= cal_near + THRESHOLD_ERROR_MM should panic.
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut s = Vl53l0x::new(DummyI2c, 0x30);
+        s.set_threshold_mm(10);
+    }));
+    assert!(res.is_err());
+
+    // 3. Setting calibration with threshold_mm > near + THRESHOLD_ERROR_MM should succeed.
+    sensor.set_calibration(CalibrationType::ProximityCal(50, 150));
+
+    // 4. Setting calibration with threshold_mm <= near + THRESHOLD_ERROR_MM should panic.
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut s = Vl53l0x::new(DummyI2c, 0x30);
+        s.set_threshold_mm(100);
+        s.set_calibration(CalibrationType::ProximityCal(90, 150));
+    }));
+    assert!(res.is_err());
+}
