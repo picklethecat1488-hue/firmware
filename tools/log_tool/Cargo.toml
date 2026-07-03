@@ -1,0 +1,15 @@
+[package]
+name = "log_tool"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+firmware_lib = { path = "../../lib" }
+tool_common = { path = "../lib" }
+defmt-decoder = "1.1.0"
+
+[target.'cfg(not(all(target_arch = "arm", target_os = "none")))'.dependencies]
+futures = "0.3"
+clap = { version = "4.4", features = ["derive"] }
+probe-rs = { version = "0.31.0", features = [] }
+indicatif = "0.17"

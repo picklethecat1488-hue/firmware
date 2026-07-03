@@ -7,6 +7,8 @@ members = [
     "lib",
     "projects/cat_detector",
     "tools/fs_tool",
+    "tools/log_tool",
+    "tools/lib",
 ]
 default-members = [
     "model",
@@ -15,6 +17,8 @@ default-members = [
     "lib",
     "projects/cat_detector",
     "tools/fs_tool",
+    "tools/log_tool",
+    "tools/lib",
 ]
 
 [profile.release]
