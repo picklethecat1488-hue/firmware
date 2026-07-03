@@ -166,8 +166,6 @@ pub use firmware_lib::panic_handler::handle_panic_with_sizes;
 /// Re-export the modular panic handler initialization
 pub use firmware_lib::panic_handler::init as init_panic_handler;
 
-/// Re-export the modular panic handler time registration
-pub use firmware_lib::panic_handler::set_time_fn;
 
 /// Returns the current system uptime in microseconds since boot (64-bit precision).
 pub fn system_time() -> u64 {
@@ -198,13 +196,12 @@ pub fn system_time() -> u64 {
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 pub fn get_hw_entropy() -> [u8; 16] {
     let mut entropy = [0u8; 16];
-    for i in 0..16 {
-        let mut byte = 0u8;
+    for byte in entropy.iter_mut() {
+        *byte = 0u8;
         for _ in 0..8 {
             let bit = unsafe { core::ptr::read_volatile(0x4006_001C as *const u32) } & 1;
-            byte = (byte << 1) | (bit as u8);
+            *byte = (*byte << 1) | (bit as u8);
         }
-        entropy[i] = byte;
     }
     entropy
 }
