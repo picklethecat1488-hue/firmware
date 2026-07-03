@@ -17,6 +17,8 @@ use {embassy_executor::Spawner, embassy_rp::uart::UartTx, embedded_cli::cli::Cli
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
+    let entropy = app::get_hw_entropy();
+    let micros = app::system_time();
     app::handle_panic_with_sizes::<
         { app::FLASH_SIZE },
         { app::STACK_TOP },
@@ -24,7 +26,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
         { app::FLASH_END },
         { app::FLASH_WRITE_SIZE },
         { app::FLASH_ERASE_SIZE },
-    >(info);
+    >(entropy, micros, info);
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -130,9 +132,6 @@ async fn main(spawner: Spawner) {
         let _ = core::writeln!(writer, "Type 'help' to print usage.");
         Ok(())
     });
-
-    // Register system time function for the panic handler
-    app::set_time_fn(app::system_time);
 
     // Initialize the modular panic handler
     let panic_flash = unsafe {
