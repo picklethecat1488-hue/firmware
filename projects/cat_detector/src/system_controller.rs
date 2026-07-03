@@ -260,7 +260,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                 ) {
                     self.set_status(next);
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    crate::log_info!("SystemController: entering low-power Sleep mode.");
+                    defmt::info!("SystemController: entering low-power Sleep mode.");
                     self.motor_tx.try_send(MotorCommand::Stop).unwrap();
                     self.led_tx.try_send(SystemLedState::SolidBlue).unwrap();
                 }
@@ -277,7 +277,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     self.led_tx.try_send(led).unwrap();
                     self.gesture_detector.reset();
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    crate::log_info!("SystemController: entering PowerDown state. Motor locked.");
+                    defmt::info!("SystemController: entering PowerDown state. Motor locked.");
                 }
             }
             SystemCommand::ActivityDetected => {
@@ -292,7 +292,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     .try_send(SystemLedState::BlinksRedFourTimes)
                     .unwrap();
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                crate::log_info!("SystemController: Alert triggered. LED indicator set to RED.");
+                defmt::info!("SystemController: Alert triggered. LED indicator set to RED.");
                 if self.status() != SystemStatus::PowerDown {
                     self.handle_command(SystemCommand::Sleep);
                 }
@@ -330,7 +330,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                         self.reset_on_wake();
                         self.led_tx.try_send(self.get_soc_led_state()).unwrap();
                         #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        crate::log_info!(
+                        defmt::info!(
                             "SystemController: exiting PowerDown state. Waking up to Active mode."
                         );
                     } else if self.status() == SystemStatus::PowerDown {

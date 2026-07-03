@@ -1,10 +1,19 @@
-use firmware_lib::log_info;
 use firmware_lib::panic_handler::{
     extract_system_logs, scan_stack, scan_stack_from_sp, write_crash_log_to_flash, CRASH_LOG_BUFFER,
 };
+use std::fmt::Write;
 use std::sync::Mutex;
 
 static BUFFER_MUTEX: Mutex<()> = Mutex::new(());
+
+/// Log a string to the global circular buffer.
+fn log_string(val: &str) {
+    critical_section::with(|cs| {
+        let mut buffer = CRASH_LOG_BUFFER.borrow(cs).borrow_mut();
+        let _ = buffer.write_str(val);
+        let _ = buffer.write_str("\n");
+    });
+}
 
 #[test]
 fn test_crash_log_buffer_writing_and_wrapping() {
@@ -17,8 +26,8 @@ fn test_crash_log_buffer_writing_and_wrapping() {
         buffer.buffer.fill(0);
     });
 
-    log_info!("Event A");
-    log_info!("Event B");
+    log_string("Event A");
+    log_string("Event B");
 
     critical_section::with(|cs| {
         let buffer = CRASH_LOG_BUFFER.borrow(cs).borrow();
@@ -26,25 +35,6 @@ fn test_crash_log_buffer_writing_and_wrapping() {
         let logged_str = core::str::from_utf8(&buffer.buffer[..end]).unwrap();
         assert!(logged_str.contains("Event A"));
         assert!(logged_str.contains("Event B"));
-    });
-}
-
-#[test]
-fn test_log_info_module_prefixing() {
-    let _lock = BUFFER_MUTEX.lock().unwrap();
-    critical_section::with(|cs| {
-        let mut buffer = CRASH_LOG_BUFFER.borrow(cs).borrow_mut();
-        buffer.head = 0;
-        buffer.wrapped = false;
-    });
-
-    log_info!("Test prefix");
-
-    critical_section::with(|cs| {
-        let buffer = CRASH_LOG_BUFFER.borrow(cs).borrow();
-        let end = buffer.head;
-        let logged_str = core::str::from_utf8(&buffer.buffer[..end]).unwrap();
-        assert!(logged_str.contains("[panic_handler_tests] Test prefix"));
     });
 }
 
@@ -139,8 +129,8 @@ fn test_extract_system_logs_helper() {
         buffer.wrapped = false;
     });
 
-    log_info!("Log 1");
-    log_info!("Log 2");
+    log_string("Log 1");
+    log_string("Log 2");
 
     let mut extract_buf = [0u8; 1024];
     let len = critical_section::with(|cs| extract_system_logs(&cs, &mut extract_buf));
