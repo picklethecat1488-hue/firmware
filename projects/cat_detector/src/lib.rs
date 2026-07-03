@@ -166,9 +166,6 @@ pub use firmware_lib::panic_handler::handle_panic_with_sizes;
 /// Re-export the modular panic handler initialization
 pub use firmware_lib::panic_handler::init as init_panic_handler;
 
-/// Re-export the modular panic handler time registration
-pub use firmware_lib::panic_handler::set_time_fn;
-
 /// Returns the current system uptime in microseconds since boot (64-bit precision).
 pub fn system_time() -> u64 {
     #[cfg(all(target_arch = "arm", target_os = "none"))]
