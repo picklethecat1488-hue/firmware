@@ -396,6 +396,58 @@ where
     Ok(())
 }
 
+/// Helper function to mix hardware entropy and context variables into a unique UUID.
+#[allow(clippy::too_many_arguments)]
+pub fn generate_uuid(
+    entropy: [u8; 16],
+    micros: u64,
+    r0: u32,
+    r1: u32,
+    r2: u32,
+    r3: u32,
+    backtrace: &[u32],
+    revision_hash: &str,
+) -> [u8; 16] {
+    let mut uuid = entropy;
+
+    let mut h1 = 0xcbf29ce484222325u64;
+    let mut h2 = 0x84222325cbf29ce4u64;
+
+    let mut feed_u64 = |val: u64| {
+        h1 ^= val;
+        h1 = h1.wrapping_mul(0x100000001b3);
+        h2 ^= val.rotate_left(17);
+        h2 = h2.wrapping_mul(0x100000001b3);
+    };
+
+    feed_u64(micros);
+    feed_u64(r0 as u64);
+    feed_u64(r1 as u64);
+    feed_u64(r2 as u64);
+    feed_u64(r3 as u64);
+    for &pc in backtrace {
+        feed_u64(pc as u64);
+    }
+    for &b in revision_hash.as_bytes() {
+        h1 ^= b as u64;
+        h1 = h1.wrapping_mul(0x100000001b3);
+        h2 ^= (b as u64).rotate_left(9);
+        h2 = h2.wrapping_mul(0x100000001b3);
+    }
+
+    let h1_bytes = h1.to_be_bytes();
+    let h2_bytes = h2.to_be_bytes();
+    for i in 0..8 {
+        uuid[i] ^= h1_bytes[i];
+        uuid[i + 8] ^= h2_bytes[i];
+    }
+
+    uuid[6] = (uuid[6] & 0x0F) | 0x40; // Version 4
+    uuid[8] = (uuid[8] & 0x3F) | 0x80; // Variant 1
+
+    uuid
+}
+
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Shared panic handler logic executing crash dump logging to flash memory with customizable write/erase sizes.
 pub fn handle_panic_with_sizes<
@@ -406,6 +458,7 @@ pub fn handle_panic_with_sizes<
     const WRITE_SIZE: usize,
     const ERASE_SIZE: usize,
 >(
+    entropy: [u8; 16],
     _info: &core::panic::PanicInfo,
 ) -> ! {
     let r0: u32;
@@ -466,6 +519,18 @@ pub fn handle_panic_with_sizes<
     let mut backtrace_array = [0u32; 16];
     backtrace_array[..pc_count].copy_from_slice(&pcs[..pc_count]);
 
+    let micros = unsafe { TIME_FN.map(|f| f()) }.unwrap_or(0);
+    let uuid = generate_uuid(
+        entropy,
+        micros,
+        r0,
+        r1,
+        r2,
+        r3,
+        &backtrace_array[..pc_count],
+        env!("GIT_HASH"),
+    );
+
     let dump = crate::types::CrashDump {
         revision_hash: env!("GIT_HASH"),
         r0,
@@ -475,6 +540,7 @@ pub fn handle_panic_with_sizes<
         backtrace: backtrace_array,
         backtrace_len: pc_count as u32,
         system_logs: logs_slice,
+        uuid,
     };
 
     // Serialize CrashDump into a buffer

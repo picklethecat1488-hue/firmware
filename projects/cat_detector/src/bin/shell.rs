@@ -17,6 +17,7 @@ use {embassy_executor::Spawner, embassy_rp::uart::UartTx, embedded_cli::cli::Cli
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
+    let entropy = app::get_hw_entropy();
     app::handle_panic_with_sizes::<
         { app::FLASH_SIZE },
         { app::STACK_TOP },
@@ -24,7 +25,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
         { app::FLASH_END },
         { app::FLASH_WRITE_SIZE },
         { app::FLASH_ERASE_SIZE },
-    >(info);
+    >(entropy, info);
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
