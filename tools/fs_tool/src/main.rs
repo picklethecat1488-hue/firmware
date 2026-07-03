@@ -58,6 +58,7 @@ fn main() -> io::Result<()> {
     #[allow(unused_assignments)]
     let mut object_file = None;
     let mut context = None;
+    let mut defmt_table = None;
 
     if let Commands::CrashLog {
         elf: Some(elf_path),
@@ -71,6 +72,15 @@ fn main() -> io::Result<()> {
         let ctx = addr2line::Context::new(object_file.as_ref().unwrap())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         context = Some(ctx);
+
+        if let Some(table) = defmt_decoder::Table::parse(&file_data).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Failed to parse defmt table: {}", e),
+            )
+        })? {
+            defmt_table = Some(table);
+        }
     }
 
     futures::executor::block_on(async {
@@ -107,6 +117,7 @@ fn main() -> io::Result<()> {
                     &mut cache,
                     &spinner,
                     &context,
+                    &defmt_table,
                 )
                 .await?;
             }

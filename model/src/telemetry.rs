@@ -1,7 +1,8 @@
 use crate::types::*;
 
 /// A telemetry record wrapper for the system.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum TelemetryRecord {
     /// Battery status.
     #[n(0)]
@@ -66,5 +67,12 @@ impl TelemetryRecord {
         let timestamp_us = decoder.u64().ok()?;
         let record = decoder.decode().ok()?;
         Some((timestamp_us, record))
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl core::fmt::Debug for TelemetryRecord {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("TelemetryRecord")
     }
 }

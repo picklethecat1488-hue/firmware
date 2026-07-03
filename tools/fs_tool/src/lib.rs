@@ -34,6 +34,9 @@ pub enum DataType {
 impl DataType {
     /// Maps a filename to its known semantic data type.
     pub fn from_filename(name: &str) -> Self {
+        if name.starts_with("crash_") && (name.ends_with(".log") || name.ends_with(".cbor")) {
+            return DataType::CrashLog;
+        }
         match name {
             "calibration.bin" | "calibration.protobuf" => DataType::Calibration,
             "telemetry.bin" | "telemetry.cbor" | "telemetry.rrd" => DataType::Telemetry,
