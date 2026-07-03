@@ -9,8 +9,8 @@ pub mod gesture_detector;
 /// RP2040 panic handler module.
 pub mod panic_handler;
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-mod defmt_logger;
+#[doc(hidden)]
+pub mod defmt_logger;
 
 /// Shared system state and power management utilities.
 pub mod system;

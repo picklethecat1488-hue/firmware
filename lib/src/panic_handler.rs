@@ -42,6 +42,16 @@ pub fn log_system(args: core::fmt::Arguments) {
     });
 }
 
+/// Helper function to serialize a `CrashDump` structure into CBOR format.
+pub fn serialize_crash_dump<'a>(
+    dump: &crate::types::CrashDump<'a>,
+    buf: &'a mut [u8],
+) -> Result<usize, minicbor::encode::Error<minicbor::encode::write::EndOfSlice>> {
+    let mut encoder = minicbor::Encoder::new(minicbor::encode::write::Cursor::new(buf));
+    encoder.encode(dump)?;
+    Ok(encoder.into_writer().position())
+}
+
 /// Helper macro for logging system events with compile-time module prefixing.
 #[macro_export]
 macro_rules! log_info {
@@ -216,6 +226,205 @@ pub fn init(
     });
 }
 
+/// Heuristic stack scanner that walks a slice of stack words and extracts return PCs
+/// by verifying that the caller instruction before the return address is a BL or BLX.
+pub fn scan_stack<F>(
+    stack: &[u32],
+    flash_start: u32,
+    flash_end: u32,
+    pcs: &mut [u32; 16],
+    read_mem: F,
+) -> usize
+where
+    F: Fn(u32) -> Option<u32>,
+{
+    let mut pc_count = 0;
+    for &val in stack {
+        if pc_count >= 16 {
+            break;
+        }
+        if (flash_start..flash_end).contains(&val) && (val & 1 == 1) {
+            let ret_addr = val & !1;
+            // Check if the instruction before the return address is BL or BLX
+            if let Some(instr) = read_mem(ret_addr.saturating_sub(4)) {
+                let h1 = instr as u16;
+                let h2 = (instr >> 16) as u16;
+                // 32-bit Thumb BL/BLX: h1 starts with 11110 (0xF000..0xF7FF), h2 starts with 11011 or 11111 (BL) or 11001 or 11101 (BLX)
+                let is_bl_blx_32 = (h1 & 0xF800 == 0xF000) && (h2 & 0xC800 == 0xC800);
+                // 16-bit Thumb BX/BLX: h2 matches 0x47xx pattern (0x4700..0x47FF)
+                let is_bx_blx_16 = h2 & 0xFF00 == 0x4700;
+
+                if is_bl_blx_32 || is_bx_blx_16 {
+                    pcs[pc_count] = ret_addr;
+                    pc_count += 1;
+                }
+            }
+        }
+    }
+    pc_count
+}
+
+/// Helper function to scan stack memory from a stack pointer up to stack top, returning the collected return PCs.
+pub fn scan_stack_from_sp<F>(
+    sp: usize,
+    stack_top: usize,
+    flash_start: u32,
+    flash_end: u32,
+    pcs: &mut [u32; 16],
+    read_mem: F,
+) -> usize
+where
+    F: Fn(u32) -> Option<u32>,
+{
+    if sp < stack_top {
+        let words = (stack_top - sp) / 4;
+        let limit = words.min(256);
+        let stack_slice = unsafe { core::slice::from_raw_parts(sp as *const u32, limit) };
+        scan_stack(stack_slice, flash_start, flash_end, pcs, read_mem)
+    } else {
+        0
+    }
+}
+
+/// Extracts circular system logs from the CRASH_LOG_BUFFER into the provided buffer.
+pub fn extract_system_logs(cs: &critical_section::CriticalSection, log_buf: &mut [u8]) -> usize {
+    let buffer = CRASH_LOG_BUFFER.borrow(*cs).borrow();
+    let mut len = 0;
+    if buffer.wrapped {
+        let part1 = &buffer.buffer[buffer.head..];
+        let len1 = part1.len();
+        log_buf[..len1].copy_from_slice(part1);
+        len += len1;
+        let part2 = &buffer.buffer[..buffer.head];
+        let len2 = part2.len();
+        log_buf[len..len + len2].copy_from_slice(part2);
+        len += len2;
+    } else {
+        let part = &buffer.buffer[..buffer.head];
+        let len1 = part.len();
+        log_buf[..len1].copy_from_slice(part);
+        len += len1;
+    }
+    len
+}
+
+/// Writes the serialized crash dump, increments the rolling index, and updates the directory listing.
+pub async fn write_crash_log_to_flash<F>(
+    flash: &mut F,
+    range: core::ops::Range<u32>,
+    cache: &mut sequential_storage::cache::NoCache,
+    buf: &mut [u8],
+    encoded_bytes: &[u8],
+) -> Result<(), F::Error>
+where
+    F: embedded_storage_async::nor_flash::NorFlash,
+{
+    // Convert string path into fixed key
+    let string_to_key = |name: &str| -> [u8; 32] {
+        let mut k = [0u8; 32];
+        let bytes = name.as_bytes();
+        let len = core::cmp::min(bytes.len(), 32);
+        k[..len].copy_from_slice(&bytes[..len]);
+        k
+    };
+
+    // Read the rolling crash index
+    let current_idx = if let Ok(Some(bytes)) =
+        sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
+            flash,
+            range.clone(),
+            cache,
+            buf,
+            &string_to_key("crash_idx"),
+        )
+        .await
+    {
+        if bytes.len() == 4 {
+            u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    // Write the crash log
+    let mut filename = heapless::String::<32>::new();
+    let _ = core::fmt::write(&mut filename, format_args!("crash_{}.cbor", current_idx));
+    let log_key = string_to_key(filename.as_str());
+
+    let _ = sequential_storage::map::store_item(
+        flash,
+        range.clone(),
+        cache,
+        buf,
+        &log_key,
+        &encoded_bytes,
+    )
+    .await;
+
+    // Increment index modulo 5
+    let next_idx = (current_idx + 1) % 5;
+    let next_bytes = next_idx.to_le_bytes();
+    let idx_key = string_to_key("crash_idx");
+    let _ = sequential_storage::map::store_item(
+        flash,
+        range.clone(),
+        cache,
+        buf,
+        &idx_key,
+        &&next_bytes[..],
+    )
+    .await;
+
+    // Write directory file .dir so fs_tool can find it
+    let mut current_dir = heapless::String::<128>::new();
+    let dir_key = string_to_key(".dir");
+    let existing_dir = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
+        flash,
+        range.clone(),
+        cache,
+        buf,
+        &dir_key,
+    )
+    .await;
+
+    if let Ok(Some(bytes)) = existing_dir {
+        if let Ok(s) = core::str::from_utf8(bytes) {
+            let _ = current_dir.push_str(s);
+        }
+    }
+
+    // Check if filename is already in directory
+    let mut found = false;
+    for entry in current_dir.split('\n') {
+        if entry == filename.as_str() {
+            found = true;
+            break;
+        }
+    }
+
+    if !found {
+        if !current_dir.is_empty() {
+            let _ = current_dir.push_str("\n");
+        }
+        let _ = current_dir.push_str(filename.as_str());
+
+        // Store updated dir
+        let _ = sequential_storage::map::store_item(
+            flash,
+            range.clone(),
+            cache,
+            buf,
+            &dir_key,
+            &current_dir.as_bytes(),
+        )
+        .await;
+    }
+
+    Ok(())
+}
+
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Shared panic handler logic executing crash dump logging to flash memory with customizable write/erase sizes.
 pub fn handle_panic_with_sizes<
@@ -254,46 +463,33 @@ pub fn handle_panic_with_sizes<
     }
     let stack_top = STACK_TOP;
     let mut pcs = [0u32; 16];
-    let mut pc_count = 0;
-    let mut current_addr = sp;
-    while current_addr < stack_top && pc_count < 16 {
-        let val = unsafe { *(current_addr as *const u32) };
-        if (FLASH_START..FLASH_END).contains(&val) && val % 2 == 1 {
-            pcs[pc_count] = val & !1;
-            pc_count += 1;
+    let read_mem = |addr: u32| {
+        if (FLASH_START..FLASH_END).contains(&addr) {
+            Some(unsafe { *(addr as *const u32) })
+        } else {
+            None
         }
-        current_addr += 4;
-    }
+    };
+    let pc_count = scan_stack_from_sp(
+        sp as usize,
+        stack_top as usize,
+        FLASH_START,
+        FLASH_END,
+        &mut pcs,
+        read_mem,
+    );
 
     // A single static scratch buffer used for log extraction, CBOR serialization,
     // and as the sequential-storage map operation workspace.
     // Partitioned as:
-    //   - scratch[0..1024]: Used for log extraction (1024 bytes), then reused as sequential-storage scratch workspace.
-    //   - scratch[1024..2224]: Used for CBOR serialization buffer (1200 bytes).
-    static mut SCRATCH_BUF: [u8; 2224] = [0u8; 2224];
-    let (log_buf, cbor_buf) = unsafe { SCRATCH_BUF.split_at_mut(1024) };
+    //   - scratch[0..1500]: Used for log extraction (1500 bytes), then reused as sequential-storage scratch/fetch workspace.
+    //   - scratch[1500..2700]: Used for CBOR serialization buffer (1200 bytes).
+    static mut SCRATCH_BUF: [u8; 2700] = [0u8; 2700];
+    let (log_buf, cbor_buf) = unsafe { SCRATCH_BUF.split_at_mut(1500) };
 
     // 2. Extract logs from CRASH_LOG_BUFFER into a contiguous slice
-    let logs_slice = critical_section::with(|cs| {
-        let buffer = CRASH_LOG_BUFFER.borrow(cs).borrow();
-        let mut len = 0;
-        if buffer.wrapped {
-            let part1 = &buffer.buffer[buffer.head..];
-            let len1 = part1.len();
-            log_buf[..len1].copy_from_slice(part1);
-            len += len1;
-            let part2 = &buffer.buffer[..buffer.head];
-            let len2 = part2.len();
-            log_buf[len..len + len2].copy_from_slice(part2);
-            len += len2;
-        } else {
-            let part = &buffer.buffer[..buffer.head];
-            let len1 = part.len();
-            log_buf[..len1].copy_from_slice(part);
-            len += len1;
-        }
-        &log_buf[..len]
-    });
+    let logs_len = critical_section::with(|cs| extract_system_logs(&cs, log_buf));
+    let logs_slice = &log_buf[..logs_len];
 
     // Populate CrashDump struct
     let mut backtrace_array = [0u32; 16];
@@ -311,10 +507,9 @@ pub fn handle_panic_with_sizes<
     };
 
     // Serialize CrashDump into a buffer
-    let mut encoder = minicbor::Encoder::new(minicbor::encode::write::Cursor::new(&mut *cbor_buf));
     let mut encoded_len = 0;
-    if encoder.encode(&dump).is_ok() {
-        encoded_len = encoder.into_writer().position();
+    if let Ok(len) = serialize_crash_dump(&dump, cbor_buf) {
+        encoded_len = len;
     }
     let encoded_bytes = &cbor_buf[..encoded_len];
 
@@ -322,123 +517,18 @@ pub fn handle_panic_with_sizes<
     critical_section::with(|cs| {
         if let Some(config) = PANIC_CONFIG.borrow(cs).take() {
             // Build filesystem controller inside panic context using the adapter
-            let flash = PanicFlashAsyncAdapter::<WRITE_SIZE, ERASE_SIZE>(config.flash);
+            let mut flash = PanicFlashAsyncAdapter::<WRITE_SIZE, ERASE_SIZE>(config.flash);
             let mut cache = sequential_storage::cache::NoCache::new();
-            let buf = log_buf;
-
-            // Convert string path into fixed key
-            let string_to_key = |name: &str| -> [u8; 32] {
-                let mut k = [0u8; 32];
-                let bytes = name.as_bytes();
-                let len = core::cmp::min(bytes.len(), 32);
-                k[..len].copy_from_slice(&bytes[..len]);
-                k
-            };
-
-            // Read the rolling crash index
-            let mut idx_buf = [0u8; 4];
-            let mut mut_flash = flash;
-            let current_idx = block_on(async {
-                let key = string_to_key("crash_idx");
-                if let Ok(Some(bytes)) = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
-                    &mut mut_flash,
-                    config.range.clone(),
-                    &mut cache,
-                    &mut idx_buf,
-                    &key,
-                )
-                .await
-                {
-                    if bytes.len() == 4 {
-                        return u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-                    }
-                }
-                0u32
-            });
-
-            // Write the crash log
-            let mut filename = heapless::String::<32>::new();
-            let _ = core::fmt::write(&mut filename, format_args!("crash_{}.cbor", current_idx));
-            let log_key = string_to_key(filename.as_str());
-
             block_on(async {
-                let _ = sequential_storage::map::store_item(
-                    &mut mut_flash,
+                let _ = write_crash_log_to_flash(
+                    &mut flash,
                     config.range.clone(),
                     &mut cache,
-                    buf,
-                    &log_key,
-                    &encoded_bytes,
+                    log_buf,
+                    encoded_bytes,
                 )
                 .await;
             });
-
-            // Increment index modulo 5
-            let next_idx = (current_idx + 1) % 5;
-            let next_bytes = next_idx.to_le_bytes();
-            let idx_key = string_to_key("crash_idx");
-            block_on(async {
-                let _ = sequential_storage::map::store_item(
-                    &mut mut_flash,
-                    config.range.clone(),
-                    &mut cache,
-                    buf,
-                    &idx_key,
-                    &next_bytes,
-                )
-                .await;
-            });
-
-            // Write directory file .dir so fs_tool can find it
-            static mut CURRENT_DIR_STR: heapless::String<128> = heapless::String::new();
-            let current_dir = unsafe { &mut CURRENT_DIR_STR };
-            current_dir.clear();
-            let dir_key = string_to_key(".dir");
-            let existing_dir = block_on(async {
-                sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
-                    &mut mut_flash,
-                    config.range.clone(),
-                    &mut cache,
-                    buf,
-                    &dir_key,
-                )
-                .await
-            });
-
-            if let Ok(Some(bytes)) = existing_dir {
-                if let Ok(s) = core::str::from_utf8(bytes) {
-                    let _ = current_dir.push_str(s);
-                }
-            }
-
-            // Check if filename is already in directory
-            let mut found = false;
-            for entry in current_dir.split('\n') {
-                if entry == filename.as_str() {
-                    found = true;
-                    break;
-                }
-            }
-
-            if !found {
-                if !current_dir.is_empty() {
-                    let _ = current_dir.push_str("\n");
-                }
-                let _ = current_dir.push_str(filename.as_str());
-
-                // Store updated dir
-                block_on(async {
-                    let _ = sequential_storage::map::store_item(
-                        &mut mut_flash,
-                        config.range.clone(),
-                        &mut cache,
-                        buf,
-                        &dir_key,
-                        &current_dir.as_bytes(),
-                    )
-                    .await;
-                });
-            }
         }
     });
 
