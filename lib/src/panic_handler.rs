@@ -46,6 +46,7 @@ pub fn log_system(args: core::fmt::Arguments) {
 #[macro_export]
 macro_rules! log_info {
     ($fmt:literal $(, $arg:expr)* $(,)*) => {
+        #[cfg(not(all(target_arch = "arm", target_os = "none")))]
         $crate::panic_handler::log_system(format_args!(concat!("[", core::module_path!(), "] ", $fmt) $(, $arg)*));
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         defmt::info!($fmt $(, $arg)*);
@@ -53,7 +54,6 @@ macro_rules! log_info {
 }
 
 /// Adapter exposing a blocking nor-flash driver as an asynchronous nor-flash driver
-/// suitable for sequential-storage async filesystem operations.
 pub struct BlockingAsyncFlash<F>(pub F);
 
 impl<F: embedded_storage::nor_flash::ErrorType> embedded_storage_async::nor_flash::ErrorType
@@ -226,7 +226,7 @@ pub fn handle_panic_with_sizes<
     const WRITE_SIZE: usize,
     const ERASE_SIZE: usize,
 >(
-    info: &core::panic::PanicInfo,
+    _info: &core::panic::PanicInfo,
 ) -> ! {
     let r0: u32;
     let r1: u32;
@@ -265,49 +265,58 @@ pub fn handle_panic_with_sizes<
         current_addr += 4;
     }
 
-    // 2. Format the crash dump output
-    static mut CONTENT_BUF: heapless::String<1024> = heapless::String::new();
-    let content = unsafe { &mut CONTENT_BUF };
-    content.clear();
-    let _ = core::fmt::write(content, format_args!("--- PANIC ---\n"));
-    if let Some(location) = info.location() {
-        let _ = core::fmt::write(
-            content,
-            format_args!("Location: {}:{}\n", location.file(), location.line()),
-        );
-    }
-    let _ = core::fmt::write(content, format_args!("Message: {}\n\n", info));
+    // A single static scratch buffer used for log extraction, CBOR serialization,
+    // and as the sequential-storage map operation workspace.
+    // Partitioned as:
+    //   - scratch[0..1024]: Used for log extraction (1024 bytes), then reused as sequential-storage scratch workspace.
+    //   - scratch[1024..2224]: Used for CBOR serialization buffer (1200 bytes).
+    static mut SCRATCH_BUF: [u8; 2224] = [0u8; 2224];
+    let (log_buf, cbor_buf) = unsafe { SCRATCH_BUF.split_at_mut(1024) };
 
-    let _ = core::fmt::write(
-        content,
-        format_args!("Revision Hash: {}\n\n", env!("GIT_HASH")),
-    );
-
-    let _ = core::fmt::write(content, format_args!("Registers:\n"));
-    let _ = core::fmt::write(content, format_args!("  R0: 0x{:08X}\n", r0));
-    let _ = core::fmt::write(content, format_args!("  R1: 0x{:08X}\n", r1));
-    let _ = core::fmt::write(content, format_args!("  R2: 0x{:08X}\n", r2));
-    let _ = core::fmt::write(content, format_args!("  R3: 0x{:08X}\n\n", r3));
-
-    let _ = core::fmt::write(content, format_args!("Backtrace:\n"));
-    for &pc in pcs.iter().take(pc_count) {
-        let _ = core::fmt::write(content, format_args!("  0x{:08X}\n", pc));
-    }
-
-    let _ = core::fmt::write(content, format_args!("\nSystem Logs:\n"));
-    critical_section::with(|cs| {
+    // 2. Extract logs from CRASH_LOG_BUFFER into a contiguous slice
+    let logs_slice = critical_section::with(|cs| {
         let buffer = CRASH_LOG_BUFFER.borrow(cs).borrow();
+        let mut len = 0;
         if buffer.wrapped {
-            let start = buffer.head;
-            if let Ok(s) = core::str::from_utf8(&buffer.buffer[start..]) {
-                let _ = content.push_str(s);
-            }
+            let part1 = &buffer.buffer[buffer.head..];
+            let len1 = part1.len();
+            log_buf[..len1].copy_from_slice(part1);
+            len += len1;
+            let part2 = &buffer.buffer[..buffer.head];
+            let len2 = part2.len();
+            log_buf[len..len + len2].copy_from_slice(part2);
+            len += len2;
+        } else {
+            let part = &buffer.buffer[..buffer.head];
+            let len1 = part.len();
+            log_buf[..len1].copy_from_slice(part);
+            len += len1;
         }
-        let end = buffer.head;
-        if let Ok(s) = core::str::from_utf8(&buffer.buffer[..end]) {
-            let _ = content.push_str(s);
-        }
+        &log_buf[..len]
     });
+
+    // Populate CrashDump struct
+    let mut backtrace_array = [0u32; 16];
+    backtrace_array[..pc_count].copy_from_slice(&pcs[..pc_count]);
+
+    let dump = crate::types::CrashDump {
+        revision_hash: env!("GIT_HASH"),
+        r0,
+        r1,
+        r2,
+        r3,
+        backtrace: backtrace_array,
+        backtrace_len: pc_count as u32,
+        system_logs: logs_slice,
+    };
+
+    // Serialize CrashDump into a buffer
+    let mut encoder = minicbor::Encoder::new(minicbor::encode::write::Cursor::new(&mut *cbor_buf));
+    let mut encoded_len = 0;
+    if encoder.encode(&dump).is_ok() {
+        encoded_len = encoder.into_writer().position();
+    }
+    let encoded_bytes = &cbor_buf[..encoded_len];
 
     // 3. Write crash log to storage partition using rolling index
     critical_section::with(|cs| {
@@ -315,8 +324,7 @@ pub fn handle_panic_with_sizes<
             // Build filesystem controller inside panic context using the adapter
             let flash = PanicFlashAsyncAdapter::<WRITE_SIZE, ERASE_SIZE>(config.flash);
             let mut cache = sequential_storage::cache::NoCache::new();
-            static mut SCRATCH_BUF: [u8; 1024] = [0u8; 1024];
-            let buf = unsafe { &mut SCRATCH_BUF };
+            let buf = log_buf;
 
             // Convert string path into fixed key
             let string_to_key = |name: &str| -> [u8; 32] {
@@ -350,7 +358,7 @@ pub fn handle_panic_with_sizes<
 
             // Write the crash log
             let mut filename = heapless::String::<32>::new();
-            let _ = core::fmt::write(&mut filename, format_args!("crash_{}.log", current_idx));
+            let _ = core::fmt::write(&mut filename, format_args!("crash_{}.cbor", current_idx));
             let log_key = string_to_key(filename.as_str());
 
             block_on(async {
@@ -360,7 +368,7 @@ pub fn handle_panic_with_sizes<
                     &mut cache,
                     buf,
                     &log_key,
-                    &content.as_bytes(),
+                    &encoded_bytes,
                 )
                 .await;
             });
@@ -382,7 +390,6 @@ pub fn handle_panic_with_sizes<
             });
 
             // Write directory file .dir so fs_tool can find it
-            let dir_buf = unsafe { &mut SCRATCH_BUF };
             static mut CURRENT_DIR_STR: heapless::String<128> = heapless::String::new();
             let current_dir = unsafe { &mut CURRENT_DIR_STR };
             current_dir.clear();
@@ -392,7 +399,7 @@ pub fn handle_panic_with_sizes<
                     &mut mut_flash,
                     config.range.clone(),
                     &mut cache,
-                    dir_buf,
+                    buf,
                     &dir_key,
                 )
                 .await
@@ -420,13 +427,12 @@ pub fn handle_panic_with_sizes<
                 let _ = current_dir.push_str(filename.as_str());
 
                 // Store updated dir
-                let dir_write_buf = unsafe { &mut SCRATCH_BUF };
                 block_on(async {
                     let _ = sequential_storage::map::store_item(
                         &mut mut_flash,
                         config.range.clone(),
                         &mut cache,
-                        dir_write_buf,
+                        buf,
                         &dir_key,
                         &current_dir.as_bytes(),
                     )

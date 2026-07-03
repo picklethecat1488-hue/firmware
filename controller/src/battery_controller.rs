@@ -24,12 +24,21 @@ impl BatteryAlertPin for DummyAlertPin {
 }
 
 /// Current operating state of the battery.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum BatteryState {
     /// Battery voltage is normal.
     Ok,
     /// Battery voltage is low.
     Low,
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl core::fmt::Debug for BatteryState {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("BatteryState")
+    }
 }
 
 /// A controller that periodically monitors battery status and wakes on alerts.
@@ -165,7 +174,7 @@ impl<
         defmt::info!(
             "Battery Controller: Voltage is {} mV, State: {:?}",
             voltage,
-            defmt::Debug2Format(&self.state)
+            self.state
         );
 
         Ok(())

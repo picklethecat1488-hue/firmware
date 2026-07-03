@@ -12,10 +12,7 @@
 use cat_detector as app;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-use {
-    defmt_rtt as _, embassy_executor::Spawner, embassy_rp::uart::UartTx,
-    embedded_cli::cli::CliBuilder,
-};
+use {embassy_executor::Spawner, embassy_rp::uart::UartTx, embedded_cli::cli::CliBuilder};
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]

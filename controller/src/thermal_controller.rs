@@ -7,12 +7,21 @@ use embassy_sync::mutex::Mutex;
 use model::interfaces::TemperatureSensor;
 
 /// Current thermal status of the system.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum ThermalState {
     /// System temperature is normal.
     Normal,
     /// System is overheating.
     Overheating,
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl core::fmt::Debug for ThermalState {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("ThermalState")
+    }
 }
 
 /// A controller that periodically monitors system temperature from temperature sensors.
@@ -143,7 +152,7 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
         defmt::info!(
             "Thermal Controller: Temp is {} mC, State: {:?}",
             temp,
-            defmt::Debug2Format(&self.state)
+            self.state
         );
 
         Ok(())

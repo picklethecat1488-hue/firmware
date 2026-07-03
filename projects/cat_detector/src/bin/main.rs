@@ -15,7 +15,6 @@ use {
     controller::sensor_controller::SensorController,
     controller::telemetry_controller::TelemetryController,
     controller::thermal_controller::ThermalController,
-    defmt_rtt as _,
     embassy_executor::Spawner,
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     embassy_sync::mutex::Mutex,
