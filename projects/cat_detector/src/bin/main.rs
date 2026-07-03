@@ -46,6 +46,7 @@ impl controller::sensor_controller::DataReadyPin for ProximityPinWrapper {
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
     let entropy = app::get_hw_entropy();
+    let micros = app::system_time();
     app::handle_panic_with_sizes::<
         { app::FLASH_SIZE },
         { app::STACK_TOP },
@@ -53,7 +54,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
         { app::FLASH_END },
         { app::FLASH_WRITE_SIZE },
         { app::FLASH_ERASE_SIZE },
-    >(entropy, info);
+    >(entropy, micros, info);
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -117,9 +118,6 @@ async fn main(spawner: Spawner) {
 
     // Initialize board peripherals using the unified board configuration
     let mut board = app::Board::init(p);
-
-    // Register system time function for the panic handler
-    app::set_time_fn(app::system_time);
 
     // Initialize the modular panic handler
     static mut PANIC_FLASH: Option<
