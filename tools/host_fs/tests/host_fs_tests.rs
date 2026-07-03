@@ -212,6 +212,10 @@ fn test_crash_log_decoding_integration() {
         backtrace,
         backtrace_len: 2,
         system_logs: b"mock log data",
+        uuid: [
+            0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc,
+            0xde, 0xf0,
+        ],
     };
 
     // Serialize it via the shared panic_handler serialization logic
@@ -271,6 +275,7 @@ fn test_crash_log_decoding_integration() {
 
     // 6. Verify output fields contain our synthesized data
     assert!(stdout_text.contains("--- PANIC (CBOR) ---"));
+    assert!(stdout_text.contains("UUID: 12345678-9abc-def0-1234-56789abcdef0"));
     assert!(stdout_text.contains("Revision Hash: abcd123"));
     assert!(stdout_text.contains("Registers:"));
     assert!(stdout_text.contains("R0: 0x11111111"));

@@ -151,4 +151,8 @@ pub struct CrashDump<'a> {
     #[cbor(with = "minicbor::bytes")]
     #[n(7)]
     pub system_logs: &'a [u8],
+    /// Unique identifier (UUID) for this crash dump
+    #[cbor(with = "minicbor::bytes")]
+    #[n(8)]
+    pub uuid: [u8; 16],
 }

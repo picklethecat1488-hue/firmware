@@ -1,5 +1,6 @@
 use firmware_lib::panic_handler::{
-    extract_system_logs, scan_stack, scan_stack_from_sp, write_crash_log_to_flash, CRASH_LOG_BUFFER,
+    extract_system_logs, generate_uuid, scan_stack, scan_stack_from_sp, write_crash_log_to_flash,
+    CRASH_LOG_BUFFER,
 };
 use std::fmt::Write;
 use std::sync::Mutex;
@@ -267,4 +268,51 @@ fn test_write_crash_log_to_flash_rolling() {
         .unwrap();
         assert_eq!(crash1_val, b"crash data 2");
     });
+}
+
+#[test]
+fn test_generate_uuid_properties() {
+    let entropy = [0xAA; 16];
+    let uuid1 = generate_uuid(
+        entropy,
+        12345,
+        1,
+        2,
+        3,
+        4,
+        &[0x10002000, 0x10003000],
+        "hash123",
+    );
+    let uuid2 = generate_uuid(
+        entropy,
+        12345,
+        1,
+        2,
+        3,
+        4,
+        &[0x10002000, 0x10003000],
+        "hash123",
+    );
+    let uuid3 = generate_uuid(
+        entropy,
+        12346,
+        1,
+        2,
+        3,
+        4,
+        &[0x10002000, 0x10003000],
+        "hash123",
+    ); // different time
+
+    // UUIDv4 checks:
+    // Version 4 check:
+    assert_eq!(uuid1[6] & 0xF0, 0x40);
+    // Variant 1 check (RFC 4122):
+    assert_eq!(uuid1[8] & 0xC0, 0x80);
+
+    // Identical inputs produce identical UUIDs
+    assert_eq!(uuid1, uuid2);
+
+    // Different inputs produce different UUIDs
+    assert_ne!(uuid1, uuid3);
 }
