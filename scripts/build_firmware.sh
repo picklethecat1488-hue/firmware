@@ -9,6 +9,23 @@ if [ -n "${RUSTFLAGS:-}" ]; then
     unset RUSTFLAGS
 fi
 
+# Dynamically construct target-specific RUSTFLAGS based on local/CI environment paths
+WORKSPACE_ROOT="$(pwd)"
+CARGO_HOME_DIR="${CARGO_HOME:-$HOME/.cargo}"
+RUSTC_SYSROOT="$(rustc --print sysroot)"
+
+MCU_RUSTFLAGS=(
+  "--remap-path-prefix" "${WORKSPACE_ROOT}=firmware"
+  "--remap-path-prefix" "${CARGO_HOME_DIR}/registry/src/index.crates.io-1949cf8c6b5b557f=cargo"
+  "--remap-path-prefix" "${CARGO_HOME_DIR}/registry/src=cargo"
+  "--remap-path-prefix" "${CARGO_HOME_DIR}/git/checkouts=cargo-git"
+  "--remap-path-prefix" "${CARGO_HOME_DIR}=cargo"
+  "--remap-path-prefix" "${RUSTC_SYSROOT}=sysroot"
+)
+
+export CARGO_TARGET_THUMBV6M_NONE_EABI_RUSTFLAGS="${MCU_RUSTFLAGS[*]}"
+
+
 # Find all tool packages to exclude from target build, and include in host build
 TOOL_PACKAGES=()
 EXCLUDE_ARGS=()
