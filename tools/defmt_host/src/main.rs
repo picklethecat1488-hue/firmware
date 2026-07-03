@@ -1,7 +1,7 @@
 //! Host command-line utility for streaming defmt logs via RTT from an attached target device.
 
 use clap::Parser;
-use log_tool::{decode_project_info, stream_logs, RttLogSource};
+use defmt_host::{decode_project_info, stream_logs, RttLogSource};
 use probe_rs::probe::list::Lister;
 use std::fs;
 use std::io;

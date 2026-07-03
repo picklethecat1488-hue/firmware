@@ -1,5 +1,5 @@
 [package]
-name = "log_tool"
+name = "defmt_host"
 version = "0.1.0"
 edition = "2021"
 

@@ -1,4 +1,4 @@
-use log_tool::{stream_logs, RttLogSource};
+use defmt_host::{stream_logs, RttLogSource};
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
@@ -60,7 +60,7 @@ fn test_stream_logs_poll_loop() {
 
 #[test]
 fn test_cli_argument_validation() {
-    let bin_path = env!("CARGO_BIN_EXE_log_tool");
+    let bin_path = env!("CARGO_BIN_EXE_defmt_host");
 
     // 1. Missing both --chip and --project
     let output = Command::new(bin_path)

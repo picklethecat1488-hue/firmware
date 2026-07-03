@@ -1,5 +1,5 @@
 //! Library containing the core log streaming engine, project settings parsing,
-//! and RTT source abstractions for log_tool.
+//! and RTT source abstractions for defmt_host.
 
 use defmt_decoder::Table;
 use std::io::Write;
