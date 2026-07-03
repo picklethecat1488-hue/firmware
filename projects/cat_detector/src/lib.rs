@@ -194,6 +194,21 @@ pub fn system_time() -> u64 {
     }
 }
 
+/// Gathers 128 bits of hardware entropy from RP2040's ROSC RANDOMBIT register.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub fn get_hw_entropy() -> [u8; 16] {
+    let mut entropy = [0u8; 16];
+    for i in 0..16 {
+        let mut byte = 0u8;
+        for _ in 0..8 {
+            let bit = unsafe { core::ptr::read_volatile(0x4006_001C as *const u32) } & 1;
+            byte = (byte << 1) | (bit as u8);
+        }
+        entropy[i] = byte;
+    }
+    entropy
+}
+
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 defmt::timestamp!("{=u64:us}", system_time());
 
