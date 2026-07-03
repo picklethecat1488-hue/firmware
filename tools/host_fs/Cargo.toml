@@ -1,5 +1,5 @@
 [package]
-name = "fs_tool"
+name = "host_fs"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,6 +9,7 @@ embedded-storage = "0.3.1"
 embedded-storage-async = "0.4.1"
 model = { path = "../../model" }
 firmware_lib = { path = "../../lib" }
+tool_common = { path = "../lib" }
 defmt-decoder = "1.1.0"
 
 [target.'cfg(not(all(target_arch = "arm", target_os = "none")))'.dependencies]

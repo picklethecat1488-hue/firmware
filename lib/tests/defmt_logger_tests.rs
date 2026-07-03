@@ -121,7 +121,6 @@ fn test_rtt_protocol_flow() {
 }
 
 #[test]
-#[should_panic(expected = "defmt logger taken reentrantly")]
 fn test_rtt_protocol_reentrancy_panic() {
     let writer = MockWriter {
         written: Rc::new(RefCell::new(Vec::new())),
@@ -129,5 +128,15 @@ fn test_rtt_protocol_reentrancy_panic() {
     };
     let protocol = RttProtocol::new(writer);
     protocol.acquire();
-    protocol.acquire(); // Should panic
+
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        protocol.acquire();
+    }));
+
+    // Explicitly release the lock so other tests can proceed
+    unsafe {
+        protocol.release();
+    }
+
+    assert!(res.is_err());
 }

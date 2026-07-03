@@ -1,5 +1,5 @@
 use embedded_storage_async::nor_flash::{NorFlash, ReadNorFlash};
-use fs_tool::{string_to_key, DataType, HostFlash};
+use host_fs::{string_to_key, DataType, HostFlash};
 
 #[test]
 fn test_string_to_key() {
@@ -66,7 +66,7 @@ fn test_cli_cp() {
     use std::io::Write;
     use std::process::Command;
 
-    let bin_path = env!("CARGO_BIN_EXE_fs_tool");
+    let bin_path = env!("CARGO_BIN_EXE_host_fs");
 
     // Clean up from previous run just in case
     let dump_path = std::env::temp_dir().join("test_cli_cp_flash_dump.bin");
@@ -159,7 +159,7 @@ fn test_decode_all_projects() {
                 let project_name = path.file_name().unwrap().to_str().unwrap();
                 println!("Testing decode_project_info for '{}'...", project_name);
 
-                let res = fs_tool::flash::decode_project_info(project_name);
+                let res = host_fs::flash::decode_project_info(project_name);
                 assert!(
                     res.is_ok(),
                     "Failed to decode project '{}': {:?}",
@@ -189,7 +189,7 @@ fn test_crash_log_decoding_integration() {
     use std::io::Write;
     use std::process::Command;
 
-    let bin_path = env!("CARGO_BIN_EXE_fs_tool");
+    let bin_path = env!("CARGO_BIN_EXE_host_fs");
 
     let dump_path = std::env::temp_dir().join("test_crash_log_flash_dump.bin");
     let _ = std::fs::remove_file(&dump_path);

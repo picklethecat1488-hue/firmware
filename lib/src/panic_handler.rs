@@ -377,7 +377,7 @@ where
     )
     .await;
 
-    // Write directory file .dir so fs_tool can find it
+    // Write directory file .dir so host_fs can find it
     let mut current_dir = heapless::String::<128>::new();
     let dir_key = string_to_key(".dir");
     let existing_dir = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(

@@ -195,12 +195,11 @@ impl<W: RttWriter> RttProtocol<W> {
 
     fn write_encoded(&self, bytes: &[u8]) {
         self.writer.write_all(bytes);
-        critical_section::with(|cs| {
-            let mut buffer = crate::panic_handler::CRASH_LOG_BUFFER
-                .borrow(cs)
-                .borrow_mut();
-            buffer.write_bytes(bytes);
-        });
+        let cs = unsafe { critical_section::CriticalSection::new() };
+        let mut buffer = crate::panic_handler::CRASH_LOG_BUFFER
+            .borrow(cs)
+            .borrow_mut();
+        buffer.write_bytes(bytes);
     }
 }
 
