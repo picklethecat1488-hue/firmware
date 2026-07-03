@@ -109,7 +109,6 @@ static SHARED_CHARGER: Mutex<CriticalSectionRawMutex, SafeBq25185> = Mutex::new(
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    app::log_info!("Initializing hardware for cat detector...");
     let p = embassy_rp::init(Default::default());
 
     // Configure hardware stack guard using Cortex-M MPU

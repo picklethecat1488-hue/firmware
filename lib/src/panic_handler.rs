@@ -5,8 +5,6 @@
 //! Automatically dumps panics, stack traces, register dumps, and circular system log buffers
 //! to a rolling flash memory partition using target-agnostic flash abstractions.
 
-use core::fmt::Write;
-
 pub use crate::types::LogBuffer;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -26,22 +24,6 @@ pub fn set_time_fn(f: fn() -> u64) {
     });
 }
 
-/// Log a formatted string to the global circular buffer.
-pub fn log_system(args: core::fmt::Arguments) {
-    critical_section::with(|cs| {
-        let mut buffer = CRASH_LOG_BUFFER.borrow(cs).borrow_mut();
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        {
-            let micros = unsafe { TIME_FN.map(|f| f()) };
-            if let Some(t) = micros {
-                let _ = core::fmt::write(&mut *buffer, format_args!("[{:010} us] ", t));
-            }
-        }
-        let _ = core::fmt::write(&mut *buffer, args);
-        let _ = buffer.write_str("\n");
-    });
-}
-
 /// Helper function to serialize a `CrashDump` structure into CBOR format.
 pub fn serialize_crash_dump<'a>(
     dump: &crate::types::CrashDump<'a>,
@@ -50,17 +32,6 @@ pub fn serialize_crash_dump<'a>(
     let mut encoder = minicbor::Encoder::new(minicbor::encode::write::Cursor::new(buf));
     encoder.encode(dump)?;
     Ok(encoder.into_writer().position())
-}
-
-/// Helper macro for logging system events with compile-time module prefixing.
-#[macro_export]
-macro_rules! log_info {
-    ($fmt:literal $(, $arg:expr)* $(,)*) => {
-        #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-        $crate::panic_handler::log_system(format_args!(concat!("[", core::module_path!(), "] ", $fmt) $(, $arg)*));
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!($fmt $(, $arg)*);
-    }
 }
 
 /// Adapter exposing a blocking nor-flash driver as an asynchronous nor-flash driver
