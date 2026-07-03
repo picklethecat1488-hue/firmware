@@ -14,15 +14,6 @@ pub use crate::types::PanicConfig;
 pub static CRASH_LOG_BUFFER: critical_section::Mutex<core::cell::RefCell<LogBuffer>> =
     critical_section::Mutex::new(core::cell::RefCell::new(LogBuffer::new()));
 
-/// Static function pointer for retrieving microsecond-level system time.
-static mut TIME_FN: Option<fn() -> u64> = None;
-
-/// Sets the function used to retrieve the system time for logs.
-pub fn set_time_fn(f: fn() -> u64) {
-    critical_section::with(|_| unsafe {
-        TIME_FN = Some(f);
-    });
-}
 
 /// Helper function to serialize a `CrashDump` structure into CBOR format.
 pub fn serialize_crash_dump<'a>(
@@ -459,6 +450,7 @@ pub fn handle_panic_with_sizes<
     const ERASE_SIZE: usize,
 >(
     entropy: [u8; 16],
+    micros: u64,
     _info: &core::panic::PanicInfo,
 ) -> ! {
     let r0: u32;
@@ -519,7 +511,6 @@ pub fn handle_panic_with_sizes<
     let mut backtrace_array = [0u32; 16];
     backtrace_array[..pc_count].copy_from_slice(&pcs[..pc_count]);
 
-    let micros = unsafe { TIME_FN.map(|f| f()) }.unwrap_or(0);
     let uuid = generate_uuid(
         entropy,
         micros,
