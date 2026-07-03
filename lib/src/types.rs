@@ -19,6 +19,18 @@ impl LogBuffer {
             wrapped: false,
         }
     }
+
+    /// Write raw bytes to the circular log buffer.
+    pub fn write_bytes(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            self.buffer[self.head] = b;
+            self.head += 1;
+            if self.head >= 1024 {
+                self.head = 0;
+                self.wrapped = true;
+            }
+        }
+    }
 }
 
 impl Default for LogBuffer {
@@ -109,4 +121,34 @@ pub struct BatteryThresholds {
     pub critical_threshold: u8,
     /// Recovery hysteresis value
     pub hysteresis: u8,
+}
+
+/// Structure representing a serialized crash dump in CBOR.
+#[derive(Debug, Clone, minicbor::Encode, minicbor::Decode)]
+pub struct CrashDump<'a> {
+    /// Git revision hash of the firmware
+    #[n(0)]
+    pub revision_hash: &'a str,
+    /// Register R0
+    #[n(1)]
+    pub r0: u32,
+    /// Register R1
+    #[n(2)]
+    pub r1: u32,
+    /// Register R2
+    #[n(3)]
+    pub r2: u32,
+    /// Register R3
+    #[n(4)]
+    pub r3: u32,
+    /// Backtrace program counters
+    #[n(5)]
+    pub backtrace: [u32; 16],
+    /// Number of valid entries in the backtrace array
+    #[n(6)]
+    pub backtrace_len: u32,
+    /// Circular log buffer raw bytes
+    #[cbor(with = "minicbor::bytes")]
+    #[n(7)]
+    pub system_logs: &'a [u8],
 }

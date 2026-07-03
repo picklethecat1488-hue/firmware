@@ -89,55 +89,76 @@ Alternatively, for UART-based logging, configure the microcontroller's UART TX/R
 
 ---
 
-## Flash Diagnostics Tool (`fs_tool`)
+## Host Flash Filesystem Tool (`host_fs`)
 
-We provide a host command-line utility, `fs_tool`, to inspect, query, and decode flash memory contents from the microcontroller's sequential-storage partition. It supports two modes of operation:
+We provide a host command-line utility, `host_fs`, to inspect, query, and decode flash memory contents from the microcontroller's sequential-storage partition. It supports two modes of operation:
 - **Direct Device Mode**: Connects directly to the attached target via `probe-rs`, using `--project <PROJECT>` to dynamically look up the target chip and flash partition mapping.
 - **Offline Dump Mode**: Reads and writes a local binary flash image file via `--dump <PATH>`.
 
-### 1. Build host fs_tool
+### 1. Build host host_fs
 ```bash
-cargo build --bin fs_tool --release
+cargo build --bin host_fs --release
 ```
 
 ### 2. Query directory files (`ls`)
 - **Direct connection**:
   ```bash
-  cargo run --bin fs_tool -- --project cat_detector ls
+  cargo run --bin host_fs -- --project cat_detector ls
   ```
 - **Offline dump file**:
   ```bash
-  cargo run --bin fs_tool -- --dump flash_dump.bin ls
+  cargo run --bin host_fs -- --dump flash_dump.bin ls
   ```
 
 ### 3. Copy files to/from device (`cp`)
 - **Copy telemetry from device to host**:
   ```bash
-  cargo run --bin fs_tool -- --project cat_detector cp dev:telemetry.rrd local_telemetry.rrd
+  cargo run --bin host_fs -- --project cat_detector cp dev:telemetry.rrd local_telemetry.rrd
   ```
 - **Copy new calibration config to device**:
   ```bash
-  cargo run --bin fs_tool -- --project cat_detector cp local_cal.bin dev:calibration.bin
+  cargo run --bin host_fs -- --project cat_detector cp local_cal.bin dev:calibration.bin
   ```
 
 ### 4. Export telemetry to CSV
 - **Direct connection**:
   ```bash
-  cargo run --bin fs_tool -- --project cat_detector export-telemetry telemetry.csv
+  cargo run --bin host_fs -- --project cat_detector export-telemetry telemetry.csv
   ```
 - **Offline dump file**:
   ```bash
-  cargo run --bin fs_tool -- --dump flash_dump.bin export-telemetry telemetry.csv
+  cargo run --bin host_fs -- --dump flash_dump.bin export-telemetry telemetry.csv
   ```
 
 ### 5. Decode crash dumps to symbolicated backtraces
 - **Direct connection**:
   ```bash
-  cargo run --bin fs_tool -- --project cat_detector crash-log --elf target/thumbv6m-none-eabi/release/cat_detector
+  cargo run --bin host_fs -- --project cat_detector crash-log --elf target/thumbv6m-none-eabi/release/cat_detector
   ```
 - **Offline dump file**:
   ```bash
-  cargo run --bin fs_tool -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector
+  cargo run --bin host_fs -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector
+  ```
+
+---
+
+## Host RTT Logging Tool (`defmt_host`)
+
+We provide a host command-line utility, `defmt_host`, to stream and decode plaintext `defmt` logs from the microcontroller's RTT channel.
+
+### 1. Build host defmt_host
+```bash
+cargo build --bin defmt_host --release
+```
+
+### 2. Stream logs
+- **Using project auto-detection**:
+  ```bash
+  cargo run --bin defmt_host -- --project cat_detector --elf target/thumbv6m-none-eabi/debug/cat_detector
+  ```
+- **Specifying chip directly**:
+  ```bash
+  cargo run --bin defmt_host -- --chip rp2040 --elf target/thumbv6m-none-eabi/debug/cat_detector
   ```
 
 ---

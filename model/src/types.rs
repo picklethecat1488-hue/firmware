@@ -1,7 +1,19 @@
 //! Domain models representing controller states and status telemetry.
 
+macro_rules! dummy_debug {
+    ($ty:ident) => {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        impl core::fmt::Debug for $ty {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.write_str(stringify!($ty))
+            }
+        }
+    };
+}
+
 /// Telemetry status of the battery system.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum BatteryStatus {
     /// Voltage (mV), temperature (mC), and battery state.
     #[n(0)]
@@ -15,7 +27,8 @@ impl Default for BatteryStatus {
 }
 
 /// Enumeration of battery states.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum BatteryState {
     /// Battery voltage is normal.
     #[default]
@@ -33,7 +46,8 @@ pub enum BatteryState {
 }
 
 /// Telemetry status of the motor (pump) system.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum MotorStatus {
     /// Motor is braked/stopped.
     #[default]
@@ -45,7 +59,8 @@ pub enum MotorStatus {
 }
 
 /// Telemetry status of the thermal monitoring system.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum ThermalStatus {
     /// Temperature (mC) and overheating status.
     #[n(0)]
@@ -59,7 +74,8 @@ impl Default for ThermalStatus {
 }
 
 /// Operating mode of the system (Active, Sleep, or PowerDown).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum SystemStatus {
     /// System is powered down for safe transport/boot constraints.
     #[default]
@@ -74,7 +90,8 @@ pub enum SystemStatus {
 }
 
 /// Telemetry data from the battery fuel gauge.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum FuelGaugeTelemetry {
     /// Battery cell voltage (mV) and state of charge percentage (0-100).
     #[n(0)]
@@ -88,7 +105,8 @@ impl Default for FuelGaugeTelemetry {
 }
 
 /// Telemetry data from the proximity (ToF) sensors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum ProximityTelemetry {
     /// Target is detected within active range (value in mm).
     #[n(0)]
@@ -105,7 +123,8 @@ impl Default for ProximityTelemetry {
 }
 
 /// State patterns of the indicator system LEDs representing operating status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum SystemLedState {
     /// LED is powered off.
     #[default]
@@ -132,7 +151,8 @@ pub enum SystemLedState {
 }
 
 /// Gestures representing proximity sensor states (North, East, West) in mm.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum Gesture {
     /// Proximity readings from North, East, and West sensors in mm (north, east, west).
     #[n(0)]
@@ -149,7 +169,8 @@ pub enum Gesture {
 }
 
 /// Telemetry data from the flash storage/filesystem.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 #[cbor(array)]
 pub struct FlashEraseTelemetry {
     /// Erased sector index (offset / 4096).
@@ -164,7 +185,8 @@ pub struct FlashEraseTelemetry {
 }
 
 /// State of the battery charger.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum ChargeState {
     /// S1=HIGH, S2=LOW: Normal Charging.
     #[n(0)]
@@ -182,7 +204,8 @@ pub enum ChargeState {
 }
 
 /// Proximity sensor direction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 #[repr(usize)]
 pub enum Direction {
     /// North direction.
@@ -195,5 +218,18 @@ pub enum Direction {
     #[n(2)]
     West = 2,
 }
+
+dummy_debug!(BatteryStatus);
+dummy_debug!(BatteryState);
+dummy_debug!(MotorStatus);
+dummy_debug!(ThermalStatus);
+dummy_debug!(SystemStatus);
+dummy_debug!(FuelGaugeTelemetry);
+dummy_debug!(ProximityTelemetry);
+dummy_debug!(SystemLedState);
+dummy_debug!(Gesture);
+dummy_debug!(FlashEraseTelemetry);
+dummy_debug!(ChargeState);
+dummy_debug!(Direction);
 
 pub use crate::telemetry::TelemetryRecord;

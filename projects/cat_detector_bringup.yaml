@@ -94,19 +94,26 @@ steps:
   - id: "13"
     name: Verify Directory Structure
     type: host_command
-    command: cargo run --bin fs_tool -- --dump flash_dump.bin ls
+    command: cargo run --bin host_fs -- --dump flash_dump.bin ls
     expected_regex: 'vl53l0x_cal\.cbor'
     description: Query the filesystem to ensure directory references and files exist.
 
   - id: "14"
     name: Decode and Export Telemetry Stream
     type: host_command
-    command: cargo run --bin fs_tool -- --dump flash_dump.bin export-telemetry telemetry.csv
+    command: cargo run --bin host_fs -- --dump flash_dump.bin export-telemetry telemetry.csv
     description: Decode CBOR updates in telemetry.rrd to telemetry.csv.
 
   - id: "15"
     name: Decode and Symbolicate Crash Dumps
     type: host_command
-    command: cargo run --bin fs_tool -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector
+    command: cargo run --bin host_fs -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector
     expected_regex: '(Location:|Backtrace:)'
     description: Verify panic log is decoded and symbolicated using debug ELF.
+
+  - id: "16"
+    name: Verify Host Logger Works
+    type: host_command
+    command: cargo run --bin defmt_host -- --project cat_detector --elf target/thumbv6m-none-eabi/debug/cat_detector -d
+    expected_regex: 'Draining buffered defmt logs'
+    description: Verify that defmt_host starts up and displays its CLI options.

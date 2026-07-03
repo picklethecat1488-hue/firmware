@@ -6,7 +6,9 @@ members = [
     "controller",
     "lib",
     "projects/cat_detector",
-    "tools/fs_tool",
+    "tools/host_fs",
+    "tools/defmt_host",
+    "tools/lib",
 ]
 default-members = [
     "model",
@@ -14,11 +16,13 @@ default-members = [
     "controller",
     "lib",
     "projects/cat_detector",
-    "tools/fs_tool",
+    "tools/host_fs",
+    "tools/defmt_host",
+    "tools/lib",
 ]
 
 [profile.release]
-opt-level = "s"      # Optimize for size
+opt-level = "z"      # Optimize for size
 lto = true           # Enable Link-Time Optimization
 codegen-units = 1    # Reduce codegen units to improve size optimizations
 panic = "abort"      # Abort on panic to remove stack unwinding tables

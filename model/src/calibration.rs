@@ -4,7 +4,7 @@
 
 /// Time-of-Flight (ToF) offset calibration values for VL53L0X.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
-#[cbor(map)]
+#[cbor(array)]
 pub struct Vl53l0xCalibration {
     /// Calibration offset for North sensor cover.
     #[n(0)]
@@ -28,7 +28,7 @@ pub struct Vl53l0xCalibration {
 
 /// Motor calibration data structure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
-#[cbor(map)]
+#[cbor(array)]
 pub struct MotorCalibration {
     /// Average current in mA when the water bowl is empty.
     #[n(0)]

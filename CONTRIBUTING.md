@@ -242,12 +242,12 @@ cargo build --package cat_detector --target thumbv6m-none-eabi
 ### Diagnostics and Telemetry Verification
 When introducing or modifying telemetry records, filesystem files, or crash logs, developers must verify the changes locally:
 1. **Model Updates**: Ensure telemetry fields are encoded/decoded correctly under CBOR size limits inside `model/src/telemetry_test.rs`.
-2. **Offline Decoding**: Rebuild `fs_tool` and check that telemetry parses into CSV:
+2. **Offline Decoding**: Rebuild `host_fs` and check that telemetry parses into CSV:
    ```bash
-   cargo run --bin fs_tool -- --dump <flash_dump.bin> export-telemetry <output.csv>
+   cargo run --bin host_fs -- --dump <flash_dump.bin> export-telemetry <output.csv>
    ```
 3. **Backtrace Validation**: Trigger a panic (e.g. via the shell `crash` command), extract the partition, and run symbolication with your debug ELF binary:
    ```bash
-   cargo run --bin fs_tool -- --dump <flash_dump.bin> crash-log --elf target/thumbv6m-none-eabi/debug/cat_detector
+   cargo run --bin host_fs -- --dump <flash_dump.bin> crash-log --elf target/thumbv6m-none-eabi/debug/cat_detector
    ```
    Verify that all frames resolve demangled function names, filenames, and correct source line numbers.

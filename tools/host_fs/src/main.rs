@@ -2,8 +2,8 @@
 //! extracted from the RP2040 microcontroller's sequential-storage partition.
 
 use clap::Parser;
-use fs_tool::flash::{decode_project_info, EitherFlash, ProbeFlash};
-use fs_tool::{Cli, Commands, HostFlash};
+use host_fs::flash::{decode_project_info, EitherFlash, ProbeFlash};
+use host_fs::{Cli, Commands, HostFlash};
 use std::fs::File;
 use std::io::{self, Read};
 
@@ -58,6 +58,7 @@ fn main() -> io::Result<()> {
     #[allow(unused_assignments)]
     let mut object_file = None;
     let mut context = None;
+    let mut defmt_table = None;
 
     if let Commands::CrashLog {
         elf: Some(elf_path),
@@ -71,6 +72,15 @@ fn main() -> io::Result<()> {
         let ctx = addr2line::Context::new(object_file.as_ref().unwrap())
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         context = Some(ctx);
+
+        if let Some(table) = defmt_decoder::Table::parse(&file_data).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("Failed to parse defmt table: {}", e),
+            )
+        })? {
+            defmt_table = Some(table);
+        }
     }
 
     futures::executor::block_on(async {
@@ -78,10 +88,10 @@ fn main() -> io::Result<()> {
 
         match &cli.command {
             Commands::Ls => {
-                fs_tool::commands::ls::run(&mut flash, flash_range, &mut cache, &spinner).await?;
+                host_fs::commands::ls::run(&mut flash, flash_range, &mut cache, &spinner).await?;
             }
             Commands::Cat { filename } => {
-                fs_tool::commands::cat::run(
+                host_fs::commands::cat::run(
                     &mut flash,
                     flash_range,
                     &mut cache,
@@ -91,7 +101,7 @@ fn main() -> io::Result<()> {
                 .await?;
             }
             Commands::ExportTelemetry { out_csv } => {
-                fs_tool::commands::export_telemetry::run(
+                host_fs::commands::export_telemetry::run(
                     &mut flash,
                     flash_range,
                     &mut cache,
@@ -101,17 +111,18 @@ fn main() -> io::Result<()> {
                 .await?;
             }
             Commands::CrashLog { .. } => {
-                fs_tool::commands::crash_log::run(
+                host_fs::commands::crash_log::run(
                     &mut flash,
                     flash_range,
                     &mut cache,
                     &spinner,
                     &context,
+                    &defmt_table,
                 )
                 .await?;
             }
             Commands::Cp { src, dest } => {
-                fs_tool::commands::cp::run(
+                host_fs::commands::cp::run(
                     &mut flash,
                     flash_range,
                     &mut cache,
