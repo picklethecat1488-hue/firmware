@@ -1,4 +1,4 @@
-use defmt_host::{stream_logs, RttLogSource};
+use defmt_host::{dump_logs, stream_logs, RttLogSource};
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
@@ -83,4 +83,35 @@ fn test_cli_argument_validation() {
         .output()
         .unwrap();
     assert!(!output_elf.status.success());
+}
+
+#[test]
+fn test_dump_logs_empty() {
+    let source = MockLogSource {
+        data: vec![],
+        read_index: 0,
+    };
+
+    let elf_candidates = [
+        "target/thumbv6m-none-eabi/debug/cat_detector",
+        "target/thumbv6m-none-eabi/release/cat_detector",
+        "../../target/thumbv6m-none-eabi/debug/cat_detector",
+    ];
+    let mut elf_path = None;
+    for &c in &elf_candidates {
+        if PathBuf::from(c).is_file() {
+            elf_path = Some(PathBuf::from(c));
+            break;
+        }
+    }
+
+    if let Some(path) = elf_path {
+        let elf_data = std::fs::read(path).unwrap();
+        if let Ok(Some(table)) = defmt_decoder::Table::parse(&elf_data) {
+            let mut writer = Vec::new();
+            let res = dump_logs(source, &table, &mut writer);
+            assert!(res.is_ok());
+            assert!(writer.is_empty());
+        }
+    }
 }
