@@ -161,4 +161,3 @@ probe-rs read-mem --chip RP2040 0x101C0000 262144 flash_dump.bin
 For peripheral sharing and task integration, we adhere to the following architectural standards:
 *   **The Actor / Message-Passing Pattern**: Our standard for core system integration. Shared peripherals run inside their own isolated tasks, and other components communicate via async channels (e.g. `embassy_sync::channel::Channel`).
 *   **Interior Mutability & Shared References (`Rc` + `RefCell` or `Mutex`)**: Used strictly for the bringup shell.
-*   **We never use The Reference Passing Pattern (Recommended, Zero-Cost)**.
