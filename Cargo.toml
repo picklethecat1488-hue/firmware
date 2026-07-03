@@ -18,7 +18,7 @@ default-members = [
 ]
 
 [profile.release]
-opt-level = "s"      # Optimize for size
+opt-level = "z"      # Optimize for size
 lto = true           # Enable Link-Time Optimization
 codegen-units = 1    # Reduce codegen units to improve size optimizations
 panic = "abort"      # Abort on panic to remove stack unwinding tables
