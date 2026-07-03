@@ -267,5 +267,5 @@ pub fn configure_mpu_stack_guard() {
         // so that the rest of flash/RAM is accessible normally).
         mpu.ctrl.write(1 | (1 << 2));
     }
-    crate::log_info!("MPU stack guard configured at 0x{:08x}", guard_addr);
+    defmt::info!("MPU stack guard configured at 0x{:08x}", guard_addr);
 }
