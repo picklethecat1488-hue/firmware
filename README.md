@@ -69,25 +69,10 @@ cargo run --package cat_detector --bin shell
 
 We use **RTT (Real-Time Transfer)**-based debugging for maximum speed and low overhead compared to slow SWD register polling or semihosting.
 
-### 1. Attaching a Debugger
 To attach `probe-rs` and inspect the target without flashing:
 ```bash
 probe-rs attach --chip RP2040
 ```
-
-### 2. Reading Debug Printfs (defmt over RTT)
-All logging uses `defmt` over RTT, which formats strings on the host to minimize binary footprint and transfer times.
-Logs are automatically streamed to your terminal when running the project via:
-```bash
-cargo run --package hello_world
-```
-Or when using the `probe-rs` tool to watch logs from an already running device:
-```bash
-probe-rs run --chip RP2040
-```
-Alternatively, for UART-based logging, configure the microcontroller's UART TX/RX pins using the hardware HAL (`embassy-rp::uart`).
-
----
 
 ## Host Flash Filesystem Tool (`host_fs`)
 
