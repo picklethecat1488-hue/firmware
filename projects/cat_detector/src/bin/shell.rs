@@ -118,7 +118,9 @@ async fn main(spawner: Spawner) {
 
     let temp_sensor_ptr = board.temp_sensor.as_mut().map(|s| s as *mut _);
 
-    let pointers = app::shell_controller::ShellControllerPointers {
+    let pointers = app::shell_controller::ShellControllerPointers::<
+        app::shell_controller::ShellConfigImpl<_, _, _, _, (), (), (), (), _>,
+    > {
         i2c_ptr: unsafe { Some(BOARD_I2C.unwrap()) },
         motor_ptr: unsafe { Some(BOARD_MOTOR.unwrap()) },
         flash_ptr: unsafe { Some(PANIC_FLASH.as_mut().unwrap()) },
@@ -131,14 +133,16 @@ async fn main(spawner: Spawner) {
         temp_sensor_ptr,
     };
 
-    let mut processor =
-        app::shell_controller::ShellController::<_, 4, _, _, _, (), (), (), (), _>::new(
-            app::MOTOR_CHANNEL.sender(),
-            app::SYSTEM_CHANNEL.sender(),
-            pointers,
-            app::STORAGE_PARTITION_START,
-            app::STORAGE_PARTITION_END,
-        );
+    let mut processor = app::shell_controller::ShellController::<
+        app::shell_controller::ShellConfigImpl<_, _, _, _, (), (), (), (), _>,
+        4,
+    >::new(
+        app::MOTOR_CHANNEL.sender(),
+        app::SYSTEM_CHANNEL.sender(),
+        pointers,
+        app::STORAGE_PARTITION_START,
+        app::STORAGE_PARTITION_END,
+    );
 
     // Run the main input loop feeding bytes to the embedded-cli processor
     app::uart::run_uart_shell_loop::<_, _, CliCommand, _, _, _, _, _>(
