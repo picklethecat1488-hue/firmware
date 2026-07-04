@@ -156,3 +156,18 @@ pub struct CrashDump<'a> {
     #[n(8)]
     pub uuid: [u8; 16],
 }
+
+/// Project metadata struct embedded in the ELF to allow autodetecting chip/partition layout.
+#[repr(C)]
+pub struct ProjectMetadata {
+    /// Magic identifier to verify metadata block (e.g. b"PROJMET\0")
+    pub magic: [u8; 8],
+    /// Schema version (e.g. 1)
+    pub version: u32,
+    /// Chip name (e.g. "rp2040", null-terminated)
+    pub chip: [u8; 32],
+    /// The virtual memory flash address of the storage partition
+    pub partition_address: u32,
+    /// The size of the storage partition in bytes
+    pub partition_size: u32,
+}

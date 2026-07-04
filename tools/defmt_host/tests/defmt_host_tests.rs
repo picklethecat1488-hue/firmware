@@ -71,7 +71,7 @@ fn test_cli_argument_validation() {
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
-        stderr.contains("Either --chip, --project, or --port must be specified")
+        stderr.contains("Either --chip, --autodetect, or --port must be specified")
             || stderr.contains("error")
     );
 

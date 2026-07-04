@@ -258,8 +258,9 @@ To flash and debug firmware binaries directly on the target RP2040 microcontroll
 #### 3. Log Output Streaming (defmt_host)
 To read, decode, and stream logs output from the target device, use `defmt_host`:
 *   **Via RTT (using SWD probe)**:
+    Using `--autodetect` with the `--elf` path automatically resolves target chip specifications directly from the compiled ELF binary's metadata section:
     ```bash
-    cargo run --bin defmt_host -- --project cat_detector --elf target/thumbv6m-none-eabi/debug/cat_detector
+    cargo run --bin defmt_host -- --autodetect --elf target/thumbv6m-none-eabi/debug/cat_detector
     ```
 *   **Via UART (using serial port GP0/GP1)**:
     On target boot for the main `cat_detector` application, defmt log output is routed to the UART0 block (`GP0` TX / `GP1` RX) at 115200 baud. (Note: defmt over UART is *not* supported when running the `shell` bringup utility, as the shell consumes UART0 for the interactive command console). To read the main app's log stream over a serial cable:

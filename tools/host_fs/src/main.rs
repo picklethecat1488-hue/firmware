@@ -2,7 +2,7 @@
 //! extracted from the RP2040 microcontroller's sequential-storage partition.
 
 use clap::Parser;
-use host_fs::flash::{decode_project_info, EitherFlash, ProbeFlash};
+use host_fs::flash::{EitherFlash, ProbeFlash};
 use host_fs::{Cli, Commands, HostFlash};
 use std::fs::File;
 use std::io::{self, Read};
@@ -31,14 +31,21 @@ fn main() -> io::Result<()> {
         }
         None => {
             spinner.set_message("Reading project settings...");
-            let project_name = cli.project.as_ref().ok_or_else(|| {
+            if !cli.autodetect {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Either --autodetect or --dump must be specified",
+                ));
+            }
+            let elf_path = cli.elf.as_ref().ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    "Project name is required when --dump is not specified",
+                    "ELF path is required via --elf when --autodetect is set",
                 )
             })?;
-            let (chip, base_addr, size) = decode_project_info(project_name)
-                .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e))?;
+            let (chip, base_addr, size) =
+                tool_common::autodetect_project_info(std::path::Path::new(elf_path))
+                    .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e))?;
 
             spinner.set_message(format!(
                 "Connecting to device (chip: {}, address: 0x{:08X}) via probe-rs...",
@@ -60,12 +67,18 @@ fn main() -> io::Result<()> {
     let mut context = None;
     let mut defmt_table = None;
 
-    if let Commands::CrashLog {
+    let elf_path = if let Commands::CrashLog {
         elf: Some(elf_path),
     } = &cli.command
     {
+        Some(elf_path.clone())
+    } else {
+        cli.elf.clone()
+    };
+
+    if let Some(ref path) = elf_path {
         spinner.set_message("Loading ELF and DWARF debug symbols...");
-        file_data = std::fs::read(elf_path)?;
+        file_data = std::fs::read(path)?;
         let obj = object::File::parse(&*file_data)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         object_file = Some(obj);

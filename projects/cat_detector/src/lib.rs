@@ -328,3 +328,28 @@ impl firmware_lib::defmt_logger::DefmtLogWriter for UartWriter {
 
 /// Default instance of UartWriter for RP2040 UART0 logging.
 pub static DEFAULT_UART_WRITER: UartWriter = UartWriter;
+
+/// Embedded project metadata for autodetect functionality.
+#[used]
+#[no_mangle]
+#[cfg_attr(
+    all(target_arch = "arm", target_os = "none"),
+    link_section = ".rodata.project_metadata"
+)]
+pub static PROJECT_METADATA: firmware_lib::types::ProjectMetadata =
+    firmware_lib::types::ProjectMetadata {
+        magic: *b"PROJMET\0",
+        version: 1,
+        chip: {
+            let mut buf = [0u8; 32];
+            let bytes = b"rp2040";
+            let mut i = 0;
+            while i < bytes.len() {
+                buf[i] = bytes[i];
+                i += 1;
+            }
+            buf
+        },
+        partition_address: 0x10000000 + STORAGE_PARTITION_START,
+        partition_size: (STORAGE_PARTITION_END - STORAGE_PARTITION_START),
+    };
