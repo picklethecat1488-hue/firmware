@@ -326,7 +326,7 @@ fn test_system_integration_flow() {
 
         // Inactivity for timeout triggers Sleep
         for _ in 0..cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS {
-            system_ctrl.tick();
+            system_ctrl.tick_ms(1000);
             drain_telemetry();
         }
         assert_eq!(system_ctrl.status(), SystemStatus::Sleep);

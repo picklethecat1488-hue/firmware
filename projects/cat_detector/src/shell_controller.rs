@@ -15,11 +15,37 @@ use embedded_cli::cli::CliHandle;
 use embedded_cli::command::RawCommand;
 use embedded_cli::service::CommandProcessor;
 use embedded_io::Write as IoWrite;
-use model::interfaces::{PowerSensor, ProximitySensor, TemperatureSensor};
+use model::interfaces::{Motor, PowerSensor, ProximitySensor, TemperatureSensor};
 
 /// Controller responsible for processing shell commands.
 /// Context pointers to drivers and controllers for direct diagnostics.
-pub struct ShellControllerPointers<
+/// Configuration trait for the ShellController.
+/// Encapsulates the target-specific raw mutex and peripheral types.
+pub trait ShellConfig {
+    /// Type of the raw mutex for task channels.
+    type MutexRaw: RawMutex + 'static;
+    /// Type of the shared I2C bus driver.
+    type I2c: embedded_hal::i2c::I2c + 'static;
+    /// Type of the physical motor peripheral.
+    type Motor: model::interfaces::Motor + 'static;
+    /// Type of the physical flash peripheral.
+    type Flash: embedded_storage::nor_flash::NorFlash + 'static;
+    /// Type of the battery controller.
+    type BatteryCtrl: BlockingBatteryReader + 'static;
+    /// Type of the thermal controller.
+    type ThermalCtrl: BlockingThermalReader + 'static;
+    /// Type of the proximity sensor controller.
+    type SensorCtrl: BlockingProximityReader + 'static;
+    /// Type of the motor controller.
+    type MotorCtrl: BlockingMotorReader + BlockingMotorWriter + 'static;
+    /// Type of the system temperature sensor.
+    type TempSensor: TemperatureSensor + 'static;
+}
+
+/// A generic implementation of ShellConfig that enables type inference.
+#[allow(clippy::type_complexity)]
+pub struct ShellConfigImpl<
+    MutexRaw,
     I2c,
     Motor,
     Flash,
@@ -28,152 +54,107 @@ pub struct ShellControllerPointers<
     SensorCtrl,
     MotorCtrl,
     TempSensor,
-> {
-    /// Pointer to shared I2C bus driver
-    pub i2c_ptr: Option<*mut I2c>,
-    /// Pointer to physical motor peripheral
-    pub motor_ptr: Option<*mut Motor>,
-    /// Pointer to physical flash peripheral
-    pub flash_ptr: Option<*mut Flash>,
-    /// Pointer to battery controller
-    pub battery_ctrl_ptr: Option<*mut BatteryCtrl>,
-    /// Pointer to thermal controller
-    pub thermal_ctrl_ptr: Option<*mut ThermalCtrl>,
-    /// Pointer to North proximity sensor controller
-    pub sensor_north_ctrl_ptr: Option<*mut SensorCtrl>,
-    /// Pointer to East proximity sensor controller
-    pub sensor_east_ctrl_ptr: Option<*mut SensorCtrl>,
-    /// Pointer to West proximity sensor controller
-    pub sensor_west_ctrl_ptr: Option<*mut SensorCtrl>,
-    /// Pointer to motor current controller
-    pub motor_ctrl_ptr: Option<*mut MotorCtrl>,
-    /// Pointer to microcontroller temperature sensor
-    pub temp_sensor_ptr: Option<*mut TempSensor>,
+>(
+    core::marker::PhantomData<(
+        MutexRaw,
+        I2c,
+        Motor,
+        Flash,
+        BatteryCtrl,
+        ThermalCtrl,
+        SensorCtrl,
+        MotorCtrl,
+        TempSensor,
+    )>,
+);
+
+impl<
+        MutexRaw: RawMutex + 'static,
+        I2c: embedded_hal::i2c::I2c + 'static,
+        Motor: model::interfaces::Motor + 'static,
+        Flash: embedded_storage::nor_flash::NorFlash + 'static,
+        BatteryCtrl: BlockingBatteryReader + 'static,
+        ThermalCtrl: BlockingThermalReader + 'static,
+        SensorCtrl: BlockingProximityReader + 'static,
+        MotorCtrl: BlockingMotorReader + BlockingMotorWriter + 'static,
+        TempSensor: TemperatureSensor + 'static,
+    > ShellConfig
+    for ShellConfigImpl<
+        MutexRaw,
+        I2c,
+        Motor,
+        Flash,
+        BatteryCtrl,
+        ThermalCtrl,
+        SensorCtrl,
+        MotorCtrl,
+        TempSensor,
+    >
+{
+    type MutexRaw = MutexRaw;
+    type I2c = I2c;
+    type Motor = Motor;
+    type Flash = Flash;
+    type BatteryCtrl = BatteryCtrl;
+    type ThermalCtrl = ThermalCtrl;
+    type SensorCtrl = SensorCtrl;
+    type MotorCtrl = MotorCtrl;
+    type TempSensor = TempSensor;
 }
 
 /// Controller responsible for processing shell commands.
-pub struct ShellController<
-    MutexRaw: RawMutex + 'static,
-    const N: usize,
-    I2c: 'static,
-    Motor: 'static,
-    Flash: 'static,
-    BatteryCtrl: 'static,
-    ThermalCtrl: 'static,
-    SensorCtrl: 'static,
-    MotorCtrl: 'static,
-    TempSensor: 'static,
-> {
-    motor_tx: Sender<'static, MutexRaw, MotorCommand, N>,
-    system_tx: Sender<'static, MutexRaw, SystemCommand, N>,
-    i2c_ptr: Option<*mut I2c>,
-    motor_ptr: Option<*mut Motor>,
-    flash_ptr: Option<*mut Flash>,
-    battery_ctrl_ptr: Option<*mut BatteryCtrl>,
-    thermal_ctrl_ptr: Option<*mut ThermalCtrl>,
-    sensor_north_ctrl_ptr: Option<*mut SensorCtrl>,
-    sensor_east_ctrl_ptr: Option<*mut SensorCtrl>,
-    sensor_west_ctrl_ptr: Option<*mut SensorCtrl>,
-    motor_ctrl_ptr: Option<*mut MotorCtrl>,
-    temp_sensor_ptr: Option<*mut TempSensor>,
+/// Context pointers to drivers and controllers for direct diagnostics.
+pub struct ShellControllerPointers<C: ShellConfig> {
+    /// Pointer to shared I2C bus driver
+    pub i2c_ptr: Option<*mut C::I2c>,
+    /// Pointer to physical motor peripheral
+    pub motor_ptr: Option<*mut C::Motor>,
+    /// Pointer to physical flash peripheral
+    pub flash_ptr: Option<*mut C::Flash>,
+    /// Pointer to battery controller
+    pub battery_ctrl_ptr: Option<*mut C::BatteryCtrl>,
+    /// Pointer to thermal controller
+    pub thermal_ctrl_ptr: Option<*mut C::ThermalCtrl>,
+    /// Pointer to North proximity sensor controller
+    pub sensor_north_ctrl_ptr: Option<*mut C::SensorCtrl>,
+    /// Pointer to East proximity sensor controller
+    pub sensor_east_ctrl_ptr: Option<*mut C::SensorCtrl>,
+    /// Pointer to West proximity sensor controller
+    pub sensor_west_ctrl_ptr: Option<*mut C::SensorCtrl>,
+    /// Pointer to motor current controller
+    pub motor_ctrl_ptr: Option<*mut C::MotorCtrl>,
+    /// Pointer to microcontroller temperature sensor
+    pub temp_sensor_ptr: Option<*mut C::TempSensor>,
+}
+
+/// Controller responsible for processing shell commands.
+pub struct ShellController<C: ShellConfig, const N: usize> {
+    motor_tx: Sender<'static, C::MutexRaw, MotorCommand, N>,
+    system_tx: Sender<'static, C::MutexRaw, SystemCommand, N>,
+    i2c_ptr: Option<*mut C::I2c>,
+    motor_ptr: Option<*mut C::Motor>,
+    flash_ptr: Option<*mut C::Flash>,
+    battery_ctrl_ptr: Option<*mut C::BatteryCtrl>,
+    thermal_ctrl_ptr: Option<*mut C::ThermalCtrl>,
+    sensor_north_ctrl_ptr: Option<*mut C::SensorCtrl>,
+    sensor_east_ctrl_ptr: Option<*mut C::SensorCtrl>,
+    sensor_west_ctrl_ptr: Option<*mut C::SensorCtrl>,
+    motor_ctrl_ptr: Option<*mut C::MotorCtrl>,
+    temp_sensor_ptr: Option<*mut C::TempSensor>,
     storage_start: u32,
     storage_end: u32,
 }
 
 // Implement Send and Sync manually since ShellController contains raw pointers
-unsafe impl<
-        MutexRaw: RawMutex + 'static,
-        const N: usize,
-        I2c: 'static,
-        Motor: 'static,
-        Flash: 'static,
-        BatteryCtrl: 'static,
-        ThermalCtrl: 'static,
-        SensorCtrl: 'static,
-        MotorCtrl: 'static,
-        TempSensor: 'static,
-    > Send
-    for ShellController<
-        MutexRaw,
-        N,
-        I2c,
-        Motor,
-        Flash,
-        BatteryCtrl,
-        ThermalCtrl,
-        SensorCtrl,
-        MotorCtrl,
-        TempSensor,
-    >
-{
-}
+unsafe impl<C: ShellConfig, const N: usize> Send for ShellController<C, N> {}
+unsafe impl<C: ShellConfig, const N: usize> Sync for ShellController<C, N> {}
 
-unsafe impl<
-        MutexRaw: RawMutex + 'static,
-        const N: usize,
-        I2c: 'static,
-        Motor: 'static,
-        Flash: 'static,
-        BatteryCtrl: 'static,
-        ThermalCtrl: 'static,
-        SensorCtrl: 'static,
-        MotorCtrl: 'static,
-        TempSensor: 'static,
-    > Sync
-    for ShellController<
-        MutexRaw,
-        N,
-        I2c,
-        Motor,
-        Flash,
-        BatteryCtrl,
-        ThermalCtrl,
-        SensorCtrl,
-        MotorCtrl,
-        TempSensor,
-    >
-{
-}
-
-impl<
-        MutexRaw: RawMutex + 'static,
-        const N: usize,
-        I2c: 'static,
-        Motor: 'static,
-        Flash: 'static,
-        BatteryCtrl: 'static,
-        ThermalCtrl: 'static,
-        SensorCtrl: 'static,
-        MotorCtrl: 'static,
-        TempSensor: 'static,
-    >
-    ShellController<
-        MutexRaw,
-        N,
-        I2c,
-        Motor,
-        Flash,
-        BatteryCtrl,
-        ThermalCtrl,
-        SensorCtrl,
-        MotorCtrl,
-        TempSensor,
-    >
-{
+impl<C: ShellConfig, const N: usize> ShellController<C, N> {
     /// Creates a new ShellController.
     pub fn new(
-        motor_tx: Sender<'static, MutexRaw, MotorCommand, N>,
-        system_tx: Sender<'static, MutexRaw, SystemCommand, N>,
-        pointers: ShellControllerPointers<
-            I2c,
-            Motor,
-            Flash,
-            BatteryCtrl,
-            ThermalCtrl,
-            SensorCtrl,
-            MotorCtrl,
-            TempSensor,
-        >,
+        motor_tx: Sender<'static, C::MutexRaw, MotorCommand, N>,
+        system_tx: Sender<'static, C::MutexRaw, SystemCommand, N>,
+        pointers: ShellControllerPointers<C>,
         storage_start: u32,
         storage_end: u32,
     ) -> Self {
@@ -196,41 +177,8 @@ impl<
     }
 }
 
-impl<
-        MutexRaw: RawMutex + 'static,
-        const N: usize,
-        I2c: 'static,
-        Motor: 'static,
-        Flash: 'static,
-        BatteryCtrl: 'static,
-        ThermalCtrl: 'static,
-        SensorCtrl: 'static,
-        MotorCtrl: 'static,
-        TempSensor: 'static,
-        W: IoWrite<Error = E>,
-        E: embedded_io::Error,
-    > CommandProcessor<W, E>
-    for ShellController<
-        MutexRaw,
-        N,
-        I2c,
-        Motor,
-        Flash,
-        BatteryCtrl,
-        ThermalCtrl,
-        SensorCtrl,
-        MotorCtrl,
-        TempSensor,
-    >
-where
-    I2c: embedded_hal::i2c::I2c,
-    Motor: model::interfaces::Motor,
-    Flash: embedded_storage::nor_flash::NorFlash,
-    BatteryCtrl: BlockingBatteryReader,
-    ThermalCtrl: BlockingThermalReader,
-    SensorCtrl: BlockingProximityReader,
-    MotorCtrl: BlockingMotorReader + BlockingMotorWriter,
-    TempSensor: TemperatureSensor,
+impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Error>
+    CommandProcessor<W, E> for ShellController<C, N>
 {
     fn process<'a>(
         &mut self,
@@ -314,7 +262,7 @@ where
                     );
                 }),
             CliCommand::Proximity => {
-                let read_sensor = |ptr_opt: Option<*mut SensorCtrl>| {
+                let read_sensor = |ptr_opt: Option<*mut C::SensorCtrl>| {
                     ptr_opt
                         .ok_or("Proximity sensor pointer not available")
                         .and_then(|p| {

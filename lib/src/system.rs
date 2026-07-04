@@ -31,13 +31,13 @@ pub fn transition_wake(
 /// Returns the next status if the transition is valid.
 pub fn transition_sleep(
     current_status: SystemStatus,
-    time_in_active: u32,
-    inactivity_timeout_seconds: u32,
+    time_in_active_ms: u32,
+    inactivity_timeout_ms: u32,
     battery_critical: bool,
     thermal_critical: bool,
 ) -> Option<SystemStatus> {
     let can_sleep =
-        time_in_active >= inactivity_timeout_seconds || battery_critical || thermal_critical;
+        time_in_active_ms >= inactivity_timeout_ms || battery_critical || thermal_critical;
     if can_sleep
         && current_status != SystemStatus::Sleep
         && current_status != SystemStatus::PowerDown
@@ -101,8 +101,9 @@ pub fn transition_battery_update(
 /// Generic container for the system's power state, timers, and critical statuses.
 pub struct SystemStateManager<MutexRaw: RawMutex + 'static, const N: usize> {
     status: SystemStatus,
-    inactivity_seconds: u32,
-    time_in_active: u32,
+    inactive_ms: u32,
+    active_ms: u32,
+    interval_ms: u32,
     tick_ms_accumulator: u32,
     battery_critical: bool,
     thermal_critical: bool,
@@ -123,8 +124,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> core::fmt::Debug
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("SystemStateManager")
             .field("status", &self.status)
-            .field("inactivity_seconds", &self.inactivity_seconds)
-            .field("time_in_active", &self.time_in_active)
+            .field("inactive_ms", &self.inactive_ms)
+            .field("active_ms", &self.active_ms)
+            .field("interval_ms", &self.interval_ms)
             .field("tick_ms_accumulator", &self.tick_ms_accumulator)
             .field("battery_critical", &self.battery_critical)
             .field("thermal_critical", &self.thermal_critical)
@@ -144,8 +146,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> Clone for SystemStateManager<
     fn clone(&self) -> Self {
         Self {
             status: self.status,
-            inactivity_seconds: self.inactivity_seconds,
-            time_in_active: self.time_in_active,
+            inactive_ms: self.inactive_ms,
+            active_ms: self.active_ms,
+            interval_ms: self.interval_ms,
             tick_ms_accumulator: self.tick_ms_accumulator,
             battery_critical: self.battery_critical,
             thermal_critical: self.thermal_critical,
@@ -168,8 +171,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> Clone for SystemStateManager<
 impl<MutexRaw: RawMutex + 'static, const N: usize> PartialEq for SystemStateManager<MutexRaw, N> {
     fn eq(&self, other: &Self) -> bool {
         self.status == other.status
-            && self.inactivity_seconds == other.inactivity_seconds
-            && self.time_in_active == other.time_in_active
+            && self.inactive_ms == other.inactive_ms
+            && self.active_ms == other.active_ms
+            && self.interval_ms == other.interval_ms
             && self.tick_ms_accumulator == other.tick_ms_accumulator
             && self.battery_critical == other.battery_critical
             && self.thermal_critical == other.thermal_critical
@@ -198,8 +202,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
     ) -> Self {
         Self {
             status: SystemStatus::PowerDown,
-            inactivity_seconds: 0,
-            time_in_active: 0,
+            inactive_ms: 0,
+            active_ms: 0,
+            interval_ms: 1000,
             tick_ms_accumulator: 0,
             battery_critical: true,
             thermal_critical: false,
@@ -247,23 +252,28 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
     }
 
     /// Returns the inactivity timer in seconds.
-    pub const fn inactivity_seconds(&self) -> u32 {
-        self.inactivity_seconds
+    pub const fn inactive_ms(&self) -> u32 {
+        self.inactive_ms
     }
 
     /// Sets the inactivity timer in seconds.
-    pub fn set_inactivity_seconds(&mut self, val: u32) {
-        self.inactivity_seconds = val;
+    pub fn set_inactive_ms(&mut self, val: u32) {
+        self.inactive_ms = val;
     }
 
     /// Returns the time spent in active state in seconds.
-    pub const fn time_in_active(&self) -> u32 {
-        self.time_in_active
+    pub const fn active_ms(&self) -> u32 {
+        self.active_ms
     }
 
-    /// Sets the time spent in active state in seconds.
-    pub fn set_time_in_active(&mut self, val: u32) {
-        self.time_in_active = val;
+    /// Returns the time spent in active state in seconds.
+    pub const fn interval_ms(&self) -> u32 {
+        self.interval_ms
+    }
+
+    /// Sets the inactivity timer in seconds.
+    pub fn set_interval_ms(&mut self, val: u32) {
+        self.interval_ms = val;
     }
 
     /// Returns if the battery is critical.
@@ -385,10 +395,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
     /// Returns true if the 1-second boundary was crossed.
     pub fn tick_ms(&mut self, ms: u32) -> bool {
         if self.status == SystemStatus::Active {
-            self.tick_ms_accumulator += ms;
-            if self.tick_ms_accumulator >= 1000 {
-                self.tick_ms_accumulator -= 1000;
-                self.time_in_active += 1;
+            self.tick_ms_accumulator = self.tick_ms_accumulator.saturating_add(ms);
+            if self.tick_ms_accumulator >= self.interval_ms {
+                self.tick_ms_accumulator =
+                    self.tick_ms_accumulator.saturating_sub(self.interval_ms);
+                self.active_ms = self.active_ms.saturating_add(self.interval_ms);
                 return true;
             }
         } else {
@@ -400,7 +411,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
     /// Resets the boot power-down flag and active/inactivity timers on system wakeup.
     pub fn reset_on_wake(&mut self) {
         self.boot_power_down = false;
-        self.inactivity_seconds = 0;
-        self.time_in_active = 0;
+        self.inactive_ms = 0;
+        self.active_ms = 0;
     }
 }

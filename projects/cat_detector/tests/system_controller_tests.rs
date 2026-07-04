@@ -47,19 +47,19 @@ fn test_system_controller_flow() {
 
     // Tick it 29 times, should remain Active
     for _ in 0..29 {
-        controller.tick();
+        controller.tick_ms(1000);
     }
     assert_eq!(controller.status(), SystemStatus::Active);
 
     // Register activity, resets timer
     controller.handle_command(SystemCommand::ActivityDetected);
     for _ in 0..(cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS - 1) {
-        controller.tick();
+        controller.tick_ms(1000);
     }
     assert_eq!(controller.status(), SystemStatus::Active);
 
     // One more tick reaches 30 seconds -> transitions to Sleep
-    controller.tick();
+    controller.tick_ms(1000);
     assert_eq!(controller.status(), SystemStatus::Sleep);
 
     // Verify LED was updated to Sleep blue
@@ -117,7 +117,7 @@ fn test_system_controller_flow() {
 
     // Tick to INACTIVITY_TIMEOUT_SECONDS to let the fresh controller sleep
     for _ in 0..cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS {
-        controller.tick();
+        controller.tick_ms(1000);
     }
     assert_eq!(controller.status(), SystemStatus::Sleep);
     let _ = LED_CHANNEL.try_receive().unwrap(); // consume Sleep LED command (SolidBlue)
@@ -135,7 +135,7 @@ fn test_system_controller_flow() {
 
     // Tick to INACTIVITY_TIMEOUT_SECONDS
     for _ in 0..cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS {
-        controller.tick();
+        controller.tick_ms(1000);
     }
     // Now it should be allowed to sleep, and does so automatically after 30s inactivity
     assert_eq!(controller.status(), SystemStatus::Sleep);

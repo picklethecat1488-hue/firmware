@@ -233,6 +233,28 @@ cargo nextest run
 cargo test
 ```
 
+### Debugging Workflows
+
+For interactive debugging of tests on the host and bare-metal binaries on the target device, configure VS Code as follows:
+
+#### 1. Host Test Debugging
+For the most reliable breakpoint debugging experience using the VS Code **"Debug"** CodeLens buttons:
+1. Ensure the **CodeLLDB** extension is installed in VS Code.
+2. Ensure you do **not** override the test run command in `.vscode/settings.json`. By letting VS Code default to standard `cargo test` when debugging, CodeLLDB attaches directly to the test process, allowing your breakpoints to be hit out of the box.
+3. If you specifically want to debug a test under nextest using the terminal, install the `codelldb-launch` helper and run:
+   ```bash
+   cargo install --locked --git https://github.com/vadimcn/codelldb codelldb-launch
+   cargo nextest run --debugger codelldb-launch <test_name>
+   ```
+
+#### 2. Target Device Debugging (probe-rs)
+To flash and debug firmware binaries directly on the target RP2040 microcontroller:
+1. Ensure the **Debugger for probe-rs** extension is installed in VS Code.
+2. Use the **Run and Debug** view (`Ctrl+Shift+D` / `Cmd+Shift+D`) and select one of the following configurations:
+   - **Debug Firmware (probe-rs)**: Flashes and debugs the main `cat_detector` application.
+   - **Debug Shell (probe-rs)**: Flashes and debugs the diagnostic `shell` bringup utility.
+3. Code execution will automatically halt at the entry point (`main`), allowing you to step through hardware initialization.
+
 ### Build Checks
 Check target compilation via:
 ```bash

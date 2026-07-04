@@ -1,0 +1,55 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug Test (Nextest)",
+      "cargo": {
+        "args": [
+          "nextest",
+          "run",
+          "--no-run"
+        ]
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "probe-rs-debug",
+      "request": "launch",
+      "name": "Debug Firmware (probe-rs)",
+      "cwd": "${workspaceFolder}",
+      "chip": "RP2040",
+      "coreConfigs": [
+        {
+          "coreIndex": 0,
+          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector"
+        }
+      ],
+      "flashingConfig": {
+        "flashingEnabled": true,
+        "resetAfterFlashing": true,
+        "haltAfterReset": true
+      }
+    },
+    {
+      "type": "probe-rs-debug",
+      "request": "launch",
+      "name": "Debug Shell (probe-rs)",
+      "cwd": "${workspaceFolder}",
+      "chip": "RP2040",
+      "coreConfigs": [
+        {
+          "coreIndex": 0,
+          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/shell"
+        }
+      ],
+      "flashingConfig": {
+        "flashingEnabled": true,
+        "resetAfterFlashing": true,
+        "haltAfterReset": true
+      }
+    }
+  ]
+}

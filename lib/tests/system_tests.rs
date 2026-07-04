@@ -11,8 +11,8 @@ fn test_system_state_manager_initialization() {
     let manager = SystemStateManager::new(10, 2, 20, 21, 80, TEST_TELEMETRY_CHANNEL.sender());
 
     assert_eq!(manager.status(), SystemStatus::PowerDown);
-    assert_eq!(manager.inactivity_seconds(), 0);
-    assert_eq!(manager.time_in_active(), 0);
+    assert_eq!(manager.inactive_ms(), 0);
+    assert_eq!(manager.active_ms(), 0);
     assert!(manager.battery_critical());
     assert!(!manager.thermal_critical());
     assert!(!manager.charger_connected());
@@ -82,22 +82,35 @@ fn test_tick_ms() {
 
     // Ticks when NOT active do not increment active timer
     assert!(!manager.tick_ms(500));
-    assert_eq!(manager.time_in_active(), 0);
+    assert_eq!(manager.active_ms(), 0);
 
     // Activate system
     manager.set_status(SystemStatus::Active);
 
     // Tick partial second -> returns false, timer remains 0
     assert!(!manager.tick_ms(500));
-    assert_eq!(manager.time_in_active(), 0);
+    assert_eq!(manager.active_ms(), 0);
 
-    // Tick remaining ms -> crosses boundary, returns true, timer increments
+    // Tick remaining ms -> crosses boundary, returns true, active timer increments at 1s intervals
     assert!(manager.tick_ms(500));
-    assert_eq!(manager.time_in_active(), 1);
+    assert_eq!(manager.active_ms(), 1000);
 
     // Transition to Sleep resets accumulator
     manager.set_status(SystemStatus::Sleep);
     assert!(!manager.tick_ms(500));
+}
+
+#[test]
+fn test_interval_ms() {
+    let mut manager = SystemStateManager::new(10, 2, 20, 21, 80, TEST_TELEMETRY_CHANNEL.sender());
+    assert_eq!(manager.interval_ms(), 1000);
+    manager.set_interval_ms(500);
+
+    manager.set_status(SystemStatus::Active);
+
+    // Set interval, tick crosses bondary immediatley
+    assert_eq!(manager.interval_ms(), 500);
+    assert!(manager.tick_ms(500));
 }
 
 #[test]
