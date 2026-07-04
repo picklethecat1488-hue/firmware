@@ -8,8 +8,8 @@ pub use dump::dump_logs;
 pub use stream::stream_logs;
 pub use tool_common::decode_project_info;
 
-/// Trait abstracting an RTT channel log source.
-pub trait RttLogSource {
-    /// Reads bytes from the RTT channel into the provided buffer.
+/// Trait abstracting a defmt log source.
+pub trait DefmtLogSource {
+    /// Reads bytes from the log source into the provided buffer.
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, String>;
 }

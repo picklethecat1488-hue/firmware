@@ -127,9 +127,9 @@ cargo build --bin host_fs --release
 
 ---
 
-## Host RTT Logging Tool (`defmt_host`)
+## Host Logging Tool (`defmt_host`)
 
-We provide a host command-line utility, `defmt_host`, to stream and decode plaintext `defmt` logs from the microcontroller's RTT channel.
+We provide a host command-line utility, `defmt_host`, to stream and decode plaintext `defmt` logs from the microcontroller's RTT channel or Serial Port (UART).
 
 ### 1. Build host defmt_host
 ```bash
@@ -137,13 +137,17 @@ cargo build --bin defmt_host --release
 ```
 
 ### 2. Stream logs
-- **Using project auto-detection**:
+- **Via RTT (Using project auto-detection)**:
   ```bash
   cargo run --bin defmt_host -- --project cat_detector --elf target/thumbv6m-none-eabi/debug/cat_detector
   ```
-- **Specifying chip directly**:
+- **Via RTT (Specifying chip directly)**:
   ```bash
   cargo run --bin defmt_host -- --chip rp2040 --elf target/thumbv6m-none-eabi/debug/cat_detector
+  ```
+- **Via Serial Port (UART)**:
+  ```bash
+  cargo run --bin defmt_host -- --port /dev/tty.usbserial-10 --baud 115200 --elf target/thumbv6m-none-eabi/debug/cat_detector
   ```
 
 ---

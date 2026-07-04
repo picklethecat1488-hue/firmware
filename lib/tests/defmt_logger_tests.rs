@@ -1,3 +1,5 @@
+#![allow(static_mut_refs)]
+
 use core::sync::atomic::{AtomicUsize, Ordering};
 use firmware_lib::defmt_logger::{Channel, MODE_BLOCK_IF_FULL, MODE_NON_BLOCKING_TRIM};
 
@@ -139,4 +141,48 @@ fn test_rtt_protocol_reentrancy_panic() {
     }
 
     assert!(res.is_err());
+}
+
+use firmware_lib::defmt_logger::{DefmtLogWriter, DefmtLogger};
+use std::sync::{Arc, Mutex};
+
+struct TestLoggerWriter {
+    written: Arc<Mutex<Vec<u8>>>,
+}
+
+impl DefmtLogWriter for TestLoggerWriter {
+    fn write_all(&self, bytes: &[u8]) {
+        self.written.lock().unwrap().extend_from_slice(bytes);
+    }
+}
+
+#[test]
+fn test_defmt_logger_state_manager() {
+    let written = Arc::new(Mutex::new(Vec::new()));
+    let writer = Box::leak(Box::new(TestLoggerWriter {
+        written: Arc::clone(&written),
+    }));
+
+    // 1. Set our test writer
+    DefmtLogger::set_writer(writer);
+
+    // 2. Verify active writer matches and receives write calls
+    unsafe {
+        if let Some(w) = firmware_lib::defmt_logger::ACTIVE_WRITER {
+            w.write_all(&[0xDE, 0xAD, 0xBE, 0xEF]);
+        }
+    }
+    assert_eq!(*written.lock().unwrap(), vec![0xDE, 0xAD, 0xBE, 0xEF]);
+
+    // 3. Disable writer
+    DefmtLogger::disable();
+    unsafe {
+        assert!(firmware_lib::defmt_logger::ACTIVE_WRITER.is_none());
+    }
+
+    // 4. Restore DEFAULT_RTT_WRITER for other tests
+    DefmtLogger::set_writer(&firmware_lib::defmt_logger::DEFAULT_RTT_WRITER);
+    unsafe {
+        assert!(firmware_lib::defmt_logger::ACTIVE_WRITER.is_some());
+    }
 }

@@ -105,6 +105,38 @@ impl Channel {
     }
 }
 
+/// Trait for a defmt log writer (RTT, UART, Combined, etc.)
+pub trait DefmtLogWriter: Sync + Send {
+    /// Writes log bytes to the backend.
+    fn write_all(&self, bytes: &[u8]);
+    /// Flushes the log backend.
+    fn flush(&self) {}
+}
+
+/// Default instance of RttLogWriter.
+pub static DEFAULT_RTT_WRITER: crate::rtt::RttLogWriter = crate::rtt::RttLogWriter;
+
+pub static mut ACTIVE_WRITER: Option<&'static dyn DefmtLogWriter> = Some(&DEFAULT_RTT_WRITER);
+
+/// Global manager for configuring the defmt logging destination.
+pub struct DefmtLogger;
+
+impl DefmtLogger {
+    /// Sets the active global writer for defmt logging.
+    pub fn set_writer(writer: &'static dyn DefmtLogWriter) {
+        critical_section::with(|_| unsafe {
+            ACTIVE_WRITER = Some(writer);
+        });
+    }
+
+    /// Disables defmt logging.
+    pub fn disable() {
+        critical_section::with(|_| unsafe {
+            ACTIVE_WRITER = None;
+        });
+    }
+}
+
 /// Trait representing an RTT writing backend.
 pub trait RttWriter {
     /// Writes all bytes to the backend.
@@ -200,74 +232,5 @@ impl<W: RttWriter> RttProtocol<W> {
             .borrow(cs)
             .borrow_mut();
         buffer.write_bytes(bytes);
-    }
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-mod target_logger {
-    use super::*;
-
-    #[repr(C)]
-    struct Header {
-        id: [u8; 16],
-        max_up_channels: usize,
-        max_down_channels: usize,
-        up_channel: Channel,
-    }
-
-    unsafe impl Sync for Header {}
-
-    #[no_mangle]
-    static mut _SEGGER_RTT: Header = Header {
-        id: *b"SEGGER RTT\0\0\0\0\0\0",
-        max_up_channels: 1,
-        max_down_channels: 0,
-        up_channel: Channel {
-            name: NAME.as_ptr(),
-            buffer: unsafe { BUFFER.as_mut_ptr() },
-            size: BUF_SIZE,
-            write: AtomicUsize::new(0),
-            read: AtomicUsize::new(0),
-            flags: AtomicUsize::new(MODE_NON_BLOCKING_TRIM),
-        },
-    };
-
-    static mut BUFFER: [u8; BUF_SIZE] = [0u8; BUF_SIZE];
-
-    static NAME: [u8; 6] = *b"defmt\0";
-
-    struct TargetRttWriter;
-
-    impl RttWriter for TargetRttWriter {
-        fn write_all(&self, bytes: &[u8]) {
-            unsafe {
-                _SEGGER_RTT.up_channel.write_all(bytes);
-            }
-        }
-        fn flush(&self) {
-            unsafe {
-                _SEGGER_RTT.up_channel.flush();
-            }
-        }
-    }
-
-    static RTT_ENCODER: RttProtocol<TargetRttWriter> = RttProtocol::new(TargetRttWriter);
-
-    #[defmt::global_logger]
-    struct Logger;
-
-    unsafe impl defmt::Logger for Logger {
-        fn acquire() {
-            RTT_ENCODER.acquire();
-        }
-        unsafe fn write(bytes: &[u8]) {
-            RTT_ENCODER.write(bytes);
-        }
-        unsafe fn flush() {
-            RTT_ENCODER.flush();
-        }
-        unsafe fn release() {
-            RTT_ENCODER.release();
-        }
     }
 }

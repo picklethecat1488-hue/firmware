@@ -1,10 +1,10 @@
-use crate::RttLogSource;
+use crate::DefmtLogSource;
 use defmt_decoder::Table;
 use std::io::Write;
 
-/// Drains all currently buffered logs from the RTT source and writes them to the writer.
+/// Drains all currently buffered logs from the log source and writes them to the writer.
 /// Exits as soon as a read returns 0 (source is empty).
-pub fn dump_logs<S: RttLogSource, W: Write>(
+pub fn dump_logs<S: DefmtLogSource, W: Write>(
     mut source: S,
     table: &Table,
     mut writer: W,
@@ -29,8 +29,14 @@ pub fn dump_logs<S: RttLogSource, W: Write>(
                                 return Err(format!("Failed to flush log: {:?}", e));
                             }
                         }
-                        Err(defmt_decoder::DecodeError::UnexpectedEof) => break,
-                        Err(defmt_decoder::DecodeError::Malformed) => continue,
+                        Err(defmt_decoder::DecodeError::UnexpectedEof) => {
+                            eprintln!("Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)");
+                            break;
+                        }
+                        Err(defmt_decoder::DecodeError::Malformed) => {
+                            eprintln!("Error: malformed frame received (possible target/ELF mismatch or log buffer corruption)");
+                            continue;
+                        }
                     }
                 }
             }
