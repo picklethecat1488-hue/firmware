@@ -386,16 +386,26 @@ where
     Ok(())
 }
 
+/// Keeps track of core processor (mainly ARM) state.
+#[derive(Default)]
+pub struct CoreState {
+    /// The value of the r0 register.
+    pub r0: u32,
+    /// The value of the r1 register.
+    pub r1: u32,
+    /// The value of the r2 register.
+    pub r2: u32,
+    /// The value of the r3 register.
+    pub r3: u32,
+    /// Return PCs backtrace array.
+    pub backtrace: [u32; 16],
+}
+
 /// Helper function to mix hardware entropy and context variables into a unique UUID.
-#[allow(clippy::too_many_arguments)]
 pub fn generate_uuid(
     entropy: [u8; 16],
     micros: u64,
-    r0: u32,
-    r1: u32,
-    r2: u32,
-    r3: u32,
-    backtrace: &[u32],
+    state: &CoreState,
     revision_hash: &str,
 ) -> [u8; 16] {
     let mut uuid = entropy;
@@ -411,11 +421,11 @@ pub fn generate_uuid(
     };
 
     feed_u64(micros);
-    feed_u64(r0 as u64);
-    feed_u64(r1 as u64);
-    feed_u64(r2 as u64);
-    feed_u64(r3 as u64);
-    for &pc in backtrace {
+    feed_u64(state.r0 as u64);
+    feed_u64(state.r1 as u64);
+    feed_u64(state.r2 as u64);
+    feed_u64(state.r3 as u64);
+    for &pc in state.backtrace.iter() {
         feed_u64(pc as u64);
     }
     for &b in revision_hash.as_bytes() {
@@ -452,20 +462,17 @@ pub fn handle_panic_with_sizes<
     micros: u64,
     _info: &core::panic::PanicInfo,
 ) -> ! {
-    let r0: u32;
-    let r1: u32;
-    let r2: u32;
-    let r3: u32;
+    let mut state = CoreState::default();
     unsafe {
         core::arch::asm!(
             "mov {0}, r0",
             "mov {1}, r1",
             "mov {2}, r2",
             "mov {3}, r3",
-            out(reg) r0,
-            out(reg) r1,
-            out(reg) r2,
-            out(reg) r3,
+            out(reg) state.r0,
+            out(reg) state.r1,
+            out(reg) state.r2,
+            out(reg) state.r3,
         );
     }
 
@@ -477,7 +484,6 @@ pub fn handle_panic_with_sizes<
         core::arch::asm!("mov {}, sp", out(reg) sp);
     }
     let stack_top = STACK_TOP;
-    let mut pcs = [0u32; 16];
     let read_mem = |addr: u32| {
         if (FLASH_START..FLASH_END).contains(&addr) {
             Some(unsafe { *(addr as *const u32) })
@@ -490,7 +496,7 @@ pub fn handle_panic_with_sizes<
         stack_top as usize,
         FLASH_START,
         FLASH_END,
-        &mut pcs,
+        &mut state.backtrace,
         read_mem,
     );
 
@@ -506,28 +512,15 @@ pub fn handle_panic_with_sizes<
     let logs_len = critical_section::with(|cs| extract_system_logs(&cs, log_buf));
     let logs_slice = &log_buf[..logs_len];
 
-    // Populate CrashDump struct
-    let mut backtrace_array = [0u32; 16];
-    backtrace_array[..pc_count].copy_from_slice(&pcs[..pc_count]);
-
-    let uuid = generate_uuid(
-        entropy,
-        micros,
-        r0,
-        r1,
-        r2,
-        r3,
-        &backtrace_array[..pc_count],
-        env!("GIT_HASH"),
-    );
+    let uuid = generate_uuid(entropy, micros, &state, env!("GIT_HASH"));
 
     let dump = crate::types::CrashDump {
         revision_hash: env!("GIT_HASH"),
-        r0,
-        r1,
-        r2,
-        r3,
-        backtrace: backtrace_array,
+        r0: state.r0,
+        r1: state.r1,
+        r2: state.r2,
+        r3: state.r3,
+        backtrace: state.backtrace,
         backtrace_len: pc_count as u32,
         system_logs: logs_slice,
         uuid,
