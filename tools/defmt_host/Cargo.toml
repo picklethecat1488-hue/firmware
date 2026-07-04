@@ -13,3 +13,4 @@ futures = "0.3"
 clap = { version = "4.4", features = ["derive"] }
 probe-rs = { version = "0.31.0", features = [] }
 indicatif = "0.17"
+serialport = "4.3"

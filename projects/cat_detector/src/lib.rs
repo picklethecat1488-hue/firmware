@@ -308,3 +308,23 @@ impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
         }
     }
 }
+
+/// A defmt log writer that outputs to the microcontroller's UART0 block.
+pub struct UartWriter;
+
+impl firmware_lib::defmt_logger::DefmtLogWriter for UartWriter {
+    fn write_all(&self, _bytes: &[u8]) {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        {
+            let uart0_dr = 0x4003_4000 as *mut u32;
+            let uart0_fr = 0x4003_4018 as *const u32;
+            for &b in _bytes {
+                while unsafe { uart0_fr.read_volatile() } & (1 << 5) != 0 {}
+                unsafe { uart0_dr.write_volatile(b as u32) };
+            }
+        }
+    }
+}
+
+/// Default instance of UartWriter for RP2040 UART0 logging.
+pub static DEFAULT_UART_WRITER: UartWriter = UartWriter;

@@ -10,8 +10,10 @@ pub mod gesture_detector;
 pub mod panic_handler;
 
 /// Reusable hardware bringup shell console infrastructure.
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 pub mod uart;
+
+/// SWD Real-Time Transfer (RTT) logging backend.
+pub mod rtt;
 
 #[doc(hidden)]
 pub mod defmt_logger;
