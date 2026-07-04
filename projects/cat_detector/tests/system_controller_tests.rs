@@ -1,4 +1,6 @@
-use cat_detector::system_controller::{SystemCommand, SystemController, SystemControllerChannels};
+use cat_detector::system_controller::{
+    SystemCommand, SystemController, SystemControllerChannels, LOW_BATTERY_SOC_THRESHOLD,
+};
 use controller::battery_controller::BatteryCommand;
 use controller::motor_controller::MotorCommand;
 use controller::sensor_controller::SensorCommand;
@@ -298,8 +300,7 @@ fn test_power_down_and_gesture_detection() {
 }
 
 #[test]
-#[should_panic(expected = "Critical SoC threshold must be lower than the low battery threshold")]
-fn test_invalid_critical_soc_threshold_panic() {
+fn test_invalid_critical_soc_threshold_recovery() {
     static MOTOR_CHANNEL: Channel<CriticalSectionRawMutex, MotorCommand, 4> = Channel::new();
     static SENSOR_NORTH_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> =
         Channel::new();
@@ -324,9 +325,12 @@ fn test_invalid_critical_soc_threshold_panic() {
     // Set critical threshold to a value greater than LOW_BATTERY_SOC_THRESHOLD (20)
     controller.set_critical_soc_threshold(25);
 
-    // This should panic
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 50,
         charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
+    assert_eq!(
+        controller.critical_soc_threshold(),
+        LOW_BATTERY_SOC_THRESHOLD - 1
+    )
 }
