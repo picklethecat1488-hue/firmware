@@ -77,7 +77,7 @@ probe-rs attach --chip RP2040
 ## Host Flash Filesystem Tool (`host_fs`)
 
 We provide a host command-line utility, `host_fs`, to inspect, query, and decode flash memory contents from the microcontroller's sequential-storage partition. It supports two modes of operation:
-- **Direct Device Mode**: Connects directly to the attached target via `probe-rs`, using `--project <PROJECT>` to dynamically look up the target chip and flash partition mapping.
+- **Direct Device Mode**: Connects directly to the attached target via `probe-rs`. By passing `--autodetect` and `--elf <PATH>`, the tool automatically parses the target chip and flash partition boundaries directly from the ELF's `.project_metadata` section (abstracting the host tool from hardcoded project layout mappings).
 - **Offline Dump Mode**: Reads and writes a local binary flash image file via `--dump <PATH>`.
 
 ### 1. Build host host_fs
@@ -88,7 +88,7 @@ cargo build --bin host_fs --release
 ### 2. Query directory files (`ls`)
 - **Direct connection**:
   ```bash
-  cargo run --bin host_fs -- --project cat_detector ls
+  cargo run --bin host_fs -- --autodetect --elf target/thumbv6m-none-eabi/debug/cat_detector ls
   ```
 - **Offline dump file**:
   ```bash
@@ -98,17 +98,17 @@ cargo build --bin host_fs --release
 ### 3. Copy files to/from device (`cp`)
 - **Copy telemetry from device to host**:
   ```bash
-  cargo run --bin host_fs -- --project cat_detector cp dev:telemetry.rrd local_telemetry.rrd
+  cargo run --bin host_fs -- --autodetect --elf target/thumbv6m-none-eabi/release/cat_detector cp dev:telemetry.rrd local_telemetry.rrd
   ```
 - **Copy new calibration config to device**:
   ```bash
-  cargo run --bin host_fs -- --project cat_detector cp local_cal.bin dev:calibration.bin
+  cargo run --bin host_fs -- --autodetect --elf target/thumbv6m-none-eabi/release/cat_detector cp local_cal.bin dev:calibration.bin
   ```
 
 ### 4. Export telemetry to CSV
 - **Direct connection**:
   ```bash
-  cargo run --bin host_fs -- --project cat_detector export-telemetry telemetry.csv
+  cargo run --bin host_fs -- --autodetect --elf target/thumbv6m-none-eabi/release/cat_detector export-telemetry telemetry.csv
   ```
 - **Offline dump file**:
   ```bash
@@ -118,7 +118,7 @@ cargo build --bin host_fs --release
 ### 5. Decode crash dumps to symbolicated backtraces
 - **Direct connection**:
   ```bash
-  cargo run --bin host_fs -- --project cat_detector crash-log --elf target/thumbv6m-none-eabi/release/cat_detector
+  cargo run --bin host_fs -- --autodetect --elf target/thumbv6m-none-eabi/release/cat_detector crash-log
   ```
 - **Offline dump file**:
   ```bash
@@ -137,9 +137,9 @@ cargo build --bin defmt_host --release
 ```
 
 ### 2. Stream logs
-- **Via RTT (Using project auto-detection)**:
+- **Via RTT (Using ELF auto-detection)**:
   ```bash
-  cargo run --bin defmt_host -- --project cat_detector --elf target/thumbv6m-none-eabi/debug/cat_detector
+  cargo run --bin defmt_host -- --autodetect --elf target/thumbv6m-none-eabi/debug/cat_detector
   ```
 - **Via RTT (Specifying chip directly)**:
   ```bash

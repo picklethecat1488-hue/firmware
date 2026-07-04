@@ -3,6 +3,7 @@
 use crate as app;
 use app::system_controller::SystemCommand;
 use app::CliCommand;
+use app::DEFAULT_UART_WRITER;
 use controller::motor_controller::MotorCommand;
 use controller::{
     BlockingBatteryReader, BlockingMotorReader, BlockingMotorWriter, BlockingProximityReader,
@@ -15,6 +16,7 @@ use embedded_cli::cli::CliHandle;
 use embedded_cli::command::RawCommand;
 use embedded_cli::service::CommandProcessor;
 use embedded_io::Write as IoWrite;
+use firmware_lib::defmt_logger::DefmtLogWriter;
 use model::interfaces::{Motor, PowerSensor, ProximitySensor, TemperatureSensor};
 
 /// Controller responsible for processing shell commands.
@@ -303,6 +305,10 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                 .map_err(|_| "Failed to send System Activity command"),
             CliCommand::Crash => {
                 panic!("Simulated crash dump flow");
+            }
+            CliCommand::Uart => {
+                DEFAULT_UART_WRITER.write_all("UART log transmission OK\n".as_bytes());
+                Ok(())
             }
             CliCommand::McuTemp => self
                 .temp_sensor_ptr

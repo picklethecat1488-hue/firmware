@@ -3,6 +3,12 @@ device_chip: RP2040
 flash_addr: 0x101C0000
 flash_size: 262144
 steps:
+  - id: "0"
+    name: Verify UART Log Communication
+    type: shell_command
+    command: uart
+    description: Verify the RP2040 can transmit logs over UART 
+
   - id: "1"
     name: Verify Fuel Gauge Communication
     type: shell_command

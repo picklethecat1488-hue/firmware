@@ -64,9 +64,13 @@ pub struct Cli {
     #[arg(short, long)]
     pub dump: Option<String>,
 
-    /// Project name to load target chip and flash partition settings from
-    #[arg(short, long, required_unless_present = "dump")]
-    pub project: Option<String>,
+    /// Path to the ELF binary containing project metadata and symbols
+    #[arg(short, long)]
+    pub elf: Option<String>,
+
+    /// Automatically detect chip and layout parameters from the ELF's metadata section
+    #[arg(short, long)]
+    pub autodetect: bool,
 
     /// Subcommand to run against the dump
     #[command(subcommand)]
