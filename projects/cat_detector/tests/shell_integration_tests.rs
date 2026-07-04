@@ -190,7 +190,9 @@ fn test_shell_controller_integration_each_command() {
     };
     let mut temp_sensor = MockTempSensor;
 
-    let pointers = app::shell_controller::ShellControllerPointers {
+    let pointers = app::shell_controller::ShellControllerPointers::<
+        app::shell_controller::ShellConfigImpl<_, _, _, _, _, _, _, _, _>,
+    > {
         i2c_ptr: Some(&mut i2c as *mut _),
         motor_ptr: Some(&mut motor as *mut _),
         flash_ptr: Some(&mut flash as *mut _),
@@ -204,16 +206,8 @@ fn test_shell_controller_integration_each_command() {
     };
 
     let mut shell = ShellController::<
-        _,
+        app::shell_controller::ShellConfigImpl<_, _, _, _, _, _, _, _, _>,
         4,
-        _,
-        _,
-        _,
-        MockBatteryCtrl,
-        MockThermalCtrl,
-        MockSensorCtrl,
-        MockMotorCtrl,
-        MockTempSensor,
     >::new(
         MOTOR_CHANNEL.sender(),
         SYSTEM_CHANNEL.sender(),

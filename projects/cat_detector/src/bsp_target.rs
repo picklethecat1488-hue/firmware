@@ -78,7 +78,9 @@ impl<'d> Board<'d> {
         }
 
         let uart = Uart::new_blocking(p.UART0, p.PIN_0, p.PIN_1, UartConfig::default());
-        let mut i2c = I2c::new_blocking(p.I2C0, p.PIN_5, p.PIN_4, I2cConfig::default());
+        let mut i2c_config = I2cConfig::default();
+        i2c_config.frequency = 400_000;
+        let mut i2c = I2c::new_blocking(p.I2C0, p.PIN_5, p.PIN_4, i2c_config);
         let mut gpio_pins: [Option<Flex<'d>>; 30] = [
             None, // 0 - UART TX
             None, // 1 - UART RX
