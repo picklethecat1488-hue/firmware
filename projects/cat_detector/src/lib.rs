@@ -261,6 +261,8 @@ pub enum CliCommand {
     Activity,
     /// Trigger a panic to test the crash dump / panic flow
     Crash,
+    /// Uart some input to the UART
+    Uart,
     /// Calibrate ToF sensors with target held at the cover (0mm)
     #[command(name = "cal_near")]
     CalNear {

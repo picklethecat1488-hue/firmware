@@ -293,6 +293,10 @@ fn test_shell_controller_integration_each_command() {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
 
+    for b in b"uart\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+    }
+
     // 13. Help command
     for b in b"help\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
