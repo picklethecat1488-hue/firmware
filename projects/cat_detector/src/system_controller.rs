@@ -212,29 +212,6 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                 self.log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityNotDetected));
                 self.proximity_active = false;
             }
-            Some(Gesture::ProximityDetected) => {
-                if current_status != SystemStatus::PowerDown {
-                    self.log_gesture_telemetry(Gesture::ProximityDetected);
-                    self.proximity_active = true;
-                    self.set_inactive_ms(0);
-                    if self.status() == SystemStatus::Sleep {
-                        self.handle_command(SystemCommand::Wake);
-                    }
-                    if self.status() == SystemStatus::Active
-                        && !self.battery_critical()
-                        && !self.thermal_critical()
-                    {
-                        self.motor_tx.try_send(MotorCommand::SetSpeed(100)).unwrap();
-                    }
-                }
-            }
-            Some(Gesture::ProximityNotDetected) => {
-                if current_status != SystemStatus::PowerDown {
-                    self.log_gesture_telemetry(Gesture::ProximityNotDetected);
-                    self.proximity_active = false;
-                }
-            }
-
             _ => {}
         }
     }
