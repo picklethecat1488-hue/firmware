@@ -1,11 +1,11 @@
-use crate::RttLogSource;
+use crate::DefmtLogSource;
 use defmt_decoder::Table;
 use std::io::Write;
 use std::time::Duration;
 
-/// Generic log streaming engine that reads raw defmt frames from an RttLogSource,
+/// Generic log streaming engine that reads raw defmt frames from a DefmtLogSource,
 /// decodes them using the Table, and writes the plaintext logs to the writer.
-pub fn stream_logs<S: RttLogSource, W: Write>(
+pub fn stream_logs<S: DefmtLogSource, W: Write>(
     mut source: S,
     table: &Table,
     mut writer: W,
@@ -30,8 +30,14 @@ pub fn stream_logs<S: RttLogSource, W: Write>(
                                     return Err(format!("Failed to flush log: {:?}", e));
                                 }
                             }
-                            Err(defmt_decoder::DecodeError::UnexpectedEof) => break,
-                            Err(defmt_decoder::DecodeError::Malformed) => continue,
+                            Err(defmt_decoder::DecodeError::UnexpectedEof) => {
+                                eprintln!("Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)");
+                                break;
+                            }
+                            Err(defmt_decoder::DecodeError::Malformed) => {
+                                eprintln!("Error: malformed frame received (possible target/ELF mismatch or log buffer corruption)");
+                                continue;
+                            }
                         }
                     }
                 } else {

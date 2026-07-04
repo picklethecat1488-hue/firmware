@@ -32,8 +32,6 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use core::fmt::Write as FmtWrite;
 
-// UartWriter definition removed (now provided by firmware_lib::shell::UartWriter)
-
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use app::CliCommand;
 
@@ -84,7 +82,7 @@ async fn main(spawner: Spawner) {
 
     // Split the UART into TX and RX parts to satisfy the borrow checker
     let (tx, mut rx) = board.uart.split();
-    let writer = app::uart::UartWriter::new(tx);
+    let writer = app::uart::UartTxWriter::new(tx);
 
     let mut cli = CliBuilder::default()
         .writer(writer)
