@@ -539,6 +539,8 @@ pub fn handle_panic_with_sizes<
         encoded_len = len;
     }
     let encoded_bytes = &cbor_buf[..encoded_len];
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    defmt::error!("Crash Dump: {=[u8]:cbor}", encoded_bytes);
 
     // 3. Write crash log to storage partition using rolling index
     critical_section::with(|cs| {
