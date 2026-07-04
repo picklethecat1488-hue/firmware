@@ -2,8 +2,12 @@
 
 #![deny(missing_docs)]
 
+use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
-use model::interfaces::{PowerMeasurementMode, PowerSensor};
+use model::{
+    interfaces::{PowerMeasurementMode, PowerSensor},
+    types::PeripheralError,
+};
 
 /// Driver for the INA219 current and power monitor communicating over I2C.
 pub struct Ina219<I> {
@@ -18,7 +22,7 @@ impl<I: I2c> Ina219<I> {
     }
 
     /// Initializes the INA219 by writing the default calibration (e.g. 4096).
-    pub fn init(&mut self) -> Result<(), I::Error> {
+    pub fn init(&mut self) -> Result<(), PeripheralError> {
         // Write configuration word (0x399F default settings)
         self.write_register(0x00, 0x399F)?;
         // Write calibration word (4096 LSB matches typical mA ranges)
@@ -27,21 +31,26 @@ impl<I: I2c> Ina219<I> {
     }
 
     /// Read a 16-bit register value from the device.
-    fn read_register(&mut self, reg: u8) -> Result<u16, I::Error> {
+    fn read_register(&mut self, reg: u8) -> Result<u16, PeripheralError> {
         let mut buf = [0u8; 2];
-        self.i2c.write_read(self.address, &[reg], &mut buf)?;
+        self.i2c
+            .write_read(self.address, &[reg], &mut buf)
+            .map_err(|e| e.to_peripheral_error())?;
         Ok(u16::from_be_bytes(buf))
     }
 
     /// Write a 16-bit register value to the device.
-    fn write_register(&mut self, reg: u8, val: u16) -> Result<(), I::Error> {
+    fn write_register(&mut self, reg: u8, val: u16) -> Result<(), PeripheralError> {
         let bytes = val.to_be_bytes();
-        self.i2c.write(self.address, &[reg, bytes[0], bytes[1]])
+        self.i2c
+            .write(self.address, &[reg, bytes[0], bytes[1]])
+            .map_err(|e| e.to_peripheral_error())?;
+        Ok(())
     }
 }
 
 impl<I: I2c> PowerSensor for Ina219<I> {
-    type Error = I::Error;
+    type Error = PeripheralError;
 
     /// Reads the current draw in milliamperes (mA).
     fn read_current_ma(&mut self) -> Result<i32, Self::Error> {

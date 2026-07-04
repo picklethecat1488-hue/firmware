@@ -4,11 +4,13 @@ use app::CliCommand;
 use cat_detector as app;
 use controller::motor_controller::MotorCommand;
 use controller::{
-    BlockingBatteryReader, BlockingMotorReader, BlockingProximityReader, BlockingThermalReader,
+    BlockingBatteryReader, BlockingMotorReader, BlockingMotorWriter, BlockingProximityReader,
+    BlockingThermalReader,
 };
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embedded_cli::cli::CliBuilder;
+use model::types::PeripheralError;
 
 struct DummyWriter {
     output: std::vec::Vec<u8>,
@@ -126,15 +128,15 @@ impl embedded_storage::nor_flash::NorFlash for MockFlash {
 
 struct MockBatteryCtrl;
 impl BlockingBatteryReader for MockBatteryCtrl {
-    fn read_battery_blocking(&self) -> Option<(u32, u8)> {
-        Some((3800, 80))
+    fn read_battery_blocking(&self) -> Result<(u32, u8), PeripheralError> {
+        Ok((3800, 80))
     }
 }
 
 struct MockThermalCtrl;
 impl BlockingThermalReader for MockThermalCtrl {
-    fn read_temperature_blocking(&self) -> Option<i32> {
-        Some(25000)
+    fn read_temperature_blocking(&self) -> Result<i32, PeripheralError> {
+        Ok(25000)
     }
 }
 
@@ -142,15 +144,23 @@ struct MockSensorCtrl {
     distance: u16,
 }
 impl BlockingProximityReader for MockSensorCtrl {
-    fn read_distance_blocking(&mut self) -> Option<u16> {
-        Some(self.distance)
+    fn read_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
+        Ok(self.distance)
     }
 }
 
-struct MockMotorCtrl;
+struct MockMotorCtrl {
+    speed: core::cell::Cell<u8>,
+}
 impl BlockingMotorReader for MockMotorCtrl {
-    fn read_current_ma_blocking(&mut self) -> Option<i32> {
-        Some(120)
+    fn read_current_ma_blocking(&mut self) -> Result<i32, PeripheralError> {
+        Ok(120)
+    }
+}
+impl BlockingMotorWriter for MockMotorCtrl {
+    fn set_motor_speed(&mut self, speed: u8) -> Result<(), PeripheralError> {
+        self.speed.set(speed);
+        Ok(())
     }
 }
 
@@ -175,7 +185,9 @@ fn test_shell_controller_integration_each_command() {
     let mut sensor_north_ctrl = MockSensorCtrl { distance: 100 };
     let mut sensor_east_ctrl = MockSensorCtrl { distance: 200 };
     let mut sensor_west_ctrl = MockSensorCtrl { distance: 300 };
-    let mut motor_ctrl = MockMotorCtrl;
+    let mut motor_ctrl = MockMotorCtrl {
+        speed: core::cell::Cell::new(0),
+    };
     let mut temp_sensor = MockTempSensor;
 
     let pointers = app::shell_controller::ShellControllerPointers {
@@ -217,10 +229,7 @@ fn test_shell_controller_integration_each_command() {
     for b in b"motor 42\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
-    assert!(matches!(
-        MOTOR_CHANNEL.try_receive(),
-        Ok(MotorCommand::SetSpeed(42))
-    ));
+    assert_eq!(motor_ctrl.speed.get(), 42);
 
     // 2. Stop command
     for b in b"stop\n" {

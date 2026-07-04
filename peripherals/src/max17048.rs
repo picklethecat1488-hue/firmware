@@ -2,8 +2,10 @@
 
 #![deny(missing_docs)]
 
+use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
 use model::interfaces::FuelGauge;
+use model::types::PeripheralError;
 
 /// Driver for the MAX17048 fuel gauge communicating over I2C.
 pub struct Max17048<I> {
@@ -18,21 +20,26 @@ impl<I: I2c> Max17048<I> {
     }
 
     /// Read a 16-bit register value from the device.
-    fn read_register(&mut self, reg: u8) -> Result<u16, I::Error> {
+    fn read_register(&mut self, reg: u8) -> Result<u16, PeripheralError> {
         let mut buf = [0u8; 2];
-        self.i2c.write_read(self.address, &[reg], &mut buf)?;
+        self.i2c
+            .write_read(self.address, &[reg], &mut buf)
+            .map_err(|e| e.to_peripheral_error())?;
         Ok(u16::from_be_bytes(buf))
     }
 
     /// Write a 16-bit register value to the device.
-    fn write_register(&mut self, reg: u8, val: u16) -> Result<(), I::Error> {
+    fn write_register(&mut self, reg: u8, val: u16) -> Result<(), PeripheralError> {
         let bytes = val.to_be_bytes();
-        self.i2c.write(self.address, &[reg, bytes[0], bytes[1]])
+        self.i2c
+            .write(self.address, &[reg, bytes[0], bytes[1]])
+            .map_err(|e| e.to_peripheral_error())?;
+        Ok(())
     }
 }
 
 impl<I: I2c> FuelGauge for Max17048<I> {
-    type Error = I::Error;
+    type Error = PeripheralError;
 
     /// Reads the battery cell voltage in millivolts (mV).
     /// Formula: VCELL * 78.125 uV

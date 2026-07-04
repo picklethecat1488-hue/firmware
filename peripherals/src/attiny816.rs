@@ -2,8 +2,10 @@
 
 #![deny(missing_docs)]
 
+use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
 use model::interfaces::LedDriver;
+use model::types::PeripheralError;
 
 const BASE_NEOPIXEL: u8 = 0x0E;
 
@@ -20,28 +22,35 @@ impl<I: I2c> Attiny816<I> {
     }
 
     /// Initializes the NeoPixel driver on pin 14 with a buffer of 1 pixel (3 bytes).
-    pub fn init(&mut self) -> Result<(), I::Error> {
+    pub fn init(&mut self) -> Result<(), PeripheralError> {
         // 1. Set Output Pin to 14
-        self.i2c.write(self.address, &[BASE_NEOPIXEL, 0x01, 14])?;
+        self.i2c
+            .write(self.address, &[BASE_NEOPIXEL, 0x01, 14])
+            .map_err(|e| e.to_peripheral_error())?;
         // 2. Set Buffer Length (3 bytes for 1 RGB NeoPixel)
-        self.i2c.write(self.address, &[BASE_NEOPIXEL, 0x03, 0, 3])?;
+        self.i2c
+            .write(self.address, &[BASE_NEOPIXEL, 0x03, 0, 3])
+            .map_err(|e| e.to_peripheral_error())?;
         Ok(())
     }
 
     /// Sets the color of the connected NeoPixel LED.
     /// Writes the GRB values to offset 0 and sends the show command.
-    pub fn set_led_color(&mut self, r: u8, g: u8, b: u8) -> Result<(), I::Error> {
+    pub fn set_led_color(&mut self, r: u8, g: u8, b: u8) -> Result<(), PeripheralError> {
         // 3. Write data to buffer (offset 0, standard GRB sequence)
         self.i2c
-            .write(self.address, &[BASE_NEOPIXEL, 0x04, 0, 0, g, r, b])?;
+            .write(self.address, &[BASE_NEOPIXEL, 0x04, 0, 0, g, r, b])
+            .map_err(|e| e.to_peripheral_error())?;
         // 4. Send show command
-        self.i2c.write(self.address, &[BASE_NEOPIXEL, 0x05])?;
+        self.i2c
+            .write(self.address, &[BASE_NEOPIXEL, 0x05])
+            .map_err(|e| e.to_peripheral_error())?;
         Ok(())
     }
 }
 
 impl<I: I2c> LedDriver for Attiny816<I> {
-    type Error = I::Error;
+    type Error = PeripheralError;
 
     fn set_color(&mut self, r: u8, g: u8, b: u8) -> Result<(), Self::Error> {
         self.set_led_color(r, g, b)

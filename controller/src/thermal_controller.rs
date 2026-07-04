@@ -5,6 +5,8 @@
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use model::interfaces::TemperatureSensor;
+use model::types::PeripheralError;
+use peripherals::ToPeripheralError;
 
 /// Current thermal status of the system.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -191,12 +193,16 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
 
 impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
     crate::BlockingThermalReader for ThermalController<'a, M, B, Cmd>
+where
+    B::Error: ToPeripheralError,
 {
-    fn read_temperature_blocking(&self) -> Option<i32> {
+    fn read_temperature_blocking(&self) -> Result<i32, PeripheralError> {
         if let Ok(mut guard) = self.temp.try_lock() {
-            guard.read_temperature_milli_c().ok()
+            guard
+                .read_temperature_milli_c()
+                .map_err(|e| e.to_peripheral_error())
         } else {
-            None
+            Err(PeripheralError::DeviceNotAvailable)
         }
     }
 }
