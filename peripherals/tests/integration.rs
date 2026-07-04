@@ -1,49 +1,93 @@
 use embedded_hal::digital::{ErrorType, InputPin, OutputPin};
 use peripherals::motor::{GpioMotor, Motor};
 
-struct MockPin {
-    is_high: bool,
+struct MockPin<'a> {
+    is_high: &'a core::cell::Cell<bool>,
 }
 
-impl ErrorType for MockPin {
+impl<'a> ErrorType for MockPin<'a> {
     type Error = core::convert::Infallible;
 }
 
-impl OutputPin for MockPin {
+impl<'a> OutputPin for MockPin<'a> {
     fn set_low(&mut self) -> Result<(), Self::Error> {
-        self.is_high = false;
+        self.is_high.set(false);
         Ok(())
     }
     fn set_high(&mut self) -> Result<(), Self::Error> {
-        self.is_high = true;
+        self.is_high.set(true);
         Ok(())
     }
 }
 
-impl InputPin for MockPin {
+impl<'a> InputPin for MockPin<'a> {
     fn is_high(&mut self) -> Result<bool, Self::Error> {
-        Ok(self.is_high)
+        Ok(self.is_high.get())
     }
     fn is_low(&mut self) -> Result<bool, Self::Error> {
-        Ok(!self.is_high)
+        Ok(!self.is_high.get())
     }
 }
 
 #[test]
-fn test_gpio_motor_compilation() {
-    let pin = MockPin { is_high: false };
+fn test_gpio_motor_functional() {
+    let pin_state = core::cell::Cell::new(false);
+    let pin = MockPin {
+        is_high: &pin_state,
+    };
     let mut motor = GpioMotor::new(pin);
-    assert!(motor.stop().is_ok());
+
+    // 1. Initially low
+    assert!(!pin_state.get());
+
+    // 2. Setting speed > 0 drives pin high
     assert!(motor.set_speed(100).is_ok());
+    assert!(pin_state.get());
+
+    // 3. Setting speed == 0 drives pin low
+    assert!(motor.set_speed(0).is_ok());
+    assert!(!pin_state.get());
+
+    // 4. Stopping drives pin low
+    assert!(motor.set_speed(50).is_ok());
+    assert!(pin_state.get());
+    assert!(motor.stop().is_ok());
+    assert!(!pin_state.get());
 }
 
 #[test]
-fn test_l9110s_compilation() {
-    let pin_ia = MockPin { is_high: false };
-    let pin_ib = MockPin { is_high: false };
+fn test_l9110s_functional() {
+    let pin_ia_state = core::cell::Cell::new(false);
+    let pin_ib_state = core::cell::Cell::new(false);
+    let pin_ia = MockPin {
+        is_high: &pin_ia_state,
+    };
+    let pin_ib = MockPin {
+        is_high: &pin_ib_state,
+    };
     let mut motor = peripherals::l9110s::L9110s::new(pin_ia, pin_ib);
-    assert!(motor.stop().is_ok());
+
+    // 1. Initially both low
+    assert!(!pin_ia_state.get());
+    assert!(!pin_ib_state.get());
+
+    // 2. Setting speed > 0 drives pin_ia high and pin_ib low
     assert!(motor.set_speed(100).is_ok());
+    assert!(pin_ia_state.get());
+    assert!(!pin_ib_state.get());
+
+    // 3. Setting speed == 0 brakes both pins to low
+    assert!(motor.set_speed(0).is_ok());
+    assert!(!pin_ia_state.get());
+    assert!(!pin_ib_state.get());
+
+    // 4. Stopping brakes both pins to low
+    assert!(motor.set_speed(50).is_ok());
+    assert!(pin_ia_state.get());
+    assert!(!pin_ib_state.get());
+    assert!(motor.stop().is_ok());
+    assert!(!pin_ia_state.get());
+    assert!(!pin_ib_state.get());
 }
 
 struct DummyI2c;
