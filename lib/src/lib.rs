@@ -9,6 +9,10 @@ pub mod gesture_detector;
 /// RP2040 panic handler module.
 pub mod panic_handler;
 
+/// Reusable hardware bringup shell console infrastructure.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub mod uart;
+
 #[doc(hidden)]
 pub mod defmt_logger;
 

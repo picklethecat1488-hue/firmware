@@ -51,6 +51,10 @@ pub const HIGH_BATTERY_SOC_THRESHOLD: u8 = 80;
 
 const _: () = {
     assert!(
+        LOW_BATTERY_SOC_THRESHOLD > 0,
+        "Low battery threshold be nonzero"
+    );
+    assert!(
         LOW_BATTERY_SOC_THRESHOLD < MID_BATTERY_SOC_THRESHOLD,
         "Low battery threshold must be lower than the mid battery threshold"
     );
@@ -259,6 +263,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     self.thermal_critical(),
                 ) {
                     self.set_status(next);
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::info!("SystemController: entering low-power Sleep mode.");
                     self.motor_tx.try_send(MotorCommand::Stop).unwrap();
                     self.led_tx.try_send(SystemLedState::SolidBlue).unwrap();
@@ -275,6 +280,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     };
                     self.led_tx.try_send(led).unwrap();
                     self.gesture_detector.reset();
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::info!("SystemController: entering PowerDown state. Motor locked.");
                 }
             }
@@ -289,6 +295,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                 self.led_tx
                     .try_send(SystemLedState::BlinksRedFourTimes)
                     .unwrap();
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::info!("SystemController: Alert triggered. LED indicator set to RED.");
                 if self.status() != SystemStatus::PowerDown {
                     self.handle_command(SystemCommand::Sleep);
@@ -298,10 +305,13 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                 state_of_charge,
                 charger_state,
             } => {
-                assert!(
-                    self.critical_soc_threshold() < LOW_BATTERY_SOC_THRESHOLD,
-                    "Critical SoC threshold must be lower than the low battery threshold"
-                );
+                if self.critical_soc_threshold() >= LOW_BATTERY_SOC_THRESHOLD {
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::error!(
+                        "Critical SoC threshold must be lower than the low battery threshold"
+                    );
+                    self.set_critical_soc_threshold(LOW_BATTERY_SOC_THRESHOLD - 1);
+                }
                 let charging = charger_state == model::types::ChargeState::Charging;
                 let is_fault = charger_state == model::types::ChargeState::RecoverableFault
                     || charger_state == model::types::ChargeState::NonRecoverableFault;
@@ -326,6 +336,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                         self.set_status(SystemStatus::Active);
                         self.reset_on_wake();
                         self.led_tx.try_send(self.get_soc_led_state()).unwrap();
+                        #[cfg(all(target_arch = "arm", target_os = "none"))]
                         defmt::info!(
                             "SystemController: exiting PowerDown state. Waking up to Active mode."
                         );

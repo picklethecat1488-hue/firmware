@@ -12,7 +12,7 @@
 use cat_detector as app;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-use {embassy_executor::Spawner, embassy_rp::uart::UartTx, embedded_cli::cli::CliBuilder};
+use {embassy_executor::Spawner, embedded_cli::cli::CliBuilder};
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
@@ -31,35 +31,8 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use core::fmt::Write as FmtWrite;
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-use embedded_io::Write as IoWrite;
 
-/// Helper struct to write formatted strings directly to UART.
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-struct UartWriter<'d, T: embassy_rp::uart::Instance, M: embassy_rp::uart::Mode> {
-    uart: UartTx<'d, T, M>,
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-impl<'d, T: embassy_rp::uart::Instance, M: embassy_rp::uart::Mode> embedded_io::ErrorType
-    for UartWriter<'d, T, M>
-{
-    type Error = core::convert::Infallible;
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-impl<'d, T: embassy_rp::uart::Instance, M: embassy_rp::uart::Mode> IoWrite
-    for UartWriter<'d, T, M>
-{
-    fn write(&mut self, buf: &[u8]) -> Result<usize, core::convert::Infallible> {
-        let _ = self.uart.blocking_write(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> Result<(), core::convert::Infallible> {
-        Ok(())
-    }
-}
+// UartWriter definition removed (now provided by firmware_lib::shell::UartWriter)
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use app::CliCommand;
@@ -111,7 +84,7 @@ async fn main(spawner: Spawner) {
 
     // Split the UART into TX and RX parts to satisfy the borrow checker
     let (tx, mut rx) = board.uart.split();
-    let writer = UartWriter { uart: tx };
+    let writer = app::uart::UartWriter::new(tx);
 
     let mut cli = CliBuilder::default()
         .writer(writer)
@@ -168,12 +141,11 @@ async fn main(spawner: Spawner) {
         );
 
     // Run the main input loop feeding bytes to the embedded-cli processor
-    loop {
-        let mut rx_byte = [0u8; 1];
-        if rx.blocking_read(&mut rx_byte).is_ok() {
-            let _ = cli.process_byte::<CliCommand, _>(rx_byte[0], &mut processor);
-        }
-    }
+    app::uart::run_uart_shell_loop::<_, _, CliCommand, _, _, _, _, _>(
+        &mut cli,
+        &mut rx,
+        &mut processor,
+    );
 }
 
 /// Dummy host entry point to satisfy Cargo compilation requirements.

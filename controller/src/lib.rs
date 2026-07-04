@@ -18,51 +18,65 @@ pub mod telemetry_controller;
 /// Thermal monitoring and regulation controller.
 pub mod thermal_controller;
 
+use model::types::PeripheralError;
+
 /// Trait for reading battery status blocking-ly.
 pub trait BlockingBatteryReader {
     /// Read voltage (mV) and state of charge (%).
-    fn read_battery_blocking(&self) -> Option<(u32, u8)>;
+    fn read_battery_blocking(&self) -> Result<(u32, u8), PeripheralError>;
 }
 
 /// Trait for reading temperature blocking-ly.
 pub trait BlockingThermalReader {
     /// Read temperature in milli-Celsius.
-    fn read_temperature_blocking(&self) -> Option<i32>;
+    fn read_temperature_blocking(&self) -> Result<i32, PeripheralError>;
 }
 
 /// Trait for reading proximity distance blocking-ly.
 pub trait BlockingProximityReader {
     /// Read distance in millimeters.
-    fn read_distance_blocking(&mut self) -> Option<u16>;
+    fn read_distance_blocking(&mut self) -> Result<u16, PeripheralError>;
 }
 
 impl BlockingBatteryReader for () {
-    fn read_battery_blocking(&self) -> Option<(u32, u8)> {
-        None
+    fn read_battery_blocking(&self) -> Result<(u32, u8), PeripheralError> {
+        Err(PeripheralError::NotImplemented)
     }
 }
 
 impl BlockingThermalReader for () {
-    fn read_temperature_blocking(&self) -> Option<i32> {
-        None
+    fn read_temperature_blocking(&self) -> Result<i32, PeripheralError> {
+        Err(PeripheralError::NotImplemented)
     }
 }
 
 impl BlockingProximityReader for () {
-    fn read_distance_blocking(&mut self) -> Option<u16> {
-        None
+    fn read_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
+        Err(PeripheralError::NotImplemented)
     }
 }
 
 /// Trait for reading motor current/torque blocking-ly.
 pub trait BlockingMotorReader {
     /// Read motor current in mA.
-    fn read_current_ma_blocking(&mut self) -> Option<i32>;
+    fn read_current_ma_blocking(&mut self) -> Result<i32, PeripheralError>;
 }
 
 impl BlockingMotorReader for () {
-    fn read_current_ma_blocking(&mut self) -> Option<i32> {
-        None
+    fn read_current_ma_blocking(&mut self) -> Result<i32, PeripheralError> {
+        Err(PeripheralError::NotImplemented)
+    }
+}
+
+/// Trait for controlling motor speed.
+pub trait BlockingMotorWriter {
+    /// Read motor current in mA.
+    fn set_motor_speed(&mut self, speed: u8) -> Result<(), PeripheralError>;
+}
+
+impl BlockingMotorWriter for () {
+    fn set_motor_speed(&mut self, _: u8) -> Result<(), PeripheralError> {
+        Err(PeripheralError::NotImplemented)
     }
 }
 

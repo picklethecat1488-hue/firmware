@@ -3,6 +3,8 @@
 #![deny(missing_docs)]
 
 use model::interfaces::ProximitySensor;
+use model::types::PeripheralError;
+use peripherals::ToPeripheralError;
 
 /// Trait for waiting on a data-ready interrupt pin.
 #[allow(async_fn_in_trait)]
@@ -419,9 +421,13 @@ impl<
 
 impl<'a, S: ProximitySensor, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
     crate::BlockingProximityReader for SensorController<'a, S, M, Pin, Cmd, ProximityReader>
+where
+    S::Error: ToPeripheralError,
 {
-    fn read_distance_blocking(&mut self) -> Option<u16> {
-        self.sensor_mut().read_distance_mm().ok()
+    fn read_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
+        self.sensor_mut()
+            .read_distance_mm()
+            .map_err(|e| e.to_peripheral_error())
     }
 }
 
