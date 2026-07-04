@@ -249,6 +249,12 @@ python3 scripts/bringup.py --config projects/cat_detector_bringup.yaml --port /d
 ### 6.2. Ordered Functional Test Commands (Via Bringup Shell)
 Execute the following commands sequentially inside the interactive serial shell (`shell> `) to verify individual components. Every command execution concludes with a catch-all result code message: `Command succeeded` on success, or `Command failed: <reason>` on failure.
 
+0. **Verify UART Log Communication**:
+   ```bash
+   uart
+   ```
+   * *Expected Output*: The text "UART log transmission OK" should be output on a line over UART0.
+
 1. **Verify Fuel Gauge Communication**:
    ```bash
    battery
