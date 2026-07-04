@@ -30,8 +30,8 @@ strip = false            # Keep symbols and debug info for MemBrowse analysis
 
 [profile.dev]
 opt-level = 1            # Enable light optimization to drastically reduce async/embassy code size
-debug = 1                # Line tables only, much faster compilation and linking
+debug = 2                # Full debug info (allows inspecting local variables in debugger)
 
 [profile.test]
-debug = 1            # Line tables only, speeds up test compilation and linking
+debug = 2            # Full debug info (allows inspecting local variables in debugger)
 
