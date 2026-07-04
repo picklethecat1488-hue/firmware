@@ -1,4 +1,4 @@
-use defmt_host::{dump_logs, stream_logs, RttLogSource};
+use defmt_host::{dump_logs, stream_logs, DefmtLogSource};
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
@@ -8,7 +8,7 @@ struct MockLogSource {
     read_index: usize,
 }
 
-impl RttLogSource for MockLogSource {
+impl DefmtLogSource for MockLogSource {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, String> {
         if self.read_index >= self.data.len() {
             return Ok(0);
@@ -71,7 +71,8 @@ fn test_cli_argument_validation() {
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
     assert!(
-        stderr.contains("Either --chip or --project must be specified") || stderr.contains("error")
+        stderr.contains("Either --chip, --project, or --port must be specified")
+            || stderr.contains("error")
     );
 
     // 2. Non-existent ELF file

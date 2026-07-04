@@ -2,26 +2,32 @@
 
 #![deny(missing_docs)]
 
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 use embassy_rp::uart::{Instance, Mode, UartRx, UartTx};
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 use embedded_io::Write as IoWrite;
 
 /// Helper adapter to wrap embassy-rp UartTx and expose embedded-io::Write.
-pub struct UartWriter<'d, T: Instance, M: Mode> {
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub struct UartTxWriter<'d, T: Instance, M: Mode> {
     uart: UartTx<'d, T, M>,
 }
 
-impl<'d, T: Instance, M: Mode> UartWriter<'d, T, M> {
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl<'d, T: Instance, M: Mode> UartTxWriter<'d, T, M> {
     /// Wrap a raw UartTx device.
     pub const fn new(uart: UartTx<'d, T, M>) -> Self {
         Self { uart }
     }
 }
 
-impl<'d, T: Instance, M: Mode> embedded_io::ErrorType for UartWriter<'d, T, M> {
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl<'d, T: Instance, M: Mode> embedded_io::ErrorType for UartTxWriter<'d, T, M> {
     type Error = core::convert::Infallible;
 }
 
-impl<'d, T: Instance, M: Mode> IoWrite for UartWriter<'d, T, M> {
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl<'d, T: Instance, M: Mode> IoWrite for UartTxWriter<'d, T, M> {
     fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
         let _ = self.uart.blocking_write(buf);
         Ok(buf.len())
@@ -34,6 +40,7 @@ impl<'d, T: Instance, M: Mode> IoWrite for UartWriter<'d, T, M> {
 
 /// Helper function to execute the blocking UART character receive loop,
 /// routing bytes into the embedded-cli processor.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 pub fn run_uart_shell_loop<
     'a,
     W: embedded_io::Write<Error = E>,

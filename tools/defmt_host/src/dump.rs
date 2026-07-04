@@ -1,10 +1,10 @@
-use crate::RttLogSource;
+use crate::DefmtLogSource;
 use defmt_decoder::Table;
 use std::io::Write;
 
-/// Drains all currently buffered logs from the RTT source and writes them to the writer.
+/// Drains all currently buffered logs from the log source and writes them to the writer.
 /// Exits as soon as a read returns 0 (source is empty).
-pub fn dump_logs<S: RttLogSource, W: Write>(
+pub fn dump_logs<S: DefmtLogSource, W: Write>(
     mut source: S,
     table: &Table,
     mut writer: W,
