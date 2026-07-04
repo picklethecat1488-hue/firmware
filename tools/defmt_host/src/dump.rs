@@ -29,8 +29,14 @@ pub fn dump_logs<S: DefmtLogSource, W: Write>(
                                 return Err(format!("Failed to flush log: {:?}", e));
                             }
                         }
-                        Err(defmt_decoder::DecodeError::UnexpectedEof) => break,
-                        Err(defmt_decoder::DecodeError::Malformed) => continue,
+                        Err(defmt_decoder::DecodeError::UnexpectedEof) => {
+                            eprintln!("Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)");
+                            break;
+                        }
+                        Err(defmt_decoder::DecodeError::Malformed) => {
+                            eprintln!("Error: malformed frame received (possible target/ELF mismatch or log buffer corruption)");
+                            continue;
+                        }
                     }
                 }
             }
