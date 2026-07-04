@@ -197,7 +197,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             Some(Gesture::ProximityDetected) if current_status != SystemStatus::PowerDown => {
                 self.log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityDetected));
                 self.proximity_active = true;
-                self.set_inactivity_seconds(0);
+                self.set_inactive_ms(0);
                 if self.status() == SystemStatus::Sleep {
                     self.handle_command(SystemCommand::Wake);
                 }
@@ -216,7 +216,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                 if current_status != SystemStatus::PowerDown {
                     self.log_gesture_telemetry(Gesture::ProximityDetected);
                     self.proximity_active = true;
-                    self.set_inactivity_seconds(0);
+                    self.set_inactive_ms(0);
                     if self.status() == SystemStatus::Sleep {
                         self.handle_command(SystemCommand::Wake);
                     }
@@ -257,8 +257,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             SystemCommand::Sleep => {
                 if let Some(next) = firmware_lib::system::transition_sleep(
                     self.status(),
-                    self.time_in_active(),
-                    INACTIVITY_TIMEOUT_SECONDS,
+                    self.active_ms(),
+                    INACTIVITY_TIMEOUT_SECONDS * 1000,
                     self.battery_critical(),
                     self.thermal_critical(),
                 ) {
@@ -285,7 +285,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                 }
             }
             SystemCommand::ActivityDetected => {
-                self.set_inactivity_seconds(0);
+                self.set_inactive_ms(0);
                 if self.status() == SystemStatus::Sleep {
                     self.handle_command(SystemCommand::Wake);
                 }
@@ -374,24 +374,20 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
         }
     }
 
-    /// Ticks the inactivity timer and active mode duration timer (called once per second).
-    pub fn tick(&mut self) {
-        self.tick_ms(1000);
-    }
-
     /// Ticks the inactivity timer and active mode duration timer by a specified duration in milliseconds.
     pub fn tick_ms(&mut self, ms: u32) {
         if self.state_manager.tick_ms(ms) {
             // Stay in Active state as long as proximity is detected
             if self.proximity_active {
-                self.set_inactivity_seconds(0);
+                self.set_inactive_ms(0);
             } else {
-                let current_inactivity = self.inactivity_seconds();
-                self.set_inactivity_seconds(current_inactivity + 1);
+                let current_inactivity = self.inactive_ms();
+                let interval = self.interval_ms();
+                self.set_inactive_ms(current_inactivity.saturating_add(interval));
             }
 
             // Sleep after inactivity timeout
-            if self.inactivity_seconds() >= INACTIVITY_TIMEOUT_SECONDS {
+            if self.inactive_ms() >= INACTIVITY_TIMEOUT_SECONDS * 1000 {
                 self.handle_command(SystemCommand::Sleep);
             }
         }
