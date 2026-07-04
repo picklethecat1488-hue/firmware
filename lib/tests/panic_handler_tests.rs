@@ -1,6 +1,6 @@
 use firmware_lib::panic_handler::{
     extract_system_logs, generate_uuid, scan_stack, scan_stack_from_sp, write_crash_log_to_flash,
-    CRASH_LOG_BUFFER,
+    CoreState, CRASH_LOG_BUFFER,
 };
 use std::fmt::Write;
 use std::sync::Mutex;
@@ -272,37 +272,37 @@ fn test_write_crash_log_to_flash_rolling() {
 
 #[test]
 fn test_generate_uuid_properties() {
-    let entropy = [0xAA; 16];
-    let uuid1 = generate_uuid(
-        entropy,
-        12345,
-        1,
-        2,
-        3,
-        4,
-        &[0x10002000, 0x10003000],
-        "hash123",
-    );
-    let uuid2 = generate_uuid(
-        entropy,
-        12345,
-        1,
-        2,
-        3,
-        4,
-        &[0x10002000, 0x10003000],
-        "hash123",
-    );
-    let uuid3 = generate_uuid(
-        entropy,
-        12346,
-        1,
-        2,
-        3,
-        4,
-        &[0x10002000, 0x10003000],
-        "hash123",
-    ); // different time
+    let entropy: [u8; 16] = [0xAA; 16];
+    let mut state1: CoreState = CoreState {
+        r0: 1,
+        r1: 2,
+        r2: 3,
+        r3: 4,
+        backtrace: [0u32; 16],
+    };
+    state1.backtrace[..2].copy_from_slice(&[0x10002000, 0x10003000]);
+
+    let uuid1 = generate_uuid(entropy, 12345, &state1, "hash123");
+    let mut state2: CoreState = CoreState {
+        r0: 1,
+        r1: 2,
+        r2: 3,
+        r3: 4,
+        backtrace: [0u32; 16],
+    };
+    state2.backtrace[..2].copy_from_slice(&[0x10002000, 0x10003000]);
+
+    let uuid2 = generate_uuid(entropy, 12345, &state2, "hash123");
+    let mut state3: CoreState = CoreState {
+        r0: 1,
+        r1: 2,
+        r2: 3,
+        r3: 4,
+        backtrace: [0u32; 16],
+    };
+    state3.backtrace[..2].copy_from_slice(&[0x10002000, 0x10003000]);
+
+    let uuid3 = generate_uuid(entropy, 12346, &state3, "hash123"); // different time
 
     // UUIDv4 checks:
     // Version 4 check:
