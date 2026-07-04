@@ -192,6 +192,8 @@ async fn main(spawner: Spawner) {
         .await
     {
         Ok(Some(bytes)) => {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::error!("vl53l0x calibration: {=[u8]:cbor}", bytes);
             minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes).unwrap_or_default()
         }
         _ => model::calibration::Vl53l0xCalibration::default(),
@@ -202,7 +204,11 @@ async fn main(spawner: Spawner) {
         .read_file("motor_cal.cbor", &mut motor_cal_buf)
         .await
     {
-        Ok(Some(bytes)) => minicbor::decode::<model::calibration::MotorCalibration>(bytes).ok(),
+        Ok(Some(bytes)) => {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::error!("motor calibration: {=[u8]:cbor}", bytes);
+            minicbor::decode::<model::calibration::MotorCalibration>(bytes).ok()
+        }
         _ => None,
     };
 

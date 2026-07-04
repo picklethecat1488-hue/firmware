@@ -164,6 +164,9 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
             let _ = self.deserialize_header();
 
             let serialized = record.serialize(timestamp_us);
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::info!("Writing Telemetry: {=[u8]:cbor}", serialized);
+
             let offset = 12 + (self.next_idx as usize) * 20;
             if offset + 20 <= self.file_buf.len() {
                 self.file_buf[offset..offset + 20].copy_from_slice(&serialized);
