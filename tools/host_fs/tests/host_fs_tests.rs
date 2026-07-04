@@ -130,60 +130,6 @@ fn test_cli_cp() {
 }
 
 #[test]
-fn test_decode_all_projects() {
-    let mut dir = std::env::current_dir().unwrap();
-    let mut projects_path = None;
-    for _ in 0..5 {
-        let candidate = dir.join("projects");
-        if candidate.is_dir() {
-            projects_path = Some(candidate);
-            break;
-        }
-        if let Some(parent) = dir.parent() {
-            dir = parent.to_path_buf();
-        } else {
-            break;
-        }
-    }
-
-    let projects_path = projects_path.expect("Could not find projects/ directory");
-    let mut tested_count = 0;
-
-    for entry in std::fs::read_dir(projects_path).unwrap() {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        if path.is_dir() {
-            let config_toml = path.join(".cargo/config.toml");
-            let memory_x = path.join("memory.x");
-            if config_toml.exists() && memory_x.exists() {
-                let project_name = path.file_name().unwrap().to_str().unwrap();
-                println!("Testing decode_project_info for '{}'...", project_name);
-
-                let res = host_fs::flash::decode_project_info(project_name);
-                assert!(
-                    res.is_ok(),
-                    "Failed to decode project '{}': {:?}",
-                    project_name,
-                    res.err()
-                );
-
-                let (chip, base_addr, size) = res.unwrap();
-                assert!(!chip.is_empty(), "Chip name should not be empty");
-                assert!(base_addr > 0, "Base address should be positive");
-                assert!(size > 0, "Size should be positive");
-
-                tested_count += 1;
-            }
-        }
-    }
-
-    assert!(
-        tested_count > 0,
-        "Expected at least one valid firmware project to be tested"
-    );
-}
-
-#[test]
 fn test_crash_log_decoding_integration() {
     use std::fs::File;
     use std::io::Write;

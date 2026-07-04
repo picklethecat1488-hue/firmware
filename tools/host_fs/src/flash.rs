@@ -1,7 +1,7 @@
 use embedded_storage::nor_flash::NorFlashErrorKind;
 use probe_rs::probe::list::Lister;
 use probe_rs::MemoryInterface;
-pub use tool_common::decode_project_info;
+pub use tool_common::autodetect_project_info;
 
 /// A mock flash driver that implements the embedded-storage-async traits
 /// over an in-memory buffer containing the pulled raw flash binary image.

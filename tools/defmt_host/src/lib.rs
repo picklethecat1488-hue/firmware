@@ -6,7 +6,7 @@ pub mod stream;
 
 pub use dump::dump_logs;
 pub use stream::stream_logs;
-pub use tool_common::decode_project_info;
+pub use tool_common::autodetect_project_info;
 
 /// Trait abstracting a defmt log source.
 pub trait DefmtLogSource {
