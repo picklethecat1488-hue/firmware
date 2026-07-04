@@ -5,6 +5,8 @@
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use model::interfaces::LedDriver;
 use model::types::SystemLedState;
+use model::types::{PeripheralError, TelemetryRecord};
+use peripherals::ToPeripheralError;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 async fn sleep_ms(ms: u32) {
@@ -24,7 +26,10 @@ pub struct LedController<D> {
     current_color: (u8, u8, u8),
 }
 
-impl<D: LedDriver> LedController<D> {
+impl<D: LedDriver> LedController<D>
+where
+    <D as LedDriver>::Error: ToPeripheralError,
+{
     /// Creates a new LedController instance.
     pub const fn new(driver: D) -> Self {
         Self {
@@ -40,12 +45,18 @@ impl<D: LedDriver> LedController<D> {
     }
 
     /// Fades the LED color from one RGB color to another.
-    async fn fade_to(&mut self, from: (u8, u8, u8), to: (u8, u8, u8)) -> Result<(), D::Error> {
+    async fn fade_to(
+        &mut self,
+        from: (u8, u8, u8),
+        to: (u8, u8, u8),
+    ) -> Result<(), PeripheralError> {
         for step in 1..=FADE_STEPS {
             let r = (from.0 as i32 + (to.0 as i32 - from.0 as i32) * step / FADE_STEPS) as u8;
             let g = (from.1 as i32 + (to.1 as i32 - from.1 as i32) * step / FADE_STEPS) as u8;
             let b = (from.2 as i32 + (to.2 as i32 - from.2 as i32) * step / FADE_STEPS) as u8;
-            self.driver.set_color(r, g, b)?;
+            self.driver
+                .set_color(r, g, b)
+                .map_err(|e| e.to_peripheral_error())?;
             sleep_ms(FADE_DELAY_MS).await;
         }
         Ok(())
@@ -56,7 +67,7 @@ impl<D: LedDriver> LedController<D> {
         &mut self,
         pattern: SystemLedState,
         use_fade: bool,
-    ) -> Result<(), D::Error> {
+    ) -> Result<(), PeripheralError> {
         let from = self.current_color;
         let to = match pattern {
             SystemLedState::Off => (0, 0, 0),
@@ -72,7 +83,9 @@ impl<D: LedDriver> LedController<D> {
             if use_fade && (from == (0, 0, 0) || to == (0, 0, 0)) {
                 self.fade_to(from, to).await?;
             } else {
-                self.driver.set_color(to.0, to.1, to.2)?;
+                self.driver
+                    .set_color(to.0, to.1, to.2)
+                    .map_err(|e| e.to_peripheral_error())?;
             }
             self.current_color = to;
         }
@@ -80,7 +93,7 @@ impl<D: LedDriver> LedController<D> {
     }
 
     /// Sets and executes the LED color pattern.
-    pub async fn set_pattern(&mut self, pattern: SystemLedState) -> Result<(), D::Error> {
+    pub async fn set_pattern(&mut self, pattern: SystemLedState) -> Result<(), PeripheralError> {
         let use_fade = matches!(
             (self.current_state, pattern),
             (SystemLedState::Off, SystemLedState::SolidGreen)
@@ -142,14 +155,20 @@ impl<D: LedDriver> LedController<D> {
                             led_on = !led_on;
                             blink_timer = embassy_time::Instant::now();
                             if led_on {
-                                let _ = self
+                                if let Err(e) = self
                                     .update_color(
                                         SystemLedState::BlinksRedOncePerThirtySeconds,
                                         false,
                                     )
-                                    .await;
-                            } else {
-                                let _ = self.update_color(SystemLedState::Off, false).await;
+                                    .await
+                                {
+                                    let _ =
+                                        telemetry_tx.try_send(TelemetryRecord::PeripheralError(e));
+                                }
+                            } else if let Err(e) =
+                                self.update_color(SystemLedState::Off, false).await
+                            {
+                                let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(e));
                             }
                         }
                     }
@@ -157,11 +176,16 @@ impl<D: LedDriver> LedController<D> {
                 SystemLedState::BlinksRedFourTimes => {
                     // One-shot blinking pattern: Blink 4 times.
                     for _ in 0..4 {
-                        let _ = self
+                        if let Err(e) = self
                             .update_color(SystemLedState::BlinksRedFourTimes, false)
-                            .await;
+                            .await
+                        {
+                            let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(e));
+                        }
                         sleep_ms(150).await;
-                        let _ = self.update_color(SystemLedState::Off, false).await;
+                        if let Err(e) = self.update_color(SystemLedState::Off, false).await {
+                            let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(e));
+                        }
                         sleep_ms(150).await;
                     }
                     // After blinking 4 times, reset state to Off or wait for next command
@@ -181,7 +205,9 @@ impl<D: LedDriver> LedController<D> {
                             | (SystemLedState::SolidYellow, SystemLedState::Off)
                             | (SystemLedState::SolidOrange, SystemLedState::Off)
                     );
-                    let _ = self.update_color(state, use_fade).await;
+                    if let Err(e) = self.update_color(state, use_fade).await {
+                        let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(e));
+                    }
                     let new_cmd = command_rx.receive().await;
                     state = new_cmd;
                     self.current_state = state;

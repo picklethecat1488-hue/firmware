@@ -140,6 +140,9 @@ pub async fn run(
                     model::telemetry::TelemetryRecord::ChargerState(state) => {
                         writeln!(csv_file, "{},ChargerState,{:?},,,", ts, state)?;
                     }
+                    model::telemetry::TelemetryRecord::PeripheralError(state) => {
+                        writeln!(csv_file, "{},PeripheralError,{:?},,,", ts, state)?;
+                    }
                 }
             }
 

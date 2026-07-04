@@ -219,6 +219,54 @@ pub enum Direction {
     West = 2,
 }
 
+/// Peripheral errors.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum PeripheralError {
+    /// An expected device ID/WHO_AM_I register value did not match.
+    #[n(0)]
+    DeviceNotFound,
+    /// The parameters passed to a driver configuration function were invalid.
+    #[n(1)]
+    InvalidConfiguration,
+    /// Peripheral function not implemented.
+    #[n(2)]
+    NotImplemented,
+    /// Peripheral function not implemented.
+    #[n(3)]
+    DeviceNotAvailable,
+    /// Unknown error.
+    #[n(4)]
+    Unknown,
+    /// Pin error.
+    #[n(5)]
+    PinError,
+    /// I2C Bus Error.
+    #[n(100)]
+    I2CBusError,
+    /// I2C bus Collision.
+    #[n(101)]
+    I2CArbitrationLoss,
+    /// I2C buffer overrun.
+    #[n(102)]
+    I2COverrun,
+    /// I2C NACK: Address.
+    #[n(103)]
+    I2CNackAddress,
+    /// I2C NACK: Data.
+    #[n(104)]
+    I2CNackData,
+    /// I2C NACK: Unknown.
+    #[n(105)]
+    I2CNackUnknown,
+    /// I2C Error: Other.
+    #[n(106)]
+    I2COther,
+    /// i2C Error: Unknown.
+    #[n(107)]
+    I2CUnknown,
+}
+
 dummy_debug!(BatteryStatus);
 dummy_debug!(BatteryState);
 dummy_debug!(MotorStatus);
@@ -231,5 +279,6 @@ dummy_debug!(Gesture);
 dummy_debug!(FlashEraseTelemetry);
 dummy_debug!(ChargeState);
 dummy_debug!(Direction);
+dummy_debug!(PeripheralError);
 
 pub use crate::telemetry::TelemetryRecord;

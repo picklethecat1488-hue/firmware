@@ -5,6 +5,8 @@
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use model::interfaces::FuelGauge;
+use model::types::{PeripheralError, TelemetryRecord};
+use peripherals::ToPeripheralError;
 
 /// Trait for waiting on a battery alert pin.
 #[allow(async_fn_in_trait)]
@@ -40,7 +42,6 @@ impl core::fmt::Debug for BatteryState {
         f.write_str("BatteryState")
     }
 }
-
 /// A controller that periodically monitors battery status and wakes on alerts.
 pub struct BatteryController<'a, M: RawMutex, B, C, Pin = DummyAlertPin, Cmd = ()> {
     battery: &'a Mutex<M, B>,
@@ -97,6 +98,8 @@ impl<
         Pin: BatteryAlertPin,
         Cmd: Clone + core::fmt::Debug,
     > BatteryController<'a, M, B, C, Pin, Cmd>
+where
+    <B as FuelGauge>::Error: ToPeripheralError,
 {
     /// Creates a new battery controller with system notification and alert pin support.
     pub fn new_with_system_and_alert(
@@ -136,7 +139,7 @@ impl<
         let (voltage, soc) = {
             let mut bat = self.battery.lock().await;
             let v = bat.read_voltage_mv()?;
-            let soc = bat.read_state_of_charge().unwrap_or(100);
+            let soc = bat.read_state_of_charge()?;
             (v, soc)
         };
         let charger_state = {
@@ -194,7 +197,10 @@ impl<
         // Configure alerts on boot (3.0V low threshold, 4.2V high threshold, 10% SOC empty alert, enable 1% SOC change alert)
         {
             let mut bat = self.battery.lock().await;
-            let _ = bat.configure_alerts(3000, 4200, 10, true);
+            if let Err(e) = bat.configure_alerts(3000, 4200, 10, true) {
+                let err = e.to_peripheral_error();
+                let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(err));
+            }
         }
 
         loop {
@@ -221,9 +227,16 @@ impl<
                     let mut is_soc_alert = false;
                     {
                         let mut bat = self.battery.lock().await;
-                        if let Ok((v_alert, soc_alert)) = bat.check_and_clear_alerts() {
-                            is_voltage_alert = v_alert;
-                            is_soc_alert = soc_alert;
+                        match bat.check_and_clear_alerts() {
+                            Ok((v_alert, soc_alert)) => {
+                                is_voltage_alert = v_alert;
+                                is_soc_alert = soc_alert;
+                            }
+                            Err(e) => {
+                                let err = e.to_peripheral_error();
+                                let _ =
+                                    telemetry_tx.try_send(TelemetryRecord::PeripheralError(err));
+                            }
                         }
                     }
 
@@ -256,13 +269,13 @@ impl<
 impl<'a, M: RawMutex, B: FuelGauge, C: model::interfaces::ChargeStatus, Pin, Cmd>
     crate::BlockingBatteryReader for BatteryController<'a, M, B, C, Pin, Cmd>
 {
-    fn read_battery_blocking(&self) -> Option<(u32, u8)> {
+    fn read_battery_blocking(&self) -> Result<(u32, u8), PeripheralError> {
         if let Ok(mut bat) = self.battery.try_lock() {
             if let (Ok(v), Ok(soc)) = (bat.read_voltage_mv(), bat.read_state_of_charge()) {
-                return Some((v, soc));
+                return Ok((v, soc));
             }
         }
-        None
+        Err(PeripheralError::DeviceNotAvailable)
     }
 }
 

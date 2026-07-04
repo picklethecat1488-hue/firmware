@@ -85,14 +85,11 @@ fn test_vl53l0x_threshold_validation() {
     // Default threshold is 300, cal_near is 0.
 
     // 1. Setting threshold to > cal_near + THRESHOLD_ERROR_MM should succeed.
-    sensor.set_threshold_mm(250);
+    assert!(sensor.set_threshold_mm(250).is_ok());
 
-    // 2. Setting threshold to <= cal_near + THRESHOLD_ERROR_MM should panic.
-    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mut s = Vl53l0x::new(DummyI2c, 0x30);
-        s.set_threshold_mm(10);
-    }));
-    assert!(res.is_err());
+    // 2. Setting threshold to <= cal_near + THRESHOLD_ERROR_MM should return an error.
+    let mut s = Vl53l0x::new(DummyI2c, 0x30);
+    assert!(s.set_threshold_mm(10).is_err());
 
     // 3. Setting calibration with threshold_mm > near + THRESHOLD_ERROR_MM should succeed.
     sensor.set_calibration(CalibrationType::ProximityCal(50, 150));
@@ -100,7 +97,7 @@ fn test_vl53l0x_threshold_validation() {
     // 4. Setting calibration with threshold_mm <= near + THRESHOLD_ERROR_MM should panic.
     let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut s = Vl53l0x::new(DummyI2c, 0x30);
-        s.set_threshold_mm(100);
+        let _ = s.set_threshold_mm(100);
         s.set_calibration(CalibrationType::ProximityCal(90, 150));
     }));
     assert!(res.is_err());

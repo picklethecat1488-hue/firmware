@@ -22,15 +22,15 @@ default-members = [
 ]
 
 [profile.release]
-opt-level = "z"      # Optimize for size
-lto = true           # Enable Link-Time Optimization
-codegen-units = 1    # Reduce codegen units to improve size optimizations
-panic = "abort"      # Abort on panic to remove stack unwinding tables
-strip = false        # Keep symbols and debug info for MemBrowse analysis
+opt-level = "z"          # Optimize for size
+lto = true               # Enable Link-Time Optimization
+codegen-units = 1        # Reduce codegen units to improve size optimizations
+panic = "abort"          # Abort on panic to remove stack unwinding tables
+strip = false            # Keep symbols and debug info for MemBrowse analysis
 
 [profile.dev]
-opt-level = 1        # Enable light optimization to drastically reduce async/embassy code size
-debug = 1            # Line tables only, much faster compilation and linking
+opt-level = 1            # Enable light optimization to drastically reduce async/embassy code size
+debug = 1                # Line tables only, much faster compilation and linking
 
 [profile.test]
 debug = 1            # Line tables only, speeds up test compilation and linking

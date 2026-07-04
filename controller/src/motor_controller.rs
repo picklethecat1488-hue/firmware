@@ -4,6 +4,8 @@
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use model::interfaces::{Motor, PowerMeasurementMode, PowerSensor};
+use model::types::PeripheralError;
+use peripherals::ToPeripheralError;
 
 /// The operating states of the motor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -30,7 +32,11 @@ pub struct MotorController<M, C> {
     calibration_present: bool,
 }
 
-impl<M: Motor, C: PowerSensor> MotorController<M, C> {
+impl<M: Motor, C: PowerSensor> MotorController<M, C>
+where
+    <C as PowerSensor>::Error: ToPeripheralError,
+    <M as Motor>::Error: ToPeripheralError,
+{
     /// Creates a new motor controller managing the specified motor and current sensor.
     pub const fn new(motor: M, current_sensor: C) -> Self {
         Self {
@@ -72,8 +78,11 @@ impl<M: Motor, C: PowerSensor> MotorController<M, C> {
     }
 
     /// Directly reads the current draw (acting as a proxy for load torque) in mA from the sensor.
-    pub fn read_torque_ma(&mut self) -> Result<i32, C::Error> {
-        let current = self.current_sensor.read_current_ma()?;
+    pub fn read_torque_ma(&mut self) -> Result<i32, PeripheralError> {
+        let current = self
+            .current_sensor
+            .read_current_ma()
+            .map_err(|e| e.to_peripheral_error())?;
         self.last_current_ma = current;
         Ok(current)
     }
@@ -89,12 +98,12 @@ impl<M: Motor, C: PowerSensor> MotorController<M, C> {
                 16,
             >,
         >,
-    ) -> Result<(), MotorError<M::Error, C::Error>> {
+    ) -> Result<(), PeripheralError> {
         let is_running = self.state == MotorState::On;
 
         let current = if is_running {
             // Read current sensor (torque proxy)
-            self.read_torque_ma().map_err(MotorError::CurrentSensor)?
+            self.read_torque_ma()?
         } else {
             0
         };
@@ -105,10 +114,10 @@ impl<M: Motor, C: PowerSensor> MotorController<M, C> {
             if current < self.min_current_ma {
                 self.state = MotorState::Off;
                 self.speed = 0;
-                self.motor.stop().map_err(MotorError::Motor)?;
-                let _ = self
-                    .current_sensor
-                    .set_measurement_mode(PowerMeasurementMode::PowerDown);
+                self.motor.stop().map_err(|e| e.to_peripheral_error())?;
+                self.current_sensor
+                    .set_measurement_mode(PowerMeasurementMode::PowerDown)
+                    .map_err(|e| e.to_peripheral_error())?;
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::warn!(
                     "Motor Controller: Low load / dry detected (current: {} mA). Stopped motor.",
@@ -118,7 +127,7 @@ impl<M: Motor, C: PowerSensor> MotorController<M, C> {
                 // Check for motor stall (current is too high)
                 self.state = MotorState::Off;
                 self.speed = 0;
-                self.motor.stop().map_err(MotorError::Motor)?;
+                self.motor.stop().map_err(|e| e.to_peripheral_error())?;
                 let _ = self
                     .current_sensor
                     .set_measurement_mode(PowerMeasurementMode::PowerDown);
@@ -270,8 +279,23 @@ impl<M: Motor, C: PowerSensor> model::calibration::Calibration for MotorControll
     }
 }
 
-impl<M: Motor, C: PowerSensor> crate::BlockingMotorReader for MotorController<M, C> {
-    fn read_current_ma_blocking(&mut self) -> Option<i32> {
-        self.read_torque_ma().ok()
+impl<M: Motor, C: PowerSensor> crate::BlockingMotorReader for MotorController<M, C>
+where
+    <C as PowerSensor>::Error: ToPeripheralError,
+    <M as Motor>::Error: ToPeripheralError,
+{
+    fn read_current_ma_blocking(&mut self) -> Result<i32, PeripheralError> {
+        self.read_torque_ma()
+    }
+}
+
+impl<M: Motor, C: PowerSensor> crate::BlockingMotorWriter for MotorController<M, C>
+where
+    <C as PowerSensor>::Error: ToPeripheralError,
+    <M as Motor>::Error: ToPeripheralError,
+{
+    fn set_motor_speed(&mut self, speed: u8) -> Result<(), PeripheralError> {
+        let _ = self.motor.set_speed(speed);
+        Ok(())
     }
 }

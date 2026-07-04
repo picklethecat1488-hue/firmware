@@ -34,6 +34,9 @@ pub enum TelemetryRecord {
     /// Charger state telemetry.
     #[n(9)]
     ChargerState(#[n(0)] ChargeState),
+    /// Peripheral error telemetry.
+    #[n(10)]
+    PeripheralError(#[n(0)] PeripheralError),
 }
 
 impl TelemetryRecord {

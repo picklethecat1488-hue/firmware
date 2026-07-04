@@ -5,7 +5,8 @@ use app::system_controller::SystemCommand;
 use app::CliCommand;
 use controller::motor_controller::MotorCommand;
 use controller::{
-    BlockingBatteryReader, BlockingMotorReader, BlockingProximityReader, BlockingThermalReader,
+    BlockingBatteryReader, BlockingMotorReader, BlockingMotorWriter, BlockingProximityReader,
+    BlockingThermalReader,
 };
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
@@ -228,7 +229,7 @@ where
     BatteryCtrl: BlockingBatteryReader,
     ThermalCtrl: BlockingThermalReader,
     SensorCtrl: BlockingProximityReader,
-    MotorCtrl: BlockingMotorReader,
+    MotorCtrl: BlockingMotorReader + BlockingMotorWriter,
     TempSensor: TemperatureSensor,
 {
     fn process<'a>(
@@ -263,70 +264,73 @@ where
         let cmd = <CliCommand as embedded_cli::service::FromRaw>::parse(raw)?;
 
         let res: Result<(), &'static str> = match cmd {
-            CliCommand::Motor { speed } => {
-                let _ = self.motor_tx.try_send(MotorCommand::SetSpeed(speed));
-
-                if let Some(ctrl_raw) = self.motor_ctrl_ptr {
-                    let ctrl = unsafe { &mut *ctrl_raw };
-                    if let Some(current) = ctrl.read_current_ma_blocking() {
-                        let _ = core::writeln!(writer, "\r\nMotor current: {} mA", current);
-                    }
-                }
-                Ok(())
-            }
+            CliCommand::Motor { speed } => self
+                .motor_ctrl_ptr
+                .ok_or("Motor controller not available")
+                .and_then(|p| {
+                    let ctrl = unsafe { &mut *p };
+                    ctrl.set_motor_speed(speed)
+                        .map_err(|_| "Failed to set motor speed")?;
+                    ctrl.read_current_ma_blocking()
+                        .map_err(|_| "Failed to read motor current")
+                })
+                .map(|current| {
+                    let _ = core::writeln!(writer, "\r\nMotor current: {} mA", current);
+                }),
             CliCommand::Stop => self
                 .motor_tx
                 .try_send(MotorCommand::Stop)
                 .map_err(|_| "Failed to send Motor Stop command"),
-            CliCommand::Battery => {
-                if let Some(ctrl_raw) = self.battery_ctrl_ptr {
+            CliCommand::Battery => self
+                .battery_ctrl_ptr
+                .ok_or("Battery controller not available")
+                .and_then(|ctrl_raw| {
                     let ctrl = unsafe { &*ctrl_raw };
-                    if let Some((v, soc)) = ctrl.read_battery_blocking() {
-                        let _ = core::writeln!(
-                            writer,
-                            "\r\nDirect battery reading: {} mV, {}% state of charge",
-                            v,
-                            soc
-                        );
-                        Ok(())
-                    } else {
-                        Err("Direct battery reading failed")
-                    }
-                } else {
-                    Err("Battery controller not available")
-                }
-            }
-            CliCommand::Thermal => {
-                if let Some(ctrl_raw) = self.thermal_ctrl_ptr {
+                    ctrl.read_battery_blocking()
+                        .map_err(|_| "Direct battery reading failed")
+                })
+                .map(|(v, soc)| {
+                    let _ = core::writeln!(
+                        writer,
+                        "\r\nDirect battery reading: {} mV, {}% state of charge",
+                        v,
+                        soc
+                    );
+                }),
+            CliCommand::Thermal => self
+                .thermal_ctrl_ptr
+                .ok_or("Thermal controller not available")
+                .and_then(|ctrl_raw| {
                     let ctrl = unsafe { &*ctrl_raw };
-                    if let Some(temp) = ctrl.read_temperature_blocking() {
-                        let _ = core::writeln!(
-                            writer,
-                            "\r\nDirect thermal reading (ThermalController): {}.{:03} C",
-                            temp / 1000,
-                            (temp.abs() % 1000)
-                        );
-                        Ok(())
-                    } else {
-                        Err("Direct thermal reading failed")
-                    }
-                } else {
-                    Err("Thermal controller not available")
-                }
-            }
+                    ctrl.read_temperature_blocking()
+                        .map_err(|_| "Direct thermal reading failed")
+                })
+                .map(|temp| {
+                    let _ = core::writeln!(
+                        writer,
+                        "\r\nDirect thermal reading (ThermalController): {}.{:03} C",
+                        temp / 1000,
+                        (temp.abs() % 1000)
+                    );
+                }),
             CliCommand::Proximity => {
-                let d_north = self
-                    .sensor_north_ctrl_ptr
-                    .and_then(|p| unsafe { &mut *p }.read_distance_blocking());
-                let d_east = self
-                    .sensor_east_ctrl_ptr
-                    .and_then(|p| unsafe { &mut *p }.read_distance_blocking());
-                let d_west = self
-                    .sensor_west_ctrl_ptr
-                    .and_then(|p| unsafe { &mut *p }.read_distance_blocking());
-
-                match (d_north, d_east, d_west) {
-                    (Some(dn), Some(de), Some(dw)) => {
+                let read_sensor = |ptr_opt: Option<*mut SensorCtrl>| {
+                    ptr_opt
+                        .ok_or("Proximity sensor pointer not available")
+                        .and_then(|p| {
+                            unsafe { &mut *p }
+                                .read_distance_blocking()
+                                .map_err(|_| "Proximity sensor failed to read")
+                        })
+                };
+                read_sensor(self.sensor_north_ctrl_ptr)
+                    .and_then(|dn| {
+                        read_sensor(self.sensor_east_ctrl_ptr).map(|de| (dn, de))
+                    })
+                    .and_then(|(dn, de)| {
+                        read_sensor(self.sensor_west_ctrl_ptr).map(|dw| (dn, de, dw))
+                    })
+                    .map(|(dn, de, dw)| {
                         let _ = core::writeln!(
                             writer,
                             "\r\nDirect proximity readings: North = {} mm, East = {} mm, West = {} mm",
@@ -334,10 +338,8 @@ where
                             de,
                             dw
                         );
-                        Ok(())
-                    }
-                    _ => Err("One or more proximity sensors failed to read"),
-                }
+                    })
+                    .map_err(|_| "One or more proximity sensors failed to read")
             }
             CliCommand::Wake => self
                 .system_tx
@@ -354,25 +356,22 @@ where
             CliCommand::Crash => {
                 panic!("Simulated crash dump flow");
             }
-            CliCommand::McuTemp => {
-                if let Some(ts_raw) = self.temp_sensor_ptr {
-                    let ts = unsafe { &mut *ts_raw };
-                    match ts.read_temperature_milli_c() {
-                        Ok(temp) => {
-                            let _ = core::writeln!(
-                                writer,
-                                "\r\nDirect system temperature reading (RP2040): {}.{:03} C",
-                                temp / 1000,
-                                (temp.abs() % 1000)
-                            );
-                            Ok(())
-                        }
-                        _ => Err("Direct system temperature reading failed"),
-                    }
-                } else {
-                    Err("RP2040 system temperature sensor not available")
-                }
-            }
+            CliCommand::McuTemp => self
+                .temp_sensor_ptr
+                .ok_or("RP2040 system temperature sensor not available")
+                .and_then(|ts_raw| {
+                    unsafe { &mut *ts_raw }
+                        .read_temperature_milli_c()
+                        .map_err(|_| "Direct system temperature reading failed")
+                })
+                .map(|temp| {
+                    let _ = core::writeln!(
+                        writer,
+                        "\r\nDirect system temperature reading (RP2040): {}.{:03} C",
+                        temp / 1000,
+                        (temp.abs() % 1000)
+                    );
+                }),
             CliCommand::CalNear { direction } => {
                 if let Some(i2c_raw) = self.i2c_ptr {
                     let i2c = unsafe { &mut *i2c_raw };
@@ -404,15 +403,17 @@ where
                         );
 
                         let mut buf = [0u8; 128];
-                        let mut proximity_cal = match embassy_futures::block_on(
-                            fs.read_file("vl53l0x_cal.cbor", &mut buf),
-                        ) {
-                            Ok(Some(bytes)) => {
-                                minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes)
-                                    .unwrap_or_default()
-                            }
-                            _ => model::calibration::Vl53l0xCalibration::default(),
-                        };
+                        let mut proximity_cal =
+                            embassy_futures::block_on(fs.read_file("vl53l0x_cal.cbor", &mut buf))
+                                .ok()
+                                .flatten()
+                                .and_then(|bytes| {
+                                    minicbor::decode::<model::calibration::Vl53l0xCalibration>(
+                                        bytes,
+                                    )
+                                    .ok()
+                                })
+                                .unwrap_or_default();
 
                         match direction {
                             app::SensorDirection::North => proximity_cal.north_near = d_raw,
@@ -426,19 +427,17 @@ where
                         encoder.encode(proximity_cal).unwrap();
                         let len = encoder.into_writer().position();
 
-                        match embassy_futures::block_on(
+                        embassy_futures::block_on(
                             fs.write_file("vl53l0x_cal.cbor", &write_buf[..len]),
-                        ) {
-                            Ok(_) => {
-                                let _ = core::writeln!(
-                                    writer,
-                                    "Saved cover calibration for {} to flash.",
-                                    name
-                                );
-                                Ok(())
-                            }
-                            Err(_) => Err("Error saving calibration to flash"),
-                        }
+                        )
+                        .map(|_| {
+                            let _ = core::writeln!(
+                                writer,
+                                "Saved cover calibration for {} to flash.",
+                                name
+                            );
+                        })
+                        .map_err(|_| "Error saving calibration to flash")
                     } else {
                         Err("Flash controller not available")
                     }
@@ -477,15 +476,17 @@ where
                         );
 
                         let mut buf = [0u8; 128];
-                        let mut proximity_cal = match embassy_futures::block_on(
-                            fs.read_file("vl53l0x_cal.cbor", &mut buf),
-                        ) {
-                            Ok(Some(bytes)) => {
-                                minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes)
-                                    .unwrap_or_default()
-                            }
-                            _ => model::calibration::Vl53l0xCalibration::default(),
-                        };
+                        let mut proximity_cal =
+                            embassy_futures::block_on(fs.read_file("vl53l0x_cal.cbor", &mut buf))
+                                .ok()
+                                .flatten()
+                                .and_then(|bytes| {
+                                    minicbor::decode::<model::calibration::Vl53l0xCalibration>(
+                                        bytes,
+                                    )
+                                    .ok()
+                                })
+                                .unwrap_or_default();
 
                         match direction {
                             app::SensorDirection::North => proximity_cal.north_100 = d_raw,
@@ -499,19 +500,17 @@ where
                         encoder.encode(proximity_cal).unwrap();
                         let len = encoder.into_writer().position();
 
-                        match embassy_futures::block_on(
+                        embassy_futures::block_on(
                             fs.write_file("vl53l0x_cal.cbor", &write_buf[..len]),
-                        ) {
-                            Ok(_) => {
-                                let _ = core::writeln!(
-                                    writer,
-                                    "Saved 100mm calibration for {} to flash.",
-                                    name
-                                );
-                                Ok(())
-                            }
-                            Err(_) => Err("Error saving calibration to flash"),
-                        }
+                        )
+                        .map(|_| {
+                            let _ = core::writeln!(
+                                writer,
+                                "Saved 100mm calibration for {} to flash.",
+                                name
+                            );
+                        })
+                        .map_err(|_| "Error saving calibration to flash")
                     } else {
                         Err("Flash controller not available")
                     }
@@ -526,9 +525,7 @@ where
                     let _ = motor.set_speed(100);
 
                     let _ = core::writeln!(writer, "Waiting 1 second for motor to ramp up...");
-                    embassy_futures::block_on(embassy_time::Timer::after(
-                        embassy_time::Duration::from_millis(1000),
-                    ));
+                    embassy_time::block_for(embassy_time::Duration::from_millis(1000));
 
                     if let Some(i2c_raw) = self.i2c_ptr {
                         let i2c = unsafe { &mut *i2c_raw };
@@ -544,9 +541,7 @@ where
                         let mut sum = 0;
                         for _ in 0..5 {
                             sum += current_sensor.read_current_ma().unwrap_or(0);
-                            embassy_futures::block_on(embassy_time::Timer::after(
-                                embassy_time::Duration::from_millis(100),
-                            ));
+                            embassy_time::block_for(embassy_time::Duration::from_millis(100));
                         }
                         let current = sum / 5;
 
@@ -575,16 +570,19 @@ where
                                 );
 
                             let mut buf = [0u8; 128];
-                            let mut cal = match embassy_futures::block_on(
-                                fs.read_file("motor_cal.cbor", &mut buf),
-                            ) {
-                                Ok(Some(bytes)) => {
-                                    minicbor::decode::<model::calibration::MotorCalibration>(bytes)
-                                        .unwrap_or_default()
-                                }
-                                _ => model::calibration::MotorCalibration::default(),
-                            };
+                            let cal =
+                                embassy_futures::block_on(fs.read_file("motor_cal.cbor", &mut buf))
+                                    .ok()
+                                    .flatten()
+                                    .and_then(|bytes| {
+                                        minicbor::decode::<model::calibration::MotorCalibration>(
+                                            bytes,
+                                        )
+                                        .ok()
+                                    })
+                                    .unwrap_or_default();
 
+                            let mut cal = cal;
                             match state {
                                 app::MotorCalState::Empty => cal.empty_current_ma = current,
                                 app::MotorCalState::Water100ml => {
@@ -599,19 +597,17 @@ where
                             encoder.encode(cal).unwrap();
                             let len = encoder.into_writer().position();
 
-                            match embassy_futures::block_on(
+                            embassy_futures::block_on(
                                 fs.write_file("motor_cal.cbor", &write_buf[..len]),
-                            ) {
-                                Ok(_) => {
-                                    let _ = core::writeln!(
-                                        writer,
-                                        "Saved motor {} calibration to flash.",
-                                        name
-                                    );
-                                    Ok(())
-                                }
-                                Err(_) => Err("Error saving calibration to flash"),
-                            }
+                            )
+                            .map(|_| {
+                                let _ = core::writeln!(
+                                    writer,
+                                    "Saved motor {} calibration to flash.",
+                                    name
+                                );
+                            })
+                            .map_err(|_| "Error saving calibration to flash")
                         } else {
                             Err("Flash controller not available")
                         }
