@@ -29,9 +29,9 @@ fn test_stream_logs_poll_loop() {
     };
 
     let elf_candidates = [
-        "target/thumbv6m-none-eabi/debug/cat_detector",
-        "target/thumbv6m-none-eabi/release/cat_detector",
-        "../../target/thumbv6m-none-eabi/debug/cat_detector",
+        "target/thumbv6m-none-eabi/debug/cat_detector/app",
+        "target/thumbv6m-none-eabi/release/cat_detector/app",
+        "../../target/thumbv6m-none-eabi/debug/cat_detector/app",
     ];
     let mut elf_path = None;
     for &c in &elf_candidates {
@@ -94,9 +94,9 @@ fn test_dump_logs_empty() {
     };
 
     let elf_candidates = [
-        "target/thumbv6m-none-eabi/debug/cat_detector",
-        "target/thumbv6m-none-eabi/release/cat_detector",
-        "../../target/thumbv6m-none-eabi/debug/cat_detector",
+        "target/thumbv6m-none-eabi/debug/cat_detector/app",
+        "target/thumbv6m-none-eabi/release/cat_detector/app",
+        "../../target/thumbv6m-none-eabi/debug/cat_detector/app",
     ];
     let mut elf_path = None;
     for &c in &elf_candidates {

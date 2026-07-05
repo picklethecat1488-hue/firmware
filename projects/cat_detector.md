@@ -164,7 +164,7 @@ To capture system crash data reliably without relying on active runtime loops, a
 1.  **Stack Scanner**: Performs a heuristic stack scan on the Cortex-M0+ stack, extracting candidate return program counters (PCs) within the flash code segment.
 2.  **Revision & Info Capture**: Retrieves the package version/revision hash and detailed panic information (file, line number, panic message).
 3.  **Circular System Logs**: Captures the last 1024 bytes of diagnostic logs from a global, critical-section protected `CRASH_LOG_BUFFER`.
-4.  **Rolling Flash Buffer**: Appends the crash logs to the persistent flash filesystem under a rolling sequence (`crash_0.log` through `crash_4.log`), updating a persistent index file `crash_idx` for analysis by offline host tools (such as `fs_tool`).
+4.  **Rolling Flash Buffer**: Appends the crash logs to the persistent flash filesystem under a rolling sequence (`crash_0.log` through `crash_4.log`), updating a persistent index file `crash_idx` for analysis by offline host tools (such as `host_fs`).
 
 ---
 
@@ -352,7 +352,7 @@ Execute the following commands sequentially inside the interactive serial shell 
 After triggering a panic/crash or running telemetry operations, verify data persistence and code correctness from your host system.
 
 > [!TIP]
-> By default, if the `--dump` option is omitted, `fs_tool` will connect directly to the attached device via `probe-rs` using a project name. It dynamically resolves the target chip and partition offset from that project's `.cargo/config.toml` and `memory.x` configuration files.
+> By default, if the `--dump` option is omitted, `host_fs` will connect directly to the attached device via `probe-rs` using project autodetection. It dynamically resolves the target chip and partition offset from that project's ELF binary metadata.
 
 1. **Pull raw flash filesystem partition**:
    Dump the 256KB sequential-storage partition from the target flash memory:
@@ -363,20 +363,20 @@ After triggering a panic/crash or running telemetry operations, verify data pers
 2. **Verify directory structure**:
    Query the filesystem to ensure directory references and files exist:
    ```bash
-   cargo run --bin fs_tool -- --dump flash_dump.bin ls
+   cargo run --bin host_fs -- --dump flash_dump.bin ls
    ```
 
 3. **Decode and export telemetry stream**:
    Verify periodic CBOR updates have been stored in the circular RRD file, and export them:
    ```bash
-   cargo run --bin fs_tool -- --dump flash_dump.bin export-telemetry telemetry.csv
+   cargo run --bin host_fs -- --dump flash_dump.bin export-telemetry telemetry.csv
    ```
    * Inspect `telemetry.csv` to confirm battery voltages, motor states, thermal readings, and flash erase metrics are logged sequentially.
 
 4. **Decode and symbolicate crash dumps**:
    Convert raw memory addresses in the crash log into a human-readable backtrace using the compiled debug ELF binary symbols:
    ```bash
-   cargo run --bin fs_tool -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector
+   cargo run --bin host_fs -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector/app
    ```
    * Verify that the crash address points directly to the function name, source file, and line number where the panic was triggered.
 
@@ -384,9 +384,9 @@ After triggering a panic/crash or running telemetry operations, verify data pers
    Use the `cp` command with the `dev:` prefix to denote device-side files:
    - Extract/copy a file from the flash partition dump to a host file path:
      ```bash
-     cargo run --bin fs_tool -- --dump flash_dump.bin cp dev:vl53l0x_cal.cbor local_cal.cbor
+     cargo run --bin host_fs -- --dump flash_dump.bin cp dev:vl53l0x_cal.cbor local_cal.cbor
      ```
    - Inject/copy a local host file into the flash partition dump (and automatically update the directory index `.dir`):
      ```bash
-     cargo run --bin fs_tool -- --dump flash_dump.bin cp local_cal.cbor dev:vl53l0x_cal.cbor
+     cargo run --bin host_fs -- --dump flash_dump.bin cp local_cal.cbor dev:vl53l0x_cal.cbor
      ```

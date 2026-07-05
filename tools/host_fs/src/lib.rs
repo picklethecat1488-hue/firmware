@@ -93,7 +93,7 @@ pub enum Commands {
     },
     /// Read and decode all stored crash dumps into human-readable backtraces
     CrashLog {
-        /// Optional path to the ELF binary containing debug symbols (e.g. target/thumbv6m-none-eabi/debug/cat_detector)
+        /// Optional path to the ELF binary containing debug symbols (e.g. target/thumbv6m-none-eabi/debug/cat_detector/app)
         #[arg(short, long)]
         elf: Option<String>,
     },
