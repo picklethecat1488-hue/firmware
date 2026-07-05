@@ -1,0 +1,6 @@
+# Configuration for cargo-nextest
+
+[profile.default]
+# Bump the leak timeout to prevent transient false-positive LEAK warnings
+# on systems where stdout/stderr handles or background OS threads exit slowly.
+leak-timeout = "2s"
