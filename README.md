@@ -57,10 +57,10 @@ cargo test
 cargo build --package cat_detector --target thumbv6m-none-eabi
 
 # Run/Flash the main Cat Detector application
-cargo run --package cat_detector --bin cat_detector
+cargo run --package cat_detector --bin cat_detector_app
 
 # Run/Flash the interactive bringup shell
-cargo run --package cat_detector --bin shell
+cargo run --package cat_detector --bin cat_detector_shell
 ```
 
 ---

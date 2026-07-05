@@ -43,7 +43,7 @@ jobs:
         if: ${{ !env.ACT }}
         uses: membrowse/membrowse-action@v1
         with:
-          elf: target/thumbv6m-none-eabi/release/cat_detector
+          elf: target/thumbv6m-none-eabi/release/cat_detector/app
           target_name: cat_detector
           api_key: ${{ secrets.MEMBROWSE_API_KEY }}
 

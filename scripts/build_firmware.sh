@@ -36,6 +36,15 @@ while IFS= read -r pkg; do
     fi
 done < <(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | .name')
 
+# Check if multiple binary targets with the same name exist in the workspace
+DUPLICATE_BINS=$(cargo metadata --format-version 1 | jq -r '.packages[].targets[] | select(.kind[] == "bin") | .name' | sort | uniq -d)
+if [ -n "$DUPLICATE_BINS" ]; then
+    echo "Error: Duplicate binary target names detected in the workspace:" >&2
+    echo "$DUPLICATE_BINS" | sed 's/^/  - /' >&2
+    echo "Cargo requires all binary targets to have unique names across the workspace." >&2
+    exit 1
+fi
+
 # Check if we should only build debug, release, or both
 BUILD_MODE="both"
 ORGANIZE_DIR=""
@@ -61,14 +70,41 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+restructure_target_dir() {
+    local dir="$1"
+    if [ ! -d "$dir" ]; then
+        return
+    fi
+
+    # Find all files with no extension in the directory that contain an underscore
+    find "$dir" -maxdepth 1 -type f ! -name "*.*" ! -name ".*" 2>/dev/null | while read -r file; do
+        local filename
+        filename=$(basename "$file")
+        if [[ "$filename" == *_* ]]; then
+            local component="${filename##*_}"
+            local project="${filename%_*}"
+            if [ -n "$project" ] && [ -n "$component" ]; then
+                mkdir -p "$dir/$project"
+                cp "$file" "$dir/$project/$component"
+            fi
+        fi
+    done
+}
+
 build_mcu_debug() {
     echo "Building Target MCU Binaries (Debug)..."
     cargo build --workspace "${EXCLUDE_ARGS[@]}" --bins --target thumbv6m-none-eabi
+
+    # Restructure outputs into project subdirectories
+    restructure_target_dir "target/thumbv6m-none-eabi/debug"
 }
 
 build_mcu_release() {
     echo "Building Target MCU Binaries (Release)..."
     cargo build --release --workspace "${EXCLUDE_ARGS[@]}" --bins --target thumbv6m-none-eabi
+
+    # Restructure outputs into project subdirectories
+    restructure_target_dir "target/thumbv6m-none-eabi/release"
 }
 
 build_host_tools() {
@@ -116,14 +152,14 @@ if [ -n "$ORGANIZE_DIR" ]; then
 
     if [ "$BUILD_MODE" = "debug" ] || [ "$BUILD_MODE" = "both" ]; then
         mkdir -p "$ORGANIZE_DIR/debug/embedded"
-        # Copy target MCU debug binaries (excluding hidden files/dependency files)
-        find target/thumbv6m-none-eabi/debug -maxdepth 1 -type f ! -name "*.*" ! -name ".*" -exec cp {} "$ORGANIZE_DIR/debug/embedded/" \;
+        # Copy target MCU debug binaries
+        cp -R target/thumbv6m-none-eabi/debug/cat_detector "$ORGANIZE_DIR/debug/embedded/"
     fi
 
     if [ "$BUILD_MODE" = "release" ] || [ "$BUILD_MODE" = "both" ]; then
         mkdir -p "$ORGANIZE_DIR/release/embedded"
-        # Copy target MCU release binaries (excluding hidden files/dependency files)
-        find target/thumbv6m-none-eabi/release -maxdepth 1 -type f ! -name "*.*" ! -name ".*" -exec cp {} "$ORGANIZE_DIR/release/embedded/" \;
+        # Copy target MCU release binaries
+        cp -R target/thumbv6m-none-eabi/release/cat_detector "$ORGANIZE_DIR/release/embedded/"
         
         # Copy host tools
         mkdir -p "$ORGANIZE_DIR/release/$PLATFORM"

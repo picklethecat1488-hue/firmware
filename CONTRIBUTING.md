@@ -94,7 +94,7 @@ To inspect the RAM/Flash overhead of a build:
 *   Run the size utility to calculate the bytes allocated to `.text` (flash), `.data` (RAM), and `.bss` (uninitialized RAM) sections:
     ```bash
     cargo install cargo-bloat
-    cargo bloat --bin cat_detector --target thumbv6m-none-eabi
+    cargo bloat --bin app --target thumbv6m-none-eabi
     ```
 
 ---

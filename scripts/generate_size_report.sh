@@ -34,9 +34,9 @@ report_size() {
 
     log_echo "=== $label ==="
     
-    # Find ELF files (files with no extension in the directory)
+    # Find ELF files (files with no extension in the directory and subdirectories)
     local files
-    files=$(find "$dir" -maxdepth 1 -type f ! -name "*.*" ! -name ".*" 2>/dev/null || true)
+    files=$(find "$dir" -maxdepth 3 -type f ! -name "*.*" ! -name ".*" 2>/dev/null | grep -E '/cat_detector/(app|shell)$' || true)
     
     if [ -n "$files" ]; then
         # Run size command on all found files
