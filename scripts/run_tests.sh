@@ -17,13 +17,13 @@ if cargo nextest --version >/dev/null 2>&1; then
         cargo nextest run
     else
         # Using tee to capture output to file while streaming to stdout
-        cargo nextest run 2>&1 | tee "$OUTPUT_FILE"
+        cargo nextest run --color never 2>&1 | tee "$OUTPUT_FILE"
     fi
 else
     echo "cargo-nextest not found. Falling back to standard cargo test..."
     if [ "$OUTPUT_FILE" = "/dev/stdout" ]; then
         cargo test
     else
-        cargo test 2>&1 | tee "$OUTPUT_FILE"
+        cargo test -- --color never 2>&1 | tee "$OUTPUT_FILE"
     fi
 fi
