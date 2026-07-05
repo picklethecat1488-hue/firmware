@@ -113,13 +113,13 @@ steps:
   - id: "15"
     name: Decode and Symbolicate Crash Dumps
     type: host_command
-    command: cargo run --bin host_fs -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector
+    command: cargo run --bin host_fs -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector/app
     expected_regex: '(Location:|Backtrace:)'
     description: Verify panic log is decoded and symbolicated using debug ELF.
 
   - id: "16"
     name: Verify Host Logger Works
     type: host_command
-    command: cargo run --bin defmt_host -- --project cat_detector --elf target/thumbv6m-none-eabi/debug/cat_detector -d
+    command: cargo run --bin defmt_host -- --autodetect --elf target/thumbv6m-none-eabi/debug/cat_detector/app -d
     expected_regex: 'Draining buffered defmt logs'
     description: Verify that defmt_host starts up and displays its CLI options.

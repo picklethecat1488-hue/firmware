@@ -24,7 +24,7 @@
       "coreConfigs": [
         {
           "coreIndex": 0,
-          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector"
+          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector/app"
         }
       ],
       "flashingConfig": {
@@ -42,7 +42,7 @@
       "coreConfigs": [
         {
           "coreIndex": 0,
-          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/shell"
+          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector/shell"
         }
       ],
       "flashingConfig": {
