@@ -3,7 +3,14 @@
 #![deny(missing_docs)]
 
 use crate::filesystem_controller::FilesystemClient;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use model::telemetry::TelemetryRecord;
+
+static TELEMETRY_WRITE_SIGNAL: Signal<CriticalSectionRawMutex, Result<(), ()>> = Signal::new();
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+extern crate std;
 
 /// Returns the current system uptime in microseconds since boot (64-bit precision).
 pub fn system_time() -> u64 {
@@ -24,11 +31,15 @@ pub struct TelemetryController<const MAX_RECORDS: usize = 45, const BUFFER_SIZE:
     next_idx: u32,
     time_fn: fn() -> u64,
     fs: FilesystemClient,
+    write_pending: bool,
 }
 
 /// Type alias for compatibility with the old Telemetry struct name.
 pub type Telemetry<const MAX_RECORDS: usize = 45, const BUFFER_SIZE: usize = 1024> =
     TelemetryController<MAX_RECORDS, BUFFER_SIZE>;
+
+/// Capacity of the telemetry channel queue.
+pub const CHANNEL_CAPACITY: usize = 64;
 
 impl Default for TelemetryController<45, 1024> {
     fn default() -> Self {
@@ -63,6 +74,7 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
             next_idx: 0,
             time_fn,
             fs,
+            write_pending: false,
         }
     }
 
@@ -103,6 +115,15 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
         false
     }
 
+    /// Flushes any pending asynchronous database update.
+    pub async fn flush_pending_write(&mut self) -> Result<(), ()> {
+        if self.write_pending {
+            self.write_pending = false;
+            TELEMETRY_WRITE_SIGNAL.wait().await?;
+        }
+        Ok(())
+    }
+
     /// Initializes the telemetry buffer from flash storage, or resets it if invalid/missing.
     pub async fn init(&mut self) -> Result<(), ()> {
         let base_ptr = self.file_buf.as_ptr() as usize;
@@ -130,16 +151,21 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
             }
         } else {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::info!("Telemetry: telemetry.rrd not found or invalid, initializing...");
+            defmt::info!("Telemetry: telemetry.rrd not found or initializing...");
             self.file_buf.fill(0);
             self.count = 0;
             self.next_idx = 0;
             let header = self.serialize_header();
             self.file_buf[0..12].copy_from_slice(&header);
+            self.flush_pending_write().await?;
             self.fs
-                .write_file("telemetry.rrd", &self.file_buf[..Self::FILE_SIZE])
-                .await
-                .map_err(|_| ())?;
+                .start_write_file(
+                    "telemetry.rrd",
+                    &self.file_buf[..Self::FILE_SIZE],
+                    &TELEMETRY_WRITE_SIGNAL,
+                )
+                .await;
+            self.write_pending = true;
         }
         Ok(())
     }
@@ -148,40 +174,29 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
     pub async fn push_record(&mut self, record: TelemetryRecord) -> Result<(), ()> {
         let timestamp_us = (self.time_fn)();
 
-        let base_ptr = self.file_buf.as_ptr() as usize;
-        let (start, len) = match self.fs.read_file("telemetry.rrd", &mut self.file_buf).await {
-            Ok(Some(bytes)) => {
-                let start = bytes.as_ptr() as usize - base_ptr;
-                (Some(start), bytes.len())
-            }
-            _ => (None, 0),
-        };
+        let serialized = record.serialize(timestamp_us);
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        defmt::info!("Writing Telemetry: {=[u8]:cbor}", serialized);
 
-        if let Some(start) = start {
-            if start > 0 {
-                self.file_buf.copy_within(start..start + len, 0);
-            }
-            let _ = self.deserialize_header();
+        let offset = 12 + (self.next_idx as usize) * 20;
+        if offset + 20 <= self.file_buf.len() {
+            self.file_buf[offset..offset + 20].copy_from_slice(&serialized);
 
-            let serialized = record.serialize(timestamp_us);
-            #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::info!("Writing Telemetry: {=[u8]:cbor}", serialized);
+            self.next_idx = (self.next_idx + 1) % (MAX_RECORDS as u32);
+            self.count = core::cmp::min(self.count + 1, MAX_RECORDS as u32);
 
-            let offset = 12 + (self.next_idx as usize) * 20;
-            if offset + 20 <= self.file_buf.len() {
-                self.file_buf[offset..offset + 20].copy_from_slice(&serialized);
+            let header = self.serialize_header();
+            self.file_buf[0..12].copy_from_slice(&header);
 
-                self.next_idx = (self.next_idx + 1) % (MAX_RECORDS as u32);
-                self.count = core::cmp::min(self.count + 1, MAX_RECORDS as u32);
-
-                let header = self.serialize_header();
-                self.file_buf[0..12].copy_from_slice(&header);
-
-                self.fs
-                    .write_file("telemetry.rrd", &self.file_buf[..Self::FILE_SIZE])
-                    .await
-                    .map_err(|_| ())?;
-            }
+            self.flush_pending_write().await?;
+            self.fs
+                .start_write_file(
+                    "telemetry.rrd",
+                    &self.file_buf[..Self::FILE_SIZE],
+                    &TELEMETRY_WRITE_SIGNAL,
+                )
+                .await;
+            self.write_pending = true;
         }
         Ok(())
     }
@@ -217,19 +232,24 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
     }
 
     /// Starts the controller's main run loop, processing records.
-    pub async fn run(
+    pub async fn run<const N: usize>(
         mut self,
         rx: embassy_sync::channel::Receiver<
             'static,
             embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
             TelemetryRecord,
-            16,
+            N,
         >,
     ) -> ! {
         let _ = self.init().await;
         loop {
             let record = rx.receive().await;
-            let _ = self.push_record(record).await;
+            if self.push_record(record).await.is_err() {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::error!("Telemetry: Failed to push record to flash!");
+                #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+                std::eprintln!("Telemetry: Failed to push record to flash!");
+            }
         }
     }
 }
