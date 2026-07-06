@@ -95,7 +95,7 @@ where
                 '_,
                 CriticalSectionRawMutex,
                 model::telemetry::TelemetryRecord,
-                16,
+                { crate::telemetry_controller::CHANNEL_CAPACITY },
             >,
         >,
     ) -> Result<(), PeripheralError> {
@@ -161,7 +161,7 @@ where
                 '_,
                 CriticalSectionRawMutex,
                 model::telemetry::TelemetryRecord,
-                16,
+                { crate::telemetry_controller::CHANNEL_CAPACITY },
             >,
         >,
     ) {
@@ -265,7 +265,7 @@ where
             'static,
             CriticalSectionRawMutex,
             model::telemetry::TelemetryRecord,
-            16,
+            { crate::telemetry_controller::CHANNEL_CAPACITY },
         >,
     ) -> ! {
         // Put the current sensor into power-down mode on startup since the motor is off

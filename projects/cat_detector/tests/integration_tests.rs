@@ -41,7 +41,7 @@ fn test_system_integration_flow() {
         static TELEMETRY_CHANNEL: Channel<
             CriticalSectionRawMutex,
             model::telemetry::TelemetryRecord,
-            16,
+            { controller::telemetry_controller::CHANNEL_CAPACITY },
         > = Channel::new();
 
         let mut telemetry_records = Vec::new();

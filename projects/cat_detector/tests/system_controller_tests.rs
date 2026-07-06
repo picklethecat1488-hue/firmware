@@ -9,8 +9,11 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use model::types::{SystemLedState, SystemStatus, TelemetryRecord};
 
-static MOCK_TELEMETRY_CHANNEL: Channel<CriticalSectionRawMutex, TelemetryRecord, 16> =
-    Channel::new();
+static MOCK_TELEMETRY_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    TelemetryRecord,
+    { controller::telemetry_controller::CHANNEL_CAPACITY },
+> = Channel::new();
 
 #[test]
 fn test_system_controller_flow() {

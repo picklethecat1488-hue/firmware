@@ -132,7 +132,7 @@ where
                 '_,
                 CriticalSectionRawMutex,
                 model::telemetry::TelemetryRecord,
-                16,
+                { crate::telemetry_controller::CHANNEL_CAPACITY },
             >,
         >,
     ) -> Result<(), B::Error> {
@@ -209,7 +209,7 @@ where
             'static,
             CriticalSectionRawMutex,
             model::telemetry::TelemetryRecord,
-            16,
+            { crate::telemetry_controller::CHANNEL_CAPACITY },
         >,
     ) -> ! {
         // Configure alerts on boot (3.0V low threshold, 4.2V high threshold, 10% SOC empty alert, enable 1% SOC change alert)

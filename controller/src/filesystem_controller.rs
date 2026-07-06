@@ -19,7 +19,7 @@ pub struct ProfilingFlash<F: NorFlash> {
             'static,
             CriticalSectionRawMutex,
             model::telemetry::TelemetryRecord,
-            16,
+            64,
         >,
     >,
 }
@@ -41,7 +41,7 @@ impl<F: NorFlash> ProfilingFlash<F> {
             'static,
             CriticalSectionRawMutex,
             model::telemetry::TelemetryRecord,
-            16,
+            64,
         >,
     ) {
         self.telemetry_tx = Some(telemetry_tx);
@@ -304,7 +304,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<ProfilingFlash<F>> {
             'static,
             CriticalSectionRawMutex,
             model::telemetry::TelemetryRecord,
-            16,
+            64,
         >,
     ) {
         self.flash.set_telemetry(telemetry_tx);

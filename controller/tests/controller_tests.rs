@@ -72,7 +72,7 @@ fn test_motor_controller_sad_cases() {
     let telemetry_channel = Box::leak(Box::new(embassy_sync::channel::Channel::<
         embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
         model::telemetry::TelemetryRecord,
-        16,
+        { controller::telemetry_controller::CHANNEL_CAPACITY },
     >::new()));
     let telemetry_tx = telemetry_channel.sender();
     let telemetry_rx = telemetry_channel.receiver();
@@ -125,7 +125,7 @@ fn test_led_controller_sad_cases() {
         let telemetry_channel = Box::leak(Box::new(embassy_sync::channel::Channel::<
             embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
             model::telemetry::TelemetryRecord,
-            16,
+            { controller::telemetry_controller::CHANNEL_CAPACITY },
         >::new()));
         let telemetry_tx = telemetry_channel.sender();
         let telemetry_rx = telemetry_channel.receiver();
@@ -196,7 +196,7 @@ fn test_battery_controller_sad_cases() {
         let telemetry_channel = Box::leak(Box::new(embassy_sync::channel::Channel::<
             CriticalSectionRawMutex,
             model::telemetry::TelemetryRecord,
-            16,
+            { controller::telemetry_controller::CHANNEL_CAPACITY },
         >::new()));
         let telemetry_tx = telemetry_channel.sender();
         let telemetry_rx = telemetry_channel.receiver();

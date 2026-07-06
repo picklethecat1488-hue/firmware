@@ -116,7 +116,7 @@ macro_rules! run_thermal_task {
                     'static,
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                     model::telemetry::TelemetryRecord,
-                    16,
+                    { $crate::telemetry_controller::CHANNEL_CAPACITY },
                 >,
             ) {
                 controller.run(rx, telemetry_tx).await;
@@ -169,7 +169,7 @@ macro_rules! run_battery_task {
                     'static,
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                     model::telemetry::TelemetryRecord,
-                    16,
+                    { $crate::telemetry_controller::CHANNEL_CAPACITY },
                 >,
             ) {
                 controller.run(rx, telemetry_tx).await;
@@ -216,7 +216,7 @@ macro_rules! run_motor_task {
                     'static,
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                     model::telemetry::TelemetryRecord,
-                    16,
+                    { $crate::telemetry_controller::CHANNEL_CAPACITY },
                 >,
             ) {
                 controller.run(rx, telemetry_tx).await;
@@ -305,7 +305,7 @@ macro_rules! run_led_task {
                     'static,
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                     model::telemetry::TelemetryRecord,
-                    16,
+                    { $crate::telemetry_controller::CHANNEL_CAPACITY },
                 >,
             ) {
                 controller.run(rx, telemetry_tx).await;
@@ -367,6 +367,16 @@ macro_rules! run_telemetry_task {
         $rx:expr,
         $max_records:expr
     ) => {
+        $crate::run_telemetry_task!($spawner, $task_module, $controller, $rx, $max_records, 16);
+    };
+    (
+        $spawner:expr,
+        $task_module:ident,
+        $controller:expr,
+        $rx:expr,
+        $max_records:expr,
+        $channel_size:expr
+    ) => {
         mod $task_module {
             use super::*;
 
@@ -380,7 +390,7 @@ macro_rules! run_telemetry_task {
                     'static,
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                     model::telemetry::TelemetryRecord,
-                    16,
+                    $channel_size,
                 >,
             ) {
                 controller.run(rx).await;
