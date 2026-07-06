@@ -3,7 +3,11 @@
 #![deny(missing_docs)]
 
 use crate::filesystem_controller::FilesystemClient;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use model::telemetry::TelemetryRecord;
+
+static TELEMETRY_WRITE_SIGNAL: Signal<CriticalSectionRawMutex, Result<(), ()>> = Signal::new();
 
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 extern crate std;
@@ -27,6 +31,7 @@ pub struct TelemetryController<const MAX_RECORDS: usize = 45, const BUFFER_SIZE:
     next_idx: u32,
     time_fn: fn() -> u64,
     fs: FilesystemClient,
+    write_pending: bool,
 }
 
 /// Type alias for compatibility with the old Telemetry struct name.
@@ -69,6 +74,7 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
             next_idx: 0,
             time_fn,
             fs,
+            write_pending: false,
         }
     }
 
@@ -109,6 +115,15 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
         false
     }
 
+    /// Flushes any pending asynchronous database update.
+    pub async fn flush_pending_write(&mut self) -> Result<(), ()> {
+        if self.write_pending {
+            self.write_pending = false;
+            TELEMETRY_WRITE_SIGNAL.wait().await?;
+        }
+        Ok(())
+    }
+
     /// Initializes the telemetry buffer from flash storage, or resets it if invalid/missing.
     pub async fn init(&mut self) -> Result<(), ()> {
         let base_ptr = self.file_buf.as_ptr() as usize;
@@ -136,16 +151,21 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
             }
         } else {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::info!("Telemetry: telemetry.rrd not found or invalid, initializing...");
+            defmt::info!("Telemetry: telemetry.rrd not found or initializing...");
             self.file_buf.fill(0);
             self.count = 0;
             self.next_idx = 0;
             let header = self.serialize_header();
             self.file_buf[0..12].copy_from_slice(&header);
+            self.flush_pending_write().await?;
             self.fs
-                .write_file("telemetry.rrd", &self.file_buf[..Self::FILE_SIZE])
-                .await
-                .map_err(|_| ())?;
+                .start_write_file(
+                    "telemetry.rrd",
+                    &self.file_buf[..Self::FILE_SIZE],
+                    &TELEMETRY_WRITE_SIGNAL,
+                )
+                .await;
+            self.write_pending = true;
         }
         Ok(())
     }
@@ -168,10 +188,15 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
             let header = self.serialize_header();
             self.file_buf[0..12].copy_from_slice(&header);
 
+            self.flush_pending_write().await?;
             self.fs
-                .write_file("telemetry.rrd", &self.file_buf[..Self::FILE_SIZE])
-                .await
-                .map_err(|_| ())?;
+                .start_write_file(
+                    "telemetry.rrd",
+                    &self.file_buf[..Self::FILE_SIZE],
+                    &TELEMETRY_WRITE_SIGNAL,
+                )
+                .await;
+            self.write_pending = true;
         }
         Ok(())
     }

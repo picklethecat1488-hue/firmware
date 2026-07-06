@@ -368,6 +368,24 @@ impl FilesystemClient {
         signal.wait().await
     }
 
+    /// Starts a file write operation asynchronously without waiting for completion.
+    /// The caller must ensure that the content buffer remains valid until the write completes.
+    pub async fn start_write_file(
+        &self,
+        name: &'static str,
+        content: &[u8],
+        signal: &'static Signal<CriticalSectionRawMutex, Result<(), ()>>,
+    ) {
+        signal.reset();
+        let request = FsRequest::WriteFile {
+            name,
+            content_ptr: content.as_ptr(),
+            content_len: content.len(),
+            signal: signal as *const _,
+        };
+        self.sender.send(request).await;
+    }
+
     /// Fetches a file's content asynchronously.
     pub async fn read_file<'a>(
         &self,

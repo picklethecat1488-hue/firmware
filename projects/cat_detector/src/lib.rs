@@ -140,7 +140,7 @@ pub static LED_CHANNEL: embassy_sync::channel::Channel<
 pub static TELEMETRY_CHANNEL: embassy_sync::channel::Channel<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     model::types::TelemetryRecord,
-    64,
+    { controller::telemetry_controller::CHANNEL_CAPACITY },
 > = embassy_sync::channel::Channel::new();
 
 /// Shared command channel for filesystem operations.

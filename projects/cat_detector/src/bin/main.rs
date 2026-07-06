@@ -449,7 +449,7 @@ async fn main(spawner: Spawner) {
         telemetry_ctrl,
         app::TELEMETRY_CHANNEL.receiver(),
         45,
-        64
+        { controller::telemetry_controller::CHANNEL_CAPACITY }
     );
 }
 
