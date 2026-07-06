@@ -24,3 +24,14 @@ fn test_sensor_controller_flow() {
     controller.handle_command(SensorCommand::EnablePeriodic);
     assert!(controller.is_periodic_enabled());
 }
+
+#[test]
+fn test_sensor_controller_sad_cases() {
+    let mut sensor = MockProximitySensor::new(10);
+    sensor.should_fail = true; // Make sensor fail
+    let mut controller = SensorController::new(0, sensor, 300);
+
+    // Call update, which should fail and return Err
+    let res = controller.update();
+    assert!(res.is_err());
+}
