@@ -132,14 +132,32 @@ where
                 '_,
                 CriticalSectionRawMutex,
                 model::telemetry::TelemetryRecord,
-                16,
+                { crate::telemetry_controller::CHANNEL_CAPACITY },
             >,
         >,
     ) -> Result<(), B::Error> {
         let (voltage, soc) = {
             let mut bat = self.battery.lock().await;
-            let v = bat.read_voltage_mv()?;
-            let soc = bat.read_state_of_charge()?;
+            let v = match bat.read_voltage_mv() {
+                Ok(v) => v,
+                Err(e) => {
+                    if let Some(tx) = telemetry_tx {
+                        let _ =
+                            tx.try_send(TelemetryRecord::PeripheralError(e.to_peripheral_error()));
+                    }
+                    return Err(e);
+                }
+            };
+            let soc = match bat.read_state_of_charge() {
+                Ok(s) => s,
+                Err(e) => {
+                    if let Some(tx) = telemetry_tx {
+                        let _ =
+                            tx.try_send(TelemetryRecord::PeripheralError(e.to_peripheral_error()));
+                    }
+                    return Err(e);
+                }
+            };
             (v, soc)
         };
         let charger_state = {
@@ -191,7 +209,7 @@ where
             'static,
             CriticalSectionRawMutex,
             model::telemetry::TelemetryRecord,
-            16,
+            { crate::telemetry_controller::CHANNEL_CAPACITY },
         >,
     ) -> ! {
         // Configure alerts on boot (3.0V low threshold, 4.2V high threshold, 10% SOC empty alert, enable 1% SOC change alert)
@@ -218,7 +236,10 @@ where
                 // Command received from system shell/console
                 embassy_futures::select::Either3::First(cmd) => match cmd {
                     BatteryCommand::CheckStatus => {
-                        let _ = self.update(Some(&telemetry_tx)).await;
+                        if let Err(e) = self.update(Some(&telemetry_tx)).await {
+                            let err = e.to_peripheral_error();
+                            let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(err));
+                        }
                     }
                 },
                 // Fuel gauge alert interrupt triggered
@@ -251,15 +272,24 @@ where
                             ));
                         }
                     } else if is_soc_alert {
-                        let _ = self.update(Some(&telemetry_tx)).await;
+                        if let Err(e) = self.update(Some(&telemetry_tx)).await {
+                            let err = e.to_peripheral_error();
+                            let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(err));
+                        }
                     } else {
                         // Default fallback
-                        let _ = self.update(Some(&telemetry_tx)).await;
+                        if let Err(e) = self.update(Some(&telemetry_tx)).await {
+                            let err = e.to_peripheral_error();
+                            let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(err));
+                        }
                     }
                 }
                 // Periodic update interval elapsed
                 embassy_futures::select::Either3::Third(_) => {
-                    let _ = self.update(Some(&telemetry_tx)).await;
+                    if let Err(e) = self.update(Some(&telemetry_tx)).await {
+                        let err = e.to_peripheral_error();
+                        let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(err));
+                    }
                 }
             }
         }

@@ -19,7 +19,7 @@ pub struct ProfilingFlash<F: NorFlash> {
             'static,
             CriticalSectionRawMutex,
             model::telemetry::TelemetryRecord,
-            16,
+            64,
         >,
     >,
 }
@@ -41,7 +41,7 @@ impl<F: NorFlash> ProfilingFlash<F> {
             'static,
             CriticalSectionRawMutex,
             model::telemetry::TelemetryRecord,
-            16,
+            64,
         >,
     ) {
         self.telemetry_tx = Some(telemetry_tx);
@@ -304,7 +304,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<ProfilingFlash<F>> {
             'static,
             CriticalSectionRawMutex,
             model::telemetry::TelemetryRecord,
-            16,
+            64,
         >,
     ) {
         self.flash.set_telemetry(telemetry_tx);
@@ -366,6 +366,24 @@ impl FilesystemClient {
         };
         self.sender.send(request).await;
         signal.wait().await
+    }
+
+    /// Starts a file write operation asynchronously without waiting for completion.
+    /// The caller must ensure that the content buffer remains valid until the write completes.
+    pub async fn start_write_file(
+        &self,
+        name: &'static str,
+        content: &[u8],
+        signal: &'static Signal<CriticalSectionRawMutex, Result<(), ()>>,
+    ) {
+        signal.reset();
+        let request = FsRequest::WriteFile {
+            name,
+            content_ptr: content.as_ptr(),
+            content_len: content.len(),
+            signal: signal as *const _,
+        };
+        self.sender.send(request).await;
     }
 
     /// Fetches a file's content asynchronously.

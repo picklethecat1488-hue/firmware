@@ -95,7 +95,7 @@ where
                 '_,
                 CriticalSectionRawMutex,
                 model::telemetry::TelemetryRecord,
-                16,
+                { crate::telemetry_controller::CHANNEL_CAPACITY },
             >,
         >,
     ) -> Result<(), PeripheralError> {
@@ -161,7 +161,7 @@ where
                 '_,
                 CriticalSectionRawMutex,
                 model::telemetry::TelemetryRecord,
-                16,
+                { crate::telemetry_controller::CHANNEL_CAPACITY },
             >,
         >,
     ) {
@@ -177,28 +177,72 @@ where
                     }
                     if self.state == MotorState::Off {
                         self.state = MotorState::On;
-                        let _ = self
+                        if let Err(e) = self
                             .current_sensor
-                            .set_measurement_mode(PowerMeasurementMode::Continuous(true, true));
+                            .set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
+                        {
+                            if let Some(tx) = telemetry_tx {
+                                let _ = tx.try_send(
+                                    model::telemetry::TelemetryRecord::PeripheralError(
+                                        e.to_peripheral_error(),
+                                    ),
+                                );
+                            }
+                        }
                     }
                     self.speed = speed;
-                    let _ = self.motor.set_speed(speed);
+                    if let Err(e) = self.motor.set_speed(speed) {
+                        if let Some(tx) = telemetry_tx {
+                            let _ =
+                                tx.try_send(model::telemetry::TelemetryRecord::PeripheralError(
+                                    e.to_peripheral_error(),
+                                ));
+                        }
+                    }
                 } else {
                     self.state = MotorState::Off;
                     self.speed = 0;
-                    let _ = self.motor.stop();
-                    let _ = self
+                    if let Err(e) = self.motor.stop() {
+                        if let Some(tx) = telemetry_tx {
+                            let _ =
+                                tx.try_send(model::telemetry::TelemetryRecord::PeripheralError(
+                                    e.to_peripheral_error(),
+                                ));
+                        }
+                    }
+                    if let Err(e) = self
                         .current_sensor
-                        .set_measurement_mode(PowerMeasurementMode::PowerDown);
+                        .set_measurement_mode(PowerMeasurementMode::PowerDown)
+                    {
+                        if let Some(tx) = telemetry_tx {
+                            let _ =
+                                tx.try_send(model::telemetry::TelemetryRecord::PeripheralError(
+                                    e.to_peripheral_error(),
+                                ));
+                        }
+                    }
                 }
             }
             MotorCommand::Stop => {
                 self.state = MotorState::Off;
                 self.speed = 0;
-                let _ = self.motor.stop();
-                let _ = self
+                if let Err(e) = self.motor.stop() {
+                    if let Some(tx) = telemetry_tx {
+                        let _ = tx.try_send(model::telemetry::TelemetryRecord::PeripheralError(
+                            e.to_peripheral_error(),
+                        ));
+                    }
+                }
+                if let Err(e) = self
                     .current_sensor
-                    .set_measurement_mode(PowerMeasurementMode::PowerDown);
+                    .set_measurement_mode(PowerMeasurementMode::PowerDown)
+                {
+                    if let Some(tx) = telemetry_tx {
+                        let _ = tx.try_send(model::telemetry::TelemetryRecord::PeripheralError(
+                            e.to_peripheral_error(),
+                        ));
+                    }
+                }
             }
         }
 
@@ -221,13 +265,18 @@ where
             'static,
             CriticalSectionRawMutex,
             model::telemetry::TelemetryRecord,
-            16,
+            { crate::telemetry_controller::CHANNEL_CAPACITY },
         >,
     ) -> ! {
         // Put the current sensor into power-down mode on startup since the motor is off
-        let _ = self
+        if let Err(e) = self
             .current_sensor
-            .set_measurement_mode(PowerMeasurementMode::PowerDown);
+            .set_measurement_mode(PowerMeasurementMode::PowerDown)
+        {
+            let _ = telemetry_tx.try_send(model::telemetry::TelemetryRecord::PeripheralError(
+                e.to_peripheral_error(),
+            ));
+        }
 
         loop {
             match embassy_time::with_timeout(
@@ -240,7 +289,10 @@ where
                     self.handle_command(cmd, Some(&telemetry_tx));
                 }
                 Err(_timeout) => {
-                    let _ = self.update(Some(&telemetry_tx));
+                    if let Err(e) = self.update(Some(&telemetry_tx)) {
+                        let _ = telemetry_tx
+                            .try_send(model::telemetry::TelemetryRecord::PeripheralError(e));
+                    }
                 }
             }
         }

@@ -117,7 +117,7 @@ where
             'static,
             CriticalSectionRawMutex,
             model::telemetry::TelemetryRecord,
-            16,
+            { crate::telemetry_controller::CHANNEL_CAPACITY },
         >,
     ) -> ! {
         let mut state = SystemLedState::Off;

@@ -3,8 +3,11 @@ use embassy_sync::channel::Channel;
 use firmware_lib::system::SystemStateManager;
 use model::types::{SystemLedState, SystemStatus, TelemetryRecord};
 
-static TEST_TELEMETRY_CHANNEL: Channel<CriticalSectionRawMutex, TelemetryRecord, 16> =
-    Channel::new();
+static TEST_TELEMETRY_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    TelemetryRecord,
+    { controller::telemetry_controller::CHANNEL_CAPACITY },
+> = Channel::new();
 
 #[test]
 fn test_system_state_manager_initialization() {

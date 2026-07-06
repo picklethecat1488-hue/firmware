@@ -90,7 +90,11 @@ pub struct SystemControllerChannels<
 
 /// Controller responsible for tracking global status and coordinating other subsystems.
 /// Controller responsible for tracking global status and coordinating other subsystems.
-pub struct SystemController<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize = 16> {
+pub struct SystemController<
+    MutexRaw: RawMutex + 'static,
+    const N: usize,
+    const T_CAP: usize = { controller::telemetry_controller::CHANNEL_CAPACITY },
+> {
     state_manager: firmware_lib::system::SystemStateManager<MutexRaw, T_CAP>,
     motor_tx: Sender<'static, MutexRaw, MotorCommand, N>,
     sensor_north_tx: Sender<'static, MutexRaw, SensorCommand, N>,
