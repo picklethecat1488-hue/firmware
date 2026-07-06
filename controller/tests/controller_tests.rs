@@ -1,4 +1,5 @@
 use controller::motor_controller::{MotorCommand, MotorController, MotorState};
+use model::calibration::Calibration;
 use peripherals::mock::{MockCurrentSensor, MockMotor};
 
 #[test]
@@ -56,5 +57,158 @@ fn test_led_controller_flow() {
             controller.current_state(),
             model::types::SystemLedState::SolidGreen
         );
+    });
+}
+
+#[test]
+fn test_motor_controller_sad_cases() {
+    let mut motor = MockMotor::new();
+    motor.should_fail = true; // Make motor fail
+    let sensor = MockCurrentSensor::new(150);
+    let mut controller = MotorController::new(motor, sensor);
+    controller.set_calibration(model::calibration::CalibrationType::MotorCal(80, 800));
+
+    // Try starting motor. Since motor is failing, update() or handle_command() should report errors
+    let telemetry_channel = Box::leak(Box::new(embassy_sync::channel::Channel::<
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        model::telemetry::TelemetryRecord,
+        16,
+    >::new()));
+    let telemetry_tx = telemetry_channel.sender();
+    let telemetry_rx = telemetry_channel.receiver();
+
+    // Set speed should trigger motor.set_speed() error and report to telemetry
+    controller.handle_command(MotorCommand::SetSpeed(100), Some(&telemetry_tx));
+
+    // Check if error is received on the telemetry channel
+    let rec = telemetry_rx.try_receive().unwrap();
+    assert!(matches!(
+        rec,
+        model::telemetry::TelemetryRecord::PeripheralError(_)
+    ));
+
+    // Now make current sensor fail
+    let motor2 = MockMotor::new();
+    let mut sensor2 = MockCurrentSensor::new(150);
+    sensor2.should_fail = true; // Make current sensor fail
+    let mut controller2 = MotorController::new(motor2, sensor2);
+    controller2.set_calibration(model::calibration::CalibrationType::MotorCal(80, 800));
+    controller2.handle_command(MotorCommand::SetSpeed(100), None); // start motor first (no failure on motor)
+
+    // Call update, which reads current. It should fail and return Err
+    let res = controller2.update(Some(&telemetry_tx));
+    assert!(res.is_err());
+}
+
+#[test]
+fn test_led_controller_sad_cases() {
+    futures::executor::block_on(async {
+        let mut mock_led = peripherals::mock::MockLed::new();
+        mock_led.should_fail = true; // Make LED driver fail
+        let mut controller = controller::led_controller::LedController::new(mock_led);
+
+        // Setting pattern should fail
+        let res = controller
+            .set_pattern(model::types::SystemLedState::SolidGreen)
+            .await;
+        assert!(res.is_err());
+
+        // Test the task loop error reporting
+        let command_channel = Box::leak(Box::new(embassy_sync::channel::Channel::<
+            embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+            model::types::SystemLedState,
+            4,
+        >::new()));
+        let command_tx = command_channel.sender();
+        let command_rx = command_channel.receiver();
+
+        let telemetry_channel = Box::leak(Box::new(embassy_sync::channel::Channel::<
+            embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+            model::telemetry::TelemetryRecord,
+            16,
+        >::new()));
+        let telemetry_tx = telemetry_channel.sender();
+        let telemetry_rx = telemetry_channel.receiver();
+
+        // Run the controller's main loop and push a command
+        command_tx
+            .try_send(model::types::SystemLedState::SolidGreen)
+            .unwrap();
+
+        let run_fut = controller.run(command_rx, telemetry_tx);
+        let check_fut = async {
+            // First message is the initial state logged at startup (Off)
+            let rec = telemetry_rx.receive().await;
+            assert_eq!(
+                rec,
+                model::telemetry::TelemetryRecord::Led(model::types::SystemLedState::Off)
+            );
+
+            // Second message is the state transition to SolidGreen
+            let rec2 = telemetry_rx.receive().await;
+            assert_eq!(
+                rec2,
+                model::telemetry::TelemetryRecord::Led(model::types::SystemLedState::SolidGreen)
+            );
+
+            // Third message is the PeripheralError from the failed write
+            let rec3 = telemetry_rx.receive().await;
+            assert!(matches!(
+                rec3,
+                model::telemetry::TelemetryRecord::PeripheralError(_)
+            ));
+        };
+
+        embassy_futures::select::select(run_fut, check_fut).await;
+    });
+}
+
+#[test]
+fn test_battery_controller_sad_cases() {
+    futures::executor::block_on(async {
+        use controller::battery_controller::BatteryController;
+        use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+        use embassy_sync::mutex::Mutex;
+        use model::types::ChargeState;
+        use peripherals::mock::{MockBattery, MockCharger};
+
+        let mut battery = MockBattery::new(3700, 25000);
+        battery.should_fail = true; // Make battery fail
+        let battery_mutex = Mutex::<CriticalSectionRawMutex, _>::new(battery);
+
+        let charger = MockCharger::new(ChargeState::DoneOrStandbyOrUnplugged);
+        let charger_mutex = Mutex::<CriticalSectionRawMutex, _>::new(charger);
+
+        let system_channel = Box::leak(Box::new(embassy_sync::channel::Channel::<
+            CriticalSectionRawMutex,
+            u8,
+            4,
+        >::new()));
+        let system_tx = system_channel.sender();
+
+        let mut controller = BatteryController::new_with_system(
+            &battery_mutex,
+            &charger_mutex,
+            system_tx,
+            |soc, _| soc,
+        );
+
+        let telemetry_channel = Box::leak(Box::new(embassy_sync::channel::Channel::<
+            CriticalSectionRawMutex,
+            model::telemetry::TelemetryRecord,
+            16,
+        >::new()));
+        let telemetry_tx = telemetry_channel.sender();
+        let telemetry_rx = telemetry_channel.receiver();
+
+        // Calling update should return Err and report to telemetry
+        let res = controller.update(Some(&telemetry_tx)).await;
+        assert!(res.is_err());
+
+        let rec = telemetry_rx.try_receive().unwrap();
+        assert!(matches!(
+            rec,
+            model::telemetry::TelemetryRecord::PeripheralError(_)
+        ));
     });
 }

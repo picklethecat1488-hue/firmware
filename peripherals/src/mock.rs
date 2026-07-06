@@ -4,12 +4,19 @@ use model::interfaces::{
 };
 
 /// A mock implementation of a Motor for unit testing on the host.
-#[derive(Default)]
 pub struct MockMotor {
     /// Currently configured speed of the mock motor.
     pub speed: u8,
     /// Indicates if the mock motor is currently running.
     pub is_running: bool,
+    /// Whether motor driver commands should fail.
+    pub should_fail: bool,
+}
+
+impl Default for MockMotor {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MockMotor {
@@ -18,6 +25,7 @@ impl MockMotor {
         Self {
             speed: 0,
             is_running: false,
+            should_fail: false,
         }
     }
 }
@@ -27,16 +35,24 @@ impl Motor for MockMotor {
 
     /// Sets mock speed and updates run status.
     fn set_speed(&mut self, speed: u8) -> Result<(), Self::Error> {
-        self.speed = speed;
-        self.is_running = speed > 0;
-        Ok(())
+        if self.should_fail {
+            Err(())
+        } else {
+            self.speed = speed;
+            self.is_running = speed > 0;
+            Ok(())
+        }
     }
 
     /// Stops the mock motor.
     fn stop(&mut self) -> Result<(), Self::Error> {
-        self.speed = 0;
-        self.is_running = false;
-        Ok(())
+        if self.should_fail {
+            Err(())
+        } else {
+            self.speed = 0;
+            self.is_running = false;
+            Ok(())
+        }
     }
 }
 
@@ -44,12 +60,17 @@ impl Motor for MockMotor {
 pub struct MockCurrentSensor {
     /// Current draw in mA.
     pub current_ma: i32,
+    /// Whether power sensor commands should fail.
+    pub should_fail: bool,
 }
 
 impl MockCurrentSensor {
     /// Creates a new mock current sensor.
     pub const fn new(current_ma: i32) -> Self {
-        Self { current_ma }
+        Self {
+            current_ma,
+            should_fail: false,
+        }
     }
 }
 
@@ -57,15 +78,27 @@ impl PowerSensor for MockCurrentSensor {
     type Error = ();
 
     fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
-        Ok(self.current_ma)
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(self.current_ma)
+        }
     }
 
     fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
-        Ok(3700)
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(3700)
+        }
     }
 
     fn set_measurement_mode(&mut self, _mode: PowerMeasurementMode) -> Result<(), Self::Error> {
-        Ok(())
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -77,6 +110,8 @@ pub struct MockBattery {
     pub temperature_milli_c: i32,
     /// Simulated state of charge in percent.
     pub state_of_charge: u8,
+    /// Whether battery commands/reads should fail.
+    pub should_fail: bool,
 }
 
 impl MockBattery {
@@ -86,6 +121,7 @@ impl MockBattery {
             voltage_mv,
             temperature_milli_c,
             state_of_charge: 50,
+            should_fail: false,
         }
     }
 }
@@ -94,7 +130,11 @@ impl TemperatureSensor for MockBattery {
     type Error = ();
 
     fn read_temperature_milli_c(&mut self) -> Result<i32, Self::Error> {
-        Ok(self.temperature_milli_c)
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(self.temperature_milli_c)
+        }
     }
 }
 
@@ -102,11 +142,41 @@ impl FuelGauge for MockBattery {
     type Error = ();
 
     fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
-        Ok(self.voltage_mv)
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(self.voltage_mv)
+        }
     }
 
     fn read_state_of_charge(&mut self) -> Result<u8, Self::Error> {
-        Ok(self.state_of_charge)
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(self.state_of_charge)
+        }
+    }
+
+    fn configure_alerts(
+        &mut self,
+        _voltage_min_mv: u32,
+        _voltage_max_mv: u32,
+        _soc_threshold_pct: u8,
+        _enable_soc_change_alert: bool,
+    ) -> Result<(), Self::Error> {
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(())
+        }
+    }
+
+    fn check_and_clear_alerts(&mut self) -> Result<(bool, bool), Self::Error> {
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok((false, false))
+        }
     }
 }
 
@@ -135,6 +205,8 @@ pub struct MockProximitySensor {
     pub distance_mm: u16,
     /// Proximity threshold in millimeters.
     pub threshold_mm: u16,
+    /// Whether distance reading should fail.
+    pub should_fail: bool,
 }
 
 impl MockProximitySensor {
@@ -143,6 +215,7 @@ impl MockProximitySensor {
         Self {
             distance_mm,
             threshold_mm: 300,
+            should_fail: false,
         }
     }
 }
@@ -151,7 +224,11 @@ impl ProximitySensor for MockProximitySensor {
     type Error = ();
 
     fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
-        Ok(self.distance_mm)
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(self.distance_mm)
+        }
     }
 }
 
@@ -208,6 +285,8 @@ impl ChargeStatus for MockCharger {
 pub struct MockLed {
     /// Currently set RGB color.
     pub color: (u8, u8, u8),
+    /// Whether LED driver commands should fail.
+    pub should_fail: bool,
 }
 
 impl Default for MockLed {
@@ -219,7 +298,10 @@ impl Default for MockLed {
 impl MockLed {
     /// Creates a new mock LED driver.
     pub const fn new() -> Self {
-        Self { color: (0, 0, 0) }
+        Self {
+            color: (0, 0, 0),
+            should_fail: false,
+        }
     }
 }
 
@@ -227,7 +309,11 @@ impl LedDriver for MockLed {
     type Error = ();
 
     fn set_color(&mut self, r: u8, g: u8, b: u8) -> Result<(), Self::Error> {
-        self.color = (r, g, b);
-        Ok(())
+        if self.should_fail {
+            Err(())
+        } else {
+            self.color = (r, g, b);
+            Ok(())
+        }
     }
 }
