@@ -38,7 +38,7 @@ struct ProximityPinWrapper(embassy_rp::gpio::Flex<'static>);
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 impl controller::sensor_controller::DataReadyPin for ProximityPinWrapper {
     async fn wait_for_data_ready(&mut self) {
-        self.0.wait_for_low().await;
+        self.0.wait_for_falling_edge().await;
     }
 }
 
@@ -156,6 +156,9 @@ async fn main(spawner: Spawner) {
         app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
     );
     fs_controller.set_telemetry(app::TELEMETRY_CHANNEL.sender());
+
+    // Verify and repair/reformat the filesystem if it is corrupted
+    let _ = fs_controller.verify_and_repair().await;
 
     // Extract the motor control pin from the board configuration array
     let motor_pin = board.gpio_pins[app::LED_PIN as usize]

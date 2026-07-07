@@ -94,3 +94,32 @@ fn test_filesystem_controller_flow() {
         assert_eq!(fs.read_file("test.txt", &mut buf).await.unwrap(), None);
     });
 }
+
+#[test]
+fn test_filesystem_verify_and_repair_corruption() {
+    futures::executor::block_on(async {
+        let mut flash = MockFlash::new();
+        // Write some garbage / corrupt bytes to the start of flash to simulate corruption.
+        // This will cause sequential-storage checks to fail and report corruption.
+        use embedded_storage_async::nor_flash::NorFlash;
+        flash
+            .write(0, &[0xAA, 0xBB, 0xCC, 0xDD, 0x11, 0x22, 0x33, 0x44])
+            .await
+            .unwrap();
+
+        let profiling_flash = ProfilingFlash::new(flash);
+        let mut fs = FilesystemController::new(profiling_flash, 0..1024 * 64);
+
+        // Verify that verifying and repairing clears the corruption and reformats the partition
+        assert!(fs.verify_and_repair().await.is_ok());
+
+        // File listing should now succeed and return None (empty directory)
+        let mut buf = [0u8; 128];
+        assert_eq!(fs.list_files(&mut buf).await.unwrap(), None);
+
+        // We should be able to write and read files normally now
+        fs.write_file("ok.txt", b"recovered").await.unwrap();
+        let content = fs.read_file("ok.txt", &mut buf).await.unwrap().unwrap();
+        assert_eq!(content, b"recovered");
+    });
+}

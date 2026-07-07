@@ -169,10 +169,13 @@ where
             MotorCommand::SetSpeed(speed) => {
                 if speed > 0 {
                     if !self.calibration_present {
-                        #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        defmt::error!(
-                            "Motor Controller: Cannot start motor, calibration is not present!"
-                        );
+                        if self.speed != speed {
+                            #[cfg(all(target_arch = "arm", target_os = "none"))]
+                            defmt::error!(
+                                "Motor Controller: Cannot start motor, calibration is not present!"
+                            );
+                            self.speed = speed;
+                        }
                         return;
                     }
                     if self.state == MotorState::Off {
