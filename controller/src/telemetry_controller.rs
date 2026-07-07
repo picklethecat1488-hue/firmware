@@ -175,8 +175,11 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
         let timestamp_us = (self.time_fn)();
 
         let serialized = record.serialize(timestamp_us);
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!("Writing Telemetry: {=[u8]:cbor}", serialized);
+        let len = serialized[0] as usize;
+        if len > 0 && len <= 19 {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::debug!("Writing Telemetry: {=[u8]:cbor}", &serialized[1..1 + len]);
+        }
 
         let offset = 12 + (self.next_idx as usize) * 20;
         if offset + 20 <= self.file_buf.len() {
