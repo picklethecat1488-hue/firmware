@@ -24,6 +24,7 @@ lto = true               # Enable Link-Time Optimization
 codegen-units = 1        # Reduce codegen units to improve size optimizations
 panic = "abort"          # Abort on panic to remove stack unwinding tables
 strip = false            # Keep symbols and debug info for MemBrowse analysis
+debug = 2                # Generate full debug symbols even for release builds
 
 [profile.dev]
 opt-level = 1            # Enable light optimization to drastically reduce async/embassy code size
