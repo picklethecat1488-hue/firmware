@@ -50,6 +50,8 @@ pub struct BatteryController<'a, M: RawMutex, B, C, Pin = DummyAlertPin, Cmd = (
     system_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
     update_fn: Option<fn(u8, model::types::ChargeState) -> Cmd>,
     alert_pin: Option<Pin>,
+    last_reported_voltage: Option<u32>,
+    last_reported_state: Option<BatteryState>,
 }
 
 impl<
@@ -69,6 +71,8 @@ impl<
             system_tx: None,
             update_fn: None,
             alert_pin: None,
+            last_reported_voltage: None,
+            last_reported_state: None,
         }
     }
 
@@ -86,6 +90,8 @@ impl<
             system_tx: Some(system_tx),
             update_fn: Some(update_fn),
             alert_pin: None,
+            last_reported_voltage: None,
+            last_reported_state: None,
         }
     }
 }
@@ -116,6 +122,8 @@ where
             system_tx: Some(system_tx),
             update_fn: Some(update_fn),
             alert_pin: Some(alert_pin),
+            last_reported_voltage: None,
+            last_reported_state: None,
         }
     }
 
@@ -191,12 +199,18 @@ where
             ));
         }
 
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!(
-            "Battery Controller: Voltage is {} mV, State: {:?}",
-            voltage,
-            self.state
-        );
+        let voltage_changed = self.last_reported_voltage != Some(voltage);
+        let state_changed = self.last_reported_state != Some(self.state);
+        if voltage_changed || state_changed {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::info!(
+                "Battery Controller: Voltage is {} mV, State: {:?}",
+                voltage,
+                self.state
+            );
+            self.last_reported_voltage = Some(voltage);
+            self.last_reported_state = Some(self.state);
+        }
 
         Ok(())
     }
