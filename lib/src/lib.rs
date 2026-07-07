@@ -9,9 +9,6 @@ pub mod gesture_detector;
 /// RP2040 panic handler module.
 pub mod panic_handler;
 
-/// Reusable hardware bringup shell console infrastructure.
-pub mod uart;
-
 /// SWD Real-Time Transfer (RTT) logging backend.
 pub mod rtt;
 

@@ -166,10 +166,6 @@ pub use firmware_lib::panic_handler::handle_panic_with_sizes;
 /// Re-export the modular panic handler initialization
 pub use firmware_lib::panic_handler::init as init_panic_handler;
 
-/// Re-export shell bringup module.
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-pub use firmware_lib::uart;
-
 /// Returns the current system uptime in microseconds since boot (64-bit precision).
 pub fn system_time() -> u64 {
     #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -261,8 +257,6 @@ pub enum CliCommand {
     Activity,
     /// Trigger a panic to test the crash dump / panic flow
     Crash,
-    /// Uart some input to the UART
-    Uart,
     /// Calibrate ToF sensors with target held at the cover (0mm)
     #[command(name = "cal_near")]
     CalNear {
@@ -310,26 +304,6 @@ impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
         }
     }
 }
-
-/// A defmt log writer that outputs to the microcontroller's UART0 block.
-pub struct UartWriter;
-
-impl firmware_lib::defmt_logger::DefmtLogWriter for UartWriter {
-    fn write_all(&self, _bytes: &[u8]) {
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        {
-            let uart0_dr = 0x4003_4000 as *mut u32;
-            let uart0_fr = 0x4003_4018 as *const u32;
-            for &b in _bytes {
-                while unsafe { uart0_fr.read_volatile() } & (1 << 5) != 0 {}
-                unsafe { uart0_dr.write_volatile(b as u32) };
-            }
-        }
-    }
-}
-
-/// Default instance of UartWriter for RP2040 UART0 logging.
-pub static DEFAULT_UART_WRITER: UartWriter = UartWriter;
 
 /// Embedded project metadata for autodetect functionality.
 #[used]

@@ -80,6 +80,31 @@ impl Channel {
         len
     }
 
+    /// Reads bytes from the RTT channel. Returns the number of bytes read.
+    pub fn read(&self, bytes: &mut [u8]) -> usize {
+        if bytes.is_empty() {
+            return 0;
+        }
+        let write = self.write.load(Ordering::Acquire);
+        let read = self.read.load(Ordering::Relaxed);
+        if read == write {
+            return 0;
+        }
+
+        let len = if write > read {
+            write - read
+        } else {
+            self.size - read
+        };
+        let len = len.min(bytes.len());
+
+        unsafe {
+            core::ptr::copy_nonoverlapping(self.buffer.add(read), bytes.as_mut_ptr(), len);
+        }
+        self.read.store((read + len) % self.size, Ordering::Release);
+        len
+    }
+
     /// Flushes the RTT channel.
     pub fn flush(&self) {
         if !self.host_is_connected() {

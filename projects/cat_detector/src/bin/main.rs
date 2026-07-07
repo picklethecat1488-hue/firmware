@@ -119,8 +119,10 @@ async fn main(spawner: Spawner) {
     // Initialize board peripherals using the unified board configuration
     let mut board = app::Board::init(p);
 
-    // Route defmt logs to UART0 (BSP specific configuration)
-    firmware_lib::defmt_logger::DefmtLogger::set_writer(&app::DEFAULT_UART_WRITER);
+    // Route defmt logs to RTT
+    firmware_lib::defmt_logger::DefmtLogger::set_writer(
+        &firmware_lib::defmt_logger::DEFAULT_RTT_WRITER,
+    );
 
     // Initialize the modular panic handler
     static mut PANIC_FLASH: Option<

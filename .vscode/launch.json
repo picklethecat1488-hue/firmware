@@ -16,40 +16,64 @@
       "cwd": "${workspaceFolder}"
     },
     {
-      "type": "probe-rs-debug",
+      "type": "cortex-debug",
       "request": "launch",
-      "name": "Debug Firmware (probe-rs)",
+      "name": "Debug App (Cortex-Debug J-Link)",
+      "servertype": "jlink",
       "cwd": "${workspaceFolder}",
-      "chip": "RP2040",
-      "coreConfigs": [
-        {
-          "coreIndex": 0,
-          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector/app"
-        }
-      ],
-      "flashingConfig": {
-        "flashingEnabled": true,
-        "resetAfterFlashing": true,
-        "haltAfterReset": true
-      }
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
+      "device": "RP2040",
+      "interface": "swd",
+      "runToEntryPoint": "main"
     },
     {
-      "type": "probe-rs-debug",
+      "type": "cortex-debug",
       "request": "launch",
-      "name": "Debug Shell (probe-rs)",
+      "name": "Debug Shell (Cortex-Debug J-Link)",
+      "servertype": "jlink",
       "cwd": "${workspaceFolder}",
-      "chip": "RP2040",
-      "coreConfigs": [
-        {
-          "coreIndex": 0,
-          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector/shell"
-        }
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
+      "device": "RP2040",
+      "interface": "swd",
+      "runToEntryPoint": "main"
+    },
+    {
+      "type": "cortex-debug",
+      "request": "launch",
+      "name": "Debug App (Cortex-Debug Pico Probe)",
+      "servertype": "openocd",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
+      "device": "RP2040",
+      "configFiles": [
+        "interface/cmsis-dap.cfg",
+        "target/rp2040.cfg",
+        ".vscode/openocd_custom.cfg"
       ],
-      "flashingConfig": {
-        "flashingEnabled": true,
-        "resetAfterFlashing": true,
-        "haltAfterReset": true
-      }
+      "openOCDLaunchCommands": [
+        "adapter speed 5000"
+      ],
+      "runToEntryPoint": "main",
+      "serverPort": 3333
+    },
+    {
+      "type": "cortex-debug",
+      "request": "launch",
+      "name": "Debug Shell (Cortex-Debug Pico Probe)",
+      "servertype": "openocd",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
+      "device": "RP2040",
+      "configFiles": [
+        "interface/cmsis-dap.cfg",
+        "target/rp2040.cfg",
+        ".vscode/openocd_custom.cfg"
+      ],
+      "openOCDLaunchCommands": [
+        "adapter speed 5000"
+      ],
+      "runToEntryPoint": "main",
+      "serverPort": 3333
     }
   ]
 }
