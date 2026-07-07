@@ -461,6 +461,12 @@ pub fn run_rtt(
             None
         };
 
+        let locations = if let Some(t) = table {
+            t.get_locations(&elf_data).ok()
+        } else {
+            None
+        };
+
         // Dump initial CLI output
         if let Some(cli_up) = cli_up_channel {
             let mut initial_buf = [0u8; 1024];
@@ -532,7 +538,6 @@ pub fn run_rtt(
                             loop {
                                 match dec.decode() {
                                     Ok(frame) => {
-                                        let display = frame.display(true);
                                         let plain_line = frame.display(false).to_string();
                                         if plain_line.contains("Crash Dump: ") {
                                             handle_intercepted_crash_dump(
@@ -541,7 +546,41 @@ pub fn run_rtt(
                                                 table,
                                             );
                                         } else {
-                                            println!("{}", display);
+                                            let display = frame.display(true);
+                                            let mut line_str = display.to_string();
+
+                                            let mut module_context = String::new();
+                                            if let Some(ref locs) = locations {
+                                                if let Some(loc) = locs.get(&frame.index()) {
+                                                    module_context =
+                                                        format!("\x1b[36m[{}]\x1b[0m ", loc.module);
+                                                }
+                                            }
+
+                                            if !module_context.is_empty() {
+                                                let mut inserted = false;
+                                                for lvl in
+                                                    &["TRACE", "DEBUG", "INFO", "WARN", "ERROR"]
+                                                {
+                                                    if let Some(pos) = line_str.find(lvl) {
+                                                        let rest = &line_str[pos..];
+                                                        if let Some(space_pos) = rest.find(' ') {
+                                                            let insert_idx = pos + space_pos + 1;
+                                                            line_str.insert_str(
+                                                                insert_idx,
+                                                                &module_context,
+                                                            );
+                                                            inserted = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                if !inserted {
+                                                    line_str =
+                                                        format!("{}{}", module_context, line_str);
+                                                }
+                                            }
+                                            println!("{}", line_str);
                                         }
                                     }
                                     Err(defmt_decoder::DecodeError::UnexpectedEof) => break,
