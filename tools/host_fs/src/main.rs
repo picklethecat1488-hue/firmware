@@ -126,12 +126,32 @@ fn main() -> io::Result<()> {
         }
     }
 
+    // Determine buffer size from project metadata partition size, falling back to flash capacity
+    let buffer_size = if let Some(ref path) = elf_path {
+        if let Ok(info) = tool_common::autodetect_project_info(std::path::Path::new(path)) {
+            info.partition_size
+        } else {
+            flash.capacity()
+        }
+    } else {
+        flash.capacity()
+    };
+
+    let mut unified_buf = vec![0u8; buffer_size];
+
     futures::executor::block_on(async {
         let mut cache = sequential_storage::cache::NoCache::new();
 
         match &cli.command {
             Commands::Ls => {
-                host_fs::commands::ls::run(&mut flash, flash_range, &mut cache, &spinner).await?;
+                host_fs::commands::ls::run(
+                    &mut flash,
+                    flash_range,
+                    &mut cache,
+                    &spinner,
+                    &mut unified_buf,
+                )
+                .await?;
             }
             Commands::Cat { filename } => {
                 host_fs::commands::cat::run(
@@ -140,6 +160,7 @@ fn main() -> io::Result<()> {
                     &mut cache,
                     &spinner,
                     filename,
+                    &mut unified_buf,
                 )
                 .await?;
             }
@@ -150,6 +171,7 @@ fn main() -> io::Result<()> {
                     &mut cache,
                     &spinner,
                     out_csv,
+                    &mut unified_buf,
                 )
                 .await?;
             }
@@ -161,6 +183,7 @@ fn main() -> io::Result<()> {
                     &spinner,
                     &context,
                     &defmt_table,
+                    &mut unified_buf,
                 )
                 .await?;
             }
@@ -173,6 +196,7 @@ fn main() -> io::Result<()> {
                     src,
                     dest,
                     &cli.dump,
+                    &mut unified_buf,
                 )
                 .await?;
             }
@@ -184,6 +208,7 @@ fn main() -> io::Result<()> {
                     &spinner,
                     filename,
                     &cli.dump,
+                    &mut unified_buf,
                 )
                 .await?;
             }

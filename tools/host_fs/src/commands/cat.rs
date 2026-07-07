@@ -8,16 +8,16 @@ pub async fn run(
     cache: &mut sequential_storage::cache::NoCache,
     spinner: &indicatif::ProgressBar,
     filename: &str,
+    buf: &mut [u8],
 ) -> io::Result<()> {
     spinner.set_message(format!("Reading {}...", filename));
     let key = string_to_key(filename);
-    let mut out_buf = vec![0u8; 1024 * 16]; // support up to 16KB files
 
     let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
         flash,
         flash_range,
         cache,
-        &mut out_buf,
+        buf,
         &key,
     )
     .await;

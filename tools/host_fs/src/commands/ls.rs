@@ -7,15 +7,15 @@ pub async fn run(
     flash_range: std::ops::Range<u32>,
     cache: &mut sequential_storage::cache::NoCache,
     spinner: &indicatif::ProgressBar,
+    buf: &mut [u8],
 ) -> io::Result<()> {
     spinner.set_message("Reading directory (.dir)...");
-    let mut dir_buf = [0u8; 512];
     let key = string_to_key(".dir");
     let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
         flash,
         flash_range,
         cache,
-        &mut dir_buf,
+        buf,
         &key,
     )
     .await;
