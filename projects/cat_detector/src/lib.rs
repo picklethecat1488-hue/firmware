@@ -52,13 +52,13 @@ pub const STORAGE_PARTITION_END: u32 = 0x20_0000; // 2.00 MB
 /// Total QSPI flash memory capacity on the board (2.00 MB).
 pub const FLASH_SIZE: usize = 2 * 1024 * 1024;
 /// Top address of the stack/SRAM (RP2040 has 264 KB SRAM, ending at 0x2004_0000).
-pub const STACK_TOP: u32 = 0x2004_0000;
+pub const STACK_TOP: u32 = 0x2004_2000;
 /// Start address of flash memory mapping (XIP address space).
 pub const FLASH_START: u32 = 0x1000_0000;
 /// End address of flash memory mapping (FLASH_START + FLASH_SIZE).
 pub const FLASH_END: u32 = 0x1020_0000;
 /// Flash page write size in bytes.
-pub const FLASH_WRITE_SIZE: usize = 256;
+pub const FLASH_WRITE_SIZE: usize = 1;
 /// Flash erase block size in bytes.
 pub const FLASH_ERASE_SIZE: usize = 4096;
 
@@ -191,20 +191,6 @@ pub fn system_time() -> u64 {
     }
 }
 
-/// Gathers 128 bits of hardware entropy from RP2040's ROSC RANDOMBIT register.
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-pub fn get_hw_entropy() -> [u8; 16] {
-    let mut entropy = [0u8; 16];
-    for byte in entropy.iter_mut() {
-        *byte = 0u8;
-        for _ in 0..8 {
-            let bit = unsafe { core::ptr::read_volatile(0x4006_001C as *const u32) } & 1;
-            *byte = (*byte << 1) | (bit as u8);
-        }
-    }
-    entropy
-}
-
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 defmt::timestamp!("{=u64:us}", system_time());
 
@@ -328,4 +314,6 @@ pub static PROJECT_METADATA: firmware_lib::types::ProjectMetadata =
         },
         partition_address: 0x10000000 + STORAGE_PARTITION_START,
         partition_size: (STORAGE_PARTITION_END - STORAGE_PARTITION_START),
+        flash_write_size: FLASH_WRITE_SIZE as u32,
+        flash_erase_size: FLASH_ERASE_SIZE as u32,
     };

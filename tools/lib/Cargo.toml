@@ -5,3 +5,7 @@ edition = "2021"
 
 [dependencies]
 object = "0.35"
+addr2line = { version = "0.22", features = ["std-object"] }
+rustc-demangle = "0.1"
+firmware_lib = { path = "../../lib" }
+defmt-decoder = "1.1.0"

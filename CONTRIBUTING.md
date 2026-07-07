@@ -340,7 +340,7 @@ cargo build -p host_fs --release
 #### 6. Raw Flash Extraction Fallback
 If you prefer to extract the raw binary flash memory partition manually from the target Pico using `probe-rs`:
 ```bash
-probe-rs read-mem --chip RP2040 0x101C0000 262144 flash_dump.bin
+probe-rs read b8 0x101C0000 262144 -f binary -o flash_dump.bin --chip RP2040
 ```
 
 ---

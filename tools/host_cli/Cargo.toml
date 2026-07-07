@@ -14,3 +14,8 @@ clap = { version = "4.4", features = ["derive"] }
 probe-rs = { version = "0.31.0", features = [] }
 indicatif = "0.17"
 serialport = "4.3"
+minicbor = { version = "0.20.0", features = ["derive"] }
+addr2line = { version = "0.22", features = ["std-object"] }
+gimli = "0.29"
+object = "0.35"
+rustc-demangle = "0.1"
