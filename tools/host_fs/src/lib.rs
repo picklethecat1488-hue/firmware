@@ -104,4 +104,9 @@ pub enum Commands {
         /// Destination path (prefix with 'dev:' for device files, e.g. dev:telemetry.rrd)
         dest: String,
     },
+    /// Remove a file or multiple files from the partition (defaults to '*' which clears all files)
+    Rm {
+        /// Name of the file to remove (optional)
+        filename: Option<String>,
+    },
 }
