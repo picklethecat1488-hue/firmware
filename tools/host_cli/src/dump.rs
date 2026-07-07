@@ -22,7 +22,7 @@ pub fn dump_logs<S: DefmtLogSource, W: Write>(
                 loop {
                     match decoder.decode() {
                         Ok(frame) => {
-                            if let Err(e) = writeln!(writer, "{}", frame.display(false)) {
+                            if let Err(e) = writeln!(writer, "{}", frame.display(true)) {
                                 return Err(format!("Failed to write log: {:?}", e));
                             }
                             if let Err(e) = writer.flush() {

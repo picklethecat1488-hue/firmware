@@ -80,11 +80,14 @@ async fn main(spawner: Spawner) {
         BOARD_MOTOR = Some(&mut motor as *mut _);
     }
 
-    // Split the UART into TX and RX parts to satisfy the borrow checker
-    let (tx, mut rx) = board.uart.split();
-    let writer = app::uart::UartTxWriter::new(tx);
+    let writer = firmware_lib::rtt::RttTxWriter;
 
-    let mut cli = CliBuilder::default()
+    let mut cli: embedded_cli::cli::Cli<
+        firmware_lib::rtt::RttTxWriter,
+        core::convert::Infallible,
+        _,
+        _,
+    > = CliBuilder::default()
         .writer(writer)
         .prompt("\r\nshell> ")
         .build()
@@ -142,12 +145,8 @@ async fn main(spawner: Spawner) {
         app::STORAGE_PARTITION_END,
     );
 
-    // Run the main input loop feeding bytes to the embedded-cli processor
-    app::uart::run_uart_shell_loop::<_, _, CliCommand, _, _, _, _, _>(
-        &mut cli,
-        &mut rx,
-        &mut processor,
-    );
+    // Run the main input loop feeding bytes to the embedded-cli processor over RTT
+    firmware_lib::rtt::run_rtt_shell_loop::<CliCommand, _, _, _>(&mut cli, &mut processor);
 }
 
 /// Dummy host entry point to satisfy Cargo compilation requirements.
