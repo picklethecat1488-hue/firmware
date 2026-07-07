@@ -11,7 +11,9 @@ pub async fn run(
     src: &str,
     dest: &str,
     dump_option: &Option<String>,
+    buf: &mut [u8],
 ) -> io::Result<()> {
+    let (dir_buf, file_buf) = buf.split_at_mut(1024 * 8);
     let src_is_dev = src.starts_with("dev:");
     let dest_is_dev = dest.starts_with("dev:");
 
@@ -21,13 +23,12 @@ pub async fn run(
             let dev_filename = src.trim_start_matches("dev:");
             spinner.set_message(format!("Reading {} from device...", dev_filename));
             let key = string_to_key(dev_filename);
-            let mut out_buf = vec![0u8; 1024 * 64]; // support up to 64KB files
 
             let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
                 flash,
                 flash_range.clone(),
                 cache,
-                &mut out_buf,
+                file_buf,
                 &key,
             )
             .await;
@@ -58,13 +59,12 @@ pub async fn run(
 
             spinner.set_message(format!("Writing {} to device...", dev_filename));
             let key = string_to_key(dev_filename);
-            let mut store_buf = vec![0u8; 1024 * 4];
 
             let res = sequential_storage::map::store_item(
                 flash,
                 flash_range.clone(),
                 cache,
-                &mut store_buf,
+                file_buf,
                 &key,
                 &file_content_slice,
             )
@@ -78,13 +78,12 @@ pub async fn run(
 
             // Update the directory index (.dir)
             spinner.set_message("Updating directory index...");
-            let mut dir_buf = vec![0u8; 1024 * 8];
             let dir_key = string_to_key(".dir");
             let dir_res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
                 flash,
                 flash_range.clone(),
                 cache,
-                &mut dir_buf,
+                dir_buf,
                 &dir_key,
             )
             .await;
@@ -112,12 +111,11 @@ pub async fn run(
                 current_dir.push_str(dev_filename);
 
                 let dir_bytes = current_dir.as_bytes();
-                let mut dir_store_buf = vec![0u8; 1024 * 4];
                 let store_dir_res = sequential_storage::map::store_item(
                     flash,
                     flash_range.clone(),
                     cache,
-                    &mut dir_store_buf,
+                    file_buf,
                     &dir_key,
                     &dir_bytes,
                 )

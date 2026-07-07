@@ -10,15 +10,16 @@ pub async fn run(
     spinner: &indicatif::ProgressBar,
     filename: &Option<String>,
     dump_option: &Option<String>,
+    buf: &mut [u8],
 ) -> io::Result<()> {
+    let (dir_buf, file_buf) = buf.split_at_mut(1024 * 8);
     spinner.set_message("Reading directory index (.dir)...");
-    let mut dir_buf = vec![0u8; 1024 * 8];
     let dir_key = string_to_key(".dir");
     let dir_res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
         flash,
         flash_range.clone(),
         cache,
-        &mut dir_buf,
+        dir_buf,
         &dir_key,
     )
     .await;
@@ -57,8 +58,6 @@ pub async fn run(
         return Ok(());
     }
 
-    let mut remove_buf = [0u8; 1024];
-
     for name in &files_to_remove {
         spinner.set_message(format!("Removing {}...", name));
         let key = string_to_key(name);
@@ -66,7 +65,7 @@ pub async fn run(
             flash,
             flash_range.clone(),
             cache,
-            &mut remove_buf,
+            file_buf,
             &key,
         )
         .await;
@@ -86,7 +85,7 @@ pub async fn run(
             flash,
             flash_range.clone(),
             cache,
-            &mut remove_buf,
+            file_buf,
             &dir_key,
         )
         .await;
@@ -108,7 +107,7 @@ pub async fn run(
                 flash,
                 flash_range.clone(),
                 cache,
-                &mut remove_buf,
+                file_buf,
                 &dir_key,
             )
             .await;
@@ -119,12 +118,11 @@ pub async fn run(
             }
         } else {
             let new_dir_str = new_dir_files.join("\n");
-            let mut store_buf = vec![0u8; 1024 * 4];
             let res = sequential_storage::map::store_item(
                 flash,
                 flash_range.clone(),
                 cache,
-                &mut store_buf,
+                file_buf,
                 &dir_key,
                 &new_dir_str.as_bytes(),
             )

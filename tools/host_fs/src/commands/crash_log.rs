@@ -9,18 +9,19 @@ pub async fn run<R>(
     spinner: &indicatif::ProgressBar,
     context: &Option<addr2line::Context<R>>,
     defmt_table: &Option<defmt_decoder::Table>,
+    buf: &mut [u8],
 ) -> io::Result<()>
 where
     R: addr2line::gimli::Reader<Offset = usize>,
 {
+    let (dir_buf, file_buf) = buf.split_at_mut(1024 * 8);
     spinner.set_message("Fetching directory list (.dir)...");
-    let mut dir_buf = [0u8; 512];
     let key = string_to_key(".dir");
     let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
         flash,
         flash_range.clone(),
         cache,
-        &mut dir_buf,
+        dir_buf,
         &key,
     )
     .await;
@@ -35,13 +36,12 @@ where
                     if filename.starts_with("crash_") && filename.ends_with(".cbor") {
                         found_crash = true;
                         let log_key = string_to_key(filename);
-                        let mut out_buf = vec![0u8; 1024 * 16];
                         let content_res =
                             sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
                                 flash,
                                 flash_range.clone(),
                                 cache,
-                                &mut out_buf,
+                                file_buf,
                                 &log_key,
                             )
                             .await;
