@@ -52,111 +52,17 @@ cargo test
 
 ### Building and Flashing
 
+To build and flash the firmware to an attached target device (RP2040):
+
 ```bash
-# Build the entire package (both library and binaries)
-cargo build --package cat_detector --target thumbv6m-none-eabi
+# Build target-compatible crates
+cargo build --target thumbv6m-none-eabi
 
-# Run/Flash the main Cat Detector application
-cargo run --package cat_detector --bin cat_detector_app
-
-# Run/Flash the interactive bringup shell
-cargo run --package cat_detector --bin cat_detector_shell
+# Flash the main application
+cargo run --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_app
 ```
 
----
-
-## Debugging and Log Output
-
-We use **RTT (Real-Time Transfer)**-based debugging for maximum speed and low overhead compared to slow SWD register polling or semihosting.
-
-To attach `probe-rs` and inspect the target without flashing:
-```bash
-probe-rs attach --chip RP2040
-```
-
-## Host Flash Filesystem Tool (`host_fs`)
-
-We provide a host command-line utility, `host_fs`, to inspect, query, and decode flash memory contents from the microcontroller's sequential-storage partition. It supports two modes of operation:
-- **Direct Device Mode**: Connects directly to the attached target via `probe-rs`. By passing `--autodetect` and `--elf <PATH>`, the tool automatically parses the target chip and flash partition boundaries directly from the ELF's `.project_metadata` section (abstracting the host tool from hardcoded project layout mappings).
-- **Offline Dump Mode**: Reads and writes a local binary flash image file via `--dump <PATH>`.
-
-### 1. Build host host_fs
-```bash
-cargo build --bin host_fs --release
-```
-
-### 2. Query directory files (`ls`)
-- **Direct connection**:
-  ```bash
-  cargo run --bin host_fs -- --autodetect --elf target/thumbv6m-none-eabi/debug/cat_detector ls
-  ```
-- **Offline dump file**:
-  ```bash
-  cargo run --bin host_fs -- --dump flash_dump.bin ls
-  ```
-
-### 3. Copy files to/from device (`cp`)
-- **Copy telemetry from device to host**:
-  ```bash
-  cargo run --bin host_fs -- --autodetect --elf target/thumbv6m-none-eabi/release/cat_detector cp dev:telemetry.rrd local_telemetry.rrd
-  ```
-- **Copy new calibration config to device**:
-  ```bash
-  cargo run --bin host_fs -- --autodetect --elf target/thumbv6m-none-eabi/release/cat_detector cp local_cal.bin dev:calibration.bin
-  ```
-
-### 4. Export telemetry to CSV
-- **Direct connection**:
-  ```bash
-  cargo run --bin host_fs -- --autodetect --elf target/thumbv6m-none-eabi/release/cat_detector export-telemetry telemetry.csv
-  ```
-- **Offline dump file**:
-  ```bash
-  cargo run --bin host_fs -- --dump flash_dump.bin export-telemetry telemetry.csv
-  ```
-
-### 5. Decode crash dumps to symbolicated backtraces
-- **Direct connection**:
-  ```bash
-  cargo run --bin host_fs -- --autodetect --elf target/thumbv6m-none-eabi/release/cat_detector crash-log
-  ```
-- **Offline dump file**:
-  ```bash
-  cargo run --bin host_fs -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector
-  ```
-
----
-
-## Host Logging Tool (`defmt_host`)
-
-We provide a host command-line utility, `defmt_host`, to stream and decode plaintext `defmt` logs from the microcontroller's RTT channel or Serial Port (UART).
-
-### 1. Build host defmt_host
-```bash
-cargo build --bin defmt_host --release
-```
-
-### 2. Stream logs
-- **Via RTT (Using ELF auto-detection)**:
-  ```bash
-  cargo run --bin defmt_host -- --autodetect --elf target/thumbv6m-none-eabi/debug/cat_detector
-  ```
-- **Via RTT (Specifying chip directly)**:
-  ```bash
-  cargo run --bin defmt_host -- --chip rp2040 --elf target/thumbv6m-none-eabi/debug/cat_detector
-  ```
-- **Via Serial Port (UART)**:
-  ```bash
-  cargo run --bin defmt_host -- --port /dev/tty.usbserial-10 --baud 115200 --elf target/thumbv6m-none-eabi/debug/cat_detector
-  ```
-
----
-
-### Extracting flash partition manually (Fallback)
-If you prefer to extract the raw binary flash memory partition manually from the target Pico using `probe-rs`:
-```bash
-probe-rs read-mem --chip RP2040 0x101C0000 262144 flash_dump.bin
-```
+For interactive diagnostic shell execution, host logging tools, flash extraction/decoding commands, and other diagnostic procedures, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 

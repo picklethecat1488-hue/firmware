@@ -8,6 +8,8 @@ publish = false
 name = "cat_detector"
 path = "src/lib.rs"
 
+
+
 [[bin]]
 name = "cat_detector_app"
 path = "src/bin/main.rs"

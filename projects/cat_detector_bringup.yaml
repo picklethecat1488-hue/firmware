@@ -120,6 +120,6 @@ steps:
   - id: "16"
     name: Verify Host Logger Works
     type: host_command
-    command: cargo run --bin defmt_host -- --autodetect --elf target/thumbv6m-none-eabi/debug/cat_detector/app -d
+    command: cargo run --bin host_cli -- --elf target/thumbv6m-none-eabi/debug/cat_detector/app -d
     expected_regex: 'Draining buffered defmt logs'
-    description: Verify that defmt_host starts up and displays its CLI options.
+    description: Verify that host_cli starts up and displays its CLI options.
