@@ -65,7 +65,7 @@ fn test_scan_stack_heuristic() {
         }
     };
 
-    let mut pcs = [0u32; 16];
+    let mut pcs = [0u32; 32];
     let count = scan_stack(&stack, flash_start, flash_end, &mut pcs, mock_read_mem);
 
     assert_eq!(count, 2);
@@ -92,7 +92,7 @@ fn test_scan_stack_from_sp_integration() {
         }
     };
 
-    let mut pcs = [0u32; 16];
+    let mut pcs = [0u32; 32];
     let sp = stack_data.as_ptr() as usize;
     let stack_top = sp + (stack_data.len() * 4);
 
@@ -277,7 +277,7 @@ fn test_generate_uuid_properties() {
         r1: 2,
         r2: 3,
         r3: 4,
-        backtrace: [0u32; 16],
+        backtrace: [0u32; 32],
     };
     state1.backtrace[..2].copy_from_slice(&[0x10002000, 0x10003000]);
 
@@ -287,7 +287,7 @@ fn test_generate_uuid_properties() {
         r1: 2,
         r2: 3,
         r3: 4,
-        backtrace: [0u32; 16],
+        backtrace: [0u32; 32],
     };
     state2.backtrace[..2].copy_from_slice(&[0x10002000, 0x10003000]);
 
@@ -297,7 +297,7 @@ fn test_generate_uuid_properties() {
         r1: 2,
         r2: 3,
         r3: 4,
-        backtrace: [0u32; 16],
+        backtrace: [0u32; 32],
     };
     state3.backtrace[..2].copy_from_slice(&[0x10002000, 0x10003000]);
 

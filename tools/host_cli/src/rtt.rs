@@ -789,8 +789,8 @@ fn handle_intercepted_crash_dump<R>(
         r2,
         r3,
         backtrace: {
-            let mut bt = [0u32; 16];
-            for (i, &pc) in backtrace.iter().enumerate().take(16) {
+            let mut bt = [0u32; 32];
+            for (i, &pc) in backtrace.iter().enumerate().take(32) {
                 bt[i] = pc;
             }
             bt

@@ -316,4 +316,5 @@ pub static PROJECT_METADATA: firmware_lib::types::ProjectMetadata =
         partition_size: (STORAGE_PARTITION_END - STORAGE_PARTITION_START),
         flash_write_size: FLASH_WRITE_SIZE as u32,
         flash_erase_size: FLASH_ERASE_SIZE as u32,
+        stack_scan_limit: firmware_lib::types::STACK_SCAN_LIMIT,
     };

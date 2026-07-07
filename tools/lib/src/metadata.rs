@@ -13,6 +13,8 @@ pub struct ProjectInfo {
     pub flash_write_size: u32,
     /// Flash erase sector size in bytes
     pub flash_erase_size: u32,
+    /// Stack scan limit in words
+    pub stack_scan_limit: u32,
 }
 
 /// Autodetects chip and layout parameters from an ELF file's project metadata section.
@@ -67,11 +69,11 @@ pub fn autodetect_project_info(elf_path: &std::path::Path) -> Result<ProjectInfo
     })?;
 
     let offset = (address - section_address) as usize;
-    if offset + 60 > section_data.len() {
+    if offset + 64 > section_data.len() {
         return Err("Symbol address is out of section bounds".to_string());
     }
 
-    let data = &section_data[offset..offset + 60];
+    let data = &section_data[offset..offset + 64];
 
     let magic = &data[0..8];
     if magic != b"PROJMET\0" {
@@ -93,6 +95,7 @@ pub fn autodetect_project_info(elf_path: &std::path::Path) -> Result<ProjectInfo
     let partition_size = u32::from_le_bytes(data[48..52].try_into().unwrap()) as usize;
     let flash_write_size = u32::from_le_bytes(data[52..56].try_into().unwrap());
     let flash_erase_size = u32::from_le_bytes(data[56..60].try_into().unwrap());
+    let stack_scan_limit = u32::from_le_bytes(data[60..64].try_into().unwrap());
 
     Ok(ProjectInfo {
         chip,
@@ -100,6 +103,7 @@ pub fn autodetect_project_info(elf_path: &std::path::Path) -> Result<ProjectInfo
         partition_size,
         flash_write_size,
         flash_erase_size,
+        stack_scan_limit,
     })
 }
 

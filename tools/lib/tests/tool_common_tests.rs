@@ -23,6 +23,7 @@ pub struct ProjectMetadata {
     pub partition_size: u32,
     pub flash_write_size: u32,
     pub flash_erase_size: u32,
+    pub stack_scan_limit: u32,
 }
 
 #[used]
@@ -38,6 +39,7 @@ pub static PROJECT_METADATA: ProjectMetadata = ProjectMetadata {
     partition_size: 256 * 1024,
     flash_write_size: 4,
     flash_erase_size: 4096,
+    stack_scan_limit: 2048,
 };
 
 fn main() {}
@@ -70,4 +72,5 @@ fn main() {}
     assert_eq!(info.partition_size, 256 * 1024);
     assert_eq!(info.flash_write_size, 4);
     assert_eq!(info.flash_erase_size, 4096);
+    assert_eq!(info.stack_scan_limit, 2048);
 }
