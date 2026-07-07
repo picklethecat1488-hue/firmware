@@ -117,9 +117,26 @@ impl RttChannel {
     }
 }
 
+fn read_elf_addr(file: &object::File, addr: u64, len: usize) -> Option<Vec<u8>> {
+    use object::{Object, ObjectSection};
+    for section in file.sections() {
+        let start = section.address();
+        let size = section.size();
+        if addr >= start && addr < start + size {
+            if let Ok(data) = section.data() {
+                let offset = (addr - start) as usize;
+                let end = (offset + len).min(data.len());
+                return Some(data[offset..end].to_vec());
+            }
+        }
+    }
+    None
+}
+
 pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
     target: &mut T,
     rtt_symbol_addr: u64,
+    elf_file: Option<&object::File>,
 ) -> Result<(Vec<RttChannel>, Vec<RttChannel>), String> {
     let mut header = [0u8; 128];
     target.read_mem(rtt_symbol_addr, &mut header)?;
@@ -142,10 +159,22 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
 
         let mut name = String::new();
         if name_ptr != 0 {
-            let mut name_buf = [0u8; 32];
-            if target.read_mem(name_ptr, &mut name_buf).is_ok() {
-                if let Some(pos) = name_buf.iter().position(|&b| b == 0) {
-                    name = String::from_utf8_lossy(&name_buf[..pos]).into_owned();
+            let mut name_read = false;
+            if let Some(elf) = elf_file {
+                if let Some(bytes) = read_elf_addr(elf, name_ptr, 32) {
+                    if let Some(pos) = bytes.iter().position(|&b| b == 0) {
+                        name = String::from_utf8_lossy(&bytes[..pos]).into_owned();
+                        name_read = true;
+                    }
+                }
+            }
+
+            if !name_read {
+                let mut name_buf = [0u8; 32];
+                if target.read_mem(name_ptr, &mut name_buf).is_ok() {
+                    if let Some(pos) = name_buf.iter().position(|&b| b == 0) {
+                        name = String::from_utf8_lossy(&name_buf[..pos]).into_owned();
+                    }
                 }
             }
         }
@@ -169,10 +198,22 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
 
         let mut name = String::new();
         if name_ptr != 0 {
-            let mut name_buf = [0u8; 32];
-            if target.read_mem(name_ptr, &mut name_buf).is_ok() {
-                if let Some(pos) = name_buf.iter().position(|&b| b == 0) {
-                    name = String::from_utf8_lossy(&name_buf[..pos]).into_owned();
+            let mut name_read = false;
+            if let Some(elf) = elf_file {
+                if let Some(bytes) = read_elf_addr(elf, name_ptr, 32) {
+                    if let Some(pos) = bytes.iter().position(|&b| b == 0) {
+                        name = String::from_utf8_lossy(&bytes[..pos]).into_owned();
+                        name_read = true;
+                    }
+                }
+            }
+
+            if !name_read {
+                let mut name_buf = [0u8; 32];
+                if target.read_mem(name_ptr, &mut name_buf).is_ok() {
+                    if let Some(pos) = name_buf.iter().position(|&b| b == 0) {
+                        name = String::from_utf8_lossy(&name_buf[..pos]).into_owned();
+                    }
                 }
             }
         }
@@ -292,7 +333,9 @@ pub fn run_rtt(
                             if !no_reset {
                                 spinner.set_message("Resetting target CPU...");
                                 let _ = core.reset();
-                                std::thread::sleep(Duration::from_millis(200));
+                                std::thread::sleep(Duration::from_millis(100));
+                                let _ = core.run();
+                                std::thread::sleep(Duration::from_millis(100));
                             } else {
                                 let status = core.status()?;
                                 spinner.set_message(format!("Core status: {:?}", status));
@@ -355,7 +398,7 @@ pub fn run_rtt(
 
         spinner.set_message("Locating RTT channels...");
         let (up_channels, down_channels) =
-            match parse_rtt_channels(target.as_mut(), rtt_symbol_addr) {
+            match parse_rtt_channels(target.as_mut(), rtt_symbol_addr, object_file.as_ref()) {
                 Ok(chans) => chans,
                 Err(e) => {
                     spinner.set_message(format!(

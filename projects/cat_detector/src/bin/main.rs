@@ -121,6 +121,8 @@ async fn main(spawner: Spawner) {
     firmware_lib::defmt_logger::DefmtLogger::set_writer(
         &firmware_lib::defmt_logger::DEFAULT_RTT_WRITER,
     );
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    defmt::info!("Booting Cat Detector App...");
 
     // Initialize the modular panic handler
     static mut PANIC_FLASH: Option<
