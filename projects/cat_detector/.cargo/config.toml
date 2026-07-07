@@ -8,4 +8,5 @@ rustflags = [
   "-C", "link-arg=-Tdefmt.x",
   # Required to find embassy's boot2 loader if boot2 feature is used
   "-C", "link-arg=-Tlink-rp.x",
+  "--remap-path-prefix", "firmware=/Users/daparker/gh/firmware",
 ]

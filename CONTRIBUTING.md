@@ -247,26 +247,103 @@ For the most reliable breakpoint debugging experience using the VS Code **"Debug
    cargo nextest run --debugger codelldb-launch <test_name>
    ```
 
-#### 2. Target Device Debugging (probe-rs)
-To flash and debug firmware binaries directly on the target RP2040 microcontroller:
-1. Ensure the **Debugger for probe-rs** extension is installed in VS Code.
-2. Use the **Run and Debug** view (`Ctrl+Shift+D` / `Cmd+Shift+D`) and select one of the following configurations:
-   - **Debug Firmware (probe-rs)**: Flashes and debugs the main `cat_detector` application.
-   - **Debug Shell (probe-rs)**: Flashes and debugs the diagnostic `shell` bringup utility.
-3. Code execution will automatically halt at the entry point (`main`), allowing you to step through hardware initialization.
+#### 2. Target Device Debugging (probe-rs & Cortex-Debug)
+To flash and debug firmware binaries directly on the target RP2040 microcontroller, use the VS Code **Run and Debug** view (`Ctrl+Shift+D` / `Cmd+Shift+D`) and select one of the following configurations:
+*   **Cortex-Debug (Recommended - Highly Stable)**: Uses GDB connected to a J-Link server or OpenOCD in the background. It is highly robust at resolving source files on your local disk.
+    - **Debug App (Cortex-Debug J-Link)**: Debugs the main `cat_detector_app` using a J-Link probe.
+    - **Debug Shell (Cortex-Debug J-Link)**: Debugs the diagnostic `cat_detector_shell` bringup utility using a J-Link probe.
+    - **Debug App (Cortex-Debug Pico Probe)**: Debugs the main `cat_detector_app` using a Raspberry Pi Debug Probe (CMSIS-DAP over OpenOCD).
+    - **Debug Shell (Cortex-Debug Pico Probe)**: Debugs the diagnostic `cat_detector_shell` bringup utility using a Raspberry Pi Debug Probe (CMSIS-DAP over OpenOCD).
+*   **probe-rs-debug (Experimental)**: Uses the `Debugger for probe-rs` extension.
+    - **Debug Firmware (probe-rs)**: Flashes and debugs the main `cat_detector_app`.
+    - **Debug Shell (probe-rs)**: Flashes and debugs the diagnostic `cat_detector_shell` bringup utility.
+Code execution will automatically halt at the entry point (`main`), allowing you to step through hardware initialization.
 
-#### 3. Log Output Streaming (defmt_host)
-To read, decode, and stream logs output from the target device, use `defmt_host`:
-*   **Via RTT (using SWD probe)**:
-    Using `--autodetect` with the `--elf` path automatically resolves target chip specifications directly from the compiled ELF binary's metadata section:
+#### 3. Log Output Streaming and Interactive Console (host_cli)
+We provide a host command-line utility, `host_cli`, to stream and decode plaintext `defmt` logs and run an interactive diagnostic command console via RTT.
+First, build the tool:
+```bash
+cargo build -p host_cli --release
+```
+
+*   **Default Run (Auto-detecting chip/channels and running logs + console)**:
     ```bash
-    cargo run --bin defmt_host -- --autodetect --elf target/thumbv6m-none-eabi/debug/cat_detector
+    cargo run -p host_cli -- --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
     ```
-*   **Via UART (using serial port GP0/GP1)**:
-    On target boot for the main `cat_detector` application, defmt log output is routed to the UART0 block (`GP0` TX / `GP1` RX) at 115200 baud. (Note: defmt over UART is *not* supported when running the `shell` bringup utility, as the shell consumes UART0 for the interactive command console). To read the main app's log stream over a serial cable:
+*   **Via RTT (Specifying chip directly)**:
     ```bash
-    cargo run --bin defmt_host -- --port /dev/tty.usbserial-10 --baud 115200 --elf target/thumbv6m-none-eabi/debug/cat_detector
+    cargo run -p host_cli -- --chip rp2040 --elf target/thumbv6m-none-eabi/debug/cat_detector_app
     ```
+*   **Via RTT using `pico-debug` (Bypassing multidrop scan)**:
+    ```bash
+    cargo run -p host_cli -- --chip Cortex-M0+ --elf target/thumbv6m-none-eabi/debug/cat_detector_app
+    ```
+*   **Concurrent Connection to an Active VS Code Debug Session (OpenOCD GDB)**:
+    Because active debug sessions lock the physical USB debug probe, standard USB attachment will fail due to hardware resource conflicts. However, our custom OpenOCD configurations allow multiple connections. You can attach `host_cli` directly to the active VS Code debug session's TCP GDB port (defaulting to port `50000`):
+    ```bash
+    cargo run -p host_cli -- -o localhost:50000 --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
+    ```
+    This lets you stream system logs and interact with the CLI console concurrently while debugging, setting breakpoints, and stepping through code in VS Code.
+
+#### 4. Flashing the Interactive Bringup Shell
+To build and flash the interactive bringup shell onto the target:
+```bash
+# Flash the shell binary directly to the microcontroller
+probe-rs download target/thumbv6m-none-eabi/debug/cat_detector_shell --chip RP2040
+```
+Once flashed, connect to the target using `host_cli` (as documented in Section 3) to interact with the diagnostic console.
+
+#### 5. Host Flash Filesystem Tool (`host_fs`)
+We provide a host command-line utility, `host_fs`, to inspect, query, and decode flash memory contents from the microcontroller's sequential-storage partition.
+First, build the tool:
+```bash
+cargo build -p host_fs --release
+```
+
+*   **Query directory files (`ls`)**:
+    - *Direct connection*:
+      ```bash
+      cargo run -p host_fs -- --elf target/thumbv6m-none-eabi/debug/cat_detector_app ls
+      ```
+    - *Offline dump file*:
+      ```bash
+      cargo run -p host_fs -- --dump flash_dump.bin ls
+      ```
+*   **Copy files to/from device (`cp`)**:
+    - *Copy telemetry from device to host*:
+      ```bash
+      cargo run -p host_fs -- --elf target/thumbv6m-none-eabi/release/cat_detector_app cp dev:telemetry.rrd local_telemetry.rrd
+      ```
+    - *Copy new calibration config to device*:
+      ```bash
+      cargo run -p host_fs -- --elf target/thumbv6m-none-eabi/release/cat_detector_app cp local_cal.bin dev:calibration.bin
+      ```
+*   **Export telemetry to CSV**:
+    - *Direct connection*:
+      ```bash
+      cargo run -p host_fs -- --elf target/thumbv6m-none-eabi/release/cat_detector_app export-telemetry telemetry.csv
+      ```
+    - *Offline dump file*:
+      ```bash
+      cargo run -p host_fs -- --dump flash_dump.bin export-telemetry telemetry.csv
+      ```
+*   **Decode crash dumps to symbolicated backtraces**:
+    - *Direct connection*:
+      ```bash
+      cargo run -p host_fs -- --elf target/thumbv6m-none-eabi/release/cat_detector_app crash-log
+      ```
+    - *Offline dump file*:
+      ```bash
+      cargo run -p host_fs -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector_app
+      ```
+
+#### 6. Raw Flash Extraction Fallback
+If you prefer to extract the raw binary flash memory partition manually from the target Pico using `probe-rs`:
+```bash
+probe-rs read-mem --chip RP2040 0x101C0000 262144 flash_dump.bin
+```
+
+---
 
 ### Build Checks
 Check target compilation via:
@@ -279,10 +356,10 @@ When introducing or modifying telemetry records, filesystem files, or crash logs
 1. **Model Updates**: Ensure telemetry fields are encoded/decoded correctly under CBOR size limits inside `model/src/telemetry_test.rs`.
 2. **Offline Decoding**: Rebuild `host_fs` and check that telemetry parses into CSV:
    ```bash
-   cargo run --bin host_fs -- --dump <flash_dump.bin> export-telemetry <output.csv>
+   cargo run -p host_fs -- --dump <flash_dump.bin> export-telemetry <output.csv>
    ```
 3. **Backtrace Validation**: Trigger a panic (e.g. via the shell `crash` command), extract the partition, and run symbolication with your debug ELF binary:
    ```bash
-   cargo run --bin host_fs -- --dump <flash_dump.bin> crash-log --elf target/thumbv6m-none-eabi/debug/cat_detector
+   cargo run -p host_fs -- --dump <flash_dump.bin> crash-log --elf target/thumbv6m-none-eabi/debug/cat_detector_app
    ```
    Verify that all frames resolve demangled function names, filenames, and correct source line numbers.

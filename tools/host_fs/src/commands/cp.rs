@@ -142,6 +142,12 @@ pub async fn run(
                         .set_message("Writing updated filesystem back to device via probe-rs...");
                     f.commit().map_err(io::Error::other)?;
                 }
+                EitherFlash::Gdb(f) => {
+                    spinner.set_message(
+                        "Writing updated filesystem back to device via OpenOCD GDB...",
+                    );
+                    f.commit().map_err(io::Error::other)?;
+                }
             }
 
             spinner.finish_and_clear();

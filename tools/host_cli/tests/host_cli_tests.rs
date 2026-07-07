@@ -1,4 +1,4 @@
-use defmt_host::{dump_logs, stream_logs, DefmtLogSource};
+use host_cli::{dump_logs, stream_logs, DefmtLogSource};
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
@@ -60,30 +60,17 @@ fn test_stream_logs_poll_loop() {
 
 #[test]
 fn test_cli_argument_validation() {
-    let bin_path = env!("CARGO_BIN_EXE_defmt_host");
+    let bin_path = env!("CARGO_BIN_EXE_host_cli");
 
-    // 1. Missing both --chip and --project
+    // 1. Non-existent ELF file (failing to load metadata / autodetect chip)
     let output = Command::new(bin_path)
         .arg("--elf")
-        .arg("dummy.elf")
+        .arg("non_existent_file.elf")
         .output()
         .unwrap();
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(
-        stderr.contains("Either --chip, --autodetect, or --port must be specified")
-            || stderr.contains("error")
-    );
-
-    // 2. Non-existent ELF file
-    let output_elf = Command::new(bin_path)
-        .arg("--elf")
-        .arg("non_existent_file.elf")
-        .arg("--chip")
-        .arg("rp2040")
-        .output()
-        .unwrap();
-    assert!(!output_elf.status.success());
+    assert!(stderr.contains("Failed to read ELF file") || stderr.contains("error"));
 }
 
 #[test]
