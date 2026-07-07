@@ -81,8 +81,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else if let Some(ref c) = cli.chip {
         c.clone()
     } else {
-        let (autodetect_chip, _, _) = host_cli::autodetect_project_info(&cli.elf)?;
-        autodetect_chip
+        let info = host_cli::autodetect_project_info(&cli.elf)?;
+        info.chip
     };
 
     // 2. Parse defmt table from ELF (if not in raw/dump-mem mode)

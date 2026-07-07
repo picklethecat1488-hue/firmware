@@ -272,7 +272,6 @@ fn test_write_crash_log_to_flash_rolling() {
 
 #[test]
 fn test_generate_uuid_properties() {
-    let entropy: [u8; 16] = [0xAA; 16];
     let mut state1: CoreState = CoreState {
         r0: 1,
         r1: 2,
@@ -282,7 +281,7 @@ fn test_generate_uuid_properties() {
     };
     state1.backtrace[..2].copy_from_slice(&[0x10002000, 0x10003000]);
 
-    let uuid1 = generate_uuid(entropy, 12345, &state1, "hash123");
+    let uuid1 = generate_uuid(&state1, "hash123");
     let mut state2: CoreState = CoreState {
         r0: 1,
         r1: 2,
@@ -292,9 +291,9 @@ fn test_generate_uuid_properties() {
     };
     state2.backtrace[..2].copy_from_slice(&[0x10002000, 0x10003000]);
 
-    let uuid2 = generate_uuid(entropy, 12345, &state2, "hash123");
+    let uuid2 = generate_uuid(&state2, "hash123");
     let mut state3: CoreState = CoreState {
-        r0: 1,
+        r0: 99, // different register
         r1: 2,
         r2: 3,
         r3: 4,
@@ -302,7 +301,7 @@ fn test_generate_uuid_properties() {
     };
     state3.backtrace[..2].copy_from_slice(&[0x10002000, 0x10003000]);
 
-    let uuid3 = generate_uuid(entropy, 12346, &state3, "hash123"); // different time
+    let uuid3 = generate_uuid(&state3, "hash123");
 
     // UUIDv4 checks:
     // Version 4 check:

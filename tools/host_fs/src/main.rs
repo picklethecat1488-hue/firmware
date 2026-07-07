@@ -37,9 +37,25 @@ fn main() -> io::Result<()> {
                     "ELF path is required via --elf to detect layout parameters when not loading a dump file",
                 )
             })?;
-            let (chip, base_addr, size) =
-                tool_common::autodetect_project_info(std::path::Path::new(elf_path))
-                    .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e))?;
+            let info = tool_common::autodetect_project_info(std::path::Path::new(elf_path))
+                .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e))?;
+
+            // Ensure flash parameters in ELF match the compiled host_fs tool constants
+            use embedded_storage_async::nor_flash::NorFlash;
+            if info.flash_write_size != <EitherFlash as NorFlash>::WRITE_SIZE as u32
+                || info.flash_erase_size != <EitherFlash as NorFlash>::ERASE_SIZE as u32
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!(
+                        "Flash parameters mismatch! ELF expects write_size={}, erase_size={}, but host_fs is compiled with write_size={}, erase_size={}.",
+                        info.flash_write_size,
+                        info.flash_erase_size,
+                        <EitherFlash as NorFlash>::WRITE_SIZE,
+                        <EitherFlash as NorFlash>::ERASE_SIZE
+                    ),
+                ));
+            }
 
             if let Some(host) = &cli.openocd_host {
                 let addr = if host.contains(':') {
@@ -49,18 +65,23 @@ fn main() -> io::Result<()> {
                 };
                 spinner.set_message(format!(
                     "Connecting to device at {} (address: 0x{:08X}) via OpenOCD GDB...",
-                    addr, base_addr
+                    addr, info.partition_address
                 ));
-                let gdb_flash = host_fs::flash::GdbFlash::new(&addr, base_addr, size)
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                let gdb_flash = host_fs::flash::GdbFlash::new(
+                    &addr,
+                    info.partition_address,
+                    info.partition_size,
+                )
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
                 EitherFlash::Gdb(Box::new(gdb_flash))
             } else {
                 spinner.set_message(format!(
                     "Connecting to device (chip: {}, address: 0x{:08X}) via probe-rs...",
-                    chip, base_addr
+                    info.chip, info.partition_address
                 ));
                 let probe_flash =
-                    ProbeFlash::new(&chip, base_addr, size).map_err(io::Error::other)?;
+                    ProbeFlash::new(&info.chip, info.partition_address, info.partition_size)
+                        .map_err(io::Error::other)?;
                 EitherFlash::Probe(Box::new(probe_flash))
             }
         }

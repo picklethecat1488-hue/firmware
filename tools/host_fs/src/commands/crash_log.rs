@@ -54,97 +54,12 @@ where
                                     decoder.decode();
                                 match dump_res {
                                     Ok(dump) => {
-                                        println!("--- PANIC (CBOR) ---");
-                                        let u = dump.uuid;
-                                        println!("UUID: {:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-                                            u[0], u[1], u[2], u[3], u[4], u[5], u[6], u[7],
-                                            u[8], u[9], u[10], u[11], u[12], u[13], u[14], u[15]);
-                                        println!("Revision Hash: {}", dump.revision_hash);
-                                        println!("Registers:");
-                                        println!("  R0: 0x{:08X}", dump.r0);
-                                        println!("  R1: 0x{:08X}", dump.r1);
-                                        println!("  R2: 0x{:08X}", dump.r2);
-                                        println!("  R3: 0x{:08X}", dump.r3);
-                                        println!("\nBacktrace:");
-                                        let pc_count = dump.backtrace_len as usize;
-                                        for &pc in dump.backtrace.iter().take(pc_count) {
-                                            let addr = pc as u64;
-                                            if let Some(ctx) = context {
-                                                match ctx.find_frames(addr).skip_all_loads() {
-                                                    Ok(mut frames) => {
-                                                        let mut found = false;
-                                                        while let Ok(Some(frame)) = frames.next() {
-                                                            found = true;
-                                                            let func_name = if let Some(f) =
-                                                                &frame.function
-                                                            {
-                                                                let raw = f.raw_name().unwrap_or(
-                                                                    std::borrow::Cow::Borrowed(
-                                                                        "??",
-                                                                    ),
-                                                                );
-                                                                format!(
-                                                                    "{:#}",
-                                                                    rustc_demangle::demangle(&raw)
-                                                                )
-                                                            } else {
-                                                                "??".to_string()
-                                                            };
-                                                            if let Some(loc) = frame.location {
-                                                                println!(
-                                                                    "  0x{:08X} - {} ({}:{})",
-                                                                    addr,
-                                                                    func_name,
-                                                                    loc.file.unwrap_or("??"),
-                                                                    loc.line.unwrap_or(0)
-                                                                );
-                                                            } else {
-                                                                println!(
-                                                                    "  0x{:08X} - {} (??:0)",
-                                                                    addr, func_name
-                                                                );
-                                                            }
-                                                        }
-                                                        if !found {
-                                                            println!(
-                                                                "  0x{:08X} - (no symbol found)",
-                                                                addr
-                                                            );
-                                                        }
-                                                    }
-                                                    Err(_) => {
-                                                        println!(
-                                                            "  0x{:08X} - (symbolication error)",
-                                                            addr
-                                                        );
-                                                    }
-                                                }
-                                            } else {
-                                                println!("  0x{:08X}", addr);
-                                            }
-                                        }
-
-                                        println!("\nSystem Logs (defmt):");
-                                        if let Some(table) = defmt_table {
-                                            let mut decoder = table.new_stream_decoder();
-                                            decoder.received(dump.system_logs);
-                                            loop {
-                                                match decoder.decode() {
-                                                    Ok(frame) => {
-                                                        let display = frame.display(false);
-                                                        println!("{}", display);
-                                                    }
-                                                    Err(
-                                                        defmt_decoder::DecodeError::UnexpectedEof,
-                                                    ) => break,
-                                                    Err(defmt_decoder::DecodeError::Malformed) => {
-                                                        continue;
-                                                    }
-                                                }
-                                            }
-                                        } else {
-                                            println!("(No ELF provided to decode {} bytes of binary logs)", dump.system_logs.len());
-                                        }
+                                        tool_common::print_crash_dump(
+                                            "--- PANIC (CBOR) ---",
+                                            &dump,
+                                            context,
+                                            defmt_table.as_ref(),
+                                        );
                                     }
                                     Err(e) => {
                                         eprintln!(
@@ -154,8 +69,11 @@ where
                                     }
                                 }
                             }
-                            _ => {
-                                eprintln!("Failed to read crash log content for {}", filename);
+                            other => {
+                                eprintln!(
+                                    "Failed to read crash log content for {}: {:?}",
+                                    filename, other
+                                );
                             }
                         }
                     }

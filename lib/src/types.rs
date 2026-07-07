@@ -170,4 +170,8 @@ pub struct ProjectMetadata {
     pub partition_address: u32,
     /// The size of the storage partition in bytes
     pub partition_size: u32,
+    /// Flash write alignment/size in bytes
+    pub flash_write_size: u32,
+    /// Flash erase sector size in bytes
+    pub flash_erase_size: u32,
 }
