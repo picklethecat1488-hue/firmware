@@ -176,6 +176,17 @@ fn main() -> io::Result<()> {
                 )
                 .await?;
             }
+            Commands::Rm { filename } => {
+                host_fs::commands::rm::run(
+                    &mut flash,
+                    flash_range,
+                    &mut cache,
+                    &spinner,
+                    filename,
+                    &cli.dump,
+                )
+                .await?;
+            }
         }
         Ok::<(), io::Error>(())
     })?;

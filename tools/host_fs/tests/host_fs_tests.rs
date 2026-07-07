@@ -147,7 +147,8 @@ fn test_crash_log_decoding_integration() {
 
     // 2. Synthesize a mock CrashDump payload
     let backtrace = [
-        0x10000234, 0x10000456, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0x10000234, 0x10000456, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0,
     ];
     let dump = firmware_lib::types::CrashDump {
         revision_hash: "abcd123",
@@ -231,9 +232,120 @@ fn test_crash_log_decoding_integration() {
     assert!(stdout_text.contains("Backtrace:"));
     assert!(stdout_text.contains("0x10000234"));
     assert!(stdout_text.contains("0x10000456"));
-    assert!(stdout_text.contains("System Logs (defmt):"));
-    assert!(stdout_text.contains("No ELF provided to decode 13 bytes of binary logs"));
+    assert!(stdout_text.contains("Crash Context System Logs:"));
+    assert!(stdout_text.contains("No defmt table loaded to decode system logs"));
 
     // Clean up
     let _ = std::fs::remove_file(&dump_path);
+}
+
+#[test]
+fn test_cli_rm() {
+    use std::fs::File;
+    use std::io::Write;
+    use std::process::Command;
+
+    let bin_path = env!("CARGO_BIN_EXE_host_fs");
+
+    let dump_path = std::env::temp_dir().join("test_cli_rm_flash_dump.bin");
+    let src1_path = std::env::temp_dir().join("test_cli_rm_src1.txt");
+    let src2_path = std::env::temp_dir().join("test_cli_rm_src2.txt");
+    let _ = std::fs::remove_file(&dump_path);
+    let _ = std::fs::remove_file(&src1_path);
+    let _ = std::fs::remove_file(&src2_path);
+
+    // 1. Create a dummy flash dump file of 256KB
+    let mut dump_file = File::create(&dump_path).unwrap();
+    dump_file.write_all(&vec![0xFF; 262144]).unwrap();
+    drop(dump_file);
+
+    // 2. Create two dummy local files
+    File::create(&src1_path)
+        .unwrap()
+        .write_all(b"File 1 content")
+        .unwrap();
+    File::create(&src2_path)
+        .unwrap()
+        .write_all(b"File 2 content")
+        .unwrap();
+
+    // 3. Copy both to device
+    let status = Command::new(bin_path)
+        .arg("--dump")
+        .arg(&dump_path)
+        .arg("cp")
+        .arg(&src1_path)
+        .arg("dev:file1.txt")
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let status = Command::new(bin_path)
+        .arg("--dump")
+        .arg(&dump_path)
+        .arg("cp")
+        .arg(&src2_path)
+        .arg("dev:file2.txt")
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    // 4. Verify directory listing lists both
+    let output = Command::new(bin_path)
+        .arg("--dump")
+        .arg(&dump_path)
+        .arg("ls")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let ls_text = String::from_utf8(output.stdout).unwrap();
+    assert!(ls_text.contains("file1.txt"));
+    assert!(ls_text.contains("file2.txt"));
+
+    // 5. Remove file1.txt
+    let status = Command::new(bin_path)
+        .arg("--dump")
+        .arg(&dump_path)
+        .arg("rm")
+        .arg("file1.txt")
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    // 6. Verify directory listing only lists file2.txt
+    let output = Command::new(bin_path)
+        .arg("--dump")
+        .arg(&dump_path)
+        .arg("ls")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let ls_text = String::from_utf8(output.stdout).unwrap();
+    assert!(!ls_text.contains("file1.txt"));
+    assert!(ls_text.contains("file2.txt"));
+
+    // 7. Clear all remaining files
+    let status = Command::new(bin_path)
+        .arg("--dump")
+        .arg(&dump_path)
+        .arg("rm")
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    // 8. Verify directory empty
+    let output = Command::new(bin_path)
+        .arg("--dump")
+        .arg(&dump_path)
+        .arg("ls")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let ls_text = String::from_utf8(output.stdout).unwrap();
+    assert!(ls_text.contains("No files found"));
+
+    // Clean up
+    let _ = std::fs::remove_file(&dump_path);
+    let _ = std::fs::remove_file(&src1_path);
+    let _ = std::fs::remove_file(&src2_path);
 }
