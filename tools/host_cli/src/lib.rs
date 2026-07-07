@@ -1,5 +1,4 @@
-//! Library containing the core log streaming engine, project settings parsing,
-//! and RTT source abstractions for defmt_host.
+//! and RTT source abstractions for host_cli.
 
 pub mod dump;
 pub mod stream;

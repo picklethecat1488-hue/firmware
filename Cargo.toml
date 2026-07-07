@@ -7,7 +7,7 @@ members = [
     "lib",
     "projects/cat_detector",
     "tools/host_fs",
-    "tools/defmt_host",
+    "tools/host_cli",
     "tools/lib",
 ]
 default-members = [
@@ -16,9 +16,6 @@ default-members = [
     "controller",
     "lib",
     "projects/cat_detector",
-    "tools/host_fs",
-    "tools/defmt_host",
-    "tools/lib",
 ]
 
 [profile.release]
