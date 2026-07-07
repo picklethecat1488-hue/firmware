@@ -68,9 +68,9 @@ pub struct Cli {
     #[arg(short, long)]
     pub elf: Option<String>,
 
-    /// Automatically detect chip and layout parameters from the ELF's metadata section
-    #[arg(short, long)]
-    pub autodetect: bool,
+    /// Connect to an existing OpenOCD GDB server session (e.g. "localhost:3333" or "127.0.0.1")
+    #[arg(short = 'o', long)]
+    pub openocd_host: Option<String>,
 
     /// Subcommand to run against the dump
     #[command(subcommand)]

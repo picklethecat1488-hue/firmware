@@ -3,7 +3,6 @@
 use crate as app;
 use app::system_controller::SystemCommand;
 use app::CliCommand;
-use app::DEFAULT_UART_WRITER;
 use controller::motor_controller::MotorCommand;
 use controller::{
     BlockingBatteryReader, BlockingMotorReader, BlockingMotorWriter, BlockingProximityReader,
@@ -16,7 +15,6 @@ use embedded_cli::cli::CliHandle;
 use embedded_cli::command::RawCommand;
 use embedded_cli::service::CommandProcessor;
 use embedded_io::Write as IoWrite;
-use firmware_lib::defmt_logger::DefmtLogWriter;
 use model::interfaces::{Motor, PowerSensor, ProximitySensor, TemperatureSensor};
 
 /// Controller responsible for processing shell commands.
@@ -213,6 +211,12 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
 
         let cmd = <CliCommand as embedded_cli::service::FromRaw>::parse(raw)?;
 
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        defmt::info!(
+            "ShellController: received command {:?}",
+            defmt::Debug2Format(&cmd)
+        );
+
         let res: Result<(), &'static str> = match cmd {
             CliCommand::Motor { speed } => self
                 .motor_ctrl_ptr
@@ -305,10 +309,6 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                 .map_err(|_| "Failed to send System Activity command"),
             CliCommand::Crash => {
                 panic!("Simulated crash dump flow");
-            }
-            CliCommand::Uart => {
-                DEFAULT_UART_WRITER.write_all("UART log transmission OK\n".as_bytes());
-                Ok(())
             }
             CliCommand::McuTemp => self
                 .temp_sensor_ptr
@@ -576,9 +576,12 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
 
         match res {
             Ok(()) => {
-                let _ = core::writeln!(writer, "Command succeeded");
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::info!("ShellController: command execution succeeded");
             }
             Err(err) => {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::error!("ShellController: command execution failed: {}", err);
                 let _ = core::writeln!(writer, "Command failed: {}", err);
             }
         }

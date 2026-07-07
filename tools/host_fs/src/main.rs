@@ -31,32 +31,41 @@ fn main() -> io::Result<()> {
         }
         None => {
             spinner.set_message("Reading project settings...");
-            if !cli.autodetect {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "Either --autodetect or --dump must be specified",
-                ));
-            }
             let elf_path = cli.elf.as_ref().ok_or_else(|| {
                 io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    "ELF path is required via --elf when --autodetect is set",
+                    "ELF path is required via --elf to detect layout parameters when not loading a dump file",
                 )
             })?;
             let (chip, base_addr, size) =
                 tool_common::autodetect_project_info(std::path::Path::new(elf_path))
                     .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e))?;
 
-            spinner.set_message(format!(
-                "Connecting to device (chip: {}, address: 0x{:08X}) via probe-rs...",
-                chip, base_addr
-            ));
-            let probe_flash = ProbeFlash::new(&chip, base_addr, size).map_err(io::Error::other)?;
-            EitherFlash::Probe(Box::new(probe_flash))
+            if let Some(host) = &cli.openocd_host {
+                let addr = if host.contains(':') {
+                    host.clone()
+                } else {
+                    format!("{}:3333", host)
+                };
+                spinner.set_message(format!(
+                    "Connecting to device at {} (address: 0x{:08X}) via OpenOCD GDB...",
+                    addr, base_addr
+                ));
+                let gdb_flash = host_fs::flash::GdbFlash::new(&addr, base_addr, size)
+                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                EitherFlash::Gdb(Box::new(gdb_flash))
+            } else {
+                spinner.set_message(format!(
+                    "Connecting to device (chip: {}, address: 0x{:08X}) via probe-rs...",
+                    chip, base_addr
+                ));
+                let probe_flash =
+                    ProbeFlash::new(&chip, base_addr, size).map_err(io::Error::other)?;
+                EitherFlash::Probe(Box::new(probe_flash))
+            }
         }
     };
 
-    use embedded_storage_async::nor_flash::ReadNorFlash;
     let flash_range = 0..flash.capacity() as u32;
 
     // Outer-scope variables to manage ELF file lifespans for Context references
