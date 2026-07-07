@@ -193,7 +193,7 @@ pub fn scan_stack<F>(
     stack: &[u32],
     flash_start: u32,
     flash_end: u32,
-    pcs: &mut [u32; 16],
+    pcs: &mut [u32; 32],
     read_mem: F,
 ) -> usize
 where
@@ -201,7 +201,7 @@ where
 {
     let mut pc_count = 0;
     for &val in stack {
-        if pc_count >= 16 {
+        if pc_count >= 32 {
             break;
         }
         if (flash_start..flash_end).contains(&val) && (val & 1 == 1) {
@@ -231,7 +231,7 @@ pub fn scan_stack_from_sp<F>(
     stack_top: usize,
     flash_start: u32,
     flash_end: u32,
-    pcs: &mut [u32; 16],
+    pcs: &mut [u32; 32],
     read_mem: F,
 ) -> usize
 where
@@ -239,7 +239,7 @@ where
 {
     if sp < stack_top {
         let words = (stack_top - sp) / 4;
-        let limit = words.min(256);
+        let limit = words.min(crate::types::STACK_SCAN_LIMIT as usize);
         let stack_slice = unsafe { core::slice::from_raw_parts(sp as *const u32, limit) };
         scan_stack(stack_slice, flash_start, flash_end, pcs, read_mem)
     } else {
@@ -429,7 +429,7 @@ pub struct CoreState {
     /// The value of the r3 register.
     pub r3: u32,
     /// Return PCs backtrace array.
-    pub backtrace: [u32; 16],
+    pub backtrace: [u32; 32],
 }
 
 /// Helper function to generate a stable, content-addressable UUID from crash context variables.

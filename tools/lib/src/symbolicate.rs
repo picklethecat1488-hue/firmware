@@ -75,35 +75,67 @@ pub fn print_crash_dump<R>(
     if pc_count == 0 {
         println!("  (No backtrace frames captured. Check compiler optimization or stack pointer alignment)");
     } else {
+        println!("  Raw PCs: {:x?}", &dump.backtrace[..pc_count]);
+        let mut frames_list = Vec::new();
         for &pc in dump.backtrace.iter().take(pc_count) {
             let addr = pc as u64;
+            let lookup_addr = addr.saturating_sub(1);
             if let Some(ctx) = context {
-                match symbolicate_addr(ctx, addr) {
-                    Ok(frames) => {
-                        if frames.is_empty() {
-                            println!("  0x{:08X} - (no symbol found)", addr);
-                        } else {
-                            for frame in frames {
-                                if let Some(file) = frame.file {
-                                    println!(
-                                        "  0x{:08X} - {} ({}:{})",
-                                        addr,
-                                        frame.func_name,
-                                        file,
-                                        frame.line.unwrap_or(0)
-                                    );
-                                } else {
-                                    println!("  0x{:08X} - {} (??:0)", addr, frame.func_name);
-                                }
-                            }
-                        }
-                    }
-                    Err(_) => {
-                        println!("  0x{:08X} - (symbolication error)", addr);
-                    }
+                if let Ok(frames) = symbolicate_addr(ctx, lookup_addr) {
+                    frames_list.push((addr, frames));
+                } else {
+                    frames_list.push((addr, Vec::new()));
                 }
             } else {
-                println!("  0x{:08X}", addr);
+                frames_list.push((addr, Vec::new()));
+            }
+        }
+
+        // Detect the index of the panic entry point (e.g. rust_begin_unwind or panic_fmt)
+        let mut panic_entry_idx = None;
+        for (i, (_addr, frames)) in frames_list.iter().enumerate() {
+            for frame in frames {
+                let name = frame.func_name.to_lowercase();
+                if name.contains("rust_begin_unwind")
+                    || name.contains("panic_fmt")
+                    || name.contains("panic_impl")
+                    || name.contains("begin_panic")
+                {
+                    panic_entry_idx = Some(i);
+                }
+            }
+        }
+
+        // If a panic entry point is found, filter out all frames up to and including it.
+        // This removes the stale logs / defmt buffer write history and panic internals.
+        let skip_count = if let Some(idx) = panic_entry_idx {
+            idx + 1
+        } else {
+            0
+        };
+
+        for (addr, frames) in frames_list.into_iter().skip(skip_count) {
+            if frames.is_empty() {
+                println!("  0x{:08X} - (no symbol found)", addr);
+            } else {
+                let filtered_frames: Vec<_> = frames
+                    .into_iter()
+                    .filter(|f| !should_filter_frame(&f.func_name))
+                    .collect();
+
+                for frame in filtered_frames {
+                    if let Some(file) = frame.file {
+                        println!(
+                            "  0x{:08X} - {} ({}:{})",
+                            addr,
+                            frame.func_name,
+                            file,
+                            frame.line.unwrap_or(0)
+                        );
+                    } else {
+                        println!("  0x{:08X} - {} (??:0)", addr, frame.func_name);
+                    }
+                }
             }
         }
     }
@@ -128,4 +160,15 @@ pub fn print_crash_dump<R>(
         println!("  (No defmt table loaded to decode system logs)");
     }
     println!("========================================================\n\n");
+}
+
+fn should_filter_frame(name: &str) -> bool {
+    let name_lower = name.to_lowercase();
+    name_lower.contains("core::")
+        || name_lower.contains("alloc::")
+        || name_lower.contains("std::")
+        || name_lower.contains("compiler_builtins::")
+        || name_lower.contains("embassy_executor::")
+        || name_lower.contains("__udivmod")
+        || name_lower.contains("__aeabi_")
 }
