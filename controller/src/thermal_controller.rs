@@ -35,8 +35,8 @@ pub struct ThermalController<'a, M: RawMutex, B, Cmd = ()> {
     overheating_temp_milli_c: i32,
     critical_temp_milli_c: i32,
     hysteresis_temp_milli_c: i32,
-    last_reported_temp: Option<i32>,
-    last_reported_state: Option<ThermalState>,
+    last_telemetry_temp: Option<i32>,
+    last_telemetry_state: Option<ThermalState>,
 }
 
 impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
@@ -52,8 +52,8 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
             overheating_temp_milli_c: 45000,
             critical_temp_milli_c: 60000,
             hysteresis_temp_milli_c: 2000,
-            last_reported_temp: None,
-            last_reported_state: None,
+            last_telemetry_temp: None,
+            last_telemetry_state: None,
         }
     }
 
@@ -71,8 +71,8 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
             overheating_temp_milli_c: 45000,
             critical_temp_milli_c: 60000,
             hysteresis_temp_milli_c: 2000,
-            last_reported_temp: None,
-            last_reported_state: None,
+            last_telemetry_temp: None,
+            last_telemetry_state: None,
         }
     }
 
@@ -151,22 +151,26 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
         }
 
         if let Some(tx) = telemetry_tx {
-            let overheating = self.state == ThermalState::Overheating;
-            let status = model::types::ThermalStatus::TempOverheating(temp, overheating);
-            let _ = tx.try_send(model::telemetry::TelemetryRecord::Thermal(status));
-        }
+            let send_telemetry = match (self.last_telemetry_temp, self.last_telemetry_state) {
+                (Some(last_temp), Some(last_state)) => {
+                    (temp - last_temp).abs() >= 1000 || self.state != last_state
+                }
+                _ => true,
+            };
 
-        let temp_changed = self.last_reported_temp != Some(temp);
-        let state_changed = self.last_reported_state != Some(self.state);
-        if temp_changed || state_changed {
-            #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::info!(
-                "Thermal Controller: Temp is {} mC, State: {:?}",
-                temp,
-                self.state
-            );
-            self.last_reported_temp = Some(temp);
-            self.last_reported_state = Some(self.state);
+            if send_telemetry {
+                let overheating = self.state == ThermalState::Overheating;
+                let status = model::types::ThermalStatus::TempOverheating(temp, overheating);
+                let _ = tx.try_send(model::telemetry::TelemetryRecord::Thermal(status));
+                self.last_telemetry_temp = Some(temp);
+                self.last_telemetry_state = Some(self.state);
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::info!(
+                    "Thermal Controller: Temp is {} mC, State: {:?}",
+                    temp,
+                    self.state
+                );
+            }
         }
 
         Ok(())

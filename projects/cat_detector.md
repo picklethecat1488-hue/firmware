@@ -255,6 +255,12 @@ Execute the following commands sequentially inside the interactive serial shell 
    ```
    * *Expected Output*: The text "UART log transmission OK" should be output on a line over UART0.
 
+0.5. **Format Filesystem Partition**:
+   ```bash
+   format
+   ```
+   * *Expected Output*: Erases the filesystem partition, writes a fresh empty directory structure, and automatically restarts the microcontroller (e.g. `Formatting successful! Rebooting target system...`).
+
 1. **Verify Fuel Gauge Communication**:
    ```bash
    battery

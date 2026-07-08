@@ -25,3 +25,19 @@ fn test_cbor_serialization() {
     assert_eq!(ts_erase, 123456);
     assert_eq!(record_erase, erase_rec);
 }
+
+#[test]
+fn test_header_serialization() {
+    let mut bytes = [0u8; 12];
+    let cursor = minicbor::encode::write::Cursor::new(&mut bytes[1..]);
+    let mut encoder = minicbor::Encoder::new(cursor);
+    let count = 0u32;
+    let next_idx = 0u32;
+    let ok =
+        encoder.array(2).is_ok() && encoder.u32(count).is_ok() && encoder.u32(next_idx).is_ok();
+    let len = encoder.into_writer().position();
+    if ok && len <= 11 {
+        bytes[0] = len as u8;
+    }
+    println!("OK: {}, len: {}, bytes: {:?}", ok, len, bytes);
+}

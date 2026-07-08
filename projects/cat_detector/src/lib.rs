@@ -264,6 +264,8 @@ pub enum CliCommand {
     /// Read the RP2040 system temperature
     #[command(name = "mcu_temp")]
     McuTemp,
+    /// Format/erase the filesystem partition
+    Format,
 }
 
 /// Represents the motor calibration target state.

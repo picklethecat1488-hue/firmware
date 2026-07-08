@@ -9,6 +9,13 @@ steps:
     command: uart
     description: Verify the RP2040 can transmit logs over UART 
 
+  - id: "0.5"
+    name: Format Filesystem Partition
+    type: shell_command
+    command: format
+    expected_regex: 'Formatting successful! Rebooting target system\.\.\.'
+    description: Erase and format the sequential-storage partition.
+
   - id: "1"
     name: Verify Fuel Gauge Communication
     type: shell_command

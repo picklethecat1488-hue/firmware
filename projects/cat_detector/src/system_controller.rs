@@ -356,8 +356,10 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
     }
 
     /// Ticks the inactivity timer and active mode duration timer by a specified duration in milliseconds.
-    pub fn tick_ms(&mut self, ms: u32) {
-        if self.state_manager.tick_ms(ms) {
+    /// Returns true if the 1-second system tick boundary was crossed.
+    pub fn tick_ms(&mut self, ms: u32) -> bool {
+        let crossed = self.state_manager.tick_ms(ms);
+        if crossed {
             // Stay in Active state as long as proximity is detected
             if self.proximity_active {
                 self.set_inactive_ms(0);
@@ -372,6 +374,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                 self.handle_command(SystemCommand::Sleep);
             }
         }
+        crossed
     }
 
     /// Main execution loop.
@@ -400,12 +403,14 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
 
             if remaining_ms == 0 {
                 last_tick_time = now;
-                self.tick_ms(elapsed_ms);
-                // Coordinate periodic telemetry reads across other controllers
-                self.battery_tx
-                    .try_send(BatteryCommand::CheckStatus)
-                    .unwrap();
-                self.thermal_tx.try_send(ThermalCommand::CheckTemp).unwrap();
+                let crossed_tick = self.tick_ms(elapsed_ms);
+                // Coordinate periodic telemetry reads across other controllers on the system tick
+                if crossed_tick {
+                    self.battery_tx
+                        .try_send(BatteryCommand::CheckStatus)
+                        .unwrap();
+                    self.thermal_tx.try_send(ThermalCommand::CheckTemp).unwrap();
+                }
                 if self.status() == SystemStatus::Active {
                     self.sensor_north_tx
                         .try_send(SensorCommand::ReadSensors)
