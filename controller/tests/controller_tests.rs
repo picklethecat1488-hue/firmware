@@ -218,7 +218,8 @@ fn test_battery_controller_sad_cases() {
             model::telemetry::TelemetryRecord::Battery(model::types::BatteryStatus::VolTempState(
                 0,
                 _,
-                model::types::BatteryState::Critical
+                model::types::BatteryState::Critical,
+                _
             ))
         ));
 

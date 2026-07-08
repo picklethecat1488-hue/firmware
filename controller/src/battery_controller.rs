@@ -54,6 +54,7 @@ pub struct BatteryController<'a, M: RawMutex, B, C, Pin = DummyAlertPin, Cmd = (
     alert_pin: Option<Pin>,
     last_reported_voltage: Option<u32>,
     last_reported_state: Option<BatteryState>,
+    active_wake_locks: u32,
 }
 
 impl<
@@ -75,6 +76,7 @@ impl<
             alert_pin: None,
             last_reported_voltage: None,
             last_reported_state: None,
+            active_wake_locks: 0,
         }
     }
 
@@ -94,6 +96,7 @@ impl<
             alert_pin: None,
             last_reported_voltage: None,
             last_reported_state: None,
+            active_wake_locks: 0,
         }
     }
 }
@@ -126,6 +129,7 @@ where
             alert_pin: Some(alert_pin),
             last_reported_voltage: None,
             last_reported_state: None,
+            active_wake_locks: 0,
         }
     }
 
@@ -183,7 +187,12 @@ where
                     BatteryState::Low => model::types::BatteryState::Low,
                 }
             };
-            let status = model::types::BatteryStatus::VolTempState(voltage, 25000, battery_state);
+            let status = model::types::BatteryStatus::VolTempState(
+                voltage,
+                25000,
+                battery_state,
+                self.active_wake_locks,
+            );
             client.report(status);
             client.report(model::types::FuelGaugeTelemetry::VolSoc(voltage, soc));
             client.report(charger_state);
@@ -254,6 +263,9 @@ where
                             let err = e.to_peripheral_error();
                             telemetry_client.report_error(err);
                         }
+                    }
+                    BatteryCommand::UpdateWakeLocks(mask) => {
+                        self.active_wake_locks = mask;
                     }
                 },
                 // Fuel gauge alert interrupt triggered
@@ -327,4 +339,6 @@ impl<'a, M: RawMutex, B: FuelGauge, C: model::interfaces::ChargeStatus, Pin, Cmd
 pub enum BatteryCommand {
     /// Force battery status query and print telemetry logs
     CheckStatus,
+    /// Update the current active wake locks bitmask
+    UpdateWakeLocks(u32),
 }

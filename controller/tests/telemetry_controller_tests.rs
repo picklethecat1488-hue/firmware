@@ -86,6 +86,7 @@ fn test_telemetry_controller_ring_buffer() {
                     3000 + i as u32,
                     25,
                     BatteryState::Ok,
+                    0,
                 ));
                 assert!(telemetry.push_record(record).await.is_ok());
             }
@@ -102,10 +103,16 @@ fn test_telemetry_controller_ring_buffer() {
                     last_ts = ts;
 
                     match record {
-                        TelemetryRecord::Battery(BatteryStatus::VolTempState(vol, temp, state)) => {
+                        TelemetryRecord::Battery(BatteryStatus::VolTempState(
+                            vol,
+                            temp,
+                            state,
+                            active_locks,
+                        )) => {
                             assert_eq!(vol, 3000 + ts as u32);
                             assert_eq!(temp, 25);
                             assert_eq!(state, BatteryState::Ok);
+                            assert_eq!(active_locks, 0);
                         }
                         _ => panic!("Expected Battery status"),
                     }
@@ -156,6 +163,7 @@ fn test_telemetry_controller_chunked_boundary() {
                     4000 + i as u32,
                     30,
                     BatteryState::Ok,
+                    0,
                 ));
                 assert!(telemetry.push_record(record).await.is_ok());
             }
@@ -173,10 +181,16 @@ fn test_telemetry_controller_chunked_boundary() {
                     last_ts = ts;
 
                     match record {
-                        TelemetryRecord::Battery(BatteryStatus::VolTempState(vol, temp, state)) => {
+                        TelemetryRecord::Battery(BatteryStatus::VolTempState(
+                            vol,
+                            temp,
+                            state,
+                            active_locks,
+                        )) => {
                             assert_eq!(vol, 4000 + ts as u32);
                             assert_eq!(temp, 30);
                             assert_eq!(state, BatteryState::Ok);
+                            assert_eq!(active_locks, 0);
                         }
                         _ => panic!("Expected Battery status"),
                     }
@@ -205,11 +219,13 @@ fn test_telemetry_counters() {
         3000,
         25,
         BatteryState::Ok,
+        0,
     )));
     counters.record(&TelemetryRecord::Battery(BatteryStatus::VolTempState(
         3100,
         25,
         BatteryState::Ok,
+        0,
     )));
 
     assert_eq!(counters.total(), 3);

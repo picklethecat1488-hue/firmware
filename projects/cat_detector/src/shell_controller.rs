@@ -298,14 +298,7 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                     })
                     .map_err(|_| "One or more proximity sensors failed to read")
             }
-            CliCommand::Wake => self
-                .system_tx
-                .try_send(SystemCommand::Wake)
-                .map_err(|_| "Failed to send System Wake command"),
-            CliCommand::Sleep => self
-                .system_tx
-                .try_send(SystemCommand::Sleep)
-                .map_err(|_| "Failed to send System Sleep command"),
+
             CliCommand::Activity => self
                 .system_tx
                 .try_send(SystemCommand::ActivityDetected)

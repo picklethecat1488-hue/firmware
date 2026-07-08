@@ -5,7 +5,9 @@
 use crate::types::{BatteryThresholds, BatteryTransitionResult, BatteryUpdateInfo};
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
-use model::types::{BootReason, Gesture, SystemLedState, SystemStatus, TelemetryRecord};
+use model::types::{
+    BootReason, Gesture, SystemCommand, SystemLedState, SystemStatus, TelemetryRecord,
+};
 
 /// Pure transition function for waking the system.
 /// Returns the next status if the transition is valid.
@@ -19,7 +21,6 @@ pub fn transition_wake(
         && !thermal_critical
         && current_status != SystemStatus::Active
         && !boot_power_down
-        && current_status != SystemStatus::PowerDown
     {
         Some(SystemStatus::Active)
     } else {
@@ -35,7 +36,11 @@ pub fn transition_sleep(
     inactivity_timeout_ms: u32,
     battery_critical: bool,
     thermal_critical: bool,
+    wake_locks: u32,
 ) -> Option<SystemStatus> {
+    if current_status == SystemStatus::Active && wake_locks != 0 {
+        return None;
+    }
     let can_sleep =
         time_in_active_ms >= inactivity_timeout_ms || battery_critical || thermal_critical;
     if can_sleep
@@ -50,7 +55,13 @@ pub fn transition_sleep(
 
 /// Pure transition function for powering down the system.
 /// Returns the next status if the transition is valid.
-pub fn transition_power_down(current_status: SystemStatus) -> Option<SystemStatus> {
+pub fn transition_power_down(
+    current_status: SystemStatus,
+    wake_locks: u32,
+) -> Option<SystemStatus> {
+    if current_status == SystemStatus::Active && wake_locks != 0 {
+        return None;
+    }
     if current_status != SystemStatus::PowerDown {
         Some(SystemStatus::PowerDown)
     } else {
@@ -115,7 +126,10 @@ pub struct SystemStateManager<MutexRaw: RawMutex + 'static, const N: usize> {
     low_soc_threshold: u8,
     mid_soc_threshold: u8,
     high_soc_threshold: u8,
+    wake_locks: u32,
     telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, N>,
+    system_tx: Option<Sender<'static, MutexRaw, SystemCommand, 4>>,
+    first_battery_update: bool,
 }
 
 impl<MutexRaw: RawMutex + 'static, const N: usize> core::fmt::Debug
@@ -138,6 +152,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> core::fmt::Debug
             .field("low_soc_threshold", &self.low_soc_threshold)
             .field("mid_soc_threshold", &self.mid_soc_threshold)
             .field("high_soc_threshold", &self.high_soc_threshold)
+            .field("wake_locks", &self.wake_locks)
             .finish()
     }
 }
@@ -160,7 +175,10 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> Clone for SystemStateManager<
             low_soc_threshold: self.low_soc_threshold,
             mid_soc_threshold: self.mid_soc_threshold,
             high_soc_threshold: self.high_soc_threshold,
+            wake_locks: self.wake_locks,
             telemetry_tx: self.telemetry_tx,
+            system_tx: self.system_tx,
+            first_battery_update: self.first_battery_update,
         }
     }
 }
@@ -185,13 +203,45 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> PartialEq for SystemStateMana
             && self.low_soc_threshold == other.low_soc_threshold
             && self.mid_soc_threshold == other.mid_soc_threshold
             && self.high_soc_threshold == other.high_soc_threshold
+            && self.wake_locks == other.wake_locks
+            && self.first_battery_update == other.first_battery_update
     }
 }
 
 impl<MutexRaw: RawMutex + 'static, const N: usize> Eq for SystemStateManager<MutexRaw, N> {}
 
+/// Actions to be taken in response to a battery status update.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+pub enum BatteryUpdateAction {
+    /// Go to power down mode immediately.
+    GoToPowerDown,
+    /// Clear the boot trap.
+    ClearBootTrap,
+    /// Report the state of charge / update LED.
+    ReportSoC,
+    /// No action needed.
+    NoAction,
+}
+
+/// Errors that can occur during system state transitions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransitionError {
+    /// Transition blocked because wake locks are still held.
+    WakeLocksHeld(u32),
+    /// Transition blocked because initial boot power down trap is active.
+    BootPowerDownActive,
+    /// Transition blocked because battery level is critical.
+    BatteryCritical,
+    /// Transition blocked because temperature is critical.
+    ThermalCritical,
+    /// State transition is not allowed under the current system state.
+    InvalidTransition,
+}
+
 impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, N> {
     /// Creates a new SystemStateManager.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         critical_soc_threshold: u8,
         soc_hysteresis: u8,
@@ -199,6 +249,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
         mid_soc_threshold: u8,
         high_soc_threshold: u8,
         telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, N>,
+        system_tx: Option<Sender<'static, MutexRaw, SystemCommand, 4>>,
         boot_reason: BootReason,
     ) -> Self {
         let _ = telemetry_tx.try_send(TelemetryRecord::Boot(boot_reason));
@@ -218,7 +269,10 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
             low_soc_threshold,
             mid_soc_threshold,
             high_soc_threshold,
+            wake_locks: 0,
             telemetry_tx,
+            system_tx,
+            first_battery_update: true,
         }
     }
 
@@ -238,9 +292,114 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
     }
 
     /// Sets the current system status.
-    pub fn set_status(&mut self, status: SystemStatus) {
-        self.status = status;
-        self.log_telemetry(TelemetryRecord::System(status));
+    pub fn set_status(&mut self, status: SystemStatus) -> Result<(), TransitionError> {
+        let prev_status = self.status;
+        if prev_status != status {
+            // Validate using pure transition functions
+            match status {
+                SystemStatus::Active => {
+                    if transition_wake(
+                        prev_status,
+                        self.battery_critical,
+                        self.thermal_critical,
+                        self.boot_power_down,
+                    )
+                    .is_none()
+                    {
+                        if self.boot_power_down {
+                            return Err(TransitionError::BootPowerDownActive);
+                        } else if self.battery_critical {
+                            return Err(TransitionError::BatteryCritical);
+                        } else if self.thermal_critical {
+                            return Err(TransitionError::ThermalCritical);
+                        } else {
+                            return Err(TransitionError::InvalidTransition);
+                        }
+                    }
+                }
+                SystemStatus::Sleep => {
+                    if transition_sleep(
+                        prev_status,
+                        1, // Force can_sleep logic to true since caller requests it
+                        0,
+                        self.battery_critical,
+                        self.thermal_critical,
+                        self.wake_locks,
+                    )
+                    .is_none()
+                    {
+                        if prev_status == SystemStatus::Active && self.wake_locks != 0 {
+                            defmt::warn!(
+                                "SystemStateManager: Cannot transition away from Active state while holding wake locks ({:#X})!",
+                                self.wake_locks
+                            );
+                            return Err(TransitionError::WakeLocksHeld(self.wake_locks));
+                        }
+                        return Err(TransitionError::InvalidTransition);
+                    }
+                }
+                SystemStatus::PowerDown => {
+                    if transition_power_down(prev_status, self.wake_locks).is_none() {
+                        if prev_status == SystemStatus::Active && self.wake_locks != 0 {
+                            defmt::warn!(
+                                "SystemStateManager: Cannot transition away from Active state while holding wake locks ({:#X})!",
+                                self.wake_locks
+                            );
+                            return Err(TransitionError::WakeLocksHeld(self.wake_locks));
+                        }
+                        return Err(TransitionError::InvalidTransition);
+                    }
+                }
+            }
+            self.status = status;
+            self.log_telemetry(TelemetryRecord::System(status));
+            if let Some(ref tx) = self.system_tx {
+                let _ = tx.try_send(SystemCommand::StateChanged {
+                    from: prev_status,
+                    to: status,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Acquires a wake lock, resetting the inactivity timer to 0.
+    pub fn acquire_wake_lock(&mut self, client_id: Option<u32>) {
+        let id = client_id.unwrap_or(0);
+        if id >= 32 {
+            panic!("WakeLock: client_id {} out of bounds!", id);
+        }
+        let mask = 1u32 << id;
+        if (self.wake_locks & mask) != 0 {
+            defmt::warn!("WakeLock: client {} double-acquired!", id);
+        } else {
+            self.wake_locks |= mask;
+        }
+        self.inactive_ms = 0;
+    }
+
+    /// Releases a wake lock.
+    pub fn release_wake_lock(&mut self, client_id: Option<u32>) {
+        let id = client_id.unwrap_or(0);
+        if id >= 32 {
+            panic!("WakeLock: client_id {} out of bounds!", id);
+        }
+        let mask = 1u32 << id;
+        if (self.wake_locks & mask) == 0 {
+            defmt::warn!("WakeLock: client {} double-released!", id);
+        } else {
+            self.wake_locks &= !mask;
+        }
+    }
+
+    /// Returns the number of active wake locks.
+    pub const fn wake_lock_count(&self) -> u32 {
+        self.wake_locks.count_ones()
+    }
+
+    /// Returns the raw active wake locks bitmask.
+    pub const fn wake_locks(&self) -> u32 {
+        self.wake_locks
     }
 
     /// Returns the inactivity timer in seconds.
@@ -349,13 +508,17 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
     }
 
     /// Handles battery status updates and updates the internal critical flag.
-    /// Returns true if battery entered or exited critical state, or charging status changed.
+    /// Returns the action to take in response to the update.
     pub fn update_battery_status(
         &mut self,
         state_of_charge: u8,
         charging: bool,
         is_fault: bool,
-    ) -> bool {
+    ) -> BatteryUpdateAction {
+        let old_led_state = self.get_soc_led_state();
+        let old_charger_connected = self.charger_connected;
+        let old_critical = self.battery_critical;
+
         self.charger_connected = charging;
         self.latest_state_of_charge = state_of_charge;
 
@@ -377,10 +540,39 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
             thresholds,
         );
 
-        let old_critical = self.battery_critical;
         self.battery_critical = res.new_battery_critical;
 
-        old_critical != self.battery_critical
+        let is_first = self.first_battery_update;
+        self.first_battery_update = false;
+
+        let changed = old_critical != self.battery_critical
+            || old_charger_connected != self.charger_connected
+            || old_led_state != self.get_soc_led_state()
+            || is_first;
+
+        if self.battery_critical {
+            if self.status != SystemStatus::PowerDown {
+                BatteryUpdateAction::GoToPowerDown
+            } else if changed {
+                BatteryUpdateAction::ReportSoC
+            } else {
+                BatteryUpdateAction::NoAction
+            }
+        } else if self.status == SystemStatus::PowerDown {
+            if self.boot_power_down && !self.charger_connected {
+                BatteryUpdateAction::ClearBootTrap
+            } else if changed {
+                BatteryUpdateAction::ReportSoC
+            } else {
+                BatteryUpdateAction::NoAction
+            }
+        } else if self.charger_connected {
+            BatteryUpdateAction::GoToPowerDown
+        } else if self.status == SystemStatus::Active && changed {
+            BatteryUpdateAction::ReportSoC
+        } else {
+            BatteryUpdateAction::NoAction
+        }
     }
 
     /// Process a tick of `ms` milliseconds.
@@ -392,6 +584,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
                 self.tick_ms_accumulator =
                     self.tick_ms_accumulator.saturating_sub(self.interval_ms);
                 self.active_ms = self.active_ms.saturating_add(self.interval_ms);
+                if self.wake_locks > 0 {
+                    self.inactive_ms = 0;
+                } else {
+                    self.inactive_ms = self.inactive_ms.saturating_add(self.interval_ms);
+                }
                 return true;
             }
         } else {
@@ -405,5 +602,26 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
         self.boot_power_down = false;
         self.inactive_ms = 0;
         self.active_ms = 0;
+        self.wake_locks = 0;
+    }
+
+    /// Clears all active wake locks.
+    pub fn clear_wake_locks(&mut self) {
+        self.wake_locks = 0;
     }
 }
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+#[defmt::global_logger]
+struct HostLogger;
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+unsafe impl defmt::Logger for HostLogger {
+    fn acquire() {}
+    unsafe fn write(_bytes: &[u8]) {}
+    unsafe fn flush() {}
+    unsafe fn release() {}
+}
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+defmt::timestamp!("{=u64}", 0);

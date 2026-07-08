@@ -15,14 +15,14 @@ macro_rules! dummy_debug {
 #[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum BatteryStatus {
-    /// Voltage (mV), temperature (mC), and battery state.
+    /// Voltage (mV), temperature (mC), battery state, and active wake locks mask.
     #[n(0)]
-    VolTempState(#[n(0)] u32, #[n(1)] i32, #[n(2)] BatteryState),
+    VolTempState(#[n(0)] u32, #[n(1)] i32, #[n(2)] BatteryState, #[n(3)] u32),
 }
 
 impl Default for BatteryStatus {
     fn default() -> Self {
-        Self::VolTempState(0, 0, BatteryState::default())
+        Self::VolTempState(0, 0, BatteryState::default(), 0)
     }
 }
 
@@ -323,5 +323,33 @@ dummy_debug!(ChargeState);
 dummy_debug!(Direction);
 dummy_debug!(PeripheralError);
 dummy_debug!(BootReason);
+
+/// One-way commands to control the global system state and notify it of events.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum SystemCommand {
+    /// Notify system of activity, resetting inactivity timer and waking up if asleep.
+    ActivityDetected,
+    /// Thermal safety or motor stall alert occurred.
+    AlertTriggered,
+    /// Battery level updates from the fuel gauge.
+    BatteryUpdate {
+        /// Battery capacity percentage (0-100).
+        state_of_charge: u8,
+        /// Charger state.
+        charger_state: ChargeState,
+    },
+    /// High-level gesture detected.
+    Gesture(Gesture),
+    /// The system status/power state changed.
+    StateChanged {
+        /// The previous system status.
+        from: SystemStatus,
+        /// The new system status.
+        to: SystemStatus,
+    },
+}
+
+dummy_debug!(SystemCommand);
 
 pub use crate::telemetry::TelemetryRecord;

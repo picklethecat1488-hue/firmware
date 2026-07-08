@@ -67,17 +67,17 @@ fn test_heartbeat_monitor_flow() {
         assert!(!heartbeat_monitor::MONITOR_STUCK_DETECTED.load(Ordering::Acquire));
         assert!(!CALLBACK_RUN.load(Ordering::Acquire));
 
-        // Wait for the background monitor thread to detect the stall (timeout = 200ms)
-        let mut detected = false;
+        // Wait for the background monitor thread to detect the stall and run the callback (timeout = 200ms)
+        let mut callback_ran = false;
         for _ in 0..50 {
-            if heartbeat_monitor::MONITOR_STUCK_DETECTED.load(Ordering::Acquire) {
-                detected = true;
+            if CALLBACK_RUN.load(Ordering::Acquire) {
+                callback_ran = true;
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
 
-        assert!(detected, "Stuck task was not detected by the monitor!");
-        assert!(CALLBACK_RUN.load(Ordering::Acquire));
+        assert!(callback_ran, "Stuck task callback did not run!");
+        assert!(heartbeat_monitor::MONITOR_STUCK_DETECTED.load(Ordering::Acquire));
     }
 }
