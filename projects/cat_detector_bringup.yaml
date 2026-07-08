@@ -73,16 +73,15 @@ steps:
   - id: "8"
     name: Verify System Power States
     type: interactive
-    description: Verify manual low-power Sleep and Active mode transitions.
+    description: Verify low-power Sleep and Active mode transitions.
     procedure: |
-      1. Run 'sleep' to enter low-power sleep state.
-      2. Run 'wake' to return to active state.
-      3. Run 'activity' to simulate wake-up event.
+      1. Let the system sit idle for 30 seconds until it automatically transitions to low-power Sleep state.
+      2. Run 'activity' to simulate a wake-up event and verify the system returns to Active state.
 
   - id: "9"
     name: Verify ToF Proximity Interrupts
     type: manual
-    description: Put system to sleep, and pull one of ToF interrupt lines (GP7, GP8, GP9) to ground.
+    description: Let system enter Sleep mode automatically (after 30 seconds of inactivity), then pull one of ToF interrupt lines (GP7, GP8, GP9) to ground.
     expected: System wakes up to Active state, starts motor and LEDs.
 
   - id: "10"

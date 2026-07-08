@@ -285,6 +285,9 @@ cargo build -p host_cli --release
     ```
     This lets you stream system logs and interact with the CLI console concurrently while debugging, setting breakpoints, and stepping through code in VS Code.
 
+    > [!NOTE]
+    > If the debugger or connection drops, `host_cli` automatically attempts to reconnect in the background. On reconnection, it will attach directly to the running state without resetting the target CPU.
+
 #### 4. Flashing the Interactive Bringup Shell
 To build and flash the interactive bringup shell onto the target:
 ```bash
