@@ -50,4 +50,17 @@ impl PeriodicTimer {
         self.last_tick = now;
         elapsed.as_millis() as u32
     }
+
+    /// If the interval has elapsed, resets the timer to now and returns the elapsed milliseconds.
+    /// Otherwise, returns None.
+    pub fn expired_and_reset(&mut self) -> Option<u32> {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.last_tick);
+        if elapsed >= self.interval {
+            self.last_tick = now;
+            Some(elapsed.as_millis() as u32)
+        } else {
+            None
+        }
+    }
 }
