@@ -83,8 +83,8 @@ fn test_system_integration_flow() {
         let mut system_ctrl = SystemController::new(channels, BootReason::Unknown);
 
         // Set system controller thresholds
-        system_ctrl.set_critical_soc_threshold(10);
-        system_ctrl.set_soc_hysteresis(2);
+        system_ctrl.battery_manager.set_critical_soc_threshold(10);
+        system_ctrl.battery_manager.set_soc_hysteresis(2);
 
         let mut battery_ctrl = BatteryController::new_with_system_and_alert(
             &mock_battery,
@@ -149,7 +149,7 @@ fn test_system_integration_flow() {
         };
 
         // Verify initial state is PowerDown
-        assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
+        assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
 
         // 1. Simulate battery status report: SoC = 85% -> triggers system wake-up to Active
         {
@@ -166,7 +166,7 @@ fn test_system_integration_flow() {
         let cmd = SYSTEM_CHANNEL.receive().await;
         process_system(&mut system_ctrl, cmd);
         drain_telemetry();
-        assert_eq!(system_ctrl.status(), SystemStatus::Active);
+        assert_eq!(system_ctrl.power_manager.status(), SystemStatus::Active);
 
         // Check that commands were sent to LED channel
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidGreen));
@@ -208,7 +208,7 @@ fn test_system_integration_flow() {
         drain_telemetry();
 
         // Should transition to PowerDown, stop motor, and blink red
-        assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
+        assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
         assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::Stop));
         assert_eq!(
             LED_CHANNEL.try_receive(),
@@ -228,7 +228,7 @@ fn test_system_integration_flow() {
         process_system(&mut system_ctrl, cmd);
         drain_telemetry();
         // Should remain critical (PowerDown) because 11 < 10 + 2 (12)
-        assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
+        assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
         assert!(LED_CHANNEL.try_receive().is_err());
 
         // Now set SoC to 13% and state to Charging (should enter PowerDown and show Orange)
@@ -238,7 +238,7 @@ fn test_system_integration_flow() {
         };
         process_system(&mut system_ctrl, cmd);
         drain_telemetry();
-        assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
+        assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidOrange));
 
         // Disconnect charger and set SoC to 50% (should remain in PowerDown and set LED Off)
@@ -248,7 +248,7 @@ fn test_system_integration_flow() {
         };
         process_system(&mut system_ctrl, cmd);
         drain_telemetry();
-        assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
+        assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
 
         // Unlock with 2F long press gesture
@@ -264,7 +264,7 @@ fn test_system_integration_flow() {
             process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
         drain_telemetry();
-        assert_eq!(system_ctrl.status(), SystemStatus::Active);
+        assert_eq!(system_ctrl.power_manager.status(), SystemStatus::Active);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
 
         // Release buttons
@@ -297,7 +297,7 @@ fn test_system_integration_flow() {
         drain_telemetry();
 
         // Critical temperature triggers safety shutdown -> Sleep state
-        assert_eq!(system_ctrl.status(), SystemStatus::Sleep);
+        assert_eq!(system_ctrl.power_manager.status(), SystemStatus::Sleep);
         assert_eq!(
             LED_CHANNEL.try_receive(),
             Ok(SystemLedState::BlinksRedFourTimes)
@@ -306,13 +306,13 @@ fn test_system_integration_flow() {
         gesture_detector.reset();
 
         // 6. Simulate Sleep -> Active -> PowerDown -> Active (Charging) -> Sleep transition
-        // Simulate cool down
-        system_ctrl.set_thermal_critical(false);
+        // 3. Simulated Proximity detection to exit Sleep
+        system_ctrl.thermal_manager.set_thermal_critical(false);
 
         // Wake up from Sleep to Active
         process_system(&mut system_ctrl, SystemCommand::ActivityDetected);
         drain_telemetry();
-        assert_eq!(system_ctrl.status(), SystemStatus::Active);
+        assert_eq!(system_ctrl.power_manager.status(), SystemStatus::Active);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
 
         // Drain motor channel for a clean state before simulated long press
@@ -331,7 +331,7 @@ fn test_system_integration_flow() {
             process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
         drain_telemetry();
-        assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
+        assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
         assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::Stop));
         gesture_detector.reset();
@@ -343,7 +343,7 @@ fn test_system_integration_flow() {
         };
         process_system(&mut system_ctrl, cmd);
         drain_telemetry();
-        assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
+        assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
 
         // Disconnect charger (should still remain in PowerDown and LED off)
@@ -353,7 +353,7 @@ fn test_system_integration_flow() {
         };
         process_system(&mut system_ctrl, cmd);
         drain_telemetry();
-        assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
+        assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
 
         // Unlock with 2F long press gesture after charger is disconnected
@@ -369,7 +369,7 @@ fn test_system_integration_flow() {
             process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
         drain_telemetry();
-        assert_eq!(system_ctrl.status(), SystemStatus::Active);
+        assert_eq!(system_ctrl.power_manager.status(), SystemStatus::Active);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
 
         // Release buttons and simulate cat walking away
@@ -391,7 +391,7 @@ fn test_system_integration_flow() {
             tick_system(&mut system_ctrl, 1000);
             drain_telemetry();
         }
-        assert_eq!(system_ctrl.status(), SystemStatus::Sleep);
+        assert_eq!(system_ctrl.power_manager.status(), SystemStatus::Sleep);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidBlue));
         assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::Stop));
 

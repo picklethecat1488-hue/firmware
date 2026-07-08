@@ -48,7 +48,7 @@ fn test_system_controller_flow() {
     };
     let mut controller = SystemController::new(channels, BootReason::Unknown);
 
-    assert_eq!(controller.status(), SystemStatus::PowerDown);
+    assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
 
     // Send a battery update showing battery is ok -> transitions to Active
     controller.handle_command(SystemCommand::BatteryUpdate {
@@ -56,7 +56,7 @@ fn test_system_controller_flow() {
         charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     process!(controller);
-    assert_eq!(controller.status(), SystemStatus::Active);
+    assert_eq!(controller.power_manager.status(), SystemStatus::Active);
     let _ = LED_CHANNEL.try_receive().unwrap(); // Consume initial SolidGreen
     let _ = MOTOR_CHANNEL.try_receive().unwrap(); // Consume initial SetSpeed(100)
 
@@ -65,7 +65,7 @@ fn test_system_controller_flow() {
         controller.tick_ms(1000);
         process!(controller);
     }
-    assert_eq!(controller.status(), SystemStatus::Active);
+    assert_eq!(controller.power_manager.status(), SystemStatus::Active);
 
     // Register activity, resets timer
     controller.handle_command(SystemCommand::ActivityDetected);
@@ -74,12 +74,12 @@ fn test_system_controller_flow() {
         controller.tick_ms(1000);
         process!(controller);
     }
-    assert_eq!(controller.status(), SystemStatus::Active);
+    assert_eq!(controller.power_manager.status(), SystemStatus::Active);
 
     // One more tick reaches 30 seconds -> transitions to Sleep
     controller.tick_ms(1000);
     process!(controller);
-    assert_eq!(controller.status(), SystemStatus::Sleep);
+    assert_eq!(controller.power_manager.status(), SystemStatus::Sleep);
 
     // Verify LED was updated to Sleep blue
     let led_state = LED_CHANNEL.try_receive().unwrap();
@@ -92,7 +92,7 @@ fn test_system_controller_flow() {
     // Wake up through activity
     controller.handle_command(SystemCommand::ActivityDetected);
     process!(controller);
-    assert_eq!(controller.status(), SystemStatus::Active);
+    assert_eq!(controller.power_manager.status(), SystemStatus::Active);
 
     // Verify LED was updated to Active green
     let led_state = LED_CHANNEL.try_receive().unwrap();
@@ -108,7 +108,7 @@ fn test_system_controller_flow() {
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::BlinksRedFourTimes);
 
-    assert_eq!(controller.status(), SystemStatus::Sleep);
+    assert_eq!(controller.power_manager.status(), SystemStatus::Sleep);
 
     // Clear channel receivers for clean state
     while MOTOR_CHANNEL.try_receive().is_ok() {}
@@ -128,7 +128,7 @@ fn test_system_controller_flow() {
     };
     let mut controller = SystemController::new(channels2, BootReason::Unknown);
 
-    assert_eq!(controller.status(), SystemStatus::PowerDown);
+    assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
 
     // Send a battery update showing battery is ok -> transitions to Active
     controller.handle_command(SystemCommand::BatteryUpdate {
@@ -136,7 +136,7 @@ fn test_system_controller_flow() {
         charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     process!(controller);
-    assert_eq!(controller.status(), SystemStatus::Active);
+    assert_eq!(controller.power_manager.status(), SystemStatus::Active);
     let _ = LED_CHANNEL.try_receive().unwrap(); // Consume initial SolidGreen
     let _ = MOTOR_CHANNEL.try_receive().unwrap(); // Consume initial SetSpeed(100)
 
@@ -145,14 +145,14 @@ fn test_system_controller_flow() {
         controller.tick_ms(1000);
         process!(controller);
     }
-    assert_eq!(controller.status(), SystemStatus::Sleep);
+    assert_eq!(controller.power_manager.status(), SystemStatus::Sleep);
     let _ = LED_CHANNEL.try_receive().unwrap(); // consume Sleep LED command (SolidBlue)
     let _ = MOTOR_CHANNEL.try_receive().unwrap(); // consume stop motor command
 
     // Wake up via Activity
     controller.handle_command(SystemCommand::ActivityDetected);
     process!(controller);
-    assert_eq!(controller.status(), SystemStatus::Active);
+    assert_eq!(controller.power_manager.status(), SystemStatus::Active);
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::SolidGreen); // consume Active green LED command
     let _ = MOTOR_CHANNEL.try_receive().unwrap(); // consume SetSpeed(100)
@@ -163,7 +163,7 @@ fn test_system_controller_flow() {
         process!(controller);
     }
     // Now it should be allowed to sleep, and does so automatically after 30s inactivity
-    assert_eq!(controller.status(), SystemStatus::Sleep);
+    assert_eq!(controller.power_manager.status(), SystemStatus::Sleep);
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::SolidBlue);
 
@@ -174,7 +174,7 @@ fn test_system_controller_flow() {
     controller.handle_command(SystemCommand::Gesture(Gesture::ProximityDetected));
     process!(controller);
 
-    assert_eq!(controller.status(), SystemStatus::Active);
+    assert_eq!(controller.power_manager.status(), SystemStatus::Active);
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::SolidGreen);
 
@@ -188,7 +188,7 @@ fn test_system_controller_flow() {
     });
     process!(controller);
     // System enters PowerDown state because battery became critical
-    assert_eq!(controller.status(), SystemStatus::PowerDown);
+    assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
     // LED should blink once per 30 seconds
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::BlinksRedOncePerThirtySeconds);
@@ -237,7 +237,7 @@ fn test_power_down_and_gesture_detection() {
     let mut controller = SystemController::new(channels3, BootReason::Unknown);
 
     // 1. Verify booting into PowerDown
-    assert_eq!(controller.status(), SystemStatus::PowerDown);
+    assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
 
     // 2. Stay in PowerDown while battery level is critical
     controller.handle_command(SystemCommand::BatteryUpdate {
@@ -245,7 +245,7 @@ fn test_power_down_and_gesture_detection() {
         charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     process!(controller);
-    assert_eq!(controller.status(), SystemStatus::PowerDown);
+    assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::BlinksRedOncePerThirtySeconds);
 
@@ -255,7 +255,7 @@ fn test_power_down_and_gesture_detection() {
         charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     process!(controller);
-    assert_eq!(controller.status(), SystemStatus::Active);
+    assert_eq!(controller.power_manager.status(), SystemStatus::Active);
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::SolidGreen);
     let _ = MOTOR_CHANNEL.try_receive().unwrap(); // consume SetSpeed(100)
@@ -267,7 +267,7 @@ fn test_power_down_and_gesture_detection() {
 
     controller.handle_command(SystemCommand::Gesture(Gesture::DualLongPress));
     process!(controller);
-    assert_eq!(controller.status(), SystemStatus::PowerDown);
+    assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
 
     // Verify LED is turned Off and motor is stopped/locked
     let led_state = LED_CHANNEL.try_receive().unwrap();
@@ -281,7 +281,7 @@ fn test_power_down_and_gesture_detection() {
         charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     process!(controller);
-    assert_eq!(controller.status(), SystemStatus::PowerDown);
+    assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
     assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
 
     // 6. Connecting the charger (charging = true) must trigger transition/remain in PowerDown (and show SoC LED)
@@ -290,13 +290,13 @@ fn test_power_down_and_gesture_detection() {
         charger_state: model::types::ChargeState::Charging,
     });
     process!(controller);
-    assert_eq!(controller.status(), SystemStatus::PowerDown);
+    assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
     assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
 
     // 7. Trying to unlock with 2F long press while charger is connected should be ignored
     controller.handle_command(SystemCommand::Gesture(Gesture::DualLongPress));
     process!(controller);
-    assert_eq!(controller.status(), SystemStatus::PowerDown);
+    assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
 
     // 8. Disconnect charger (should still remain in PowerDown and set LED Off)
     controller.handle_command(SystemCommand::BatteryUpdate {
@@ -304,13 +304,13 @@ fn test_power_down_and_gesture_detection() {
         charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
     });
     process!(controller);
-    assert_eq!(controller.status(), SystemStatus::PowerDown);
+    assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
     assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
 
     // 9. Unlock with 2F long press gesture after charger is disconnected
     controller.handle_command(SystemCommand::Gesture(Gesture::DualLongPress));
     process!(controller);
-    assert_eq!(controller.status(), SystemStatus::Active);
+    assert_eq!(controller.power_manager.status(), SystemStatus::Active);
 
     // Verify LED is SolidYellow (SoC = 50% is between 21% and 79%)
     let led_state = LED_CHANNEL.try_receive().unwrap();
@@ -351,7 +351,7 @@ fn test_invalid_critical_soc_threshold_recovery() {
     let mut controller = SystemController::new(channels4, BootReason::Unknown);
 
     // Set critical threshold to a value greater than LOW_BATTERY_SOC_THRESHOLD (20)
-    controller.set_critical_soc_threshold(25);
+    controller.battery_manager.set_critical_soc_threshold(25);
 
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 50,
@@ -359,7 +359,7 @@ fn test_invalid_critical_soc_threshold_recovery() {
     });
     process!(controller);
     assert_eq!(
-        controller.critical_soc_threshold(),
+        controller.battery_manager.critical_soc_threshold(),
         LOW_BATTERY_SOC_THRESHOLD - 1
     )
 }
