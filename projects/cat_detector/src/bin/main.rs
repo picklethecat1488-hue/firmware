@@ -447,13 +447,13 @@ async fn main(spawner: Spawner) {
     let client =
         controller::filesystem_controller::FilesystemClient::new(app::FILESYSTEM_CHANNEL.sender());
     let telemetry_ctrl =
-        TelemetryController::<45, { 12 + 45 * 20 + 128 }>::new(client, app::system_time);
+        TelemetryController::<1024, { 12 + 1024 * 20 + 128 }>::new(client, app::system_time);
     app::run_telemetry_task!(
         spawner,
         telemetry_task,
         telemetry_ctrl,
         app::TELEMETRY_CHANNEL.receiver(),
-        45,
+        1024,
         { controller::telemetry_controller::CHANNEL_CAPACITY }
     );
 }
