@@ -66,8 +66,10 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 /// Statically allocated mutex holding the physical MAX17048 fuel gauge on target.
 static SHARED_BATTERY: Mutex<
     CriticalSectionRawMutex,
-    peripherals::max17048::Max17048<app::SharedI2cWrapper>,
-> = Mutex::new(peripherals::max17048::Max17048::new(app::SharedI2cWrapper));
+    peripherals::max17048::Max17048<firmware_lib::i2c::SharedI2cWrapper<'static>>,
+> = Mutex::new(peripherals::max17048::Max17048::new(
+    firmware_lib::i2c::SharedI2cWrapper::new(&app::SHARED_I2C),
+));
 
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 #[allow(dead_code)]
@@ -194,7 +196,9 @@ async fn main(spawner: Spawner) {
 
     #[cfg(all(target_arch = "arm", target_os = "none"))]
     let current_sensor = {
-        let mut sensor = peripherals::ina219::Ina219::new(app::SharedI2cWrapper);
+        let mut sensor = peripherals::ina219::Ina219::new(
+            firmware_lib::i2c::SharedI2cWrapper::new(&app::SHARED_I2C),
+        );
         let _ = sensor.init();
         sensor
     };
@@ -382,7 +386,7 @@ async fn main(spawner: Spawner) {
         power_ctrl,
         app::BATTERY_CHANNEL.receiver(),
         app::TELEMETRY_CHANNEL.sender(),
-        peripherals::max17048::Max17048<app::SharedI2cWrapper>,
+        peripherals::max17048::Max17048<firmware_lib::i2c::SharedI2cWrapper<'static>>,
         SafeBq25185,
         AlertPinWrapper,
         app::system_controller::SystemCommand
@@ -409,7 +413,7 @@ async fn main(spawner: Spawner) {
         app::MOTOR_CHANNEL.receiver(),
         app::TELEMETRY_CHANNEL.sender(),
         GpioMotor<embassy_rp::gpio::Flex<'static>>,
-        peripherals::ina219::Ina219<app::SharedI2cWrapper>
+        peripherals::ina219::Ina219<firmware_lib::i2c::SharedI2cWrapper<'static>>
     );
 
     #[cfg(not(all(target_arch = "arm", target_os = "none")))]

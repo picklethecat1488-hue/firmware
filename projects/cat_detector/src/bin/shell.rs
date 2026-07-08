@@ -31,7 +31,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 use core::fmt::Write as FmtWrite;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-use app::CliCommand;
+use app::shell_controller::CliCommand;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 static mut BOARD_I2C: Option<

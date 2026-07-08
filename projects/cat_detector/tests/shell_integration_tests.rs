@@ -1,6 +1,6 @@
+use app::shell_controller::CliCommand;
 use app::shell_controller::ShellController;
 use app::system_controller::SystemCommand;
-use app::CliCommand;
 use cat_detector as app;
 use controller::motor_controller::MotorCommand;
 use controller::{

@@ -18,6 +18,9 @@ pub mod defmt_logger;
 /// Shared system state and power management utilities.
 pub mod system;
 
+/// Shared I2C blocking access wrapper structures.
+pub mod i2c;
+
 /// Shared types and traits for the library.
 pub mod types;
 
