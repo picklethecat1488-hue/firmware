@@ -2,7 +2,7 @@
 
 use crate::system::{transition_battery_update, BatteryUpdateAction};
 use crate::types::{BatteryThresholds, BatteryUpdateInfo};
-use model::types::{SystemLedState, SystemStatus};
+use model::types::{ChargeState, SystemLedState, SystemStatus};
 
 /// Manages battery thresholds, state of charge, and battery critical detection.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,14 +100,17 @@ impl BatteryManager {
     pub fn update_battery_status(
         &mut self,
         state_of_charge: u8,
-        charging: bool,
-        is_fault: bool,
+        charger_state: ChargeState,
         system_status: SystemStatus,
         boot_power_down: bool,
     ) -> BatteryUpdateAction {
         let old_led_state = self.get_soc_led_state();
         let old_charger_connected = self.charger_connected;
         let old_critical = self.battery_critical;
+
+        let charging = charger_state == ChargeState::Charging;
+        let is_fault = charger_state == ChargeState::RecoverableFault
+            || charger_state == ChargeState::NonRecoverableFault;
 
         self.charger_connected = charging;
         self.latest_state_of_charge = state_of_charge;

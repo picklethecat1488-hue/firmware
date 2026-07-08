@@ -82,7 +82,6 @@ pub struct SystemController<
     battery_tx: Sender<'static, MutexRaw, BatteryCommand, N>,
     thermal_tx: Sender<'static, MutexRaw, ThermalCommand, N>,
     led_tx: Sender<'static, MutexRaw, SystemLedState, N>,
-    _system_tx: Sender<'static, MutexRaw, SystemCommand, 4>,
 }
 
 impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
@@ -98,13 +97,18 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             Some(channels.system_tx),
             boot_reason,
         );
-        let battery_manager = firmware_lib::system::BatteryManager::new(
+        let mut battery_manager = firmware_lib::system::BatteryManager::new(
             10, // critical_soc_threshold default
             2,  // soc_hysteresis default
             LOW_BATTERY_SOC_THRESHOLD,
             MID_BATTERY_SOC_THRESHOLD,
             HIGH_BATTERY_SOC_THRESHOLD,
         );
+        if battery_manager.critical_soc_threshold() >= LOW_BATTERY_SOC_THRESHOLD {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::error!("Critical SoC threshold must be lower than the low battery threshold");
+            battery_manager.set_critical_soc_threshold(LOW_BATTERY_SOC_THRESHOLD - 1);
+        }
         let thermal_manager = firmware_lib::system::ThermalManager::new();
 
         Self {
@@ -118,7 +122,6 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             battery_tx: channels.battery_tx,
             thermal_tx: channels.thermal_tx,
             led_tx: channels.led_tx,
-            _system_tx: channels.system_tx,
         }
     }
 
@@ -138,46 +141,14 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
     pub fn update_battery_status(
         &mut self,
         state_of_charge: u8,
-        charging: bool,
-        is_fault: bool,
+        charger_state: model::types::ChargeState,
     ) -> firmware_lib::system::BatteryUpdateAction {
         self.battery_manager.update_battery_status(
             state_of_charge,
-            charging,
-            is_fault,
+            charger_state,
             self.power_manager.status(),
             self.power_manager.boot_power_down(),
         )
-    }
-
-    fn handle_state_changed(&mut self, _from: SystemStatus, to: SystemStatus) {
-        match to {
-            SystemStatus::Active => {
-                self.power_manager.reset_on_wake();
-                let _ = self
-                    .led_tx
-                    .try_send(self.battery_manager.get_soc_led_state());
-                let _ = self.motor_tx.try_send(MotorCommand::SetSpeed(100));
-            }
-            SystemStatus::Sleep | SystemStatus::PowerDown => {
-                let _ = self.motor_tx.try_send(MotorCommand::Stop);
-                let led = if to == SystemStatus::Sleep {
-                    if self.thermal_manager.thermal_critical() {
-                        SystemLedState::BlinksRedFourTimes
-                    } else {
-                        SystemLedState::SolidBlue
-                    }
-                } else if self.battery_manager.battery_critical() {
-                    SystemLedState::BlinksRedOncePerThirtySeconds
-                } else if self.battery_manager.charger_connected() {
-                    self.battery_manager.get_soc_led_state()
-                } else {
-                    SystemLedState::Off
-                };
-                let _ = self.led_tx.try_send(led);
-                let _ = self.battery_tx.try_send(BatteryCommand::UpdateWakeLocks(0));
-            }
-        }
     }
 
     /// Handles an incoming SystemCommand.
@@ -208,53 +179,39 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             SystemCommand::BatteryUpdate {
                 state_of_charge,
                 charger_state,
-            } => {
-                if self.battery_manager.critical_soc_threshold() >= LOW_BATTERY_SOC_THRESHOLD {
+            } => match self.update_battery_status(state_of_charge, charger_state) {
+                BatteryUpdateAction::GoToPowerDown => {
+                    self.power_manager.clear_wake_locks();
+                    let _ = self.set_status(SystemStatus::PowerDown);
+                }
+                BatteryUpdateAction::ClearBootTrap => {
+                    self.power_manager.set_boot_power_down(false);
+                    let _ = self.set_status(SystemStatus::Active);
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    defmt::error!(
-                        "Critical SoC threshold must be lower than the low battery threshold"
+                    defmt::info!(
+                        "SystemController: exiting PowerDown state. Waking up to Active mode."
                     );
-                    self.battery_manager
-                        .set_critical_soc_threshold(LOW_BATTERY_SOC_THRESHOLD - 1);
                 }
-                let charging = charger_state == model::types::ChargeState::Charging;
-                let is_fault = charger_state == model::types::ChargeState::RecoverableFault
-                    || charger_state == model::types::ChargeState::NonRecoverableFault;
-
-                match self.update_battery_status(state_of_charge, charging, is_fault) {
-                    BatteryUpdateAction::GoToPowerDown => {
-                        self.power_manager.clear_wake_locks();
-                        let _ = self.set_status(SystemStatus::PowerDown);
+                BatteryUpdateAction::ReportSoC => {
+                    if self.battery_manager.battery_critical() {
+                        let _ = self
+                            .led_tx
+                            .try_send(SystemLedState::BlinksRedOncePerThirtySeconds);
+                    } else if self.power_manager.status() == SystemStatus::PowerDown {
+                        let led = if self.battery_manager.charger_connected() {
+                            self.battery_manager.get_soc_led_state()
+                        } else {
+                            SystemLedState::Off
+                        };
+                        let _ = self.led_tx.try_send(led);
+                    } else if self.power_manager.status() == SystemStatus::Active {
+                        let _ = self
+                            .led_tx
+                            .try_send(self.battery_manager.get_soc_led_state());
                     }
-                    BatteryUpdateAction::ClearBootTrap => {
-                        self.power_manager.set_boot_power_down(false);
-                        let _ = self.set_status(SystemStatus::Active);
-                        #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        defmt::info!(
-                            "SystemController: exiting PowerDown state. Waking up to Active mode."
-                        );
-                    }
-                    BatteryUpdateAction::ReportSoC => {
-                        if self.battery_manager.battery_critical() {
-                            let _ = self
-                                .led_tx
-                                .try_send(SystemLedState::BlinksRedOncePerThirtySeconds);
-                        } else if self.power_manager.status() == SystemStatus::PowerDown {
-                            let led = if self.battery_manager.charger_connected() {
-                                self.battery_manager.get_soc_led_state()
-                            } else {
-                                SystemLedState::Off
-                            };
-                            let _ = self.led_tx.try_send(led);
-                        } else if self.power_manager.status() == SystemStatus::Active {
-                            let _ = self
-                                .led_tx
-                                .try_send(self.battery_manager.get_soc_led_state());
-                        }
-                    }
-                    BatteryUpdateAction::NoAction => {}
                 }
-            }
+                BatteryUpdateAction::NoAction => {}
+            },
             SystemCommand::Gesture(gesture) => {
                 let current_status = self.power_manager.status();
                 match gesture {
@@ -293,9 +250,33 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     _ => {}
                 }
             }
-            SystemCommand::StateChanged { from, to } => {
-                self.handle_state_changed(from, to);
-            }
+            SystemCommand::StateChanged { from: _, to } => match to {
+                SystemStatus::Active => {
+                    self.power_manager.reset_on_wake();
+                    let _ = self
+                        .led_tx
+                        .try_send(self.battery_manager.get_soc_led_state());
+                    let _ = self.motor_tx.try_send(MotorCommand::SetSpeed(100));
+                }
+                SystemStatus::Sleep | SystemStatus::PowerDown => {
+                    let _ = self.motor_tx.try_send(MotorCommand::Stop);
+                    let led = if to == SystemStatus::Sleep {
+                        if self.thermal_manager.thermal_critical() {
+                            SystemLedState::BlinksRedFourTimes
+                        } else {
+                            SystemLedState::SolidBlue
+                        }
+                    } else if self.battery_manager.battery_critical() {
+                        SystemLedState::BlinksRedOncePerThirtySeconds
+                    } else if self.battery_manager.charger_connected() {
+                        self.battery_manager.get_soc_led_state()
+                    } else {
+                        SystemLedState::Off
+                    };
+                    let _ = self.led_tx.try_send(led);
+                    let _ = self.battery_tx.try_send(BatteryCommand::UpdateWakeLocks(0));
+                }
+            },
         }
     }
 
