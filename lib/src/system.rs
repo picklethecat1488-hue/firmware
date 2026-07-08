@@ -5,10 +5,7 @@
 use crate::types::{BatteryThresholds, BatteryTransitionResult, BatteryUpdateInfo};
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
-use model::types::{
-    BootReason, Direction, Gesture, ProximityTelemetry, SystemLedState, SystemStatus,
-    TelemetryRecord,
-};
+use model::types::{BootReason, Gesture, SystemLedState, SystemStatus, TelemetryRecord};
 
 /// Pure transition function for waking the system.
 /// Returns the next status if the transition is valid.
@@ -228,21 +225,6 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
     /// Logs a telemetry record.
     pub fn log_telemetry(&self, record: TelemetryRecord) {
         let _ = self.telemetry_tx.try_send(record);
-    }
-
-    /// Log proximity telemetry.
-    pub fn log_proximity_telemetry(
-        &self,
-        direction: Direction,
-        distance_mm: u16,
-        threshold_mm: u16,
-    ) {
-        let prox = if distance_mm < threshold_mm {
-            ProximityTelemetry::InRange(direction, distance_mm)
-        } else {
-            ProximityTelemetry::OutRange(direction, distance_mm)
-        };
-        self.log_telemetry(TelemetryRecord::Proximity(prox));
     }
 
     /// Log gesture telemetry.

@@ -5,10 +5,12 @@
 use controller::battery_controller::BatteryCommand;
 use controller::motor_controller::MotorCommand;
 use controller::sensor_controller::SensorCommand;
+use controller::telemetry_controller::ProximityTelemetryClient;
 use controller::thermal_controller::ThermalCommand;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
 use firmware_lib::gesture_detector::GestureDetector;
+use model::telemetry::TelemetryClient;
 use model::types::{BootReason, Direction, Gesture, SystemLedState, SystemStatus, TelemetryRecord};
 
 /// One-way commands to control the global system state and notify it of events.
@@ -113,8 +115,7 @@ pub struct SystemController<
     proximity_active: bool,
     /// Proximity detection threshold in mm.
     pub proximity_threshold_mm: u16,
-    last_logged_distance: u16,
-    last_logged_in_range: Option<bool>,
+    proximity_telemetry_client: ProximityTelemetryClient<'static, MutexRaw, T_CAP>,
 }
 
 impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize> core::ops::Deref
@@ -169,8 +170,10 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             gesture_detector: GestureDetector::new(20, proximity_threshold_mm),
             proximity_active: false,
             proximity_threshold_mm,
-            last_logged_distance: 9999,
-            last_logged_in_range: None,
+            proximity_telemetry_client: ProximityTelemetryClient::new(
+                Some(channels.telemetry_tx),
+                proximity_threshold_mm,
+            ),
         }
     }
 
@@ -360,21 +363,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     Direction::West => self.distance_west = distance_mm,
                 }
 
-                // Check if we should log proximity telemetry
-                let in_range = distance_mm < self.proximity_threshold_mm;
-                let in_range_changed = Some(in_range) != self.last_logged_in_range;
-                let distance_changed_significantly =
-                    (distance_mm as i32 - self.last_logged_distance as i32).abs() >= 50;
-
-                if in_range_changed || distance_changed_significantly {
-                    self.log_proximity_telemetry(
-                        direction,
-                        distance_mm,
-                        self.proximity_threshold_mm,
-                    );
-                    self.last_logged_distance = distance_mm;
-                    self.last_logged_in_range = Some(in_range);
-                }
+                self.proximity_telemetry_client
+                    .report((direction, distance_mm));
 
                 self.update_gesture(crate::system_time());
             }
