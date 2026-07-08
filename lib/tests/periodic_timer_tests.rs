@@ -24,4 +24,18 @@ fn test_periodic_timer_flow() {
     // 5. After reset, it should not be expired again
     assert!(!timer.expired());
     assert!(timer.remaining_ms() <= 50);
+
+    // 6. expired_and_reset should return None initially
+    assert_eq!(timer.expired_and_reset(), None);
+
+    // 7. Wait 60ms again
+    std::thread::sleep(std::time::Duration::from_millis(60));
+
+    // 8. expired_and_reset should return Some(elapsed) and reset the timer
+    let res = timer.expired_and_reset();
+    assert!(res.is_some());
+    assert!(res.unwrap() >= 60);
+
+    // 9. Now it should not be expired again
+    assert_eq!(timer.expired_and_reset(), None);
 }

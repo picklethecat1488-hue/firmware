@@ -358,8 +358,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
 
         let mut timer = PeriodicTimer::new(embassy_time::Duration::from_millis(1000));
         loop {
-            if timer.expired() {
-                let elapsed_ms = timer.elapsed_ms_and_reset();
+            if let Some(elapsed_ms) = timer.expired_and_reset() {
                 let crossed_tick = self.tick_ms(elapsed_ms);
                 // Coordinate periodic telemetry reads across other controllers on the system tick
                 if crossed_tick {
