@@ -112,7 +112,6 @@ pub struct SystemController<
     /// Distance reading from the West sensor.
     pub distance_west: u16,
     gesture_detector: GestureDetector,
-    proximity_active: bool,
     /// Proximity detection threshold in mm.
     pub proximity_threshold_mm: u16,
     proximity_telemetry_client: ProximityTelemetryClient<'static, MutexRaw, T_CAP>,
@@ -168,7 +167,6 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             distance_east: 1000,
             distance_west: 1000,
             gesture_detector: GestureDetector::new(20, proximity_threshold_mm),
-            proximity_active: false,
             proximity_threshold_mm,
             proximity_telemetry_client: ProximityTelemetryClient::new(
                 Some(channels.telemetry_tx),
@@ -208,26 +206,20 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                 }
             }
             Some(Gesture::ProximityDetected) if current_status != SystemStatus::PowerDown => {
-                if !self.proximity_active {
-                    self.log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityDetected));
-                    self.proximity_active = true;
-                    self.set_inactive_ms(0);
-                    if self.status() == SystemStatus::Sleep {
-                        self.handle_command(SystemCommand::Wake);
-                    }
-                    if self.status() == SystemStatus::Active
-                        && !self.battery_critical()
-                        && !self.thermal_critical()
-                    {
-                        self.motor_tx.try_send(MotorCommand::SetSpeed(100)).unwrap();
-                    }
+                self.log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityDetected));
+                self.set_inactive_ms(0);
+                if self.status() == SystemStatus::Sleep {
+                    self.handle_command(SystemCommand::Wake);
+                }
+                if self.status() == SystemStatus::Active
+                    && !self.battery_critical()
+                    && !self.thermal_critical()
+                {
+                    self.motor_tx.try_send(MotorCommand::SetSpeed(100)).unwrap();
                 }
             }
             Some(Gesture::ProximityNotDetected) if current_status != SystemStatus::PowerDown => {
-                if self.proximity_active {
-                    self.log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityNotDetected));
-                    self.proximity_active = false;
-                }
+                self.log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityNotDetected));
             }
             _ => {}
         }
@@ -261,7 +253,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     defmt::info!("SystemController: entering low-power Sleep mode.");
                     self.motor_tx.try_send(MotorCommand::Stop).unwrap();
                     self.led_tx.try_send(SystemLedState::SolidBlue).unwrap();
-                    self.proximity_active = false;
+                    self.gesture_detector.set_proximity_active(false);
                 }
             }
             SystemCommand::PowerDown => {
@@ -275,7 +267,6 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     };
                     self.led_tx.try_send(led).unwrap();
                     self.gesture_detector.reset();
-                    self.proximity_active = false;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::info!("SystemController: entering PowerDown state. Motor locked.");
                 }
@@ -377,7 +368,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
         let crossed = self.state_manager.tick_ms(ms);
         if crossed {
             // Stay in Active state as long as proximity is detected
-            if self.proximity_active {
+            if self.gesture_detector.proximity_active() {
                 self.set_inactive_ms(0);
             } else {
                 let current_inactivity = self.inactive_ms();
@@ -404,7 +395,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
 
         let mut last_tick_time = embassy_time::Instant::now();
         loop {
-            let timeout_duration = if self.proximity_active {
+            let timeout_duration = if self.gesture_detector.proximity_active() {
                 embassy_time::Duration::from_millis(200)
             } else {
                 embassy_time::Duration::from_millis(1000)
