@@ -18,8 +18,14 @@ pub mod defmt_logger;
 /// Shared system state and power management utilities.
 pub mod system;
 
+/// Shared I2C blocking access wrapper structures.
+pub mod i2c;
+
 /// Shared types and traits for the library.
 pub mod types;
+
+/// Heartbeat and execution liveness monitoring module.
+pub mod heartbeat_monitor;
 
 /// Telemetry storage pipeline and task.
 pub use controller::telemetry_controller as telemetry;

@@ -294,6 +294,7 @@ pub fn run_rtt(
         });
     }
 
+    let mut is_reconnecting = false;
     loop {
         // 1. Connection selection
         let mut gdb_client_store = None;
@@ -330,7 +331,7 @@ pub fn run_rtt(
                     Ok(mut session) => {
                         {
                             let mut core = session.core(0)?;
-                            if !no_reset {
+                            if !no_reset && !is_reconnecting {
                                 spinner.set_message("Resetting target CPU...");
                                 let _ = core.reset();
                                 std::thread::sleep(Duration::from_millis(100));
@@ -345,6 +346,7 @@ pub fn run_rtt(
                                     std::thread::sleep(Duration::from_millis(100));
                                 }
                             }
+                            is_reconnecting = true;
                         }
                         probe_rs_session_store = Some(session);
                         Ok(())

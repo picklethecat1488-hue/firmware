@@ -1,13 +1,7 @@
 use controller::filesystem_controller::{FilesystemClient, FilesystemController};
-use controller::telemetry_controller::TelemetryController;
-use model::types::{BatteryState, BatteryStatus, TelemetryRecord};
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static MOCK_TIME: AtomicU64 = AtomicU64::new(0);
-
-fn get_mock_time() -> u64 {
-    MOCK_TIME.load(Ordering::Relaxed)
-}
+use controller::telemetry_controller::{TelemetryController, TelemetryCounters};
+use model::types::{BatteryState, BatteryStatus, BootReason, TelemetryRecord};
+use std::sync::atomic::Ordering;
 
 struct MockFlash {
     data: [u8; 1024 * 64],
@@ -69,10 +63,8 @@ fn test_telemetry_controller_ring_buffer() {
         > = embassy_sync::channel::Channel::new();
 
         let client = FilesystemClient::new(FS_CHANNEL.sender());
-        let mut telemetry = TelemetryController::<45, { model::telemetry::BUFFER_SIZE }>::new(
-            client,
-            get_mock_time,
-        );
+        let mut telemetry =
+            TelemetryController::<45, { model::telemetry::BUFFER_SIZE }>::new(client);
 
         let fs_fut =
             controller::filesystem_controller::run_filesystem_task(fs, FS_CHANNEL.receiver());
@@ -81,11 +73,12 @@ fn test_telemetry_controller_ring_buffer() {
 
             // Push 50 records (max is 45)
             for i in 0..50 {
-                MOCK_TIME.store(i as u64, Ordering::Relaxed);
+                controller::telemetry_controller::TEST_MOCK_TIME.store(i as u64, Ordering::Relaxed);
                 let record = TelemetryRecord::Battery(BatteryStatus::VolTempState(
                     3000 + i as u32,
                     25,
                     BatteryState::Ok,
+                    0,
                 ));
                 assert!(telemetry.push_record(record).await.is_ok());
             }
@@ -102,10 +95,16 @@ fn test_telemetry_controller_ring_buffer() {
                     last_ts = ts;
 
                     match record {
-                        TelemetryRecord::Battery(BatteryStatus::VolTempState(vol, temp, state)) => {
+                        TelemetryRecord::Battery(BatteryStatus::VolTempState(
+                            vol,
+                            temp,
+                            state,
+                            active_locks,
+                        )) => {
                             assert_eq!(vol, 3000 + ts as u32);
                             assert_eq!(temp, 25);
                             assert_eq!(state, BatteryState::Ok);
+                            assert_eq!(active_locks, 0);
                         }
                         _ => panic!("Expected Battery status"),
                     }
@@ -139,10 +138,8 @@ fn test_telemetry_controller_chunked_boundary() {
 
         let client = FilesystemClient::new(FS_CHANNEL.sender());
         // Max records 200 spanning two chunks (chunk 0: index 0..128, chunk 1: index 128..200)
-        let mut telemetry = TelemetryController::<200, { model::telemetry::BUFFER_SIZE }>::new(
-            client,
-            get_mock_time,
-        );
+        let mut telemetry =
+            TelemetryController::<200, { model::telemetry::BUFFER_SIZE }>::new(client);
 
         let fs_fut =
             controller::filesystem_controller::run_filesystem_task(fs, FS_CHANNEL.receiver());
@@ -151,11 +148,12 @@ fn test_telemetry_controller_chunked_boundary() {
 
             // Push 220 records (capacity 200)
             for i in 0..220 {
-                MOCK_TIME.store(i as u64, Ordering::Relaxed);
+                controller::telemetry_controller::TEST_MOCK_TIME.store(i as u64, Ordering::Relaxed);
                 let record = TelemetryRecord::Battery(BatteryStatus::VolTempState(
                     4000 + i as u32,
                     30,
                     BatteryState::Ok,
+                    0,
                 ));
                 assert!(telemetry.push_record(record).await.is_ok());
             }
@@ -173,10 +171,16 @@ fn test_telemetry_controller_chunked_boundary() {
                     last_ts = ts;
 
                     match record {
-                        TelemetryRecord::Battery(BatteryStatus::VolTempState(vol, temp, state)) => {
+                        TelemetryRecord::Battery(BatteryStatus::VolTempState(
+                            vol,
+                            temp,
+                            state,
+                            active_locks,
+                        )) => {
                             assert_eq!(vol, 4000 + ts as u32);
                             assert_eq!(temp, 30);
                             assert_eq!(state, BatteryState::Ok);
+                            assert_eq!(active_locks, 0);
                         }
                         _ => panic!("Expected Battery status"),
                     }
@@ -193,4 +197,34 @@ fn test_telemetry_controller_chunked_boundary() {
 
         futures::future::select(test_fut, fs_fut).await;
     });
+}
+
+#[test]
+fn test_telemetry_counters() {
+    let mut counters = TelemetryCounters::default();
+    assert_eq!(counters.total(), 0);
+
+    counters.record(&TelemetryRecord::Boot(BootReason::PowerOn));
+    counters.record(&TelemetryRecord::Battery(BatteryStatus::VolTempState(
+        3000,
+        25,
+        BatteryState::Ok,
+        0,
+    )));
+    counters.record(&TelemetryRecord::Battery(BatteryStatus::VolTempState(
+        3100,
+        25,
+        BatteryState::Ok,
+        0,
+    )));
+
+    assert_eq!(counters.total(), 3);
+    assert_eq!(counters.counts[11], 1); // Boot
+    assert_eq!(counters.counts[0], 2); // Battery
+    assert_eq!(counters.counts[1], 0); // Motor
+
+    counters.reset();
+    assert_eq!(counters.total(), 0);
+    assert_eq!(counters.counts[11], 0);
+    assert_eq!(counters.counts[0], 0);
 }

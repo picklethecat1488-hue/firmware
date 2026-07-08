@@ -15,14 +15,14 @@ macro_rules! dummy_debug {
 #[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum BatteryStatus {
-    /// Voltage (mV), temperature (mC), and battery state.
+    /// Voltage (mV), temperature (mC), battery state, and active wake locks mask.
     #[n(0)]
-    VolTempState(#[n(0)] u32, #[n(1)] i32, #[n(2)] BatteryState),
+    VolTempState(#[n(0)] u32, #[n(1)] i32, #[n(2)] BatteryState, #[n(3)] u32),
 }
 
 impl Default for BatteryStatus {
     fn default() -> Self {
-        Self::VolTempState(0, 0, BatteryState::default())
+        Self::VolTempState(0, 0, BatteryState::default(), 0)
     }
 }
 
@@ -108,17 +108,17 @@ impl Default for FuelGaugeTelemetry {
 #[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum ProximityTelemetry {
-    /// Target is detected within active range (value in mm).
+    /// Target is detected within active range (direction, value in mm).
     #[n(0)]
-    InRange(#[n(0)] u16),
-    /// Target is out of range (value in mm).
+    InRange(#[n(0)] Direction, #[n(1)] u16),
+    /// Target is out of range (direction, value in mm).
     #[n(1)]
-    OutRange(#[n(0)] u16),
+    OutRange(#[n(0)] Direction, #[n(1)] u16),
 }
 
 impl Default for ProximityTelemetry {
     fn default() -> Self {
-        Self::OutRange(1000)
+        Self::OutRange(Direction::North, 1000)
     }
 }
 
@@ -219,6 +219,29 @@ pub enum Direction {
     West = 2,
 }
 
+impl TryFrom<u8> for Direction {
+    type Error = ();
+
+    fn try_from(val: u8) -> Result<Self, Self::Error> {
+        match val {
+            0 => Ok(Self::North),
+            1 => Ok(Self::East),
+            2 => Ok(Self::West),
+            _ => Err(()),
+        }
+    }
+}
+
+impl From<Direction> for u8 {
+    fn from(dir: Direction) -> Self {
+        match dir {
+            Direction::North => 0,
+            Direction::East => 1,
+            Direction::West => 2,
+        }
+    }
+}
+
 /// Peripheral errors.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, minicbor::Encode, minicbor::Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
@@ -267,6 +290,25 @@ pub enum PeripheralError {
     I2CUnknown,
 }
 
+/// The reason why the device booted.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum BootReason {
+    /// Cold boot or standard power cycle.
+    #[n(0)]
+    PowerOn,
+    /// Booted due to system watchdog reset.
+    #[n(1)]
+    Watchdog,
+    /// Booted due to software reset.
+    #[n(2)]
+    SoftwareReset,
+    /// Boot reason is unknown or unclassified.
+    #[default]
+    #[n(3)]
+    Unknown,
+}
+
 dummy_debug!(BatteryStatus);
 dummy_debug!(BatteryState);
 dummy_debug!(MotorStatus);
@@ -280,5 +322,34 @@ dummy_debug!(FlashEraseTelemetry);
 dummy_debug!(ChargeState);
 dummy_debug!(Direction);
 dummy_debug!(PeripheralError);
+dummy_debug!(BootReason);
+
+/// One-way commands to control the global system state and notify it of events.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum SystemCommand {
+    /// Notify system of activity, resetting inactivity timer and waking up if asleep.
+    ActivityDetected,
+    /// Thermal safety or motor stall alert occurred.
+    AlertTriggered,
+    /// Battery level updates from the fuel gauge.
+    BatteryUpdate {
+        /// Battery capacity percentage (0-100).
+        state_of_charge: u8,
+        /// Charger state.
+        charger_state: ChargeState,
+    },
+    /// High-level gesture detected.
+    Gesture(Gesture),
+    /// The system status/power state changed.
+    StateChanged {
+        /// The previous system status.
+        from: SystemStatus,
+        /// The new system status.
+        to: SystemStatus,
+    },
+}
+
+dummy_debug!(SystemCommand);
 
 pub use crate::telemetry::TelemetryRecord;

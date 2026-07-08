@@ -1,6 +1,6 @@
+use app::shell_controller::CliCommand;
 use app::shell_controller::ShellController;
 use app::system_controller::SystemCommand;
-use app::CliCommand;
 use cat_detector as app;
 use controller::motor_controller::MotorCommand;
 use controller::{
@@ -248,21 +248,6 @@ fn test_shell_controller_integration_each_command() {
     for b in b"proximity\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
-
-    // 6. Wake command
-    for b in b"wake\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
-    }
-    assert!(matches!(
-        SYSTEM_CHANNEL.try_receive(),
-        Ok(SystemCommand::Wake)
-    ));
-
-    // 7. Sleep command
-    for b in b"sleep\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
-    }
-    assert!(matches!(system_chan_check(), Ok(SystemCommand::Sleep)));
 
     // 8. Activity command
     for b in b"activity\n" {

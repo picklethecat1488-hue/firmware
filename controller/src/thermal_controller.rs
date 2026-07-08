@@ -35,8 +35,6 @@ pub struct ThermalController<'a, M: RawMutex, B, Cmd = ()> {
     overheating_temp_milli_c: i32,
     critical_temp_milli_c: i32,
     hysteresis_temp_milli_c: i32,
-    last_telemetry_temp: Option<i32>,
-    last_telemetry_state: Option<ThermalState>,
 }
 
 impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
@@ -52,8 +50,6 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
             overheating_temp_milli_c: 45000,
             critical_temp_milli_c: 60000,
             hysteresis_temp_milli_c: 2000,
-            last_telemetry_temp: None,
-            last_telemetry_state: None,
         }
     }
 
@@ -71,8 +67,6 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
             overheating_temp_milli_c: 45000,
             critical_temp_milli_c: 60000,
             hysteresis_temp_milli_c: 2000,
-            last_telemetry_temp: None,
-            last_telemetry_state: None,
         }
     }
 
@@ -112,16 +106,9 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
     }
 
     /// Updates the thermal status by locking and reading the peripheral.
-    pub async fn update(
+    pub async fn update<TC: model::telemetry::TelemetryClient<(i32, ThermalState)>>(
         &mut self,
-        telemetry_tx: Option<
-            &embassy_sync::channel::Sender<
-                '_,
-                CriticalSectionRawMutex,
-                model::telemetry::TelemetryRecord,
-                { crate::telemetry_controller::CHANNEL_CAPACITY },
-            >,
-        >,
+        telemetry_client: Option<&mut TC>,
     ) -> Result<(), B::Error> {
         let temp = {
             let mut sensor = self.temp.lock().await;
@@ -150,27 +137,8 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
             }
         }
 
-        if let Some(tx) = telemetry_tx {
-            let send_telemetry = match (self.last_telemetry_temp, self.last_telemetry_state) {
-                (Some(last_temp), Some(last_state)) => {
-                    (temp - last_temp).abs() >= 1000 || self.state != last_state
-                }
-                _ => true,
-            };
-
-            if send_telemetry {
-                let overheating = self.state == ThermalState::Overheating;
-                let status = model::types::ThermalStatus::TempOverheating(temp, overheating);
-                let _ = tx.try_send(model::telemetry::TelemetryRecord::Thermal(status));
-                self.last_telemetry_temp = Some(temp);
-                self.last_telemetry_state = Some(self.state);
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::info!(
-                    "Thermal Controller: Temp is {} mC, State: {:?}",
-                    temp,
-                    self.state
-                );
-            }
+        if let Some(client) = telemetry_client {
+            client.report((temp, self.state));
         }
 
         Ok(())
@@ -187,6 +155,8 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
             { crate::telemetry_controller::CHANNEL_CAPACITY },
         >,
     ) -> ! {
+        let mut telemetry_client =
+            crate::telemetry_controller::ThermalTelemetryClient::new(Some(telemetry_tx));
         loop {
             match embassy_time::with_timeout(
                 embassy_time::Duration::from_millis(1500),
@@ -196,11 +166,11 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
             {
                 Ok(cmd) => match cmd {
                     ThermalCommand::CheckTemp => {
-                        let _ = self.update(Some(&telemetry_tx)).await;
+                        let _ = self.update(Some(&mut telemetry_client)).await;
                     }
                 },
                 Err(_timeout) => {
-                    let _ = self.update(Some(&telemetry_tx)).await;
+                    let _ = self.update(Some(&mut telemetry_client)).await;
                 }
             }
         }

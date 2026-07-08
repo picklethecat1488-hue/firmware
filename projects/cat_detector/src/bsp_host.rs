@@ -99,3 +99,8 @@ impl model::interfaces::TemperatureSensor for Rp2040TempSensor {
         Ok(25000)
     }
 }
+
+/// Mock boot reason for host.
+pub fn get_boot_reason() -> model::types::BootReason {
+    model::types::BootReason::Unknown
+}

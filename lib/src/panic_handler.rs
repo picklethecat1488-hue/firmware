@@ -506,12 +506,71 @@ pub fn handle_panic_with_sizes<
 
     cortex_m::interrupt::disable();
 
-    // 1. Walk the stack to capture return PCs (heuristic stack scanner)
     let sp: u32;
     unsafe {
         core::arch::asm!("mov {}, sp", out(reg) sp);
     }
-    let stack_top = STACK_TOP;
+
+    let lr: u32;
+    unsafe {
+        core::arch::asm!("mov {}, lr", out(reg) lr);
+    }
+
+    log_crash_and_reset_impl::<FLASH_SIZE, STACK_TOP, FLASH_START, FLASH_END, WRITE_SIZE, ERASE_SIZE>(
+        sp, 0, lr, state.r0, state.r1, state.r2, state.r3,
+    )
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Writes a crash dump for a stuck task and resets the system.
+pub fn report_stuck_task_with_sizes<
+    const FLASH_SIZE: usize,
+    const STACK_TOP: u32,
+    const FLASH_START: u32,
+    const FLASH_END: u32,
+    const WRITE_SIZE: usize,
+    const ERASE_SIZE: usize,
+>(
+    preempted_sp: u32,
+    preempted_pc: u32,
+    preempted_lr: u32,
+) -> ! {
+    cortex_m::interrupt::disable();
+    log_crash_and_reset_impl::<FLASH_SIZE, STACK_TOP, FLASH_START, FLASH_END, WRITE_SIZE, ERASE_SIZE>(
+        preempted_sp,
+        preempted_pc,
+        preempted_lr,
+        0,
+        0,
+        0,
+        0,
+    )
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+fn log_crash_and_reset_impl<
+    const FLASH_SIZE: usize,
+    const STACK_TOP: u32,
+    const FLASH_START: u32,
+    const FLASH_END: u32,
+    const WRITE_SIZE: usize,
+    const ERASE_SIZE: usize,
+>(
+    sp: u32,
+    pc: u32,
+    lr: u32,
+    r0: u32,
+    r1: u32,
+    r2: u32,
+    r3: u32,
+) -> ! {
+    let mut state = CoreState {
+        r0,
+        r1,
+        r2,
+        r3,
+        backtrace: [0u32; 32],
+    };
     let read_mem = |addr: u32| {
         if (FLASH_START..FLASH_END).contains(&addr) && (addr & 1 == 0) {
             // Read as two 16-bit halfwords to prevent alignment HardFaults on Cortex-M0+
@@ -522,14 +581,31 @@ pub fn handle_panic_with_sizes<
             None
         }
     };
-    let pc_count = scan_stack_from_sp(
+    let mut pc_count = scan_stack_from_sp(
         sp as usize,
-        stack_top as usize,
+        STACK_TOP as usize,
         FLASH_START,
         FLASH_END,
         &mut state.backtrace,
         read_mem,
     );
+
+    if pc != 0 {
+        let mut new_backtrace = [0u32; 32];
+        new_backtrace[0] = pc;
+        let mut idx = 1;
+        if lr != 0 && lr != pc {
+            new_backtrace[1] = lr;
+            idx = 2;
+        }
+        for i in 0..30 {
+            if idx + i < 32 {
+                new_backtrace[idx + i] = state.backtrace[i];
+            }
+        }
+        state.backtrace = new_backtrace;
+        pc_count = (pc_count + idx).min(32);
+    }
 
     // A single static scratch buffer used for log extraction and CBOR serialization.
     // Partitioned as:
@@ -562,7 +638,6 @@ pub fn handle_panic_with_sizes<
         encoded_len = len;
     }
     let encoded_bytes = &cbor_buf[..encoded_len];
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
     defmt::error!("Crash Dump: {=[u8]:cbor}", encoded_bytes);
 
     // 3. Write crash log to storage partition using rolling index
@@ -585,10 +660,8 @@ pub fn handle_panic_with_sizes<
     });
 
     // Give the host RTT client time to read and drain the buffers before CPU reset (1 second delay)
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
     delay_us(1_000_000);
 
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
     cortex_m::peripheral::SCB::sys_reset();
 }
 

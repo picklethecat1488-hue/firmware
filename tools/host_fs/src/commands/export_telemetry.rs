@@ -128,8 +128,17 @@ pub async fn run(
             for (ts, rec) in records {
                 match rec {
                     model::telemetry::TelemetryRecord::Battery(b) => match b {
-                        model::types::BatteryStatus::VolTempState(vol, temp, state) => {
-                            writeln!(csv_file, "{},Battery,{},{},{:?},", ts, vol, temp, state)?;
+                        model::types::BatteryStatus::VolTempState(
+                            vol,
+                            temp,
+                            state,
+                            active_locks,
+                        ) => {
+                            writeln!(
+                                csv_file,
+                                "{},Battery,{},{},{:?},{}",
+                                ts, vol, temp, state, active_locks
+                            )?;
                         }
                     },
                     model::telemetry::TelemetryRecord::Motor(m) => match m {
@@ -154,11 +163,11 @@ pub async fn run(
                         }
                     },
                     model::telemetry::TelemetryRecord::Proximity(p) => match p {
-                        model::types::ProximityTelemetry::InRange(d) => {
-                            writeln!(csv_file, "{},Proximity,InRange,{},,", ts, d)?;
+                        model::types::ProximityTelemetry::InRange(dir, d) => {
+                            writeln!(csv_file, "{},Proximity,InRange,{},{:?},", ts, d, dir)?;
                         }
-                        model::types::ProximityTelemetry::OutRange(d) => {
-                            writeln!(csv_file, "{},Proximity,OutRange,{},,", ts, d)?;
+                        model::types::ProximityTelemetry::OutRange(dir, d) => {
+                            writeln!(csv_file, "{},Proximity,OutRange,{},{:?},", ts, d, dir)?;
                         }
                     },
                     model::telemetry::TelemetryRecord::Led(led) => {
@@ -179,6 +188,9 @@ pub async fn run(
                     }
                     model::telemetry::TelemetryRecord::PeripheralError(state) => {
                         writeln!(csv_file, "{},PeripheralError,{:?},,,", ts, state)?;
+                    }
+                    model::telemetry::TelemetryRecord::Boot(reason) => {
+                        writeln!(csv_file, "{},Boot,{:?},,,", ts, reason)?;
                     }
                 }
             }

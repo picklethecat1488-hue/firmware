@@ -77,8 +77,10 @@ fn test_motor_controller_sad_cases() {
     let telemetry_tx = telemetry_channel.sender();
     let telemetry_rx = telemetry_channel.receiver();
 
+    let mut client =
+        controller::telemetry_controller::MotorTelemetryClient::new(Some(telemetry_tx));
     // Set speed should trigger motor.set_speed() error and report to telemetry
-    controller.handle_command(MotorCommand::SetSpeed(100), Some(&telemetry_tx));
+    controller.handle_command(MotorCommand::SetSpeed(100), Some(&mut client));
 
     // Check if error is received on the telemetry channel
     let rec = telemetry_rx.try_receive().unwrap();
@@ -95,8 +97,10 @@ fn test_motor_controller_sad_cases() {
     controller2.set_calibration(model::calibration::CalibrationType::MotorCal(80, 800));
     controller2.handle_command(MotorCommand::SetSpeed(100), None); // start motor first (no failure on motor)
 
+    let mut client2 =
+        controller::telemetry_controller::MotorTelemetryClient::new(Some(telemetry_tx));
     // Call update, which reads current. It should fail and return Err
-    let res = controller2.update(Some(&telemetry_tx));
+    let res = controller2.update(Some(&mut client2));
     assert!(res.is_err());
 }
 
@@ -201,13 +205,44 @@ fn test_battery_controller_sad_cases() {
         let telemetry_tx = telemetry_channel.sender();
         let telemetry_rx = telemetry_channel.receiver();
 
+        let mut telemetry_client =
+            controller::telemetry_controller::BatteryTelemetryClient::new(Some(telemetry_tx));
         // Calling update should return Err and report to telemetry
-        let res = controller.update(Some(&telemetry_tx)).await;
+        let res = controller.update(Some(&mut telemetry_client)).await;
         assert!(res.is_err());
 
-        let rec = telemetry_rx.try_receive().unwrap();
+        // The first message is BatteryStatus (with Critical state and 0 mV)
+        let rec1 = telemetry_rx.try_receive().unwrap();
         assert!(matches!(
-            rec,
+            rec1,
+            model::telemetry::TelemetryRecord::Battery(model::types::BatteryStatus::VolTempState(
+                0,
+                _,
+                model::types::BatteryState::Critical,
+                _
+            ))
+        ));
+
+        // The second message is FuelGaugeTelemetry (0 mV, 0%)
+        let rec2 = telemetry_rx.try_receive().unwrap();
+        assert!(matches!(
+            rec2,
+            model::telemetry::TelemetryRecord::FuelGauge(model::types::FuelGaugeTelemetry::VolSoc(
+                0, 0
+            ))
+        ));
+
+        // The third message is ChargeState
+        let rec3 = telemetry_rx.try_receive().unwrap();
+        assert!(matches!(
+            rec3,
+            model::telemetry::TelemetryRecord::ChargerState(_)
+        ));
+
+        // The fourth message is the PeripheralError from the failed read
+        let rec4 = telemetry_rx.try_receive().unwrap();
+        assert!(matches!(
+            rec4,
             model::telemetry::TelemetryRecord::PeripheralError(_)
         ));
     });

@@ -2,10 +2,12 @@
 
 #![deny(missing_docs)]
 
+use crate::telemetry_controller::BatteryTelemetryClient;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use model::interfaces::FuelGauge;
-use model::types::{PeripheralError, TelemetryRecord};
+use model::telemetry::TelemetryClient;
+use model::types::PeripheralError;
 use peripherals::ToPeripheralError;
 
 /// Trait for waiting on a battery alert pin.
@@ -52,6 +54,7 @@ pub struct BatteryController<'a, M: RawMutex, B, C, Pin = DummyAlertPin, Cmd = (
     alert_pin: Option<Pin>,
     last_reported_voltage: Option<u32>,
     last_reported_state: Option<BatteryState>,
+    active_wake_locks: u32,
 }
 
 impl<
@@ -73,6 +76,7 @@ impl<
             alert_pin: None,
             last_reported_voltage: None,
             last_reported_state: None,
+            active_wake_locks: 0,
         }
     }
 
@@ -92,6 +96,7 @@ impl<
             alert_pin: None,
             last_reported_voltage: None,
             last_reported_state: None,
+            active_wake_locks: 0,
         }
     }
 }
@@ -124,6 +129,7 @@ where
             alert_pin: Some(alert_pin),
             last_reported_voltage: None,
             last_reported_state: None,
+            active_wake_locks: 0,
         }
     }
 
@@ -135,38 +141,26 @@ where
     /// Updates the battery status by locking and reading the peripheral.
     pub async fn update(
         &mut self,
-        telemetry_tx: Option<
-            &embassy_sync::channel::Sender<
+        telemetry_client: Option<
+            &mut BatteryTelemetryClient<
                 '_,
                 CriticalSectionRawMutex,
-                model::telemetry::TelemetryRecord,
                 { crate::telemetry_controller::CHANNEL_CAPACITY },
             >,
         >,
     ) -> Result<(), B::Error> {
+        let mut read_failed = false;
+        let mut error_val = None;
         let (voltage, soc) = {
             let mut bat = self.battery.lock().await;
-            let v = match bat.read_voltage_mv() {
-                Ok(v) => v,
-                Err(e) => {
-                    if let Some(tx) = telemetry_tx {
-                        let _ =
-                            tx.try_send(TelemetryRecord::PeripheralError(e.to_peripheral_error()));
-                    }
-                    return Err(e);
+            match (bat.read_voltage_mv(), bat.read_state_of_charge()) {
+                (Ok(v), Ok(s)) => (v, s),
+                (Err(e), _) | (_, Err(e)) => {
+                    read_failed = true;
+                    error_val = Some(e);
+                    (0, 0)
                 }
-            };
-            let soc = match bat.read_state_of_charge() {
-                Ok(s) => s,
-                Err(e) => {
-                    if let Some(tx) = telemetry_tx {
-                        let _ =
-                            tx.try_send(TelemetryRecord::PeripheralError(e.to_peripheral_error()));
-                    }
-                    return Err(e);
-                }
-            };
-            (v, soc)
+            }
         };
         let charger_state = {
             let mut chg = self.charger.lock().await;
@@ -174,29 +168,37 @@ where
                 .unwrap_or(model::types::ChargeState::DoneOrStandbyOrUnplugged)
         };
 
-        if voltage < 3500 {
+        if read_failed || voltage < 3500 {
             self.state = BatteryState::Low;
         } else {
             self.state = BatteryState::Ok;
         }
 
         if let (Some(tx), Some(f)) = (&self.system_tx, self.update_fn) {
-            tx.try_send(f(soc, charger_state)).unwrap();
+            let _ = tx.try_send(f(soc, charger_state));
         }
 
-        if let Some(tx) = telemetry_tx {
-            let battery_state = match self.state {
-                BatteryState::Ok => model::types::BatteryState::Ok,
-                BatteryState::Low => model::types::BatteryState::Low,
+        if let Some(client) = telemetry_client {
+            let battery_state = if read_failed {
+                model::types::BatteryState::Critical
+            } else {
+                match self.state {
+                    BatteryState::Ok => model::types::BatteryState::Ok,
+                    BatteryState::Low => model::types::BatteryState::Low,
+                }
             };
-            let status = model::types::BatteryStatus::VolTempState(voltage, 25000, battery_state);
-            let _ = tx.try_send(model::telemetry::TelemetryRecord::Battery(status));
-            let _ = tx.try_send(model::telemetry::TelemetryRecord::FuelGauge(
-                model::types::FuelGaugeTelemetry::VolSoc(voltage, soc),
-            ));
-            let _ = tx.try_send(model::telemetry::TelemetryRecord::ChargerState(
-                charger_state,
-            ));
+            let status = model::types::BatteryStatus::VolTempState(
+                voltage,
+                25000,
+                battery_state,
+                self.active_wake_locks,
+            );
+            client.report(status);
+            client.report(model::types::FuelGaugeTelemetry::VolSoc(voltage, soc));
+            client.report(charger_state);
+            if let Some(ref err) = error_val {
+                client.report_error(err.to_peripheral_error());
+            }
         }
 
         let voltage_changed = self.last_reported_voltage != Some(voltage);
@@ -210,6 +212,12 @@ where
             );
             self.last_reported_voltage = Some(voltage);
             self.last_reported_state = Some(self.state);
+        }
+
+        if read_failed {
+            if let Some(err) = error_val {
+                return Err(err);
+            }
         }
 
         Ok(())
@@ -226,12 +234,13 @@ where
             { crate::telemetry_controller::CHANNEL_CAPACITY },
         >,
     ) -> ! {
+        let mut telemetry_client = BatteryTelemetryClient::new(Some(telemetry_tx));
         // Configure alerts on boot (3.0V low threshold, 4.2V high threshold, 10% SOC empty alert, enable 1% SOC change alert)
         {
             let mut bat = self.battery.lock().await;
             if let Err(e) = bat.configure_alerts(3000, 4200, 10, true) {
                 let err = e.to_peripheral_error();
-                let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(err));
+                telemetry_client.report_error(err);
             }
         }
 
@@ -250,10 +259,13 @@ where
                 // Command received from system shell/console
                 embassy_futures::select::Either3::First(cmd) => match cmd {
                     BatteryCommand::CheckStatus => {
-                        if let Err(e) = self.update(Some(&telemetry_tx)).await {
+                        if let Err(e) = self.update(Some(&mut telemetry_client)).await {
                             let err = e.to_peripheral_error();
-                            let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(err));
+                            telemetry_client.report_error(err);
                         }
+                    }
+                    BatteryCommand::UpdateWakeLocks(mask) => {
+                        self.active_wake_locks = mask;
                     }
                 },
                 // Fuel gauge alert interrupt triggered
@@ -269,8 +281,7 @@ where
                             }
                             Err(e) => {
                                 let err = e.to_peripheral_error();
-                                let _ =
-                                    telemetry_tx.try_send(TelemetryRecord::PeripheralError(err));
+                                telemetry_client.report_error(err);
                             }
                         }
                     }
@@ -286,23 +297,23 @@ where
                             ));
                         }
                     } else if is_soc_alert {
-                        if let Err(e) = self.update(Some(&telemetry_tx)).await {
+                        if let Err(e) = self.update(Some(&mut telemetry_client)).await {
                             let err = e.to_peripheral_error();
-                            let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(err));
+                            telemetry_client.report_error(err);
                         }
                     } else {
                         // Default fallback
-                        if let Err(e) = self.update(Some(&telemetry_tx)).await {
+                        if let Err(e) = self.update(Some(&mut telemetry_client)).await {
                             let err = e.to_peripheral_error();
-                            let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(err));
+                            telemetry_client.report_error(err);
                         }
                     }
                 }
                 // Periodic update interval elapsed
                 embassy_futures::select::Either3::Third(_) => {
-                    if let Err(e) = self.update(Some(&telemetry_tx)).await {
+                    if let Err(e) = self.update(Some(&mut telemetry_client)).await {
                         let err = e.to_peripheral_error();
-                        let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(err));
+                        telemetry_client.report_error(err);
                     }
                 }
             }
@@ -328,4 +339,6 @@ impl<'a, M: RawMutex, B: FuelGauge, C: model::interfaces::ChargeStatus, Pin, Cmd
 pub enum BatteryCommand {
     /// Force battery status query and print telemetry logs
     CheckStatus,
+    /// Update the current active wake locks bitmask
+    UpdateWakeLocks(u32),
 }

@@ -2,10 +2,12 @@
 
 #![deny(missing_docs)]
 
+use crate::telemetry_controller::LedTelemetryClient;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use model::interfaces::LedDriver;
+use model::telemetry::TelemetryClient;
+use model::types::PeripheralError;
 use model::types::SystemLedState;
-use model::types::{PeripheralError, TelemetryRecord};
 use peripherals::ToPeripheralError;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -120,16 +122,15 @@ where
             { crate::telemetry_controller::CHANNEL_CAPACITY },
         >,
     ) -> ! {
+        let mut telemetry_client = LedTelemetryClient::new(Some(telemetry_tx));
         let mut state = SystemLedState::Off;
         let mut blink_timer = embassy_time::Instant::now();
         let mut led_on = false;
 
         // Log the initial state
-        let _ = telemetry_tx.try_send(model::telemetry::TelemetryRecord::Led(state));
+        telemetry_client.report(state);
 
         loop {
-            let prev_state = state;
-
             match state {
                 SystemLedState::BlinksRedOncePerThirtySeconds => {
                     let now = embassy_time::Instant::now();
@@ -162,13 +163,12 @@ where
                                     )
                                     .await
                                 {
-                                    let _ =
-                                        telemetry_tx.try_send(TelemetryRecord::PeripheralError(e));
+                                    telemetry_client.report_error(e);
                                 }
                             } else if let Err(e) =
                                 self.update_color(SystemLedState::Off, false).await
                             {
-                                let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(e));
+                                telemetry_client.report_error(e);
                             }
                         }
                     }
@@ -180,11 +180,11 @@ where
                             .update_color(SystemLedState::BlinksRedFourTimes, false)
                             .await
                         {
-                            let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(e));
+                            telemetry_client.report_error(e);
                         }
                         sleep_ms(150).await;
                         if let Err(e) = self.update_color(SystemLedState::Off, false).await {
-                            let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(e));
+                            telemetry_client.report_error(e);
                         }
                         sleep_ms(150).await;
                     }
@@ -195,7 +195,7 @@ where
                 _ => {
                     // Set color statically (fading if transitioning to/from Off)
                     let use_fade = matches!(
-                        (prev_state, state),
+                        (self.current_state, state),
                         (SystemLedState::Off, SystemLedState::SolidGreen)
                             | (SystemLedState::Off, SystemLedState::SolidBlue)
                             | (SystemLedState::Off, SystemLedState::SolidYellow)
@@ -206,7 +206,7 @@ where
                             | (SystemLedState::SolidOrange, SystemLedState::Off)
                     );
                     if let Err(e) = self.update_color(state, use_fade).await {
-                        let _ = telemetry_tx.try_send(TelemetryRecord::PeripheralError(e));
+                        telemetry_client.report_error(e);
                     }
                     let new_cmd = command_rx.receive().await;
                     state = new_cmd;
@@ -214,9 +214,7 @@ where
                 }
             }
 
-            if state != prev_state {
-                let _ = telemetry_tx.try_send(model::telemetry::TelemetryRecord::Led(state));
-            }
+            telemetry_client.report(state);
         }
     }
 }

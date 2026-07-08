@@ -325,28 +325,24 @@ Execute the following commands sequentially inside the interactive serial shell 
    * *Expected Output*: Starts the motor, waits 1 second for it to ramp up, measures/records average current draw (e.g., simulating empty = 50mA, 100ml = 150mA, full = 300mA), stops the motor, and saves the calibration to `motor_cal.cbor` in flash. These values are used to gate/ungate the motor and detect dry-run/empty water states at runtime.
 
 8. **Verify System Power States**:
-   ```bash
-   sleep
-   ```
-   * *Expected Output*: Commands the central controller to transition into low-power Sleep mode, turning off peripherals.
-   ```bash
-   wake
-   ```
-   * *Expected Output*: Manually wakes the central controller back to the Active state.
-   ```bash
-   activity
-   ```
-   * *Expected Output*: Simulates a cat proximity detection interrupt event to verify automatic wakeup logic.
+   * *Procedure*:
+     - Let the system sit idle for 30 seconds.
+     - *Expected Output*: The system automatically transitions to the low-power `Sleep` state.
+     - Run the activity simulation command:
+       ```bash
+       activity
+       ```
+     - *Expected Output*: Simulates a wake-up event to verify automatic wakeup logic, returning the system to `Active` state.
 
-8. **Verify ToF Proximity Interrupts (GP7, GP8, GP9)**:
-   * *Procedure*: Put the system into `Sleep` mode (via `sleep`). Temporarily pull one of the ToF interrupt lines (GP7, GP8, or GP9) to ground (since interrupts are active-low).
+9. **Verify ToF Proximity Interrupts (GP7, GP8, GP9)**:
+   * *Procedure*: Let the system enter `Sleep` mode automatically (after 30 seconds of inactivity). Temporarily pull one of the ToF interrupt lines (GP7, GP8, or GP9) to ground (since interrupts are active-low).
    * *Expected Output*: The hardware interrupt triggers the RP2040 wake-up path, causing the system to transition to `Active` state, reset the inactivity timer, and wake up the motor and LED controllers.
 
-9. **Verify Fuel Gauge Alert Interrupt (GP10)**:
+10. **Verify Fuel Gauge Alert Interrupt (GP10)**:
    * *Procedure*: Pull the fuel gauge Alert line (GP10) to ground to trigger an active-low alert event.
    * *Expected Output*: The RP2040 wakes up if sleeping, detects the low-voltage/charge alert interrupt, dispatches a battery alert, and triggers the `BlinksRedOncePerThirtySeconds` NeoPixel error indicator.
 
-10. **Verify Panic and Crash Log Capture**:
+11. **Verify Panic and Crash Log Capture**:
    ```bash
    crash
    ```
