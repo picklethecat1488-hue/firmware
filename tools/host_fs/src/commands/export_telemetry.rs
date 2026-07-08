@@ -154,11 +154,11 @@ pub async fn run(
                         }
                     },
                     model::telemetry::TelemetryRecord::Proximity(p) => match p {
-                        model::types::ProximityTelemetry::InRange(d) => {
-                            writeln!(csv_file, "{},Proximity,InRange,{},,", ts, d)?;
+                        model::types::ProximityTelemetry::InRange(dir, d) => {
+                            writeln!(csv_file, "{},Proximity,InRange,{},{:?},", ts, d, dir)?;
                         }
-                        model::types::ProximityTelemetry::OutRange(d) => {
-                            writeln!(csv_file, "{},Proximity,OutRange,{},,", ts, d)?;
+                        model::types::ProximityTelemetry::OutRange(dir, d) => {
+                            writeln!(csv_file, "{},Proximity,OutRange,{},{:?},", ts, d, dir)?;
                         }
                     },
                     model::telemetry::TelemetryRecord::Led(led) => {

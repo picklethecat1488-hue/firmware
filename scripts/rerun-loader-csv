@@ -97,8 +97,9 @@ def main():
                         pass
                 elif rec_type == "Proximity":
                     try:
-                        rr.log("proximity/distance", rr.Scalars(float(val2)))
-                        rr.log("proximity/state", rr.TextDocument(val1))
+                        dir_str = val3 if val3 else "unknown"
+                        rr.log(f"proximity/{dir_str}/distance", rr.Scalars(float(val2)))
+                        rr.log(f"proximity/{dir_str}/state", rr.TextDocument(val1))
                     except ValueError:
                         pass
                 elif rec_type == "Led":

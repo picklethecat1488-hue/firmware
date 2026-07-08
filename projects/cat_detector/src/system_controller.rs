@@ -367,7 +367,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     (distance_mm as i32 - self.last_logged_distance as i32).abs() >= 50;
 
                 if in_range_changed || distance_changed_significantly {
-                    self.log_proximity_telemetry(distance_mm, self.proximity_threshold_mm);
+                    self.log_proximity_telemetry(
+                        direction,
+                        distance_mm,
+                        self.proximity_threshold_mm,
+                    );
                     self.last_logged_distance = distance_mm;
                     self.last_logged_in_range = Some(in_range);
                 }
