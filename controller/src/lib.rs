@@ -18,6 +18,11 @@ pub mod telemetry_controller;
 /// Thermal monitoring and regulation controller.
 pub mod thermal_controller;
 
+pub use battery_controller::BatteryCommand;
+pub use motor_controller::MotorCommand;
+pub use sensor_controller::SensorCommand;
+pub use thermal_controller::ThermalCommand;
+
 use model::types::PeripheralError;
 
 /// Trait for reading battery status blocking-ly.

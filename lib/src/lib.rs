@@ -44,3 +44,10 @@ pub use controller::telemetry_controller as telemetry;
 
 /// Re-export run_telemetry_task macro.
 pub use controller::run_telemetry_task;
+
+pub use battery_manager::BatteryManager;
+pub use gesture_detector::ProximityEvent;
+pub use periodic_timer::PeriodicTimer;
+pub use power_manager::PowerManager;
+pub use system::{BatteryUpdateAction, TransitionError};
+pub use thermal_manager::ThermalManager;

@@ -2,18 +2,13 @@
 
 #![deny(missing_docs)]
 #![allow(clippy::collapsible_match)]
-use controller::battery_controller::BatteryCommand;
-use controller::motor_controller::MotorCommand;
-use controller::sensor_controller::SensorCommand;
-use controller::thermal_controller::ThermalCommand;
+use controller::{BatteryCommand, MotorCommand, SensorCommand, ThermalCommand};
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
-use firmware_lib::battery_manager::BatteryManager;
-pub use firmware_lib::gesture_detector::ProximityEvent;
-use firmware_lib::periodic_timer::PeriodicTimer;
-use firmware_lib::power_manager::PowerManager;
-use firmware_lib::system::BatteryUpdateAction;
-use firmware_lib::thermal_manager::ThermalManager;
+pub use firmware_lib::ProximityEvent;
+use firmware_lib::{
+    BatteryManager, BatteryUpdateAction, PeriodicTimer, PowerManager, ThermalManager,
+};
 pub use model::types::SystemCommand;
 use model::types::{BootReason, Gesture, SystemLedState, SystemStatus, TelemetryRecord};
 
