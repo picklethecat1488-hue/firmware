@@ -3,7 +3,7 @@ use embassy_sync::channel::Channel;
 use firmware_lib::system::{
     BatteryManager, BatteryUpdateAction, PowerManager, ThermalManager, TransitionError,
 };
-use model::types::{BootReason, SystemLedState, SystemStatus, TelemetryRecord};
+use model::types::{BootReason, ChargeState, SystemLedState, SystemStatus, TelemetryRecord};
 
 static TEST_TELEMETRY_CHANNEL: Channel<
     CriticalSectionRawMutex,
@@ -44,15 +44,30 @@ fn test_get_soc_led_state() {
     manager.set_battery_critical(false);
 
     // Low battery SoC
-    manager.update_battery_status(15, false, false, SystemStatus::Active, false);
+    manager.update_battery_status(
+        15,
+        ChargeState::DoneOrStandbyOrUnplugged,
+        SystemStatus::Active,
+        false,
+    );
     assert_eq!(manager.get_soc_led_state(), SystemLedState::SolidOrange);
 
     // Mid battery SoC
-    manager.update_battery_status(50, false, false, SystemStatus::Active, false);
+    manager.update_battery_status(
+        50,
+        ChargeState::DoneOrStandbyOrUnplugged,
+        SystemStatus::Active,
+        false,
+    );
     assert_eq!(manager.get_soc_led_state(), SystemLedState::SolidYellow);
 
     // High battery SoC
-    manager.update_battery_status(85, false, false, SystemStatus::Active, false);
+    manager.update_battery_status(
+        85,
+        ChargeState::DoneOrStandbyOrUnplugged,
+        SystemStatus::Active,
+        false,
+    );
     assert_eq!(manager.get_soc_led_state(), SystemLedState::SolidGreen);
 }
 
@@ -64,23 +79,38 @@ fn test_update_battery_status() {
     assert!(manager.battery_critical());
 
     // Recoverable/NonRecoverable fault always triggers critical battery
-    manager.update_battery_status(95, false, true, SystemStatus::Active, false);
+    manager.update_battery_status(
+        95,
+        ChargeState::RecoverableFault,
+        SystemStatus::Active,
+        false,
+    );
     assert!(manager.battery_critical());
 
     // When charging, critical is cleared even at 5% SoC
-    manager.update_battery_status(5, true, false, SystemStatus::Active, false);
+    manager.update_battery_status(5, ChargeState::Charging, SystemStatus::Active, false);
     assert!(!manager.battery_critical());
 
     // Stop charging -> enters critical because SoC (5) < critical_threshold (10)
-    manager.update_battery_status(5, false, false, SystemStatus::Active, false);
+    manager.update_battery_status(
+        5,
+        ChargeState::DoneOrStandbyOrUnplugged,
+        SystemStatus::Active,
+        false,
+    );
     assert!(manager.battery_critical());
 
     // While critical, charging starts -> exits critical
-    manager.update_battery_status(5, true, false, SystemStatus::Active, false);
+    manager.update_battery_status(5, ChargeState::Charging, SystemStatus::Active, false);
     assert!(!manager.battery_critical());
 
     // Charge up past critical threshold + hysteresis -> stays non-critical when not charging
-    manager.update_battery_status(13, false, false, SystemStatus::Active, false);
+    manager.update_battery_status(
+        13,
+        ChargeState::DoneOrStandbyOrUnplugged,
+        SystemStatus::Active,
+        false,
+    );
     assert!(!manager.battery_critical());
 }
 
@@ -336,7 +366,12 @@ fn test_update_battery_status_actions() {
 
     // 1. In boot trap, healthy battery update (unplugged) should clear the trap
     assert_eq!(
-        manager.update_battery_status(50, false, false, SystemStatus::PowerDown, true),
+        manager.update_battery_status(
+            50,
+            ChargeState::DoneOrStandbyOrUnplugged,
+            SystemStatus::PowerDown,
+            true
+        ),
         BatteryUpdateAction::ClearBootTrap
     );
 
@@ -345,19 +380,29 @@ fn test_update_battery_status_actions() {
 
     // 3. While Active, healthy update with charging = true should GoToPowerDown
     assert_eq!(
-        manager.update_battery_status(50, true, false, SystemStatus::Active, false),
+        manager.update_battery_status(50, ChargeState::Charging, SystemStatus::Active, false),
         BatteryUpdateAction::GoToPowerDown
     );
 
     // 4. While PowerDown, charging status change should ReportSoC
     assert_eq!(
-        manager.update_battery_status(50, false, false, SystemStatus::PowerDown, false),
+        manager.update_battery_status(
+            50,
+            ChargeState::DoneOrStandbyOrUnplugged,
+            SystemStatus::PowerDown,
+            false
+        ),
         BatteryUpdateAction::ReportSoC
     );
 
     // 5. Subsequent identical update should be NoAction
     assert_eq!(
-        manager.update_battery_status(50, false, false, SystemStatus::PowerDown, false),
+        manager.update_battery_status(
+            50,
+            ChargeState::DoneOrStandbyOrUnplugged,
+            SystemStatus::PowerDown,
+            false
+        ),
         BatteryUpdateAction::NoAction
     );
 }
