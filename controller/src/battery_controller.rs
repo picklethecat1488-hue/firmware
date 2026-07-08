@@ -44,13 +44,26 @@ impl core::fmt::Debug for BatteryState {
         f.write_str("BatteryState")
     }
 }
+/// A trait to convert state of charge and charger status to a system command.
+pub trait FromBatteryUpdate {
+    /// Constructs a command from state of charge and charge state.
+    fn from_battery_update(state_of_charge: u8, charger_state: model::types::ChargeState) -> Self;
+}
+
+impl FromBatteryUpdate for () {
+    fn from_battery_update(
+        _state_of_charge: u8,
+        _charger_state: model::types::ChargeState,
+    ) -> Self {
+    }
+}
+
 /// A controller that periodically monitors battery status and wakes on alerts.
 pub struct BatteryController<'a, M: RawMutex, B, C, Pin = DummyAlertPin, Cmd = ()> {
     battery: &'a Mutex<M, B>,
     charger: &'a Mutex<M, C>,
     state: BatteryState,
     system_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
-    update_fn: Option<fn(u8, model::types::ChargeState) -> Cmd>,
     alert_pin: Option<Pin>,
     last_reported_voltage: Option<u32>,
     last_reported_state: Option<BatteryState>,
@@ -62,7 +75,7 @@ impl<
         M: RawMutex,
         B: FuelGauge,
         C: model::interfaces::ChargeStatus,
-        Cmd: Clone + core::fmt::Debug,
+        Cmd: FromBatteryUpdate + Clone + core::fmt::Debug,
     > BatteryController<'a, M, B, C, DummyAlertPin, Cmd>
 {
     /// Creates a new battery controller referencing a shared battery peripheral.
@@ -72,7 +85,6 @@ impl<
             charger,
             state: BatteryState::Ok,
             system_tx: None,
-            update_fn: None,
             alert_pin: None,
             last_reported_voltage: None,
             last_reported_state: None,
@@ -85,14 +97,12 @@ impl<
         battery: &'a Mutex<M, B>,
         charger: &'a Mutex<M, C>,
         system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
-        update_fn: fn(u8, model::types::ChargeState) -> Cmd,
     ) -> Self {
         Self {
             battery,
             charger,
             state: BatteryState::Ok,
             system_tx: Some(system_tx),
-            update_fn: Some(update_fn),
             alert_pin: None,
             last_reported_voltage: None,
             last_reported_state: None,
@@ -107,7 +117,7 @@ impl<
         B: FuelGauge,
         C: model::interfaces::ChargeStatus,
         Pin: BatteryAlertPin,
-        Cmd: Clone + core::fmt::Debug,
+        Cmd: FromBatteryUpdate + Clone + core::fmt::Debug,
     > BatteryController<'a, M, B, C, Pin, Cmd>
 where
     <B as FuelGauge>::Error: ToPeripheralError,
@@ -117,7 +127,6 @@ where
         battery: &'a Mutex<M, B>,
         charger: &'a Mutex<M, C>,
         system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
-        update_fn: fn(u8, model::types::ChargeState) -> Cmd,
         alert_pin: Pin,
     ) -> Self {
         Self {
@@ -125,7 +134,6 @@ where
             charger,
             state: BatteryState::Ok,
             system_tx: Some(system_tx),
-            update_fn: Some(update_fn),
             alert_pin: Some(alert_pin),
             last_reported_voltage: None,
             last_reported_state: None,
@@ -174,8 +182,8 @@ where
             self.state = BatteryState::Ok;
         }
 
-        if let (Some(tx), Some(f)) = (&self.system_tx, self.update_fn) {
-            let _ = tx.try_send(f(soc, charger_state));
+        if let Some(ref tx) = self.system_tx {
+            let _ = tx.try_send(Cmd::from_battery_update(soc, charger_state));
         }
 
         if let Some(client) = telemetry_client {
@@ -289,9 +297,9 @@ where
                     if is_voltage_alert {
                         // Put the system into PowerOff/PowerDown mode by treating it like a critical battery alert
                         self.state = BatteryState::Low;
-                        if let (Some(tx), Some(f)) = (&self.system_tx, self.update_fn) {
+                        if let Some(ref tx) = self.system_tx {
                             // SOC = 0, charging = false triggers battery_critical and SystemCommand::PowerDown in SystemController
-                            let _ = tx.try_send(f(
+                            let _ = tx.try_send(Cmd::from_battery_update(
                                 0,
                                 model::types::ChargeState::DoneOrStandbyOrUnplugged,
                             ));

@@ -1,3 +1,5 @@
+#![allow(unused_must_use)]
+
 use cat_detector::system_controller::{
     SystemCommand, SystemController, SystemControllerChannels, LOW_BATTERY_SOC_THRESHOLD,
 };

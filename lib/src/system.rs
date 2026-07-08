@@ -30,8 +30,6 @@ pub enum BatteryUpdateAction {
     ClearBootTrap,
     /// Report the state of charge / update LED.
     ReportSoC,
-    /// No action needed.
-    NoAction,
 }
 
 /// Pure transition function for waking the system.

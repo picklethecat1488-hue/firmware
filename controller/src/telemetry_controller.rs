@@ -5,7 +5,7 @@
 use crate::filesystem_controller::FilesystemClient;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
-use model::telemetry::{TelemetryClient, TelemetryRecord};
+use model::telemetry::{IntoTelemetryRecord, TelemetryClient, TelemetryRecord};
 
 static TELEMETRY_WRITE_SIGNAL: Signal<CriticalSectionRawMutex, Result<(), ()>> = Signal::new();
 
@@ -591,31 +591,39 @@ impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
 pub struct DefaultTelemetryClient<
     'a,
     M: embassy_sync::blocking_mutex::raw::RawMutex,
-    T: Clone,
+    T: IntoTelemetryRecord + Clone,
     const T_CAP: usize,
 > {
     tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>,
-    map_fn: fn(T) -> TelemetryRecord,
+    _phantom: core::marker::PhantomData<T>,
 }
 
-impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, T: Clone, const T_CAP: usize>
-    DefaultTelemetryClient<'a, M, T, T_CAP>
+impl<
+        'a,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        T: IntoTelemetryRecord + Clone,
+        const T_CAP: usize,
+    > DefaultTelemetryClient<'a, M, T, T_CAP>
 {
     /// Creates a new `DefaultTelemetryClient`.
-    pub fn new(
-        tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>,
-        map_fn: fn(T) -> TelemetryRecord,
-    ) -> Self {
-        Self { tx, map_fn }
+    pub fn new(tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>) -> Self {
+        Self {
+            tx,
+            _phantom: core::marker::PhantomData,
+        }
     }
 }
 
-impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, T: Clone, const T_CAP: usize>
-    TelemetryClient<T> for DefaultTelemetryClient<'a, M, T, T_CAP>
+impl<
+        'a,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        T: IntoTelemetryRecord + Clone,
+        const T_CAP: usize,
+    > TelemetryClient<T> for DefaultTelemetryClient<'a, M, T, T_CAP>
 {
     fn report(&mut self, value: T) {
         if let Some(ref tx) = self.tx {
-            let record = (self.map_fn)(value);
+            let record = value.into_telemetry_record();
             let _ = tx.try_send(record);
         }
     }

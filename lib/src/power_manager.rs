@@ -3,7 +3,7 @@
 use crate::system::{transition_power_down, transition_sleep, transition_wake, TransitionError};
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
-use model::types::{BootReason, Gesture, SystemCommand, SystemStatus, TelemetryRecord};
+use model::types::{BootReason, Gesture, SystemStatus, TelemetryRecord};
 
 /// Manages system status transitions, wake locks, and sleep timers.
 pub struct PowerManager<MutexRaw: RawMutex + 'static, const N: usize> {
@@ -15,7 +15,6 @@ pub struct PowerManager<MutexRaw: RawMutex + 'static, const N: usize> {
     boot_power_down: bool,
     wake_locks: u32,
     telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, N>,
-    system_tx: Option<Sender<'static, MutexRaw, SystemCommand, 4>>,
 }
 
 impl<MutexRaw: RawMutex + 'static, const N: usize> core::fmt::Debug for PowerManager<MutexRaw, N> {
@@ -50,7 +49,6 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> PowerManager<MutexRaw, N> {
     /// Creates a new PowerManager.
     pub fn new(
         telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, N>,
-        system_tx: Option<Sender<'static, MutexRaw, SystemCommand, 4>>,
         boot_reason: BootReason,
     ) -> Self {
         let _ = telemetry_tx.try_send(TelemetryRecord::Boot(boot_reason));
@@ -63,7 +61,6 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> PowerManager<MutexRaw, N> {
             boot_power_down: true,
             wake_locks: 0,
             telemetry_tx,
-            system_tx,
         }
     }
 
@@ -83,12 +80,13 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> PowerManager<MutexRaw, N> {
     }
 
     /// Sets the current system status.
+    /// Returns Ok(Some(prev_status)) if the status changed, Ok(None) if the status was already set to the requested value, or Err(TransitionError) on failure.
     pub fn set_status(
         &mut self,
         status: SystemStatus,
         battery_critical: bool,
         thermal_critical: bool,
-    ) -> Result<(), TransitionError> {
+    ) -> Result<Option<SystemStatus>, TransitionError> {
         let prev_status = self.status;
         if prev_status != status {
             // Validate using pure transition functions
@@ -149,14 +147,10 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> PowerManager<MutexRaw, N> {
             }
             self.status = status;
             self.log_telemetry(TelemetryRecord::System(status));
-            if let Some(ref tx) = self.system_tx {
-                let _ = tx.try_send(SystemCommand::StateChanged {
-                    from: prev_status,
-                    to: status,
-                });
-            }
+            Ok(Some(prev_status))
+        } else {
+            Ok(None)
         }
-        Ok(())
     }
 
     /// Acquires a wake lock, resetting the inactivity timer to 0.

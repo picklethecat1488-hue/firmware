@@ -103,7 +103,7 @@ impl BatteryManager {
         charger_state: ChargeState,
         system_status: SystemStatus,
         boot_power_down: bool,
-    ) -> BatteryUpdateAction {
+    ) -> Option<BatteryUpdateAction> {
         let old_led_state = self.get_soc_led_state();
         let old_charger_connected = self.charger_connected;
         let old_critical = self.battery_critical;
@@ -145,26 +145,26 @@ impl BatteryManager {
 
         if self.battery_critical {
             if system_status != SystemStatus::PowerDown {
-                BatteryUpdateAction::GoToPowerDown
+                Some(BatteryUpdateAction::GoToPowerDown)
             } else if changed {
-                BatteryUpdateAction::ReportSoC
+                Some(BatteryUpdateAction::ReportSoC)
             } else {
-                BatteryUpdateAction::NoAction
+                None
             }
         } else if system_status == SystemStatus::PowerDown {
             if boot_power_down && !self.charger_connected {
-                BatteryUpdateAction::ClearBootTrap
+                Some(BatteryUpdateAction::ClearBootTrap)
             } else if changed {
-                BatteryUpdateAction::ReportSoC
+                Some(BatteryUpdateAction::ReportSoC)
             } else {
-                BatteryUpdateAction::NoAction
+                None
             }
         } else if self.charger_connected {
-            BatteryUpdateAction::GoToPowerDown
+            Some(BatteryUpdateAction::GoToPowerDown)
         } else if system_status == SystemStatus::Active && changed {
-            BatteryUpdateAction::ReportSoC
+            Some(BatteryUpdateAction::ReportSoC)
         } else {
-            BatteryUpdateAction::NoAction
+            None
         }
     }
 }
