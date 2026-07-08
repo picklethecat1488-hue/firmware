@@ -211,9 +211,37 @@ fn test_battery_controller_sad_cases() {
         let res = controller.update(Some(&mut telemetry_client)).await;
         assert!(res.is_err());
 
-        let rec = telemetry_rx.try_receive().unwrap();
+        // The first message is BatteryStatus (with Critical state and 0 mV)
+        let rec1 = telemetry_rx.try_receive().unwrap();
         assert!(matches!(
-            rec,
+            rec1,
+            model::telemetry::TelemetryRecord::Battery(model::types::BatteryStatus::VolTempState(
+                0,
+                _,
+                model::types::BatteryState::Critical
+            ))
+        ));
+
+        // The second message is FuelGaugeTelemetry (0 mV, 0%)
+        let rec2 = telemetry_rx.try_receive().unwrap();
+        assert!(matches!(
+            rec2,
+            model::telemetry::TelemetryRecord::FuelGauge(model::types::FuelGaugeTelemetry::VolSoc(
+                0, 0
+            ))
+        ));
+
+        // The third message is ChargeState
+        let rec3 = telemetry_rx.try_receive().unwrap();
+        assert!(matches!(
+            rec3,
+            model::telemetry::TelemetryRecord::ChargerState(_)
+        ));
+
+        // The fourth message is the PeripheralError from the failed read
+        let rec4 = telemetry_rx.try_receive().unwrap();
+        assert!(matches!(
+            rec4,
             model::telemetry::TelemetryRecord::PeripheralError(_)
         ));
     });

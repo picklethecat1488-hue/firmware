@@ -145,27 +145,18 @@ where
             >,
         >,
     ) -> Result<(), B::Error> {
+        let mut read_failed = false;
+        let mut error_val = None;
         let (voltage, soc) = {
             let mut bat = self.battery.lock().await;
-            let v = match bat.read_voltage_mv() {
-                Ok(v) => v,
-                Err(e) => {
-                    if let Some(ref client) = telemetry_client {
-                        client.report_error(e.to_peripheral_error());
-                    }
-                    return Err(e);
+            match (bat.read_voltage_mv(), bat.read_state_of_charge()) {
+                (Ok(v), Ok(s)) => (v, s),
+                (Err(e), _) | (_, Err(e)) => {
+                    read_failed = true;
+                    error_val = Some(e);
+                    (0, 0)
                 }
-            };
-            let soc = match bat.read_state_of_charge() {
-                Ok(s) => s,
-                Err(e) => {
-                    if let Some(ref client) = telemetry_client {
-                        client.report_error(e.to_peripheral_error());
-                    }
-                    return Err(e);
-                }
-            };
-            (v, soc)
+            }
         };
         let charger_state = {
             let mut chg = self.charger.lock().await;
@@ -173,25 +164,32 @@ where
                 .unwrap_or(model::types::ChargeState::DoneOrStandbyOrUnplugged)
         };
 
-        if voltage < 3500 {
+        if read_failed || voltage < 3500 {
             self.state = BatteryState::Low;
         } else {
             self.state = BatteryState::Ok;
         }
 
         if let (Some(tx), Some(f)) = (&self.system_tx, self.update_fn) {
-            tx.try_send(f(soc, charger_state)).unwrap();
+            let _ = tx.try_send(f(soc, charger_state));
         }
 
         if let Some(client) = telemetry_client {
-            let battery_state = match self.state {
-                BatteryState::Ok => model::types::BatteryState::Ok,
-                BatteryState::Low => model::types::BatteryState::Low,
+            let battery_state = if read_failed {
+                model::types::BatteryState::Critical
+            } else {
+                match self.state {
+                    BatteryState::Ok => model::types::BatteryState::Ok,
+                    BatteryState::Low => model::types::BatteryState::Low,
+                }
             };
             let status = model::types::BatteryStatus::VolTempState(voltage, 25000, battery_state);
             client.report(status);
             client.report(model::types::FuelGaugeTelemetry::VolSoc(voltage, soc));
             client.report(charger_state);
+            if let Some(ref err) = error_val {
+                client.report_error(err.to_peripheral_error());
+            }
         }
 
         let voltage_changed = self.last_reported_voltage != Some(voltage);
@@ -205,6 +203,12 @@ where
             );
             self.last_reported_voltage = Some(voltage);
             self.last_reported_state = Some(self.state);
+        }
+
+        if read_failed {
+            if let Some(err) = error_val {
+                return Err(err);
+            }
         }
 
         Ok(())
