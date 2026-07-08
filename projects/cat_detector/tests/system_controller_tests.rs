@@ -7,7 +7,7 @@ use controller::sensor_controller::SensorCommand;
 use controller::thermal_controller::ThermalCommand;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use model::types::{SystemLedState, SystemStatus, TelemetryRecord};
+use model::types::{BootReason, SystemLedState, SystemStatus, TelemetryRecord};
 
 static MOCK_TELEMETRY_CHANNEL: Channel<
     CriticalSectionRawMutex,
@@ -36,7 +36,7 @@ fn test_system_controller_flow() {
         led_tx: LED_CHANNEL.sender(),
         telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
     };
-    let mut controller = SystemController::new(channels, 300);
+    let mut controller = SystemController::new(channels, 300, BootReason::Unknown);
 
     assert_eq!(controller.status(), SystemStatus::PowerDown);
 
@@ -106,7 +106,7 @@ fn test_system_controller_flow() {
         led_tx: LED_CHANNEL.sender(),
         telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
     };
-    let mut controller = SystemController::new(channels2, 300);
+    let mut controller = SystemController::new(channels2, 300, BootReason::Unknown);
 
     assert_eq!(controller.status(), SystemStatus::PowerDown);
 
@@ -204,7 +204,7 @@ fn test_power_down_and_gesture_detection() {
         led_tx: LED_CHANNEL.sender(),
         telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
     };
-    let mut controller = SystemController::new(channels3, 300);
+    let mut controller = SystemController::new(channels3, 300, BootReason::Unknown);
 
     // 1. Verify booting into PowerDown
     assert_eq!(controller.status(), SystemStatus::PowerDown);
@@ -244,8 +244,7 @@ fn test_power_down_and_gesture_detection() {
     // Tick gesture to 2 seconds -> should not power down yet
     controller.update_gesture(2_000_000);
     assert_eq!(controller.status(), SystemStatus::Active);
-    let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
-    assert_eq!(motor_cmd, MotorCommand::SetSpeed(100));
+    assert!(MOTOR_CHANNEL.try_receive().is_err());
 
     // Tick gesture to 5 seconds -> total 5 seconds simultaneous press -> triggers PowerDown
     controller.update_gesture(5_000_000);
@@ -323,7 +322,7 @@ fn test_invalid_critical_soc_threshold_recovery() {
         led_tx: LED_CHANNEL.sender(),
         telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
     };
-    let mut controller = SystemController::new(channels4, 300);
+    let mut controller = SystemController::new(channels4, 300, BootReason::Unknown);
 
     // Set critical threshold to a value greater than LOW_BATTERY_SOC_THRESHOLD (20)
     controller.set_critical_soc_threshold(25);

@@ -7,7 +7,7 @@ use controller::thermal_controller::{ThermalCommand, ThermalController};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
-use model::types::{ChargeState, SystemLedState, SystemStatus};
+use model::types::{BootReason, ChargeState, SystemLedState, SystemStatus};
 use peripherals::mock::{
     DummyCurrentSensor, MockBattery, MockCharger, MockLed, MockMotor, MockProximitySensor,
 };
@@ -76,7 +76,7 @@ fn test_system_integration_flow() {
             led_tx: LED_CHANNEL.sender(),
             telemetry_tx: TELEMETRY_CHANNEL.sender(),
         };
-        let mut system_ctrl = SystemController::new(channels, 300);
+        let mut system_ctrl = SystemController::new(channels, 300, BootReason::Unknown);
 
         // Set system controller thresholds
         system_ctrl.set_critical_soc_threshold(10);
@@ -275,7 +275,6 @@ fn test_system_integration_flow() {
         drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
-        assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::SetSpeed(100)));
         assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::SetSpeed(100)));
         assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::Stop));
 

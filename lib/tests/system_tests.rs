@@ -1,7 +1,7 @@
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use firmware_lib::system::SystemStateManager;
-use model::types::{SystemLedState, SystemStatus, TelemetryRecord};
+use model::types::{BootReason, SystemLedState, SystemStatus, TelemetryRecord};
 
 static TEST_TELEMETRY_CHANNEL: Channel<
     CriticalSectionRawMutex,
@@ -11,7 +11,15 @@ static TEST_TELEMETRY_CHANNEL: Channel<
 
 #[test]
 fn test_system_state_manager_initialization() {
-    let manager = SystemStateManager::new(10, 2, 20, 21, 80, TEST_TELEMETRY_CHANNEL.sender());
+    let manager = SystemStateManager::new(
+        10,
+        2,
+        20,
+        21,
+        80,
+        TEST_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
 
     assert_eq!(manager.status(), SystemStatus::PowerDown);
     assert_eq!(manager.inactive_ms(), 0);
@@ -27,7 +35,15 @@ fn test_system_state_manager_initialization() {
 
 #[test]
 fn test_get_soc_led_state() {
-    let mut manager = SystemStateManager::new(10, 2, 20, 21, 80, TEST_TELEMETRY_CHANNEL.sender());
+    let mut manager = SystemStateManager::new(
+        10,
+        2,
+        20,
+        21,
+        80,
+        TEST_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
 
     // Battery is critical by default
     assert_eq!(
@@ -53,7 +69,15 @@ fn test_get_soc_led_state() {
 
 #[test]
 fn test_update_battery_status() {
-    let mut manager = SystemStateManager::new(10, 2, 20, 21, 80, TEST_TELEMETRY_CHANNEL.sender());
+    let mut manager = SystemStateManager::new(
+        10,
+        2,
+        20,
+        21,
+        80,
+        TEST_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
 
     // Default is critical
     assert!(manager.battery_critical());
@@ -81,7 +105,15 @@ fn test_update_battery_status() {
 
 #[test]
 fn test_tick_ms() {
-    let mut manager = SystemStateManager::new(10, 2, 20, 21, 80, TEST_TELEMETRY_CHANNEL.sender());
+    let mut manager = SystemStateManager::new(
+        10,
+        2,
+        20,
+        21,
+        80,
+        TEST_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
 
     // Ticks when NOT active do not increment active timer
     assert!(!manager.tick_ms(500));
@@ -105,7 +137,15 @@ fn test_tick_ms() {
 
 #[test]
 fn test_interval_ms() {
-    let mut manager = SystemStateManager::new(10, 2, 20, 21, 80, TEST_TELEMETRY_CHANNEL.sender());
+    let mut manager = SystemStateManager::new(
+        10,
+        2,
+        20,
+        21,
+        80,
+        TEST_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
     assert_eq!(manager.interval_ms(), 1000);
     manager.set_interval_ms(500);
 

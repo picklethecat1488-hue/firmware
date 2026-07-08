@@ -336,7 +336,10 @@ async fn main(spawner: Spawner) {
         led_tx: app::LED_CHANNEL.sender(),
         telemetry_tx: app::TELEMETRY_CHANNEL.sender(),
     };
-    let system_ctrl = SystemController::new(channels, app::DEFAULT_PROXIMITY_THRESHOLD_MM);
+    let boot_reason = app::get_boot_reason();
+
+    let system_ctrl =
+        SystemController::new(channels, app::DEFAULT_PROXIMITY_THRESHOLD_MM, boot_reason);
 
     // Spawn controllers selectively and concurrently using separate macros
     controller::run_thermal_task!(

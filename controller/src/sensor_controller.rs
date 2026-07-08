@@ -406,10 +406,12 @@ impl<
 
     /// Gets the current proximity telemetry reading.
     pub fn telemetry(&self) -> model::types::ProximityTelemetry {
+        let dir = model::types::Direction::try_from(self.sensor_id())
+            .unwrap_or(model::types::Direction::North);
         if self.latest_data < self.context.proximity_threshold_mm {
-            model::types::ProximityTelemetry::InRange(self.latest_data)
+            model::types::ProximityTelemetry::InRange(dir, self.latest_data)
         } else {
-            model::types::ProximityTelemetry::OutRange(self.latest_data)
+            model::types::ProximityTelemetry::OutRange(dir, self.latest_data)
         }
     }
 

@@ -9,7 +9,7 @@ use controller::thermal_controller::ThermalCommand;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
 use firmware_lib::gesture_detector::GestureDetector;
-use model::types::{Direction, Gesture, SystemLedState, SystemStatus, TelemetryRecord};
+use model::types::{BootReason, Direction, Gesture, SystemLedState, SystemStatus, TelemetryRecord};
 
 /// One-way commands to control the global system state and notify it of events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,6 +113,8 @@ pub struct SystemController<
     proximity_active: bool,
     /// Proximity detection threshold in mm.
     pub proximity_threshold_mm: u16,
+    last_logged_distance: u16,
+    last_logged_in_range: Option<bool>,
 }
 
 impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize> core::ops::Deref
@@ -140,6 +142,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
     pub fn new(
         channels: SystemControllerChannels<MutexRaw, N, T_CAP>,
         proximity_threshold_mm: u16,
+        boot_reason: BootReason,
     ) -> Self {
         let state_manager = firmware_lib::system::SystemStateManager::new(
             10, // critical_soc_threshold default
@@ -148,6 +151,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             MID_BATTERY_SOC_THRESHOLD,
             HIGH_BATTERY_SOC_THRESHOLD,
             channels.telemetry_tx,
+            boot_reason,
         );
 
         Self {
@@ -165,6 +169,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             gesture_detector: GestureDetector::new(20, proximity_threshold_mm),
             proximity_active: false,
             proximity_threshold_mm,
+            last_logged_distance: 9999,
+            last_logged_in_range: None,
         }
     }
 
@@ -199,22 +205,26 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                 }
             }
             Some(Gesture::ProximityDetected) if current_status != SystemStatus::PowerDown => {
-                self.log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityDetected));
-                self.proximity_active = true;
-                self.set_inactive_ms(0);
-                if self.status() == SystemStatus::Sleep {
-                    self.handle_command(SystemCommand::Wake);
-                }
-                if self.status() == SystemStatus::Active
-                    && !self.battery_critical()
-                    && !self.thermal_critical()
-                {
-                    self.motor_tx.try_send(MotorCommand::SetSpeed(100)).unwrap();
+                if !self.proximity_active {
+                    self.log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityDetected));
+                    self.proximity_active = true;
+                    self.set_inactive_ms(0);
+                    if self.status() == SystemStatus::Sleep {
+                        self.handle_command(SystemCommand::Wake);
+                    }
+                    if self.status() == SystemStatus::Active
+                        && !self.battery_critical()
+                        && !self.thermal_critical()
+                    {
+                        self.motor_tx.try_send(MotorCommand::SetSpeed(100)).unwrap();
+                    }
                 }
             }
             Some(Gesture::ProximityNotDetected) if current_status != SystemStatus::PowerDown => {
-                self.log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityNotDetected));
-                self.proximity_active = false;
+                if self.proximity_active {
+                    self.log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityNotDetected));
+                    self.proximity_active = false;
+                }
             }
             _ => {}
         }
@@ -248,6 +258,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     defmt::info!("SystemController: entering low-power Sleep mode.");
                     self.motor_tx.try_send(MotorCommand::Stop).unwrap();
                     self.led_tx.try_send(SystemLedState::SolidBlue).unwrap();
+                    self.proximity_active = false;
                 }
             }
             SystemCommand::PowerDown => {
@@ -261,6 +272,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     };
                     self.led_tx.try_send(led).unwrap();
                     self.gesture_detector.reset();
+                    self.proximity_active = false;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::info!("SystemController: entering PowerDown state. Motor locked.");
                 }
@@ -348,7 +360,21 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     Direction::West => self.distance_west = distance_mm,
                 }
 
-                self.log_proximity_telemetry(distance_mm, self.proximity_threshold_mm);
+                // Check if we should log proximity telemetry
+                let in_range = distance_mm < self.proximity_threshold_mm;
+                let in_range_changed = Some(in_range) != self.last_logged_in_range;
+                let distance_changed_significantly =
+                    (distance_mm as i32 - self.last_logged_distance as i32).abs() >= 50;
+
+                if in_range_changed || distance_changed_significantly {
+                    self.log_proximity_telemetry(
+                        direction,
+                        distance_mm,
+                        self.proximity_threshold_mm,
+                    );
+                    self.last_logged_distance = distance_mm;
+                    self.last_logged_in_range = Some(in_range);
+                }
 
                 self.update_gesture(crate::system_time());
             }

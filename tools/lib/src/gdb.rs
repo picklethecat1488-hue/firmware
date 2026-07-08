@@ -178,8 +178,7 @@ impl GdbClient {
             if response.starts_with('E') {
                 return Err(format!("Monitor command '{}' failed: {}", cmd, response));
             }
-            if response.starts_with('O') {
-                let hex_part = &response[1..];
+            if let Some(hex_part) = response.strip_prefix('O') {
                 let mut bytes = Vec::new();
                 for chunk in hex_part.as_bytes().chunks(2) {
                     if chunk.len() == 2 {

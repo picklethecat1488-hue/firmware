@@ -1,6 +1,6 @@
 use controller::filesystem_controller::{FilesystemClient, FilesystemController};
-use controller::telemetry_controller::TelemetryController;
-use model::types::{BatteryState, BatteryStatus, TelemetryRecord};
+use controller::telemetry_controller::{TelemetryController, TelemetryCounters};
+use model::types::{BatteryState, BatteryStatus, BootReason, TelemetryRecord};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static MOCK_TIME: AtomicU64 = AtomicU64::new(0);
@@ -193,4 +193,32 @@ fn test_telemetry_controller_chunked_boundary() {
 
         futures::future::select(test_fut, fs_fut).await;
     });
+}
+
+#[test]
+fn test_telemetry_counters() {
+    let mut counters = TelemetryCounters::default();
+    assert_eq!(counters.total(), 0);
+
+    counters.record(&TelemetryRecord::Boot(BootReason::PowerOn));
+    counters.record(&TelemetryRecord::Battery(BatteryStatus::VolTempState(
+        3000,
+        25,
+        BatteryState::Ok,
+    )));
+    counters.record(&TelemetryRecord::Battery(BatteryStatus::VolTempState(
+        3100,
+        25,
+        BatteryState::Ok,
+    )));
+
+    assert_eq!(counters.total(), 3);
+    assert_eq!(counters.counts[11], 1); // Boot
+    assert_eq!(counters.counts[0], 2); // Battery
+    assert_eq!(counters.counts[1], 0); // Motor
+
+    counters.reset();
+    assert_eq!(counters.total(), 0);
+    assert_eq!(counters.counts[11], 0);
+    assert_eq!(counters.counts[0], 0);
 }

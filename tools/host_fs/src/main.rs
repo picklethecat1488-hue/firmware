@@ -72,7 +72,7 @@ fn main() -> io::Result<()> {
                     info.partition_address,
                     info.partition_size,
                 )
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                .map_err(io::Error::other)?;
                 EitherFlash::Gdb(Box::new(gdb_flash))
             } else {
                 spinner.set_message(format!(
