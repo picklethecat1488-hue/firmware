@@ -1,8 +1,9 @@
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use firmware_lib::system::{
-    BatteryManager, BatteryUpdateAction, PowerManager, ThermalManager, TransitionError,
-};
+use firmware_lib::battery_manager::BatteryManager;
+use firmware_lib::power_manager::PowerManager;
+use firmware_lib::system::{BatteryUpdateAction, TransitionError};
+use firmware_lib::thermal_manager::ThermalManager;
 use model::types::{BootReason, ChargeState, SystemLedState, SystemStatus, TelemetryRecord};
 
 static TEST_TELEMETRY_CHANNEL: Channel<

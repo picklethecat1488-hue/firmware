@@ -1,4 +1,4 @@
-//! Power manager submodule.
+//! Power manager module.
 
 use crate::system::{transition_power_down, transition_sleep, transition_wake, TransitionError};
 use embassy_sync::blocking_mutex::raw::RawMutex;
