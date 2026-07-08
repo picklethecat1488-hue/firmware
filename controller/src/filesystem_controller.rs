@@ -2,10 +2,13 @@
 
 use core::cmp;
 use core::ops::Range;
+use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
 use heapless::String;
+
+static TELEMETRY_ENABLED: AtomicBool = AtomicBool::new(true);
 
 /// A profiling wrapper around a flash driver that counts and times page erases.
 pub struct ProfilingFlash<F: NorFlash> {
@@ -84,7 +87,7 @@ impl<F: NorFlash> embedded_storage_async::nor_flash::NorFlash for ProfilingFlash
         let start = embassy_time::Instant::now();
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!(
+        defmt::debug!(
             "[Profile] Flash erase starting at 0x{:X} to 0x{:X}",
             from,
             to
@@ -96,7 +99,7 @@ impl<F: NorFlash> embedded_storage_async::nor_flash::NorFlash for ProfilingFlash
         let duration_ms = {
             let duration = start.elapsed();
             let ms = duration.as_millis() as u32;
-            defmt::info!(
+            defmt::debug!(
                 "[Profile] Flash erase completed in {} ms (Total erases: {})",
                 ms,
                 self.erase_count
@@ -107,15 +110,24 @@ impl<F: NorFlash> embedded_storage_async::nor_flash::NorFlash for ProfilingFlash
         #[cfg(not(all(target_arch = "arm", target_os = "none")))]
         let duration_ms = 0;
 
-        if let Some(tx) = &self.telemetry_tx {
-            let sector = from / F::ERASE_SIZE as u32;
-            let details = model::types::FlashEraseTelemetry {
-                sector,
-                duration_ms,
-                erase_count: self.erase_count,
-            };
-            tx.try_send(model::telemetry::TelemetryRecord::FlashTelemetry(details))
-                .unwrap();
+        if TELEMETRY_ENABLED.load(Ordering::Relaxed) {
+            if let Some(tx) = &self.telemetry_tx {
+                let sector = from / F::ERASE_SIZE as u32;
+                let details = model::types::FlashEraseTelemetry {
+                    sector,
+                    duration_ms,
+                    erase_count: self.erase_count,
+                };
+                if tx
+                    .try_send(model::telemetry::TelemetryRecord::FlashTelemetry(details))
+                    .is_err()
+                {
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::warn!(
+                        "[Profile] Telemetry channel full! Dropped flash erase telemetry record."
+                    );
+                }
+            }
         }
 
         res
@@ -130,12 +142,18 @@ pub struct FilesystemController<F: NorFlash + MultiwriteNorFlash> {
     pub flash: F,
     /// The physical partition address range in flash (start..end byte offsets)
     range: Range<u32>,
+    /// Statically allocated buffer for sequential-storage operations to avoid stack overflows
+    buf: [u8; 2048],
 }
 
 impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     /// Creates a new FilesystemController.
     pub fn new(flash: F, range: Range<u32>) -> Self {
-        Self { flash, range }
+        Self {
+            flash,
+            range,
+            buf: [0u8; 2048],
+        }
     }
 
     /// Helper to convert a string path into a fixed-size 32-byte key.
@@ -149,22 +167,32 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
 
     /// Stores/overwrites a file with the given name (key) and contents (value).
     pub async fn write_file(&mut self, name: &str, content: &[u8]) -> Result<(), ()> {
-        let mut buf = [0u8; 1024];
+        let is_telemetry = name == "telemetry.rrd";
+        if is_telemetry {
+            TELEMETRY_ENABLED.store(false, Ordering::Relaxed);
+        }
+
         let mut cache = sequential_storage::cache::NoCache::new();
         let key = Self::string_to_key(name);
 
-        // Write the file content
+        // Store item in map
         let res = sequential_storage::map::store_item(
             &mut self.flash,
             self.range.clone(),
             &mut cache,
-            &mut buf,
+            &mut self.buf,
             &key,
             &content,
         )
         .await;
 
-        if res.is_err() {
+        if is_telemetry {
+            TELEMETRY_ENABLED.store(true, Ordering::Relaxed);
+        }
+
+        if let Err(_e) = res {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::error!("store_item failed: {:?}", defmt::Debug2Format(&_e));
             return Err(());
         }
 
@@ -235,7 +263,6 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
 
     /// Removes a file from storage.
     pub async fn remove_file(&mut self, name: &str) -> Result<(), ()> {
-        let mut buf = [0u8; 1024];
         let mut cache = sequential_storage::cache::NoCache::new();
         let key = Self::string_to_key(name);
 
@@ -244,7 +271,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
             &mut self.flash,
             self.range.clone(),
             &mut cache,
-            &mut buf,
+            &mut self.buf,
             &key,
         )
         .await;
@@ -275,12 +302,11 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
 
             // Write directory directly to avoid async recursion cycle
             let dir_key = Self::string_to_key(".dir");
-            let mut dir_write_buf = [0u8; 1024];
             let _ = sequential_storage::map::store_item(
                 &mut self.flash,
                 self.range.clone(),
                 &mut cache,
-                &mut dir_write_buf,
+                &mut self.buf,
                 &dir_key,
                 &new_dir.as_bytes(),
             )
@@ -293,6 +319,62 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     /// Returns a newline-separated string listing all files currently stored.
     pub async fn list_files<'a>(&mut self, out_buf: &'a mut [u8]) -> Result<Option<&'a [u8]>, ()> {
         self.read_file(".dir", out_buf).await
+    }
+
+    /// Verifies the filesystem health by trying to read the directory index.
+    /// If it returns a Corrupted or InvalidValue error, it formats/erases the entire partition.
+    pub async fn verify_and_repair(&mut self) -> Result<(), ()> {
+        let mut buf = [0u8; 128];
+        let mut cache = sequential_storage::cache::NoCache::new();
+        let key = Self::string_to_key(".dir");
+        let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
+            &mut self.flash,
+            self.range.clone(),
+            &mut cache,
+            &mut buf,
+            &key,
+        )
+        .await;
+
+        if let Err(sequential_storage::Error::Corrupted { .. }) = res {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::error!("Filesystem corrupted or invalid! Reformatting partition...");
+
+            // Erase the entire range
+            if self
+                .flash
+                .erase(self.range.start, self.range.end)
+                .await
+                .is_err()
+            {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::error!("Failed to erase corrupted partition!");
+                return Err(());
+            }
+
+            // Re-write an empty directory index
+            let mut dir_write_buf = [0u8; 128];
+            if sequential_storage::map::store_item(
+                &mut self.flash,
+                self.range.clone(),
+                &mut cache,
+                &mut dir_write_buf,
+                &key,
+                &[0u8; 0],
+            )
+            .await
+            .is_err()
+            {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::error!("Failed to write empty directory after format!");
+                return Err(());
+            }
+
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::info!("Filesystem partition successfully reformatted.");
+        }
+
+        Ok(())
     }
 }
 
@@ -413,6 +495,7 @@ pub async fn run_filesystem_task<F: NorFlash + MultiwriteNorFlash>(
     mut fs: FilesystemController<F>,
     rx: embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, FsRequest, 16>,
 ) -> ! {
+    let _ = fs.verify_and_repair().await;
     loop {
         let req = rx.receive().await;
         match req {

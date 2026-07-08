@@ -65,7 +65,7 @@ fn test_scan_stack_heuristic() {
         }
     };
 
-    let mut pcs = [0u32; 16];
+    let mut pcs = [0u32; 32];
     let count = scan_stack(&stack, flash_start, flash_end, &mut pcs, mock_read_mem);
 
     assert_eq!(count, 2);
@@ -92,7 +92,7 @@ fn test_scan_stack_from_sp_integration() {
         }
     };
 
-    let mut pcs = [0u32; 16];
+    let mut pcs = [0u32; 32];
     let sp = stack_data.as_ptr() as usize;
     let stack_top = sp + (stack_data.len() * 4);
 
@@ -272,37 +272,36 @@ fn test_write_crash_log_to_flash_rolling() {
 
 #[test]
 fn test_generate_uuid_properties() {
-    let entropy: [u8; 16] = [0xAA; 16];
     let mut state1: CoreState = CoreState {
         r0: 1,
         r1: 2,
         r2: 3,
         r3: 4,
-        backtrace: [0u32; 16],
+        backtrace: [0u32; 32],
     };
     state1.backtrace[..2].copy_from_slice(&[0x10002000, 0x10003000]);
 
-    let uuid1 = generate_uuid(entropy, 12345, &state1, "hash123");
+    let uuid1 = generate_uuid(&state1, "hash123");
     let mut state2: CoreState = CoreState {
         r0: 1,
         r1: 2,
         r2: 3,
         r3: 4,
-        backtrace: [0u32; 16],
+        backtrace: [0u32; 32],
     };
     state2.backtrace[..2].copy_from_slice(&[0x10002000, 0x10003000]);
 
-    let uuid2 = generate_uuid(entropy, 12345, &state2, "hash123");
+    let uuid2 = generate_uuid(&state2, "hash123");
     let mut state3: CoreState = CoreState {
-        r0: 1,
+        r0: 99, // different register
         r1: 2,
         r2: 3,
         r3: 4,
-        backtrace: [0u32; 16],
+        backtrace: [0u32; 32],
     };
     state3.backtrace[..2].copy_from_slice(&[0x10002000, 0x10003000]);
 
-    let uuid3 = generate_uuid(entropy, 12346, &state3, "hash123"); // different time
+    let uuid3 = generate_uuid(&state3, "hash123");
 
     // UUIDv4 checks:
     // Version 4 check:

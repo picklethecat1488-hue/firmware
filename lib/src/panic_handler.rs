@@ -193,7 +193,7 @@ pub fn scan_stack<F>(
     stack: &[u32],
     flash_start: u32,
     flash_end: u32,
-    pcs: &mut [u32; 16],
+    pcs: &mut [u32; 32],
     read_mem: F,
 ) -> usize
 where
@@ -201,7 +201,7 @@ where
 {
     let mut pc_count = 0;
     for &val in stack {
-        if pc_count >= 16 {
+        if pc_count >= 32 {
             break;
         }
         if (flash_start..flash_end).contains(&val) && (val & 1 == 1) {
@@ -231,7 +231,7 @@ pub fn scan_stack_from_sp<F>(
     stack_top: usize,
     flash_start: u32,
     flash_end: u32,
-    pcs: &mut [u32; 16],
+    pcs: &mut [u32; 32],
     read_mem: F,
 ) -> usize
 where
@@ -239,7 +239,7 @@ where
 {
     if sp < stack_top {
         let words = (stack_top - sp) / 4;
-        let limit = words.min(256);
+        let limit = words.min(crate::types::STACK_SCAN_LIMIT as usize);
         let stack_slice = unsafe { core::slice::from_raw_parts(sp as *const u32, limit) };
         scan_stack(stack_slice, flash_start, flash_end, pcs, read_mem)
     } else {
@@ -314,7 +314,7 @@ where
     let _ = core::fmt::write(&mut filename, format_args!("crash_{}.cbor", current_idx));
     let log_key = string_to_key(filename.as_str());
 
-    let _ = sequential_storage::map::store_item(
+    match sequential_storage::map::store_item(
         flash,
         range.clone(),
         cache,
@@ -322,13 +322,30 @@ where
         &log_key,
         &encoded_bytes,
     )
-    .await;
+    .await
+    {
+        Ok(_) => {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::info!(
+                "Successfully stored crash log to flash: {}",
+                filename.as_str()
+            );
+        }
+        Err(_e) => {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::error!(
+                "Failed to store crash log to flash: {:?}",
+                defmt::Debug2Format(&_e)
+            );
+            return Ok(());
+        }
+    }
 
     // Increment index modulo 5
     let next_idx = (current_idx + 1) % 5;
     let next_bytes = next_idx.to_le_bytes();
     let idx_key = string_to_key("crash_idx");
-    let _ = sequential_storage::map::store_item(
+    if let Err(_e) = sequential_storage::map::store_item(
         flash,
         range.clone(),
         cache,
@@ -336,7 +353,14 @@ where
         &idx_key,
         &&next_bytes[..],
     )
-    .await;
+    .await
+    {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        defmt::error!(
+            "Failed to update crash_idx in flash: {:?}",
+            defmt::Debug2Format(&_e)
+        );
+    }
 
     // Write directory file .dir so host_fs can find it
     let mut current_dir = heapless::String::<128>::new();
@@ -372,7 +396,7 @@ where
         let _ = current_dir.push_str(filename.as_str());
 
         // Store updated dir
-        let _ = sequential_storage::map::store_item(
+        if let Err(_e) = sequential_storage::map::store_item(
             flash,
             range.clone(),
             cache,
@@ -380,7 +404,14 @@ where
             &dir_key,
             &current_dir.as_bytes(),
         )
-        .await;
+        .await
+        {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::error!(
+                "Failed to update .dir in flash: {:?}",
+                defmt::Debug2Format(&_e)
+            );
+        }
     }
 
     Ok(())
@@ -398,17 +429,14 @@ pub struct CoreState {
     /// The value of the r3 register.
     pub r3: u32,
     /// Return PCs backtrace array.
-    pub backtrace: [u32; 16],
+    pub backtrace: [u32; 32],
 }
 
-/// Helper function to mix hardware entropy and context variables into a unique UUID.
-pub fn generate_uuid(
-    entropy: [u8; 16],
-    micros: u64,
-    state: &CoreState,
-    revision_hash: &str,
-) -> [u8; 16] {
-    let mut uuid = entropy;
+/// Helper function to generate a stable, content-addressable UUID from crash context variables.
+/// This ensures that two crashes with the exact same register state, backtrace, and code revision
+/// will result in the same UUID, facilitating crash grouping and deduplication.
+pub fn generate_uuid(state: &CoreState, revision_hash: &str) -> [u8; 16] {
+    let mut uuid = [0u8; 16];
 
     let mut h1 = 0xcbf29ce484222325u64;
     let mut h2 = 0x84222325cbf29ce4u64;
@@ -420,7 +448,6 @@ pub fn generate_uuid(
         h2 = h2.wrapping_mul(0x100000001b3);
     };
 
-    feed_u64(micros);
     feed_u64(state.r0 as u64);
     feed_u64(state.r1 as u64);
     feed_u64(state.r2 as u64);
@@ -458,8 +485,6 @@ pub fn handle_panic_with_sizes<
     const WRITE_SIZE: usize,
     const ERASE_SIZE: usize,
 >(
-    entropy: [u8; 16],
-    micros: u64,
     _info: &core::panic::PanicInfo,
 ) -> ! {
     let mut state = CoreState::default();
@@ -485,8 +510,11 @@ pub fn handle_panic_with_sizes<
     }
     let stack_top = STACK_TOP;
     let read_mem = |addr: u32| {
-        if (FLASH_START..FLASH_END).contains(&addr) {
-            Some(unsafe { *(addr as *const u32) })
+        if (FLASH_START..FLASH_END).contains(&addr) && (addr & 1 == 0) {
+            // Read as two 16-bit halfwords to prevent alignment HardFaults on Cortex-M0+
+            let low = unsafe { *(addr as *const u16) } as u32;
+            let high = unsafe { *((addr + 2) as *const u16) } as u32;
+            Some((high << 16) | low)
         } else {
             None
         }
@@ -512,7 +540,7 @@ pub fn handle_panic_with_sizes<
     let logs_len = critical_section::with(|cs| extract_system_logs(&cs, log_buf));
     let logs_slice = &log_buf[..logs_len];
 
-    let uuid = generate_uuid(entropy, micros, &state, env!("GIT_HASH"));
+    let uuid = generate_uuid(&state, env!("GIT_HASH"));
 
     let dump = crate::types::CrashDump {
         revision_hash: env!("GIT_HASH"),
@@ -554,5 +582,17 @@ pub fn handle_panic_with_sizes<
         }
     });
 
-    cortex_m::asm::udf();
+    // Give the host RTT client time to read and drain the buffers before CPU reset (1 second delay)
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    delay_us(1_000_000);
+
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    cortex_m::peripheral::SCB::sys_reset();
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+fn delay_us(us: u32) {
+    let freq = embassy_rp::clocks::clk_sys_freq();
+    let cycles = us.saturating_mul(freq / 1_000_000);
+    cortex_m::asm::delay(cycles);
 }

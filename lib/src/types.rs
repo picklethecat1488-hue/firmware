@@ -143,7 +143,7 @@ pub struct CrashDump<'a> {
     pub r3: u32,
     /// Backtrace program counters
     #[n(5)]
-    pub backtrace: [u32; 16],
+    pub backtrace: [u32; 32],
     /// Number of valid entries in the backtrace array
     #[n(6)]
     pub backtrace_len: u32,
@@ -156,6 +156,9 @@ pub struct CrashDump<'a> {
     #[n(8)]
     pub uuid: [u8; 16],
 }
+
+/// Stack scan limit in words (8 KB stack coverage)
+pub const STACK_SCAN_LIMIT: u32 = 2048;
 
 /// Project metadata struct embedded in the ELF to allow autodetecting chip/partition layout.
 #[repr(C)]
@@ -170,4 +173,10 @@ pub struct ProjectMetadata {
     pub partition_address: u32,
     /// The size of the storage partition in bytes
     pub partition_size: u32,
+    /// Flash write alignment/size in bytes
+    pub flash_write_size: u32,
+    /// Flash erase sector size in bytes
+    pub flash_erase_size: u32,
+    /// Stack scan limit in words
+    pub stack_scan_limit: u32,
 }

@@ -117,9 +117,26 @@ impl RttChannel {
     }
 }
 
+fn read_elf_addr(file: &object::File, addr: u64, len: usize) -> Option<Vec<u8>> {
+    use object::{Object, ObjectSection};
+    for section in file.sections() {
+        let start = section.address();
+        let size = section.size();
+        if addr >= start && addr < start + size {
+            if let Ok(data) = section.data() {
+                let offset = (addr - start) as usize;
+                let end = (offset + len).min(data.len());
+                return Some(data[offset..end].to_vec());
+            }
+        }
+    }
+    None
+}
+
 pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
     target: &mut T,
     rtt_symbol_addr: u64,
+    elf_file: Option<&object::File>,
 ) -> Result<(Vec<RttChannel>, Vec<RttChannel>), String> {
     let mut header = [0u8; 128];
     target.read_mem(rtt_symbol_addr, &mut header)?;
@@ -142,10 +159,22 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
 
         let mut name = String::new();
         if name_ptr != 0 {
-            let mut name_buf = [0u8; 32];
-            if target.read_mem(name_ptr, &mut name_buf).is_ok() {
-                if let Some(pos) = name_buf.iter().position(|&b| b == 0) {
-                    name = String::from_utf8_lossy(&name_buf[..pos]).into_owned();
+            let mut name_read = false;
+            if let Some(elf) = elf_file {
+                if let Some(bytes) = read_elf_addr(elf, name_ptr, 32) {
+                    if let Some(pos) = bytes.iter().position(|&b| b == 0) {
+                        name = String::from_utf8_lossy(&bytes[..pos]).into_owned();
+                        name_read = true;
+                    }
+                }
+            }
+
+            if !name_read {
+                let mut name_buf = [0u8; 32];
+                if target.read_mem(name_ptr, &mut name_buf).is_ok() {
+                    if let Some(pos) = name_buf.iter().position(|&b| b == 0) {
+                        name = String::from_utf8_lossy(&name_buf[..pos]).into_owned();
+                    }
                 }
             }
         }
@@ -169,10 +198,22 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
 
         let mut name = String::new();
         if name_ptr != 0 {
-            let mut name_buf = [0u8; 32];
-            if target.read_mem(name_ptr, &mut name_buf).is_ok() {
-                if let Some(pos) = name_buf.iter().position(|&b| b == 0) {
-                    name = String::from_utf8_lossy(&name_buf[..pos]).into_owned();
+            let mut name_read = false;
+            if let Some(elf) = elf_file {
+                if let Some(bytes) = read_elf_addr(elf, name_ptr, 32) {
+                    if let Some(pos) = bytes.iter().position(|&b| b == 0) {
+                        name = String::from_utf8_lossy(&bytes[..pos]).into_owned();
+                        name_read = true;
+                    }
+                }
+            }
+
+            if !name_read {
+                let mut name_buf = [0u8; 32];
+                if target.read_mem(name_ptr, &mut name_buf).is_ok() {
+                    if let Some(pos) = name_buf.iter().position(|&b| b == 0) {
+                        name = String::from_utf8_lossy(&name_buf[..pos]).into_owned();
+                    }
                 }
             }
         }
@@ -224,132 +265,18 @@ pub fn run_rtt(
         _ => return Err("Could not locate symbol address of _SEGGER_RTT in ELF".into()),
     };
 
-    // 1. Connection selection
-    let mut gdb_client_store = None;
-    let mut probe_rs_session_store = None;
+    // Load debug symbols for on-the-fly backtrace symbolication
+    let elf_data = std::fs::read(elf_path)?;
+    let object_file = object::File::parse(&*elf_data).ok();
+    let addr2line_ctx = object_file
+        .as_ref()
+        .and_then(|obj| addr2line::Context::new(obj).ok());
 
-    if let Some(host) = openocd_host {
-        let addr = if host.contains(':') {
-            host.to_string()
-        } else {
-            format!("{}:3333", host)
-        };
-        spinner.set_message(format!(
-            "Connecting to existing OpenOCD GDB session at {}...",
-            addr
-        ));
-        let client = GdbClient::connect(&addr)?;
-        gdb_client_store = Some(client);
-    } else {
-        spinner.set_message(format!("Connecting to probe for chip '{}'...", chip));
-        let lister = Lister::new();
-        let probes = lister.list_all();
-        let probe_info = probes.first().ok_or("No debug probes connected")?;
-        let probe = probe_info.open()?;
-
-        let mut session = probe.attach(chip, probe_rs::Permissions::default())?;
-        {
-            let mut core = session.core(0)?;
-            if !no_reset {
-                spinner.set_message("Resetting target CPU...");
-                core.reset()?;
-                std::thread::sleep(Duration::from_millis(200));
-            } else {
-                let status = core.status()?;
-                spinner.set_message(format!("Core status: {:?}", status));
-                if status.is_halted() {
-                    spinner.set_message("Core is halted. Resuming execution...");
-                    core.run()?;
-                    std::thread::sleep(Duration::from_millis(100));
-                }
-            }
-        }
-        probe_rs_session_store = Some(session);
-    }
-
-    // Set up unified interface
-    let mut target: Box<dyn TargetAccess> = if let Some(ref mut client) = gdb_client_store {
-        Box::new(ProbeRsTargetWrapper { client })
-    } else if let Some(ref mut session) = probe_rs_session_store {
-        let core = session.core(0)?;
-        // Storing session/core references presents a lifetime challenge, so we wrap it
-        // using raw pointer to core in ProbeRsWrapper, safe because session is kept alive in probe_rs_session_store
-        Box::new(ProbeRsWrapper::new(core))
-    } else {
-        unreachable!();
-    };
-
-    if dump_mem {
-        spinner.finish_and_clear();
-        println!("\n=== Dumping raw _SEGGER_RTT control block ===");
-        let mut rtt_header_mem = vec![0u8; 128];
-        target.read_mem(rtt_symbol_addr, &mut rtt_header_mem)?;
-
-        println!(
-            "Header memory dump (128 bytes at 0x{:08X}):",
-            rtt_symbol_addr
-        );
-        print_hex_ascii_dump(rtt_symbol_addr, &rtt_header_mem);
-        return Ok(());
-    }
-
-    let (up_channels, down_channels) = parse_rtt_channels(target.as_mut(), rtt_symbol_addr)?;
-
-    // Identify channels based on selected mode
-    let mut defmt_channel = None;
-    let mut cli_up_channel = None;
-    let mut cli_down_channel = None;
-
-    let stream_defmt =
-        channel_mode == crate::ChannelMode::Defmt || channel_mode == crate::ChannelMode::Both;
+    // Spawn the stdin reader thread once (if interactive CLI is enabled)
+    let (stdin_tx, stdin_rx) = std::sync::mpsc::channel::<Vec<u8>>();
     let stream_cli =
         channel_mode == crate::ChannelMode::Cli || channel_mode == crate::ChannelMode::Both;
-
-    for chan in &up_channels {
-        if chan.name() == Some("defmt") && stream_defmt {
-            defmt_channel = Some(chan);
-        } else if chan.name() == Some("cli") && stream_cli {
-            cli_up_channel = Some(chan);
-        }
-    }
-
-    for chan in &down_channels {
-        if chan.name() == Some("cli") && stream_cli {
-            cli_down_channel = Some(chan);
-        }
-    }
-
-    if raw {
-        if cli_up_channel.is_none() && !up_channels.is_empty() && stream_cli {
-            cli_up_channel = Some(&up_channels[0]);
-        }
-        if cli_down_channel.is_none() && !down_channels.is_empty() && stream_cli {
-            cli_down_channel = Some(&down_channels[0]);
-        }
-    }
-
-    spinner.finish_and_clear();
-
-    println!("RTT connected. Active channels:");
-    if defmt_channel.is_some() {
-        println!("  - Up Channel: \"defmt\" (logs)");
-    }
-    if cli_up_channel.is_some() {
-        println!("  - Up Channel: \"cli\" (raw output)");
-    }
-    if cli_down_channel.is_some() {
-        println!("  - Down Channel: \"cli\" (raw input)");
-    }
-
-    // Set up defmt decoder
-    let mut decoder = if let Some(table) = table {
-        Some(table.new_stream_decoder())
-    } else {
-        None
-    };
-
-    let (stdin_tx, stdin_rx) = std::sync::mpsc::channel::<Vec<u8>>();
-    if cli_down_channel.is_some() {
+    if stream_cli && !dump {
         use std::io::Read;
         std::thread::spawn(move || {
             let mut stdin = std::io::stdin();
@@ -357,7 +284,9 @@ pub fn run_rtt(
             loop {
                 match stdin.read(&mut buf) {
                     Ok(n) if n > 0 => {
-                        let _ = stdin_tx.send(buf[..n].to_vec());
+                        if stdin_tx.send(buf[..n].to_vec()).is_err() {
+                            break;
+                        }
                     }
                     _ => break,
                 }
@@ -365,157 +294,387 @@ pub fn run_rtt(
         });
     }
 
-    // Dump initial CLI output
-    if let Some(cli_up) = cli_up_channel {
-        let mut initial_buf = [0u8; 1024];
-        match cli_up.read(target.as_mut(), &mut initial_buf) {
-            Ok(n) if n > 0 => {
-                use std::io::Write;
-                if show_raw_cli {
-                    println!("\n--- Raw CLI Buffer Dump ({} bytes cached) ---", n);
-                    for (i, chunk) in initial_buf[..n].chunks(16).enumerate() {
-                        let hex_string: Vec<String> =
-                            chunk.iter().map(|b| format!("{:02X}", b)).collect();
-                        let hex_part = hex_string.join(" ");
-                        let ascii_part: String = chunk
-                            .iter()
-                            .map(|&b| {
-                                if (32..=126).contains(&b) {
-                                    b as char
-                                } else {
-                                    '.'
-                                }
-                            })
-                            .collect();
-                        println!("0x{:04X}: {:48} | {}", i * 16, hex_part, ascii_part);
-                    }
-                    println!("--- End of Dump ---\n");
-                }
-
-                let _ = io::stdout().write_all(&initial_buf[..n]);
-                let _ = io::stdout().flush();
-            }
-            _ => {}
-        }
-    }
-
-    println!("\nRTT Session Started (Press Ctrl+C to exit):");
-    if cli_up_channel.is_some() && cli_down_channel.is_some() {
-        println!("Interactive RTT console active. Type commands and press Enter.");
-    }
-    println!();
-
-    if dump {
-        if let Some(chan) = defmt_channel {
-            let source = TargetRttSource {
-                channel: chan,
-                target: target.as_mut(),
-            };
-            let table_ref = table.ok_or("Logging mode requires a valid ELF defmt table")?;
-            println!("Draining buffered defmt logs:\n");
-            dump_logs(source, table_ref, io::stdout())?;
-        }
-        return Ok(());
-    }
-
-    let mut rtt_buf = [0u8; 1024];
-    let mut sent_buffer = Vec::<u8>::new();
     loop {
-        let mut did_work = false;
+        // 1. Connection selection
+        let mut gdb_client_store = None;
+        let mut probe_rs_session_store = None;
 
-        // 1. Poll defmt logs
-        if let Some(chan) = defmt_channel {
-            match chan.read(target.as_mut(), &mut rtt_buf) {
-                Ok(n) if n > 0 => {
-                    did_work = true;
-                    if let Some(ref mut dec) = decoder {
-                        dec.received(&rtt_buf[..n]);
-                        loop {
-                            match dec.decode() {
-                                Ok(frame) => {
-                                    println!("{}", frame.display(true));
+        // Reset spinner state if we are retrying
+        spinner.reset();
+        spinner.enable_steady_tick(std::time::Duration::from_millis(80));
+
+        let connection_res = if let Some(host) = openocd_host {
+            let addr = if host.contains(':') {
+                host.to_string()
+            } else {
+                format!("{}:3333", host)
+            };
+            spinner.set_message(format!("Connecting to OpenOCD GDB session at {}...", addr));
+            match GdbClient::connect(&addr) {
+                Ok(client) => {
+                    gdb_client_store = Some(client);
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            }
+        } else {
+            spinner.set_message(format!("Connecting to probe for chip '{}'...", chip));
+            let lister = Lister::new();
+            let probes = lister.list_all();
+            match probes
+                .first()
+                .ok_or_else(|| "No debug probes connected".to_string())
+                .and_then(|info| info.open().map_err(|e| format!("{:?}", e)))
+            {
+                Ok(probe) => match probe.attach(chip, probe_rs::Permissions::default()) {
+                    Ok(mut session) => {
+                        {
+                            let mut core = session.core(0)?;
+                            if !no_reset {
+                                spinner.set_message("Resetting target CPU...");
+                                let _ = core.reset();
+                                std::thread::sleep(Duration::from_millis(100));
+                                let _ = core.run();
+                                std::thread::sleep(Duration::from_millis(100));
+                            } else {
+                                let status = core.status()?;
+                                spinner.set_message(format!("Core status: {:?}", status));
+                                if status.is_halted() {
+                                    spinner.set_message("Core is halted. Resuming execution...");
+                                    let _ = core.run();
+                                    std::thread::sleep(Duration::from_millis(100));
                                 }
-                                Err(defmt_decoder::DecodeError::UnexpectedEof) => break,
-                                Err(defmt_decoder::DecodeError::Malformed) => {
-                                    eprintln!("Error: malformed defmt frame");
-                                    continue;
+                            }
+                        }
+                        probe_rs_session_store = Some(session);
+                        Ok(())
+                    }
+                    Err(e) => Err(format!("{:?}", e)),
+                },
+                Err(e) => Err(e),
+            }
+        };
+
+        if let Err(err) = connection_res {
+            if dump {
+                return Err(format!("Connection failed: {}", err).into());
+            }
+            spinner.set_message(format!("Connection failed: {}. Retrying in 1s...", err));
+            std::thread::sleep(Duration::from_secs(1));
+            continue;
+        }
+
+        // Set up unified interface
+        let mut target: Box<dyn TargetAccess> = if let Some(ref mut client) = gdb_client_store {
+            Box::new(ProbeRsTargetWrapper { client })
+        } else if let Some(ref mut session) = probe_rs_session_store {
+            let core = match session.core(0) {
+                Ok(c) => c,
+                Err(e) => {
+                    spinner
+                        .set_message(format!("Failed to access core: {:?}. Retrying in 1s...", e));
+                    std::thread::sleep(Duration::from_secs(1));
+                    continue;
+                }
+            };
+            Box::new(ProbeRsWrapper::new(core))
+        } else {
+            unreachable!();
+        };
+
+        if dump_mem {
+            spinner.finish_and_clear();
+            println!("\n=== Dumping raw _SEGGER_RTT control block ===");
+            let mut rtt_header_mem = vec![0u8; 128];
+            target.read_mem(rtt_symbol_addr, &mut rtt_header_mem)?;
+
+            println!(
+                "Header memory dump (128 bytes at 0x{:08X}):",
+                rtt_symbol_addr
+            );
+            print_hex_ascii_dump(rtt_symbol_addr, &rtt_header_mem);
+            return Ok(());
+        }
+
+        spinner.set_message("Locating RTT channels...");
+        let (up_channels, down_channels) =
+            match parse_rtt_channels(target.as_mut(), rtt_symbol_addr, object_file.as_ref()) {
+                Ok(chans) => chans,
+                Err(e) => {
+                    spinner.set_message(format!(
+                        "Failed to parse RTT channels: {}. Retrying in 1s...",
+                        e
+                    ));
+                    std::thread::sleep(Duration::from_secs(1));
+                    continue;
+                }
+            };
+
+        // Identify channels based on selected mode
+        let mut defmt_channel = None;
+        let mut cli_up_channel = None;
+        let mut cli_down_channel = None;
+
+        let stream_defmt =
+            channel_mode == crate::ChannelMode::Defmt || channel_mode == crate::ChannelMode::Both;
+
+        for chan in &up_channels {
+            if chan.name() == Some("defmt") && stream_defmt {
+                defmt_channel = Some(chan);
+            } else if chan.name() == Some("cli") && stream_cli {
+                cli_up_channel = Some(chan);
+            }
+        }
+
+        for chan in &down_channels {
+            if chan.name() == Some("cli") && stream_cli {
+                cli_down_channel = Some(chan);
+            }
+        }
+
+        if raw {
+            if cli_up_channel.is_none() && !up_channels.is_empty() && stream_cli {
+                cli_up_channel = Some(&up_channels[0]);
+            }
+            if cli_down_channel.is_none() && !down_channels.is_empty() && stream_cli {
+                cli_down_channel = Some(&down_channels[0]);
+            }
+        }
+
+        spinner.finish_and_clear();
+
+        println!("RTT connected. Active channels:");
+        if defmt_channel.is_some() {
+            println!("  - Up Channel: \"defmt\" (logs)");
+        }
+        if cli_up_channel.is_some() {
+            println!("  - Up Channel: \"cli\" (raw output)");
+        }
+        if cli_down_channel.is_some() {
+            println!("  - Down Channel: \"cli\" (raw input)");
+        }
+
+        // Set up defmt decoder
+        let mut decoder = if let Some(table) = table {
+            Some(table.new_stream_decoder())
+        } else {
+            None
+        };
+
+        let locations = if let Some(t) = table {
+            t.get_locations(&elf_data).ok()
+        } else {
+            None
+        };
+
+        // Dump initial CLI output
+        if let Some(cli_up) = cli_up_channel {
+            let mut initial_buf = [0u8; 1024];
+            match cli_up.read(target.as_mut(), &mut initial_buf) {
+                Ok(n) if n > 0 => {
+                    use std::io::Write;
+                    if show_raw_cli {
+                        println!("\n--- Raw CLI Buffer Dump ({} bytes cached) ---", n);
+                        for (i, chunk) in initial_buf[..n].chunks(16).enumerate() {
+                            let hex_string: Vec<String> =
+                                chunk.iter().map(|b| format!("{:02X}", b)).collect();
+                            let hex_part = hex_string.join(" ");
+                            let ascii_part: String = chunk
+                                .iter()
+                                .map(|&b| {
+                                    if (32..=126).contains(&b) {
+                                        b as char
+                                    } else {
+                                        '.'
+                                    }
+                                })
+                                .collect();
+                            println!("0x{:04X}: {:48} | {}", i * 16, hex_part, ascii_part);
+                        }
+                        println!("--- End of Dump ---\n");
+                    }
+
+                    let _ = io::stdout().write_all(&initial_buf[..n]);
+                    let _ = io::stdout().flush();
+                }
+                _ => {}
+            }
+        }
+
+        if dump {
+            if let Some(chan) = defmt_channel {
+                let source = TargetRttSource {
+                    channel: chan,
+                    target: target.as_mut(),
+                };
+                let table_ref = table.ok_or("Logging mode requires a valid ELF defmt table")?;
+                println!("Draining buffered defmt logs:\n");
+                dump_logs(source, table_ref, io::stdout())?;
+            }
+            return Ok(());
+        }
+
+        println!("\nRTT Session Started (Press Ctrl+C to exit):");
+        if cli_up_channel.is_some() && cli_down_channel.is_some() {
+            println!("Interactive RTT console active. Type commands and press Enter.");
+        }
+        println!();
+
+        // Run the poll loop
+        let mut rtt_buf = [0u8; 1024];
+        let mut sent_buffer = Vec::<u8>::new();
+        let mut run_error = None;
+
+        loop {
+            let mut did_work = false;
+
+            // 1. Poll defmt logs
+            if let Some(chan) = defmt_channel {
+                match chan.read(target.as_mut(), &mut rtt_buf) {
+                    Ok(n) if n > 0 => {
+                        did_work = true;
+                        if let Some(ref mut dec) = decoder {
+                            dec.received(&rtt_buf[..n]);
+                            loop {
+                                match dec.decode() {
+                                    Ok(frame) => {
+                                        let plain_line = frame.display(false).to_string();
+                                        if plain_line.contains("Crash Dump: ") {
+                                            handle_intercepted_crash_dump(
+                                                &plain_line,
+                                                &addr2line_ctx,
+                                                table,
+                                            );
+                                        } else {
+                                            let display = frame.display(true);
+                                            let mut line_str = display.to_string();
+
+                                            let mut module_context = String::new();
+                                            if let Some(ref locs) = locations {
+                                                if let Some(loc) = locs.get(&frame.index()) {
+                                                    module_context =
+                                                        format!("\x1b[36m[{}]\x1b[0m ", loc.module);
+                                                }
+                                            }
+
+                                            if !module_context.is_empty() {
+                                                let mut inserted = false;
+                                                for lvl in
+                                                    &["TRACE", "DEBUG", "INFO", "WARN", "ERROR"]
+                                                {
+                                                    if let Some(pos) = line_str.find(lvl) {
+                                                        let rest = &line_str[pos..];
+                                                        if let Some(space_pos) = rest.find(' ') {
+                                                            let insert_idx = pos + space_pos + 1;
+                                                            line_str.insert_str(
+                                                                insert_idx,
+                                                                &module_context,
+                                                            );
+                                                            inserted = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                if !inserted {
+                                                    line_str =
+                                                        format!("{}{}", module_context, line_str);
+                                                }
+                                            }
+                                            println!("{}", line_str);
+                                        }
+                                    }
+                                    Err(defmt_decoder::DecodeError::UnexpectedEof) => break,
+                                    Err(defmt_decoder::DecodeError::Malformed) => {
+                                        eprintln!("Error: malformed defmt frame");
+                                        continue;
+                                    }
                                 }
                             }
                         }
                     }
+                    Err(e) => {
+                        run_error = Some(format!("defmt read error: {:?}", e));
+                        break;
+                    }
+                    _ => {}
                 }
-                Err(e) => {
-                    eprintln!("defmt RTT read error: {:?}", e);
-                    break;
-                }
-                _ => {}
             }
-        }
 
-        // 2. Poll CLI output
-        if let Some(cli_up) = cli_up_channel {
-            match cli_up.read(target.as_mut(), &mut rtt_buf) {
-                Ok(n) if n > 0 => {
-                    use std::io::Write;
-                    did_work = true;
-                    let mut write_buf = Vec::with_capacity(n);
-                    for &b in &rtt_buf[..n] {
-                        if !sent_buffer.is_empty()
-                            && (sent_buffer[0] == b
-                                || ((b == b'\r' || b == b'\n')
-                                    && (sent_buffer[0] == b'\r' || sent_buffer[0] == b'\n')))
-                        {
-                            sent_buffer.remove(0);
-                        } else {
-                            write_buf.push(b);
+            // 2. Poll CLI output
+            if let Some(cli_up) = cli_up_channel {
+                match cli_up.read(target.as_mut(), &mut rtt_buf) {
+                    Ok(n) if n > 0 => {
+                        use std::io::Write;
+                        did_work = true;
+                        let mut write_buf = Vec::with_capacity(n);
+                        for &b in &rtt_buf[..n] {
+                            if !sent_buffer.is_empty()
+                                && (sent_buffer[0] == b
+                                    || ((b == b'\r' || b == b'\n')
+                                        && (sent_buffer[0] == b'\r' || sent_buffer[0] == b'\n')))
+                            {
+                                sent_buffer.remove(0);
+                            } else {
+                                write_buf.push(b);
+                            }
+                        }
+                        if !write_buf.is_empty() {
+                            let _ = std::io::stdout().write_all(&write_buf);
+                            let _ = std::io::stdout().flush();
                         }
                     }
-                    if !write_buf.is_empty() {
-                        let _ = std::io::stdout().write_all(&write_buf);
-                        let _ = std::io::stdout().flush();
+                    Err(e) => {
+                        run_error = Some(format!("CLI read error: {:?}", e));
+                        break;
                     }
+                    _ => {}
                 }
-                Err(e) => {
-                    eprintln!("CLI RTT read error: {:?}", e);
-                    break;
-                }
-                _ => {}
             }
-        }
 
-        // 3. Poll CLI input
-        if let Some(cli_down) = cli_down_channel {
+            // 3. Poll CLI input
             if let Ok(input_bytes) = stdin_rx.try_recv() {
                 did_work = true;
-
-                // Queue typed characters for echo cancellation
-                for &b in &input_bytes {
-                    if b == b'\n' || b == b'\r' {
-                        sent_buffer.push(b'\r');
-                        sent_buffer.push(b'\n');
-                    } else {
-                        sent_buffer.push(b);
+                if let Some(cli_down) = cli_down_channel {
+                    // Queue typed characters for echo cancellation
+                    for &b in &input_bytes {
+                        if b == b'\n' || b == b'\r' {
+                            sent_buffer.push(b'\r');
+                            sent_buffer.push(b'\n');
+                        } else {
+                            sent_buffer.push(b);
+                        }
                     }
-                }
-                if sent_buffer.len() > 1024 {
-                    sent_buffer.clear();
-                }
+                    if sent_buffer.len() > 1024 {
+                        sent_buffer.clear();
+                    }
 
-                let mut written = 0;
-                while written < input_bytes.len() {
-                    match cli_down.write(target.as_mut(), &input_bytes[written..]) {
-                        Ok(n) => written += n,
-                        Err(e) => {
-                            eprintln!("CLI RTT write error: {:?}", e);
-                            break;
+                    let mut written = 0;
+                    while written < input_bytes.len() {
+                        match cli_down.write(target.as_mut(), &input_bytes[written..]) {
+                            Ok(n) => written += n,
+                            Err(e) => {
+                                run_error = Some(format!("CLI write error: {:?}", e));
+                                break;
+                            }
                         }
                     }
                 }
             }
+
+            if run_error.is_some() {
+                break;
+            }
+
+            if !did_work {
+                std::thread::sleep(Duration::from_millis(10));
+            }
         }
 
-        if !did_work {
-            std::thread::sleep(Duration::from_millis(10));
+        if let Some(err) = run_error {
+            eprintln!("\nConnection lost: {}. Reconnecting...", err);
+            std::thread::sleep(Duration::from_secs(1));
+        } else {
+            break;
         }
     }
 
@@ -592,4 +751,141 @@ fn print_hex_ascii_dump(start_addr: u64, data: &[u8]) {
             ascii_part
         );
     }
+}
+
+fn split_cbor_display(s: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut in_quotes = false;
+    let mut bracket_level = 0;
+
+    let s = s.trim();
+    let s = if s.starts_with('[') && s.ends_with(']') {
+        &s[1..s.len() - 1]
+    } else {
+        s
+    };
+
+    for c in s.chars() {
+        match c {
+            '"' => {
+                in_quotes = !in_quotes;
+                current.push(c);
+            }
+            '[' => {
+                if !in_quotes {
+                    bracket_level += 1;
+                }
+                current.push(c);
+            }
+            ']' => {
+                if !in_quotes {
+                    bracket_level -= 1;
+                }
+                current.push(c);
+            }
+            ',' => {
+                if !in_quotes && bracket_level == 0 {
+                    parts.push(current.trim().to_string());
+                    current.clear();
+                } else {
+                    current.push(c);
+                }
+            }
+            _ => {
+                current.push(c);
+            }
+        }
+    }
+    if !current.is_empty() {
+        parts.push(current.trim().to_string());
+    }
+    parts
+}
+
+fn parse_u32(s: &str) -> u32 {
+    let s = s.trim();
+    if s.starts_with("0x") || s.starts_with("0X") {
+        u32::from_str_radix(&s[2..], 16).unwrap_or(0)
+    } else {
+        s.parse::<u32>().unwrap_or(0)
+    }
+}
+
+fn decode_hex(s: &str) -> Vec<u8> {
+    let s = s.trim().trim_start_matches("h'").trim_end_matches('\'');
+    let mut bytes = Vec::new();
+    let mut chars = s.chars().filter(|c| c.is_ascii_hexdigit());
+    while let (Some(c1), Some(c2)) = (chars.next(), chars.next()) {
+        let hex_str: String = [c1, c2].iter().collect();
+        if let Ok(b) = u8::from_str_radix(&hex_str, 16) {
+            bytes.push(b);
+        }
+    }
+    bytes
+}
+
+fn handle_intercepted_crash_dump<R>(
+    log_line: &str,
+    context: &Option<addr2line::Context<R>>,
+    defmt_table: Option<&defmt_decoder::Table>,
+) where
+    R: addr2line::gimli::Reader<Offset = usize>,
+{
+    let start_idx = match log_line.find("Crash Dump: ") {
+        Some(idx) => idx + "Crash Dump: ".len(),
+        None => return,
+    };
+
+    let array_str = &log_line[start_idx..];
+    let parts = split_cbor_display(array_str);
+    if parts.len() < 9 {
+        return;
+    }
+
+    let revision_hash = parts[0].trim_matches('"').to_string();
+    let r0 = parse_u32(&parts[1]);
+    let r1 = parse_u32(&parts[2]);
+    let r2 = parse_u32(&parts[3]);
+    let r3 = parse_u32(&parts[4]);
+
+    let bt_str = parts[5].trim_matches(|c| c == '[' || c == ']');
+    let backtrace: Vec<u32> = if bt_str.trim().is_empty() {
+        Vec::new()
+    } else {
+        bt_str.split(',').map(|x| parse_u32(x)).collect()
+    };
+
+    let backtrace_len = parse_u32(&parts[6]) as usize;
+    let system_logs = decode_hex(&parts[7]);
+    let uuid_bytes = decode_hex(&parts[8]);
+    let mut uuid = [0u8; 16];
+    if uuid_bytes.len() == 16 {
+        uuid.copy_from_slice(&uuid_bytes);
+    }
+
+    let dump = firmware_lib::types::CrashDump {
+        revision_hash: &revision_hash,
+        r0,
+        r1,
+        r2,
+        r3,
+        backtrace: {
+            let mut bt = [0u32; 32];
+            for (i, &pc) in backtrace.iter().enumerate().take(32) {
+                bt[i] = pc;
+            }
+            bt
+        },
+        backtrace_len: backtrace_len as u32,
+        system_logs: &system_logs,
+        uuid,
+    };
+
+    tool_common::print_crash_dump(
+        "🔥 TARGET DEVICE CRASH DETECTED 🔥",
+        &dump,
+        context,
+        defmt_table,
+    );
 }

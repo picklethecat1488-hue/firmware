@@ -363,3 +363,20 @@ When introducing or modifying telemetry records, filesystem files, or crash logs
    cargo run -p host_fs -- --dump <flash_dump.bin> crash-log --elf target/thumbv6m-none-eabi/debug/cat_detector_app
    ```
    Verify that all frames resolve demangled function names, filenames, and correct source line numbers.
+4. **Rerun Telemetry Visualization**: Plot the exported telemetry CSV in Rerun:
+   - Ensure the Rerun Python SDK is installed:
+     ```bash
+     pip install rerun-sdk
+     ```
+   - Start the Rerun Viewer:
+     ```bash
+     rerun
+     ```
+   - Stream the CSV into the running viewer:
+     ```bash
+     python scripts/rerun-loader-csv telemetry.csv
+     ```
+   *(Optional)* Symlink `scripts/rerun-loader-csv` into your system `PATH` (e.g., `/usr/local/bin/rerun-loader-csv` or `~/.local/bin/rerun-loader-csv`) to enable direct drag-and-drop or CLI loading via:
+     ```bash
+     rerun telemetry.csv
+     ```

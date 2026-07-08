@@ -38,15 +38,13 @@ struct ProximityPinWrapper(embassy_rp::gpio::Flex<'static>);
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 impl controller::sensor_controller::DataReadyPin for ProximityPinWrapper {
     async fn wait_for_data_ready(&mut self) {
-        self.0.wait_for_low().await;
+        self.0.wait_for_falling_edge().await;
     }
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    let entropy = app::get_hw_entropy();
-    let micros = app::system_time();
     app::handle_panic_with_sizes::<
         { app::FLASH_SIZE },
         { app::STACK_TOP },
@@ -54,7 +52,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
         { app::FLASH_END },
         { app::FLASH_WRITE_SIZE },
         { app::FLASH_ERASE_SIZE },
-    >(entropy, micros, info);
+    >(info);
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -123,6 +121,8 @@ async fn main(spawner: Spawner) {
     firmware_lib::defmt_logger::DefmtLogger::set_writer(
         &firmware_lib::defmt_logger::DEFAULT_RTT_WRITER,
     );
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    defmt::info!("Booting Cat Detector App...");
 
     // Initialize the modular panic handler
     static mut PANIC_FLASH: Option<
@@ -156,6 +156,9 @@ async fn main(spawner: Spawner) {
         app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
     );
     fs_controller.set_telemetry(app::TELEMETRY_CHANNEL.sender());
+
+    // Verify and repair/reformat the filesystem if it is corrupted
+    let _ = fs_controller.verify_and_repair().await;
 
     // Extract the motor control pin from the board configuration array
     let motor_pin = board.gpio_pins[app::LED_PIN as usize]

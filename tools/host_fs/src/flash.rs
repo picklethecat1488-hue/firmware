@@ -41,8 +41,8 @@ impl embedded_storage_async::nor_flash::ReadNorFlash for HostFlash {
 }
 
 impl embedded_storage_async::nor_flash::NorFlash for HostFlash {
-    const WRITE_SIZE: usize = 4;
-    const ERASE_SIZE: usize = 1024;
+    const WRITE_SIZE: usize = 1;
+    const ERASE_SIZE: usize = 4096;
 
     async fn write(&mut self, offset: u32, bytes: &[u8]) -> Result<(), Self::Error> {
         let start = offset as usize;
@@ -103,8 +103,15 @@ impl ProbeFlash {
             let mut core = session
                 .core(0)
                 .map_err(|e| format!("Failed to access core: {:?}", e))?;
-            core.read_8(base_address as u64, &mut data)
-                .map_err(|e| format!("Failed to read memory from target: {:?}", e))?;
+            let was_running = core.core_halted().map(|h| !h).unwrap_or(true);
+            if was_running {
+                let _ = core.halt(std::time::Duration::from_millis(500));
+            }
+            let read_res = core.read_8(base_address as u64, &mut data);
+            if was_running {
+                let _ = core.run();
+            }
+            read_res.map_err(|e| format!("Failed to read memory from target: {:?}", e))?;
         }
 
         let sector_size = 4096;
@@ -174,8 +181,8 @@ impl embedded_storage_async::nor_flash::ReadNorFlash for ProbeFlash {
 }
 
 impl embedded_storage_async::nor_flash::NorFlash for ProbeFlash {
-    const WRITE_SIZE: usize = 4;
-    const ERASE_SIZE: usize = 1024;
+    const WRITE_SIZE: usize = 1;
+    const ERASE_SIZE: usize = 4096;
 
     async fn write(&mut self, offset: u32, bytes: &[u8]) -> Result<(), Self::Error> {
         let start = offset as usize;
@@ -300,8 +307,8 @@ impl embedded_storage_async::nor_flash::ReadNorFlash for GdbFlash {
 }
 
 impl embedded_storage_async::nor_flash::NorFlash for GdbFlash {
-    const WRITE_SIZE: usize = 4;
-    const ERASE_SIZE: usize = 1024;
+    const WRITE_SIZE: usize = 1;
+    const ERASE_SIZE: usize = 4096;
 
     async fn write(&mut self, offset: u32, bytes: &[u8]) -> Result<(), Self::Error> {
         let start = offset as usize;
@@ -383,8 +390,8 @@ impl embedded_storage_async::nor_flash::ReadNorFlash for EitherFlash {
 }
 
 impl embedded_storage_async::nor_flash::NorFlash for EitherFlash {
-    const WRITE_SIZE: usize = 4;
-    const ERASE_SIZE: usize = 1024;
+    const WRITE_SIZE: usize = 1;
+    const ERASE_SIZE: usize = 4096;
 
     async fn write(&mut self, offset: u32, bytes: &[u8]) -> Result<(), Self::Error> {
         match self {

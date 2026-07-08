@@ -111,6 +111,7 @@ unsafe impl Sync for Header {}
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[no_mangle]
+#[used]
 static mut _SEGGER_RTT: Header = Header {
     id: *b"SEGGER RTT\0\0\0\0\0\0",
     max_up_channels: 2,
