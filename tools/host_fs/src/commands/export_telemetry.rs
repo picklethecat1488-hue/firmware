@@ -55,7 +55,12 @@ pub async fn run(
                 }
             }
 
-            let max_records = 45;
+            if content.len() < 12 {
+                spinner.finish_and_clear();
+                eprintln!("Error: Telemetry file too short");
+                std::process::exit(1);
+            }
+            let max_records = (content.len() - 12) / 20;
             if count > max_records || next_idx > max_records {
                 spinner.finish_and_clear();
                 eprintln!("Error: Invalid header count/next_idx in telemetry file");
