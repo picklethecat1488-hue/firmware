@@ -21,6 +21,9 @@ pub mod system;
 /// Shared types and traits for the library.
 pub mod types;
 
+/// Heartbeat and execution liveness monitoring module.
+pub mod heartbeat_monitor;
+
 /// Telemetry storage pipeline and task.
 pub use controller::telemetry_controller as telemetry;
 
