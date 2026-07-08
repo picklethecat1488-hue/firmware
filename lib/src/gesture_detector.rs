@@ -9,6 +9,7 @@ pub struct GestureDetector {
     last_press_duration_us: u64,
     threshold_mm: u16,
     proximity_threshold_mm: u16,
+    proximity_active: bool,
 }
 
 impl GestureDetector {
@@ -19,14 +20,16 @@ impl GestureDetector {
             last_press_duration_us: 0,
             threshold_mm,
             proximity_threshold_mm,
+            proximity_active: false,
         }
     }
 
     /// Updates the state machine with current sensor distances and the current absolute system time in microseconds.
     /// Returns:
     /// - Some(Gesture::DualLongPress) if held continuously for 5 seconds (5_000_000 us).
-    /// - Some(Gesture::ProximityDetected) if any sensor is < 300 mm.
-    /// - Some(Gesture::ProximityNotDetected) otherwise.
+    /// - Some(Gesture::ProximityDetected) if proximity status transitions to active.
+    /// - Some(Gesture::ProximityNotDetected) if proximity status transitions to inactive.
+    /// - None otherwise.
     pub fn update(
         &mut self,
         gesture: model::types::Gesture,
@@ -57,13 +60,19 @@ impl GestureDetector {
             self.last_press_duration_us = 0;
         }
 
-        if dist_north_mm < self.proximity_threshold_mm
+        let in_range = dist_north_mm < self.proximity_threshold_mm
             || dist_east_mm < self.proximity_threshold_mm
-            || dist_west_mm < self.proximity_threshold_mm
-        {
-            Some(model::types::Gesture::ProximityDetected)
+            || dist_west_mm < self.proximity_threshold_mm;
+
+        if in_range != self.proximity_active {
+            self.proximity_active = in_range;
+            if in_range {
+                Some(model::types::Gesture::ProximityDetected)
+            } else {
+                Some(model::types::Gesture::ProximityNotDetected)
+            }
         } else {
-            Some(model::types::Gesture::ProximityNotDetected)
+            None
         }
     }
 
@@ -72,9 +81,20 @@ impl GestureDetector {
         (self.last_press_duration_us / 1000) as u32
     }
 
-    /// Resets the internal debounce timer state.
+    /// Returns the current proximity active state.
+    pub fn proximity_active(&self) -> bool {
+        self.proximity_active
+    }
+
+    /// Manually sets the proximity active state.
+    pub fn set_proximity_active(&mut self, active: bool) {
+        self.proximity_active = active;
+    }
+
+    /// Resets the internal debounce timer and proximity state.
     pub fn reset(&mut self) {
         self.press_start_time_us = None;
         self.last_press_duration_us = 0;
+        self.proximity_active = false;
     }
 }
