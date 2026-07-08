@@ -147,8 +147,6 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
         }
 
         if !valid {
-            #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::info!("Telemetry: telemetry.rrd invalid/missing, initializing...");
             self.count = 0;
             self.next_idx = 0;
             let header = self.serialize_header();

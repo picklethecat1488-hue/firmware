@@ -3,6 +3,7 @@ use crate::string_to_key;
 use std::fs::File;
 use std::io::{self, Write};
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     flash: &mut EitherFlash,
     flash_range: std::ops::Range<u32>,

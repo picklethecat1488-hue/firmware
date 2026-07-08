@@ -180,6 +180,9 @@ pub async fn run(
                     model::telemetry::TelemetryRecord::PeripheralError(state) => {
                         writeln!(csv_file, "{},PeripheralError,{:?},,,", ts, state)?;
                     }
+                    model::telemetry::TelemetryRecord::Boot(reason) => {
+                        writeln!(csv_file, "{},Boot,{:?},,,", ts, reason)?;
+                    }
                 }
             }
 

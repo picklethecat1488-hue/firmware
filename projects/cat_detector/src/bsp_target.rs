@@ -271,3 +271,17 @@ pub fn configure_mpu_stack_guard() {
     }
     defmt::info!("MPU stack guard configured at 0x{:08x}", guard_addr);
 }
+
+/// Reads the RP2040 chip reset registers to determine the cause of the boot.
+pub fn get_boot_reason() -> model::types::BootReason {
+    let reg = unsafe { core::ptr::read_volatile(0x40064008 as *const u32) };
+    if (reg & (1 << 8)) != 0 {
+        model::types::BootReason::PowerOn
+    } else if (reg & (1 << 20)) != 0 {
+        model::types::BootReason::Watchdog
+    } else if (reg & (1 << 16)) != 0 {
+        model::types::BootReason::SoftwareReset
+    } else {
+        model::types::BootReason::Unknown
+    }
+}

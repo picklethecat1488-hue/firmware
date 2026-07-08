@@ -114,6 +114,10 @@ def main():
                         pass
                 elif rec_type == "ChargerState":
                     rr.log("charger/state", rr.TextDocument(val1))
+                elif rec_type == "Boot":
+                    rr.log("system/boot_reason", rr.TextDocument(val1))
+                elif rec_type == "PeripheralError":
+                    rr.log("system/peripheral_error", rr.TextDocument(val1))
     except Exception as e:
         print(f"Error parsing CSV: {e}", file=sys.stderr)
         sys.exit(1)

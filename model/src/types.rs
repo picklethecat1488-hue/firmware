@@ -267,6 +267,25 @@ pub enum PeripheralError {
     I2CUnknown,
 }
 
+/// The reason why the device booted.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum BootReason {
+    /// Cold boot or standard power cycle.
+    #[n(0)]
+    PowerOn,
+    /// Booted due to system watchdog reset.
+    #[n(1)]
+    Watchdog,
+    /// Booted due to software reset.
+    #[n(2)]
+    SoftwareReset,
+    /// Boot reason is unknown or unclassified.
+    #[default]
+    #[n(3)]
+    Unknown,
+}
+
 dummy_debug!(BatteryStatus);
 dummy_debug!(BatteryState);
 dummy_debug!(MotorStatus);
@@ -280,5 +299,6 @@ dummy_debug!(FlashEraseTelemetry);
 dummy_debug!(ChargeState);
 dummy_debug!(Direction);
 dummy_debug!(PeripheralError);
+dummy_debug!(BootReason);
 
 pub use crate::telemetry::TelemetryRecord;

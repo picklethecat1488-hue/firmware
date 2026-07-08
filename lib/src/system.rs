@@ -5,7 +5,9 @@
 use crate::types::{BatteryThresholds, BatteryTransitionResult, BatteryUpdateInfo};
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
-use model::types::{Gesture, ProximityTelemetry, SystemLedState, SystemStatus, TelemetryRecord};
+use model::types::{
+    BootReason, Gesture, ProximityTelemetry, SystemLedState, SystemStatus, TelemetryRecord,
+};
 
 /// Pure transition function for waking the system.
 /// Returns the next status if the transition is valid.
@@ -199,7 +201,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
         mid_soc_threshold: u8,
         high_soc_threshold: u8,
         telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, N>,
+        boot_reason: BootReason,
     ) -> Self {
+        let _ = telemetry_tx.try_send(TelemetryRecord::Boot(boot_reason));
         Self {
             status: SystemStatus::PowerDown,
             inactive_ms: 0,

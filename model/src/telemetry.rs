@@ -37,6 +37,9 @@ pub enum TelemetryRecord {
     /// Peripheral error telemetry.
     #[n(10)]
     PeripheralError(#[n(0)] PeripheralError),
+    /// System booted telemetry.
+    #[n(11)]
+    Boot(#[n(0)] BootReason),
 }
 
 impl TelemetryRecord {
