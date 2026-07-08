@@ -27,6 +27,9 @@ pub mod power_manager;
 /// Thermal manager module.
 pub mod thermal_manager;
 
+/// Periodic timer utility.
+pub mod periodic_timer;
+
 /// Shared I2C blocking access wrapper structures.
 pub mod i2c;
 
