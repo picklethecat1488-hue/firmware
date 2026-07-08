@@ -1,5 +1,8 @@
 //! Project-agnostic flat filesystem controller built over sequential-storage.
 
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+extern crate std;
+
 use core::cmp;
 use core::ops::Range;
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -118,15 +121,7 @@ impl<F: NorFlash> embedded_storage_async::nor_flash::NorFlash for ProfilingFlash
                     duration_ms,
                     erase_count: self.erase_count,
                 };
-                if tx
-                    .try_send(model::telemetry::TelemetryRecord::FlashTelemetry(details))
-                    .is_err()
-                {
-                    #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    defmt::warn!(
-                        "[Profile] Telemetry channel full! Dropped flash erase telemetry record."
-                    );
-                }
+                let _ = tx.try_send(model::telemetry::TelemetryRecord::FlashTelemetry(details));
             }
         }
 
@@ -142,18 +137,14 @@ pub struct FilesystemController<F: NorFlash + MultiwriteNorFlash> {
     pub flash: F,
     /// The physical partition address range in flash (start..end byte offsets)
     range: Range<u32>,
-    /// Statically allocated buffer for sequential-storage operations to avoid stack overflows
-    buf: [u8; 2048],
+    /// Reference to a statically allocated buffer for sequential-storage operations
+    buf: &'static mut [u8],
 }
 
 impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     /// Creates a new FilesystemController.
-    pub fn new(flash: F, range: Range<u32>) -> Self {
-        Self {
-            flash,
-            range,
-            buf: [0u8; 2048],
-        }
+    pub fn new(flash: F, range: Range<u32>, buf: &'static mut [u8]) -> Self {
+        Self { flash, range, buf }
     }
 
     /// Helper to convert a string path into a fixed-size 32-byte key.
@@ -167,7 +158,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
 
     /// Stores/overwrites a file with the given name (key) and contents (value).
     pub async fn write_file(&mut self, name: &str, content: &[u8]) -> Result<(), ()> {
-        let is_telemetry = name == "telemetry.rrd";
+        let is_telemetry = name.starts_with("telemetry");
         if is_telemetry {
             TELEMETRY_ENABLED.store(false, Ordering::Relaxed);
         }
@@ -180,7 +171,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
             &mut self.flash,
             self.range.clone(),
             &mut cache,
-            &mut self.buf,
+            self.buf,
             &key,
             &content,
         )
@@ -193,6 +184,8 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
         if let Err(_e) = res {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
             defmt::error!("store_item failed: {:?}", defmt::Debug2Format(&_e));
+            #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+            std::eprintln!("store_item failed: {:?}", _e);
             return Err(());
         }
 
@@ -223,12 +216,11 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
 
                 // Write directory directly to avoid async recursion cycle
                 let dir_key = Self::string_to_key(".dir");
-                let mut dir_write_buf = [0u8; 1024];
                 let _ = sequential_storage::map::store_item(
                     &mut self.flash,
                     self.range.clone(),
                     &mut cache,
-                    &mut dir_write_buf,
+                    self.buf,
                     &dir_key,
                     &current_dir.as_bytes(),
                 )
@@ -247,17 +239,38 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     ) -> Result<Option<&'a [u8]>, ()> {
         let mut cache = sequential_storage::cache::NoCache::new();
         let key = Self::string_to_key(name);
+
         let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
             &mut self.flash,
             self.range.clone(),
             &mut cache,
-            out_buf,
+            self.buf,
             &key,
         )
         .await;
         match res {
-            Ok(val) => Ok(val),
-            Err(_) => Err(()),
+            Ok(Some(val)) => {
+                if val.len() <= out_buf.len() {
+                    out_buf[..val.len()].copy_from_slice(val);
+                    Ok(Some(&out_buf[..val.len()]))
+                } else {
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::error!(
+                        "read_file: output buffer too small ({} bytes) for file of size {} bytes",
+                        out_buf.len(),
+                        val.len()
+                    );
+                    Err(())
+                }
+            }
+            Ok(None) => Ok(None),
+            Err(_e) => {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::error!("fetch_item failed: {:?}", defmt::Debug2Format(&_e));
+                #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+                std::eprintln!("fetch_item failed: {:?}", _e);
+                Err(())
+            }
         }
     }
 
@@ -271,7 +284,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
             &mut self.flash,
             self.range.clone(),
             &mut cache,
-            &mut self.buf,
+            self.buf,
             &key,
         )
         .await;
@@ -306,7 +319,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
                 &mut self.flash,
                 self.range.clone(),
                 &mut cache,
-                &mut self.buf,
+                self.buf,
                 &dir_key,
                 &new_dir.as_bytes(),
             )
@@ -321,22 +334,29 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
         self.read_file(".dir", out_buf).await
     }
 
+    /// Erases the entire filesystem partition.
+    pub async fn format(&mut self) -> Result<(), ()> {
+        self.flash
+            .erase(self.range.start, self.range.end)
+            .await
+            .map_err(|_| ())
+    }
+
     /// Verifies the filesystem health by trying to read the directory index.
     /// If it returns a Corrupted or InvalidValue error, it formats/erases the entire partition.
     pub async fn verify_and_repair(&mut self) -> Result<(), ()> {
-        let mut buf = [0u8; 128];
         let mut cache = sequential_storage::cache::NoCache::new();
         let key = Self::string_to_key(".dir");
         let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
             &mut self.flash,
             self.range.clone(),
             &mut cache,
-            &mut buf,
+            self.buf,
             &key,
         )
         .await;
 
-        if let Err(sequential_storage::Error::Corrupted { .. }) = res {
+        if res.is_err() {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
             defmt::error!("Filesystem corrupted or invalid! Reformatting partition...");
 
@@ -353,12 +373,11 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
             }
 
             // Re-write an empty directory index
-            let mut dir_write_buf = [0u8; 128];
             if sequential_storage::map::store_item(
                 &mut self.flash,
                 self.range.clone(),
                 &mut cache,
-                &mut dir_write_buf,
+                self.buf,
                 &key,
                 &[0u8; 0],
             )

@@ -92,6 +92,8 @@ pub struct PanicConfig {
     pub flash: &'static mut dyn PanicFlash,
     /// Offset range in flash partition used for filesystem
     pub range: core::ops::Range<u32>,
+    /// Static filesystem buffer used as workspace during panic writes
+    pub fs_buf: &'static mut [u8],
 }
 
 /// Result of a battery update state transition.

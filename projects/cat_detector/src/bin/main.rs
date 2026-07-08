@@ -133,13 +133,22 @@ async fn main(spawner: Spawner) {
             { app::FLASH_SIZE },
         >,
     > = None;
+    // Declare statically to avoid stack allocation and stack overflow
+    static mut FS_BUF: [u8; 4096] = [0u8; 4096];
+
     let panic_flash = unsafe {
         PANIC_FLASH = Some(embassy_rp::flash::Flash::new_blocking(board.flash));
         PANIC_FLASH.as_mut().unwrap()
     };
+    // Obtain separate static mut references for the panic handler and filesystem controller.
+    // This is safe because the panic handler only runs after the application halts/panics.
+    let fs_buf_panic = unsafe { &mut *core::ptr::addr_of_mut!(FS_BUF) };
+    let fs_buf_controller = unsafe { &mut *core::ptr::addr_of_mut!(FS_BUF) };
+
     app::init_panic_handler(
         panic_flash,
         app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
+        fs_buf_panic,
     );
 
     // Initialize the FilesystemController using stolen FLASH peripheral (safe because panic handler only reads/writes on panic)
@@ -154,6 +163,7 @@ async fn main(spawner: Spawner) {
     let mut fs_controller = controller::filesystem_controller::FilesystemController::new(
         profiling_flash,
         app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
+        fs_buf_controller,
     );
     fs_controller.set_telemetry(app::TELEMETRY_CHANNEL.sender());
 
@@ -444,16 +454,25 @@ async fn main(spawner: Spawner) {
         >
     );
 
+    // Declare statically to avoid stack overflow on the main thread MSP stack
+    static mut TELEMETRY_CTRL: Option<
+        TelemetryController<1024, { model::telemetry::BUFFER_SIZE }>,
+    > = None;
+
     let client =
         controller::filesystem_controller::FilesystemClient::new(app::FILESYSTEM_CHANNEL.sender());
-    let telemetry_ctrl =
-        TelemetryController::<45, { 12 + 45 * 20 + 128 }>::new(client, app::system_time);
+
+    let telemetry_ctrl = unsafe {
+        TELEMETRY_CTRL = Some(TelemetryController::new(client, app::system_time));
+        TELEMETRY_CTRL.as_mut().unwrap()
+    };
+
     app::run_telemetry_task!(
         spawner,
         telemetry_task,
         telemetry_ctrl,
         app::TELEMETRY_CHANNEL.receiver(),
-        45,
+        1024,
         { controller::telemetry_controller::CHANNEL_CAPACITY }
     );
 }

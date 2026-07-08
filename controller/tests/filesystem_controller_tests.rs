@@ -51,7 +51,8 @@ fn test_filesystem_controller_flow() {
     futures::executor::block_on(async {
         let flash = MockFlash::new();
         let profiling_flash = ProfilingFlash::new(flash);
-        let mut fs = FilesystemController::new(profiling_flash, 0..1024 * 64);
+        let buf = Box::leak(vec![0u8; 2048].into_boxed_slice());
+        let mut fs = FilesystemController::new(profiling_flash, 0..1024 * 64, buf);
 
         // Verify erase profiling works
         assert_eq!(fs.flash.erase_count(), 0);
@@ -108,7 +109,8 @@ fn test_filesystem_verify_and_repair_corruption() {
             .unwrap();
 
         let profiling_flash = ProfilingFlash::new(flash);
-        let mut fs = FilesystemController::new(profiling_flash, 0..1024 * 64);
+        let buf = Box::leak(vec![0u8; 2048].into_boxed_slice());
+        let mut fs = FilesystemController::new(profiling_flash, 0..1024 * 64, buf);
 
         // Verify that verifying and repairing clears the corruption and reformats the partition
         assert!(fs.verify_and_repair().await.is_ok());

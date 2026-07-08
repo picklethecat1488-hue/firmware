@@ -173,17 +173,20 @@ pub static PANIC_CONFIG: embassy_sync::blocking_mutex::Mutex<
     core::cell::RefCell<Option<PanicConfig>>,
 > = embassy_sync::blocking_mutex::Mutex::new(core::cell::RefCell::new(None));
 
-/// Initialize the panic handler with flash access and target partition settings.
+/// Initialize the panic handler with flash access, target partition settings, and filesystem buffer.
 pub fn init(
     #[cfg(all(target_arch = "arm", target_os = "none"))]
     flash: &'static mut dyn crate::types::PanicFlash,
     #[cfg(all(target_arch = "arm", target_os = "none"))] range: core::ops::Range<u32>,
+    #[cfg(all(target_arch = "arm", target_os = "none"))] fs_buf: &'static mut [u8],
 ) {
     #[cfg(all(target_arch = "arm", target_os = "none"))]
     critical_section::with(|cs| {
-        PANIC_CONFIG
-            .borrow(cs)
-            .replace(Some(PanicConfig { flash, range }));
+        PANIC_CONFIG.borrow(cs).replace(Some(PanicConfig {
+            flash,
+            range,
+            fs_buf,
+        }));
     });
 }
 
@@ -528,10 +531,9 @@ pub fn handle_panic_with_sizes<
         read_mem,
     );
 
-    // A single static scratch buffer used for log extraction, CBOR serialization,
-    // and as the sequential-storage map operation workspace.
+    // A single static scratch buffer used for log extraction and CBOR serialization.
     // Partitioned as:
-    //   - scratch[0..1500]: Used for log extraction (1500 bytes), then reused as sequential-storage scratch/fetch workspace.
+    //   - scratch[0..1500]: Used for log extraction (1500 bytes).
     //   - scratch[1500..2700]: Used for CBOR serialization buffer (1200 bytes).
     static mut SCRATCH_BUF: [u8; 2700] = [0u8; 2700];
     let (log_buf, cbor_buf) = unsafe { SCRATCH_BUF.split_at_mut(1500) };
@@ -574,7 +576,7 @@ pub fn handle_panic_with_sizes<
                     &mut flash,
                     config.range.clone(),
                     &mut cache,
-                    log_buf,
+                    config.fs_buf,
                     encoded_bytes,
                 )
                 .await;

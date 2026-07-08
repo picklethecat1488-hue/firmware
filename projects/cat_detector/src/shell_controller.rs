@@ -1,5 +1,7 @@
 //! Shell controller for processing interactive bringup CLI commands.
 
+#![allow(static_mut_refs)]
+
 use crate as app;
 use app::system_controller::SystemCommand;
 use app::CliCommand;
@@ -326,6 +328,37 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                         (temp.abs() % 1000)
                     );
                 }),
+            CliCommand::Format => {
+                if let Some(flash_raw) = self.flash_ptr {
+                    static mut SHELL_FS_BUF_3: [u8; 2048] = [0u8; 2048];
+                    let flash_ref = unsafe { &mut *flash_raw };
+                    let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+                    let fs_buf = unsafe { &mut SHELL_FS_BUF_3 };
+                    let mut fs = controller::filesystem_controller::FilesystemController::new(
+                        async_flash,
+                        self.storage_start..self.storage_end,
+                        fs_buf,
+                    );
+
+                    let _ = core::writeln!(writer, "\r\nFormatting filesystem...");
+                    let res = embassy_futures::block_on(fs.format());
+                    match res {
+                        Ok(()) => {
+                            let _ = core::writeln!(
+                                writer,
+                                "Formatting successful! Rebooting target system..."
+                            );
+                            #[cfg(all(target_arch = "arm", target_os = "none"))]
+                            cortex_m::peripheral::SCB::sys_reset();
+                            #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+                            Ok(())
+                        }
+                        Err(()) => Err("Formatting failed!"),
+                    }
+                } else {
+                    Err("Flash peripheral not available")
+                }
+            }
             CliCommand::CalNear { direction } => {
                 if let Some(i2c_raw) = self.i2c_ptr {
                     let i2c = unsafe { &mut *i2c_raw };
@@ -348,12 +381,15 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                     );
 
                     if let Some(flash_raw) = self.flash_ptr {
+                        static mut SHELL_FS_BUF_1: [u8; 2048] = [0u8; 2048];
                         let flash_ref = unsafe { &mut *flash_raw };
                         let async_flash =
                             firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+                        let fs_buf = unsafe { &mut SHELL_FS_BUF_1 };
                         let mut fs = controller::filesystem_controller::FilesystemController::new(
                             async_flash,
                             self.storage_start..self.storage_end,
+                            fs_buf,
                         );
 
                         let mut buf = [0u8; 128];
@@ -421,12 +457,15 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                     );
 
                     if let Some(flash_raw) = self.flash_ptr {
+                        static mut SHELL_FS_BUF_2: [u8; 2048] = [0u8; 2048];
                         let flash_ref = unsafe { &mut *flash_raw };
                         let async_flash =
                             firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+                        let fs_buf = unsafe { &mut SHELL_FS_BUF_2 };
                         let mut fs = controller::filesystem_controller::FilesystemController::new(
                             async_flash,
                             self.storage_start..self.storage_end,
+                            fs_buf,
                         );
 
                         let mut buf = [0u8; 128];
@@ -514,13 +553,16 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                         let _ = motor.stop();
 
                         if let Some(flash_raw) = self.flash_ptr {
+                            static mut SHELL_FS_BUF_3: [u8; 2048] = [0u8; 2048];
                             let flash_ref = unsafe { &mut *flash_raw };
                             let async_flash =
                                 firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+                            let fs_buf = unsafe { &mut SHELL_FS_BUF_3 };
                             let mut fs =
                                 controller::filesystem_controller::FilesystemController::new(
                                     async_flash,
                                     self.storage_start..self.storage_end,
+                                    fs_buf,
                                 );
 
                             let mut buf = [0u8; 128];
