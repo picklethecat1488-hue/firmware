@@ -515,7 +515,7 @@ async fn main(spawner: Spawner) {
         controller::filesystem_controller::FilesystemClient::new(app::FILESYSTEM_CHANNEL.sender());
 
     let telemetry_ctrl = unsafe {
-        TELEMETRY_CTRL = Some(TelemetryController::new(client, app::system_time));
+        TELEMETRY_CTRL = Some(TelemetryController::new(client));
         TELEMETRY_CTRL.as_mut().unwrap()
     };
 
