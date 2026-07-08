@@ -1,6 +1,6 @@
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use firmware_lib::system::SystemStateManager;
+use firmware_lib::system::{SystemStateManager, TransitionError};
 use model::types::{BootReason, SystemLedState, SystemStatus, TelemetryRecord};
 
 static TEST_TELEMETRY_CHANNEL: Channel<
@@ -18,6 +18,7 @@ fn test_system_state_manager_initialization() {
         21,
         80,
         TEST_TELEMETRY_CHANNEL.sender(),
+        None,
         BootReason::Unknown,
     );
 
@@ -42,6 +43,7 @@ fn test_get_soc_led_state() {
         21,
         80,
         TEST_TELEMETRY_CHANNEL.sender(),
+        None,
         BootReason::Unknown,
     );
 
@@ -76,6 +78,7 @@ fn test_update_battery_status() {
         21,
         80,
         TEST_TELEMETRY_CHANNEL.sender(),
+        None,
         BootReason::Unknown,
     );
 
@@ -112,6 +115,7 @@ fn test_tick_ms() {
         21,
         80,
         TEST_TELEMETRY_CHANNEL.sender(),
+        None,
         BootReason::Unknown,
     );
 
@@ -120,7 +124,9 @@ fn test_tick_ms() {
     assert_eq!(manager.active_ms(), 0);
 
     // Activate system
-    manager.set_status(SystemStatus::Active);
+    manager.set_battery_critical(false);
+    manager.set_boot_power_down(false);
+    let _ = manager.set_status(SystemStatus::Active);
 
     // Tick partial second -> returns false, timer remains 0
     assert!(!manager.tick_ms(500));
@@ -131,7 +137,7 @@ fn test_tick_ms() {
     assert_eq!(manager.active_ms(), 1000);
 
     // Transition to Sleep resets accumulator
-    manager.set_status(SystemStatus::Sleep);
+    let _ = manager.set_status(SystemStatus::Sleep);
     assert!(!manager.tick_ms(500));
 }
 
@@ -144,12 +150,15 @@ fn test_interval_ms() {
         21,
         80,
         TEST_TELEMETRY_CHANNEL.sender(),
+        None,
         BootReason::Unknown,
     );
     assert_eq!(manager.interval_ms(), 1000);
     manager.set_interval_ms(500);
 
-    manager.set_status(SystemStatus::Active);
+    manager.set_battery_critical(false);
+    manager.set_boot_power_down(false);
+    let _ = manager.set_status(SystemStatus::Active);
 
     // Set interval, tick crosses bondary immediatley
     assert_eq!(manager.interval_ms(), 500);
@@ -184,10 +193,10 @@ fn test_pure_transition_wake() {
         None
     );
 
-    // Cannot wake if already PowerDown
+    // Can wake from PowerDown
     assert_eq!(
         transition_wake(SystemStatus::PowerDown, false, false, false),
-        None
+        Some(SystemStatus::Active)
     );
 }
 
@@ -197,25 +206,31 @@ fn test_pure_transition_sleep() {
 
     // Active -> Sleep after inactivity timeout
     assert_eq!(
-        transition_sleep(SystemStatus::Active, 30, 30, false, false),
+        transition_sleep(SystemStatus::Active, 30, 30, false, false, 0),
         Some(SystemStatus::Sleep)
     );
 
     // Active -> Sleep immediately if battery is critical
     assert_eq!(
-        transition_sleep(SystemStatus::Active, 5, 30, true, false),
+        transition_sleep(SystemStatus::Active, 5, 30, true, false, 0),
         Some(SystemStatus::Sleep)
     );
 
     // Active -> Sleep immediately if thermal is critical
     assert_eq!(
-        transition_sleep(SystemStatus::Active, 5, 30, false, true),
+        transition_sleep(SystemStatus::Active, 5, 30, false, true, 0),
         Some(SystemStatus::Sleep)
     );
 
     // Active -> Sleep returns None if inactivity timeout is not reached
     assert_eq!(
-        transition_sleep(SystemStatus::Active, 29, 30, false, false),
+        transition_sleep(SystemStatus::Active, 29, 30, false, false, 0),
+        None
+    );
+
+    // Active -> Sleep returns None if wake locks are held
+    assert_eq!(
+        transition_sleep(SystemStatus::Active, 30, 30, false, false, 1),
         None
     );
 }
@@ -225,10 +240,13 @@ fn test_pure_transition_power_down() {
     use firmware_lib::system::transition_power_down;
 
     assert_eq!(
-        transition_power_down(SystemStatus::Active),
+        transition_power_down(SystemStatus::Active, 0),
         Some(SystemStatus::PowerDown)
     );
-    assert_eq!(transition_power_down(SystemStatus::PowerDown), None);
+    assert_eq!(transition_power_down(SystemStatus::PowerDown, 0), None);
+
+    // Active -> PowerDown returns None if wake locks are held
+    assert_eq!(transition_power_down(SystemStatus::Active, 1), None);
 }
 
 #[test]
@@ -240,10 +258,13 @@ fn test_system_state_manager_wake_locks() {
         21,
         80,
         TEST_TELEMETRY_CHANNEL.sender(),
+        None,
         BootReason::Unknown,
     );
 
-    manager.set_status(SystemStatus::Active);
+    manager.set_battery_critical(false);
+    manager.set_boot_power_down(false);
+    let _ = manager.set_status(SystemStatus::Active);
     assert_eq!(manager.wake_lock_count(), 0);
     assert_eq!(manager.inactive_ms(), 0);
 
@@ -293,6 +314,7 @@ fn test_system_state_manager_wake_lock_panic_acquire() {
         21,
         80,
         TEST_TELEMETRY_CHANNEL.sender(),
+        None,
         BootReason::Unknown,
     );
     manager.acquire_wake_lock(Some(32));
@@ -308,7 +330,129 @@ fn test_system_state_manager_wake_lock_panic_release() {
         21,
         80,
         TEST_TELEMETRY_CHANNEL.sender(),
+        None,
         BootReason::Unknown,
     );
     manager.release_wake_lock(Some(32));
+}
+
+#[test]
+fn test_system_state_manager_transition_blocked_by_wake_lock() {
+    let mut manager = SystemStateManager::new(
+        10,
+        2,
+        20,
+        21,
+        80,
+        TEST_TELEMETRY_CHANNEL.sender(),
+        None,
+        BootReason::Unknown,
+    );
+
+    manager.set_battery_critical(false);
+    manager.set_boot_power_down(false);
+    assert_eq!(manager.set_status(SystemStatus::Active), Ok(()));
+    manager.acquire_wake_lock(None);
+    assert_eq!(manager.wake_lock_count(), 1);
+
+    // Try transitioning to Sleep -> should fail (stay Active)
+    assert_eq!(
+        manager.set_status(SystemStatus::Sleep),
+        Err(TransitionError::WakeLocksHeld(1))
+    );
+    assert_eq!(manager.status(), SystemStatus::Active);
+
+    // Try transitioning to PowerDown -> should fail (stay Active)
+    assert_eq!(
+        manager.set_status(SystemStatus::PowerDown),
+        Err(TransitionError::WakeLocksHeld(1))
+    );
+    assert_eq!(manager.status(), SystemStatus::Active);
+
+    // Release lock
+    manager.release_wake_lock(None);
+    assert_eq!(manager.wake_lock_count(), 0);
+
+    // Try transitioning to Sleep -> should succeed
+    assert_eq!(manager.set_status(SystemStatus::Sleep), Ok(()));
+    assert_eq!(manager.status(), SystemStatus::Sleep);
+}
+
+#[test]
+fn test_system_state_manager_transition_blocked_by_boot_trap() {
+    let mut manager = SystemStateManager::new(
+        10,
+        2,
+        20,
+        21,
+        80,
+        TEST_TELEMETRY_CHANNEL.sender(),
+        None,
+        BootReason::Unknown,
+    );
+
+    // Initial state is PowerDown and boot trap is active
+    assert_eq!(manager.status(), SystemStatus::PowerDown);
+    assert!(manager.boot_power_down());
+
+    // Try transitioning to Active -> should fail (stay PowerDown)
+    assert_eq!(
+        manager.set_status(SystemStatus::Active),
+        Err(TransitionError::BootPowerDownActive)
+    );
+    assert_eq!(manager.status(), SystemStatus::PowerDown);
+
+    // Clear boot trap
+    manager.set_battery_critical(false);
+    manager.set_boot_power_down(false);
+
+    // Try transitioning to Active -> should succeed
+    assert_eq!(manager.set_status(SystemStatus::Active), Ok(()));
+    assert_eq!(manager.status(), SystemStatus::Active);
+}
+
+#[test]
+fn test_update_battery_status_actions() {
+    use firmware_lib::system::BatteryUpdateAction;
+
+    let mut manager = SystemStateManager::new(
+        10,
+        2,
+        20,
+        21,
+        80,
+        TEST_TELEMETRY_CHANNEL.sender(),
+        None,
+        BootReason::Unknown,
+    );
+
+    // 1. In boot trap, healthy battery update (unplugged) should clear the trap
+    assert_eq!(
+        manager.update_battery_status(50, false, false),
+        BatteryUpdateAction::ClearBootTrap
+    );
+
+    // 2. Clear boot trap manually & transition to Active
+    manager.set_battery_critical(false);
+    manager.set_boot_power_down(false);
+    let _ = manager.set_status(SystemStatus::Active);
+
+    // 3. While Active, healthy update with charging = true should GoToPowerDown
+    assert_eq!(
+        manager.update_battery_status(50, true, false),
+        BatteryUpdateAction::GoToPowerDown
+    );
+    let _ = manager.set_status(SystemStatus::PowerDown);
+
+    // 4. While PowerDown, charging status change should ReportSoC
+    assert_eq!(
+        manager.update_battery_status(50, false, false),
+        BatteryUpdateAction::ReportSoC
+    );
+
+    // 5. Subsequent identical update should be NoAction
+    assert_eq!(
+        manager.update_battery_status(50, false, false),
+        BatteryUpdateAction::NoAction
+    );
 }

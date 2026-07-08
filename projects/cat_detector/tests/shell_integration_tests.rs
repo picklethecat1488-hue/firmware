@@ -249,21 +249,6 @@ fn test_shell_controller_integration_each_command() {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
 
-    // 6. Wake command
-    for b in b"wake\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
-    }
-    assert!(matches!(
-        SYSTEM_CHANNEL.try_receive(),
-        Ok(SystemCommand::Wake)
-    ));
-
-    // 7. Sleep command
-    for b in b"sleep\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
-    }
-    assert!(matches!(system_chan_check(), Ok(SystemCommand::Sleep)));
-
     // 8. Activity command
     for b in b"activity\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);

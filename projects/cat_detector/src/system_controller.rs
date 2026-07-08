@@ -8,35 +8,10 @@ use controller::sensor_controller::SensorCommand;
 use controller::thermal_controller::ThermalCommand;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
-use model::types::{
-    BootReason, ChargeState, Gesture, SystemLedState, SystemStatus, TelemetryRecord,
-};
-
 pub use firmware_lib::gesture_detector::ProximityEvent;
-
-/// One-way commands to control the global system state and notify it of events.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SystemCommand {
-    /// Transition the system to Active state.
-    Wake,
-    /// Transition the system to low-power Sleep state.
-    Sleep,
-    /// Transition the system to PowerDown state.
-    PowerDown,
-    /// Notify system of activity, resetting inactivity timer and waking up if asleep.
-    ActivityDetected,
-    /// Thermal safety or motor stall alert occurred.
-    AlertTriggered,
-    /// Battery level updates from the fuel gauge.
-    BatteryUpdate {
-        /// Battery capacity percentage (0-100).
-        state_of_charge: u8,
-        /// Charger state.
-        charger_state: ChargeState,
-    },
-    /// High-level gesture detected.
-    Gesture(Gesture),
-}
+use firmware_lib::system::BatteryUpdateAction;
+pub use model::types::SystemCommand;
+use model::types::{BootReason, Gesture, SystemLedState, SystemStatus, TelemetryRecord};
 
 /// The default inactivity timeout in seconds before transitioning to Sleep.
 pub const INACTIVITY_TIMEOUT_SECONDS: u32 = 30;
@@ -68,6 +43,8 @@ pub struct SystemControllerChannels<
     const N: usize,
     const T_CAP: usize,
 > {
+    /// System command channel sender
+    pub system_tx: Sender<'static, MutexRaw, SystemCommand, 4>,
     /// Motor channel sender
     pub motor_tx: Sender<'static, MutexRaw, MotorCommand, N>,
     /// Sensor North channel sender
@@ -100,6 +77,7 @@ pub struct SystemController<
     battery_tx: Sender<'static, MutexRaw, BatteryCommand, N>,
     thermal_tx: Sender<'static, MutexRaw, ThermalCommand, N>,
     led_tx: Sender<'static, MutexRaw, SystemLedState, N>,
+    _system_tx: Sender<'static, MutexRaw, SystemCommand, 4>,
 }
 
 impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize> core::ops::Deref
@@ -135,6 +113,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             MID_BATTERY_SOC_THRESHOLD,
             HIGH_BATTERY_SOC_THRESHOLD,
             channels.telemetry_tx,
+            Some(channels.system_tx),
             boot_reason,
         );
 
@@ -147,6 +126,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             battery_tx: channels.battery_tx,
             thermal_tx: channels.thermal_tx,
             led_tx: channels.led_tx,
+            _system_tx: channels.system_tx,
         }
     }
 
@@ -160,71 +140,58 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
         self.state_manager.get_soc_led_state()
     }
 
+    fn handle_state_changed(&mut self, _from: SystemStatus, to: SystemStatus) {
+        match to {
+            SystemStatus::Active => {
+                self.state_manager.reset_on_wake();
+                let _ = self.led_tx.try_send(self.get_soc_led_state());
+                let _ = self.motor_tx.try_send(MotorCommand::SetSpeed(100));
+            }
+            SystemStatus::Sleep | SystemStatus::PowerDown => {
+                let _ = self.motor_tx.try_send(MotorCommand::Stop);
+                let led = if to == SystemStatus::Sleep {
+                    if self.thermal_critical() {
+                        SystemLedState::BlinksRedFourTimes
+                    } else {
+                        SystemLedState::SolidBlue
+                    }
+                } else if self.battery_critical() {
+                    SystemLedState::BlinksRedOncePerThirtySeconds
+                } else if self.charger_connected() {
+                    self.get_soc_led_state()
+                } else {
+                    SystemLedState::Off
+                };
+                let _ = self.led_tx.try_send(led);
+                let _ = self.battery_tx.try_send(BatteryCommand::UpdateWakeLocks(0));
+            }
+        }
+    }
+
     /// Handles an incoming SystemCommand.
     pub fn handle_command(&mut self, cmd: SystemCommand) {
         match cmd {
-            SystemCommand::Wake => {
-                if let Some(next) = firmware_lib::system::transition_wake(
-                    self.status(),
-                    self.battery_critical(),
-                    self.thermal_critical(),
-                    self.boot_power_down(),
-                ) {
-                    self.set_status(next);
-                    self.reset_on_wake();
-                    self.led_tx.try_send(self.get_soc_led_state()).unwrap();
-                    if next == SystemStatus::Active {
-                        self.motor_tx.try_send(MotorCommand::SetSpeed(100)).unwrap();
-                    }
-                }
-            }
-            SystemCommand::Sleep => {
-                if let Some(next) = firmware_lib::system::transition_sleep(
-                    self.status(),
-                    self.active_ms(),
-                    INACTIVITY_TIMEOUT_SECONDS * 1000,
-                    self.battery_critical(),
-                    self.thermal_critical(),
-                ) {
-                    self.set_status(next);
-                    let _ = self.battery_tx.try_send(BatteryCommand::UpdateWakeLocks(0));
-                    #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    defmt::info!("SystemController: entering low-power Sleep mode.");
-                    self.motor_tx.try_send(MotorCommand::Stop).unwrap();
-                    self.led_tx.try_send(SystemLedState::SolidBlue).unwrap();
-                }
-            }
-            SystemCommand::PowerDown => {
-                if let Some(next) = firmware_lib::system::transition_power_down(self.status()) {
-                    self.set_status(next);
-                    let _ = self.battery_tx.try_send(BatteryCommand::UpdateWakeLocks(0));
-                    self.motor_tx.try_send(MotorCommand::Stop).unwrap();
-                    let led = if self.charger_connected() {
-                        self.get_soc_led_state()
-                    } else {
-                        SystemLedState::Off
-                    };
-                    self.led_tx.try_send(led).unwrap();
-                    #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    defmt::info!("SystemController: entering PowerDown state. Motor locked.");
-                }
-            }
             SystemCommand::ActivityDetected => {
                 self.set_inactive_ms(0);
-                if self.status() == SystemStatus::Sleep {
-                    self.handle_command(SystemCommand::Wake);
+                if self.status() == SystemStatus::Sleep
+                    && !self.battery_critical()
+                    && !self.thermal_critical()
+                {
+                    let _ = self.set_status(SystemStatus::Active);
                 }
             }
             SystemCommand::AlertTriggered => {
                 self.set_thermal_critical(true);
-                self.led_tx
-                    .try_send(SystemLedState::BlinksRedFourTimes)
-                    .unwrap();
+                if self.status() != SystemStatus::PowerDown {
+                    if self.status() != SystemStatus::Sleep {
+                        self.state_manager.clear_wake_locks();
+                        let _ = self.set_status(SystemStatus::Sleep);
+                    } else {
+                        let _ = self.led_tx.try_send(SystemLedState::BlinksRedFourTimes);
+                    }
+                }
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::info!("SystemController: Alert triggered. LED indicator set to RED.");
-                if self.status() != SystemStatus::PowerDown {
-                    self.handle_command(SystemCommand::Sleep);
-                }
             }
             SystemCommand::BatteryUpdate {
                 state_of_charge,
@@ -241,46 +208,36 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                 let is_fault = charger_state == model::types::ChargeState::RecoverableFault
                     || charger_state == model::types::ChargeState::NonRecoverableFault;
 
-                let _changed = self.update_battery_status(state_of_charge, charging, is_fault);
-
-                if self.battery_critical() {
-                    self.led_tx
-                        .try_send(SystemLedState::BlinksRedOncePerThirtySeconds)
-                        .unwrap();
-                    if self.status() != SystemStatus::PowerDown {
-                        self.handle_command(SystemCommand::PowerDown);
-                    } else {
-                        self.motor_tx.try_send(MotorCommand::Stop).unwrap();
+                match self.update_battery_status(state_of_charge, charging, is_fault) {
+                    BatteryUpdateAction::GoToPowerDown => {
+                        self.state_manager.clear_wake_locks();
+                        let _ = self.set_status(SystemStatus::PowerDown);
                     }
-                } else {
-                    let should_exit_power_down = self.status() == SystemStatus::PowerDown
-                        && self.boot_power_down()
-                        && !charging;
-
-                    if should_exit_power_down {
-                        self.set_status(SystemStatus::Active);
-                        self.reset_on_wake();
-                        self.led_tx.try_send(self.get_soc_led_state()).unwrap();
-                        self.motor_tx.try_send(MotorCommand::SetSpeed(100)).unwrap();
+                    BatteryUpdateAction::ClearBootTrap => {
+                        self.set_boot_power_down(false);
+                        let _ = self.set_status(SystemStatus::Active);
                         #[cfg(all(target_arch = "arm", target_os = "none"))]
                         defmt::info!(
                             "SystemController: exiting PowerDown state. Waking up to Active mode."
                         );
-                    } else if self.status() == SystemStatus::PowerDown {
-                        let led = if charging {
-                            self.get_soc_led_state()
-                        } else {
-                            SystemLedState::Off
-                        };
-                        self.led_tx.try_send(led).unwrap();
-                    } else {
-                        self.set_boot_power_down(false);
-                        if charging {
-                            self.handle_command(SystemCommand::PowerDown);
+                    }
+                    BatteryUpdateAction::ReportSoC => {
+                        if self.battery_critical() {
+                            let _ = self
+                                .led_tx
+                                .try_send(SystemLedState::BlinksRedOncePerThirtySeconds);
+                        } else if self.status() == SystemStatus::PowerDown {
+                            let led = if self.charger_connected() {
+                                self.get_soc_led_state()
+                            } else {
+                                SystemLedState::Off
+                            };
+                            let _ = self.led_tx.try_send(led);
                         } else if self.status() == SystemStatus::Active {
-                            self.led_tx.try_send(self.get_soc_led_state()).unwrap();
+                            let _ = self.led_tx.try_send(self.get_soc_led_state());
                         }
                     }
+                    BatteryUpdateAction::NoAction => {}
                 }
             }
             SystemCommand::Gesture(gesture) => {
@@ -290,19 +247,20 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                         self.log_gesture_telemetry(Gesture::DualLongPress);
                         if current_status == SystemStatus::PowerDown {
                             if !self.charger_connected() {
-                                self.set_status(SystemStatus::Active);
-                                self.reset_on_wake();
-                                self.led_tx.try_send(self.get_soc_led_state()).unwrap();
-                                self.motor_tx.try_send(MotorCommand::SetSpeed(100)).unwrap();
+                                let _ = self.set_status(SystemStatus::Active);
                             }
                         } else {
-                            self.handle_command(SystemCommand::PowerDown);
+                            self.state_manager.clear_wake_locks();
+                            let _ = self.set_status(SystemStatus::PowerDown);
                         }
                     }
                     Gesture::ProximityDetected if current_status != SystemStatus::PowerDown => {
                         self.log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityDetected));
-                        if self.status() == SystemStatus::Sleep {
-                            self.handle_command(SystemCommand::Wake);
+                        if self.status() == SystemStatus::Sleep
+                            && !self.battery_critical()
+                            && !self.thermal_critical()
+                        {
+                            let _ = self.set_status(SystemStatus::Active);
                         }
                         if self.status() == SystemStatus::Active {
                             self.acquire_wake_lock(None);
@@ -317,6 +275,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     _ => {}
                 }
             }
+            SystemCommand::StateChanged { from, to } => {
+                self.handle_state_changed(from, to);
+            }
         }
     }
 
@@ -330,7 +291,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             ));
             // Sleep after inactivity timeout
             if self.inactive_ms() >= INACTIVITY_TIMEOUT_SECONDS * 1000 {
-                self.handle_command(SystemCommand::Sleep);
+                let _ = self.set_status(SystemStatus::Sleep);
             }
         }
         crossed

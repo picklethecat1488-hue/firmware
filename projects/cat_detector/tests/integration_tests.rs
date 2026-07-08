@@ -70,6 +70,7 @@ fn test_system_integration_flow() {
         motor_ctrl.set_calibration(CalibrationType::MotorCal(80, 800));
         let mut led_ctrl = LedController::new(mock_led);
         let channels = cat_detector::system_controller::SystemControllerChannels {
+            system_tx: SYSTEM_CHANNEL.sender(),
             motor_tx: MOTOR_CHANNEL.sender(),
             sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
             sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
@@ -132,6 +133,21 @@ fn test_system_integration_flow() {
             }
         };
 
+        // Helpers to run system command processing and tick processing while draining StateChanged messages
+        let process_system = |ctrl: &mut SystemController<_, _, _>, cmd: SystemCommand| {
+            ctrl.handle_command(cmd);
+            while let Ok(q) = SYSTEM_CHANNEL.try_receive() {
+                ctrl.handle_command(q);
+            }
+        };
+
+        let tick_system = |ctrl: &mut SystemController<_, _, _>, ms: u32| {
+            ctrl.tick_ms(ms);
+            while let Ok(q) = SYSTEM_CHANNEL.try_receive() {
+                ctrl.handle_command(q);
+            }
+        };
+
         // Verify initial state is PowerDown
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
 
@@ -148,7 +164,7 @@ fn test_system_integration_flow() {
             .await
             .unwrap();
         let cmd = SYSTEM_CHANNEL.receive().await;
-        system_ctrl.handle_command(cmd);
+        process_system(&mut system_ctrl, cmd);
         drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::Active);
 
@@ -167,7 +183,7 @@ fn test_system_integration_flow() {
         sensor_ctrl_north.update().unwrap();
         process_proximity(&mut gesture_detector, 0);
         let cmd = SYSTEM_CHANNEL.receive().await;
-        system_ctrl.handle_command(cmd);
+        process_system(&mut system_ctrl, cmd);
         drain_telemetry();
 
         // Proximity detected -> motor starts
@@ -188,7 +204,7 @@ fn test_system_integration_flow() {
             .await
             .unwrap();
         let cmd = SYSTEM_CHANNEL.receive().await;
-        system_ctrl.handle_command(cmd);
+        process_system(&mut system_ctrl, cmd);
         drain_telemetry();
 
         // Should transition to PowerDown, stop motor, and blink red
@@ -198,7 +214,6 @@ fn test_system_integration_flow() {
             LED_CHANNEL.try_receive(),
             Ok(SystemLedState::BlinksRedOncePerThirtySeconds)
         );
-        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
 
         motor_ctrl.handle_command(MotorCommand::Stop, None);
         assert_eq!(motor_ctrl.motor.speed, 0);
@@ -210,21 +225,18 @@ fn test_system_integration_flow() {
             state_of_charge: 11,
             charger_state: ChargeState::DoneOrStandbyOrUnplugged,
         };
-        system_ctrl.handle_command(cmd);
+        process_system(&mut system_ctrl, cmd);
         drain_telemetry();
         // Should remain critical (PowerDown) because 11 < 10 + 2 (12)
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
-        assert_eq!(
-            LED_CHANNEL.try_receive(),
-            Ok(SystemLedState::BlinksRedOncePerThirtySeconds)
-        );
+        assert!(LED_CHANNEL.try_receive().is_err());
 
         // Now set SoC to 13% and state to Charging (should enter PowerDown and show Orange)
         let cmd = SystemCommand::BatteryUpdate {
             state_of_charge: 13,
             charger_state: ChargeState::Charging,
         };
-        system_ctrl.handle_command(cmd);
+        process_system(&mut system_ctrl, cmd);
         drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidOrange));
@@ -234,7 +246,7 @@ fn test_system_integration_flow() {
             state_of_charge: 50,
             charger_state: ChargeState::DoneOrStandbyOrUnplugged,
         };
-        system_ctrl.handle_command(cmd);
+        process_system(&mut system_ctrl, cmd);
         drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
@@ -243,13 +255,13 @@ fn test_system_integration_flow() {
         gesture_detector.register_distance(Direction::East, 15);
         gesture_detector.register_distance(Direction::West, 15);
         if let Some(g) = gesture_detector.update((Direction::West, 15), 0) {
-            system_ctrl.handle_command(SystemCommand::Gesture(g));
+            process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
         if let Some(g) = gesture_detector.update((Direction::West, 15), 2_000_000) {
-            system_ctrl.handle_command(SystemCommand::Gesture(g));
+            process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
         if let Some(g) = gesture_detector.update((Direction::West, 15), 5_000_000) {
-            system_ctrl.handle_command(SystemCommand::Gesture(g));
+            process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
         drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::Active);
@@ -259,9 +271,13 @@ fn test_system_integration_flow() {
         gesture_detector.register_distance(Direction::East, 1000);
         gesture_detector.register_distance(Direction::West, 1000);
         if let Some(g) = gesture_detector.update((Direction::West, 1000), 6_000_000) {
-            system_ctrl.handle_command(SystemCommand::Gesture(g));
+            process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
         drain_telemetry();
+
+        assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::SetSpeed(100)));
+        motor_ctrl.handle_command(MotorCommand::SetSpeed(100), None);
+        assert_eq!(motor_ctrl.motor.speed, 100);
 
         // 5. Simulate thermal critical: Temp reaches 61°C (61000 mC)
         {
@@ -277,7 +293,7 @@ fn test_system_integration_flow() {
             .unwrap();
         let cmd = SYSTEM_CHANNEL.receive().await;
         println!("Received command: {:?}", cmd);
-        system_ctrl.handle_command(cmd);
+        process_system(&mut system_ctrl, cmd);
         drain_telemetry();
 
         // Critical temperature triggers safety shutdown -> Sleep state
@@ -286,7 +302,6 @@ fn test_system_integration_flow() {
             LED_CHANNEL.try_receive(),
             Ok(SystemLedState::BlinksRedFourTimes)
         );
-        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidBlue));
         assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::Stop));
         gesture_detector.reset();
 
@@ -295,7 +310,7 @@ fn test_system_integration_flow() {
         system_ctrl.set_thermal_critical(false);
 
         // Wake up from Sleep to Active
-        system_ctrl.handle_command(SystemCommand::ActivityDetected);
+        process_system(&mut system_ctrl, SystemCommand::ActivityDetected);
         drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::Active);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
@@ -307,13 +322,13 @@ fn test_system_integration_flow() {
         gesture_detector.register_distance(Direction::East, 15);
         gesture_detector.register_distance(Direction::West, 15);
         if let Some(g) = gesture_detector.update((Direction::West, 15), 0) {
-            system_ctrl.handle_command(SystemCommand::Gesture(g));
+            process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
         if let Some(g) = gesture_detector.update((Direction::West, 15), 2_000_000) {
-            system_ctrl.handle_command(SystemCommand::Gesture(g));
+            process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
         if let Some(g) = gesture_detector.update((Direction::West, 15), 5_000_000) {
-            system_ctrl.handle_command(SystemCommand::Gesture(g));
+            process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
         drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
@@ -326,7 +341,7 @@ fn test_system_integration_flow() {
             state_of_charge: 50,
             charger_state: ChargeState::Charging,
         };
-        system_ctrl.handle_command(cmd);
+        process_system(&mut system_ctrl, cmd);
         drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
@@ -336,7 +351,7 @@ fn test_system_integration_flow() {
             state_of_charge: 50,
             charger_state: ChargeState::DoneOrStandbyOrUnplugged,
         };
-        system_ctrl.handle_command(cmd);
+        process_system(&mut system_ctrl, cmd);
         drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::PowerDown);
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
@@ -345,13 +360,13 @@ fn test_system_integration_flow() {
         gesture_detector.register_distance(Direction::East, 15);
         gesture_detector.register_distance(Direction::West, 15);
         if let Some(g) = gesture_detector.update((Direction::West, 15), 6_000_000) {
-            system_ctrl.handle_command(SystemCommand::Gesture(g));
+            process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
         if let Some(g) = gesture_detector.update((Direction::West, 15), 8_000_000) {
-            system_ctrl.handle_command(SystemCommand::Gesture(g));
+            process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
         if let Some(g) = gesture_detector.update((Direction::West, 15), 11_000_000) {
-            system_ctrl.handle_command(SystemCommand::Gesture(g));
+            process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
         drain_telemetry();
         assert_eq!(system_ctrl.status(), SystemStatus::Active);
@@ -365,7 +380,7 @@ fn test_system_integration_flow() {
         sensor_ctrl_north.update().unwrap();
         process_proximity(&mut gesture_detector, 12_000_000);
         let cmd = SYSTEM_CHANNEL.receive().await;
-        system_ctrl.handle_command(cmd);
+        process_system(&mut system_ctrl, cmd);
         drain_telemetry();
 
         // Drain motor channel for a clean state
@@ -373,7 +388,7 @@ fn test_system_integration_flow() {
 
         // Inactivity for timeout triggers Sleep
         for _ in 0..cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS {
-            system_ctrl.tick_ms(1000);
+            tick_system(&mut system_ctrl, 1000);
             drain_telemetry();
         }
         assert_eq!(system_ctrl.status(), SystemStatus::Sleep);

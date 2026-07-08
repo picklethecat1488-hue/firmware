@@ -325,7 +325,7 @@ async fn main(spawner: Spawner) {
     let thermal_ctrl = ThermalController::new_with_shutdown(
         &SHARED_TEMP_SENSOR,
         app::SYSTEM_CHANNEL.sender(),
-        app::system_controller::SystemCommand::Sleep,
+        app::system_controller::SystemCommand::AlertTriggered,
     );
 
     let fg_alert_pin = board.gpio_pins[app::FUEL_GAUGE_INT_PIN as usize]
@@ -350,6 +350,7 @@ async fn main(spawner: Spawner) {
 
     // Initialize SystemController to coordinate all loops
     let channels = app::system_controller::SystemControllerChannels {
+        system_tx: app::SYSTEM_CHANNEL.sender(),
         motor_tx: app::MOTOR_CHANNEL.sender(),
         sensor_north_tx: app::SENSOR_NORTH_CHANNEL.sender(),
         sensor_east_tx: app::SENSOR_EAST_CHANNEL.sender(),

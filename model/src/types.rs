@@ -324,4 +324,32 @@ dummy_debug!(Direction);
 dummy_debug!(PeripheralError);
 dummy_debug!(BootReason);
 
+/// One-way commands to control the global system state and notify it of events.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum SystemCommand {
+    /// Notify system of activity, resetting inactivity timer and waking up if asleep.
+    ActivityDetected,
+    /// Thermal safety or motor stall alert occurred.
+    AlertTriggered,
+    /// Battery level updates from the fuel gauge.
+    BatteryUpdate {
+        /// Battery capacity percentage (0-100).
+        state_of_charge: u8,
+        /// Charger state.
+        charger_state: ChargeState,
+    },
+    /// High-level gesture detected.
+    Gesture(Gesture),
+    /// The system status/power state changed.
+    StateChanged {
+        /// The previous system status.
+        from: SystemStatus,
+        /// The new system status.
+        to: SystemStatus,
+    },
+}
+
+dummy_debug!(SystemCommand);
+
 pub use crate::telemetry::TelemetryRecord;

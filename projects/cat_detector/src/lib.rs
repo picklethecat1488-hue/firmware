@@ -250,10 +250,7 @@ pub enum CliCommand {
     Thermal,
     /// Query proximity (ToF) sensors
     Proximity,
-    /// Wake the system to Active state
-    Wake,
-    /// Put the system to Sleep state
-    Sleep,
+
     /// Simulate activity event
     Activity,
     /// Trigger a panic to test the crash dump / panic flow
