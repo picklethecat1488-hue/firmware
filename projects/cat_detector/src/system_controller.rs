@@ -9,8 +9,36 @@ pub use firmware_lib::ProximityEvent;
 use firmware_lib::{
     BatteryManager, BatteryUpdateAction, PeriodicTimer, PowerManager, ThermalManager,
 };
-pub use model::types::SystemCommand;
-use model::types::{BootReason, Gesture, SystemLedState, SystemStatus, TelemetryRecord};
+/// One-way commands to control the global system state and notify it of events.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SystemCommand {
+    /// Notify system of activity, resetting inactivity timer and waking up if asleep.
+    ActivityDetected,
+    /// Thermal safety or motor stall alert occurred.
+    AlertTriggered,
+    /// Battery level updates from the fuel gauge.
+    BatteryUpdate {
+        /// Battery capacity percentage (0-100).
+        state_of_charge: u8,
+        /// Charger state: Charging, Discharging, Fault, etc.
+        charger_state: ChargeState,
+    },
+    /// High-level gesture detected.
+    Gesture(Gesture),
+    /// The system status/power state changed.
+    StateChanged {
+        /// The previous system status.
+        from: SystemStatus,
+        /// The new system status.
+        to: SystemStatus,
+    },
+    /// A battery action was triggered and processed.
+    BatteryAction(BatteryUpdateAction),
+}
+
+use model::types::{
+    BootReason, ChargeState, Gesture, SystemLedState, SystemStatus, TelemetryRecord,
+};
 
 /// The default inactivity timeout in seconds before transitioning to Sleep.
 pub const INACTIVITY_TIMEOUT_SECONDS: u32 = 30;
@@ -91,8 +119,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
         channels: SystemControllerChannels<MutexRaw, N, T_CAP>,
         boot_reason: BootReason,
     ) -> Self {
-        let power_manager =
-            PowerManager::new(channels.telemetry_tx, Some(channels.system_tx), boot_reason);
+        let power_manager = PowerManager::new(channels.telemetry_tx, boot_reason);
         let mut battery_manager = BatteryManager::new(
             10, // critical_soc_threshold default
             2,  // soc_hysteresis default
@@ -126,29 +153,43 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
         &mut self,
         status: SystemStatus,
     ) -> Result<(), firmware_lib::system::TransitionError> {
-        self.power_manager.set_status(
+        if let Some(prev) = self.power_manager.set_status(
             status,
             self.battery_manager.battery_critical(),
             self.thermal_manager.thermal_critical(),
-        )
+        )? {
+            let _ = self.handle_command(SystemCommand::StateChanged {
+                from: prev,
+                to: status,
+            });
+        }
+        Ok(())
     }
 
     /// Handles battery status updates and updates the internal critical flag.
     pub fn update_battery_status(
         &mut self,
         state_of_charge: u8,
-        charger_state: model::types::ChargeState,
-    ) -> firmware_lib::system::BatteryUpdateAction {
-        self.battery_manager.update_battery_status(
+        charger_state: ChargeState,
+    ) -> Result<(), firmware_lib::system::TransitionError> {
+        let action = self.battery_manager.update_battery_status(
             state_of_charge,
             charger_state,
             self.power_manager.status(),
             self.power_manager.boot_power_down(),
-        )
+        );
+
+        if let Some(act) = action {
+            self.handle_command(SystemCommand::BatteryAction(act))?;
+        }
+        Ok(())
     }
 
     /// Handles an incoming SystemCommand.
-    pub fn handle_command(&mut self, cmd: SystemCommand) {
+    pub fn handle_command(
+        &mut self,
+        cmd: SystemCommand,
+    ) -> Result<(), firmware_lib::system::TransitionError> {
         match cmd {
             SystemCommand::ActivityDetected => {
                 self.power_manager.set_inactive_ms(0);
@@ -156,7 +197,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     && !self.battery_manager.battery_critical()
                     && !self.thermal_manager.thermal_critical()
                 {
-                    let _ = self.set_status(SystemStatus::Active);
+                    self.set_status(SystemStatus::Active)?;
                 }
             }
             SystemCommand::AlertTriggered => {
@@ -164,7 +205,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                 if self.power_manager.status() != SystemStatus::PowerDown {
                     if self.power_manager.status() != SystemStatus::Sleep {
                         self.power_manager.clear_wake_locks();
-                        let _ = self.set_status(SystemStatus::Sleep);
+                        self.set_status(SystemStatus::Sleep)?;
                     } else {
                         let _ = self.led_tx.try_send(SystemLedState::BlinksRedFourTimes);
                     }
@@ -175,14 +216,17 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             SystemCommand::BatteryUpdate {
                 state_of_charge,
                 charger_state,
-            } => match self.update_battery_status(state_of_charge, charger_state) {
+            } => {
+                self.update_battery_status(state_of_charge, charger_state)?;
+            }
+            SystemCommand::BatteryAction(action) => match action {
                 BatteryUpdateAction::GoToPowerDown => {
                     self.power_manager.clear_wake_locks();
-                    let _ = self.set_status(SystemStatus::PowerDown);
+                    self.set_status(SystemStatus::PowerDown)?;
                 }
                 BatteryUpdateAction::ClearBootTrap => {
                     self.power_manager.set_boot_power_down(false);
-                    let _ = self.set_status(SystemStatus::Active);
+                    self.set_status(SystemStatus::Active)?;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::info!(
                         "SystemController: exiting PowerDown state. Waking up to Active mode."
@@ -206,7 +250,6 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                             .try_send(self.battery_manager.get_soc_led_state());
                     }
                 }
-                BatteryUpdateAction::NoAction => {}
             },
             SystemCommand::Gesture(gesture) => {
                 let current_status = self.power_manager.status();
@@ -216,11 +259,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                             .log_gesture_telemetry(Gesture::DualLongPress);
                         if current_status == SystemStatus::PowerDown {
                             if !self.battery_manager.charger_connected() {
-                                let _ = self.set_status(SystemStatus::Active);
+                                self.set_status(SystemStatus::Active)?;
                             }
                         } else {
                             self.power_manager.clear_wake_locks();
-                            let _ = self.set_status(SystemStatus::PowerDown);
+                            self.set_status(SystemStatus::PowerDown)?;
                         }
                     }
                     Gesture::ProximityDetected if current_status != SystemStatus::PowerDown => {
@@ -230,7 +273,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                             && !self.battery_manager.battery_critical()
                             && !self.thermal_manager.thermal_critical()
                         {
-                            let _ = self.set_status(SystemStatus::Active);
+                            self.set_status(SystemStatus::Active)?;
                         }
                         if self.power_manager.status() == SystemStatus::Active {
                             self.power_manager.acquire_wake_lock(None);
@@ -274,6 +317,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                 }
             },
         }
+        Ok(())
     }
 
     /// Ticks the inactivity timer and active mode duration timer by a specified duration in milliseconds.
@@ -347,11 +391,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             {
                 Ok(embassy_futures::select::Either::First(cmd)) => {
                     // Handle project-specific command from system command channel
-                    self.handle_command(cmd);
+                    let _ = self.handle_command(cmd);
                 }
                 Ok(embassy_futures::select::Either::Second(gesture)) => {
                     // Delegate generic gesture detection event to the command handler
-                    self.handle_command(SystemCommand::Gesture(gesture));
+                    let _ = self.handle_command(SystemCommand::Gesture(gesture));
                 }
                 Err(_timeout) => {
                     // Timeout occurred

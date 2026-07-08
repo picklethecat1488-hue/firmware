@@ -135,16 +135,16 @@ fn test_system_integration_flow() {
 
         // Helpers to run system command processing and tick processing while draining StateChanged messages
         let process_system = |ctrl: &mut SystemController<_, _, _>, cmd: SystemCommand| {
-            ctrl.handle_command(cmd);
+            let _ = ctrl.handle_command(cmd);
             while let Ok(q) = SYSTEM_CHANNEL.try_receive() {
-                ctrl.handle_command(q);
+                let _ = ctrl.handle_command(q);
             }
         };
 
         let tick_system = |ctrl: &mut SystemController<_, _, _>, ms: u32| {
             ctrl.tick_ms(ms);
             while let Ok(q) = SYSTEM_CHANNEL.try_receive() {
-                ctrl.handle_command(q);
+                let _ = ctrl.handle_command(q);
             }
         };
 
