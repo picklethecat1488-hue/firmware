@@ -379,7 +379,7 @@ impl TelemetryCounters {
             for (idx, &count) in self.counts.iter().enumerate() {
                 active[idx] = (idx, count);
             }
-            active.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+            active.sort_unstable_by_key(|item| core::cmp::Reverse(item.1));
 
             #[cfg(all(target_arch = "arm", target_os = "none"))]
             {
