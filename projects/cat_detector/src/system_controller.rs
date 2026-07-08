@@ -8,8 +8,11 @@ use controller::sensor_controller::SensorCommand;
 use controller::thermal_controller::ThermalCommand;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
+use firmware_lib::battery_manager::BatteryManager;
 pub use firmware_lib::gesture_detector::ProximityEvent;
+use firmware_lib::power_manager::PowerManager;
 use firmware_lib::system::BatteryUpdateAction;
+use firmware_lib::thermal_manager::ThermalManager;
 pub use model::types::SystemCommand;
 use model::types::{BootReason, Gesture, SystemLedState, SystemStatus, TelemetryRecord};
 
@@ -70,11 +73,11 @@ pub struct SystemController<
     const T_CAP: usize = { controller::telemetry_controller::CHANNEL_CAPACITY },
 > {
     /// Subsystem manager for power, transitions, and timers
-    pub power_manager: firmware_lib::system::PowerManager<MutexRaw, T_CAP>,
+    pub power_manager: PowerManager<MutexRaw, T_CAP>,
     /// Subsystem manager for battery thresholds and status
-    pub battery_manager: firmware_lib::system::BatteryManager,
+    pub battery_manager: BatteryManager,
     /// Subsystem manager for thermal monitoring alerts
-    pub thermal_manager: firmware_lib::system::ThermalManager,
+    pub thermal_manager: ThermalManager,
     motor_tx: Sender<'static, MutexRaw, MotorCommand, N>,
     sensor_north_tx: Sender<'static, MutexRaw, SensorCommand, N>,
     sensor_east_tx: Sender<'static, MutexRaw, SensorCommand, N>,
@@ -92,12 +95,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
         channels: SystemControllerChannels<MutexRaw, N, T_CAP>,
         boot_reason: BootReason,
     ) -> Self {
-        let power_manager = firmware_lib::system::PowerManager::new(
-            channels.telemetry_tx,
-            Some(channels.system_tx),
-            boot_reason,
-        );
-        let mut battery_manager = firmware_lib::system::BatteryManager::new(
+        let power_manager =
+            PowerManager::new(channels.telemetry_tx, Some(channels.system_tx), boot_reason);
+        let mut battery_manager = BatteryManager::new(
             10, // critical_soc_threshold default
             2,  // soc_hysteresis default
             LOW_BATTERY_SOC_THRESHOLD,
@@ -109,7 +109,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             defmt::error!("Critical SoC threshold must be lower than the low battery threshold");
             battery_manager.set_critical_soc_threshold(LOW_BATTERY_SOC_THRESHOLD - 1);
         }
-        let thermal_manager = firmware_lib::system::ThermalManager::new();
+        let thermal_manager = ThermalManager::new();
 
         Self {
             power_manager,

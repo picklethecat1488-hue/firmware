@@ -5,14 +5,6 @@
 use crate::types::{BatteryThresholds, BatteryTransitionResult, BatteryUpdateInfo};
 use model::types::SystemStatus;
 
-pub mod battery;
-pub mod power;
-pub mod thermal;
-
-pub use battery::BatteryManager;
-pub use power::PowerManager;
-pub use thermal::ThermalManager;
-
 /// Errors that can occur during system state transitions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransitionError {

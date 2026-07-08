@@ -1,4 +1,4 @@
-//! Battery manager submodule.
+//! Battery manager module.
 
 use crate::system::{transition_battery_update, BatteryUpdateAction};
 use crate::types::{BatteryThresholds, BatteryUpdateInfo};

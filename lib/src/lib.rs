@@ -18,6 +18,15 @@ pub mod defmt_logger;
 /// Shared system state and power management utilities.
 pub mod system;
 
+/// Battery manager module.
+pub mod battery_manager;
+
+/// Power manager module.
+pub mod power_manager;
+
+/// Thermal manager module.
+pub mod thermal_manager;
+
 /// Shared I2C blocking access wrapper structures.
 pub mod i2c;
 
