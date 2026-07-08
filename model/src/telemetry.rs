@@ -74,6 +74,43 @@ impl TelemetryRecord {
         let record = decoder.decode().ok()?;
         Some((timestamp_us, record))
     }
+
+    /// Returns the static string representation of the variant name.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Battery(_) => "Battery",
+            Self::Motor(_) => "Motor",
+            Self::Thermal(_) => "Thermal",
+            Self::System(_) => "System",
+            Self::FuelGauge(_) => "FuelGauge",
+            Self::Proximity(_) => "Proximity",
+            Self::Led(_) => "Led",
+            Self::Gesture(_) => "Gesture",
+            Self::FlashTelemetry(_) => "FlashTelemetry",
+            Self::ChargerState(_) => "ChargerState",
+            Self::PeripheralError(_) => "PeripheralError",
+            Self::Boot(_) => "Boot",
+        }
+    }
+
+    /// Returns the static variant name string representation for the given telemetry index.
+    pub fn name_from_index(idx: usize) -> &'static str {
+        match idx {
+            0 => "Battery",
+            1 => "Motor",
+            2 => "Thermal",
+            3 => "System",
+            4 => "FuelGauge",
+            5 => "Proximity",
+            6 => "Led",
+            7 => "Gesture",
+            8 => "FlashTelemetry",
+            9 => "ChargerState",
+            10 => "PeripheralError",
+            11 => "Boot",
+            _ => "Unknown",
+        }
+    }
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -91,6 +128,8 @@ pub const NUM_CHUNKS: usize = 8;
 pub const CHUNK_FILE_SIZE: usize = CHUNK_SIZE * 20;
 /// Default size of the telemetry file buffer
 pub const BUFFER_SIZE: usize = 3000;
+/// Total number of telemetry record types/variants.
+pub const NUM_TELEMETRY_VARIANTS: usize = 12;
 
 /// Return the file name of a telemetry record chunk
 pub fn chunk_name(idx: usize) -> &'static str {

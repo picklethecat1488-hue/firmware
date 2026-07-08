@@ -63,6 +63,13 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
     /// Total size of the telemetry.rrd metadata file (12-byte CBOR header).
     pub const FILE_SIZE: usize = 12;
 
+    /// Interval at which telemetry stats are logged.
+    pub const STATS_LOG_INTERVAL: embassy_time::Duration = embassy_time::Duration::from_secs(60);
+
+    /// Interval/timeout for checking/waiting for telemetry updates.
+    pub const TELEMETRY_CHECK_INTERVAL: embassy_time::Duration =
+        embassy_time::Duration::from_secs(1);
+
     const _CHECK: () = {
         if BUFFER_SIZE < model::telemetry::CHUNK_FILE_SIZE {
             panic!("Telemetry buffer size is too small for the requested record count");
@@ -297,13 +304,169 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
         >,
     ) -> ! {
         let _ = self.init().await;
+        let mut last_print = embassy_time::Instant::now();
+        let mut counters = TelemetryCounters::default();
+
         loop {
-            let record = rx.receive().await;
-            if self.push_record(record).await.is_err() {
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::error!("Telemetry: Failed to push record to flash!");
-                #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-                std::eprintln!("Telemetry: Failed to push record to flash!");
+            let maybe_record =
+                embassy_time::with_timeout(Self::TELEMETRY_CHECK_INTERVAL, rx.receive())
+                    .await
+                    .ok();
+
+            if let Some(record) = maybe_record {
+                counters.record(&record);
+
+                if self.push_record(record).await.is_err() {
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::error!("Telemetry: Failed to push record to flash!");
+                    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+                    std::eprintln!("Telemetry: Failed to push record to flash!");
+                }
+            }
+
+            let now = embassy_time::Instant::now();
+            if now.duration_since(last_print) >= Self::STATS_LOG_INTERVAL {
+                counters.log_stats();
+                counters.reset();
+                last_print = now;
+            }
+        }
+    }
+}
+
+/// Helper structure to track and count processed telemetry records.
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TelemetryCounters {
+    /// Count of updates logged per telemetry category.
+    pub counts: [u32; model::telemetry::NUM_TELEMETRY_VARIANTS],
+}
+
+impl TelemetryCounters {
+    /// Records a new telemetry event and increments the corresponding counter.
+    pub fn record(&mut self, record: &TelemetryRecord) {
+        let idx = match record {
+            TelemetryRecord::Battery(_) => 0,
+            TelemetryRecord::Motor(_) => 1,
+            TelemetryRecord::Thermal(_) => 2,
+            TelemetryRecord::System(_) => 3,
+            TelemetryRecord::FuelGauge(_) => 4,
+            TelemetryRecord::Proximity(_) => 5,
+            TelemetryRecord::Led(_) => 6,
+            TelemetryRecord::Gesture(_) => 7,
+            TelemetryRecord::FlashTelemetry(_) => 8,
+            TelemetryRecord::ChargerState(_) => 9,
+            TelemetryRecord::PeripheralError(_) => 10,
+            TelemetryRecord::Boot(_) => 11,
+        };
+        self.counts[idx] += 1;
+    }
+
+    /// Computes the total number of telemetry records logged across all categories.
+    pub fn total(&self) -> u32 {
+        self.counts.iter().sum()
+    }
+
+    /// Resets all counters back to zero.
+    pub fn reset(&mut self) {
+        self.counts.fill(0);
+    }
+
+    /// Logs the counters that are greater than zero, showing up to the top 5 counters and the total count.
+    pub fn log_stats(&self) {
+        let total = self.total();
+        if total > 0 {
+            let mut active = [(0usize, 0u32); model::telemetry::NUM_TELEMETRY_VARIANTS];
+            for (idx, &count) in self.counts.iter().enumerate() {
+                active[idx] = (idx, count);
+            }
+            active.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            {
+                let num_active = active.iter().take(5).filter(|item| item.1 > 0).count();
+                match num_active {
+                    0 => {
+                        defmt::info!("Telemetry Stats: Total={}", total);
+                    }
+                    1 => {
+                        defmt::info!(
+                            "Telemetry Stats: Total={}, {}: {}",
+                            total,
+                            TelemetryRecord::name_from_index(active[0].0),
+                            active[0].1
+                        );
+                    }
+                    2 => {
+                        defmt::info!(
+                            "Telemetry Stats: Total={}, {}: {}, {}: {}",
+                            total,
+                            TelemetryRecord::name_from_index(active[0].0),
+                            active[0].1,
+                            TelemetryRecord::name_from_index(active[1].0),
+                            active[1].1
+                        );
+                    }
+                    3 => {
+                        defmt::info!(
+                            "Telemetry Stats: Total={}, {}: {}, {}: {}, {}: {}",
+                            total,
+                            TelemetryRecord::name_from_index(active[0].0),
+                            active[0].1,
+                            TelemetryRecord::name_from_index(active[1].0),
+                            active[1].1,
+                            TelemetryRecord::name_from_index(active[2].0),
+                            active[2].1
+                        );
+                    }
+                    4 => {
+                        defmt::info!(
+                            "Telemetry Stats: Total={}, {}: {}, {}: {}, {}: {}, {}: {}",
+                            total,
+                            TelemetryRecord::name_from_index(active[0].0),
+                            active[0].1,
+                            TelemetryRecord::name_from_index(active[1].0),
+                            active[1].1,
+                            TelemetryRecord::name_from_index(active[2].0),
+                            active[2].1,
+                            TelemetryRecord::name_from_index(active[3].0),
+                            active[3].1
+                        );
+                    }
+                    _ => {
+                        defmt::info!(
+                            "Telemetry Stats: Total={}, {}: {}, {}: {}, {}: {}, {}: {}, {}: {}",
+                            total,
+                            TelemetryRecord::name_from_index(active[0].0),
+                            active[0].1,
+                            TelemetryRecord::name_from_index(active[1].0),
+                            active[1].1,
+                            TelemetryRecord::name_from_index(active[2].0),
+                            active[2].1,
+                            TelemetryRecord::name_from_index(active[3].0),
+                            active[3].1,
+                            TelemetryRecord::name_from_index(active[4].0),
+                            active[4].1
+                        );
+                    }
+                }
+            }
+            #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+            {
+                let mut parts = std::vec::Vec::new();
+                for item in active.iter().take(5) {
+                    if item.1 > 0 {
+                        parts.push(std::format!(
+                            "{}={}",
+                            TelemetryRecord::name_from_index(item.0),
+                            item.1
+                        ));
+                    }
+                }
+                std::eprintln!(
+                    "Telemetry Stats (1s): Total={}, {}",
+                    total,
+                    parts.join(", ")
+                );
             }
         }
     }
