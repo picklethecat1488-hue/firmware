@@ -5,6 +5,13 @@
 #![deny(missing_docs)]
 #![allow(static_mut_refs)]
 
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+use embassy_sync::mutex::Mutex;
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+use peripherals::mock::MockBattery;
+
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
     app::system_controller::SystemController,
@@ -18,7 +25,7 @@ use {
     embassy_executor::Spawner,
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     embassy_sync::mutex::Mutex,
-    peripherals::mock::{DummyProximitySensor, MockBattery, MockLed},
+    peripherals::mock::{DummyProximitySensor, MockLed},
     peripherals::motor::GpioMotor,
 };
 
@@ -56,7 +63,15 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-// Define raw statically allocated Mutex for thread-safe/multi-core peripheral sharing
+/// Statically allocated mutex holding the physical MAX17048 fuel gauge on target.
+static SHARED_BATTERY: Mutex<
+    CriticalSectionRawMutex,
+    peripherals::max17048::Max17048<app::SharedI2cWrapper>,
+> = Mutex::new(peripherals::max17048::Max17048::new(app::SharedI2cWrapper));
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+#[allow(dead_code)]
+/// Statically allocated mutex holding the MockBattery for non-ARM targets.
 static SHARED_BATTERY: Mutex<CriticalSectionRawMutex, MockBattery> =
     Mutex::new(MockBattery::new(3700, 25000));
 
@@ -179,7 +194,7 @@ async fn main(spawner: Spawner) {
 
     #[cfg(all(target_arch = "arm", target_os = "none"))]
     let current_sensor = {
-        let mut sensor = peripherals::ina219::Ina219::new(board.i2c);
+        let mut sensor = peripherals::ina219::Ina219::new(app::SharedI2cWrapper);
         let _ = sensor.init();
         sensor
     };
@@ -299,6 +314,14 @@ async fn main(spawner: Spawner) {
         chg.0 = board.charger.take();
     }
 
+    // Initialize the shared I2C bus on target
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    {
+        app::SHARED_I2C.lock(|cell| {
+            cell.borrow_mut().0 = Some(board.i2c);
+        });
+    }
+
     let thermal_ctrl = ThermalController::new_with_shutdown(
         &SHARED_TEMP_SENSOR,
         app::SYSTEM_CHANNEL.sender(),
@@ -352,6 +375,20 @@ async fn main(spawner: Spawner) {
         app::system_controller::SystemCommand
     );
 
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    controller::run_battery_task!(
+        spawner,
+        power_task,
+        power_ctrl,
+        app::BATTERY_CHANNEL.receiver(),
+        app::TELEMETRY_CHANNEL.sender(),
+        peripherals::max17048::Max17048<app::SharedI2cWrapper>,
+        SafeBq25185,
+        AlertPinWrapper,
+        app::system_controller::SystemCommand
+    );
+
+    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
     controller::run_battery_task!(
         spawner,
         power_task,
@@ -372,9 +409,7 @@ async fn main(spawner: Spawner) {
         app::MOTOR_CHANNEL.receiver(),
         app::TELEMETRY_CHANNEL.sender(),
         GpioMotor<embassy_rp::gpio::Flex<'static>>,
-        peripherals::ina219::Ina219<
-            embassy_rp::i2c::I2c<'static, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Blocking>,
-        >
+        peripherals::ina219::Ina219<app::SharedI2cWrapper>
     );
 
     #[cfg(not(all(target_arch = "arm", target_os = "none")))]

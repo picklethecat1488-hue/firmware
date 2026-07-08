@@ -1,5 +1,6 @@
 //! Shell controller for processing interactive bringup CLI commands.
 
+#![deny(missing_docs)]
 #![allow(static_mut_refs)]
 
 use crate as app;
