@@ -10,6 +10,7 @@ use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
 use firmware_lib::battery_manager::BatteryManager;
 pub use firmware_lib::gesture_detector::ProximityEvent;
+use firmware_lib::periodic_timer::PeriodicTimer;
 use firmware_lib::power_manager::PowerManager;
 use firmware_lib::system::BatteryUpdateAction;
 use firmware_lib::thermal_manager::ThermalManager;
@@ -307,19 +308,10 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
         self.power_manager
             .log_telemetry(TelemetryRecord::System(SystemStatus::PowerDown));
 
-        let mut last_tick_time = embassy_time::Instant::now();
+        let mut timer = PeriodicTimer::new(embassy_time::Duration::from_millis(1000));
         loop {
-            let timeout_duration = embassy_time::Duration::from_millis(1000);
-            let now = embassy_time::Instant::now();
-            let elapsed_ms = now.duration_since(last_tick_time).as_millis() as u32;
-            let remaining_ms = if elapsed_ms >= timeout_duration.as_millis() as u32 {
-                0
-            } else {
-                (timeout_duration.as_millis() as u32) - elapsed_ms
-            };
-
-            if remaining_ms == 0 {
-                last_tick_time = now;
+            if timer.expired() {
+                let elapsed_ms = timer.elapsed_ms_and_reset();
                 let crossed_tick = self.tick_ms(elapsed_ms);
                 // Coordinate periodic telemetry reads across other controllers on the system tick
                 if crossed_tick {
@@ -341,6 +333,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                 }
                 continue;
             }
+
+            let remaining_ms = timer.remaining_ms();
 
             let recv_fut = async {
                 use embassy_futures::select::{select, Either};
