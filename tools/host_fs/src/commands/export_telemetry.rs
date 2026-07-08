@@ -128,8 +128,17 @@ pub async fn run(
             for (ts, rec) in records {
                 match rec {
                     model::telemetry::TelemetryRecord::Battery(b) => match b {
-                        model::types::BatteryStatus::VolTempState(vol, temp, state) => {
-                            writeln!(csv_file, "{},Battery,{},{},{:?},", ts, vol, temp, state)?;
+                        model::types::BatteryStatus::VolTempState(
+                            vol,
+                            temp,
+                            state,
+                            active_locks,
+                        ) => {
+                            writeln!(
+                                csv_file,
+                                "{},Battery,{},{},{:?},{}",
+                                ts, vol, temp, state, active_locks
+                            )?;
                         }
                     },
                     model::telemetry::TelemetryRecord::Motor(m) => match m {

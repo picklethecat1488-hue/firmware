@@ -257,8 +257,8 @@ async fn main(spawner: Spawner) {
     let mut sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
         0,
         tof_north,
-        app::SYSTEM_CHANNEL.sender(),
-        |_id, dist| app::system_controller::SystemCommand::SensorUpdate {
+        app::PROXIMITY_EVENT_CHANNEL.sender(),
+        |_id, dist| app::system_controller::ProximityEvent::SensorUpdate {
             direction: model::types::Direction::North,
             distance_mm: dist,
         },
@@ -273,8 +273,8 @@ async fn main(spawner: Spawner) {
     let mut sensor_ctrl_east = SensorController::new_with_fusion_and_interrupt(
         1,
         tof_east,
-        app::SYSTEM_CHANNEL.sender(),
-        |_id, dist| app::system_controller::SystemCommand::SensorUpdate {
+        app::PROXIMITY_EVENT_CHANNEL.sender(),
+        |_id, dist| app::system_controller::ProximityEvent::SensorUpdate {
             direction: model::types::Direction::East,
             distance_mm: dist,
         },
@@ -289,8 +289,8 @@ async fn main(spawner: Spawner) {
     let mut sensor_ctrl_west = SensorController::new_with_fusion_and_interrupt(
         2,
         tof_west,
-        app::SYSTEM_CHANNEL.sender(),
-        |_id, dist| app::system_controller::SystemCommand::SensorUpdate {
+        app::PROXIMITY_EVENT_CHANNEL.sender(),
+        |_id, dist| app::system_controller::ProximityEvent::SensorUpdate {
             direction: model::types::Direction::West,
             distance_mm: dist,
         },
@@ -361,8 +361,7 @@ async fn main(spawner: Spawner) {
     };
     let boot_reason = app::get_boot_reason();
 
-    let system_ctrl =
-        SystemController::new(channels, app::DEFAULT_PROXIMITY_THRESHOLD_MM, boot_reason);
+    let system_ctrl = SystemController::new(channels, boot_reason);
 
     // Spawn controllers selectively and concurrently using separate macros
     controller::run_thermal_task!(
@@ -432,7 +431,7 @@ async fn main(spawner: Spawner) {
         DummyProximitySensor,
         CriticalSectionRawMutex,
         ProximityPinWrapper,
-        app::system_controller::SystemCommand
+        app::system_controller::ProximityEvent
     );
 
     controller::run_sensor_task!(
@@ -443,7 +442,7 @@ async fn main(spawner: Spawner) {
         DummyProximitySensor,
         CriticalSectionRawMutex,
         ProximityPinWrapper,
-        app::system_controller::SystemCommand
+        app::system_controller::ProximityEvent
     );
 
     controller::run_sensor_task!(
@@ -454,7 +453,16 @@ async fn main(spawner: Spawner) {
         DummyProximitySensor,
         CriticalSectionRawMutex,
         ProximityPinWrapper,
-        app::system_controller::SystemCommand
+        app::system_controller::ProximityEvent
+    );
+
+    // Spawn the proximity gesture task to process sensor readings locally
+    app::run_proximity_gesture_task!(
+        spawner,
+        app::PROXIMITY_EVENT_CHANNEL.receiver(),
+        app::GESTURE_CHANNEL.sender(),
+        app::TELEMETRY_CHANNEL.sender(),
+        app::DEFAULT_PROXIMITY_THRESHOLD_MM
     );
 
     // Spawn the LED controller task
@@ -472,7 +480,8 @@ async fn main(spawner: Spawner) {
         spawner,
         system_task,
         system_ctrl,
-        app::SYSTEM_CHANNEL.receiver()
+        app::SYSTEM_CHANNEL.receiver(),
+        app::GESTURE_CHANNEL.receiver()
     );
 
     app::run_filesystem_task!(

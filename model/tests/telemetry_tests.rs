@@ -3,7 +3,7 @@ use model::types::*;
 
 #[test]
 fn test_cbor_serialization() {
-    let rec = TelemetryRecord::Battery(BatteryStatus::VolTempState(3045, 25, BatteryState::Ok));
+    let rec = TelemetryRecord::Battery(BatteryStatus::VolTempState(3045, 25, BatteryState::Ok, 0));
     let bytes = rec.serialize(45);
     println!("CBOR bytes: {:?}", bytes);
     let decoded = TelemetryRecord::deserialize(&bytes);

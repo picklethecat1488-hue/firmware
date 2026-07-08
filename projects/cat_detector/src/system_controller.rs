@@ -5,13 +5,14 @@
 use controller::battery_controller::BatteryCommand;
 use controller::motor_controller::MotorCommand;
 use controller::sensor_controller::SensorCommand;
-use controller::telemetry_controller::ProximityTelemetryClient;
 use controller::thermal_controller::ThermalCommand;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
-use firmware_lib::gesture_detector::GestureDetector;
-use model::telemetry::TelemetryClient;
-use model::types::{BootReason, Direction, Gesture, SystemLedState, SystemStatus, TelemetryRecord};
+use model::types::{
+    BootReason, ChargeState, Gesture, SystemLedState, SystemStatus, TelemetryRecord,
+};
+
+pub use firmware_lib::gesture_detector::ProximityEvent;
 
 /// One-way commands to control the global system state and notify it of events.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,15 +32,10 @@ pub enum SystemCommand {
         /// Battery capacity percentage (0-100).
         state_of_charge: u8,
         /// Charger state.
-        charger_state: model::types::ChargeState,
+        charger_state: ChargeState,
     },
-    /// Proximity telemetry update from individual ToF sensors.
-    SensorUpdate {
-        /// Sensor direction (North, East, West).
-        direction: Direction,
-        /// Measured distance in mm.
-        distance_mm: u16,
-    },
+    /// High-level gesture detected.
+    Gesture(Gesture),
 }
 
 /// The default inactivity timeout in seconds before transitioning to Sleep.
@@ -91,7 +87,6 @@ pub struct SystemControllerChannels<
 }
 
 /// Controller responsible for tracking global status and coordinating other subsystems.
-/// Controller responsible for tracking global status and coordinating other subsystems.
 pub struct SystemController<
     MutexRaw: RawMutex + 'static,
     const N: usize,
@@ -105,16 +100,6 @@ pub struct SystemController<
     battery_tx: Sender<'static, MutexRaw, BatteryCommand, N>,
     thermal_tx: Sender<'static, MutexRaw, ThermalCommand, N>,
     led_tx: Sender<'static, MutexRaw, SystemLedState, N>,
-    /// Distance reading from the North sensor.
-    pub distance_north: u16,
-    /// Distance reading from the East sensor.
-    pub distance_east: u16,
-    /// Distance reading from the West sensor.
-    pub distance_west: u16,
-    gesture_detector: GestureDetector,
-    /// Proximity detection threshold in mm.
-    pub proximity_threshold_mm: u16,
-    proximity_telemetry_client: ProximityTelemetryClient<'static, MutexRaw, T_CAP>,
 }
 
 impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize> core::ops::Deref
@@ -141,7 +126,6 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
     /// Creates a new SystemController instance.
     pub fn new(
         channels: SystemControllerChannels<MutexRaw, N, T_CAP>,
-        proximity_threshold_mm: u16,
         boot_reason: BootReason,
     ) -> Self {
         let state_manager = firmware_lib::system::SystemStateManager::new(
@@ -163,15 +147,6 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             battery_tx: channels.battery_tx,
             thermal_tx: channels.thermal_tx,
             led_tx: channels.led_tx,
-            distance_north: 1000,
-            distance_east: 1000,
-            distance_west: 1000,
-            gesture_detector: GestureDetector::new(20, proximity_threshold_mm),
-            proximity_threshold_mm,
-            proximity_telemetry_client: ProximityTelemetryClient::new(
-                Some(channels.telemetry_tx),
-                proximity_threshold_mm,
-            ),
         }
     }
 
@@ -183,46 +158,6 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
     /// Determines the LED state based on current battery state of charge.
     pub fn get_soc_led_state(&self) -> SystemLedState {
         self.state_manager.get_soc_led_state()
-    }
-
-    /// Updates the gesture detector with the current system time in microseconds.
-    pub fn update_gesture(&mut self, current_time_us: u64) {
-        let current_status = self.status();
-        match self.gesture_detector.update(
-            Gesture::Proximity(self.distance_north, self.distance_east, self.distance_west),
-            current_time_us,
-        ) {
-            Some(Gesture::DualLongPress) => {
-                self.log_gesture_telemetry(Gesture::DualLongPress);
-                if current_status == SystemStatus::PowerDown {
-                    if !self.charger_connected() {
-                        self.set_status(SystemStatus::Active);
-                        self.reset_on_wake();
-                        self.led_tx.try_send(self.get_soc_led_state()).unwrap();
-                        self.gesture_detector.reset();
-                    }
-                } else {
-                    self.handle_command(SystemCommand::PowerDown);
-                }
-            }
-            Some(Gesture::ProximityDetected) if current_status != SystemStatus::PowerDown => {
-                self.log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityDetected));
-                self.set_inactive_ms(0);
-                if self.status() == SystemStatus::Sleep {
-                    self.handle_command(SystemCommand::Wake);
-                }
-                if self.status() == SystemStatus::Active
-                    && !self.battery_critical()
-                    && !self.thermal_critical()
-                {
-                    self.motor_tx.try_send(MotorCommand::SetSpeed(100)).unwrap();
-                }
-            }
-            Some(Gesture::ProximityNotDetected) if current_status != SystemStatus::PowerDown => {
-                self.log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityNotDetected));
-            }
-            _ => {}
-        }
     }
 
     /// Handles an incoming SystemCommand.
@@ -238,6 +173,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     self.set_status(next);
                     self.reset_on_wake();
                     self.led_tx.try_send(self.get_soc_led_state()).unwrap();
+                    if next == SystemStatus::Active {
+                        self.motor_tx.try_send(MotorCommand::SetSpeed(100)).unwrap();
+                    }
                 }
             }
             SystemCommand::Sleep => {
@@ -249,16 +187,17 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     self.thermal_critical(),
                 ) {
                     self.set_status(next);
+                    let _ = self.battery_tx.try_send(BatteryCommand::UpdateWakeLocks(0));
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::info!("SystemController: entering low-power Sleep mode.");
                     self.motor_tx.try_send(MotorCommand::Stop).unwrap();
                     self.led_tx.try_send(SystemLedState::SolidBlue).unwrap();
-                    self.gesture_detector.set_proximity_active(false);
                 }
             }
             SystemCommand::PowerDown => {
                 if let Some(next) = firmware_lib::system::transition_power_down(self.status()) {
                     self.set_status(next);
+                    let _ = self.battery_tx.try_send(BatteryCommand::UpdateWakeLocks(0));
                     self.motor_tx.try_send(MotorCommand::Stop).unwrap();
                     let led = if self.charger_connected() {
                         self.get_soc_led_state()
@@ -266,7 +205,6 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                         SystemLedState::Off
                     };
                     self.led_tx.try_send(led).unwrap();
-                    self.gesture_detector.reset();
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::info!("SystemController: entering PowerDown state. Motor locked.");
                 }
@@ -323,6 +261,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                         self.set_status(SystemStatus::Active);
                         self.reset_on_wake();
                         self.led_tx.try_send(self.get_soc_led_state()).unwrap();
+                        self.motor_tx.try_send(MotorCommand::SetSpeed(100)).unwrap();
                         #[cfg(all(target_arch = "arm", target_os = "none"))]
                         defmt::info!(
                             "SystemController: exiting PowerDown state. Waking up to Active mode."
@@ -344,20 +283,39 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     }
                 }
             }
-            SystemCommand::SensorUpdate {
-                direction,
-                distance_mm,
-            } => {
-                match direction {
-                    Direction::North => self.distance_north = distance_mm,
-                    Direction::East => self.distance_east = distance_mm,
-                    Direction::West => self.distance_west = distance_mm,
+            SystemCommand::Gesture(gesture) => {
+                let current_status = self.status();
+                match gesture {
+                    Gesture::DualLongPress => {
+                        self.log_gesture_telemetry(Gesture::DualLongPress);
+                        if current_status == SystemStatus::PowerDown {
+                            if !self.charger_connected() {
+                                self.set_status(SystemStatus::Active);
+                                self.reset_on_wake();
+                                self.led_tx.try_send(self.get_soc_led_state()).unwrap();
+                                self.motor_tx.try_send(MotorCommand::SetSpeed(100)).unwrap();
+                            }
+                        } else {
+                            self.handle_command(SystemCommand::PowerDown);
+                        }
+                    }
+                    Gesture::ProximityDetected if current_status != SystemStatus::PowerDown => {
+                        self.log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityDetected));
+                        if self.status() == SystemStatus::Sleep {
+                            self.handle_command(SystemCommand::Wake);
+                        }
+                        if self.status() == SystemStatus::Active {
+                            self.acquire_wake_lock(None);
+                        }
+                    }
+                    Gesture::ProximityNotDetected if current_status != SystemStatus::PowerDown => {
+                        self.log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityNotDetected));
+                        if self.status() == SystemStatus::Active {
+                            self.release_wake_lock(None);
+                        }
+                    }
+                    _ => {}
                 }
-
-                self.proximity_telemetry_client
-                    .report((direction, distance_mm));
-
-                self.update_gesture(crate::system_time());
             }
         }
     }
@@ -367,15 +325,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
     pub fn tick_ms(&mut self, ms: u32) -> bool {
         let crossed = self.state_manager.tick_ms(ms);
         if crossed {
-            // Stay in Active state as long as proximity is detected
-            if self.gesture_detector.proximity_active() {
-                self.set_inactive_ms(0);
-            } else {
-                let current_inactivity = self.inactive_ms();
-                let interval = self.interval_ms();
-                self.set_inactive_ms(current_inactivity.saturating_add(interval));
-            }
-
+            let _ = self.battery_tx.try_send(BatteryCommand::UpdateWakeLocks(
+                self.state_manager.wake_locks(),
+            ));
             // Sleep after inactivity timeout
             if self.inactive_ms() >= INACTIVITY_TIMEOUT_SECONDS * 1000 {
                 self.handle_command(SystemCommand::Sleep);
@@ -388,6 +340,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
     pub async fn run(
         mut self,
         command_rx: embassy_sync::channel::Receiver<'static, MutexRaw, SystemCommand, N>,
+        gesture_rx: embassy_sync::channel::Receiver<'static, MutexRaw, Gesture, 4>,
     ) -> ! {
         // Initialize LED to Off (as we start in PowerDown)
         self.led_tx.try_send(SystemLedState::Off).unwrap();
@@ -395,11 +348,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
 
         let mut last_tick_time = embassy_time::Instant::now();
         loop {
-            let timeout_duration = if self.gesture_detector.proximity_active() {
-                embassy_time::Duration::from_millis(200)
-            } else {
-                embassy_time::Duration::from_millis(1000)
-            };
+            let timeout_duration = embassy_time::Duration::from_millis(1000);
             let now = embassy_time::Instant::now();
             let elapsed_ms = now.duration_since(last_tick_time).as_millis() as u32;
             let remaining_ms = if elapsed_ms >= timeout_duration.as_millis() as u32 {
@@ -432,14 +381,27 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                 continue;
             }
 
+            let recv_fut = async {
+                use embassy_futures::select::{select, Either};
+                match select(command_rx.receive(), gesture_rx.receive()).await {
+                    Either::First(cmd) => Either::First(cmd),
+                    Either::Second(gesture) => Either::Second(gesture),
+                }
+            };
+
             match embassy_time::with_timeout(
                 embassy_time::Duration::from_millis(remaining_ms as u64),
-                command_rx.receive(),
+                recv_fut,
             )
             .await
             {
-                Ok(cmd) => {
+                Ok(embassy_futures::select::Either::First(cmd)) => {
+                    // Handle project-specific command from system command channel
                     self.handle_command(cmd);
+                }
+                Ok(embassy_futures::select::Either::Second(gesture)) => {
+                    // Delegate generic gesture detection event to the command handler
+                    self.handle_command(SystemCommand::Gesture(gesture));
                 }
                 Err(_timeout) => {
                     // Timeout occurred
@@ -458,30 +420,37 @@ macro_rules! run_system_task {
         $spawner:expr,
         $task_module:ident,
         $controller:expr,
-        $rx:expr
+        $system_rx:expr,
+        $gesture_rx:expr
     ) => {
         mod $task_module {
             use super::*;
 
             #[embassy_executor::task]
             pub async fn task(
-                controller: $crate::system_controller::SystemController<
+                mut controller: $crate::system_controller::SystemController<
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                     4,
                 >,
-                rx: embassy_sync::channel::Receiver<
+                system_rx: embassy_sync::channel::Receiver<
                     'static,
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                     $crate::system_controller::SystemCommand,
                     4,
                 >,
+                gesture_rx: embassy_sync::channel::Receiver<
+                    'static,
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    model::types::Gesture,
+                    4,
+                >,
             ) {
-                controller.run(rx).await;
+                controller.run(system_rx, gesture_rx).await;
             }
         }
 
         $spawner
-            .spawn($task_module::task($controller, $rx))
+            .spawn($task_module::task($controller, $system_rx, $gesture_rx))
             .unwrap();
     };
 }

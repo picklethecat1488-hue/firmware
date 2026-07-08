@@ -7,7 +7,7 @@ use controller::sensor_controller::SensorCommand;
 use controller::thermal_controller::ThermalCommand;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use model::types::{BootReason, SystemLedState, SystemStatus, TelemetryRecord};
+use model::types::{BootReason, Gesture, SystemLedState, SystemStatus, TelemetryRecord};
 
 static MOCK_TELEMETRY_CHANNEL: Channel<
     CriticalSectionRawMutex,
@@ -36,7 +36,7 @@ fn test_system_controller_flow() {
         led_tx: LED_CHANNEL.sender(),
         telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
     };
-    let mut controller = SystemController::new(channels, 300, BootReason::Unknown);
+    let mut controller = SystemController::new(channels, BootReason::Unknown);
 
     assert_eq!(controller.status(), SystemStatus::PowerDown);
 
@@ -47,6 +47,7 @@ fn test_system_controller_flow() {
     });
     assert_eq!(controller.status(), SystemStatus::Active);
     let _ = LED_CHANNEL.try_receive().unwrap(); // Consume initial SolidGreen
+    let _ = MOTOR_CHANNEL.try_receive().unwrap(); // Consume initial SetSpeed(100)
 
     // Tick it 29 times, should remain Active
     for _ in 0..29 {
@@ -80,6 +81,10 @@ fn test_system_controller_flow() {
     // Verify LED was updated to Active green
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::SolidGreen);
+    assert_eq!(
+        MOTOR_CHANNEL.try_receive().unwrap(),
+        MotorCommand::SetSpeed(100)
+    );
 
     // Trigger an alert (thermal critical)
     controller.handle_command(SystemCommand::AlertTriggered);
@@ -106,7 +111,7 @@ fn test_system_controller_flow() {
         led_tx: LED_CHANNEL.sender(),
         telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
     };
-    let mut controller = SystemController::new(channels2, 300, BootReason::Unknown);
+    let mut controller = SystemController::new(channels2, BootReason::Unknown);
 
     assert_eq!(controller.status(), SystemStatus::PowerDown);
 
@@ -117,6 +122,7 @@ fn test_system_controller_flow() {
     });
     assert_eq!(controller.status(), SystemStatus::Active);
     let _ = LED_CHANNEL.try_receive().unwrap(); // Consume initial SolidGreen
+    let _ = MOTOR_CHANNEL.try_receive().unwrap(); // Consume initial SetSpeed(100)
 
     // Tick to INACTIVITY_TIMEOUT_SECONDS to let the fresh controller sleep
     for _ in 0..cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS {
@@ -131,6 +137,7 @@ fn test_system_controller_flow() {
     assert_eq!(controller.status(), SystemStatus::Active);
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::SolidGreen); // consume Active green LED command
+    let _ = MOTOR_CHANNEL.try_receive().unwrap(); // consume SetSpeed(100)
 
     // Try to transition to sleep immediately (ignored because time_in_active = 0 < 30)
     controller.handle_command(SystemCommand::Sleep);
@@ -149,10 +156,7 @@ fn test_system_controller_flow() {
     while MOTOR_CHANNEL.try_receive().is_ok() {}
     while LED_CHANNEL.try_receive().is_ok() {}
 
-    controller.handle_command(SystemCommand::SensorUpdate {
-        direction: model::types::Direction::North,
-        distance_mm: 150,
-    });
+    controller.handle_command(SystemCommand::Gesture(Gesture::ProximityDetected));
 
     assert_eq!(controller.status(), SystemStatus::Active);
     let led_state = LED_CHANNEL.try_receive().unwrap();
@@ -175,10 +179,7 @@ fn test_system_controller_flow() {
     let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
     assert_eq!(motor_cmd, MotorCommand::Stop);
 
-    controller.handle_command(SystemCommand::SensorUpdate {
-        direction: model::types::Direction::North,
-        distance_mm: 150,
-    });
+    controller.handle_command(SystemCommand::Gesture(Gesture::ProximityDetected));
     // The pump should NOT start since system is in PowerDown (no SetSpeed command in queue)
     assert!(MOTOR_CHANNEL.try_receive().is_err());
 }
@@ -204,7 +205,7 @@ fn test_power_down_and_gesture_detection() {
         led_tx: LED_CHANNEL.sender(),
         telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
     };
-    let mut controller = SystemController::new(channels3, 300, BootReason::Unknown);
+    let mut controller = SystemController::new(channels3, BootReason::Unknown);
 
     // 1. Verify booting into PowerDown
     assert_eq!(controller.status(), SystemStatus::PowerDown);
@@ -226,28 +227,14 @@ fn test_power_down_and_gesture_detection() {
     assert_eq!(controller.status(), SystemStatus::Active);
     let led_state = LED_CHANNEL.try_receive().unwrap();
     assert_eq!(led_state, SystemLedState::SolidGreen);
+    let _ = MOTOR_CHANNEL.try_receive().unwrap(); // consume SetSpeed(100)
 
-    // 4. Simulate simultaneous press on East & West ToF sensors (distance < 20mm)
-    controller.distance_east = 15;
-    controller.distance_west = 15;
-
+    // 4. Send high-level DualLongPress gesture
     // Clear motor/LED channels
     while MOTOR_CHANNEL.try_receive().is_ok() {}
     while LED_CHANNEL.try_receive().is_ok() {}
 
-    // Start gesture at t = 0
-    controller.update_gesture(0);
-    assert_eq!(controller.status(), SystemStatus::Active);
-    let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
-    assert_eq!(motor_cmd, MotorCommand::SetSpeed(100));
-
-    // Tick gesture to 2 seconds -> should not power down yet
-    controller.update_gesture(2_000_000);
-    assert_eq!(controller.status(), SystemStatus::Active);
-    assert!(MOTOR_CHANNEL.try_receive().is_err());
-
-    // Tick gesture to 5 seconds -> total 5 seconds simultaneous press -> triggers PowerDown
-    controller.update_gesture(5_000_000);
+    controller.handle_command(SystemCommand::Gesture(Gesture::DualLongPress));
     assert_eq!(controller.status(), SystemStatus::PowerDown);
 
     // Verify LED is turned Off and motor is stopped/locked
@@ -273,11 +260,7 @@ fn test_power_down_and_gesture_detection() {
     assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
 
     // 7. Trying to unlock with 2F long press while charger is connected should be ignored
-    controller.distance_east = 15;
-    controller.distance_west = 15;
-    controller.update_gesture(6_000_000);
-    controller.update_gesture(8_000_000);
-    controller.update_gesture(11_000_000);
+    controller.handle_command(SystemCommand::Gesture(Gesture::DualLongPress));
     assert_eq!(controller.status(), SystemStatus::PowerDown);
 
     // 8. Disconnect charger (should still remain in PowerDown and set LED Off)
@@ -289,11 +272,7 @@ fn test_power_down_and_gesture_detection() {
     assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
 
     // 9. Unlock with 2F long press gesture after charger is disconnected
-    controller.distance_east = 15;
-    controller.distance_west = 15;
-    controller.update_gesture(12_000_000);
-    controller.update_gesture(14_000_000);
-    controller.update_gesture(17_000_000);
+    controller.handle_command(SystemCommand::Gesture(Gesture::DualLongPress));
     assert_eq!(controller.status(), SystemStatus::Active);
 
     // Verify LED is SolidYellow (SoC = 50% is between 21% and 79%)
@@ -322,7 +301,7 @@ fn test_invalid_critical_soc_threshold_recovery() {
         led_tx: LED_CHANNEL.sender(),
         telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
     };
-    let mut controller = SystemController::new(channels4, 300, BootReason::Unknown);
+    let mut controller = SystemController::new(channels4, BootReason::Unknown);
 
     // Set critical threshold to a value greater than LOW_BATTERY_SOC_THRESHOLD (20)
     controller.set_critical_soc_threshold(25);

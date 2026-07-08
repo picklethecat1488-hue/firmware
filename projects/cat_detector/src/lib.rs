@@ -94,6 +94,20 @@ pub static SYSTEM_CHANNEL: embassy_sync::channel::Channel<
     4,
 > = embassy_sync::channel::Channel::new();
 
+/// Shared channel for local gesture events.
+pub static GESTURE_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    model::types::Gesture,
+    4,
+> = embassy_sync::channel::Channel::new();
+
+/// Shared channel for local proximity events.
+pub static PROXIMITY_EVENT_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    crate::system_controller::ProximityEvent,
+    4,
+> = embassy_sync::channel::Channel::new();
+
 /// Shared command channel for the North Sensor Controller.
 pub static SENSOR_NORTH_CHANNEL: embassy_sync::channel::Channel<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
@@ -153,11 +167,12 @@ pub static FILESYSTEM_CHANNEL: embassy_sync::channel::Channel<
 /// Re-export the telemetry module from the shared library
 pub use firmware_lib::telemetry;
 
-/// Re-export the run_telemetry_task macro from the shared library
-pub use firmware_lib::run_telemetry_task;
-
 /// Re-export the run_filesystem_task macro from the controller crate
 pub use controller::run_filesystem_task;
+/// Re-export the run_proximity_gesture_task macro from the shared library
+pub use firmware_lib::run_proximity_gesture_task;
+/// Re-export the run_telemetry_task macro from the shared library
+pub use firmware_lib::run_telemetry_task;
 
 /// Re-export the modular panic handler function
 #[cfg(all(target_arch = "arm", target_os = "none"))]

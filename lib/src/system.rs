@@ -115,6 +115,7 @@ pub struct SystemStateManager<MutexRaw: RawMutex + 'static, const N: usize> {
     low_soc_threshold: u8,
     mid_soc_threshold: u8,
     high_soc_threshold: u8,
+    wake_locks: u32,
     telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, N>,
 }
 
@@ -138,6 +139,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> core::fmt::Debug
             .field("low_soc_threshold", &self.low_soc_threshold)
             .field("mid_soc_threshold", &self.mid_soc_threshold)
             .field("high_soc_threshold", &self.high_soc_threshold)
+            .field("wake_locks", &self.wake_locks)
             .finish()
     }
 }
@@ -160,6 +162,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> Clone for SystemStateManager<
             low_soc_threshold: self.low_soc_threshold,
             mid_soc_threshold: self.mid_soc_threshold,
             high_soc_threshold: self.high_soc_threshold,
+            wake_locks: self.wake_locks,
             telemetry_tx: self.telemetry_tx,
         }
     }
@@ -185,6 +188,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> PartialEq for SystemStateMana
             && self.low_soc_threshold == other.low_soc_threshold
             && self.mid_soc_threshold == other.mid_soc_threshold
             && self.high_soc_threshold == other.high_soc_threshold
+            && self.wake_locks == other.wake_locks
     }
 }
 
@@ -218,6 +222,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
             low_soc_threshold,
             mid_soc_threshold,
             high_soc_threshold,
+            wake_locks: 0,
             telemetry_tx,
         }
     }
@@ -240,7 +245,49 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
     /// Sets the current system status.
     pub fn set_status(&mut self, status: SystemStatus) {
         self.status = status;
+        if status != SystemStatus::Active {
+            self.wake_locks = 0;
+        }
         self.log_telemetry(TelemetryRecord::System(status));
+    }
+
+    /// Acquires a wake lock, resetting the inactivity timer to 0.
+    pub fn acquire_wake_lock(&mut self, client_id: Option<u32>) {
+        let id = client_id.unwrap_or(0);
+        if id >= 32 {
+            panic!("WakeLock: client_id {} out of bounds!", id);
+        }
+        let mask = 1u32 << id;
+        if (self.wake_locks & mask) != 0 {
+            defmt::warn!("WakeLock: client {} double-acquired!", id);
+        } else {
+            self.wake_locks |= mask;
+        }
+        self.inactive_ms = 0;
+    }
+
+    /// Releases a wake lock.
+    pub fn release_wake_lock(&mut self, client_id: Option<u32>) {
+        let id = client_id.unwrap_or(0);
+        if id >= 32 {
+            panic!("WakeLock: client_id {} out of bounds!", id);
+        }
+        let mask = 1u32 << id;
+        if (self.wake_locks & mask) == 0 {
+            defmt::warn!("WakeLock: client {} double-released!", id);
+        } else {
+            self.wake_locks &= !mask;
+        }
+    }
+
+    /// Returns the number of active wake locks.
+    pub const fn wake_lock_count(&self) -> u32 {
+        self.wake_locks.count_ones()
+    }
+
+    /// Returns the raw active wake locks bitmask.
+    pub const fn wake_locks(&self) -> u32 {
+        self.wake_locks
     }
 
     /// Returns the inactivity timer in seconds.
@@ -392,6 +439,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
                 self.tick_ms_accumulator =
                     self.tick_ms_accumulator.saturating_sub(self.interval_ms);
                 self.active_ms = self.active_ms.saturating_add(self.interval_ms);
+                if self.wake_locks > 0 {
+                    self.inactive_ms = 0;
+                } else {
+                    self.inactive_ms = self.inactive_ms.saturating_add(self.interval_ms);
+                }
                 return true;
             }
         } else {
@@ -405,5 +457,21 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> SystemStateManager<MutexRaw, 
         self.boot_power_down = false;
         self.inactive_ms = 0;
         self.active_ms = 0;
+        self.wake_locks = 0;
     }
 }
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+#[defmt::global_logger]
+struct HostLogger;
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+unsafe impl defmt::Logger for HostLogger {
+    fn acquire() {}
+    unsafe fn write(_bytes: &[u8]) {}
+    unsafe fn flush() {}
+    unsafe fn release() {}
+}
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+defmt::timestamp!("{=u64}", 0);

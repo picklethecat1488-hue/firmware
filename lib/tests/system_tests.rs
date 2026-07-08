@@ -230,3 +230,85 @@ fn test_pure_transition_power_down() {
     );
     assert_eq!(transition_power_down(SystemStatus::PowerDown), None);
 }
+
+#[test]
+fn test_system_state_manager_wake_locks() {
+    let mut manager = SystemStateManager::new(
+        10,
+        2,
+        20,
+        21,
+        80,
+        TEST_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
+
+    manager.set_status(SystemStatus::Active);
+    assert_eq!(manager.wake_lock_count(), 0);
+    assert_eq!(manager.inactive_ms(), 0);
+
+    // Tick once -> inactive_ms increases
+    assert!(manager.tick_ms(1000));
+    assert_eq!(manager.inactive_ms(), 1000);
+
+    // Acquire wake lock
+    manager.acquire_wake_lock(None);
+    assert_eq!(manager.wake_lock_count(), 1);
+    assert_eq!(manager.inactive_ms(), 0);
+
+    // Tick with wake lock -> inactive_ms remains 0
+    assert!(manager.tick_ms(1000));
+    assert_eq!(manager.inactive_ms(), 0);
+
+    // Acquire another wake lock for client 1
+    manager.acquire_wake_lock(Some(1));
+    assert_eq!(manager.wake_lock_count(), 2);
+
+    // Release client 1 -> still locked by client 0
+    manager.release_wake_lock(Some(1));
+    assert_eq!(manager.wake_lock_count(), 1);
+
+    // Release last lock -> unlocked
+    manager.release_wake_lock(None);
+    assert_eq!(manager.wake_lock_count(), 0);
+
+    // Tick -> inactive_ms starts increasing again
+    assert!(manager.tick_ms(1000));
+    assert_eq!(manager.inactive_ms(), 1000);
+
+    // Reset on wake clears locks
+    manager.acquire_wake_lock(None);
+    assert_eq!(manager.wake_lock_count(), 1);
+    manager.reset_on_wake();
+    assert_eq!(manager.wake_lock_count(), 0);
+}
+
+#[test]
+#[should_panic(expected = "WakeLock: client_id 32 out of bounds!")]
+fn test_system_state_manager_wake_lock_panic_acquire() {
+    let mut manager = SystemStateManager::new(
+        10,
+        2,
+        20,
+        21,
+        80,
+        TEST_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
+    manager.acquire_wake_lock(Some(32));
+}
+
+#[test]
+#[should_panic(expected = "WakeLock: client_id 32 out of bounds!")]
+fn test_system_state_manager_wake_lock_panic_release() {
+    let mut manager = SystemStateManager::new(
+        10,
+        2,
+        20,
+        21,
+        80,
+        TEST_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
+    manager.release_wake_lock(Some(32));
+}

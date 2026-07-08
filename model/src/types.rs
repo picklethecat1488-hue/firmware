@@ -15,14 +15,14 @@ macro_rules! dummy_debug {
 #[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum BatteryStatus {
-    /// Voltage (mV), temperature (mC), and battery state.
+    /// Voltage (mV), temperature (mC), battery state, and active wake locks mask.
     #[n(0)]
-    VolTempState(#[n(0)] u32, #[n(1)] i32, #[n(2)] BatteryState),
+    VolTempState(#[n(0)] u32, #[n(1)] i32, #[n(2)] BatteryState, #[n(3)] u32),
 }
 
 impl Default for BatteryStatus {
     fn default() -> Self {
-        Self::VolTempState(0, 0, BatteryState::default())
+        Self::VolTempState(0, 0, BatteryState::default(), 0)
     }
 }
 
