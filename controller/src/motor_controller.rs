@@ -2,8 +2,10 @@
 
 #![deny(missing_docs)]
 
+use crate::telemetry_controller::MotorTelemetryClient;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use model::interfaces::{Motor, PowerMeasurementMode, PowerSensor};
+use model::telemetry::TelemetryClient;
 use model::types::PeripheralError;
 use peripherals::ToPeripheralError;
 
@@ -90,11 +92,10 @@ where
     /// Ticks the control loop, reading current sensor input and updating safety states.
     pub fn update(
         &mut self,
-        telemetry_tx: Option<
-            &embassy_sync::channel::Sender<
+        telemetry_client: Option<
+            &mut MotorTelemetryClient<
                 '_,
                 CriticalSectionRawMutex,
-                model::telemetry::TelemetryRecord,
                 { crate::telemetry_controller::CHANNEL_CAPACITY },
             >,
         >,
@@ -139,14 +140,14 @@ where
             }
         }
 
-        if let Some(tx) = telemetry_tx {
+        if let Some(client) = telemetry_client {
             let running = self.state == MotorState::On;
             let status = if running {
                 model::types::MotorStatus::Running(self.speed)
             } else {
                 model::types::MotorStatus::Brake
             };
-            let _ = tx.try_send(model::telemetry::TelemetryRecord::Motor(status));
+            client.report(status);
         }
 
         Ok(())
@@ -156,11 +157,10 @@ where
     pub fn handle_command(
         &mut self,
         cmd: MotorCommand,
-        telemetry_tx: Option<
-            &embassy_sync::channel::Sender<
+        telemetry_client: Option<
+            &mut MotorTelemetryClient<
                 '_,
                 CriticalSectionRawMutex,
-                model::telemetry::TelemetryRecord,
                 { crate::telemetry_controller::CHANNEL_CAPACITY },
             >,
         >,
@@ -184,44 +184,31 @@ where
                             .current_sensor
                             .set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
                         {
-                            if let Some(tx) = telemetry_tx {
-                                let _ = tx.try_send(
-                                    model::telemetry::TelemetryRecord::PeripheralError(
-                                        e.to_peripheral_error(),
-                                    ),
-                                );
+                            if let Some(ref client) = telemetry_client {
+                                client.report_error(e.to_peripheral_error());
                             }
                         }
                     }
                     self.speed = speed;
                     if let Err(e) = self.motor.set_speed(speed) {
-                        if let Some(tx) = telemetry_tx {
-                            let _ =
-                                tx.try_send(model::telemetry::TelemetryRecord::PeripheralError(
-                                    e.to_peripheral_error(),
-                                ));
+                        if let Some(ref client) = telemetry_client {
+                            client.report_error(e.to_peripheral_error());
                         }
                     }
                 } else {
                     self.state = MotorState::Off;
                     self.speed = 0;
                     if let Err(e) = self.motor.stop() {
-                        if let Some(tx) = telemetry_tx {
-                            let _ =
-                                tx.try_send(model::telemetry::TelemetryRecord::PeripheralError(
-                                    e.to_peripheral_error(),
-                                ));
+                        if let Some(ref client) = telemetry_client {
+                            client.report_error(e.to_peripheral_error());
                         }
                     }
                     if let Err(e) = self
                         .current_sensor
                         .set_measurement_mode(PowerMeasurementMode::PowerDown)
                     {
-                        if let Some(tx) = telemetry_tx {
-                            let _ =
-                                tx.try_send(model::telemetry::TelemetryRecord::PeripheralError(
-                                    e.to_peripheral_error(),
-                                ));
+                        if let Some(ref client) = telemetry_client {
+                            client.report_error(e.to_peripheral_error());
                         }
                     }
                 }
@@ -230,33 +217,29 @@ where
                 self.state = MotorState::Off;
                 self.speed = 0;
                 if let Err(e) = self.motor.stop() {
-                    if let Some(tx) = telemetry_tx {
-                        let _ = tx.try_send(model::telemetry::TelemetryRecord::PeripheralError(
-                            e.to_peripheral_error(),
-                        ));
+                    if let Some(ref client) = telemetry_client {
+                        client.report_error(e.to_peripheral_error());
                     }
                 }
                 if let Err(e) = self
                     .current_sensor
                     .set_measurement_mode(PowerMeasurementMode::PowerDown)
                 {
-                    if let Some(tx) = telemetry_tx {
-                        let _ = tx.try_send(model::telemetry::TelemetryRecord::PeripheralError(
-                            e.to_peripheral_error(),
-                        ));
+                    if let Some(ref client) = telemetry_client {
+                        client.report_error(e.to_peripheral_error());
                     }
                 }
             }
         }
 
-        if let Some(tx) = telemetry_tx {
+        if let Some(client) = telemetry_client {
             let running = self.state == MotorState::On;
             let status = if running {
                 model::types::MotorStatus::Running(self.speed)
             } else {
                 model::types::MotorStatus::Brake
             };
-            let _ = tx.try_send(model::telemetry::TelemetryRecord::Motor(status));
+            client.report(status);
         }
     }
 
@@ -271,14 +254,13 @@ where
             { crate::telemetry_controller::CHANNEL_CAPACITY },
         >,
     ) -> ! {
+        let mut telemetry_client = MotorTelemetryClient::new(Some(telemetry_tx));
         // Put the current sensor into power-down mode on startup since the motor is off
         if let Err(e) = self
             .current_sensor
             .set_measurement_mode(PowerMeasurementMode::PowerDown)
         {
-            let _ = telemetry_tx.try_send(model::telemetry::TelemetryRecord::PeripheralError(
-                e.to_peripheral_error(),
-            ));
+            telemetry_client.report_error(e.to_peripheral_error());
         }
 
         loop {
@@ -289,12 +271,11 @@ where
             .await
             {
                 Ok(cmd) => {
-                    self.handle_command(cmd, Some(&telemetry_tx));
+                    self.handle_command(cmd, Some(&mut telemetry_client));
                 }
                 Err(_timeout) => {
-                    if let Err(e) = self.update(Some(&telemetry_tx)) {
-                        let _ = telemetry_tx
-                            .try_send(model::telemetry::TelemetryRecord::PeripheralError(e));
+                    if let Err(e) = self.update(Some(&mut telemetry_client)) {
+                        telemetry_client.report_error(e);
                     }
                 }
             }

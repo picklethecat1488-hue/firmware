@@ -145,3 +145,9 @@ pub fn chunk_name(idx: usize) -> &'static str {
         _ => "telemetry_0.rrd",
     }
 }
+
+/// Trait for a telemetry client that handles change detection, filtering, and reporting.
+pub trait TelemetryClient<T> {
+    /// Reports telemetry data if it has changed significantly.
+    fn report(&mut self, data: T);
+}

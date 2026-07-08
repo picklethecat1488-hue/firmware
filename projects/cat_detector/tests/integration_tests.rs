@@ -122,8 +122,11 @@ fn test_system_integration_flow() {
             let mut bat = mock_battery.lock().await;
             bat.state_of_charge = 85;
         }
+        let mut battery_client1 = controller::telemetry_controller::BatteryTelemetryClient::new(
+            Some(TELEMETRY_CHANNEL.sender()),
+        );
         battery_ctrl
-            .update(Some(&TELEMETRY_CHANNEL.sender()))
+            .update(Some(&mut battery_client1))
             .await
             .unwrap();
         let cmd = SYSTEM_CHANNEL.receive().await;
@@ -158,8 +161,11 @@ fn test_system_integration_flow() {
             let mut bat = mock_battery.lock().await;
             bat.state_of_charge = 5;
         }
+        let mut battery_client2 = controller::telemetry_controller::BatteryTelemetryClient::new(
+            Some(TELEMETRY_CHANNEL.sender()),
+        );
         battery_ctrl
-            .update(Some(&TELEMETRY_CHANNEL.sender()))
+            .update(Some(&mut battery_client2))
             .await
             .unwrap();
         let cmd = SYSTEM_CHANNEL.receive().await;
@@ -235,8 +241,11 @@ fn test_system_integration_flow() {
             let mut temp_sensor = mock_temp.lock().await;
             temp_sensor.temperature_milli_c = 61000;
         }
+        let mut thermal_client = controller::telemetry_controller::ThermalTelemetryClient::new(
+            Some(TELEMETRY_CHANNEL.sender()),
+        );
         thermal_ctrl
-            .update(Some(&TELEMETRY_CHANNEL.sender()))
+            .update(Some(&mut thermal_client))
             .await
             .unwrap();
         let cmd = SYSTEM_CHANNEL.receive().await;
