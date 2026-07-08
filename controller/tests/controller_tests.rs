@@ -1,4 +1,14 @@
+use controller::battery_controller::FromBatteryUpdate;
 use controller::motor_controller::{MotorCommand, MotorController, MotorState};
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct TestCmd(pub u8);
+
+impl FromBatteryUpdate for TestCmd {
+    fn from_battery_update(state_of_charge: u8, _charger_state: model::types::ChargeState) -> Self {
+        TestCmd(state_of_charge)
+    }
+}
 use model::calibration::Calibration;
 use peripherals::mock::{MockCurrentSensor, MockMotor};
 
@@ -185,17 +195,13 @@ fn test_battery_controller_sad_cases() {
 
         let system_channel = Box::leak(Box::new(embassy_sync::channel::Channel::<
             CriticalSectionRawMutex,
-            u8,
+            TestCmd,
             4,
         >::new()));
         let system_tx = system_channel.sender();
 
-        let mut controller = BatteryController::new_with_system(
-            &battery_mutex,
-            &charger_mutex,
-            system_tx,
-            |soc, _| soc,
-        );
+        let mut controller =
+            BatteryController::new_with_system(&battery_mutex, &charger_mutex, system_tx);
 
         let telemetry_channel = Box::leak(Box::new(embassy_sync::channel::Channel::<
             CriticalSectionRawMutex,

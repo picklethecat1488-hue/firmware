@@ -341,10 +341,6 @@ async fn main(spawner: Spawner) {
         &SHARED_BATTERY,
         &SHARED_CHARGER,
         app::SYSTEM_CHANNEL.sender(),
-        |soc, state| app::system_controller::SystemCommand::BatteryUpdate {
-            state_of_charge: soc,
-            charger_state: state,
-        },
         alert_wrapper,
     );
 

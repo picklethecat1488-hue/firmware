@@ -36,6 +36,15 @@ pub enum SystemCommand {
     BatteryAction(BatteryUpdateAction),
 }
 
+impl controller::battery_controller::FromBatteryUpdate for SystemCommand {
+    fn from_battery_update(state_of_charge: u8, charger_state: ChargeState) -> Self {
+        SystemCommand::BatteryUpdate {
+            state_of_charge,
+            charger_state,
+        }
+    }
+}
+
 use model::types::{
     BootReason, ChargeState, Gesture, SystemLedState, SystemStatus, TelemetryRecord,
 };

@@ -90,10 +90,6 @@ fn test_system_integration_flow() {
             &mock_battery,
             &mock_charger,
             SYSTEM_CHANNEL.sender(),
-            |soc, state| SystemCommand::BatteryUpdate {
-                state_of_charge: soc,
-                charger_state: state,
-            },
             MockPin,
         );
 
