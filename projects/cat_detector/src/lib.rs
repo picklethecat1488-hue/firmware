@@ -63,6 +63,15 @@ pub const FLASH_WRITE_SIZE: usize = 1;
 pub const FLASH_ERASE_SIZE: usize = 4096;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Thread-safe Mutex wrapping the active I2C peripheral for shared access between tasks.
+pub static SHARED_I2C: embassy_sync::blocking_mutex::Mutex<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    core::cell::RefCell<firmware_lib::i2c::SafeI2c>,
+> = embassy_sync::blocking_mutex::Mutex::new(core::cell::RefCell::new(firmware_lib::i2c::SafeI2c(
+    None,
+)));
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 mod bsp_target;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -209,102 +218,6 @@ pub fn system_time() -> u64 {
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 defmt::timestamp!("{=u64:us}", system_time());
 
-/// Represents the physical directions of ToF proximity sensors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SensorDirection {
-    /// North sensor
-    North,
-    /// East sensor
-    East,
-    /// West sensor
-    West,
-}
-
-impl<'a> embedded_cli::arguments::FromArgument<'a> for SensorDirection {
-    fn from_arg(arg: &'a str) -> Result<Self, embedded_cli::arguments::FromArgumentError<'a>> {
-        match arg {
-            "north" => Ok(SensorDirection::North),
-            "east" => Ok(SensorDirection::East),
-            "west" => Ok(SensorDirection::West),
-            _ => Err(embedded_cli::arguments::FromArgumentError {
-                value: arg,
-                expected: "one of 'north', 'east', or 'west'",
-            }),
-        }
-    }
-}
-
-/// Derived command enum representing all supported user commands.
-#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
-pub enum CliCommand {
-    /// Motor speed control (motor <speed>)
-    Motor {
-        /// Speed value (0-100)
-        speed: u8,
-    },
-    /// Stop the motor
-    Stop,
-    /// Query battery voltage and status
-    Battery,
-    /// Query thermal sensor and status
-    Thermal,
-    /// Query proximity (ToF) sensors
-    Proximity,
-
-    /// Simulate activity event
-    Activity,
-    /// Trigger a panic to test the crash dump / panic flow
-    Crash,
-    /// Calibrate ToF sensors with target held at the cover (0mm)
-    #[command(name = "cal_near")]
-    CalNear {
-        /// Sensor direction ('north', 'east', or 'west')
-        direction: SensorDirection,
-    },
-    /// Calibrate ToF sensors with target held at 100mm
-    #[command(name = "cal_far")]
-    CalFar {
-        /// Sensor direction ('north', 'east', or 'west')
-        direction: SensorDirection,
-    },
-    /// Calibrate motor current levels (cal_motor <empty|100ml|full>)
-    #[command(name = "cal_motor")]
-    CalMotor {
-        /// Calibration state ('empty', '100ml', or 'full')
-        state: MotorCalState,
-    },
-    /// Read the RP2040 system temperature
-    #[command(name = "mcu_temp")]
-    McuTemp,
-    /// Format/erase the filesystem partition
-    Format,
-}
-
-/// Represents the motor calibration target state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MotorCalState {
-    /// Empty water bowl
-    Empty,
-    /// Bowl with 100ml of water
-    Water100ml,
-    /// Full water bowl
-    Full,
-}
-
-impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
-    fn from_arg(arg: &'a str) -> Result<Self, embedded_cli::arguments::FromArgumentError<'a>> {
-        match arg {
-            "empty" => Ok(MotorCalState::Empty),
-            "100ml" => Ok(MotorCalState::Water100ml),
-            "full" => Ok(MotorCalState::Full),
-            _ => Err(embedded_cli::arguments::FromArgumentError {
-                value: arg,
-                expected: "one of 'empty', '100ml', or 'full'",
-            }),
-        }
-    }
-}
-
 /// Embedded project metadata for autodetect functionality.
 #[used]
 #[no_mangle]
@@ -332,92 +245,3 @@ pub static PROJECT_METADATA: firmware_lib::types::ProjectMetadata =
         flash_erase_size: FLASH_ERASE_SIZE as u32,
         stack_scan_limit: firmware_lib::types::STACK_SCAN_LIMIT,
     };
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// A wrapper structure containing the initialized I2C0 peripheral on target.
-pub struct SafeI2c(
-    pub  Option<
-        embassy_rp::i2c::I2c<'static, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Blocking>,
-    >,
-);
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Thread-safe Mutex wrapping the active I2C peripheral for shared access between tasks.
-pub static SHARED_I2C: embassy_sync::blocking_mutex::Mutex<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    core::cell::RefCell<SafeI2c>,
-> = embassy_sync::blocking_mutex::Mutex::new(core::cell::RefCell::new(SafeI2c(None)));
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-#[derive(Clone, Copy)]
-/// A unit struct wrapper that implements `embedded_hal::i2c::I2c` by dynamically locking `SHARED_I2C`.
-pub struct SharedI2cWrapper;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-impl embedded_hal::i2c::ErrorType for SharedI2cWrapper {
-    type Error = embassy_rp::i2c::Error;
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-impl embedded_hal::i2c::I2c for SharedI2cWrapper {
-    fn read(&mut self, address: u8, read: &mut [u8]) -> Result<(), Self::Error> {
-        SHARED_I2C.lock(|cell| {
-            let mut guard = cell.borrow_mut();
-            if let Some(ref mut i2c) = guard.0 {
-                i2c.read(address, read)
-            } else {
-                Err(embassy_rp::i2c::Error::Abort(
-                    embassy_rp::i2c::AbortReason::Other(0),
-                ))
-            }
-        })
-    }
-
-    fn write(&mut self, address: u8, write: &[u8]) -> Result<(), Self::Error> {
-        SHARED_I2C.lock(|cell| {
-            let mut guard = cell.borrow_mut();
-            if let Some(ref mut i2c) = guard.0 {
-                i2c.write(address, write)
-            } else {
-                Err(embassy_rp::i2c::Error::Abort(
-                    embassy_rp::i2c::AbortReason::Other(0),
-                ))
-            }
-        })
-    }
-
-    fn write_read(
-        &mut self,
-        address: u8,
-        write: &[u8],
-        read: &mut [u8],
-    ) -> Result<(), Self::Error> {
-        SHARED_I2C.lock(|cell| {
-            let mut guard = cell.borrow_mut();
-            if let Some(ref mut i2c) = guard.0 {
-                i2c.write_read(address, write, read)
-            } else {
-                Err(embassy_rp::i2c::Error::Abort(
-                    embassy_rp::i2c::AbortReason::Other(0),
-                ))
-            }
-        })
-    }
-
-    fn transaction(
-        &mut self,
-        address: u8,
-        operations: &mut [embedded_hal::i2c::Operation<'_>],
-    ) -> Result<(), Self::Error> {
-        SHARED_I2C.lock(|cell| {
-            let mut guard = cell.borrow_mut();
-            if let Some(ref mut i2c) = guard.0 {
-                i2c.transaction(address, operations)
-            } else {
-                Err(embassy_rp::i2c::Error::Abort(
-                    embassy_rp::i2c::AbortReason::Other(0),
-                ))
-            }
-        })
-    }
-}

@@ -1,4 +1,4 @@
-use cat_detector::CliCommand;
+use cat_detector::shell_controller::{CliCommand, MotorCalState, SensorDirection};
 use embedded_cli::cli::CliBuilder;
 use embedded_cli::command::RawCommand;
 use embedded_cli::service::{CommandProcessor, FromRaw, ProcessError};
@@ -69,7 +69,7 @@ fn test_cal_near_command_parsing() {
     assert!(matches!(
         processor.cmd,
         Some(CliCommand::CalNear {
-            direction: cat_detector::SensorDirection::North
+            direction: SensorDirection::North
         })
     ));
 }
@@ -86,7 +86,7 @@ fn test_cal_far_command_parsing() {
     assert!(matches!(
         processor.cmd,
         Some(CliCommand::CalFar {
-            direction: cat_detector::SensorDirection::East
+            direction: SensorDirection::East
         })
     ));
 }
@@ -103,7 +103,7 @@ fn test_cal_motor_command_parsing() {
     assert!(matches!(
         processor.cmd,
         Some(CliCommand::CalMotor {
-            state: cat_detector::MotorCalState::Empty
+            state: MotorCalState::Empty
         })
     ));
 }

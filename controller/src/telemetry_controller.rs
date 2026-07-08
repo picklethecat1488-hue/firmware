@@ -12,15 +12,21 @@ static TELEMETRY_WRITE_SIGNAL: Signal<CriticalSectionRawMutex, Result<(), ()>> =
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 extern crate std;
 
-/// Returns the current system uptime in microseconds since boot (64-bit precision).
-pub fn system_time() -> u64 {
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(any(test, not(all(target_arch = "arm", target_os = "none"))))]
+use core::sync::atomic::{AtomicU64, Ordering};
+
+#[cfg(any(test, not(all(target_arch = "arm", target_os = "none"))))]
+/// Global atomic representing mock time during tests.
+pub static TEST_MOCK_TIME: AtomicU64 = AtomicU64::new(0);
+
+fn get_timestamp_us() -> u64 {
+    #[cfg(any(test, not(all(target_arch = "arm", target_os = "none"))))]
+    {
+        TEST_MOCK_TIME.load(Ordering::Relaxed)
+    }
+    #[cfg(not(any(test, not(all(target_arch = "arm", target_os = "none")))))]
     {
         embassy_time::Instant::now().as_micros()
-    }
-    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-    {
-        0
     }
 }
 
@@ -32,7 +38,6 @@ pub struct TelemetryController<
     file_buf: [u8; BUFFER_SIZE],
     count: u32,
     next_idx: u32,
-    time_fn: fn() -> u64,
     fs: FilesystemClient,
     write_pending: bool,
 }
@@ -53,7 +58,7 @@ impl Default for TelemetryController<45, { model::telemetry::BUFFER_SIZE }> {
             crate::filesystem_controller::FsRequest,
             16,
         > = embassy_sync::channel::Channel::new();
-        Self::new(FilesystemClient::new(DUMMY_CHANNEL.sender()), system_time)
+        Self::new(FilesystemClient::new(DUMMY_CHANNEL.sender()))
     }
 }
 
@@ -76,15 +81,14 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
         }
     };
 
-    /// Creates a new `TelemetryController` instance, initializing the buffer, indices, timestamp function, and filesystem client.
-    pub const fn new(fs: FilesystemClient, time_fn: fn() -> u64) -> Self {
+    /// Creates a new `TelemetryController` instance, initializing the buffer, indices, and filesystem client.
+    pub const fn new(fs: FilesystemClient) -> Self {
         #[allow(path_statements)]
         Self::_CHECK;
         Self {
             file_buf: [0u8; BUFFER_SIZE],
             count: 0,
             next_idx: 0,
-            time_fn,
             fs,
             write_pending: false,
         }
@@ -174,7 +178,7 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
 
     /// Pushes a telemetry record into the ring buffer and persists it to flash.
     pub async fn push_record(&mut self, record: TelemetryRecord) -> Result<(), ()> {
-        let timestamp_us = (self.time_fn)();
+        let timestamp_us = get_timestamp_us();
 
         let serialized = record.serialize(timestamp_us);
         let len = serialized[0] as usize;

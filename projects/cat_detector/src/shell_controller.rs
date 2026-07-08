@@ -5,7 +5,6 @@
 
 use crate as app;
 use app::system_controller::SystemCommand;
-use app::CliCommand;
 use controller::motor_controller::MotorCommand;
 use controller::{
     BlockingBatteryReader, BlockingMotorReader, BlockingMotorWriter, BlockingProximityReader,
@@ -18,6 +17,102 @@ use embedded_cli::cli::CliHandle;
 use embedded_cli::command::RawCommand;
 use embedded_cli::service::CommandProcessor;
 use embedded_io::Write as IoWrite;
+
+/// Represents the physical directions of ToF proximity sensors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SensorDirection {
+    /// North sensor
+    North,
+    /// East sensor
+    East,
+    /// West sensor
+    West,
+}
+
+impl<'a> embedded_cli::arguments::FromArgument<'a> for SensorDirection {
+    fn from_arg(arg: &'a str) -> Result<Self, embedded_cli::arguments::FromArgumentError<'a>> {
+        match arg {
+            "north" => Ok(SensorDirection::North),
+            "east" => Ok(SensorDirection::East),
+            "west" => Ok(SensorDirection::West),
+            _ => Err(embedded_cli::arguments::FromArgumentError {
+                value: arg,
+                expected: "one of 'north', 'east', or 'west'",
+            }),
+        }
+    }
+}
+
+/// Derived command enum representing all supported user commands.
+#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
+pub enum CliCommand {
+    /// Motor speed control (motor <speed>)
+    Motor {
+        /// Speed value (0-100)
+        speed: u8,
+    },
+    /// Stop the motor
+    Stop,
+    /// Query battery voltage and status
+    Battery,
+    /// Query thermal sensor and status
+    Thermal,
+    /// Query proximity (ToF) sensors
+    Proximity,
+
+    /// Simulate activity event
+    Activity,
+    /// Trigger a panic to test the crash dump / panic flow
+    Crash,
+    /// Calibrate ToF sensors with target held at the cover (0mm)
+    #[command(name = "cal_near")]
+    CalNear {
+        /// Sensor direction ('north', 'east', or 'west')
+        direction: SensorDirection,
+    },
+    /// Calibrate ToF sensors with target held at 100mm
+    #[command(name = "cal_far")]
+    CalFar {
+        /// Sensor direction ('north', 'east', or 'west')
+        direction: SensorDirection,
+    },
+    /// Calibrate motor current levels (cal_motor <empty|100ml|full>)
+    #[command(name = "cal_motor")]
+    CalMotor {
+        /// Calibration state ('empty', '100ml', or 'full')
+        state: MotorCalState,
+    },
+    /// Read the RP2040 system temperature
+    #[command(name = "mcu_temp")]
+    McuTemp,
+    /// Format/erase the filesystem partition
+    Format,
+}
+
+/// Represents the motor calibration target state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MotorCalState {
+    /// Empty water bowl
+    Empty,
+    /// Bowl with 100ml of water
+    Water100ml,
+    /// Full water bowl
+    Full,
+}
+
+impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
+    fn from_arg(arg: &'a str) -> Result<Self, embedded_cli::arguments::FromArgumentError<'a>> {
+        match arg {
+            "empty" => Ok(MotorCalState::Empty),
+            "100ml" => Ok(MotorCalState::Water100ml),
+            "full" => Ok(MotorCalState::Full),
+            _ => Err(embedded_cli::arguments::FromArgumentError {
+                value: arg,
+                expected: "one of 'empty', '100ml', or 'full'",
+            }),
+        }
+    }
+}
 use model::interfaces::{Motor, PowerSensor, ProximitySensor, TemperatureSensor};
 
 /// Controller responsible for processing shell commands.
@@ -357,9 +452,9 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                 if let Some(i2c_raw) = self.i2c_ptr {
                     let i2c = unsafe { &mut *i2c_raw };
                     let (addr, name) = match direction {
-                        app::SensorDirection::North => (0x30, "North"),
-                        app::SensorDirection::East => (0x31, "East"),
-                        app::SensorDirection::West => (0x32, "West"),
+                        SensorDirection::North => (0x30, "North"),
+                        SensorDirection::East => (0x31, "East"),
+                        SensorDirection::West => (0x32, "West"),
                     };
 
                     let d_raw = {
@@ -400,9 +495,9 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                                 .unwrap_or_default();
 
                         match direction {
-                            app::SensorDirection::North => proximity_cal.north_near = d_raw,
-                            app::SensorDirection::East => proximity_cal.east_near = d_raw,
-                            app::SensorDirection::West => proximity_cal.west_near = d_raw,
+                            SensorDirection::North => proximity_cal.north_near = d_raw,
+                            SensorDirection::East => proximity_cal.east_near = d_raw,
+                            SensorDirection::West => proximity_cal.west_near = d_raw,
                         }
 
                         let mut write_buf = [0u8; 128];
@@ -433,9 +528,9 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                 if let Some(i2c_raw) = self.i2c_ptr {
                     let i2c = unsafe { &mut *i2c_raw };
                     let (addr, name) = match direction {
-                        app::SensorDirection::North => (0x30, "North"),
-                        app::SensorDirection::East => (0x31, "East"),
-                        app::SensorDirection::West => (0x32, "West"),
+                        SensorDirection::North => (0x30, "North"),
+                        SensorDirection::East => (0x31, "East"),
+                        SensorDirection::West => (0x32, "West"),
                     };
 
                     let d_raw = {
@@ -476,9 +571,9 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                                 .unwrap_or_default();
 
                         match direction {
-                            app::SensorDirection::North => proximity_cal.north_100 = d_raw,
-                            app::SensorDirection::East => proximity_cal.east_100 = d_raw,
-                            app::SensorDirection::West => proximity_cal.west_100 = d_raw,
+                            SensorDirection::North => proximity_cal.north_100 = d_raw,
+                            SensorDirection::East => proximity_cal.east_100 = d_raw,
+                            SensorDirection::West => proximity_cal.west_100 = d_raw,
                         }
 
                         let mut write_buf = [0u8; 128];
@@ -533,9 +628,9 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                         let current = sum / 5;
 
                         let name = match state {
-                            app::MotorCalState::Empty => "Empty",
-                            app::MotorCalState::Water100ml => "100ml",
-                            app::MotorCalState::Full => "Full",
+                            MotorCalState::Empty => "Empty",
+                            MotorCalState::Water100ml => "100ml",
+                            MotorCalState::Full => "Full",
                         };
 
                         let _ = core::writeln!(
@@ -574,11 +669,9 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
 
                             let mut cal = cal;
                             match state {
-                                app::MotorCalState::Empty => cal.empty_current_ma = current,
-                                app::MotorCalState::Water100ml => {
-                                    cal.water_100ml_current_ma = current
-                                }
-                                app::MotorCalState::Full => cal.full_current_ma = current,
+                                MotorCalState::Empty => cal.empty_current_ma = current,
+                                MotorCalState::Water100ml => cal.water_100ml_current_ma = current,
+                                MotorCalState::Full => cal.full_current_ma = current,
                             }
 
                             let mut write_buf = [0u8; 128];

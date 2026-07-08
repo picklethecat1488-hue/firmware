@@ -1,13 +1,7 @@
 use controller::filesystem_controller::{FilesystemClient, FilesystemController};
 use controller::telemetry_controller::{TelemetryController, TelemetryCounters};
 use model::types::{BatteryState, BatteryStatus, BootReason, TelemetryRecord};
-use std::sync::atomic::{AtomicU64, Ordering};
-
-static MOCK_TIME: AtomicU64 = AtomicU64::new(0);
-
-fn get_mock_time() -> u64 {
-    MOCK_TIME.load(Ordering::Relaxed)
-}
+use std::sync::atomic::Ordering;
 
 struct MockFlash {
     data: [u8; 1024 * 64],
@@ -69,10 +63,8 @@ fn test_telemetry_controller_ring_buffer() {
         > = embassy_sync::channel::Channel::new();
 
         let client = FilesystemClient::new(FS_CHANNEL.sender());
-        let mut telemetry = TelemetryController::<45, { model::telemetry::BUFFER_SIZE }>::new(
-            client,
-            get_mock_time,
-        );
+        let mut telemetry =
+            TelemetryController::<45, { model::telemetry::BUFFER_SIZE }>::new(client);
 
         let fs_fut =
             controller::filesystem_controller::run_filesystem_task(fs, FS_CHANNEL.receiver());
@@ -81,7 +73,7 @@ fn test_telemetry_controller_ring_buffer() {
 
             // Push 50 records (max is 45)
             for i in 0..50 {
-                MOCK_TIME.store(i as u64, Ordering::Relaxed);
+                controller::telemetry_controller::TEST_MOCK_TIME.store(i as u64, Ordering::Relaxed);
                 let record = TelemetryRecord::Battery(BatteryStatus::VolTempState(
                     3000 + i as u32,
                     25,
@@ -146,10 +138,8 @@ fn test_telemetry_controller_chunked_boundary() {
 
         let client = FilesystemClient::new(FS_CHANNEL.sender());
         // Max records 200 spanning two chunks (chunk 0: index 0..128, chunk 1: index 128..200)
-        let mut telemetry = TelemetryController::<200, { model::telemetry::BUFFER_SIZE }>::new(
-            client,
-            get_mock_time,
-        );
+        let mut telemetry =
+            TelemetryController::<200, { model::telemetry::BUFFER_SIZE }>::new(client);
 
         let fs_fut =
             controller::filesystem_controller::run_filesystem_task(fs, FS_CHANNEL.receiver());
@@ -158,7 +148,7 @@ fn test_telemetry_controller_chunked_boundary() {
 
             // Push 220 records (capacity 200)
             for i in 0..220 {
-                MOCK_TIME.store(i as u64, Ordering::Relaxed);
+                controller::telemetry_controller::TEST_MOCK_TIME.store(i as u64, Ordering::Relaxed);
                 let record = TelemetryRecord::Battery(BatteryStatus::VolTempState(
                     4000 + i as u32,
                     30,
