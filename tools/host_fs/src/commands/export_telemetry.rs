@@ -16,7 +16,7 @@ pub async fn run(
 
     let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
         flash,
-        flash_range,
+        flash_range.clone(),
         cache,
         buf,
         &key,
@@ -36,26 +36,28 @@ pub async fn run(
 
             spinner.set_message("Parsing CBOR telemetry records...");
             let len = content[0] as usize;
-            if len == 0 || len > 11 {
-                spinner.finish_and_clear();
-                eprintln!("Error: Invalid telemetry header length byte ({})", len);
-                std::process::exit(1);
-            }
-
-            let payload = &content[1..1 + len];
-            let mut decoder = minicbor::Decoder::new(payload);
             let mut count = 0;
             let mut next_idx = 0;
-            if let Ok(_array_len) = decoder.array() {
-                if let Ok(c) = decoder.u32() {
-                    if let Ok(n) = decoder.u32() {
-                        count = c as usize;
-                        next_idx = n as usize;
+            if len > 0 && len <= 11 && len < content.len() {
+                let payload = &content[1..1 + len];
+                let mut decoder = minicbor::Decoder::new(payload);
+                if let Ok(_array_len) = decoder.array() {
+                    if let Ok(c) = decoder.u32() {
+                        if let Ok(n) = decoder.u32() {
+                            count = c as usize;
+                            next_idx = n as usize;
+                        }
                     }
                 }
+            } else {
+                eprintln!(
+                    "Warning: Telemetry file header is invalid or uninitialized (length byte {}). Exporting 0 records.",
+                    len
+                );
             }
 
-            let max_records = 45;
+            let max_records = 1024;
+
             if count > max_records || next_idx > max_records {
                 spinner.finish_and_clear();
                 eprintln!("Error: Invalid header count/next_idx in telemetry file");
@@ -64,23 +66,58 @@ pub async fn run(
 
             let mut records = Vec::new();
 
-            let mut process_record = |offset: usize| {
-                if offset + 20 <= content.len() {
-                    let slot: &[u8; 20] = content[offset..offset + 20].try_into().unwrap();
+            // New chunked file format
+            let mut current_chunk_idx = None;
+            let mut current_chunk_data = vec![0u8; model::telemetry::CHUNK_FILE_SIZE];
+
+            let total_iterations = if count < max_records {
+                count
+            } else {
+                max_records
+            };
+            for i in 0..total_iterations {
+                let idx = if count < max_records {
+                    i
+                } else {
+                    (next_idx + i) % max_records
+                };
+                let chunk_idx = idx / model::telemetry::CHUNK_SIZE;
+                let slot_idx = idx % model::telemetry::CHUNK_SIZE;
+                if current_chunk_idx != Some(chunk_idx) {
+                    let name = model::telemetry::chunk_name(chunk_idx);
+                    let chunk_key = string_to_key(name);
+
+                    let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
+                        flash,
+                        flash_range.clone(),
+                        cache,
+                        buf,
+                        &chunk_key,
+                    )
+                    .await;
+
+                    match res {
+                        Ok(Some(bytes)) => {
+                            current_chunk_data.fill(0);
+                            let len = std::cmp::min(bytes.len(), current_chunk_data.len());
+                            current_chunk_data[..len].copy_from_slice(&bytes[..len]);
+                            current_chunk_idx = Some(chunk_idx);
+                        }
+                        _ => {
+                            spinner.finish_and_clear();
+                            eprintln!("Error: Failed to read telemetry chunk {}", chunk_idx);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+
+                let offset = slot_idx * 20;
+                if offset + 20 <= current_chunk_data.len() {
+                    let slot: &[u8; 20] =
+                        current_chunk_data[offset..offset + 20].try_into().unwrap();
                     if let Some((ts, rec)) = model::telemetry::TelemetryRecord::deserialize(slot) {
                         records.push((ts, rec));
                     }
-                }
-            };
-
-            if count < max_records {
-                for i in 0..count {
-                    process_record(12 + i * 20);
-                }
-            } else {
-                for i in 0..max_records {
-                    let idx = (next_idx + i) % max_records;
-                    process_record(12 + idx * 20);
                 }
             }
 

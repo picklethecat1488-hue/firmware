@@ -25,7 +25,7 @@ pub fn system_time() -> u64 {
 }
 
 /// Struct that maintains all of the telemetry state, RRD buffer, and filesystem client reference.
-pub struct TelemetryController<const MAX_RECORDS: usize = 45, const BUFFER_SIZE: usize = 1024> {
+pub struct TelemetryController<const MAX_RECORDS: usize = 45, const BUFFER_SIZE: usize = 3000> {
     file_buf: [u8; BUFFER_SIZE],
     count: u32,
     next_idx: u32,
@@ -35,13 +35,13 @@ pub struct TelemetryController<const MAX_RECORDS: usize = 45, const BUFFER_SIZE:
 }
 
 /// Type alias for compatibility with the old Telemetry struct name.
-pub type Telemetry<const MAX_RECORDS: usize = 45, const BUFFER_SIZE: usize = 1024> =
+pub type Telemetry<const MAX_RECORDS: usize = 45, const BUFFER_SIZE: usize = 3000> =
     TelemetryController<MAX_RECORDS, BUFFER_SIZE>;
 
 /// Capacity of the telemetry channel queue.
 pub const CHANNEL_CAPACITY: usize = 64;
 
-impl Default for TelemetryController<45, 1024> {
+impl Default for TelemetryController<45, 3000> {
     fn default() -> Self {
         static DUMMY_CHANNEL: embassy_sync::channel::Channel<
             embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
@@ -55,11 +55,11 @@ impl Default for TelemetryController<45, 1024> {
 impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
     TelemetryController<MAX_RECORDS, BUFFER_SIZE>
 {
-    /// Total size of the RRD file including the 12-byte CBOR header.
-    pub const FILE_SIZE: usize = 12 + MAX_RECORDS * 20;
+    /// Total size of the telemetry.rrd metadata file (12-byte CBOR header).
+    pub const FILE_SIZE: usize = 12;
 
     const _CHECK: () = {
-        if BUFFER_SIZE < 12 + MAX_RECORDS * 20 {
+        if BUFFER_SIZE < model::telemetry::CHUNK_FILE_SIZE {
             panic!("Telemetry buffer size is too small for the requested record count");
         }
     };
@@ -126,33 +126,24 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
 
     /// Initializes the telemetry buffer from flash storage, or resets it if invalid/missing.
     pub async fn init(&mut self) -> Result<(), ()> {
-        let base_ptr = self.file_buf.as_ptr() as usize;
-        let (start, len) = match self.fs.read_file("telemetry.rrd", &mut self.file_buf).await {
+        let mut temp_buf = [0u8; 12];
+        let (len, exists) = match self.fs.read_file("telemetry.rrd", &mut temp_buf).await {
             Ok(Some(bytes)) => {
-                let start = bytes.as_ptr() as usize - base_ptr;
-                (Some(start), bytes.len())
+                let len = bytes.len();
+                self.file_buf[..len].copy_from_slice(bytes);
+                (len, true)
             }
-            _ => (None, 0),
+            _ => (0, false),
         };
 
-        let exists = if let Some(start) = start {
-            if start > 0 {
-                self.file_buf.copy_within(start..start + len, 0);
-            }
-            len == Self::FILE_SIZE
-        } else {
-            false
-        };
+        let mut valid = false;
+        if exists && len == Self::FILE_SIZE && self.deserialize_header() {
+            valid = true;
+        }
 
-        if exists {
-            if !self.deserialize_header() {
-                self.count = 0;
-                self.next_idx = 0;
-            }
-        } else {
+        if !valid {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::info!("Telemetry: telemetry.rrd not found or initializing...");
-            self.file_buf.fill(0);
+            defmt::info!("Telemetry: telemetry.rrd invalid/missing, initializing...");
             self.count = 0;
             self.next_idx = 0;
             let header = self.serialize_header();
@@ -166,6 +157,7 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
                 )
                 .await;
             self.write_pending = true;
+            self.flush_pending_write().await?;
         }
         Ok(())
     }
@@ -181,31 +173,65 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
             defmt::debug!("Writing Telemetry: {=[u8]:cbor}", &serialized[1..1 + len]);
         }
 
-        let offset = 12 + (self.next_idx as usize) * 20;
-        if offset + 20 <= self.file_buf.len() {
-            self.file_buf[offset..offset + 20].copy_from_slice(&serialized);
+        // Determine which chunk file to write to
+        let idx = self.next_idx as usize;
+        let chunk_idx = idx / model::telemetry::CHUNK_SIZE;
+        let slot_idx = idx % model::telemetry::CHUNK_SIZE;
+        let name = model::telemetry::chunk_name(chunk_idx);
 
-            self.next_idx = (self.next_idx + 1) % (MAX_RECORDS as u32);
-            self.count = core::cmp::min(self.count + 1, MAX_RECORDS as u32);
-
-            let header = self.serialize_header();
-            self.file_buf[0..12].copy_from_slice(&header);
-
-            self.flush_pending_write().await?;
-            self.fs
-                .start_write_file(
-                    "telemetry.rrd",
-                    &self.file_buf[..Self::FILE_SIZE],
-                    &TELEMETRY_WRITE_SIGNAL,
-                )
-                .await;
-            self.write_pending = true;
+        // Read existing chunk data (if any)
+        let base_ptr = self.file_buf.as_ptr() as usize;
+        self.file_buf.fill(0);
+        let mut read_len = 0;
+        let mut read_offset = 0;
+        if let Ok(Some(bytes)) = self.fs.read_file(name, &mut self.file_buf).await {
+            read_len = bytes.len();
+            read_offset = bytes.as_ptr() as usize - base_ptr;
         }
+
+        // Copy read bytes to the beginning of self.file_buf once the read reference goes out of scope
+        if read_len > 0 && read_offset > 0 {
+            self.file_buf
+                .copy_within(read_offset..read_offset + read_len, 0);
+        }
+
+        // Copy serialized record to chunk slot
+        let offset = slot_idx * 20;
+        self.file_buf[offset..offset + 20].copy_from_slice(&serialized);
+
+        // Write chunk file
+        self.flush_pending_write().await?;
+        self.fs
+            .start_write_file(
+                name,
+                &self.file_buf[..model::telemetry::CHUNK_FILE_SIZE],
+                &TELEMETRY_WRITE_SIGNAL,
+            )
+            .await;
+        self.write_pending = true;
+
+        // Update metadata and write telemetry.rrd
+        self.next_idx = (self.next_idx + 1) % (MAX_RECORDS as u32);
+        self.count = core::cmp::min(self.count + 1, MAX_RECORDS as u32);
+
+        let header = self.serialize_header();
+        self.flush_pending_write().await?;
+        self.file_buf[0..12].copy_from_slice(&header);
+        self.fs
+            .start_write_file(
+                "telemetry.rrd",
+                &self.file_buf[..Self::FILE_SIZE],
+                &TELEMETRY_WRITE_SIGNAL,
+            )
+            .await;
+        self.write_pending = true;
+        self.flush_pending_write().await?;
+
         Ok(())
     }
 
     /// Reads all records from the current telemetry state in chronological order.
-    pub fn read_records(&self, mut callback: impl FnMut(u64, TelemetryRecord)) -> bool {
+    pub async fn read_records(&mut self, mut callback: impl FnMut(u64, TelemetryRecord)) -> bool {
         let count = self.count as usize;
         let next_idx = self.next_idx as usize;
 
@@ -213,18 +239,41 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
             return false;
         }
 
-        if count < MAX_RECORDS {
-            for i in 0..count {
-                let offset = 12 + i * 20;
-                let slot: &[u8; 20] = self.file_buf[offset..offset + 20].try_into().ok().unwrap();
-                if let Some((ts, rec)) = TelemetryRecord::deserialize(slot) {
-                    callback(ts, rec);
-                }
-            }
+        let total_iterations = if count < MAX_RECORDS {
+            count
         } else {
-            for i in 0..MAX_RECORDS {
-                let idx = (next_idx + i) % MAX_RECORDS;
-                let offset = 12 + idx * 20;
+            MAX_RECORDS
+        };
+        let mut current_chunk_idx = None;
+
+        for i in 0..total_iterations {
+            let idx = if count < MAX_RECORDS {
+                i
+            } else {
+                (next_idx + i) % MAX_RECORDS
+            };
+            let chunk_idx = idx / model::telemetry::CHUNK_SIZE;
+            let slot_idx = idx % model::telemetry::CHUNK_SIZE;
+
+            if current_chunk_idx != Some(chunk_idx) {
+                let name = model::telemetry::chunk_name(chunk_idx);
+                let base_ptr = self.file_buf.as_ptr() as usize;
+                self.file_buf.fill(0);
+                let mut read_len = 0;
+                let mut read_offset = 0;
+                if let Ok(Some(bytes)) = self.fs.read_file(name, &mut self.file_buf).await {
+                    read_len = bytes.len();
+                    read_offset = bytes.as_ptr() as usize - base_ptr;
+                }
+                if read_len > 0 && read_offset > 0 {
+                    self.file_buf
+                        .copy_within(read_offset..read_offset + read_len, 0);
+                }
+                current_chunk_idx = Some(chunk_idx);
+            }
+
+            let offset = slot_idx * 20;
+            if offset + 20 <= self.file_buf.len() {
                 let slot: &[u8; 20] = self.file_buf[offset..offset + 20].try_into().ok().unwrap();
                 if let Some((ts, rec)) = TelemetryRecord::deserialize(slot) {
                     callback(ts, rec);
@@ -236,7 +285,7 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
 
     /// Starts the controller's main run loop, processing records.
     pub async fn run<const N: usize>(
-        mut self,
+        &mut self,
         rx: embassy_sync::channel::Receiver<
             'static,
             embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,

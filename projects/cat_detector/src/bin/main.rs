@@ -142,6 +142,9 @@ async fn main(spawner: Spawner) {
         app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
     );
 
+    // Declare statically to avoid stack allocation and stack overflow
+    static mut FS_BUF: [u8; 4096] = [0u8; 4096];
+
     // Initialize the FilesystemController using stolen FLASH peripheral (safe because panic handler only reads/writes on panic)
     let fs_flash = unsafe { embassy_rp::peripherals::FLASH::steal() };
     let raw_flash = embassy_rp::flash::Flash::<
@@ -151,9 +154,11 @@ async fn main(spawner: Spawner) {
     >::new_blocking(fs_flash);
     let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(raw_flash);
     let profiling_flash = controller::filesystem_controller::ProfilingFlash::new(async_flash);
+    let fs_buf = unsafe { &mut FS_BUF };
     let mut fs_controller = controller::filesystem_controller::FilesystemController::new(
         profiling_flash,
         app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
+        fs_buf,
     );
     fs_controller.set_telemetry(app::TELEMETRY_CHANNEL.sender());
 
@@ -444,16 +449,23 @@ async fn main(spawner: Spawner) {
         >
     );
 
+    // Declare statically to avoid stack overflow on the main thread MSP stack
+    static mut TELEMETRY_CTRL: Option<TelemetryController<1024, 3000>> = None;
+
     let client =
         controller::filesystem_controller::FilesystemClient::new(app::FILESYSTEM_CHANNEL.sender());
-    let telemetry_ctrl =
-        TelemetryController::<45, { 12 + 45 * 20 + 128 }>::new(client, app::system_time);
+
+    let telemetry_ctrl = unsafe {
+        TELEMETRY_CTRL = Some(TelemetryController::new(client, app::system_time));
+        TELEMETRY_CTRL.as_mut().unwrap()
+    };
+
     app::run_telemetry_task!(
         spawner,
         telemetry_task,
         telemetry_ctrl,
         app::TELEMETRY_CHANNEL.receiver(),
-        45,
+        1024,
         { controller::telemetry_controller::CHANNEL_CAPACITY }
     );
 }

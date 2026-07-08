@@ -79,3 +79,25 @@ impl core::fmt::Debug for TelemetryRecord {
         f.write_str("TelemetryRecord")
     }
 }
+
+/// Telemetry record chunking constants
+pub const CHUNK_SIZE: usize = 128;
+/// Total number of chunks
+pub const NUM_CHUNKS: usize = 8;
+/// Size of one chunk in bytes
+pub const CHUNK_FILE_SIZE: usize = CHUNK_SIZE * 20;
+
+/// Return the file name of a telemetry record chunk
+pub fn chunk_name(idx: usize) -> &'static str {
+    match idx {
+        0 => "telemetry_0.rrd",
+        1 => "telemetry_1.rrd",
+        2 => "telemetry_2.rrd",
+        3 => "telemetry_3.rrd",
+        4 => "telemetry_4.rrd",
+        5 => "telemetry_5.rrd",
+        6 => "telemetry_6.rrd",
+        7 => "telemetry_7.rrd",
+        _ => "telemetry_0.rrd",
+    }
+}

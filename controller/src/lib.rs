@@ -382,9 +382,9 @@ macro_rules! run_telemetry_task {
 
             #[embassy_executor::task]
             pub async fn task(
-                controller: $crate::telemetry_controller::TelemetryController<
+                mut controller: &'static mut $crate::telemetry_controller::TelemetryController<
                     $max_records,
-                    { 12 + $max_records * 20 + 128 },
+                    3000,
                 >,
                 rx: embassy_sync::channel::Receiver<
                     'static,
