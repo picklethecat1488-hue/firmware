@@ -41,7 +41,7 @@ def main():
     app_id = os.path.basename(filepath)
     rr.init(app_id, recording_id=None)
     if sys.stdout.isatty():
-        rr.connect_grpc()
+        rr.spawn()
     else:
         rr.stdout()
 
@@ -71,7 +71,7 @@ def main():
                 if rec_type == "Battery":
                     try:
                         rr.log("battery/voltage", rr.Scalars(float(val1)))
-                        rr.log("battery/temp", rr.Scalars(float(val2)))
+                        rr.log("battery/temperature", rr.Scalars(float(val2)))
                         rr.log("battery/state", rr.TextDocument(val3))
                     except ValueError:
                         pass
@@ -83,7 +83,7 @@ def main():
                         pass
                 elif rec_type == "Thermal":
                     try:
-                        rr.log("thermal/temp", rr.Scalars(float(val1) / 1000.0)) # convert mC to C
+                        rr.log("thermal/temperature", rr.Scalars(float(val1) / 1000.0)) # convert mC to C
                         rr.log("thermal/overheating", rr.Scalars(1.0 if val2.lower() == "true" else 0.0))
                     except ValueError:
                         pass

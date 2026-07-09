@@ -23,3 +23,26 @@ target
 #.idea/
 
 Cargo.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Pytest
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+
+# Conda
+.conda/
+conda-bld/
