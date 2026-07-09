@@ -76,11 +76,11 @@ impl BlockingMotorReader for () {
 /// Trait for controlling motor speed.
 pub trait BlockingMotorWriter {
     /// Read motor current in mA.
-    fn set_motor_speed(&mut self, speed: u8) -> Result<(), PeripheralError>;
+    fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError>;
 }
 
 impl BlockingMotorWriter for () {
-    fn set_motor_speed(&mut self, _: u8) -> Result<(), PeripheralError> {
+    fn set_motor_speed(&mut self, _: i8) -> Result<(), PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
 }

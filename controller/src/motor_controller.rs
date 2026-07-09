@@ -227,7 +227,7 @@ where
     ) {
         match cmd {
             MotorCommand::SetSpeed(speed) => {
-                if speed > MotorSpeed::ZERO {
+                if speed != MotorSpeed::ZERO {
                     if !self.calibration_present {
                         if self.speed != speed {
                             #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -263,9 +263,10 @@ where
                     );
                     0
                 } else {
-                    ((rpm.abs() * 100) / (self.limits.max_rpm as i32)).min(100)
+                    let val = (rpm * 100) / (self.limits.max_rpm as i32);
+                    val.clamp(-100, 100)
                 };
-                let speed = MotorSpeed::new(speed_val as u8).unwrap_or(MotorSpeed::ZERO);
+                let speed = MotorSpeed::new(speed_val as i8).unwrap_or(MotorSpeed::ZERO);
                 self.handle_command(
                     MotorCommand::SetSpeed(speed),
                     telemetry_client.as_deref_mut(),
@@ -310,24 +311,24 @@ where
         if self.state == MotorState::On {
             if self.active_speed < self.speed {
                 // Ramp up
-                let next = self
-                    .active_speed
-                    .get()
-                    .saturating_add(1)
-                    .min(self.speed.get());
+                let next = (self.active_speed.get() + 1).min(self.speed.get());
                 self.active_speed = MotorSpeed::new(next).unwrap();
-                self.motor
-                    .set_speed(self.active_speed)
-                    .map_err(|e| e.to_peripheral_error())?;
+                if self.active_speed == MotorSpeed::ZERO && self.speed == MotorSpeed::ZERO {
+                    self.state = MotorState::Off;
+                    self.motor.stop().map_err(|e| e.to_peripheral_error())?;
+                    let _ = self
+                        .current_sensor
+                        .set_measurement_mode(PowerMeasurementMode::PowerDown);
+                } else {
+                    self.motor
+                        .set_speed(self.active_speed)
+                        .map_err(|e| e.to_peripheral_error())?;
+                }
             } else if self.active_speed > self.speed {
                 // Ramp down
-                let next = self
-                    .active_speed
-                    .get()
-                    .saturating_sub(1)
-                    .max(self.speed.get());
+                let next = (self.active_speed.get() - 1).max(self.speed.get());
                 self.active_speed = MotorSpeed::new(next).unwrap();
-                if self.active_speed == MotorSpeed::ZERO {
+                if self.active_speed == MotorSpeed::ZERO && self.speed == MotorSpeed::ZERO {
                     self.state = MotorState::Off;
                     self.motor.stop().map_err(|e| e.to_peripheral_error())?;
                     let _ = self
@@ -339,9 +340,14 @@ where
                         .map_err(|e| e.to_peripheral_error())?;
                 }
             }
-        } else if self.active_speed > MotorSpeed::ZERO {
-            // Ramping down to 0 even if state is Off
-            let next = self.active_speed.get().saturating_sub(1);
+        } else if self.active_speed.get() != 0 {
+            // Ramping down/up to 0 even if state is Off
+            let current_raw = self.active_speed.get();
+            let next = if current_raw > 0 {
+                current_raw - 1
+            } else {
+                current_raw + 1
+            };
             self.active_speed = MotorSpeed::new(next).unwrap();
             if self.active_speed == MotorSpeed::ZERO {
                 self.motor.stop().map_err(|e| e.to_peripheral_error())?;
@@ -459,7 +465,7 @@ where
     <M as Motor>::Error: ToPeripheralError,
     <M as Tickable>::Error: ToPeripheralError,
 {
-    fn set_motor_speed(&mut self, speed: u8) -> Result<(), PeripheralError> {
+    fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
         let motor_speed = MotorSpeed::new(speed).ok_or(PeripheralError::InvalidConfiguration)?;
         let _ = self.motor.set_speed(motor_speed);
         Ok(())
