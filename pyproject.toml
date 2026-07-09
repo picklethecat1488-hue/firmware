@@ -1,0 +1,34 @@
+[tool.pytest.ini_options]
+testpaths = ["scripts/tests"]
+pythonpath = ["scripts"]
+addopts = "-qq -n auto --maxfail=1 --max-worker-restart=2 -m \"not slow\""
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = [".git"]
+
+[tool.ruff.format]
+quote-style = "double"
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = ["D"]
+
+# Ignore rules that conflict with one-line or Sphinx preferences
+ignore = [
+    "D203", # Disable: 1 blank line required before class docstring
+    "D213", # Disable: Multi-line docstring summary should start at the second line
+    "D200", # Sometimes disabled if you prefer multi-line for even short docstrings
+    "D100", # Missing docstring in public module
+    "D103", # Missing docstring in public function
+    "D104", # Missing docstring in public package
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"

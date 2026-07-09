@@ -41,7 +41,7 @@ def main():
     app_id = os.path.basename(filepath)
     rr.init(app_id, recording_id=None)
     if sys.stdout.isatty():
-        rr.connect_grpc()
+        rr.spawn()
     else:
         rr.stdout()
 
