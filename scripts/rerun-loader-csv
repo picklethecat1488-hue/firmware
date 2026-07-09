@@ -116,7 +116,10 @@ def main():
                 elif rec_type == "ChargerState":
                     rr.log("charger/state", rr.TextDocument(val1))
                 elif rec_type == "Boot":
-                    rr.log("system/boot_reason", rr.TextDocument(val1))
+                    reason = val1 if val1 else "Unknown"
+                    msg = f"# 🚨 SYSTEM RESET ({reason}) 🚨\n\n**Warning:** The recording session was interrupted by a system reset."
+                    rr.log("system/boot_reason", rr.TextDocument(msg))
+                    rr.log("system/status", rr.TextDocument(f"SYSTEM RESET: {reason}"))
                 elif rec_type == "PeripheralError":
                     msg = val1
                     if val2:

@@ -41,11 +41,11 @@ impl<I: I2c> Attiny816<I> {
                 .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
             Ok(())
         })();
-        if let Err(ref e) = res {
+        if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to locate or initialize LED driver at address 0x{:02x}: {:?}",
                 self.address,
-                defmt::Debug2Format(e)
+                defmt::Debug2Format(_e)
             );
         }
         res
@@ -65,11 +65,11 @@ impl<I: I2c> Attiny816<I> {
                 .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
             Ok(())
         })();
-        if let Err(ref e) = res {
+        if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to set LED color at address 0x{:02x}: {:?}",
                 self.address,
-                defmt::Debug2Format(e)
+                defmt::Debug2Format(_e)
             );
         }
         res
