@@ -2,7 +2,7 @@
 target = "thumbv6m-none-eabi"
 
 [target.thumbv6m-none-eabi]
-runner = "probe-rs run --chip RP2040"
+runner = "/Users/daparker/gh/firmware/tools/runner.sh"
 rustflags = [
   "-C", "link-arg=-Tlink.x",
   "-C", "link-arg=-Tdefmt.x",

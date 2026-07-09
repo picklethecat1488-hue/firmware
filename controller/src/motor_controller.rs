@@ -347,15 +347,11 @@ pub enum MotorError<ME, CE> {
 impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
     for MotorController<M, C>
 {
-    #[allow(clippy::single_match)]
     fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
-        match calibration {
-            model::calibration::CalibrationType::MotorCal(min, max) => {
-                self.calibration_present = true;
-                self.min_current_ma = min;
-                self.max_current_ma = max;
-            }
-            _ => {}
+        if let model::calibration::CalibrationType::MotorCal(min, max) = calibration {
+            self.calibration_present = true;
+            self.min_current_ma = min;
+            self.max_current_ma = max;
         }
     }
 }

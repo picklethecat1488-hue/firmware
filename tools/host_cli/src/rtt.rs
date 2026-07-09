@@ -240,20 +240,46 @@ impl<'a, T: TargetAccess + ?Sized> DefmtLogSource for TargetRttSource<'a, T> {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn run_rtt(
-    chip: &str,
-    table: Option<&Table>,
-    elf_path: &std::path::Path,
-    dump: bool,
-    raw: bool,
-    dump_mem: bool,
-    no_reset: bool,
-    openocd_host: Option<&str>,
-    show_raw_cli: bool,
-    spinner: &indicatif::ProgressBar,
-    channel_mode: crate::ChannelMode,
-) -> Result<(), Box<dyn std::error::Error>> {
+/// Options for configuring RTT session runner.
+pub struct RttOptions<'a> {
+    /// Target chip identifier (e.g. RP2040)
+    pub chip: &'a str,
+    /// Parsed defmt decoder table
+    pub table: Option<&'a Table>,
+    /// Path to target ELF binary
+    pub elf_path: &'a std::path::Path,
+    /// Mode to dump logs in non-interactive batch
+    pub dump: bool,
+    /// Output raw bytes instead of formatted logs
+    pub raw: bool,
+    /// Dump logs from memory partition
+    pub dump_mem: bool,
+    /// Do not reset target on connection
+    pub no_reset: bool,
+    /// Host for openocd connection
+    pub openocd_host: Option<&'a str>,
+    /// Output raw console telemetry
+    pub show_raw_cli: bool,
+    /// Terminal progress bar spinner
+    pub spinner: &'a indicatif::ProgressBar,
+    /// Channel mode mapping for RTT
+    pub channel_mode: crate::ChannelMode,
+}
+
+pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
+    let RttOptions {
+        chip,
+        table,
+        elf_path,
+        dump,
+        raw,
+        dump_mem,
+        no_reset,
+        openocd_host,
+        show_raw_cli,
+        spinner,
+        channel_mode,
+    } = opts;
     // Locate Symbol Address first
     let rtt_symbol_addr = match tool_common::find_symbol_address(elf_path, "_SEGGER_RTT") {
         Ok(Some(addr)) => {
