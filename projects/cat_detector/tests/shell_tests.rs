@@ -103,7 +103,39 @@ fn test_cal_motor_command_parsing() {
     assert!(matches!(
         processor.cmd,
         Some(CliCommand::CalMotor {
-            state: MotorCalState::Empty
+            state: MotorCalState::Empty,
+            max_rpm: None,
+            rpm_limit: None
+        })
+    ));
+
+    // Parsing with physical max RPM
+    let mut processor2 = TestProcessor { cmd: None };
+    for byte in b"cal_motor empty 3000\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*byte, &mut processor2);
+    }
+
+    assert!(matches!(
+        processor2.cmd,
+        Some(CliCommand::CalMotor {
+            state: MotorCalState::Empty,
+            max_rpm: Some(3000),
+            rpm_limit: None
+        })
+    ));
+
+    // Parsing with both physical max RPM and safety RPM limit
+    let mut processor3 = TestProcessor { cmd: None };
+    for byte in b"cal_motor empty 3000 2500\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*byte, &mut processor3);
+    }
+
+    assert!(matches!(
+        processor3.cmd,
+        Some(CliCommand::CalMotor {
+            state: MotorCalState::Empty,
+            max_rpm: Some(3000),
+            rpm_limit: Some(2500)
         })
     ));
 }

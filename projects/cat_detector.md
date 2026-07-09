@@ -310,9 +310,13 @@ Execute the following commands sequentially inside the interactive serial shell 
 
 7. **Calibrate Motor Current (Water Detection)**:
    * *Procedure*:
-     - Empty the water bowl, and run:
+     - Empty the water bowl, and run (optionally specifying the physical maximum RPM at 100% duty cycle, and the safety RPM limit):
        ```bash
-       cal_motor empty
+       cal_motor empty [max_rpm] [rpm_limit]
+       ```
+       For example, to configure a physical max of 3000 RPM and a safety limit of 2500 RPM:
+       ```bash
+       cal_motor empty 3000 2500
        ```
      - Fill the water bowl with 100ml of water, and run:
        ```bash
@@ -322,7 +326,7 @@ Execute the following commands sequentially inside the interactive serial shell 
        ```bash
        cal_motor full
        ```
-   * *Expected Output*: Starts the motor, waits 1 second for it to ramp up, measures/records average current draw (e.g., simulating empty = 50mA, 100ml = 150mA, full = 300mA), stops the motor, and saves the calibration to `motor_cal.cbor` in flash. These values are used to gate/ungate the motor and detect dry-run/empty water states at runtime.
+   * *Expected Output*: Starts the motor, waits 1 second for it to ramp up, measures/records average current draw (e.g., simulating empty = 50mA, 100ml = 150mA, full = 300mA), stops the motor, and saves the calibration (along with any configured RPM limits) to `motor_cal.cbor` in flash. These values are used to gate/ungate the motor, convert RPM inputs to speed percentages, and detect dry-run/empty water states at runtime.
 
 8. **Verify System Power States**:
    * *Procedure*:
