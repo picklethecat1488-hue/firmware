@@ -3,13 +3,15 @@
 #![deny(missing_docs)]
 
 use embedded_hal::digital::OutputPin;
-use model::interfaces::Motor;
+use model::interfaces::{Motor, Tickable};
+use model::types::MotorSpeed;
 
 /// Driver for the L9110S dual-channel h-bridge motor driver.
 pub struct L9110s<P1, P2> {
     pin_ia: P1,
     pin_ib: P2,
     speed: u8,
+    tick_counter: u8,
 }
 
 impl<P1: OutputPin, P2: OutputPin> L9110s<P1, P2> {
@@ -19,6 +21,7 @@ impl<P1: OutputPin, P2: OutputPin> L9110s<P1, P2> {
             pin_ia,
             pin_ib,
             speed: 0,
+            tick_counter: 0,
         }
     }
 }
@@ -30,11 +33,12 @@ where
 {
     type Error = L9110sError<P1::Error, P2::Error>;
 
-    /// Sets the motor speed (0-100). In a basic GPIO configuration,
-    /// setting any speed > 0 drives IA high and IB low (forward).
-    fn set_speed(&mut self, speed: u8) -> Result<(), Self::Error> {
-        self.speed = speed;
-        if speed > 0 {
+    /// Sets the motor speed.
+    fn set_speed(&mut self, speed: MotorSpeed) -> Result<(), Self::Error> {
+        let speed_raw = speed.get();
+        self.speed = speed_raw;
+        self.tick_counter = 0;
+        if speed_raw > 0 {
             self.pin_ib.set_low().map_err(L9110sError::PinIb)?;
             self.pin_ia.set_high().map_err(L9110sError::PinIa)?;
         } else {
@@ -46,8 +50,35 @@ where
     /// Stops the motor by braking (both IA and IB set to low).
     fn stop(&mut self) -> Result<(), Self::Error> {
         self.speed = 0;
+        self.tick_counter = 0;
         self.pin_ia.set_low().map_err(L9110sError::PinIa)?;
         self.pin_ib.set_low().map_err(L9110sError::PinIb)?;
+        Ok(())
+    }
+}
+
+impl<P1: OutputPin, P2: OutputPin> Tickable for L9110s<P1, P2>
+where
+    P1::Error: core::fmt::Debug,
+    P2::Error: core::fmt::Debug,
+{
+    type Error = L9110sError<P1::Error, P2::Error>;
+
+    /// Updates the duty cycle (soft-PWM) state of the motor.
+    fn tick(&mut self) -> Result<(), Self::Error> {
+        if self.speed == 0 || self.speed >= 100 {
+            return Ok(());
+        }
+
+        self.tick_counter = (self.tick_counter + 1) % 10;
+        let threshold = self.speed / 10;
+        if self.tick_counter < threshold {
+            self.pin_ib.set_low().map_err(L9110sError::PinIb)?;
+            self.pin_ia.set_high().map_err(L9110sError::PinIa)?;
+        } else {
+            self.pin_ia.set_low().map_err(L9110sError::PinIa)?;
+            self.pin_ib.set_low().map_err(L9110sError::PinIb)?;
+        }
         Ok(())
     }
 }

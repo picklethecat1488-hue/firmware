@@ -240,6 +240,7 @@ impl<'a, T: TargetAccess + ?Sized> DefmtLogSource for TargetRttSource<'a, T> {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn run_rtt(
     chip: &str,
     table: Option<&Table>,
@@ -457,11 +458,7 @@ pub fn run_rtt(
         }
 
         // Set up defmt decoder
-        let mut decoder = if let Some(table) = table {
-            Some(table.new_stream_decoder())
-        } else {
-            None
-        };
+        let mut decoder = table.map(|table| table.new_stream_decoder());
 
         let locations = if let Some(t) = table {
             t.get_locations(&elf_data).ok()
@@ -855,7 +852,7 @@ fn handle_intercepted_crash_dump<R>(
     let backtrace: Vec<u32> = if bt_str.trim().is_empty() {
         Vec::new()
     } else {
-        bt_str.split(',').map(|x| parse_u32(x)).collect()
+        bt_str.split(',').map(parse_u32).collect()
     };
 
     let backtrace_len = parse_u32(&parts[6]) as usize;

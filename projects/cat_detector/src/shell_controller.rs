@@ -114,6 +114,7 @@ impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
     }
 }
 use model::interfaces::{Motor, PowerSensor, ProximitySensor, TemperatureSensor};
+use model::types::MotorSpeed;
 
 /// Controller responsible for processing shell commands.
 /// Context pointers to drivers and controllers for direct diagnostics.
@@ -604,7 +605,7 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                 if let Some(motor_raw) = self.motor_ptr {
                     let motor = unsafe { &mut *motor_raw };
                     let _ = core::writeln!(writer, "\r\nStarting motor for calibration...");
-                    let _ = motor.set_speed(100);
+                    let _ = motor.set_speed(MotorSpeed::MAX);
 
                     let _ = core::writeln!(writer, "Waiting 1 second for motor to ramp up...");
                     embassy_time::block_for(embassy_time::Duration::from_millis(1000));

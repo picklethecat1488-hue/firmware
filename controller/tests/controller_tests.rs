@@ -10,13 +10,15 @@ impl FromBatteryUpdate for TestCmd {
     }
 }
 use model::calibration::Calibration;
+use model::interfaces::{Motor, NoTick, Tickable};
+use model::types::MotorSpeed;
 use peripherals::mock::{MockCurrentSensor, MockMotor};
 
 #[test]
 fn test_motor_controller_flow() {
     let motor = MockMotor::new();
     let sensor = MockCurrentSensor::new(150); // healthy current: 150mA
-    let mut controller = MotorController::new(motor, sensor);
+    let mut controller = MotorController::new(NoTick::new(motor), sensor);
 
     assert_eq!(controller.state(), MotorState::Off);
 
@@ -25,8 +27,17 @@ fn test_motor_controller_flow() {
     controller.set_calibration(CalibrationType::MotorCal(80, 800));
 
     // Turn on the motor using handle_command
-    controller.handle_command(MotorCommand::SetSpeed(100), None);
+    controller.handle_command(MotorCommand::SetSpeed(MotorSpeed::MAX), None);
     assert_eq!(controller.state(), MotorState::On);
+    assert_eq!(controller.motor.speed, 0);
+    // Let's call tick_motor() once:
+    controller.tick_motor().unwrap();
+    assert_eq!(controller.motor.speed, 1);
+
+    // Tick to complete the ramp
+    for _ in 0..99 {
+        controller.tick_motor().unwrap();
+    }
     assert_eq!(controller.motor.speed, 100);
 
     // Simulate dry run (low current draw)
@@ -37,8 +48,13 @@ fn test_motor_controller_flow() {
 
     // Restart the motor
     controller.current_sensor.current_ma = 150; // reset to healthy current
-    controller.handle_command(MotorCommand::SetSpeed(100), None);
+    controller.handle_command(MotorCommand::SetSpeed(MotorSpeed::MAX), None);
     assert_eq!(controller.state(), MotorState::On);
+    controller.tick_motor().unwrap();
+    assert_eq!(controller.motor.speed, 1);
+    for _ in 0..99 {
+        controller.tick_motor().unwrap();
+    }
     assert_eq!(controller.motor.speed, 100);
 
     // Simulate stall (high current draw)
@@ -75,7 +91,7 @@ fn test_motor_controller_sad_cases() {
     let mut motor = MockMotor::new();
     motor.should_fail = true; // Make motor fail
     let sensor = MockCurrentSensor::new(150);
-    let mut controller = MotorController::new(motor, sensor);
+    let mut controller = MotorController::new(NoTick::new(motor), sensor);
     controller.set_calibration(model::calibration::CalibrationType::MotorCal(80, 800));
 
     // Try starting motor. Since motor is failing, update() or handle_command() should report errors
@@ -89,8 +105,16 @@ fn test_motor_controller_sad_cases() {
 
     let mut client =
         controller::telemetry_controller::MotorTelemetryClient::new(Some(telemetry_tx));
-    // Set speed should trigger motor.set_speed() error and report to telemetry
-    controller.handle_command(MotorCommand::SetSpeed(100), Some(&mut client));
+    // Set speed sets target speed. Error is triggered when we tick the motor controller.
+    controller.handle_command(MotorCommand::SetSpeed(MotorSpeed::MAX), Some(&mut client));
+
+    // Consume the initial MotorStatus report
+    let rec1 = telemetry_rx.try_receive().unwrap();
+    assert!(matches!(rec1, model::telemetry::TelemetryRecord::Motor(_)));
+
+    let res = controller.tick_motor();
+    assert!(res.is_err());
+    client.report_error(res.unwrap_err());
 
     // Check if error is received on the telemetry channel
     let rec = telemetry_rx.try_receive().unwrap();
@@ -103,9 +127,9 @@ fn test_motor_controller_sad_cases() {
     let motor2 = MockMotor::new();
     let mut sensor2 = MockCurrentSensor::new(150);
     sensor2.should_fail = true; // Make current sensor fail
-    let mut controller2 = MotorController::new(motor2, sensor2);
+    let mut controller2 = MotorController::new(NoTick::new(motor2), sensor2);
     controller2.set_calibration(model::calibration::CalibrationType::MotorCal(80, 800));
-    controller2.handle_command(MotorCommand::SetSpeed(100), None); // start motor first (no failure on motor)
+    controller2.handle_command(MotorCommand::SetSpeed(MotorSpeed::MAX), None); // start motor first (no failure on motor)
 
     let mut client2 =
         controller::telemetry_controller::MotorTelemetryClient::new(Some(telemetry_tx));
@@ -252,4 +276,74 @@ fn test_battery_controller_sad_cases() {
             model::telemetry::TelemetryRecord::PeripheralError(_)
         ));
     });
+}
+
+struct MockTickableMotor {
+    speed: MotorSpeed,
+    tick_count: usize,
+    should_fail_tick: bool,
+}
+
+impl MockTickableMotor {
+    fn new() -> Self {
+        Self {
+            speed: MotorSpeed::ZERO,
+            tick_count: 0,
+            should_fail_tick: false,
+        }
+    }
+}
+
+impl Motor for MockTickableMotor {
+    type Error = ();
+
+    fn set_speed(&mut self, speed: MotorSpeed) -> Result<(), Self::Error> {
+        self.speed = speed;
+        Ok(())
+    }
+
+    fn stop(&mut self) -> Result<(), Self::Error> {
+        self.speed = MotorSpeed::ZERO;
+        Ok(())
+    }
+}
+
+impl Tickable for MockTickableMotor {
+    type Error = ();
+
+    fn tick(&mut self) -> Result<(), Self::Error> {
+        if self.should_fail_tick {
+            Err(())
+        } else {
+            self.tick_count += 1;
+            Ok(())
+        }
+    }
+}
+
+#[test]
+fn test_motor_controller_tickable_vs_notick() {
+    // 1. Test stateful Tickable motor
+    let motor = MockTickableMotor::new();
+    let sensor = MockCurrentSensor::new(150);
+    let mut controller = MotorController::new(motor, sensor);
+
+    assert_eq!(controller.motor.tick_count, 0);
+    assert!(controller.tick_motor().is_ok());
+    assert_eq!(controller.motor.tick_count, 1);
+
+    // Test failing tick
+    controller.motor.should_fail_tick = true;
+    assert!(controller.tick_motor().is_err());
+
+    // 2. Test NoTick motor wrapper
+    let notick_motor = NoTick::new(MockTickableMotor::new());
+    let sensor2 = MockCurrentSensor::new(150);
+    let mut controller2 = MotorController::new(notick_motor, sensor2);
+
+    // Ticking shouldn't increase inner tick count or return error even if inner should fail,
+    // because NoTick::tick() is a no-op that always returns Ok(()) without calling inner tick.
+    controller2.motor.should_fail_tick = true;
+    assert!(controller2.tick_motor().is_ok());
+    assert_eq!(controller2.motor.tick_count, 0);
 }

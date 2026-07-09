@@ -1,10 +1,10 @@
-use cat_detector::{Board, MockFlex, LED_PIN, PUMP_PIN};
+use cat_detector::{Board, MockFlex, PUMP_PIN_IA, PUMP_PIN_IB};
 use embedded_hal::digital::OutputPin;
 
 #[test]
 fn test_board_pin_constants() {
-    assert_eq!(LED_PIN, 25);
-    assert_eq!(PUMP_PIN, 25);
+    assert_eq!(PUMP_PIN_IA, 14);
+    assert_eq!(PUMP_PIN_IB, 15);
 }
 
 #[test]
@@ -36,11 +36,12 @@ fn test_embedded_hal_output_trait_compatibility() {
 fn test_mock_board_initialization() {
     let mut board = Board::init();
 
-    assert!(board.gpio_pins[LED_PIN as usize].is_some());
+    assert!(board.gpio_pins[PUMP_PIN_IA as usize].is_some());
+    assert!(board.gpio_pins[PUMP_PIN_IB as usize].is_some());
 
-    let mut led_pin = board.gpio_pins[LED_PIN as usize].take().unwrap();
-    assert!(!led_pin.is_high());
+    let mut pump_ia = board.gpio_pins[PUMP_PIN_IA as usize].take().unwrap();
+    assert!(!pump_ia.is_high());
 
-    led_pin.set_high();
-    assert!(led_pin.is_high());
+    pump_ia.set_high();
+    assert!(pump_ia.is_high());
 }
