@@ -266,28 +266,28 @@ pub enum PeripheralError {
     PinError,
     /// I2C Bus Error.
     #[n(100)]
-    I2CBusError,
+    I2CBusError(#[n(0)] u16, #[n(1)] u16),
     /// I2C bus Collision.
     #[n(101)]
-    I2CArbitrationLoss,
+    I2CArbitrationLoss(#[n(0)] u16, #[n(1)] u16),
     /// I2C buffer overrun.
     #[n(102)]
-    I2COverrun,
+    I2COverrun(#[n(0)] u16, #[n(1)] u16),
     /// I2C NACK: Address.
     #[n(103)]
-    I2CNackAddress,
+    I2CNackAddress(#[n(0)] u16, #[n(1)] u16),
     /// I2C NACK: Data.
     #[n(104)]
-    I2CNackData,
+    I2CNackData(#[n(0)] u16, #[n(1)] u16),
     /// I2C NACK: Unknown.
     #[n(105)]
-    I2CNackUnknown,
+    I2CNackUnknown(#[n(0)] u16, #[n(1)] u16),
     /// I2C Error: Other.
     #[n(106)]
-    I2COther,
+    I2COther(#[n(0)] u16, #[n(1)] u16),
     /// i2C Error: Unknown.
     #[n(107)]
-    I2CUnknown,
+    I2CUnknown(#[n(0)] u16, #[n(1)] u16),
 }
 
 /// The reason why the device booted.

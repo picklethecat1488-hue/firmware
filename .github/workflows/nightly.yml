@@ -52,9 +52,41 @@ jobs:
             clippy_host_report.txt
             clippy_target_report.txt
 
+  test-python:
+    name: Run Python Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: firmware-env
+          environment-file: environment.yml
+          auto-activate-base: false
+
+      - name: Run Ruff Lints & Formatting Checks
+        shell: bash -el {0}
+        run: |
+          ruff check scripts/
+          ruff format --check scripts/
+
+      - name: Run Pytest
+        shell: bash -el {0}
+        run: |
+          pytest scripts/tests --junitxml=python_test_report.xml
+
+      - name: Upload Python Test Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-python-test-reports
+          path: python_test_report.xml
+
   build:
     name: Build Hardware Firmware
-    needs: test
+    needs: [test, test-python]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

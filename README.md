@@ -64,6 +64,31 @@ cargo run --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_
 
 For interactive diagnostic shell execution, host logging tools, flash extraction/decoding commands, and other diagnostic procedures, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+### Python Script Verification & Conda Setup
+
+For our target bringup scripts (`scripts/bringup.py`) and Rerun telemetry tools (`scripts/rerun-loader-csv`), we manage dependencies using Conda.
+
+#### 1. Enlisting in the Conda Environment
+
+Ensure you have Conda (Miniconda or Anaconda) installed on your system. Run the following command from the root of the repository to create the environment:
+
+```bash
+# Create the environment from the environment.yml configuration
+conda env create -f environment.yml
+
+# Activate the environment
+conda activate firmware-env
+```
+
+#### 2. Running Python Unit Tests Locally
+
+We use `pytest` for unit testing our Python helper scripts:
+
+```bash
+# Run all python script unit tests
+pytest scripts/tests
+```
+
 ---
 
 ## Design & Integration Patterns
