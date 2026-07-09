@@ -308,7 +308,7 @@ Execute the following commands sequentially inside the interactive serial shell 
    ```
    * *Expected Output*: Stops the pump impeller motor. Verify the motor halts immediately.
 
-7. **Calibrate Motor Current (Water Detection)**:
+7. **Calibrate Motor Current (Water & Overload Detection)**:
    * *Procedure*:
      - Empty the water bowl, and run (optionally specifying the physical maximum RPM at 100% duty cycle, and the safety RPM limit):
        ```bash
@@ -326,7 +326,11 @@ Execute the following commands sequentially inside the interactive serial shell 
        ```bash
        cal_motor full
        ```
-   * *Expected Output*: Starts the motor, waits 1 second for it to ramp up, measures/records average current draw (e.g., simulating empty = 50mA, 100ml = 150mA, full = 300mA), stops the motor, and saves the calibration (along with any configured RPM limits) to `motor_cal.cbor` in flash. These values are used to gate/ungate the motor, convert RPM inputs to speed percentages, and detect dry-run/empty water states at runtime.
+     - Simulate an overload/stall condition by holding the impeller in place with a finger, and run:
+       ```bash
+       cal_motor overload
+       ```
+   * *Expected Output*: Starts the motor, waits 1 second for it to ramp up, measures/records average current draw (e.g., simulating empty = 50mA, 100ml = 150mA, full = 300mA, overload = 950mA), stops the motor, and saves the calibration (along with any configured RPM limits) to `motor_cal.cbor` in flash. These values are used to gate/ungate the motor, convert RPM inputs to speed percentages, detect dry-run/empty water states, and dynamically set the safety maximum current threshold (motor stall limit) at runtime.
 
 8. **Verify System Power States**:
    * *Procedure*:
