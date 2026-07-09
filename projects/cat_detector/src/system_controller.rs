@@ -1,7 +1,7 @@
 //! System controller for managing global modes (Active/Sleep), inactivity timeouts, and coordinating other loops.
 
 #![deny(missing_docs)]
-#![allow(clippy::collapsible_match)]
+
 use controller::{BatteryCommand, MotorCommand, SensorCommand, ThermalCommand};
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;

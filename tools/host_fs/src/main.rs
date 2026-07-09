@@ -193,9 +193,11 @@ fn main() -> io::Result<()> {
                     flash_range,
                     &mut cache,
                     &spinner,
-                    src,
-                    dest,
-                    &cli.dump,
+                    host_fs::commands::cp::CpArgs {
+                        src,
+                        dest,
+                        dump_option: &cli.dump,
+                    },
                     &mut unified_buf,
                 )
                 .await?;

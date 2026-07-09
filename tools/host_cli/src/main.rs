@@ -99,19 +99,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // 3. Run RTT connection runner
-    rtt::run_rtt(
-        &chip,
-        table.as_ref(),
-        &cli.elf,
-        cli.dump,
-        cli.raw,
-        cli.dump_mem,
-        cli.no_reset,
-        cli.openocd_host.as_deref(),
-        cli.show_raw_cli,
-        &spinner,
-        cli.channel,
-    )?;
+    rtt::run_rtt(rtt::RttOptions {
+        chip: &chip,
+        table: table.as_ref(),
+        elf_path: &cli.elf,
+        dump: cli.dump,
+        raw: cli.raw,
+        dump_mem: cli.dump_mem,
+        no_reset: cli.no_reset,
+        openocd_host: cli.openocd_host.as_deref(),
+        show_raw_cli: cli.show_raw_cli,
+        spinner: &spinner,
+        channel_mode: cli.channel,
+    })?;
 
     Ok(())
 }
