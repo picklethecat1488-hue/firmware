@@ -9,6 +9,7 @@ pub use firmware_lib::ProximityEvent;
 use firmware_lib::{
     BatteryManager, BatteryUpdateAction, PeriodicTimer, PowerManager, ThermalManager,
 };
+use model::types::MotorSpeed;
 /// One-way commands to control the global system state and notify it of events.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SystemCommand {
@@ -304,7 +305,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     let _ = self
                         .led_tx
                         .try_send(self.battery_manager.get_soc_led_state());
-                    let _ = self.motor_tx.try_send(MotorCommand::SetSpeed(100));
+                    let _ = self
+                        .motor_tx
+                        .try_send(MotorCommand::SetSpeed(MotorSpeed::MAX));
                 }
                 SystemStatus::Sleep | SystemStatus::PowerDown => {
                     let _ = self.motor_tx.try_send(MotorCommand::Stop);

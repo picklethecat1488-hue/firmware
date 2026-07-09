@@ -74,7 +74,7 @@ struct MockMotor;
 
 impl model::interfaces::Motor for MockMotor {
     type Error = core::convert::Infallible;
-    fn set_speed(&mut self, _speed: u8) -> Result<(), Self::Error> {
+    fn set_speed(&mut self, _speed: model::types::MotorSpeed) -> Result<(), Self::Error> {
         Ok(())
     }
     fn stop(&mut self) -> Result<(), Self::Error> {

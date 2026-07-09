@@ -9,7 +9,9 @@ use controller::sensor_controller::SensorCommand;
 use controller::thermal_controller::ThermalCommand;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use model::types::{BootReason, Gesture, SystemLedState, SystemStatus, TelemetryRecord};
+use model::types::{
+    BootReason, Gesture, MotorSpeed, SystemLedState, SystemStatus, TelemetryRecord,
+};
 
 static MOCK_TELEMETRY_CHANNEL: Channel<
     CriticalSectionRawMutex,
@@ -101,7 +103,7 @@ fn test_system_controller_flow() {
     assert_eq!(led_state, SystemLedState::SolidGreen);
     assert_eq!(
         MOTOR_CHANNEL.try_receive().unwrap(),
-        MotorCommand::SetSpeed(100)
+        MotorCommand::SetSpeed(MotorSpeed::MAX)
     );
 
     // Trigger an alert (thermal critical)
@@ -181,7 +183,7 @@ fn test_system_controller_flow() {
     assert_eq!(led_state, SystemLedState::SolidGreen);
 
     let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
-    assert_eq!(motor_cmd, MotorCommand::SetSpeed(100));
+    assert_eq!(motor_cmd, MotorCommand::SetSpeed(MotorSpeed::MAX));
 
     // Test critical battery state
     controller.handle_command(SystemCommand::BatteryUpdate {

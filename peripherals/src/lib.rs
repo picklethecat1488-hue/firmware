@@ -3,8 +3,8 @@
 #![cfg_attr(not(test), no_std)]
 #![deny(missing_docs)]
 
-/// Generic and platform-specific motor peripherals.
-pub mod motor;
+pub use model::interfaces::{Motor, Tickable};
+pub use model::types::MotorSpeed;
 
 /// Concrete driver implementation for the ATtiny816 custom LED driver.
 pub mod attiny816;

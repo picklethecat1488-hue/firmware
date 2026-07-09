@@ -8,7 +8,8 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use firmware_lib::gesture_detector::{GestureDetector, ProximityGestureDetector};
-use model::types::{BootReason, ChargeState, Direction, SystemLedState, SystemStatus};
+use model::interfaces::NoTick;
+use model::types::{BootReason, ChargeState, Direction, MotorSpeed, SystemLedState, SystemStatus};
 use peripherals::mock::{
     DummyCurrentSensor, MockBattery, MockCharger, MockLed, MockMotor, MockProximitySensor,
 };
@@ -65,7 +66,7 @@ fn test_system_integration_flow() {
         let mock_temp = Mutex::new(MockBattery::new(3700, 25000)); // MockBattery implements TemperatureSensor
 
         // Controllers
-        let mut motor_ctrl = MotorController::new(mock_motor, DummyCurrentSensor);
+        let mut motor_ctrl = MotorController::new(NoTick::new(mock_motor), DummyCurrentSensor);
         use model::calibration::{Calibration, CalibrationType};
         motor_ctrl.set_calibration(CalibrationType::MotorCal(80, 800));
         let mut led_ctrl = LedController::new(mock_led);
@@ -183,8 +184,14 @@ fn test_system_integration_flow() {
         drain_telemetry();
 
         // Proximity detected -> motor starts
-        assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::SetSpeed(100)));
-        motor_ctrl.handle_command(MotorCommand::SetSpeed(100), None);
+        assert_eq!(
+            MOTOR_CHANNEL.try_receive(),
+            Ok(MotorCommand::SetSpeed(MotorSpeed::MAX))
+        );
+        motor_ctrl.handle_command(MotorCommand::SetSpeed(MotorSpeed::MAX), None);
+        for _ in 0..100 {
+            motor_ctrl.tick_motor().unwrap();
+        }
         assert_eq!(motor_ctrl.motor.speed, 100);
 
         // 3. Simulate critical low battery: SoC drops to 5%
@@ -271,8 +278,14 @@ fn test_system_integration_flow() {
         }
         drain_telemetry();
 
-        assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::SetSpeed(100)));
-        motor_ctrl.handle_command(MotorCommand::SetSpeed(100), None);
+        assert_eq!(
+            MOTOR_CHANNEL.try_receive(),
+            Ok(MotorCommand::SetSpeed(MotorSpeed::MAX))
+        );
+        motor_ctrl.handle_command(MotorCommand::SetSpeed(MotorSpeed::MAX), None);
+        for _ in 0..100 {
+            motor_ctrl.tick_motor().unwrap();
+        }
         assert_eq!(motor_ctrl.motor.speed, 100);
 
         // 5. Simulate thermal critical: Temp reaches 61°C (61000 mC)

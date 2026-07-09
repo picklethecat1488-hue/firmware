@@ -2,6 +2,7 @@ use model::interfaces::{
     ChargeStatus, FuelGauge, LedDriver, Motor, PowerMeasurementMode, PowerSensor, ProximitySensor,
     TemperatureSensor,
 };
+use model::types::MotorSpeed;
 
 /// A mock implementation of a Motor for unit testing on the host.
 pub struct MockMotor {
@@ -34,12 +35,13 @@ impl Motor for MockMotor {
     type Error = ();
 
     /// Sets mock speed and updates run status.
-    fn set_speed(&mut self, speed: u8) -> Result<(), Self::Error> {
+    fn set_speed(&mut self, speed: MotorSpeed) -> Result<(), Self::Error> {
         if self.should_fail {
             Err(())
         } else {
-            self.speed = speed;
-            self.is_running = speed > 0;
+            let speed_raw = speed.get();
+            self.speed = speed_raw;
+            self.is_running = speed_raw > 0;
             Ok(())
         }
     }

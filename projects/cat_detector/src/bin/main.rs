@@ -25,8 +25,8 @@ use {
     embassy_executor::Spawner,
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     embassy_sync::mutex::Mutex,
+    peripherals::l9110s::L9110s,
     peripherals::mock::{DummyProximitySensor, MockLed},
-    peripherals::motor::GpioMotor,
 };
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -187,12 +187,15 @@ async fn main(spawner: Spawner) {
     // Verify and repair/reformat the filesystem if it is corrupted
     let _ = fs_controller.verify_and_repair().await;
 
-    // Extract the motor control pin from the board configuration array
-    let motor_pin = board.gpio_pins[app::LED_PIN as usize]
+    // Extract the motor control pins from the board configuration array
+    let motor_pin_ia = board.gpio_pins[app::PUMP_PIN_IA as usize]
         .take()
-        .expect("Motor pin must be available");
+        .expect("Motor pin IA must be available");
+    let motor_pin_ib = board.gpio_pins[app::PUMP_PIN_IB as usize]
+        .take()
+        .expect("Motor pin IB must be available");
 
-    let motor = GpioMotor::new(motor_pin);
+    let motor = L9110s::new(motor_pin_ia, motor_pin_ib);
 
     #[cfg(all(target_arch = "arm", target_os = "none"))]
     let current_sensor = {
@@ -408,7 +411,7 @@ async fn main(spawner: Spawner) {
         controller,
         app::MOTOR_CHANNEL.receiver(),
         app::TELEMETRY_CHANNEL.sender(),
-        GpioMotor<embassy_rp::gpio::Flex<'static>>,
+        L9110s<embassy_rp::gpio::Flex<'static>, embassy_rp::gpio::Flex<'static>>,
         peripherals::ina219::Ina219<firmware_lib::i2c::SharedI2cWrapper<'static>>
     );
 
@@ -419,7 +422,7 @@ async fn main(spawner: Spawner) {
         controller,
         app::MOTOR_CHANNEL.receiver(),
         app::TELEMETRY_CHANNEL.sender(),
-        GpioMotor<embassy_rp::gpio::Flex<'static>>,
+        L9110s<embassy_rp::gpio::Flex<'static>, embassy_rp::gpio::Flex<'static>>,
         DummyCurrentSensor
     );
 
