@@ -258,7 +258,11 @@ async fn main(spawner: Spawner) {
     if let Some(cal) = motor_cal {
         let min_ma = (cal.empty_current_ma + cal.water_100ml_current_ma) / 2;
         let max_ma = 800;
-        controller.set_calibration(CalibrationType::MotorCal(min_ma, max_ma));
+        let max_rpm = cal.max_rpm.unwrap_or(0);
+        let rpm_limit = cal.rpm_limit.unwrap_or(0);
+        controller.set_calibration(CalibrationType::MotorCal(
+            min_ma, max_ma, max_rpm, rpm_limit,
+        ));
     }
 
     let mut sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(

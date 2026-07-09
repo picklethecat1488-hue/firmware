@@ -22,6 +22,47 @@ pub enum MotorState {
     On,
 }
 
+/// Status representing safety check results.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MotorSafetyStatus {
+    /// All limits are within safe operating parameters.
+    Ok,
+    /// The motor RPM exceeded the safety limit.
+    RpmExceeded(u32),
+    /// Low load / dry run detected.
+    DryRun(i32),
+    /// Motor stall detected (high current).
+    Stall(i32),
+}
+
+/// Safety limits for the motor controller.
+pub struct MotorLimits {
+    /// Minimum current threshold in mA for dry-run detection.
+    pub min_current_ma: i32,
+    /// Maximum current threshold in mA for stall detection.
+    pub max_current_ma: i32,
+    /// Physical maximum RPM at 100% duty cycle.
+    pub max_rpm: u32,
+    /// Maximum RPM limit for safety cut-off.
+    pub rpm_limit: u32,
+}
+
+impl MotorLimits {
+    /// Checks if the given RPM and current draw violate configured safety limits.
+    pub fn check_limits(&self, rpm: u32, current_ma: i32) -> MotorSafetyStatus {
+        if self.rpm_limit > 0 && rpm > self.rpm_limit {
+            return MotorSafetyStatus::RpmExceeded(rpm);
+        }
+        if current_ma < self.min_current_ma {
+            return MotorSafetyStatus::DryRun(current_ma);
+        }
+        if current_ma > self.max_current_ma {
+            return MotorSafetyStatus::Stall(current_ma);
+        }
+        MotorSafetyStatus::Ok
+    }
+}
+
 /// A generalized motor controller that orchestrates motor driver outputs and current sensor monitoring.
 pub struct MotorController<M, C> {
     state: MotorState,
@@ -33,9 +74,8 @@ pub struct MotorController<M, C> {
     last_current_ma: i32,
     speed: MotorSpeed,
     active_speed: MotorSpeed,
-    min_current_ma: i32,
-    max_current_ma: i32,
     calibration_present: bool,
+    limits: MotorLimits,
 }
 
 impl<M: Motor + Tickable, C: PowerSensor> MotorController<M, C>
@@ -53,9 +93,13 @@ where
             last_current_ma: 0,
             speed: MotorSpeed::ZERO,
             active_speed: MotorSpeed::ZERO,
-            min_current_ma: 15,
-            max_current_ma: 800,
             calibration_present: false,
+            limits: MotorLimits {
+                min_current_ma: 15,
+                max_current_ma: 800,
+                max_rpm: 0,
+                rpm_limit: 0,
+            },
         }
     }
 
@@ -66,18 +110,27 @@ where
 
     /// Gets the minimum current limit in mA.
     pub fn min_current_ma(&self) -> i32 {
-        self.min_current_ma
+        self.limits.min_current_ma
     }
 
     /// Gets the maximum current limit in mA.
     pub fn max_current_ma(&self) -> i32 {
-        self.max_current_ma
+        self.limits.max_current_ma
     }
 
     /// Sets the minimum and maximum current limits for load/stall safety checks.
     pub fn set_current_limits(&mut self, min_ma: i32, max_ma: i32) {
-        self.min_current_ma = min_ma;
-        self.max_current_ma = max_ma;
+        self.limits.min_current_ma = min_ma;
+        self.limits.max_current_ma = max_ma;
+    }
+
+    /// Returns the current estimated RPM based on the active speed and max_rpm calibration.
+    pub fn current_rpm(&self) -> u32 {
+        if self.limits.max_rpm == 0 {
+            0
+        } else {
+            (self.active_speed.get() as u32) * self.limits.max_rpm / 100
+        }
     }
 
     /// Gets the last measured current in mA.
@@ -115,24 +168,35 @@ where
             0
         };
 
-        // If the motor is running, verify load torque
+        // If the motor is running, verify safety limits (RPM and load torque)
         if self.state == MotorState::On {
-            // Check for dry running (current is unusually low when running)
-            if current < self.min_current_ma {
-                self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut());
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::warn!(
-                    "Motor Controller: Low load / dry detected (current: {} mA). Stopped motor.",
-                    current
-                );
-            } else if current > self.max_current_ma {
-                // Check for motor stall (current is too high)
-                self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut());
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::error!(
-                    "Motor Controller: Motor stall detected (current: {} mA). Stopped motor.",
-                    current
-                );
+            let rpm = self.current_rpm();
+            match self.limits.check_limits(rpm, current) {
+                MotorSafetyStatus::RpmExceeded(_rpm_val) => {
+                    self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut());
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::error!(
+                        "Motor Controller: RPM safety limit exceeded ({} RPM). Stopped motor.",
+                        _rpm_val
+                    );
+                }
+                MotorSafetyStatus::DryRun(_current_val) => {
+                    self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut());
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::warn!(
+                        "Motor Controller: Low load / dry detected (current: {} mA). Stopped motor.",
+                        _current_val
+                    );
+                }
+                MotorSafetyStatus::Stall(_current_val) => {
+                    self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut());
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::error!(
+                        "Motor Controller: Motor stall detected (current: {} mA). Stopped motor.",
+                        _current_val
+                    );
+                }
+                MotorSafetyStatus::Ok => {}
             }
         }
 
@@ -153,7 +217,7 @@ where
     pub fn handle_command(
         &mut self,
         cmd: MotorCommand,
-        telemetry_client: Option<
+        mut telemetry_client: Option<
             &mut MotorTelemetryClient<
                 '_,
                 CriticalSectionRawMutex,
@@ -190,6 +254,22 @@ where
                     // Set target speed to 0 and let it ramp down
                     self.speed = MotorSpeed::ZERO;
                 }
+            }
+            MotorCommand::SetSpeedRpm(rpm) => {
+                let speed_val = if self.limits.max_rpm == 0 {
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::warn!(
+                        "Motor Controller: Cannot set speed by RPM, max_rpm calibration is not set!"
+                    );
+                    0
+                } else {
+                    ((rpm.abs() * 100) / (self.limits.max_rpm as i32)).min(100)
+                };
+                let speed = MotorSpeed::new(speed_val as u8).unwrap_or(MotorSpeed::ZERO);
+                self.handle_command(
+                    MotorCommand::SetSpeed(speed),
+                    telemetry_client.as_deref_mut(),
+                );
             }
             MotorCommand::Stop => {
                 // Immediate emergency stop
@@ -331,6 +411,8 @@ where
 pub enum MotorCommand {
     /// Set the motor speed (0-100)
     SetSpeed(model::types::MotorSpeed),
+    /// Set the motor speed using a target RPM (signed)
+    SetSpeedRpm(i32),
     /// Stop the motor
     Stop,
 }
@@ -348,10 +430,14 @@ impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
     for MotorController<M, C>
 {
     fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
-        if let model::calibration::CalibrationType::MotorCal(min, max) = calibration {
+        if let model::calibration::CalibrationType::MotorCal(min, max, max_rpm, rpm_limit) =
+            calibration
+        {
             self.calibration_present = true;
-            self.min_current_ma = min;
-            self.max_current_ma = max;
+            self.limits.min_current_ma = min;
+            self.limits.max_current_ma = max;
+            self.limits.max_rpm = max_rpm;
+            self.limits.rpm_limit = rpm_limit;
         }
     }
 }

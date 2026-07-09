@@ -68,7 +68,7 @@ fn test_system_integration_flow() {
         // Controllers
         let mut motor_ctrl = MotorController::new(NoTick::new(mock_motor), DummyCurrentSensor);
         use model::calibration::{Calibration, CalibrationType};
-        motor_ctrl.set_calibration(CalibrationType::MotorCal(80, 800));
+        motor_ctrl.set_calibration(CalibrationType::MotorCal(80, 800, 3000, 0));
         let mut led_ctrl = LedController::new(mock_led);
         let channels = cat_detector::system_controller::SystemControllerChannels {
             system_tx: SYSTEM_CHANNEL.sender(),

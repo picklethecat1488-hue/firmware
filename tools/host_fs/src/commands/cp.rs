@@ -21,7 +21,11 @@ pub async fn run(
     args: CpArgs<'_>,
     buf: &mut [u8],
 ) -> io::Result<()> {
-    let CpArgs { src, dest, dump_option } = args;
+    let CpArgs {
+        src,
+        dest,
+        dump_option,
+    } = args;
     let (dir_buf, file_buf) = buf.split_at_mut(1024 * 8);
     let src_is_dev = src.starts_with("dev:");
     let dest_is_dev = dest.starts_with("dev:");

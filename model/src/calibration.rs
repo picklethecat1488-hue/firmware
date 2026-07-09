@@ -39,6 +39,12 @@ pub struct MotorCalibration {
     /// Average current in mA when the bowl is full.
     #[n(2)]
     pub full_current_ma: i32,
+    /// Physical maximum RPM at 100% duty cycle.
+    #[n(3)]
+    pub max_rpm: Option<u32>,
+    /// Safety RPM limit.
+    #[n(4)]
+    pub rpm_limit: Option<u32>,
 }
 
 /// Enum representing different types of calibration parameters.
@@ -46,8 +52,8 @@ pub struct MotorCalibration {
 pub enum CalibrationType {
     /// Calibration for proximity sensors, specifying the cover (0mm) raw value and the 100mm raw value.
     ProximityCal(u16, u16),
-    /// Calibration for motor current/load values (min_current_ma, max_current_ma).
-    MotorCal(i32, i32),
+    /// Calibration for motor current/load values, physical maximum RPM, and RPM safety limit.
+    MotorCal(i32, i32, u32, u32),
 }
 
 /// Trait representing a peripheral or controller that can be calibrated.

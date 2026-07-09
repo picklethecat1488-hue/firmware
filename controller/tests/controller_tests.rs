@@ -24,7 +24,7 @@ fn test_motor_controller_flow() {
 
     // Apply motor calibration so that it can be started
     use model::calibration::{Calibration, CalibrationType};
-    controller.set_calibration(CalibrationType::MotorCal(80, 800));
+    controller.set_calibration(CalibrationType::MotorCal(80, 800, 3000, 0));
 
     // Turn on the motor using handle_command
     controller.handle_command(MotorCommand::SetSpeed(MotorSpeed::MAX), None);
@@ -92,7 +92,9 @@ fn test_motor_controller_sad_cases() {
     motor.should_fail = true; // Make motor fail
     let sensor = MockCurrentSensor::new(150);
     let mut controller = MotorController::new(NoTick::new(motor), sensor);
-    controller.set_calibration(model::calibration::CalibrationType::MotorCal(80, 800));
+    controller.set_calibration(model::calibration::CalibrationType::MotorCal(
+        80, 800, 3000, 0,
+    ));
 
     // Try starting motor. Since motor is failing, update() or handle_command() should report errors
     let telemetry_channel = Box::leak(Box::new(embassy_sync::channel::Channel::<
@@ -128,7 +130,9 @@ fn test_motor_controller_sad_cases() {
     let mut sensor2 = MockCurrentSensor::new(150);
     sensor2.should_fail = true; // Make current sensor fail
     let mut controller2 = MotorController::new(NoTick::new(motor2), sensor2);
-    controller2.set_calibration(model::calibration::CalibrationType::MotorCal(80, 800));
+    controller2.set_calibration(model::calibration::CalibrationType::MotorCal(
+        80, 800, 3000, 0,
+    ));
     controller2.handle_command(MotorCommand::SetSpeed(MotorSpeed::MAX), None); // start motor first (no failure on motor)
 
     let mut client2 =
@@ -346,4 +350,75 @@ fn test_motor_controller_tickable_vs_notick() {
     controller2.motor.should_fail_tick = true;
     assert!(controller2.tick_motor().is_ok());
     assert_eq!(controller2.motor.tick_count, 0);
+}
+
+#[test]
+fn test_motor_controller_rpm_command() {
+    let motor = MockMotor::new();
+    let sensor = MockCurrentSensor::new(150);
+    let mut controller = MotorController::new(NoTick::new(motor), sensor);
+
+    // Set calibration with max RPM = 3000
+    controller.set_calibration(model::calibration::CalibrationType::MotorCal(
+        80, 800, 3000, 0,
+    ));
+
+    // Handle SetSpeedRpm(1500) -> sets speed to 50%
+    controller.handle_command(
+        controller::motor_controller::MotorCommand::SetSpeedRpm(1500),
+        None,
+    );
+    assert_eq!(controller.min_current_ma(), 80); // verify calibration is active
+
+    // Let's call tick_motor to propagate active_speed (needs 50 ticks to ramp to 50%)
+    for _ in 0..50 {
+        controller.tick_motor().unwrap();
+    }
+    assert_eq!(controller.motor.speed, 50);
+
+    // Handle SetSpeedRpm(-3000) (signed/reverse, but motor speed is positive percentage)
+    controller.handle_command(
+        controller::motor_controller::MotorCommand::SetSpeedRpm(-3000),
+        None,
+    );
+    for _ in 0..50 {
+        controller.tick_motor().unwrap();
+    }
+    assert_eq!(controller.motor.speed, 100);
+
+    // Handle SetSpeedRpm(4000) (clamped to 100)
+    controller.handle_command(
+        controller::motor_controller::MotorCommand::SetSpeedRpm(4000),
+        None,
+    );
+    controller.tick_motor().unwrap();
+    // It's already at 100, so 1 tick is enough
+    assert_eq!(controller.motor.speed, 100);
+}
+
+#[test]
+fn test_motor_limits_checking() {
+    use controller::motor_controller::{MotorLimits, MotorSafetyStatus};
+
+    let limits = MotorLimits {
+        min_current_ma: 80,
+        max_current_ma: 800,
+        max_rpm: 3000,
+        rpm_limit: 3000,
+    };
+
+    // Safe
+    assert_eq!(limits.check_limits(2500, 150), MotorSafetyStatus::Ok);
+    // RPM exceeded
+    assert_eq!(
+        limits.check_limits(3500, 150),
+        MotorSafetyStatus::RpmExceeded(3500)
+    );
+    // Dry run
+    assert_eq!(limits.check_limits(2500, 50), MotorSafetyStatus::DryRun(50));
+    // Stall
+    assert_eq!(
+        limits.check_limits(2500, 900),
+        MotorSafetyStatus::Stall(900)
+    );
 }
