@@ -186,9 +186,67 @@ pub async fn run(
                     model::telemetry::TelemetryRecord::ChargerState(state) => {
                         writeln!(csv_file, "{},ChargerState,{:?},,,", ts, state)?;
                     }
-                    model::telemetry::TelemetryRecord::PeripheralError(state) => {
-                        writeln!(csv_file, "{},PeripheralError,{:?},,,", ts, state)?;
-                    }
+                    model::telemetry::TelemetryRecord::PeripheralError(state) => match state {
+                        model::types::PeripheralError::I2CBusError(address, register) => {
+                            writeln!(
+                                csv_file,
+                                "{},PeripheralError,I2CBusError,0x{:02X},0x{:02X},",
+                                ts, address, register
+                            )?;
+                        }
+                        model::types::PeripheralError::I2CArbitrationLoss(address, register) => {
+                            writeln!(
+                                csv_file,
+                                "{},PeripheralError,I2CArbitrationLoss,0x{:02X},0x{:02X},",
+                                ts, address, register
+                            )?;
+                        }
+                        model::types::PeripheralError::I2COverrun(address, register) => {
+                            writeln!(
+                                csv_file,
+                                "{},PeripheralError,I2COverrun,0x{:02X},0x{:02X},",
+                                ts, address, register
+                            )?;
+                        }
+                        model::types::PeripheralError::I2CNackAddress(address, register) => {
+                            writeln!(
+                                csv_file,
+                                "{},PeripheralError,I2CNackAddress,0x{:02X},0x{:02X},",
+                                ts, address, register
+                            )?;
+                        }
+                        model::types::PeripheralError::I2CNackData(address, register) => {
+                            writeln!(
+                                csv_file,
+                                "{},PeripheralError,I2CNackData,0x{:02X},0x{:02X},",
+                                ts, address, register
+                            )?;
+                        }
+                        model::types::PeripheralError::I2CNackUnknown(address, register) => {
+                            writeln!(
+                                csv_file,
+                                "{},PeripheralError,I2CNackUnknown,0x{:02X},0x{:02X},",
+                                ts, address, register
+                            )?;
+                        }
+                        model::types::PeripheralError::I2COther(address, register) => {
+                            writeln!(
+                                csv_file,
+                                "{},PeripheralError,I2COther,0x{:02X},0x{:02X},",
+                                ts, address, register
+                            )?;
+                        }
+                        model::types::PeripheralError::I2CUnknown(address, register) => {
+                            writeln!(
+                                csv_file,
+                                "{},PeripheralError,I2CUnknown,0x{:02X},0x{:02X},",
+                                ts, address, register
+                            )?;
+                        }
+                        other => {
+                            writeln!(csv_file, "{},PeripheralError,{:?},,,", ts, other)?;
+                        }
+                    },
                     model::telemetry::TelemetryRecord::Boot(reason) => {
                         writeln!(csv_file, "{},Boot,{:?},,,", ts, reason)?;
                     }

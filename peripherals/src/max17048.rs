@@ -24,7 +24,7 @@ impl<I: I2c> Max17048<I> {
         let mut buf = [0u8; 2];
         self.i2c
             .write_read(self.address, &[reg], &mut buf)
-            .map_err(|e| e.to_peripheral_error())?;
+            .map_err(|e| e.to_i2c_error(self.address as u16, reg as u16))?;
         Ok(u16::from_be_bytes(buf))
     }
 
@@ -33,7 +33,7 @@ impl<I: I2c> Max17048<I> {
         let bytes = val.to_be_bytes();
         self.i2c
             .write(self.address, &[reg, bytes[0], bytes[1]])
-            .map_err(|e| e.to_peripheral_error())?;
+            .map_err(|e| e.to_i2c_error(self.address as u16, reg as u16))?;
         Ok(())
     }
 }

@@ -30,8 +30,8 @@ pub trait ToPeripheralError {
 
 /// Extension trait to convert I2C bus errors into telemetry.
 pub trait I2cToPeripheralError {
-    /// Convert the I2C bus error to a Peripheral error.
-    fn to_peripheral_error(&self) -> PeripheralError;
+    /// Convert the I2C bus error to a Peripheral error with context.
+    fn to_i2c_error(&self, address: u16, register: u16) -> PeripheralError;
 }
 
 /// Convert I2C bus errors into bus telemetry.
@@ -40,22 +40,22 @@ where
     E: embedded_hal::i2c::Error,
 {
     #[inline]
-    fn to_peripheral_error(&self) -> PeripheralError {
+    fn to_i2c_error(&self, address: u16, register: u16) -> PeripheralError {
         use embedded_hal::i2c::{ErrorKind, NoAcknowledgeSource};
         match self.kind() {
-            ErrorKind::Bus => PeripheralError::I2CBusError,
-            ErrorKind::ArbitrationLoss => PeripheralError::I2CArbitrationLoss,
-            ErrorKind::Overrun => PeripheralError::I2COverrun,
+            ErrorKind::Bus => PeripheralError::I2CBusError(address, register),
+            ErrorKind::ArbitrationLoss => PeripheralError::I2CArbitrationLoss(address, register),
+            ErrorKind::Overrun => PeripheralError::I2COverrun(address, register),
 
             // NoAcknowledge contains extra nested context we can decode
             ErrorKind::NoAcknowledge(source) => match source {
-                NoAcknowledgeSource::Address => PeripheralError::I2CNackAddress,
-                NoAcknowledgeSource::Data => PeripheralError::I2CNackData,
-                _ => PeripheralError::I2CNackUnknown,
+                NoAcknowledgeSource::Address => PeripheralError::I2CNackAddress(address, register),
+                NoAcknowledgeSource::Data => PeripheralError::I2CNackData(address, register),
+                _ => PeripheralError::I2CNackUnknown(address, register),
             },
 
-            ErrorKind::Other => PeripheralError::I2COther,
-            _ => PeripheralError::I2CUnknown,
+            ErrorKind::Other => PeripheralError::I2COther(address, register),
+            _ => PeripheralError::I2CUnknown(address, register),
         }
     }
 }
