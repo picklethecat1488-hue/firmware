@@ -13,3 +13,7 @@ model = { path = "../model" }
 
 [dev-dependencies]
 peripherals = { path = ".", features = ["mock"] }
+
+[target.'cfg(all(target_arch = "arm", target_os = "none"))'.dependencies]
+defmt = "0.3"
+
