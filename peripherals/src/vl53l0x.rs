@@ -14,7 +14,6 @@ macro_rules! log_warn {
     };
 }
 
-
 /// Interrupt modes supported by the VL53L0X GPIO pin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InterruptMode {
@@ -64,12 +63,12 @@ impl<I: I2c> Vl53l0x<I> {
             .i2c
             .write(self.address, &[0x8A, new_address & 0x7F])
             .map_err(|e| e.to_i2c_error(self.address as u16, 0x8A_u16));
-        if let Err(ref e) = res {
+        if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to locate or set address to 0x{:02x} (current address: 0x{:02x}): {:?}",
                 new_address,
                 self.address,
-                defmt::Debug2Format(e)
+                defmt::Debug2Format(_e)
             );
         }
         res?;
@@ -129,11 +128,11 @@ impl<I: I2c> Vl53l0x<I> {
 
             Ok(())
         })();
-        if let Err(ref e) = res {
+        if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to configure interrupt at address 0x{:02x}: {:?}",
                 self.address,
-                defmt::Debug2Format(e)
+                defmt::Debug2Format(_e)
             );
         }
         res
@@ -145,11 +144,11 @@ impl<I: I2c> Vl53l0x<I> {
             .i2c
             .write(self.address, &[0x0B, 0x01])
             .map_err(|e| e.to_i2c_error(self.address as u16, 0x0B_u16));
-        if let Err(ref e) = res {
+        if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to clear interrupt at address 0x{:02x}: {:?}",
                 self.address,
-                defmt::Debug2Format(e)
+                defmt::Debug2Format(_e)
             );
         }
         res
@@ -162,11 +161,11 @@ impl<I: I2c> Vl53l0x<I> {
             .i2c
             .write(self.address, &[0x71, 0x54, 0x36])
             .map_err(|e| e.to_i2c_error(self.address as u16, 0x71_u16));
-        if let Err(ref e) = res {
+        if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to set timing budget at address 0x{:02x}: {:?}",
                 self.address,
-                defmt::Debug2Format(e)
+                defmt::Debug2Format(_e)
             );
         }
         res
@@ -208,11 +207,11 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
             }
             Ok(distance)
         })();
-        if let Err(ref e) = res {
+        if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to read distance at address 0x{:02x}: {:?}",
                 self.address,
-                defmt::Debug2Format(e)
+                defmt::Debug2Format(_e)
             );
         }
         res

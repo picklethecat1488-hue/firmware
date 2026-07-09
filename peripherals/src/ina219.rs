@@ -37,11 +37,11 @@ impl<I: I2c> Ina219<I> {
             self.write_register(0x05, 4096)?;
             Ok(())
         })();
-        if let Err(ref e) = res {
+        if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to locate or initialize current/power monitor at address 0x{:02x}: {:?}",
                 self.address,
-                defmt::Debug2Format(e)
+                defmt::Debug2Format(_e)
             );
         }
         res
@@ -72,11 +72,11 @@ impl<I: I2c> PowerSensor for Ina219<I> {
     /// Reads the current draw in milliamperes (mA).
     fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
         let res = self.read_register(0x04);
-        if let Err(ref e) = res {
+        if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to read current register at address 0x{:02x}: {:?}",
                 self.address,
-                defmt::Debug2Format(e)
+                defmt::Debug2Format(_e)
             );
         }
         let val = res? as i16;
@@ -87,11 +87,11 @@ impl<I: I2c> PowerSensor for Ina219<I> {
     /// Formula: Bus Voltage Register bits 3-15 shift right 3, LSB is 4 mV.
     fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
         let res = self.read_register(0x02);
-        if let Err(ref e) = res {
+        if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to read voltage register at address 0x{:02x}: {:?}",
                 self.address,
-                defmt::Debug2Format(e)
+                defmt::Debug2Format(_e)
             );
         }
         let reg_val = res?;
@@ -122,11 +122,11 @@ impl<I: I2c> PowerSensor for Ina219<I> {
             self.write_register(0x00, new_config)?;
             Ok(())
         })();
-        if let Err(ref e) = res {
+        if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to set measurement mode at address 0x{:02x}: {:?}",
                 self.address,
-                defmt::Debug2Format(e)
+                defmt::Debug2Format(_e)
             );
         }
         res

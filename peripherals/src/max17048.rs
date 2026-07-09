@@ -52,11 +52,11 @@ impl<I: I2c> FuelGauge for Max17048<I> {
     /// Formula: VCELL * 78.125 uV
     fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
         let res = self.read_register(0x02);
-        if let Err(ref e) = res {
+        if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to read cell voltage at address 0x{:02x}: {:?}",
                 self.address,
-                defmt::Debug2Format(e)
+                defmt::Debug2Format(_e)
             );
         }
         let reg_val = res?;
@@ -69,11 +69,11 @@ impl<I: I2c> FuelGauge for Max17048<I> {
     /// Formula: High byte is percentage integer, low byte is fractional.
     fn read_state_of_charge(&mut self) -> Result<u8, Self::Error> {
         let res = self.read_register(0x04);
-        if let Err(ref e) = res {
+        if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to read state of charge at address 0x{:02x}: {:?}",
                 self.address,
-                defmt::Debug2Format(e)
+                defmt::Debug2Format(_e)
             );
         }
         let reg_val = res?;
@@ -110,11 +110,11 @@ impl<I: I2c> FuelGauge for Max17048<I> {
 
             Ok(())
         })();
-        if let Err(ref e) = res {
+        if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to configure alerts at address 0x{:02x}: {:?}",
                 self.address,
-                defmt::Debug2Format(e)
+                defmt::Debug2Format(_e)
             );
         }
         res
@@ -154,11 +154,11 @@ impl<I: I2c> FuelGauge for Max17048<I> {
 
             Ok((has_voltage_alert, has_soc_alert))
         })();
-        if let Err(ref e) = res {
+        if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to check and clear alerts at address 0x{:02x}: {:?}",
                 self.address,
-                defmt::Debug2Format(e)
+                defmt::Debug2Format(_e)
             );
         }
         res

@@ -103,3 +103,56 @@ def test_valid_file_logs_to_rerun(tmp_path, monkeypatch):
     # Verify the formatted text document value for peripheral error
     idx = paths.index("system/peripheral_error")
     assert logged[idx][1].val == "I2CNackAddress (Addr: 0x60, Reg: 0x0E)"
+
+
+def test_boot_warning_logged_to_rerun(tmp_path, monkeypatch):
+    csv_file = tmp_path / "test.csv"
+    csv_content = "timestamp_us,record_type,val1,val2,val3,val4\n2000000,Boot,Watchdog,,,\n"
+    csv_file.write_text(csv_content)
+
+    monkeypatch.setattr(sys, "argv", ["rerun-loader-csv", str(csv_file)])
+
+    logged = []
+
+    class MockRerun:
+        def init(self, app_id, recording_id=None):
+            pass
+
+        def connect_grpc(self):
+            pass
+
+        def spawn(self):
+            pass
+
+        def stdout(self):
+            pass
+
+        def set_time(self, name, duration):
+            pass
+
+        def log(self, entity_path, entity):
+            logged.append((entity_path, entity))
+
+        class Scalars:
+            def __init__(self, val):
+                self.val = val
+
+        class TextDocument:
+            def __init__(self, val):
+                self.val = val
+
+    monkeypatch.setitem(sys.modules, "rerun", MockRerun())
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
+
+    rerun_loader_csv.main()
+
+    # Find logged paths
+    paths = [item[0] for item in logged]
+    assert "system/boot_reason" in paths
+    assert "system/status" in paths
+
+    idx_boot = paths.index("system/boot_reason")
+    idx_status = paths.index("system/status")
+
+    assert "🚨 SYSTEM RESET (Watchdog) 🚨" in logged[idx_boot][1].val
+    assert "SYSTEM RESET: Watchdog" in logged[idx_status][1].val
