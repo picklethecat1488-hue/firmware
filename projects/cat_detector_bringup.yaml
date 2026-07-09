@@ -62,13 +62,14 @@ steps:
       2. Run 'stop' to halt the motor.
 
   - id: "7"
-    name: Calibrate Motor Current (Water Detection)
+    name: Calibrate Motor Current (Water & Overload Detection)
     type: interactive
-    description: Calibrate motor current draw for empty, 100ml, and full bowl states, and optionally configure RPM parameters.
+    description: Calibrate motor current draw for empty, 100ml, full bowl, and overload states, and optionally configure RPM parameters.
     procedure: |
       1. Run 'cal_motor empty [max_rpm] [rpm_limit]' (e.g. 'cal_motor empty 3000 2500') with empty bowl.
       2. Run 'cal_motor 100ml' with 100ml of water.
       3. Run 'cal_motor full' with full bowl.
+      4. Hold the impeller in place (simulating a stall) and run 'cal_motor overload'.
 
   - id: "8"
     name: Verify System Power States

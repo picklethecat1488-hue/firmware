@@ -436,12 +436,15 @@ impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
     for MotorController<M, C>
 {
     fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
-        if let model::calibration::CalibrationType::MotorCal(min, max, max_rpm, rpm_limit) =
-            calibration
+        if let model::calibration::CalibrationType::MotorCal {
+            current_limits,
+            max_rpm,
+            rpm_limit,
+        } = calibration
         {
             self.calibration_present = true;
-            self.limits.min_current_ma = min;
-            self.limits.max_current_ma = max;
+            self.limits.min_current_ma = current_limits.low;
+            self.limits.max_current_ma = current_limits.high;
             self.limits.max_rpm = max_rpm;
             self.limits.rpm_limit = rpm_limit;
         }

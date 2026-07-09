@@ -39,8 +39,8 @@ pub struct Vl53l0x<I> {
     address: u8,
     threshold_mm: u16,
     hysteresis_mm: u16,
-    cal_near: u16,
-    cal_100: u16,
+    /// Two-point calibration values mapping raw sensor readings.
+    calibration: model::calibration::TwoPointCalibration<u16>,
 }
 
 impl<I: I2c> Vl53l0x<I> {
@@ -51,8 +51,7 @@ impl<I: I2c> Vl53l0x<I> {
             address,
             threshold_mm: 300,
             hysteresis_mm: 50,
-            cal_near: 0,
-            cal_100: 100,
+            calibration: model::calibration::TwoPointCalibration::new(0, 100),
         }
     }
 
@@ -83,7 +82,7 @@ impl<I: I2c> Vl53l0x<I> {
 
     /// Sets the near distance threshold in millimeters.
     pub fn set_threshold_mm(&mut self, threshold_mm: u16) -> Result<(), PeripheralError> {
-        if threshold_mm <= self.cal_near + THRESHOLD_ERROR_MM {
+        if threshold_mm <= self.calibration.low + THRESHOLD_ERROR_MM {
             return Err(PeripheralError::InvalidConfiguration);
         }
         self.threshold_mm = threshold_mm;
@@ -196,15 +195,7 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
             self.clear_interrupt()?;
 
             // Apply two-point calibration
-            if self.cal_100 > self.cal_near {
-                if distance <= self.cal_near {
-                    distance = 0;
-                } else {
-                    distance = (((distance - self.cal_near) as u32 * 100)
-                        / (self.cal_100 - self.cal_near) as u32)
-                        as u16;
-                }
-            }
+            distance = self.calibration.map(distance, 100);
             Ok(distance)
         })();
         if let Err(ref _e) = res {
@@ -220,16 +211,15 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
 
 impl<I: I2c> model::calibration::Calibration for Vl53l0x<I> {
     fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
-        if let model::calibration::CalibrationType::ProximityCal(near, far) = calibration {
+        if let model::calibration::CalibrationType::ProximityCal(cal) = calibration {
             assert!(
-                self.threshold_mm > near + THRESHOLD_ERROR_MM,
-                "threshold_mm ({}) must be greater than cal_near ({}) + THRESHOLD_ERROR_MM ({})",
+                self.threshold_mm > cal.low + THRESHOLD_ERROR_MM,
+                "threshold_mm ({}) must be greater than cal.low ({}) + THRESHOLD_ERROR_MM ({})",
                 self.threshold_mm,
-                near,
+                cal.low,
                 THRESHOLD_ERROR_MM
             );
-            self.cal_near = near;
-            self.cal_100 = far;
+            self.calibration = cal;
         }
     }
 }

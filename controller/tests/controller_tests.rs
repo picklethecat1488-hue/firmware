@@ -24,7 +24,11 @@ fn test_motor_controller_flow() {
 
     // Apply motor calibration so that it can be started
     use model::calibration::{Calibration, CalibrationType};
-    controller.set_calibration(CalibrationType::MotorCal(80, 800, 3000, 0));
+    controller.set_calibration(CalibrationType::MotorCal {
+        current_limits: model::calibration::TwoPointCalibration::new(80, 800),
+        max_rpm: 3000,
+        rpm_limit: 0,
+    });
 
     // Turn on the motor using handle_command
     controller.handle_command(MotorCommand::SetSpeed(MotorSpeed::MAX), None);
@@ -92,9 +96,11 @@ fn test_motor_controller_sad_cases() {
     motor.should_fail = true; // Make motor fail
     let sensor = MockCurrentSensor::new(150);
     let mut controller = MotorController::new(NoTick::new(motor), sensor);
-    controller.set_calibration(model::calibration::CalibrationType::MotorCal(
-        80, 800, 3000, 0,
-    ));
+    controller.set_calibration(model::calibration::CalibrationType::MotorCal {
+        current_limits: model::calibration::TwoPointCalibration::new(80, 800),
+        max_rpm: 3000,
+        rpm_limit: 0,
+    });
 
     // Try starting motor. Since motor is failing, update() or handle_command() should report errors
     let telemetry_channel = Box::leak(Box::new(embassy_sync::channel::Channel::<
@@ -130,9 +136,11 @@ fn test_motor_controller_sad_cases() {
     let mut sensor2 = MockCurrentSensor::new(150);
     sensor2.should_fail = true; // Make current sensor fail
     let mut controller2 = MotorController::new(NoTick::new(motor2), sensor2);
-    controller2.set_calibration(model::calibration::CalibrationType::MotorCal(
-        80, 800, 3000, 0,
-    ));
+    controller2.set_calibration(model::calibration::CalibrationType::MotorCal {
+        current_limits: model::calibration::TwoPointCalibration::new(80, 800),
+        max_rpm: 3000,
+        rpm_limit: 0,
+    });
     controller2.handle_command(MotorCommand::SetSpeed(MotorSpeed::MAX), None); // start motor first (no failure on motor)
 
     let mut client2 =
@@ -359,9 +367,11 @@ fn test_motor_controller_rpm_command() {
     let mut controller = MotorController::new(NoTick::new(motor), sensor);
 
     // Set calibration with max RPM = 3000
-    controller.set_calibration(model::calibration::CalibrationType::MotorCal(
-        80, 800, 3000, 0,
-    ));
+    controller.set_calibration(model::calibration::CalibrationType::MotorCal {
+        current_limits: model::calibration::TwoPointCalibration::new(80, 800),
+        max_rpm: 3000,
+        rpm_limit: 0,
+    });
 
     // Handle SetSpeedRpm(1500) -> sets speed to 50%
     controller.handle_command(

@@ -256,13 +256,15 @@ async fn main(spawner: Spawner) {
     use model::calibration::CalibrationType;
 
     if let Some(cal) = motor_cal {
-        let min_ma = (cal.empty_current_ma + cal.water_100ml_current_ma) / 2;
-        let max_ma = 800;
+        let min_ma = cal.dry_run_limit();
+        let max_ma = cal.stall_limit();
         let max_rpm = cal.max_rpm.unwrap_or(0);
         let rpm_limit = cal.rpm_limit.unwrap_or(0);
-        controller.set_calibration(CalibrationType::MotorCal(
-            min_ma, max_ma, max_rpm, rpm_limit,
-        ));
+        controller.set_calibration(CalibrationType::MotorCal {
+            current_limits: model::calibration::TwoPointCalibration::new(min_ma, max_ma),
+            max_rpm,
+            rpm_limit,
+        });
     }
 
     let mut sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
@@ -277,8 +279,7 @@ async fn main(spawner: Spawner) {
         app::DEFAULT_PROXIMITY_THRESHOLD_MM,
     );
     sensor_ctrl_north.set_calibration(CalibrationType::ProximityCal(
-        proximity_cal.north_near,
-        proximity_cal.north_100,
+        proximity_cal[model::types::Direction::North],
     ));
 
     let mut sensor_ctrl_east = SensorController::new_with_fusion_and_interrupt(
@@ -293,8 +294,7 @@ async fn main(spawner: Spawner) {
         app::DEFAULT_PROXIMITY_THRESHOLD_MM,
     );
     sensor_ctrl_east.set_calibration(CalibrationType::ProximityCal(
-        proximity_cal.east_near,
-        proximity_cal.east_100,
+        proximity_cal[model::types::Direction::East],
     ));
 
     let mut sensor_ctrl_west = SensorController::new_with_fusion_and_interrupt(
@@ -309,8 +309,7 @@ async fn main(spawner: Spawner) {
         app::DEFAULT_PROXIMITY_THRESHOLD_MM,
     );
     sensor_ctrl_west.set_calibration(CalibrationType::ProximityCal(
-        proximity_cal.west_near,
-        proximity_cal.west_100,
+        proximity_cal[model::types::Direction::West],
     ));
 
     // Initialize the real Rp2040TempSensor in SHARED_TEMP_SENSOR
