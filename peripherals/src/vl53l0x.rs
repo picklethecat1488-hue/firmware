@@ -54,7 +54,7 @@ impl<I: I2c> Vl53l0x<I> {
     pub fn set_address(&mut self, new_address: u8) -> Result<(), PeripheralError> {
         self.i2c
             .write(self.address, &[0x8A, new_address & 0x7F])
-            .map_err(|e| e.to_peripheral_error())?;
+            .map_err(|e| e.to_i2c_error(self.address as u16, 0x8A_u16))?;
         self.address = new_address;
         Ok(())
     }
@@ -91,19 +91,19 @@ impl<I: I2c> Vl53l0x<I> {
         let low_bytes = self.threshold_mm.to_be_bytes();
         self.i2c
             .write(self.address, &[0x0E, low_bytes[0], low_bytes[1]])
-            .map_err(|e| e.to_peripheral_error())?;
+            .map_err(|e| e.to_i2c_error(self.address as u16, 0x0E_u16))?;
 
         // Write SYSTEM_THRESH_HIGH (0x0C) - 16-bit value (MSB first)
         let high_val = self.threshold_mm + self.hysteresis_mm;
         let high_bytes = high_val.to_be_bytes();
         self.i2c
             .write(self.address, &[0x0C, high_bytes[0], high_bytes[1]])
-            .map_err(|e| e.to_peripheral_error())?;
+            .map_err(|e| e.to_i2c_error(self.address as u16, 0x0C_u16))?;
 
         // Write SYSTEM_INTERRUPT_GPIO_CONFIG (0x0A) - 8-bit value
         self.i2c
             .write(self.address, &[0x0A, mode as u8])
-            .map_err(|e| e.to_peripheral_error())?;
+            .map_err(|e| e.to_i2c_error(self.address as u16, 0x0A_u16))?;
 
         // Clear any pending interrupt to start fresh
         self.clear_interrupt()?;
@@ -115,7 +115,7 @@ impl<I: I2c> Vl53l0x<I> {
     pub fn clear_interrupt(&mut self) -> Result<(), PeripheralError> {
         self.i2c
             .write(self.address, &[0x0B, 0x01])
-            .map_err(|e| e.to_peripheral_error())?;
+            .map_err(|e| e.to_i2c_error(self.address as u16, 0x0B_u16))?;
         Ok(())
     }
 
@@ -125,7 +125,7 @@ impl<I: I2c> Vl53l0x<I> {
         // Write 0x5436 (representing ~1104818 mclks for 200ms timeout) to 0x71 (16-bit register)
         self.i2c
             .write(self.address, &[0x71, 0x54, 0x36])
-            .map_err(|e| e.to_peripheral_error())?;
+            .map_err(|e| e.to_i2c_error(self.address as u16, 0x71_u16))?;
         Ok(())
     }
 }
@@ -140,13 +140,13 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
         // Trigger a measurement (write 0x01 to register 0x00 for System Start)
         self.i2c
             .write(self.address, &[0x00, 0x01])
-            .map_err(|e| e.to_peripheral_error())?;
+            .map_err(|e| e.to_i2c_error(self.address as u16, 0x00_u16))?;
 
         // Read 16-bit range result from register 0x1E (High Byte) and 0x1F (Low Byte)
         let mut buf = [0u8; 2];
         self.i2c
             .write_read(self.address, &[0x1E], &mut buf)
-            .map_err(|e| e.to_peripheral_error())?;
+            .map_err(|e| e.to_i2c_error(self.address as u16, 0x1E_u16))?;
         let mut distance = u16::from_be_bytes(buf);
 
         // Clear interrupt status so the pin can trigger again (write 0x01 to register 0x0B)

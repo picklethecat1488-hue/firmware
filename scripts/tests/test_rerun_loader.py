@@ -49,6 +49,7 @@ def test_valid_file_logs_to_rerun(tmp_path, monkeypatch):
         "1000000,Battery,3800,25000,Ok,\n"
         "2000000,Motor,100,true,,\n"
         "3000000,Thermal,25000,false,,\n"
+        "4000000,PeripheralError,I2CNackAddress,0x60,0x0E,\n"
     )
     csv_file.write_text(csv_content)
 
@@ -97,3 +98,8 @@ def test_valid_file_logs_to_rerun(tmp_path, monkeypatch):
     paths = [item[0] for item in logged]
     assert "thermal/temperature" in paths
     assert "thermal/overheating" in paths
+    assert "system/peripheral_error" in paths
+
+    # Verify the formatted text document value for peripheral error
+    idx = paths.index("system/peripheral_error")
+    assert logged[idx][1].val == "I2CNackAddress (Addr: 0x60, Reg: 0x0E)"
