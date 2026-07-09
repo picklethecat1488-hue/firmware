@@ -7,7 +7,7 @@ use model::types::MotorSpeed;
 /// A mock implementation of a Motor for unit testing on the host.
 pub struct MockMotor {
     /// Currently configured speed of the mock motor.
-    pub speed: u8,
+    pub speed: i8,
     /// Indicates if the mock motor is currently running.
     pub is_running: bool,
     /// Whether motor driver commands should fail.
@@ -41,7 +41,7 @@ impl Motor for MockMotor {
         } else {
             let speed_raw = speed.get();
             self.speed = speed_raw;
-            self.is_running = speed_raw > 0;
+            self.is_running = speed_raw != 0;
             Ok(())
         }
     }

@@ -47,9 +47,10 @@ impl<'a> embedded_cli::arguments::FromArgument<'a> for SensorDirection {
 #[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
 pub enum CliCommand {
     /// Motor speed control (motor <speed>)
+    #[command(name = "motor")]
     Motor {
-        /// Speed value (0-100)
-        speed: u8,
+        /// Target speed percentage (-100 to 100)
+        speed: i8,
     },
     /// Stop the motor
     Stop,

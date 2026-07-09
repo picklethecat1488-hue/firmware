@@ -376,23 +376,24 @@ fn test_motor_controller_rpm_command() {
     }
     assert_eq!(controller.motor.speed, 50);
 
-    // Handle SetSpeedRpm(-3000) (signed/reverse, but motor speed is positive percentage)
+    // Handle SetSpeedRpm(-3000) (signed/reverse direction)
     controller.handle_command(
         controller::motor_controller::MotorCommand::SetSpeedRpm(-3000),
         None,
     );
-    for _ in 0..50 {
+    for _ in 0..150 {
         controller.tick_motor().unwrap();
     }
-    assert_eq!(controller.motor.speed, 100);
+    assert_eq!(controller.motor.speed, -100);
 
     // Handle SetSpeedRpm(4000) (clamped to 100)
     controller.handle_command(
         controller::motor_controller::MotorCommand::SetSpeedRpm(4000),
         None,
     );
-    controller.tick_motor().unwrap();
-    // It's already at 100, so 1 tick is enough
+    for _ in 0..200 {
+        controller.tick_motor().unwrap();
+    }
     assert_eq!(controller.motor.speed, 100);
 }
 

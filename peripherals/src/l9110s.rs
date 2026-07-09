@@ -10,7 +10,7 @@ use model::types::MotorSpeed;
 pub struct L9110s<P1, P2> {
     pin_ia: P1,
     pin_ib: P2,
-    speed: u8,
+    speed: i8,
     tick_counter: u8,
 }
 
@@ -41,6 +41,10 @@ where
         if speed_raw > 0 {
             self.pin_ib.set_low().map_err(L9110sError::PinIb)?;
             self.pin_ia.set_high().map_err(L9110sError::PinIa)?;
+        } else if speed_raw < 0 {
+            // Reverse direction: IA low, IB high
+            self.pin_ia.set_low().map_err(L9110sError::PinIa)?;
+            self.pin_ib.set_high().map_err(L9110sError::PinIb)?;
         } else {
             self.stop()?;
         }
@@ -66,15 +70,21 @@ where
 
     /// Updates the duty cycle (soft-PWM) state of the motor.
     fn tick(&mut self) -> Result<(), Self::Error> {
-        if self.speed == 0 || self.speed >= 100 {
+        let abs_speed = self.speed.abs();
+        if abs_speed == 0 || abs_speed >= 100 {
             return Ok(());
         }
 
         self.tick_counter = (self.tick_counter + 1) % 10;
-        let threshold = self.speed / 10;
+        let threshold = (abs_speed / 10) as u8;
         if self.tick_counter < threshold {
-            self.pin_ib.set_low().map_err(L9110sError::PinIb)?;
-            self.pin_ia.set_high().map_err(L9110sError::PinIa)?;
+            if self.speed > 0 {
+                self.pin_ib.set_low().map_err(L9110sError::PinIb)?;
+                self.pin_ia.set_high().map_err(L9110sError::PinIa)?;
+            } else {
+                self.pin_ia.set_low().map_err(L9110sError::PinIa)?;
+                self.pin_ib.set_high().map_err(L9110sError::PinIb)?;
+            }
         } else {
             self.pin_ia.set_low().map_err(L9110sError::PinIa)?;
             self.pin_ib.set_low().map_err(L9110sError::PinIb)?;
