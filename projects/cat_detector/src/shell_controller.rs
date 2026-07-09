@@ -47,9 +47,10 @@ impl<'a> embedded_cli::arguments::FromArgument<'a> for SensorDirection {
 #[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
 pub enum CliCommand {
     /// Motor speed control (motor <speed>)
+    #[command(name = "motor")]
     Motor {
-        /// Speed value (0-100)
-        speed: u8,
+        /// Target speed percentage (-100 to 100)
+        speed: i8,
     },
     /// Stop the motor
     Stop,
@@ -76,11 +77,15 @@ pub enum CliCommand {
         /// Sensor direction ('north', 'east', or 'west')
         direction: SensorDirection,
     },
-    /// Calibrate motor current levels (cal_motor <empty|100ml|full>)
+    /// Calibrate motor current levels (cal_motor <empty|100ml|full> [max_rpm] [rpm_limit])
     #[command(name = "cal_motor")]
     CalMotor {
         /// Calibration state ('empty', '100ml', or 'full')
         state: MotorCalState,
+        /// Optional physical maximum RPM at 100% duty cycle
+        max_rpm: Option<u32>,
+        /// Optional maximum RPM safety limit to configure
+        rpm_limit: Option<u32>,
     },
     /// Read the RP2040 system temperature
     #[command(name = "mcu_temp")]
@@ -114,6 +119,7 @@ impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
     }
 }
 use model::interfaces::{Motor, PowerSensor, ProximitySensor, TemperatureSensor};
+use model::types::MotorSpeed;
 
 /// Controller responsible for processing shell commands.
 /// Context pointers to drivers and controllers for direct diagnostics.
@@ -600,11 +606,15 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                     Err("I2C controller not available")
                 }
             }
-            CliCommand::CalMotor { state } => {
+            CliCommand::CalMotor {
+                state,
+                max_rpm,
+                rpm_limit,
+            } => {
                 if let Some(motor_raw) = self.motor_ptr {
                     let motor = unsafe { &mut *motor_raw };
                     let _ = core::writeln!(writer, "\r\nStarting motor for calibration...");
-                    let _ = motor.set_speed(100);
+                    let _ = motor.set_speed(MotorSpeed::MAX);
 
                     let _ = core::writeln!(writer, "Waiting 1 second for motor to ramp up...");
                     embassy_time::block_for(embassy_time::Duration::from_millis(1000));
@@ -672,6 +682,22 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                                 MotorCalState::Empty => cal.empty_current_ma = current,
                                 MotorCalState::Water100ml => cal.water_100ml_current_ma = current,
                                 MotorCalState::Full => cal.full_current_ma = current,
+                            }
+                            if let Some(max_rpm_val) = max_rpm {
+                                cal.max_rpm = Some(max_rpm_val);
+                                let _ = core::writeln!(
+                                    writer,
+                                    "Configuring physical maximum RPM to {} RPM.",
+                                    max_rpm_val
+                                );
+                            }
+                            if let Some(limit_val) = rpm_limit {
+                                cal.rpm_limit = Some(limit_val);
+                                let _ = core::writeln!(
+                                    writer,
+                                    "Configuring maximum RPM safety limit to {} RPM.",
+                                    limit_val
+                                );
                             }
 
                             let mut write_buf = [0u8; 128];

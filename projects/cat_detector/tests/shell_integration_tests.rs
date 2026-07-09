@@ -74,7 +74,7 @@ struct MockMotor;
 
 impl model::interfaces::Motor for MockMotor {
     type Error = core::convert::Infallible;
-    fn set_speed(&mut self, _speed: u8) -> Result<(), Self::Error> {
+    fn set_speed(&mut self, _speed: model::types::MotorSpeed) -> Result<(), Self::Error> {
         Ok(())
     }
     fn stop(&mut self) -> Result<(), Self::Error> {
@@ -150,7 +150,7 @@ impl BlockingProximityReader for MockSensorCtrl {
 }
 
 struct MockMotorCtrl {
-    speed: core::cell::Cell<u8>,
+    speed: core::cell::Cell<i8>,
 }
 impl BlockingMotorReader for MockMotorCtrl {
     fn read_current_ma_blocking(&mut self) -> Result<i32, PeripheralError> {
@@ -158,7 +158,7 @@ impl BlockingMotorReader for MockMotorCtrl {
     }
 }
 impl BlockingMotorWriter for MockMotorCtrl {
-    fn set_motor_speed(&mut self, speed: u8) -> Result<(), PeripheralError> {
+    fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
         self.speed.set(speed);
         Ok(())
     }

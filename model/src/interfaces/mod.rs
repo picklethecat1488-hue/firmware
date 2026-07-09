@@ -22,3 +22,6 @@ pub use charge_status::ChargeStatus;
 
 pub mod led;
 pub use led::LedDriver;
+
+pub mod tickable;
+pub use tickable::{NoTick, Tickable};

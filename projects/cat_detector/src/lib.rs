@@ -7,10 +7,10 @@
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
 #![deny(missing_docs)]
 
-/// Onboard LED pin (GPIO 25)
-pub const LED_PIN: u32 = 25;
-/// Pump control pin (uses Pin 25 / Onboard LED for status feedback)
-pub const PUMP_PIN: u32 = 25;
+/// Pump IA pin (GPIO 14)
+pub const PUMP_PIN_IA: u32 = 14;
+/// Pump IB pin (GPIO 15)
+pub const PUMP_PIN_IB: u32 = 15;
 /// I2C SDA pin (GPIO 4)
 pub const I2C_SDA_PIN: u32 = 4;
 /// I2C SCL pin (GPIO 5)

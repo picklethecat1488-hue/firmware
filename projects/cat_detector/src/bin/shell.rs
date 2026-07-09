@@ -40,7 +40,10 @@ static mut BOARD_I2C: Option<
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 static mut BOARD_MOTOR: Option<
-    *mut peripherals::motor::GpioMotor<embassy_rp::gpio::Flex<'static>>,
+    *mut peripherals::l9110s::L9110s<
+        embassy_rp::gpio::Flex<'static>,
+        embassy_rp::gpio::Flex<'static>,
+    >,
 > = None;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -66,12 +69,15 @@ async fn main(spawner: Spawner) {
     // Initialize board peripherals using the unified board configuration
     let mut board = app::Board::init(p);
 
-    // Extract the motor control pin from the board configuration array
-    let motor_pin = board.gpio_pins[app::LED_PIN as usize]
+    // Extract the motor control pins from the board configuration array
+    let motor_pin_ia = board.gpio_pins[app::PUMP_PIN_IA as usize]
         .take()
-        .expect("Motor pin must be available");
+        .expect("Motor pin IA must be available");
+    let motor_pin_ib = board.gpio_pins[app::PUMP_PIN_IB as usize]
+        .take()
+        .expect("Motor pin IB must be available");
 
-    let mut motor = peripherals::motor::GpioMotor::new(motor_pin);
+    let mut motor = peripherals::l9110s::L9110s::new(motor_pin_ia, motor_pin_ib);
 
     unsafe {
         BOARD_I2C = Some(&mut board.i2c as *mut _ as *mut _);

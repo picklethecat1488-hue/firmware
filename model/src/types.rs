@@ -45,6 +45,101 @@ pub enum BatteryState {
     Critical,
 }
 
+/// Represents a motor speed limited to the range -100 to 100.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub struct MotorSpeed(i8);
+
+impl<C> minicbor::Encode<C> for MotorSpeed {
+    fn encode<W: minicbor::encode::Write>(
+        &self,
+        e: &mut minicbor::Encoder<W>,
+        ctx: &mut C,
+    ) -> Result<(), minicbor::encode::Error<W::Error>> {
+        self.0.encode(e, ctx)
+    }
+}
+
+impl<'b, C> minicbor::Decode<'b, C> for MotorSpeed {
+    fn decode(d: &mut minicbor::Decoder<'b>, ctx: &mut C) -> Result<Self, minicbor::decode::Error> {
+        let val = i8::decode(d, ctx)?;
+        Self::new(val).ok_or_else(|| minicbor::decode::Error::message("invalid motor speed"))
+    }
+}
+
+impl MotorSpeed {
+    /// Zero speed constant.
+    pub const ZERO: Self = Self(0);
+
+    /// Maximum speed constant.
+    pub const MAX: Self = Self(100);
+
+    /// Minimum speed constant (full reverse).
+    pub const MIN: Self = Self(-100);
+
+    /// Creates a new `MotorSpeed` if the value is in the range -100 to 100.
+    pub const fn new(value: i8) -> Option<Self> {
+        if value >= -100 && value <= 100 {
+            Some(Self(value))
+        } else {
+            None
+        }
+    }
+
+    /// Creates a new `MotorSpeed` saturating the value to the range -100 to 100.
+    pub const fn new_saturating(value: i8) -> Self {
+        if value > 100 {
+            Self(100)
+        } else if value < -100 {
+            Self(-100)
+        } else {
+            Self(value)
+        }
+    }
+
+    /// Returns the speed value as a raw i8.
+    pub const fn get(&self) -> i8 {
+        self.0
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl core::fmt::Debug for MotorSpeed {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl core::fmt::Display for MotorSpeed {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Error indicating that a motor speed value is invalid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidSpeedError;
+
+impl TryFrom<u8> for MotorSpeed {
+    type Error = InvalidSpeedError;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value <= 100 {
+            Self::new(value as i8).ok_or(InvalidSpeedError)
+        } else {
+            Err(InvalidSpeedError)
+        }
+    }
+}
+
+impl TryFrom<i8> for MotorSpeed {
+    type Error = InvalidSpeedError;
+
+    fn try_from(value: i8) -> Result<Self, Self::Error> {
+        Self::new(value).ok_or(InvalidSpeedError)
+    }
+}
+
 /// Telemetry status of the motor (pump) system.
 #[derive(Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
@@ -55,7 +150,7 @@ pub enum MotorStatus {
     Brake,
     /// Motor is running at the specified speed (0-100).
     #[n(1)]
-    Running(#[n(0)] u8),
+    Running(#[n(0)] MotorSpeed),
 }
 
 /// Telemetry status of the thermal monitoring system.

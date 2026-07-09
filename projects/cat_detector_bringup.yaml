@@ -64,9 +64,9 @@ steps:
   - id: "7"
     name: Calibrate Motor Current (Water Detection)
     type: interactive
-    description: Calibrate motor current draw for empty, 100ml, and full bowl states.
+    description: Calibrate motor current draw for empty, 100ml, and full bowl states, and optionally configure RPM parameters.
     procedure: |
-      1. Run 'cal_motor empty' with empty bowl.
+      1. Run 'cal_motor empty [max_rpm] [rpm_limit]' (e.g. 'cal_motor empty 3000 2500') with empty bowl.
       2. Run 'cal_motor 100ml' with 100ml of water.
       3. Run 'cal_motor full' with full bowl.
 

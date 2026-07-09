@@ -4,9 +4,12 @@
 
 use crate::telemetry_controller::MotorTelemetryClient;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use model::interfaces::{Motor, PowerMeasurementMode, PowerSensor};
+use model::interfaces::{Motor, PowerMeasurementMode, PowerSensor, Tickable};
 use model::telemetry::TelemetryClient;
-use model::types::PeripheralError;
+use model::types::{MotorSpeed, PeripheralError};
+
+/// The tick interval of the motor controller (10ms / 100Hz).
+pub const MOTOR_TICK_INTERVAL: embassy_time::Duration = embassy_time::Duration::from_millis(10);
 use peripherals::ToPeripheralError;
 
 /// The operating states of the motor.
@@ -19,6 +22,47 @@ pub enum MotorState {
     On,
 }
 
+/// Status representing safety check results.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MotorSafetyStatus {
+    /// All limits are within safe operating parameters.
+    Ok,
+    /// The motor RPM exceeded the safety limit.
+    RpmExceeded(u32),
+    /// Low load / dry run detected.
+    DryRun(i32),
+    /// Motor stall detected (high current).
+    Stall(i32),
+}
+
+/// Safety limits for the motor controller.
+pub struct MotorLimits {
+    /// Minimum current threshold in mA for dry-run detection.
+    pub min_current_ma: i32,
+    /// Maximum current threshold in mA for stall detection.
+    pub max_current_ma: i32,
+    /// Physical maximum RPM at 100% duty cycle.
+    pub max_rpm: u32,
+    /// Maximum RPM limit for safety cut-off.
+    pub rpm_limit: u32,
+}
+
+impl MotorLimits {
+    /// Checks if the given RPM and current draw violate configured safety limits.
+    pub fn check_limits(&self, rpm: u32, current_ma: i32) -> MotorSafetyStatus {
+        if self.rpm_limit > 0 && rpm > self.rpm_limit {
+            return MotorSafetyStatus::RpmExceeded(rpm);
+        }
+        if current_ma < self.min_current_ma {
+            return MotorSafetyStatus::DryRun(current_ma);
+        }
+        if current_ma > self.max_current_ma {
+            return MotorSafetyStatus::Stall(current_ma);
+        }
+        MotorSafetyStatus::Ok
+    }
+}
+
 /// A generalized motor controller that orchestrates motor driver outputs and current sensor monitoring.
 pub struct MotorController<M, C> {
     state: MotorState,
@@ -28,16 +72,17 @@ pub struct MotorController<M, C> {
     pub current_sensor: C,
     /// Telemetry: last measured current in mA.
     last_current_ma: i32,
-    speed: u8,
-    min_current_ma: i32,
-    max_current_ma: i32,
+    speed: MotorSpeed,
+    active_speed: MotorSpeed,
     calibration_present: bool,
+    limits: MotorLimits,
 }
 
-impl<M: Motor, C: PowerSensor> MotorController<M, C>
+impl<M: Motor + Tickable, C: PowerSensor> MotorController<M, C>
 where
-    <C as PowerSensor>::Error: ToPeripheralError,
     <M as Motor>::Error: ToPeripheralError,
+    <M as Tickable>::Error: ToPeripheralError,
+    <C as PowerSensor>::Error: ToPeripheralError,
 {
     /// Creates a new motor controller managing the specified motor and current sensor.
     pub const fn new(motor: M, current_sensor: C) -> Self {
@@ -46,10 +91,15 @@ where
             motor,
             current_sensor,
             last_current_ma: 0,
-            speed: 0,
-            min_current_ma: 15,
-            max_current_ma: 800,
+            speed: MotorSpeed::ZERO,
+            active_speed: MotorSpeed::ZERO,
             calibration_present: false,
+            limits: MotorLimits {
+                min_current_ma: 15,
+                max_current_ma: 800,
+                max_rpm: 0,
+                rpm_limit: 0,
+            },
         }
     }
 
@@ -60,18 +110,27 @@ where
 
     /// Gets the minimum current limit in mA.
     pub fn min_current_ma(&self) -> i32 {
-        self.min_current_ma
+        self.limits.min_current_ma
     }
 
     /// Gets the maximum current limit in mA.
     pub fn max_current_ma(&self) -> i32 {
-        self.max_current_ma
+        self.limits.max_current_ma
     }
 
     /// Sets the minimum and maximum current limits for load/stall safety checks.
     pub fn set_current_limits(&mut self, min_ma: i32, max_ma: i32) {
-        self.min_current_ma = min_ma;
-        self.max_current_ma = max_ma;
+        self.limits.min_current_ma = min_ma;
+        self.limits.max_current_ma = max_ma;
+    }
+
+    /// Returns the current estimated RPM based on the active speed and max_rpm calibration.
+    pub fn current_rpm(&self) -> u32 {
+        if self.limits.max_rpm == 0 {
+            0
+        } else {
+            (self.active_speed.get() as u32) * self.limits.max_rpm / 100
+        }
     }
 
     /// Gets the last measured current in mA.
@@ -92,7 +151,7 @@ where
     /// Ticks the control loop, reading current sensor input and updating safety states.
     pub fn update(
         &mut self,
-        telemetry_client: Option<
+        mut telemetry_client: Option<
             &mut MotorTelemetryClient<
                 '_,
                 CriticalSectionRawMutex,
@@ -109,34 +168,35 @@ where
             0
         };
 
-        // If the motor is running, verify load torque
+        // If the motor is running, verify safety limits (RPM and load torque)
         if self.state == MotorState::On {
-            // Check for dry running (current is unusually low when running)
-            if current < self.min_current_ma {
-                self.state = MotorState::Off;
-                self.speed = 0;
-                self.motor.stop().map_err(|e| e.to_peripheral_error())?;
-                self.current_sensor
-                    .set_measurement_mode(PowerMeasurementMode::PowerDown)
-                    .map_err(|e| e.to_peripheral_error())?;
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::warn!(
-                    "Motor Controller: Low load / dry detected (current: {} mA). Stopped motor.",
-                    current
-                );
-            } else if current > self.max_current_ma {
-                // Check for motor stall (current is too high)
-                self.state = MotorState::Off;
-                self.speed = 0;
-                self.motor.stop().map_err(|e| e.to_peripheral_error())?;
-                let _ = self
-                    .current_sensor
-                    .set_measurement_mode(PowerMeasurementMode::PowerDown);
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::error!(
-                    "Motor Controller: Motor stall detected (current: {} mA). Stopped motor.",
-                    current
-                );
+            let rpm = self.current_rpm();
+            match self.limits.check_limits(rpm, current) {
+                MotorSafetyStatus::RpmExceeded(_rpm_val) => {
+                    self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut());
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::error!(
+                        "Motor Controller: RPM safety limit exceeded ({} RPM). Stopped motor.",
+                        _rpm_val
+                    );
+                }
+                MotorSafetyStatus::DryRun(_current_val) => {
+                    self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut());
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::warn!(
+                        "Motor Controller: Low load / dry detected (current: {} mA). Stopped motor.",
+                        _current_val
+                    );
+                }
+                MotorSafetyStatus::Stall(_current_val) => {
+                    self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut());
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::error!(
+                        "Motor Controller: Motor stall detected (current: {} mA). Stopped motor.",
+                        _current_val
+                    );
+                }
+                MotorSafetyStatus::Ok => {}
             }
         }
 
@@ -157,7 +217,7 @@ where
     pub fn handle_command(
         &mut self,
         cmd: MotorCommand,
-        telemetry_client: Option<
+        mut telemetry_client: Option<
             &mut MotorTelemetryClient<
                 '_,
                 CriticalSectionRawMutex,
@@ -167,7 +227,7 @@ where
     ) {
         match cmd {
             MotorCommand::SetSpeed(speed) => {
-                if speed > 0 {
+                if speed != MotorSpeed::ZERO {
                     if !self.calibration_present {
                         if self.speed != speed {
                             #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -190,32 +250,33 @@ where
                         }
                     }
                     self.speed = speed;
-                    if let Err(e) = self.motor.set_speed(speed) {
-                        if let Some(ref client) = telemetry_client {
-                            client.report_error(e.to_peripheral_error());
-                        }
-                    }
                 } else {
-                    self.state = MotorState::Off;
-                    self.speed = 0;
-                    if let Err(e) = self.motor.stop() {
-                        if let Some(ref client) = telemetry_client {
-                            client.report_error(e.to_peripheral_error());
-                        }
-                    }
-                    if let Err(e) = self
-                        .current_sensor
-                        .set_measurement_mode(PowerMeasurementMode::PowerDown)
-                    {
-                        if let Some(ref client) = telemetry_client {
-                            client.report_error(e.to_peripheral_error());
-                        }
-                    }
+                    // Set target speed to 0 and let it ramp down
+                    self.speed = MotorSpeed::ZERO;
                 }
             }
+            MotorCommand::SetSpeedRpm(rpm) => {
+                let speed_val = if self.limits.max_rpm == 0 {
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::warn!(
+                        "Motor Controller: Cannot set speed by RPM, max_rpm calibration is not set!"
+                    );
+                    0
+                } else {
+                    let val = (rpm * 100) / (self.limits.max_rpm as i32);
+                    val.clamp(-100, 100)
+                };
+                let speed = MotorSpeed::new(speed_val as i8).unwrap_or(MotorSpeed::ZERO);
+                self.handle_command(
+                    MotorCommand::SetSpeed(speed),
+                    telemetry_client.as_deref_mut(),
+                );
+            }
             MotorCommand::Stop => {
+                // Immediate emergency stop
                 self.state = MotorState::Off;
-                self.speed = 0;
+                self.speed = MotorSpeed::ZERO;
+                self.active_speed = MotorSpeed::ZERO;
                 if let Err(e) = self.motor.stop() {
                     if let Some(ref client) = telemetry_client {
                         client.report_error(e.to_peripheral_error());
@@ -243,6 +304,66 @@ where
         }
     }
 
+    /// Ticks the motor controller at a high frequency (e.g. 100Hz / every 10ms).
+    /// This updates the ramping of the motor speed and runs the motor driver's duty cycle ticks.
+    pub fn tick_motor(&mut self) -> Result<(), PeripheralError> {
+        // 1. Ramping logic
+        if self.state == MotorState::On {
+            if self.active_speed < self.speed {
+                // Ramp up
+                let next = (self.active_speed.get() + 1).min(self.speed.get());
+                self.active_speed = MotorSpeed::new(next).unwrap();
+                if self.active_speed == MotorSpeed::ZERO && self.speed == MotorSpeed::ZERO {
+                    self.state = MotorState::Off;
+                    self.motor.stop().map_err(|e| e.to_peripheral_error())?;
+                    let _ = self
+                        .current_sensor
+                        .set_measurement_mode(PowerMeasurementMode::PowerDown);
+                } else {
+                    self.motor
+                        .set_speed(self.active_speed)
+                        .map_err(|e| e.to_peripheral_error())?;
+                }
+            } else if self.active_speed > self.speed {
+                // Ramp down
+                let next = (self.active_speed.get() - 1).max(self.speed.get());
+                self.active_speed = MotorSpeed::new(next).unwrap();
+                if self.active_speed == MotorSpeed::ZERO && self.speed == MotorSpeed::ZERO {
+                    self.state = MotorState::Off;
+                    self.motor.stop().map_err(|e| e.to_peripheral_error())?;
+                    let _ = self
+                        .current_sensor
+                        .set_measurement_mode(PowerMeasurementMode::PowerDown);
+                } else {
+                    self.motor
+                        .set_speed(self.active_speed)
+                        .map_err(|e| e.to_peripheral_error())?;
+                }
+            }
+        } else if self.active_speed.get() != 0 {
+            // Ramping down/up to 0 even if state is Off
+            let current_raw = self.active_speed.get();
+            let next = if current_raw > 0 {
+                current_raw - 1
+            } else {
+                current_raw + 1
+            };
+            self.active_speed = MotorSpeed::new(next).unwrap();
+            if self.active_speed == MotorSpeed::ZERO {
+                self.motor.stop().map_err(|e| e.to_peripheral_error())?;
+            } else {
+                self.motor
+                    .set_speed(self.active_speed)
+                    .map_err(|e| e.to_peripheral_error())?;
+            }
+        }
+
+        // 2. Call motor driver's tick() for software PWM toggling
+        self.motor.tick().map_err(|e| e.to_peripheral_error())?;
+
+        Ok(())
+    }
+
     /// Runs the controller's control loop infinitely, reading from the command channel.
     pub async fn run<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex, const N: usize>(
         mut self,
@@ -263,22 +384,30 @@ where
             telemetry_client.report_error(e.to_peripheral_error());
         }
 
+        let mut ticker = embassy_time::Ticker::every(MOTOR_TICK_INTERVAL);
+        let mut slow_tick_counter = 0;
+
         loop {
-            match embassy_time::with_timeout(
-                embassy_time::Duration::from_millis(1000),
-                command_rx.receive(),
-            )
-            .await
-            {
-                Ok(cmd) => {
-                    self.handle_command(cmd, Some(&mut telemetry_client));
-                }
-                Err(_timeout) => {
-                    if let Err(e) = self.update(Some(&mut telemetry_client)) {
-                        telemetry_client.report_error(e);
-                    }
+            // Process any available commands non-blockingly
+            while let Ok(cmd) = command_rx.try_receive() {
+                self.handle_command(cmd, Some(&mut telemetry_client));
+            }
+
+            // Tick ramping and duty cycle
+            if let Err(e) = self.tick_motor() {
+                telemetry_client.report_error(e);
+            }
+
+            // Run telemetry, safety, and current monitoring once per second
+            slow_tick_counter += 1;
+            if slow_tick_counter >= 100 {
+                slow_tick_counter = 0;
+                if let Err(e) = self.update(Some(&mut telemetry_client)) {
+                    telemetry_client.report_error(e);
                 }
             }
+
+            ticker.next().await;
         }
     }
 }
@@ -287,7 +416,9 @@ where
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MotorCommand {
     /// Set the motor speed (0-100)
-    SetSpeed(u8),
+    SetSpeed(model::types::MotorSpeed),
+    /// Set the motor speed using a target RPM (signed)
+    SetSpeedRpm(i32),
     /// Stop the motor
     Stop,
 }
@@ -301,37 +432,42 @@ pub enum MotorError<ME, CE> {
     CurrentSensor(CE),
 }
 
-impl<M: Motor, C: PowerSensor> model::calibration::Calibration for MotorController<M, C> {
-    #[allow(clippy::single_match)]
+impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
+    for MotorController<M, C>
+{
     fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
-        match calibration {
-            model::calibration::CalibrationType::MotorCal(min, max) => {
-                self.calibration_present = true;
-                self.min_current_ma = min;
-                self.max_current_ma = max;
-            }
-            _ => {}
+        if let model::calibration::CalibrationType::MotorCal(min, max, max_rpm, rpm_limit) =
+            calibration
+        {
+            self.calibration_present = true;
+            self.limits.min_current_ma = min;
+            self.limits.max_current_ma = max;
+            self.limits.max_rpm = max_rpm;
+            self.limits.rpm_limit = rpm_limit;
         }
     }
 }
 
-impl<M: Motor, C: PowerSensor> crate::BlockingMotorReader for MotorController<M, C>
+impl<M: Motor + Tickable, C: PowerSensor> crate::BlockingMotorReader for MotorController<M, C>
 where
     <C as PowerSensor>::Error: ToPeripheralError,
     <M as Motor>::Error: ToPeripheralError,
+    <M as Tickable>::Error: ToPeripheralError,
 {
     fn read_current_ma_blocking(&mut self) -> Result<i32, PeripheralError> {
         self.read_torque_ma()
     }
 }
 
-impl<M: Motor, C: PowerSensor> crate::BlockingMotorWriter for MotorController<M, C>
+impl<M: Motor + Tickable, C: PowerSensor> crate::BlockingMotorWriter for MotorController<M, C>
 where
     <C as PowerSensor>::Error: ToPeripheralError,
     <M as Motor>::Error: ToPeripheralError,
+    <M as Tickable>::Error: ToPeripheralError,
 {
-    fn set_motor_speed(&mut self, speed: u8) -> Result<(), PeripheralError> {
-        let _ = self.motor.set_speed(speed);
+    fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
+        let motor_speed = MotorSpeed::new(speed).ok_or(PeripheralError::InvalidConfiguration)?;
+        let _ = self.motor.set_speed(motor_speed);
         Ok(())
     }
 }

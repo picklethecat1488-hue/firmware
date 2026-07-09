@@ -3,17 +3,29 @@ use crate::string_to_key;
 use std::fs::File;
 use std::io::{self, Write};
 
-#[allow(clippy::too_many_arguments)]
+/// Arguments for copying files between device and host.
+pub struct CpArgs<'a> {
+    /// Source file path (e.g. dev:log.txt or host path)
+    pub src: &'a str,
+    /// Destination file path (e.g. dev:log.txt or host path)
+    pub dest: &'a str,
+    /// Optional ELF file path for decoding dump logs
+    pub dump_option: &'a Option<String>,
+}
+
 pub async fn run(
     flash: &mut EitherFlash,
     flash_range: std::ops::Range<u32>,
     cache: &mut sequential_storage::cache::NoCache,
     spinner: &indicatif::ProgressBar,
-    src: &str,
-    dest: &str,
-    dump_option: &Option<String>,
+    args: CpArgs<'_>,
     buf: &mut [u8],
 ) -> io::Result<()> {
+    let CpArgs {
+        src,
+        dest,
+        dump_option,
+    } = args;
     let (dir_buf, file_buf) = buf.split_at_mut(1024 * 8);
     let src_is_dev = src.starts_with("dev:");
     let dest_is_dev = dest.starts_with("dev:");

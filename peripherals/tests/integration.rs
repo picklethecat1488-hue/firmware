@@ -1,5 +1,5 @@
 use embedded_hal::digital::{ErrorType, InputPin, OutputPin};
-use peripherals::motor::{GpioMotor, Motor};
+use peripherals::{Motor, MotorSpeed, Tickable};
 
 struct MockPin<'a> {
     is_high: &'a core::cell::Cell<bool>,
@@ -30,32 +30,6 @@ impl<'a> InputPin for MockPin<'a> {
 }
 
 #[test]
-fn test_gpio_motor_functional() {
-    let pin_state = core::cell::Cell::new(false);
-    let pin = MockPin {
-        is_high: &pin_state,
-    };
-    let mut motor = GpioMotor::new(pin);
-
-    // 1. Initially low
-    assert!(!pin_state.get());
-
-    // 2. Setting speed > 0 drives pin high
-    assert!(motor.set_speed(100).is_ok());
-    assert!(pin_state.get());
-
-    // 3. Setting speed == 0 drives pin low
-    assert!(motor.set_speed(0).is_ok());
-    assert!(!pin_state.get());
-
-    // 4. Stopping drives pin low
-    assert!(motor.set_speed(50).is_ok());
-    assert!(pin_state.get());
-    assert!(motor.stop().is_ok());
-    assert!(!pin_state.get());
-}
-
-#[test]
 fn test_l9110s_functional() {
     let pin_ia_state = core::cell::Cell::new(false);
     let pin_ib_state = core::cell::Cell::new(false);
@@ -72,17 +46,17 @@ fn test_l9110s_functional() {
     assert!(!pin_ib_state.get());
 
     // 2. Setting speed > 0 drives pin_ia high and pin_ib low
-    assert!(motor.set_speed(100).is_ok());
+    assert!(motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
     assert!(pin_ia_state.get());
     assert!(!pin_ib_state.get());
 
     // 3. Setting speed == 0 brakes both pins to low
-    assert!(motor.set_speed(0).is_ok());
+    assert!(motor.set_speed(MotorSpeed::ZERO).is_ok());
     assert!(!pin_ia_state.get());
     assert!(!pin_ib_state.get());
 
     // 4. Stopping brakes both pins to low
-    assert!(motor.set_speed(50).is_ok());
+    assert!(motor.set_speed(MotorSpeed::new(50).unwrap()).is_ok());
     assert!(pin_ia_state.get());
     assert!(!pin_ib_state.get());
     assert!(motor.stop().is_ok());
@@ -145,4 +119,47 @@ fn test_vl53l0x_threshold_validation() {
         s.set_calibration(CalibrationType::ProximityCal(90, 150));
     }));
     assert!(res.is_err());
+}
+
+#[test]
+fn test_motor_duty_cycling_ticks() {
+    let pin_ia_state = core::cell::Cell::new(false);
+    let pin_ib_state = core::cell::Cell::new(false);
+    let pin_ia = MockPin {
+        is_high: &pin_ia_state,
+    };
+    let pin_ib = MockPin {
+        is_high: &pin_ib_state,
+    };
+    let mut motor = peripherals::l9110s::L9110s::new(pin_ia, pin_ib);
+
+    // Set speed to 30 (30% duty cycle)
+    assert!(motor.set_speed(MotorSpeed::new(30).unwrap()).is_ok());
+    // Initial state set_speed drives active immediately
+    assert!(pin_ia_state.get());
+    assert!(!pin_ib_state.get());
+
+    // Tick 1 to 2: active (total 3 active ticks: 0, 1, 2)
+    for _ in 1..=2 {
+        assert!(motor.tick().is_ok());
+        assert!(pin_ia_state.get());
+        assert!(!pin_ib_state.get());
+    }
+
+    // Tick 3: becomes inactive (tick_counter reaches 3 >= threshold 3)
+    assert!(motor.tick().is_ok());
+    assert!(!pin_ia_state.get());
+    assert!(!pin_ib_state.get());
+
+    // Ticks up to 9: inactive
+    for _ in 4..=9 {
+        assert!(motor.tick().is_ok());
+        assert!(!pin_ia_state.get());
+        assert!(!pin_ib_state.get());
+    }
+
+    // Tick 10: resets counter, becomes active again
+    assert!(motor.tick().is_ok());
+    assert!(pin_ia_state.get());
+    assert!(!pin_ib_state.get());
 }
