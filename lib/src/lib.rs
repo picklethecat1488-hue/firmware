@@ -18,6 +18,18 @@ pub mod defmt_logger;
 /// Shared system state and power management utilities.
 pub mod system;
 
+/// Battery manager module.
+pub mod battery_manager;
+
+/// Power manager module.
+pub mod power_manager;
+
+/// Thermal manager module.
+pub mod thermal_manager;
+
+/// Periodic timer utility.
+pub mod periodic_timer;
+
 /// Shared I2C blocking access wrapper structures.
 pub mod i2c;
 
@@ -32,3 +44,10 @@ pub use controller::telemetry_controller as telemetry;
 
 /// Re-export run_telemetry_task macro.
 pub use controller::run_telemetry_task;
+
+pub use battery_manager::BatteryManager;
+pub use gesture_detector::ProximityEvent;
+pub use periodic_timer::PeriodicTimer;
+pub use power_manager::PowerManager;
+pub use system::{BatteryUpdateAction, TransitionError};
+pub use thermal_manager::ThermalManager;

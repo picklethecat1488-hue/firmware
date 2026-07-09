@@ -1,9 +1,10 @@
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use firmware_lib::system::{
-    BatteryManager, BatteryUpdateAction, PowerManager, ThermalManager, TransitionError,
-};
-use model::types::{BootReason, SystemLedState, SystemStatus, TelemetryRecord};
+use firmware_lib::battery_manager::BatteryManager;
+use firmware_lib::power_manager::PowerManager;
+use firmware_lib::system::{BatteryUpdateAction, TransitionError};
+use firmware_lib::thermal_manager::ThermalManager;
+use model::types::{BootReason, ChargeState, SystemLedState, SystemStatus, TelemetryRecord};
 
 static TEST_TELEMETRY_CHANNEL: Channel<
     CriticalSectionRawMutex,
@@ -13,7 +14,7 @@ static TEST_TELEMETRY_CHANNEL: Channel<
 
 #[test]
 fn test_subsystem_managers_initialization() {
-    let power = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), None, BootReason::Unknown);
+    let power = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), BootReason::Unknown);
     assert_eq!(power.status(), SystemStatus::PowerDown);
     assert_eq!(power.inactive_ms(), 0);
     assert_eq!(power.active_ms(), 0);
@@ -44,15 +45,30 @@ fn test_get_soc_led_state() {
     manager.set_battery_critical(false);
 
     // Low battery SoC
-    manager.update_battery_status(15, false, false, SystemStatus::Active, false);
+    manager.update_battery_status(
+        15,
+        ChargeState::DoneOrStandbyOrUnplugged,
+        SystemStatus::Active,
+        false,
+    );
     assert_eq!(manager.get_soc_led_state(), SystemLedState::SolidOrange);
 
     // Mid battery SoC
-    manager.update_battery_status(50, false, false, SystemStatus::Active, false);
+    manager.update_battery_status(
+        50,
+        ChargeState::DoneOrStandbyOrUnplugged,
+        SystemStatus::Active,
+        false,
+    );
     assert_eq!(manager.get_soc_led_state(), SystemLedState::SolidYellow);
 
     // High battery SoC
-    manager.update_battery_status(85, false, false, SystemStatus::Active, false);
+    manager.update_battery_status(
+        85,
+        ChargeState::DoneOrStandbyOrUnplugged,
+        SystemStatus::Active,
+        false,
+    );
     assert_eq!(manager.get_soc_led_state(), SystemLedState::SolidGreen);
 }
 
@@ -64,29 +80,44 @@ fn test_update_battery_status() {
     assert!(manager.battery_critical());
 
     // Recoverable/NonRecoverable fault always triggers critical battery
-    manager.update_battery_status(95, false, true, SystemStatus::Active, false);
+    manager.update_battery_status(
+        95,
+        ChargeState::RecoverableFault,
+        SystemStatus::Active,
+        false,
+    );
     assert!(manager.battery_critical());
 
     // When charging, critical is cleared even at 5% SoC
-    manager.update_battery_status(5, true, false, SystemStatus::Active, false);
+    manager.update_battery_status(5, ChargeState::Charging, SystemStatus::Active, false);
     assert!(!manager.battery_critical());
 
     // Stop charging -> enters critical because SoC (5) < critical_threshold (10)
-    manager.update_battery_status(5, false, false, SystemStatus::Active, false);
+    manager.update_battery_status(
+        5,
+        ChargeState::DoneOrStandbyOrUnplugged,
+        SystemStatus::Active,
+        false,
+    );
     assert!(manager.battery_critical());
 
     // While critical, charging starts -> exits critical
-    manager.update_battery_status(5, true, false, SystemStatus::Active, false);
+    manager.update_battery_status(5, ChargeState::Charging, SystemStatus::Active, false);
     assert!(!manager.battery_critical());
 
     // Charge up past critical threshold + hysteresis -> stays non-critical when not charging
-    manager.update_battery_status(13, false, false, SystemStatus::Active, false);
+    manager.update_battery_status(
+        13,
+        ChargeState::DoneOrStandbyOrUnplugged,
+        SystemStatus::Active,
+        false,
+    );
     assert!(!manager.battery_critical());
 }
 
 #[test]
 fn test_tick_ms() {
-    let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), None, BootReason::Unknown);
+    let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), BootReason::Unknown);
 
     // Ticks when NOT active do not increment active timer
     assert!(!manager.tick_ms(500));
@@ -111,7 +142,7 @@ fn test_tick_ms() {
 
 #[test]
 fn test_interval_ms() {
-    let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), None, BootReason::Unknown);
+    let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), BootReason::Unknown);
     assert_eq!(manager.interval_ms(), 1000);
     manager.set_interval_ms(500);
 
@@ -209,7 +240,7 @@ fn test_pure_transition_power_down() {
 
 #[test]
 fn test_power_manager_wake_locks() {
-    let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), None, BootReason::Unknown);
+    let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), BootReason::Unknown);
 
     manager.set_boot_power_down(false);
     let _ = manager.set_status(SystemStatus::Active, false, false);
@@ -255,25 +286,25 @@ fn test_power_manager_wake_locks() {
 #[test]
 #[should_panic(expected = "WakeLock: client_id 32 out of bounds!")]
 fn test_power_manager_wake_lock_panic_acquire() {
-    let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), None, BootReason::Unknown);
+    let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), BootReason::Unknown);
     manager.acquire_wake_lock(Some(32));
 }
 
 #[test]
 #[should_panic(expected = "WakeLock: client_id 32 out of bounds!")]
 fn test_power_manager_wake_lock_panic_release() {
-    let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), None, BootReason::Unknown);
+    let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), BootReason::Unknown);
     manager.release_wake_lock(Some(32));
 }
 
 #[test]
 fn test_power_manager_transition_blocked_by_wake_lock() {
-    let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), None, BootReason::Unknown);
+    let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), BootReason::Unknown);
 
     manager.set_boot_power_down(false);
     assert_eq!(
         manager.set_status(SystemStatus::Active, false, false),
-        Ok(())
+        Ok(Some(SystemStatus::PowerDown))
     );
     manager.acquire_wake_lock(None);
     assert_eq!(manager.wake_lock_count(), 1);
@@ -299,14 +330,14 @@ fn test_power_manager_transition_blocked_by_wake_lock() {
     // Try transitioning to Sleep -> should succeed
     assert_eq!(
         manager.set_status(SystemStatus::Sleep, false, false),
-        Ok(())
+        Ok(Some(SystemStatus::Active))
     );
     assert_eq!(manager.status(), SystemStatus::Sleep);
 }
 
 #[test]
 fn test_power_manager_transition_blocked_by_boot_trap() {
-    let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), None, BootReason::Unknown);
+    let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), BootReason::Unknown);
 
     // Initial state is PowerDown and boot trap is active
     assert_eq!(manager.status(), SystemStatus::PowerDown);
@@ -325,7 +356,7 @@ fn test_power_manager_transition_blocked_by_boot_trap() {
     // Try transitioning to Active -> should succeed
     assert_eq!(
         manager.set_status(SystemStatus::Active, false, false),
-        Ok(())
+        Ok(Some(SystemStatus::PowerDown))
     );
     assert_eq!(manager.status(), SystemStatus::Active);
 }
@@ -336,8 +367,13 @@ fn test_update_battery_status_actions() {
 
     // 1. In boot trap, healthy battery update (unplugged) should clear the trap
     assert_eq!(
-        manager.update_battery_status(50, false, false, SystemStatus::PowerDown, true),
-        BatteryUpdateAction::ClearBootTrap
+        manager.update_battery_status(
+            50,
+            ChargeState::DoneOrStandbyOrUnplugged,
+            SystemStatus::PowerDown,
+            true
+        ),
+        Some(BatteryUpdateAction::ClearBootTrap)
     );
 
     // 2. Clear boot trap manually
@@ -345,19 +381,29 @@ fn test_update_battery_status_actions() {
 
     // 3. While Active, healthy update with charging = true should GoToPowerDown
     assert_eq!(
-        manager.update_battery_status(50, true, false, SystemStatus::Active, false),
-        BatteryUpdateAction::GoToPowerDown
+        manager.update_battery_status(50, ChargeState::Charging, SystemStatus::Active, false),
+        Some(BatteryUpdateAction::GoToPowerDown)
     );
 
     // 4. While PowerDown, charging status change should ReportSoC
     assert_eq!(
-        manager.update_battery_status(50, false, false, SystemStatus::PowerDown, false),
-        BatteryUpdateAction::ReportSoC
+        manager.update_battery_status(
+            50,
+            ChargeState::DoneOrStandbyOrUnplugged,
+            SystemStatus::PowerDown,
+            false
+        ),
+        Some(BatteryUpdateAction::ReportSoC)
     );
 
-    // 5. Subsequent identical update should be NoAction
+    // 5. Subsequent identical update should be None
     assert_eq!(
-        manager.update_battery_status(50, false, false, SystemStatus::PowerDown, false),
-        BatteryUpdateAction::NoAction
+        manager.update_battery_status(
+            50,
+            ChargeState::DoneOrStandbyOrUnplugged,
+            SystemStatus::PowerDown,
+            false
+        ),
+        None
     );
 }

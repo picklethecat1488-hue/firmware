@@ -151,3 +151,36 @@ pub trait TelemetryClient<T> {
     /// Reports telemetry data if it has changed significantly.
     fn report(&mut self, data: T);
 }
+
+/// Trait for types that can be converted into a TelemetryRecord.
+pub trait IntoTelemetryRecord {
+    /// Converts the type into a TelemetryRecord.
+    fn into_telemetry_record(self) -> TelemetryRecord;
+}
+
+macro_rules! impl_into_telemetry {
+    ($($ty:ident => $variant:ident),* $(,)?) => {
+        $(
+            impl IntoTelemetryRecord for $ty {
+                fn into_telemetry_record(self) -> TelemetryRecord {
+                    TelemetryRecord::$variant(self)
+                }
+            }
+        )*
+    };
+}
+
+impl_into_telemetry! {
+    BatteryStatus => Battery,
+    MotorStatus => Motor,
+    ThermalStatus => Thermal,
+    SystemStatus => System,
+    FuelGaugeTelemetry => FuelGauge,
+    ProximityTelemetry => Proximity,
+    SystemLedState => Led,
+    Gesture => Gesture,
+    FlashEraseTelemetry => FlashTelemetry,
+    ChargeState => ChargerState,
+    PeripheralError => PeripheralError,
+    BootReason => Boot,
+}

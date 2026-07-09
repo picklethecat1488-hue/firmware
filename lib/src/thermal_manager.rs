@@ -1,4 +1,4 @@
-//! Thermal manager submodule.
+//! Thermal manager module.
 
 /// Manages temperature alerts and thermal critical status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
