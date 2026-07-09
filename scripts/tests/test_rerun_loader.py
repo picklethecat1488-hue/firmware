@@ -45,7 +45,10 @@ def test_invalid_header(tmp_path, monkeypatch):
 def test_valid_file_logs_to_rerun(tmp_path, monkeypatch):
     csv_file = tmp_path / "test.csv"
     csv_content = (
-        "timestamp_us,record_type,val1,val2,val3,val4\n1000000,Battery,3800,25000,Ok,\n2000000,Motor,100,true,,\n"
+        "timestamp_us,record_type,val1,val2,val3,val4\n"
+        "1000000,Battery,3800,25000,Ok,\n"
+        "2000000,Motor,100,true,,\n"
+        "3000000,Thermal,25000,false,,\n"
     )
     csv_file.write_text(csv_content)
 
@@ -90,3 +93,7 @@ def test_valid_file_logs_to_rerun(tmp_path, monkeypatch):
     # Ensure something was logged!
     assert len(logged) > 0
     assert logged[0][0] == "battery/voltage"
+    # Find logged paths
+    paths = [item[0] for item in logged]
+    assert "thermal/temperature" in paths
+    assert "thermal/overheating" in paths
