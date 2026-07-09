@@ -7,6 +7,13 @@ use embedded_hal::i2c::I2c;
 use model::interfaces::LedDriver;
 use model::types::PeripheralError;
 
+macro_rules! log_warn {
+    ($fmt:literal $(, $arg:expr)*) => {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        defmt::warn!($fmt, "ATtiny816" $(, $arg)*);
+    };
+}
+
 const BASE_NEOPIXEL: u8 = 0x0E;
 
 /// Driver for the ATtiny816 custom NeoPixel LED driver over I2C.
@@ -23,29 +30,49 @@ impl<I: I2c> Attiny816<I> {
 
     /// Initializes the NeoPixel driver on pin 14 with a buffer of 1 pixel (3 bytes).
     pub fn init(&mut self) -> Result<(), PeripheralError> {
-        // 1. Set Output Pin to 14
-        self.i2c
-            .write(self.address, &[BASE_NEOPIXEL, 0x01, 14])
-            .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
-        // 2. Set Buffer Length (3 bytes for 1 RGB NeoPixel)
-        self.i2c
-            .write(self.address, &[BASE_NEOPIXEL, 0x03, 0, 3])
-            .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
-        Ok(())
+        let res = (|| {
+            // 1. Set Output Pin to 14
+            self.i2c
+                .write(self.address, &[BASE_NEOPIXEL, 0x01, 14])
+                .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
+            // 2. Set Buffer Length (3 bytes for 1 RGB NeoPixel)
+            self.i2c
+                .write(self.address, &[BASE_NEOPIXEL, 0x03, 0, 3])
+                .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
+            Ok(())
+        })();
+        if let Err(ref e) = res {
+            log_warn!(
+                "{}: Failed to locate or initialize LED driver at address 0x{:02x}: {:?}",
+                self.address,
+                defmt::Debug2Format(e)
+            );
+        }
+        res
     }
 
     /// Sets the color of the connected NeoPixel LED.
     /// Writes the GRB values to offset 0 and sends the show command.
     pub fn set_led_color(&mut self, r: u8, g: u8, b: u8) -> Result<(), PeripheralError> {
-        // 3. Write data to buffer (offset 0, standard GRB sequence)
-        self.i2c
-            .write(self.address, &[BASE_NEOPIXEL, 0x04, 0, 0, g, r, b])
-            .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
-        // 4. Send show command
-        self.i2c
-            .write(self.address, &[BASE_NEOPIXEL, 0x05])
-            .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
-        Ok(())
+        let res = (|| {
+            // 3. Write data to buffer (offset 0, standard GRB sequence)
+            self.i2c
+                .write(self.address, &[BASE_NEOPIXEL, 0x04, 0, 0, g, r, b])
+                .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
+            // 4. Send show command
+            self.i2c
+                .write(self.address, &[BASE_NEOPIXEL, 0x05])
+                .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
+            Ok(())
+        })();
+        if let Err(ref e) = res {
+            log_warn!(
+                "{}: Failed to set LED color at address 0x{:02x}: {:?}",
+                self.address,
+                defmt::Debug2Format(e)
+            );
+        }
+        res
     }
 }
 
