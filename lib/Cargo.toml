@@ -6,7 +6,6 @@ publish = false
 
 [dependencies]
 model = { path = "../model" }
-controller = { path = "../controller" }
 embedded-cli = "0.2.1"
 embedded-io = "0.6.0"
 embassy-sync = "0.6.2"

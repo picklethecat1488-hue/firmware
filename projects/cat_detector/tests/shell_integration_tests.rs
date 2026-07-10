@@ -1,8 +1,7 @@
-use app::shell_controller::CliCommand;
-use app::shell_controller::ShellController;
-use app::system_controller::SystemCommand;
-use cat_detector as app;
 use controller::motor_controller::MotorCommand;
+use controller::shell_controller::ShellCliCommand as CliCommand;
+use controller::shell_controller::ShellController;
+use controller::system_controller::SystemCommand;
 use controller::{
     BlockingBatteryReader, BlockingMotorReader, BlockingMotorWriter, BlockingProximityReader,
     BlockingThermalReader,
@@ -190,8 +189,8 @@ fn test_shell_controller_integration_each_command() {
     };
     let mut temp_sensor = MockTempSensor;
 
-    let pointers = app::shell_controller::ShellControllerPointers::<
-        app::shell_controller::ShellConfigImpl<_, _, _, _, _, _, _, _, _>,
+    let pointers = controller::shell_controller::ShellControllerPointers::<
+        controller::shell_controller::ShellConfigImpl<_, _, _, _, _, _, _, _, _>,
     > {
         i2c_ptr: Some(&mut i2c as *mut _),
         motor_ptr: Some(&mut motor as *mut _),
@@ -206,7 +205,7 @@ fn test_shell_controller_integration_each_command() {
     };
 
     let mut shell = ShellController::<
-        app::shell_controller::ShellConfigImpl<_, _, _, _, _, _, _, _, _>,
+        controller::shell_controller::ShellConfigImpl<_, _, _, _, _, _, _, _, _>,
         4,
     >::new(
         MOTOR_CHANNEL.sender(),
@@ -290,4 +289,60 @@ fn test_shell_controller_integration_each_command() {
 
 fn system_chan_check() -> Result<SystemCommand, embassy_sync::channel::TryReceiveError> {
     SYSTEM_CHANNEL.try_receive()
+}
+
+#[test]
+fn test_shell_controller_with_missing_controllers() {
+    type TestConfig = controller::shell_controller::ShellConfigImpl<
+        CriticalSectionRawMutex,
+        DummyI2c,
+        MockMotor,
+        MockFlash,
+        MockBatteryCtrl,
+        MockThermalCtrl,
+        MockSensorCtrl,
+        MockMotorCtrl,
+        MockTempSensor,
+    >;
+
+    let pointers = controller::shell_controller::ShellControllerPointers::<TestConfig> {
+        i2c_ptr: None,
+        motor_ptr: None,
+        flash_ptr: None,
+        battery_ctrl_ptr: None,
+        thermal_ctrl_ptr: None,
+        sensor_north_ctrl_ptr: None,
+        sensor_east_ctrl_ptr: None,
+        sensor_west_ctrl_ptr: None,
+        motor_ctrl_ptr: None,
+        temp_sensor_ptr: None,
+    };
+
+    let mut shell = ShellController::<TestConfig, 4>::new(
+        MOTOR_CHANNEL.sender(),
+        SYSTEM_CHANNEL.sender(),
+        pointers,
+        0,
+        1024 * 64,
+    );
+
+    let writer = DummyWriter::new();
+    let mut cli = CliBuilder::default().writer(writer).build().unwrap();
+
+    // Verify commands fail gracefully when pointers/controllers are missing
+    for b in b"motor 42\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+    }
+
+    for b in b"battery\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+    }
+
+    for b in b"thermal\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+    }
+
+    for b in b"proximity\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+    }
 }

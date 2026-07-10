@@ -357,13 +357,15 @@ async fn main(spawner: Spawner) {
     // Initialize SystemController to coordinate all loops
     let channels = app::system_controller::SystemControllerChannels {
         system_tx: app::SYSTEM_CHANNEL.sender(),
-        motor_tx: app::MOTOR_CHANNEL.sender(),
-        sensor_north_tx: app::SENSOR_NORTH_CHANNEL.sender(),
-        sensor_east_tx: app::SENSOR_EAST_CHANNEL.sender(),
-        sensor_west_tx: app::SENSOR_WEST_CHANNEL.sender(),
-        battery_tx: app::BATTERY_CHANNEL.sender(),
-        thermal_tx: app::THERMAL_CHANNEL.sender(),
-        led_tx: app::LED_CHANNEL.sender(),
+        motor_tx: Some(app::MOTOR_CHANNEL.sender()),
+        sensor_txs: [
+            app::SENSOR_NORTH_CHANNEL.sender(),
+            app::SENSOR_EAST_CHANNEL.sender(),
+            app::SENSOR_WEST_CHANNEL.sender(),
+        ],
+        battery_tx: Some(app::BATTERY_CHANNEL.sender()),
+        thermal_tx: Some(app::THERMAL_CHANNEL.sender()),
+        led_tx: Some(app::LED_CHANNEL.sender()),
         telemetry_tx: app::TELEMETRY_CHANNEL.sender(),
     };
     let boot_reason = app::get_boot_reason();
@@ -483,12 +485,13 @@ async fn main(spawner: Spawner) {
         CriticalSectionRawMutex
     );
 
-    app::run_system_task!(
+    controller::run_system_task!(
         spawner,
         system_task,
         system_ctrl,
         app::SYSTEM_CHANNEL.receiver(),
-        app::GESTURE_CHANNEL.receiver()
+        app::GESTURE_CHANNEL.receiver(),
+        3
     );
 
     app::run_filesystem_task!(

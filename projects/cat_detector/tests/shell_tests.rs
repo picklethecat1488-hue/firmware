@@ -1,4 +1,6 @@
-use cat_detector::shell_controller::{CliCommand, MotorCalState, SensorDirection};
+use controller::motor_controller::MotorCalState;
+use controller::sensor_controller::SensorDirection;
+use controller::shell_controller::ShellCliCommand as CliCommand;
 use embedded_cli::cli::CliBuilder;
 use embedded_cli::command::RawCommand;
 use embedded_cli::service::{CommandProcessor, FromRaw, ProcessError};

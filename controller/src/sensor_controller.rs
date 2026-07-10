@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use core::fmt::Write as _;
 use model::interfaces::ProximitySensor;
 use model::types::PeripheralError;
 use peripherals::ToPeripheralError;
@@ -443,5 +444,220 @@ impl<
 {
     fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
         self.sensor_mut().set_calibration(calibration);
+    }
+}
+
+/// Represents the physical directions of ToF proximity sensors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SensorDirection {
+    /// North sensor
+    North,
+    /// East sensor
+    East,
+    /// West sensor
+    West,
+}
+
+impl<'a> embedded_cli::arguments::FromArgument<'a> for SensorDirection {
+    fn from_arg(arg: &'a str) -> Result<Self, embedded_cli::arguments::FromArgumentError<'a>> {
+        match arg {
+            "north" => Ok(SensorDirection::North),
+            "east" => Ok(SensorDirection::East),
+            "west" => Ok(SensorDirection::West),
+            _ => Err(embedded_cli::arguments::FromArgumentError {
+                value: arg,
+                expected: "one of 'north', 'east', or 'west'",
+            }),
+        }
+    }
+}
+
+impl From<SensorDirection> for model::types::Direction {
+    fn from(dir: SensorDirection) -> Self {
+        match dir {
+            SensorDirection::North => model::types::Direction::North,
+            SensorDirection::East => model::types::Direction::East,
+            SensorDirection::West => model::types::Direction::West,
+        }
+    }
+}
+
+/// Sensor-specific CLI commands
+#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
+pub enum SensorCliCommand {
+    /// Query proximity (ToF) sensors
+    Proximity,
+    /// Calibrate ToF sensors with target held at the cover (0mm)
+    #[command(name = "cal_near")]
+    CalNear {
+        /// Sensor direction ('north', 'east', or 'west')
+        direction: SensorDirection,
+    },
+    /// Calibrate ToF sensors with target held at 100mm
+    #[command(name = "cal_far")]
+    CalFar {
+        /// Sensor direction ('north', 'east', or 'west')
+        direction: SensorDirection,
+    },
+}
+
+/// Processes sensor-specific CLI commands
+#[allow(clippy::too_many_arguments)]
+pub fn process_sensor_command<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    I2c: embedded_hal::i2c::I2c + 'static,
+    Flash: embedded_storage::nor_flash::NorFlash + 'static,
+    S: crate::BlockingProximityReader,
+>(
+    sensor_north: Option<*mut S>,
+    sensor_east: Option<*mut S>,
+    sensor_west: Option<*mut S>,
+    i2c_ptr: Option<*mut I2c>,
+    flash_ptr: Option<*mut Flash>,
+    storage_start: u32,
+    storage_end: u32,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+    cmd: SensorCliCommand,
+) -> Result<(), &'static str> {
+    match cmd {
+        SensorCliCommand::Proximity => {
+            let read_sensor = |ptr_opt: Option<*mut S>| {
+                ptr_opt
+                    .ok_or("Proximity sensor pointer not available")
+                    .and_then(|p| {
+                        unsafe { &mut *p }
+                            .read_distance_blocking()
+                            .map_err(|_| "Proximity sensor failed to read")
+                    })
+            };
+            let dn = read_sensor(sensor_north)?;
+            let de = read_sensor(sensor_east)?;
+            let dw = read_sensor(sensor_west)?;
+            let _ = core::writeln!(
+                writer,
+                "\r\nDirect proximity readings: North = {} mm, East = {} mm, West = {} mm",
+                dn,
+                de,
+                dw
+            );
+            Ok(())
+        }
+        SensorCliCommand::CalNear { direction } => {
+            let i2c_raw = i2c_ptr.ok_or("I2C controller not available")?;
+            let i2c = unsafe { &mut *i2c_raw };
+            let (addr, name) = match direction {
+                SensorDirection::North => (0x30, "North"),
+                SensorDirection::East => (0x31, "East"),
+                SensorDirection::West => (0x32, "West"),
+            };
+
+            let d_raw = {
+                let mut sensor = peripherals::vl53l0x::Vl53l0x::new(i2c, addr);
+                sensor.read_distance_mm().unwrap_or(1000)
+            };
+
+            let _ = core::writeln!(
+                writer,
+                "\r\nCalibrating cover (near) for {} sensor: Raw distance = {} mm",
+                name,
+                d_raw
+            );
+
+            let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
+            static mut SHELL_FS_BUF_1: [u8; 2048] = [0u8; 2048];
+            let flash_ref = unsafe { &mut *flash_raw };
+            let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+            let fs_buf = unsafe { &mut *core::ptr::addr_of_mut!(SHELL_FS_BUF_1) };
+            let mut fs = crate::filesystem_controller::FilesystemController::new(
+                async_flash,
+                storage_start..storage_end,
+                fs_buf,
+            );
+
+            let mut buf = [0u8; 128];
+            let mut proximity_cal =
+                embassy_futures::block_on(fs.read_file("vl53l0x_cal.cbor", &mut buf))
+                    .ok()
+                    .flatten()
+                    .and_then(|bytes| {
+                        minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes).ok()
+                    })
+                    .unwrap_or_default();
+
+            let dir = model::types::Direction::from(direction);
+            proximity_cal[dir].low = d_raw;
+
+            let mut write_buf = [0u8; 128];
+            let cursor = minicbor::encode::write::Cursor::new(&mut write_buf[..]);
+            let mut encoder = minicbor::Encoder::new(cursor);
+            encoder.encode(proximity_cal).unwrap();
+            let len = encoder.into_writer().position();
+
+            embassy_futures::block_on(fs.write_file("vl53l0x_cal.cbor", &write_buf[..len]))
+                .map(|_| {
+                    let _ =
+                        core::writeln!(writer, "Saved cover calibration for {} to flash.", name);
+                })
+                .map_err(|_| "Error saving calibration to flash")
+        }
+        SensorCliCommand::CalFar { direction } => {
+            let i2c_raw = i2c_ptr.ok_or("I2C controller not available")?;
+            let i2c = unsafe { &mut *i2c_raw };
+            let (addr, name) = match direction {
+                SensorDirection::North => (0x30, "North"),
+                SensorDirection::East => (0x31, "East"),
+                SensorDirection::West => (0x32, "West"),
+            };
+
+            let d_raw = {
+                let mut sensor = peripherals::vl53l0x::Vl53l0x::new(i2c, addr);
+                sensor.read_distance_mm().unwrap_or(1000)
+            };
+
+            let _ = core::writeln!(
+                writer,
+                "\r\nCalibrating 100mm (far) for {} sensor: Raw distance = {} mm",
+                name,
+                d_raw
+            );
+
+            let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
+            static mut SHELL_FS_BUF_2: [u8; 2048] = [0u8; 2048];
+            let flash_ref = unsafe { &mut *flash_raw };
+            let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+            let fs_buf = unsafe { &mut *core::ptr::addr_of_mut!(SHELL_FS_BUF_2) };
+            let mut fs = crate::filesystem_controller::FilesystemController::new(
+                async_flash,
+                storage_start..storage_end,
+                fs_buf,
+            );
+
+            let mut buf = [0u8; 128];
+            let mut proximity_cal =
+                embassy_futures::block_on(fs.read_file("vl53l0x_cal.cbor", &mut buf))
+                    .ok()
+                    .flatten()
+                    .and_then(|bytes| {
+                        minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes).ok()
+                    })
+                    .unwrap_or_default();
+
+            let dir = model::types::Direction::from(direction);
+            proximity_cal[dir].high = d_raw;
+
+            let mut write_buf = [0u8; 128];
+            let cursor = minicbor::encode::write::Cursor::new(&mut write_buf[..]);
+            let mut encoder = minicbor::Encoder::new(cursor);
+            encoder.encode(proximity_cal).unwrap();
+            let len = encoder.into_writer().position();
+
+            embassy_futures::block_on(fs.write_file("vl53l0x_cal.cbor", &write_buf[..len]))
+                .map(|_| {
+                    let _ =
+                        core::writeln!(writer, "Saved 100mm calibration for {} to flash.", name);
+                })
+                .map_err(|_| "Error saving calibration to flash")
+        }
     }
 }

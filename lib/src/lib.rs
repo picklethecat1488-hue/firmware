@@ -3,9 +3,6 @@
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
 #![deny(missing_docs)]
 
-/// Gesture detection module.
-pub mod gesture_detector;
-
 /// RP2040 panic handler module.
 pub mod panic_handler;
 
@@ -39,14 +36,7 @@ pub mod types;
 /// Heartbeat and execution liveness monitoring module.
 pub mod heartbeat_monitor;
 
-/// Telemetry storage pipeline and task.
-pub use controller::telemetry_controller as telemetry;
-
-/// Re-export run_telemetry_task macro.
-pub use controller::run_telemetry_task;
-
 pub use battery_manager::BatteryManager;
-pub use gesture_detector::ProximityEvent;
 pub use periodic_timer::PeriodicTimer;
 pub use power_manager::PowerManager;
 pub use system::{BatteryUpdateAction, TransitionError};

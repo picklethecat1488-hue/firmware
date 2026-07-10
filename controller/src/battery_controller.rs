@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::BatteryTelemetryClient;
+use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use model::interfaces::FuelGauge;
@@ -349,4 +350,33 @@ pub enum BatteryCommand {
     CheckStatus,
     /// Update the current active wake locks bitmask
     UpdateWakeLocks(u32),
+}
+
+/// Battery-specific CLI commands
+#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
+pub enum BatteryCliCommand {
+    /// Query battery voltage and status
+    Battery,
+}
+
+/// Processes battery-specific CLI commands
+pub fn process_battery_command<W: embedded_io::Write<Error = E>, E: embedded_io::Error>(
+    battery_ctrl: &impl crate::BlockingBatteryReader,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+    cmd: BatteryCliCommand,
+) -> Result<(), &'static str> {
+    match cmd {
+        BatteryCliCommand::Battery => {
+            let (v, soc) = battery_ctrl
+                .read_battery_blocking()
+                .map_err(|_| "Direct battery reading failed")?;
+            let _ = core::writeln!(
+                writer,
+                "\r\nDirect battery reading: {} mV, {}% state of charge",
+                v,
+                soc
+            );
+            Ok(())
+        }
+    }
 }

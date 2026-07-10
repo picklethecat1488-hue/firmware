@@ -84,104 +84,47 @@ mod bsp_host;
 pub use bsp_host::*;
 
 /// System state and orchestration controller.
-pub mod system_controller;
+pub use controller::system_controller;
 
 /// Bringup serial command and shell controller.
-pub mod shell_controller;
+pub use controller::shell_controller;
 
-/// Shared command channel for the Motor Controller.
-pub static MOTOR_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    controller::motor_controller::MotorCommand,
-    4,
-> = embassy_sync::channel::Channel::new();
+controller::declare_channels! {
+    /// Shared command channel for the Motor Controller.
+    pub static MOTOR_CHANNEL: controller::motor_controller::MotorCommand, capacity = 4;
+    /// Shared command channel for the System Controller.
+    pub static SYSTEM_CHANNEL: controller::system_controller::SystemCommand, capacity = 4;
+    /// Shared channel for local gesture events.
+    pub static GESTURE_CHANNEL: model::types::Gesture, capacity = 4;
+    /// Shared channel for local proximity events.
+    pub static PROXIMITY_EVENT_CHANNEL: controller::system_controller::ProximityEvent, capacity = 4;
+    /// Shared command channel for the North Sensor Controller.
+    pub static SENSOR_NORTH_CHANNEL: controller::sensor_controller::SensorCommand, capacity = 4;
+    /// Shared command channel for the East Sensor Controller.
+    pub static SENSOR_EAST_CHANNEL: controller::sensor_controller::SensorCommand, capacity = 4;
+    /// Shared command channel for the West Sensor Controller.
+    pub static SENSOR_WEST_CHANNEL: controller::sensor_controller::SensorCommand, capacity = 4;
+    /// Shared command channel for the Thermal Controller.
+    pub static THERMAL_CHANNEL: controller::thermal_controller::ThermalCommand, capacity = 4;
+    /// Shared command channel for the Battery Controller.
+    pub static BATTERY_CHANNEL: controller::battery_controller::BatteryCommand, capacity = 4;
+    /// Shared command channel for the System LED status updates.
+    pub static LED_CHANNEL: model::types::SystemLedState, capacity = 4;
+    /// Shared command channel for telemetry records.
+    pub static TELEMETRY_CHANNEL: model::types::TelemetryRecord, capacity = { controller::telemetry_controller::CHANNEL_CAPACITY };
+    /// Shared command channel for filesystem operations.
+    pub static FILESYSTEM_CHANNEL: controller::filesystem_controller::FsRequest, capacity = 16;
+}
 
-/// Shared command channel for the System Controller.
-pub static SYSTEM_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    crate::system_controller::SystemCommand,
-    4,
-> = embassy_sync::channel::Channel::new();
-
-/// Shared channel for local gesture events.
-pub static GESTURE_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    model::types::Gesture,
-    4,
-> = embassy_sync::channel::Channel::new();
-
-/// Shared channel for local proximity events.
-pub static PROXIMITY_EVENT_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    crate::system_controller::ProximityEvent,
-    4,
-> = embassy_sync::channel::Channel::new();
-
-/// Shared command channel for the North Sensor Controller.
-pub static SENSOR_NORTH_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    controller::sensor_controller::SensorCommand,
-    4,
-> = embassy_sync::channel::Channel::new();
-
-/// Shared command channel for the East Sensor Controller.
-pub static SENSOR_EAST_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    controller::sensor_controller::SensorCommand,
-    4,
-> = embassy_sync::channel::Channel::new();
-
-/// Shared command channel for the West Sensor Controller.
-pub static SENSOR_WEST_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    controller::sensor_controller::SensorCommand,
-    4,
-> = embassy_sync::channel::Channel::new();
-
-/// Shared command channel for the Thermal Controller.
-pub static THERMAL_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    controller::thermal_controller::ThermalCommand,
-    4,
-> = embassy_sync::channel::Channel::new();
-
-/// Shared command channel for the Battery Controller.
-pub static BATTERY_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    controller::battery_controller::BatteryCommand,
-    4,
-> = embassy_sync::channel::Channel::new();
-
-/// Shared command channel for the System LED status updates.
-pub static LED_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    model::types::SystemLedState,
-    4,
-> = embassy_sync::channel::Channel::new();
-
-/// Shared command channel for telemetry records.
-pub static TELEMETRY_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    model::types::TelemetryRecord,
-    { controller::telemetry_controller::CHANNEL_CAPACITY },
-> = embassy_sync::channel::Channel::new();
-
-/// Shared command channel for filesystem operations.
-pub static FILESYSTEM_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    controller::filesystem_controller::FsRequest,
-    16,
-> = embassy_sync::channel::Channel::new();
-
-/// Re-export the telemetry module from the shared library
-pub use firmware_lib::telemetry;
+/// Re-export the telemetry module from the controller crate
+pub use controller::telemetry_controller as telemetry;
 
 /// Re-export the run_filesystem_task macro from the controller crate
 pub use controller::run_filesystem_task;
-/// Re-export the run_proximity_gesture_task macro from the shared library
-pub use firmware_lib::run_proximity_gesture_task;
-/// Re-export the run_telemetry_task macro from the shared library
-pub use firmware_lib::run_telemetry_task;
+/// Re-export the run_proximity_gesture_task macro from the controller crate
+pub use controller::run_proximity_gesture_task;
+/// Re-export the run_telemetry_task macro from the controller crate
+pub use controller::run_telemetry_task;
 
 /// Re-export the modular panic handler function
 #[cfg(all(target_arch = "arm", target_os = "none"))]

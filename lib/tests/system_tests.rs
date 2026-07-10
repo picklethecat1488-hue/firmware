@@ -6,11 +6,8 @@ use firmware_lib::system::{BatteryUpdateAction, TransitionError};
 use firmware_lib::thermal_manager::ThermalManager;
 use model::types::{BootReason, ChargeState, SystemLedState, SystemStatus, TelemetryRecord};
 
-static TEST_TELEMETRY_CHANNEL: Channel<
-    CriticalSectionRawMutex,
-    TelemetryRecord,
-    { controller::telemetry_controller::CHANNEL_CAPACITY },
-> = Channel::new();
+static TEST_TELEMETRY_CHANNEL: Channel<CriticalSectionRawMutex, TelemetryRecord, 16> =
+    Channel::new();
 
 #[test]
 fn test_subsystem_managers_initialization() {

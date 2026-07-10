@@ -2,11 +2,7 @@
 
 #![deny(missing_docs)]
 
-use controller::telemetry_controller::ProximityTelemetryClient;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::{Receiver, Sender};
-use model::telemetry::TelemetryClient;
-use model::types::{Direction, Gesture, TelemetryRecord};
+use model::types::{Direction, Gesture};
 
 /// Trait for extensible gesture detection.
 pub trait GestureDetector<Input> {
@@ -146,36 +142,6 @@ impl GestureDetector<(Direction, u16)> for ProximityGestureDetector {
     }
 }
 
-/// Task running gesture detection locally for the proximity subsystem.
-#[embassy_executor::task]
-pub async fn proximity_gesture_task(
-    rx: Receiver<'static, CriticalSectionRawMutex, ProximityEvent, 4>,
-    gesture_tx: Sender<'static, CriticalSectionRawMutex, Gesture, 4>,
-    telemetry_tx: Sender<
-        'static,
-        CriticalSectionRawMutex,
-        TelemetryRecord,
-        { controller::telemetry_controller::CHANNEL_CAPACITY },
-    >,
-    proximity_threshold_mm: u16,
-) -> ! {
-    let mut gesture_detector = ProximityGestureDetector::new(20, proximity_threshold_mm);
-    let mut proximity_telemetry_client =
-        ProximityTelemetryClient::new(Some(telemetry_tx), proximity_threshold_mm);
-    loop {
-        let ProximityEvent::SensorUpdate {
-            direction,
-            distance_mm,
-        } = rx.receive().await;
-        proximity_telemetry_client.report((direction, distance_mm));
-
-        let now_us = embassy_time::Instant::now().as_micros();
-        if let Some(gesture) = gesture_detector.update((direction, distance_mm), now_us) {
-            gesture_tx.send(gesture).await;
-        }
-    }
-}
-
 /// Macro helper to run the proximity gesture task.
 #[macro_export]
 macro_rules! run_proximity_gesture_task {
@@ -186,8 +152,47 @@ macro_rules! run_proximity_gesture_task {
         $telemetry_tx:expr,
         $proximity_threshold_mm:expr
     ) => {
+        mod proximity_gesture_task_module {
+            use super::*;
+            #[embassy_executor::task]
+            pub async fn task(
+                rx: $crate::Receiver<$crate::gesture_detector::ProximityEvent, 4>,
+                gesture_tx: $crate::Sender<model::types::Gesture, 4>,
+                telemetry_tx: $crate::Sender<
+                    model::types::TelemetryRecord,
+                    { $crate::telemetry_controller::CHANNEL_CAPACITY },
+                >,
+                proximity_threshold_mm: u16,
+            ) -> ! {
+                use model::telemetry::TelemetryClient as _;
+                use $crate::gesture_detector::GestureDetector as _;
+
+                let mut gesture_detector = $crate::gesture_detector::ProximityGestureDetector::new(
+                    20,
+                    proximity_threshold_mm,
+                );
+                let mut proximity_telemetry_client =
+                    $crate::telemetry_controller::ProximityTelemetryClient::new(
+                        Some(telemetry_tx),
+                        proximity_threshold_mm,
+                    );
+                loop {
+                    let $crate::gesture_detector::ProximityEvent::SensorUpdate {
+                        direction,
+                        distance_mm,
+                    } = rx.receive().await;
+                    proximity_telemetry_client.report((direction, distance_mm));
+
+                    let now_us = embassy_time::Instant::now().as_micros();
+                    if let Some(gesture) = gesture_detector.update((direction, distance_mm), now_us)
+                    {
+                        gesture_tx.send(gesture).await;
+                    }
+                }
+            }
+        }
         $spawner
-            .spawn($crate::gesture_detector::proximity_gesture_task(
+            .spawn(proximity_gesture_task_module::task(
                 $rx,
                 $gesture_tx,
                 $telemetry_tx,

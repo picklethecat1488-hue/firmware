@@ -1,13 +1,13 @@
-use cat_detector::system_controller::{ProximityEvent, SystemCommand, SystemController};
 use controller::battery_controller::{BatteryCommand, BatteryController};
+use controller::gesture_detector::{GestureDetector, ProximityGestureDetector};
 use controller::led_controller::LedController;
 use controller::motor_controller::{MotorCommand, MotorController};
 use controller::sensor_controller::{SensorCommand, SensorController};
+use controller::system_controller::{ProximityEvent, SystemCommand, SystemController};
 use controller::thermal_controller::{ThermalCommand, ThermalController};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
-use firmware_lib::gesture_detector::{GestureDetector, ProximityGestureDetector};
 use model::interfaces::NoTick;
 use model::types::{BootReason, ChargeState, Direction, MotorSpeed, SystemLedState, SystemStatus};
 use peripherals::mock::{
@@ -74,15 +74,17 @@ fn test_system_integration_flow() {
             rpm_limit: 0,
         });
         let mut led_ctrl = LedController::new(mock_led);
-        let channels = cat_detector::system_controller::SystemControllerChannels {
+        let channels = controller::system_controller::SystemControllerChannels {
             system_tx: SYSTEM_CHANNEL.sender(),
-            motor_tx: MOTOR_CHANNEL.sender(),
-            sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
-            sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
-            sensor_west_tx: SENSOR_WEST_CHANNEL.sender(),
-            battery_tx: BATTERY_CHANNEL.sender(),
-            thermal_tx: THERMAL_CHANNEL.sender(),
-            led_tx: LED_CHANNEL.sender(),
+            motor_tx: Some(MOTOR_CHANNEL.sender()),
+            sensor_txs: [
+                SENSOR_NORTH_CHANNEL.sender(),
+                SENSOR_EAST_CHANNEL.sender(),
+                SENSOR_WEST_CHANNEL.sender(),
+            ],
+            battery_tx: Some(BATTERY_CHANNEL.sender()),
+            thermal_tx: Some(THERMAL_CHANNEL.sender()),
+            led_tx: Some(LED_CHANNEL.sender()),
             telemetry_tx: TELEMETRY_CHANNEL.sender(),
         };
         let mut system_ctrl = SystemController::new(channels, BootReason::Unknown);

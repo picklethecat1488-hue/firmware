@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use model::interfaces::TemperatureSensor;
@@ -198,4 +199,54 @@ where
 pub enum ThermalCommand {
     /// Force thermal status query and print telemetry logs
     CheckTemp,
+}
+
+/// Thermal-specific CLI commands
+#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
+pub enum ThermalCliCommand {
+    /// Query thermal sensor and status
+    Thermal,
+    /// Read the MCU system temperature
+    #[command(name = "mcu_temp")]
+    McuTemp,
+}
+
+/// Processes thermal-specific CLI commands
+pub fn process_thermal_command<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    T: model::interfaces::TemperatureSensor,
+>(
+    thermal_ctrl: &impl crate::BlockingThermalReader,
+    temp_sensor: Option<&mut T>,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+    cmd: ThermalCliCommand,
+) -> Result<(), &'static str> {
+    match cmd {
+        ThermalCliCommand::Thermal => {
+            let temp = thermal_ctrl
+                .read_temperature_blocking()
+                .map_err(|_| "Direct thermal reading failed")?;
+            let _ = core::writeln!(
+                writer,
+                "\r\nDirect thermal reading (ThermalController): {}.{:03} C",
+                temp / 1000,
+                (temp.abs() % 1000)
+            );
+            Ok(())
+        }
+        ThermalCliCommand::McuTemp => {
+            let sensor = temp_sensor.ok_or("RP2040 system temperature sensor not available")?;
+            let temp = sensor
+                .read_temperature_milli_c()
+                .map_err(|_| "Direct system temperature reading failed")?;
+            let _ = core::writeln!(
+                writer,
+                "\r\nDirect system temperature reading (RP2040): {}.{:03} C",
+                temp / 1000,
+                (temp.abs() % 1000)
+            );
+            Ok(())
+        }
+    }
 }

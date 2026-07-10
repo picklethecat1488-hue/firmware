@@ -2,14 +2,15 @@
 
 #![deny(missing_docs)]
 
-use controller::{BatteryCommand, MotorCommand, SensorCommand, ThermalCommand};
+pub use crate::gesture_detector::ProximityEvent;
+use crate::{BatteryCommand, MotorCommand, SensorCommand, ThermalCommand};
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
-pub use firmware_lib::ProximityEvent;
 use firmware_lib::{
     BatteryManager, BatteryUpdateAction, PeriodicTimer, PowerManager, ThermalManager,
 };
 use model::types::MotorSpeed;
+
 /// One-way commands to control the global system state and notify it of events.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SystemCommand {
@@ -37,7 +38,7 @@ pub enum SystemCommand {
     BatteryAction(BatteryUpdateAction),
 }
 
-impl controller::battery_controller::FromBatteryUpdate for SystemCommand {
+impl crate::battery_controller::FromBatteryUpdate for SystemCommand {
     fn from_battery_update(state_of_charge: u8, charger_state: ChargeState) -> Self {
         SystemCommand::BatteryUpdate {
             state_of_charge,
@@ -78,24 +79,21 @@ const _: () = {
 pub struct SystemControllerChannels<
     MutexRaw: RawMutex + 'static,
     const N: usize,
+    const M: usize,
     const T_CAP: usize,
 > {
     /// System command channel sender
     pub system_tx: Sender<'static, MutexRaw, SystemCommand, 4>,
     /// Motor channel sender
-    pub motor_tx: Sender<'static, MutexRaw, MotorCommand, N>,
-    /// Sensor North channel sender
-    pub sensor_north_tx: Sender<'static, MutexRaw, SensorCommand, N>,
-    /// Sensor East channel sender
-    pub sensor_east_tx: Sender<'static, MutexRaw, SensorCommand, N>,
-    /// Sensor West channel sender
-    pub sensor_west_tx: Sender<'static, MutexRaw, SensorCommand, N>,
+    pub motor_tx: Option<Sender<'static, MutexRaw, MotorCommand, N>>,
+    /// Sensor channel senders
+    pub sensor_txs: [Sender<'static, MutexRaw, SensorCommand, N>; M],
     /// Battery channel sender
-    pub battery_tx: Sender<'static, MutexRaw, BatteryCommand, N>,
+    pub battery_tx: Option<Sender<'static, MutexRaw, BatteryCommand, N>>,
     /// Thermal channel sender
-    pub thermal_tx: Sender<'static, MutexRaw, ThermalCommand, N>,
+    pub thermal_tx: Option<Sender<'static, MutexRaw, ThermalCommand, N>>,
     /// LED channel sender
-    pub led_tx: Sender<'static, MutexRaw, SystemLedState, N>,
+    pub led_tx: Option<Sender<'static, MutexRaw, SystemLedState, N>>,
     /// Telemetry channel sender
     pub telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, T_CAP>,
 }
@@ -104,7 +102,8 @@ pub struct SystemControllerChannels<
 pub struct SystemController<
     MutexRaw: RawMutex + 'static,
     const N: usize,
-    const T_CAP: usize = { controller::telemetry_controller::CHANNEL_CAPACITY },
+    const M: usize,
+    const T_CAP: usize = { crate::telemetry_controller::CHANNEL_CAPACITY },
 > {
     /// Subsystem manager for power, transitions, and timers
     pub power_manager: PowerManager<MutexRaw, T_CAP>,
@@ -112,21 +111,25 @@ pub struct SystemController<
     pub battery_manager: BatteryManager,
     /// Subsystem manager for thermal monitoring alerts
     pub thermal_manager: ThermalManager,
-    motor_tx: Sender<'static, MutexRaw, MotorCommand, N>,
-    sensor_north_tx: Sender<'static, MutexRaw, SensorCommand, N>,
-    sensor_east_tx: Sender<'static, MutexRaw, SensorCommand, N>,
-    sensor_west_tx: Sender<'static, MutexRaw, SensorCommand, N>,
-    battery_tx: Sender<'static, MutexRaw, BatteryCommand, N>,
-    thermal_tx: Sender<'static, MutexRaw, ThermalCommand, N>,
-    led_tx: Sender<'static, MutexRaw, SystemLedState, N>,
+    motor_tx: Option<Sender<'static, MutexRaw, MotorCommand, N>>,
+    sensor_txs: [Sender<'static, MutexRaw, SensorCommand, N>; M],
+    battery_tx: Option<Sender<'static, MutexRaw, BatteryCommand, N>>,
+    thermal_tx: Option<Sender<'static, MutexRaw, ThermalCommand, N>>,
+    led_tx: Option<Sender<'static, MutexRaw, SystemLedState, N>>,
 }
 
-impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
-    SystemController<MutexRaw, N, T_CAP>
+/// Concrete type alias for SystemController using CriticalSectionRawMutex.
+pub type AppSystemController<
+    const M: usize,
+    const T_CAP: usize = { crate::telemetry_controller::CHANNEL_CAPACITY },
+> = SystemController<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4, M, T_CAP>;
+
+impl<MutexRaw: RawMutex + 'static, const N: usize, const M: usize, const T_CAP: usize>
+    SystemController<MutexRaw, N, M, T_CAP>
 {
     /// Creates a new SystemController instance.
     pub fn new(
-        channels: SystemControllerChannels<MutexRaw, N, T_CAP>,
+        channels: SystemControllerChannels<MutexRaw, N, M, T_CAP>,
         boot_reason: BootReason,
     ) -> Self {
         let power_manager = PowerManager::new(channels.telemetry_tx, boot_reason);
@@ -149,9 +152,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             battery_manager,
             thermal_manager,
             motor_tx: channels.motor_tx,
-            sensor_north_tx: channels.sensor_north_tx,
-            sensor_east_tx: channels.sensor_east_tx,
-            sensor_west_tx: channels.sensor_west_tx,
+            sensor_txs: channels.sensor_txs,
             battery_tx: channels.battery_tx,
             thermal_tx: channels.thermal_tx,
             led_tx: channels.led_tx,
@@ -216,8 +217,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     if self.power_manager.status() != SystemStatus::Sleep {
                         self.power_manager.clear_wake_locks();
                         self.set_status(SystemStatus::Sleep)?;
-                    } else {
-                        let _ = self.led_tx.try_send(SystemLedState::BlinksRedFourTimes);
+                    } else if let Some(ref led_tx) = self.led_tx {
+                        let _ = led_tx.try_send(SystemLedState::BlinksRedFourTimes);
                     }
                 }
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -243,21 +244,19 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                     );
                 }
                 BatteryUpdateAction::ReportSoC => {
-                    if self.battery_manager.battery_critical() {
-                        let _ = self
-                            .led_tx
-                            .try_send(SystemLedState::BlinksRedOncePerThirtySeconds);
-                    } else if self.power_manager.status() == SystemStatus::PowerDown {
-                        let led = if self.battery_manager.charger_connected() {
-                            self.battery_manager.get_soc_led_state()
-                        } else {
-                            SystemLedState::Off
-                        };
-                        let _ = self.led_tx.try_send(led);
-                    } else if self.power_manager.status() == SystemStatus::Active {
-                        let _ = self
-                            .led_tx
-                            .try_send(self.battery_manager.get_soc_led_state());
+                    if let Some(ref led_tx) = self.led_tx {
+                        if self.battery_manager.battery_critical() {
+                            let _ = led_tx.try_send(SystemLedState::BlinksRedOncePerThirtySeconds);
+                        } else if self.power_manager.status() == SystemStatus::PowerDown {
+                            let led = if self.battery_manager.charger_connected() {
+                                self.battery_manager.get_soc_led_state()
+                            } else {
+                                SystemLedState::Off
+                            };
+                            let _ = led_tx.try_send(led);
+                        } else if self.power_manager.status() == SystemStatus::Active {
+                            let _ = led_tx.try_send(self.battery_manager.get_soc_led_state());
+                        }
                     }
                 }
             },
@@ -302,30 +301,36 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
             SystemCommand::StateChanged { from: _, to } => match to {
                 SystemStatus::Active => {
                     self.power_manager.reset_on_wake();
-                    let _ = self
-                        .led_tx
-                        .try_send(self.battery_manager.get_soc_led_state());
-                    let _ = self
-                        .motor_tx
-                        .try_send(MotorCommand::SetSpeed(MotorSpeed::MAX));
+                    if let Some(ref led_tx) = self.led_tx {
+                        let _ = led_tx.try_send(self.battery_manager.get_soc_led_state());
+                    }
+                    if let Some(ref motor_tx) = self.motor_tx {
+                        let _ = motor_tx.try_send(MotorCommand::SetSpeed(MotorSpeed::MAX));
+                    }
                 }
                 SystemStatus::Sleep | SystemStatus::PowerDown => {
-                    let _ = self.motor_tx.try_send(MotorCommand::Stop);
-                    let led = if to == SystemStatus::Sleep {
-                        if self.thermal_manager.thermal_critical() {
-                            SystemLedState::BlinksRedFourTimes
+                    if let Some(ref motor_tx) = self.motor_tx {
+                        let _ = motor_tx.try_send(MotorCommand::Stop);
+                    }
+                    if let Some(ref led_tx) = self.led_tx {
+                        let led = if to == SystemStatus::Sleep {
+                            if self.thermal_manager.thermal_critical() {
+                                SystemLedState::BlinksRedFourTimes
+                            } else {
+                                SystemLedState::SolidBlue
+                            }
+                        } else if self.battery_manager.battery_critical() {
+                            SystemLedState::BlinksRedOncePerThirtySeconds
+                        } else if self.battery_manager.charger_connected() {
+                            self.battery_manager.get_soc_led_state()
                         } else {
-                            SystemLedState::SolidBlue
-                        }
-                    } else if self.battery_manager.battery_critical() {
-                        SystemLedState::BlinksRedOncePerThirtySeconds
-                    } else if self.battery_manager.charger_connected() {
-                        self.battery_manager.get_soc_led_state()
-                    } else {
-                        SystemLedState::Off
-                    };
-                    let _ = self.led_tx.try_send(led);
-                    let _ = self.battery_tx.try_send(BatteryCommand::UpdateWakeLocks(0));
+                            SystemLedState::Off
+                        };
+                        let _ = led_tx.try_send(led);
+                    }
+                    if let Some(ref battery_tx) = self.battery_tx {
+                        let _ = battery_tx.try_send(BatteryCommand::UpdateWakeLocks(0));
+                    }
                 }
             },
         }
@@ -337,9 +342,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
     pub fn tick_ms(&mut self, ms: u32) -> bool {
         let crossed = self.power_manager.tick_ms(ms);
         if crossed {
-            let _ = self.battery_tx.try_send(BatteryCommand::UpdateWakeLocks(
-                self.power_manager.wake_locks(),
-            ));
+            if let Some(ref battery_tx) = self.battery_tx {
+                let _ = battery_tx.try_send(BatteryCommand::UpdateWakeLocks(
+                    self.power_manager.wake_locks(),
+                ));
+            }
             // Sleep after inactivity timeout
             if self.power_manager.inactive_ms() >= INACTIVITY_TIMEOUT_SECONDS * 1000 {
                 let _ = self.set_status(SystemStatus::Sleep);
@@ -355,7 +362,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
         gesture_rx: embassy_sync::channel::Receiver<'static, MutexRaw, Gesture, 4>,
     ) -> ! {
         // Initialize LED to Off (as we start in PowerDown)
-        self.led_tx.try_send(SystemLedState::Off).unwrap();
+        if let Some(ref led_tx) = self.led_tx {
+            led_tx.try_send(SystemLedState::Off).unwrap();
+        }
         self.power_manager
             .log_telemetry(TelemetryRecord::System(SystemStatus::PowerDown));
 
@@ -365,21 +374,17 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const T_CAP: usize>
                 let crossed_tick = self.tick_ms(elapsed_ms);
                 // Coordinate periodic telemetry reads across other controllers on the system tick
                 if crossed_tick {
-                    self.battery_tx
-                        .try_send(BatteryCommand::CheckStatus)
-                        .unwrap();
-                    self.thermal_tx.try_send(ThermalCommand::CheckTemp).unwrap();
+                    if let Some(ref battery_tx) = self.battery_tx {
+                        let _ = battery_tx.try_send(BatteryCommand::CheckStatus);
+                    }
+                    if let Some(ref thermal_tx) = self.thermal_tx {
+                        let _ = thermal_tx.try_send(ThermalCommand::CheckTemp);
+                    }
                 }
                 if self.power_manager.status() == SystemStatus::Active {
-                    self.sensor_north_tx
-                        .try_send(SensorCommand::ReadSensors)
-                        .unwrap();
-                    self.sensor_east_tx
-                        .try_send(SensorCommand::ReadSensors)
-                        .unwrap();
-                    self.sensor_west_tx
-                        .try_send(SensorCommand::ReadSensors)
-                        .unwrap();
+                    for sensor_tx in &self.sensor_txs {
+                        let _ = sensor_tx.try_send(SensorCommand::ReadSensors);
+                    }
                 }
                 continue;
             }
@@ -426,29 +431,17 @@ macro_rules! run_system_task {
         $task_module:ident,
         $controller:expr,
         $system_rx:expr,
-        $gesture_rx:expr
+        $gesture_rx:expr,
+        $m:expr
     ) => {
         mod $task_module {
             use super::*;
 
             #[embassy_executor::task]
             pub async fn task(
-                mut controller: $crate::system_controller::SystemController<
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    4,
-                >,
-                system_rx: embassy_sync::channel::Receiver<
-                    'static,
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    $crate::system_controller::SystemCommand,
-                    4,
-                >,
-                gesture_rx: embassy_sync::channel::Receiver<
-                    'static,
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    model::types::Gesture,
-                    4,
-                >,
+                mut controller: $crate::system_controller::AppSystemController<$m>,
+                system_rx: $crate::Receiver<$crate::system_controller::SystemCommand, 4>,
+                gesture_rx: $crate::Receiver<model::types::Gesture, 4>,
             ) {
                 controller.run(system_rx, gesture_rx).await;
             }
@@ -458,4 +451,34 @@ macro_rules! run_system_task {
             .spawn($task_module::task($controller, $system_rx, $gesture_rx))
             .unwrap();
     };
+}
+
+/// System-specific CLI commands
+#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
+pub enum SystemCliCommand {
+    /// Simulate activity event
+    Activity,
+    /// Trigger a panic to test the crash dump / panic flow
+    Crash,
+}
+
+/// Processes system-specific CLI commands
+pub fn process_system_command<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    MutexRaw: RawMutex + 'static,
+    const N: usize,
+>(
+    system_tx: &embassy_sync::channel::Sender<'static, MutexRaw, SystemCommand, N>,
+    _writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+    cmd: SystemCliCommand,
+) -> Result<(), &'static str> {
+    match cmd {
+        SystemCliCommand::Activity => system_tx
+            .try_send(SystemCommand::ActivityDetected)
+            .map_err(|_| "Failed to send System Activity command"),
+        SystemCliCommand::Crash => {
+            panic!("Simulated crash dump flow");
+        }
+    }
 }

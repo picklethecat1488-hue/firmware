@@ -1,11 +1,11 @@
 #![allow(unused_must_use)]
 
-use cat_detector::system_controller::{
-    SystemCommand, SystemController, SystemControllerChannels, LOW_BATTERY_SOC_THRESHOLD,
-};
 use controller::battery_controller::BatteryCommand;
 use controller::motor_controller::MotorCommand;
 use controller::sensor_controller::SensorCommand;
+use controller::system_controller::{
+    SystemCommand, SystemController, SystemControllerChannels, LOW_BATTERY_SOC_THRESHOLD,
+};
 use controller::thermal_controller::ThermalCommand;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
@@ -41,13 +41,15 @@ fn test_system_controller_flow() {
 
     let channels = SystemControllerChannels {
         system_tx: SYSTEM_CHANNEL.sender(),
-        motor_tx: MOTOR_CHANNEL.sender(),
-        sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
-        sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
-        sensor_west_tx: SENSOR_WEST_CHANNEL.sender(),
-        battery_tx: BATTERY_CHANNEL.sender(),
-        thermal_tx: THERMAL_CHANNEL.sender(),
-        led_tx: LED_CHANNEL.sender(),
+        motor_tx: Some(MOTOR_CHANNEL.sender()),
+        sensor_txs: [
+            SENSOR_NORTH_CHANNEL.sender(),
+            SENSOR_EAST_CHANNEL.sender(),
+            SENSOR_WEST_CHANNEL.sender(),
+        ],
+        battery_tx: Some(BATTERY_CHANNEL.sender()),
+        thermal_tx: Some(THERMAL_CHANNEL.sender()),
+        led_tx: Some(LED_CHANNEL.sender()),
         telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
     };
     let mut controller = SystemController::new(channels, BootReason::Unknown);
@@ -121,13 +123,15 @@ fn test_system_controller_flow() {
     // Use a fresh controller instance to test ToF proximity data fusion and active delay gating
     let channels2 = SystemControllerChannels {
         system_tx: SYSTEM_CHANNEL.sender(),
-        motor_tx: MOTOR_CHANNEL.sender(),
-        sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
-        sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
-        sensor_west_tx: SENSOR_WEST_CHANNEL.sender(),
-        battery_tx: BATTERY_CHANNEL.sender(),
-        thermal_tx: THERMAL_CHANNEL.sender(),
-        led_tx: LED_CHANNEL.sender(),
+        motor_tx: Some(MOTOR_CHANNEL.sender()),
+        sensor_txs: [
+            SENSOR_NORTH_CHANNEL.sender(),
+            SENSOR_EAST_CHANNEL.sender(),
+            SENSOR_WEST_CHANNEL.sender(),
+        ],
+        battery_tx: Some(BATTERY_CHANNEL.sender()),
+        thermal_tx: Some(THERMAL_CHANNEL.sender()),
+        led_tx: Some(LED_CHANNEL.sender()),
         telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
     };
     let mut controller = SystemController::new(channels2, BootReason::Unknown);
@@ -229,13 +233,15 @@ fn test_power_down_and_gesture_detection() {
 
     let channels3 = SystemControllerChannels {
         system_tx: SYSTEM_CHANNEL.sender(),
-        motor_tx: MOTOR_CHANNEL.sender(),
-        sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
-        sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
-        sensor_west_tx: SENSOR_WEST_CHANNEL.sender(),
-        battery_tx: BATTERY_CHANNEL.sender(),
-        thermal_tx: THERMAL_CHANNEL.sender(),
-        led_tx: LED_CHANNEL.sender(),
+        motor_tx: Some(MOTOR_CHANNEL.sender()),
+        sensor_txs: [
+            SENSOR_NORTH_CHANNEL.sender(),
+            SENSOR_EAST_CHANNEL.sender(),
+            SENSOR_WEST_CHANNEL.sender(),
+        ],
+        battery_tx: Some(BATTERY_CHANNEL.sender()),
+        thermal_tx: Some(THERMAL_CHANNEL.sender()),
+        led_tx: Some(LED_CHANNEL.sender()),
         telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
     };
     let mut controller = SystemController::new(channels3, BootReason::Unknown);
@@ -335,16 +341,60 @@ fn test_invalid_critical_soc_threshold_recovery() {
 
     let channels4 = SystemControllerChannels {
         system_tx: SYSTEM_CHANNEL.sender(),
-        motor_tx: MOTOR_CHANNEL.sender(),
-        sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
-        sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
-        sensor_west_tx: SENSOR_WEST_CHANNEL.sender(),
-        battery_tx: BATTERY_CHANNEL.sender(),
-        thermal_tx: THERMAL_CHANNEL.sender(),
-        led_tx: LED_CHANNEL.sender(),
+        motor_tx: Some(MOTOR_CHANNEL.sender()),
+        sensor_txs: [
+            SENSOR_NORTH_CHANNEL.sender(),
+            SENSOR_EAST_CHANNEL.sender(),
+            SENSOR_WEST_CHANNEL.sender(),
+        ],
+        battery_tx: Some(BATTERY_CHANNEL.sender()),
+        thermal_tx: Some(THERMAL_CHANNEL.sender()),
+        led_tx: Some(LED_CHANNEL.sender()),
         telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
     };
     let controller = SystemController::new(channels4, BootReason::Unknown);
 
     assert!(controller.battery_manager.critical_soc_threshold() < LOW_BATTERY_SOC_THRESHOLD);
+}
+
+#[test]
+fn test_system_controller_with_missing_controllers() {
+    static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 4> = Channel::new();
+
+    macro_rules! process {
+        ($ctrl:expr) => {
+            while let Ok(cmd) = SYSTEM_CHANNEL.try_receive() {
+                $ctrl.handle_command(cmd);
+            }
+        };
+    }
+
+    let channels: SystemControllerChannels<CriticalSectionRawMutex, 4, 0, 64> =
+        SystemControllerChannels {
+            system_tx: SYSTEM_CHANNEL.sender(),
+            motor_tx: None,
+            sensor_txs: [],
+            battery_tx: None,
+            thermal_tx: None,
+            led_tx: None,
+            telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
+        };
+    let mut controller = SystemController::new(channels, BootReason::Unknown);
+
+    assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
+
+    // Verify it doesn't panic on updates
+    controller
+        .handle_command(SystemCommand::BatteryUpdate {
+            state_of_charge: 85,
+            charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
+        })
+        .unwrap();
+    process!(controller);
+    controller
+        .handle_command(SystemCommand::ActivityDetected)
+        .unwrap();
+
+    // Check that it transitioned to Active state without any panic
+    assert_eq!(controller.power_manager.status(), SystemStatus::Active);
 }

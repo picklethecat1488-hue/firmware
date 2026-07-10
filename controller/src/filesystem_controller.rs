@@ -4,6 +4,7 @@
 extern crate std;
 
 use core::cmp;
+use core::fmt::Write as _;
 use core::ops::Range;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -544,6 +545,60 @@ pub async fn run_filesystem_task<F: NorFlash + MultiwriteNorFlash>(
                     })
                 });
                 unsafe { &*signal }.signal(mapped_res);
+            }
+        }
+    }
+}
+
+/// Filesystem-specific CLI commands
+#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
+pub enum FilesystemCliCommand {
+    /// Format/erase the filesystem partition
+    Format,
+}
+
+/// Processes filesystem-specific CLI commands
+pub fn process_filesystem_command<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    F: embedded_storage::nor_flash::NorFlash + 'static,
+>(
+    flash_ptr: Option<*mut F>,
+    storage_start: u32,
+    storage_end: u32,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+    cmd: FilesystemCliCommand,
+) -> Result<(), &'static str> {
+    match cmd {
+        FilesystemCliCommand::Format => {
+            if let Some(flash_raw) = flash_ptr {
+                static mut SHELL_FS_BUF_3: [u8; 2048] = [0u8; 2048];
+                let flash_ref = unsafe { &mut *flash_raw };
+                let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+                let fs_buf = unsafe { &mut *core::ptr::addr_of_mut!(SHELL_FS_BUF_3) };
+                let mut fs = crate::filesystem_controller::FilesystemController::new(
+                    async_flash,
+                    storage_start..storage_end,
+                    fs_buf,
+                );
+
+                let _ = core::writeln!(writer, "\r\nFormatting filesystem...");
+                let res = embassy_futures::block_on(fs.format());
+                match res {
+                    Ok(()) => {
+                        let _ = core::writeln!(
+                            writer,
+                            "Formatting successful! Rebooting target system..."
+                        );
+                        #[cfg(all(target_arch = "arm", target_os = "none"))]
+                        cortex_m::peripheral::SCB::sys_reset();
+                        #[allow(unreachable_code)]
+                        Ok(())
+                    }
+                    Err(()) => Err("Formatting failed!"),
+                }
+            } else {
+                Err("Flash peripheral not available")
             }
         }
     }

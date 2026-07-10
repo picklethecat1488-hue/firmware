@@ -1,4 +1,4 @@
-use firmware_lib::gesture_detector::{GestureDetector, ProximityGestureDetector};
+use controller::gesture_detector::{GestureDetector, ProximityGestureDetector};
 use model::types::Gesture;
 
 fn update_detector(

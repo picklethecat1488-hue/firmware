@@ -31,7 +31,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 use core::fmt::Write as FmtWrite;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-use app::shell_controller::CliCommand;
+use controller::shell_controller::ShellCliCommand;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 static mut BOARD_I2C: Option<
@@ -128,8 +128,8 @@ async fn main(spawner: Spawner) {
 
     let temp_sensor_ptr = board.temp_sensor.as_mut().map(|s| s as *mut _);
 
-    let pointers = app::shell_controller::ShellControllerPointers::<
-        app::shell_controller::ShellConfigImpl<_, _, _, _, (), (), (), (), _>,
+    let pointers = controller::shell_controller::ShellControllerPointers::<
+        controller::shell_controller::ShellConfigImpl<_, _, _, _, (), (), (), (), _>,
     > {
         i2c_ptr: unsafe { Some(BOARD_I2C.unwrap()) },
         motor_ptr: unsafe { Some(BOARD_MOTOR.unwrap()) },
@@ -143,8 +143,8 @@ async fn main(spawner: Spawner) {
         temp_sensor_ptr,
     };
 
-    let mut processor = app::shell_controller::ShellController::<
-        app::shell_controller::ShellConfigImpl<_, _, _, _, (), (), (), (), _>,
+    let mut processor = controller::shell_controller::ShellController::<
+        controller::shell_controller::ShellConfigImpl<_, _, _, _, (), (), (), (), _>,
         4,
     >::new(
         app::MOTOR_CHANNEL.sender(),
@@ -155,7 +155,7 @@ async fn main(spawner: Spawner) {
     );
 
     // Run the main input loop feeding bytes to the embedded-cli processor over RTT
-    firmware_lib::rtt::run_rtt_shell_loop::<CliCommand, _, _, _>(&mut cli, &mut processor);
+    firmware_lib::rtt::run_rtt_shell_loop::<ShellCliCommand, _, _, _>(&mut cli, &mut processor);
 }
 
 /// Dummy host entry point to satisfy Cargo compilation requirements.

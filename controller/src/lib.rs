@@ -7,12 +7,18 @@
 pub mod battery_controller;
 /// Flat filesystem and storage controller.
 pub mod filesystem_controller;
+/// Gesture detection module.
+pub mod gesture_detector;
 /// LED controller to drive indicator RGB LEDs.
 pub mod led_controller;
 /// Motor status and telemetry controller.
 pub mod motor_controller;
 /// Sensor controller for Time-of-Flight sensors.
 pub mod sensor_controller;
+/// Bringup serial command and shell controller.
+pub mod shell_controller;
+/// System state and orchestration controller.
+pub mod system_controller;
 /// Telemetry storage pipeline and task.
 pub mod telemetry_controller;
 /// Thermal monitoring and regulation controller.
@@ -407,3 +413,51 @@ macro_rules! run_telemetry_task {
             .unwrap();
     };
 }
+
+/// Helper macro to declare static embassy channels with CriticalSectionRawMutex.
+///
+/// Example:
+/// ```rust
+/// # use controller::declare_channels;
+/// declare_channels! {
+///     pub static MOTOR_CHANNEL: controller::motor_controller::MotorCommand, capacity = 4;
+///     pub static SYSTEM_CHANNEL: controller::system_controller::SystemCommand, capacity = 4;
+/// }
+/// ```
+#[macro_export]
+macro_rules! declare_channels {
+    (
+        $(
+            $(#[$meta:meta])*
+            $vis:vis static $name:ident : $ty:ty, capacity = $cap:expr;
+        )*
+    ) => {
+        $(
+            $(#[$meta])*
+            $vis static $name: $crate::Channel<$ty, $cap> = $crate::Channel::new();
+        )*
+    };
+}
+
+/// Type alias for an Embassy channel using CriticalSectionRawMutex.
+pub type Channel<T, const N: usize> = embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    T,
+    N,
+>;
+
+/// Type alias for an Embassy channel Sender using CriticalSectionRawMutex.
+pub type Sender<T, const N: usize> = embassy_sync::channel::Sender<
+    'static,
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    T,
+    N,
+>;
+
+/// Type alias for an Embassy channel Receiver using CriticalSectionRawMutex.
+pub type Receiver<T, const N: usize> = embassy_sync::channel::Receiver<
+    'static,
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    T,
+    N,
+>;
