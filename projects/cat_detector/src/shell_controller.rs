@@ -43,6 +43,27 @@ impl<'a> embedded_cli::arguments::FromArgument<'a> for SensorDirection {
     }
 }
 
+impl From<SensorDirection> for model::types::Direction {
+    fn from(dir: SensorDirection) -> Self {
+        match dir {
+            SensorDirection::North => model::types::Direction::North,
+            SensorDirection::East => model::types::Direction::East,
+            SensorDirection::West => model::types::Direction::West,
+        }
+    }
+}
+
+impl From<MotorCalState> for model::calibration::FourPointRef {
+    fn from(state: MotorCalState) -> Self {
+        match state {
+            MotorCalState::Empty => model::calibration::FourPointRef::Low,
+            MotorCalState::Water100ml => model::calibration::FourPointRef::Mid,
+            MotorCalState::Full => model::calibration::FourPointRef::High,
+            MotorCalState::Overload => model::calibration::FourPointRef::Overload,
+        }
+    }
+}
+
 /// Derived command enum representing all supported user commands.
 #[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
 pub enum CliCommand {
@@ -103,6 +124,8 @@ pub enum MotorCalState {
     Water100ml,
     /// Full water bowl
     Full,
+    /// Overload/stall state
+    Overload,
 }
 
 impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
@@ -111,9 +134,10 @@ impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
             "empty" => Ok(MotorCalState::Empty),
             "100ml" => Ok(MotorCalState::Water100ml),
             "full" => Ok(MotorCalState::Full),
+            "overload" => Ok(MotorCalState::Overload),
             _ => Err(embedded_cli::arguments::FromArgumentError {
                 value: arg,
-                expected: "one of 'empty', '100ml', or 'full'",
+                expected: "one of 'empty', '100ml', 'full', or 'overload'",
             }),
         }
     }
@@ -500,11 +524,8 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                                 })
                                 .unwrap_or_default();
 
-                        match direction {
-                            SensorDirection::North => proximity_cal.north_near = d_raw,
-                            SensorDirection::East => proximity_cal.east_near = d_raw,
-                            SensorDirection::West => proximity_cal.west_near = d_raw,
-                        }
+                        let dir = model::types::Direction::from(direction);
+                        proximity_cal[dir].low = d_raw;
 
                         let mut write_buf = [0u8; 128];
                         let cursor = minicbor::encode::write::Cursor::new(&mut write_buf[..]);
@@ -576,11 +597,8 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                                 })
                                 .unwrap_or_default();
 
-                        match direction {
-                            SensorDirection::North => proximity_cal.north_100 = d_raw,
-                            SensorDirection::East => proximity_cal.east_100 = d_raw,
-                            SensorDirection::West => proximity_cal.west_100 = d_raw,
-                        }
+                        let dir = model::types::Direction::from(direction);
+                        proximity_cal[dir].high = d_raw;
 
                         let mut write_buf = [0u8; 128];
                         let cursor = minicbor::encode::write::Cursor::new(&mut write_buf[..]);
@@ -641,6 +659,7 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                             MotorCalState::Empty => "Empty",
                             MotorCalState::Water100ml => "100ml",
                             MotorCalState::Full => "Full",
+                            MotorCalState::Overload => "Overload",
                         };
 
                         let _ = core::writeln!(
@@ -678,11 +697,8 @@ impl<C: ShellConfig, const N: usize, W: IoWrite<Error = E>, E: embedded_io::Erro
                                     .unwrap_or_default();
 
                             let mut cal = cal;
-                            match state {
-                                MotorCalState::Empty => cal.empty_current_ma = current,
-                                MotorCalState::Water100ml => cal.water_100ml_current_ma = current,
-                                MotorCalState::Full => cal.full_current_ma = current,
-                            }
+                            let ref_point = model::calibration::FourPointRef::from(state);
+                            cal.current_ma[ref_point] = current;
                             if let Some(max_rpm_val) = max_rpm {
                                 cal.max_rpm = Some(max_rpm_val);
                                 let _ = core::writeln!(

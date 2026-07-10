@@ -138,4 +138,19 @@ fn test_cal_motor_command_parsing() {
             rpm_limit: Some(2500)
         })
     ));
+
+    // Parsing with overload state
+    let mut processor4 = TestProcessor { cmd: None };
+    for byte in b"cal_motor overload\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*byte, &mut processor4);
+    }
+
+    assert!(matches!(
+        processor4.cmd,
+        Some(CliCommand::CalMotor {
+            state: MotorCalState::Overload,
+            max_rpm: None,
+            rpm_limit: None
+        })
+    ));
 }
