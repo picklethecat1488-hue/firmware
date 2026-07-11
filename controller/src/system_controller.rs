@@ -4,13 +4,9 @@
 
 pub use firmware_lib::gesture_detector::ProximityEvent;
 
+use crate::Sender;
 use embassy_sync::blocking_mutex::raw::RawMutex;
-use embassy_sync::channel::Sender;
 use firmware_lib::{BatteryUpdateAction, PeriodicTimer, PowerManager};
-
-/// Alias for the telemetry channel sender.
-pub type TelemetrySender<'a, MutexRaw, const T_CAP: usize> =
-    embassy_sync::channel::Sender<'a, MutexRaw, model::types::TelemetryRecord, T_CAP>;
 
 /// One-way commands to control the global system state and notify it of events.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -45,6 +41,8 @@ pub enum SystemCommand {
     /// A battery action was triggered and processed.
     BatteryAction(BatteryUpdateAction),
 }
+
+crate::define_controller_channels!(SystemChannel, SystemSender, SystemReceiver, SystemCommand);
 
 impl crate::battery_controller::FromBatteryUpdate for SystemCommand {
     fn from_battery_update(state_of_charge: u8, charger_state: ChargeState) -> Self {
@@ -416,8 +414,8 @@ macro_rules! run_system_task {
             #[embassy_executor::task]
             pub async fn task(
                 mut controller: $controller_type,
-                system_rx: $crate::Receiver<$crate::system_controller::SystemCommand, 4>,
-                gesture_rx: $crate::Receiver<model::types::Gesture, 4>,
+                system_rx: $crate::StaticReceiver<$crate::system_controller::SystemCommand, 4>,
+                gesture_rx: $crate::StaticReceiver<model::types::Gesture, 4>,
             ) {
                 controller.run(system_rx, gesture_rx).await;
             }

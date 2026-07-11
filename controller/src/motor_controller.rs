@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::MotorTelemetryClient;
+use crate::TelemetrySender;
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::RawMutex;
@@ -155,7 +156,6 @@ where
         &mut self,
         mut telemetry_client: Option<
             &mut MotorTelemetryClient<
-                '_,
                 CriticalSectionRawMutex,
                 { crate::telemetry_controller::CHANNEL_CAPACITY },
             >,
@@ -221,7 +221,6 @@ where
         cmd: MotorCommand,
         mut telemetry_client: Option<
             &mut MotorTelemetryClient<
-                '_,
                 CriticalSectionRawMutex,
                 { crate::telemetry_controller::CHANNEL_CAPACITY },
             >,
@@ -369,11 +368,9 @@ where
     /// Runs the controller's control loop infinitely, reading from the command channel.
     pub async fn run<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex, const N: usize>(
         mut self,
-        command_rx: embassy_sync::channel::Receiver<'static, MutexRaw, MotorCommand, N>,
-        telemetry_tx: embassy_sync::channel::Sender<
-            'static,
+        command_rx: MotorReceiver<MutexRaw, N>,
+        telemetry_tx: TelemetrySender<
             CriticalSectionRawMutex,
-            model::telemetry::TelemetryRecord,
             { crate::telemetry_controller::CHANNEL_CAPACITY },
         >,
     ) -> ! {
@@ -424,6 +421,8 @@ pub enum MotorCommand {
     /// Stop the motor
     Stop,
 }
+
+crate::define_controller_channels!(MotorChannel, MotorSender, MotorReceiver, MotorCommand);
 
 /// Errors returned by the motor controller loop.
 #[derive(Debug)]

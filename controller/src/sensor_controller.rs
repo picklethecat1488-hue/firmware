@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use crate::Sender;
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::interfaces::ProximitySensor;
@@ -35,6 +36,8 @@ pub enum SensorCommand {
     /// Disable periodic automatic readings (runs only via manual commands)
     DisablePeriodic,
 }
+
+crate::define_controller_channels!(SensorChannel, SensorSender, SensorReceiver, SensorCommand);
 
 /// Trait for reading data from a generic sensor type.
 pub trait SensorReader<S> {
@@ -81,7 +84,7 @@ pub struct SensorStateManager<
     sensor_id: u8,
     sensor: S,
     periodic_enabled: bool,
-    upstream_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
+    upstream_tx: Option<Sender<'a, M, Cmd, 4>>,
     make_cmd: Option<fn(u8, Data) -> Cmd>,
     interrupt_pin: Option<Pin>,
 }
@@ -93,7 +96,7 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
     pub const fn new(
         sensor_id: u8,
         sensor: S,
-        upstream_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
+        upstream_tx: Option<Sender<'a, M, Cmd, 4>>,
         make_cmd: Option<fn(u8, Data) -> Cmd>,
         interrupt_pin: Option<Pin>,
     ) -> Self {
@@ -227,7 +230,7 @@ impl<
     pub fn new_with_fusion(
         sensor_id: u8,
         sensor: S,
-        upstream_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        upstream_tx: Sender<'a, M, Cmd, 4>,
         make_cmd: fn(u8, u16) -> Cmd,
         wake_threshold_mm: u16,
     ) -> Self {
@@ -274,7 +277,7 @@ impl<
         sensor_id: u8,
         sensor: S,
         latest_data: Reader::Data,
-        upstream_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        upstream_tx: Sender<'a, M, Cmd, 4>,
         make_cmd: fn(u8, Reader::Data) -> Cmd,
         interrupt_pin: Option<Pin>,
         context: Reader::Context,
@@ -382,7 +385,7 @@ impl<
     pub fn new_with_fusion_and_interrupt(
         sensor_id: u8,
         sensor: S,
-        upstream_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        upstream_tx: Sender<'a, M, Cmd, 4>,
         make_cmd: fn(u8, u16) -> Cmd,
         interrupt_pin: Pin,
         wake_threshold_mm: u16,
@@ -756,9 +759,8 @@ pub struct ProximityFeatureConfig<
     pub gesture_detector:
         core::cell::RefCell<firmware_lib::gesture_detector::ProximityGestureDetector>,
     /// Proximity telemetry client
-    pub telemetry_client: core::cell::RefCell<
-        crate::telemetry_controller::ProximityTelemetryClient<'static, MutexRaw, T_CAP>,
-    >,
+    pub telemetry_client:
+        core::cell::RefCell<crate::telemetry_controller::ProximityTelemetryClient<MutexRaw, T_CAP>>,
     /// Active proximity detection state
     pub proximity_active: core::cell::Cell<bool>,
     /// Proximity detection threshold
@@ -778,7 +780,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_C
         press_threshold_mm: u16,
         wake_threshold_mm: u16,
         dual_long_press_action: crate::GestureAction,
-        telemetry_tx: Option<crate::system_controller::TelemetrySender<'static, MutexRaw, T_CAP>>,
+        telemetry_tx: Option<crate::TelemetrySender<MutexRaw, T_CAP>>,
     ) -> Self {
         let mut sensor_txs = heapless::Vec::new();
         for sender in sensor_senders {

@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::BatteryTelemetryClient;
+use crate::{Sender, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
@@ -64,7 +65,7 @@ pub struct BatteryController<'a, M: RawMutex, B, C, Pin = DummyAlertPin, Cmd = (
     battery: &'a Mutex<M, B>,
     charger: &'a Mutex<M, C>,
     state: BatteryState,
-    system_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
+    system_tx: Option<Sender<'a, M, Cmd, 4>>,
     alert_pin: Option<Pin>,
     last_reported_voltage: Option<u32>,
     last_reported_state: Option<BatteryState>,
@@ -97,7 +98,7 @@ impl<
     pub fn new_with_system(
         battery: &'a Mutex<M, B>,
         charger: &'a Mutex<M, C>,
-        system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        system_tx: Sender<'a, M, Cmd, 4>,
     ) -> Self {
         Self {
             battery,
@@ -127,7 +128,7 @@ where
     pub fn new_with_system_and_alert(
         battery: &'a Mutex<M, B>,
         charger: &'a Mutex<M, C>,
-        system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        system_tx: Sender<'a, M, Cmd, 4>,
         alert_pin: Pin,
     ) -> Self {
         Self {
@@ -152,7 +153,6 @@ where
         &mut self,
         telemetry_client: Option<
             &mut BatteryTelemetryClient<
-                '_,
                 CriticalSectionRawMutex,
                 { crate::telemetry_controller::CHANNEL_CAPACITY },
             >,
@@ -235,11 +235,9 @@ where
     /// Starts the controller's main infinite run loop, processing commands.
     pub async fn run(
         mut self,
-        command_rx: embassy_sync::channel::Receiver<'static, M, BatteryCommand, 4>,
-        telemetry_tx: embassy_sync::channel::Sender<
-            'static,
+        command_rx: BatteryReceiver<M, 4>,
+        telemetry_tx: TelemetrySender<
             CriticalSectionRawMutex,
-            model::telemetry::TelemetryRecord,
             { crate::telemetry_controller::CHANNEL_CAPACITY },
         >,
     ) -> ! {
@@ -351,6 +349,13 @@ pub enum BatteryCommand {
     /// Update the current active wake locks bitmask
     UpdateWakeLocks(u32),
 }
+
+crate::define_controller_channels!(
+    BatteryChannel,
+    BatterySender,
+    BatteryReceiver,
+    BatteryCommand
+);
 
 /// Battery-specific CLI commands
 #[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]

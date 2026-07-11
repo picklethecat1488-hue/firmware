@@ -3,6 +3,7 @@
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 extern crate std;
 
+use crate::{Sender, TelemetrySender};
 use core::cmp;
 use core::fmt::Write as _;
 use core::ops::Range;
@@ -21,14 +22,7 @@ pub struct ProfilingFlash<F: NorFlash> {
     /// Total number of page erases performed since system boot
     erase_count: u32,
     /// Optional telemetry sender to log erase operations
-    telemetry_tx: Option<
-        embassy_sync::channel::Sender<
-            'static,
-            CriticalSectionRawMutex,
-            model::telemetry::TelemetryRecord,
-            64,
-        >,
-    >,
+    telemetry_tx: Option<TelemetrySender<CriticalSectionRawMutex, 64>>,
 }
 
 impl<F: NorFlash> ProfilingFlash<F> {
@@ -42,15 +36,7 @@ impl<F: NorFlash> ProfilingFlash<F> {
     }
 
     /// Set telemetry sender for flash erase profiling.
-    pub fn set_telemetry(
-        &mut self,
-        telemetry_tx: embassy_sync::channel::Sender<
-            'static,
-            CriticalSectionRawMutex,
-            model::telemetry::TelemetryRecord,
-            64,
-        >,
-    ) {
+    pub fn set_telemetry(&mut self, telemetry_tx: TelemetrySender<CriticalSectionRawMutex, 64>) {
         self.telemetry_tx = Some(telemetry_tx);
     }
 
@@ -400,15 +386,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
 
 impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<ProfilingFlash<F>> {
     /// Set telemetry sender for flash erase profiling.
-    pub fn set_telemetry(
-        &mut self,
-        telemetry_tx: embassy_sync::channel::Sender<
-            'static,
-            CriticalSectionRawMutex,
-            model::telemetry::TelemetryRecord,
-            64,
-        >,
-    ) {
+    pub fn set_telemetry(&mut self, telemetry_tx: TelemetrySender<CriticalSectionRawMutex, 64>) {
         self.flash.set_telemetry(telemetry_tx);
     }
 }
@@ -440,20 +418,25 @@ pub enum FsRequest {
     },
 }
 
+crate::define_controller_channels!(
+    FilesystemChannel,
+    FilesystemSender,
+    FilesystemReceiver,
+    FsRequest
+);
+
 unsafe impl Send for FsRequest {}
 unsafe impl Sync for FsRequest {}
 
 /// Client interface for interacting with the pipelined filesystem.
 #[derive(Clone, Copy)]
 pub struct FilesystemClient {
-    sender: embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, FsRequest, 16>,
+    sender: Sender<'static, CriticalSectionRawMutex, FsRequest, 16>,
 }
 
 impl FilesystemClient {
     /// Create a new FilesystemClient.
-    pub fn new(
-        sender: embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, FsRequest, 16>,
-    ) -> Self {
+    pub fn new(sender: Sender<'static, CriticalSectionRawMutex, FsRequest, 16>) -> Self {
         Self { sender }
     }
 
@@ -513,7 +496,7 @@ impl FilesystemClient {
 /// Task loop for the filesystem pipeline.
 pub async fn run_filesystem_task<F: NorFlash + MultiwriteNorFlash>(
     mut fs: FilesystemController<F>,
-    rx: embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, FsRequest, 16>,
+    rx: FilesystemReceiver<CriticalSectionRawMutex, 16>,
 ) -> ! {
     let _ = fs.verify_and_repair().await;
     loop {
