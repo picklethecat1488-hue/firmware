@@ -20,6 +20,75 @@ fn main() -> io::Result<()> {
     );
     spinner.enable_steady_tick(std::time::Duration::from_millis(80));
 
+    // Determine the explicit ELF path from either the subcommand or global flag
+    let elf_path = match &cli.command {
+        Commands::CrashLog { elf: Some(path) } => Some(std::path::PathBuf::from(path)),
+        _ => cli.elf.as_ref().map(std::path::PathBuf::from),
+    };
+
+    // If we have an ELF path, parse target partition settings from it
+    let info = if let Some(ref path) = elf_path {
+        let project_info = tool_common::autodetect_project_info(path).map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "Failed to parse project info from ELF at '{}': {}",
+                    path.display(),
+                    e
+                ),
+            )
+        })?;
+        Some(project_info)
+    } else {
+        None
+    };
+
+    let offset_override = if let Some(ref off_str) = cli.offset {
+        let parsed = if off_str.starts_with("0x") || off_str.starts_with("0X") {
+            u32::from_str_radix(&off_str[2..], 16)
+        } else {
+            off_str.parse::<u32>()
+        };
+        Some(parsed.map_err(|e| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("Invalid --offset value '{}': {}", off_str, e),
+            )
+        })?)
+    } else {
+        None
+    };
+    let size_override = cli.size.map(|s| s as u32);
+
+    // If connecting directly to the target device, we require valid project settings (thus an ELF file)
+    if cli.dump.is_none() && info.is_none() {
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "Direct target connection requires an ELF file to parse partition settings. Please specify it using --elf.",
+        ));
+    }
+
+    let (partition_offset, partition_size_val) = if let Some(ref info) = info {
+        let default_offset = info.partition_address.saturating_sub(0x1000_0000);
+        let default_size = info.partition_size as u32;
+        (
+            offset_override.unwrap_or(default_offset),
+            size_override.unwrap_or(default_size),
+        )
+    } else {
+        // No ELF file specified. Since we are operating on a dump file, we default
+        // the offset to 0 and the size to the dump file's size.
+        let dump_size = if let Some(ref dump_path) = cli.dump {
+            std::fs::metadata(dump_path)?.len() as u32
+        } else {
+            0
+        };
+        (
+            offset_override.unwrap_or(0),
+            size_override.unwrap_or(dump_size),
+        )
+    };
+
     // Connect to probe directly or load from file dump
     let mut flash = match &cli.dump {
         Some(dump_path) => {
@@ -27,19 +96,10 @@ fn main() -> io::Result<()> {
             let mut file = File::open(dump_path)?;
             let mut buf = Vec::new();
             file.read_to_end(&mut buf)?;
-            EitherFlash::Host(HostFlash::new(buf))
+            EitherFlash::Host(HostFlash::new_with_shift(buf, partition_offset))
         }
         None => {
-            spinner.set_message("Reading project settings...");
-            let elf_path = cli.elf.as_ref().ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "ELF path is required via --elf to detect layout parameters when not loading a dump file",
-                )
-            })?;
-            let info = tool_common::autodetect_project_info(std::path::Path::new(elf_path))
-                .map_err(|e| io::Error::new(io::ErrorKind::NotFound, e))?;
-
+            let info = info.as_ref().unwrap();
             // Ensure flash parameters in ELF match the compiled host_fs tool constants
             use embedded_storage_async::nor_flash::NorFlash;
             if info.flash_write_size != <EitherFlash as NorFlash>::WRITE_SIZE as u32
@@ -87,7 +147,7 @@ fn main() -> io::Result<()> {
         }
     };
 
-    let flash_range = 0..flash.capacity() as u32;
+    let flash_range = partition_offset..partition_offset + partition_size_val;
 
     // Outer-scope variables to manage ELF file lifespans for Context references
     #[allow(unused_assignments)]
@@ -96,15 +156,6 @@ fn main() -> io::Result<()> {
     let mut object_file = None;
     let mut context = None;
     let mut defmt_table = None;
-
-    let elf_path = if let Commands::CrashLog {
-        elf: Some(elf_path),
-    } = &cli.command
-    {
-        Some(elf_path.clone())
-    } else {
-        cli.elf.clone()
-    };
 
     if let Some(ref path) = elf_path {
         spinner.set_message("Loading ELF and DWARF debug symbols...");
@@ -127,12 +178,8 @@ fn main() -> io::Result<()> {
     }
 
     // Determine buffer size from project metadata partition size, falling back to flash capacity
-    let buffer_size = if let Some(ref path) = elf_path {
-        if let Ok(info) = tool_common::autodetect_project_info(std::path::Path::new(path)) {
-            info.partition_size
-        } else {
-            flash.capacity()
-        }
+    let buffer_size = if let Some(ref info) = info {
+        info.partition_size
     } else {
         flash.capacity()
     };
@@ -210,6 +257,23 @@ fn main() -> io::Result<()> {
                     &spinner,
                     filename,
                     &cli.dump,
+                    &mut unified_buf,
+                )
+                .await?;
+            }
+            Commands::Format => {
+                if cli.dump.is_some() {
+                    spinner.finish_and_clear();
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidInput,
+                        "Formatting is only supported directly on target (remove --dump)",
+                    ));
+                }
+                host_fs::commands::format::run(
+                    &mut flash,
+                    flash_range,
+                    &mut cache,
+                    &spinner,
                     &mut unified_buf,
                 )
                 .await?;

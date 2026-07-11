@@ -538,6 +538,8 @@ pub async fn run_filesystem_task<F: NorFlash + MultiwriteNorFlash>(
 pub enum FilesystemCliCommand {
     /// Format/erase the filesystem partition
     Format,
+    /// List all files in the filesystem partition
+    Ls,
 }
 
 /// Processes filesystem-specific CLI commands
@@ -549,16 +551,15 @@ pub fn process_filesystem_command<
     flash_ptr: Option<*mut F>,
     storage_start: u32,
     storage_end: u32,
+    fs_buf: &'static mut [u8],
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
     cmd: FilesystemCliCommand,
 ) -> Result<(), &'static str> {
     match cmd {
         FilesystemCliCommand::Format => {
             if let Some(flash_raw) = flash_ptr {
-                static mut SHELL_FS_BUF_3: [u8; 2048] = [0u8; 2048];
                 let flash_ref = unsafe { &mut *flash_raw };
                 let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
-                let fs_buf = unsafe { &mut *core::ptr::addr_of_mut!(SHELL_FS_BUF_3) };
                 let mut fs = crate::filesystem_controller::FilesystemController::new(
                     async_flash,
                     storage_start..storage_end,
@@ -574,11 +575,61 @@ pub fn process_filesystem_command<
                             "Formatting successful! Rebooting target system..."
                         );
                         #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        cortex_m::peripheral::SCB::sys_reset();
+                        {
+                            embassy_time::block_for(embassy_time::Duration::from_secs(2));
+                            cortex_m::peripheral::SCB::sys_reset();
+                        }
                         #[allow(unreachable_code)]
                         Ok(())
                     }
                     Err(()) => Err("Formatting failed!"),
+                }
+            } else {
+                Err("Flash peripheral not available")
+            }
+        }
+        FilesystemCliCommand::Ls => {
+            if let Some(flash_raw) = flash_ptr {
+                let flash_ref = unsafe { &mut *flash_raw };
+                let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+                let mut fs = crate::filesystem_controller::FilesystemController::new(
+                    async_flash,
+                    storage_start..storage_end,
+                    fs_buf,
+                );
+
+                let _ = core::writeln!(writer, "\r\nListing directory...");
+                let mut dir_buf = [0u8; 512];
+                let res = embassy_futures::block_on(fs.read_file(".dir", &mut dir_buf));
+                match res {
+                    Ok(Some(list)) => {
+                        if let Ok(s) = core::str::from_utf8(list) {
+                            let _ = core::writeln!(writer, "Filename");
+                            let _ = core::writeln!(
+                                writer,
+                                "--------------------------------------------------"
+                            );
+                            for line in s.split('\n') {
+                                if !line.is_empty() {
+                                    let _ = core::writeln!(writer, "{}", line);
+                                }
+                            }
+                        } else {
+                            let _ = core::writeln!(
+                                writer,
+                                "Error: Directory list contains invalid UTF-8"
+                            );
+                        }
+                        Ok(())
+                    }
+                    Ok(None) => {
+                        let _ = core::writeln!(writer, "No files found (directory empty).");
+                        Ok(())
+                    }
+                    Err(()) => {
+                        let _ = core::writeln!(writer, "Error: Directory file is corrupted.");
+                        Err("Failed to read directory")
+                    }
                 }
             } else {
                 Err("Flash peripheral not available")
@@ -598,14 +649,25 @@ pub fn handle_fs_cli<
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     let partition = resolver.resolve_partition(None)?;
+    let mut fs_buf = resolver.lock_fs_buffer()?;
+    let fs_buf_static = unsafe { fs_buf.as_static_mut() };
     match subcommand {
         Some("format") => process_filesystem_command(
             Some(partition.flash_ptr),
             partition.start_address,
             partition.end_address,
+            fs_buf_static,
             writer,
             FilesystemCliCommand::Format,
         ),
-        _ => Err("Invalid fs subcommand. Expected: format"),
+        Some("ls") => process_filesystem_command(
+            Some(partition.flash_ptr),
+            partition.start_address,
+            partition.end_address,
+            fs_buf_static,
+            writer,
+            FilesystemCliCommand::Ls,
+        ),
+        _ => Err("Invalid fs subcommand. Expected: format, ls"),
     }
 }

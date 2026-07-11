@@ -10,15 +10,12 @@ use {
     app::CatDetectorFeatureSet,
     cat_detector as app,
     controller::{
-        battery_controller::BatteryController, led_controller::LedController,
-        motor_controller::MotorController, sensor_controller::SensorController,
-        telemetry_controller::TelemetryController, thermal_controller::ThermalController,
-        BatteryFeatureConfig, GestureAction, LedFeatureConfig, MotorFeatureConfig,
-        ProximityFeatureConfig, SystemController, ThermalFeatureConfig,
+        telemetry_controller::TelemetryController, BatteryFeatureConfig, GestureAction,
+        LedFeatureConfig, MotorFeatureConfig, ProximityFeatureConfig, SystemController,
+        ThermalFeatureConfig,
     },
     embassy_executor::Spawner,
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    embassy_sync::mutex::Mutex,
     firmware_lib::BatteryManager,
 };
 
@@ -36,20 +33,6 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Statically allocated mutex holding the physical MAX17048 fuel gauge on target.
-static SHARED_BATTERY: Mutex<CriticalSectionRawMutex, app::BatteryDevice> = Mutex::new(
-    app::BatteryDevice::new(firmware_lib::i2c::SharedI2cWrapper::new(&app::SHARED_I2C)),
-);
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-static SHARED_TEMP_SENSOR: Mutex<CriticalSectionRawMutex, app::TempSensorDevice> =
-    Mutex::new(app::SafeRp2040TempSensor(None));
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-static SHARED_CHARGER: Mutex<CriticalSectionRawMutex, app::ChargerDevice> =
-    Mutex::new(app::SafeBq25185(None));
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
@@ -57,16 +40,9 @@ async fn main(spawner: Spawner) {
     // Configure hardware stack guard using Cortex-M MPU
     app::configure_mpu_stack_guard();
 
-    // Initialize board peripherals using the unified board configuration
-    let mut board = app::Board::init(p);
-
-    // Initialize the shared I2C bus on target
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
-    {
-        app::SHARED_I2C.lock(|cell| {
-            cell.borrow_mut().0 = Some(board.i2c);
-        });
-    }
+    // Initialize board peripherals and subcontrollers
+    let board = app::Board::init(p);
+    app::init_controllers(board).await;
 
     // Route defmt logs to RTT
     firmware_lib::defmt_logger::DefmtLogger::set_writer(
@@ -76,21 +52,10 @@ async fn main(spawner: Spawner) {
     defmt::info!("Booting Cat Detector App...");
 
     // Initialize the modular panic handler
-    static mut PANIC_FLASH: Option<
-        embassy_rp::flash::Flash<
-            'static,
-            embassy_rp::peripherals::FLASH,
-            embassy_rp::flash::Blocking,
-            { app::FLASH_SIZE },
-        >,
-    > = None;
     // Declare statically to avoid stack allocation and stack overflow
     static mut FS_BUF: [u8; 4096] = [0u8; 4096];
 
-    let panic_flash = unsafe {
-        PANIC_FLASH = Some(embassy_rp::flash::Flash::new_blocking(board.flash));
-        PANIC_FLASH.as_mut().unwrap()
-    };
+    let panic_flash = unsafe { app::PANIC_FLASH.as_mut().unwrap() };
     // Obtain separate static mut references for the panic handler and filesystem controller.
     // This is safe because the panic handler only runs after the application halts/panics.
     let fs_buf_panic = unsafe { &mut *core::ptr::addr_of_mut!(FS_BUF) };
@@ -121,8 +86,6 @@ async fn main(spawner: Spawner) {
     // Verify and repair/reformat the filesystem if it is corrupted
     let _ = fs_controller.verify_and_repair().await;
 
-    let mut controller = MotorController::new(board.motor, board.current_sensor);
-
     // Read calibration file from flash
     let mut cal_buf = [0u8; 128];
     let proximity_cal = match fs_controller
@@ -150,6 +113,14 @@ async fn main(spawner: Spawner) {
         _ => None,
     };
 
+    let thermal_ctrl = unsafe { app::THERMAL_CTRL.take().unwrap() };
+    let power_ctrl = unsafe { app::BATTERY_CTRL.take().unwrap() };
+    let led_ctrl = unsafe { app::LED_CTRL.take().unwrap() };
+    let mut controller = unsafe { app::MOTOR_CTRL.take().unwrap() };
+    let mut sensor_ctrl_north = unsafe { app::SENSOR_CTRL_NORTH.take().unwrap() };
+    let mut sensor_ctrl_east = unsafe { app::SENSOR_CTRL_EAST.take().unwrap() };
+    let mut sensor_ctrl_west = unsafe { app::SENSOR_CTRL_WEST.take().unwrap() };
+
     use model::calibration::Calibration;
     use model::calibration::CalibrationType;
 
@@ -165,80 +136,15 @@ async fn main(spawner: Spawner) {
         });
     }
 
-    let mut sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
-        0,
-        board.tof_north,
-        app::SYSTEM_CHANNEL.sender(),
-        |_id, dist| app::SystemCommand::ProximityUpdate {
-            direction: model::types::Direction::North,
-            distance_mm: dist,
-        },
-        app::ProximityPinWrapper(board.pin_north),
-        app::DEFAULT_WAKE_THRESHOLD_MM,
-    );
     sensor_ctrl_north.set_calibration(CalibrationType::ProximityCal(
         proximity_cal[model::types::Direction::North],
     ));
-
-    let mut sensor_ctrl_east = SensorController::new_with_fusion_and_interrupt(
-        1,
-        board.tof_east,
-        app::SYSTEM_CHANNEL.sender(),
-        |_id, dist| app::SystemCommand::ProximityUpdate {
-            direction: model::types::Direction::East,
-            distance_mm: dist,
-        },
-        app::ProximityPinWrapper(board.pin_east),
-        app::DEFAULT_WAKE_THRESHOLD_MM,
-    );
     sensor_ctrl_east.set_calibration(CalibrationType::ProximityCal(
         proximity_cal[model::types::Direction::East],
     ));
-
-    let mut sensor_ctrl_west = SensorController::new_with_fusion_and_interrupt(
-        2,
-        board.tof_west,
-        app::SYSTEM_CHANNEL.sender(),
-        |_id, dist| app::SystemCommand::ProximityUpdate {
-            direction: model::types::Direction::West,
-            distance_mm: dist,
-        },
-        app::ProximityPinWrapper(board.pin_west),
-        app::DEFAULT_WAKE_THRESHOLD_MM,
-    );
     sensor_ctrl_west.set_calibration(CalibrationType::ProximityCal(
         proximity_cal[model::types::Direction::West],
     ));
-
-    // Initialize the real Rp2040TempSensor in SHARED_TEMP_SENSOR
-    {
-        let mut sensor = SHARED_TEMP_SENSOR.lock().await;
-        sensor.0 = board.temp_sensor.take();
-    }
-
-    // Initialize the real Bq25185 in SHARED_CHARGER
-    {
-        let mut chg = SHARED_CHARGER.lock().await;
-        chg.0 = board.charger.take();
-    }
-
-    let thermal_ctrl = ThermalController::new_with_shutdown(
-        &SHARED_TEMP_SENSOR,
-        app::SYSTEM_CHANNEL.sender(),
-        app::SystemCommand::AlertTriggered,
-    );
-
-    let alert_wrapper = app::AlertPinWrapper(board.fuel_gauge_alert_pin);
-
-    let power_ctrl = BatteryController::new_with_system_and_alert(
-        &SHARED_BATTERY,
-        &SHARED_CHARGER,
-        app::SYSTEM_CHANNEL.sender(),
-        alert_wrapper,
-    );
-
-    // Initialize LED driver and its controller
-    let led_ctrl = LedController::new(board.led_driver);
 
     // Initialize SystemController to coordinate all loops
     let feature_set = app::CatDetectorFeatureSet {

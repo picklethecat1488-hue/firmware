@@ -85,15 +85,13 @@ fn test_vl53l0x_threshold_validation() {
         model::calibration::TwoPointCalibration::new(50, 150),
     ));
 
-    // 4. Setting calibration with threshold_mm <= near + THRESHOLD_ERROR_MM should panic.
-    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mut s = Vl53l0x::new(DummyI2c, 0x30);
-        let _ = s.set_threshold_mm(100);
-        s.set_calibration(CalibrationType::ProximityCal(
-            model::calibration::TwoPointCalibration::new(90, 150),
-        ));
-    }));
-    assert!(res.is_err());
+    // 4. Setting calibration with threshold_mm <= near + THRESHOLD_ERROR_MM should be ignored.
+    let mut s = Vl53l0x::new(DummyI2c, 0x30);
+    let _ = s.set_threshold_mm(100);
+    s.set_calibration(CalibrationType::ProximityCal(
+        model::calibration::TwoPointCalibration::new(90, 150),
+    ));
+    assert_eq!(s.calibration().low, 0);
 }
 
 #[test]

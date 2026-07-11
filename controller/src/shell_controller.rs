@@ -10,6 +10,46 @@ use crate::{
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::interfaces::TemperatureSensor;
 
+/// A guard that locks the shared filesystem scratch buffer for exclusive access.
+/// Releases the lock when dropped.
+pub struct FsBufferGuard<'a> {
+    buffer: *mut [u8],
+    lock: &'a core::cell::Cell<bool>,
+}
+
+unsafe impl<'a> Send for FsBufferGuard<'a> {}
+unsafe impl<'a> Sync for FsBufferGuard<'a> {}
+
+impl<'a> core::ops::Deref for FsBufferGuard<'a> {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.buffer }
+    }
+}
+
+impl<'a> core::ops::DerefMut for FsBufferGuard<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.buffer }
+    }
+}
+
+impl<'a> Drop for FsBufferGuard<'a> {
+    fn drop(&mut self) {
+        self.lock.set(false);
+    }
+}
+
+impl<'a> FsBufferGuard<'a> {
+    /// Retrieve the underlying static buffer reference.
+    ///
+    /// # Safety
+    /// The caller must ensure that the returned static reference is not stored
+    /// or used after this guard is dropped.
+    pub unsafe fn as_static_mut(&mut self) -> &'static mut [u8] {
+        &mut *self.buffer
+    }
+}
+
 /// Configuration trait for the ShellController.
 /// Encapsulates the target-specific raw mutex and peripheral types.
 pub trait ShellConfig {
@@ -102,6 +142,8 @@ macro_rules! define_shell_resolver_and_controller {
             )*
             /// Named flash storage partitions.
             pub flash_partitions: &'a [crate::NamedPartition<C::Flash>],
+            /// Shared filesystem scratch buffer.
+            pub fs_buffer: &'a mut [u8],
         }
 
         impl<'a, C: ShellConfig> Default for ShellControllerPointers<'a, C> {
@@ -109,6 +151,7 @@ macro_rules! define_shell_resolver_and_controller {
                 Self {
                     $( $field: &[], )*
                     flash_partitions: &[],
+                    fs_buffer: &mut [],
                 }
             }
         }
@@ -125,12 +168,16 @@ macro_rules! define_shell_resolver_and_controller {
                 &self,
                 name: Option<&str>,
             ) -> Result<crate::FlashPartition<C::Flash>, &'static str>;
+            /// Lock the shared filesystem scratch buffer for exclusive access.
+            fn lock_fs_buffer(&self) -> Result<crate::shell_controller::FsBufferGuard<'_>, &'static str>;
         }
 
         /// Controller responsible for processing shell commands.
         pub struct ShellController<'a, C: ShellConfig> {
             $( $field: &'a [crate::NamedDevice<C::$associated_type>], )*
             flash_partitions: &'a [crate::NamedPartition<C::Flash>],
+            fs_buffer: *mut [u8],
+            fs_buffer_locked: core::cell::Cell<bool>,
         }
 
         // Implement Send and Sync manually since ShellController contains raw pointers
@@ -143,6 +190,8 @@ macro_rules! define_shell_resolver_and_controller {
                 Self {
                     $( $field: pointers.$field, )*
                     flash_partitions: pointers.flash_partitions,
+                    fs_buffer: pointers.fs_buffer as *mut [u8],
+                    fs_buffer_locked: core::cell::Cell::new(false),
                 }
             }
 
@@ -190,6 +239,19 @@ macro_rules! define_shell_resolver_and_controller {
                 name: Option<&str>,
             ) -> Result<crate::FlashPartition<C::Flash>, &'static str> {
                 self.resolve_partition(name)
+            }
+            fn lock_fs_buffer(&self) -> Result<crate::shell_controller::FsBufferGuard<'_>, &'static str> {
+                if self.fs_buffer_locked.get() {
+                    return Err("Filesystem scratch buffer is already locked");
+                }
+                if unsafe { (&*self.fs_buffer).is_empty() } {
+                    return Err("Filesystem scratch buffer is not configured");
+                }
+                self.fs_buffer_locked.set(true);
+                Ok(crate::shell_controller::FsBufferGuard {
+                    buffer: self.fs_buffer,
+                    lock: &self.fs_buffer_locked,
+                })
             }
         }
     };
@@ -332,10 +394,10 @@ macro_rules! append_group_arm {
     (Fs, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
         $crate::declare_shell_commands!(@accum $name, $ctrl, $writer, [$($tail),*] -> [
             $($variants)*
-            /// Filesystem commands (fs format)
+            /// Filesystem commands (fs format, fs ls)
             #[command(name = "fs")]
             Fs {
-                /// Subcommand (format)
+                /// Subcommand (format, ls)
                 subcommand: Option<&'a str>,
             },
         ] [

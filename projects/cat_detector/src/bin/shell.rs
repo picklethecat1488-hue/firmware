@@ -36,6 +36,8 @@ use core::fmt::Write as FmtWrite;
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 controller::declare_shell_commands! {
     CatDetectorCli (CatDetectorCliProcessor) {
+        Battery,
+        Thermal,
         Motor,
         Sensor,
         Fs,
@@ -59,15 +61,6 @@ type FlashDevice = embassy_rp::flash::Flash<
     { app::FLASH_SIZE },
 >;
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-static mut BOARD_I2C: Option<*mut I2cBus> = None;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-static mut BOARD_MOTOR: Option<*mut MotorDevice> = None;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-static mut PANIC_FLASH: Option<FlashDevice> = None;
-
 /// Main application entry point for the bringup shell.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::main]
@@ -79,12 +72,7 @@ async fn main(spawner: Spawner) {
     app::configure_mpu_stack_guard();
 
     // Initialize board peripherals using the unified board configuration
-    let mut board = app::Board::init(p);
-
-    unsafe {
-        BOARD_I2C = Some(&mut board.i2c as *mut _ as *mut _);
-        BOARD_MOTOR = Some(&mut board.motor as *mut _);
-    }
+    let board = app::Board::init(p);
 
     let writer = firmware_lib::rtt::RttTxWriter;
 
@@ -116,11 +104,11 @@ async fn main(spawner: Spawner) {
     // Declare statically to avoid stack allocation and stack overflow
     static mut FS_BUF: [u8; 4096] = [0u8; 4096];
 
+    // Initialize board peripherals and subcontrollers
+    app::init_controllers(board).await;
+
     // Initialize the modular panic handler
-    let panic_flash = unsafe {
-        PANIC_FLASH = Some(embassy_rp::flash::Flash::new_blocking(board.flash));
-        PANIC_FLASH.as_mut().unwrap()
-    };
+    let panic_flash = unsafe { app::PANIC_FLASH.as_mut().unwrap() };
     let fs_buf = unsafe { &mut FS_BUF };
     app::init_panic_handler(
         panic_flash,
@@ -128,38 +116,121 @@ async fn main(spawner: Spawner) {
         fs_buf,
     );
 
-    let temp_sensor_ptr = board.temp_sensor.as_mut().map(|s| s as *mut _);
+    let temp_sensor_ptr = {
+        let mut guard = app::SHARED_TEMP_SENSOR.lock().await;
+        if let Some(ref mut sensor) = guard.0 {
+            sensor as *mut cat_detector::Rp2040TempSensor
+        } else {
+            core::ptr::null_mut()
+        }
+    };
 
-    let i2c_buses = unsafe {
+    let thermals = unsafe {
         &[controller::NamedDevice {
             name: "default",
-            device: BOARD_I2C.unwrap(),
+            device: app::THERMAL_CTRL.as_mut().unwrap() as *mut _,
         }]
     };
-    let motors = unsafe {
+
+    let batteries = unsafe {
         &[controller::NamedDevice {
             name: "default",
-            device: BOARD_MOTOR.unwrap(),
+            device: app::BATTERY_CTRL.as_mut().unwrap() as *mut _,
         }]
     };
+
+    let board_i2c_ptr = app::SHARED_I2C.lock(|cell| {
+        let mut borrow = cell.borrow_mut();
+        if let Some(ref mut i2c) = borrow.0 {
+            i2c as *mut _ as *mut _
+        } else {
+            core::ptr::null_mut()
+        }
+    });
+
+    let board_motor_ptr = unsafe { &mut app::MOTOR_CTRL.as_mut().unwrap().motor as *mut _ };
+
+    let i2c_buses = &[controller::NamedDevice {
+        name: "default",
+        device: board_i2c_ptr,
+    }];
+    let motors = &[controller::NamedDevice {
+        name: "default",
+        device: board_motor_ptr,
+    }];
     let flash_partitions = unsafe {
         &[controller::NamedPartition {
             name: "default",
             partition: controller::FlashPartition {
-                flash_ptr: PANIC_FLASH.as_mut().unwrap() as *mut _,
+                flash_ptr: app::PANIC_FLASH.as_mut().unwrap() as *mut _,
                 start_address: app::STORAGE_PARTITION_START,
                 end_address: app::STORAGE_PARTITION_END,
             },
         }]
     };
-    let temp_sensors: &[controller::NamedDevice<_>] = if let Some(sensor) = temp_sensor_ptr {
+    let temp_sensors: &[controller::NamedDevice<_>] = if !temp_sensor_ptr.is_null() {
         &[controller::NamedDevice {
             name: "default",
-            device: sensor,
+            device: temp_sensor_ptr,
         }]
     } else {
         &[]
     };
+    let sensors = unsafe {
+        &[
+            controller::NamedDevice {
+                name: "north",
+                device: app::SENSOR_CTRL_NORTH.as_mut().unwrap() as *mut _,
+            },
+            controller::NamedDevice {
+                name: "east",
+                device: app::SENSOR_CTRL_EAST.as_mut().unwrap() as *mut _,
+            },
+            controller::NamedDevice {
+                name: "west",
+                device: app::SENSOR_CTRL_WEST.as_mut().unwrap() as *mut _,
+            },
+        ]
+    };
+
+    let motor_ctrls = unsafe {
+        &[controller::NamedDevice {
+            name: "default",
+            device: app::MOTOR_CTRL.as_mut().unwrap() as *mut _,
+        }]
+    };
+
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    type ThermalControllerType = controller::thermal_controller::ThermalController<
+        'static,
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        app::TempSensorDevice,
+        app::SystemCommand,
+    >;
+
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    type BatteryControllerType = controller::battery_controller::BatteryController<
+        'static,
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        app::BatteryDevice,
+        app::ChargerDevice,
+        app::AlertPinType,
+        app::SystemCommand,
+    >;
+
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    type SensorControllerType = controller::sensor_controller::SensorController<
+        'static,
+        app::ProximitySensorDevice,
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        app::DataReadyPinType,
+        app::SystemCommand,
+        controller::sensor_controller::ProximityReader,
+    >;
+
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    type MotorControllerType =
+        controller::motor_controller::MotorController<MotorDevice, app::CurrentSensorDevice>;
 
     struct AppConfig;
     controller::impl_shell_config! {
@@ -169,6 +240,10 @@ async fn main(spawner: Spawner) {
             Motor = MotorDevice,
             Flash = FlashDevice,
             TempSensor = cat_detector::Rp2040TempSensor,
+            ThermalCtrl = ThermalControllerType,
+            BatteryCtrl = BatteryControllerType,
+            SensorCtrl = SensorControllerType,
+            MotorCtrl = MotorControllerType,
         }
     }
 
@@ -177,6 +252,11 @@ async fn main(spawner: Spawner) {
         motors,
         flash_partitions,
         temp_sensors,
+        sensors,
+        motor_ctrls,
+        thermals,
+        batteries,
+        fs_buffer: unsafe { &mut FS_BUF },
         ..Default::default()
     };
 

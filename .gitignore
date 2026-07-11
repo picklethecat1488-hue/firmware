@@ -46,3 +46,8 @@ ENV/
 # Conda
 .conda/
 conda-bld/
+
+bringup_report.md
+flash_dump.bin
+device_logs.log
+telemetry.csv

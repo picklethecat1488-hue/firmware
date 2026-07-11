@@ -502,6 +502,7 @@ pub fn process_motor_command<
     flash_ptr: Option<*mut Flash>,
     storage_start: u32,
     storage_end: u32,
+    fs_buf: &'static mut [u8],
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
     cmd: MotorCliCommand,
 ) -> Result<(), &'static str> {
@@ -533,13 +534,16 @@ pub fn process_motor_command<
             let i2c_raw = i2c_ptr.ok_or("I2C controller not available")?;
             let i2c = unsafe { &mut *i2c_raw };
             let mut current_sensor = peripherals::ina219::Ina219::new(i2c);
-            if let Err(e) = current_sensor.init() {
-                let _ = core::writeln!(writer, "Warning: Failed to initialize INA219: {:?}", e);
-            }
+            current_sensor
+                .init()
+                .map_err(|_| "Failed to initialize INA219 current sensor")?;
 
             let mut sum = 0;
             for _ in 0..5 {
-                sum += current_sensor.read_current_ma().unwrap_or(0);
+                let current_val = current_sensor
+                    .read_current_ma()
+                    .map_err(|_| "Failed to read current from INA219 current sensor")?;
+                sum += current_val;
                 embassy_time::block_for(embassy_time::Duration::from_millis(100));
             }
             let current = sum / 5;
@@ -560,10 +564,9 @@ pub fn process_motor_command<
             let _ = motor.stop();
 
             let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
-            static mut SHELL_FS_BUF_3: [u8; 2048] = [0u8; 2048];
             let flash_ref = unsafe { &mut *flash_raw };
             let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
-            let fs_buf = unsafe { &mut *core::ptr::addr_of_mut!(SHELL_FS_BUF_3) };
+            let fs_buf = &mut *fs_buf;
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
                 storage_start..storage_end,
@@ -631,6 +634,8 @@ pub fn handle_motor_cli<
     let motor = resolver.resolve_motor(None).ok().map(|d| d as *mut _);
     let i2c = resolver.resolve_i2c(None).ok().map(|d| d as *mut _);
     let partition = resolver.resolve_partition(None).ok();
+    let mut fs_buf = resolver.lock_fs_buffer()?;
+    let fs_buf_static = unsafe { fs_buf.as_static_mut() };
     let (flash, storage_start, storage_end) = match partition {
         Some(p) => (Some(p.flash_ptr), p.start_address, p.end_address),
         None => (None, 0, 0),
@@ -649,6 +654,7 @@ pub fn handle_motor_cli<
                 flash,
                 storage_start,
                 storage_end,
+                fs_buf_static,
                 writer,
                 MotorCliCommand::Speed { speed },
             )
@@ -660,6 +666,7 @@ pub fn handle_motor_cli<
             flash,
             storage_start,
             storage_end,
+            fs_buf_static,
             writer,
             MotorCliCommand::Stop,
         ),
@@ -684,6 +691,7 @@ pub fn handle_motor_cli<
                 flash,
                 storage_start,
                 storage_end,
+                fs_buf_static,
                 writer,
                 MotorCliCommand::Calibrate {
                     state,

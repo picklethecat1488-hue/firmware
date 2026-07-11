@@ -8,12 +8,29 @@ pub use tool_common::autodetect_project_info;
 pub struct HostFlash {
     /// In-memory buffer representing the flash contents
     pub data: Vec<u8>,
+    /// Shift added to offsets during flash operations to map to local data buffer
+    pub offset_shift: u32,
 }
 
 impl HostFlash {
     /// Creates a new HostFlash instance with the provided byte buffer.
     pub fn new(data: Vec<u8>) -> Self {
-        Self { data }
+        Self {
+            data,
+            offset_shift: 0,
+        }
+    }
+
+    pub fn new_with_shift(data: Vec<u8>, offset_shift: u32) -> Self {
+        Self { data, offset_shift }
+    }
+
+    fn map_addr(&self, offset: u32) -> Result<usize, NorFlashErrorKind> {
+        if offset >= self.offset_shift {
+            Ok((offset - self.offset_shift) as usize)
+        } else {
+            Err(NorFlashErrorKind::OutOfBounds)
+        }
     }
 }
 
@@ -25,7 +42,7 @@ impl embedded_storage_async::nor_flash::ReadNorFlash for HostFlash {
     const READ_SIZE: usize = 1;
 
     async fn read(&mut self, offset: u32, bytes: &mut [u8]) -> Result<(), Self::Error> {
-        let start = offset as usize;
+        let start = self.map_addr(offset)?;
         let end = start + bytes.len();
         if end <= self.data.len() {
             bytes.copy_from_slice(&self.data[start..end]);
@@ -36,7 +53,7 @@ impl embedded_storage_async::nor_flash::ReadNorFlash for HostFlash {
     }
 
     fn capacity(&self) -> usize {
-        self.data.len()
+        self.data.len() + self.offset_shift as usize
     }
 }
 
@@ -45,7 +62,7 @@ impl embedded_storage_async::nor_flash::NorFlash for HostFlash {
     const ERASE_SIZE: usize = 4096;
 
     async fn write(&mut self, offset: u32, bytes: &[u8]) -> Result<(), Self::Error> {
-        let start = offset as usize;
+        let start = self.map_addr(offset)?;
         let end = start + bytes.len();
         if end <= self.data.len() {
             self.data[start..end].copy_from_slice(bytes);
@@ -56,8 +73,8 @@ impl embedded_storage_async::nor_flash::NorFlash for HostFlash {
     }
 
     async fn erase(&mut self, from: u32, to: u32) -> Result<(), Self::Error> {
-        let start = from as usize;
-        let end = to as usize;
+        let start = self.map_addr(from)?;
+        let end = self.map_addr(to)?;
         if end <= self.data.len() {
             self.data[start..end].fill(0xFF);
             Ok(())
@@ -79,6 +96,7 @@ pub struct ProbeFlash {
     pub data: Vec<u8>,
     /// Track dirty sectors (each sector is 4096 bytes)
     dirty_sectors: Vec<bool>,
+    pub offset_shift: u32,
 }
 
 impl ProbeFlash {
@@ -117,12 +135,14 @@ impl ProbeFlash {
         let sector_size = 4096;
         let num_sectors = capacity.div_ceil(sector_size);
         let dirty_sectors = vec![false; num_sectors];
+        let offset_shift = base_address.saturating_sub(0x10000000);
 
         Ok(Self {
             session,
             base_address,
             data,
             dirty_sectors,
+            offset_shift,
         })
     }
 
@@ -155,6 +175,14 @@ impl ProbeFlash {
         self.dirty_sectors.fill(false);
         Ok(())
     }
+
+    fn map_addr(&self, offset: u32) -> Result<usize, NorFlashErrorKind> {
+        if offset >= self.offset_shift {
+            Ok((offset - self.offset_shift) as usize)
+        } else {
+            Err(NorFlashErrorKind::OutOfBounds)
+        }
+    }
 }
 
 impl embedded_storage_async::nor_flash::ErrorType for ProbeFlash {
@@ -165,7 +193,7 @@ impl embedded_storage_async::nor_flash::ReadNorFlash for ProbeFlash {
     const READ_SIZE: usize = 1;
 
     async fn read(&mut self, offset: u32, bytes: &mut [u8]) -> Result<(), Self::Error> {
-        let start = offset as usize;
+        let start = self.map_addr(offset)?;
         let end = start + bytes.len();
         if end <= self.data.len() {
             bytes.copy_from_slice(&self.data[start..end]);
@@ -176,7 +204,7 @@ impl embedded_storage_async::nor_flash::ReadNorFlash for ProbeFlash {
     }
 
     fn capacity(&self) -> usize {
-        self.data.len()
+        self.data.len() + self.offset_shift as usize
     }
 }
 
@@ -185,7 +213,7 @@ impl embedded_storage_async::nor_flash::NorFlash for ProbeFlash {
     const ERASE_SIZE: usize = 4096;
 
     async fn write(&mut self, offset: u32, bytes: &[u8]) -> Result<(), Self::Error> {
-        let start = offset as usize;
+        let start = self.map_addr(offset)?;
         let end = start + bytes.len();
         if end <= self.data.len() {
             self.data[start..end].copy_from_slice(bytes);
@@ -206,8 +234,8 @@ impl embedded_storage_async::nor_flash::NorFlash for ProbeFlash {
     }
 
     async fn erase(&mut self, from: u32, to: u32) -> Result<(), Self::Error> {
-        let start = from as usize;
-        let end = to as usize;
+        let start = self.map_addr(from)?;
+        let end = self.map_addr(to)?;
         if end <= self.data.len() {
             self.data[start..end].fill(0xFF);
 
@@ -234,6 +262,7 @@ pub struct GdbFlash {
     base_address: u32,
     pub data: Vec<u8>,
     dirty_sectors: Vec<bool>,
+    pub offset_shift: u32,
 }
 
 impl GdbFlash {
@@ -246,12 +275,14 @@ impl GdbFlash {
         let sector_size = 4096;
         let num_sectors = capacity.div_ceil(sector_size);
         let dirty_sectors = vec![false; num_sectors];
+        let offset_shift = base_address.saturating_sub(0x10000000);
 
         Ok(Self {
             gdb,
             base_address,
             data,
             dirty_sectors,
+            offset_shift,
         })
     }
 
@@ -281,6 +312,14 @@ impl GdbFlash {
         self.dirty_sectors.fill(false);
         Ok(())
     }
+
+    fn map_addr(&self, offset: u32) -> Result<usize, NorFlashErrorKind> {
+        if offset >= self.offset_shift {
+            Ok((offset - self.offset_shift) as usize)
+        } else {
+            Err(NorFlashErrorKind::OutOfBounds)
+        }
+    }
 }
 
 impl embedded_storage_async::nor_flash::ErrorType for GdbFlash {
@@ -291,7 +330,7 @@ impl embedded_storage_async::nor_flash::ReadNorFlash for GdbFlash {
     const READ_SIZE: usize = 1;
 
     async fn read(&mut self, offset: u32, bytes: &mut [u8]) -> Result<(), Self::Error> {
-        let start = offset as usize;
+        let start = self.map_addr(offset)?;
         let end = start + bytes.len();
         if end <= self.data.len() {
             bytes.copy_from_slice(&self.data[start..end]);
@@ -302,7 +341,7 @@ impl embedded_storage_async::nor_flash::ReadNorFlash for GdbFlash {
     }
 
     fn capacity(&self) -> usize {
-        self.data.len()
+        self.data.len() + self.offset_shift as usize
     }
 }
 
@@ -311,7 +350,7 @@ impl embedded_storage_async::nor_flash::NorFlash for GdbFlash {
     const ERASE_SIZE: usize = 4096;
 
     async fn write(&mut self, offset: u32, bytes: &[u8]) -> Result<(), Self::Error> {
-        let start = offset as usize;
+        let start = self.map_addr(offset)?;
         let end = start + bytes.len();
         if end <= self.data.len() {
             self.data[start..end].copy_from_slice(bytes);
@@ -331,8 +370,8 @@ impl embedded_storage_async::nor_flash::NorFlash for GdbFlash {
     }
 
     async fn erase(&mut self, from: u32, to: u32) -> Result<(), Self::Error> {
-        let start = from as usize;
-        let end = to as usize;
+        let start = self.map_addr(from)?;
+        let end = self.map_addr(to)?;
         if end <= self.data.len() {
             self.data[start..end].fill(0xFF);
 
@@ -361,10 +400,11 @@ pub enum EitherFlash {
 
 impl EitherFlash {
     pub fn capacity(&self) -> usize {
+        use embedded_storage_async::nor_flash::ReadNorFlash;
         match self {
-            EitherFlash::Host(f) => f.data.len(),
-            EitherFlash::Probe(f) => f.data.len(),
-            EitherFlash::Gdb(f) => f.data.len(),
+            EitherFlash::Host(f) => f.capacity(),
+            EitherFlash::Probe(f) => f.capacity(),
+            EitherFlash::Gdb(f) => f.capacity(),
         }
     }
 }
