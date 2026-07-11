@@ -1,4 +1,13 @@
-use controller::shell_controller::DefaultShellCli as CliCommand;
+controller::declare_shell_commands! {
+    CliCommand (CliCommandProcessor) {
+        Battery,
+        Thermal,
+        Motor,
+        Sensor,
+        Fs,
+        System,
+    }
+}
 use embedded_cli::cli::CliBuilder;
 use embedded_cli::command::RawCommand;
 use embedded_cli::service::{CommandProcessor, FromRaw, ProcessError};

@@ -552,15 +552,3 @@ macro_rules! declare_shell_commands {
         $crate::emit_wrapper_commands!($name, $proc_name, $ctrl, $writer, [$($variants)*], [$($matches)*]);
     };
 }
-
-crate::declare_shell_commands! {
-    @direct
-    DefaultShellCli {
-        Battery,
-        Thermal,
-        Motor,
-        Sensor,
-        Fs,
-        System,
-    }
-}
