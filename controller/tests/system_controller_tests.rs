@@ -76,7 +76,7 @@ fn test_system_controller_flow() {
     // Register activity, resets timer
     controller.handle_command(SystemCommand::ActivityDetected);
     process!(controller);
-    for _ in 0..(cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS - 1) {
+    for _ in 0..(controller::system_controller::INACTIVITY_TIMEOUT_SECONDS - 1) {
         controller.tick_ms(1000);
         process!(controller);
     }
@@ -149,7 +149,7 @@ fn test_system_controller_flow() {
     let _ = MOTOR_CHANNEL.try_receive().unwrap(); // Consume initial SetSpeed(100)
 
     // Tick to INACTIVITY_TIMEOUT_SECONDS to let the fresh controller sleep
-    for _ in 0..cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS {
+    for _ in 0..controller::system_controller::INACTIVITY_TIMEOUT_SECONDS {
         controller.tick_ms(1000);
         process!(controller);
     }
@@ -166,7 +166,7 @@ fn test_system_controller_flow() {
     let _ = MOTOR_CHANNEL.try_receive().unwrap(); // consume SetSpeed(100)
 
     // Tick to INACTIVITY_TIMEOUT_SECONDS
-    for _ in 0..cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS {
+    for _ in 0..controller::system_controller::INACTIVITY_TIMEOUT_SECONDS {
         controller.tick_ms(1000);
         process!(controller);
     }

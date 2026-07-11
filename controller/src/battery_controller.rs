@@ -356,7 +356,7 @@ pub enum BatteryCommand {
 #[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
 pub enum BatteryCliCommand {
     /// Query battery voltage and status
-    Battery,
+    Status,
 }
 
 /// Processes battery-specific CLI commands
@@ -366,13 +366,13 @@ pub fn process_battery_command<W: embedded_io::Write<Error = E>, E: embedded_io:
     cmd: BatteryCliCommand,
 ) -> Result<(), &'static str> {
     match cmd {
-        BatteryCliCommand::Battery => {
+        BatteryCliCommand::Status => {
             let (v, soc) = battery_ctrl
                 .read_battery_blocking()
-                .map_err(|_| "Direct battery reading failed")?;
+                .map_err(|_| "Failed to read battery")?;
             let _ = core::writeln!(
                 writer,
-                "\r\nDirect battery reading: {} mV, {}% state of charge",
+                "\r\nBattery Status:\r\n  Voltage: {} mV\r\n  SoC: {}%",
                 v,
                 soc
             );

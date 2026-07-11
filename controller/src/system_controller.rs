@@ -463,20 +463,15 @@ pub enum SystemCliCommand {
 }
 
 /// Processes system-specific CLI commands
-pub fn process_system_command<
-    W: embedded_io::Write<Error = E>,
-    E: embedded_io::Error,
-    MutexRaw: RawMutex + 'static,
-    const N: usize,
->(
-    system_tx: &embassy_sync::channel::Sender<'static, MutexRaw, SystemCommand, N>,
+pub fn process_system_command<W: embedded_io::Write<Error = E>, E: embedded_io::Error>(
+    system_ctrl: &mut impl crate::BlockingSystemWriter,
     _writer: &mut embedded_cli::writer::Writer<'_, W, E>,
     cmd: SystemCliCommand,
 ) -> Result<(), &'static str> {
     match cmd {
-        SystemCliCommand::Activity => system_tx
-            .try_send(SystemCommand::ActivityDetected)
-            .map_err(|_| "Failed to send System Activity command"),
+        SystemCliCommand::Activity => system_ctrl
+            .record_activity()
+            .map_err(|_| "Failed to record system activity"),
         SystemCliCommand::Crash => {
             panic!("Simulated crash dump flow");
         }

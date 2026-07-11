@@ -485,15 +485,15 @@ impl From<SensorDirection> for model::types::Direction {
 /// Sensor-specific CLI commands
 #[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
 pub enum SensorCliCommand {
-    /// Query proximity (ToF) sensors
-    Proximity,
-    /// Calibrate ToF sensors with target held at the cover (0mm)
+    /// Read proximity sensors
+    Status,
+    /// Calibrate cover (near)
     #[command(name = "cal_near")]
     CalNear {
         /// Sensor direction ('north', 'east', or 'west')
         direction: SensorDirection,
     },
-    /// Calibrate ToF sensors with target held at 100mm
+    /// Calibrate 100mm (far)
     #[command(name = "cal_far")]
     CalFar {
         /// Sensor direction ('north', 'east', or 'west')
@@ -521,7 +521,7 @@ pub fn process_sensor_command<
     cmd: SensorCliCommand,
 ) -> Result<(), &'static str> {
     match cmd {
-        SensorCliCommand::Proximity => {
+        SensorCliCommand::Status => {
             let read_sensor = |ptr_opt: Option<*mut S>| {
                 ptr_opt
                     .ok_or("Proximity sensor pointer not available")

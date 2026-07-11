@@ -474,6 +474,11 @@ where
         let _ = self.motor.set_speed(motor_speed);
         Ok(())
     }
+
+    fn stop(&mut self) -> Result<(), PeripheralError> {
+        let _ = self.motor.stop();
+        Ok(())
+    }
 }
 
 /// Represents the motor calibration target state.
@@ -518,17 +523,15 @@ impl From<MotorCalState> for model::calibration::FourPointRef {
 /// Motor-specific CLI commands
 #[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
 pub enum MotorCliCommand {
-    /// Motor speed control (motor <speed>)
-    #[command(name = "motor")]
-    Motor {
+    /// Motor speed control (motor speed <speed>)
+    Speed {
         /// Target speed percentage (-100 to 100)
         speed: i8,
     },
     /// Stop the motor
     Stop,
-    /// Calibrate motor current levels (cal_motor <empty|100ml|full|overload> [max_rpm] [rpm_limit])
-    #[command(name = "cal_motor")]
-    CalMotor {
+    /// Calibrate motor current levels (motor calibrate <empty|100ml|full|overload> [max_rpm] [rpm_limit])
+    Calibrate {
         /// Calibration state ('empty', '100ml', 'full', or 'overload')
         state: MotorCalState,
         /// Optional physical maximum RPM at 100% duty cycle
@@ -543,14 +546,11 @@ pub enum MotorCliCommand {
 pub fn process_motor_command<
     W: embedded_io::Write<Error = E>,
     E: embedded_io::Error,
-    MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static,
-    const N: usize,
     M: model::interfaces::Motor + 'static,
     I2c: embedded_hal::i2c::I2c + 'static,
     Flash: embedded_storage::nor_flash::NorFlash + 'static,
 >(
     motor_ctrl: &mut (impl crate::BlockingMotorReader + crate::BlockingMotorWriter),
-    motor_tx: &embassy_sync::channel::Sender<'static, MutexRaw, MotorCommand, N>,
     motor_ptr: Option<*mut M>,
     i2c_ptr: Option<*mut I2c>,
     flash_ptr: Option<*mut Flash>,
@@ -560,7 +560,7 @@ pub fn process_motor_command<
     cmd: MotorCliCommand,
 ) -> Result<(), &'static str> {
     match cmd {
-        MotorCliCommand::Motor { speed } => {
+        MotorCliCommand::Speed { speed } => {
             motor_ctrl
                 .set_motor_speed(speed)
                 .map_err(|_| "Failed to set motor speed")?;
@@ -570,10 +570,8 @@ pub fn process_motor_command<
             let _ = core::writeln!(writer, "\r\nMotor current: {} mA", current);
             Ok(())
         }
-        MotorCliCommand::Stop => motor_tx
-            .try_send(MotorCommand::Stop)
-            .map_err(|_| "Failed to send Motor Stop command"),
-        MotorCliCommand::CalMotor {
+        MotorCliCommand::Stop => motor_ctrl.stop().map_err(|_| "Failed to stop motor"),
+        MotorCliCommand::Calibrate {
             state,
             max_rpm,
             rpm_limit,

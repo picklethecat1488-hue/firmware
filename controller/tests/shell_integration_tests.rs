@@ -1,6 +1,6 @@
 use controller::motor_controller::MotorCommand;
-use controller::shell_controller::ShellCliCommand as CliCommand;
-use controller::shell_controller::ShellController;
+use controller::shell_controller::DefaultShellCli as CliCommand;
+use controller::shell_controller::{ShellController, ShellControllerPointers};
 use controller::system_controller::SystemCommand;
 use controller::{
     BlockingBatteryReader, BlockingMotorReader, BlockingMotorWriter, BlockingProximityReader,
@@ -10,6 +10,19 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embedded_cli::cli::CliBuilder;
 use model::types::PeripheralError;
+
+type TestConfig = controller::shell_controller::ShellConfigImpl<
+    CriticalSectionRawMutex,
+    DummyI2c,
+    MockMotor,
+    MockFlash,
+    MockTempSensor,
+    MockBatteryCtrl,
+    MockThermalCtrl,
+    MockSensorCtrl,
+    MockMotorCtrl,
+    embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, SystemCommand, 4>,
+>;
 
 struct DummyWriter {
     output: std::vec::Vec<u8>,
@@ -161,6 +174,11 @@ impl BlockingMotorWriter for MockMotorCtrl {
         self.speed.set(speed);
         Ok(())
     }
+    fn stop(&mut self) -> Result<(), PeripheralError> {
+        self.speed.set(0);
+        let _ = MOTOR_CHANNEL.try_send(MotorCommand::Stop);
+        Ok(())
+    }
 }
 
 struct MockTempSensor;
@@ -189,43 +207,89 @@ fn test_shell_controller_integration_each_command() {
     };
     let mut temp_sensor = MockTempSensor;
 
-    let pointers = controller::shell_controller::ShellControllerPointers::<
-        controller::shell_controller::ShellConfigImpl<_, _, _, _, _, _, _, _, _>,
-    > {
-        i2c_ptr: Some(&mut i2c as *mut _),
-        motor_ptr: Some(&mut motor as *mut _),
-        flash_ptr: Some(&mut flash as *mut _),
-        battery_ctrl_ptr: Some(&mut battery_ctrl as *mut _),
-        thermal_ctrl_ptr: Some(&mut thermal_ctrl as *mut _),
-        sensor_north_ctrl_ptr: Some(&mut sensor_north_ctrl as *mut _),
-        sensor_east_ctrl_ptr: Some(&mut sensor_east_ctrl as *mut _),
-        sensor_west_ctrl_ptr: Some(&mut sensor_west_ctrl as *mut _),
-        motor_ctrl_ptr: Some(&mut motor_ctrl as *mut _),
-        temp_sensor_ptr: Some(&mut temp_sensor as *mut _),
+    let i2c_buses = &[controller::NamedDevice {
+        name: "default",
+        device: &mut i2c as *mut _,
+    }];
+    let motors = &[controller::NamedDevice {
+        name: "default",
+        device: &mut motor as *mut _,
+    }];
+    let flash_partitions = &[controller::NamedPartition {
+        name: "default",
+        partition: controller::FlashPartition {
+            flash_ptr: &mut flash as *mut _,
+            start_address: 0,
+            end_address: 1024 * 64,
+        },
+    }];
+    let batteries = &[controller::NamedDevice {
+        name: "default",
+        device: &mut battery_ctrl as *mut _,
+    }];
+    let thermals = &[controller::NamedDevice {
+        name: "default",
+        device: &mut thermal_ctrl as *mut _,
+    }];
+    let sensors = &[
+        controller::NamedDevice {
+            name: "north",
+            device: &mut sensor_north_ctrl as *mut _,
+        },
+        controller::NamedDevice {
+            name: "east",
+            device: &mut sensor_east_ctrl as *mut _,
+        },
+        controller::NamedDevice {
+            name: "west",
+            device: &mut sensor_west_ctrl as *mut _,
+        },
+    ];
+    let motor_ctrls = &[controller::NamedDevice {
+        name: "default",
+        device: &mut motor_ctrl as *mut _,
+    }];
+    let temp_sensors = &[controller::NamedDevice {
+        name: "default",
+        device: &mut temp_sensor as *mut _,
+    }];
+
+    let mut system_sender = SYSTEM_CHANNEL.sender();
+    let system_ctrls = &[controller::NamedDevice {
+        name: "default",
+        device: &mut system_sender as *mut _,
+    }];
+
+    let pointers = ShellControllerPointers::<TestConfig> {
+        i2c_buses,
+        motors,
+        flash_partitions,
+        batteries,
+        thermals,
+        sensors,
+        motor_ctrls,
+        temp_sensors,
+        system_ctrls,
     };
 
-    let mut shell = ShellController::<
-        controller::shell_controller::ShellConfigImpl<_, _, _, _, _, _, _, _, _>,
-        4,
-    >::new(
-        MOTOR_CHANNEL.sender(),
-        SYSTEM_CHANNEL.sender(),
-        pointers,
-        0,
-        1024 * 64,
-    );
+    let mut shell = ShellController::<TestConfig>::new(pointers);
 
     let writer = DummyWriter::new();
     let mut cli = CliBuilder::default().writer(writer).build().unwrap();
 
+    // Help command first
+    for b in b"help\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+    }
+
     // 1. Motor command
-    for b in b"motor 42\n" {
+    for b in b"motor speed 42\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
     assert_eq!(motor_ctrl.speed.get(), 42);
 
     // 2. Stop command
-    for b in b"stop\n" {
+    for b in b"motor stop\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
     assert!(matches!(
@@ -234,22 +298,22 @@ fn test_shell_controller_integration_each_command() {
     ));
 
     // 3. Battery command
-    for b in b"battery\n" {
+    for b in b"battery status\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
 
     // 4. Thermal command
-    for b in b"thermal\n" {
+    for b in b"thermal status\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
 
     // 5. Proximity command
-    for b in b"proximity\n" {
+    for b in b"sensor status\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
 
     // 8. Activity command
-    for b in b"activity\n" {
+    for b in b"system activity\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
     assert!(matches!(
@@ -258,22 +322,22 @@ fn test_shell_controller_integration_each_command() {
     ));
 
     // 9. McuTemp command
-    for b in b"mcu_temp\n" {
+    for b in b"thermal mcu\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
 
     // 10. CalNear command
-    for b in b"cal_near east\n" {
+    for b in b"sensor cal_near east\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
 
     // 11. CalFar command
-    for b in b"cal_far west\n" {
+    for b in b"sensor cal_far west\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
 
     // 12. CalMotor command
-    for b in b"cal_motor water_100ml\n" {
+    for b in b"motor calibrate water_100ml\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
 
@@ -293,56 +357,126 @@ fn system_chan_check() -> Result<SystemCommand, embassy_sync::channel::TryReceiv
 
 #[test]
 fn test_shell_controller_with_missing_controllers() {
-    type TestConfig = controller::shell_controller::ShellConfigImpl<
-        CriticalSectionRawMutex,
-        DummyI2c,
-        MockMotor,
-        MockFlash,
-        MockBatteryCtrl,
-        MockThermalCtrl,
-        MockSensorCtrl,
-        MockMotorCtrl,
-        MockTempSensor,
-    >;
+    // Using module-level TestConfig
 
-    let pointers = controller::shell_controller::ShellControllerPointers::<TestConfig> {
-        i2c_ptr: None,
-        motor_ptr: None,
-        flash_ptr: None,
-        battery_ctrl_ptr: None,
-        thermal_ctrl_ptr: None,
-        sensor_north_ctrl_ptr: None,
-        sensor_east_ctrl_ptr: None,
-        sensor_west_ctrl_ptr: None,
-        motor_ctrl_ptr: None,
-        temp_sensor_ptr: None,
-    };
+    let pointers = ShellControllerPointers::<TestConfig>::default();
 
-    let mut shell = ShellController::<TestConfig, 4>::new(
-        MOTOR_CHANNEL.sender(),
-        SYSTEM_CHANNEL.sender(),
-        pointers,
-        0,
-        1024 * 64,
-    );
+    let mut shell = ShellController::<TestConfig>::new(pointers);
 
     let writer = DummyWriter::new();
     let mut cli = CliBuilder::default().writer(writer).build().unwrap();
 
     // Verify commands fail gracefully when pointers/controllers are missing
-    for b in b"motor 42\n" {
+    for b in b"motor speed 42\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
 
-    for b in b"battery\n" {
+    for b in b"battery status\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
 
-    for b in b"thermal\n" {
+    for b in b"thermal status\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
 
-    for b in b"proximity\n" {
+    for b in b"sensor status\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
     }
+}
+
+controller::declare_shell_commands! {
+    TestWrapperCli (TestWrapperCliProcessor) {
+        Motor,
+        Sensor,
+        Fs,
+        System,
+    }
+}
+
+#[test]
+fn test_wrapper_processor_integration() {
+    let mut i2c = DummyI2c;
+    let mut motor = MockMotor;
+    let mut flash = MockFlash::new();
+    let mut battery_ctrl = MockBatteryCtrl;
+    let mut thermal_ctrl = MockThermalCtrl;
+    let mut sensor_north_ctrl = MockSensorCtrl { distance: 100 };
+    let mut sensor_east_ctrl = MockSensorCtrl { distance: 200 };
+    let mut sensor_west_ctrl = MockSensorCtrl { distance: 300 };
+    let mut motor_ctrl = MockMotorCtrl {
+        speed: core::cell::Cell::new(0),
+    };
+    let mut temp_sensor = MockTempSensor;
+
+    let i2c_buses = &[controller::NamedDevice {
+        name: "default",
+        device: &mut i2c as *mut _,
+    }];
+    let motors = &[controller::NamedDevice {
+        name: "default",
+        device: &mut motor as *mut _,
+    }];
+    let flash_partitions = &[controller::NamedPartition {
+        name: "default",
+        partition: controller::FlashPartition {
+            flash_ptr: &mut flash as *mut _,
+            start_address: 0,
+            end_address: 1024 * 64,
+        },
+    }];
+    let batteries = &[controller::NamedDevice {
+        name: "default",
+        device: &mut battery_ctrl as *mut _,
+    }];
+    let thermals = &[controller::NamedDevice {
+        name: "default",
+        device: &mut thermal_ctrl as *mut _,
+    }];
+    let sensors = &[
+        controller::NamedDevice {
+            name: "north",
+            device: &mut sensor_north_ctrl as *mut _,
+        },
+        controller::NamedDevice {
+            name: "east",
+            device: &mut sensor_east_ctrl as *mut _,
+        },
+        controller::NamedDevice {
+            name: "west",
+            device: &mut sensor_west_ctrl as *mut _,
+        },
+    ];
+    let motor_ctrls = &[controller::NamedDevice {
+        name: "default",
+        device: &mut motor_ctrl as *mut _,
+    }];
+    let temp_sensors = &[controller::NamedDevice {
+        name: "default",
+        device: &mut temp_sensor as *mut _,
+    }];
+
+    let pointers = ShellControllerPointers::<TestConfig> {
+        i2c_buses,
+        motors,
+        flash_partitions,
+        batteries,
+        thermals,
+        sensors,
+        motor_ctrls,
+        temp_sensors,
+        ..Default::default()
+    };
+
+    let mut shell = ShellController::<TestConfig>::new(pointers);
+
+    let mut wrapper_proc = TestWrapperCliProcessor::new(&mut shell);
+
+    let writer = DummyWriter::new();
+    let mut cli = CliBuilder::default().writer(writer).build().unwrap();
+
+    // Send a motor command via the wrapper processor
+    for b in b"motor speed 77\n" {
+        let _ = cli.process_byte::<TestWrapperCli, _>(*b, &mut wrapper_proc);
+    }
+    assert_eq!(motor_ctrl.speed.get(), 77);
 }

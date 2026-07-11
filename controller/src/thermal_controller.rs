@@ -205,10 +205,9 @@ pub enum ThermalCommand {
 #[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
 pub enum ThermalCliCommand {
     /// Query thermal sensor and status
-    Thermal,
+    Status,
     /// Read the MCU system temperature
-    #[command(name = "mcu_temp")]
-    McuTemp,
+    Mcu,
 }
 
 /// Processes thermal-specific CLI commands
@@ -223,7 +222,7 @@ pub fn process_thermal_command<
     cmd: ThermalCliCommand,
 ) -> Result<(), &'static str> {
     match cmd {
-        ThermalCliCommand::Thermal => {
+        ThermalCliCommand::Status => {
             let temp = thermal_ctrl
                 .read_temperature_blocking()
                 .map_err(|_| "Direct thermal reading failed")?;
@@ -235,14 +234,14 @@ pub fn process_thermal_command<
             );
             Ok(())
         }
-        ThermalCliCommand::McuTemp => {
-            let sensor = temp_sensor.ok_or("RP2040 system temperature sensor not available")?;
+        ThermalCliCommand::Mcu => {
+            let sensor = temp_sensor.ok_or("System temperature sensor not available")?;
             let temp = sensor
                 .read_temperature_milli_c()
                 .map_err(|_| "Direct system temperature reading failed")?;
             let _ = core::writeln!(
                 writer,
-                "\r\nDirect system temperature reading (RP2040): {}.{:03} C",
+                "\r\nSystem temperature reading: {}.{:03} C",
                 temp / 1000,
                 (temp.abs() % 1000)
             );
