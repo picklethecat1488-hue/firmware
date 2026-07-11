@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 model = { path = "../model" }
+firmware_lib = { path = "../lib" }
 peripherals = { path = "../peripherals" }
 embassy-sync = "0.6.2"
 sequential-storage = "3.0.0"
@@ -13,10 +14,15 @@ heapless = "0.8.0"
 embedded-io = "0.6.0"
 minicbor = "0.20.0"
 embassy-futures = "0.1.0"
+embedded-cli = "0.2.1"
+embedded-hal = "1.0.0"
+embedded-storage = "0.3"
+
 
 [target.'cfg(all(target_arch = "arm", target_os = "none"))'.dependencies]
 embassy-time = { version = "0.4.0", features = ["defmt"] }
 defmt = "0.3"
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 
 [target.'cfg(not(all(target_arch = "arm", target_os = "none")))'.dependencies]
 embassy-time = { version = "0.4.0", features = ["std"] }

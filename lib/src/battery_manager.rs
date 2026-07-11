@@ -65,6 +65,11 @@ impl BatteryManager {
         self.critical_soc_threshold
     }
 
+    /// Returns low SoC threshold.
+    pub const fn low_soc_threshold(&self) -> u8 {
+        self.low_soc_threshold
+    }
+
     /// Sets critical SoC threshold.
     pub fn set_critical_soc_threshold(&mut self, val: u8) {
         self.critical_soc_threshold = val;

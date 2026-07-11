@@ -37,8 +37,11 @@ pub const TOF_WEST_INT_PIN: u32 = 9;
 /// Fuel Gauge Interrupt/Alert pin (GPIO 10)
 pub const FUEL_GAUGE_INT_PIN: u32 = 10;
 
-/// The default proximity threshold in millimeters under which target presence is detected.
-pub const DEFAULT_PROXIMITY_THRESHOLD_MM: u16 = 300;
+/// The default wake threshold in millimeters under which target presence is detected.
+pub const DEFAULT_WAKE_THRESHOLD_MM: u16 = 300;
+
+/// The default press threshold in millimeters under which gesture button presses are detected.
+pub const DEFAULT_PRESS_THRESHOLD_MM: u16 = 20;
 
 /// Charger Status 1 (S1 / STAT1 / FAULT) pin (GPIO 12)
 pub const CHARGER_S1_PIN: u32 = 12;
@@ -84,104 +87,119 @@ mod bsp_host;
 pub use bsp_host::*;
 
 /// System state and orchestration controller.
-pub mod system_controller;
+pub use controller::{
+    BatteryFeatureConfig, LedFeatureConfig, MotorFeatureConfig, ProximityEvent,
+    ProximityFeatureConfig, SystemCommand, SystemController, SystemFeatureSet,
+    ThermalFeatureConfig,
+};
+
+/// The default inactivity timeout in seconds before transitioning to Sleep.
+pub const INACTIVITY_TIMEOUT_SECONDS: u32 = 30;
+/// The state of charge threshold under which battery is considered low.
+pub const LOW_BATTERY_SOC_THRESHOLD: u8 = 20;
+/// The state of charge threshold under which battery is considered medium.
+pub const MID_BATTERY_SOC_THRESHOLD: u8 = 21;
+/// The state of charge threshold under which battery is considered high.
+pub const HIGH_BATTERY_SOC_THRESHOLD: u8 = 80;
+
+/// The critical state of charge threshold under which battery is considered critical.
+pub const CRITICAL_BATTERY_SOC_THRESHOLD: u8 = 10;
+/// The state of charge hysteresis to prevent rapid toggling around thresholds.
+pub const BATTERY_SOC_HYSTERESIS: u8 = 2;
+
+const _: () = {
+    assert!(
+        LOW_BATTERY_SOC_THRESHOLD > 0,
+        "Low battery threshold be nonzero"
+    );
+    assert!(
+        CRITICAL_BATTERY_SOC_THRESHOLD < LOW_BATTERY_SOC_THRESHOLD,
+        "Critical battery threshold must be lower than the low battery threshold"
+    );
+    assert!(
+        LOW_BATTERY_SOC_THRESHOLD < MID_BATTERY_SOC_THRESHOLD,
+        "Low battery threshold must be lower than the mid battery threshold"
+    );
+    assert!(
+        MID_BATTERY_SOC_THRESHOLD < HIGH_BATTERY_SOC_THRESHOLD,
+        "Mid battery threshold must be lower than the high battery threshold"
+    );
+};
 
 /// Bringup serial command and shell controller.
-pub mod shell_controller;
+pub use controller::shell_controller;
 
-/// Shared command channel for the Motor Controller.
-pub static MOTOR_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    controller::motor_controller::MotorCommand,
-    4,
-> = embassy_sync::channel::Channel::new();
+pub use firmware_lib::BatteryUpdateAction;
+pub use model::types::SystemStatus;
 
-/// Shared command channel for the System Controller.
-pub static SYSTEM_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    crate::system_controller::SystemCommand,
-    4,
-> = embassy_sync::channel::Channel::new();
+/// Feature set for the Cat Detector app that implements SystemFeatureSet.
+#[allow(clippy::type_complexity)]
+pub struct CatDetectorFeatureSet<
+    MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static,
+    const N: usize,
+> {
+    /// Tuple of active system features
+    pub features: (
+        controller::MotorFeatureConfig<MutexRaw, N>,
+        controller::BatteryFeatureConfig<MutexRaw, N>,
+        controller::ProximityFeatureConfig<MutexRaw, N>,
+        controller::LedFeatureConfig<MutexRaw, N>,
+        controller::ThermalFeatureConfig<MutexRaw, N>,
+    ),
+}
 
-/// Shared channel for local gesture events.
-pub static GESTURE_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    model::types::Gesture,
-    4,
-> = embassy_sync::channel::Channel::new();
+impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: usize>
+    controller::SystemFeatureSet<MutexRaw, N> for CatDetectorFeatureSet<MutexRaw, N>
+{
+    type Features = (
+        controller::MotorFeatureConfig<MutexRaw, N>,
+        controller::BatteryFeatureConfig<MutexRaw, N>,
+        controller::ProximityFeatureConfig<MutexRaw, N>,
+        controller::LedFeatureConfig<MutexRaw, N>,
+        controller::ThermalFeatureConfig<MutexRaw, N>,
+    );
 
-/// Shared channel for local proximity events.
-pub static PROXIMITY_EVENT_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    crate::system_controller::ProximityEvent,
-    4,
-> = embassy_sync::channel::Channel::new();
+    fn features(&self) -> &Self::Features {
+        &self.features
+    }
 
-/// Shared command channel for the North Sensor Controller.
-pub static SENSOR_NORTH_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    controller::sensor_controller::SensorCommand,
-    4,
-> = embassy_sync::channel::Channel::new();
+    fn inactivity_timeout_seconds(&self) -> u32 {
+        INACTIVITY_TIMEOUT_SECONDS
+    }
+}
 
-/// Shared command channel for the East Sensor Controller.
-pub static SENSOR_EAST_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    controller::sensor_controller::SensorCommand,
-    4,
-> = embassy_sync::channel::Channel::new();
+controller::declare_channels! {
+    /// Shared command channel for the Motor Controller.
+    pub static MOTOR_CHANNEL: controller::motor_controller::MotorCommand, capacity = 4;
+    /// Shared command channel for the System Controller.
+    pub static SYSTEM_CHANNEL: controller::SystemCommand, capacity = 4;
+    /// Shared channel for local gesture events.
+    pub static GESTURE_CHANNEL: model::types::Gesture, capacity = 4;
+    /// Shared command channel for the North Sensor Controller.
+    pub static SENSOR_NORTH_CHANNEL: controller::sensor_controller::SensorCommand, capacity = 4;
+    /// Shared command channel for the East Sensor Controller.
+    pub static SENSOR_EAST_CHANNEL: controller::sensor_controller::SensorCommand, capacity = 4;
+    /// Shared command channel for the West Sensor Controller.
+    pub static SENSOR_WEST_CHANNEL: controller::sensor_controller::SensorCommand, capacity = 4;
+    /// Shared command channel for the Thermal Controller.
+    pub static THERMAL_CHANNEL: controller::thermal_controller::ThermalCommand, capacity = 4;
+    /// Shared command channel for the Battery Controller.
+    pub static BATTERY_CHANNEL: controller::battery_controller::BatteryCommand, capacity = 4;
+    /// Shared command channel for the System LED status updates.
+    pub static LED_CHANNEL: model::types::SystemLedState, capacity = 4;
+    /// Shared command channel for telemetry records.
+    pub static TELEMETRY_CHANNEL: model::types::TelemetryRecord, capacity = { controller::telemetry_controller::CHANNEL_CAPACITY };
+    /// Shared command channel for filesystem operations.
+    pub static FILESYSTEM_CHANNEL: controller::filesystem_controller::FsRequest, capacity = 16;
+}
 
-/// Shared command channel for the West Sensor Controller.
-pub static SENSOR_WEST_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    controller::sensor_controller::SensorCommand,
-    4,
-> = embassy_sync::channel::Channel::new();
-
-/// Shared command channel for the Thermal Controller.
-pub static THERMAL_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    controller::thermal_controller::ThermalCommand,
-    4,
-> = embassy_sync::channel::Channel::new();
-
-/// Shared command channel for the Battery Controller.
-pub static BATTERY_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    controller::battery_controller::BatteryCommand,
-    4,
-> = embassy_sync::channel::Channel::new();
-
-/// Shared command channel for the System LED status updates.
-pub static LED_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    model::types::SystemLedState,
-    4,
-> = embassy_sync::channel::Channel::new();
-
-/// Shared command channel for telemetry records.
-pub static TELEMETRY_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    model::types::TelemetryRecord,
-    { controller::telemetry_controller::CHANNEL_CAPACITY },
-> = embassy_sync::channel::Channel::new();
-
-/// Shared command channel for filesystem operations.
-pub static FILESYSTEM_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    controller::filesystem_controller::FsRequest,
-    16,
-> = embassy_sync::channel::Channel::new();
-
-/// Re-export the telemetry module from the shared library
-pub use firmware_lib::telemetry;
+/// Re-export the telemetry module from the controller crate
+pub use controller::telemetry_controller as telemetry;
 
 /// Re-export the run_filesystem_task macro from the controller crate
 pub use controller::run_filesystem_task;
-/// Re-export the run_proximity_gesture_task macro from the shared library
-pub use firmware_lib::run_proximity_gesture_task;
-/// Re-export the run_telemetry_task macro from the shared library
-pub use firmware_lib::run_telemetry_task;
+/// Re-export the run_telemetry_task macro from the controller crate
+pub use controller::run_telemetry_task;
 
 /// Re-export the modular panic handler function
 #[cfg(all(target_arch = "arm", target_os = "none"))]

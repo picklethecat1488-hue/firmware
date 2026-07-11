@@ -249,18 +249,9 @@ pub enum SystemLedState {
 #[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum Gesture {
-    /// Proximity readings from North, East, and West sensors in mm (north, east, west).
-    #[n(0)]
-    Proximity(#[n(0)] u16, #[n(1)] u16, #[n(2)] u16),
     /// A completed dual-sensor long press gesture.
     #[n(1)]
     DualLongPress,
-    /// Proximity detection (any sensor < 300 mm).
-    #[n(2)]
-    ProximityDetected,
-    /// Proximity not detected (all sensors >= 300 mm).
-    #[n(3)]
-    ProximityNotDetected,
 }
 
 /// Telemetry data from the flash storage/filesystem.

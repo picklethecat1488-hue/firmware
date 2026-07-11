@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use model::interfaces::TemperatureSensor;
@@ -198,4 +199,121 @@ where
 pub enum ThermalCommand {
     /// Force thermal status query and print telemetry logs
     CheckTemp,
+}
+
+/// Thermal-specific CLI commands
+#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
+pub enum ThermalCliCommand {
+    /// Query thermal sensor and status
+    Status,
+    /// Read the MCU system temperature
+    Mcu,
+}
+
+/// Processes thermal-specific CLI commands
+pub fn process_thermal_command<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    T: model::interfaces::TemperatureSensor,
+>(
+    thermal_ctrl: &impl crate::BlockingThermalReader,
+    temp_sensor: Option<&mut T>,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+    cmd: ThermalCliCommand,
+) -> Result<(), &'static str> {
+    match cmd {
+        ThermalCliCommand::Status => {
+            let temp = thermal_ctrl
+                .read_temperature_blocking()
+                .map_err(|_| "Direct thermal reading failed")?;
+            let _ = core::writeln!(
+                writer,
+                "\r\nDirect thermal reading (ThermalController): {}.{:03} C",
+                temp / 1000,
+                (temp.abs() % 1000)
+            );
+            Ok(())
+        }
+        ThermalCliCommand::Mcu => {
+            let sensor = temp_sensor.ok_or("System temperature sensor not available")?;
+            let temp = sensor
+                .read_temperature_milli_c()
+                .map_err(|_| "Direct system temperature reading failed")?;
+            let _ = core::writeln!(
+                writer,
+                "\r\nSystem temperature reading: {}.{:03} C",
+                temp / 1000,
+                (temp.abs() % 1000)
+            );
+            Ok(())
+        }
+    }
+}
+
+/// Processes thermal-specific CLI subcommands.
+pub fn handle_thermal_cli<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    C: crate::ShellConfig,
+>(
+    resolver: &impl crate::ShellDeviceResolver<C>,
+    subcommand: Option<&str>,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+) -> Result<(), &'static str> {
+    let thermal_ctrl = resolver.resolve_thermal(None)?;
+    let temp_sensor = resolver.resolve_temp_sensor(None).ok();
+    match subcommand {
+        Some("status") => {
+            process_thermal_command(thermal_ctrl, temp_sensor, writer, ThermalCliCommand::Status)
+        }
+        Some("mcu") => {
+            process_thermal_command(thermal_ctrl, temp_sensor, writer, ThermalCliCommand::Mcu)
+        }
+        _ => Err("Invalid thermal subcommand. Expected: status, mcu"),
+    }
+}
+
+/// Standard config implementation for ThermalFeature.
+pub struct ThermalFeatureConfig<MutexRaw: RawMutex + 'static, const N: usize> {
+    /// Thermal channel sender
+    pub thermal_tx: Option<crate::ThermalSender<MutexRaw, N>>,
+    /// Thermal manager for checking alerts
+    pub thermal_manager: core::cell::RefCell<firmware_lib::ThermalManager>,
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize> ThermalFeatureConfig<MutexRaw, N> {
+    /// Creates a new `ThermalFeatureConfig`.
+    pub fn new(thermal_tx: Option<crate::ThermalSender<MutexRaw, N>>) -> Self {
+        Self {
+            thermal_tx,
+            thermal_manager: core::cell::RefCell::new(firmware_lib::ThermalManager::new()),
+        }
+    }
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw, N>
+    for ThermalFeatureConfig<MutexRaw, N>
+{
+    fn thermal_critical(&self) -> bool {
+        self.thermal_manager.borrow().thermal_critical()
+    }
+
+    fn on_alert_triggered(&self, _status: model::types::SystemStatus) {
+        self.thermal_manager.borrow_mut().set_thermal_critical(true);
+    }
+
+    fn on_tick(
+        &self,
+        _elapsed_ms: u32,
+        crossed_tick: bool,
+        _status: model::types::SystemStatus,
+        support: crate::DeviceSupport,
+        _wake_locks: u32,
+    ) {
+        if crossed_tick && support.thermal {
+            if let Some(ref thermal_tx) = self.thermal_tx {
+                let _ = thermal_tx.try_send(crate::ThermalCommand::CheckTemp);
+            }
+        }
+    }
 }
