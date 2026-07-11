@@ -1,5 +1,14 @@
 use controller::motor_controller::MotorCommand;
-use controller::shell_controller::DefaultShellCli as CliCommand;
+controller::declare_shell_commands! {
+    CliCommand (CliCommandProcessor) {
+        Battery,
+        Thermal,
+        Motor,
+        Sensor,
+        Fs,
+        System,
+    }
+}
 use controller::shell_controller::{ShellController, ShellControllerPointers};
 use controller::system_controller::SystemCommand;
 use controller::{
@@ -11,18 +20,21 @@ use embassy_sync::channel::Channel;
 use embedded_cli::cli::CliBuilder;
 use model::types::PeripheralError;
 
-type TestConfig = controller::shell_controller::ShellConfigImpl<
-    CriticalSectionRawMutex,
-    DummyI2c,
-    MockMotor,
-    MockFlash,
-    MockTempSensor,
-    MockBatteryCtrl,
-    MockThermalCtrl,
-    MockSensorCtrl,
-    MockMotorCtrl,
-    embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, SystemCommand, 4>,
->;
+struct TestConfig;
+controller::impl_shell_config! {
+    TestConfig {
+        MutexRaw: CriticalSectionRawMutex,
+        Flash = MockFlash,
+        Motor = MockMotor,
+        I2c = DummyI2c,
+        TempSensor = MockTempSensor,
+        BatteryCtrl = MockBatteryCtrl,
+        ThermalCtrl = MockThermalCtrl,
+        SensorCtrl = MockSensorCtrl,
+        MotorCtrl = MockMotorCtrl,
+        SystemCtrl = embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, SystemCommand, 4>,
+    }
+}
 
 struct DummyWriter {
     output: std::vec::Vec<u8>,
@@ -273,24 +285,25 @@ fn test_shell_controller_integration_each_command() {
     };
 
     let mut shell = ShellController::<TestConfig>::new(pointers);
+    let mut shell_proc = CliCommandProcessor::new(&mut shell);
 
     let writer = DummyWriter::new();
     let mut cli = CliBuilder::default().writer(writer).build().unwrap();
 
     // Help command first
     for b in b"help\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 1. Motor command
     for b in b"motor speed 42\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
     assert_eq!(motor_ctrl.speed.get(), 42);
 
     // 2. Stop command
     for b in b"motor stop\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
     assert!(matches!(
         MOTOR_CHANNEL.try_receive(),
@@ -299,22 +312,22 @@ fn test_shell_controller_integration_each_command() {
 
     // 3. Battery command
     for b in b"battery status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 4. Thermal command
     for b in b"thermal status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 5. Proximity command
     for b in b"sensor status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 8. Activity command
     for b in b"system activity\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
     assert!(matches!(
         system_chan_check(),
@@ -323,31 +336,31 @@ fn test_shell_controller_integration_each_command() {
 
     // 9. McuTemp command
     for b in b"thermal mcu\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 10. CalNear command
     for b in b"sensor cal_near east\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 11. CalFar command
     for b in b"sensor cal_far west\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 12. CalMotor command
     for b in b"motor calibrate water_100ml\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     for b in b"uart\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 13. Help command
     for b in b"help\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 }
 
@@ -362,25 +375,26 @@ fn test_shell_controller_with_missing_controllers() {
     let pointers = ShellControllerPointers::<TestConfig>::default();
 
     let mut shell = ShellController::<TestConfig>::new(pointers);
+    let mut shell_proc = CliCommandProcessor::new(&mut shell);
 
     let writer = DummyWriter::new();
     let mut cli = CliBuilder::default().writer(writer).build().unwrap();
 
     // Verify commands fail gracefully when pointers/controllers are missing
     for b in b"motor speed 42\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     for b in b"battery status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     for b in b"thermal status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     for b in b"sensor status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 }
 
