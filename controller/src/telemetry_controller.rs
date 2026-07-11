@@ -483,7 +483,7 @@ pub struct ThermalTelemetryClient<
 > {
     tx: Option<TelemetrySender<M, T_CAP>>,
     last_temp: Option<i32>,
-    last_state: Option<crate::thermal_controller::ThermalState>,
+    last_state: Option<crate::ThermalState>,
 }
 
 impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
@@ -500,10 +500,9 @@ impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
 }
 
 impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
-    TelemetryClient<(i32, crate::thermal_controller::ThermalState)>
-    for ThermalTelemetryClient<M, T_CAP>
+    TelemetryClient<(i32, crate::ThermalState)> for ThermalTelemetryClient<M, T_CAP>
 {
-    fn report(&mut self, (temp, state): (i32, crate::thermal_controller::ThermalState)) {
+    fn report(&mut self, (temp, state): (i32, crate::ThermalState)) {
         if let Some(ref tx) = self.tx {
             let send = match (self.last_temp, self.last_state) {
                 (Some(last_temp), Some(last_state)) => {
@@ -512,7 +511,7 @@ impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
                 _ => true,
             };
             if send {
-                let overheating = state == crate::thermal_controller::ThermalState::Overheating;
+                let overheating = state == crate::ThermalState::Overheating;
                 let status = model::types::ThermalStatus::TempOverheating(temp, overheating);
                 let _ = tx.try_send(TelemetryRecord::Thermal(status));
                 self.last_temp = Some(temp);

@@ -4,6 +4,7 @@
 
 pub use firmware_lib::gesture_detector::ProximityEvent;
 
+use crate::types::{BatteryStatus, Device, DeviceSupport, GestureAction, ProximityAction};
 use crate::Sender;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use firmware_lib::{BatteryUpdateAction, PeriodicTimer, PowerManager};
@@ -508,69 +509,6 @@ pub fn handle_system_cli<
         Some("crash") => process_system_command(system_ctrl, writer, SystemCliCommand::Crash),
         _ => Err("Invalid system subcommand. Expected: activity, crash"),
     }
-}
-
-/// Actions that can be mapped from gestures.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum GestureAction {
-    /// No action.
-    None,
-    /// Toggle system power state (Active <-> PowerDown).
-    TogglePower,
-}
-
-/// Action returned by the proximity feature update.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ProximityAction {
-    /// No action.
-    None,
-    /// Acquire system wake lock.
-    AcquireWakeLock,
-    /// Release system wake lock.
-    ReleaseWakeLock,
-    /// Wake system if asleep.
-    WakeSystem,
-}
-
-/// Battery status summary passed to features and stored on the system controller.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BatteryStatus {
-    /// True if the battery level is critically low.
-    pub battery_critical: bool,
-    /// True if the charger is connected and charging.
-    pub charger_connected: bool,
-    /// The mapped LED state for the current state of charge.
-    pub soc_led_state: model::types::SystemLedState,
-}
-
-/// Devices that can be power-managed by the system.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Device {
-    /// The motor.
-    Motor,
-    /// Proximity/gesture sensors.
-    Sensors,
-    /// Status indicator LED.
-    Led,
-    /// Battery / Fuel gauge.
-    Battery,
-    /// Thermal monitoring.
-    Thermal,
-}
-
-/// Device activity support status in the current system state.
-#[derive(Debug, Clone, Copy)]
-pub struct DeviceSupport {
-    /// True if motor is supported.
-    pub motor: bool,
-    /// True if battery monitoring is supported.
-    pub battery: bool,
-    /// True if proximity sensors are supported.
-    pub proximity: bool,
-    /// True if LED is supported.
-    pub led: bool,
-    /// True if thermal monitoring is supported.
-    pub thermal: bool,
 }
 
 /// A single system feature that can react to system events and ticks.
