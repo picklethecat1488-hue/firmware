@@ -161,13 +161,16 @@ async fn main(spawner: Spawner) {
         &[]
     };
 
-    type AppConfig = controller::shell_controller::ShellConfigImpl<
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        I2cBus,
-        MotorDevice,
-        FlashDevice,
-        cat_detector::Rp2040TempSensor,
-    >;
+    struct AppConfig;
+    controller::impl_shell_config! {
+        AppConfig {
+            MutexRaw: embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+            I2c = I2cBus,
+            Motor = MotorDevice,
+            Flash = FlashDevice,
+            TempSensor = cat_detector::Rp2040TempSensor,
+        }
+    }
 
     let pointers = ShellControllerPointers::<AppConfig> {
         i2c_buses,

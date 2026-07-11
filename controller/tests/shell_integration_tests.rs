@@ -11,18 +11,21 @@ use embassy_sync::channel::Channel;
 use embedded_cli::cli::CliBuilder;
 use model::types::PeripheralError;
 
-type TestConfig = controller::shell_controller::ShellConfigImpl<
-    CriticalSectionRawMutex,
-    DummyI2c,
-    MockMotor,
-    MockFlash,
-    MockTempSensor,
-    MockBatteryCtrl,
-    MockThermalCtrl,
-    MockSensorCtrl,
-    MockMotorCtrl,
-    embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, SystemCommand, 4>,
->;
+struct TestConfig;
+controller::impl_shell_config! {
+    TestConfig {
+        MutexRaw: CriticalSectionRawMutex,
+        Flash = MockFlash,
+        Motor = MockMotor,
+        I2c = DummyI2c,
+        TempSensor = MockTempSensor,
+        BatteryCtrl = MockBatteryCtrl,
+        ThermalCtrl = MockThermalCtrl,
+        SensorCtrl = MockSensorCtrl,
+        MotorCtrl = MockMotorCtrl,
+        SystemCtrl = embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, SystemCommand, 4>,
+    }
+}
 
 struct DummyWriter {
     output: std::vec::Vec<u8>,
