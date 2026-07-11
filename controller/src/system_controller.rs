@@ -2,14 +2,18 @@
 
 #![deny(missing_docs)]
 
-pub use crate::gesture_detector::ProximityEvent;
-use crate::{BatteryCommand, MotorCommand, SensorCommand, ThermalCommand};
+pub use firmware_lib::gesture_detector::ProximityEvent;
+
+use crate::system_feature::{
+    BatteryStatus, Device, DeviceSupport, FeatureList, GestureAction, ProximityAction,
+};
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
-use firmware_lib::{
-    BatteryManager, BatteryUpdateAction, PeriodicTimer, PowerManager, ThermalManager,
-};
-use model::types::MotorSpeed;
+use firmware_lib::{BatteryUpdateAction, PeriodicTimer, PowerManager};
+
+/// Alias for the telemetry channel sender.
+pub type TelemetrySender<'a, MutexRaw, const T_CAP: usize> =
+    embassy_sync::channel::Sender<'a, MutexRaw, model::types::TelemetryRecord, T_CAP>;
 
 /// One-way commands to control the global system state and notify it of events.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -24,6 +28,13 @@ pub enum SystemCommand {
         state_of_charge: u8,
         /// Charger state: Charging, Discharging, Fault, etc.
         charger_state: ChargeState,
+    },
+    /// Raw sensor proximity update from a ToF sensor.
+    ProximityUpdate {
+        /// The direction of the sensor that updated.
+        direction: Direction,
+        /// The distance in mm measured by the sensor.
+        distance_mm: u16,
     },
     /// High-level gesture detected.
     Gesture(Gesture),
@@ -47,116 +58,103 @@ impl crate::battery_controller::FromBatteryUpdate for SystemCommand {
     }
 }
 
-use model::types::{
-    BootReason, ChargeState, Gesture, SystemLedState, SystemStatus, TelemetryRecord,
-};
+use model::types::{BootReason, ChargeState, Direction, Gesture, SystemStatus, TelemetryRecord};
 
-/// The default inactivity timeout in seconds before transitioning to Sleep.
-pub const INACTIVITY_TIMEOUT_SECONDS: u32 = 30;
-/// The state of charge threshold under which battery is considered low.
-pub const LOW_BATTERY_SOC_THRESHOLD: u8 = 20;
-/// The state of charge threshold under which battery is considered medium.
-pub const MID_BATTERY_SOC_THRESHOLD: u8 = 21;
-/// The state of charge threshold under which battery is considered high.
-pub const HIGH_BATTERY_SOC_THRESHOLD: u8 = 80;
+/// A set of features and event hooks for customizing the system controller's behavior.
+pub trait SystemFeatureSet<MutexRaw: RawMutex + 'static, const N: usize> {
+    /// Tuple/list of features active in this feature set.
+    type Features: FeatureList<MutexRaw, N>;
 
-const _: () = {
-    assert!(
-        LOW_BATTERY_SOC_THRESHOLD > 0,
-        "Low battery threshold be nonzero"
-    );
-    assert!(
-        LOW_BATTERY_SOC_THRESHOLD < MID_BATTERY_SOC_THRESHOLD,
-        "Low battery threshold must be lower than the mid battery threshold"
-    );
-    assert!(
-        MID_BATTERY_SOC_THRESHOLD < HIGH_BATTERY_SOC_THRESHOLD,
-        "Mid battery threshold must be lower than the high battery threshold"
-    );
-};
+    /// Returns a reference to the active features.
+    fn features(&self) -> &Self::Features;
 
-/// Group of channels for coordinating control tasks from SystemController.
-pub struct SystemControllerChannels<
-    MutexRaw: RawMutex + 'static,
-    const N: usize,
-    const M: usize,
-    const T_CAP: usize,
-> {
-    /// System command channel sender
-    pub system_tx: Sender<'static, MutexRaw, SystemCommand, 4>,
-    /// Motor channel sender
-    pub motor_tx: Option<Sender<'static, MutexRaw, MotorCommand, N>>,
-    /// Sensor channel senders
-    pub sensor_txs: [Sender<'static, MutexRaw, SensorCommand, N>; M],
-    /// Battery channel sender
-    pub battery_tx: Option<Sender<'static, MutexRaw, BatteryCommand, N>>,
-    /// Thermal channel sender
-    pub thermal_tx: Option<Sender<'static, MutexRaw, ThermalCommand, N>>,
-    /// LED channel sender
-    pub led_tx: Option<Sender<'static, MutexRaw, SystemLedState, N>>,
-    /// Telemetry channel sender
-    pub telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, T_CAP>,
+    /// Returns the inactivity timeout in seconds before entering Sleep.
+    fn inactivity_timeout_seconds(&self) -> u32 {
+        30
+    }
+
+    /// Map an incoming gesture to a system action.
+    fn map_gesture(&self, gesture: Gesture, status: SystemStatus) -> GestureAction {
+        self.features().map_gesture(gesture, status)
+    }
+
+    /// Returns true if the device should be active in the given system state.
+    fn device_supported_in_state(&self, device: Device, state: SystemStatus) -> bool {
+        match device {
+            Device::Motor => state == SystemStatus::Active,
+            Device::Sensors => state == SystemStatus::Active,
+            Device::Led => state == SystemStatus::Active || state == SystemStatus::Sleep,
+            Device::Battery => true,
+            Device::Thermal => true,
+        }
+    }
+
+    /// Returns the combined DeviceSupport configuration in the given state.
+    fn get_device_support(&self, state: SystemStatus) -> DeviceSupport {
+        DeviceSupport {
+            motor: self.device_supported_in_state(Device::Motor, state),
+            battery: self.device_supported_in_state(Device::Battery, state),
+            proximity: self.device_supported_in_state(Device::Sensors, state),
+            led: self.device_supported_in_state(Device::Led, state),
+            thermal: self.device_supported_in_state(Device::Thermal, state),
+        }
+    }
 }
 
 /// Controller responsible for tracking global status and coordinating other subsystems.
 pub struct SystemController<
     MutexRaw: RawMutex + 'static,
-    const N: usize,
-    const M: usize,
+    F: SystemFeatureSet<MutexRaw, N>,
+    const N: usize = 4,
     const T_CAP: usize = { crate::telemetry_controller::CHANNEL_CAPACITY },
 > {
     /// Subsystem manager for power, transitions, and timers
     pub power_manager: PowerManager<MutexRaw, T_CAP>,
-    /// Subsystem manager for battery thresholds and status
-    pub battery_manager: BatteryManager,
-    /// Subsystem manager for thermal monitoring alerts
-    pub thermal_manager: ThermalManager,
-    motor_tx: Option<Sender<'static, MutexRaw, MotorCommand, N>>,
-    sensor_txs: [Sender<'static, MutexRaw, SensorCommand, N>; M],
-    battery_tx: Option<Sender<'static, MutexRaw, BatteryCommand, N>>,
-    thermal_tx: Option<Sender<'static, MutexRaw, ThermalCommand, N>>,
-    led_tx: Option<Sender<'static, MutexRaw, SystemLedState, N>>,
+    /// The app-defined feature set containing event hooks and channel configurations
+    pub feature_set: F,
+    /// Current battery status summary.
+    pub battery_status: Option<BatteryStatus>,
 }
 
-/// Concrete type alias for SystemController using CriticalSectionRawMutex.
-pub type AppSystemController<
-    const M: usize,
-    const T_CAP: usize = { crate::telemetry_controller::CHANNEL_CAPACITY },
-> = SystemController<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4, M, T_CAP>;
-
-impl<MutexRaw: RawMutex + 'static, const N: usize, const M: usize, const T_CAP: usize>
-    SystemController<MutexRaw, N, M, T_CAP>
+impl<
+        MutexRaw: RawMutex + 'static,
+        F: SystemFeatureSet<MutexRaw, N>,
+        const N: usize,
+        const T_CAP: usize,
+    > SystemController<MutexRaw, F, N, T_CAP>
 {
     /// Creates a new SystemController instance.
     pub fn new(
-        channels: SystemControllerChannels<MutexRaw, N, M, T_CAP>,
+        feature_set: F,
+        telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, T_CAP>,
         boot_reason: BootReason,
     ) -> Self {
-        let power_manager = PowerManager::new(channels.telemetry_tx, boot_reason);
-        let mut battery_manager = BatteryManager::new(
-            10, // critical_soc_threshold default
-            2,  // soc_hysteresis default
-            LOW_BATTERY_SOC_THRESHOLD,
-            MID_BATTERY_SOC_THRESHOLD,
-            HIGH_BATTERY_SOC_THRESHOLD,
-        );
-        if battery_manager.critical_soc_threshold() >= LOW_BATTERY_SOC_THRESHOLD {
-            #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::error!("Critical SoC threshold must be lower than the low battery threshold");
-            battery_manager.set_critical_soc_threshold(LOW_BATTERY_SOC_THRESHOLD - 1);
-        }
-        let thermal_manager = ThermalManager::new();
+        let power_manager = PowerManager::new(telemetry_tx, boot_reason);
 
         Self {
             power_manager,
-            battery_manager,
-            thermal_manager,
-            motor_tx: channels.motor_tx,
-            sensor_txs: channels.sensor_txs,
-            battery_tx: channels.battery_tx,
-            thermal_tx: channels.thermal_tx,
-            led_tx: channels.led_tx,
+            feature_set,
+            battery_status: None,
         }
+    }
+
+    /// Returns true if the battery is critical.
+    pub fn battery_critical(&self) -> bool {
+        self.battery_status
+            .map(|s| s.battery_critical)
+            .unwrap_or(false)
+    }
+
+    /// Returns true if the charger is connected.
+    pub fn charger_connected(&self) -> bool {
+        self.battery_status
+            .map(|s| s.charger_connected)
+            .unwrap_or(false)
+    }
+
+    /// Returns true if thermal critical alert is active.
+    pub fn thermal_critical(&self) -> bool {
+        self.feature_set.features().thermal_critical()
     }
 
     /// Sets the current system status.
@@ -164,11 +162,12 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const M: usize, const T_CAP: 
         &mut self,
         status: SystemStatus,
     ) -> Result<(), firmware_lib::system::TransitionError> {
-        if let Some(prev) = self.power_manager.set_status(
-            status,
-            self.battery_manager.battery_critical(),
-            self.thermal_manager.thermal_critical(),
-        )? {
+        let battery_crit = self.battery_critical();
+        let thermal_crit = self.thermal_critical();
+        if let Some(prev) = self
+            .power_manager
+            .set_status(status, battery_crit, thermal_crit)?
+        {
             let _ = self.handle_command(SystemCommand::StateChanged {
                 from: prev,
                 to: status,
@@ -177,21 +176,24 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const M: usize, const T_CAP: 
         Ok(())
     }
 
-    /// Handles battery status updates and updates the internal critical flag.
+    /// Updates the battery status and processes any resulting state transition actions.
     pub fn update_battery_status(
         &mut self,
         state_of_charge: u8,
         charger_state: ChargeState,
     ) -> Result<(), firmware_lib::system::TransitionError> {
-        let action = self.battery_manager.update_battery_status(
+        let res = self.feature_set.features().on_battery_update(
             state_of_charge,
             charger_state,
             self.power_manager.status(),
             self.power_manager.boot_power_down(),
         );
 
-        if let Some(act) = action {
-            self.handle_command(SystemCommand::BatteryAction(act))?;
+        if let Some((action, status)) = res {
+            self.battery_status = Some(status);
+            if let Some(act) = action {
+                self.handle_command(SystemCommand::BatteryAction(act))?;
+            }
         }
         Ok(())
     }
@@ -205,21 +207,22 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const M: usize, const T_CAP: 
             SystemCommand::ActivityDetected => {
                 self.power_manager.set_inactive_ms(0);
                 if self.power_manager.status() == SystemStatus::Sleep
-                    && !self.battery_manager.battery_critical()
-                    && !self.thermal_manager.thermal_critical()
+                    && !self.battery_critical()
+                    && !self.thermal_critical()
                 {
                     self.set_status(SystemStatus::Active)?;
                 }
             }
             SystemCommand::AlertTriggered => {
-                self.thermal_manager.set_thermal_critical(true);
-                if self.power_manager.status() != SystemStatus::PowerDown {
-                    if self.power_manager.status() != SystemStatus::Sleep {
-                        self.power_manager.clear_wake_locks();
-                        self.set_status(SystemStatus::Sleep)?;
-                    } else if let Some(ref led_tx) = self.led_tx {
-                        let _ = led_tx.try_send(SystemLedState::BlinksRedFourTimes);
-                    }
+                let current_status = self.power_manager.status();
+                self.feature_set
+                    .features()
+                    .on_alert_triggered(current_status);
+                if current_status != SystemStatus::PowerDown
+                    && current_status != SystemStatus::Sleep
+                {
+                    self.power_manager.clear_wake_locks();
+                    self.set_status(SystemStatus::Sleep)?;
                 }
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::info!("SystemController: Alert triggered. LED indicator set to RED.");
@@ -229,6 +232,36 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const M: usize, const T_CAP: 
                 charger_state,
             } => {
                 self.update_battery_status(state_of_charge, charger_state)?;
+            }
+            SystemCommand::ProximityUpdate {
+                direction,
+                distance_mm,
+            } => {
+                let current_status = self.power_manager.status();
+                let (gesture, action) = self.feature_set.features().on_proximity_update(
+                    direction,
+                    distance_mm,
+                    current_status,
+                );
+
+                match action {
+                    ProximityAction::AcquireWakeLock => {
+                        self.power_manager.acquire_wake_lock(None);
+                    }
+                    ProximityAction::ReleaseWakeLock => {
+                        self.power_manager.release_wake_lock(None);
+                    }
+                    ProximityAction::WakeSystem => {
+                        if !self.battery_critical() && !self.thermal_critical() {
+                            self.set_status(SystemStatus::Active)?;
+                        }
+                    }
+                    ProximityAction::None => {}
+                }
+
+                if let Some(g) = gesture {
+                    self.handle_command(SystemCommand::Gesture(g))?;
+                }
             }
             SystemCommand::BatteryAction(action) => match action {
                 BatteryUpdateAction::GoToPowerDown => {
@@ -244,30 +277,27 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const M: usize, const T_CAP: 
                     );
                 }
                 BatteryUpdateAction::ReportSoC => {
-                    if let Some(ref led_tx) = self.led_tx {
-                        if self.battery_manager.battery_critical() {
-                            let _ = led_tx.try_send(SystemLedState::BlinksRedOncePerThirtySeconds);
-                        } else if self.power_manager.status() == SystemStatus::PowerDown {
-                            let led = if self.battery_manager.charger_connected() {
-                                self.battery_manager.get_soc_led_state()
-                            } else {
-                                SystemLedState::Off
-                            };
-                            let _ = led_tx.try_send(led);
-                        } else if self.power_manager.status() == SystemStatus::Active {
-                            let _ = led_tx.try_send(self.battery_manager.get_soc_led_state());
-                        }
-                    }
+                    self.feature_set.features().on_battery_action(
+                        action,
+                        self.power_manager.status(),
+                        self.battery_status,
+                    );
                 }
             },
             SystemCommand::Gesture(gesture) => {
                 let current_status = self.power_manager.status();
-                match gesture {
-                    Gesture::DualLongPress => {
-                        self.power_manager
-                            .log_gesture_telemetry(Gesture::DualLongPress);
+                self.feature_set
+                    .features()
+                    .on_gesture(gesture, current_status);
+
+                // Map gesture to action
+                let action = self.feature_set.map_gesture(gesture, current_status);
+
+                match action {
+                    GestureAction::TogglePower => {
+                        self.power_manager.log_gesture_telemetry(gesture);
                         if current_status == SystemStatus::PowerDown {
-                            if !self.battery_manager.charger_connected() {
+                            if !self.charger_connected() {
                                 self.set_status(SystemStatus::Active)?;
                             }
                         } else {
@@ -275,64 +305,23 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const M: usize, const T_CAP: 
                             self.set_status(SystemStatus::PowerDown)?;
                         }
                     }
-                    Gesture::ProximityDetected if current_status != SystemStatus::PowerDown => {
-                        self.power_manager
-                            .log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityDetected));
-                        if self.power_manager.status() == SystemStatus::Sleep
-                            && !self.battery_manager.battery_critical()
-                            && !self.thermal_manager.thermal_critical()
-                        {
-                            self.set_status(SystemStatus::Active)?;
-                        }
-                        if self.power_manager.status() == SystemStatus::Active {
-                            self.power_manager.acquire_wake_lock(None);
-                        }
-                    }
-                    Gesture::ProximityNotDetected if current_status != SystemStatus::PowerDown => {
-                        self.power_manager
-                            .log_telemetry(TelemetryRecord::Gesture(Gesture::ProximityNotDetected));
-                        if self.power_manager.status() == SystemStatus::Active {
-                            self.power_manager.release_wake_lock(None);
-                        }
-                    }
-                    _ => {}
+                    GestureAction::None => {}
                 }
             }
-            SystemCommand::StateChanged { from: _, to } => match to {
-                SystemStatus::Active => {
+            SystemCommand::StateChanged { from, to } => {
+                if to == SystemStatus::Active {
                     self.power_manager.reset_on_wake();
-                    if let Some(ref led_tx) = self.led_tx {
-                        let _ = led_tx.try_send(self.battery_manager.get_soc_led_state());
-                    }
-                    if let Some(ref motor_tx) = self.motor_tx {
-                        let _ = motor_tx.try_send(MotorCommand::SetSpeed(MotorSpeed::MAX));
-                    }
                 }
-                SystemStatus::Sleep | SystemStatus::PowerDown => {
-                    if let Some(ref motor_tx) = self.motor_tx {
-                        let _ = motor_tx.try_send(MotorCommand::Stop);
-                    }
-                    if let Some(ref led_tx) = self.led_tx {
-                        let led = if to == SystemStatus::Sleep {
-                            if self.thermal_manager.thermal_critical() {
-                                SystemLedState::BlinksRedFourTimes
-                            } else {
-                                SystemLedState::SolidBlue
-                            }
-                        } else if self.battery_manager.battery_critical() {
-                            SystemLedState::BlinksRedOncePerThirtySeconds
-                        } else if self.battery_manager.charger_connected() {
-                            self.battery_manager.get_soc_led_state()
-                        } else {
-                            SystemLedState::Off
-                        };
-                        let _ = led_tx.try_send(led);
-                    }
-                    if let Some(ref battery_tx) = self.battery_tx {
-                        let _ = battery_tx.try_send(BatteryCommand::UpdateWakeLocks(0));
-                    }
-                }
-            },
+                let support = self.feature_set.get_device_support(to);
+                let thermal_crit = self.thermal_critical();
+                self.feature_set.features().on_state_changed(
+                    from,
+                    to,
+                    support,
+                    self.battery_status,
+                    thermal_crit,
+                );
+            }
         }
         Ok(())
     }
@@ -341,51 +330,41 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const M: usize, const T_CAP: 
     /// Returns true if the 1-second system tick boundary was crossed.
     pub fn tick_ms(&mut self, ms: u32) -> bool {
         let crossed = self.power_manager.tick_ms(ms);
+        let status = self.power_manager.status();
+        let wake_locks = self.power_manager.wake_locks();
+
+        let support = self.feature_set.get_device_support(status);
+
+        self.feature_set
+            .features()
+            .on_tick(ms, crossed, status, support, wake_locks);
+
         if crossed {
-            if let Some(ref battery_tx) = self.battery_tx {
-                let _ = battery_tx.try_send(BatteryCommand::UpdateWakeLocks(
-                    self.power_manager.wake_locks(),
-                ));
-            }
             // Sleep after inactivity timeout
-            if self.power_manager.inactive_ms() >= INACTIVITY_TIMEOUT_SECONDS * 1000 {
+            if self.power_manager.inactive_ms()
+                >= self.feature_set.inactivity_timeout_seconds() * 1000
+            {
                 let _ = self.set_status(SystemStatus::Sleep);
             }
         }
+
         crossed
     }
 
     /// Main execution loop.
-    pub async fn run(
+    pub async fn run<const CMD_CAP: usize>(
         mut self,
-        command_rx: embassy_sync::channel::Receiver<'static, MutexRaw, SystemCommand, N>,
+        command_rx: embassy_sync::channel::Receiver<'static, MutexRaw, SystemCommand, CMD_CAP>,
         gesture_rx: embassy_sync::channel::Receiver<'static, MutexRaw, Gesture, 4>,
     ) -> ! {
-        // Initialize LED to Off (as we start in PowerDown)
-        if let Some(ref led_tx) = self.led_tx {
-            led_tx.try_send(SystemLedState::Off).unwrap();
-        }
+        self.feature_set.features().on_init();
         self.power_manager
             .log_telemetry(TelemetryRecord::System(SystemStatus::PowerDown));
 
         let mut timer = PeriodicTimer::new(embassy_time::Duration::from_millis(1000));
         loop {
             if let Some(elapsed_ms) = timer.expired_and_reset() {
-                let crossed_tick = self.tick_ms(elapsed_ms);
-                // Coordinate periodic telemetry reads across other controllers on the system tick
-                if crossed_tick {
-                    if let Some(ref battery_tx) = self.battery_tx {
-                        let _ = battery_tx.try_send(BatteryCommand::CheckStatus);
-                    }
-                    if let Some(ref thermal_tx) = self.thermal_tx {
-                        let _ = thermal_tx.try_send(ThermalCommand::CheckTemp);
-                    }
-                }
-                if self.power_manager.status() == SystemStatus::Active {
-                    for sensor_tx in &self.sensor_txs {
-                        let _ = sensor_tx.try_send(SensorCommand::ReadSensors);
-                    }
-                }
+                let _ = self.tick_ms(elapsed_ms);
                 continue;
             }
 
@@ -430,16 +409,16 @@ macro_rules! run_system_task {
         $spawner:expr,
         $task_module:ident,
         $controller:expr,
+        $controller_type:ty,
         $system_rx:expr,
-        $gesture_rx:expr,
-        $m:expr
+        $gesture_rx:expr
     ) => {
         mod $task_module {
             use super::*;
 
             #[embassy_executor::task]
             pub async fn task(
-                mut controller: $crate::system_controller::AppSystemController<$m>,
+                mut controller: $controller_type,
                 system_rx: $crate::Receiver<$crate::system_controller::SystemCommand, 4>,
                 gesture_rx: $crate::Receiver<model::types::Gesture, 4>,
             ) {
@@ -450,6 +429,46 @@ macro_rules! run_system_task {
         $spawner
             .spawn($task_module::task($controller, $system_rx, $gesture_rx))
             .unwrap();
+    };
+}
+
+/// Helper macro to implement the SystemFeatureSet trait for a feature set struct.
+#[macro_export]
+macro_rules! impl_system_feature_set {
+    (
+        impl <$mutex:ident, const $n:ident $(, const $extra:ident)?> for $struct_type:ty {
+            motor: $motor_ty:ty => $motor_field:ident;
+            battery: $battery_ty:ty => $battery_field:ident;
+            proximity: $proximity_ty:ty => $proximity_field:ident;
+            led: $led_ty:ty => $led_field:ident;
+            thermal: $thermal_ty:ty => $thermal_field:ident;
+        }
+    ) => {
+        impl<$mutex: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const $n: usize $(, const $extra: usize)?>
+            $crate::system_controller::SystemFeatureSet<$mutex, $n> for $struct_type
+        {
+            type Motor = $motor_ty;
+            type Battery = $battery_ty;
+            type Proximity = $proximity_ty;
+            type Led = $led_ty;
+            type Thermal = $thermal_ty;
+
+            fn motor(&self) -> &Self::Motor {
+                &self.$motor_field
+            }
+            fn battery(&self) -> &Self::Battery {
+                &self.$battery_field
+            }
+            fn proximity(&self) -> &Self::Proximity {
+                &self.$proximity_field
+            }
+            fn led(&self) -> &Self::Led {
+                &self.$led_field
+            }
+            fn thermal(&self) -> &Self::Thermal {
+                &self.$thermal_field
+            }
+        }
     };
 }
 

@@ -51,8 +51,8 @@ pub trait SensorReader<S> {
 /// Context block for reading proximity sensors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProximityReaderContext {
-    /// The proximity threshold in millimeters.
-    pub proximity_threshold_mm: u16,
+    /// The proximity threshold in millimeters under which target presence is detected.
+    pub wake_threshold_mm: u16,
 }
 
 /// A reader adapter for proximity sensors.
@@ -206,13 +206,11 @@ impl<'a, S: ProximitySensor>
     >
 {
     /// Creates a new SensorController managing a single proximity sensor.
-    pub const fn new(sensor_id: u8, sensor: S, proximity_threshold_mm: u16) -> Self {
+    pub const fn new(sensor_id: u8, sensor: S, wake_threshold_mm: u16) -> Self {
         Self {
             state_manager: SensorStateManager::new(sensor_id, sensor, None, None, None),
             latest_data: 1000,
-            context: ProximityReaderContext {
-                proximity_threshold_mm,
-            },
+            context: ProximityReaderContext { wake_threshold_mm },
         }
     }
 }
@@ -230,7 +228,7 @@ impl<
         sensor: S,
         upstream_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
         make_cmd: fn(u8, u16) -> Cmd,
-        proximity_threshold_mm: u16,
+        wake_threshold_mm: u16,
     ) -> Self {
         Self {
             state_manager: SensorStateManager::new(
@@ -241,9 +239,7 @@ impl<
                 None,
             ),
             latest_data: 1000,
-            context: ProximityReaderContext {
-                proximity_threshold_mm,
-            },
+            context: ProximityReaderContext { wake_threshold_mm },
         }
     }
 }
@@ -388,7 +384,7 @@ impl<
         upstream_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
         make_cmd: fn(u8, u16) -> Cmd,
         interrupt_pin: Pin,
-        proximity_threshold_mm: u16,
+        wake_threshold_mm: u16,
     ) -> Self {
         Self {
             state_manager: SensorStateManager::new(
@@ -399,9 +395,7 @@ impl<
                 Some(interrupt_pin),
             ),
             latest_data: 1000,
-            context: ProximityReaderContext {
-                proximity_threshold_mm,
-            },
+            context: ProximityReaderContext { wake_threshold_mm },
         }
     }
 
@@ -409,7 +403,7 @@ impl<
     pub fn telemetry(&self) -> model::types::ProximityTelemetry {
         let dir = model::types::Direction::try_from(self.sensor_id())
             .unwrap_or(model::types::Direction::North);
-        if self.latest_data < self.context.proximity_threshold_mm {
+        if self.latest_data < self.context.wake_threshold_mm {
             model::types::ProximityTelemetry::InRange(dir, self.latest_data)
         } else {
             model::types::ProximityTelemetry::OutRange(dir, self.latest_data)

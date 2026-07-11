@@ -14,17 +14,19 @@ use peripherals::mock::MockBattery;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
-    app::system_controller::SystemController,
+    app::CatDetectorFeatureSet,
     cat_detector as app,
-    controller::battery_controller::BatteryController,
-    controller::led_controller::LedController,
-    controller::motor_controller::MotorController,
-    controller::sensor_controller::SensorController,
-    controller::telemetry_controller::TelemetryController,
-    controller::thermal_controller::ThermalController,
+    controller::{
+        battery_controller::BatteryController, led_controller::LedController,
+        motor_controller::MotorController, sensor_controller::SensorController,
+        telemetry_controller::TelemetryController, thermal_controller::ThermalController,
+        BatteryFeatureConfig, GestureAction, LedFeatureConfig, MotorFeatureConfig,
+        ProximityFeatureConfig, SystemController, ThermalFeatureConfig,
+    },
     embassy_executor::Spawner,
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     embassy_sync::mutex::Mutex,
+    firmware_lib::BatteryManager,
     peripherals::l9110s::L9110s,
     peripherals::mock::{DummyProximitySensor, MockLed},
 };
@@ -270,13 +272,13 @@ async fn main(spawner: Spawner) {
     let mut sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
         0,
         tof_north,
-        app::PROXIMITY_EVENT_CHANNEL.sender(),
-        |_id, dist| app::system_controller::ProximityEvent::SensorUpdate {
+        app::SYSTEM_CHANNEL.sender(),
+        |_id, dist| app::SystemCommand::ProximityUpdate {
             direction: model::types::Direction::North,
             distance_mm: dist,
         },
         ProximityPinWrapper(pin_north),
-        app::DEFAULT_PROXIMITY_THRESHOLD_MM,
+        app::DEFAULT_WAKE_THRESHOLD_MM,
     );
     sensor_ctrl_north.set_calibration(CalibrationType::ProximityCal(
         proximity_cal[model::types::Direction::North],
@@ -285,13 +287,13 @@ async fn main(spawner: Spawner) {
     let mut sensor_ctrl_east = SensorController::new_with_fusion_and_interrupt(
         1,
         tof_east,
-        app::PROXIMITY_EVENT_CHANNEL.sender(),
-        |_id, dist| app::system_controller::ProximityEvent::SensorUpdate {
+        app::SYSTEM_CHANNEL.sender(),
+        |_id, dist| app::SystemCommand::ProximityUpdate {
             direction: model::types::Direction::East,
             distance_mm: dist,
         },
         ProximityPinWrapper(pin_east),
-        app::DEFAULT_PROXIMITY_THRESHOLD_MM,
+        app::DEFAULT_WAKE_THRESHOLD_MM,
     );
     sensor_ctrl_east.set_calibration(CalibrationType::ProximityCal(
         proximity_cal[model::types::Direction::East],
@@ -300,13 +302,13 @@ async fn main(spawner: Spawner) {
     let mut sensor_ctrl_west = SensorController::new_with_fusion_and_interrupt(
         2,
         tof_west,
-        app::PROXIMITY_EVENT_CHANNEL.sender(),
-        |_id, dist| app::system_controller::ProximityEvent::SensorUpdate {
+        app::SYSTEM_CHANNEL.sender(),
+        |_id, dist| app::SystemCommand::ProximityUpdate {
             direction: model::types::Direction::West,
             distance_mm: dist,
         },
         ProximityPinWrapper(pin_west),
-        app::DEFAULT_PROXIMITY_THRESHOLD_MM,
+        app::DEFAULT_WAKE_THRESHOLD_MM,
     );
     sensor_ctrl_west.set_calibration(CalibrationType::ProximityCal(
         proximity_cal[model::types::Direction::West],
@@ -335,7 +337,7 @@ async fn main(spawner: Spawner) {
     let thermal_ctrl = ThermalController::new_with_shutdown(
         &SHARED_TEMP_SENSOR,
         app::SYSTEM_CHANNEL.sender(),
-        app::system_controller::SystemCommand::AlertTriggered,
+        app::SystemCommand::AlertTriggered,
     );
 
     let fg_alert_pin = board.gpio_pins[app::FUEL_GAUGE_INT_PIN as usize]
@@ -355,22 +357,41 @@ async fn main(spawner: Spawner) {
     let led_ctrl = LedController::new(led_driver);
 
     // Initialize SystemController to coordinate all loops
-    let channels = app::system_controller::SystemControllerChannels {
-        system_tx: app::SYSTEM_CHANNEL.sender(),
-        motor_tx: Some(app::MOTOR_CHANNEL.sender()),
-        sensor_txs: [
-            app::SENSOR_NORTH_CHANNEL.sender(),
-            app::SENSOR_EAST_CHANNEL.sender(),
-            app::SENSOR_WEST_CHANNEL.sender(),
-        ],
-        battery_tx: Some(app::BATTERY_CHANNEL.sender()),
-        thermal_tx: Some(app::THERMAL_CHANNEL.sender()),
-        led_tx: Some(app::LED_CHANNEL.sender()),
-        telemetry_tx: app::TELEMETRY_CHANNEL.sender(),
+    let feature_set = app::CatDetectorFeatureSet {
+        features: (
+            MotorFeatureConfig::new(
+                Some(app::MOTOR_CHANNEL.sender()),
+                model::types::MotorSpeed::MAX,
+            ),
+            BatteryFeatureConfig::new(
+                Some(app::BATTERY_CHANNEL.sender()),
+                BatteryManager::new(
+                    app::CRITICAL_BATTERY_SOC_THRESHOLD,
+                    app::BATTERY_SOC_HYSTERESIS,
+                    app::LOW_BATTERY_SOC_THRESHOLD,
+                    app::MID_BATTERY_SOC_THRESHOLD,
+                    app::HIGH_BATTERY_SOC_THRESHOLD,
+                ),
+            ),
+            ProximityFeatureConfig::new(
+                &[
+                    app::SENSOR_NORTH_CHANNEL.sender(),
+                    app::SENSOR_EAST_CHANNEL.sender(),
+                    app::SENSOR_WEST_CHANNEL.sender(),
+                ],
+                app::DEFAULT_PRESS_THRESHOLD_MM,
+                app::DEFAULT_WAKE_THRESHOLD_MM,
+                GestureAction::TogglePower,
+                Some(app::TELEMETRY_CHANNEL.sender()),
+            ),
+            LedFeatureConfig::new(Some(app::LED_CHANNEL.sender())),
+            ThermalFeatureConfig::new(Some(app::THERMAL_CHANNEL.sender())),
+        ),
     };
     let boot_reason = app::get_boot_reason();
 
-    let system_ctrl = SystemController::new(channels, boot_reason);
+    let system_ctrl =
+        SystemController::new(feature_set, app::TELEMETRY_CHANNEL.sender(), boot_reason);
 
     // Spawn controllers selectively and concurrently using separate macros
     controller::run_thermal_task!(
@@ -380,7 +401,7 @@ async fn main(spawner: Spawner) {
         app::THERMAL_CHANNEL.receiver(),
         app::TELEMETRY_CHANNEL.sender(),
         SafeRp2040TempSensor,
-        app::system_controller::SystemCommand
+        app::SystemCommand
     );
 
     #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -393,7 +414,7 @@ async fn main(spawner: Spawner) {
         peripherals::max17048::Max17048<firmware_lib::i2c::SharedI2cWrapper<'static>>,
         SafeBq25185,
         AlertPinWrapper,
-        app::system_controller::SystemCommand
+        app::SystemCommand
     );
 
     #[cfg(not(all(target_arch = "arm", target_os = "none")))]
@@ -406,7 +427,7 @@ async fn main(spawner: Spawner) {
         MockBattery,
         SafeBq25185,
         AlertPinWrapper,
-        app::system_controller::SystemCommand
+        app::SystemCommand
     );
 
     #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -440,7 +461,7 @@ async fn main(spawner: Spawner) {
         DummyProximitySensor,
         CriticalSectionRawMutex,
         ProximityPinWrapper,
-        app::system_controller::ProximityEvent
+        app::SystemCommand
     );
 
     controller::run_sensor_task!(
@@ -451,7 +472,7 @@ async fn main(spawner: Spawner) {
         DummyProximitySensor,
         CriticalSectionRawMutex,
         ProximityPinWrapper,
-        app::system_controller::ProximityEvent
+        app::SystemCommand
     );
 
     controller::run_sensor_task!(
@@ -462,16 +483,7 @@ async fn main(spawner: Spawner) {
         DummyProximitySensor,
         CriticalSectionRawMutex,
         ProximityPinWrapper,
-        app::system_controller::ProximityEvent
-    );
-
-    // Spawn the proximity gesture task to process sensor readings locally
-    app::run_proximity_gesture_task!(
-        spawner,
-        app::PROXIMITY_EVENT_CHANNEL.receiver(),
-        app::GESTURE_CHANNEL.sender(),
-        app::TELEMETRY_CHANNEL.sender(),
-        app::DEFAULT_PROXIMITY_THRESHOLD_MM
+        app::SystemCommand
     );
 
     // Spawn the LED controller task
@@ -489,9 +501,15 @@ async fn main(spawner: Spawner) {
         spawner,
         system_task,
         system_ctrl,
+        SystemController<
+            embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+            CatDetectorFeatureSet<
+                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                4,
+            >,
+        >,
         app::SYSTEM_CHANNEL.receiver(),
-        app::GESTURE_CHANNEL.receiver(),
-        3
+        app::GESTURE_CHANNEL.receiver()
     );
 
     app::run_filesystem_task!(

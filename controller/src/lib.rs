@@ -7,8 +7,7 @@
 pub mod battery_controller;
 /// Flat filesystem and storage controller.
 pub mod filesystem_controller;
-/// Gesture detection module.
-pub mod gesture_detector;
+
 /// LED controller to drive indicator RGB LEDs.
 pub mod led_controller;
 /// Motor status and telemetry controller.
@@ -19,6 +18,8 @@ pub mod sensor_controller;
 pub mod shell_controller;
 /// System state and orchestration controller.
 pub mod system_controller;
+/// Feature definitions and helpers for the system controller.
+pub mod system_feature;
 /// Telemetry storage pipeline and task.
 pub mod telemetry_controller;
 /// Thermal monitoring and regulation controller.
@@ -29,8 +30,34 @@ pub use embedded_cli;
 pub use embedded_io;
 pub use motor_controller::MotorCommand;
 pub use sensor_controller::SensorCommand;
-pub use system_controller::SystemCommand;
+pub use system_controller::{
+    ProximityEvent, SystemCommand, SystemController, SystemFeatureSet, TelemetrySender,
+};
+pub use system_feature::{
+    BatteryFeatureConfig, BatteryStatus, Device, DeviceSupport, FeatureList, GestureAction,
+    LedFeatureConfig, MotorFeatureConfig, ProximityAction, ProximityFeatureConfig, SystemFeature,
+    ThermalFeatureConfig,
+};
 pub use thermal_controller::ThermalCommand;
+
+/// Type alias for MotorCommand channel Sender generic over MutexRaw.
+pub type MotorSender<MutexRaw, const N: usize> =
+    embassy_sync::channel::Sender<'static, MutexRaw, MotorCommand, N>;
+/// Type alias for SensorCommand channel Sender generic over MutexRaw.
+pub type SensorSender<MutexRaw, const N: usize> =
+    embassy_sync::channel::Sender<'static, MutexRaw, SensorCommand, N>;
+/// Type alias for BatteryCommand channel Sender generic over MutexRaw.
+pub type BatterySender<MutexRaw, const N: usize> =
+    embassy_sync::channel::Sender<'static, MutexRaw, BatteryCommand, N>;
+/// Type alias for ThermalCommand channel Sender generic over MutexRaw.
+pub type ThermalSender<MutexRaw, const N: usize> =
+    embassy_sync::channel::Sender<'static, MutexRaw, ThermalCommand, N>;
+/// Type alias for SystemLedState channel Sender generic over MutexRaw.
+pub type LedSender<MutexRaw, const N: usize> =
+    embassy_sync::channel::Sender<'static, MutexRaw, model::types::SystemLedState, N>;
+/// Type alias for SystemCommand channel Sender generic over MutexRaw.
+pub type SystemSender<MutexRaw, const N: usize> =
+    embassy_sync::channel::Sender<'static, MutexRaw, SystemCommand, N>;
 
 use model::types::PeripheralError;
 

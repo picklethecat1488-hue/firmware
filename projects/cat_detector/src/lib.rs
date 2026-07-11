@@ -37,8 +37,11 @@ pub const TOF_WEST_INT_PIN: u32 = 9;
 /// Fuel Gauge Interrupt/Alert pin (GPIO 10)
 pub const FUEL_GAUGE_INT_PIN: u32 = 10;
 
-/// The default proximity threshold in millimeters under which target presence is detected.
-pub const DEFAULT_PROXIMITY_THRESHOLD_MM: u16 = 300;
+/// The default wake threshold in millimeters under which target presence is detected.
+pub const DEFAULT_WAKE_THRESHOLD_MM: u16 = 300;
+
+/// The default press threshold in millimeters under which gesture button presses are detected.
+pub const DEFAULT_PRESS_THRESHOLD_MM: u16 = 20;
 
 /// Charger Status 1 (S1 / STAT1 / FAULT) pin (GPIO 12)
 pub const CHARGER_S1_PIN: u32 = 12;
@@ -84,20 +87,94 @@ mod bsp_host;
 pub use bsp_host::*;
 
 /// System state and orchestration controller.
-pub use controller::system_controller;
+pub use controller::{
+    BatteryFeatureConfig, LedFeatureConfig, MotorFeatureConfig, ProximityEvent,
+    ProximityFeatureConfig, SystemCommand, SystemController, SystemFeatureSet,
+    ThermalFeatureConfig,
+};
+
+/// The default inactivity timeout in seconds before transitioning to Sleep.
+pub const INACTIVITY_TIMEOUT_SECONDS: u32 = 30;
+/// The state of charge threshold under which battery is considered low.
+pub const LOW_BATTERY_SOC_THRESHOLD: u8 = 20;
+/// The state of charge threshold under which battery is considered medium.
+pub const MID_BATTERY_SOC_THRESHOLD: u8 = 21;
+/// The state of charge threshold under which battery is considered high.
+pub const HIGH_BATTERY_SOC_THRESHOLD: u8 = 80;
+
+/// The critical state of charge threshold under which battery is considered critical.
+pub const CRITICAL_BATTERY_SOC_THRESHOLD: u8 = 10;
+/// The state of charge hysteresis to prevent rapid toggling around thresholds.
+pub const BATTERY_SOC_HYSTERESIS: u8 = 2;
+
+const _: () = {
+    assert!(
+        LOW_BATTERY_SOC_THRESHOLD > 0,
+        "Low battery threshold be nonzero"
+    );
+    assert!(
+        CRITICAL_BATTERY_SOC_THRESHOLD < LOW_BATTERY_SOC_THRESHOLD,
+        "Critical battery threshold must be lower than the low battery threshold"
+    );
+    assert!(
+        LOW_BATTERY_SOC_THRESHOLD < MID_BATTERY_SOC_THRESHOLD,
+        "Low battery threshold must be lower than the mid battery threshold"
+    );
+    assert!(
+        MID_BATTERY_SOC_THRESHOLD < HIGH_BATTERY_SOC_THRESHOLD,
+        "Mid battery threshold must be lower than the high battery threshold"
+    );
+};
 
 /// Bringup serial command and shell controller.
 pub use controller::shell_controller;
+
+pub use firmware_lib::BatteryUpdateAction;
+pub use model::types::SystemStatus;
+
+/// Feature set for the Cat Detector app that implements SystemFeatureSet.
+#[allow(clippy::type_complexity)]
+pub struct CatDetectorFeatureSet<
+    MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static,
+    const N: usize,
+> {
+    /// Tuple of active system features
+    pub features: (
+        controller::MotorFeatureConfig<MutexRaw, N>,
+        controller::BatteryFeatureConfig<MutexRaw, N>,
+        controller::ProximityFeatureConfig<MutexRaw, N>,
+        controller::LedFeatureConfig<MutexRaw, N>,
+        controller::ThermalFeatureConfig<MutexRaw, N>,
+    ),
+}
+
+impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: usize>
+    controller::SystemFeatureSet<MutexRaw, N> for CatDetectorFeatureSet<MutexRaw, N>
+{
+    type Features = (
+        controller::MotorFeatureConfig<MutexRaw, N>,
+        controller::BatteryFeatureConfig<MutexRaw, N>,
+        controller::ProximityFeatureConfig<MutexRaw, N>,
+        controller::LedFeatureConfig<MutexRaw, N>,
+        controller::ThermalFeatureConfig<MutexRaw, N>,
+    );
+
+    fn features(&self) -> &Self::Features {
+        &self.features
+    }
+
+    fn inactivity_timeout_seconds(&self) -> u32 {
+        INACTIVITY_TIMEOUT_SECONDS
+    }
+}
 
 controller::declare_channels! {
     /// Shared command channel for the Motor Controller.
     pub static MOTOR_CHANNEL: controller::motor_controller::MotorCommand, capacity = 4;
     /// Shared command channel for the System Controller.
-    pub static SYSTEM_CHANNEL: controller::system_controller::SystemCommand, capacity = 4;
+    pub static SYSTEM_CHANNEL: controller::SystemCommand, capacity = 4;
     /// Shared channel for local gesture events.
     pub static GESTURE_CHANNEL: model::types::Gesture, capacity = 4;
-    /// Shared channel for local proximity events.
-    pub static PROXIMITY_EVENT_CHANNEL: controller::system_controller::ProximityEvent, capacity = 4;
     /// Shared command channel for the North Sensor Controller.
     pub static SENSOR_NORTH_CHANNEL: controller::sensor_controller::SensorCommand, capacity = 4;
     /// Shared command channel for the East Sensor Controller.
@@ -121,8 +198,6 @@ pub use controller::telemetry_controller as telemetry;
 
 /// Re-export the run_filesystem_task macro from the controller crate
 pub use controller::run_filesystem_task;
-/// Re-export the run_proximity_gesture_task macro from the controller crate
-pub use controller::run_proximity_gesture_task;
 /// Re-export the run_telemetry_task macro from the controller crate
 pub use controller::run_telemetry_task;
 

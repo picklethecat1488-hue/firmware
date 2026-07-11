@@ -36,7 +36,11 @@ pub mod types;
 /// Heartbeat and execution liveness monitoring module.
 pub mod heartbeat_monitor;
 
+/// Gesture detection library.
+pub mod gesture_detector;
+
 pub use battery_manager::BatteryManager;
+pub use gesture_detector::{GestureDetector, ProximityEvent, ProximityGestureDetector};
 pub use periodic_timer::PeriodicTimer;
 pub use power_manager::PowerManager;
 pub use system::{BatteryUpdateAction, TransitionError};
