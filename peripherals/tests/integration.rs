@@ -1,4 +1,5 @@
 use embedded_hal::digital::{ErrorType, InputPin, OutputPin};
+use peripherals::mock::DummyI2c;
 use peripherals::{Motor, MotorSpeed, Tickable};
 
 struct MockPin<'a> {
@@ -62,36 +63,6 @@ fn test_l9110s_functional() {
     assert!(motor.stop().is_ok());
     assert!(!pin_ia_state.get());
     assert!(!pin_ib_state.get());
-}
-
-struct DummyI2c;
-
-impl embedded_hal::i2c::ErrorType for DummyI2c {
-    type Error = core::convert::Infallible;
-}
-
-impl embedded_hal::i2c::I2c for DummyI2c {
-    fn read(&mut self, _address: u8, _read: &mut [u8]) -> Result<(), Self::Error> {
-        Ok(())
-    }
-    fn write(&mut self, _address: u8, _write: &[u8]) -> Result<(), Self::Error> {
-        Ok(())
-    }
-    fn write_read(
-        &mut self,
-        _address: u8,
-        _write: &[u8],
-        _read: &mut [u8],
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-    fn transaction(
-        &mut self,
-        _address: u8,
-        _operations: &mut [embedded_hal::i2c::Operation<'_>],
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 #[test]
