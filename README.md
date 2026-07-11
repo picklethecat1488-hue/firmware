@@ -96,13 +96,14 @@ The workspace is organized into target-agnostic crates for logic/simulation, tar
 graph TD
     subgraph Controller Crate [controller]
         MC["MotorController"]
-        MSM["MotorStateMachine"]
         BC["BatteryController"]
         TC["ThermalController"]
         SC["SensorController (instances: North, East, West)"]
         LC["LedController"]
         FSC["FilesystemController"]
         TMC["TelemetryController"]
+        SysC["SystemController (Manages Active / Sleep / PowerDown transitions)"]
+        ShC["ShellController"]
     end
 
     subgraph Model Crate [model]
@@ -117,13 +118,14 @@ graph TD
 
     subgraph BSP / Target [projects/cat_detector]
         Board["Board (UART / I2C / Pins)"]
-        Main["main.rs (Embassy Spawner)"]
-        SysC["SystemController"]
+        Main["main.rs (App Binary)"]
+        Shell["shell.rs (Shell Binary)"]
     end
 
-    Main -->|Spawns| MC & BC & TC & SC & LC & FSC & TMC & SysC
+    Main -->|Spawns tasks for| MC & BC & TC & SC & LC & FSC & TMC & SysC
+    Shell -->|Runs| ShC
     SysC -->|Coordinates| MC & SC & LC & BC & TC
-    MC -->|Manages| MSM
+    ShC -->|Resolves devices on| Board
     MC & SC & LC -->|Drives| PT
     BC & TC -->|Queries| BT
     MC & BC & TC & LC & FSC -->|Sends Telemetry| TMC
