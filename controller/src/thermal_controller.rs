@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use crate::{Sender, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
@@ -30,7 +31,7 @@ impl core::fmt::Debug for ThermalState {
 /// A controller that periodically monitors system temperature from temperature sensors.
 pub struct ThermalController<'a, M: RawMutex, B, Cmd = ()> {
     temp: &'a Mutex<M, B>,
-    system_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
+    system_tx: Option<Sender<'a, M, Cmd, 4>>,
     shutdown_cmd: Option<Cmd>,
     state: ThermalState,
     overheating_temp_milli_c: i32,
@@ -57,7 +58,7 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
     /// Creates a new thermal controller with safety shutdown capabilities.
     pub fn new_with_shutdown(
         temp: &'a Mutex<M, B>,
-        system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        system_tx: Sender<'a, M, Cmd, 4>,
         shutdown_cmd: Cmd,
     ) -> Self {
         Self {
@@ -148,11 +149,9 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
     /// Starts the controller's main infinite run loop, processing commands.
     pub async fn run(
         mut self,
-        command_rx: embassy_sync::channel::Receiver<'static, M, ThermalCommand, 4>,
-        telemetry_tx: embassy_sync::channel::Sender<
-            'static,
+        command_rx: ThermalReceiver<M, 4>,
+        telemetry_tx: TelemetrySender<
             CriticalSectionRawMutex,
-            model::telemetry::TelemetryRecord,
             { crate::telemetry_controller::CHANNEL_CAPACITY },
         >,
     ) -> ! {
@@ -200,6 +199,13 @@ pub enum ThermalCommand {
     /// Force thermal status query and print telemetry logs
     CheckTemp,
 }
+
+crate::define_controller_channels!(
+    ThermalChannel,
+    ThermalSender,
+    ThermalReceiver,
+    ThermalCommand
+);
 
 /// Thermal-specific CLI commands
 #[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]

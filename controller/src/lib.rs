@@ -36,29 +36,35 @@ pub use shell_controller::{ShellConfig, ShellDeviceResolver};
 pub use system_controller::{
     BatteryStatus, Device, DeviceSupport, FeatureList, GestureAction, ProximityAction,
     ProximityEvent, SystemCommand, SystemController, SystemFeature, SystemFeatureSet,
-    TelemetrySender,
 };
 pub use thermal_controller::ThermalCommand;
 pub use thermal_controller::ThermalFeatureConfig;
 
-/// Type alias for MotorCommand channel Sender generic over MutexRaw.
-pub type MotorSender<MutexRaw, const N: usize> =
-    embassy_sync::channel::Sender<'static, MutexRaw, MotorCommand, N>;
-/// Type alias for SensorCommand channel Sender generic over MutexRaw.
-pub type SensorSender<MutexRaw, const N: usize> =
-    embassy_sync::channel::Sender<'static, MutexRaw, SensorCommand, N>;
-/// Type alias for BatteryCommand channel Sender generic over MutexRaw.
-pub type BatterySender<MutexRaw, const N: usize> =
-    embassy_sync::channel::Sender<'static, MutexRaw, BatteryCommand, N>;
-/// Type alias for ThermalCommand channel Sender generic over MutexRaw.
-pub type ThermalSender<MutexRaw, const N: usize> =
-    embassy_sync::channel::Sender<'static, MutexRaw, ThermalCommand, N>;
-/// Type alias for SystemLedState channel Sender generic over MutexRaw.
-pub type LedSender<MutexRaw, const N: usize> =
-    embassy_sync::channel::Sender<'static, MutexRaw, model::types::SystemLedState, N>;
-/// Type alias for SystemCommand channel Sender generic over MutexRaw.
-pub type SystemSender<MutexRaw, const N: usize> =
-    embassy_sync::channel::Sender<'static, MutexRaw, SystemCommand, N>;
+/// Macro to define controller channel types.
+#[macro_export]
+macro_rules! define_controller_channels {
+    ($name:ident, $sender:ident, $receiver:ident, $msg:ty) => {
+        /// Channel type for controller communication.
+        pub type $name<MutexRaw, const N: usize> =
+            embassy_sync::channel::Channel<MutexRaw, $msg, N>;
+        /// Sender type for controller communication.
+        pub type $sender<MutexRaw, const N: usize> =
+            embassy_sync::channel::Sender<'static, MutexRaw, $msg, N>;
+        /// Receiver type for controller communication.
+        pub type $receiver<MutexRaw, const N: usize> =
+            embassy_sync::channel::Receiver<'static, MutexRaw, $msg, N>;
+    };
+}
+
+// Type alias for MotorCommand channel Sender/Receiver/Channel.
+pub use battery_controller::{BatteryChannel, BatteryReceiver, BatterySender};
+pub use filesystem_controller::{FilesystemChannel, FilesystemReceiver, FilesystemSender};
+pub use led_controller::{LedChannel, LedReceiver, LedSender};
+pub use motor_controller::{MotorChannel, MotorReceiver, MotorSender};
+pub use sensor_controller::{SensorChannel, SensorReceiver, SensorSender};
+pub use system_controller::{SystemChannel, SystemReceiver, SystemSender};
+pub use telemetry_controller::{TelemetryChannel, TelemetryReceiver, TelemetrySender};
+pub use thermal_controller::{ThermalChannel, ThermalReceiver, ThermalSender};
 
 use model::types::PeripheralError;
 
@@ -458,12 +464,7 @@ macro_rules! run_filesystem_task {
             #[embassy_executor::task]
             pub async fn task(
                 fs: $crate::filesystem_controller::FilesystemController<$flash_type>,
-                rx: embassy_sync::channel::Receiver<
-                    'static,
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    $crate::filesystem_controller::FsRequest,
-                    16,
-                >,
+                rx: $crate::StaticReceiver<$crate::filesystem_controller::FsRequest, 16>,
             ) {
                 $crate::filesystem_controller::run_filesystem_task(fs, rx).await;
             }
@@ -507,12 +508,7 @@ macro_rules! run_telemetry_task {
                     $max_records,
                     { model::telemetry::BUFFER_SIZE },
                 >,
-                rx: embassy_sync::channel::Receiver<
-                    'static,
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    model::telemetry::TelemetryRecord,
-                    $channel_size,
-                >,
+                rx: $crate::StaticReceiver<model::telemetry::TelemetryRecord, $channel_size>,
             ) {
                 controller.run(rx).await;
             }
@@ -544,33 +540,31 @@ macro_rules! declare_channels {
     ) => {
         $(
             $(#[$meta])*
-            $vis static $name: $crate::Channel<$ty, $cap> = $crate::Channel::new();
+            $vis static $name: $crate::StaticChannel<$ty, $cap> = $crate::StaticChannel::new();
         )*
     };
 }
 
+/// Type alias for an Embassy channel.
+pub type Channel<M, T, const N: usize> = embassy_sync::channel::Channel<M, T, N>;
+
+/// Type alias for an Embassy channel Sender.
+pub type Sender<'a, M, T, const N: usize> = embassy_sync::channel::Sender<'a, M, T, N>;
+
+/// Type alias for an Embassy channel Receiver.
+pub type Receiver<'a, M, T, const N: usize> = embassy_sync::channel::Receiver<'a, M, T, N>;
+
 /// Type alias for an Embassy channel using CriticalSectionRawMutex.
-pub type Channel<T, const N: usize> = embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    T,
-    N,
->;
+pub type StaticChannel<T, const N: usize> =
+    Channel<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, T, N>;
 
 /// Type alias for an Embassy channel Sender using CriticalSectionRawMutex.
-pub type Sender<T, const N: usize> = embassy_sync::channel::Sender<
-    'static,
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    T,
-    N,
->;
+pub type StaticSender<T, const N: usize> =
+    Sender<'static, embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, T, N>;
 
 /// Type alias for an Embassy channel Receiver using CriticalSectionRawMutex.
-pub type Receiver<T, const N: usize> = embassy_sync::channel::Receiver<
-    'static,
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    T,
-    N,
->;
+pub type StaticReceiver<T, const N: usize> =
+    Receiver<'static, embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, T, N>;
 
 /// A dummy/no-op I2C driver.
 #[derive(Debug, Clone, Copy, Default)]

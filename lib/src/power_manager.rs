@@ -1,8 +1,6 @@
-//! Power manager module.
-
 use crate::system::{transition_power_down, transition_sleep, transition_wake, TransitionError};
+use crate::types::Sender;
 use embassy_sync::blocking_mutex::raw::RawMutex;
-use embassy_sync::channel::Sender;
 use model::types::{BootReason, Gesture, SystemStatus, TelemetryRecord};
 
 /// Manages system status transitions, wake locks, and sleep timers.

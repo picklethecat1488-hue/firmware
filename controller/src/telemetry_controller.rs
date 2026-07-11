@@ -3,9 +3,17 @@
 #![deny(missing_docs)]
 
 use crate::filesystem_controller::FilesystemClient;
+use crate::StaticChannel;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use model::telemetry::{IntoTelemetryRecord, TelemetryClient, TelemetryRecord};
+
+crate::define_controller_channels!(
+    TelemetryChannel,
+    TelemetrySender,
+    TelemetryReceiver,
+    model::telemetry::TelemetryRecord
+);
 
 static TELEMETRY_WRITE_SIGNAL: Signal<CriticalSectionRawMutex, Result<(), ()>> = Signal::new();
 
@@ -53,11 +61,8 @@ pub const CHANNEL_CAPACITY: usize = 64;
 
 impl Default for TelemetryController<45, { model::telemetry::BUFFER_SIZE }> {
     fn default() -> Self {
-        static DUMMY_CHANNEL: embassy_sync::channel::Channel<
-            embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-            crate::filesystem_controller::FsRequest,
-            16,
-        > = embassy_sync::channel::Channel::new();
+        static DUMMY_CHANNEL: StaticChannel<crate::filesystem_controller::FsRequest, 16> =
+            StaticChannel::new();
         Self::new(FilesystemClient::new(DUMMY_CHANNEL.sender()))
     }
 }
@@ -300,12 +305,7 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
     /// Starts the controller's main run loop, processing records.
     pub async fn run<const N: usize>(
         &mut self,
-        rx: embassy_sync::channel::Receiver<
-            'static,
-            embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-            TelemetryRecord,
-            N,
-        >,
+        rx: TelemetryReceiver<CriticalSectionRawMutex, N>,
     ) -> ! {
         let _ = self.init().await;
         let mut last_print = embassy_time::Instant::now();
@@ -478,20 +478,19 @@ impl TelemetryCounters {
 
 /// Telemetry client for thermal status reporting.
 pub struct ThermalTelemetryClient<
-    'a,
-    M: embassy_sync::blocking_mutex::raw::RawMutex,
+    M: embassy_sync::blocking_mutex::raw::RawMutex + 'static,
     const T_CAP: usize,
 > {
-    tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>,
+    tx: Option<TelemetrySender<M, T_CAP>>,
     last_temp: Option<i32>,
     last_state: Option<crate::thermal_controller::ThermalState>,
 }
 
-impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
-    ThermalTelemetryClient<'a, M, T_CAP>
+impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
+    ThermalTelemetryClient<M, T_CAP>
 {
     /// Creates a new `ThermalTelemetryClient`.
-    pub fn new(tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>) -> Self {
+    pub fn new(tx: Option<TelemetrySender<M, T_CAP>>) -> Self {
         Self {
             tx,
             last_temp: None,
@@ -500,9 +499,9 @@ impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
     }
 }
 
-impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
+impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
     TelemetryClient<(i32, crate::thermal_controller::ThermalState)>
-    for ThermalTelemetryClient<'a, M, T_CAP>
+    for ThermalTelemetryClient<M, T_CAP>
 {
     fn report(&mut self, (temp, state): (i32, crate::thermal_controller::ThermalState)) {
         if let Some(ref tx) = self.tx {
@@ -531,24 +530,20 @@ impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
 
 /// Telemetry client for proximity status reporting.
 pub struct ProximityTelemetryClient<
-    'a,
-    M: embassy_sync::blocking_mutex::raw::RawMutex,
+    M: embassy_sync::blocking_mutex::raw::RawMutex + 'static,
     const T_CAP: usize,
 > {
-    tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>,
+    tx: Option<TelemetrySender<M, T_CAP>>,
     wake_threshold_mm: u16,
     last_logged_distance: [u16; 3],
     last_logged_in_range: [Option<bool>; 3],
 }
 
-impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
-    ProximityTelemetryClient<'a, M, T_CAP>
+impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
+    ProximityTelemetryClient<M, T_CAP>
 {
     /// Creates a new `ProximityTelemetryClient`.
-    pub fn new(
-        tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>,
-        wake_threshold_mm: u16,
-    ) -> Self {
+    pub fn new(tx: Option<TelemetrySender<M, T_CAP>>, wake_threshold_mm: u16) -> Self {
         Self {
             tx,
             wake_threshold_mm,
@@ -558,8 +553,8 @@ impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
     }
 }
 
-impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
-    TelemetryClient<(model::types::Direction, u16)> for ProximityTelemetryClient<'a, M, T_CAP>
+impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
+    TelemetryClient<(model::types::Direction, u16)> for ProximityTelemetryClient<M, T_CAP>
 {
     fn report(&mut self, (direction, distance_mm): (model::types::Direction, u16)) {
         if let Some(ref tx) = self.tx {
@@ -589,24 +584,22 @@ impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
 
 /// A telemetry client that simply forwards all records to the channel without filtering.
 pub struct DefaultTelemetryClient<
-    'a,
-    M: embassy_sync::blocking_mutex::raw::RawMutex,
+    M: embassy_sync::blocking_mutex::raw::RawMutex + 'static,
     T: IntoTelemetryRecord + Clone,
     const T_CAP: usize,
 > {
-    tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>,
+    tx: Option<TelemetrySender<M, T_CAP>>,
     _phantom: core::marker::PhantomData<T>,
 }
 
 impl<
-        'a,
         M: embassy_sync::blocking_mutex::raw::RawMutex,
         T: IntoTelemetryRecord + Clone,
         const T_CAP: usize,
-    > DefaultTelemetryClient<'a, M, T, T_CAP>
+    > DefaultTelemetryClient<M, T, T_CAP>
 {
     /// Creates a new `DefaultTelemetryClient`.
-    pub fn new(tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>) -> Self {
+    pub fn new(tx: Option<TelemetrySender<M, T_CAP>>) -> Self {
         Self {
             tx,
             _phantom: core::marker::PhantomData,
@@ -615,11 +608,10 @@ impl<
 }
 
 impl<
-        'a,
         M: embassy_sync::blocking_mutex::raw::RawMutex,
         T: IntoTelemetryRecord + Clone,
         const T_CAP: usize,
-    > TelemetryClient<T> for DefaultTelemetryClient<'a, M, T, T_CAP>
+    > TelemetryClient<T> for DefaultTelemetryClient<M, T, T_CAP>
 {
     fn report(&mut self, value: T) {
         if let Some(ref tx) = self.tx {
@@ -631,18 +623,17 @@ impl<
 
 /// Telemetry client for motor status reporting.
 pub struct MotorTelemetryClient<
-    'a,
-    M: embassy_sync::blocking_mutex::raw::RawMutex,
+    M: embassy_sync::blocking_mutex::raw::RawMutex + 'static,
     const T_CAP: usize,
 > {
-    tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>,
+    tx: Option<TelemetrySender<M, T_CAP>>,
 }
 
-impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
-    MotorTelemetryClient<'a, M, T_CAP>
+impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
+    MotorTelemetryClient<M, T_CAP>
 {
     /// Creates a new `MotorTelemetryClient`.
-    pub fn new(tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>) -> Self {
+    pub fn new(tx: Option<TelemetrySender<M, T_CAP>>) -> Self {
         Self { tx }
     }
 
@@ -654,8 +645,8 @@ impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
     }
 }
 
-impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
-    TelemetryClient<model::types::MotorStatus> for MotorTelemetryClient<'a, M, T_CAP>
+impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
+    TelemetryClient<model::types::MotorStatus> for MotorTelemetryClient<M, T_CAP>
 {
     fn report(&mut self, status: model::types::MotorStatus) {
         if let Some(ref tx) = self.tx {
@@ -666,18 +657,17 @@ impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
 
 /// Telemetry client for battery status reporting.
 pub struct BatteryTelemetryClient<
-    'a,
-    M: embassy_sync::blocking_mutex::raw::RawMutex,
+    M: embassy_sync::blocking_mutex::raw::RawMutex + 'static,
     const T_CAP: usize,
 > {
-    tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>,
+    tx: Option<TelemetrySender<M, T_CAP>>,
 }
 
-impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
-    BatteryTelemetryClient<'a, M, T_CAP>
+impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
+    BatteryTelemetryClient<M, T_CAP>
 {
     /// Creates a new `BatteryTelemetryClient`.
-    pub fn new(tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>) -> Self {
+    pub fn new(tx: Option<TelemetrySender<M, T_CAP>>) -> Self {
         Self { tx }
     }
 
@@ -689,8 +679,8 @@ impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
     }
 }
 
-impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
-    TelemetryClient<model::types::BatteryStatus> for BatteryTelemetryClient<'a, M, T_CAP>
+impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
+    TelemetryClient<model::types::BatteryStatus> for BatteryTelemetryClient<M, T_CAP>
 {
     fn report(&mut self, status: model::types::BatteryStatus) {
         if let Some(ref tx) = self.tx {
@@ -699,8 +689,8 @@ impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
     }
 }
 
-impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
-    TelemetryClient<model::types::FuelGaugeTelemetry> for BatteryTelemetryClient<'a, M, T_CAP>
+impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
+    TelemetryClient<model::types::FuelGaugeTelemetry> for BatteryTelemetryClient<M, T_CAP>
 {
     fn report(&mut self, status: model::types::FuelGaugeTelemetry) {
         if let Some(ref tx) = self.tx {
@@ -709,8 +699,8 @@ impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
     }
 }
 
-impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
-    TelemetryClient<model::types::ChargeState> for BatteryTelemetryClient<'a, M, T_CAP>
+impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
+    TelemetryClient<model::types::ChargeState> for BatteryTelemetryClient<M, T_CAP>
 {
     fn report(&mut self, status: model::types::ChargeState) {
         if let Some(ref tx) = self.tx {
@@ -721,19 +711,18 @@ impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
 
 /// Telemetry client for LED status reporting.
 pub struct LedTelemetryClient<
-    'a,
-    M: embassy_sync::blocking_mutex::raw::RawMutex,
+    M: embassy_sync::blocking_mutex::raw::RawMutex + 'static,
     const T_CAP: usize,
 > {
-    tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>,
+    tx: Option<TelemetrySender<M, T_CAP>>,
     last_state: Option<model::types::SystemLedState>,
 }
 
-impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
-    LedTelemetryClient<'a, M, T_CAP>
+impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
+    LedTelemetryClient<M, T_CAP>
 {
     /// Creates a new `LedTelemetryClient`.
-    pub fn new(tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>) -> Self {
+    pub fn new(tx: Option<TelemetrySender<M, T_CAP>>) -> Self {
         Self {
             tx,
             last_state: None,
@@ -748,8 +737,8 @@ impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
     }
 }
 
-impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
-    TelemetryClient<model::types::SystemLedState> for LedTelemetryClient<'a, M, T_CAP>
+impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
+    TelemetryClient<model::types::SystemLedState> for LedTelemetryClient<M, T_CAP>
 {
     fn report(&mut self, state: model::types::SystemLedState) {
         if let Some(ref tx) = self.tx {
