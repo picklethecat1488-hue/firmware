@@ -18,27 +18,28 @@ pub mod sensor_controller;
 pub mod shell_controller;
 /// System state and orchestration controller.
 pub mod system_controller;
-/// Feature definitions and helpers for the system controller.
-pub mod system_feature;
 /// Telemetry storage pipeline and task.
 pub mod telemetry_controller;
 /// Thermal monitoring and regulation controller.
 pub mod thermal_controller;
 
 pub use battery_controller::BatteryCommand;
+pub use battery_controller::BatteryFeatureConfig;
 pub use embedded_cli;
 pub use embedded_io;
+pub use led_controller::LedFeatureConfig;
 pub use motor_controller::MotorCommand;
+pub use motor_controller::MotorFeatureConfig;
+pub use sensor_controller::ProximityFeatureConfig;
 pub use sensor_controller::SensorCommand;
+pub use shell_controller::{ShellConfig, ShellDeviceResolver};
 pub use system_controller::{
-    ProximityEvent, SystemCommand, SystemController, SystemFeatureSet, TelemetrySender,
-};
-pub use system_feature::{
-    BatteryFeatureConfig, BatteryStatus, Device, DeviceSupport, FeatureList, GestureAction,
-    LedFeatureConfig, MotorFeatureConfig, ProximityAction, ProximityFeatureConfig, SystemFeature,
-    ThermalFeatureConfig,
+    BatteryStatus, Device, DeviceSupport, FeatureList, GestureAction, ProximityAction,
+    ProximityEvent, SystemCommand, SystemController, SystemFeature, SystemFeatureSet,
+    TelemetrySender,
 };
 pub use thermal_controller::ThermalCommand;
+pub use thermal_controller::ThermalFeatureConfig;
 
 /// Type alias for MotorCommand channel Sender generic over MutexRaw.
 pub type MotorSender<MutexRaw, const N: usize> =

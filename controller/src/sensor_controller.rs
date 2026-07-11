@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 use core::fmt::Write as _;
+use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::interfaces::ProximitySensor;
 use model::types::PeripheralError;
 use peripherals::ToPeripheralError;
@@ -652,6 +653,235 @@ pub fn process_sensor_command<
                         core::writeln!(writer, "Saved 100mm calibration for {} to flash.", name);
                 })
                 .map_err(|_| "Error saving calibration to flash")
+        }
+    }
+}
+
+/// Processes sensor-specific CLI subcommands by validating and delegating.
+pub fn handle_sensor_cli<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    C: crate::ShellConfig,
+>(
+    resolver: &impl crate::ShellDeviceResolver<C>,
+    subcommand: Option<&str>,
+    arg1: Option<&str>,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+) -> Result<(), &'static str> {
+    let sensor_north = resolver
+        .resolve_sensor(Some("north"))
+        .ok()
+        .map(|d| d as *mut _);
+    let sensor_east = resolver
+        .resolve_sensor(Some("east"))
+        .ok()
+        .map(|d| d as *mut _);
+    let sensor_west = resolver
+        .resolve_sensor(Some("west"))
+        .ok()
+        .map(|d| d as *mut _);
+    let i2c = resolver.resolve_i2c(None).ok().map(|d| d as *mut _);
+    let partition = resolver.resolve_partition(None).ok();
+    let (flash, start, end) = match partition {
+        Some(p) => (Some(p.flash_ptr), p.start_address, p.end_address),
+        None => (None, 0, 0),
+    };
+
+    match subcommand {
+        Some("status") => process_sensor_command(
+            sensor_north,
+            sensor_east,
+            sensor_west,
+            i2c,
+            flash,
+            start,
+            end,
+            writer,
+            SensorCliCommand::Status,
+        ),
+        Some("cal_near") => {
+            let dir_str = arg1.ok_or("Missing direction parameter")?;
+            let direction = match dir_str {
+                "north" => SensorDirection::North,
+                "east" => SensorDirection::East,
+                "west" => SensorDirection::West,
+                _ => return Err("Invalid direction. Expected: north, east, west"),
+            };
+            process_sensor_command(
+                sensor_north,
+                sensor_east,
+                sensor_west,
+                i2c,
+                flash,
+                start,
+                end,
+                writer,
+                SensorCliCommand::CalNear { direction },
+            )
+        }
+        Some("cal_far") => {
+            let dir_str = arg1.ok_or("Missing direction parameter")?;
+            let direction = match dir_str {
+                "north" => SensorDirection::North,
+                "east" => SensorDirection::East,
+                "west" => SensorDirection::West,
+                _ => return Err("Invalid direction. Expected: north, east, west"),
+            };
+            process_sensor_command(
+                sensor_north,
+                sensor_east,
+                sensor_west,
+                i2c,
+                flash,
+                start,
+                end,
+                writer,
+                SensorCliCommand::CalFar { direction },
+            )
+        }
+        _ => Err("Invalid sensor subcommand. Expected: status, cal_near, cal_far"),
+    }
+}
+
+/// Standard config implementation for ProximityFeature.
+pub struct ProximityFeatureConfig<
+    MutexRaw: RawMutex + 'static,
+    const N: usize,
+    const S_CAP: usize = 3,
+    const T_CAP: usize = { crate::telemetry_controller::CHANNEL_CAPACITY },
+> {
+    /// Sensor channel senders
+    pub sensor_txs: heapless::Vec<crate::SensorSender<MutexRaw, N>, S_CAP>,
+    /// Proximity gesture detector state
+    pub gesture_detector:
+        core::cell::RefCell<firmware_lib::gesture_detector::ProximityGestureDetector>,
+    /// Proximity telemetry client
+    pub telemetry_client: core::cell::RefCell<
+        crate::telemetry_controller::ProximityTelemetryClient<'static, MutexRaw, T_CAP>,
+    >,
+    /// Active proximity detection state
+    pub proximity_active: core::cell::Cell<bool>,
+    /// Proximity detection threshold
+    pub wake_threshold_mm: u16,
+    /// Last seen distances indexed by Direction (0 = North, 1 = East, 2 = West)
+    pub distances: [core::cell::Cell<u16>; 3],
+    /// Mapped action for DualLongPress gesture
+    pub dual_long_press_action: crate::GestureAction,
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_CAP: usize>
+    ProximityFeatureConfig<MutexRaw, N, S_CAP, T_CAP>
+{
+    /// Creates a new `ProximityFeatureConfig` with the given list of sensor senders (up to S_CAP).
+    pub fn new(
+        sensor_senders: &[crate::SensorSender<MutexRaw, N>],
+        press_threshold_mm: u16,
+        wake_threshold_mm: u16,
+        dual_long_press_action: crate::GestureAction,
+        telemetry_tx: Option<crate::system_controller::TelemetrySender<'static, MutexRaw, T_CAP>>,
+    ) -> Self {
+        let mut sensor_txs = heapless::Vec::new();
+        for sender in sensor_senders {
+            let _ = sensor_txs.push(*sender);
+        }
+        Self {
+            sensor_txs,
+            gesture_detector: core::cell::RefCell::new(
+                firmware_lib::gesture_detector::ProximityGestureDetector::new(press_threshold_mm),
+            ),
+            telemetry_client: core::cell::RefCell::new(
+                crate::telemetry_controller::ProximityTelemetryClient::new(
+                    telemetry_tx,
+                    wake_threshold_mm,
+                ),
+            ),
+            proximity_active: core::cell::Cell::new(false),
+            wake_threshold_mm,
+            distances: [
+                core::cell::Cell::new(1000),
+                core::cell::Cell::new(1000),
+                core::cell::Cell::new(1000),
+            ],
+            dual_long_press_action,
+        }
+    }
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_CAP: usize>
+    crate::SystemFeature<MutexRaw, N> for ProximityFeatureConfig<MutexRaw, N, S_CAP, T_CAP>
+{
+    fn on_proximity_update(
+        &self,
+        direction: model::types::Direction,
+        distance_mm: u16,
+        status: model::types::SystemStatus,
+    ) -> (Option<model::types::Gesture>, crate::ProximityAction) {
+        use firmware_lib::gesture_detector::GestureDetector as _;
+        use model::telemetry::TelemetryClient as _;
+        self.telemetry_client
+            .borrow_mut()
+            .report((direction, distance_mm));
+
+        let now_us = embassy_time::Instant::now().as_micros();
+        let gesture = self
+            .gesture_detector
+            .borrow_mut()
+            .update((direction, distance_mm), now_us);
+
+        // Register distance locally in the feature using direction map index
+        let idx = match direction {
+            model::types::Direction::North => 0,
+            model::types::Direction::East => 1,
+            model::types::Direction::West => 2,
+        };
+        self.distances[idx].set(distance_mm);
+
+        let in_range = self
+            .distances
+            .iter()
+            .any(|d| d.get() < self.wake_threshold_mm);
+
+        let mut action = crate::ProximityAction::None;
+        if in_range != self.proximity_active.get() {
+            self.proximity_active.set(in_range);
+            if in_range {
+                if status == model::types::SystemStatus::Active {
+                    action = crate::ProximityAction::AcquireWakeLock;
+                } else if status == model::types::SystemStatus::Sleep {
+                    action = crate::ProximityAction::WakeSystem;
+                }
+            } else if status == model::types::SystemStatus::Active {
+                action = crate::ProximityAction::ReleaseWakeLock;
+            }
+        }
+
+        (gesture, action)
+    }
+
+    fn map_gesture(
+        &self,
+        gesture: model::types::Gesture,
+        _status: model::types::SystemStatus,
+    ) -> crate::GestureAction {
+        #[allow(unreachable_patterns)]
+        match gesture {
+            model::types::Gesture::DualLongPress => self.dual_long_press_action,
+            _ => crate::GestureAction::None,
+        }
+    }
+
+    fn on_tick(
+        &self,
+        _elapsed_ms: u32,
+        _crossed_tick: bool,
+        _status: model::types::SystemStatus,
+        support: crate::DeviceSupport,
+        _wake_locks: u32,
+    ) {
+        if support.proximity {
+            for sensor_tx in &self.sensor_txs {
+                let _ = sensor_tx.try_send(crate::SensorCommand::ReadSensors);
+            }
         }
     }
 }

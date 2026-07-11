@@ -4,9 +4,6 @@
 
 pub use firmware_lib::gesture_detector::ProximityEvent;
 
-use crate::system_feature::{
-    BatteryStatus, Device, DeviceSupport, FeatureList, GestureAction, ProximityAction,
-};
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use embassy_sync::channel::Sender;
 use firmware_lib::{BatteryUpdateAction, PeriodicTimer, PowerManager};
@@ -496,3 +493,333 @@ pub fn process_system_command<W: embedded_io::Write<Error = E>, E: embedded_io::
         }
     }
 }
+
+/// Processes system-specific CLI subcommands.
+pub fn handle_system_cli<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    C: crate::ShellConfig,
+>(
+    resolver: &impl crate::ShellDeviceResolver<C>,
+    subcommand: Option<&str>,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+) -> Result<(), &'static str> {
+    let system_ctrl = resolver.resolve_system_ctrl(None)?;
+    match subcommand {
+        Some("activity") => process_system_command(system_ctrl, writer, SystemCliCommand::Activity),
+        Some("crash") => process_system_command(system_ctrl, writer, SystemCliCommand::Crash),
+        _ => Err("Invalid system subcommand. Expected: activity, crash"),
+    }
+}
+
+/// Actions that can be mapped from gestures.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum GestureAction {
+    /// No action.
+    None,
+    /// Toggle system power state (Active <-> PowerDown).
+    TogglePower,
+}
+
+/// Action returned by the proximity feature update.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProximityAction {
+    /// No action.
+    None,
+    /// Acquire system wake lock.
+    AcquireWakeLock,
+    /// Release system wake lock.
+    ReleaseWakeLock,
+    /// Wake system if asleep.
+    WakeSystem,
+}
+
+/// Battery status summary passed to features and stored on the system controller.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BatteryStatus {
+    /// True if the battery level is critically low.
+    pub battery_critical: bool,
+    /// True if the charger is connected and charging.
+    pub charger_connected: bool,
+    /// The mapped LED state for the current state of charge.
+    pub soc_led_state: model::types::SystemLedState,
+}
+
+/// Devices that can be power-managed by the system.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Device {
+    /// The motor.
+    Motor,
+    /// Proximity/gesture sensors.
+    Sensors,
+    /// Status indicator LED.
+    Led,
+    /// Battery / Fuel gauge.
+    Battery,
+    /// Thermal monitoring.
+    Thermal,
+}
+
+/// Device activity support status in the current system state.
+#[derive(Debug, Clone, Copy)]
+pub struct DeviceSupport {
+    /// True if motor is supported.
+    pub motor: bool,
+    /// True if battery monitoring is supported.
+    pub battery: bool,
+    /// True if proximity sensors are supported.
+    pub proximity: bool,
+    /// True if LED is supported.
+    pub led: bool,
+    /// True if thermal monitoring is supported.
+    pub thermal: bool,
+}
+
+/// A single system feature that can react to system events and ticks.
+pub trait SystemFeature<MutexRaw: RawMutex + 'static, const N: usize> {
+    /// Hook called when the system starts running.
+    fn on_init(&self) {}
+
+    /// Returns true if the feature has a critical thermal alert.
+    fn thermal_critical(&self) -> bool {
+        false
+    }
+
+    /// Hook called to process raw battery updates.
+    /// Only the battery feature should implement this to update the battery manager.
+    fn on_battery_update(
+        &self,
+        _state_of_charge: u8,
+        _charger_state: model::types::ChargeState,
+        _status: model::types::SystemStatus,
+        _boot_power_down: bool,
+    ) -> Option<(Option<BatteryUpdateAction>, BatteryStatus)> {
+        None
+    }
+
+    /// Hook called when a proximity update is received.
+    fn on_proximity_update(
+        &self,
+        _direction: model::types::Direction,
+        _distance_mm: u16,
+        _status: model::types::SystemStatus,
+    ) -> (Option<model::types::Gesture>, ProximityAction) {
+        (None, ProximityAction::None)
+    }
+
+    /// Hook called when the system state changes.
+    fn on_state_changed(
+        &self,
+        _from: model::types::SystemStatus,
+        _to: model::types::SystemStatus,
+        _support: DeviceSupport,
+        _battery_status: Option<BatteryStatus>,
+        _thermal_critical: bool,
+    ) {
+    }
+
+    /// Hook called when a battery action is triggered.
+    fn on_battery_action(
+        &self,
+        _action: BatteryUpdateAction,
+        _status: model::types::SystemStatus,
+        _battery_status: Option<BatteryStatus>,
+    ) {
+    }
+
+    /// Hook called when a gesture is detected.
+    fn on_gesture(&self, _gesture: model::types::Gesture, _status: model::types::SystemStatus) {}
+
+    /// Map an incoming gesture to a system action.
+    fn map_gesture(
+        &self,
+        _gesture: model::types::Gesture,
+        _status: model::types::SystemStatus,
+    ) -> GestureAction {
+        GestureAction::None
+    }
+
+    /// Hook called periodically.
+    fn on_tick(
+        &self,
+        _elapsed_ms: u32,
+        _crossed_tick: bool,
+        _status: model::types::SystemStatus,
+        _support: DeviceSupport,
+        _wake_locks: u32,
+    ) {
+    }
+
+    /// Hook called when a thermal or motor safety alert is triggered.
+    fn on_alert_triggered(&self, _status: model::types::SystemStatus) {}
+}
+
+/// Trait implemented by collections (like tuples) of system features to dispatch hooks.
+pub trait FeatureList<MutexRaw: RawMutex + 'static, const N: usize> {
+    /// Dispatch on_init hook to all features.
+    fn on_init(&self);
+    /// Combine thermal critical status from all features.
+    fn thermal_critical(&self) -> bool;
+    /// Dispatch on_battery_update hook to features.
+    fn on_battery_update(
+        &self,
+        state_of_charge: u8,
+        charger_state: model::types::ChargeState,
+        status: model::types::SystemStatus,
+        boot_power_down: bool,
+    ) -> Option<(Option<BatteryUpdateAction>, BatteryStatus)>;
+    /// Dispatch on_proximity_update hook to features.
+    fn on_proximity_update(
+        &self,
+        direction: model::types::Direction,
+        distance_mm: u16,
+        status: model::types::SystemStatus,
+    ) -> (Option<model::types::Gesture>, ProximityAction);
+    /// Dispatch on_state_changed hook to all features.
+    fn on_state_changed(
+        &self,
+        from: model::types::SystemStatus,
+        to: model::types::SystemStatus,
+        support: DeviceSupport,
+        battery_status: Option<BatteryStatus>,
+        thermal_critical: bool,
+    );
+    /// Dispatch on_battery_action hook to all features.
+    fn on_battery_action(
+        &self,
+        action: BatteryUpdateAction,
+        status: model::types::SystemStatus,
+        battery_status: Option<BatteryStatus>,
+    );
+    /// Dispatch on_gesture hook to all features.
+    fn on_gesture(&self, gesture: model::types::Gesture, status: model::types::SystemStatus);
+    /// Dispatch map_gesture hook to features.
+    fn map_gesture(
+        &self,
+        gesture: model::types::Gesture,
+        status: model::types::SystemStatus,
+    ) -> GestureAction;
+    /// Dispatch on_tick hook to all features.
+    fn on_tick(
+        &self,
+        elapsed_ms: u32,
+        crossed_tick: bool,
+        status: model::types::SystemStatus,
+        support: DeviceSupport,
+        wake_locks: u32,
+    );
+    /// Dispatch on_alert_triggered hook to all features.
+    fn on_alert_triggered(&self, status: model::types::SystemStatus);
+}
+
+macro_rules! impl_feature_list_for_tuple {
+    ($($T:ident),*) => {
+        impl<MutexRaw: RawMutex + 'static, const N: usize, $($T: SystemFeature<MutexRaw, N>),*> FeatureList<MutexRaw, N> for ($($T,)*) {
+            #[inline(always)]
+            fn on_init(&self) {
+                #[allow(non_snake_case)]
+                let ($($T,)*) = self;
+                $($T.on_init();)*
+            }
+
+            #[inline(always)]
+            fn thermal_critical(&self) -> bool {
+                #[allow(non_snake_case)]
+                let ($($T,)*) = self;
+                $($T.thermal_critical() ||)* false
+            }
+
+            #[inline(always)]
+            fn on_battery_update(&self, _state_of_charge: u8, _charger_state: model::types::ChargeState, _status: model::types::SystemStatus, _boot_power_down: bool) -> Option<(Option<BatteryUpdateAction>, BatteryStatus)> {
+                #[allow(non_snake_case)]
+                let ($($T,)*) = self;
+                $(
+                    if let Some(res) = $T.on_battery_update(_state_of_charge, _charger_state, _status, _boot_power_down) {
+                        return Some(res);
+                    }
+                )*
+                None
+            }
+
+            #[inline(always)]
+            fn on_proximity_update(&self, _direction: model::types::Direction, _distance_mm: u16, _status: model::types::SystemStatus) -> (Option<model::types::Gesture>, ProximityAction) {
+                #[allow(non_snake_case)]
+                let ($($T,)*) = self;
+                #[allow(unused_mut)]
+                let mut merged_gesture = None;
+                #[allow(unused_mut)]
+                let mut merged_action = ProximityAction::None;
+                $(
+                    let (g, a) = $T.on_proximity_update(_direction, _distance_mm, _status);
+                    if g.is_some() {
+                        merged_gesture = g;
+                    }
+                    if a != ProximityAction::None {
+                        merged_action = a;
+                    }
+                )*
+                (merged_gesture, merged_action)
+            }
+
+            #[inline(always)]
+            fn on_state_changed(&self, _from: model::types::SystemStatus, _to: model::types::SystemStatus, _support: DeviceSupport, _battery_status: Option<BatteryStatus>, _thermal_critical: bool) {
+                #[allow(non_snake_case)]
+                let ($($T,)*) = self;
+                $($T.on_state_changed(_from, _to, _support, _battery_status, _thermal_critical);)*
+            }
+
+            #[inline(always)]
+            fn on_battery_action(&self, _action: BatteryUpdateAction, _status: model::types::SystemStatus, _battery_status: Option<BatteryStatus>) {
+                #[allow(non_snake_case)]
+                let ($($T,)*) = self;
+                $($T.on_battery_action(_action, _status, _battery_status);)*
+            }
+
+            #[inline(always)]
+            fn on_gesture(&self, _gesture: model::types::Gesture, _status: model::types::SystemStatus) {
+                #[allow(non_snake_case)]
+                let ($($T,)*) = self;
+                $($T.on_gesture(_gesture, _status);)*
+            }
+
+            #[inline(always)]
+            fn map_gesture(&self, _gesture: model::types::Gesture, _status: model::types::SystemStatus) -> GestureAction {
+                #[allow(non_snake_case)]
+                let ($($T,)*) = self;
+                $(
+                    let action = $T.map_gesture(_gesture, _status);
+                    if action != GestureAction::None {
+                        return action;
+                    }
+                )*
+                GestureAction::None
+            }
+
+            #[inline(always)]
+            fn on_tick(&self, _elapsed_ms: u32, _crossed_tick: bool, _status: model::types::SystemStatus, _support: DeviceSupport, _wake_locks: u32) {
+                #[allow(non_snake_case)]
+                let ($($T,)*) = self;
+                $($T.on_tick(_elapsed_ms, _crossed_tick, _status, _support, _wake_locks);)*
+            }
+
+            #[inline(always)]
+            fn on_alert_triggered(&self, _status: model::types::SystemStatus) {
+                #[allow(non_snake_case)]
+                let ($($T,)*) = self;
+                $($T.on_alert_triggered(_status);)*
+            }
+        }
+    }
+}
+
+impl_feature_list_for_tuple!();
+impl_feature_list_for_tuple!(A);
+impl_feature_list_for_tuple!(A, B);
+impl_feature_list_for_tuple!(A, B, C);
+impl_feature_list_for_tuple!(A, B, C, D);
+impl_feature_list_for_tuple!(A, B, C, D, E);
+impl_feature_list_for_tuple!(A, B, C, D, E, F);
+impl_feature_list_for_tuple!(A, B, C, D, E, F, G);
+impl_feature_list_for_tuple!(A, B, C, D, E, F, G, H);
+impl_feature_list_for_tuple!(A, B, C, D, E, F, G, H, I);
+impl_feature_list_for_tuple!(A, B, C, D, E, F, G, H, I, J);

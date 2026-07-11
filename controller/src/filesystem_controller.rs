@@ -603,3 +603,26 @@ pub fn process_filesystem_command<
         }
     }
 }
+
+/// Processes filesystem-specific CLI subcommands.
+pub fn handle_fs_cli<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    C: crate::ShellConfig,
+>(
+    resolver: &impl crate::ShellDeviceResolver<C>,
+    subcommand: Option<&str>,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+) -> Result<(), &'static str> {
+    let partition = resolver.resolve_partition(None)?;
+    match subcommand {
+        Some("format") => process_filesystem_command(
+            Some(partition.flash_ptr),
+            partition.start_address,
+            partition.end_address,
+            writer,
+            FilesystemCliCommand::Format,
+        ),
+        _ => Err("Invalid fs subcommand. Expected: format"),
+    }
+}

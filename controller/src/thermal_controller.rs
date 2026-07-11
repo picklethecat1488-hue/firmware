@@ -249,3 +249,71 @@ pub fn process_thermal_command<
         }
     }
 }
+
+/// Processes thermal-specific CLI subcommands.
+pub fn handle_thermal_cli<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    C: crate::ShellConfig,
+>(
+    resolver: &impl crate::ShellDeviceResolver<C>,
+    subcommand: Option<&str>,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+) -> Result<(), &'static str> {
+    let thermal_ctrl = resolver.resolve_thermal(None)?;
+    let temp_sensor = resolver.resolve_temp_sensor(None).ok();
+    match subcommand {
+        Some("status") => {
+            process_thermal_command(thermal_ctrl, temp_sensor, writer, ThermalCliCommand::Status)
+        }
+        Some("mcu") => {
+            process_thermal_command(thermal_ctrl, temp_sensor, writer, ThermalCliCommand::Mcu)
+        }
+        _ => Err("Invalid thermal subcommand. Expected: status, mcu"),
+    }
+}
+
+/// Standard config implementation for ThermalFeature.
+pub struct ThermalFeatureConfig<MutexRaw: RawMutex + 'static, const N: usize> {
+    /// Thermal channel sender
+    pub thermal_tx: Option<crate::ThermalSender<MutexRaw, N>>,
+    /// Thermal manager for checking alerts
+    pub thermal_manager: core::cell::RefCell<firmware_lib::ThermalManager>,
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize> ThermalFeatureConfig<MutexRaw, N> {
+    /// Creates a new `ThermalFeatureConfig`.
+    pub fn new(thermal_tx: Option<crate::ThermalSender<MutexRaw, N>>) -> Self {
+        Self {
+            thermal_tx,
+            thermal_manager: core::cell::RefCell::new(firmware_lib::ThermalManager::new()),
+        }
+    }
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw, N>
+    for ThermalFeatureConfig<MutexRaw, N>
+{
+    fn thermal_critical(&self) -> bool {
+        self.thermal_manager.borrow().thermal_critical()
+    }
+
+    fn on_alert_triggered(&self, _status: model::types::SystemStatus) {
+        self.thermal_manager.borrow_mut().set_thermal_critical(true);
+    }
+
+    fn on_tick(
+        &self,
+        _elapsed_ms: u32,
+        crossed_tick: bool,
+        _status: model::types::SystemStatus,
+        support: crate::DeviceSupport,
+        _wake_locks: u32,
+    ) {
+        if crossed_tick && support.thermal {
+            if let Some(ref thermal_tx) = self.thermal_tx {
+                let _ = thermal_tx.try_send(crate::ThermalCommand::CheckTemp);
+            }
+        }
+    }
+}

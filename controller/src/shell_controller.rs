@@ -3,12 +3,6 @@
 #![deny(missing_docs)]
 #![allow(static_mut_refs)]
 
-use crate::battery_controller::process_battery_command;
-use crate::filesystem_controller::process_filesystem_command;
-use crate::motor_controller::process_motor_command;
-use crate::sensor_controller::process_sensor_command;
-use crate::system_controller::process_system_command;
-use crate::thermal_controller::process_thermal_command;
 use crate::{
     BlockingBatteryReader, BlockingMotorReader, BlockingMotorWriter, BlockingProximityReader,
     BlockingThermalReader,
@@ -145,6 +139,32 @@ impl<'a, C: ShellConfig> Default for ShellControllerPointers<'a, C> {
     }
 }
 
+/// Trait to resolve devices and partitions for CLI handlers.
+#[allow(clippy::mut_from_ref)]
+pub trait ShellDeviceResolver<C: ShellConfig> {
+    /// Resolves the I2C bus device.
+    fn resolve_i2c(&self, name: Option<&str>) -> Result<&mut C::I2c, &'static str>;
+    /// Resolves the motor device.
+    fn resolve_motor(&self, name: Option<&str>) -> Result<&mut C::Motor, &'static str>;
+    /// Resolves the battery controller device.
+    fn resolve_battery(&self, name: Option<&str>) -> Result<&mut C::BatteryCtrl, &'static str>;
+    /// Resolves the thermal controller device.
+    fn resolve_thermal(&self, name: Option<&str>) -> Result<&mut C::ThermalCtrl, &'static str>;
+    /// Resolves the proximity sensor controller device.
+    fn resolve_sensor(&self, name: Option<&str>) -> Result<&mut C::SensorCtrl, &'static str>;
+    /// Resolves the motor controller device.
+    fn resolve_motor_ctrl(&self, name: Option<&str>) -> Result<&mut C::MotorCtrl, &'static str>;
+    /// Resolves the microcontroller temperature sensor device.
+    fn resolve_temp_sensor(&self, name: Option<&str>) -> Result<&mut C::TempSensor, &'static str>;
+    /// Resolves the system controller device.
+    fn resolve_system_ctrl(&self, name: Option<&str>) -> Result<&mut C::SystemCtrl, &'static str>;
+    /// Resolves the flash partition.
+    fn resolve_partition(
+        &self,
+        name: Option<&str>,
+    ) -> Result<crate::FlashPartition<C::Flash>, &'static str>;
+}
+
 /// Controller responsible for processing shell commands.
 pub struct ShellController<'a, C: ShellConfig> {
     i2c_buses: &'a [crate::NamedDevice<C::I2c>],
@@ -211,6 +231,39 @@ impl<'a, C: ShellConfig> ShellController<'a, C> {
     }
 }
 
+impl<'a, C: ShellConfig> ShellDeviceResolver<C> for ShellController<'a, C> {
+    fn resolve_i2c(&self, name: Option<&str>) -> Result<&mut C::I2c, &'static str> {
+        self.resolve_device(self.i2c_buses, name)
+    }
+    fn resolve_motor(&self, name: Option<&str>) -> Result<&mut C::Motor, &'static str> {
+        self.resolve_device(self.motors, name)
+    }
+    fn resolve_battery(&self, name: Option<&str>) -> Result<&mut C::BatteryCtrl, &'static str> {
+        self.resolve_device(self.batteries, name)
+    }
+    fn resolve_thermal(&self, name: Option<&str>) -> Result<&mut C::ThermalCtrl, &'static str> {
+        self.resolve_device(self.thermals, name)
+    }
+    fn resolve_sensor(&self, name: Option<&str>) -> Result<&mut C::SensorCtrl, &'static str> {
+        self.resolve_device(self.sensors, name)
+    }
+    fn resolve_motor_ctrl(&self, name: Option<&str>) -> Result<&mut C::MotorCtrl, &'static str> {
+        self.resolve_device(self.motor_ctrls, name)
+    }
+    fn resolve_temp_sensor(&self, name: Option<&str>) -> Result<&mut C::TempSensor, &'static str> {
+        self.resolve_device(self.temp_sensors, name)
+    }
+    fn resolve_system_ctrl(&self, name: Option<&str>) -> Result<&mut C::SystemCtrl, &'static str> {
+        self.resolve_device(self.system_ctrls, name)
+    }
+    fn resolve_partition(
+        &self,
+        name: Option<&str>,
+    ) -> Result<crate::FlashPartition<C::Flash>, &'static str> {
+        self.resolve_partition(name)
+    }
+}
+
 /// Helper macro to append a specific command group's variant and match arm to the accumulator.
 #[macro_export]
 macro_rules! append_group_arm {
@@ -225,7 +278,7 @@ macro_rules! append_group_arm {
             },
         ] [
             $($matches)*
-            $name::Battery { subcommand } => $ctrl.handle_battery(subcommand, $writer),
+            $name::Battery { subcommand } => $crate::battery_controller::handle_battery_cli($ctrl, subcommand, $writer),
         ] -> $mode, $proc_name);
     };
     (Thermal, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
@@ -239,7 +292,7 @@ macro_rules! append_group_arm {
             },
         ] [
             $($matches)*
-            $name::Thermal { subcommand } => $ctrl.handle_thermal(subcommand, $writer),
+            $name::Thermal { subcommand } => $crate::thermal_controller::handle_thermal_cli($ctrl, subcommand, $writer),
         ] -> $mode, $proc_name);
     };
     (Motor, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
@@ -259,7 +312,7 @@ macro_rules! append_group_arm {
             },
         ] [
             $($matches)*
-            $name::Motor { subcommand, arg1, arg2, arg3 } => $ctrl.handle_motor(subcommand, arg1, arg2, arg3, $writer),
+            $name::Motor { subcommand, arg1, arg2, arg3 } => $crate::motor_controller::handle_motor_cli($ctrl, subcommand, arg1, arg2, arg3, $writer),
         ] -> $mode, $proc_name);
     };
     (Sensor, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
@@ -275,7 +328,7 @@ macro_rules! append_group_arm {
             },
         ] [
             $($matches)*
-            $name::Sensor { subcommand, arg1 } => $ctrl.handle_sensor(subcommand, arg1, $writer),
+            $name::Sensor { subcommand, arg1 } => $crate::sensor_controller::handle_sensor_cli($ctrl, subcommand, arg1, $writer),
         ] -> $mode, $proc_name);
     };
     (Fs, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
@@ -289,7 +342,7 @@ macro_rules! append_group_arm {
             },
         ] [
             $($matches)*
-            $name::Fs { subcommand } => $ctrl.handle_fs(subcommand, $writer),
+            $name::Fs { subcommand } => $crate::filesystem_controller::handle_fs_cli($ctrl, subcommand, $writer),
         ] -> $mode, $proc_name);
     };
     (System, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
@@ -303,7 +356,7 @@ macro_rules! append_group_arm {
             },
         ] [
             $($matches)*
-            $name::System { subcommand } => $ctrl.handle_system(subcommand, $writer),
+            $name::System { subcommand } => $crate::system_controller::handle_system_cli($ctrl, subcommand, $writer),
         ] -> $mode, $proc_name);
     };
 }
@@ -511,345 +564,5 @@ crate::declare_shell_commands! {
         Sensor,
         Fs,
         System,
-    }
-}
-
-impl<'a, C: ShellConfig> ShellController<'a, C> {
-    /// Processes battery-specific CLI subcommands.
-    pub fn handle_battery<W: embedded_io::Write<Error = E>, E: embedded_io::Error>(
-        &mut self,
-        subcommand: Option<&str>,
-        writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-    ) -> Result<(), &'static str> {
-        match subcommand {
-            Some("status") => {
-                let ctrl = self.resolve_device(self.batteries, None)?;
-                process_battery_command(
-                    ctrl,
-                    writer,
-                    crate::battery_controller::BatteryCliCommand::Status,
-                )
-            }
-            _ => Err("Invalid battery subcommand. Expected: status"),
-        }
-    }
-
-    /// Processes thermal-specific CLI subcommands.
-    pub fn handle_thermal<W: embedded_io::Write<Error = E>, E: embedded_io::Error>(
-        &mut self,
-        subcommand: Option<&str>,
-        writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-    ) -> Result<(), &'static str> {
-        match subcommand {
-            Some("status") => {
-                let ctrl = self.resolve_device(self.thermals, None)?;
-                let temp_sensor = self.resolve_device(self.temp_sensors, None).ok();
-                process_thermal_command(
-                    ctrl,
-                    temp_sensor,
-                    writer,
-                    crate::thermal_controller::ThermalCliCommand::Status,
-                )
-            }
-            Some("mcu") => {
-                let ctrl = self.resolve_device(self.thermals, None)?;
-                let temp_sensor = self.resolve_device(self.temp_sensors, None).ok();
-                process_thermal_command(
-                    ctrl,
-                    temp_sensor,
-                    writer,
-                    crate::thermal_controller::ThermalCliCommand::Mcu,
-                )
-            }
-            _ => Err("Invalid thermal subcommand. Expected: status, mcu"),
-        }
-    }
-
-    /// Processes motor-specific CLI subcommands.
-    pub fn handle_motor<W: embedded_io::Write<Error = E>, E: embedded_io::Error>(
-        &mut self,
-        subcommand: Option<&str>,
-        arg1: Option<&str>,
-        arg2: Option<&str>,
-        arg3: Option<&str>,
-        writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-    ) -> Result<(), &'static str> {
-        match subcommand {
-            Some("speed") => {
-                let speed_str = arg1.ok_or("Missing speed parameter")?;
-                let speed = speed_str
-                    .parse::<i8>()
-                    .map_err(|_| "Invalid speed parameter")?;
-                let ctrl = self.resolve_device(self.motor_ctrls, None)?;
-                let motor = self
-                    .resolve_device(self.motors, None)
-                    .ok()
-                    .map(|d| d as *mut _);
-                let i2c = self
-                    .resolve_device(self.i2c_buses, None)
-                    .ok()
-                    .map(|d| d as *mut _);
-                let partition = self.resolve_partition(None).ok();
-                let (flash, start, end) = match partition {
-                    Some(p) => (Some(p.flash_ptr), p.start_address, p.end_address),
-                    None => (None, 0, 0),
-                };
-                process_motor_command(
-                    ctrl,
-                    motor,
-                    i2c,
-                    flash,
-                    start,
-                    end,
-                    writer,
-                    crate::motor_controller::MotorCliCommand::Speed { speed },
-                )
-            }
-            Some("stop") => {
-                let ctrl = self.resolve_device(self.motor_ctrls, None)?;
-                let motor = self
-                    .resolve_device(self.motors, None)
-                    .ok()
-                    .map(|d| d as *mut _);
-                let i2c = self
-                    .resolve_device(self.i2c_buses, None)
-                    .ok()
-                    .map(|d| d as *mut _);
-                let partition = self.resolve_partition(None).ok();
-                let (flash, start, end) = match partition {
-                    Some(p) => (Some(p.flash_ptr), p.start_address, p.end_address),
-                    None => (None, 0, 0),
-                };
-                process_motor_command(
-                    ctrl,
-                    motor,
-                    i2c,
-                    flash,
-                    start,
-                    end,
-                    writer,
-                    crate::motor_controller::MotorCliCommand::Stop,
-                )
-            }
-            Some("calibrate") => {
-                let state_str = arg1.ok_or("Missing calibration state")?;
-                let state = match state_str {
-                    "empty" => crate::motor_controller::MotorCalState::Empty,
-                    "water_100ml" => crate::motor_controller::MotorCalState::Water100ml,
-                    "full" => crate::motor_controller::MotorCalState::Full,
-                    "overload" => crate::motor_controller::MotorCalState::Overload,
-                    _ => return Err(
-                        "Invalid calibration state. Expected: empty, water_100ml, full, overload",
-                    ),
-                };
-                let max_rpm = arg2.and_then(|s| s.parse::<u32>().ok());
-                let rpm_limit = arg3.and_then(|s| s.parse::<u32>().ok());
-                let ctrl = self.resolve_device(self.motor_ctrls, None)?;
-                let motor = self
-                    .resolve_device(self.motors, None)
-                    .ok()
-                    .map(|d| d as *mut _);
-                let i2c = self
-                    .resolve_device(self.i2c_buses, None)
-                    .ok()
-                    .map(|d| d as *mut _);
-                let partition = self.resolve_partition(None).ok();
-                let (flash, start, end) = match partition {
-                    Some(p) => (Some(p.flash_ptr), p.start_address, p.end_address),
-                    None => (None, 0, 0),
-                };
-                process_motor_command(
-                    ctrl,
-                    motor,
-                    i2c,
-                    flash,
-                    start,
-                    end,
-                    writer,
-                    crate::motor_controller::MotorCliCommand::Calibrate {
-                        state,
-                        max_rpm,
-                        rpm_limit,
-                    },
-                )
-            }
-            _ => Err("Invalid motor subcommand. Expected: speed, stop, calibrate"),
-        }
-    }
-
-    /// Processes sensor-specific CLI subcommands.
-    pub fn handle_sensor<W: embedded_io::Write<Error = E>, E: embedded_io::Error>(
-        &mut self,
-        subcommand: Option<&str>,
-        arg1: Option<&str>,
-        writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-    ) -> Result<(), &'static str> {
-        match subcommand {
-            Some("status") => {
-                let sensor_north = self
-                    .resolve_device(self.sensors, Some("north"))
-                    .ok()
-                    .map(|d| d as *mut _);
-                let sensor_east = self
-                    .resolve_device(self.sensors, Some("east"))
-                    .ok()
-                    .map(|d| d as *mut _);
-                let sensor_west = self
-                    .resolve_device(self.sensors, Some("west"))
-                    .ok()
-                    .map(|d| d as *mut _);
-                let i2c = self
-                    .resolve_device(self.i2c_buses, None)
-                    .ok()
-                    .map(|d| d as *mut _);
-                let partition = self.resolve_partition(None).ok();
-                let (flash, start, end) = match partition {
-                    Some(p) => (Some(p.flash_ptr), p.start_address, p.end_address),
-                    None => (None, 0, 0),
-                };
-                process_sensor_command(
-                    sensor_north,
-                    sensor_east,
-                    sensor_west,
-                    i2c,
-                    flash,
-                    start,
-                    end,
-                    writer,
-                    crate::sensor_controller::SensorCliCommand::Status,
-                )
-            }
-            Some("cal_near") => {
-                let dir_str = arg1.ok_or("Missing direction parameter")?;
-                let direction = match dir_str {
-                    "north" => crate::sensor_controller::SensorDirection::North,
-                    "east" => crate::sensor_controller::SensorDirection::East,
-                    "west" => crate::sensor_controller::SensorDirection::West,
-                    _ => return Err("Invalid direction. Expected: north, east, west"),
-                };
-                let sensor_north = self
-                    .resolve_device(self.sensors, Some("north"))
-                    .ok()
-                    .map(|d| d as *mut _);
-                let sensor_east = self
-                    .resolve_device(self.sensors, Some("east"))
-                    .ok()
-                    .map(|d| d as *mut _);
-                let sensor_west = self
-                    .resolve_device(self.sensors, Some("west"))
-                    .ok()
-                    .map(|d| d as *mut _);
-                let i2c = self
-                    .resolve_device(self.i2c_buses, None)
-                    .ok()
-                    .map(|d| d as *mut _);
-                let partition = self.resolve_partition(None).ok();
-                let (flash, start, end) = match partition {
-                    Some(p) => (Some(p.flash_ptr), p.start_address, p.end_address),
-                    None => (None, 0, 0),
-                };
-                process_sensor_command(
-                    sensor_north,
-                    sensor_east,
-                    sensor_west,
-                    i2c,
-                    flash,
-                    start,
-                    end,
-                    writer,
-                    crate::sensor_controller::SensorCliCommand::CalNear { direction },
-                )
-            }
-            Some("cal_far") => {
-                let dir_str = arg1.ok_or("Missing direction parameter")?;
-                let direction = match dir_str {
-                    "north" => crate::sensor_controller::SensorDirection::North,
-                    "east" => crate::sensor_controller::SensorDirection::East,
-                    "west" => crate::sensor_controller::SensorDirection::West,
-                    _ => return Err("Invalid direction. Expected: north, east, west"),
-                };
-                let sensor_north = self
-                    .resolve_device(self.sensors, Some("north"))
-                    .ok()
-                    .map(|d| d as *mut _);
-                let sensor_east = self
-                    .resolve_device(self.sensors, Some("east"))
-                    .ok()
-                    .map(|d| d as *mut _);
-                let sensor_west = self
-                    .resolve_device(self.sensors, Some("west"))
-                    .ok()
-                    .map(|d| d as *mut _);
-                let i2c = self
-                    .resolve_device(self.i2c_buses, None)
-                    .ok()
-                    .map(|d| d as *mut _);
-                let partition = self.resolve_partition(None).ok();
-                let (flash, start, end) = match partition {
-                    Some(p) => (Some(p.flash_ptr), p.start_address, p.end_address),
-                    None => (None, 0, 0),
-                };
-                process_sensor_command(
-                    sensor_north,
-                    sensor_east,
-                    sensor_west,
-                    i2c,
-                    flash,
-                    start,
-                    end,
-                    writer,
-                    crate::sensor_controller::SensorCliCommand::CalFar { direction },
-                )
-            }
-            _ => Err("Invalid sensor subcommand. Expected: status, cal_near, cal_far"),
-        }
-    }
-
-    /// Processes filesystem-specific CLI subcommands.
-    pub fn handle_fs<W: embedded_io::Write<Error = E>, E: embedded_io::Error>(
-        &mut self,
-        subcommand: Option<&str>,
-        writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-    ) -> Result<(), &'static str> {
-        match subcommand {
-            Some("format") => {
-                let partition = self.resolve_partition(None)?;
-                process_filesystem_command(
-                    Some(partition.flash_ptr),
-                    partition.start_address,
-                    partition.end_address,
-                    writer,
-                    crate::filesystem_controller::FilesystemCliCommand::Format,
-                )
-            }
-            _ => Err("Invalid fs subcommand. Expected: format"),
-        }
-    }
-
-    /// Processes system-specific CLI subcommands.
-    pub fn handle_system<W: embedded_io::Write<Error = E>, E: embedded_io::Error>(
-        &mut self,
-        subcommand: Option<&str>,
-        writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-    ) -> Result<(), &'static str> {
-        match subcommand {
-            Some("activity") => {
-                let system_ctrl = self.resolve_device(self.system_ctrls, None)?;
-                process_system_command(
-                    system_ctrl,
-                    writer,
-                    crate::system_controller::SystemCliCommand::Activity,
-                )
-            }
-            Some("crash") => {
-                let system_ctrl = self.resolve_device(self.system_ctrls, None)?;
-                process_system_command(
-                    system_ctrl,
-                    writer,
-                    crate::system_controller::SystemCliCommand::Crash,
-                )
-            }
-            _ => Err("Invalid system subcommand. Expected: activity, crash"),
-        }
     }
 }

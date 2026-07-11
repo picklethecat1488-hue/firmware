@@ -5,9 +5,10 @@
 use crate::telemetry_controller::MotorTelemetryClient;
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::interfaces::{Motor, PowerMeasurementMode, PowerSensor, Tickable};
 use model::telemetry::TelemetryClient;
-use model::types::{MotorSpeed, PeripheralError};
+use model::types::{MotorSpeed, PeripheralError, SystemStatus};
 use peripherals::ToPeripheralError;
 
 /// The tick interval of the motor controller (10ms / 100Hz).
@@ -664,6 +665,127 @@ pub fn process_motor_command<
                     let _ = core::writeln!(writer, "Saved motor {} calibration to flash.", name);
                 })
                 .map_err(|_| "Error saving calibration to flash")
+        }
+    }
+}
+
+/// Processes motor-specific CLI subcommands.
+pub fn handle_motor_cli<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    C: crate::ShellConfig,
+>(
+    resolver: &impl crate::ShellDeviceResolver<C>,
+    subcommand: Option<&str>,
+    arg1: Option<&str>,
+    arg2: Option<&str>,
+    arg3: Option<&str>,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+) -> Result<(), &'static str> {
+    let motor_ctrl = resolver.resolve_motor_ctrl(None)?;
+    let motor = resolver.resolve_motor(None).ok().map(|d| d as *mut _);
+    let i2c = resolver.resolve_i2c(None).ok().map(|d| d as *mut _);
+    let partition = resolver.resolve_partition(None).ok();
+    let (flash, storage_start, storage_end) = match partition {
+        Some(p) => (Some(p.flash_ptr), p.start_address, p.end_address),
+        None => (None, 0, 0),
+    };
+
+    match subcommand {
+        Some("speed") => {
+            let speed_str = arg1.ok_or("Missing speed parameter")?;
+            let speed = speed_str
+                .parse::<i8>()
+                .map_err(|_| "Invalid speed parameter")?;
+            process_motor_command(
+                motor_ctrl,
+                motor,
+                i2c,
+                flash,
+                storage_start,
+                storage_end,
+                writer,
+                MotorCliCommand::Speed { speed },
+            )
+        }
+        Some("stop") => process_motor_command(
+            motor_ctrl,
+            motor,
+            i2c,
+            flash,
+            storage_start,
+            storage_end,
+            writer,
+            MotorCliCommand::Stop,
+        ),
+        Some("calibrate") => {
+            let state_str = arg1.ok_or("Missing calibration state")?;
+            let state =
+                match state_str {
+                    "empty" => MotorCalState::Empty,
+                    "water_100ml" => MotorCalState::Water100ml,
+                    "full" => MotorCalState::Full,
+                    "overload" => MotorCalState::Overload,
+                    _ => return Err(
+                        "Invalid calibration state. Expected: empty, water_100ml, full, overload",
+                    ),
+                };
+            let max_rpm = arg2.and_then(|s| s.parse::<u32>().ok());
+            let rpm_limit = arg3.and_then(|s| s.parse::<u32>().ok());
+            process_motor_command(
+                motor_ctrl,
+                motor,
+                i2c,
+                flash,
+                storage_start,
+                storage_end,
+                writer,
+                MotorCliCommand::Calibrate {
+                    state,
+                    max_rpm,
+                    rpm_limit,
+                },
+            )
+        }
+        _ => Err("Invalid motor subcommand. Expected: speed, stop, calibrate"),
+    }
+}
+
+/// Standard config implementation for MotorFeature.
+pub struct MotorFeatureConfig<MutexRaw: RawMutex + 'static, const N: usize> {
+    /// Motor channel sender
+    pub motor_tx: Option<crate::MotorSender<MutexRaw, N>>,
+    /// Maximum motor speed
+    pub max_speed: MotorSpeed,
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize> MotorFeatureConfig<MutexRaw, N> {
+    /// Creates a new `MotorFeatureConfig`.
+    pub fn new(motor_tx: Option<crate::MotorSender<MutexRaw, N>>, max_speed: MotorSpeed) -> Self {
+        Self {
+            motor_tx,
+            max_speed,
+        }
+    }
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw, N>
+    for MotorFeatureConfig<MutexRaw, N>
+{
+    fn on_state_changed(
+        &self,
+        _from: SystemStatus,
+        _to: SystemStatus,
+        support: crate::DeviceSupport,
+        _battery_status: Option<crate::BatteryStatus>,
+        _thermal_critical: bool,
+    ) {
+        if let Some(ref motor_tx) = self.motor_tx {
+            if support.motor {
+                let _ = motor_tx.try_send(crate::MotorCommand::SetSpeed(self.max_speed));
+            } else {
+                let _ = motor_tx.try_send(crate::MotorCommand::Stop);
+            }
         }
     }
 }
