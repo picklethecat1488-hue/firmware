@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::BatteryTelemetryClient;
+use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use model::interfaces::FuelGauge;
@@ -349,4 +350,138 @@ pub enum BatteryCommand {
     CheckStatus,
     /// Update the current active wake locks bitmask
     UpdateWakeLocks(u32),
+}
+
+/// Battery-specific CLI commands
+#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
+pub enum BatteryCliCommand {
+    /// Query battery voltage and status
+    Status,
+}
+
+/// Processes battery-specific CLI commands
+pub fn process_battery_command<W: embedded_io::Write<Error = E>, E: embedded_io::Error>(
+    battery_ctrl: &impl crate::BlockingBatteryReader,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+    cmd: BatteryCliCommand,
+) -> Result<(), &'static str> {
+    match cmd {
+        BatteryCliCommand::Status => {
+            let (v, soc) = battery_ctrl
+                .read_battery_blocking()
+                .map_err(|_| "Failed to read battery")?;
+            let _ = core::writeln!(
+                writer,
+                "\r\nBattery Status:\r\n  Voltage: {} mV\r\n  SoC: {}%",
+                v,
+                soc
+            );
+            Ok(())
+        }
+    }
+}
+
+/// Processes battery-specific CLI subcommands.
+pub fn handle_battery_cli<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    C: crate::ShellConfig,
+>(
+    resolver: &impl crate::ShellDeviceResolver<C>,
+    subcommand: Option<&str>,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+) -> Result<(), &'static str> {
+    let battery_ctrl = resolver.resolve_battery(None)?;
+    match subcommand {
+        Some("status") => process_battery_command(battery_ctrl, writer, BatteryCliCommand::Status),
+        _ => Err("Invalid battery subcommand. Expected: status"),
+    }
+}
+
+/// Standard config implementation for BatteryFeature.
+pub struct BatteryFeatureConfig<MutexRaw: RawMutex + 'static, const N: usize> {
+    /// Battery channel sender
+    pub battery_tx: Option<crate::BatterySender<MutexRaw, N>>,
+    /// Battery manager for battery thresholds and status
+    pub battery_manager: core::cell::RefCell<firmware_lib::BatteryManager>,
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize> BatteryFeatureConfig<MutexRaw, N> {
+    /// Creates a new `BatteryFeatureConfig`.
+    pub fn new(
+        battery_tx: Option<crate::BatterySender<MutexRaw, N>>,
+        battery_manager: firmware_lib::BatteryManager,
+    ) -> Self {
+        Self {
+            battery_tx,
+            battery_manager: core::cell::RefCell::new(battery_manager),
+        }
+    }
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw, N>
+    for BatteryFeatureConfig<MutexRaw, N>
+{
+    fn on_init(&self) {
+        let mut bm = self.battery_manager.borrow_mut();
+        let low_threshold = bm.low_soc_threshold();
+        if bm.critical_soc_threshold() >= low_threshold {
+            bm.set_critical_soc_threshold(low_threshold - 1);
+        }
+    }
+
+    fn on_battery_update(
+        &self,
+        state_of_charge: u8,
+        charger_state: model::types::ChargeState,
+        status: model::types::SystemStatus,
+        boot_power_down: bool,
+    ) -> Option<(
+        Option<firmware_lib::BatteryUpdateAction>,
+        crate::BatteryStatus,
+    )> {
+        let mut bm = self.battery_manager.borrow_mut();
+        let action =
+            bm.update_battery_status(state_of_charge, charger_state, status, boot_power_down);
+        let battery_critical = bm.battery_critical();
+        let charger_connected = bm.charger_connected();
+        let soc_led_state = bm.get_soc_led_state();
+        Some((
+            action,
+            crate::BatteryStatus {
+                battery_critical,
+                charger_connected,
+                soc_led_state,
+            },
+        ))
+    }
+
+    fn on_state_changed(
+        &self,
+        _from: model::types::SystemStatus,
+        _to: model::types::SystemStatus,
+        _support: crate::DeviceSupport,
+        _battery_status: Option<crate::BatteryStatus>,
+        _thermal_critical: bool,
+    ) {
+        if let Some(ref battery_tx) = self.battery_tx {
+            let _ = battery_tx.try_send(crate::BatteryCommand::UpdateWakeLocks(0));
+        }
+    }
+
+    fn on_tick(
+        &self,
+        _elapsed_ms: u32,
+        crossed_tick: bool,
+        _status: model::types::SystemStatus,
+        support: crate::DeviceSupport,
+        wake_locks: u32,
+    ) {
+        if crossed_tick && support.battery {
+            if let Some(ref battery_tx) = self.battery_tx {
+                let _ = battery_tx.try_send(crate::BatteryCommand::UpdateWakeLocks(wake_locks));
+                let _ = battery_tx.try_send(crate::BatteryCommand::CheckStatus);
+            }
+        }
+    }
 }

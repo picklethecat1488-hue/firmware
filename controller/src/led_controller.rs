@@ -218,3 +218,94 @@ where
         }
     }
 }
+
+/// Standard config implementation for LedFeature.
+pub struct LedFeatureConfig<MutexRaw: RawMutex + 'static, const N: usize> {
+    /// LED channel sender
+    pub led_tx: Option<crate::LedSender<MutexRaw, N>>,
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize> LedFeatureConfig<MutexRaw, N> {
+    /// Creates a new `LedFeatureConfig`.
+    pub fn new(led_tx: Option<crate::LedSender<MutexRaw, N>>) -> Self {
+        Self { led_tx }
+    }
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw, N>
+    for LedFeatureConfig<MutexRaw, N>
+{
+    fn on_init(&self) {
+        if let Some(ref led_tx) = self.led_tx {
+            let _ = led_tx.try_send(SystemLedState::Off);
+        }
+    }
+
+    fn on_state_changed(
+        &self,
+        _from: model::types::SystemStatus,
+        to: model::types::SystemStatus,
+        support: crate::DeviceSupport,
+        battery_status: Option<crate::BatteryStatus>,
+        thermal_critical: bool,
+    ) {
+        if let Some(ref led_tx) = self.led_tx {
+            let led = if support.led {
+                if to == model::types::SystemStatus::Active {
+                    battery_status
+                        .map(|s| s.soc_led_state)
+                        .unwrap_or(SystemLedState::Off)
+                } else if thermal_critical {
+                    SystemLedState::BlinksRedFourTimes
+                } else {
+                    SystemLedState::SolidBlue
+                }
+            } else if battery_status.map(|s| s.battery_critical).unwrap_or(false) {
+                SystemLedState::BlinksRedOncePerThirtySeconds
+            } else if battery_status.map(|s| s.charger_connected).unwrap_or(false) {
+                battery_status
+                    .map(|s| s.soc_led_state)
+                    .unwrap_or(SystemLedState::Off)
+            } else {
+                SystemLedState::Off
+            };
+            let _ = led_tx.try_send(led);
+        }
+    }
+
+    fn on_battery_action(
+        &self,
+        action: firmware_lib::BatteryUpdateAction,
+        status: model::types::SystemStatus,
+        battery_status: Option<crate::BatteryStatus>,
+    ) {
+        if action == firmware_lib::BatteryUpdateAction::ReportSoC {
+            if let Some(ref led_tx) = self.led_tx {
+                if battery_status.map(|s| s.battery_critical).unwrap_or(false) {
+                    let _ = led_tx.try_send(SystemLedState::BlinksRedOncePerThirtySeconds);
+                } else if status == model::types::SystemStatus::PowerDown {
+                    let led = if battery_status.map(|s| s.charger_connected).unwrap_or(false) {
+                        battery_status
+                            .map(|s| s.soc_led_state)
+                            .unwrap_or(SystemLedState::Off)
+                    } else {
+                        SystemLedState::Off
+                    };
+                    let _ = led_tx.try_send(led);
+                } else if status == model::types::SystemStatus::Active {
+                    if let Some(s) = battery_status {
+                        let _ = led_tx.try_send(s.soc_led_state);
+                    }
+                }
+            }
+        }
+    }
+
+    fn on_alert_triggered(&self, status: model::types::SystemStatus) {
+        if status == model::types::SystemStatus::Sleep {
+            if let Some(ref led_tx) = self.led_tx {
+                let _ = led_tx.try_send(SystemLedState::BlinksRedFourTimes);
+            }
+        }
+    }
+}

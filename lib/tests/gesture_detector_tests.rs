@@ -15,7 +15,7 @@ fn update_detector(
 
 #[test]
 fn test_gesture_detector_debounce() {
-    let mut detector = ProximityGestureDetector::new(20, 300);
+    let mut detector = ProximityGestureDetector::new(20);
 
     // 1. All out of range -> no change, returns None
     assert_eq!(
@@ -23,17 +23,15 @@ fn test_gesture_detector_debounce() {
         None
     );
     assert_eq!(detector.press_time_ms(), 0);
-    assert!(!detector.proximity_active());
 
-    // 2. Only West in range of proximity (< 300) -> transitions to active -> returns Some(ProximityDetected)
+    // 2. Only West in range of button press (< 20) -> no change, returns None
     assert_eq!(
-        update_detector(&mut detector, 1000, 1000, 150, 2_000_000),
-        Some(Gesture::ProximityDetected)
+        update_detector(&mut detector, 1000, 1000, 15, 2_000_000),
+        None
     );
     assert_eq!(detector.press_time_ms(), 0);
-    assert!(detector.proximity_active());
 
-    // 3. Both in long press range (< 20) -> starts accumulating (no proximity transition, so returns None)
+    // 3. Both in press range (< 20) -> starts accumulating (returns None)
     assert_eq!(
         update_detector(&mut detector, 1000, 15, 15, 4_000_000),
         None
@@ -47,14 +45,14 @@ fn test_gesture_detector_debounce() {
     );
     assert_eq!(detector.press_time_ms(), 2000);
 
-    // 4. One drops out of long press range -> reset to 0 (proximity still active, returns None)
+    // 4. One drops out of press range -> reset to 0 (returns None)
     assert_eq!(
         update_detector(&mut detector, 1000, 15, 25, 7_000_000),
         None
     );
     assert_eq!(detector.press_time_ms(), 0);
 
-    // 5. Both back in long press range -> starts accumulating again (returns None)
+    // 5. Both back in press range -> starts accumulating again (returns None)
     assert_eq!(
         update_detector(&mut detector, 1000, 15, 15, 10_000_000),
         None

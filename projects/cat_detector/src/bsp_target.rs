@@ -25,6 +25,26 @@ pub struct Board<'d> {
     pub temp_sensor: Option<Rp2040TempSensor>,
     /// Concrete charger driver instance using S1/S2 GPIO pins
     pub charger: Option<peripherals::bq25185::Bq25185<Flex<'d>, Flex<'d>>>,
+    /// Motor driver
+    pub motor: peripherals::l9110s::L9110s<Flex<'d>, Flex<'d>>,
+    /// Motor current sensor
+    pub current_sensor: peripherals::ina219::Ina219<firmware_lib::i2c::SharedI2cWrapper<'static>>,
+    /// North proximity sensor
+    pub tof_north: peripherals::vl53l0x::Vl53l0x<firmware_lib::i2c::SharedI2cWrapper<'static>>,
+    /// East proximity sensor
+    pub tof_east: peripherals::vl53l0x::Vl53l0x<firmware_lib::i2c::SharedI2cWrapper<'static>>,
+    /// West proximity sensor
+    pub tof_west: peripherals::vl53l0x::Vl53l0x<firmware_lib::i2c::SharedI2cWrapper<'static>>,
+    /// Status LED driver
+    pub led_driver: peripherals::attiny816::Attiny816<firmware_lib::i2c::SharedI2cWrapper<'static>>,
+    /// Fuel gauge alert/interrupt pin
+    pub fuel_gauge_alert_pin: Flex<'d>,
+    /// North proximity interrupt pin
+    pub pin_north: Flex<'d>,
+    /// East proximity interrupt pin
+    pub pin_east: Flex<'d>,
+    /// West proximity interrupt pin
+    pub pin_west: Flex<'d>,
 }
 
 impl<'d> Board<'d> {
@@ -156,7 +176,13 @@ impl<'d> Board<'d> {
             pin.set_high();
             cortex_m::asm::delay(20_000); // Wait for sensor to boot
             let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x29);
-            let _ = sensor.set_address(0x30);
+            if let Err(e) = sensor.init(
+                0x30,
+                crate::DEFAULT_WAKE_THRESHOLD_MM,
+                peripherals::vl53l0x::InterruptMode::LowLevel,
+            ) {
+                defmt::warn!("North ToF: Init failed: {:?}", defmt::Debug2Format(&e));
+            }
         }
 
         // Bring East sensor out of shutdown (GP3 high) and assign address 0x31
@@ -164,7 +190,13 @@ impl<'d> Board<'d> {
             pin.set_high();
             cortex_m::asm::delay(20_000); // Wait for sensor to boot
             let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x29);
-            let _ = sensor.set_address(0x31);
+            if let Err(e) = sensor.init(
+                0x31,
+                crate::DEFAULT_WAKE_THRESHOLD_MM,
+                peripherals::vl53l0x::InterruptMode::LowLevel,
+            ) {
+                defmt::warn!("East ToF: Init failed: {:?}", defmt::Debug2Format(&e));
+            }
         }
 
         // Bring West sensor out of shutdown (GP6 high) and assign address 0x32
@@ -172,7 +204,13 @@ impl<'d> Board<'d> {
             pin.set_high();
             cortex_m::asm::delay(20_000); // Wait for sensor to boot
             let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x29);
-            let _ = sensor.set_address(0x32);
+            if let Err(e) = sensor.init(
+                0x32,
+                crate::DEFAULT_WAKE_THRESHOLD_MM,
+                peripherals::vl53l0x::InterruptMode::LowLevel,
+            ) {
+                defmt::warn!("West ToF: Init failed: {:?}", defmt::Debug2Format(&e));
+            }
         }
 
         // 5. Configure Charger Status pins S1 (GP12) and S2 (GP13) as inputs with pull-ups
@@ -195,6 +233,61 @@ impl<'d> Board<'d> {
 
         let temp_sensor = Some(Rp2040TempSensor::new(p.ADC, p.ADC_TEMP_SENSOR));
 
+        // Configure remaining drivers using local i2c before returning
+        let mut current_sensor_temp = peripherals::ina219::Ina219::new(&mut i2c);
+        let _ = current_sensor_temp.init();
+
+        let mut led_drv_temp = peripherals::attiny816::Attiny816::new(&mut i2c);
+        let _ = led_drv_temp.init();
+
+        // Extract pins needed for drivers/controllers
+        let motor_pin_ia = gpio_pins[crate::PUMP_PIN_IA as usize]
+            .take()
+            .expect("Motor pin IA must be available");
+        let motor_pin_ib = gpio_pins[crate::PUMP_PIN_IB as usize]
+            .take()
+            .expect("Motor pin IB must be available");
+        let motor = peripherals::l9110s::L9110s::new(motor_pin_ia, motor_pin_ib);
+
+        let fuel_gauge_alert_pin = gpio_pins[crate::FUEL_GAUGE_INT_PIN as usize]
+            .take()
+            .expect("Fuel gauge alert pin must be available");
+        let pin_north = gpio_pins[crate::TOF_NORTH_INT_PIN as usize]
+            .take()
+            .expect("North ToF interrupt pin must be available");
+        let pin_east = gpio_pins[crate::TOF_EAST_INT_PIN as usize]
+            .take()
+            .expect("East ToF interrupt pin must be available");
+        let pin_west = gpio_pins[crate::TOF_WEST_INT_PIN as usize]
+            .take()
+            .expect("West ToF interrupt pin must be available");
+
+        // Construct final drivers wrapping SHARED_I2C static cell
+        let current_sensor = peripherals::ina219::Ina219::new(
+            firmware_lib::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
+        );
+        let mut tof_north = peripherals::vl53l0x::Vl53l0x::new(
+            firmware_lib::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
+            0x30,
+        );
+        let _ = tof_north.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
+
+        let mut tof_east = peripherals::vl53l0x::Vl53l0x::new(
+            firmware_lib::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
+            0x31,
+        );
+        let _ = tof_east.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
+
+        let mut tof_west = peripherals::vl53l0x::Vl53l0x::new(
+            firmware_lib::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
+            0x32,
+        );
+        let _ = tof_west.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
+
+        let led_driver = peripherals::attiny816::Attiny816::new(
+            firmware_lib::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
+        );
+
         Self {
             uart,
             i2c,
@@ -202,6 +295,16 @@ impl<'d> Board<'d> {
             gpio_pins,
             temp_sensor,
             charger,
+            motor,
+            current_sensor,
+            tof_north,
+            tof_east,
+            tof_west,
+            led_driver,
+            fuel_gauge_alert_pin,
+            pin_north,
+            pin_east,
+            pin_west,
         }
     }
 }

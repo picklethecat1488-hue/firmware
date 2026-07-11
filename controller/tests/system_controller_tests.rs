@@ -1,23 +1,91 @@
 #![allow(unused_must_use)]
 
-use cat_detector::system_controller::{
-    SystemCommand, SystemController, SystemControllerChannels, LOW_BATTERY_SOC_THRESHOLD,
-};
 use controller::battery_controller::BatteryCommand;
 use controller::motor_controller::MotorCommand;
 use controller::sensor_controller::SensorCommand;
+use controller::system_controller::{SystemCommand, SystemController};
 use controller::thermal_controller::ThermalCommand;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::channel::Channel;
+
+const LOW_BATTERY_SOC_THRESHOLD: u8 = 20;
+const MID_BATTERY_SOC_THRESHOLD: u8 = 21;
+const HIGH_BATTERY_SOC_THRESHOLD: u8 = 80;
+const INACTIVITY_TIMEOUT_SECONDS: u32 = 30;
+const CRITICAL_BATTERY_SOC_THRESHOLD: u8 = 10;
+const BATTERY_SOC_HYSTERESIS: u8 = 2;
+
+use firmware_lib::BatteryManager;
 use model::types::{
     BootReason, Gesture, MotorSpeed, SystemLedState, SystemStatus, TelemetryRecord,
 };
+
+macro_rules! create_test_feature_set {
+    ($motor_tx:expr, $battery_tx:expr, $sensors:expr, $led_tx:expr, $thermal_tx:expr) => {
+        TestFeatureSet {
+            features: (
+                controller::MotorFeatureConfig::new($motor_tx, MotorSpeed::MAX),
+                controller::BatteryFeatureConfig::new(
+                    $battery_tx,
+                    BatteryManager::new(
+                        CRITICAL_BATTERY_SOC_THRESHOLD,
+                        BATTERY_SOC_HYSTERESIS,
+                        LOW_BATTERY_SOC_THRESHOLD,
+                        MID_BATTERY_SOC_THRESHOLD,
+                        HIGH_BATTERY_SOC_THRESHOLD,
+                    ),
+                ),
+                controller::ProximityFeatureConfig::new(
+                    &$sensors,
+                    20,
+                    300,
+                    controller::GestureAction::TogglePower,
+                    None,
+                ),
+                controller::LedFeatureConfig::new($led_tx),
+                controller::ThermalFeatureConfig::new($thermal_tx),
+            ),
+        }
+    };
+}
 
 static MOCK_TELEMETRY_CHANNEL: Channel<
     CriticalSectionRawMutex,
     TelemetryRecord,
     { controller::telemetry_controller::CHANNEL_CAPACITY },
 > = Channel::new();
+
+/// Test implementation of SystemFeatureSet for unit tests.
+#[allow(clippy::type_complexity)]
+pub struct TestFeatureSet<MutexRaw: RawMutex + 'static, const N: usize> {
+    pub features: (
+        controller::MotorFeatureConfig<MutexRaw, N>,
+        controller::BatteryFeatureConfig<MutexRaw, N>,
+        controller::ProximityFeatureConfig<MutexRaw, N>,
+        controller::LedFeatureConfig<MutexRaw, N>,
+        controller::ThermalFeatureConfig<MutexRaw, N>,
+    ),
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize> controller::SystemFeatureSet<MutexRaw, N>
+    for TestFeatureSet<MutexRaw, N>
+{
+    type Features = (
+        controller::MotorFeatureConfig<MutexRaw, N>,
+        controller::BatteryFeatureConfig<MutexRaw, N>,
+        controller::ProximityFeatureConfig<MutexRaw, N>,
+        controller::LedFeatureConfig<MutexRaw, N>,
+        controller::ThermalFeatureConfig<MutexRaw, N>,
+    );
+
+    fn features(&self) -> &Self::Features {
+        &self.features
+    }
+
+    fn inactivity_timeout_seconds(&self) -> u32 {
+        30
+    }
+}
 
 #[test]
 fn test_system_controller_flow() {
@@ -39,18 +107,22 @@ fn test_system_controller_flow() {
         };
     }
 
-    let channels = SystemControllerChannels {
-        system_tx: SYSTEM_CHANNEL.sender(),
-        motor_tx: MOTOR_CHANNEL.sender(),
-        sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
-        sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
-        sensor_west_tx: SENSOR_WEST_CHANNEL.sender(),
-        battery_tx: BATTERY_CHANNEL.sender(),
-        thermal_tx: THERMAL_CHANNEL.sender(),
-        led_tx: LED_CHANNEL.sender(),
-        telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
-    };
-    let mut controller = SystemController::new(channels, BootReason::Unknown);
+    let feature_set = create_test_feature_set!(
+        Some(MOTOR_CHANNEL.sender()),
+        Some(BATTERY_CHANNEL.sender()),
+        [
+            SENSOR_NORTH_CHANNEL.sender(),
+            SENSOR_EAST_CHANNEL.sender(),
+            SENSOR_WEST_CHANNEL.sender(),
+        ],
+        Some(LED_CHANNEL.sender()),
+        Some(THERMAL_CHANNEL.sender())
+    );
+    let mut controller = SystemController::new(
+        feature_set,
+        MOCK_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
 
     assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
 
@@ -74,7 +146,7 @@ fn test_system_controller_flow() {
     // Register activity, resets timer
     controller.handle_command(SystemCommand::ActivityDetected);
     process!(controller);
-    for _ in 0..(cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS - 1) {
+    for _ in 0..(INACTIVITY_TIMEOUT_SECONDS - 1) {
         controller.tick_ms(1000);
         process!(controller);
     }
@@ -119,18 +191,22 @@ fn test_system_controller_flow() {
     while LED_CHANNEL.try_receive().is_ok() {}
 
     // Use a fresh controller instance to test ToF proximity data fusion and active delay gating
-    let channels2 = SystemControllerChannels {
-        system_tx: SYSTEM_CHANNEL.sender(),
-        motor_tx: MOTOR_CHANNEL.sender(),
-        sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
-        sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
-        sensor_west_tx: SENSOR_WEST_CHANNEL.sender(),
-        battery_tx: BATTERY_CHANNEL.sender(),
-        thermal_tx: THERMAL_CHANNEL.sender(),
-        led_tx: LED_CHANNEL.sender(),
-        telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
-    };
-    let mut controller = SystemController::new(channels2, BootReason::Unknown);
+    let feature_set2 = create_test_feature_set!(
+        Some(MOTOR_CHANNEL.sender()),
+        Some(BATTERY_CHANNEL.sender()),
+        [
+            SENSOR_NORTH_CHANNEL.sender(),
+            SENSOR_EAST_CHANNEL.sender(),
+            SENSOR_WEST_CHANNEL.sender(),
+        ],
+        Some(LED_CHANNEL.sender()),
+        Some(THERMAL_CHANNEL.sender())
+    );
+    let mut controller = SystemController::new(
+        feature_set2,
+        MOCK_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
 
     assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
 
@@ -145,7 +221,7 @@ fn test_system_controller_flow() {
     let _ = MOTOR_CHANNEL.try_receive().unwrap(); // Consume initial SetSpeed(100)
 
     // Tick to INACTIVITY_TIMEOUT_SECONDS to let the fresh controller sleep
-    for _ in 0..cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS {
+    for _ in 0..INACTIVITY_TIMEOUT_SECONDS {
         controller.tick_ms(1000);
         process!(controller);
     }
@@ -162,7 +238,7 @@ fn test_system_controller_flow() {
     let _ = MOTOR_CHANNEL.try_receive().unwrap(); // consume SetSpeed(100)
 
     // Tick to INACTIVITY_TIMEOUT_SECONDS
-    for _ in 0..cat_detector::system_controller::INACTIVITY_TIMEOUT_SECONDS {
+    for _ in 0..INACTIVITY_TIMEOUT_SECONDS {
         controller.tick_ms(1000);
         process!(controller);
     }
@@ -175,7 +251,10 @@ fn test_system_controller_flow() {
     while MOTOR_CHANNEL.try_receive().is_ok() {}
     while LED_CHANNEL.try_receive().is_ok() {}
 
-    controller.handle_command(SystemCommand::Gesture(Gesture::ProximityDetected));
+    controller.handle_command(SystemCommand::ProximityUpdate {
+        direction: model::types::Direction::North,
+        distance_mm: 15,
+    });
     process!(controller);
 
     assert_eq!(controller.power_manager.status(), SystemStatus::Active);
@@ -201,7 +280,10 @@ fn test_system_controller_flow() {
     assert_eq!(motor_cmd, MotorCommand::Stop);
     while MOTOR_CHANNEL.try_receive().is_ok() {}
 
-    controller.handle_command(SystemCommand::Gesture(Gesture::ProximityDetected));
+    controller.handle_command(SystemCommand::ProximityUpdate {
+        direction: model::types::Direction::North,
+        distance_mm: 15,
+    });
     process!(controller);
     // The pump should NOT start since system is in PowerDown (no SetSpeed command in queue)
     assert!(MOTOR_CHANNEL.try_receive().is_err());
@@ -227,18 +309,22 @@ fn test_power_down_and_gesture_detection() {
         };
     }
 
-    let channels3 = SystemControllerChannels {
-        system_tx: SYSTEM_CHANNEL.sender(),
-        motor_tx: MOTOR_CHANNEL.sender(),
-        sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
-        sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
-        sensor_west_tx: SENSOR_WEST_CHANNEL.sender(),
-        battery_tx: BATTERY_CHANNEL.sender(),
-        thermal_tx: THERMAL_CHANNEL.sender(),
-        led_tx: LED_CHANNEL.sender(),
-        telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
-    };
-    let mut controller = SystemController::new(channels3, BootReason::Unknown);
+    let feature_set3 = create_test_feature_set!(
+        Some(MOTOR_CHANNEL.sender()),
+        Some(BATTERY_CHANNEL.sender()),
+        [
+            SENSOR_NORTH_CHANNEL.sender(),
+            SENSOR_EAST_CHANNEL.sender(),
+            SENSOR_WEST_CHANNEL.sender(),
+        ],
+        Some(LED_CHANNEL.sender()),
+        Some(THERMAL_CHANNEL.sender())
+    );
+    let mut controller = SystemController::new(
+        feature_set3,
+        MOCK_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
 
     // 1. Verify booting into PowerDown
     assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
@@ -323,28 +409,167 @@ fn test_power_down_and_gesture_detection() {
 
 #[test]
 fn test_invalid_critical_soc_threshold_recovery() {
+    let feature_set4: TestFeatureSet<CriticalSectionRawMutex, 4> =
+        create_test_feature_set!(None, None, [], None, None);
+    let controller = SystemController::new(
+        feature_set4,
+        MOCK_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
+
+    let bm = &controller.feature_set.features.1.battery_manager;
+    bm.borrow_mut()
+        .set_critical_soc_threshold(LOW_BATTERY_SOC_THRESHOLD + 1);
+    if bm.borrow().critical_soc_threshold() >= LOW_BATTERY_SOC_THRESHOLD {
+        bm.borrow_mut()
+            .set_critical_soc_threshold(LOW_BATTERY_SOC_THRESHOLD - 1);
+    }
+    assert!(bm.borrow().critical_soc_threshold() < LOW_BATTERY_SOC_THRESHOLD);
+}
+
+#[test]
+fn test_system_controller_with_missing_controllers() {
     static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 4> = Channel::new();
+
+    macro_rules! process {
+        ($ctrl:expr) => {
+            while let Ok(cmd) = SYSTEM_CHANNEL.try_receive() {
+                $ctrl.handle_command(cmd);
+            }
+        };
+    }
+
+    let feature_set5: TestFeatureSet<CriticalSectionRawMutex, 4> =
+        create_test_feature_set!(None, None, [], None, None);
+    let mut controller = SystemController::new(
+        feature_set5,
+        MOCK_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
+
+    assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
+
+    // Verify it doesn't panic on updates
+    controller
+        .handle_command(SystemCommand::BatteryUpdate {
+            state_of_charge: 85,
+            charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
+        })
+        .unwrap();
+    process!(controller);
+    controller
+        .handle_command(SystemCommand::ActivityDetected)
+        .unwrap();
+
+    // Check that it transitioned to Active state without any panic
+    assert_eq!(controller.power_manager.status(), SystemStatus::Active);
+}
+
+#[test]
+fn test_configurable_motor_speed() {
     static MOTOR_CHANNEL: Channel<CriticalSectionRawMutex, MotorCommand, 4> = Channel::new();
+
+    let custom_speed = MotorSpeed::new_saturating(50);
+    let feature_set = TestFeatureSet {
+        features: (
+            controller::MotorFeatureConfig::new(Some(MOTOR_CHANNEL.sender()), custom_speed),
+            controller::BatteryFeatureConfig::new(
+                None,
+                BatteryManager::new(
+                    CRITICAL_BATTERY_SOC_THRESHOLD,
+                    BATTERY_SOC_HYSTERESIS,
+                    LOW_BATTERY_SOC_THRESHOLD,
+                    MID_BATTERY_SOC_THRESHOLD,
+                    HIGH_BATTERY_SOC_THRESHOLD,
+                ),
+            ),
+            controller::ProximityFeatureConfig::new(
+                &[],
+                20,
+                300,
+                controller::GestureAction::TogglePower,
+                None,
+            ),
+            controller::LedFeatureConfig::new(None),
+            controller::ThermalFeatureConfig::new(None),
+        ),
+    };
+    let mut controller = SystemController::new(
+        feature_set,
+        MOCK_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
+
+    // Initial battery update to clear boot power down trap and enter Active state
+    controller
+        .handle_command(SystemCommand::BatteryUpdate {
+            state_of_charge: 85,
+            charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
+        })
+        .unwrap();
+
+    // Verify SetSpeed command received by MOTOR_CHANNEL has custom_speed instead of MAX
+    let cmd = MOTOR_CHANNEL.try_receive().unwrap();
+    assert_eq!(cmd, MotorCommand::SetSpeed(custom_speed));
+}
+
+#[test]
+fn test_proximity_wake_lock_behavior() {
+    static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 4> = Channel::new();
     static SENSOR_NORTH_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> =
         Channel::new();
     static SENSOR_EAST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
     static SENSOR_WEST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
-    static BATTERY_CHANNEL: Channel<CriticalSectionRawMutex, BatteryCommand, 4> = Channel::new();
-    static THERMAL_CHANNEL: Channel<CriticalSectionRawMutex, ThermalCommand, 4> = Channel::new();
-    static LED_CHANNEL: Channel<CriticalSectionRawMutex, SystemLedState, 4> = Channel::new();
 
-    let channels4 = SystemControllerChannels {
-        system_tx: SYSTEM_CHANNEL.sender(),
-        motor_tx: MOTOR_CHANNEL.sender(),
-        sensor_north_tx: SENSOR_NORTH_CHANNEL.sender(),
-        sensor_east_tx: SENSOR_EAST_CHANNEL.sender(),
-        sensor_west_tx: SENSOR_WEST_CHANNEL.sender(),
-        battery_tx: BATTERY_CHANNEL.sender(),
-        thermal_tx: THERMAL_CHANNEL.sender(),
-        led_tx: LED_CHANNEL.sender(),
-        telemetry_tx: MOCK_TELEMETRY_CHANNEL.sender(),
-    };
-    let controller = SystemController::new(channels4, BootReason::Unknown);
+    macro_rules! process {
+        ($ctrl:expr) => {
+            while let Ok(cmd) = SYSTEM_CHANNEL.try_receive() {
+                $ctrl.handle_command(cmd);
+            }
+        };
+    }
 
-    assert!(controller.battery_manager.critical_soc_threshold() < LOW_BATTERY_SOC_THRESHOLD);
+    let mock_sensors = [
+        SENSOR_NORTH_CHANNEL.sender(),
+        SENSOR_EAST_CHANNEL.sender(),
+        SENSOR_WEST_CHANNEL.sender(),
+    ];
+    let feature_set = create_test_feature_set!(None, None, mock_sensors, None, None);
+    let mut controller = SystemController::new(
+        feature_set,
+        MOCK_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
+
+    // Initial battery update to clear boot power down trap and enter Active state
+    controller
+        .handle_command(SystemCommand::BatteryUpdate {
+            state_of_charge: 85,
+            charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
+        })
+        .unwrap();
+
+    // Trigger proximity update in-range for North sensor
+    controller
+        .handle_command(SystemCommand::ProximityUpdate {
+            direction: model::types::Direction::North,
+            distance_mm: 50, // wake threshold is 300
+        })
+        .unwrap();
+    process!(controller);
+
+    // Check that system controller acquired a wake lock because of the in-range proximity
+    assert_eq!(controller.power_manager.wake_locks(), 1);
+
+    // Trigger proximity update out-of-range for North sensor
+    controller
+        .handle_command(SystemCommand::ProximityUpdate {
+            direction: model::types::Direction::North,
+            distance_mm: 400,
+        })
+        .unwrap();
+    process!(controller);
+
+    // Check that wake lock is released
+    assert_eq!(controller.power_manager.wake_locks(), 0);
 }

@@ -12,23 +12,23 @@ To maintain testability, reliability, and modularity, follow these core principl
 *   **Separation of Source Files**: Avoid grouping multiple interfaces and implementations into a single `lib.rs`. Keep each module in its own Rust listing (e.g., `model/src/state_machine.rs`). Expose them cleanly in `lib.rs` (e.g., `pub mod state_machine;`).
 *   **Test Isolation**: Keep tests completely isolated from implementation code. Do not mix unit tests inside the main module source files. All unit tests must be separated from module code and stored in a `tests/` subfolder at the crate root level (e.g., `model/tests/state_machine_tests.rs` or `peripherals/tests/integration.rs`).
 
-### 2. Microcontroller Decoupling (Canonical Peripherals)
-To make peripheral and controller implementations target-independent, we use **Generics and Traits** via the **`embedded-hal`** (v1.0.0) ecosystem:
-*   Define peripheral traits (e.g., `Pump` or `WaterSensor`) in `peripherals/src/`.
-*   Implement generic, platform-agnostic wrappers over `embedded-hal` traits (e.g., `GpioPump<P: OutputPin>`).
-*   In the target-specific package (e.g., `projects/cat_detector/`), instantiate the microcontroller's HAL-specific pin (which implements the relevant `embedded-hal` trait) and pass it to your generic peripheral wrapper.
-*   This pattern ensures that we can easily write `mock` implementations of peripherals for host-based testing.
+### 2. Microcontroller Decoupling & Board Support Packages (BSPs)
+To keep peripheral logic target-independent and clean, we decouple hardware implementation from high-level code using traits and Board Support Packages:
+*   **Peripheral Abstraction**: Define driver interfaces (e.g., `Motor` or `ProximitySensor`) in the `peripherals` crate, implemented generically over `embedded-hal` primitives.
+*   **BSP Encapsulation (`bsp_target.rs` / `bsp_host.rs`)**: Avoid conditional driver setup and GPIO pin extraction inside application entry points (`main.rs`, `shell.rs`). Instead, encapsulate all initialization—including dynamic sensor I2C address assignment, boot timing delays, and concrete driver construction—inside the `Board::init` constructor of the project's BSP.
+*   **Unified Board API**: The `Board` struct must expose identical driver and pin fields on both host and target (using mock types on the host). This allows binaries to consume physical hardware or simulated nodes transparently.
+*   **Mocks**: Mock devices (`MockLed`, `MockMotor`, `DummyProximitySensor`, etc.) are placed under the `peripherals::mock` module, enabled via the `mock` feature flag, for host-based test execution.
 
 ### 3. Separation of Concerns
-*   **Domain Logic (`model/`)**: Pure states and traits interfaces. Target-agnostic.
-*   **Peripheral Interfaces (`peripherals/`)**: `embedded-hal` generic implementations of peripheral traits.
-*   **Control Loop Coordinators (`controller/`)**: Project-agnostic orchestrators. Connects peripherals and models together.
-*   **Projects (`projects/`)**: Binds microcontroller HAL pins/peripherals to the generic wrappers and implements system behavior.
+*   **Domain Logic (`model/`)**: Pure states, serialization, and traits interfaces. Target-agnostic and free of framework/I2C dependencies.
+*   **Peripheral Interfaces (`peripherals/`)**: Platform-independent implementations of hardware drivers over generic `embedded-hal` constraints.
+*   **Control Loop Coordinators (`controller/`)**: Project-agnostic domain orchestrators. Exposes CLI handlers that accept a reference to `ShellDeviceResolver` to lookup required peripherals on demand.
+*   **Projects (`projects/`)**: Configures microcontroller-specific packages (BSPs) to build driver setups and run application loops.
 
-### 4. Platform-Specific Naming Conventions
-*   **Peripherals & Controllers**: Do **not** prefix files or structs with microcontroller model numbers (e.g., do not name them `rp2040_pump.rs`). Since they only interact with generic `embedded-hal` traits, they are completely platform-independent and compile on any target (including the host).
-*   **Target Projects**: If a project requires custom initialization files or custom drivers that cannot be represented by generic `embedded-hal` traits, they should live in the specific target's project directory (e.g., `projects/cat_detector/`) and can use model numbers or board suffixes (e.g., `rp2040_board.rs`).
-*   **Conditional Compilation**: If a generic crate must contain MCU-specific code, use feature flags (e.g., `#[cfg(feature = "rp2040")]`) to toggle the compilation of platform-specific modules in a structured way.
+### 4. Platform-Specific Naming Conventions & CLI Routing
+*   **Peripherals & Controllers**: Do **not** prefix files or structs with MCU model numbers (e.g. do not name them `rp2040_sensor.rs`). Since they interact with generic drivers, they compile on any target.
+*   **Target Projects**: MCU-specific setup code and drivers (e.g. `Rp2040TempSensor`) live in the project directory (e.g. `projects/cat_detector/src/bsp_target.rs`).
+*   **CLI Router Forwarding**: Avoid writing wrapper forwarding methods in `ShellController` for domain-level command execution. Instead, define match actions inside the CLI macro blocks to call domain handlers (e.g. `crate::motor_controller::handle_motor_cli`) directly.
 
 ---
 

@@ -2,6 +2,8 @@
 
 #![deny(missing_docs)]
 
+use core::fmt::Write as _;
+use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::interfaces::ProximitySensor;
 use model::types::PeripheralError;
 use peripherals::ToPeripheralError;
@@ -50,8 +52,8 @@ pub trait SensorReader<S> {
 /// Context block for reading proximity sensors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProximityReaderContext {
-    /// The proximity threshold in millimeters.
-    pub proximity_threshold_mm: u16,
+    /// The proximity threshold in millimeters under which target presence is detected.
+    pub wake_threshold_mm: u16,
 }
 
 /// A reader adapter for proximity sensors.
@@ -205,13 +207,11 @@ impl<'a, S: ProximitySensor>
     >
 {
     /// Creates a new SensorController managing a single proximity sensor.
-    pub const fn new(sensor_id: u8, sensor: S, proximity_threshold_mm: u16) -> Self {
+    pub const fn new(sensor_id: u8, sensor: S, wake_threshold_mm: u16) -> Self {
         Self {
             state_manager: SensorStateManager::new(sensor_id, sensor, None, None, None),
             latest_data: 1000,
-            context: ProximityReaderContext {
-                proximity_threshold_mm,
-            },
+            context: ProximityReaderContext { wake_threshold_mm },
         }
     }
 }
@@ -229,7 +229,7 @@ impl<
         sensor: S,
         upstream_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
         make_cmd: fn(u8, u16) -> Cmd,
-        proximity_threshold_mm: u16,
+        wake_threshold_mm: u16,
     ) -> Self {
         Self {
             state_manager: SensorStateManager::new(
@@ -240,9 +240,7 @@ impl<
                 None,
             ),
             latest_data: 1000,
-            context: ProximityReaderContext {
-                proximity_threshold_mm,
-            },
+            context: ProximityReaderContext { wake_threshold_mm },
         }
     }
 }
@@ -387,7 +385,7 @@ impl<
         upstream_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
         make_cmd: fn(u8, u16) -> Cmd,
         interrupt_pin: Pin,
-        proximity_threshold_mm: u16,
+        wake_threshold_mm: u16,
     ) -> Self {
         Self {
             state_manager: SensorStateManager::new(
@@ -398,9 +396,7 @@ impl<
                 Some(interrupt_pin),
             ),
             latest_data: 1000,
-            context: ProximityReaderContext {
-                proximity_threshold_mm,
-            },
+            context: ProximityReaderContext { wake_threshold_mm },
         }
     }
 
@@ -408,7 +404,7 @@ impl<
     pub fn telemetry(&self) -> model::types::ProximityTelemetry {
         let dir = model::types::Direction::try_from(self.sensor_id())
             .unwrap_or(model::types::Direction::North);
-        if self.latest_data < self.context.proximity_threshold_mm {
+        if self.latest_data < self.context.wake_threshold_mm {
             model::types::ProximityTelemetry::InRange(dir, self.latest_data)
         } else {
             model::types::ProximityTelemetry::OutRange(dir, self.latest_data)
@@ -443,5 +439,449 @@ impl<
 {
     fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
         self.sensor_mut().set_calibration(calibration);
+    }
+}
+
+/// Represents the physical directions of ToF proximity sensors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SensorDirection {
+    /// North sensor
+    North,
+    /// East sensor
+    East,
+    /// West sensor
+    West,
+}
+
+impl<'a> embedded_cli::arguments::FromArgument<'a> for SensorDirection {
+    fn from_arg(arg: &'a str) -> Result<Self, embedded_cli::arguments::FromArgumentError<'a>> {
+        match arg {
+            "north" => Ok(SensorDirection::North),
+            "east" => Ok(SensorDirection::East),
+            "west" => Ok(SensorDirection::West),
+            _ => Err(embedded_cli::arguments::FromArgumentError {
+                value: arg,
+                expected: "one of 'north', 'east', or 'west'",
+            }),
+        }
+    }
+}
+
+impl From<SensorDirection> for model::types::Direction {
+    fn from(dir: SensorDirection) -> Self {
+        match dir {
+            SensorDirection::North => model::types::Direction::North,
+            SensorDirection::East => model::types::Direction::East,
+            SensorDirection::West => model::types::Direction::West,
+        }
+    }
+}
+
+/// Sensor-specific CLI commands
+#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
+pub enum SensorCliCommand {
+    /// Read proximity sensors
+    Status,
+    /// Calibrate cover (near)
+    #[command(name = "cal_near")]
+    CalNear {
+        /// Sensor direction ('north', 'east', or 'west')
+        direction: SensorDirection,
+    },
+    /// Calibrate 100mm (far)
+    #[command(name = "cal_far")]
+    CalFar {
+        /// Sensor direction ('north', 'east', or 'west')
+        direction: SensorDirection,
+    },
+}
+
+/// Processes sensor-specific CLI commands
+#[allow(clippy::too_many_arguments)]
+pub fn process_sensor_command<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    I2c: embedded_hal::i2c::I2c + 'static,
+    Flash: embedded_storage::nor_flash::NorFlash + 'static,
+    S: crate::BlockingProximityReader,
+>(
+    sensor_north: Option<*mut S>,
+    sensor_east: Option<*mut S>,
+    sensor_west: Option<*mut S>,
+    i2c_ptr: Option<*mut I2c>,
+    flash_ptr: Option<*mut Flash>,
+    storage_start: u32,
+    storage_end: u32,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+    cmd: SensorCliCommand,
+) -> Result<(), &'static str> {
+    match cmd {
+        SensorCliCommand::Status => {
+            let read_sensor = |ptr_opt: Option<*mut S>| {
+                ptr_opt
+                    .ok_or("Proximity sensor pointer not available")
+                    .and_then(|p| {
+                        unsafe { &mut *p }
+                            .read_distance_blocking()
+                            .map_err(|_| "Proximity sensor failed to read")
+                    })
+            };
+            let dn = read_sensor(sensor_north)?;
+            let de = read_sensor(sensor_east)?;
+            let dw = read_sensor(sensor_west)?;
+            let _ = core::writeln!(
+                writer,
+                "\r\nDirect proximity readings: North = {} mm, East = {} mm, West = {} mm",
+                dn,
+                de,
+                dw
+            );
+            Ok(())
+        }
+        SensorCliCommand::CalNear { direction } => {
+            let i2c_raw = i2c_ptr.ok_or("I2C controller not available")?;
+            let i2c = unsafe { &mut *i2c_raw };
+            let (addr, name) = match direction {
+                SensorDirection::North => (0x30, "North"),
+                SensorDirection::East => (0x31, "East"),
+                SensorDirection::West => (0x32, "West"),
+            };
+
+            let d_raw = {
+                let mut sensor = peripherals::vl53l0x::Vl53l0x::new(i2c, addr);
+                sensor.read_distance_mm().unwrap_or(1000)
+            };
+
+            let _ = core::writeln!(
+                writer,
+                "\r\nCalibrating cover (near) for {} sensor: Raw distance = {} mm",
+                name,
+                d_raw
+            );
+
+            let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
+            static mut SHELL_FS_BUF_1: [u8; 2048] = [0u8; 2048];
+            let flash_ref = unsafe { &mut *flash_raw };
+            let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+            let fs_buf = unsafe { &mut *core::ptr::addr_of_mut!(SHELL_FS_BUF_1) };
+            let mut fs = crate::filesystem_controller::FilesystemController::new(
+                async_flash,
+                storage_start..storage_end,
+                fs_buf,
+            );
+
+            let mut buf = [0u8; 128];
+            let mut proximity_cal =
+                embassy_futures::block_on(fs.read_file("vl53l0x_cal.cbor", &mut buf))
+                    .ok()
+                    .flatten()
+                    .and_then(|bytes| {
+                        minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes).ok()
+                    })
+                    .unwrap_or_default();
+
+            let dir = model::types::Direction::from(direction);
+            proximity_cal[dir].low = d_raw;
+
+            let mut write_buf = [0u8; 128];
+            let cursor = minicbor::encode::write::Cursor::new(&mut write_buf[..]);
+            let mut encoder = minicbor::Encoder::new(cursor);
+            encoder.encode(proximity_cal).unwrap();
+            let len = encoder.into_writer().position();
+
+            embassy_futures::block_on(fs.write_file("vl53l0x_cal.cbor", &write_buf[..len]))
+                .map(|_| {
+                    let _ =
+                        core::writeln!(writer, "Saved cover calibration for {} to flash.", name);
+                })
+                .map_err(|_| "Error saving calibration to flash")
+        }
+        SensorCliCommand::CalFar { direction } => {
+            let i2c_raw = i2c_ptr.ok_or("I2C controller not available")?;
+            let i2c = unsafe { &mut *i2c_raw };
+            let (addr, name) = match direction {
+                SensorDirection::North => (0x30, "North"),
+                SensorDirection::East => (0x31, "East"),
+                SensorDirection::West => (0x32, "West"),
+            };
+
+            let d_raw = {
+                let mut sensor = peripherals::vl53l0x::Vl53l0x::new(i2c, addr);
+                sensor.read_distance_mm().unwrap_or(1000)
+            };
+
+            let _ = core::writeln!(
+                writer,
+                "\r\nCalibrating 100mm (far) for {} sensor: Raw distance = {} mm",
+                name,
+                d_raw
+            );
+
+            let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
+            static mut SHELL_FS_BUF_2: [u8; 2048] = [0u8; 2048];
+            let flash_ref = unsafe { &mut *flash_raw };
+            let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+            let fs_buf = unsafe { &mut *core::ptr::addr_of_mut!(SHELL_FS_BUF_2) };
+            let mut fs = crate::filesystem_controller::FilesystemController::new(
+                async_flash,
+                storage_start..storage_end,
+                fs_buf,
+            );
+
+            let mut buf = [0u8; 128];
+            let mut proximity_cal =
+                embassy_futures::block_on(fs.read_file("vl53l0x_cal.cbor", &mut buf))
+                    .ok()
+                    .flatten()
+                    .and_then(|bytes| {
+                        minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes).ok()
+                    })
+                    .unwrap_or_default();
+
+            let dir = model::types::Direction::from(direction);
+            proximity_cal[dir].high = d_raw;
+
+            let mut write_buf = [0u8; 128];
+            let cursor = minicbor::encode::write::Cursor::new(&mut write_buf[..]);
+            let mut encoder = minicbor::Encoder::new(cursor);
+            encoder.encode(proximity_cal).unwrap();
+            let len = encoder.into_writer().position();
+
+            embassy_futures::block_on(fs.write_file("vl53l0x_cal.cbor", &write_buf[..len]))
+                .map(|_| {
+                    let _ =
+                        core::writeln!(writer, "Saved 100mm calibration for {} to flash.", name);
+                })
+                .map_err(|_| "Error saving calibration to flash")
+        }
+    }
+}
+
+/// Processes sensor-specific CLI subcommands by validating and delegating.
+pub fn handle_sensor_cli<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    C: crate::ShellConfig,
+>(
+    resolver: &impl crate::ShellDeviceResolver<C>,
+    subcommand: Option<&str>,
+    arg1: Option<&str>,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+) -> Result<(), &'static str> {
+    let sensor_north = resolver
+        .resolve_sensor(Some("north"))
+        .ok()
+        .map(|d| d as *mut _);
+    let sensor_east = resolver
+        .resolve_sensor(Some("east"))
+        .ok()
+        .map(|d| d as *mut _);
+    let sensor_west = resolver
+        .resolve_sensor(Some("west"))
+        .ok()
+        .map(|d| d as *mut _);
+    let i2c = resolver.resolve_i2c(None).ok().map(|d| d as *mut _);
+    let partition = resolver.resolve_partition(None).ok();
+    let (flash, start, end) = match partition {
+        Some(p) => (Some(p.flash_ptr), p.start_address, p.end_address),
+        None => (None, 0, 0),
+    };
+
+    match subcommand {
+        Some("status") => process_sensor_command(
+            sensor_north,
+            sensor_east,
+            sensor_west,
+            i2c,
+            flash,
+            start,
+            end,
+            writer,
+            SensorCliCommand::Status,
+        ),
+        Some("cal_near") => {
+            let dir_str = arg1.ok_or("Missing direction parameter")?;
+            let direction = match dir_str {
+                "north" => SensorDirection::North,
+                "east" => SensorDirection::East,
+                "west" => SensorDirection::West,
+                _ => return Err("Invalid direction. Expected: north, east, west"),
+            };
+            process_sensor_command(
+                sensor_north,
+                sensor_east,
+                sensor_west,
+                i2c,
+                flash,
+                start,
+                end,
+                writer,
+                SensorCliCommand::CalNear { direction },
+            )
+        }
+        Some("cal_far") => {
+            let dir_str = arg1.ok_or("Missing direction parameter")?;
+            let direction = match dir_str {
+                "north" => SensorDirection::North,
+                "east" => SensorDirection::East,
+                "west" => SensorDirection::West,
+                _ => return Err("Invalid direction. Expected: north, east, west"),
+            };
+            process_sensor_command(
+                sensor_north,
+                sensor_east,
+                sensor_west,
+                i2c,
+                flash,
+                start,
+                end,
+                writer,
+                SensorCliCommand::CalFar { direction },
+            )
+        }
+        _ => Err("Invalid sensor subcommand. Expected: status, cal_near, cal_far"),
+    }
+}
+
+/// Standard config implementation for ProximityFeature.
+pub struct ProximityFeatureConfig<
+    MutexRaw: RawMutex + 'static,
+    const N: usize,
+    const S_CAP: usize = 3,
+    const T_CAP: usize = { crate::telemetry_controller::CHANNEL_CAPACITY },
+> {
+    /// Sensor channel senders
+    pub sensor_txs: heapless::Vec<crate::SensorSender<MutexRaw, N>, S_CAP>,
+    /// Proximity gesture detector state
+    pub gesture_detector:
+        core::cell::RefCell<firmware_lib::gesture_detector::ProximityGestureDetector>,
+    /// Proximity telemetry client
+    pub telemetry_client: core::cell::RefCell<
+        crate::telemetry_controller::ProximityTelemetryClient<'static, MutexRaw, T_CAP>,
+    >,
+    /// Active proximity detection state
+    pub proximity_active: core::cell::Cell<bool>,
+    /// Proximity detection threshold
+    pub wake_threshold_mm: u16,
+    /// Last seen distances indexed by Direction (0 = North, 1 = East, 2 = West)
+    pub distances: [core::cell::Cell<u16>; 3],
+    /// Mapped action for DualLongPress gesture
+    pub dual_long_press_action: crate::GestureAction,
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_CAP: usize>
+    ProximityFeatureConfig<MutexRaw, N, S_CAP, T_CAP>
+{
+    /// Creates a new `ProximityFeatureConfig` with the given list of sensor senders (up to S_CAP).
+    pub fn new(
+        sensor_senders: &[crate::SensorSender<MutexRaw, N>],
+        press_threshold_mm: u16,
+        wake_threshold_mm: u16,
+        dual_long_press_action: crate::GestureAction,
+        telemetry_tx: Option<crate::system_controller::TelemetrySender<'static, MutexRaw, T_CAP>>,
+    ) -> Self {
+        let mut sensor_txs = heapless::Vec::new();
+        for sender in sensor_senders {
+            let _ = sensor_txs.push(*sender);
+        }
+        Self {
+            sensor_txs,
+            gesture_detector: core::cell::RefCell::new(
+                firmware_lib::gesture_detector::ProximityGestureDetector::new(press_threshold_mm),
+            ),
+            telemetry_client: core::cell::RefCell::new(
+                crate::telemetry_controller::ProximityTelemetryClient::new(
+                    telemetry_tx,
+                    wake_threshold_mm,
+                ),
+            ),
+            proximity_active: core::cell::Cell::new(false),
+            wake_threshold_mm,
+            distances: [
+                core::cell::Cell::new(1000),
+                core::cell::Cell::new(1000),
+                core::cell::Cell::new(1000),
+            ],
+            dual_long_press_action,
+        }
+    }
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_CAP: usize>
+    crate::SystemFeature<MutexRaw, N> for ProximityFeatureConfig<MutexRaw, N, S_CAP, T_CAP>
+{
+    fn on_proximity_update(
+        &self,
+        direction: model::types::Direction,
+        distance_mm: u16,
+        status: model::types::SystemStatus,
+    ) -> (Option<model::types::Gesture>, crate::ProximityAction) {
+        use firmware_lib::gesture_detector::GestureDetector as _;
+        use model::telemetry::TelemetryClient as _;
+        self.telemetry_client
+            .borrow_mut()
+            .report((direction, distance_mm));
+
+        let now_us = embassy_time::Instant::now().as_micros();
+        let gesture = self
+            .gesture_detector
+            .borrow_mut()
+            .update((direction, distance_mm), now_us);
+
+        // Register distance locally in the feature using direction map index
+        let idx = match direction {
+            model::types::Direction::North => 0,
+            model::types::Direction::East => 1,
+            model::types::Direction::West => 2,
+        };
+        self.distances[idx].set(distance_mm);
+
+        let in_range = self
+            .distances
+            .iter()
+            .any(|d| d.get() < self.wake_threshold_mm);
+
+        let mut action = crate::ProximityAction::None;
+        if in_range != self.proximity_active.get() {
+            self.proximity_active.set(in_range);
+            if in_range {
+                if status == model::types::SystemStatus::Active {
+                    action = crate::ProximityAction::AcquireWakeLock;
+                } else if status == model::types::SystemStatus::Sleep {
+                    action = crate::ProximityAction::WakeSystem;
+                }
+            } else if status == model::types::SystemStatus::Active {
+                action = crate::ProximityAction::ReleaseWakeLock;
+            }
+        }
+
+        (gesture, action)
+    }
+
+    fn map_gesture(
+        &self,
+        gesture: model::types::Gesture,
+        _status: model::types::SystemStatus,
+    ) -> crate::GestureAction {
+        #[allow(unreachable_patterns)]
+        match gesture {
+            model::types::Gesture::DualLongPress => self.dual_long_press_action,
+            _ => crate::GestureAction::None,
+        }
+    }
+
+    fn on_tick(
+        &self,
+        _elapsed_ms: u32,
+        _crossed_tick: bool,
+        _status: model::types::SystemStatus,
+        support: crate::DeviceSupport,
+        _wake_locks: u32,
+    ) {
+        if support.proximity {
+            for sensor_tx in &self.sensor_txs {
+                let _ = sensor_tx.try_send(crate::SensorCommand::ReadSensors);
+            }
+        }
     }
 }

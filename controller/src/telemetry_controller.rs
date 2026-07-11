@@ -536,7 +536,7 @@ pub struct ProximityTelemetryClient<
     const T_CAP: usize,
 > {
     tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>,
-    proximity_threshold_mm: u16,
+    wake_threshold_mm: u16,
     last_logged_distance: [u16; 3],
     last_logged_in_range: [Option<bool>; 3],
 }
@@ -547,11 +547,11 @@ impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
     /// Creates a new `ProximityTelemetryClient`.
     pub fn new(
         tx: Option<embassy_sync::channel::Sender<'a, M, TelemetryRecord, T_CAP>>,
-        proximity_threshold_mm: u16,
+        wake_threshold_mm: u16,
     ) -> Self {
         Self {
             tx,
-            proximity_threshold_mm,
+            wake_threshold_mm,
             last_logged_distance: [9999; 3],
             last_logged_in_range: [None; 3],
         }
@@ -568,7 +568,7 @@ impl<'a, M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
                 model::types::Direction::East => 1,
                 model::types::Direction::West => 2,
             };
-            let in_range = distance_mm < self.proximity_threshold_mm;
+            let in_range = distance_mm < self.wake_threshold_mm;
             let in_range_changed = Some(in_range) != self.last_logged_in_range[idx];
             let distance_changed_significantly =
                 (distance_mm as i32 - self.last_logged_distance[idx] as i32).abs() >= 50;
