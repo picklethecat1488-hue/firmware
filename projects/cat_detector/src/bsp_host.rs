@@ -153,3 +153,34 @@ impl model::interfaces::TemperatureSensor for Rp2040TempSensor {
 pub fn get_boot_reason() -> model::types::BootReason {
     model::types::BootReason::Unknown
 }
+
+impl controller::battery_controller::BatteryAlertPin for MockFlex {
+    async fn wait_for_alert(&mut self) {
+        embassy_time::Timer::after_secs(3600 * 24).await;
+    }
+}
+
+impl controller::sensor_controller::DataReadyPin for MockFlex {
+    async fn wait_for_data_ready(&mut self) {
+        embassy_time::Timer::after_secs(3600 * 24).await;
+    }
+}
+
+/// The battery fuel gauge type.
+pub type BatteryDevice = peripherals::mock::MockBattery;
+/// The battery charger type.
+pub type ChargerDevice = peripherals::mock::MockCharger;
+/// The battery alert pin type.
+pub type AlertPinType = MockFlex;
+/// The motor driver type.
+pub type MotorDevice = peripherals::mock::MockMotor;
+/// The motor current sensor type.
+pub type CurrentSensorDevice = peripherals::mock::DummyCurrentSensor;
+/// The proximity sensor type.
+pub type ProximitySensorDevice = peripherals::mock::DummyProximitySensor;
+/// The proximity sensor interrupt pin type.
+pub type DataReadyPinType = MockFlex;
+/// The LED driver type.
+pub type LedDevice = peripherals::mock::MockLed;
+/// The temperature sensor type.
+pub type TempSensorDevice = Rp2040TempSensor;

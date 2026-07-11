@@ -39,10 +39,10 @@ pub trait ShellConfig {
 #[allow(clippy::type_complexity)]
 pub struct ShellConfigImpl<
     MutexRaw,
-    I2c = crate::DummyI2c,
-    Motor = crate::DummyMotor,
-    Flash = crate::DummyFlash,
-    TempSensor = crate::DummyTempSensor,
+    I2c = (),
+    Motor = (),
+    Flash = (),
+    TempSensor = (),
     BatteryCtrl = (),
     ThermalCtrl = (),
     SensorCtrl = (),
@@ -265,6 +265,47 @@ impl<'a, C: ShellConfig> ShellDeviceResolver<C> for ShellController<'a, C> {
 }
 
 /// Helper macro to append a specific command group's variant and match arm to the accumulator.
+///
+/// ### Wildcard Forwarding & Custom Command Processors
+///
+/// In modular firmware designs, different projects (app crates) want to extend the interactive CLI
+/// console with their own custom, project-specific command sets (e.g. `cat_detector` might add a `dispense`
+/// or `status` command) while still reusing the shared controller diagnostic commands (`motor`, `system`, `fs`, etc.).
+///
+/// To support this without modifying the generic `ShellController` codebase, `declare_shell_commands!`
+/// supports generating a **wrapper processor** struct (e.g. `CatDetectorCliProcessor`).
+///
+/// 1. **Custom enum with a Wildcard**:
+///    The application defines a custom command enum (e.g., `AppCli`) that includes a catch-all wildcard variant:
+///    ```rust
+///    #[derive(embedded_cli::Command)]
+///    pub enum AppCli<'a> {
+///        Dispense,
+///        // Catch all other commands to forward them
+///        #[command(wildcard)]
+///        Other(embedded_cli::command::RawCommand<'a>),
+///    }
+///    ```
+///
+/// 2. **Custom Processor Delegating via Wildcard Forwarding**:
+///    The application then implements `CommandProcessor` for its own processor, intercepting its custom variants,
+///    and forwarding the raw command in the `Other` variant directly to the wrapper processor:
+///    ```rust
+///    impl<'a, 'b, W, E> CommandProcessor<W, E> for AppProcessor<'a, 'b> {
+///        fn process(&mut self, cli: &mut CliHandle<W, E>, raw: RawCommand) -> Result<(), ProcessError<E>> {
+///            match AppCli::parse(raw) {
+///                Ok(AppCli::Dispense) => { self.handle_dispense(cli) }
+///                Ok(AppCli::Other(raw_subcmd)) => {
+///                    // Forward unhandled commands to the controller's wrapper processor
+///                    self.wrapper_processor.process(cli, raw_subcmd)
+///                }
+///                Err(err) => Err(err)
+///            }
+///        }
+///    }
+///    ```
+/// This design keeps the controllers completely decoupled from the specific applications while allowing
+/// infinite CLI customizability and code reuse.
 #[macro_export]
 macro_rules! append_group_arm {
     (Battery, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {

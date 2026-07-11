@@ -95,5 +95,4 @@ impl<E1: core::fmt::Debug, E2: core::fmt::Debug> ToPeripheralError
 }
 
 /// Mock implementations of peripherals for host-based testing.
-#[cfg(any(test, feature = "mock"))]
 pub mod mock;

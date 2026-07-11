@@ -319,3 +319,89 @@ impl LedDriver for MockLed {
         }
     }
 }
+
+/// A dummy/no-op I2C driver.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DummyI2c;
+
+impl embedded_hal::i2c::ErrorType for DummyI2c {
+    type Error = core::convert::Infallible;
+}
+
+impl embedded_hal::i2c::I2c for DummyI2c {
+    fn read(&mut self, _address: u8, _read: &mut [u8]) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn write(&mut self, _address: u8, _write: &[u8]) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn write_read(
+        &mut self,
+        _address: u8,
+        _write: &[u8],
+        _read: &mut [u8],
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn transaction(
+        &mut self,
+        _address: u8,
+        _operations: &mut [embedded_hal::i2c::Operation<'_>],
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+/// A dummy/no-op motor driver.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DummyMotor;
+
+impl Motor for DummyMotor {
+    type Error = core::convert::Infallible;
+    fn set_speed(&mut self, _speed: MotorSpeed) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn stop(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+/// A dummy/no-op flash driver.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DummyFlash;
+
+impl embedded_storage::nor_flash::ErrorType for DummyFlash {
+    type Error = core::convert::Infallible;
+}
+
+impl embedded_storage::nor_flash::ReadNorFlash for DummyFlash {
+    const READ_SIZE: usize = 1;
+    fn read(&mut self, _offset: u32, _bytes: &mut [u8]) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn capacity(&self) -> usize {
+        0
+    }
+}
+
+impl embedded_storage::nor_flash::NorFlash for DummyFlash {
+    const WRITE_SIZE: usize = 1;
+    const ERASE_SIZE: usize = 4096;
+    fn write(&mut self, _offset: u32, _bytes: &[u8]) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn erase(&mut self, _from: u32, _to: u32) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+/// A dummy/no-op temperature sensor.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DummyTempSensor;
+
+impl TemperatureSensor for DummyTempSensor {
+    type Error = core::convert::Infallible;
+    fn read_temperature_milli_c(&mut self) -> Result<i32, Self::Error> {
+        Ok(0)
+    }
+}
