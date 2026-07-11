@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use crate::types::ThermalState;
 use crate::{Sender, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
@@ -9,24 +10,6 @@ use embassy_sync::mutex::Mutex;
 use model::interfaces::TemperatureSensor;
 use model::types::PeripheralError;
 use peripherals::ToPeripheralError;
-
-/// Current thermal status of the system.
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
-#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
-pub enum ThermalState {
-    /// System temperature is normal.
-    Normal,
-    /// System is overheating.
-    Overheating,
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-impl core::fmt::Debug for ThermalState {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str("ThermalState")
-    }
-}
 
 /// A controller that periodically monitors system temperature from temperature sensors.
 pub struct ThermalController<'a, M: RawMutex, B, Cmd = ()> {

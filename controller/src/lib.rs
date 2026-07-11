@@ -22,6 +22,8 @@ pub mod system_controller;
 pub mod telemetry_controller;
 /// Thermal monitoring and regulation controller.
 pub mod thermal_controller;
+/// Controller-specific common types.
+pub mod types;
 
 pub use battery_controller::BatteryCommand;
 pub use battery_controller::BatteryFeatureConfig;
@@ -34,11 +36,15 @@ pub use sensor_controller::ProximityFeatureConfig;
 pub use sensor_controller::SensorCommand;
 pub use shell_controller::{ShellConfig, ShellDeviceResolver};
 pub use system_controller::{
-    BatteryStatus, Device, DeviceSupport, FeatureList, GestureAction, ProximityAction,
-    ProximityEvent, SystemCommand, SystemController, SystemFeature, SystemFeatureSet,
+    FeatureList, ProximityEvent, SystemCommand, SystemController, SystemFeature, SystemFeatureSet,
 };
 pub use thermal_controller::ThermalCommand;
 pub use thermal_controller::ThermalFeatureConfig;
+pub use types::{
+    BatteryStatus, Device, DeviceSupport, FlashPartition, GestureAction, MotorCalState, MotorError,
+    MotorSafetyStatus, MotorState, NamedDevice, NamedPartition, ProximityAction, SensorDirection,
+    ThermalState,
+};
 
 /// Macro to define controller channel types.
 #[macro_export]
@@ -67,68 +73,6 @@ pub use telemetry_controller::{TelemetryChannel, TelemetryReceiver, TelemetrySen
 pub use thermal_controller::{ThermalChannel, ThermalReceiver, ThermalSender};
 
 use model::types::PeripheralError;
-
-/// Represents a partition on a flash peripheral.
-#[derive(Debug, PartialEq, Eq)]
-pub struct FlashPartition<F> {
-    /// Pointer to the underlying flash hardware driver.
-    pub flash_ptr: *mut F,
-    /// Start address of the partition.
-    pub start_address: u32,
-    /// End address of the partition (exclusive).
-    pub end_address: u32,
-}
-
-impl<F> Clone for FlashPartition<F> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-impl<F> Copy for FlashPartition<F> {}
-
-// Implement Send/Sync since it contains a raw pointer
-unsafe impl<F> Send for FlashPartition<F> {}
-unsafe impl<F> Sync for FlashPartition<F> {}
-
-/// Binds a device name to a physical peripheral pointer.
-#[derive(Debug, PartialEq, Eq)]
-pub struct NamedDevice<D> {
-    /// Friendly name (e.g., "left", "right", "mcu", "external")
-    pub name: &'static str,
-    /// Raw pointer to the peripheral driver.
-    pub device: *mut D,
-}
-
-impl<D> Clone for NamedDevice<D> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-impl<D> Copy for NamedDevice<D> {}
-
-// Implement Send/Sync since it contains a raw pointer
-unsafe impl<D> Send for NamedDevice<D> {}
-unsafe impl<D> Sync for NamedDevice<D> {}
-
-/// Binds a partition name to a flash partition.
-#[derive(Debug, PartialEq, Eq)]
-pub struct NamedPartition<F> {
-    /// Friendly name (e.g., "logs", "config", "calibration")
-    pub name: &'static str,
-    /// The associated flash partition details.
-    pub partition: FlashPartition<F>,
-}
-
-impl<F> Clone for NamedPartition<F> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-impl<F> Copy for NamedPartition<F> {}
-
-// Implement Send/Sync since it contains raw pointers/types
-unsafe impl<F> Send for NamedPartition<F> {}
-unsafe impl<F> Sync for NamedPartition<F> {}
 
 /// Trait for reading battery status blocking-ly.
 pub trait BlockingBatteryReader {

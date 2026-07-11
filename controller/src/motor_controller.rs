@@ -12,31 +12,10 @@ use model::telemetry::TelemetryClient;
 use model::types::{MotorSpeed, PeripheralError, SystemStatus};
 use peripherals::ToPeripheralError;
 
+use crate::types::{MotorCalState, MotorSafetyStatus, MotorState};
+
 /// The tick interval of the motor controller (10ms / 100Hz).
 pub const MOTOR_TICK_INTERVAL: embassy_time::Duration = embassy_time::Duration::from_millis(10);
-
-/// The operating states of the motor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum MotorState {
-    /// The motor is powered off.
-    #[default]
-    Off,
-    /// The motor is running continuously at target speed.
-    On,
-}
-
-/// Status representing safety check results.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MotorSafetyStatus {
-    /// All limits are within safe operating parameters.
-    Ok,
-    /// The motor RPM exceeded the safety limit.
-    RpmExceeded(u32),
-    /// Low load / dry run detected.
-    DryRun(i32),
-    /// Motor stall detected (high current).
-    Stall(i32),
-}
 
 /// Safety limits for the motor controller.
 pub struct MotorLimits {
@@ -424,15 +403,6 @@ pub enum MotorCommand {
 
 crate::define_controller_channels!(MotorChannel, MotorSender, MotorReceiver, MotorCommand);
 
-/// Errors returned by the motor controller loop.
-#[derive(Debug)]
-pub enum MotorError<ME, CE> {
-    /// Error originating from the motor driver.
-    Motor(ME),
-    /// Error originating from the current sensor driver.
-    CurrentSensor(CE),
-}
-
 impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
     for MotorController<M, C>
 {
@@ -481,19 +451,6 @@ where
     }
 }
 
-/// Represents the motor calibration target state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MotorCalState {
-    /// Empty water bowl
-    Empty,
-    /// Bowl with 100ml of water
-    Water100ml,
-    /// Full water bowl
-    Full,
-    /// Overload/stall state
-    Overload,
-}
-
 impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
     fn from_arg(arg: &'a str) -> Result<Self, embedded_cli::arguments::FromArgumentError<'a>> {
         match arg {
@@ -505,17 +462,6 @@ impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
                 value: arg,
                 expected: "one of 'empty', '100ml', 'full', or 'overload'",
             }),
-        }
-    }
-}
-
-impl From<MotorCalState> for model::calibration::FourPointRef {
-    fn from(state: MotorCalState) -> Self {
-        match state {
-            MotorCalState::Empty => model::calibration::FourPointRef::Low,
-            MotorCalState::Water100ml => model::calibration::FourPointRef::Mid,
-            MotorCalState::Full => model::calibration::FourPointRef::High,
-            MotorCalState::Overload => model::calibration::FourPointRef::Overload,
         }
     }
 }

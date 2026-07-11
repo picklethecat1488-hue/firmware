@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use crate::types::SensorDirection;
 use crate::Sender;
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
@@ -443,17 +444,6 @@ impl<
     fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
         self.sensor_mut().set_calibration(calibration);
     }
-}
-
-/// Represents the physical directions of ToF proximity sensors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SensorDirection {
-    /// North sensor
-    North,
-    /// East sensor
-    East,
-    /// West sensor
-    West,
 }
 
 impl<'a> embedded_cli::arguments::FromArgument<'a> for SensorDirection {
