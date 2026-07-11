@@ -81,19 +81,9 @@ async fn main(spawner: Spawner) {
     // Initialize board peripherals using the unified board configuration
     let mut board = app::Board::init(p);
 
-    // Extract the motor control pins from the board configuration array
-    let motor_pin_ia = board.gpio_pins[app::PUMP_PIN_IA as usize]
-        .take()
-        .expect("Motor pin IA must be available");
-    let motor_pin_ib = board.gpio_pins[app::PUMP_PIN_IB as usize]
-        .take()
-        .expect("Motor pin IB must be available");
-
-    let mut motor = peripherals::l9110s::L9110s::new(motor_pin_ia, motor_pin_ib);
-
     unsafe {
         BOARD_I2C = Some(&mut board.i2c as *mut _ as *mut _);
-        BOARD_MOTOR = Some(&mut motor as *mut _);
+        BOARD_MOTOR = Some(&mut board.motor as *mut _);
     }
 
     let writer = firmware_lib::rtt::RttTxWriter;

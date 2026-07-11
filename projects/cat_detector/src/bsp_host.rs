@@ -58,6 +58,28 @@ pub struct Board {
     pub temp_sensor: Option<Rp2040TempSensor>,
     /// Mock charger driver instance
     pub charger: Option<peripherals::mock::MockCharger>,
+    /// Mock battery controller
+    pub battery: peripherals::mock::MockBattery,
+    /// Mock motor
+    pub motor: peripherals::mock::MockMotor,
+    /// Mock current sensor
+    pub current_sensor: peripherals::mock::DummyCurrentSensor,
+    /// Mock North proximity sensor
+    pub tof_north: peripherals::mock::DummyProximitySensor,
+    /// Mock East proximity sensor
+    pub tof_east: peripherals::mock::DummyProximitySensor,
+    /// Mock West proximity sensor
+    pub tof_west: peripherals::mock::DummyProximitySensor,
+    /// Mock LED driver
+    pub led_driver: peripherals::mock::MockLed,
+    /// Mock fuel gauge alert pin
+    pub fuel_gauge_alert_pin: MockFlex,
+    /// Mock North proximity interrupt pin
+    pub pin_north: MockFlex,
+    /// Mock East proximity interrupt pin
+    pub pin_east: MockFlex,
+    /// Mock West proximity interrupt pin
+    pub pin_west: MockFlex,
 }
 
 impl Board {
@@ -81,10 +103,37 @@ impl Board {
         let charger = Some(peripherals::mock::MockCharger::new(
             model::types::ChargeState::DoneOrStandbyOrUnplugged,
         ));
+
+        let battery = peripherals::mock::MockBattery::new(3700, 25000);
+        let motor = peripherals::mock::MockMotor::new();
+        let current_sensor = peripherals::mock::DummyCurrentSensor;
+
+        let tof_north = peripherals::mock::DummyProximitySensor::new(100);
+        let tof_east = peripherals::mock::DummyProximitySensor::new(150);
+        let tof_west = peripherals::mock::DummyProximitySensor::new(200);
+
+        let led_driver = peripherals::mock::MockLed::new();
+
+        let fuel_gauge_alert_pin = MockFlex::new();
+        let pin_north = MockFlex::new();
+        let pin_east = MockFlex::new();
+        let pin_west = MockFlex::new();
+
         Self {
             gpio_pins,
             temp_sensor,
             charger,
+            battery,
+            motor,
+            current_sensor,
+            tof_north,
+            tof_east,
+            tof_west,
+            led_driver,
+            fuel_gauge_alert_pin,
+            pin_north,
+            pin_east,
+            pin_west,
         }
     }
 }

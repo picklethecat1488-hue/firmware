@@ -55,6 +55,24 @@ impl<I: I2c> Vl53l0x<I> {
         }
     }
 
+    /// Initializes and configures the sensor.
+    ///
+    /// Changes the sensor's address if different from the target `new_address`,
+    /// then configures the wake threshold and GPIO interrupt mode.
+    pub fn init(
+        &mut self,
+        new_address: u8,
+        threshold_mm: u16,
+        interrupt_mode: InterruptMode,
+    ) -> Result<(), PeripheralError> {
+        if self.address != new_address {
+            self.set_address(new_address)?;
+        }
+        self.set_threshold_mm(threshold_mm)?;
+        self.configure_interrupt(interrupt_mode)?;
+        Ok(())
+    }
+
     /// Sets a new I2C address for the sensor, enabling dynamic re-addressing on shared buses.
     /// This writes register `0x8A` with the new I2C address.
     pub fn set_address(&mut self, new_address: u8) -> Result<(), PeripheralError> {

@@ -28,7 +28,6 @@ use {
     embassy_sync::mutex::Mutex,
     firmware_lib::BatteryManager,
     peripherals::l9110s::L9110s,
-    peripherals::mock::{DummyProximitySensor, MockLed},
 };
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -136,6 +135,14 @@ async fn main(spawner: Spawner) {
     // Initialize board peripherals using the unified board configuration
     let mut board = app::Board::init(p);
 
+    // Initialize the shared I2C bus on target
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    {
+        app::SHARED_I2C.lock(|cell| {
+            cell.borrow_mut().0 = Some(board.i2c);
+        });
+    }
+
     // Route defmt logs to RTT
     firmware_lib::defmt_logger::DefmtLogger::set_writer(
         &firmware_lib::defmt_logger::DEFAULT_RTT_WRITER,
@@ -189,43 +196,7 @@ async fn main(spawner: Spawner) {
     // Verify and repair/reformat the filesystem if it is corrupted
     let _ = fs_controller.verify_and_repair().await;
 
-    // Extract the motor control pins from the board configuration array
-    let motor_pin_ia = board.gpio_pins[app::PUMP_PIN_IA as usize]
-        .take()
-        .expect("Motor pin IA must be available");
-    let motor_pin_ib = board.gpio_pins[app::PUMP_PIN_IB as usize]
-        .take()
-        .expect("Motor pin IB must be available");
-
-    let motor = L9110s::new(motor_pin_ia, motor_pin_ib);
-
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
-    let current_sensor = {
-        let mut sensor = peripherals::ina219::Ina219::new(
-            firmware_lib::i2c::SharedI2cWrapper::new(&app::SHARED_I2C),
-        );
-        let _ = sensor.init();
-        sensor
-    };
-    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-    let current_sensor = peripherals::mock::DummyCurrentSensor;
-
-    let mut controller = MotorController::new(motor, current_sensor);
-
-    // Initialize simulated proximity sensors for North, East, West ToFs
-    let tof_north = DummyProximitySensor::new(100);
-    let tof_east = DummyProximitySensor::new(150);
-    let tof_west = DummyProximitySensor::new(200);
-
-    let pin_north = board.gpio_pins[app::TOF_NORTH_INT_PIN as usize]
-        .take()
-        .expect("North ToF interrupt pin must be available");
-    let pin_east = board.gpio_pins[app::TOF_EAST_INT_PIN as usize]
-        .take()
-        .expect("East ToF interrupt pin must be available");
-    let pin_west = board.gpio_pins[app::TOF_WEST_INT_PIN as usize]
-        .take()
-        .expect("West ToF interrupt pin must be available");
+    let mut controller = MotorController::new(board.motor, board.current_sensor);
 
     // Read calibration file from flash
     let mut cal_buf = [0u8; 128];
@@ -271,13 +242,13 @@ async fn main(spawner: Spawner) {
 
     let mut sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
         0,
-        tof_north,
+        board.tof_north,
         app::SYSTEM_CHANNEL.sender(),
         |_id, dist| app::SystemCommand::ProximityUpdate {
             direction: model::types::Direction::North,
             distance_mm: dist,
         },
-        ProximityPinWrapper(pin_north),
+        ProximityPinWrapper(board.pin_north),
         app::DEFAULT_WAKE_THRESHOLD_MM,
     );
     sensor_ctrl_north.set_calibration(CalibrationType::ProximityCal(
@@ -286,13 +257,13 @@ async fn main(spawner: Spawner) {
 
     let mut sensor_ctrl_east = SensorController::new_with_fusion_and_interrupt(
         1,
-        tof_east,
+        board.tof_east,
         app::SYSTEM_CHANNEL.sender(),
         |_id, dist| app::SystemCommand::ProximityUpdate {
             direction: model::types::Direction::East,
             distance_mm: dist,
         },
-        ProximityPinWrapper(pin_east),
+        ProximityPinWrapper(board.pin_east),
         app::DEFAULT_WAKE_THRESHOLD_MM,
     );
     sensor_ctrl_east.set_calibration(CalibrationType::ProximityCal(
@@ -301,13 +272,13 @@ async fn main(spawner: Spawner) {
 
     let mut sensor_ctrl_west = SensorController::new_with_fusion_and_interrupt(
         2,
-        tof_west,
+        board.tof_west,
         app::SYSTEM_CHANNEL.sender(),
         |_id, dist| app::SystemCommand::ProximityUpdate {
             direction: model::types::Direction::West,
             distance_mm: dist,
         },
-        ProximityPinWrapper(pin_west),
+        ProximityPinWrapper(board.pin_west),
         app::DEFAULT_WAKE_THRESHOLD_MM,
     );
     sensor_ctrl_west.set_calibration(CalibrationType::ProximityCal(
@@ -326,24 +297,13 @@ async fn main(spawner: Spawner) {
         chg.0 = board.charger.take();
     }
 
-    // Initialize the shared I2C bus on target
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
-    {
-        app::SHARED_I2C.lock(|cell| {
-            cell.borrow_mut().0 = Some(board.i2c);
-        });
-    }
-
     let thermal_ctrl = ThermalController::new_with_shutdown(
         &SHARED_TEMP_SENSOR,
         app::SYSTEM_CHANNEL.sender(),
         app::SystemCommand::AlertTriggered,
     );
 
-    let fg_alert_pin = board.gpio_pins[app::FUEL_GAUGE_INT_PIN as usize]
-        .take()
-        .expect("Fuel gauge alert pin must be available");
-    let alert_wrapper = AlertPinWrapper(fg_alert_pin);
+    let alert_wrapper = AlertPinWrapper(board.fuel_gauge_alert_pin);
 
     let power_ctrl = BatteryController::new_with_system_and_alert(
         &SHARED_BATTERY,
@@ -352,9 +312,8 @@ async fn main(spawner: Spawner) {
         alert_wrapper,
     );
 
-    // Initialize simulated LED driver and its controller
-    let led_driver = MockLed::new();
-    let led_ctrl = LedController::new(led_driver);
+    // Initialize LED driver and its controller
+    let led_ctrl = LedController::new(board.led_driver);
 
     // Initialize SystemController to coordinate all loops
     let feature_set = app::CatDetectorFeatureSet {
@@ -453,40 +412,91 @@ async fn main(spawner: Spawner) {
     );
 
     // Spawn the three proximity sensor tasks
-    controller::run_sensor_task!(
-        spawner,
-        sensor_north_task,
-        sensor_ctrl_north,
-        app::SENSOR_NORTH_CHANNEL.receiver(),
-        DummyProximitySensor,
-        CriticalSectionRawMutex,
-        ProximityPinWrapper,
-        app::SystemCommand
-    );
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    {
+        controller::run_sensor_task!(
+            spawner,
+            sensor_north_task,
+            sensor_ctrl_north,
+            app::SENSOR_NORTH_CHANNEL.receiver(),
+            peripherals::vl53l0x::Vl53l0x<firmware_lib::i2c::SharedI2cWrapper<'static>>,
+            CriticalSectionRawMutex,
+            ProximityPinWrapper,
+            app::SystemCommand
+        );
 
-    controller::run_sensor_task!(
-        spawner,
-        sensor_east_task,
-        sensor_ctrl_east,
-        app::SENSOR_EAST_CHANNEL.receiver(),
-        DummyProximitySensor,
-        CriticalSectionRawMutex,
-        ProximityPinWrapper,
-        app::SystemCommand
-    );
+        controller::run_sensor_task!(
+            spawner,
+            sensor_east_task,
+            sensor_ctrl_east,
+            app::SENSOR_EAST_CHANNEL.receiver(),
+            peripherals::vl53l0x::Vl53l0x<firmware_lib::i2c::SharedI2cWrapper<'static>>,
+            CriticalSectionRawMutex,
+            ProximityPinWrapper,
+            app::SystemCommand
+        );
 
-    controller::run_sensor_task!(
-        spawner,
-        sensor_west_task,
-        sensor_ctrl_west,
-        app::SENSOR_WEST_CHANNEL.receiver(),
-        DummyProximitySensor,
-        CriticalSectionRawMutex,
-        ProximityPinWrapper,
-        app::SystemCommand
-    );
+        controller::run_sensor_task!(
+            spawner,
+            sensor_west_task,
+            sensor_ctrl_west,
+            app::SENSOR_WEST_CHANNEL.receiver(),
+            peripherals::vl53l0x::Vl53l0x<firmware_lib::i2c::SharedI2cWrapper<'static>>,
+            CriticalSectionRawMutex,
+            ProximityPinWrapper,
+            app::SystemCommand
+        );
+    }
+
+    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+    {
+        controller::run_sensor_task!(
+            spawner,
+            sensor_north_task,
+            sensor_ctrl_north,
+            app::SENSOR_NORTH_CHANNEL.receiver(),
+            DummyProximitySensor,
+            CriticalSectionRawMutex,
+            ProximityPinWrapper,
+            app::SystemCommand
+        );
+
+        controller::run_sensor_task!(
+            spawner,
+            sensor_east_task,
+            sensor_ctrl_east,
+            app::SENSOR_EAST_CHANNEL.receiver(),
+            DummyProximitySensor,
+            CriticalSectionRawMutex,
+            ProximityPinWrapper,
+            app::SystemCommand
+        );
+
+        controller::run_sensor_task!(
+            spawner,
+            sensor_west_task,
+            sensor_ctrl_west,
+            app::SENSOR_WEST_CHANNEL.receiver(),
+            DummyProximitySensor,
+            CriticalSectionRawMutex,
+            ProximityPinWrapper,
+            app::SystemCommand
+        );
+    }
 
     // Spawn the LED controller task
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    controller::run_led_task!(
+        spawner,
+        led_task,
+        led_ctrl,
+        app::LED_CHANNEL.receiver(),
+        app::TELEMETRY_CHANNEL.sender(),
+        peripherals::attiny816::Attiny816<firmware_lib::i2c::SharedI2cWrapper<'static>>,
+        CriticalSectionRawMutex
+    );
+
+    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
     controller::run_led_task!(
         spawner,
         led_task,
