@@ -74,7 +74,6 @@ pub static SHARED_I2C: embassy_sync::blocking_mutex::Mutex<
     None,
 )));
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// RawMutex type used by controllers.
 pub type MutexRaw = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
@@ -169,30 +168,6 @@ pub static mut MOTOR_CTRL: Option<
 > = None;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-fn make_proximity_update_north(_id: u8, dist: u16) -> SystemCommand {
-    SystemCommand::ProximityUpdate {
-        direction: model::types::Direction::North,
-        distance_mm: dist,
-    }
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-fn make_proximity_update_east(_id: u8, dist: u16) -> SystemCommand {
-    SystemCommand::ProximityUpdate {
-        direction: model::types::Direction::East,
-        distance_mm: dist,
-    }
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-fn make_proximity_update_west(_id: u8, dist: u16) -> SystemCommand {
-    SystemCommand::ProximityUpdate {
-        direction: model::types::Direction::West,
-        distance_mm: dist,
-    }
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Type alias for the blocking flash device.
 pub type FlashDevice = embassy_rp::flash::Flash<
     'static,
@@ -264,10 +239,11 @@ pub async fn init_controllers(board: Board<'static>) {
 
         SENSOR_CTRL_NORTH = Some(
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
-                0,
+                controller::types::SensorMetadata {
+                    direction: model::types::Direction::North,
+                },
                 tof_north,
                 SYSTEM_CHANNEL.sender(),
-                make_proximity_update_north,
                 ProximityPinWrapper(pin_north),
                 DEFAULT_WAKE_THRESHOLD_MM,
             ),
@@ -275,10 +251,11 @@ pub async fn init_controllers(board: Board<'static>) {
 
         SENSOR_CTRL_EAST = Some(
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
-                1,
+                controller::types::SensorMetadata {
+                    direction: model::types::Direction::East,
+                },
                 tof_east,
                 SYSTEM_CHANNEL.sender(),
-                make_proximity_update_east,
                 ProximityPinWrapper(pin_east),
                 DEFAULT_WAKE_THRESHOLD_MM,
             ),
@@ -286,10 +263,11 @@ pub async fn init_controllers(board: Board<'static>) {
 
         SENSOR_CTRL_WEST = Some(
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
-                2,
+                controller::types::SensorMetadata {
+                    direction: model::types::Direction::West,
+                },
                 tof_west,
                 SYSTEM_CHANNEL.sender(),
-                make_proximity_update_west,
                 ProximityPinWrapper(pin_west),
                 DEFAULT_WAKE_THRESHOLD_MM,
             ),
@@ -396,30 +374,55 @@ impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: u
     }
 }
 
-controller::declare_channels! {
-    /// Shared command channel for the Motor Controller.
-    pub static MOTOR_CHANNEL: controller::motor_controller::MotorCommand, capacity = 4;
-    /// Shared command channel for the System Controller.
-    pub static SYSTEM_CHANNEL: controller::SystemCommand, capacity = 4;
-    /// Shared channel for local gesture events.
-    pub static GESTURE_CHANNEL: model::types::Gesture, capacity = 4;
-    /// Shared command channel for the North Sensor Controller.
-    pub static SENSOR_NORTH_CHANNEL: controller::sensor_controller::SensorCommand, capacity = 4;
-    /// Shared command channel for the East Sensor Controller.
-    pub static SENSOR_EAST_CHANNEL: controller::sensor_controller::SensorCommand, capacity = 4;
-    /// Shared command channel for the West Sensor Controller.
-    pub static SENSOR_WEST_CHANNEL: controller::sensor_controller::SensorCommand, capacity = 4;
-    /// Shared command channel for the Thermal Controller.
-    pub static THERMAL_CHANNEL: controller::thermal_controller::ThermalCommand, capacity = 4;
-    /// Shared command channel for the Battery Controller.
-    pub static BATTERY_CHANNEL: controller::battery_controller::BatteryCommand, capacity = 4;
-    /// Shared command channel for the System LED status updates.
-    pub static LED_CHANNEL: model::types::SystemLedState, capacity = 4;
-    /// Shared command channel for telemetry records.
-    pub static TELEMETRY_CHANNEL: model::types::TelemetryRecord, capacity = { controller::telemetry_controller::CHANNEL_CAPACITY };
-    /// Shared command channel for filesystem operations.
-    pub static FILESYSTEM_CHANNEL: controller::filesystem_controller::FsRequest, capacity = 16;
-}
+/// Shared command channel for the Motor Controller.
+pub static MOTOR_CHANNEL: controller::MotorChannel<MutexRaw, 4> = controller::MotorChannel::new();
+/// Shared command channel for the System Controller.
+pub static SYSTEM_CHANNEL: controller::SystemChannel<MutexRaw, 4> =
+    controller::SystemChannel::new();
+/// Shared channel for local gesture events.
+pub static GESTURE_CHANNEL: firmware_lib::gesture_detector::GestureChannel<MutexRaw, 4> =
+    firmware_lib::gesture_detector::GestureChannel::new();
+/// Shared command channel for the North Sensor Controller.
+pub static SENSOR_NORTH_CHANNEL: controller::SensorChannel<MutexRaw, 4> =
+    controller::SensorChannel::new();
+/// Shared command channel for the East Sensor Controller.
+pub static SENSOR_EAST_CHANNEL: controller::SensorChannel<MutexRaw, 4> =
+    controller::SensorChannel::new();
+/// Shared command channel for the West Sensor Controller.
+pub static SENSOR_WEST_CHANNEL: controller::SensorChannel<MutexRaw, 4> =
+    controller::SensorChannel::new();
+/// Shared command channel for the Thermal Controller.
+pub static THERMAL_CHANNEL: controller::ThermalChannel<MutexRaw, 4> =
+    controller::ThermalChannel::new();
+/// Shared command channel for the Battery Controller.
+pub static BATTERY_CHANNEL: controller::BatteryChannel<MutexRaw, 4> =
+    controller::BatteryChannel::new();
+/// Shared command channel for the System LED status updates.
+pub static LED_CHANNEL: controller::LedChannel<MutexRaw, 4> = controller::LedChannel::new();
+/// Shared command channel for telemetry records.
+pub static TELEMETRY_CHANNEL: controller::TelemetryChannel<
+    MutexRaw,
+    { controller::telemetry_controller::CHANNEL_CAPACITY },
+> = controller::TelemetryChannel::new();
+/// Shared command channel for filesystem operations.
+pub static FILESYSTEM_CHANNEL: controller::FilesystemChannel<MutexRaw, 16> =
+    controller::FilesystemChannel::new();
+/// Type alias for the Cat Detector System Controller.
+pub type SystemControllerType =
+    controller::SystemController<MutexRaw, CatDetectorFeatureSet<MutexRaw, 4>>;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// The concrete flash type used for the filesystem partition in production.
+pub type FlashDeviceType = controller::filesystem_controller::ProfilingFlash<
+    firmware_lib::BlockingAsyncFlash<
+        embassy_rp::flash::Flash<
+            'static,
+            embassy_rp::peripherals::FLASH,
+            embassy_rp::flash::Blocking,
+            { FLASH_SIZE },
+        >,
+    >,
+>;
 
 /// Re-export the telemetry module from the controller crate
 pub use controller::telemetry_controller as telemetry;

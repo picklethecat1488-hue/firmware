@@ -183,12 +183,7 @@ pub enum ThermalCommand {
     CheckTemp,
 }
 
-crate::define_controller_channels!(
-    ThermalChannel,
-    ThermalSender,
-    ThermalReceiver,
-    ThermalCommand
-);
+use crate::ThermalReceiver;
 
 /// Thermal-specific CLI commands
 #[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]

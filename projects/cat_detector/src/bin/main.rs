@@ -7,7 +7,11 @@
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
-    app::CatDetectorFeatureSet,
+    app::{
+        BATTERY_CHANNEL, FILESYSTEM_CHANNEL, GESTURE_CHANNEL, LED_CHANNEL, MOTOR_CHANNEL,
+        SENSOR_EAST_CHANNEL, SENSOR_NORTH_CHANNEL, SENSOR_WEST_CHANNEL, SYSTEM_CHANNEL,
+        TELEMETRY_CHANNEL, THERMAL_CHANNEL,
+    },
     cat_detector as app,
     controller::{
         telemetry_controller::TelemetryController, BatteryFeatureConfig, GestureAction,
@@ -15,7 +19,6 @@ use {
         ThermalFeatureConfig,
     },
     embassy_executor::Spawner,
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     firmware_lib::BatteryManager,
 };
 
@@ -74,7 +77,7 @@ async fn main(spawner: Spawner) {
         embassy_rp::flash::Blocking,
         { app::FLASH_SIZE },
     >::new_blocking(fs_flash);
-    let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(raw_flash);
+    let async_flash = firmware_lib::BlockingAsyncFlash(raw_flash);
     let profiling_flash = controller::filesystem_controller::ProfilingFlash::new(async_flash);
     let mut fs_controller = controller::filesystem_controller::FilesystemController::new(
         profiling_flash,
@@ -183,117 +186,7 @@ async fn main(spawner: Spawner) {
     let system_ctrl =
         SystemController::new(feature_set, app::TELEMETRY_CHANNEL.sender(), boot_reason);
 
-    // Spawn controllers selectively and concurrently using separate macros
-    controller::run_thermal_task!(
-        spawner,
-        thermal_task,
-        thermal_ctrl,
-        app::THERMAL_CHANNEL.receiver(),
-        app::TELEMETRY_CHANNEL.sender(),
-        app::TempSensorDevice,
-        app::SystemCommand
-    );
-
-    controller::run_battery_task!(
-        spawner,
-        power_task,
-        power_ctrl,
-        app::BATTERY_CHANNEL.receiver(),
-        app::TELEMETRY_CHANNEL.sender(),
-        app::BatteryDevice,
-        app::ChargerDevice,
-        app::AlertPinType,
-        app::SystemCommand
-    );
-
-    controller::run_motor_task!(
-        spawner,
-        motor_task,
-        controller,
-        app::MOTOR_CHANNEL.receiver(),
-        app::TELEMETRY_CHANNEL.sender(),
-        app::MotorDevice,
-        app::CurrentSensorDevice
-    );
-
-    // Spawn the three proximity sensor tasks
-    controller::run_sensor_task!(
-        spawner,
-        sensor_north_task,
-        sensor_ctrl_north,
-        app::SENSOR_NORTH_CHANNEL.receiver(),
-        app::ProximitySensorDevice,
-        CriticalSectionRawMutex,
-        app::DataReadyPinType,
-        app::SystemCommand
-    );
-
-    controller::run_sensor_task!(
-        spawner,
-        sensor_east_task,
-        sensor_ctrl_east,
-        app::SENSOR_EAST_CHANNEL.receiver(),
-        app::ProximitySensorDevice,
-        CriticalSectionRawMutex,
-        app::DataReadyPinType,
-        app::SystemCommand
-    );
-
-    controller::run_sensor_task!(
-        spawner,
-        sensor_west_task,
-        sensor_ctrl_west,
-        app::SENSOR_WEST_CHANNEL.receiver(),
-        app::ProximitySensorDevice,
-        CriticalSectionRawMutex,
-        app::DataReadyPinType,
-        app::SystemCommand
-    );
-
-    // Spawn the LED controller task
-    controller::run_led_task!(
-        spawner,
-        led_task,
-        led_ctrl,
-        app::LED_CHANNEL.receiver(),
-        app::TELEMETRY_CHANNEL.sender(),
-        app::LedDevice,
-        CriticalSectionRawMutex
-    );
-
-    controller::run_system_task!(
-        spawner,
-        system_task,
-        system_ctrl,
-        SystemController<
-            embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-            CatDetectorFeatureSet<
-                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                4,
-            >,
-        >,
-        app::SYSTEM_CHANNEL.receiver(),
-        app::GESTURE_CHANNEL.receiver()
-    );
-
-    app::run_filesystem_task!(
-        spawner,
-        filesystem_task,
-        fs_controller,
-        app::FILESYSTEM_CHANNEL.receiver(),
-        controller::filesystem_controller::ProfilingFlash<
-            firmware_lib::panic_handler::BlockingAsyncFlash<
-                embassy_rp::flash::Flash<
-                    'static,
-                    embassy_rp::peripherals::FLASH,
-                    embassy_rp::flash::Blocking,
-                    { app::FLASH_SIZE },
-                >,
-            >,
-        >
-    );
-
-    // Declare statically to avoid stack overflow on the main thread MSP stack
+    // Declare telemetry controller statically to avoid stack overflow on the main thread MSP stack
     static mut TELEMETRY_CTRL: Option<
         TelemetryController<1024, { model::telemetry::BUFFER_SIZE }>,
     > = None;
@@ -306,14 +199,22 @@ async fn main(spawner: Spawner) {
         TELEMETRY_CTRL.as_mut().unwrap()
     };
 
-    app::run_telemetry_task!(
+    // Spawn all application tasks concurrently using the unified macro
+    controller::spawn_controllers! {
         spawner,
-        telemetry_task,
-        telemetry_ctrl,
-        app::TELEMETRY_CHANNEL.receiver(),
-        1024,
-        { controller::telemetry_controller::CHANNEL_CAPACITY }
-    );
+        controllers: {
+            Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (app::TempSensorDevice, app::SystemCommand),
+            Battery(power_ctrl, BATTERY_CHANNEL), generics: (app::BatteryDevice, app::ChargerDevice, app::AlertPinType, app::SystemCommand),
+            Motor(controller, MOTOR_CHANNEL), generics: (app::MotorDevice, app::CurrentSensorDevice),
+            Sensor(sensor_ctrl_north, SENSOR_NORTH_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
+            Sensor(sensor_ctrl_east, SENSOR_EAST_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
+            Sensor(sensor_ctrl_west, SENSOR_WEST_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
+            Led(led_ctrl, LED_CHANNEL), generics: (app::LedDevice),
+            System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL), generics: (app::SystemControllerType),
+            Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (app::FlashDeviceType),
+            Telemetry(telemetry_ctrl, TELEMETRY_CHANNEL), generics: (1024, { controller::telemetry_controller::CHANNEL_CAPACITY }),
+        }
+    }
 }
 
 /// Host main entry point for testing and compilation verification.

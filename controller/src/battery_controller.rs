@@ -350,12 +350,7 @@ pub enum BatteryCommand {
     UpdateWakeLocks(u32),
 }
 
-crate::define_controller_channels!(
-    BatteryChannel,
-    BatterySender,
-    BatteryReceiver,
-    BatteryCommand
-);
+use crate::BatteryReceiver;
 
 /// Battery-specific CLI commands
 #[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]

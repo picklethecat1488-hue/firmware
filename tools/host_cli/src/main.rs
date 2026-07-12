@@ -43,9 +43,9 @@ pub struct Cli {
     #[arg(long)]
     pub dump_mem: bool,
 
-    /// Do not reset the target CPU on start (attach to currently running target)
+    /// Reset the target CPU on start
     #[arg(long)]
-    pub no_reset: bool,
+    pub reset: bool,
 
     /// Connect to an existing OpenOCD GDB server session (e.g. "localhost:3333" or "127.0.0.1")
     #[arg(short = 'o', long)]
@@ -58,10 +58,20 @@ pub struct Cli {
     /// RTT channel mode to stream
     #[arg(long, value_enum, default_value_t = ChannelMode::Both)]
     pub channel: ChannelMode,
+
+    /// Print the autodetected chip name from ELF metadata and exit
+    #[arg(long)]
+    pub print_chip: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+
+    if cli.print_chip {
+        let info = host_cli::autodetect_project_info(&cli.elf)?;
+        println!("{}", info.chip);
+        return Ok(());
+    }
 
     // Initialize the progress spinner
     let spinner = indicatif::ProgressBar::new_spinner();
@@ -106,7 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         dump: cli.dump,
         raw: cli.raw,
         dump_mem: cli.dump_mem,
-        no_reset: cli.no_reset,
+        reset: cli.reset,
         openocd_host: cli.openocd_host.as_deref(),
         show_raw_cli: cli.show_raw_cli,
         spinner: &spinner,

@@ -44,13 +44,20 @@ pub enum SystemCommand {
     BatteryAction(BatteryUpdateAction),
 }
 
-crate::define_controller_channels!(SystemChannel, SystemSender, SystemReceiver, SystemCommand);
-
 impl crate::battery_controller::FromBatteryUpdate for SystemCommand {
     fn from_battery_update(state_of_charge: u8, charger_state: ChargeState) -> Self {
         SystemCommand::BatteryUpdate {
             state_of_charge,
             charger_state,
+        }
+    }
+}
+
+impl crate::sensor_controller::FromProximityUpdate for SystemCommand {
+    fn from_proximity_update(metadata: crate::types::SensorMetadata, distance_mm: u16) -> Self {
+        SystemCommand::ProximityUpdate {
+            direction: metadata.direction,
+            distance_mm,
         }
     }
 }
@@ -410,14 +417,21 @@ macro_rules! run_system_task {
         $system_rx:expr,
         $gesture_rx:expr
     ) => {
+        #[allow(non_snake_case)]
         mod $task_module {
             use super::*;
 
             #[embassy_executor::task]
             pub async fn task(
                 mut controller: $controller_type,
-                system_rx: $crate::StaticReceiver<$crate::system_controller::SystemCommand, 4>,
-                gesture_rx: $crate::StaticReceiver<model::types::Gesture, 4>,
+                system_rx: $crate::SystemReceiver<
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    4,
+                >,
+                gesture_rx: firmware_lib::gesture_detector::GestureReceiver<
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    4,
+                >,
             ) {
                 controller.run(system_rx, gesture_rx).await;
             }

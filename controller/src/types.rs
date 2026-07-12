@@ -1,9 +1,22 @@
 //! Common types used across the controllers.
 
-use model::types::SystemLedState;
+use model::types::{Direction, SystemLedState};
+
+macro_rules! dummy_debug {
+    ($ty:ident) => {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        impl core::fmt::Debug for $ty {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.write_str(stringify!($ty))
+            }
+        }
+    };
+}
 
 /// Actions that can be mapped from gestures.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum GestureAction {
     /// No action.
     None,
@@ -12,7 +25,9 @@ pub enum GestureAction {
 }
 
 /// Action returned by the proximity feature update.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum ProximityAction {
     /// No action.
     None,
@@ -25,7 +40,8 @@ pub enum ProximityAction {
 }
 
 /// Battery status summary passed to features and stored on the system controller.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct BatteryStatus {
     /// True if the battery level is critically low.
     pub battery_critical: bool,
@@ -36,7 +52,9 @@ pub struct BatteryStatus {
 }
 
 /// Devices that can be power-managed by the system.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum Device {
     /// The motor.
     Motor,
@@ -51,7 +69,9 @@ pub enum Device {
 }
 
 /// Device activity support status in the current system state.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct DeviceSupport {
     /// True if motor is supported.
     pub motor: bool,
@@ -66,7 +86,8 @@ pub struct DeviceSupport {
 }
 
 /// Represents a partition on a flash peripheral.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct FlashPartition<F> {
     /// Pointer to the underlying flash hardware driver.
     pub flash_ptr: *mut F,
@@ -88,7 +109,8 @@ unsafe impl<F> Send for FlashPartition<F> {}
 unsafe impl<F> Sync for FlashPartition<F> {}
 
 /// Binds a device name to a physical peripheral pointer.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct NamedDevice<D> {
     /// Friendly name (e.g., "left", "right", "mcu", "external")
     pub name: &'static str,
@@ -108,7 +130,8 @@ unsafe impl<D> Send for NamedDevice<D> {}
 unsafe impl<D> Sync for NamedDevice<D> {}
 
 /// Binds a partition name to a flash partition.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct NamedPartition<F> {
     /// Friendly name (e.g., "logs", "config", "calibration")
     pub name: &'static str,
@@ -127,8 +150,18 @@ impl<F> Copy for NamedPartition<F> {}
 unsafe impl<F> Send for NamedPartition<F> {}
 unsafe impl<F> Sync for NamedPartition<F> {}
 
+/// Metadata associated with a proximity sensor.
+#[derive(Clone, Copy)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub struct SensorMetadata {
+    /// The physical direction the sensor is facing.
+    pub direction: Direction,
+}
+
 /// Represents the physical directions of ToF proximity sensors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum SensorDirection {
     /// North sensor
     North,
@@ -157,7 +190,9 @@ impl core::fmt::Debug for ThermalState {
 }
 
 /// The operating states of the motor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum MotorState {
     /// The motor is powered off.
     #[default]
@@ -167,7 +202,9 @@ pub enum MotorState {
 }
 
 /// Status representing safety check results.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum MotorSafetyStatus {
     /// All limits are within safe operating parameters.
     Ok,
@@ -180,7 +217,7 @@ pub enum MotorSafetyStatus {
 }
 
 /// Errors returned by the motor controller loop.
-#[derive(Debug)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum MotorError<ME, CE> {
     /// Error originating from the motor driver.
     Motor(ME),
@@ -189,15 +226,17 @@ pub enum MotorError<ME, CE> {
 }
 
 /// Represents the motor calibration target state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum MotorCalState {
-    /// Empty water bowl
+    /// Empty calibration state
     Empty,
-    /// Bowl with 100ml of water
-    Water100ml,
-    /// Full water bowl
-    Full,
-    /// Overload/stall state
+    /// Low calibration state
+    Low,
+    /// High calibration state
+    High,
+    /// Overload calibration state
     Overload,
 }
 
@@ -205,9 +244,20 @@ impl From<MotorCalState> for model::calibration::FourPointRef {
     fn from(state: MotorCalState) -> Self {
         match state {
             MotorCalState::Empty => model::calibration::FourPointRef::Low,
-            MotorCalState::Water100ml => model::calibration::FourPointRef::Mid,
-            MotorCalState::Full => model::calibration::FourPointRef::High,
+            MotorCalState::Low => model::calibration::FourPointRef::Low,
+            MotorCalState::High => model::calibration::FourPointRef::High,
             MotorCalState::Overload => model::calibration::FourPointRef::Overload,
         }
     }
 }
+
+dummy_debug!(GestureAction);
+dummy_debug!(ProximityAction);
+dummy_debug!(BatteryStatus);
+dummy_debug!(Device);
+dummy_debug!(DeviceSupport);
+dummy_debug!(SensorMetadata);
+dummy_debug!(SensorDirection);
+dummy_debug!(MotorState);
+dummy_debug!(MotorSafetyStatus);
+dummy_debug!(MotorCalState);

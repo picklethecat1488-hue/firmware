@@ -46,12 +46,28 @@ pub use types::{
     ThermalState,
 };
 
-/// Macro to define controller channel types.
+/// Source of truth macro for generating all controller types, channels, and task running helper macros.
 #[macro_export]
-macro_rules! define_controller_channels {
-    ($name:ident, $sender:ident, $receiver:ident, $msg:ty) => {
+macro_rules! define_controllers {
+    // Rule 1: Task with telemetry_tx
+    (
+        $name:ident {
+            channel: $channel:ident,
+            sender: $sender:ident,
+            receiver: $receiver:ident,
+            msg: $msg:ty,
+            task: $run_macro:ident {
+                generics: ($($gen:tt)*),
+                controller: [$($controller_ty:tt)*],
+                rx: [$($rx_ty:tt)*],
+                telemetry_tx: [$($telemetry_tx_ty:tt)*],
+                call: |$c:ident, $r:ident, $t:ident| $body:expr
+            }
+        }
+        $($rest:tt)*
+    ) => {
         /// Channel type for controller communication.
-        pub type $name<MutexRaw, const N: usize> =
+        pub type $channel<MutexRaw, const N: usize> =
             embassy_sync::channel::Channel<MutexRaw, $msg, N>;
         /// Sender type for controller communication.
         pub type $sender<MutexRaw, const N: usize> =
@@ -59,18 +75,264 @@ macro_rules! define_controller_channels {
         /// Receiver type for controller communication.
         pub type $receiver<MutexRaw, const N: usize> =
             embassy_sync::channel::Receiver<'static, MutexRaw, $msg, N>;
+
+        /// Task runner macro for the controller.
+        #[macro_export]
+        macro_rules! $run_macro {
+            (
+                $spawner:expr,
+                $task_module:ident,
+                $controller:expr,
+                $rx:expr,
+                $telemetry_tx:expr,
+                $($gen)*
+            ) => {
+                #[allow(non_snake_case)]
+                mod $task_module {
+                    use super::*;
+
+                    #[embassy_executor::task]
+                    pub async fn task(
+                        mut $c: $($controller_ty)*,
+                        $r: $($rx_ty)*,
+                        $t: $($telemetry_tx_ty)*
+                    ) {
+                        $body;
+                    }
+                }
+
+                $spawner
+                    .spawn($task_module::task($controller, $rx, $telemetry_tx))
+                    .unwrap();
+            };
+        }
+
+        $crate::define_controllers! { $($rest)* }
     };
+
+    // Rule 2: Task without telemetry_tx
+    (
+        $name:ident {
+            channel: $channel:ident,
+            sender: $sender:ident,
+            receiver: $receiver:ident,
+            msg: $msg:ty,
+            task: $run_macro:ident {
+                generics: ($($gen:tt)*),
+                controller: [$($controller_ty:tt)*],
+                rx: [$($rx_ty:tt)*],
+                call: |$c:ident, $r:ident| $body:expr
+            }
+        }
+        $($rest:tt)*
+    ) => {
+        /// Channel type for controller communication.
+        pub type $channel<MutexRaw, const N: usize> =
+            embassy_sync::channel::Channel<MutexRaw, $msg, N>;
+        /// Sender type for controller communication.
+        pub type $sender<MutexRaw, const N: usize> =
+            embassy_sync::channel::Sender<'static, MutexRaw, $msg, N>;
+        /// Receiver type for controller communication.
+        pub type $receiver<MutexRaw, const N: usize> =
+            embassy_sync::channel::Receiver<'static, MutexRaw, $msg, N>;
+
+        /// Task runner macro for the controller.
+        #[macro_export]
+        macro_rules! $run_macro {
+            (
+                $spawner:expr,
+                $task_module:ident,
+                $controller:expr,
+                $rx:expr,
+                $($gen)*
+            ) => {
+                #[allow(non_snake_case)]
+                mod $task_module {
+                    use super::*;
+
+                    #[embassy_executor::task]
+                    pub async fn task(
+                        mut $c: $($controller_ty)*,
+                        $r: $($rx_ty)*
+                    ) {
+                        $body;
+                    }
+                }
+
+                $spawner
+                    .spawn($task_module::task($controller, $rx))
+                    .unwrap();
+            };
+        }
+
+        $crate::define_controllers! { $($rest)* }
+    };
+
+    // Rule 3: No task at all (e.g. System)
+    (
+        $name:ident {
+            channel: $channel:ident,
+            sender: $sender:ident,
+            receiver: $receiver:ident,
+            msg: $msg:ty $(,)?
+        }
+        $($rest:tt)*
+    ) => {
+        /// Channel type for controller communication.
+        pub type $channel<MutexRaw, const N: usize> =
+            embassy_sync::channel::Channel<MutexRaw, $msg, N>;
+        /// Sender type for controller communication.
+        pub type $sender<MutexRaw, const N: usize> =
+            embassy_sync::channel::Sender<'static, MutexRaw, $msg, N>;
+        /// Receiver type for controller communication.
+        pub type $receiver<MutexRaw, const N: usize> =
+            embassy_sync::channel::Receiver<'static, MutexRaw, $msg, N>;
+
+        $crate::define_controllers! { $($rest)* }
+    };
+
+    // Base case: empty
+    () => {};
 }
 
-// Type alias for MotorCommand channel Sender/Receiver/Channel.
-pub use battery_controller::{BatteryChannel, BatteryReceiver, BatterySender};
-pub use filesystem_controller::{FilesystemChannel, FilesystemReceiver, FilesystemSender};
-pub use led_controller::{LedChannel, LedReceiver, LedSender};
-pub use motor_controller::{MotorChannel, MotorReceiver, MotorSender};
-pub use sensor_controller::{SensorChannel, SensorReceiver, SensorSender};
-pub use system_controller::{SystemChannel, SystemReceiver, SystemSender};
-pub use telemetry_controller::{TelemetryChannel, TelemetryReceiver, TelemetrySender};
-pub use thermal_controller::{ThermalChannel, ThermalReceiver, ThermalSender};
+define_controllers! {
+    Led {
+        channel: LedChannel,
+        sender: LedSender,
+        receiver: LedReceiver,
+        msg: model::types::SystemLedState,
+        task: run_led_task {
+            generics: ($driver_type:ty),
+            controller: [$crate::led_controller::LedController<$driver_type>],
+            rx: [$crate::LedReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>],
+            telemetry_tx: [$crate::TelemetrySender<
+                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                { $crate::telemetry_controller::CHANNEL_CAPACITY },
+            >],
+            call: |controller, rx, telemetry_tx| controller.run(rx, telemetry_tx).await
+        }
+    }
+    Battery {
+        channel: BatteryChannel,
+        sender: BatterySender,
+        receiver: BatteryReceiver,
+        msg: crate::battery_controller::BatteryCommand,
+        task: run_battery_task {
+            generics: ($battery_type:ty, $charger_type:ty, $pin_type:ty, $cmd_type:ty),
+            controller: [$crate::battery_controller::BatteryController<
+                'static,
+                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                $battery_type,
+                $charger_type,
+                $pin_type,
+                $cmd_type,
+            >],
+            rx: [$crate::BatteryReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>],
+            telemetry_tx: [$crate::TelemetrySender<
+                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                { $crate::telemetry_controller::CHANNEL_CAPACITY },
+            >],
+            call: |controller, rx, telemetry_tx| controller.run(rx, telemetry_tx).await
+        }
+    }
+    Thermal {
+        channel: ThermalChannel,
+        sender: ThermalSender,
+        receiver: ThermalReceiver,
+        msg: crate::thermal_controller::ThermalCommand,
+        task: run_thermal_task {
+            generics: ($battery_type:ty, $cmd_type:ty),
+            controller: [$crate::thermal_controller::ThermalController<
+                'static,
+                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                $battery_type,
+                $cmd_type,
+            >],
+            rx: [$crate::ThermalReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>],
+            telemetry_tx: [$crate::TelemetrySender<
+                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                { $crate::telemetry_controller::CHANNEL_CAPACITY },
+            >],
+            call: |controller, rx, telemetry_tx| controller.run(rx, telemetry_tx).await
+        }
+    }
+    Sensor {
+        channel: SensorChannel,
+        sender: SensorSender,
+        receiver: SensorReceiver,
+        msg: crate::sensor_controller::SensorCommand,
+        task: run_sensor_task {
+            generics: ($sensor_type:ty, $pin_type:ty, $cmd_type:ty),
+            controller: [$crate::sensor_controller::SensorController<
+                'static,
+                $sensor_type,
+                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                $pin_type,
+                $cmd_type,
+            >],
+            rx: [$crate::SensorReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>],
+            call: |controller, rx| controller.run(rx).await
+        }
+    }
+    Motor {
+        channel: MotorChannel,
+        sender: MotorSender,
+        receiver: MotorReceiver,
+        msg: crate::motor_controller::MotorCommand,
+        task: run_motor_task {
+            generics: ($motor_type:ty, $current_sensor_type:ty),
+            controller: [$crate::motor_controller::MotorController<
+                $motor_type,
+                $current_sensor_type,
+            >],
+            rx: [$crate::MotorReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>],
+            telemetry_tx: [$crate::TelemetrySender<
+                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                { $crate::telemetry_controller::CHANNEL_CAPACITY },
+            >],
+            call: |controller, rx, telemetry_tx| controller.run(rx, telemetry_tx).await
+        }
+    }
+    Filesystem {
+        channel: FilesystemChannel,
+        sender: FilesystemSender,
+        receiver: FilesystemReceiver,
+        msg: crate::filesystem_controller::FsRequest,
+        task: run_filesystem_task {
+            generics: ($flash_type:ty),
+            controller: [$crate::filesystem_controller::FilesystemController<$flash_type>],
+            rx: [$crate::FilesystemReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 16>],
+            call: |controller, rx| controller.run(rx).await
+        }
+    }
+    System {
+        channel: SystemChannel,
+        sender: SystemSender,
+        receiver: SystemReceiver,
+        msg: crate::system_controller::SystemCommand,
+    }
+    Telemetry {
+        channel: TelemetryChannel,
+        sender: TelemetrySender,
+        receiver: TelemetryReceiver,
+        msg: model::telemetry::TelemetryRecord,
+        task: run_telemetry_task {
+            generics: ($max_records:expr, $channel_size:expr),
+            controller: [&'static mut $crate::telemetry_controller::TelemetryController<
+                $max_records,
+                { model::telemetry::BUFFER_SIZE },
+            >],
+            rx: [$crate::TelemetryReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, $channel_size>],
+            call: |controller, rx| controller.run(rx).await
+        }
+    }
+}
+
+/// A dummy telemetry channel used when telemetry is disabled or omitted.
+pub static DUMMY_TELEMETRY_CHANNEL: TelemetryChannel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    { telemetry_controller::CHANNEL_CAPACITY },
+> = TelemetryChannel::new();
 
 use model::types::PeripheralError;
 
@@ -151,364 +413,10 @@ impl BlockingSystemWriter for () {
     }
 }
 
-/// A macro to define and spawn the Thermal Controller task.
-///
-/// Generates the task definition generic over the battery driver type,
-/// then spawns it on the provided Embassy spawner.
-#[macro_export]
-macro_rules! run_thermal_task {
-    (
-        $spawner:expr,
-        $task_module:ident,
-        $controller:expr,
-        $rx:expr,
-        $telemetry_tx:expr,
-        $battery_type:ty,
-        $cmd_type:ty
-    ) => {
-        mod $task_module {
-            use super::*;
-
-            #[embassy_executor::task]
-            pub async fn task(
-                controller: $crate::thermal_controller::ThermalController<
-                    'static,
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    $battery_type,
-                    $cmd_type,
-                >,
-                rx: embassy_sync::channel::Receiver<
-                    'static,
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    $crate::thermal_controller::ThermalCommand,
-                    4,
-                >,
-                telemetry_tx: embassy_sync::channel::Sender<
-                    'static,
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    model::telemetry::TelemetryRecord,
-                    { $crate::telemetry_controller::CHANNEL_CAPACITY },
-                >,
-            ) {
-                controller.run(rx, telemetry_tx).await;
-            }
-        }
-
-        $spawner
-            .spawn($task_module::task($controller, $rx, $telemetry_tx))
-            .unwrap();
-    };
-}
-
-/// A macro to define and spawn the Battery Controller task.
-///
-/// Generates the task definition generic over the battery driver type,
-/// then spawns it on the provided Embassy spawner.
-#[macro_export]
-macro_rules! run_battery_task {
-    (
-        $spawner:expr,
-        $task_module:ident,
-        $controller:expr,
-        $rx:expr,
-        $telemetry_tx:expr,
-        $battery_type:ty,
-        $charger_type:ty,
-        $pin_type:ty,
-        $cmd_type:ty
-    ) => {
-        mod $task_module {
-            use super::*;
-
-            #[embassy_executor::task]
-            pub async fn task(
-                controller: $crate::battery_controller::BatteryController<
-                    'static,
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    $battery_type,
-                    $charger_type,
-                    $pin_type,
-                    $cmd_type,
-                >,
-                rx: embassy_sync::channel::Receiver<
-                    'static,
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    $crate::battery_controller::BatteryCommand,
-                    4,
-                >,
-                telemetry_tx: embassy_sync::channel::Sender<
-                    'static,
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    model::telemetry::TelemetryRecord,
-                    { $crate::telemetry_controller::CHANNEL_CAPACITY },
-                >,
-            ) {
-                controller.run(rx, telemetry_tx).await;
-            }
-        }
-
-        $spawner
-            .spawn($task_module::task($controller, $rx, $telemetry_tx))
-            .unwrap();
-    };
-}
-
-/// A macro to define and spawn the Motor Controller task.
-///
-/// Generates the task definition generic over the motor and current sensor types,
-/// then spawns it on the provided Embassy spawner.
-#[macro_export]
-macro_rules! run_motor_task {
-    (
-        $spawner:expr,
-        $task_module:ident,
-        $controller:expr,
-        $rx:expr,
-        $telemetry_tx:expr,
-        $motor_type:ty,
-        $current_sensor_type:ty
-    ) => {
-        mod $task_module {
-            use super::*;
-
-            #[embassy_executor::task]
-            pub async fn task(
-                controller: $crate::motor_controller::MotorController<
-                    $motor_type,
-                    $current_sensor_type,
-                >,
-                rx: embassy_sync::channel::Receiver<
-                    'static,
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    $crate::motor_controller::MotorCommand,
-                    4,
-                >,
-                telemetry_tx: embassy_sync::channel::Sender<
-                    'static,
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    model::telemetry::TelemetryRecord,
-                    { $crate::telemetry_controller::CHANNEL_CAPACITY },
-                >,
-            ) {
-                controller.run(rx, telemetry_tx).await;
-            }
-        }
-
-        $spawner
-            .spawn($task_module::task($controller, $rx, $telemetry_tx))
-            .unwrap();
-    };
-}
-
-/// A macro to define and spawn the Sensor Controller task.
-///
-/// Generates the task definition generic over the proximity sensor,
-/// then spawns it on the provided Embassy spawner.
-#[macro_export]
-macro_rules! run_sensor_task {
-    (
-        $spawner:expr,
-        $task_module:ident,
-        $controller:expr,
-        $rx:expr,
-        $sensor_type:ty,
-        $raw_mutex:ty,
-        $pin_type:ty,
-        $cmd_type:ty
-    ) => {
-        mod $task_module {
-            use super::*;
-
-            #[embassy_executor::task]
-            pub async fn task(
-                controller: $crate::sensor_controller::SensorController<
-                    'static,
-                    $sensor_type,
-                    $raw_mutex,
-                    $pin_type,
-                    $cmd_type,
-                >,
-                rx: embassy_sync::channel::Receiver<
-                    'static,
-                    $raw_mutex,
-                    $crate::sensor_controller::SensorCommand,
-                    4,
-                >,
-            ) {
-                controller.run(rx).await;
-            }
-        }
-
-        $spawner
-            .spawn($task_module::task($controller, $rx))
-            .unwrap();
-    };
-}
-
-/// A macro to define and spawn the LED Controller task.
-///
-/// Generates the task definition generic over the LED driver,
-/// then spawns it on the provided Embassy spawner.
-#[macro_export]
-macro_rules! run_led_task {
-    (
-        $spawner:expr,
-        $task_module:ident,
-        $controller:expr,
-        $rx:expr,
-        $telemetry_tx:expr,
-        $driver_type:ty,
-        $raw_mutex:ty
-    ) => {
-        mod $task_module {
-            use super::*;
-
-            #[embassy_executor::task]
-            pub async fn task(
-                controller: $crate::led_controller::LedController<$driver_type>,
-                rx: embassy_sync::channel::Receiver<
-                    'static,
-                    $raw_mutex,
-                    model::types::SystemLedState,
-                    4,
-                >,
-                telemetry_tx: embassy_sync::channel::Sender<
-                    'static,
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    model::telemetry::TelemetryRecord,
-                    { $crate::telemetry_controller::CHANNEL_CAPACITY },
-                >,
-            ) {
-                controller.run(rx, telemetry_tx).await;
-            }
-        }
-
-        $spawner
-            .spawn($task_module::task($controller, $rx, $telemetry_tx))
-            .unwrap();
-    };
-}
-
-/// A macro to define and spawn the Filesystem Controller task.
-///
-/// Generates the task definition generic over the flash type,
-/// then spawns it on the provided Embassy spawner.
-#[macro_export]
-macro_rules! run_filesystem_task {
-    (
-        $spawner:expr,
-        $task_module:ident,
-        $controller:expr,
-        $rx:expr,
-        $flash_type:ty
-    ) => {
-        mod $task_module {
-            use super::*;
-
-            #[embassy_executor::task]
-            pub async fn task(
-                fs: $crate::filesystem_controller::FilesystemController<$flash_type>,
-                rx: $crate::StaticReceiver<$crate::filesystem_controller::FsRequest, 16>,
-            ) {
-                $crate::filesystem_controller::run_filesystem_task(fs, rx).await;
-            }
-        }
-
-        $spawner
-            .spawn($task_module::task($controller, $rx))
-            .unwrap();
-    };
-}
-
-/// A macro to define and spawn the Telemetry Controller task.
-///
-/// Generates the task definition generic over the max record count and buffer size,
-/// then spawns it on the provided Embassy spawner.
-#[macro_export]
-macro_rules! run_telemetry_task {
-    (
-        $spawner:expr,
-        $task_module:ident,
-        $controller:expr,
-        $rx:expr,
-        $max_records:expr
-    ) => {
-        $crate::run_telemetry_task!($spawner, $task_module, $controller, $rx, $max_records, 16);
-    };
-    (
-        $spawner:expr,
-        $task_module:ident,
-        $controller:expr,
-        $rx:expr,
-        $max_records:expr,
-        $channel_size:expr
-    ) => {
-        mod $task_module {
-            use super::*;
-
-            #[embassy_executor::task]
-            pub async fn task(
-                mut controller: &'static mut $crate::telemetry_controller::TelemetryController<
-                    $max_records,
-                    { model::telemetry::BUFFER_SIZE },
-                >,
-                rx: $crate::StaticReceiver<model::telemetry::TelemetryRecord, $channel_size>,
-            ) {
-                controller.run(rx).await;
-            }
-        }
-
-        $spawner
-            .spawn($task_module::task($controller, $rx))
-            .unwrap();
-    };
-}
-
-/// Helper macro to declare static embassy channels with CriticalSectionRawMutex.
-///
-/// Example:
-/// ```rust
-/// # use controller::declare_channels;
-/// declare_channels! {
-///     pub static MOTOR_CHANNEL: controller::motor_controller::MotorCommand, capacity = 4;
-///     pub static SYSTEM_CHANNEL: controller::system_controller::SystemCommand, capacity = 4;
-/// }
-/// ```
-#[macro_export]
-macro_rules! declare_channels {
-    (
-        $(
-            $(#[$meta:meta])*
-            $vis:vis static $name:ident : $ty:ty, capacity = $cap:expr;
-        )*
-    ) => {
-        $(
-            $(#[$meta])*
-            $vis static $name: $crate::StaticChannel<$ty, $cap> = $crate::StaticChannel::new();
-        )*
-    };
-}
-
-/// Type alias for an Embassy channel.
-pub type Channel<M, T, const N: usize> = embassy_sync::channel::Channel<M, T, N>;
-
-/// Type alias for an Embassy channel Sender.
-pub type Sender<'a, M, T, const N: usize> = embassy_sync::channel::Sender<'a, M, T, N>;
-
-/// Type alias for an Embassy channel Receiver.
-pub type Receiver<'a, M, T, const N: usize> = embassy_sync::channel::Receiver<'a, M, T, N>;
-
-/// Type alias for an Embassy channel using CriticalSectionRawMutex.
-pub type StaticChannel<T, const N: usize> =
-    Channel<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, T, N>;
-
-/// Type alias for an Embassy channel Sender using CriticalSectionRawMutex.
-pub type StaticSender<T, const N: usize> =
-    Sender<'static, embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, T, N>;
-
-/// Type alias for an Embassy channel Receiver using CriticalSectionRawMutex.
-pub type StaticReceiver<T, const N: usize> =
-    Receiver<'static, embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, T, N>;
+// Define generic type aliases to be used by implementations
+pub use embassy_sync::channel::Channel;
+pub use embassy_sync::channel::Receiver;
+pub use embassy_sync::channel::Sender;
 
 impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: usize>
     BlockingMotorWriter for MotorSender<MutexRaw, N>
@@ -532,4 +440,149 @@ impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: u
         self.try_send(SystemCommand::ActivityDetected)
             .map_err(|_| PeripheralError::DeviceNotAvailable)
     }
+}
+
+/// Macro to spawn any permutation of controllers concurrently on the provided spawner.
+///
+/// Automatically handles telemetry wiring and extracts channel receivers.
+#[macro_export]
+macro_rules! spawn_controllers {
+    // With explicit telemetry channel
+    (
+        $spawner:expr,
+        telemetry: $telemetry:expr,
+        controllers: {
+            $(
+                $name:ident ( $controller:expr, $rx:ident $(, $gesture_rx:ident)? )
+                , generics: ($($gen:tt)*)
+            ),* $(,)?
+        }
+    ) => {
+        $(
+            $crate::spawn_single_controller!(
+                $spawner,
+                $name,
+                $controller,
+                $rx,
+                $telemetry,
+                ($( $gesture_rx )?),
+                ($($gen)*)
+            );
+        )*
+    };
+
+    // Without explicit telemetry channel (defaults to DUMMY_TELEMETRY_CHANNEL)
+    (
+        $spawner:expr,
+        controllers: {
+            $(
+                $name:ident ( $controller:expr, $rx:ident $(, $gesture_rx:ident)? )
+                , generics: ($($gen:tt)*)
+            ),* $(,)?
+        }
+    ) => {
+        $crate::spawn_controllers!(
+            $spawner,
+            telemetry: $crate::DUMMY_TELEMETRY_CHANNEL,
+            controllers: {
+                $(
+                    $name ( $controller, $rx $(, $gesture_rx)? )
+                    , generics: ($($gen)*)
+                ),*
+            }
+        );
+    };
+}
+
+/// Helper macro to delegate the spawning of a single controller to its respective task macro.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! spawn_single_controller {
+    // Led
+    ($spawner:expr, Led, $controller:expr, $rx:ident, $telemetry:expr, (), ($driver_type:ty)) => {
+        $crate::run_led_task!(
+            $spawner,
+            $rx,
+            $controller,
+            $rx.receiver(),
+            $telemetry.sender(),
+            $driver_type
+        );
+    };
+    // Battery
+    ($spawner:expr, Battery, $controller:expr, $rx:ident, $telemetry:expr, (), ($battery_type:ty, $charger_type:ty, $pin_type:ty, $cmd_type:ty)) => {
+        $crate::run_battery_task!(
+            $spawner,
+            $rx,
+            $controller,
+            $rx.receiver(),
+            $telemetry.sender(),
+            $battery_type,
+            $charger_type,
+            $pin_type,
+            $cmd_type
+        );
+    };
+    // Thermal
+    ($spawner:expr, Thermal, $controller:expr, $rx:ident, $telemetry:expr, (), ($battery_type:ty, $cmd_type:ty)) => {
+        $crate::run_thermal_task!(
+            $spawner,
+            $rx,
+            $controller,
+            $rx.receiver(),
+            $telemetry.sender(),
+            $battery_type,
+            $cmd_type
+        );
+    };
+    // Sensor
+    ($spawner:expr, Sensor, $controller:expr, $rx:ident, $telemetry:expr, (), ($sensor_type:ty, $pin_type:ty, $cmd_type:ty)) => {
+        $crate::run_sensor_task!(
+            $spawner,
+            $rx,
+            $controller,
+            $rx.receiver(),
+            $sensor_type,
+            $pin_type,
+            $cmd_type
+        );
+    };
+    // Motor
+    ($spawner:expr, Motor, $controller:expr, $rx:ident, $telemetry:expr, (), ($motor_type:ty, $current_sensor_type:ty)) => {
+        $crate::run_motor_task!(
+            $spawner,
+            $rx,
+            $controller,
+            $rx.receiver(),
+            $telemetry.sender(),
+            $motor_type,
+            $current_sensor_type
+        );
+    };
+    // Filesystem
+    ($spawner:expr, Filesystem, $controller:expr, $rx:ident, $telemetry:expr, (), ($flash_type:ty)) => {
+        $crate::run_filesystem_task!($spawner, $rx, $controller, $rx.receiver(), $flash_type);
+    };
+    // Telemetry
+    ($spawner:expr, Telemetry, $controller:expr, $rx:ident, $telemetry:expr, (), ($max_records:expr, $channel_size:expr)) => {
+        $crate::run_telemetry_task!(
+            $spawner,
+            $rx,
+            $controller,
+            $rx.receiver(),
+            $max_records,
+            $channel_size
+        );
+    };
+    // System
+    ($spawner:expr, System, $controller:expr, $rx:ident, $telemetry:expr, ($gesture_rx:ident), ($controller_type:ty)) => {
+        $crate::run_system_task!(
+            $spawner,
+            $rx,
+            $controller,
+            $controller_type,
+            $rx.receiver(),
+            $gesture_rx.receiver()
+        );
+    };
 }

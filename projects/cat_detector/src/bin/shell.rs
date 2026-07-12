@@ -235,7 +235,6 @@ async fn main(spawner: Spawner) {
     struct AppConfig;
     controller::impl_shell_config! {
         AppConfig {
-            MutexRaw: embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
             I2c = I2cBus,
             Motor = MotorDevice,
             Flash = FlashDevice,
