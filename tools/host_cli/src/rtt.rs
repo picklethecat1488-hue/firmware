@@ -265,8 +265,8 @@ pub struct RttOptions<'a> {
     pub raw: bool,
     /// Dump logs from memory partition
     pub dump_mem: bool,
-    /// Do not reset target on connection
-    pub no_reset: bool,
+    /// Reset target on connection
+    pub reset: bool,
     /// Host for openocd connection
     pub openocd_host: Option<&'a str>,
     /// Output raw console telemetry
@@ -285,7 +285,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         dump,
         raw,
         dump_mem,
-        no_reset,
+        reset,
         openocd_host,
         show_raw_cli,
         spinner,
@@ -369,7 +369,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                     Ok(mut session) => {
                         {
                             let mut core = session.core(0)?;
-                            if !no_reset && !is_reconnecting {
+                            if reset && !is_reconnecting {
                                 spinner.set_message("Resetting target CPU...");
                                 let _ = core.reset();
                                 std::thread::sleep(Duration::from_millis(100));
