@@ -615,6 +615,7 @@ fn log_crash_and_reset_impl<
     let (log_buf, cbor_buf) = unsafe { SCRATCH_BUF.split_at_mut(1500) };
 
     // 2. Extract logs from CRASH_LOG_BUFFER into a contiguous slice
+    defmt::error!("--- PANIC ---");
     let logs_len = critical_section::with(|cs| extract_system_logs(&cs, log_buf));
     let logs_slice = &log_buf[..logs_len];
 

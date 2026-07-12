@@ -10,6 +10,46 @@ use crate::{
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::interfaces::TemperatureSensor;
 
+/// A guard that locks the shared filesystem scratch buffer for exclusive access.
+/// Releases the lock when dropped.
+pub struct FsBufferGuard<'a> {
+    buffer: *mut [u8],
+    lock: &'a core::cell::Cell<bool>,
+}
+
+unsafe impl<'a> Send for FsBufferGuard<'a> {}
+unsafe impl<'a> Sync for FsBufferGuard<'a> {}
+
+impl<'a> core::ops::Deref for FsBufferGuard<'a> {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.buffer }
+    }
+}
+
+impl<'a> core::ops::DerefMut for FsBufferGuard<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.buffer }
+    }
+}
+
+impl<'a> Drop for FsBufferGuard<'a> {
+    fn drop(&mut self) {
+        self.lock.set(false);
+    }
+}
+
+impl<'a> FsBufferGuard<'a> {
+    /// Retrieve the underlying static buffer reference.
+    ///
+    /// # Safety
+    /// The caller must ensure that the returned static reference is not stored
+    /// or used after this guard is dropped.
+    pub unsafe fn as_static_mut(&mut self) -> &'static mut [u8] {
+        &mut *self.buffer
+    }
+}
+
 /// Configuration trait for the ShellController.
 /// Encapsulates the target-specific raw mutex and peripheral types.
 pub trait ShellConfig {
@@ -35,236 +75,256 @@ pub trait ShellConfig {
     type SystemCtrl: crate::BlockingSystemWriter + 'static;
 }
 
-/// A generic implementation of ShellConfig that enables type inference.
-#[allow(clippy::type_complexity)]
-pub struct ShellConfigImpl<
-    MutexRaw,
-    I2c = crate::DummyI2c,
-    Motor = crate::DummyMotor,
-    Flash = crate::DummyFlash,
-    TempSensor = crate::DummyTempSensor,
-    BatteryCtrl = (),
-    ThermalCtrl = (),
-    SensorCtrl = (),
-    MotorCtrl = (),
-    SystemCtrl = (),
->(
-    core::marker::PhantomData<(
-        MutexRaw,
-        I2c,
-        Motor,
-        Flash,
-        TempSensor,
-        BatteryCtrl,
-        ThermalCtrl,
-        SensorCtrl,
-        MotorCtrl,
-        SystemCtrl,
-    )>,
-);
+/// Helper macro to extract a type by name from a list of key-value pairs, or fallback to a default type.
+#[macro_export]
+macro_rules! get_key_or_default {
+    (I2c, [ I2c = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
+    (Motor, [ Motor = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
+    (Flash, [ Flash = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
+    (TempSensor, [ TempSensor = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
+    (BatteryCtrl, [ BatteryCtrl = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
+    (ThermalCtrl, [ ThermalCtrl = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
+    (SensorCtrl, [ SensorCtrl = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
+    (MotorCtrl, [ MotorCtrl = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
+    (SystemCtrl, [ SystemCtrl = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
 
-impl<
-        MutexRaw: RawMutex + 'static,
-        I2c: embedded_hal::i2c::I2c + 'static,
-        Motor: model::interfaces::Motor + 'static,
-        Flash: embedded_storage::nor_flash::NorFlash + 'static,
-        TempSensor: TemperatureSensor + 'static,
-        BatteryCtrl: BlockingBatteryReader + 'static,
-        ThermalCtrl: BlockingThermalReader + 'static,
-        SensorCtrl: BlockingProximityReader + 'static,
-        MotorCtrl: BlockingMotorReader + BlockingMotorWriter + 'static,
-        SystemCtrl: crate::BlockingSystemWriter + 'static,
-    > ShellConfig
-    for ShellConfigImpl<
-        MutexRaw,
-        I2c,
-        Motor,
-        Flash,
-        TempSensor,
-        BatteryCtrl,
-        ThermalCtrl,
-        SensorCtrl,
-        MotorCtrl,
-        SystemCtrl,
-    >
-{
-    type MutexRaw = MutexRaw;
-    type I2c = I2c;
-    type Motor = Motor;
-    type Flash = Flash;
-    type BatteryCtrl = BatteryCtrl;
-    type ThermalCtrl = ThermalCtrl;
-    type SensorCtrl = SensorCtrl;
-    type MotorCtrl = MotorCtrl;
-    type TempSensor = TempSensor;
-    type SystemCtrl = SystemCtrl;
+    // Fallthrough: discard non-matching head and recurse
+    ($key:ident, [ $other:ident = $val:ty, $($rest:tt)* ], $default:ty) => {
+        $crate::get_key_or_default!($key, [ $($rest)* ], $default)
+    };
+
+    // Base case: key not found
+    ($key:ident, [], $default:ty) => { $default };
 }
 
-/// Controller responsible for processing shell commands.
-/// Context pointers to drivers and controllers for direct diagnostics.
-pub struct ShellControllerPointers<'a, C: ShellConfig> {
-    /// Named I2C buses.
-    pub i2c_buses: &'a [crate::NamedDevice<C::I2c>],
-    /// Named motor drivers.
-    pub motors: &'a [crate::NamedDevice<C::Motor>],
-    /// Named flash storage partitions.
-    pub flash_partitions: &'a [crate::NamedPartition<C::Flash>],
-    /// Named battery gauges.
-    pub batteries: &'a [crate::NamedDevice<C::BatteryCtrl>],
-    /// Named thermal sensors.
-    pub thermals: &'a [crate::NamedDevice<C::ThermalCtrl>],
-    /// Named sensor controllers.
-    pub sensors: &'a [crate::NamedDevice<C::SensorCtrl>],
-    /// Named motor current controllers.
-    pub motor_ctrls: &'a [crate::NamedDevice<C::MotorCtrl>],
-    /// Named microcontroller temperature sensors.
-    pub temp_sensors: &'a [crate::NamedDevice<C::TempSensor>],
-    /// Named system controllers.
-    pub system_ctrls: &'a [crate::NamedDevice<C::SystemCtrl>],
-}
-
-impl<'a, C: ShellConfig> Default for ShellControllerPointers<'a, C> {
-    fn default() -> Self {
-        Self {
-            i2c_buses: &[],
-            motors: &[],
-            flash_partitions: &[],
-            batteries: &[],
-            thermals: &[],
-            sensors: &[],
-            motor_ctrls: &[],
-            temp_sensors: &[],
-            system_ctrls: &[],
+/// Macro to implement the `ShellConfig` trait for a custom configuration struct.
+///
+/// Permits specifying the associated types in any order, defaulting unspecified ones to `()`.
+#[macro_export]
+macro_rules! impl_shell_config {
+    (
+        $name:ty {
+            MutexRaw: $mutex:ty,
+            $($key:ident = $val:ty),* $(,)?
         }
-    }
-}
-
-/// Trait to resolve devices and partitions for CLI handlers.
-#[allow(clippy::mut_from_ref)]
-pub trait ShellDeviceResolver<C: ShellConfig> {
-    /// Resolves the I2C bus device.
-    fn resolve_i2c(&self, name: Option<&str>) -> Result<&mut C::I2c, &'static str>;
-    /// Resolves the motor device.
-    fn resolve_motor(&self, name: Option<&str>) -> Result<&mut C::Motor, &'static str>;
-    /// Resolves the battery controller device.
-    fn resolve_battery(&self, name: Option<&str>) -> Result<&mut C::BatteryCtrl, &'static str>;
-    /// Resolves the thermal controller device.
-    fn resolve_thermal(&self, name: Option<&str>) -> Result<&mut C::ThermalCtrl, &'static str>;
-    /// Resolves the proximity sensor controller device.
-    fn resolve_sensor(&self, name: Option<&str>) -> Result<&mut C::SensorCtrl, &'static str>;
-    /// Resolves the motor controller device.
-    fn resolve_motor_ctrl(&self, name: Option<&str>) -> Result<&mut C::MotorCtrl, &'static str>;
-    /// Resolves the microcontroller temperature sensor device.
-    fn resolve_temp_sensor(&self, name: Option<&str>) -> Result<&mut C::TempSensor, &'static str>;
-    /// Resolves the system controller device.
-    fn resolve_system_ctrl(&self, name: Option<&str>) -> Result<&mut C::SystemCtrl, &'static str>;
-    /// Resolves the flash partition.
-    fn resolve_partition(
-        &self,
-        name: Option<&str>,
-    ) -> Result<crate::FlashPartition<C::Flash>, &'static str>;
-}
-
-/// Controller responsible for processing shell commands.
-pub struct ShellController<'a, C: ShellConfig> {
-    i2c_buses: &'a [crate::NamedDevice<C::I2c>],
-    motors: &'a [crate::NamedDevice<C::Motor>],
-    flash_partitions: &'a [crate::NamedPartition<C::Flash>],
-    batteries: &'a [crate::NamedDevice<C::BatteryCtrl>],
-    thermals: &'a [crate::NamedDevice<C::ThermalCtrl>],
-    sensors: &'a [crate::NamedDevice<C::SensorCtrl>],
-    motor_ctrls: &'a [crate::NamedDevice<C::MotorCtrl>],
-    temp_sensors: &'a [crate::NamedDevice<C::TempSensor>],
-    system_ctrls: &'a [crate::NamedDevice<C::SystemCtrl>],
-}
-
-// Implement Send and Sync manually since ShellController contains raw pointers
-unsafe impl<'a, C: ShellConfig> Send for ShellController<'a, C> {}
-unsafe impl<'a, C: ShellConfig> Sync for ShellController<'a, C> {}
-
-impl<'a, C: ShellConfig> ShellController<'a, C> {
-    /// Creates a new ShellController.
-    pub fn new(pointers: ShellControllerPointers<'a, C>) -> Self {
-        Self {
-            i2c_buses: pointers.i2c_buses,
-            motors: pointers.motors,
-            flash_partitions: pointers.flash_partitions,
-            batteries: pointers.batteries,
-            thermals: pointers.thermals,
-            sensors: pointers.sensors,
-            motor_ctrls: pointers.motor_ctrls,
-            temp_sensors: pointers.temp_sensors,
-            system_ctrls: pointers.system_ctrls,
+    ) => {
+        impl $crate::shell_controller::ShellConfig for $name {
+            type MutexRaw = $mutex;
+            type I2c = $crate::get_key_or_default!(I2c, [ $($key = $val,)* ], ());
+            type Motor = $crate::get_key_or_default!(Motor, [ $($key = $val,)* ], ());
+            type Flash = $crate::get_key_or_default!(Flash, [ $($key = $val,)* ], ());
+            type TempSensor = $crate::get_key_or_default!(TempSensor, [ $($key = $val,)* ], ());
+            type BatteryCtrl = $crate::get_key_or_default!(BatteryCtrl, [ $($key = $val,)* ], ());
+            type ThermalCtrl = $crate::get_key_or_default!(ThermalCtrl, [ $($key = $val,)* ], ());
+            type SensorCtrl = $crate::get_key_or_default!(SensorCtrl, [ $($key = $val,)* ], ());
+            type MotorCtrl = $crate::get_key_or_default!(MotorCtrl, [ $($key = $val,)* ], ());
+            type SystemCtrl = $crate::get_key_or_default!(SystemCtrl, [ $($key = $val,)* ], ());
         }
-    }
-
-    /// Resolves a named device from a slice of NamedDevice entries.
-    /// If no name is provided, it defaults to the first available device.
-    #[allow(clippy::mut_from_ref)]
-    pub fn resolve_device<'b, D>(
-        &self,
-        devices: &'b [crate::NamedDevice<D>],
-        name: Option<&str>,
-    ) -> Result<&'b mut D, &'static str> {
-        let matched = match name {
-            Some(n) => devices.iter().find(|d| d.name == n),
-            None => devices.first(),
-        };
-        matched
-            .map(|d| unsafe { &mut *d.device })
-            .ok_or("Requested device not found or none registered")
-    }
-
-    /// Resolves a named partition from a slice of NamedPartition entries.
-    /// If no name is provided, it defaults to the first available partition.
-    pub fn resolve_partition(
-        &self,
-        name: Option<&str>,
-    ) -> Result<crate::FlashPartition<C::Flash>, &'static str> {
-        let matched = match name {
-            Some(n) => self.flash_partitions.iter().find(|p| p.name == n),
-            None => self.flash_partitions.first(),
-        };
-        matched
-            .map(|p| p.partition)
-            .ok_or("Requested flash partition not found or none registered")
-    }
+    };
 }
 
-impl<'a, C: ShellConfig> ShellDeviceResolver<C> for ShellController<'a, C> {
-    fn resolve_i2c(&self, name: Option<&str>) -> Result<&mut C::I2c, &'static str> {
-        self.resolve_device(self.i2c_buses, name)
-    }
-    fn resolve_motor(&self, name: Option<&str>) -> Result<&mut C::Motor, &'static str> {
-        self.resolve_device(self.motors, name)
-    }
-    fn resolve_battery(&self, name: Option<&str>) -> Result<&mut C::BatteryCtrl, &'static str> {
-        self.resolve_device(self.batteries, name)
-    }
-    fn resolve_thermal(&self, name: Option<&str>) -> Result<&mut C::ThermalCtrl, &'static str> {
-        self.resolve_device(self.thermals, name)
-    }
-    fn resolve_sensor(&self, name: Option<&str>) -> Result<&mut C::SensorCtrl, &'static str> {
-        self.resolve_device(self.sensors, name)
-    }
-    fn resolve_motor_ctrl(&self, name: Option<&str>) -> Result<&mut C::MotorCtrl, &'static str> {
-        self.resolve_device(self.motor_ctrls, name)
-    }
-    fn resolve_temp_sensor(&self, name: Option<&str>) -> Result<&mut C::TempSensor, &'static str> {
-        self.resolve_device(self.temp_sensors, name)
-    }
-    fn resolve_system_ctrl(&self, name: Option<&str>) -> Result<&mut C::SystemCtrl, &'static str> {
-        self.resolve_device(self.system_ctrls, name)
-    }
-    fn resolve_partition(
-        &self,
-        name: Option<&str>,
-    ) -> Result<crate::FlashPartition<C::Flash>, &'static str> {
-        self.resolve_partition(name)
-    }
+/// Macro to define `ShellControllerPointers`, `ShellController`, and the `ShellDeviceResolver` trait.
+///
+/// This serves as the single source of truth for all shell metadata required to support subcommands.
+macro_rules! define_shell_resolver_and_controller {
+    (
+        $(
+            #[doc = $doc:expr]
+            $associated_type:ident, $field:ident, $resolve_fn:ident
+        ),* $(,)?
+    ) => {
+        /// Controller responsible for processing shell commands.
+        /// Context pointers to drivers and controllers for direct diagnostics.
+        pub struct ShellControllerPointers<'a, C: ShellConfig> {
+            $(
+                #[doc = $doc]
+                pub $field: &'a [crate::NamedDevice<C::$associated_type>],
+            )*
+            /// Named flash storage partitions.
+            pub flash_partitions: &'a [crate::NamedPartition<C::Flash>],
+            /// Shared filesystem scratch buffer.
+            pub fs_buffer: &'a mut [u8],
+        }
+
+        impl<'a, C: ShellConfig> Default for ShellControllerPointers<'a, C> {
+            fn default() -> Self {
+                Self {
+                    $( $field: &[], )*
+                    flash_partitions: &[],
+                    fs_buffer: &mut [],
+                }
+            }
+        }
+
+        /// Trait to resolve devices and partitions for CLI handlers.
+        #[allow(clippy::mut_from_ref)]
+        pub trait ShellDeviceResolver<C: ShellConfig> {
+            $(
+                #[doc = $doc]
+                fn $resolve_fn(&self, name: Option<&str>) -> Result<&mut C::$associated_type, &'static str>;
+            )*
+            /// Resolves the flash partition.
+            fn resolve_partition(
+                &self,
+                name: Option<&str>,
+            ) -> Result<crate::FlashPartition<C::Flash>, &'static str>;
+            /// Lock the shared filesystem scratch buffer for exclusive access.
+            fn lock_fs_buffer(&self) -> Result<crate::shell_controller::FsBufferGuard<'_>, &'static str>;
+        }
+
+        /// Controller responsible for processing shell commands.
+        pub struct ShellController<'a, C: ShellConfig> {
+            $( $field: &'a [crate::NamedDevice<C::$associated_type>], )*
+            flash_partitions: &'a [crate::NamedPartition<C::Flash>],
+            fs_buffer: *mut [u8],
+            fs_buffer_locked: core::cell::Cell<bool>,
+        }
+
+        // Implement Send and Sync manually since ShellController contains raw pointers
+        unsafe impl<'a, C: ShellConfig> Send for ShellController<'a, C> {}
+        unsafe impl<'a, C: ShellConfig> Sync for ShellController<'a, C> {}
+
+        impl<'a, C: ShellConfig> ShellController<'a, C> {
+            /// Creates a new ShellController.
+            pub fn new(pointers: ShellControllerPointers<'a, C>) -> Self {
+                Self {
+                    $( $field: pointers.$field, )*
+                    flash_partitions: pointers.flash_partitions,
+                    fs_buffer: pointers.fs_buffer as *mut [u8],
+                    fs_buffer_locked: core::cell::Cell::new(false),
+                }
+            }
+
+            /// Resolves a named device from a slice of NamedDevice entries.
+            /// If no name is provided, it defaults to the first available device.
+            #[allow(clippy::mut_from_ref)]
+            pub fn resolve_device<'b, D>(
+                &self,
+                devices: &'b [crate::NamedDevice<D>],
+                name: Option<&str>,
+            ) -> Result<&'b mut D, &'static str> {
+                let matched = match name {
+                    Some(n) => devices.iter().find(|d| d.name == n),
+                    None => devices.first(),
+                };
+                matched
+                    .map(|d| unsafe { &mut *d.device })
+                    .ok_or("Requested device not found or none registered")
+            }
+
+            /// Resolves a named partition from a slice of NamedPartition entries.
+            /// If no name is provided, it defaults to the first available partition.
+            pub fn resolve_partition(
+                &self,
+                name: Option<&str>,
+            ) -> Result<crate::FlashPartition<C::Flash>, &'static str> {
+                let matched = match name {
+                    Some(n) => self.flash_partitions.iter().find(|p| p.name == n),
+                    None => self.flash_partitions.first(),
+                };
+                matched
+                    .map(|p| p.partition)
+                    .ok_or("Requested flash partition not found or none registered")
+            }
+        }
+
+        impl<'a, C: ShellConfig> ShellDeviceResolver<C> for ShellController<'a, C> {
+            $(
+                fn $resolve_fn(&self, name: Option<&str>) -> Result<&mut C::$associated_type, &'static str> {
+                    self.resolve_device(self.$field, name)
+                }
+            )*
+            fn resolve_partition(
+                &self,
+                name: Option<&str>,
+            ) -> Result<crate::FlashPartition<C::Flash>, &'static str> {
+                self.resolve_partition(name)
+            }
+            fn lock_fs_buffer(&self) -> Result<crate::shell_controller::FsBufferGuard<'_>, &'static str> {
+                if self.fs_buffer_locked.get() {
+                    return Err("Filesystem scratch buffer is already locked");
+                }
+                if unsafe { (&*self.fs_buffer).is_empty() } {
+                    return Err("Filesystem scratch buffer is not configured");
+                }
+                self.fs_buffer_locked.set(true);
+                Ok(crate::shell_controller::FsBufferGuard {
+                    buffer: self.fs_buffer,
+                    lock: &self.fs_buffer_locked,
+                })
+            }
+        }
+    };
+}
+
+define_shell_resolver_and_controller! {
+    #[doc = "Named I2C buses."]
+    I2c, i2c_buses, resolve_i2c,
+
+    #[doc = "Named motor drivers."]
+    Motor, motors, resolve_motor,
+
+    #[doc = "Named battery gauges."]
+    BatteryCtrl, batteries, resolve_battery,
+
+    #[doc = "Named thermal sensors."]
+    ThermalCtrl, thermals, resolve_thermal,
+
+    #[doc = "Named sensor controllers."]
+    SensorCtrl, sensors, resolve_sensor,
+
+    #[doc = "Named motor current controllers."]
+    MotorCtrl, motor_ctrls, resolve_motor_ctrl,
+
+    #[doc = "Named microcontroller temperature sensors."]
+    TempSensor, temp_sensors, resolve_temp_sensor,
+
+    #[doc = "Named system controllers."]
+    SystemCtrl, system_ctrls, resolve_system_ctrl,
 }
 
 /// Helper macro to append a specific command group's variant and match arm to the accumulator.
+///
+/// ### Wildcard Forwarding & Custom Command Processors
+///
+/// In modular firmware designs, different projects (app crates) want to extend the interactive CLI
+/// console with their own custom, project-specific command sets (e.g. `cat_detector` might add a `dispense`
+/// or `status` command) while still reusing the shared controller diagnostic commands (`motor`, `system`, `fs`, etc.).
+///
+/// To support this without modifying the generic `ShellController` codebase, `declare_shell_commands!`
+/// supports generating a **wrapper processor** struct (e.g. `CatDetectorCliProcessor`).
+///
+/// 1. **Custom enum with a Wildcard**:
+///    The application defines a custom command enum (e.g., `AppCli`) that includes a catch-all wildcard variant:
+///    ```rust
+///    #[derive(embedded_cli::Command)]
+///    pub enum AppCli<'a> {
+///        Dispense,
+///        // Catch all other commands to forward them
+///        #[command(wildcard)]
+///        Other(embedded_cli::command::RawCommand<'a>),
+///    }
+///    ```
+///
+/// 2. **Custom Processor Delegating via Wildcard Forwarding**:
+///    The application then implements `CommandProcessor` for its own processor, intercepting its custom variants,
+///    and forwarding the raw command in the `Other` variant directly to the wrapper processor:
+///    ```rust
+///    impl<'a, 'b, W, E> CommandProcessor<W, E> for AppProcessor<'a, 'b> {
+///        fn process(&mut self, cli: &mut CliHandle<W, E>, raw: RawCommand) -> Result<(), ProcessError<E>> {
+///            match AppCli::parse(raw) {
+///                Ok(AppCli::Dispense) => { self.handle_dispense(cli) }
+///                Ok(AppCli::Other(raw_subcmd)) => {
+///                    // Forward unhandled commands to the controller's wrapper processor
+///                    self.wrapper_processor.process(cli, raw_subcmd)
+///                }
+///                Err(err) => Err(err)
+///            }
+///        }
+///    }
+///    ```
+/// This design keeps the controllers completely decoupled from the specific applications while allowing
+/// infinite CLI customizability and code reuse.
 #[macro_export]
 macro_rules! append_group_arm {
     (Battery, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
@@ -334,10 +394,10 @@ macro_rules! append_group_arm {
     (Fs, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
         $crate::declare_shell_commands!(@accum $name, $ctrl, $writer, [$($tail),*] -> [
             $($variants)*
-            /// Filesystem commands (fs format)
+            /// Filesystem commands (fs format, fs ls)
             #[command(name = "fs")]
             Fs {
-                /// Subcommand (format)
+                /// Subcommand (format, ls)
                 subcommand: Option<&'a str>,
             },
         ] [
@@ -553,16 +613,4 @@ macro_rules! declare_shell_commands {
     (@accum $name:ident, $ctrl:ident, $writer:ident, [] -> [$($variants:tt)*] [$($matches:tt)*] -> wrapper, $proc_name:ident) => {
         $crate::emit_wrapper_commands!($name, $proc_name, $ctrl, $writer, [$($variants)*], [$($matches)*]);
     };
-}
-
-crate::declare_shell_commands! {
-    @direct
-    DefaultShellCli {
-        Battery,
-        Thermal,
-        Motor,
-        Sensor,
-        Fs,
-        System,
-    }
 }

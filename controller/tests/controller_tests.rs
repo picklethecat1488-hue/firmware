@@ -1,5 +1,6 @@
 use controller::battery_controller::FromBatteryUpdate;
-use controller::motor_controller::{MotorCommand, MotorController, MotorState};
+use controller::motor_controller::{MotorCommand, MotorController};
+use controller::MotorState;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct TestCmd(pub u8);
@@ -409,7 +410,8 @@ fn test_motor_controller_rpm_command() {
 
 #[test]
 fn test_motor_limits_checking() {
-    use controller::motor_controller::{MotorLimits, MotorSafetyStatus};
+    use controller::motor_controller::MotorLimits;
+    use controller::MotorSafetyStatus;
 
     let limits = MotorLimits {
         min_current_ma: 80,

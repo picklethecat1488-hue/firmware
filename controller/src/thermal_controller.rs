@@ -2,6 +2,8 @@
 
 #![deny(missing_docs)]
 
+use crate::types::ThermalState;
+use crate::{Sender, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
@@ -9,28 +11,10 @@ use model::interfaces::TemperatureSensor;
 use model::types::PeripheralError;
 use peripherals::ToPeripheralError;
 
-/// Current thermal status of the system.
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
-#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
-pub enum ThermalState {
-    /// System temperature is normal.
-    Normal,
-    /// System is overheating.
-    Overheating,
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-impl core::fmt::Debug for ThermalState {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str("ThermalState")
-    }
-}
-
 /// A controller that periodically monitors system temperature from temperature sensors.
 pub struct ThermalController<'a, M: RawMutex, B, Cmd = ()> {
     temp: &'a Mutex<M, B>,
-    system_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
+    system_tx: Option<Sender<'a, M, Cmd, 4>>,
     shutdown_cmd: Option<Cmd>,
     state: ThermalState,
     overheating_temp_milli_c: i32,
@@ -57,7 +41,7 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
     /// Creates a new thermal controller with safety shutdown capabilities.
     pub fn new_with_shutdown(
         temp: &'a Mutex<M, B>,
-        system_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        system_tx: Sender<'a, M, Cmd, 4>,
         shutdown_cmd: Cmd,
     ) -> Self {
         Self {
@@ -148,11 +132,9 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
     /// Starts the controller's main infinite run loop, processing commands.
     pub async fn run(
         mut self,
-        command_rx: embassy_sync::channel::Receiver<'static, M, ThermalCommand, 4>,
-        telemetry_tx: embassy_sync::channel::Sender<
-            'static,
+        command_rx: ThermalReceiver<M, 4>,
+        telemetry_tx: TelemetrySender<
             CriticalSectionRawMutex,
-            model::telemetry::TelemetryRecord,
             { crate::telemetry_controller::CHANNEL_CAPACITY },
         >,
     ) -> ! {
@@ -201,6 +183,13 @@ pub enum ThermalCommand {
     CheckTemp,
 }
 
+crate::define_controller_channels!(
+    ThermalChannel,
+    ThermalSender,
+    ThermalReceiver,
+    ThermalCommand
+);
+
 /// Thermal-specific CLI commands
 #[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
 pub enum ThermalCliCommand {
@@ -241,7 +230,7 @@ pub fn process_thermal_command<
                 .map_err(|_| "Direct system temperature reading failed")?;
             let _ = core::writeln!(
                 writer,
-                "\r\nSystem temperature reading: {}.{:03} C",
+                "\r\nDirect system temperature reading (RP2040): {}.{:03} C",
                 temp / 1000,
                 (temp.abs() % 1000)
             );
@@ -260,15 +249,13 @@ pub fn handle_thermal_cli<
     subcommand: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let thermal_ctrl = resolver.resolve_thermal(None)?;
     let temp_sensor = resolver.resolve_temp_sensor(None).ok();
     match subcommand {
         Some("status") => {
+            let thermal_ctrl = resolver.resolve_thermal(None)?;
             process_thermal_command(thermal_ctrl, temp_sensor, writer, ThermalCliCommand::Status)
         }
-        Some("mcu") => {
-            process_thermal_command(thermal_ctrl, temp_sensor, writer, ThermalCliCommand::Mcu)
-        }
+        Some("mcu") => process_thermal_command(&(), temp_sensor, writer, ThermalCliCommand::Mcu),
         _ => Err("Invalid thermal subcommand. Expected: status, mcu"),
     }
 }

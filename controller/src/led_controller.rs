@@ -3,12 +3,15 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::LedTelemetryClient;
+use crate::TelemetrySender;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use model::interfaces::LedDriver;
 use model::telemetry::TelemetryClient;
 use model::types::PeripheralError;
 use model::types::SystemLedState;
 use peripherals::ToPeripheralError;
+
+crate::define_controller_channels!(LedChannel, LedSender, LedReceiver, SystemLedState);
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 async fn sleep_ms(ms: u32) {
@@ -114,11 +117,9 @@ where
     /// Runs the controller's command processing loop.
     pub async fn run<M: RawMutex, const SIZE: usize>(
         mut self,
-        command_rx: embassy_sync::channel::Receiver<'static, M, SystemLedState, SIZE>,
-        telemetry_tx: embassy_sync::channel::Sender<
-            'static,
+        command_rx: LedReceiver<M, SIZE>,
+        telemetry_tx: TelemetrySender<
             CriticalSectionRawMutex,
-            model::telemetry::TelemetryRecord,
             { crate::telemetry_controller::CHANNEL_CAPACITY },
         >,
     ) -> ! {

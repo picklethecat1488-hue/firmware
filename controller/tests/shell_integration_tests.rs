@@ -1,5 +1,15 @@
+#![allow(static_mut_refs)]
 use controller::motor_controller::MotorCommand;
-use controller::shell_controller::DefaultShellCli as CliCommand;
+controller::declare_shell_commands! {
+    CliCommand (CliCommandProcessor) {
+        Battery,
+        Thermal,
+        Motor,
+        Sensor,
+        Fs,
+        System,
+    }
+}
 use controller::shell_controller::{ShellController, ShellControllerPointers};
 use controller::system_controller::SystemCommand;
 use controller::{
@@ -11,18 +21,21 @@ use embassy_sync::channel::Channel;
 use embedded_cli::cli::CliBuilder;
 use model::types::PeripheralError;
 
-type TestConfig = controller::shell_controller::ShellConfigImpl<
-    CriticalSectionRawMutex,
-    DummyI2c,
-    MockMotor,
-    MockFlash,
-    MockTempSensor,
-    MockBatteryCtrl,
-    MockThermalCtrl,
-    MockSensorCtrl,
-    MockMotorCtrl,
-    embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, SystemCommand, 4>,
->;
+struct TestConfig;
+controller::impl_shell_config! {
+    TestConfig {
+        MutexRaw: CriticalSectionRawMutex,
+        Flash = MockFlash,
+        Motor = MockMotor,
+        I2c = DummyI2c,
+        TempSensor = MockTempSensor,
+        BatteryCtrl = MockBatteryCtrl,
+        ThermalCtrl = MockThermalCtrl,
+        SensorCtrl = MockSensorCtrl,
+        MotorCtrl = MockMotorCtrl,
+        SystemCtrl = embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, SystemCommand, 4>,
+    }
+}
 
 struct DummyWriter {
     output: std::vec::Vec<u8>,
@@ -260,6 +273,7 @@ fn test_shell_controller_integration_each_command() {
         device: &mut system_sender as *mut _,
     }];
 
+    static mut TEST_FS_BUF_1: [u8; 4096] = [0u8; 4096];
     let pointers = ShellControllerPointers::<TestConfig> {
         i2c_buses,
         motors,
@@ -270,27 +284,29 @@ fn test_shell_controller_integration_each_command() {
         motor_ctrls,
         temp_sensors,
         system_ctrls,
+        fs_buffer: unsafe { &mut TEST_FS_BUF_1 },
     };
 
     let mut shell = ShellController::<TestConfig>::new(pointers);
+    let mut shell_proc = CliCommandProcessor::new(&mut shell);
 
     let writer = DummyWriter::new();
     let mut cli = CliBuilder::default().writer(writer).build().unwrap();
 
     // Help command first
     for b in b"help\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 1. Motor command
     for b in b"motor speed 42\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
     assert_eq!(motor_ctrl.speed.get(), 42);
 
     // 2. Stop command
     for b in b"motor stop\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
     assert!(matches!(
         MOTOR_CHANNEL.try_receive(),
@@ -299,22 +315,22 @@ fn test_shell_controller_integration_each_command() {
 
     // 3. Battery command
     for b in b"battery status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 4. Thermal command
     for b in b"thermal status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 5. Proximity command
     for b in b"sensor status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 8. Activity command
     for b in b"system activity\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
     assert!(matches!(
         system_chan_check(),
@@ -323,31 +339,39 @@ fn test_shell_controller_integration_each_command() {
 
     // 9. McuTemp command
     for b in b"thermal mcu\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 10. CalNear command
     for b in b"sensor cal_near east\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 11. CalFar command
     for b in b"sensor cal_far west\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 12. CalMotor command
     for b in b"motor calibrate water_100ml\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
+    }
+
+    for b in b"fs format\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
+    }
+
+    for b in b"fs ls\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     for b in b"uart\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     // 13. Help command
     for b in b"help\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 }
 
@@ -362,25 +386,26 @@ fn test_shell_controller_with_missing_controllers() {
     let pointers = ShellControllerPointers::<TestConfig>::default();
 
     let mut shell = ShellController::<TestConfig>::new(pointers);
+    let mut shell_proc = CliCommandProcessor::new(&mut shell);
 
     let writer = DummyWriter::new();
     let mut cli = CliBuilder::default().writer(writer).build().unwrap();
 
     // Verify commands fail gracefully when pointers/controllers are missing
     for b in b"motor speed 42\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     for b in b"battery status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     for b in b"thermal status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
     for b in b"sensor status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell);
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 }
 
@@ -455,6 +480,7 @@ fn test_wrapper_processor_integration() {
         device: &mut temp_sensor as *mut _,
     }];
 
+    static mut TEST_FS_BUF_2: [u8; 4096] = [0u8; 4096];
     let pointers = ShellControllerPointers::<TestConfig> {
         i2c_buses,
         motors,
@@ -464,6 +490,7 @@ fn test_wrapper_processor_integration() {
         sensors,
         motor_ctrls,
         temp_sensors,
+        fs_buffer: unsafe { &mut TEST_FS_BUF_2 },
         ..Default::default()
     };
 
@@ -479,4 +506,51 @@ fn test_wrapper_processor_integration() {
         let _ = cli.process_byte::<TestWrapperCli, _>(*b, &mut wrapper_proc);
     }
     assert_eq!(motor_ctrl.speed.get(), 77);
+}
+
+#[test]
+fn test_fs_buffer_guard_locking() {
+    use controller::shell_controller::ShellDeviceResolver;
+
+    // Test Case 1: Locking configured buffer
+    static mut TEST_BUF: [u8; 128] = [0u8; 128];
+    let pointers = ShellControllerPointers::<TestConfig> {
+        fs_buffer: unsafe { &mut TEST_BUF },
+        ..Default::default()
+    };
+    let shell = ShellController::<TestConfig>::new(pointers);
+
+    // Initial lock should succeed
+    {
+        let mut guard = shell.lock_fs_buffer().expect("Initial lock failed");
+        assert_eq!(guard.len(), 128);
+
+        // Modify buffer through guard DerefMut
+        guard[0] = 42;
+        guard[1] = 99;
+        assert_eq!(guard[0], 42);
+        assert_eq!(guard[1], 99);
+
+        // Attempting to lock again while held should fail
+        let second_lock = shell.lock_fs_buffer();
+        match second_lock {
+            Err(e) => assert_eq!(e, "Filesystem scratch buffer is already locked"),
+            _ => panic!("Expected second lock to fail"),
+        }
+    } // Guard dropped here, lock should release
+
+    // Lock after drop should succeed
+    {
+        let guard = shell.lock_fs_buffer().expect("Lock after release failed");
+        assert_eq!(guard[0], 42);
+    }
+
+    // Test Case 2: Unconfigured buffer
+    let unconfigured_pointers = ShellControllerPointers::<TestConfig>::default();
+    let unconfigured_shell = ShellController::<TestConfig>::new(unconfigured_pointers);
+    let lock_res = unconfigured_shell.lock_fs_buffer();
+    match lock_res {
+        Err(e) => assert_eq!(e, "Filesystem scratch buffer is not configured"),
+        _ => panic!("Expected lock on unconfigured buffer to fail"),
+    }
 }

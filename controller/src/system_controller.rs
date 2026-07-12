@@ -4,13 +4,11 @@
 
 pub use firmware_lib::gesture_detector::ProximityEvent;
 
+use crate::types::{BatteryStatus, Device, DeviceSupport, GestureAction, ProximityAction};
+use crate::Sender;
+use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
-use embassy_sync::channel::Sender;
 use firmware_lib::{BatteryUpdateAction, PeriodicTimer, PowerManager};
-
-/// Alias for the telemetry channel sender.
-pub type TelemetrySender<'a, MutexRaw, const T_CAP: usize> =
-    embassy_sync::channel::Sender<'a, MutexRaw, model::types::TelemetryRecord, T_CAP>;
 
 /// One-way commands to control the global system state and notify it of events.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -45,6 +43,8 @@ pub enum SystemCommand {
     /// A battery action was triggered and processed.
     BatteryAction(BatteryUpdateAction),
 }
+
+crate::define_controller_channels!(SystemChannel, SystemSender, SystemReceiver, SystemCommand);
 
 impl crate::battery_controller::FromBatteryUpdate for SystemCommand {
     fn from_battery_update(state_of_charge: u8, charger_state: ChargeState) -> Self {
@@ -416,8 +416,8 @@ macro_rules! run_system_task {
             #[embassy_executor::task]
             pub async fn task(
                 mut controller: $controller_type,
-                system_rx: $crate::Receiver<$crate::system_controller::SystemCommand, 4>,
-                gesture_rx: $crate::Receiver<model::types::Gesture, 4>,
+                system_rx: $crate::StaticReceiver<$crate::system_controller::SystemCommand, 4>,
+                gesture_rx: $crate::StaticReceiver<model::types::Gesture, 4>,
             ) {
                 controller.run(system_rx, gesture_rx).await;
             }
@@ -504,75 +504,22 @@ pub fn handle_system_cli<
     subcommand: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let system_ctrl = resolver.resolve_system_ctrl(None)?;
+    let mut system_ctrl = resolver.resolve_system_ctrl(None);
     match subcommand {
-        Some("activity") => process_system_command(system_ctrl, writer, SystemCliCommand::Activity),
-        Some("crash") => process_system_command(system_ctrl, writer, SystemCliCommand::Crash),
+        Some("activity") => {
+            if let Ok(ref mut ctrl) = system_ctrl {
+                process_system_command(*ctrl, writer, SystemCliCommand::Activity)
+            } else {
+                let _ = core::writeln!(
+                    writer,
+                    "System controller not registered; activity ignored."
+                );
+                Ok(())
+            }
+        }
+        Some("crash") => process_system_command(&mut (), writer, SystemCliCommand::Crash),
         _ => Err("Invalid system subcommand. Expected: activity, crash"),
     }
-}
-
-/// Actions that can be mapped from gestures.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum GestureAction {
-    /// No action.
-    None,
-    /// Toggle system power state (Active <-> PowerDown).
-    TogglePower,
-}
-
-/// Action returned by the proximity feature update.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ProximityAction {
-    /// No action.
-    None,
-    /// Acquire system wake lock.
-    AcquireWakeLock,
-    /// Release system wake lock.
-    ReleaseWakeLock,
-    /// Wake system if asleep.
-    WakeSystem,
-}
-
-/// Battery status summary passed to features and stored on the system controller.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BatteryStatus {
-    /// True if the battery level is critically low.
-    pub battery_critical: bool,
-    /// True if the charger is connected and charging.
-    pub charger_connected: bool,
-    /// The mapped LED state for the current state of charge.
-    pub soc_led_state: model::types::SystemLedState,
-}
-
-/// Devices that can be power-managed by the system.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Device {
-    /// The motor.
-    Motor,
-    /// Proximity/gesture sensors.
-    Sensors,
-    /// Status indicator LED.
-    Led,
-    /// Battery / Fuel gauge.
-    Battery,
-    /// Thermal monitoring.
-    Thermal,
-}
-
-/// Device activity support status in the current system state.
-#[derive(Debug, Clone, Copy)]
-pub struct DeviceSupport {
-    /// True if motor is supported.
-    pub motor: bool,
-    /// True if battery monitoring is supported.
-    pub battery: bool,
-    /// True if proximity sensors are supported.
-    pub proximity: bool,
-    /// True if LED is supported.
-    pub led: bool,
-    /// True if thermal monitoring is supported.
-    pub thermal: bool,
 }
 
 /// A single system feature that can react to system events and ticks.

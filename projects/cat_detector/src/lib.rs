@@ -75,6 +75,234 @@ pub static SHARED_I2C: embassy_sync::blocking_mutex::Mutex<
 )));
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+/// RawMutex type used by controllers.
+pub type MutexRaw = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global temperature sensor mutex.
+pub static SHARED_TEMP_SENSOR: embassy_sync::mutex::Mutex<MutexRaw, TempSensorDevice> =
+    embassy_sync::mutex::Mutex::new(SafeRp2040TempSensor(None));
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global battery/fuel gauge mutex.
+pub static SHARED_BATTERY: embassy_sync::mutex::Mutex<MutexRaw, BatteryDevice> =
+    embassy_sync::mutex::Mutex::new(BatteryDevice::new(
+        firmware_lib::i2c::SharedI2cWrapper::new(&SHARED_I2C),
+    ));
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global battery charger mutex.
+pub static SHARED_CHARGER: embassy_sync::mutex::Mutex<MutexRaw, ChargerDevice> =
+    embassy_sync::mutex::Mutex::new(SafeBq25185(None));
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global instance of the ThermalController.
+pub static mut THERMAL_CTRL: Option<
+    controller::thermal_controller::ThermalController<
+        'static,
+        MutexRaw,
+        TempSensorDevice,
+        SystemCommand,
+    >,
+> = None;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global instance of the BatteryController.
+pub static mut BATTERY_CTRL: Option<
+    controller::battery_controller::BatteryController<
+        'static,
+        MutexRaw,
+        BatteryDevice,
+        ChargerDevice,
+        AlertPinType,
+        SystemCommand,
+    >,
+> = None;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global instance of the LedController.
+pub static mut LED_CTRL: Option<controller::led_controller::LedController<LedDevice>> = None;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global instance of the North SensorController.
+pub static mut SENSOR_CTRL_NORTH: Option<
+    controller::sensor_controller::SensorController<
+        'static,
+        ProximitySensorDevice,
+        MutexRaw,
+        DataReadyPinType,
+        SystemCommand,
+        controller::sensor_controller::ProximityReader,
+    >,
+> = None;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global instance of the East SensorController.
+pub static mut SENSOR_CTRL_EAST: Option<
+    controller::sensor_controller::SensorController<
+        'static,
+        ProximitySensorDevice,
+        MutexRaw,
+        DataReadyPinType,
+        SystemCommand,
+        controller::sensor_controller::ProximityReader,
+    >,
+> = None;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global instance of the West SensorController.
+pub static mut SENSOR_CTRL_WEST: Option<
+    controller::sensor_controller::SensorController<
+        'static,
+        ProximitySensorDevice,
+        MutexRaw,
+        DataReadyPinType,
+        SystemCommand,
+        controller::sensor_controller::ProximityReader,
+    >,
+> = None;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global instance of the MotorController.
+pub static mut MOTOR_CTRL: Option<
+    controller::motor_controller::MotorController<MotorDevice, CurrentSensorDevice>,
+> = None;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+fn make_proximity_update_north(_id: u8, dist: u16) -> SystemCommand {
+    SystemCommand::ProximityUpdate {
+        direction: model::types::Direction::North,
+        distance_mm: dist,
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+fn make_proximity_update_east(_id: u8, dist: u16) -> SystemCommand {
+    SystemCommand::ProximityUpdate {
+        direction: model::types::Direction::East,
+        distance_mm: dist,
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+fn make_proximity_update_west(_id: u8, dist: u16) -> SystemCommand {
+    SystemCommand::ProximityUpdate {
+        direction: model::types::Direction::West,
+        distance_mm: dist,
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Type alias for the blocking flash device.
+pub type FlashDevice = embassy_rp::flash::Flash<
+    'static,
+    embassy_rp::peripherals::FLASH,
+    embassy_rp::flash::Blocking,
+    { crate::FLASH_SIZE },
+>;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global panic flash peripheral reference.
+pub static mut PANIC_FLASH: Option<FlashDevice> = None;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Synchronously initializes all application subcontrollers from board hardware.
+pub async fn init_controllers(board: Board<'static>) {
+    let Board {
+        flash,
+        i2c,
+        temp_sensor,
+        charger,
+        fuel_gauge_alert_pin,
+        led_driver,
+        tof_north,
+        pin_north,
+        tof_east,
+        pin_east,
+        tof_west,
+        pin_west,
+        motor,
+        current_sensor,
+        ..
+    } = board;
+
+    SHARED_I2C.lock(|cell| {
+        cell.borrow_mut().0 = Some(i2c);
+    });
+
+    {
+        let mut sensor = SHARED_TEMP_SENSOR.lock().await;
+        sensor.0 = temp_sensor;
+    }
+    {
+        let mut chg = SHARED_CHARGER.lock().await;
+        chg.0 = charger;
+    }
+
+    unsafe {
+        PANIC_FLASH = Some(embassy_rp::flash::Flash::new_blocking(flash));
+
+        THERMAL_CTRL = Some(
+            controller::thermal_controller::ThermalController::new_with_shutdown(
+                &SHARED_TEMP_SENSOR,
+                SYSTEM_CHANNEL.sender(),
+                SystemCommand::AlertTriggered,
+            ),
+        );
+
+        let alert_wrapper = AlertPinWrapper(fuel_gauge_alert_pin);
+        BATTERY_CTRL = Some(
+            controller::battery_controller::BatteryController::new_with_system_and_alert(
+                &SHARED_BATTERY,
+                &SHARED_CHARGER,
+                SYSTEM_CHANNEL.sender(),
+                alert_wrapper,
+            ),
+        );
+
+        LED_CTRL = Some(controller::led_controller::LedController::new(led_driver));
+
+        SENSOR_CTRL_NORTH = Some(
+            controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
+                0,
+                tof_north,
+                SYSTEM_CHANNEL.sender(),
+                make_proximity_update_north,
+                ProximityPinWrapper(pin_north),
+                DEFAULT_WAKE_THRESHOLD_MM,
+            ),
+        );
+
+        SENSOR_CTRL_EAST = Some(
+            controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
+                1,
+                tof_east,
+                SYSTEM_CHANNEL.sender(),
+                make_proximity_update_east,
+                ProximityPinWrapper(pin_east),
+                DEFAULT_WAKE_THRESHOLD_MM,
+            ),
+        );
+
+        SENSOR_CTRL_WEST = Some(
+            controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
+                2,
+                tof_west,
+                SYSTEM_CHANNEL.sender(),
+                make_proximity_update_west,
+                ProximityPinWrapper(pin_west),
+                DEFAULT_WAKE_THRESHOLD_MM,
+            ),
+        );
+
+        MOTOR_CTRL = Some(controller::motor_controller::MotorController::new(
+            motor,
+            current_sensor,
+        ));
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 mod bsp_target;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]

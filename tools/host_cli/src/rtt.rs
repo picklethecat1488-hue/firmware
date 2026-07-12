@@ -138,11 +138,22 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
     rtt_symbol_addr: u64,
     elf_file: Option<&object::File>,
 ) -> Result<(Vec<RttChannel>, Vec<RttChannel>), String> {
-    let mut header = [0u8; 128];
-    target.read_mem(rtt_symbol_addr, &mut header)?;
+    let mut initial_header = [0u8; 24];
+    target.read_mem(rtt_symbol_addr, &mut initial_header)?;
 
-    let max_up = u32::from_le_bytes(header[16..20].try_into().unwrap()) as usize;
-    let max_down = u32::from_le_bytes(header[20..24].try_into().unwrap()) as usize;
+    let max_up = u32::from_le_bytes(initial_header[16..20].try_into().unwrap()) as usize;
+    let max_down = u32::from_le_bytes(initial_header[20..24].try_into().unwrap()) as usize;
+
+    if max_up > 32 || max_down > 32 {
+        return Err(format!(
+            "RTT control block has invalid channel counts: up={}, down={}",
+            max_up, max_down
+        ));
+    }
+
+    let full_size = 24 + 24 * max_up + 24 * max_down;
+    let mut header = vec![0u8; full_size];
+    target.read_mem(rtt_symbol_addr, &mut header)?;
 
     let mut up_channels = Vec::new();
     let mut down_channels = Vec::new();
@@ -631,9 +642,12 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                     Ok(n) if n > 0 => {
                         use std::io::Write;
                         did_work = true;
+                        use std::io::IsTerminal;
+                        let use_echo_canceller = std::io::stdout().is_terminal();
                         let mut write_buf = Vec::with_capacity(n);
                         for &b in &rtt_buf[..n] {
-                            if !sent_buffer.is_empty()
+                            if use_echo_canceller
+                                && !sent_buffer.is_empty()
                                 && (sent_buffer[0] == b
                                     || ((b == b'\r' || b == b'\n')
                                         && (sent_buffer[0] == b'\r' || sent_buffer[0] == b'\n')))
@@ -660,17 +674,20 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             if let Ok(input_bytes) = stdin_rx.try_recv() {
                 did_work = true;
                 if let Some(cli_down) = cli_down_channel {
-                    // Queue typed characters for echo cancellation
-                    for &b in &input_bytes {
-                        if b == b'\n' || b == b'\r' {
-                            sent_buffer.push(b'\r');
-                            sent_buffer.push(b'\n');
-                        } else {
-                            sent_buffer.push(b);
+                    use std::io::IsTerminal;
+                    if std::io::stdout().is_terminal() {
+                        // Queue typed characters for echo cancellation
+                        for &b in &input_bytes {
+                            if b == b'\n' || b == b'\r' {
+                                sent_buffer.push(b'\r');
+                                sent_buffer.push(b'\n');
+                            } else {
+                                sent_buffer.push(b);
+                            }
                         }
-                    }
-                    if sent_buffer.len() > 1024 {
-                        sent_buffer.clear();
+                        if sent_buffer.len() > 1024 {
+                            sent_buffer.clear();
+                        }
                     }
 
                     let mut written = 0;

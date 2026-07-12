@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::MotorTelemetryClient;
+use crate::TelemetrySender;
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::RawMutex;
@@ -11,31 +12,10 @@ use model::telemetry::TelemetryClient;
 use model::types::{MotorSpeed, PeripheralError, SystemStatus};
 use peripherals::ToPeripheralError;
 
+use crate::types::{MotorCalState, MotorSafetyStatus, MotorState};
+
 /// The tick interval of the motor controller (10ms / 100Hz).
 pub const MOTOR_TICK_INTERVAL: embassy_time::Duration = embassy_time::Duration::from_millis(10);
-
-/// The operating states of the motor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum MotorState {
-    /// The motor is powered off.
-    #[default]
-    Off,
-    /// The motor is running continuously at target speed.
-    On,
-}
-
-/// Status representing safety check results.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MotorSafetyStatus {
-    /// All limits are within safe operating parameters.
-    Ok,
-    /// The motor RPM exceeded the safety limit.
-    RpmExceeded(u32),
-    /// Low load / dry run detected.
-    DryRun(i32),
-    /// Motor stall detected (high current).
-    Stall(i32),
-}
 
 /// Safety limits for the motor controller.
 pub struct MotorLimits {
@@ -155,7 +135,6 @@ where
         &mut self,
         mut telemetry_client: Option<
             &mut MotorTelemetryClient<
-                '_,
                 CriticalSectionRawMutex,
                 { crate::telemetry_controller::CHANNEL_CAPACITY },
             >,
@@ -221,7 +200,6 @@ where
         cmd: MotorCommand,
         mut telemetry_client: Option<
             &mut MotorTelemetryClient<
-                '_,
                 CriticalSectionRawMutex,
                 { crate::telemetry_controller::CHANNEL_CAPACITY },
             >,
@@ -369,11 +347,9 @@ where
     /// Runs the controller's control loop infinitely, reading from the command channel.
     pub async fn run<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex, const N: usize>(
         mut self,
-        command_rx: embassy_sync::channel::Receiver<'static, MutexRaw, MotorCommand, N>,
-        telemetry_tx: embassy_sync::channel::Sender<
-            'static,
+        command_rx: MotorReceiver<MutexRaw, N>,
+        telemetry_tx: TelemetrySender<
             CriticalSectionRawMutex,
-            model::telemetry::TelemetryRecord,
             { crate::telemetry_controller::CHANNEL_CAPACITY },
         >,
     ) -> ! {
@@ -425,14 +401,7 @@ pub enum MotorCommand {
     Stop,
 }
 
-/// Errors returned by the motor controller loop.
-#[derive(Debug)]
-pub enum MotorError<ME, CE> {
-    /// Error originating from the motor driver.
-    Motor(ME),
-    /// Error originating from the current sensor driver.
-    CurrentSensor(CE),
-}
+crate::define_controller_channels!(MotorChannel, MotorSender, MotorReceiver, MotorCommand);
 
 impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
     for MotorController<M, C>
@@ -482,19 +451,6 @@ where
     }
 }
 
-/// Represents the motor calibration target state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MotorCalState {
-    /// Empty water bowl
-    Empty,
-    /// Bowl with 100ml of water
-    Water100ml,
-    /// Full water bowl
-    Full,
-    /// Overload/stall state
-    Overload,
-}
-
 impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
     fn from_arg(arg: &'a str) -> Result<Self, embedded_cli::arguments::FromArgumentError<'a>> {
         match arg {
@@ -506,17 +462,6 @@ impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
                 value: arg,
                 expected: "one of 'empty', '100ml', 'full', or 'overload'",
             }),
-        }
-    }
-}
-
-impl From<MotorCalState> for model::calibration::FourPointRef {
-    fn from(state: MotorCalState) -> Self {
-        match state {
-            MotorCalState::Empty => model::calibration::FourPointRef::Low,
-            MotorCalState::Water100ml => model::calibration::FourPointRef::Mid,
-            MotorCalState::Full => model::calibration::FourPointRef::High,
-            MotorCalState::Overload => model::calibration::FourPointRef::Overload,
         }
     }
 }
@@ -557,6 +502,7 @@ pub fn process_motor_command<
     flash_ptr: Option<*mut Flash>,
     storage_start: u32,
     storage_end: u32,
+    fs_buf: &'static mut [u8],
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
     cmd: MotorCliCommand,
 ) -> Result<(), &'static str> {
@@ -588,13 +534,16 @@ pub fn process_motor_command<
             let i2c_raw = i2c_ptr.ok_or("I2C controller not available")?;
             let i2c = unsafe { &mut *i2c_raw };
             let mut current_sensor = peripherals::ina219::Ina219::new(i2c);
-            if let Err(e) = current_sensor.init() {
-                let _ = core::writeln!(writer, "Warning: Failed to initialize INA219: {:?}", e);
-            }
+            current_sensor
+                .init()
+                .map_err(|_| "Failed to initialize INA219 current sensor")?;
 
             let mut sum = 0;
             for _ in 0..5 {
-                sum += current_sensor.read_current_ma().unwrap_or(0);
+                let current_val = current_sensor
+                    .read_current_ma()
+                    .map_err(|_| "Failed to read current from INA219 current sensor")?;
+                sum += current_val;
                 embassy_time::block_for(embassy_time::Duration::from_millis(100));
             }
             let current = sum / 5;
@@ -615,10 +564,9 @@ pub fn process_motor_command<
             let _ = motor.stop();
 
             let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
-            static mut SHELL_FS_BUF_3: [u8; 2048] = [0u8; 2048];
             let flash_ref = unsafe { &mut *flash_raw };
             let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
-            let fs_buf = unsafe { &mut *core::ptr::addr_of_mut!(SHELL_FS_BUF_3) };
+            let fs_buf = &mut *fs_buf;
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
                 storage_start..storage_end,
@@ -686,6 +634,8 @@ pub fn handle_motor_cli<
     let motor = resolver.resolve_motor(None).ok().map(|d| d as *mut _);
     let i2c = resolver.resolve_i2c(None).ok().map(|d| d as *mut _);
     let partition = resolver.resolve_partition(None).ok();
+    let mut fs_buf = resolver.lock_fs_buffer()?;
+    let fs_buf_static = unsafe { fs_buf.as_static_mut() };
     let (flash, storage_start, storage_end) = match partition {
         Some(p) => (Some(p.flash_ptr), p.start_address, p.end_address),
         None => (None, 0, 0),
@@ -704,6 +654,7 @@ pub fn handle_motor_cli<
                 flash,
                 storage_start,
                 storage_end,
+                fs_buf_static,
                 writer,
                 MotorCliCommand::Speed { speed },
             )
@@ -715,6 +666,7 @@ pub fn handle_motor_cli<
             flash,
             storage_start,
             storage_end,
+            fs_buf_static,
             writer,
             MotorCliCommand::Stop,
         ),
@@ -739,6 +691,7 @@ pub fn handle_motor_cli<
                 flash,
                 storage_start,
                 storage_end,
+                fs_buf_static,
                 writer,
                 MotorCliCommand::Calibrate {
                     state,

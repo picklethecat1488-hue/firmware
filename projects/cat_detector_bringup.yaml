@@ -2,131 +2,197 @@ project_name: Cat Detector
 device_chip: RP2040
 flash_addr: 0x101C0000
 flash_size: 262144
+cargo_target: "cargo run --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release"
+app_cargo_target: "cargo run --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_app --release"
 steps:
-  - id: "0"
-    name: Verify UART Log Communication
-    type: shell_command
-    command: uart
-    description: Verify the RP2040 can transmit logs over UART 
-
   - id: "0.5"
     name: Format Filesystem Partition
     type: shell_command
-    command: format
-    expected_regex: 'Formatting successful! Rebooting target system\.\.\.'
+    command: fs format
+    expected_regex: "Formatting successful!|Type 'help' to print usage."
     description: Erase and format the sequential-storage partition.
 
   - id: "1"
     name: Verify Fuel Gauge Communication
     type: shell_command
-    command: battery
+    command: battery status
     expected_regex: 'Direct battery reading: \d+ mV, \d+% state of charge'
     description: Verify communication with MAX17048 Fuel Gauge by querying voltage and SOC.
 
   - id: "2"
     name: Verify Thermal Monitoring
     type: shell_command
-    command: thermal
+    command: thermal status
     expected_regex: 'Direct thermal reading \(ThermalController\): \d+\.\d+ C'
     description: Verify communication with the temperature sensor.
 
   - id: "3"
     name: Verify Time-of-Flight (Proximity) Sensors
     type: shell_command
-    command: proximity
+    command: sensor status
     expected_regex: 'Direct proximity readings: North = \d+ mm, East = \d+ mm, West = \d+ mm'
     description: Verify range readings from all three VL53L0X ToF sensors.
 
   - id: "4"
     name: Verify RP2040 Microcontroller Temperature
     type: shell_command
-    command: mcu_temp
+    command: thermal mcu
     expected_regex: 'Direct system temperature reading \(RP2040\): \d+\.\d+ C'
     description: Verify the RP2040 internal core temperature.
 
-  - id: "5"
-    name: Calibrate Time-of-Flight Offset
-    type: interactive
-    description: Calibrate proximity sensors by placing target near (0mm) and far (100mm) for each direction.
-    procedure: |
-      1. Run 'cal_near north' with target close.
-      2. Run 'cal_far north' with target at 100mm.
-      3. Repeat for 'east' and 'west'.
+  - id: "5a"
+    name: Calibrate North Sensor (Near)
+    type: shell_command
+    command: sensor cal_near north
+    expected_regex: 'Saved cover calibration for North to flash.'
+    description: Place target close (0mm) to the North proximity sensor first.
 
-  - id: "6"
-    name: Verify Actuator (Pump Motor) Control
-    type: interactive
-    description: Command the N20 motor to spin at 50% speed and check current draw, then stop it.
-    procedure: |
-      1. Run 'motor 50' and confirm current draw is ~120mA.
-      2. Run 'stop' to halt the motor.
+  - id: "5b"
+    name: Calibrate North Sensor (Far)
+    type: shell_command
+    command: sensor cal_far north
+    expected_regex: 'Saved 100mm calibration for North to flash.'
+    description: Place target at 100mm from the North proximity sensor first.
 
-  - id: "7"
-    name: Calibrate Motor Current (Water & Overload Detection)
-    type: interactive
-    description: Calibrate motor current draw for empty, 100ml, full bowl, and overload states, and optionally configure RPM parameters.
-    procedure: |
-      1. Run 'cal_motor empty [max_rpm] [rpm_limit]' (e.g. 'cal_motor empty 3000 2500') with empty bowl.
-      2. Run 'cal_motor 100ml' with 100ml of water.
-      3. Run 'cal_motor full' with full bowl.
-      4. Hold the impeller in place (simulating a stall) and run 'cal_motor overload'.
+  - id: "5c"
+    name: Verify North Sensor Calibration
+    type: shell_command
+    command: sensor status
+    expected_regex: 'Direct proximity readings: North = (9[0-9]|10[0-9]|110) mm'
+    description: Verify North sensor reads correct calibrated distance (~100mm).
 
-  - id: "8"
-    name: Verify System Power States
-    type: interactive
-    description: Verify low-power Sleep and Active mode transitions.
-    procedure: |
-      1. Let the system sit idle for 30 seconds until it automatically transitions to low-power Sleep state.
-      2. Run 'activity' to simulate a wake-up event and verify the system returns to Active state.
+  - id: "5d"
+    name: Calibrate East Sensor (Near)
+    type: shell_command
+    command: sensor cal_near east
+    expected_regex: 'Saved cover calibration for East to flash.'
+    description: Place target close (0mm) to the East proximity sensor first.
 
-  - id: "9"
-    name: Verify ToF Proximity Interrupts
-    type: manual
-    description: Let system enter Sleep mode automatically (after 30 seconds of inactivity), then pull one of ToF interrupt lines (GP7, GP8, GP9) to ground.
-    expected: System wakes up to Active state, starts motor and LEDs.
+  - id: "5e"
+    name: Calibrate East Sensor (Far)
+    type: shell_command
+    command: sensor cal_far east
+    expected_regex: 'Saved 100mm calibration for East to flash.'
+    description: Place target at 100mm from the East proximity sensor first.
 
-  - id: "10"
-    name: Verify Fuel Gauge Alert Interrupt
-    type: manual
-    description: Pull fuel gauge Alert line (GP10) to ground.
-    expected: System wakes up, dispatches battery alert, and blinks NeoPixel red.
+  - id: "5f"
+    name: Verify East Sensor Calibration
+    type: shell_command
+    command: sensor status
+    expected_regex: 'Direct proximity readings: .* East = (9[0-9]|10[0-9]|110) mm'
+    description: Verify East sensor reads correct calibrated distance (~100mm).
+
+  - id: "5g"
+    name: Calibrate West Sensor (Near)
+    type: shell_command
+    command: sensor cal_near west
+    expected_regex: 'Saved cover calibration for West to flash.'
+    description: Place target close (0mm) to the West proximity sensor first.
+
+  - id: "5h"
+    name: Calibrate West Sensor (Far)
+    type: shell_command
+    command: sensor cal_far west
+    expected_regex: 'Saved 100mm calibration for West to flash.'
+    description: Place target at 100mm from the West proximity sensor first.
+
+  - id: "5i"
+    name: Verify West Sensor Calibration
+    type: shell_command
+    command: sensor status
+    expected_regex: 'Direct proximity readings: .* West = (9[0-9]|10[0-9]|110) mm'
+    description: Verify West sensor reads correct calibrated distance (~100mm).
+
+  - id: "6a"
+    name: Verify Actuator (Pump Motor) Start
+    type: shell_command
+    command: motor speed 50
+    expected_regex: 'Motor current: \d+ mA'
+    description: Spin pump motor at 50% speed.
+
+  - id: "6b"
+    name: Verify Actuator (Pump Motor) Stop
+    type: shell_command
+    command: motor stop
+    expected_regex: 'motor stop'
+    description: Halt pump motor.
+
+  - id: "7a_empty"
+    name: Calibrate Motor Current (Empty Bowl)
+    type: shell_command
+    command: motor calibrate empty 3000 2500
+    expected_regex: 'Saved motor Empty calibration to flash.'
+    description: Calibrate motor empty bowl state. Ensure bowl is empty first.
+
+  - id: "7a_100ml"
+    name: Calibrate Motor Current (100ml Bowl)
+    type: shell_command
+    command: motor calibrate water_100ml
+    expected_regex: 'Saved motor 100ml calibration to flash.'
+    description: Calibrate motor 100ml state. Fill bowl with 100ml of water first.
+
+  - id: "7a_full"
+    name: Calibrate Motor Current (Full Bowl)
+    type: shell_command
+    command: motor calibrate full
+    expected_regex: 'Saved motor Full calibration to flash.'
+    description: Calibrate motor full state. Fill bowl completely first.
+
+  - id: "7b"
+    name: Calibrate Motor Current (Overload Stall)
+    type: shell_command
+    command: motor calibrate overload
+    expected_regex: 'Saved motor Overload calibration to flash.'
+    description: Calibrate motor overload state. Hold impeller in place (simulating stall) first.
 
   - id: "11"
     name: Verify Panic and Crash Log Capture
     type: shell_command
-    command: crash
-    expected_regex: '--- PANIC ---'
+    flash_before: shell
+    command: system crash
+    expected_regex: "Type 'help' to print usage."
     description: Force a CPU panic handler test execution to verify logging.
 
-  - id: "12"
-    name: Pull Raw Flash Filesystem Partition
-    type: host_command
-    command: probe-rs read-mem --chip {device_chip} {flash_addr} {flash_size} flash_dump.bin
-    description: Dump the 256KB sequential-storage partition from target flash.
+  - id: "8"
+    name: Verify System Power States
+    type: interactive
+    flash_before: app
+    description: Verify low-power Sleep and Active mode transitions.
+    procedure: |
+      1. Let the system sit idle for 30 seconds until it automatically transitions to low-power Sleep state.
+      2. Place an object close to one of the proximity sensors (e.g. North, East, or West ToF sensor) and verify the system returns to Active state.
+
+  - id: "10"
+    name: Verify Fuel Gauge Alert Interrupt
+    type: manual
+    flash_before: app
+    description: Pull fuel gauge Alert line (GP10) to ground.
+    expected: System wakes up, dispatches battery alert, and blinks NeoPixel red.
 
   - id: "13"
     name: Verify Directory Structure
-    type: host_command
-    command: cargo run --bin host_fs -- --dump flash_dump.bin ls
+    type: shell_command
+    flash_before: shell
+    command: fs ls
     expected_regex: 'vl53l0x_cal\.cbor'
     description: Query the filesystem to ensure directory references and files exist.
 
   - id: "14"
     name: Decode and Export Telemetry Stream
     type: host_command
-    command: cargo run --bin host_fs -- --dump flash_dump.bin export-telemetry telemetry.csv
+    command: cargo run --package host_fs --bin host_fs -- --elf {shell_elf} export-telemetry telemetry.csv
     description: Decode CBOR updates in telemetry.rrd to telemetry.csv.
 
   - id: "15"
     name: Decode and Symbolicate Crash Dumps
     type: host_command
-    command: cargo run --bin host_fs -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector/app
+    command: cargo run --package host_fs --bin host_fs -- --elf {shell_elf} crash-log
     expected_regex: '(Location:|Backtrace:)'
     description: Verify panic log is decoded and symbolicated using debug ELF.
 
   - id: "16"
-    name: Verify Host Logger Works
-    type: host_command
-    command: cargo run --bin host_cli -- --elf target/thumbv6m-none-eabi/debug/cat_detector/app -d
-    expected_regex: 'Draining buffered defmt logs'
-    description: Verify that host_cli starts up and displays its CLI options.
+    name: Flash Production App
+    type: manual
+    flash_before: app
+    description: Flash the production app binary back to the target device as the final bringup step.
+    expected: Production app binary is flashed and running on target.

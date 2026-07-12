@@ -182,3 +182,12 @@ pub struct ProjectMetadata {
     /// Stack scan limit in words
     pub stack_scan_limit: u32,
 }
+
+/// Type alias for an Embassy channel.
+pub type Channel<M, T, const N: usize> = embassy_sync::channel::Channel<M, T, N>;
+
+/// Type alias for an Embassy channel Sender.
+pub type Sender<'a, M, T, const N: usize> = embassy_sync::channel::Sender<'a, M, T, N>;
+
+/// Type alias for an Embassy channel Receiver.
+pub type Receiver<'a, M, T, const N: usize> = embassy_sync::channel::Receiver<'a, M, T, N>;

@@ -5,50 +5,19 @@
 #![deny(missing_docs)]
 #![allow(static_mut_refs)]
 
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
-use embassy_sync::mutex::Mutex;
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
-use peripherals::mock::MockBattery;
-
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
     app::CatDetectorFeatureSet,
     cat_detector as app,
     controller::{
-        battery_controller::BatteryController, led_controller::LedController,
-        motor_controller::MotorController, sensor_controller::SensorController,
-        telemetry_controller::TelemetryController, thermal_controller::ThermalController,
-        BatteryFeatureConfig, GestureAction, LedFeatureConfig, MotorFeatureConfig,
-        ProximityFeatureConfig, SystemController, ThermalFeatureConfig,
+        telemetry_controller::TelemetryController, BatteryFeatureConfig, GestureAction,
+        LedFeatureConfig, MotorFeatureConfig, ProximityFeatureConfig, SystemController,
+        ThermalFeatureConfig,
     },
     embassy_executor::Spawner,
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    embassy_sync::mutex::Mutex,
     firmware_lib::BatteryManager,
-    peripherals::l9110s::L9110s,
 };
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-struct AlertPinWrapper(embassy_rp::gpio::Flex<'static>);
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-impl controller::battery_controller::BatteryAlertPin for AlertPinWrapper {
-    async fn wait_for_alert(&mut self) {
-        self.0.wait_for_low().await;
-    }
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-struct ProximityPinWrapper(embassy_rp::gpio::Flex<'static>);
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-impl controller::sensor_controller::DataReadyPin for ProximityPinWrapper {
-    async fn wait_for_data_ready(&mut self) {
-        self.0.wait_for_falling_edge().await;
-    }
-}
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
@@ -64,67 +33,6 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Statically allocated mutex holding the physical MAX17048 fuel gauge on target.
-static SHARED_BATTERY: Mutex<
-    CriticalSectionRawMutex,
-    peripherals::max17048::Max17048<firmware_lib::i2c::SharedI2cWrapper<'static>>,
-> = Mutex::new(peripherals::max17048::Max17048::new(
-    firmware_lib::i2c::SharedI2cWrapper::new(&app::SHARED_I2C),
-));
-
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
-#[allow(dead_code)]
-/// Statically allocated mutex holding the MockBattery for non-ARM targets.
-static SHARED_BATTERY: Mutex<CriticalSectionRawMutex, MockBattery> =
-    Mutex::new(MockBattery::new(3700, 25000));
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-struct SafeRp2040TempSensor(Option<app::Rp2040TempSensor>);
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-impl model::interfaces::TemperatureSensor for SafeRp2040TempSensor {
-    type Error = ();
-
-    fn read_temperature_milli_c(&mut self) -> Result<i32, Self::Error> {
-        if let Some(ref mut sensor) = self.0 {
-            sensor.read_temperature_milli_c().map_err(|_| ())
-        } else {
-            Ok(25000)
-        }
-    }
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-static SHARED_TEMP_SENSOR: Mutex<CriticalSectionRawMutex, SafeRp2040TempSensor> =
-    Mutex::new(SafeRp2040TempSensor(None));
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-struct SafeBq25185(
-    Option<
-        peripherals::bq25185::Bq25185<
-            embassy_rp::gpio::Flex<'static>,
-            embassy_rp::gpio::Flex<'static>,
-        >,
-    >,
-);
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-impl model::interfaces::ChargeStatus for SafeBq25185 {
-    type Error = ();
-
-    fn get_charge_state(&mut self) -> Result<model::types::ChargeState, Self::Error> {
-        if let Some(ref mut chg) = self.0 {
-            Ok(chg.get_state())
-        } else {
-            Ok(model::types::ChargeState::DoneOrStandbyOrUnplugged)
-        }
-    }
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-static SHARED_CHARGER: Mutex<CriticalSectionRawMutex, SafeBq25185> = Mutex::new(SafeBq25185(None));
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
@@ -132,16 +40,9 @@ async fn main(spawner: Spawner) {
     // Configure hardware stack guard using Cortex-M MPU
     app::configure_mpu_stack_guard();
 
-    // Initialize board peripherals using the unified board configuration
-    let mut board = app::Board::init(p);
-
-    // Initialize the shared I2C bus on target
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
-    {
-        app::SHARED_I2C.lock(|cell| {
-            cell.borrow_mut().0 = Some(board.i2c);
-        });
-    }
+    // Initialize board peripherals and subcontrollers
+    let board = app::Board::init(p);
+    app::init_controllers(board).await;
 
     // Route defmt logs to RTT
     firmware_lib::defmt_logger::DefmtLogger::set_writer(
@@ -151,21 +52,10 @@ async fn main(spawner: Spawner) {
     defmt::info!("Booting Cat Detector App...");
 
     // Initialize the modular panic handler
-    static mut PANIC_FLASH: Option<
-        embassy_rp::flash::Flash<
-            'static,
-            embassy_rp::peripherals::FLASH,
-            embassy_rp::flash::Blocking,
-            { app::FLASH_SIZE },
-        >,
-    > = None;
     // Declare statically to avoid stack allocation and stack overflow
     static mut FS_BUF: [u8; 4096] = [0u8; 4096];
 
-    let panic_flash = unsafe {
-        PANIC_FLASH = Some(embassy_rp::flash::Flash::new_blocking(board.flash));
-        PANIC_FLASH.as_mut().unwrap()
-    };
+    let panic_flash = unsafe { app::PANIC_FLASH.as_mut().unwrap() };
     // Obtain separate static mut references for the panic handler and filesystem controller.
     // This is safe because the panic handler only runs after the application halts/panics.
     let fs_buf_panic = unsafe { &mut *core::ptr::addr_of_mut!(FS_BUF) };
@@ -196,8 +86,6 @@ async fn main(spawner: Spawner) {
     // Verify and repair/reformat the filesystem if it is corrupted
     let _ = fs_controller.verify_and_repair().await;
 
-    let mut controller = MotorController::new(board.motor, board.current_sensor);
-
     // Read calibration file from flash
     let mut cal_buf = [0u8; 128];
     let proximity_cal = match fs_controller
@@ -225,6 +113,14 @@ async fn main(spawner: Spawner) {
         _ => None,
     };
 
+    let thermal_ctrl = unsafe { app::THERMAL_CTRL.take().unwrap() };
+    let power_ctrl = unsafe { app::BATTERY_CTRL.take().unwrap() };
+    let led_ctrl = unsafe { app::LED_CTRL.take().unwrap() };
+    let mut controller = unsafe { app::MOTOR_CTRL.take().unwrap() };
+    let mut sensor_ctrl_north = unsafe { app::SENSOR_CTRL_NORTH.take().unwrap() };
+    let mut sensor_ctrl_east = unsafe { app::SENSOR_CTRL_EAST.take().unwrap() };
+    let mut sensor_ctrl_west = unsafe { app::SENSOR_CTRL_WEST.take().unwrap() };
+
     use model::calibration::Calibration;
     use model::calibration::CalibrationType;
 
@@ -240,80 +136,15 @@ async fn main(spawner: Spawner) {
         });
     }
 
-    let mut sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
-        0,
-        board.tof_north,
-        app::SYSTEM_CHANNEL.sender(),
-        |_id, dist| app::SystemCommand::ProximityUpdate {
-            direction: model::types::Direction::North,
-            distance_mm: dist,
-        },
-        ProximityPinWrapper(board.pin_north),
-        app::DEFAULT_WAKE_THRESHOLD_MM,
-    );
     sensor_ctrl_north.set_calibration(CalibrationType::ProximityCal(
         proximity_cal[model::types::Direction::North],
     ));
-
-    let mut sensor_ctrl_east = SensorController::new_with_fusion_and_interrupt(
-        1,
-        board.tof_east,
-        app::SYSTEM_CHANNEL.sender(),
-        |_id, dist| app::SystemCommand::ProximityUpdate {
-            direction: model::types::Direction::East,
-            distance_mm: dist,
-        },
-        ProximityPinWrapper(board.pin_east),
-        app::DEFAULT_WAKE_THRESHOLD_MM,
-    );
     sensor_ctrl_east.set_calibration(CalibrationType::ProximityCal(
         proximity_cal[model::types::Direction::East],
     ));
-
-    let mut sensor_ctrl_west = SensorController::new_with_fusion_and_interrupt(
-        2,
-        board.tof_west,
-        app::SYSTEM_CHANNEL.sender(),
-        |_id, dist| app::SystemCommand::ProximityUpdate {
-            direction: model::types::Direction::West,
-            distance_mm: dist,
-        },
-        ProximityPinWrapper(board.pin_west),
-        app::DEFAULT_WAKE_THRESHOLD_MM,
-    );
     sensor_ctrl_west.set_calibration(CalibrationType::ProximityCal(
         proximity_cal[model::types::Direction::West],
     ));
-
-    // Initialize the real Rp2040TempSensor in SHARED_TEMP_SENSOR
-    {
-        let mut sensor = SHARED_TEMP_SENSOR.lock().await;
-        sensor.0 = board.temp_sensor.take();
-    }
-
-    // Initialize the real Bq25185 in SHARED_CHARGER
-    {
-        let mut chg = SHARED_CHARGER.lock().await;
-        chg.0 = board.charger.take();
-    }
-
-    let thermal_ctrl = ThermalController::new_with_shutdown(
-        &SHARED_TEMP_SENSOR,
-        app::SYSTEM_CHANNEL.sender(),
-        app::SystemCommand::AlertTriggered,
-    );
-
-    let alert_wrapper = AlertPinWrapper(board.fuel_gauge_alert_pin);
-
-    let power_ctrl = BatteryController::new_with_system_and_alert(
-        &SHARED_BATTERY,
-        &SHARED_CHARGER,
-        app::SYSTEM_CHANNEL.sender(),
-        alert_wrapper,
-    );
-
-    // Initialize LED driver and its controller
-    let led_ctrl = LedController::new(board.led_driver);
 
     // Initialize SystemController to coordinate all loops
     let feature_set = app::CatDetectorFeatureSet {
@@ -359,151 +190,74 @@ async fn main(spawner: Spawner) {
         thermal_ctrl,
         app::THERMAL_CHANNEL.receiver(),
         app::TELEMETRY_CHANNEL.sender(),
-        SafeRp2040TempSensor,
+        app::TempSensorDevice,
         app::SystemCommand
     );
 
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
     controller::run_battery_task!(
         spawner,
         power_task,
         power_ctrl,
         app::BATTERY_CHANNEL.receiver(),
         app::TELEMETRY_CHANNEL.sender(),
-        peripherals::max17048::Max17048<firmware_lib::i2c::SharedI2cWrapper<'static>>,
-        SafeBq25185,
-        AlertPinWrapper,
+        app::BatteryDevice,
+        app::ChargerDevice,
+        app::AlertPinType,
         app::SystemCommand
     );
 
-    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-    controller::run_battery_task!(
-        spawner,
-        power_task,
-        power_ctrl,
-        app::BATTERY_CHANNEL.receiver(),
-        app::TELEMETRY_CHANNEL.sender(),
-        MockBattery,
-        SafeBq25185,
-        AlertPinWrapper,
-        app::SystemCommand
-    );
-
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
     controller::run_motor_task!(
         spawner,
         motor_task,
         controller,
         app::MOTOR_CHANNEL.receiver(),
         app::TELEMETRY_CHANNEL.sender(),
-        L9110s<embassy_rp::gpio::Flex<'static>, embassy_rp::gpio::Flex<'static>>,
-        peripherals::ina219::Ina219<firmware_lib::i2c::SharedI2cWrapper<'static>>
-    );
-
-    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-    controller::run_motor_task!(
-        spawner,
-        motor_task,
-        controller,
-        app::MOTOR_CHANNEL.receiver(),
-        app::TELEMETRY_CHANNEL.sender(),
-        L9110s<embassy_rp::gpio::Flex<'static>, embassy_rp::gpio::Flex<'static>>,
-        DummyCurrentSensor
+        app::MotorDevice,
+        app::CurrentSensorDevice
     );
 
     // Spawn the three proximity sensor tasks
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
-    {
-        controller::run_sensor_task!(
-            spawner,
-            sensor_north_task,
-            sensor_ctrl_north,
-            app::SENSOR_NORTH_CHANNEL.receiver(),
-            peripherals::vl53l0x::Vl53l0x<firmware_lib::i2c::SharedI2cWrapper<'static>>,
-            CriticalSectionRawMutex,
-            ProximityPinWrapper,
-            app::SystemCommand
-        );
-
-        controller::run_sensor_task!(
-            spawner,
-            sensor_east_task,
-            sensor_ctrl_east,
-            app::SENSOR_EAST_CHANNEL.receiver(),
-            peripherals::vl53l0x::Vl53l0x<firmware_lib::i2c::SharedI2cWrapper<'static>>,
-            CriticalSectionRawMutex,
-            ProximityPinWrapper,
-            app::SystemCommand
-        );
-
-        controller::run_sensor_task!(
-            spawner,
-            sensor_west_task,
-            sensor_ctrl_west,
-            app::SENSOR_WEST_CHANNEL.receiver(),
-            peripherals::vl53l0x::Vl53l0x<firmware_lib::i2c::SharedI2cWrapper<'static>>,
-            CriticalSectionRawMutex,
-            ProximityPinWrapper,
-            app::SystemCommand
-        );
-    }
-
-    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-    {
-        controller::run_sensor_task!(
-            spawner,
-            sensor_north_task,
-            sensor_ctrl_north,
-            app::SENSOR_NORTH_CHANNEL.receiver(),
-            DummyProximitySensor,
-            CriticalSectionRawMutex,
-            ProximityPinWrapper,
-            app::SystemCommand
-        );
-
-        controller::run_sensor_task!(
-            spawner,
-            sensor_east_task,
-            sensor_ctrl_east,
-            app::SENSOR_EAST_CHANNEL.receiver(),
-            DummyProximitySensor,
-            CriticalSectionRawMutex,
-            ProximityPinWrapper,
-            app::SystemCommand
-        );
-
-        controller::run_sensor_task!(
-            spawner,
-            sensor_west_task,
-            sensor_ctrl_west,
-            app::SENSOR_WEST_CHANNEL.receiver(),
-            DummyProximitySensor,
-            CriticalSectionRawMutex,
-            ProximityPinWrapper,
-            app::SystemCommand
-        );
-    }
-
-    // Spawn the LED controller task
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
-    controller::run_led_task!(
+    controller::run_sensor_task!(
         spawner,
-        led_task,
-        led_ctrl,
-        app::LED_CHANNEL.receiver(),
-        app::TELEMETRY_CHANNEL.sender(),
-        peripherals::attiny816::Attiny816<firmware_lib::i2c::SharedI2cWrapper<'static>>,
-        CriticalSectionRawMutex
+        sensor_north_task,
+        sensor_ctrl_north,
+        app::SENSOR_NORTH_CHANNEL.receiver(),
+        app::ProximitySensorDevice,
+        CriticalSectionRawMutex,
+        app::DataReadyPinType,
+        app::SystemCommand
     );
 
-    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+    controller::run_sensor_task!(
+        spawner,
+        sensor_east_task,
+        sensor_ctrl_east,
+        app::SENSOR_EAST_CHANNEL.receiver(),
+        app::ProximitySensorDevice,
+        CriticalSectionRawMutex,
+        app::DataReadyPinType,
+        app::SystemCommand
+    );
+
+    controller::run_sensor_task!(
+        spawner,
+        sensor_west_task,
+        sensor_ctrl_west,
+        app::SENSOR_WEST_CHANNEL.receiver(),
+        app::ProximitySensorDevice,
+        CriticalSectionRawMutex,
+        app::DataReadyPinType,
+        app::SystemCommand
+    );
+
+    // Spawn the LED controller task
     controller::run_led_task!(
         spawner,
         led_task,
         led_ctrl,
         app::LED_CHANNEL.receiver(),
         app::TELEMETRY_CHANNEL.sender(),
-        MockLed,
+        app::LedDevice,
         CriticalSectionRawMutex
     );
 

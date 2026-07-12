@@ -2,6 +2,8 @@
 
 #![deny(missing_docs)]
 
+use crate::types::SensorDirection;
+use crate::Sender;
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::interfaces::ProximitySensor;
@@ -35,6 +37,8 @@ pub enum SensorCommand {
     /// Disable periodic automatic readings (runs only via manual commands)
     DisablePeriodic,
 }
+
+crate::define_controller_channels!(SensorChannel, SensorSender, SensorReceiver, SensorCommand);
 
 /// Trait for reading data from a generic sensor type.
 pub trait SensorReader<S> {
@@ -81,7 +85,7 @@ pub struct SensorStateManager<
     sensor_id: u8,
     sensor: S,
     periodic_enabled: bool,
-    upstream_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
+    upstream_tx: Option<Sender<'a, M, Cmd, 4>>,
     make_cmd: Option<fn(u8, Data) -> Cmd>,
     interrupt_pin: Option<Pin>,
 }
@@ -93,7 +97,7 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
     pub const fn new(
         sensor_id: u8,
         sensor: S,
-        upstream_tx: Option<embassy_sync::channel::Sender<'a, M, Cmd, 4>>,
+        upstream_tx: Option<Sender<'a, M, Cmd, 4>>,
         make_cmd: Option<fn(u8, Data) -> Cmd>,
         interrupt_pin: Option<Pin>,
     ) -> Self {
@@ -227,7 +231,7 @@ impl<
     pub fn new_with_fusion(
         sensor_id: u8,
         sensor: S,
-        upstream_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        upstream_tx: Sender<'a, M, Cmd, 4>,
         make_cmd: fn(u8, u16) -> Cmd,
         wake_threshold_mm: u16,
     ) -> Self {
@@ -274,7 +278,7 @@ impl<
         sensor_id: u8,
         sensor: S,
         latest_data: Reader::Data,
-        upstream_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        upstream_tx: Sender<'a, M, Cmd, 4>,
         make_cmd: fn(u8, Reader::Data) -> Cmd,
         interrupt_pin: Option<Pin>,
         context: Reader::Context,
@@ -382,7 +386,7 @@ impl<
     pub fn new_with_fusion_and_interrupt(
         sensor_id: u8,
         sensor: S,
-        upstream_tx: embassy_sync::channel::Sender<'a, M, Cmd, 4>,
+        upstream_tx: Sender<'a, M, Cmd, 4>,
         make_cmd: fn(u8, u16) -> Cmd,
         interrupt_pin: Pin,
         wake_threshold_mm: u16,
@@ -440,17 +444,6 @@ impl<
     fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
         self.sensor_mut().set_calibration(calibration);
     }
-}
-
-/// Represents the physical directions of ToF proximity sensors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SensorDirection {
-    /// North sensor
-    North,
-    /// East sensor
-    East,
-    /// West sensor
-    West,
 }
 
 impl<'a> embedded_cli::arguments::FromArgument<'a> for SensorDirection {
@@ -512,6 +505,7 @@ pub fn process_sensor_command<
     flash_ptr: Option<*mut Flash>,
     storage_start: u32,
     storage_end: u32,
+    fs_buf: &'static mut [u8],
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
     cmd: SensorCliCommand,
 ) -> Result<(), &'static str> {
@@ -552,6 +546,10 @@ pub fn process_sensor_command<
                 sensor.read_distance_mm().unwrap_or(1000)
             };
 
+            if d_raw >= 900 {
+                return Err("Sensor disconnected or target out of range");
+            }
+
             let _ = core::writeln!(
                 writer,
                 "\r\nCalibrating cover (near) for {} sensor: Raw distance = {} mm",
@@ -560,10 +558,9 @@ pub fn process_sensor_command<
             );
 
             let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
-            static mut SHELL_FS_BUF_1: [u8; 2048] = [0u8; 2048];
             let flash_ref = unsafe { &mut *flash_raw };
             let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
-            let fs_buf = unsafe { &mut *core::ptr::addr_of_mut!(SHELL_FS_BUF_1) };
+            let fs_buf = &mut *fs_buf;
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
                 storage_start..storage_end,
@@ -610,6 +607,10 @@ pub fn process_sensor_command<
                 sensor.read_distance_mm().unwrap_or(1000)
             };
 
+            if d_raw >= 900 {
+                return Err("Sensor disconnected or target out of range");
+            }
+
             let _ = core::writeln!(
                 writer,
                 "\r\nCalibrating 100mm (far) for {} sensor: Raw distance = {} mm",
@@ -618,10 +619,9 @@ pub fn process_sensor_command<
             );
 
             let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
-            static mut SHELL_FS_BUF_2: [u8; 2048] = [0u8; 2048];
             let flash_ref = unsafe { &mut *flash_raw };
             let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
-            let fs_buf = unsafe { &mut *core::ptr::addr_of_mut!(SHELL_FS_BUF_2) };
+            let fs_buf = &mut *fs_buf;
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
                 storage_start..storage_end,
@@ -682,6 +682,8 @@ pub fn handle_sensor_cli<
         .map(|d| d as *mut _);
     let i2c = resolver.resolve_i2c(None).ok().map(|d| d as *mut _);
     let partition = resolver.resolve_partition(None).ok();
+    let mut fs_buf = resolver.lock_fs_buffer()?;
+    let fs_buf_static = unsafe { fs_buf.as_static_mut() };
     let (flash, start, end) = match partition {
         Some(p) => (Some(p.flash_ptr), p.start_address, p.end_address),
         None => (None, 0, 0),
@@ -696,6 +698,7 @@ pub fn handle_sensor_cli<
             flash,
             start,
             end,
+            fs_buf_static,
             writer,
             SensorCliCommand::Status,
         ),
@@ -715,6 +718,7 @@ pub fn handle_sensor_cli<
                 flash,
                 start,
                 end,
+                fs_buf_static,
                 writer,
                 SensorCliCommand::CalNear { direction },
             )
@@ -735,6 +739,7 @@ pub fn handle_sensor_cli<
                 flash,
                 start,
                 end,
+                fs_buf_static,
                 writer,
                 SensorCliCommand::CalFar { direction },
             )
@@ -756,9 +761,8 @@ pub struct ProximityFeatureConfig<
     pub gesture_detector:
         core::cell::RefCell<firmware_lib::gesture_detector::ProximityGestureDetector>,
     /// Proximity telemetry client
-    pub telemetry_client: core::cell::RefCell<
-        crate::telemetry_controller::ProximityTelemetryClient<'static, MutexRaw, T_CAP>,
-    >,
+    pub telemetry_client:
+        core::cell::RefCell<crate::telemetry_controller::ProximityTelemetryClient<MutexRaw, T_CAP>>,
     /// Active proximity detection state
     pub proximity_active: core::cell::Cell<bool>,
     /// Proximity detection threshold
@@ -778,7 +782,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_C
         press_threshold_mm: u16,
         wake_threshold_mm: u16,
         dual_long_press_action: crate::GestureAction,
-        telemetry_tx: Option<crate::system_controller::TelemetrySender<'static, MutexRaw, T_CAP>>,
+        telemetry_tx: Option<crate::TelemetrySender<MutexRaw, T_CAP>>,
     ) -> Self {
         let mut sensor_txs = heapless::Vec::new();
         for sender in sensor_senders {

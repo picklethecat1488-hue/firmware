@@ -388,3 +388,74 @@ pub fn get_boot_reason() -> model::types::BootReason {
         model::types::BootReason::Unknown
     }
 }
+
+/// Wrapper around Flex for battery alert pin.
+pub struct AlertPinWrapper(pub Flex<'static>);
+
+impl controller::battery_controller::BatteryAlertPin for AlertPinWrapper {
+    async fn wait_for_alert(&mut self) {
+        self.0.wait_for_low().await;
+    }
+}
+
+/// Wrapper around Flex for sensor interrupt data ready pin.
+pub struct ProximityPinWrapper(pub Flex<'static>);
+
+impl controller::sensor_controller::DataReadyPin for ProximityPinWrapper {
+    async fn wait_for_data_ready(&mut self) {
+        self.0.wait_for_falling_edge().await;
+    }
+}
+
+/// Safe wrapper around Rp2040TempSensor to make it thread-safe.
+pub struct SafeRp2040TempSensor(pub Option<Rp2040TempSensor>);
+
+impl model::interfaces::TemperatureSensor for SafeRp2040TempSensor {
+    type Error = ();
+
+    fn read_temperature_milli_c(&mut self) -> Result<i32, Self::Error> {
+        if let Some(ref mut sensor) = self.0 {
+            sensor.read_temperature_milli_c().map_err(|_| ())
+        } else {
+            Ok(25000)
+        }
+    }
+}
+
+/// Safe wrapper around Bq25185 charger to handle None state.
+pub struct SafeBq25185(pub Option<peripherals::bq25185::Bq25185<Flex<'static>, Flex<'static>>>);
+
+impl model::interfaces::ChargeStatus for SafeBq25185 {
+    type Error = ();
+
+    fn get_charge_state(&mut self) -> Result<model::types::ChargeState, Self::Error> {
+        if let Some(ref mut chg) = self.0 {
+            Ok(chg.get_state())
+        } else {
+            Ok(model::types::ChargeState::DoneOrStandbyOrUnplugged)
+        }
+    }
+}
+
+/// The battery fuel gauge type.
+pub type BatteryDevice =
+    peripherals::max17048::Max17048<firmware_lib::i2c::SharedI2cWrapper<'static>>;
+/// The battery charger type.
+pub type ChargerDevice = SafeBq25185;
+/// The battery alert pin type.
+pub type AlertPinType = AlertPinWrapper;
+/// The motor driver type.
+pub type MotorDevice = peripherals::l9110s::L9110s<Flex<'static>, Flex<'static>>;
+/// The motor current sensor type.
+pub type CurrentSensorDevice =
+    peripherals::ina219::Ina219<firmware_lib::i2c::SharedI2cWrapper<'static>>;
+/// The proximity sensor type.
+pub type ProximitySensorDevice =
+    peripherals::vl53l0x::Vl53l0x<firmware_lib::i2c::SharedI2cWrapper<'static>>;
+/// The proximity sensor interrupt pin type.
+pub type DataReadyPinType = ProximityPinWrapper;
+/// The LED driver type.
+pub type LedDevice =
+    peripherals::attiny816::Attiny816<firmware_lib::i2c::SharedI2cWrapper<'static>>;
+/// The temperature sensor type.
+pub type TempSensorDevice = SafeRp2040TempSensor;
