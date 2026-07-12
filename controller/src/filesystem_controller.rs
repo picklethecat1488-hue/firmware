@@ -418,12 +418,7 @@ pub enum FsRequest {
     },
 }
 
-crate::define_controller_channels!(
-    FilesystemChannel,
-    FilesystemSender,
-    FilesystemReceiver,
-    FsRequest
-);
+use crate::FilesystemReceiver;
 
 unsafe impl Send for FsRequest {}
 unsafe impl Sync for FsRequest {}

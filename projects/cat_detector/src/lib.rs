@@ -74,7 +74,6 @@ pub static SHARED_I2C: embassy_sync::blocking_mutex::Mutex<
     None,
 )));
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// RawMutex type used by controllers.
 pub type MutexRaw = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
@@ -375,30 +374,39 @@ impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: u
     }
 }
 
-controller::declare_channels! {
-    /// Shared command channel for the Motor Controller.
-    pub static MOTOR_CHANNEL: controller::motor_controller::MotorCommand, capacity = 4;
-    /// Shared command channel for the System Controller.
-    pub static SYSTEM_CHANNEL: controller::SystemCommand, capacity = 4;
-    /// Shared channel for local gesture events.
-    pub static GESTURE_CHANNEL: model::types::Gesture, capacity = 4;
-    /// Shared command channel for the North Sensor Controller.
-    pub static SENSOR_NORTH_CHANNEL: controller::sensor_controller::SensorCommand, capacity = 4;
-    /// Shared command channel for the East Sensor Controller.
-    pub static SENSOR_EAST_CHANNEL: controller::sensor_controller::SensorCommand, capacity = 4;
-    /// Shared command channel for the West Sensor Controller.
-    pub static SENSOR_WEST_CHANNEL: controller::sensor_controller::SensorCommand, capacity = 4;
-    /// Shared command channel for the Thermal Controller.
-    pub static THERMAL_CHANNEL: controller::thermal_controller::ThermalCommand, capacity = 4;
-    /// Shared command channel for the Battery Controller.
-    pub static BATTERY_CHANNEL: controller::battery_controller::BatteryCommand, capacity = 4;
-    /// Shared command channel for the System LED status updates.
-    pub static LED_CHANNEL: model::types::SystemLedState, capacity = 4;
-    /// Shared command channel for telemetry records.
-    pub static TELEMETRY_CHANNEL: model::types::TelemetryRecord, capacity = { controller::telemetry_controller::CHANNEL_CAPACITY };
-    /// Shared command channel for filesystem operations.
-    pub static FILESYSTEM_CHANNEL: controller::filesystem_controller::FsRequest, capacity = 16;
-}
+/// Shared command channel for the Motor Controller.
+pub static MOTOR_CHANNEL: controller::MotorChannel<MutexRaw, 4> = controller::MotorChannel::new();
+/// Shared command channel for the System Controller.
+pub static SYSTEM_CHANNEL: controller::SystemChannel<MutexRaw, 4> =
+    controller::SystemChannel::new();
+/// Shared channel for local gesture events.
+pub static GESTURE_CHANNEL: firmware_lib::gesture_detector::GestureChannel<MutexRaw, 4> =
+    firmware_lib::gesture_detector::GestureChannel::new();
+/// Shared command channel for the North Sensor Controller.
+pub static SENSOR_NORTH_CHANNEL: controller::SensorChannel<MutexRaw, 4> =
+    controller::SensorChannel::new();
+/// Shared command channel for the East Sensor Controller.
+pub static SENSOR_EAST_CHANNEL: controller::SensorChannel<MutexRaw, 4> =
+    controller::SensorChannel::new();
+/// Shared command channel for the West Sensor Controller.
+pub static SENSOR_WEST_CHANNEL: controller::SensorChannel<MutexRaw, 4> =
+    controller::SensorChannel::new();
+/// Shared command channel for the Thermal Controller.
+pub static THERMAL_CHANNEL: controller::ThermalChannel<MutexRaw, 4> =
+    controller::ThermalChannel::new();
+/// Shared command channel for the Battery Controller.
+pub static BATTERY_CHANNEL: controller::BatteryChannel<MutexRaw, 4> =
+    controller::BatteryChannel::new();
+/// Shared command channel for the System LED status updates.
+pub static LED_CHANNEL: controller::LedChannel<MutexRaw, 4> = controller::LedChannel::new();
+/// Shared command channel for telemetry records.
+pub static TELEMETRY_CHANNEL: controller::TelemetryChannel<
+    MutexRaw,
+    { controller::telemetry_controller::CHANNEL_CAPACITY },
+> = controller::TelemetryChannel::new();
+/// Shared command channel for filesystem operations.
+pub static FILESYSTEM_CHANNEL: controller::FilesystemChannel<MutexRaw, 16> =
+    controller::FilesystemChannel::new();
 
 /// Re-export the telemetry module from the controller crate
 pub use controller::telemetry_controller as telemetry;

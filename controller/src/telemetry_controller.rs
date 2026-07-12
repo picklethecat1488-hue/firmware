@@ -3,17 +3,12 @@
 #![deny(missing_docs)]
 
 use crate::filesystem_controller::FilesystemClient;
-use crate::StaticChannel;
+
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use model::telemetry::{IntoTelemetryRecord, TelemetryClient, TelemetryRecord};
 
-crate::define_controller_channels!(
-    TelemetryChannel,
-    TelemetrySender,
-    TelemetryReceiver,
-    model::telemetry::TelemetryRecord
-);
+use crate::{TelemetryReceiver, TelemetrySender};
 
 static TELEMETRY_WRITE_SIGNAL: Signal<CriticalSectionRawMutex, Result<(), ()>> = Signal::new();
 
@@ -61,8 +56,10 @@ pub const CHANNEL_CAPACITY: usize = 64;
 
 impl Default for TelemetryController<45, { model::telemetry::BUFFER_SIZE }> {
     fn default() -> Self {
-        static DUMMY_CHANNEL: StaticChannel<crate::filesystem_controller::FsRequest, 16> =
-            StaticChannel::new();
+        static DUMMY_CHANNEL: crate::FilesystemChannel<
+            embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+            16,
+        > = crate::FilesystemChannel::new();
         Self::new(FilesystemClient::new(DUMMY_CHANNEL.sender()))
     }
 }

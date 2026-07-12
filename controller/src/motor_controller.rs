@@ -401,7 +401,7 @@ pub enum MotorCommand {
     Stop,
 }
 
-crate::define_controller_channels!(MotorChannel, MotorSender, MotorReceiver, MotorCommand);
+use crate::MotorReceiver;
 
 impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
     for MotorController<M, C>

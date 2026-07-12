@@ -46,31 +46,83 @@ pub use types::{
     ThermalState,
 };
 
-/// Macro to define controller channel types.
+/// Source of truth for all controllers and their channel/message types.
 #[macro_export]
-macro_rules! define_controller_channels {
-    ($name:ident, $sender:ident, $receiver:ident, $msg:ty) => {
-        /// Channel type for controller communication.
-        pub type $name<MutexRaw, const N: usize> =
-            embassy_sync::channel::Channel<MutexRaw, $msg, N>;
-        /// Sender type for controller communication.
-        pub type $sender<MutexRaw, const N: usize> =
-            embassy_sync::channel::Sender<'static, MutexRaw, $msg, N>;
-        /// Receiver type for controller communication.
-        pub type $receiver<MutexRaw, const N: usize> =
-            embassy_sync::channel::Receiver<'static, MutexRaw, $msg, N>;
+macro_rules! define_controllers {
+    (
+        $(
+            $name:ident {
+                channel: $channel:ident,
+                sender: $sender:ident,
+                receiver: $receiver:ident,
+                msg: $msg:ty,
+            }
+        )*
+    ) => {
+        $(
+            /// Channel type for controller communication.
+            pub type $channel<MutexRaw, const N: usize> =
+                embassy_sync::channel::Channel<MutexRaw, $msg, N>;
+            /// Sender type for controller communication.
+            pub type $sender<MutexRaw, const N: usize> =
+                embassy_sync::channel::Sender<'static, MutexRaw, $msg, N>;
+            /// Receiver type for controller communication.
+            pub type $receiver<MutexRaw, const N: usize> =
+                embassy_sync::channel::Receiver<'static, MutexRaw, $msg, N>;
+        )*
     };
 }
 
-// Type alias for MotorCommand channel Sender/Receiver/Channel.
-pub use battery_controller::{BatteryChannel, BatteryReceiver, BatterySender};
-pub use filesystem_controller::{FilesystemChannel, FilesystemReceiver, FilesystemSender};
-pub use led_controller::{LedChannel, LedReceiver, LedSender};
-pub use motor_controller::{MotorChannel, MotorReceiver, MotorSender};
-pub use sensor_controller::{SensorChannel, SensorReceiver, SensorSender};
-pub use system_controller::{SystemChannel, SystemReceiver, SystemSender};
-pub use telemetry_controller::{TelemetryChannel, TelemetryReceiver, TelemetrySender};
-pub use thermal_controller::{ThermalChannel, ThermalReceiver, ThermalSender};
+define_controllers! {
+    Led {
+        channel: LedChannel,
+        sender: LedSender,
+        receiver: LedReceiver,
+        msg: model::types::SystemLedState,
+    }
+    Battery {
+        channel: BatteryChannel,
+        sender: BatterySender,
+        receiver: BatteryReceiver,
+        msg: crate::battery_controller::BatteryCommand,
+    }
+    Thermal {
+        channel: ThermalChannel,
+        sender: ThermalSender,
+        receiver: ThermalReceiver,
+        msg: crate::thermal_controller::ThermalCommand,
+    }
+    Sensor {
+        channel: SensorChannel,
+        sender: SensorSender,
+        receiver: SensorReceiver,
+        msg: crate::sensor_controller::SensorCommand,
+    }
+    Motor {
+        channel: MotorChannel,
+        sender: MotorSender,
+        receiver: MotorReceiver,
+        msg: crate::motor_controller::MotorCommand,
+    }
+    Filesystem {
+        channel: FilesystemChannel,
+        sender: FilesystemSender,
+        receiver: FilesystemReceiver,
+        msg: crate::filesystem_controller::FsRequest,
+    }
+    System {
+        channel: SystemChannel,
+        sender: SystemSender,
+        receiver: SystemReceiver,
+        msg: crate::system_controller::SystemCommand,
+    }
+    Telemetry {
+        channel: TelemetryChannel,
+        sender: TelemetrySender,
+        receiver: TelemetryReceiver,
+        msg: model::telemetry::TelemetryRecord,
+    }
+}
 
 use model::types::PeripheralError;
 
@@ -177,16 +229,12 @@ macro_rules! run_thermal_task {
                     $battery_type,
                     $cmd_type,
                 >,
-                rx: embassy_sync::channel::Receiver<
-                    'static,
+                rx: $crate::ThermalReceiver<
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    $crate::thermal_controller::ThermalCommand,
                     4,
                 >,
-                telemetry_tx: embassy_sync::channel::Sender<
-                    'static,
+                telemetry_tx: $crate::TelemetrySender<
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    model::telemetry::TelemetryRecord,
                     { $crate::telemetry_controller::CHANNEL_CAPACITY },
                 >,
             ) {
@@ -230,16 +278,12 @@ macro_rules! run_battery_task {
                     $pin_type,
                     $cmd_type,
                 >,
-                rx: embassy_sync::channel::Receiver<
-                    'static,
+                rx: $crate::BatteryReceiver<
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    $crate::battery_controller::BatteryCommand,
                     4,
                 >,
-                telemetry_tx: embassy_sync::channel::Sender<
-                    'static,
+                telemetry_tx: $crate::TelemetrySender<
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    model::telemetry::TelemetryRecord,
                     { $crate::telemetry_controller::CHANNEL_CAPACITY },
                 >,
             ) {
@@ -277,16 +321,12 @@ macro_rules! run_motor_task {
                     $motor_type,
                     $current_sensor_type,
                 >,
-                rx: embassy_sync::channel::Receiver<
-                    'static,
+                rx: $crate::MotorReceiver<
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    $crate::motor_controller::MotorCommand,
                     4,
                 >,
-                telemetry_tx: embassy_sync::channel::Sender<
-                    'static,
+                telemetry_tx: $crate::TelemetrySender<
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    model::telemetry::TelemetryRecord,
                     { $crate::telemetry_controller::CHANNEL_CAPACITY },
                 >,
             ) {
@@ -328,12 +368,7 @@ macro_rules! run_sensor_task {
                     $pin_type,
                     $cmd_type,
                 >,
-                rx: embassy_sync::channel::Receiver<
-                    'static,
-                    $raw_mutex,
-                    $crate::sensor_controller::SensorCommand,
-                    4,
-                >,
+                rx: $crate::SensorReceiver<$raw_mutex, 4>,
             ) {
                 controller.run(rx).await;
             }
@@ -366,16 +401,9 @@ macro_rules! run_led_task {
             #[embassy_executor::task]
             pub async fn task(
                 controller: $crate::led_controller::LedController<$driver_type>,
-                rx: embassy_sync::channel::Receiver<
-                    'static,
-                    $raw_mutex,
-                    model::types::SystemLedState,
-                    4,
-                >,
-                telemetry_tx: embassy_sync::channel::Sender<
-                    'static,
+                rx: $crate::LedReceiver<$raw_mutex, 4>,
+                telemetry_tx: $crate::TelemetrySender<
                     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    model::telemetry::TelemetryRecord,
                     { $crate::telemetry_controller::CHANNEL_CAPACITY },
                 >,
             ) {
@@ -408,7 +436,10 @@ macro_rules! run_filesystem_task {
             #[embassy_executor::task]
             pub async fn task(
                 fs: $crate::filesystem_controller::FilesystemController<$flash_type>,
-                rx: $crate::StaticReceiver<$crate::filesystem_controller::FsRequest, 16>,
+                rx: $crate::FilesystemReceiver<
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    16,
+                >,
             ) {
                 $crate::filesystem_controller::run_filesystem_task(fs, rx).await;
             }
@@ -452,7 +483,10 @@ macro_rules! run_telemetry_task {
                     $max_records,
                     { model::telemetry::BUFFER_SIZE },
                 >,
-                rx: $crate::StaticReceiver<model::telemetry::TelemetryRecord, $channel_size>,
+                rx: $crate::TelemetryReceiver<
+                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                    $channel_size,
+                >,
             ) {
                 controller.run(rx).await;
             }
@@ -464,51 +498,10 @@ macro_rules! run_telemetry_task {
     };
 }
 
-/// Helper macro to declare static embassy channels with CriticalSectionRawMutex.
-///
-/// Example:
-/// ```rust
-/// # use controller::declare_channels;
-/// declare_channels! {
-///     pub static MOTOR_CHANNEL: controller::motor_controller::MotorCommand, capacity = 4;
-///     pub static SYSTEM_CHANNEL: controller::system_controller::SystemCommand, capacity = 4;
-/// }
-/// ```
-#[macro_export]
-macro_rules! declare_channels {
-    (
-        $(
-            $(#[$meta:meta])*
-            $vis:vis static $name:ident : $ty:ty, capacity = $cap:expr;
-        )*
-    ) => {
-        $(
-            $(#[$meta])*
-            $vis static $name: $crate::StaticChannel<$ty, $cap> = $crate::StaticChannel::new();
-        )*
-    };
-}
-
-/// Type alias for an Embassy channel.
-pub type Channel<M, T, const N: usize> = embassy_sync::channel::Channel<M, T, N>;
-
-/// Type alias for an Embassy channel Sender.
-pub type Sender<'a, M, T, const N: usize> = embassy_sync::channel::Sender<'a, M, T, N>;
-
-/// Type alias for an Embassy channel Receiver.
-pub type Receiver<'a, M, T, const N: usize> = embassy_sync::channel::Receiver<'a, M, T, N>;
-
-/// Type alias for an Embassy channel using CriticalSectionRawMutex.
-pub type StaticChannel<T, const N: usize> =
-    Channel<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, T, N>;
-
-/// Type alias for an Embassy channel Sender using CriticalSectionRawMutex.
-pub type StaticSender<T, const N: usize> =
-    Sender<'static, embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, T, N>;
-
-/// Type alias for an Embassy channel Receiver using CriticalSectionRawMutex.
-pub type StaticReceiver<T, const N: usize> =
-    Receiver<'static, embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, T, N>;
+// Define generic type aliases to be used by implementations
+pub use embassy_sync::channel::Channel;
+pub use embassy_sync::channel::Receiver;
+pub use embassy_sync::channel::Sender;
 
 impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: usize>
     BlockingMotorWriter for MotorSender<MutexRaw, N>

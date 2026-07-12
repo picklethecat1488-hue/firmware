@@ -38,8 +38,6 @@ pub enum SensorCommand {
     DisablePeriodic,
 }
 
-crate::define_controller_channels!(SensorChannel, SensorSender, SensorReceiver, SensorCommand);
-
 /// Trait for reading data from a generic sensor type.
 pub trait SensorReader<S> {
     /// The trait-specific context block passed to the read_data method.
