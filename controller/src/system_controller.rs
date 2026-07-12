@@ -404,45 +404,6 @@ impl<
     }
 }
 
-/// A macro to define and spawn the System Controller task.
-///
-/// Generates the task definition, then spawns it on the provided Embassy spawner.
-#[macro_export]
-macro_rules! run_system_task {
-    (
-        $spawner:expr,
-        $task_module:ident,
-        $controller:expr,
-        $controller_type:ty,
-        $system_rx:expr,
-        $gesture_rx:expr
-    ) => {
-        #[allow(non_snake_case)]
-        mod $task_module {
-            use super::*;
-
-            #[embassy_executor::task]
-            pub async fn task(
-                mut controller: $controller_type,
-                system_rx: $crate::SystemReceiver<
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    4,
-                >,
-                gesture_rx: firmware_lib::gesture_detector::GestureReceiver<
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    4,
-                >,
-            ) {
-                controller.run(system_rx, gesture_rx).await;
-            }
-        }
-
-        $spawner
-            .spawn($task_module::task($controller, $system_rx, $gesture_rx))
-            .unwrap();
-    };
-}
-
 /// Helper macro to implement the SystemFeatureSet trait for a feature set struct.
 #[macro_export]
 macro_rules! impl_system_feature_set {
