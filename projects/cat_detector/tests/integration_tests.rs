@@ -139,13 +139,11 @@ fn test_system_integration_flow() {
         thermal_ctrl.set_hysteresis_temp_milli_c(2000);
 
         let mut sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
-            0,
+            controller::types::SensorMetadata {
+                direction: model::types::Direction::North,
+            },
             mock_tof_north,
             SYSTEM_CHANNEL.sender(),
-            |_id, dist| SystemCommand::ProximityUpdate {
-                direction: model::types::Direction::North,
-                distance_mm: dist,
-            },
             MockPin,
             300,
         );

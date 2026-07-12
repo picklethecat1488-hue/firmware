@@ -55,6 +55,15 @@ impl crate::battery_controller::FromBatteryUpdate for SystemCommand {
     }
 }
 
+impl crate::sensor_controller::FromProximityUpdate for SystemCommand {
+    fn from_proximity_update(metadata: crate::types::SensorMetadata, distance_mm: u16) -> Self {
+        SystemCommand::ProximityUpdate {
+            direction: metadata.direction,
+            distance_mm,
+        }
+    }
+}
+
 use model::types::{BootReason, ChargeState, Direction, Gesture, SystemStatus, TelemetryRecord};
 
 /// A set of features and event hooks for customizing the system controller's behavior.

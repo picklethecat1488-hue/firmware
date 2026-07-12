@@ -169,30 +169,6 @@ pub static mut MOTOR_CTRL: Option<
 > = None;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-fn make_proximity_update_north(_id: u8, dist: u16) -> SystemCommand {
-    SystemCommand::ProximityUpdate {
-        direction: model::types::Direction::North,
-        distance_mm: dist,
-    }
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-fn make_proximity_update_east(_id: u8, dist: u16) -> SystemCommand {
-    SystemCommand::ProximityUpdate {
-        direction: model::types::Direction::East,
-        distance_mm: dist,
-    }
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-fn make_proximity_update_west(_id: u8, dist: u16) -> SystemCommand {
-    SystemCommand::ProximityUpdate {
-        direction: model::types::Direction::West,
-        distance_mm: dist,
-    }
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Type alias for the blocking flash device.
 pub type FlashDevice = embassy_rp::flash::Flash<
     'static,
@@ -264,10 +240,11 @@ pub async fn init_controllers(board: Board<'static>) {
 
         SENSOR_CTRL_NORTH = Some(
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
-                0,
+                controller::types::SensorMetadata {
+                    direction: model::types::Direction::North,
+                },
                 tof_north,
                 SYSTEM_CHANNEL.sender(),
-                make_proximity_update_north,
                 ProximityPinWrapper(pin_north),
                 DEFAULT_WAKE_THRESHOLD_MM,
             ),
@@ -275,10 +252,11 @@ pub async fn init_controllers(board: Board<'static>) {
 
         SENSOR_CTRL_EAST = Some(
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
-                1,
+                controller::types::SensorMetadata {
+                    direction: model::types::Direction::East,
+                },
                 tof_east,
                 SYSTEM_CHANNEL.sender(),
-                make_proximity_update_east,
                 ProximityPinWrapper(pin_east),
                 DEFAULT_WAKE_THRESHOLD_MM,
             ),
@@ -286,10 +264,11 @@ pub async fn init_controllers(board: Board<'static>) {
 
         SENSOR_CTRL_WEST = Some(
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
-                2,
+                controller::types::SensorMetadata {
+                    direction: model::types::Direction::West,
+                },
                 tof_west,
                 SYSTEM_CHANNEL.sender(),
-                make_proximity_update_west,
                 ProximityPinWrapper(pin_west),
                 DEFAULT_WAKE_THRESHOLD_MM,
             ),
