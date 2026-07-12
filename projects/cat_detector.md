@@ -129,7 +129,7 @@ The checklist starts by flashing the diagnostic shell to run low-level hardware 
     *   *Expected Output*: Spins pump motor at 50% speed, reports active current draw in mA (e.g., `Motor current: 120 mA`), and halts motor.
 *   **Step 7a - 7b: Calibrate Motor Current**
     *   *Type*: Target Shell Commands
-    *   *Commands*: `motor calibrate <empty|water_100ml|full|overload>`
+    *   *Commands*: `motor calibrate <empty|low|high|overload>`
     *   *Expected Output*: Measures and records average current draw under various load conditions, saving calibration limits to `motor_cal.cbor` in flash.
 *   **Step 11: Verify Panic and Crash Log Capture**
     *   *Type*: Target Shell Command

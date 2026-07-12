@@ -455,12 +455,12 @@ impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
     fn from_arg(arg: &'a str) -> Result<Self, embedded_cli::arguments::FromArgumentError<'a>> {
         match arg {
             "empty" => Ok(MotorCalState::Empty),
-            "100ml" => Ok(MotorCalState::Water100ml),
-            "full" => Ok(MotorCalState::Full),
+            "low" => Ok(MotorCalState::Low),
+            "high" => Ok(MotorCalState::High),
             "overload" => Ok(MotorCalState::Overload),
             _ => Err(embedded_cli::arguments::FromArgumentError {
                 value: arg,
-                expected: "one of 'empty', '100ml', 'full', or 'overload'",
+                expected: "one of 'empty', 'low', 'high', or 'overload'",
             }),
         }
     }
@@ -550,8 +550,8 @@ pub fn process_motor_command<
 
             let name = match state {
                 MotorCalState::Empty => "Empty",
-                MotorCalState::Water100ml => "100ml",
-                MotorCalState::Full => "Full",
+                MotorCalState::Low => "Low",
+                MotorCalState::High => "High",
                 MotorCalState::Overload => "Overload",
             };
 
@@ -672,16 +672,13 @@ pub fn handle_motor_cli<
         ),
         Some("calibrate") => {
             let state_str = arg1.ok_or("Missing calibration state")?;
-            let state =
-                match state_str {
-                    "empty" => MotorCalState::Empty,
-                    "water_100ml" => MotorCalState::Water100ml,
-                    "full" => MotorCalState::Full,
-                    "overload" => MotorCalState::Overload,
-                    _ => return Err(
-                        "Invalid calibration state. Expected: empty, water_100ml, full, overload",
-                    ),
-                };
+            let state = match state_str {
+                "empty" => MotorCalState::Empty,
+                "low" => MotorCalState::Low,
+                "high" => MotorCalState::High,
+                "overload" => MotorCalState::Overload,
+                _ => return Err("Invalid calibration state. Expected: empty, low, high, overload"),
+            };
             let max_rpm = arg2.and_then(|s| s.parse::<u32>().ok());
             let rpm_limit = arg3.and_then(|s| s.parse::<u32>().ok());
             process_motor_command(

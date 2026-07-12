@@ -230,13 +230,13 @@ pub enum MotorError<ME, CE> {
 #[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum MotorCalState {
-    /// Empty water bowl
+    /// Empty calibration state
     Empty,
-    /// Bowl with 100ml of water
-    Water100ml,
-    /// Full water bowl
-    Full,
-    /// Overload/stall state
+    /// Low calibration state
+    Low,
+    /// High calibration state
+    High,
+    /// Overload calibration state
     Overload,
 }
 
@@ -244,8 +244,8 @@ impl From<MotorCalState> for model::calibration::FourPointRef {
     fn from(state: MotorCalState) -> Self {
         match state {
             MotorCalState::Empty => model::calibration::FourPointRef::Low,
-            MotorCalState::Water100ml => model::calibration::FourPointRef::Mid,
-            MotorCalState::Full => model::calibration::FourPointRef::High,
+            MotorCalState::Low => model::calibration::FourPointRef::Low,
+            MotorCalState::High => model::calibration::FourPointRef::High,
             MotorCalState::Overload => model::calibration::FourPointRef::Overload,
         }
     }
