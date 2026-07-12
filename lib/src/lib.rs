@@ -42,6 +42,9 @@ pub mod heartbeat_monitor;
 /// Gesture detection library.
 pub mod gesture_detector;
 
+/// Async future demultiplexing helper utilities.
+pub mod select;
+
 pub use battery_manager::BatteryManager;
 pub use flash::BlockingAsyncFlash;
 pub use gesture_detector::{GestureDetector, ProximityEvent, ProximityGestureDetector};

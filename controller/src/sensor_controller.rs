@@ -7,6 +7,7 @@ use crate::BlockingProximityReader;
 use crate::Sender;
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
+use firmware_lib::select_branch_with_timeout;
 use model::interfaces::ProximitySensor;
 use model::types::{Direction, PeripheralError};
 use peripherals::ToPeripheralError;
@@ -172,7 +173,7 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin: DataReady
     SensorStateManager<'a, S, Data, M, Pin, Cmd>
 {
     /// Waits for the data ready interrupt to trigger if the interrupt pin is configured.
-    pub async fn wait_for_interrupt(&mut self) {
+    pub async fn wait_for_data_ready(&mut self) {
         if let Some(ref mut pin) = self.interrupt_pin {
             pin.wait_for_data_ready().await;
         } else {
@@ -359,27 +360,25 @@ where
         command_rx: embassy_sync::channel::Receiver<'static, M, SensorCommand, 4>,
     ) -> ! {
         loop {
-            let rx_fut = command_rx.receive();
-            let interrupt_fut = self.wait_for_interrupt();
-            let timeout_fut = embassy_time::Timer::after(embassy_time::Duration::from_millis(1000));
+            let timeout_dur = if self.is_periodic_enabled() {
+                embassy_time::Duration::from_millis(1000)
+            } else {
+                embassy_time::Duration::MAX
+            };
 
-            match embassy_futures::select::select3(rx_fut, interrupt_fut, timeout_fut).await {
-                // Command received from system shell/console
-                embassy_futures::select::Either3::First(cmd) => {
+            let res = select_branch_with_timeout!(
+                timeout_dur,
+                command_rx.receive() => |cmd| {
                     self.handle_command(cmd);
-                }
-                // Proximity interrupt triggered (GPIO1 output from ToF went low)
-                embassy_futures::select::Either3::Second(_) => {
-                    if self.is_periodic_enabled() {
-                        let _ = self.update();
-                    }
-                }
-                // Periodic update interval elapsed
-                embassy_futures::select::Either3::Third(_) => {
-                    if self.is_periodic_enabled() {
-                        let _ = self.update();
-                    }
-                }
+                    Some(())
+                },
+                self.wait_for_data_ready() => || {
+                    None
+                },
+            );
+
+            if res.is_none() {
+                let _ = self.update();
             }
         }
     }

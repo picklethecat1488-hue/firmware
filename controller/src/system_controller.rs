@@ -8,6 +8,7 @@ use crate::types::{BatteryStatus, Device, DeviceSupport, GestureAction, Proximit
 use crate::{BlockingSystemWriter, Sender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
+use firmware_lib::select_branch_with_timeout;
 use firmware_lib::{BatteryUpdateAction, PeriodicTimer, PowerManager};
 
 /// One-way commands to control the global system state and notify it of events.
@@ -374,32 +375,17 @@ impl<
 
             let remaining_ms = timer.remaining_ms();
 
-            let recv_fut = async {
-                use embassy_futures::select::{select, Either};
-                match select(command_rx.receive(), gesture_rx.receive()).await {
-                    Either::First(cmd) => Either::First(cmd),
-                    Either::Second(gesture) => Either::Second(gesture),
-                }
-            };
-
-            match embassy_time::with_timeout(
+            let _ = select_branch_with_timeout!(
                 embassy_time::Duration::from_millis(remaining_ms as u64),
-                recv_fut,
-            )
-            .await
-            {
-                Ok(embassy_futures::select::Either::First(cmd)) => {
-                    // Handle project-specific command from system command channel
+                command_rx.receive() => |cmd| {
                     let _ = self.handle_command(cmd);
-                }
-                Ok(embassy_futures::select::Either::Second(gesture)) => {
-                    // Delegate generic gesture detection event to the command handler
+                    Some(())
+                },
+                gesture_rx.receive() => |gesture| {
                     let _ = self.handle_command(SystemCommand::Gesture(gesture));
-                }
-                Err(_timeout) => {
-                    // Timeout occurred
-                }
-            }
+                    Some(())
+                },
+            );
         }
     }
 }

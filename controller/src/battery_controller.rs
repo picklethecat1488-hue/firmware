@@ -7,6 +7,7 @@ use crate::{Sender, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
+use firmware_lib::select_branch_with_timeout;
 use model::interfaces::FuelGauge;
 use model::telemetry::TelemetryClient;
 use model::types::PeripheralError;
@@ -232,6 +233,15 @@ where
         Ok(())
     }
 
+    /// Wait for the battery alert pin to trigger an alert, or wait forever if no pin is configured.
+    pub async fn wait_for_alert(&mut self) {
+        if let Some(ref mut pin) = self.alert_pin {
+            pin.wait_for_alert().await;
+        } else {
+            core::future::pending::<()>().await;
+        }
+    }
+
     /// Starts the controller's main infinite run loop, processing commands.
     pub async fn run(
         mut self,
@@ -252,72 +262,61 @@ where
         }
 
         loop {
-            let rx_fut = command_rx.receive();
-            let alert_fut = async {
-                if let Some(ref mut pin) = self.alert_pin {
-                    pin.wait_for_alert().await;
-                } else {
-                    core::future::pending::<()>().await;
-                }
-            };
-            let timeout_fut = embassy_time::Timer::after(embassy_time::Duration::from_millis(2000));
-
-            match embassy_futures::select::select3(rx_fut, alert_fut, timeout_fut).await {
-                // Command received from system shell/console
-                embassy_futures::select::Either3::First(cmd) => match cmd {
-                    BatteryCommand::CheckStatus => {
-                        if let Err(e) = self.update(Some(&mut telemetry_client)).await {
-                            let err = e.to_peripheral_error();
-                            telemetry_client.report_error(err);
-                        }
-                    }
-                    BatteryCommand::UpdateWakeLocks(mask) => {
-                        self.active_wake_locks = mask;
-                    }
-                },
-                // Fuel gauge alert interrupt triggered
-                embassy_futures::select::Either3::Second(_) => {
-                    let mut is_voltage_alert = false;
-                    let mut is_soc_alert = false;
-                    {
-                        let mut bat = self.battery.lock().await;
-                        match bat.check_and_clear_alerts() {
-                            Ok((v_alert, soc_alert)) => {
-                                is_voltage_alert = v_alert;
-                                is_soc_alert = soc_alert;
-                            }
-                            Err(e) => {
+            let res = select_branch_with_timeout!(
+                embassy_time::Duration::from_millis(2000),
+                command_rx.receive() => |cmd| {
+                    match cmd {
+                        BatteryCommand::CheckStatus => {
+                            if let Err(e) = self.update(Some(&mut telemetry_client)).await {
                                 let err = e.to_peripheral_error();
                                 telemetry_client.report_error(err);
                             }
                         }
+                        BatteryCommand::UpdateWakeLocks(mask) => {
+                            self.active_wake_locks = mask;
+                        }
                     }
+                    Some(())
+                },
+                self.wait_for_alert() => || {
+                    None
+                },
+            );
 
-                    if is_voltage_alert {
-                        // Put the system into PowerOff/PowerDown mode by treating it like a critical battery alert
-                        self.state = BatteryState::Low;
-                        if let Some(ref tx) = self.system_tx {
-                            // SOC = 0, charging = false triggers battery_critical and SystemCommand::PowerDown in SystemController
-                            let _ = tx.try_send(Cmd::from_battery_update(
-                                0,
-                                model::types::ChargeState::DoneOrStandbyOrUnplugged,
-                            ));
+            if res.is_none() {
+                let mut is_voltage_alert = false;
+                let mut is_soc_alert = false;
+                {
+                    let mut bat = self.battery.lock().await;
+                    match bat.check_and_clear_alerts() {
+                        Ok((v_alert, soc_alert)) => {
+                            is_voltage_alert = v_alert;
+                            is_soc_alert = soc_alert;
                         }
-                    } else if is_soc_alert {
-                        if let Err(e) = self.update(Some(&mut telemetry_client)).await {
-                            let err = e.to_peripheral_error();
-                            telemetry_client.report_error(err);
-                        }
-                    } else {
-                        // Default fallback
-                        if let Err(e) = self.update(Some(&mut telemetry_client)).await {
+                        Err(e) => {
                             let err = e.to_peripheral_error();
                             telemetry_client.report_error(err);
                         }
                     }
                 }
-                // Periodic update interval elapsed
-                embassy_futures::select::Either3::Third(_) => {
+
+                if is_voltage_alert {
+                    // Put the system into PowerOff/PowerDown mode by treating it like a critical battery alert
+                    self.state = BatteryState::Low;
+                    if let Some(ref tx) = self.system_tx {
+                        // SOC = 0, charging = false triggers battery_critical and SystemCommand::PowerDown in SystemController
+                        let _ = tx.try_send(Cmd::from_battery_update(
+                            0,
+                            model::types::ChargeState::DoneOrStandbyOrUnplugged,
+                        ));
+                    }
+                } else if is_soc_alert {
+                    if let Err(e) = self.update(Some(&mut telemetry_client)).await {
+                        let err = e.to_peripheral_error();
+                        telemetry_client.report_error(err);
+                    }
+                } else {
+                    // Default fallback
                     if let Err(e) = self.update(Some(&mut telemetry_client)).await {
                         let err = e.to_peripheral_error();
                         telemetry_client.report_error(err);
