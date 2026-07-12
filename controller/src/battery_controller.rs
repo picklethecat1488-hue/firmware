@@ -350,36 +350,7 @@ pub enum BatteryCommand {
     UpdateWakeLocks(u32),
 }
 
-use crate::BatteryReceiver;
-
-/// Battery-specific CLI commands
-#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
-pub enum BatteryCliCommand {
-    /// Query battery voltage and status
-    Status,
-}
-
-/// Processes battery-specific CLI commands
-pub fn process_battery_command<W: embedded_io::Write<Error = E>, E: embedded_io::Error>(
-    battery_ctrl: &impl crate::BlockingBatteryReader,
-    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-    cmd: BatteryCliCommand,
-) -> Result<(), &'static str> {
-    match cmd {
-        BatteryCliCommand::Status => {
-            let (v, soc) = battery_ctrl
-                .read_battery_blocking()
-                .map_err(|_| "Failed to read battery")?;
-            let _ = core::writeln!(
-                writer,
-                "\r\nBattery Status:\r\n  Voltage: {} mV\r\n  SoC: {}%",
-                v,
-                soc
-            );
-            Ok(())
-        }
-    }
-}
+use crate::{BatteryReceiver, BlockingBatteryReader};
 
 /// Processes battery-specific CLI subcommands.
 pub fn handle_battery_cli<
@@ -393,7 +364,18 @@ pub fn handle_battery_cli<
 ) -> Result<(), &'static str> {
     let battery_ctrl = resolver.resolve_battery(None)?;
     match subcommand {
-        Some("status") => process_battery_command(battery_ctrl, writer, BatteryCliCommand::Status),
+        Some("status") => {
+            let (v, soc) = battery_ctrl
+                .read_battery_blocking()
+                .map_err(|_| "Failed to read battery")?;
+            let _ = core::writeln!(
+                writer,
+                "\r\nBattery Status:\r\n  Voltage: {} mV\r\n  SoC: {}%",
+                v,
+                soc
+            );
+            Ok(())
+        }
         _ => Err("Invalid battery subcommand. Expected: status"),
     }
 }

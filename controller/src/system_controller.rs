@@ -5,7 +5,7 @@
 pub use firmware_lib::gesture_detector::ProximityEvent;
 
 use crate::types::{BatteryStatus, Device, DeviceSupport, GestureAction, ProximityAction};
-use crate::Sender;
+use crate::{BlockingSystemWriter, Sender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use firmware_lib::{BatteryUpdateAction, PeriodicTimer, PowerManager};
@@ -444,31 +444,6 @@ macro_rules! impl_system_feature_set {
     };
 }
 
-/// System-specific CLI commands
-#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
-pub enum SystemCliCommand {
-    /// Simulate activity event
-    Activity,
-    /// Trigger a panic to test the crash dump / panic flow
-    Crash,
-}
-
-/// Processes system-specific CLI commands
-pub fn process_system_command<W: embedded_io::Write<Error = E>, E: embedded_io::Error>(
-    system_ctrl: &mut impl crate::BlockingSystemWriter,
-    _writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-    cmd: SystemCliCommand,
-) -> Result<(), &'static str> {
-    match cmd {
-        SystemCliCommand::Activity => system_ctrl
-            .record_activity()
-            .map_err(|_| "Failed to record system activity"),
-        SystemCliCommand::Crash => {
-            panic!("Simulated crash dump flow");
-        }
-    }
-}
-
 /// Processes system-specific CLI subcommands.
 pub fn handle_system_cli<
     W: embedded_io::Write<Error = E>,
@@ -479,11 +454,12 @@ pub fn handle_system_cli<
     subcommand: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let mut system_ctrl = resolver.resolve_system_ctrl(None);
     match subcommand {
         Some("activity") => {
+            let mut system_ctrl = resolver.resolve_system_ctrl(None);
             if let Ok(ref mut ctrl) = system_ctrl {
-                process_system_command(*ctrl, writer, SystemCliCommand::Activity)
+                ctrl.record_activity()
+                    .map_err(|_| "Failed to record system activity")
             } else {
                 let _ = core::writeln!(
                     writer,
@@ -492,7 +468,9 @@ pub fn handle_system_cli<
                 Ok(())
             }
         }
-        Some("crash") => process_system_command(&mut (), writer, SystemCliCommand::Crash),
+        Some("crash") => {
+            panic!("Simulated crash dump flow");
+        }
         _ => Err("Invalid system subcommand. Expected: activity, crash"),
     }
 }

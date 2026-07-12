@@ -3,7 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::types::ThermalState;
-use crate::{Sender, TelemetrySender};
+use crate::{BlockingThermalReader, Sender, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
@@ -185,28 +185,19 @@ pub enum ThermalCommand {
 
 use crate::ThermalReceiver;
 
-/// Thermal-specific CLI commands
-#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
-pub enum ThermalCliCommand {
-    /// Query thermal sensor and status
-    Status,
-    /// Read the MCU system temperature
-    Mcu,
-}
-
-/// Processes thermal-specific CLI commands
-pub fn process_thermal_command<
+/// Processes thermal-specific CLI subcommands.
+pub fn handle_thermal_cli<
     W: embedded_io::Write<Error = E>,
     E: embedded_io::Error,
-    T: model::interfaces::TemperatureSensor,
+    C: crate::ShellConfig,
 >(
-    thermal_ctrl: &impl crate::BlockingThermalReader,
-    temp_sensor: Option<&mut T>,
+    resolver: &impl crate::ShellDeviceResolver<C>,
+    subcommand: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-    cmd: ThermalCliCommand,
 ) -> Result<(), &'static str> {
-    match cmd {
-        ThermalCliCommand::Status => {
+    match subcommand {
+        Some("status") => {
+            let thermal_ctrl = resolver.resolve_thermal(None)?;
             let temp = thermal_ctrl
                 .read_temperature_blocking()
                 .map_err(|_| "Direct thermal reading failed")?;
@@ -218,8 +209,8 @@ pub fn process_thermal_command<
             );
             Ok(())
         }
-        ThermalCliCommand::Mcu => {
-            let sensor = temp_sensor.ok_or("System temperature sensor not available")?;
+        Some("mcu") => {
+            let sensor = resolver.resolve_temp_sensor(None)?;
             let temp = sensor
                 .read_temperature_milli_c()
                 .map_err(|_| "Direct system temperature reading failed")?;
@@ -231,26 +222,6 @@ pub fn process_thermal_command<
             );
             Ok(())
         }
-    }
-}
-
-/// Processes thermal-specific CLI subcommands.
-pub fn handle_thermal_cli<
-    W: embedded_io::Write<Error = E>,
-    E: embedded_io::Error,
-    C: crate::ShellConfig,
->(
-    resolver: &impl crate::ShellDeviceResolver<C>,
-    subcommand: Option<&str>,
-    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-) -> Result<(), &'static str> {
-    let temp_sensor = resolver.resolve_temp_sensor(None).ok();
-    match subcommand {
-        Some("status") => {
-            let thermal_ctrl = resolver.resolve_thermal(None)?;
-            process_thermal_command(thermal_ctrl, temp_sensor, writer, ThermalCliCommand::Status)
-        }
-        Some("mcu") => process_thermal_command(&(), temp_sensor, writer, ThermalCliCommand::Mcu),
         _ => Err("Invalid thermal subcommand. Expected: status, mcu"),
     }
 }
