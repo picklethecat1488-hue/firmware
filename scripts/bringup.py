@@ -444,6 +444,7 @@ def main():
         subprocess.run(build_cmd, capture_output=True)
         try:
             subprocess.run(["probe-rs", "download", "--chip", device_chip, args.rtt_elf], check=True)
+            subprocess.run(["probe-rs", "reset", "--chip", device_chip], check=True)
             print_success("Successfully flashed target device.")
         except Exception as e:
             print_error(f"Failed to flash target device: {e}")
@@ -508,6 +509,15 @@ def main():
                         ],
                         check=True,
                     )
+                    subprocess.run(
+                        [
+                            "probe-rs",
+                            "reset",
+                            "--chip",
+                            device_chip,
+                        ],
+                        check=True,
+                    )
                     ser = RttProcessWrapper(app_elf, channel="defmt")
                     stream_process_output(ser)
                     current_app = "app"
@@ -530,6 +540,15 @@ def main():
                             "--chip",
                             device_chip,
                             shell_elf,
+                        ],
+                        check=True,
+                    )
+                    subprocess.run(
+                        [
+                            "probe-rs",
+                            "reset",
+                            "--chip",
+                            device_chip,
                         ],
                         check=True,
                     )
