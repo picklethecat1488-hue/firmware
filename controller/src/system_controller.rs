@@ -6,6 +6,7 @@ pub use firmware_lib::gesture_detector::ProximityEvent;
 
 use crate::types::{BatteryStatus, Device, DeviceSupport, GestureAction, ProximityAction};
 use crate::Sender;
+use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use firmware_lib::{BatteryUpdateAction, PeriodicTimer, PowerManager};
 
@@ -503,10 +504,20 @@ pub fn handle_system_cli<
     subcommand: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let system_ctrl = resolver.resolve_system_ctrl(None)?;
+    let mut system_ctrl = resolver.resolve_system_ctrl(None);
     match subcommand {
-        Some("activity") => process_system_command(system_ctrl, writer, SystemCliCommand::Activity),
-        Some("crash") => process_system_command(system_ctrl, writer, SystemCliCommand::Crash),
+        Some("activity") => {
+            if let Ok(ref mut ctrl) = system_ctrl {
+                process_system_command(*ctrl, writer, SystemCliCommand::Activity)
+            } else {
+                let _ = core::writeln!(
+                    writer,
+                    "System controller not registered; activity ignored."
+                );
+                Ok(())
+            }
+        }
+        Some("crash") => process_system_command(&mut (), writer, SystemCliCommand::Crash),
         _ => Err("Invalid system subcommand. Expected: activity, crash"),
     }
 }

@@ -68,6 +68,14 @@ pub struct Cli {
     #[arg(short, long)]
     pub elf: Option<String>,
 
+    /// Force a specific flash partition offset in bytes (e.g. "0x1C0000" or "1835008")
+    #[arg(long)]
+    pub offset: Option<String>,
+
+    /// Force a specific flash partition size in bytes (e.g. 262144)
+    #[arg(long)]
+    pub size: Option<usize>,
+
     /// Connect to an existing OpenOCD GDB server session (e.g. "localhost:3333" or "127.0.0.1")
     #[arg(short = 'o', long)]
     pub openocd_host: Option<String>,
@@ -109,4 +117,6 @@ pub enum Commands {
         /// Name of the file to remove (optional)
         filename: Option<String>,
     },
+    /// Erase and format the sequential-storage partition on the device
+    Format,
 }

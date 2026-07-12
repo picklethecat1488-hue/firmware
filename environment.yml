@@ -9,5 +9,8 @@ dependencies:
   - pytest-xdist
   - pyserial
   - ruff
+  - pyyaml
   - pip:
       - rerun-sdk
+      - halo
+      - colorama

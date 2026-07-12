@@ -505,6 +505,7 @@ pub fn process_sensor_command<
     flash_ptr: Option<*mut Flash>,
     storage_start: u32,
     storage_end: u32,
+    fs_buf: &'static mut [u8],
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
     cmd: SensorCliCommand,
 ) -> Result<(), &'static str> {
@@ -545,6 +546,10 @@ pub fn process_sensor_command<
                 sensor.read_distance_mm().unwrap_or(1000)
             };
 
+            if d_raw >= 900 {
+                return Err("Sensor disconnected or target out of range");
+            }
+
             let _ = core::writeln!(
                 writer,
                 "\r\nCalibrating cover (near) for {} sensor: Raw distance = {} mm",
@@ -553,10 +558,9 @@ pub fn process_sensor_command<
             );
 
             let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
-            static mut SHELL_FS_BUF_1: [u8; 2048] = [0u8; 2048];
             let flash_ref = unsafe { &mut *flash_raw };
             let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
-            let fs_buf = unsafe { &mut *core::ptr::addr_of_mut!(SHELL_FS_BUF_1) };
+            let fs_buf = &mut *fs_buf;
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
                 storage_start..storage_end,
@@ -603,6 +607,10 @@ pub fn process_sensor_command<
                 sensor.read_distance_mm().unwrap_or(1000)
             };
 
+            if d_raw >= 900 {
+                return Err("Sensor disconnected or target out of range");
+            }
+
             let _ = core::writeln!(
                 writer,
                 "\r\nCalibrating 100mm (far) for {} sensor: Raw distance = {} mm",
@@ -611,10 +619,9 @@ pub fn process_sensor_command<
             );
 
             let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
-            static mut SHELL_FS_BUF_2: [u8; 2048] = [0u8; 2048];
             let flash_ref = unsafe { &mut *flash_raw };
             let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
-            let fs_buf = unsafe { &mut *core::ptr::addr_of_mut!(SHELL_FS_BUF_2) };
+            let fs_buf = &mut *fs_buf;
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
                 storage_start..storage_end,
@@ -675,6 +682,8 @@ pub fn handle_sensor_cli<
         .map(|d| d as *mut _);
     let i2c = resolver.resolve_i2c(None).ok().map(|d| d as *mut _);
     let partition = resolver.resolve_partition(None).ok();
+    let mut fs_buf = resolver.lock_fs_buffer()?;
+    let fs_buf_static = unsafe { fs_buf.as_static_mut() };
     let (flash, start, end) = match partition {
         Some(p) => (Some(p.flash_ptr), p.start_address, p.end_address),
         None => (None, 0, 0),
@@ -689,6 +698,7 @@ pub fn handle_sensor_cli<
             flash,
             start,
             end,
+            fs_buf_static,
             writer,
             SensorCliCommand::Status,
         ),
@@ -708,6 +718,7 @@ pub fn handle_sensor_cli<
                 flash,
                 start,
                 end,
+                fs_buf_static,
                 writer,
                 SensorCliCommand::CalNear { direction },
             )
@@ -728,6 +739,7 @@ pub fn handle_sensor_cli<
                 flash,
                 start,
                 end,
+                fs_buf_static,
                 writer,
                 SensorCliCommand::CalFar { direction },
             )

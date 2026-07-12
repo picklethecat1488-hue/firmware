@@ -98,6 +98,11 @@ impl<I: I2c> Vl53l0x<I> {
         self.threshold_mm
     }
 
+    /// Gets the current calibration.
+    pub fn calibration(&self) -> model::calibration::TwoPointCalibration<u16> {
+        self.calibration
+    }
+
     /// Sets the near distance threshold in millimeters.
     pub fn set_threshold_mm(&mut self, threshold_mm: u16) -> Result<(), PeripheralError> {
         if threshold_mm <= self.calibration.low + THRESHOLD_ERROR_MM {
@@ -230,14 +235,16 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
 impl<I: I2c> model::calibration::Calibration for Vl53l0x<I> {
     fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
         if let model::calibration::CalibrationType::ProximityCal(cal) = calibration {
-            assert!(
-                self.threshold_mm > cal.low + THRESHOLD_ERROR_MM,
-                "threshold_mm ({}) must be greater than cal.low ({}) + THRESHOLD_ERROR_MM ({})",
-                self.threshold_mm,
-                cal.low,
-                THRESHOLD_ERROR_MM
-            );
-            self.calibration = cal;
+            if self.threshold_mm > cal.low + THRESHOLD_ERROR_MM {
+                self.calibration = cal;
+            } else {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::error!(
+                    "Invalid proximity calibration (low = {}, threshold_mm = {}). Ignoring and using defaults.",
+                    cal.low,
+                    self.threshold_mm
+                );
+            }
         }
     }
 }

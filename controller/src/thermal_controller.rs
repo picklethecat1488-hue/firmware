@@ -230,7 +230,7 @@ pub fn process_thermal_command<
                 .map_err(|_| "Direct system temperature reading failed")?;
             let _ = core::writeln!(
                 writer,
-                "\r\nSystem temperature reading: {}.{:03} C",
+                "\r\nDirect system temperature reading (RP2040): {}.{:03} C",
                 temp / 1000,
                 (temp.abs() % 1000)
             );
@@ -249,15 +249,13 @@ pub fn handle_thermal_cli<
     subcommand: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let thermal_ctrl = resolver.resolve_thermal(None)?;
     let temp_sensor = resolver.resolve_temp_sensor(None).ok();
     match subcommand {
         Some("status") => {
+            let thermal_ctrl = resolver.resolve_thermal(None)?;
             process_thermal_command(thermal_ctrl, temp_sensor, writer, ThermalCliCommand::Status)
         }
-        Some("mcu") => {
-            process_thermal_command(thermal_ctrl, temp_sensor, writer, ThermalCliCommand::Mcu)
-        }
+        Some("mcu") => process_thermal_command(&(), temp_sensor, writer, ThermalCliCommand::Mcu),
         _ => Err("Invalid thermal subcommand. Expected: status, mcu"),
     }
 }

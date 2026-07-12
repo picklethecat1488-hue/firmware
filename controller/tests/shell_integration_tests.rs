@@ -1,3 +1,4 @@
+#![allow(static_mut_refs)]
 use controller::motor_controller::MotorCommand;
 controller::declare_shell_commands! {
     CliCommand (CliCommandProcessor) {
@@ -272,6 +273,7 @@ fn test_shell_controller_integration_each_command() {
         device: &mut system_sender as *mut _,
     }];
 
+    static mut TEST_FS_BUF_1: [u8; 4096] = [0u8; 4096];
     let pointers = ShellControllerPointers::<TestConfig> {
         i2c_buses,
         motors,
@@ -282,6 +284,7 @@ fn test_shell_controller_integration_each_command() {
         motor_ctrls,
         temp_sensors,
         system_ctrls,
+        fs_buffer: unsafe { &mut TEST_FS_BUF_1 },
     };
 
     let mut shell = ShellController::<TestConfig>::new(pointers);
@@ -351,6 +354,14 @@ fn test_shell_controller_integration_each_command() {
 
     // 12. CalMotor command
     for b in b"motor calibrate water_100ml\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
+    }
+
+    for b in b"fs format\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
+    }
+
+    for b in b"fs ls\n" {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
@@ -469,6 +480,7 @@ fn test_wrapper_processor_integration() {
         device: &mut temp_sensor as *mut _,
     }];
 
+    static mut TEST_FS_BUF_2: [u8; 4096] = [0u8; 4096];
     let pointers = ShellControllerPointers::<TestConfig> {
         i2c_buses,
         motors,
@@ -478,6 +490,7 @@ fn test_wrapper_processor_integration() {
         sensors,
         motor_ctrls,
         temp_sensors,
+        fs_buffer: unsafe { &mut TEST_FS_BUF_2 },
         ..Default::default()
     };
 
@@ -493,4 +506,51 @@ fn test_wrapper_processor_integration() {
         let _ = cli.process_byte::<TestWrapperCli, _>(*b, &mut wrapper_proc);
     }
     assert_eq!(motor_ctrl.speed.get(), 77);
+}
+
+#[test]
+fn test_fs_buffer_guard_locking() {
+    use controller::shell_controller::ShellDeviceResolver;
+
+    // Test Case 1: Locking configured buffer
+    static mut TEST_BUF: [u8; 128] = [0u8; 128];
+    let pointers = ShellControllerPointers::<TestConfig> {
+        fs_buffer: unsafe { &mut TEST_BUF },
+        ..Default::default()
+    };
+    let shell = ShellController::<TestConfig>::new(pointers);
+
+    // Initial lock should succeed
+    {
+        let mut guard = shell.lock_fs_buffer().expect("Initial lock failed");
+        assert_eq!(guard.len(), 128);
+
+        // Modify buffer through guard DerefMut
+        guard[0] = 42;
+        guard[1] = 99;
+        assert_eq!(guard[0], 42);
+        assert_eq!(guard[1], 99);
+
+        // Attempting to lock again while held should fail
+        let second_lock = shell.lock_fs_buffer();
+        match second_lock {
+            Err(e) => assert_eq!(e, "Filesystem scratch buffer is already locked"),
+            _ => panic!("Expected second lock to fail"),
+        }
+    } // Guard dropped here, lock should release
+
+    // Lock after drop should succeed
+    {
+        let guard = shell.lock_fs_buffer().expect("Lock after release failed");
+        assert_eq!(guard[0], 42);
+    }
+
+    // Test Case 2: Unconfigured buffer
+    let unconfigured_pointers = ShellControllerPointers::<TestConfig>::default();
+    let unconfigured_shell = ShellController::<TestConfig>::new(unconfigured_pointers);
+    let lock_res = unconfigured_shell.lock_fs_buffer();
+    match lock_res {
+        Err(e) => assert_eq!(e, "Filesystem scratch buffer is not configured"),
+        _ => panic!("Expected lock on unconfigured buffer to fail"),
+    }
 }
