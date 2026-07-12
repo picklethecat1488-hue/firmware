@@ -417,6 +417,7 @@ macro_rules! run_system_task {
         $system_rx:expr,
         $gesture_rx:expr
     ) => {
+        #[allow(non_snake_case)]
         mod $task_module {
             use super::*;
 

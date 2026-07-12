@@ -24,7 +24,6 @@ use model::types::PeripheralError;
 struct TestConfig;
 controller::impl_shell_config! {
     TestConfig {
-        MutexRaw: CriticalSectionRawMutex,
         Flash = MockFlash,
         Motor = MockMotor,
         I2c = DummyI2c,

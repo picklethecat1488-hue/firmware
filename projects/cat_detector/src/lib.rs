@@ -407,6 +407,22 @@ pub static TELEMETRY_CHANNEL: controller::TelemetryChannel<
 /// Shared command channel for filesystem operations.
 pub static FILESYSTEM_CHANNEL: controller::FilesystemChannel<MutexRaw, 16> =
     controller::FilesystemChannel::new();
+/// Type alias for the Cat Detector System Controller.
+pub type SystemControllerType =
+    controller::SystemController<MutexRaw, CatDetectorFeatureSet<MutexRaw, 4>>;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// The concrete flash type used for the filesystem partition in production.
+pub type FlashDeviceType = controller::filesystem_controller::ProfilingFlash<
+    firmware_lib::BlockingAsyncFlash<
+        embassy_rp::flash::Flash<
+            'static,
+            embassy_rp::peripherals::FLASH,
+            embassy_rp::flash::Blocking,
+            { FLASH_SIZE },
+        >,
+    >,
+>;
 
 /// Re-export the telemetry module from the controller crate
 pub use controller::telemetry_controller as telemetry;

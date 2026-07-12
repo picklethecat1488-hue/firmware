@@ -6,6 +6,9 @@
 /// RP2040 panic handler module.
 pub mod panic_handler;
 
+/// NOR Flash driver adapters.
+pub mod flash;
+
 /// SWD Real-Time Transfer (RTT) logging backend.
 pub mod rtt;
 
@@ -40,6 +43,7 @@ pub mod heartbeat_monitor;
 pub mod gesture_detector;
 
 pub use battery_manager::BatteryManager;
+pub use flash::BlockingAsyncFlash;
 pub use gesture_detector::{GestureDetector, ProximityEvent, ProximityGestureDetector};
 pub use periodic_timer::PeriodicTimer;
 pub use power_manager::PowerManager;

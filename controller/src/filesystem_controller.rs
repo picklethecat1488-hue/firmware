@@ -418,8 +418,6 @@ pub enum FsRequest {
     },
 }
 
-use crate::FilesystemReceiver;
-
 unsafe impl Send for FsRequest {}
 unsafe impl Sync for FsRequest {}
 
@@ -488,41 +486,40 @@ impl FilesystemClient {
     }
 }
 
-/// Task loop for the filesystem pipeline.
-pub async fn run_filesystem_task<F: NorFlash + MultiwriteNorFlash>(
-    mut fs: FilesystemController<F>,
-    rx: FilesystemReceiver<CriticalSectionRawMutex, 16>,
-) -> ! {
-    let _ = fs.verify_and_repair().await;
-    loop {
-        let req = rx.receive().await;
-        match req {
-            FsRequest::WriteFile {
-                name,
-                content_ptr,
-                content_len,
-                signal,
-            } => {
-                let content = unsafe { core::slice::from_raw_parts(content_ptr, content_len) };
-                let res = fs.write_file(name, content).await;
-                unsafe { &*signal }.signal(res);
-            }
-            FsRequest::ReadFile {
-                name,
-                buf_ptr,
-                buf_len,
-                signal,
-            } => {
-                let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr, buf_len) };
-                let base_ptr = buf.as_ptr() as usize;
-                let res = fs.read_file(name, buf).await;
-                let mapped_res = res.map(|opt| {
-                    opt.map(|slice| {
-                        let start = slice.as_ptr() as usize - base_ptr;
-                        (start, slice.len())
-                    })
-                });
-                unsafe { &*signal }.signal(mapped_res);
+impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
+    /// Task loop for the filesystem pipeline.
+    pub async fn run(&mut self, rx: crate::FilesystemReceiver<CriticalSectionRawMutex, 16>) -> ! {
+        let _ = self.verify_and_repair().await;
+        loop {
+            let req = rx.receive().await;
+            match req {
+                FsRequest::WriteFile {
+                    name,
+                    content_ptr,
+                    content_len,
+                    signal,
+                } => {
+                    let content = unsafe { core::slice::from_raw_parts(content_ptr, content_len) };
+                    let res = self.write_file(name, content).await;
+                    unsafe { &*signal }.signal(res);
+                }
+                FsRequest::ReadFile {
+                    name,
+                    buf_ptr,
+                    buf_len,
+                    signal,
+                } => {
+                    let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr, buf_len) };
+                    let base_ptr = buf.as_ptr() as usize;
+                    let res = self.read_file(name, buf).await;
+                    let mapped_res = res.map(|opt| {
+                        opt.map(|slice| {
+                            let start = slice.as_ptr() as usize - base_ptr;
+                            (start, slice.len())
+                        })
+                    });
+                    unsafe { &*signal }.signal(mapped_res);
+                }
             }
         }
     }
@@ -554,7 +551,7 @@ pub fn process_filesystem_command<
         FilesystemCliCommand::Format => {
             if let Some(flash_raw) = flash_ptr {
                 let flash_ref = unsafe { &mut *flash_raw };
-                let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+                let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
                 let mut fs = crate::filesystem_controller::FilesystemController::new(
                     async_flash,
                     storage_start..storage_end,
@@ -586,7 +583,7 @@ pub fn process_filesystem_command<
         FilesystemCliCommand::Ls => {
             if let Some(flash_raw) = flash_ptr {
                 let flash_ref = unsafe { &mut *flash_raw };
-                let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+                let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
                 let mut fs = crate::filesystem_controller::FilesystemController::new(
                     async_flash,
                     storage_start..storage_end,

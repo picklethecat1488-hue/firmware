@@ -565,7 +565,7 @@ pub fn process_motor_command<
 
             let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
             let flash_ref = unsafe { &mut *flash_raw };
-            let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+            let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
             let fs_buf = &mut *fs_buf;
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,

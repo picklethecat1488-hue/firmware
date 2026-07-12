@@ -54,7 +54,7 @@ fn test_telemetry_controller_ring_buffer() {
     futures::executor::block_on(async {
         let flash = MockFlash::new();
         let buf = Box::leak(vec![0u8; 4096].into_boxed_slice());
-        let fs = FilesystemController::new(flash, 0..1024 * 64, buf);
+        let mut fs = FilesystemController::new(flash, 0..1024 * 64, buf);
 
         static FS_CHANNEL: embassy_sync::channel::Channel<
             embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
@@ -66,8 +66,7 @@ fn test_telemetry_controller_ring_buffer() {
         let mut telemetry =
             TelemetryController::<45, { model::telemetry::BUFFER_SIZE }>::new(client);
 
-        let fs_fut =
-            controller::filesystem_controller::run_filesystem_task(fs, FS_CHANNEL.receiver());
+        let fs_fut = fs.run(FS_CHANNEL.receiver());
         let test_fut = async {
             assert!(telemetry.init().await.is_ok());
 
@@ -128,7 +127,7 @@ fn test_telemetry_controller_chunked_boundary() {
     futures::executor::block_on(async {
         let flash = MockFlash::new();
         let buf = Box::leak(vec![0u8; 4096].into_boxed_slice());
-        let fs = FilesystemController::new(flash, 0..1024 * 64, buf);
+        let mut fs = FilesystemController::new(flash, 0..1024 * 64, buf);
 
         static FS_CHANNEL: embassy_sync::channel::Channel<
             embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
@@ -141,8 +140,7 @@ fn test_telemetry_controller_chunked_boundary() {
         let mut telemetry =
             TelemetryController::<200, { model::telemetry::BUFFER_SIZE }>::new(client);
 
-        let fs_fut =
-            controller::filesystem_controller::run_filesystem_task(fs, FS_CHANNEL.receiver());
+        let fs_fut = fs.run(FS_CHANNEL.receiver());
         let test_fut = async {
             assert!(telemetry.init().await.is_ok());
 
