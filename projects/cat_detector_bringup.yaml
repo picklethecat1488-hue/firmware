@@ -124,19 +124,19 @@ steps:
     expected_regex: 'Saved motor Empty calibration to flash.'
     description: Calibrate motor empty bowl state. Ensure bowl is empty first.
 
-  - id: "7a_100ml"
-    name: Calibrate Motor Current (100ml Bowl)
+  - id: "7a_low"
+    name: Calibrate Motor Current (Low Water Level)
     type: shell_command
-    command: motor calibrate water_100ml
-    expected_regex: 'Saved motor 100ml calibration to flash.'
-    description: Calibrate motor 100ml state. Fill bowl with 100ml of water first.
+    command: motor calibrate low
+    expected_regex: 'Saved motor Low calibration to flash.'
+    description: Calibrate motor low bowl state. Fill bowl with low level of water (e.g. 100ml) first.
 
-  - id: "7a_full"
-    name: Calibrate Motor Current (Full Bowl)
+  - id: "7a_high"
+    name: Calibrate Motor Current (High Water Level)
     type: shell_command
-    command: motor calibrate full
-    expected_regex: 'Saved motor Full calibration to flash.'
-    description: Calibrate motor full state. Fill bowl completely first.
+    command: motor calibrate high
+    expected_regex: 'Saved motor High calibration to flash.'
+    description: Calibrate motor high bowl state. Fill bowl completely first.
 
   - id: "7b"
     name: Calibrate Motor Current (Overload Stall)

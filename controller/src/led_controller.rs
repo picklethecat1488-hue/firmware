@@ -11,7 +11,7 @@ use model::types::PeripheralError;
 use model::types::SystemLedState;
 use peripherals::ToPeripheralError;
 
-crate::define_controller_channels!(LedChannel, LedSender, LedReceiver, SystemLedState);
+use crate::LedReceiver;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 async fn sleep_ms(ms: u32) {

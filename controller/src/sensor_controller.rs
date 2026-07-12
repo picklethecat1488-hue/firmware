@@ -2,12 +2,12 @@
 
 #![deny(missing_docs)]
 
-use crate::types::SensorDirection;
+use crate::types::{SensorDirection, SensorMetadata};
 use crate::Sender;
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::interfaces::ProximitySensor;
-use model::types::PeripheralError;
+use model::types::{Direction, PeripheralError};
 use peripherals::ToPeripheralError;
 
 /// Trait for waiting on a data-ready interrupt pin.
@@ -37,8 +37,6 @@ pub enum SensorCommand {
     /// Disable periodic automatic readings (runs only via manual commands)
     DisablePeriodic,
 }
-
-crate::define_controller_channels!(SensorChannel, SensorSender, SensorReceiver, SensorCommand);
 
 /// Trait for reading data from a generic sensor type.
 pub trait SensorReader<S> {
@@ -73,6 +71,16 @@ impl<S: ProximitySensor> SensorReader<S> for ProximityReader {
     }
 }
 
+/// A trait to convert proximity sensor reading updates to a system command.
+pub trait FromProximityUpdate {
+    /// Constructs a command from sensor metadata and distance in mm.
+    fn from_proximity_update(metadata: SensorMetadata, distance_mm: u16) -> Self;
+}
+
+impl FromProximityUpdate for () {
+    fn from_proximity_update(_metadata: SensorMetadata, _distance_mm: u16) -> Self {}
+}
+
 /// State manager for coordinating physical sensor access, interrupts, and notifications.
 pub struct SensorStateManager<
     'a,
@@ -82,12 +90,12 @@ pub struct SensorStateManager<
     Pin = DummyDataReadyPin,
     Cmd = (),
 > {
-    sensor_id: u8,
+    metadata: SensorMetadata,
     sensor: S,
     periodic_enabled: bool,
     upstream_tx: Option<Sender<'a, M, Cmd, 4>>,
-    make_cmd: Option<fn(u8, Data) -> Cmd>,
     interrupt_pin: Option<Pin>,
+    _marker: core::marker::PhantomData<Data>,
 }
 
 impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
@@ -95,25 +103,29 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
 {
     /// Creates a new SensorStateManager.
     pub const fn new(
-        sensor_id: u8,
+        metadata: SensorMetadata,
         sensor: S,
         upstream_tx: Option<Sender<'a, M, Cmd, 4>>,
-        make_cmd: Option<fn(u8, Data) -> Cmd>,
         interrupt_pin: Option<Pin>,
     ) -> Self {
         Self {
-            sensor_id,
+            metadata,
             sensor,
             periodic_enabled: true,
             upstream_tx,
-            make_cmd,
             interrupt_pin,
+            _marker: core::marker::PhantomData,
         }
     }
 
-    /// Gets the sensor ID.
-    pub fn sensor_id(&self) -> u8 {
-        self.sensor_id
+    /// Gets the sensor metadata.
+    pub fn metadata(&self) -> SensorMetadata {
+        self.metadata
+    }
+
+    /// Gets the sensor direction.
+    pub fn direction(&self) -> Direction {
+        self.metadata.direction
     }
 
     /// Gets a mutable reference to the underlying sensor.
@@ -140,16 +152,16 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
 impl<
         'a,
         S,
-        Data: Copy,
+        Data: Copy + Into<u16>,
         M: embassy_sync::blocking_mutex::raw::RawMutex,
         Pin,
-        Cmd: Clone + core::fmt::Debug,
+        Cmd: FromProximityUpdate + Clone + core::fmt::Debug,
     > SensorStateManager<'a, S, Data, M, Pin, Cmd>
 {
     /// Sends a command upstream if configured.
     pub fn notify_upstream(&self, data: Data) {
-        if let (Some(tx), Some(make_cmd)) = (&self.upstream_tx, &self.make_cmd) {
-            let cmd = make_cmd(self.sensor_id, data);
+        if let Some(tx) = &self.upstream_tx {
+            let cmd = Cmd::from_proximity_update(self.metadata, data.into());
             tx.try_send(cmd).unwrap();
         }
     }
@@ -211,9 +223,9 @@ impl<'a, S: ProximitySensor>
     >
 {
     /// Creates a new SensorController managing a single proximity sensor.
-    pub const fn new(sensor_id: u8, sensor: S, wake_threshold_mm: u16) -> Self {
+    pub const fn new(metadata: SensorMetadata, sensor: S, wake_threshold_mm: u16) -> Self {
         Self {
-            state_manager: SensorStateManager::new(sensor_id, sensor, None, None, None),
+            state_manager: SensorStateManager::new(metadata, sensor, None, None),
             latest_data: 1000,
             context: ProximityReaderContext { wake_threshold_mm },
         }
@@ -224,25 +236,18 @@ impl<
         'a,
         S: ProximitySensor,
         M: embassy_sync::blocking_mutex::raw::RawMutex,
-        Cmd: Clone + core::fmt::Debug,
+        Cmd: FromProximityUpdate + Clone + core::fmt::Debug,
     > SensorController<'a, S, M, DummyDataReadyPin, Cmd, ProximityReader>
 {
     /// Creates a new SensorController with upstream system notification.
     pub fn new_with_fusion(
-        sensor_id: u8,
+        metadata: SensorMetadata,
         sensor: S,
         upstream_tx: Sender<'a, M, Cmd, 4>,
-        make_cmd: fn(u8, u16) -> Cmd,
         wake_threshold_mm: u16,
     ) -> Self {
         Self {
-            state_manager: SensorStateManager::new(
-                sensor_id,
-                sensor,
-                Some(upstream_tx),
-                Some(make_cmd),
-                None,
-            ),
+            state_manager: SensorStateManager::new(metadata, sensor, Some(upstream_tx), None),
             latest_data: 1000,
             context: ProximityReaderContext { wake_threshold_mm },
         }
@@ -254,20 +259,22 @@ impl<
         S,
         M: embassy_sync::blocking_mutex::raw::RawMutex,
         Pin: DataReadyPin,
-        Cmd: Clone + core::fmt::Debug,
+        Cmd: FromProximityUpdate + Clone + core::fmt::Debug,
         Reader: SensorReader<S>,
     > SensorController<'a, S, M, Pin, Cmd, Reader>
+where
+    Reader::Data: Copy + Into<u16>,
 {
     /// Creates a generic SensorController.
     pub fn new_generic(
-        sensor_id: u8,
+        metadata: SensorMetadata,
         sensor: S,
         latest_data: Reader::Data,
         interrupt_pin: Option<Pin>,
         context: Reader::Context,
     ) -> Self {
         Self {
-            state_manager: SensorStateManager::new(sensor_id, sensor, None, None, interrupt_pin),
+            state_manager: SensorStateManager::new(metadata, sensor, None, interrupt_pin),
             latest_data,
             context,
         }
@@ -275,20 +282,18 @@ impl<
 
     /// Creates a generic SensorController with upstream system notification.
     pub fn new_generic_with_fusion(
-        sensor_id: u8,
+        metadata: SensorMetadata,
         sensor: S,
         latest_data: Reader::Data,
         upstream_tx: Sender<'a, M, Cmd, 4>,
-        make_cmd: fn(u8, Reader::Data) -> Cmd,
         interrupt_pin: Option<Pin>,
         context: Reader::Context,
     ) -> Self {
         Self {
             state_manager: SensorStateManager::new(
-                sensor_id,
+                metadata,
                 sensor,
                 Some(upstream_tx),
-                Some(make_cmd),
                 interrupt_pin,
             ),
             latest_data,
@@ -306,9 +311,14 @@ impl<
         self.latest_data
     }
 
-    /// Gets the sensor ID.
-    pub fn sensor_id(&self) -> u8 {
-        self.state_manager.sensor_id()
+    /// Gets the sensor direction.
+    pub fn direction(&self) -> Direction {
+        self.state_manager.direction()
+    }
+
+    /// Gets the sensor metadata.
+    pub fn metadata(&self) -> SensorMetadata {
+        self.state_manager.metadata()
     }
 
     /// Gets whether periodic monitoring is enabled.
@@ -379,24 +389,22 @@ impl<
         S: ProximitySensor,
         M: embassy_sync::blocking_mutex::raw::RawMutex,
         Pin: DataReadyPin,
-        Cmd: Clone + core::fmt::Debug,
+        Cmd: FromProximityUpdate + Clone + core::fmt::Debug,
     > SensorController<'a, S, M, Pin, Cmd, ProximityReader>
 {
     /// Creates a new SensorController with upstream system notification and interrupt pin support.
     pub fn new_with_fusion_and_interrupt(
-        sensor_id: u8,
+        metadata: SensorMetadata,
         sensor: S,
         upstream_tx: Sender<'a, M, Cmd, 4>,
-        make_cmd: fn(u8, u16) -> Cmd,
         interrupt_pin: Pin,
         wake_threshold_mm: u16,
     ) -> Self {
         Self {
             state_manager: SensorStateManager::new(
-                sensor_id,
+                metadata,
                 sensor,
                 Some(upstream_tx),
-                Some(make_cmd),
                 Some(interrupt_pin),
             ),
             latest_data: 1000,
@@ -406,8 +414,7 @@ impl<
 
     /// Gets the current proximity telemetry reading.
     pub fn telemetry(&self) -> model::types::ProximityTelemetry {
-        let dir = model::types::Direction::try_from(self.sensor_id())
-            .unwrap_or(model::types::Direction::North);
+        let dir = self.direction();
         if self.latest_data < self.context.wake_threshold_mm {
             model::types::ProximityTelemetry::InRange(dir, self.latest_data)
         } else {
@@ -559,7 +566,7 @@ pub fn process_sensor_command<
 
             let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
             let flash_ref = unsafe { &mut *flash_raw };
-            let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+            let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
             let fs_buf = &mut *fs_buf;
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
@@ -620,7 +627,7 @@ pub fn process_sensor_command<
 
             let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
             let flash_ref = unsafe { &mut *flash_raw };
-            let async_flash = firmware_lib::panic_handler::BlockingAsyncFlash(flash_ref);
+            let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
             let fs_buf = &mut *fs_buf;
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,

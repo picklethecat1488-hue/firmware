@@ -7,7 +7,6 @@ use crate::{
     BlockingBatteryReader, BlockingMotorReader, BlockingMotorWriter, BlockingProximityReader,
     BlockingThermalReader,
 };
-use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::interfaces::TemperatureSensor;
 
 /// A guard that locks the shared filesystem scratch buffer for exclusive access.
@@ -53,8 +52,6 @@ impl<'a> FsBufferGuard<'a> {
 /// Configuration trait for the ShellController.
 /// Encapsulates the target-specific raw mutex and peripheral types.
 pub trait ShellConfig {
-    /// Type of the raw mutex for task channels.
-    type MutexRaw: RawMutex + 'static;
     /// Type of the shared I2C bus driver.
     type I2c: embedded_hal::i2c::I2c + 'static;
     /// Type of the physical motor peripheral.
@@ -104,12 +101,10 @@ macro_rules! get_key_or_default {
 macro_rules! impl_shell_config {
     (
         $name:ty {
-            MutexRaw: $mutex:ty,
             $($key:ident = $val:ty),* $(,)?
         }
     ) => {
         impl $crate::shell_controller::ShellConfig for $name {
-            type MutexRaw = $mutex;
             type I2c = $crate::get_key_or_default!(I2c, [ $($key = $val,)* ], ());
             type Motor = $crate::get_key_or_default!(Motor, [ $($key = $val,)* ], ());
             type Flash = $crate::get_key_or_default!(Flash, [ $($key = $val,)* ], ());
@@ -296,7 +291,7 @@ define_shell_resolver_and_controller! {
 ///
 /// 1. **Custom enum with a Wildcard**:
 ///    The application defines a custom command enum (e.g., `AppCli`) that includes a catch-all wildcard variant:
-///    ```rust
+///    ```rust,ignore
 ///    #[derive(embedded_cli::Command)]
 ///    pub enum AppCli<'a> {
 ///        Dispense,
@@ -309,7 +304,7 @@ define_shell_resolver_and_controller! {
 /// 2. **Custom Processor Delegating via Wildcard Forwarding**:
 ///    The application then implements `CommandProcessor` for its own processor, intercepting its custom variants,
 ///    and forwarding the raw command in the `Other` variant directly to the wrapper processor:
-///    ```rust
+///    ```rust,ignore
 ///    impl<'a, 'b, W, E> CommandProcessor<W, E> for AppProcessor<'a, 'b> {
 ///        fn process(&mut self, cli: &mut CliHandle<W, E>, raw: RawCommand) -> Result<(), ProcessError<E>> {
 ///            match AppCli::parse(raw) {
