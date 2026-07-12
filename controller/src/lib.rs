@@ -458,6 +458,16 @@ macro_rules! spawn_controllers {
             ),* $(,)?
         }
     ) => {
+        // Assert that in production ARM builds, telemetry is not routed to the dummy channel
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        {
+            let telemetry_ptr = &$telemetry as *const _;
+            let dummy_ptr = &$crate::DUMMY_TELEMETRY_CHANNEL as *const _;
+            if core::ptr::eq(telemetry_ptr, dummy_ptr) {
+                panic!("Production firmware cannot be run with disabled/dummy telemetry!");
+            }
+        }
+
         $(
             $crate::spawn_single_controller!(
                 $spawner,

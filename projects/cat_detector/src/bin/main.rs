@@ -202,6 +202,7 @@ async fn main(spawner: Spawner) {
     // Spawn all application tasks concurrently using the unified macro
     controller::spawn_controllers! {
         spawner,
+        telemetry: TELEMETRY_CHANNEL,
         controllers: {
             Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (app::TempSensorDevice, app::SystemCommand),
             Battery(power_ctrl, BATTERY_CHANNEL), generics: (app::BatteryDevice, app::ChargerDevice, app::AlertPinType, app::SystemCommand),
