@@ -17,11 +17,61 @@ use peripherals::mock::{
 // Mock wrappers for interrupt pins
 struct MockPin;
 impl controller::battery_controller::BatteryAlertPin for MockPin {
-    async fn wait_for_alert(&mut self) {}
+    async fn wait_for_alert(&mut self) {
+        embassy_time::Timer::after_millis(50).await;
+    }
 }
 impl controller::sensor_controller::DataReadyPin for MockPin {
-    async fn wait_for_data_ready(&mut self) {}
+    async fn wait_for_data_ready(&mut self) {
+        embassy_time::Timer::after_millis(50).await;
+    }
 }
+
+struct TestFlash {
+    data: [u8; 1024 * 64],
+}
+
+impl TestFlash {
+    fn new() -> Self {
+        Self {
+            data: [0xFF; 1024 * 64],
+        }
+    }
+}
+
+impl embedded_storage_async::nor_flash::ErrorType for TestFlash {
+    type Error = core::convert::Infallible;
+}
+
+impl embedded_storage_async::nor_flash::ReadNorFlash for TestFlash {
+    const READ_SIZE: usize = 1;
+
+    async fn read(&mut self, offset: u32, bytes: &mut [u8]) -> Result<(), Self::Error> {
+        bytes.copy_from_slice(&self.data[offset as usize..offset as usize + bytes.len()]);
+        Ok(())
+    }
+
+    fn capacity(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl embedded_storage_async::nor_flash::NorFlash for TestFlash {
+    const WRITE_SIZE: usize = 4;
+    const ERASE_SIZE: usize = 4096;
+
+    async fn write(&mut self, offset: u32, bytes: &[u8]) -> Result<(), Self::Error> {
+        self.data[offset as usize..offset as usize + bytes.len()].copy_from_slice(bytes);
+        Ok(())
+    }
+
+    async fn erase(&mut self, from: u32, to: u32) -> Result<(), Self::Error> {
+        self.data[from as usize..to as usize].fill(0xFF);
+        Ok(())
+    }
+}
+
+impl embedded_storage_async::nor_flash::MultiwriteNorFlash for TestFlash {}
 
 #[test]
 fn test_system_integration_flow() {
@@ -549,5 +599,195 @@ fn test_system_integration_flow() {
                 SystemStatus::Sleep,     // inactivity timeout
             ]
         );
+    });
+}
+static RUN_SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 4> = Channel::new();
+static RUN_MOTOR_CHANNEL: Channel<CriticalSectionRawMutex, MotorCommand, 4> = Channel::new();
+static RUN_SENSOR_NORTH_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> =
+    Channel::new();
+static RUN_SENSOR_EAST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
+static RUN_SENSOR_WEST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
+static RUN_BATTERY_CHANNEL: Channel<CriticalSectionRawMutex, BatteryCommand, 4> = Channel::new();
+static RUN_THERMAL_CHANNEL: Channel<CriticalSectionRawMutex, ThermalCommand, 4> = Channel::new();
+static RUN_LED_CHANNEL: Channel<CriticalSectionRawMutex, SystemLedState, 4> = Channel::new();
+static RUN_TELEMETRY_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    model::telemetry::TelemetryRecord,
+    { controller::telemetry_controller::CHANNEL_CAPACITY },
+> = Channel::new();
+static RUN_TELEMETRY_CONSUMER_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    model::telemetry::TelemetryRecord,
+    { controller::telemetry_controller::CHANNEL_CAPACITY },
+> = Channel::new();
+static RUN_FILESYSTEM_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    controller::filesystem_controller::FsRequest,
+    16,
+> = Channel::new();
+static RUN_GESTURE_CHANNEL: Channel<CriticalSectionRawMutex, model::types::Gesture, 4> =
+    Channel::new();
+
+#[embassy_executor::task]
+async fn test_control_task() {
+    embassy_time::Timer::after_millis(50).await;
+    RUN_SYSTEM_CHANNEL
+        .send(SystemCommand::BatteryUpdate {
+            state_of_charge: 85,
+            charger_state: ChargeState::DoneOrStandbyOrUnplugged,
+        })
+        .await;
+
+    let mut success = false;
+    let start = std::time::Instant::now();
+    while start.elapsed() < std::time::Duration::from_secs(2) {
+        if let Ok(model::telemetry::TelemetryRecord::System(SystemStatus::Active)) =
+            RUN_TELEMETRY_CHANNEL.try_receive()
+        {
+            success = true;
+            break;
+        }
+        embassy_time::Timer::after_millis(10).await;
+    }
+
+    if success {
+        std::process::exit(0);
+    } else {
+        eprintln!("Failed to receive expected telemetry record!");
+        std::process::exit(1);
+    }
+}
+
+#[test]
+fn test_spawn_controllers_embassy_routing() {
+    // 1. Mock Peripherals (allocated with 'static lifetime)
+    let mock_motor = MockMotor::new();
+    let mock_led = MockLed::new();
+    let mock_tof_north = MockProximitySensor::new(1000);
+    let mock_tof_east = MockProximitySensor::new(1000);
+    let mock_tof_west = MockProximitySensor::new(1000);
+    let mock_battery = Box::leak(Box::new(Mutex::new(MockBattery::new(3700, 25000))));
+    let mock_charger = Box::leak(Box::new(Mutex::new(MockCharger::new(
+        ChargeState::DoneOrStandbyOrUnplugged,
+    ))));
+    let mock_temp = Box::leak(Box::new(Mutex::new(MockBattery::new(3700, 25000))));
+
+    // 2. Controllers
+    let motor_ctrl = MotorController::new(NoTick::new(mock_motor), DummyCurrentSensor);
+    let led_ctrl = LedController::new(mock_led);
+    let battery_ctrl = BatteryController::new_with_system_and_alert(
+        mock_battery,
+        mock_charger,
+        RUN_SYSTEM_CHANNEL.sender(),
+        MockPin,
+    );
+    let thermal_ctrl = ThermalController::new_with_shutdown(
+        mock_temp,
+        RUN_SYSTEM_CHANNEL.sender(),
+        SystemCommand::AlertTriggered,
+    );
+    let sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
+        controller::types::SensorMetadata {
+            direction: Direction::North,
+        },
+        mock_tof_north,
+        RUN_SYSTEM_CHANNEL.sender(),
+        MockPin,
+        300,
+    );
+    let sensor_ctrl_east = SensorController::new_with_fusion_and_interrupt(
+        controller::types::SensorMetadata {
+            direction: Direction::East,
+        },
+        mock_tof_east,
+        RUN_SYSTEM_CHANNEL.sender(),
+        MockPin,
+        300,
+    );
+    let sensor_ctrl_west = SensorController::new_with_fusion_and_interrupt(
+        controller::types::SensorMetadata {
+            direction: Direction::West,
+        },
+        mock_tof_west,
+        RUN_SYSTEM_CHANNEL.sender(),
+        MockPin,
+        300,
+    );
+
+    let feature_set = cat_detector::CatDetectorFeatureSet {
+        features: (
+            controller::MotorFeatureConfig::new(
+                Some(RUN_MOTOR_CHANNEL.sender()),
+                model::types::MotorSpeed::MAX,
+            ),
+            controller::BatteryFeatureConfig::new(
+                Some(RUN_BATTERY_CHANNEL.sender()),
+                firmware_lib::BatteryManager::new(
+                    cat_detector::CRITICAL_BATTERY_SOC_THRESHOLD,
+                    cat_detector::BATTERY_SOC_HYSTERESIS,
+                    cat_detector::LOW_BATTERY_SOC_THRESHOLD,
+                    cat_detector::MID_BATTERY_SOC_THRESHOLD,
+                    cat_detector::HIGH_BATTERY_SOC_THRESHOLD,
+                ),
+            ),
+            controller::ProximityFeatureConfig::new(
+                &[
+                    RUN_SENSOR_NORTH_CHANNEL.sender(),
+                    RUN_SENSOR_EAST_CHANNEL.sender(),
+                    RUN_SENSOR_WEST_CHANNEL.sender(),
+                ],
+                cat_detector::DEFAULT_PRESS_THRESHOLD_MM,
+                cat_detector::DEFAULT_WAKE_THRESHOLD_MM,
+                controller::GestureAction::TogglePower,
+                Some(RUN_TELEMETRY_CHANNEL.sender()),
+            ),
+            controller::LedFeatureConfig::new(Some(RUN_LED_CHANNEL.sender())),
+            controller::ThermalFeatureConfig::new(Some(RUN_THERMAL_CHANNEL.sender())),
+        ),
+    };
+    let system_ctrl = SystemController::new(
+        feature_set,
+        RUN_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
+
+    let fs_buf = Box::leak(vec![0u8; 4096].into_boxed_slice());
+    let fs_controller = controller::filesystem_controller::FilesystemController::new(
+        controller::filesystem_controller::ProfilingFlash::new(TestFlash::new()),
+        0..1024 * 64,
+        fs_buf,
+    );
+
+    let client =
+        controller::filesystem_controller::FilesystemClient::new(RUN_FILESYSTEM_CHANNEL.sender());
+    let telemetry_ctrl = Box::leak(Box::new(
+        controller::telemetry_controller::TelemetryController::new(client),
+    ));
+
+    // 3. Run Embassy Executor
+    use embassy_executor::Executor;
+    let executor = Box::leak(Box::new(Executor::new()));
+
+    executor.run(|spawner: embassy_executor::Spawner| {
+        // Spawn all controllers
+        controller::spawn_controllers! {
+            spawner,
+            telemetry: RUN_TELEMETRY_CHANNEL,
+            controllers: {
+                Thermal(thermal_ctrl, RUN_THERMAL_CHANNEL), generics: (peripherals::mock::MockBattery, SystemCommand),
+                Battery(battery_ctrl, RUN_BATTERY_CHANNEL), generics: (peripherals::mock::MockBattery, peripherals::mock::MockCharger, MockPin, SystemCommand),
+                Motor(motor_ctrl, RUN_MOTOR_CHANNEL), generics: (model::interfaces::NoTick<MockMotor>, DummyCurrentSensor),
+                Sensor(sensor_ctrl_north, RUN_SENSOR_NORTH_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
+                Sensor(sensor_ctrl_east, RUN_SENSOR_EAST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
+                Sensor(sensor_ctrl_west, RUN_SENSOR_WEST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
+                Led(led_ctrl, RUN_LED_CHANNEL), generics: (MockLed),
+                System(system_ctrl, RUN_SYSTEM_CHANNEL, RUN_GESTURE_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, cat_detector::CatDetectorFeatureSet<CriticalSectionRawMutex, 4>, 4, 64>),
+                Filesystem(fs_controller, RUN_FILESYSTEM_CHANNEL), generics: (controller::filesystem_controller::ProfilingFlash<TestFlash>),
+                Telemetry(telemetry_ctrl, RUN_TELEMETRY_CONSUMER_CHANNEL), generics: (1024, { controller::telemetry_controller::CHANNEL_CAPACITY }),
+            }
+        }
+
+        // Spawn the control task
+        spawner.spawn(test_control_task()).unwrap();
     });
 }
