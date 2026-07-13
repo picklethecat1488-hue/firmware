@@ -3,15 +3,13 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::LedTelemetryClient;
-use crate::TelemetrySender;
+use crate::{LedReceiver, TelemetrySender};
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use model::interfaces::LedDriver;
 use model::telemetry::TelemetryClient;
 use model::types::PeripheralError;
 use model::types::SystemLedState;
 use peripherals::ToPeripheralError;
-
-use crate::LedReceiver;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 async fn sleep_ms(ms: u32) {

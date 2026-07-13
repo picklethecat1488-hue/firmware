@@ -3,9 +3,11 @@
 #![deny(missing_docs)]
 
 use crate::types::{SensorDirection, SensorMetadata};
+use crate::BlockingProximityReader;
 use crate::Sender;
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
+use firmware_lib::{select_branch_with_timeout, subcommand_enum, BlockingAsyncFlash};
 use model::interfaces::ProximitySensor;
 use model::types::{Direction, PeripheralError};
 use peripherals::ToPeripheralError;
@@ -171,7 +173,7 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin: DataReady
     SensorStateManager<'a, S, Data, M, Pin, Cmd>
 {
     /// Waits for the data ready interrupt to trigger if the interrupt pin is configured.
-    pub async fn wait_for_interrupt(&mut self) {
+    pub async fn wait_for_data_ready(&mut self) {
         if let Some(ref mut pin) = self.interrupt_pin {
             pin.wait_for_data_ready().await;
         } else {
@@ -358,27 +360,25 @@ where
         command_rx: embassy_sync::channel::Receiver<'static, M, SensorCommand, 4>,
     ) -> ! {
         loop {
-            let rx_fut = command_rx.receive();
-            let interrupt_fut = self.wait_for_interrupt();
-            let timeout_fut = embassy_time::Timer::after(embassy_time::Duration::from_millis(1000));
+            let timeout_dur = if self.is_periodic_enabled() {
+                embassy_time::Duration::from_millis(1000)
+            } else {
+                embassy_time::Duration::MAX
+            };
 
-            match embassy_futures::select::select3(rx_fut, interrupt_fut, timeout_fut).await {
-                // Command received from system shell/console
-                embassy_futures::select::Either3::First(cmd) => {
+            let res = select_branch_with_timeout!(
+                timeout_dur,
+                command_rx.receive() => |cmd| {
                     self.handle_command(cmd);
-                }
-                // Proximity interrupt triggered (GPIO1 output from ToF went low)
-                embassy_futures::select::Either3::Second(_) => {
-                    if self.is_periodic_enabled() {
-                        let _ = self.update();
-                    }
-                }
-                // Periodic update interval elapsed
-                embassy_futures::select::Either3::Third(_) => {
-                    if self.is_periodic_enabled() {
-                        let _ = self.update();
-                    }
-                }
+                    Some(())
+                },
+                self.wait_for_data_ready() => || {
+                    None
+                },
+            );
+
+            if res.is_none() {
+                let _ = self.update();
             }
         }
     }
@@ -477,59 +477,50 @@ impl From<SensorDirection> for model::types::Direction {
     }
 }
 
-/// Sensor-specific CLI commands
-#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
-pub enum SensorCliCommand {
-    /// Read proximity sensors
-    Status,
-    /// Calibrate cover (near)
-    #[command(name = "cal_near")]
-    CalNear {
-        /// Sensor direction ('north', 'east', or 'west')
-        direction: SensorDirection,
-    },
-    /// Calibrate 100mm (far)
-    #[command(name = "cal_far")]
-    CalFar {
-        /// Sensor direction ('north', 'east', or 'west')
-        direction: SensorDirection,
-    },
+subcommand_enum! {
+    /// Sensor subcommands for CLI processing.
+    pub enum SensorSubcommand {
+        /// Read sensor values
+        Status,
+        /// Calibrate near proximity
+        CalNear = "cal_near",
+        /// Calibrate far proximity
+        CalFar = "cal_far",
+    }
+    "Invalid sensor subcommand. Expected: status, cal_near, cal_far"
 }
 
-/// Processes sensor-specific CLI commands
-#[allow(clippy::too_many_arguments)]
-pub fn process_sensor_command<
+/// Processes sensor-specific CLI subcommands by validating and delegating.
+pub fn handle_sensor_cli<
     W: embedded_io::Write<Error = E>,
     E: embedded_io::Error,
-    I2c: embedded_hal::i2c::I2c + 'static,
-    Flash: embedded_storage::nor_flash::NorFlash + 'static,
-    S: crate::BlockingProximityReader,
+    C: crate::ShellConfig,
 >(
-    sensor_north: Option<*mut S>,
-    sensor_east: Option<*mut S>,
-    sensor_west: Option<*mut S>,
-    i2c_ptr: Option<*mut I2c>,
-    flash_ptr: Option<*mut Flash>,
-    storage_start: u32,
-    storage_end: u32,
-    fs_buf: &'static mut [u8],
+    resolver: &impl crate::ShellDeviceResolver<C>,
+    subcommand: Option<&str>,
+    arg1: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-    cmd: SensorCliCommand,
 ) -> Result<(), &'static str> {
+    let mut fs_buf = resolver.lock_fs_buffer()?;
+    let fs_buf_static = unsafe { fs_buf.as_static_mut() };
+
+    let sub = subcommand.ok_or("Missing sensor subcommand")?;
+    let cmd = SensorSubcommand::try_from(sub)?;
+
     match cmd {
-        SensorCliCommand::Status => {
-            let read_sensor = |ptr_opt: Option<*mut S>| {
-                ptr_opt
-                    .ok_or("Proximity sensor pointer not available")
-                    .and_then(|p| {
-                        unsafe { &mut *p }
-                            .read_distance_blocking()
-                            .map_err(|_| "Proximity sensor failed to read")
-                    })
-            };
-            let dn = read_sensor(sensor_north)?;
-            let de = read_sensor(sensor_east)?;
-            let dw = read_sensor(sensor_west)?;
+        SensorSubcommand::Status => {
+            let dn = resolver
+                .resolve_sensor(Some("north"))?
+                .read_distance_blocking()
+                .map_err(|_| "Proximity sensor north failed to read")?;
+            let de = resolver
+                .resolve_sensor(Some("east"))?
+                .read_distance_blocking()
+                .map_err(|_| "Proximity sensor east failed to read")?;
+            let dw = resolver
+                .resolve_sensor(Some("west"))?
+                .read_distance_blocking()
+                .map_err(|_| "Proximity sensor west failed to read")?;
             let _ = core::writeln!(
                 writer,
                 "\r\nDirect proximity readings: North = {} mm, East = {} mm, West = {} mm",
@@ -539,9 +530,16 @@ pub fn process_sensor_command<
             );
             Ok(())
         }
-        SensorCliCommand::CalNear { direction } => {
-            let i2c_raw = i2c_ptr.ok_or("I2C controller not available")?;
-            let i2c = unsafe { &mut *i2c_raw };
+        SensorSubcommand::CalNear => {
+            let dir_str = arg1.ok_or("Missing direction parameter")?;
+            let direction = match dir_str {
+                "north" => SensorDirection::North,
+                "east" => SensorDirection::East,
+                "west" => SensorDirection::West,
+                _ => return Err("Invalid direction. Expected: north, east, west"),
+            };
+
+            let i2c = resolver.resolve_i2c(None)?;
             let (addr, name) = match direction {
                 SensorDirection::North => (0x30, "North"),
                 SensorDirection::East => (0x31, "East"),
@@ -564,14 +562,13 @@ pub fn process_sensor_command<
                 d_raw
             );
 
-            let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
-            let flash_ref = unsafe { &mut *flash_raw };
-            let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
-            let fs_buf = &mut *fs_buf;
+            let partition = resolver.resolve_partition(None)?;
+            let flash_ref = unsafe { &mut *partition.flash_ptr };
+            let async_flash = BlockingAsyncFlash(flash_ref);
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
-                storage_start..storage_end,
-                fs_buf,
+                partition.start_address..partition.end_address,
+                fs_buf_static,
             );
 
             let mut buf = [0u8; 128];
@@ -600,9 +597,16 @@ pub fn process_sensor_command<
                 })
                 .map_err(|_| "Error saving calibration to flash")
         }
-        SensorCliCommand::CalFar { direction } => {
-            let i2c_raw = i2c_ptr.ok_or("I2C controller not available")?;
-            let i2c = unsafe { &mut *i2c_raw };
+        SensorSubcommand::CalFar => {
+            let dir_str = arg1.ok_or("Missing direction parameter")?;
+            let direction = match dir_str {
+                "north" => SensorDirection::North,
+                "east" => SensorDirection::East,
+                "west" => SensorDirection::West,
+                _ => return Err("Invalid direction. Expected: north, east, west"),
+            };
+
+            let i2c = resolver.resolve_i2c(None)?;
             let (addr, name) = match direction {
                 SensorDirection::North => (0x30, "North"),
                 SensorDirection::East => (0x31, "East"),
@@ -625,14 +629,13 @@ pub fn process_sensor_command<
                 d_raw
             );
 
-            let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
-            let flash_ref = unsafe { &mut *flash_raw };
-            let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
-            let fs_buf = &mut *fs_buf;
+            let partition = resolver.resolve_partition(None)?;
+            let flash_ref = unsafe { &mut *partition.flash_ptr };
+            let async_flash = BlockingAsyncFlash(flash_ref);
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
-                storage_start..storage_end,
-                fs_buf,
+                partition.start_address..partition.end_address,
+                fs_buf_static,
             );
 
             let mut buf = [0u8; 128];
@@ -661,97 +664,6 @@ pub fn process_sensor_command<
                 })
                 .map_err(|_| "Error saving calibration to flash")
         }
-    }
-}
-
-/// Processes sensor-specific CLI subcommands by validating and delegating.
-pub fn handle_sensor_cli<
-    W: embedded_io::Write<Error = E>,
-    E: embedded_io::Error,
-    C: crate::ShellConfig,
->(
-    resolver: &impl crate::ShellDeviceResolver<C>,
-    subcommand: Option<&str>,
-    arg1: Option<&str>,
-    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-) -> Result<(), &'static str> {
-    let sensor_north = resolver
-        .resolve_sensor(Some("north"))
-        .ok()
-        .map(|d| d as *mut _);
-    let sensor_east = resolver
-        .resolve_sensor(Some("east"))
-        .ok()
-        .map(|d| d as *mut _);
-    let sensor_west = resolver
-        .resolve_sensor(Some("west"))
-        .ok()
-        .map(|d| d as *mut _);
-    let i2c = resolver.resolve_i2c(None).ok().map(|d| d as *mut _);
-    let partition = resolver.resolve_partition(None).ok();
-    let mut fs_buf = resolver.lock_fs_buffer()?;
-    let fs_buf_static = unsafe { fs_buf.as_static_mut() };
-    let (flash, start, end) = match partition {
-        Some(p) => (Some(p.flash_ptr), p.start_address, p.end_address),
-        None => (None, 0, 0),
-    };
-
-    match subcommand {
-        Some("status") => process_sensor_command(
-            sensor_north,
-            sensor_east,
-            sensor_west,
-            i2c,
-            flash,
-            start,
-            end,
-            fs_buf_static,
-            writer,
-            SensorCliCommand::Status,
-        ),
-        Some("cal_near") => {
-            let dir_str = arg1.ok_or("Missing direction parameter")?;
-            let direction = match dir_str {
-                "north" => SensorDirection::North,
-                "east" => SensorDirection::East,
-                "west" => SensorDirection::West,
-                _ => return Err("Invalid direction. Expected: north, east, west"),
-            };
-            process_sensor_command(
-                sensor_north,
-                sensor_east,
-                sensor_west,
-                i2c,
-                flash,
-                start,
-                end,
-                fs_buf_static,
-                writer,
-                SensorCliCommand::CalNear { direction },
-            )
-        }
-        Some("cal_far") => {
-            let dir_str = arg1.ok_or("Missing direction parameter")?;
-            let direction = match dir_str {
-                "north" => SensorDirection::North,
-                "east" => SensorDirection::East,
-                "west" => SensorDirection::West,
-                _ => return Err("Invalid direction. Expected: north, east, west"),
-            };
-            process_sensor_command(
-                sensor_north,
-                sensor_east,
-                sensor_west,
-                i2c,
-                flash,
-                start,
-                end,
-                fs_buf_static,
-                writer,
-                SensorCliCommand::CalFar { direction },
-            )
-        }
-        _ => Err("Invalid sensor subcommand. Expected: status, cal_near, cal_far"),
     }
 }
 

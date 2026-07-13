@@ -191,6 +191,67 @@ macro_rules! define_controllers {
         $crate::define_controllers! { $($rest)* }
     };
 
+    // Rule 4: Task with two receivers and dynamic controller type on invocation (e.g. System)
+    (
+        $name:ident {
+            channel: $channel:ident,
+            sender: $sender:ident,
+            receiver: $receiver:ident,
+            msg: $msg:ty,
+            task: $run_macro:ident {
+                generics: ($($gen:tt)*),
+                controller: [$c:ident],
+                rx: [$($rx_ty:tt)*],
+                rx2: [$($rx2_ty:tt)*],
+                call: |$c_bind:ident, $r:ident, $r2:ident| $body:expr
+            }
+        }
+        $($rest:tt)*
+    ) => {
+        /// Channel type for controller communication.
+        pub type $channel<MutexRaw, const N: usize> =
+            embassy_sync::channel::Channel<MutexRaw, $msg, N>;
+        /// Sender type for controller communication.
+        pub type $sender<MutexRaw, const N: usize> =
+            embassy_sync::channel::Sender<'static, MutexRaw, $msg, N>;
+        /// Receiver type for controller communication.
+        pub type $receiver<MutexRaw, const N: usize> =
+            embassy_sync::channel::Receiver<'static, MutexRaw, $msg, N>;
+
+        /// Task runner macro for the controller.
+        #[macro_export]
+        macro_rules! $run_macro {
+            (
+                $spawner:expr,
+                $task_module:ident,
+                $controller:expr,
+                $controller_type:ty,
+                $rx:expr,
+                $rx2:expr
+            ) => {
+                #[allow(non_snake_case)]
+                mod $task_module {
+                    use super::*;
+
+                    #[embassy_executor::task]
+                    pub async fn task(
+                        mut $c: $controller_type,
+                        $r: $($rx_ty)*,
+                        $r2: $($rx2_ty)*
+                    ) {
+                        $body;
+                    }
+                }
+
+                $spawner
+                    .spawn($task_module::task($controller, $rx, $rx2))
+                    .unwrap();
+            };
+        }
+
+        $crate::define_controllers! { $($rest)* }
+    };
+
     // Base case: empty
     () => {};
 }
@@ -310,6 +371,13 @@ define_controllers! {
         sender: SystemSender,
         receiver: SystemReceiver,
         msg: crate::system_controller::SystemCommand,
+        task: run_system_task {
+            generics: ($controller_type:ty),
+            controller: [controller],
+            rx: [$crate::SystemReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>],
+            rx2: [firmware_lib::gesture_detector::GestureReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>],
+            call: |controller, system_rx, gesture_rx| controller.run(system_rx, gesture_rx).await
+        }
     }
     Telemetry {
         channel: TelemetryChannel,

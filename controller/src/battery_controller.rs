@@ -3,10 +3,11 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::BatteryTelemetryClient;
-use crate::{Sender, TelemetrySender};
+use crate::{BatteryReceiver, BlockingBatteryReader, Sender, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
+use firmware_lib::{select_branch_with_timeout, subcommand_enum, BatteryUpdateAction};
 use model::interfaces::FuelGauge;
 use model::telemetry::TelemetryClient;
 use model::types::PeripheralError;
@@ -232,6 +233,15 @@ where
         Ok(())
     }
 
+    /// Wait for the battery alert pin to trigger an alert, or wait forever if no pin is configured.
+    pub async fn wait_for_alert(&mut self) {
+        if let Some(ref mut pin) = self.alert_pin {
+            pin.wait_for_alert().await;
+        } else {
+            core::future::pending::<()>().await;
+        }
+    }
+
     /// Starts the controller's main infinite run loop, processing commands.
     pub async fn run(
         mut self,
@@ -252,72 +262,61 @@ where
         }
 
         loop {
-            let rx_fut = command_rx.receive();
-            let alert_fut = async {
-                if let Some(ref mut pin) = self.alert_pin {
-                    pin.wait_for_alert().await;
-                } else {
-                    core::future::pending::<()>().await;
-                }
-            };
-            let timeout_fut = embassy_time::Timer::after(embassy_time::Duration::from_millis(2000));
-
-            match embassy_futures::select::select3(rx_fut, alert_fut, timeout_fut).await {
-                // Command received from system shell/console
-                embassy_futures::select::Either3::First(cmd) => match cmd {
-                    BatteryCommand::CheckStatus => {
-                        if let Err(e) = self.update(Some(&mut telemetry_client)).await {
-                            let err = e.to_peripheral_error();
-                            telemetry_client.report_error(err);
-                        }
-                    }
-                    BatteryCommand::UpdateWakeLocks(mask) => {
-                        self.active_wake_locks = mask;
-                    }
-                },
-                // Fuel gauge alert interrupt triggered
-                embassy_futures::select::Either3::Second(_) => {
-                    let mut is_voltage_alert = false;
-                    let mut is_soc_alert = false;
-                    {
-                        let mut bat = self.battery.lock().await;
-                        match bat.check_and_clear_alerts() {
-                            Ok((v_alert, soc_alert)) => {
-                                is_voltage_alert = v_alert;
-                                is_soc_alert = soc_alert;
-                            }
-                            Err(e) => {
+            let res = select_branch_with_timeout!(
+                embassy_time::Duration::from_millis(2000),
+                command_rx.receive() => |cmd| {
+                    match cmd {
+                        BatteryCommand::CheckStatus => {
+                            if let Err(e) = self.update(Some(&mut telemetry_client)).await {
                                 let err = e.to_peripheral_error();
                                 telemetry_client.report_error(err);
                             }
                         }
+                        BatteryCommand::UpdateWakeLocks(mask) => {
+                            self.active_wake_locks = mask;
+                        }
                     }
+                    Some(())
+                },
+                self.wait_for_alert() => || {
+                    None
+                },
+            );
 
-                    if is_voltage_alert {
-                        // Put the system into PowerOff/PowerDown mode by treating it like a critical battery alert
-                        self.state = BatteryState::Low;
-                        if let Some(ref tx) = self.system_tx {
-                            // SOC = 0, charging = false triggers battery_critical and SystemCommand::PowerDown in SystemController
-                            let _ = tx.try_send(Cmd::from_battery_update(
-                                0,
-                                model::types::ChargeState::DoneOrStandbyOrUnplugged,
-                            ));
+            if res.is_none() {
+                let mut is_voltage_alert = false;
+                let mut is_soc_alert = false;
+                {
+                    let mut bat = self.battery.lock().await;
+                    match bat.check_and_clear_alerts() {
+                        Ok((v_alert, soc_alert)) => {
+                            is_voltage_alert = v_alert;
+                            is_soc_alert = soc_alert;
                         }
-                    } else if is_soc_alert {
-                        if let Err(e) = self.update(Some(&mut telemetry_client)).await {
-                            let err = e.to_peripheral_error();
-                            telemetry_client.report_error(err);
-                        }
-                    } else {
-                        // Default fallback
-                        if let Err(e) = self.update(Some(&mut telemetry_client)).await {
+                        Err(e) => {
                             let err = e.to_peripheral_error();
                             telemetry_client.report_error(err);
                         }
                     }
                 }
-                // Periodic update interval elapsed
-                embassy_futures::select::Either3::Third(_) => {
+
+                if is_voltage_alert {
+                    // Put the system into PowerOff/PowerDown mode by treating it like a critical battery alert
+                    self.state = BatteryState::Low;
+                    if let Some(ref tx) = self.system_tx {
+                        // SOC = 0, charging = false triggers battery_critical and SystemCommand::PowerDown in SystemController
+                        let _ = tx.try_send(Cmd::from_battery_update(
+                            0,
+                            model::types::ChargeState::DoneOrStandbyOrUnplugged,
+                        ));
+                    }
+                } else if is_soc_alert {
+                    if let Err(e) = self.update(Some(&mut telemetry_client)).await {
+                        let err = e.to_peripheral_error();
+                        telemetry_client.report_error(err);
+                    }
+                } else {
+                    // Default fallback
                     if let Err(e) = self.update(Some(&mut telemetry_client)).await {
                         let err = e.to_peripheral_error();
                         telemetry_client.report_error(err);
@@ -350,35 +349,13 @@ pub enum BatteryCommand {
     UpdateWakeLocks(u32),
 }
 
-use crate::BatteryReceiver;
-
-/// Battery-specific CLI commands
-#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
-pub enum BatteryCliCommand {
-    /// Query battery voltage and status
-    Status,
-}
-
-/// Processes battery-specific CLI commands
-pub fn process_battery_command<W: embedded_io::Write<Error = E>, E: embedded_io::Error>(
-    battery_ctrl: &impl crate::BlockingBatteryReader,
-    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-    cmd: BatteryCliCommand,
-) -> Result<(), &'static str> {
-    match cmd {
-        BatteryCliCommand::Status => {
-            let (v, soc) = battery_ctrl
-                .read_battery_blocking()
-                .map_err(|_| "Failed to read battery")?;
-            let _ = core::writeln!(
-                writer,
-                "\r\nBattery Status:\r\n  Voltage: {} mV\r\n  SoC: {}%",
-                v,
-                soc
-            );
-            Ok(())
-        }
+subcommand_enum! {
+    /// Battery subcommands for CLI processing.
+    pub enum BatterySubcommand {
+        /// Query battery status
+        Status,
     }
+    "Invalid battery subcommand. Expected: status"
 }
 
 /// Processes battery-specific CLI subcommands.
@@ -392,9 +369,22 @@ pub fn handle_battery_cli<
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     let battery_ctrl = resolver.resolve_battery(None)?;
-    match subcommand {
-        Some("status") => process_battery_command(battery_ctrl, writer, BatteryCliCommand::Status),
-        _ => Err("Invalid battery subcommand. Expected: status"),
+    let sub = subcommand.ok_or("Missing battery subcommand")?;
+    let cmd = BatterySubcommand::try_from(sub)?;
+
+    match cmd {
+        BatterySubcommand::Status => {
+            let (v, soc) = battery_ctrl
+                .read_battery_blocking()
+                .map_err(|_| "Failed to read battery")?;
+            let _ = core::writeln!(
+                writer,
+                "\r\nBattery Status:\r\n  Voltage: {} mV\r\n  SoC: {}%",
+                v,
+                soc
+            );
+            Ok(())
+        }
     }
 }
 
@@ -436,10 +426,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
         charger_state: model::types::ChargeState,
         status: model::types::SystemStatus,
         boot_power_down: bool,
-    ) -> Option<(
-        Option<firmware_lib::BatteryUpdateAction>,
-        crate::BatteryStatus,
-    )> {
+    ) -> Option<(Option<BatteryUpdateAction>, crate::BatteryStatus)> {
         let mut bm = self.battery_manager.borrow_mut();
         let action =
             bm.update_battery_status(state_of_charge, charger_state, status, boot_power_down);
