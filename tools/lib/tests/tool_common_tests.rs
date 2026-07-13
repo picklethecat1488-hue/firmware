@@ -14,33 +14,13 @@ fn test_autodetect_project_info() {
     fs::write(
         &src_path,
         r#"
-#[repr(C)]
-pub struct ProjectMetadata {
-    pub magic: [u8; 8],
-    pub version: u32,
-    pub chip: [u8; 32],
-    pub partition_address: u32,
-    pub partition_size: u32,
-    pub flash_write_size: u32,
-    pub flash_erase_size: u32,
-    pub stack_scan_limit: u32,
-}
-
 #[used]
 #[no_mangle]
-pub static PROJECT_METADATA: ProjectMetadata = ProjectMetadata {
-    magic: *b"PROJMET\0",
-    version: 1,
-    chip: [
-        b'r', b'p', b'2', b'0', b'4', b'0', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    ],
-    partition_address: 0x101C0000,
-    partition_size: 256 * 1024,
-    flash_write_size: 4,
-    flash_erase_size: 4096,
-    stack_scan_limit: 2048,
-};
+pub static PROJECT_METADATA: [u8; 25] = [
+    0x86, 0x66, 0x72, 0x70, 0x32, 0x30, 0x34, 0x30, 0x1a, 0x10, 0x1c, 0x00,
+    0x00, 0x1a, 0x00, 0x04, 0x00, 0x00, 0x04, 0x19, 0x10, 0x00, 0x19, 0x08,
+    0x00
+];
 
 fn main() {}
 "#,

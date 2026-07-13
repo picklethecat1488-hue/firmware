@@ -58,3 +58,6 @@ pub use periodic_timer::PeriodicTimer;
 pub use power_manager::PowerManager;
 pub use system::{BatteryUpdateAction, TransitionError};
 pub use thermal_manager::ThermalManager;
+
+/// Compile-time CBOR serialization helpers.
+pub mod cbor;

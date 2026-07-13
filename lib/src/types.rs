@@ -1,4 +1,5 @@
 use core::fmt::Write;
+use minicbor::{Decode, Encode};
 
 /// Global circular log buffer for crash logging.
 pub struct LogBuffer {
@@ -163,24 +164,47 @@ pub struct CrashDump<'a> {
 pub const STACK_SCAN_LIMIT: u32 = 2048;
 
 /// Project metadata struct embedded in the ELF to allow autodetecting chip/partition layout.
-#[repr(C)]
-pub struct ProjectMetadata {
-    /// Magic identifier to verify metadata block (e.g. b"PROJMET\0")
-    pub magic: [u8; 8],
-    /// Schema version (e.g. 1)
-    pub version: u32,
-    /// Chip name (e.g. "rp2040", null-terminated)
-    pub chip: [u8; 32],
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct ProjectMetadata<'a> {
+    /// Chip name (e.g. "rp2040")
+    #[n(0)]
+    pub chip: &'a str,
     /// The virtual memory flash address of the storage partition
+    #[n(1)]
     pub partition_address: u32,
     /// The size of the storage partition in bytes
+    #[n(2)]
     pub partition_size: u32,
     /// Flash write alignment/size in bytes
+    #[n(3)]
     pub flash_write_size: u32,
     /// Flash erase sector size in bytes
+    #[n(4)]
     pub flash_erase_size: u32,
     /// Stack scan limit in words
+    #[n(5)]
     pub stack_scan_limit: u32,
+}
+
+impl<'a> ProjectMetadata<'a> {
+    /// Statically serializes all fields into CBOR format.
+    pub const fn serialize(
+        chip: &'a str,
+        partition_address: u32,
+        partition_size: u32,
+        flash_write_size: u32,
+        flash_erase_size: u32,
+        stack_scan_limit: u32,
+    ) -> crate::cbor::ConstCborWriter<128> {
+        crate::cbor::ConstCborWriter::<128>::new()
+            .write_array_header(6)
+            .write_str(chip)
+            .write_u32(partition_address)
+            .write_u32(partition_size)
+            .write_u32(flash_write_size)
+            .write_u32(flash_erase_size)
+            .write_u32(stack_scan_limit)
+    }
 }
 
 /// Type alias for an Embassy channel.
