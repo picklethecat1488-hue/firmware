@@ -3,10 +3,11 @@
 #![deny(missing_docs)]
 
 use crate::types::ThermalState;
-use crate::{Sender, TelemetrySender};
+use crate::{BlockingThermalReader, Sender, TelemetrySender, ThermalReceiver};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
+use firmware_lib::subcommand_enum;
 use model::interfaces::TemperatureSensor;
 use model::types::PeripheralError;
 use peripherals::ToPeripheralError;
@@ -183,55 +184,15 @@ pub enum ThermalCommand {
     CheckTemp,
 }
 
-use crate::ThermalReceiver;
-
-/// Thermal-specific CLI commands
-#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
-pub enum ThermalCliCommand {
-    /// Query thermal sensor and status
-    Status,
-    /// Read the MCU system temperature
-    Mcu,
-}
-
-/// Processes thermal-specific CLI commands
-pub fn process_thermal_command<
-    W: embedded_io::Write<Error = E>,
-    E: embedded_io::Error,
-    T: model::interfaces::TemperatureSensor,
->(
-    thermal_ctrl: &impl crate::BlockingThermalReader,
-    temp_sensor: Option<&mut T>,
-    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-    cmd: ThermalCliCommand,
-) -> Result<(), &'static str> {
-    match cmd {
-        ThermalCliCommand::Status => {
-            let temp = thermal_ctrl
-                .read_temperature_blocking()
-                .map_err(|_| "Direct thermal reading failed")?;
-            let _ = core::writeln!(
-                writer,
-                "\r\nDirect thermal reading (ThermalController): {}.{:03} C",
-                temp / 1000,
-                (temp.abs() % 1000)
-            );
-            Ok(())
-        }
-        ThermalCliCommand::Mcu => {
-            let sensor = temp_sensor.ok_or("System temperature sensor not available")?;
-            let temp = sensor
-                .read_temperature_milli_c()
-                .map_err(|_| "Direct system temperature reading failed")?;
-            let _ = core::writeln!(
-                writer,
-                "\r\nDirect system temperature reading (RP2040): {}.{:03} C",
-                temp / 1000,
-                (temp.abs() % 1000)
-            );
-            Ok(())
-        }
+subcommand_enum! {
+    /// Thermal subcommands for CLI processing.
+    pub enum ThermalSubcommand {
+        /// Read external temperature sensor
+        Status,
+        /// Read MCU temperature sensor
+        Mcu,
     }
+    "Invalid thermal subcommand. Expected: status, mcu"
 }
 
 /// Processes thermal-specific CLI subcommands.
@@ -244,14 +205,36 @@ pub fn handle_thermal_cli<
     subcommand: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let temp_sensor = resolver.resolve_temp_sensor(None).ok();
-    match subcommand {
-        Some("status") => {
+    let sub = subcommand.ok_or("Missing thermal subcommand")?;
+    let cmd = ThermalSubcommand::try_from(sub)?;
+
+    match cmd {
+        ThermalSubcommand::Status => {
             let thermal_ctrl = resolver.resolve_thermal(None)?;
-            process_thermal_command(thermal_ctrl, temp_sensor, writer, ThermalCliCommand::Status)
+            let temp = thermal_ctrl
+                .read_temperature_blocking()
+                .map_err(|_| "Direct thermal reading failed")?;
+            let _ = core::writeln!(
+                writer,
+                "\r\nDirect thermal reading (ThermalController): {}.{:03} C",
+                temp / 1000,
+                (temp.abs() % 1000)
+            );
+            Ok(())
         }
-        Some("mcu") => process_thermal_command(&(), temp_sensor, writer, ThermalCliCommand::Mcu),
-        _ => Err("Invalid thermal subcommand. Expected: status, mcu"),
+        ThermalSubcommand::Mcu => {
+            let sensor = resolver.resolve_temp_sensor(None)?;
+            let temp = sensor
+                .read_temperature_milli_c()
+                .map_err(|_| "Direct system temperature reading failed")?;
+            let _ = core::writeln!(
+                writer,
+                "\r\nDirect system temperature reading (RP2040): {}.{:03} C",
+                temp / 1000,
+                (temp.abs() % 1000)
+            );
+            Ok(())
+        }
     }
 }
 

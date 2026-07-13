@@ -3,7 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::MotorTelemetryClient;
-use crate::TelemetrySender;
+use crate::{BlockingMotorReader, BlockingMotorWriter, MotorReceiver, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::RawMutex;
@@ -401,8 +401,6 @@ pub enum MotorCommand {
     Stop,
 }
 
-use crate::MotorReceiver;
-
 impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
     for MotorController<M, C>
 {
@@ -466,48 +464,47 @@ impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
     }
 }
 
-/// Motor-specific CLI commands
-#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
-pub enum MotorCliCommand {
-    /// Motor speed control (motor speed <speed>)
-    Speed {
-        /// Target speed percentage (-100 to 100)
-        speed: i8,
-    },
-    /// Stop the motor
-    Stop,
-    /// Calibrate motor current levels (motor calibrate <empty|100ml|full|overload> [max_rpm] [rpm_limit])
-    Calibrate {
-        /// Calibration state ('empty', '100ml', 'full', or 'overload')
-        state: MotorCalState,
-        /// Optional physical maximum RPM at 100% duty cycle
-        max_rpm: Option<u32>,
-        /// Optional maximum RPM safety limit to configure
-        rpm_limit: Option<u32>,
-    },
+use firmware_lib::subcommand_enum;
+
+subcommand_enum! {
+    /// Motor subcommands for CLI processing.
+    pub enum MotorSubcommand {
+        /// Set motor speed
+        Speed,
+        /// Stop motor
+        Stop,
+        /// Calibrate motor
+        Calibrate,
+    }
+    "Invalid motor subcommand. Expected: speed, stop, calibrate"
 }
 
-/// Processes motor-specific CLI commands
-#[allow(clippy::too_many_arguments)]
-pub fn process_motor_command<
+/// Processes motor-specific CLI subcommands.
+pub fn handle_motor_cli<
     W: embedded_io::Write<Error = E>,
     E: embedded_io::Error,
-    M: model::interfaces::Motor + 'static,
-    I2c: embedded_hal::i2c::I2c + 'static,
-    Flash: embedded_storage::nor_flash::NorFlash + 'static,
+    C: crate::ShellConfig,
 >(
-    motor_ctrl: &mut (impl crate::BlockingMotorReader + crate::BlockingMotorWriter),
-    motor_ptr: Option<*mut M>,
-    i2c_ptr: Option<*mut I2c>,
-    flash_ptr: Option<*mut Flash>,
-    storage_start: u32,
-    storage_end: u32,
-    fs_buf: &'static mut [u8],
+    resolver: &impl crate::ShellDeviceResolver<C>,
+    subcommand: Option<&str>,
+    arg1: Option<&str>,
+    arg2: Option<&str>,
+    arg3: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-    cmd: MotorCliCommand,
 ) -> Result<(), &'static str> {
+    let motor_ctrl = resolver.resolve_motor_ctrl(None)?;
+    let mut fs_buf = resolver.lock_fs_buffer()?;
+    let fs_buf_static = unsafe { fs_buf.as_static_mut() };
+
+    let sub = subcommand.ok_or("Missing motor subcommand")?;
+    let cmd = MotorSubcommand::try_from(sub)?;
+
     match cmd {
-        MotorCliCommand::Speed { speed } => {
+        MotorSubcommand::Speed => {
+            let speed_str = arg1.ok_or("Missing speed parameter")?;
+            let speed = speed_str
+                .parse::<i8>()
+                .map_err(|_| "Invalid speed parameter")?;
             motor_ctrl
                 .set_motor_speed(speed)
                 .map_err(|_| "Failed to set motor speed")?;
@@ -517,22 +514,27 @@ pub fn process_motor_command<
             let _ = core::writeln!(writer, "\r\nMotor current: {} mA", current);
             Ok(())
         }
-        MotorCliCommand::Stop => motor_ctrl.stop().map_err(|_| "Failed to stop motor"),
-        MotorCliCommand::Calibrate {
-            state,
-            max_rpm,
-            rpm_limit,
-        } => {
-            let motor_raw = motor_ptr.ok_or("Motor peripheral not available")?;
-            let motor = unsafe { &mut *motor_raw };
+        MotorSubcommand::Stop => motor_ctrl.stop().map_err(|_| "Failed to stop motor"),
+        MotorSubcommand::Calibrate => {
+            let state_str = arg1.ok_or("Missing calibration state")?;
+            let state = match state_str {
+                "empty" => MotorCalState::Empty,
+                "low" => MotorCalState::Low,
+                "high" => MotorCalState::High,
+                "overload" => MotorCalState::Overload,
+                _ => return Err("Invalid calibration state. Expected: empty, low, high, overload"),
+            };
+            let max_rpm = arg2.and_then(|s| s.parse::<u32>().ok());
+            let rpm_limit = arg3.and_then(|s| s.parse::<u32>().ok());
+
+            let motor = resolver.resolve_motor(None)?;
             let _ = core::writeln!(writer, "\r\nStarting motor for calibration...");
             let _ = motor.set_speed(model::types::MotorSpeed::MAX);
 
             let _ = core::writeln!(writer, "Waiting 1 second for motor to ramp up...");
             embassy_time::block_for(embassy_time::Duration::from_millis(1000));
 
-            let i2c_raw = i2c_ptr.ok_or("I2C controller not available")?;
-            let i2c = unsafe { &mut *i2c_raw };
+            let i2c = resolver.resolve_i2c(None)?;
             let mut current_sensor = peripherals::ina219::Ina219::new(i2c);
             current_sensor
                 .init()
@@ -563,14 +565,13 @@ pub fn process_motor_command<
             );
             let _ = motor.stop();
 
-            let flash_raw = flash_ptr.ok_or("Flash controller not available")?;
-            let flash_ref = unsafe { &mut *flash_raw };
+            let partition = resolver.resolve_partition(None)?;
+            let flash_ref = unsafe { &mut *partition.flash_ptr };
             let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
-            let fs_buf = &mut *fs_buf;
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
-                storage_start..storage_end,
-                fs_buf,
+                partition.start_address..partition.end_address,
+                fs_buf_static,
             );
 
             let mut buf = [0u8; 128];
@@ -614,90 +615,6 @@ pub fn process_motor_command<
                 })
                 .map_err(|_| "Error saving calibration to flash")
         }
-    }
-}
-
-/// Processes motor-specific CLI subcommands.
-pub fn handle_motor_cli<
-    W: embedded_io::Write<Error = E>,
-    E: embedded_io::Error,
-    C: crate::ShellConfig,
->(
-    resolver: &impl crate::ShellDeviceResolver<C>,
-    subcommand: Option<&str>,
-    arg1: Option<&str>,
-    arg2: Option<&str>,
-    arg3: Option<&str>,
-    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-) -> Result<(), &'static str> {
-    let motor_ctrl = resolver.resolve_motor_ctrl(None)?;
-    let motor = resolver.resolve_motor(None).ok().map(|d| d as *mut _);
-    let i2c = resolver.resolve_i2c(None).ok().map(|d| d as *mut _);
-    let partition = resolver.resolve_partition(None).ok();
-    let mut fs_buf = resolver.lock_fs_buffer()?;
-    let fs_buf_static = unsafe { fs_buf.as_static_mut() };
-    let (flash, storage_start, storage_end) = match partition {
-        Some(p) => (Some(p.flash_ptr), p.start_address, p.end_address),
-        None => (None, 0, 0),
-    };
-
-    match subcommand {
-        Some("speed") => {
-            let speed_str = arg1.ok_or("Missing speed parameter")?;
-            let speed = speed_str
-                .parse::<i8>()
-                .map_err(|_| "Invalid speed parameter")?;
-            process_motor_command(
-                motor_ctrl,
-                motor,
-                i2c,
-                flash,
-                storage_start,
-                storage_end,
-                fs_buf_static,
-                writer,
-                MotorCliCommand::Speed { speed },
-            )
-        }
-        Some("stop") => process_motor_command(
-            motor_ctrl,
-            motor,
-            i2c,
-            flash,
-            storage_start,
-            storage_end,
-            fs_buf_static,
-            writer,
-            MotorCliCommand::Stop,
-        ),
-        Some("calibrate") => {
-            let state_str = arg1.ok_or("Missing calibration state")?;
-            let state = match state_str {
-                "empty" => MotorCalState::Empty,
-                "low" => MotorCalState::Low,
-                "high" => MotorCalState::High,
-                "overload" => MotorCalState::Overload,
-                _ => return Err("Invalid calibration state. Expected: empty, low, high, overload"),
-            };
-            let max_rpm = arg2.and_then(|s| s.parse::<u32>().ok());
-            let rpm_limit = arg3.and_then(|s| s.parse::<u32>().ok());
-            process_motor_command(
-                motor_ctrl,
-                motor,
-                i2c,
-                flash,
-                storage_start,
-                storage_end,
-                fs_buf_static,
-                writer,
-                MotorCliCommand::Calibrate {
-                    state,
-                    max_rpm,
-                    rpm_limit,
-                },
-            )
-        }
-        _ => Err("Invalid motor subcommand. Expected: speed, stop, calibrate"),
     }
 }
 

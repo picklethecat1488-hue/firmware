@@ -5,10 +5,12 @@
 pub use firmware_lib::gesture_detector::ProximityEvent;
 
 use crate::types::{BatteryStatus, Device, DeviceSupport, GestureAction, ProximityAction};
-use crate::Sender;
+use crate::{BlockingSystemWriter, Sender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
-use firmware_lib::{BatteryUpdateAction, PeriodicTimer, PowerManager};
+use firmware_lib::{
+    select_branch_with_timeout, subcommand_enum, BatteryUpdateAction, PeriodicTimer, PowerManager,
+};
 
 /// One-way commands to control the global system state and notify it of events.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -374,73 +376,19 @@ impl<
 
             let remaining_ms = timer.remaining_ms();
 
-            let recv_fut = async {
-                use embassy_futures::select::{select, Either};
-                match select(command_rx.receive(), gesture_rx.receive()).await {
-                    Either::First(cmd) => Either::First(cmd),
-                    Either::Second(gesture) => Either::Second(gesture),
-                }
-            };
-
-            match embassy_time::with_timeout(
+            let _ = select_branch_with_timeout!(
                 embassy_time::Duration::from_millis(remaining_ms as u64),
-                recv_fut,
-            )
-            .await
-            {
-                Ok(embassy_futures::select::Either::First(cmd)) => {
-                    // Handle project-specific command from system command channel
+                command_rx.receive() => |cmd| {
                     let _ = self.handle_command(cmd);
-                }
-                Ok(embassy_futures::select::Either::Second(gesture)) => {
-                    // Delegate generic gesture detection event to the command handler
+                    Some(())
+                },
+                gesture_rx.receive() => |gesture| {
                     let _ = self.handle_command(SystemCommand::Gesture(gesture));
-                }
-                Err(_timeout) => {
-                    // Timeout occurred
-                }
-            }
+                    Some(())
+                },
+            );
         }
     }
-}
-
-/// A macro to define and spawn the System Controller task.
-///
-/// Generates the task definition, then spawns it on the provided Embassy spawner.
-#[macro_export]
-macro_rules! run_system_task {
-    (
-        $spawner:expr,
-        $task_module:ident,
-        $controller:expr,
-        $controller_type:ty,
-        $system_rx:expr,
-        $gesture_rx:expr
-    ) => {
-        #[allow(non_snake_case)]
-        mod $task_module {
-            use super::*;
-
-            #[embassy_executor::task]
-            pub async fn task(
-                mut controller: $controller_type,
-                system_rx: $crate::SystemReceiver<
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    4,
-                >,
-                gesture_rx: firmware_lib::gesture_detector::GestureReceiver<
-                    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-                    4,
-                >,
-            ) {
-                controller.run(system_rx, gesture_rx).await;
-            }
-        }
-
-        $spawner
-            .spawn($task_module::task($controller, $system_rx, $gesture_rx))
-            .unwrap();
-    };
 }
 
 /// Helper macro to implement the SystemFeatureSet trait for a feature set struct.
@@ -483,29 +431,15 @@ macro_rules! impl_system_feature_set {
     };
 }
 
-/// System-specific CLI commands
-#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
-pub enum SystemCliCommand {
-    /// Simulate activity event
-    Activity,
-    /// Trigger a panic to test the crash dump / panic flow
-    Crash,
-}
-
-/// Processes system-specific CLI commands
-pub fn process_system_command<W: embedded_io::Write<Error = E>, E: embedded_io::Error>(
-    system_ctrl: &mut impl crate::BlockingSystemWriter,
-    _writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-    cmd: SystemCliCommand,
-) -> Result<(), &'static str> {
-    match cmd {
-        SystemCliCommand::Activity => system_ctrl
-            .record_activity()
-            .map_err(|_| "Failed to record system activity"),
-        SystemCliCommand::Crash => {
-            panic!("Simulated crash dump flow");
-        }
+subcommand_enum! {
+    /// System subcommands for CLI processing.
+    pub enum SystemSubcommand {
+        /// Record activity to wake/extend system active time
+        Activity,
+        /// Trigger simulated crash/panic
+        Crash,
     }
+    "Invalid system subcommand. Expected: activity, crash"
 }
 
 /// Processes system-specific CLI subcommands.
@@ -518,11 +452,15 @@ pub fn handle_system_cli<
     subcommand: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let mut system_ctrl = resolver.resolve_system_ctrl(None);
-    match subcommand {
-        Some("activity") => {
+    let sub = subcommand.ok_or("Missing system subcommand")?;
+    let cmd = SystemSubcommand::try_from(sub)?;
+
+    match cmd {
+        SystemSubcommand::Activity => {
+            let mut system_ctrl = resolver.resolve_system_ctrl(None);
             if let Ok(ref mut ctrl) = system_ctrl {
-                process_system_command(*ctrl, writer, SystemCliCommand::Activity)
+                ctrl.record_activity()
+                    .map_err(|_| "Failed to record system activity")
             } else {
                 let _ = core::writeln!(
                     writer,
@@ -531,8 +469,9 @@ pub fn handle_system_cli<
                 Ok(())
             }
         }
-        Some("crash") => process_system_command(&mut (), writer, SystemCliCommand::Crash),
-        _ => Err("Invalid system subcommand. Expected: activity, crash"),
+        SystemSubcommand::Crash => {
+            panic!("Simulated crash dump flow");
+        }
     }
 }
 

@@ -525,109 +525,17 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     }
 }
 
-/// Filesystem-specific CLI commands
-#[derive(Debug, embedded_cli::Command, Clone, Copy, PartialEq, Eq)]
-pub enum FilesystemCliCommand {
-    /// Format/erase the filesystem partition
-    Format,
-    /// List all files in the filesystem partition
-    Ls,
-}
+use firmware_lib::subcommand_enum;
 
-/// Processes filesystem-specific CLI commands
-pub fn process_filesystem_command<
-    W: embedded_io::Write<Error = E>,
-    E: embedded_io::Error,
-    F: embedded_storage::nor_flash::NorFlash + 'static,
->(
-    flash_ptr: Option<*mut F>,
-    storage_start: u32,
-    storage_end: u32,
-    fs_buf: &'static mut [u8],
-    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-    cmd: FilesystemCliCommand,
-) -> Result<(), &'static str> {
-    match cmd {
-        FilesystemCliCommand::Format => {
-            if let Some(flash_raw) = flash_ptr {
-                let flash_ref = unsafe { &mut *flash_raw };
-                let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
-                let mut fs = crate::filesystem_controller::FilesystemController::new(
-                    async_flash,
-                    storage_start..storage_end,
-                    fs_buf,
-                );
-
-                let _ = core::writeln!(writer, "\r\nFormatting filesystem...");
-                let res = embassy_futures::block_on(fs.format());
-                match res {
-                    Ok(()) => {
-                        let _ = core::writeln!(
-                            writer,
-                            "Formatting successful! Rebooting target system..."
-                        );
-                        #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        {
-                            embassy_time::block_for(embassy_time::Duration::from_secs(2));
-                            cortex_m::peripheral::SCB::sys_reset();
-                        }
-                        #[allow(unreachable_code)]
-                        Ok(())
-                    }
-                    Err(()) => Err("Formatting failed!"),
-                }
-            } else {
-                Err("Flash peripheral not available")
-            }
-        }
-        FilesystemCliCommand::Ls => {
-            if let Some(flash_raw) = flash_ptr {
-                let flash_ref = unsafe { &mut *flash_raw };
-                let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
-                let mut fs = crate::filesystem_controller::FilesystemController::new(
-                    async_flash,
-                    storage_start..storage_end,
-                    fs_buf,
-                );
-
-                let _ = core::writeln!(writer, "\r\nListing directory...");
-                let mut dir_buf = [0u8; 512];
-                let res = embassy_futures::block_on(fs.read_file(".dir", &mut dir_buf));
-                match res {
-                    Ok(Some(list)) => {
-                        if let Ok(s) = core::str::from_utf8(list) {
-                            let _ = core::writeln!(writer, "Filename");
-                            let _ = core::writeln!(
-                                writer,
-                                "--------------------------------------------------"
-                            );
-                            for line in s.split('\n') {
-                                if !line.is_empty() {
-                                    let _ = core::writeln!(writer, "{}", line);
-                                }
-                            }
-                        } else {
-                            let _ = core::writeln!(
-                                writer,
-                                "Error: Directory list contains invalid UTF-8"
-                            );
-                        }
-                        Ok(())
-                    }
-                    Ok(None) => {
-                        let _ = core::writeln!(writer, "No files found (directory empty).");
-                        Ok(())
-                    }
-                    Err(()) => {
-                        let _ = core::writeln!(writer, "Error: Directory file is corrupted.");
-                        Err("Failed to read directory")
-                    }
-                }
-            } else {
-                Err("Flash peripheral not available")
-            }
-        }
+subcommand_enum! {
+    /// Filesystem subcommands for CLI processing.
+    pub enum FilesystemSubcommand {
+        /// Format filesystem partition
+        Format,
+        /// List files in directory
+        Ls,
     }
+    "Invalid fs subcommand. Expected: format, ls"
 }
 
 /// Processes filesystem-specific CLI subcommands.
@@ -643,23 +551,77 @@ pub fn handle_fs_cli<
     let partition = resolver.resolve_partition(None)?;
     let mut fs_buf = resolver.lock_fs_buffer()?;
     let fs_buf_static = unsafe { fs_buf.as_static_mut() };
-    match subcommand {
-        Some("format") => process_filesystem_command(
-            Some(partition.flash_ptr),
-            partition.start_address,
-            partition.end_address,
-            fs_buf_static,
-            writer,
-            FilesystemCliCommand::Format,
-        ),
-        Some("ls") => process_filesystem_command(
-            Some(partition.flash_ptr),
-            partition.start_address,
-            partition.end_address,
-            fs_buf_static,
-            writer,
-            FilesystemCliCommand::Ls,
-        ),
-        _ => Err("Invalid fs subcommand. Expected: format, ls"),
+
+    let sub = subcommand.ok_or("Missing fs subcommand")?;
+    let cmd = FilesystemSubcommand::try_from(sub)?;
+
+    match cmd {
+        FilesystemSubcommand::Format => {
+            let flash_ref = unsafe { &mut *partition.flash_ptr };
+            let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
+            let mut fs = crate::filesystem_controller::FilesystemController::new(
+                async_flash,
+                partition.start_address..partition.end_address,
+                fs_buf_static,
+            );
+
+            let _ = core::writeln!(writer, "\r\nFormatting filesystem...");
+            let res = embassy_futures::block_on(fs.format());
+            match res {
+                Ok(()) => {
+                    let _ =
+                        core::writeln!(writer, "Formatting successful! Rebooting target system...");
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    {
+                        embassy_time::block_for(embassy_time::Duration::from_secs(2));
+                        cortex_m::peripheral::SCB::sys_reset();
+                    }
+                    #[allow(unreachable_code)]
+                    Ok(())
+                }
+                Err(()) => Err("Formatting failed!"),
+            }
+        }
+        FilesystemSubcommand::Ls => {
+            let flash_ref = unsafe { &mut *partition.flash_ptr };
+            let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
+            let mut fs = crate::filesystem_controller::FilesystemController::new(
+                async_flash,
+                partition.start_address..partition.end_address,
+                fs_buf_static,
+            );
+
+            let _ = core::writeln!(writer, "\r\nListing directory...");
+            let mut dir_buf = [0u8; 512];
+            let res = embassy_futures::block_on(fs.read_file(".dir", &mut dir_buf));
+            match res {
+                Ok(Some(list)) => {
+                    if let Ok(s) = core::str::from_utf8(list) {
+                        let _ = core::writeln!(writer, "Filename");
+                        let _ = core::writeln!(
+                            writer,
+                            "--------------------------------------------------"
+                        );
+                        for line in s.split('\n') {
+                            if !line.is_empty() {
+                                let _ = core::writeln!(writer, "{}", line);
+                            }
+                        }
+                    } else {
+                        let _ =
+                            core::writeln!(writer, "Error: Directory list contains invalid UTF-8");
+                    }
+                    Ok(())
+                }
+                Ok(None) => {
+                    let _ = core::writeln!(writer, "No files found (directory empty).");
+                    Ok(())
+                }
+                Err(()) => {
+                    let _ = core::writeln!(writer, "Error: Directory file is corrupted.");
+                    Err("Failed to read directory")
+                }
+            }
+        }
     }
 }

@@ -3,6 +3,9 @@
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
 #![deny(missing_docs)]
 
+/// CLI-related helpers and structures.
+pub mod cli;
+
 /// RP2040 panic handler module.
 pub mod panic_handler;
 
@@ -41,6 +44,9 @@ pub mod heartbeat_monitor;
 
 /// Gesture detection library.
 pub mod gesture_detector;
+
+/// Async future demultiplexing helper utilities.
+pub mod select;
 
 pub use battery_manager::BatteryManager;
 pub use flash::BlockingAsyncFlash;
