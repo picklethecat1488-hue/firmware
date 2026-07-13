@@ -3,7 +3,7 @@ use controller::led_controller::LedController;
 use controller::motor_controller::{MotorCommand, MotorController};
 use controller::sensor_controller::{SensorCommand, SensorController};
 use controller::thermal_controller::{ThermalCommand, ThermalController};
-use controller::{SystemCommand, SystemController};
+use controller::{BlockingSystemWriter, SystemCommand, SystemController};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
@@ -89,6 +89,11 @@ fn test_system_integration_flow() {
             Channel::new();
         static THERMAL_CHANNEL: Channel<CriticalSectionRawMutex, ThermalCommand, 4> =
             Channel::new();
+        static THERMAL_ACTION_CHANNEL: Channel<
+            CriticalSectionRawMutex,
+            controller::types::ThermalUpdateAction,
+            4,
+        > = Channel::new();
         static LED_CHANNEL: Channel<CriticalSectionRawMutex, SystemLedState, 4> = Channel::new();
         static TELEMETRY_CHANNEL: Channel<
             CriticalSectionRawMutex,
@@ -179,10 +184,9 @@ fn test_system_integration_flow() {
             MockPin,
         );
 
-        let mut thermal_ctrl = ThermalController::new_with_shutdown(
+        let mut thermal_ctrl = ThermalController::new_with_shutdown_and_trap(
             &mock_temp,
-            SYSTEM_CHANNEL.sender(),
-            SystemCommand::AlertTriggered,
+            THERMAL_ACTION_CHANNEL.sender(),
         );
         thermal_ctrl.set_overheating_temp_milli_c(45000);
         thermal_ctrl.set_critical_temp_milli_c(60000);
@@ -215,6 +219,9 @@ fn test_system_integration_flow() {
 
         // Verify initial state is PowerDown
         assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
+
+        // Clear thermal trap to allow waking up
+        let _ = system_ctrl.clear_boot_trap(firmware_lib::BootTrapReason::Thermal);
 
         // 1. Simulate battery status report: SoC = 85% -> triggers system wake-up to Active
         {
@@ -399,9 +406,8 @@ fn test_system_integration_flow() {
             .update(Some(&mut thermal_client))
             .await
             .unwrap();
-        let cmd = SYSTEM_CHANNEL.receive().await;
-        println!("Received command: {:?}", cmd);
-        process_system(&mut system_ctrl, cmd);
+        let action = THERMAL_ACTION_CHANNEL.receive().await;
+        let _ = system_ctrl.handle_thermal_action(action);
         drain_telemetry();
 
         // Critical temperature triggers safety shutdown -> Sleep state
@@ -627,6 +633,11 @@ static RUN_FILESYSTEM_CHANNEL: Channel<
 > = Channel::new();
 static RUN_GESTURE_CHANNEL: Channel<CriticalSectionRawMutex, model::types::Gesture, 4> =
     Channel::new();
+static RUN_THERMAL_ACTION_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    controller::types::ThermalUpdateAction,
+    4,
+> = Channel::new();
 
 #[embassy_executor::task]
 async fn test_control_task() {
@@ -681,10 +692,9 @@ fn test_spawn_controllers_embassy_routing() {
         RUN_SYSTEM_CHANNEL.sender(),
         MockPin,
     );
-    let thermal_ctrl = ThermalController::new_with_shutdown(
+    let thermal_ctrl = ThermalController::new_with_shutdown_and_trap(
         mock_temp,
-        RUN_SYSTEM_CHANNEL.sender(),
-        SystemCommand::AlertTriggered,
+        RUN_THERMAL_ACTION_CHANNEL.sender(),
     );
     let sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
         controller::types::SensorMetadata {
@@ -774,14 +784,14 @@ fn test_spawn_controllers_embassy_routing() {
             spawner,
             telemetry: RUN_TELEMETRY_CHANNEL,
             controllers: {
-                Thermal(thermal_ctrl, RUN_THERMAL_CHANNEL), generics: (peripherals::mock::MockBattery, SystemCommand),
+                Thermal(thermal_ctrl, RUN_THERMAL_CHANNEL), generics: (peripherals::mock::MockBattery),
                 Battery(battery_ctrl, RUN_BATTERY_CHANNEL), generics: (peripherals::mock::MockBattery, peripherals::mock::MockCharger, MockPin, SystemCommand),
                 Motor(motor_ctrl, RUN_MOTOR_CHANNEL), generics: (model::interfaces::NoTick<MockMotor>, DummyCurrentSensor),
                 Sensor(sensor_ctrl_north, RUN_SENSOR_NORTH_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_east, RUN_SENSOR_EAST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_west, RUN_SENSOR_WEST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Led(led_ctrl, RUN_LED_CHANNEL), generics: (MockLed),
-                System(system_ctrl, RUN_SYSTEM_CHANNEL, RUN_GESTURE_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, cat_detector::CatDetectorFeatureSet<CriticalSectionRawMutex, 4>, 4, 64>),
+                System(system_ctrl, RUN_SYSTEM_CHANNEL, RUN_GESTURE_CHANNEL, RUN_THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, cat_detector::CatDetectorFeatureSet<CriticalSectionRawMutex, 4>, 4, 64>),
                 Filesystem(fs_controller, RUN_FILESYSTEM_CHANNEL), generics: (controller::filesystem_controller::ProfilingFlash<TestFlash>),
                 Telemetry(telemetry_ctrl, RUN_TELEMETRY_CONSUMER_CHANNEL), generics: (1024, { controller::telemetry_controller::CHANNEL_CAPACITY }),
             }

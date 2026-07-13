@@ -18,6 +18,8 @@ pub mod sensor_controller;
 pub mod shell_controller;
 /// System state and orchestration controller.
 pub mod system_controller;
+/// System feature trait and tuples list dispatcher.
+pub mod system_feature;
 /// Telemetry storage pipeline and task.
 pub mod telemetry_controller;
 /// Thermal monitoring and regulation controller.
@@ -35,15 +37,14 @@ pub use motor_controller::MotorFeatureConfig;
 pub use sensor_controller::ProximityFeatureConfig;
 pub use sensor_controller::SensorCommand;
 pub use shell_controller::{ShellConfig, ShellDeviceResolver};
-pub use system_controller::{
-    FeatureList, ProximityEvent, SystemCommand, SystemController, SystemFeature, SystemFeatureSet,
-};
+pub use system_controller::{ProximityEvent, SystemCommand, SystemController, SystemFeatureSet};
+pub use system_feature::{FeatureList, SystemFeature};
 pub use thermal_controller::ThermalCommand;
 pub use thermal_controller::ThermalFeatureConfig;
 pub use types::{
     BatteryStatus, Device, DeviceSupport, FlashPartition, GestureAction, MotorCalState, MotorError,
     MotorSafetyStatus, MotorState, NamedDevice, NamedPartition, ProximityAction, SensorDirection,
-    ThermalState,
+    ThermalState, ThermalUpdateAction,
 };
 
 /// Source of truth macro for generating all controller types, channels, and task running helper macros.
@@ -252,6 +253,70 @@ macro_rules! define_controllers {
         $crate::define_controllers! { $($rest)* }
     };
 
+    // Rule 5: Task with three receivers and dynamic controller type on invocation (e.g. System with thermal_rx)
+    (
+        $name:ident {
+            channel: $channel:ident,
+            sender: $sender:ident,
+            receiver: $receiver:ident,
+            msg: $msg:ty,
+            task: $run_macro:ident {
+                generics: ($($gen:tt)*),
+                controller: [$c:ident],
+                rx: [$($rx_ty:tt)*],
+                rx2: [$($rx2_ty:tt)*],
+                rx3: [$($rx3_ty:tt)*],
+                call: |$c_bind:ident, $r:ident, $r2:ident, $r3:ident| $body:expr
+            }
+        }
+        $($rest:tt)*
+    ) => {
+        /// Channel type for controller communication.
+        pub type $channel<MutexRaw, const N: usize> =
+            embassy_sync::channel::Channel<MutexRaw, $msg, N>;
+        /// Sender type for controller communication.
+        pub type $sender<MutexRaw, const N: usize> =
+            embassy_sync::channel::Sender<'static, MutexRaw, $msg, N>;
+        /// Receiver type for controller communication.
+        pub type $receiver<MutexRaw, const N: usize> =
+            embassy_sync::channel::Receiver<'static, MutexRaw, $msg, N>;
+
+        /// Task runner macro for the controller.
+        #[macro_export]
+        macro_rules! $run_macro {
+            (
+                $spawner:expr,
+                $task_module:ident,
+                $controller:expr,
+                $controller_type:ty,
+                $rx:expr,
+                $rx2:expr,
+                $rx3:expr
+            ) => {
+                #[allow(non_snake_case)]
+                mod $task_module {
+                    use super::*;
+
+                    #[embassy_executor::task]
+                    pub async fn task(
+                        mut $c: $controller_type,
+                        $r: $($rx_ty)*,
+                        $r2: $($rx2_ty)*,
+                        $r3: $($rx3_ty)*
+                    ) {
+                        $body;
+                    }
+                }
+
+                $spawner
+                    .spawn($task_module::task($controller, $rx, $rx2, $rx3))
+                    .unwrap();
+            };
+        }
+
+        $crate::define_controllers! { $($rest)* }
+    };
+
     // Base case: empty
     () => {};
 }
@@ -302,12 +367,11 @@ define_controllers! {
         receiver: ThermalReceiver,
         msg: crate::thermal_controller::ThermalCommand,
         task: run_thermal_task {
-            generics: ($battery_type:ty, $cmd_type:ty),
+            generics: ($battery_type:ty),
             controller: [$crate::thermal_controller::ThermalController<
                 'static,
                 embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
                 $battery_type,
-                $cmd_type,
             >],
             rx: [$crate::ThermalReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>],
             telemetry_tx: [$crate::TelemetrySender<
@@ -376,7 +440,8 @@ define_controllers! {
             controller: [controller],
             rx: [$crate::SystemReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>],
             rx2: [firmware_lib::gesture_detector::GestureReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>],
-            call: |controller, system_rx, gesture_rx| controller.run(system_rx, gesture_rx).await
+            rx3: [embassy_sync::channel::Receiver<'static, embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, $crate::ThermalUpdateAction, 4>],
+            call: |controller, system_rx, gesture_rx, thermal_rx| controller.run(system_rx, gesture_rx, thermal_rx).await
         }
     }
     Telemetry {
@@ -470,9 +535,23 @@ impl BlockingMotorWriter for () {
 }
 
 /// Trait for system orchestrator writer operations.
+#[allow(async_fn_in_trait)]
 pub trait BlockingSystemWriter {
     /// Resets the inactivity timeout.
     fn record_activity(&mut self) -> Result<(), PeripheralError>;
+
+    /// Clears a specific boot trap.
+    fn clear_boot_trap(
+        &mut self,
+        _reason: firmware_lib::BootTrapReason,
+    ) -> Result<(), PeripheralError> {
+        Err(PeripheralError::NotImplemented)
+    }
+
+    /// Checks if the system is trapped in boot.
+    fn is_boot_trapped(&self) -> Result<bool, PeripheralError> {
+        Err(PeripheralError::NotImplemented)
+    }
 }
 
 impl BlockingSystemWriter for () {
@@ -521,7 +600,7 @@ macro_rules! spawn_controllers {
         telemetry: $telemetry:expr,
         controllers: {
             $(
-                $name:ident ( $controller:expr, $rx:ident $(, $gesture_rx:ident)? )
+                $name:ident ( $controller:expr, $rx:ident $(, $extra_rx:ident)* )
                 , generics: ($($gen:tt)*)
             ),* $(,)?
         }
@@ -543,7 +622,7 @@ macro_rules! spawn_controllers {
                 $controller,
                 $rx,
                 $telemetry,
-                ($( $gesture_rx )?),
+                ($( $extra_rx ),*),
                 ($($gen)*)
             );
         )*
@@ -554,7 +633,7 @@ macro_rules! spawn_controllers {
         $spawner:expr,
         controllers: {
             $(
-                $name:ident ( $controller:expr, $rx:ident $(, $gesture_rx:ident)? )
+                $name:ident ( $controller:expr, $rx:ident $(, $extra_rx:ident)* )
                 , generics: ($($gen:tt)*)
             ),* $(,)?
         }
@@ -564,7 +643,7 @@ macro_rules! spawn_controllers {
             telemetry: $crate::DUMMY_TELEMETRY_CHANNEL,
             controllers: {
                 $(
-                    $name ( $controller, $rx $(, $gesture_rx)? )
+                    $name ( $controller, $rx $(, $extra_rx)* )
                     , generics: ($($gen)*)
                 ),*
             }
@@ -602,15 +681,14 @@ macro_rules! spawn_single_controller {
         );
     };
     // Thermal
-    ($spawner:expr, Thermal, $controller:expr, $rx:ident, $telemetry:expr, (), ($battery_type:ty, $cmd_type:ty)) => {
+    ($spawner:expr, Thermal, $controller:expr, $rx:ident, $telemetry:expr, (), ($battery_type:ty)) => {
         $crate::run_thermal_task!(
             $spawner,
             $rx,
             $controller,
             $rx.receiver(),
             $telemetry.sender(),
-            $battery_type,
-            $cmd_type
+            $battery_type
         );
     };
     // Sensor
@@ -653,14 +731,15 @@ macro_rules! spawn_single_controller {
         );
     };
     // System
-    ($spawner:expr, System, $controller:expr, $rx:ident, $telemetry:expr, ($gesture_rx:ident), ($controller_type:ty)) => {
+    ($spawner:expr, System, $controller:expr, $rx:ident, $telemetry:expr, ($gesture_rx:ident, $thermal_action_rx:ident), ($controller_type:ty)) => {
         $crate::run_system_task!(
             $spawner,
             $rx,
             $controller,
             $controller_type,
             $rx.receiver(),
-            $gesture_rx.receiver()
+            $gesture_rx.receiver(),
+            $thermal_action_rx.receiver()
         );
     };
 }

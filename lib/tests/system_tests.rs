@@ -4,6 +4,7 @@ use firmware_lib::battery_manager::BatteryManager;
 use firmware_lib::power_manager::PowerManager;
 use firmware_lib::system::{BatteryUpdateAction, TransitionError};
 use firmware_lib::thermal_manager::ThermalManager;
+use firmware_lib::BootTrapMask;
 use model::types::{BootReason, ChargeState, SystemLedState, SystemStatus, TelemetryRecord};
 
 static TEST_TELEMETRY_CHANNEL: Channel<CriticalSectionRawMutex, TelemetryRecord, 16> =
@@ -15,7 +16,7 @@ fn test_subsystem_managers_initialization() {
     assert_eq!(power.status(), SystemStatus::PowerDown);
     assert_eq!(power.inactive_ms(), 0);
     assert_eq!(power.active_ms(), 0);
-    assert!(power.boot_power_down());
+    assert!(power.is_boot_trapped());
 
     let battery = BatteryManager::new(10, 2, 20, 21, 80);
     assert!(battery.battery_critical());
@@ -121,7 +122,7 @@ fn test_tick_ms() {
     assert_eq!(manager.active_ms(), 0);
 
     // Activate system
-    manager.set_boot_power_down(false);
+    manager.set_boot_trap_mask(BootTrapMask::new()).unwrap();
     let _ = manager.set_status(SystemStatus::Active, false, false);
 
     // Tick partial second -> returns false, timer remains 0
@@ -143,7 +144,7 @@ fn test_interval_ms() {
     assert_eq!(manager.interval_ms(), 1000);
     manager.set_interval_ms(500);
 
-    manager.set_boot_power_down(false);
+    manager.set_boot_trap_mask(BootTrapMask::new()).unwrap();
     let _ = manager.set_status(SystemStatus::Active, false, false);
 
     // Set interval, tick crosses bondary immediately
@@ -239,7 +240,7 @@ fn test_pure_transition_power_down() {
 fn test_power_manager_wake_locks() {
     let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), BootReason::Unknown);
 
-    manager.set_boot_power_down(false);
+    manager.set_boot_trap_mask(BootTrapMask::new()).unwrap();
     let _ = manager.set_status(SystemStatus::Active, false, false);
     assert_eq!(manager.wake_lock_count(), 0);
     assert_eq!(manager.inactive_ms(), 0);
@@ -298,7 +299,7 @@ fn test_power_manager_wake_lock_panic_release() {
 fn test_power_manager_transition_blocked_by_wake_lock() {
     let mut manager = PowerManager::new(TEST_TELEMETRY_CHANNEL.sender(), BootReason::Unknown);
 
-    manager.set_boot_power_down(false);
+    manager.set_boot_trap_mask(BootTrapMask::new()).unwrap();
     assert_eq!(
         manager.set_status(SystemStatus::Active, false, false),
         Ok(Some(SystemStatus::PowerDown))
@@ -338,7 +339,7 @@ fn test_power_manager_transition_blocked_by_boot_trap() {
 
     // Initial state is PowerDown and boot trap is active
     assert_eq!(manager.status(), SystemStatus::PowerDown);
-    assert!(manager.boot_power_down());
+    assert!(manager.is_boot_trapped());
 
     // Try transitioning to Active -> should fail (stay PowerDown)
     assert_eq!(
@@ -348,7 +349,7 @@ fn test_power_manager_transition_blocked_by_boot_trap() {
     assert_eq!(manager.status(), SystemStatus::PowerDown);
 
     // Clear boot trap
-    manager.set_boot_power_down(false);
+    manager.set_boot_trap_mask(BootTrapMask::new()).unwrap();
 
     // Try transitioning to Active -> should succeed
     assert_eq!(

@@ -10,16 +10,11 @@ use {
     app::{
         BATTERY_CHANNEL, FILESYSTEM_CHANNEL, GESTURE_CHANNEL, LED_CHANNEL, MOTOR_CHANNEL,
         SENSOR_EAST_CHANNEL, SENSOR_NORTH_CHANNEL, SENSOR_WEST_CHANNEL, SYSTEM_CHANNEL,
-        TELEMETRY_CHANNEL, THERMAL_CHANNEL,
+        TELEMETRY_CHANNEL, THERMAL_ACTION_CHANNEL, THERMAL_CHANNEL,
     },
     cat_detector as app,
-    controller::{
-        telemetry_controller::TelemetryController, BatteryFeatureConfig, GestureAction,
-        LedFeatureConfig, MotorFeatureConfig, ProximityFeatureConfig, SystemController,
-        ThermalFeatureConfig,
-    },
+    controller::{telemetry_controller::TelemetryController, SystemController},
     embassy_executor::Spawner,
-    firmware_lib::BatteryManager,
 };
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -150,37 +145,7 @@ async fn main(spawner: Spawner) {
     ));
 
     // Initialize SystemController to coordinate all loops
-    let feature_set = app::CatDetectorFeatureSet {
-        features: (
-            MotorFeatureConfig::new(
-                Some(app::MOTOR_CHANNEL.sender()),
-                model::types::MotorSpeed::MAX,
-            ),
-            BatteryFeatureConfig::new(
-                Some(app::BATTERY_CHANNEL.sender()),
-                BatteryManager::new(
-                    app::CRITICAL_BATTERY_SOC_THRESHOLD,
-                    app::BATTERY_SOC_HYSTERESIS,
-                    app::LOW_BATTERY_SOC_THRESHOLD,
-                    app::MID_BATTERY_SOC_THRESHOLD,
-                    app::HIGH_BATTERY_SOC_THRESHOLD,
-                ),
-            ),
-            ProximityFeatureConfig::new(
-                &[
-                    app::SENSOR_NORTH_CHANNEL.sender(),
-                    app::SENSOR_EAST_CHANNEL.sender(),
-                    app::SENSOR_WEST_CHANNEL.sender(),
-                ],
-                app::DEFAULT_PRESS_THRESHOLD_MM,
-                app::DEFAULT_WAKE_THRESHOLD_MM,
-                GestureAction::TogglePower,
-                Some(app::TELEMETRY_CHANNEL.sender()),
-            ),
-            LedFeatureConfig::new(Some(app::LED_CHANNEL.sender())),
-            ThermalFeatureConfig::new(Some(app::THERMAL_CHANNEL.sender())),
-        ),
-    };
+    let feature_set = app::create_default_feature_set();
     let boot_reason = app::get_boot_reason();
 
     let system_ctrl =
@@ -204,14 +169,14 @@ async fn main(spawner: Spawner) {
         spawner,
         telemetry: TELEMETRY_CHANNEL,
         controllers: {
-            Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (app::TempSensorDevice, app::SystemCommand),
+            Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (app::TempSensorDevice),
             Battery(power_ctrl, BATTERY_CHANNEL), generics: (app::BatteryDevice, app::ChargerDevice, app::AlertPinType, app::SystemCommand),
             Motor(controller, MOTOR_CHANNEL), generics: (app::MotorDevice, app::CurrentSensorDevice),
             Sensor(sensor_ctrl_north, SENSOR_NORTH_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
             Sensor(sensor_ctrl_east, SENSOR_EAST_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
             Sensor(sensor_ctrl_west, SENSOR_WEST_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
             Led(led_ctrl, LED_CHANNEL), generics: (app::LedDevice),
-            System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL), generics: (app::SystemControllerType),
+            System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (app::SystemControllerType),
             Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (app::FlashDeviceType),
             Telemetry(telemetry_ctrl, TELEMETRY_CHANNEL), generics: (1024, { controller::telemetry_controller::CHANNEL_CAPACITY }),
         }
