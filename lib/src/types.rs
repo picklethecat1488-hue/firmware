@@ -1,4 +1,5 @@
 use core::fmt::Write;
+use minicbor::{Decode, Encode};
 
 /// Global circular log buffer for crash logging.
 pub struct LogBuffer {
@@ -163,24 +164,47 @@ pub struct CrashDump<'a> {
 pub const STACK_SCAN_LIMIT: u32 = 2048;
 
 /// Project metadata struct embedded in the ELF to allow autodetecting chip/partition layout.
-#[repr(C)]
-pub struct ProjectMetadata {
-    /// Magic identifier to verify metadata block (e.g. b"PROJMET\0")
-    pub magic: [u8; 8],
-    /// Schema version (e.g. 1)
-    pub version: u32,
-    /// Chip name (e.g. "rp2040", null-terminated)
-    pub chip: [u8; 32],
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct ProjectMetadata<'a> {
+    /// Chip name (e.g. "rp2040")
+    #[n(0)]
+    pub chip: &'a str,
     /// The virtual memory flash address of the storage partition
+    #[n(1)]
     pub partition_address: u32,
     /// The size of the storage partition in bytes
+    #[n(2)]
     pub partition_size: u32,
     /// Flash write alignment/size in bytes
+    #[n(3)]
     pub flash_write_size: u32,
     /// Flash erase sector size in bytes
+    #[n(4)]
     pub flash_erase_size: u32,
     /// Stack scan limit in words
+    #[n(5)]
     pub stack_scan_limit: u32,
+}
+
+impl<'a> ProjectMetadata<'a> {
+    /// Statically serializes all fields into CBOR format.
+    pub const fn serialize(
+        chip: &'a str,
+        partition_address: u32,
+        partition_size: u32,
+        flash_write_size: u32,
+        flash_erase_size: u32,
+        stack_scan_limit: u32,
+    ) -> crate::cbor::ConstCborWriter<128> {
+        crate::cbor::ConstCborWriter::<128>::new()
+            .write_array_header(6)
+            .write_str(chip)
+            .write_u32(partition_address)
+            .write_u32(partition_size)
+            .write_u32(flash_write_size)
+            .write_u32(flash_erase_size)
+            .write_u32(stack_scan_limit)
+    }
 }
 
 /// Type alias for an Embassy channel.
@@ -191,3 +215,96 @@ pub type Sender<'a, M, T, const N: usize> = embassy_sync::channel::Sender<'a, M,
 
 /// Type alias for an Embassy channel Receiver.
 pub type Receiver<'a, M, T, const N: usize> = embassy_sync::channel::Receiver<'a, M, T, N>;
+
+/// Reasons why the system may be trapped in low-power boot state.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[repr(u32)]
+pub enum BootTrapReason {
+    /// Battery check pending/failing upon boot.
+    Battery = 1 << 0,
+    /// Thermal check pending/failing upon boot.
+    Thermal = 1 << 1,
+}
+
+/// Error indicating that an invalid boot trap mask was configured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+pub struct InvalidBootTrapMask;
+
+/// A type-safe mutable bitmask vector representing active boot traps.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+pub struct BootTrapMask(u32);
+
+impl core::fmt::Debug for BootTrapMask {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple("BootTrapMask").field(&self.0).finish()
+    }
+}
+
+impl BootTrapMask {
+    /// Validates that only known BootTrapReason bits are set in the mask.
+    pub const fn validate(&self) -> Result<(), InvalidBootTrapMask> {
+        let valid_bits = (BootTrapReason::Battery as u32) | (BootTrapReason::Thermal as u32);
+        if (self.0 & !valid_bits) != 0 {
+            Err(InvalidBootTrapMask)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Creates a new empty BootTrapMask.
+    pub const fn new() -> Self {
+        Self(0)
+    }
+
+    /// Creates a BootTrapMask with a raw bitmask value.
+    pub const fn from_raw(raw: u32) -> Self {
+        Self(raw)
+    }
+
+    /// Checks if any boot traps are active.
+    pub const fn is_empty(&self) -> bool {
+        self.0 == 0
+    }
+
+    /// Checks if a specific boot trap is active.
+    pub const fn has(&self, reason: BootTrapReason) -> bool {
+        (self.0 & (reason as u32)) != 0
+    }
+
+    /// Adds a boot trap to the mask.
+    pub fn add(&mut self, reason: BootTrapReason) {
+        self.0 |= reason as u32;
+    }
+
+    /// Removes a boot trap from the mask.
+    pub fn remove(&mut self, reason: BootTrapReason) {
+        self.0 &= !(reason as u32);
+    }
+
+    /// Returns the raw bitmask value.
+    pub const fn raw(&self) -> u32 {
+        self.0
+    }
+}
+
+/// Actions sent by the thermal controller to the system controller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+pub enum ThermalUpdateAction {
+    /// Clear the thermal boot trap.
+    ClearBootTrap,
+    /// Alert triggered due to critical temperature.
+    AlertTriggered,
+}
+
+/// Result of a thermal update transition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ThermalTransitionResult {
+    /// The next system status if a transition occurred.
+    pub next_status: Option<model::types::SystemStatus>,
+    /// Whether the transition requires clearing wake locks.
+    pub clear_wake_locks: bool,
+}

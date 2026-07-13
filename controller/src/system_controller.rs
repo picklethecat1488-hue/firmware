@@ -4,16 +4,20 @@
 
 pub use firmware_lib::gesture_detector::ProximityEvent;
 
-use crate::types::{BatteryStatus, Device, DeviceSupport, GestureAction, ProximityAction};
-use crate::{BlockingSystemWriter, Sender};
+use crate::system_feature::FeatureList;
+use crate::types::{
+    BatteryStatus, Device, DeviceSupport, GestureAction, ProximityAction, ThermalUpdateAction,
+};
+use crate::{BlockingSystemWriter, PeripheralError, Sender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use firmware_lib::{
-    select_branch_with_timeout, subcommand_enum, BatteryUpdateAction, PeriodicTimer, PowerManager,
+    select_branch_with_timeout, subcommand_enum, transition_thermal_update, BatteryUpdateAction,
+    BootTrapMask, BootTrapReason, PeriodicTimer, PowerManager,
 };
 
 /// One-way commands to control the global system state and notify it of events.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SystemCommand {
     /// Notify system of activity, resetting inactivity timer and waking up if asleep.
     ActivityDetected,
@@ -44,6 +48,38 @@ pub enum SystemCommand {
     },
     /// A battery action was triggered and processed.
     BatteryAction(BatteryUpdateAction),
+}
+
+impl core::fmt::Debug for SystemCommand {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::ActivityDetected => write!(f, "ActivityDetected"),
+            Self::AlertTriggered => write!(f, "AlertTriggered"),
+            Self::BatteryUpdate {
+                state_of_charge,
+                charger_state,
+            } => f
+                .debug_struct("BatteryUpdate")
+                .field("state_of_charge", state_of_charge)
+                .field("charger_state", charger_state)
+                .finish(),
+            Self::ProximityUpdate {
+                direction,
+                distance_mm,
+            } => f
+                .debug_struct("ProximityUpdate")
+                .field("direction", direction)
+                .field("distance_mm", distance_mm)
+                .finish(),
+            Self::Gesture(g) => f.debug_tuple("Gesture").field(g).finish(),
+            Self::StateChanged { from, to } => f
+                .debug_struct("StateChanged")
+                .field("from", from)
+                .field("to", to)
+                .finish(),
+            Self::BatteryAction(a) => f.debug_tuple("BatteryAction").field(a).finish(),
+        }
+    }
 }
 
 impl crate::battery_controller::FromBatteryUpdate for SystemCommand {
@@ -77,6 +113,16 @@ pub trait SystemFeatureSet<MutexRaw: RawMutex + 'static, const N: usize> {
     /// Returns the inactivity timeout in seconds before entering Sleep.
     fn inactivity_timeout_seconds(&self) -> u32 {
         30
+    }
+
+    /// Returns the thermal overheating threshold in milli-Celsius.
+    fn thermal_overheating_temp_threshold(&self) -> i32 {
+        self.features().thermal_overheating_temp_threshold()
+    }
+
+    /// Returns the thermal critical threshold in milli-Celsius.
+    fn thermal_critical_temp_threshold(&self) -> i32 {
+        self.features().thermal_critical_temp_threshold()
     }
 
     /// Map an incoming gesture to a system action.
@@ -120,6 +166,8 @@ pub struct SystemController<
     pub feature_set: F,
     /// Current battery status summary.
     pub battery_status: Option<BatteryStatus>,
+    /// Countdown in seconds for logging active boot traps.
+    boot_trap_log_countdown: u8,
 }
 
 impl<
@@ -135,12 +183,39 @@ impl<
         telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, T_CAP>,
         boot_reason: BootReason,
     ) -> Self {
-        let power_manager = PowerManager::new(telemetry_tx, boot_reason);
+        let mut power_manager = PowerManager::new(telemetry_tx, boot_reason);
+        let default_mask = feature_set.features().default_boot_trap_mask();
+        power_manager
+            .set_boot_trap_mask(BootTrapMask::from_raw(default_mask))
+            .unwrap();
 
-        Self {
+        let mut ctrl = Self {
             power_manager,
             feature_set,
             battery_status: None,
+            boot_trap_log_countdown: 0,
+        };
+
+        if !ctrl.power_manager.is_boot_trapped() {
+            let _ = ctrl.set_status(SystemStatus::Active);
+        }
+
+        ctrl
+    }
+
+    fn log_boot_trap_cleared(&self, _cleared: BootTrapReason) {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        {
+            let cleared_str = match _cleared {
+                BootTrapReason::Battery => "Battery",
+                BootTrapReason::Thermal => "Thermal",
+            };
+            defmt::info!("SystemController: cleared boot trap: {}", cleared_str);
+            if self.power_manager.is_boot_trapped() {
+                self.log_active_boot_traps();
+            } else {
+                defmt::info!("SystemController: all boot traps cleared. exiting PowerDown state. Waking up to Active mode.");
+            }
         }
     }
 
@@ -192,7 +267,7 @@ impl<
             state_of_charge,
             charger_state,
             self.power_manager.status(),
-            self.power_manager.boot_power_down(),
+            self.power_manager.is_boot_trapped(),
         );
 
         if let Some((action, status)) = res {
@@ -275,12 +350,11 @@ impl<
                     self.set_status(SystemStatus::PowerDown)?;
                 }
                 BatteryUpdateAction::ClearBootTrap => {
-                    self.power_manager.set_boot_power_down(false);
-                    self.set_status(SystemStatus::Active)?;
-                    #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    defmt::info!(
-                        "SystemController: exiting PowerDown state. Waking up to Active mode."
-                    );
+                    self.power_manager.clear_boot_trap(BootTrapReason::Battery);
+                    self.log_boot_trap_cleared(BootTrapReason::Battery);
+                    if !self.power_manager.is_boot_trapped() {
+                        self.set_status(SystemStatus::Active)?;
+                    }
                 }
                 BatteryUpdateAction::ReportSoC => {
                     self.feature_set.features().on_battery_action(
@@ -290,6 +364,7 @@ impl<
                     );
                 }
             },
+
             SystemCommand::Gesture(gesture) => {
                 let current_status = self.power_manager.status();
                 self.feature_set
@@ -332,6 +407,64 @@ impl<
         Ok(())
     }
 
+    /// Handles updates from the thermal controller.
+    pub fn handle_thermal_action(
+        &mut self,
+        action: ThermalUpdateAction,
+    ) -> Result<(), firmware_lib::system::TransitionError> {
+        let current_status = self.power_manager.status();
+
+        match action {
+            ThermalUpdateAction::ClearBootTrap => {
+                self.power_manager.clear_boot_trap(BootTrapReason::Thermal);
+                self.log_boot_trap_cleared(BootTrapReason::Thermal);
+            }
+            ThermalUpdateAction::AlertTriggered => {
+                self.feature_set
+                    .features()
+                    .on_alert_triggered(current_status);
+            }
+        }
+
+        let is_boot_trapped = self.power_manager.is_boot_trapped();
+        let transition = transition_thermal_update(current_status, action, is_boot_trapped);
+
+        if transition.clear_wake_locks {
+            self.power_manager.clear_wake_locks();
+        }
+
+        if let Some(next_status) = transition.next_status {
+            self.set_status(next_status)?;
+        }
+
+        if action == ThermalUpdateAction::AlertTriggered {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::info!("SystemController: Alert triggered. LED indicator set to RED.");
+        }
+
+        Ok(())
+    }
+
+    fn log_active_boot_traps(&self) {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        {
+            let mask = self.power_manager.boot_trap_mask();
+            let mut battery = "";
+            let mut thermal = "";
+            if mask.has(BootTrapReason::Battery) {
+                battery = " Battery";
+            }
+            if mask.has(BootTrapReason::Thermal) {
+                thermal = " Thermal";
+            }
+            defmt::info!(
+                "SystemController: boot blocked by traps:{}{}",
+                battery,
+                thermal
+            );
+        }
+    }
+
     /// Ticks the inactivity timer and active mode duration timer by a specified duration in milliseconds.
     /// Returns true if the 1-second system tick boundary was crossed.
     pub fn tick_ms(&mut self, ms: u32) -> bool {
@@ -352,6 +485,18 @@ impl<
             {
                 let _ = self.set_status(SystemStatus::Sleep);
             }
+
+            // Periodic boot trap logging
+            if self.power_manager.is_boot_trapped() {
+                if self.boot_trap_log_countdown == 0 {
+                    self.boot_trap_log_countdown = 5; // Log every 5 seconds
+                    self.log_active_boot_traps();
+                } else {
+                    self.boot_trap_log_countdown = self.boot_trap_log_countdown.saturating_sub(1);
+                }
+            } else {
+                self.boot_trap_log_countdown = 0;
+            }
         }
 
         crossed
@@ -362,6 +507,12 @@ impl<
         mut self,
         command_rx: embassy_sync::channel::Receiver<'static, MutexRaw, SystemCommand, CMD_CAP>,
         gesture_rx: embassy_sync::channel::Receiver<'static, MutexRaw, Gesture, 4>,
+        thermal_rx: embassy_sync::channel::Receiver<
+            'static,
+            MutexRaw,
+            crate::types::ThermalUpdateAction,
+            4,
+        >,
     ) -> ! {
         self.feature_set.features().on_init();
         self.power_manager
@@ -384,6 +535,10 @@ impl<
                 },
                 gesture_rx.receive() => |gesture| {
                     let _ = self.handle_command(SystemCommand::Gesture(gesture));
+                    Some(())
+                },
+                thermal_rx.receive() => |action| {
+                    let _ = self.handle_thermal_action(action);
                     Some(())
                 },
             );
@@ -449,11 +604,10 @@ pub fn handle_system_cli<
     C: crate::ShellConfig,
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
-    subcommand: Option<&str>,
+    subcommand: Option<SystemSubcommand>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let sub = subcommand.ok_or("Missing system subcommand")?;
-    let cmd = SystemSubcommand::try_from(sub)?;
+    let cmd = subcommand.ok_or("Missing system subcommand")?;
 
     match cmd {
         SystemSubcommand::Activity => {
@@ -475,251 +629,30 @@ pub fn handle_system_cli<
     }
 }
 
-/// A single system feature that can react to system events and ticks.
-pub trait SystemFeature<MutexRaw: RawMutex + 'static, const N: usize> {
-    /// Hook called when the system starts running.
-    fn on_init(&self) {}
-
-    /// Returns true if the feature has a critical thermal alert.
-    fn thermal_critical(&self) -> bool {
-        false
+impl<
+        MutexRaw: RawMutex + 'static,
+        F: SystemFeatureSet<MutexRaw, N>,
+        const N: usize,
+        const T_CAP: usize,
+    > crate::BlockingSystemWriter for SystemController<MutexRaw, F, N, T_CAP>
+{
+    fn record_activity(&mut self) -> Result<(), PeripheralError> {
+        let _ = self.handle_command(SystemCommand::ActivityDetected);
+        Ok(())
     }
 
-    /// Hook called to process raw battery updates.
-    /// Only the battery feature should implement this to update the battery manager.
-    fn on_battery_update(
-        &self,
-        _state_of_charge: u8,
-        _charger_state: model::types::ChargeState,
-        _status: model::types::SystemStatus,
-        _boot_power_down: bool,
-    ) -> Option<(Option<BatteryUpdateAction>, BatteryStatus)> {
-        None
-    }
-
-    /// Hook called when a proximity update is received.
-    fn on_proximity_update(
-        &self,
-        _direction: model::types::Direction,
-        _distance_mm: u16,
-        _status: model::types::SystemStatus,
-    ) -> (Option<model::types::Gesture>, ProximityAction) {
-        (None, ProximityAction::None)
-    }
-
-    /// Hook called when the system state changes.
-    fn on_state_changed(
-        &self,
-        _from: model::types::SystemStatus,
-        _to: model::types::SystemStatus,
-        _support: DeviceSupport,
-        _battery_status: Option<BatteryStatus>,
-        _thermal_critical: bool,
-    ) {
-    }
-
-    /// Hook called when a battery action is triggered.
-    fn on_battery_action(
-        &self,
-        _action: BatteryUpdateAction,
-        _status: model::types::SystemStatus,
-        _battery_status: Option<BatteryStatus>,
-    ) {
-    }
-
-    /// Hook called when a gesture is detected.
-    fn on_gesture(&self, _gesture: model::types::Gesture, _status: model::types::SystemStatus) {}
-
-    /// Map an incoming gesture to a system action.
-    fn map_gesture(
-        &self,
-        _gesture: model::types::Gesture,
-        _status: model::types::SystemStatus,
-    ) -> GestureAction {
-        GestureAction::None
-    }
-
-    /// Hook called periodically.
-    fn on_tick(
-        &self,
-        _elapsed_ms: u32,
-        _crossed_tick: bool,
-        _status: model::types::SystemStatus,
-        _support: DeviceSupport,
-        _wake_locks: u32,
-    ) {
-    }
-
-    /// Hook called when a thermal or motor safety alert is triggered.
-    fn on_alert_triggered(&self, _status: model::types::SystemStatus) {}
-}
-
-/// Trait implemented by collections (like tuples) of system features to dispatch hooks.
-pub trait FeatureList<MutexRaw: RawMutex + 'static, const N: usize> {
-    /// Dispatch on_init hook to all features.
-    fn on_init(&self);
-    /// Combine thermal critical status from all features.
-    fn thermal_critical(&self) -> bool;
-    /// Dispatch on_battery_update hook to features.
-    fn on_battery_update(
-        &self,
-        state_of_charge: u8,
-        charger_state: model::types::ChargeState,
-        status: model::types::SystemStatus,
-        boot_power_down: bool,
-    ) -> Option<(Option<BatteryUpdateAction>, BatteryStatus)>;
-    /// Dispatch on_proximity_update hook to features.
-    fn on_proximity_update(
-        &self,
-        direction: model::types::Direction,
-        distance_mm: u16,
-        status: model::types::SystemStatus,
-    ) -> (Option<model::types::Gesture>, ProximityAction);
-    /// Dispatch on_state_changed hook to all features.
-    fn on_state_changed(
-        &self,
-        from: model::types::SystemStatus,
-        to: model::types::SystemStatus,
-        support: DeviceSupport,
-        battery_status: Option<BatteryStatus>,
-        thermal_critical: bool,
-    );
-    /// Dispatch on_battery_action hook to all features.
-    fn on_battery_action(
-        &self,
-        action: BatteryUpdateAction,
-        status: model::types::SystemStatus,
-        battery_status: Option<BatteryStatus>,
-    );
-    /// Dispatch on_gesture hook to all features.
-    fn on_gesture(&self, gesture: model::types::Gesture, status: model::types::SystemStatus);
-    /// Dispatch map_gesture hook to features.
-    fn map_gesture(
-        &self,
-        gesture: model::types::Gesture,
-        status: model::types::SystemStatus,
-    ) -> GestureAction;
-    /// Dispatch on_tick hook to all features.
-    fn on_tick(
-        &self,
-        elapsed_ms: u32,
-        crossed_tick: bool,
-        status: model::types::SystemStatus,
-        support: DeviceSupport,
-        wake_locks: u32,
-    );
-    /// Dispatch on_alert_triggered hook to all features.
-    fn on_alert_triggered(&self, status: model::types::SystemStatus);
-}
-
-macro_rules! impl_feature_list_for_tuple {
-    ($($T:ident),*) => {
-        impl<MutexRaw: RawMutex + 'static, const N: usize, $($T: SystemFeature<MutexRaw, N>),*> FeatureList<MutexRaw, N> for ($($T,)*) {
-            #[inline(always)]
-            fn on_init(&self) {
-                #[allow(non_snake_case)]
-                let ($($T,)*) = self;
-                $($T.on_init();)*
-            }
-
-            #[inline(always)]
-            fn thermal_critical(&self) -> bool {
-                #[allow(non_snake_case)]
-                let ($($T,)*) = self;
-                $($T.thermal_critical() ||)* false
-            }
-
-            #[inline(always)]
-            fn on_battery_update(&self, _state_of_charge: u8, _charger_state: model::types::ChargeState, _status: model::types::SystemStatus, _boot_power_down: bool) -> Option<(Option<BatteryUpdateAction>, BatteryStatus)> {
-                #[allow(non_snake_case)]
-                let ($($T,)*) = self;
-                $(
-                    if let Some(res) = $T.on_battery_update(_state_of_charge, _charger_state, _status, _boot_power_down) {
-                        return Some(res);
-                    }
-                )*
-                None
-            }
-
-            #[inline(always)]
-            fn on_proximity_update(&self, _direction: model::types::Direction, _distance_mm: u16, _status: model::types::SystemStatus) -> (Option<model::types::Gesture>, ProximityAction) {
-                #[allow(non_snake_case)]
-                let ($($T,)*) = self;
-                #[allow(unused_mut)]
-                let mut merged_gesture = None;
-                #[allow(unused_mut)]
-                let mut merged_action = ProximityAction::None;
-                $(
-                    let (g, a) = $T.on_proximity_update(_direction, _distance_mm, _status);
-                    if g.is_some() {
-                        merged_gesture = g;
-                    }
-                    if a != ProximityAction::None {
-                        merged_action = a;
-                    }
-                )*
-                (merged_gesture, merged_action)
-            }
-
-            #[inline(always)]
-            fn on_state_changed(&self, _from: model::types::SystemStatus, _to: model::types::SystemStatus, _support: DeviceSupport, _battery_status: Option<BatteryStatus>, _thermal_critical: bool) {
-                #[allow(non_snake_case)]
-                let ($($T,)*) = self;
-                $($T.on_state_changed(_from, _to, _support, _battery_status, _thermal_critical);)*
-            }
-
-            #[inline(always)]
-            fn on_battery_action(&self, _action: BatteryUpdateAction, _status: model::types::SystemStatus, _battery_status: Option<BatteryStatus>) {
-                #[allow(non_snake_case)]
-                let ($($T,)*) = self;
-                $($T.on_battery_action(_action, _status, _battery_status);)*
-            }
-
-            #[inline(always)]
-            fn on_gesture(&self, _gesture: model::types::Gesture, _status: model::types::SystemStatus) {
-                #[allow(non_snake_case)]
-                let ($($T,)*) = self;
-                $($T.on_gesture(_gesture, _status);)*
-            }
-
-            #[inline(always)]
-            fn map_gesture(&self, _gesture: model::types::Gesture, _status: model::types::SystemStatus) -> GestureAction {
-                #[allow(non_snake_case)]
-                let ($($T,)*) = self;
-                $(
-                    let action = $T.map_gesture(_gesture, _status);
-                    if action != GestureAction::None {
-                        return action;
-                    }
-                )*
-                GestureAction::None
-            }
-
-            #[inline(always)]
-            fn on_tick(&self, _elapsed_ms: u32, _crossed_tick: bool, _status: model::types::SystemStatus, _support: DeviceSupport, _wake_locks: u32) {
-                #[allow(non_snake_case)]
-                let ($($T,)*) = self;
-                $($T.on_tick(_elapsed_ms, _crossed_tick, _status, _support, _wake_locks);)*
-            }
-
-            #[inline(always)]
-            fn on_alert_triggered(&self, _status: model::types::SystemStatus) {
-                #[allow(non_snake_case)]
-                let ($($T,)*) = self;
-                $($T.on_alert_triggered(_status);)*
+    fn clear_boot_trap(&mut self, reason: BootTrapReason) -> Result<(), PeripheralError> {
+        if self.power_manager.has_boot_trap(reason) {
+            self.power_manager.clear_boot_trap(reason);
+            self.log_boot_trap_cleared(reason);
+            if !self.power_manager.is_boot_trapped() {
+                let _ = self.set_status(SystemStatus::Active);
             }
         }
+        Ok(())
+    }
+
+    fn is_boot_trapped(&self) -> Result<bool, PeripheralError> {
+        Ok(self.power_manager.is_boot_trapped())
     }
 }
-
-impl_feature_list_for_tuple!();
-impl_feature_list_for_tuple!(A);
-impl_feature_list_for_tuple!(A, B);
-impl_feature_list_for_tuple!(A, B, C);
-impl_feature_list_for_tuple!(A, B, C, D);
-impl_feature_list_for_tuple!(A, B, C, D, E);
-impl_feature_list_for_tuple!(A, B, C, D, E, F);
-impl_feature_list_for_tuple!(A, B, C, D, E, F, G);
-impl_feature_list_for_tuple!(A, B, C, D, E, F, G, H);
-impl_feature_list_for_tuple!(A, B, C, D, E, F, G, H, I);
-impl_feature_list_for_tuple!(A, B, C, D, E, F, G, H, I, J);

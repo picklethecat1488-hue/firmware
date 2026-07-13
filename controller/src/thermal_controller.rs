@@ -13,47 +13,52 @@ use model::types::PeripheralError;
 use peripherals::ToPeripheralError;
 
 /// A controller that periodically monitors system temperature from temperature sensors.
-pub struct ThermalController<'a, M: RawMutex, B, Cmd = ()> {
+pub struct ThermalController<'a, M: RawMutex, B> {
     temp: &'a Mutex<M, B>,
-    system_tx: Option<Sender<'a, M, Cmd, 4>>,
-    shutdown_cmd: Option<Cmd>,
+    thermal_tx: Option<Sender<'a, M, crate::types::ThermalUpdateAction, 4>>,
     state: ThermalState,
     overheating_temp_milli_c: i32,
     critical_temp_milli_c: i32,
     hysteresis_temp_milli_c: i32,
+    first_update: bool,
 }
 
-impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
-    ThermalController<'a, M, B, Cmd>
-{
+impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
     /// Creates a new thermal controller referencing a shared temperature peripheral without shutdown coordination.
     pub fn new(temp: &'a Mutex<M, B>) -> Self {
         Self {
             temp,
-            system_tx: None,
-            shutdown_cmd: None,
+            thermal_tx: None,
             state: ThermalState::Normal,
             overheating_temp_milli_c: 45000,
             critical_temp_milli_c: 60000,
             hysteresis_temp_milli_c: 2000,
+            first_update: true,
         }
     }
 
     /// Creates a new thermal controller with safety shutdown capabilities.
     pub fn new_with_shutdown(
         temp: &'a Mutex<M, B>,
-        system_tx: Sender<'a, M, Cmd, 4>,
-        shutdown_cmd: Cmd,
+        thermal_tx: Sender<'a, M, crate::types::ThermalUpdateAction, 4>,
     ) -> Self {
         Self {
             temp,
-            system_tx: Some(system_tx),
-            shutdown_cmd: Some(shutdown_cmd),
+            thermal_tx: Some(thermal_tx),
             state: ThermalState::Normal,
             overheating_temp_milli_c: 45000,
             critical_temp_milli_c: 60000,
             hysteresis_temp_milli_c: 2000,
+            first_update: true,
         }
+    }
+
+    /// Creates a new thermal controller with safety shutdown and boot trap clearing capabilities.
+    pub fn new_with_shutdown_and_trap(
+        temp: &'a Mutex<M, B>,
+        thermal_tx: Sender<'a, M, crate::types::ThermalUpdateAction, 4>,
+    ) -> Self {
+        Self::new_with_shutdown(temp, thermal_tx)
     }
 
     /// Gets the current state of the thermal system.
@@ -98,7 +103,22 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
     ) -> Result<(), B::Error> {
         let temp = {
             let mut sensor = self.temp.lock().await;
-            sensor.read_temperature_milli_c()?
+            match sensor.read_temperature_milli_c() {
+                Ok(t) => t,
+                Err(e) => {
+                    let safe_temp = 25000; // 25°C
+                    if self.first_update {
+                        self.first_update = false;
+                        if let Some(tx) = &self.thermal_tx {
+                            let _ = tx.try_send(crate::types::ThermalUpdateAction::ClearBootTrap);
+                        }
+                    }
+                    if let Some(client) = telemetry_client {
+                        client.report((safe_temp, ThermalState::Normal));
+                    }
+                    return Err(e);
+                }
+            }
         };
 
         match self.state {
@@ -116,10 +136,16 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
 
         // Critical threshold check: shut down system if temp > critical_temp_milli_c
         if temp > self.critical_temp_milli_c {
-            if let (Some(tx), Some(cmd)) = (&self.system_tx, &self.shutdown_cmd) {
-                tx.try_send(cmd.clone()).unwrap();
+            if let Some(tx) = &self.thermal_tx {
+                tx.try_send(crate::types::ThermalUpdateAction::AlertTriggered)
+                    .unwrap();
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::error!("Thermal Controller: Critical temperature exceeded ({} mC). Dispatching safety shutdown.", temp);
+            }
+        } else if self.first_update {
+            self.first_update = false;
+            if let Some(tx) = &self.thermal_tx {
+                let _ = tx.try_send(crate::types::ThermalUpdateAction::ClearBootTrap);
             }
         }
 
@@ -161,8 +187,8 @@ impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
     }
 }
 
-impl<'a, M: RawMutex, B: TemperatureSensor, Cmd: Clone + core::fmt::Debug>
-    crate::BlockingThermalReader for ThermalController<'a, M, B, Cmd>
+impl<'a, M: RawMutex, B: TemperatureSensor> crate::BlockingThermalReader
+    for ThermalController<'a, M, B>
 where
     B::Error: ToPeripheralError,
 {
@@ -202,11 +228,10 @@ pub fn handle_thermal_cli<
     C: crate::ShellConfig,
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
-    subcommand: Option<&str>,
+    subcommand: Option<ThermalSubcommand>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let sub = subcommand.ok_or("Missing thermal subcommand")?;
-    let cmd = ThermalSubcommand::try_from(sub)?;
+    let cmd = subcommand.ok_or("Missing thermal subcommand")?;
 
     match cmd {
         ThermalSubcommand::Status => {
@@ -244,6 +269,10 @@ pub struct ThermalFeatureConfig<MutexRaw: RawMutex + 'static, const N: usize> {
     pub thermal_tx: Option<crate::ThermalSender<MutexRaw, N>>,
     /// Thermal manager for checking alerts
     pub thermal_manager: core::cell::RefCell<firmware_lib::ThermalManager>,
+    /// Overheating temperature threshold in milli-Celsius
+    pub overheating_temp_milli_c: i32,
+    /// Critical temperature threshold in milli-Celsius
+    pub critical_temp_milli_c: i32,
 }
 
 impl<MutexRaw: RawMutex + 'static, const N: usize> ThermalFeatureConfig<MutexRaw, N> {
@@ -252,6 +281,22 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> ThermalFeatureConfig<MutexRaw
         Self {
             thermal_tx,
             thermal_manager: core::cell::RefCell::new(firmware_lib::ThermalManager::new()),
+            overheating_temp_milli_c: 45000,
+            critical_temp_milli_c: 60000,
+        }
+    }
+
+    /// Creates a new `ThermalFeatureConfig` with custom thresholds.
+    pub fn new_with_thresholds(
+        thermal_tx: Option<crate::ThermalSender<MutexRaw, N>>,
+        overheating_temp_milli_c: i32,
+        critical_temp_milli_c: i32,
+    ) -> Self {
+        Self {
+            thermal_tx,
+            thermal_manager: core::cell::RefCell::new(firmware_lib::ThermalManager::new()),
+            overheating_temp_milli_c,
+            critical_temp_milli_c,
         }
     }
 }
@@ -259,6 +304,22 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> ThermalFeatureConfig<MutexRaw
 impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw, N>
     for ThermalFeatureConfig<MutexRaw, N>
 {
+    fn default_boot_trap_mask(&self) -> u32 {
+        if self.thermal_tx.is_some() {
+            firmware_lib::BootTrapReason::Thermal as u32
+        } else {
+            0
+        }
+    }
+
+    fn thermal_overheating_temp_threshold(&self) -> i32 {
+        self.overheating_temp_milli_c
+    }
+
+    fn thermal_critical_temp_threshold(&self) -> i32 {
+        self.critical_temp_milli_c
+    }
+
     fn thermal_critical(&self) -> bool {
         self.thermal_manager.borrow().thermal_critical()
     }

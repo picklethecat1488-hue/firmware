@@ -2,7 +2,10 @@
 
 #![deny(missing_docs)]
 
-use crate::types::{BatteryThresholds, BatteryTransitionResult, BatteryUpdateInfo};
+use crate::types::{
+    BatteryThresholds, BatteryTransitionResult, BatteryUpdateInfo, ThermalTransitionResult,
+    ThermalUpdateAction,
+};
 use model::types::SystemStatus;
 
 /// Errors that can occur during system state transitions.
@@ -38,12 +41,12 @@ pub fn transition_wake(
     current_status: SystemStatus,
     battery_critical: bool,
     thermal_critical: bool,
-    boot_power_down: bool,
+    is_boot_trapped: bool,
 ) -> Option<SystemStatus> {
     if !battery_critical
         && !thermal_critical
         && current_status != SystemStatus::Active
-        && !boot_power_down
+        && !is_boot_trapped
     {
         Some(SystemStatus::Active)
     } else {
@@ -96,7 +99,7 @@ pub fn transition_power_down(
 /// Returns the new battery critical state and the next system status.
 pub fn transition_battery_update(
     current_status: SystemStatus,
-    boot_power_down: bool,
+    is_boot_trapped: bool,
     battery_critical: bool,
     info: BatteryUpdateInfo,
     thresholds: BatteryThresholds,
@@ -116,7 +119,7 @@ pub fn transition_battery_update(
         }
     } else {
         let should_exit_power_down =
-            current_status == SystemStatus::PowerDown && boot_power_down && !info.charging;
+            current_status == SystemStatus::PowerDown && is_boot_trapped && !info.charging;
         if should_exit_power_down {
             next_status = Some(SystemStatus::Active);
         } else if current_status == SystemStatus::PowerDown {
@@ -129,6 +132,34 @@ pub fn transition_battery_update(
     BatteryTransitionResult {
         new_battery_critical: new_critical,
         next_status,
+    }
+}
+
+/// Pure transition function for handling thermal updates.
+/// Returns the next system status and whether to clear wake locks.
+pub fn transition_thermal_update(
+    current_status: SystemStatus,
+    action: ThermalUpdateAction,
+    is_boot_trapped_after_clear: bool,
+) -> ThermalTransitionResult {
+    let mut next_status = None;
+    let mut clear_wake_locks = false;
+    match action {
+        ThermalUpdateAction::ClearBootTrap => {
+            if !is_boot_trapped_after_clear {
+                next_status = Some(SystemStatus::Active);
+            }
+        }
+        ThermalUpdateAction::AlertTriggered => {
+            if current_status != SystemStatus::PowerDown && current_status != SystemStatus::Sleep {
+                clear_wake_locks = true;
+                next_status = Some(SystemStatus::Sleep);
+            }
+        }
+    }
+    ThermalTransitionResult {
+        next_status,
+        clear_wake_locks,
     }
 }
 

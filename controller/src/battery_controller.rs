@@ -178,14 +178,20 @@ where
                 .unwrap_or(model::types::ChargeState::DoneOrStandbyOrUnplugged)
         };
 
-        if read_failed || voltage < 3500 {
-            self.state = BatteryState::Low;
-        } else {
+        let reported_soc = if read_failed {
             self.state = BatteryState::Ok;
-        }
+            100
+        } else {
+            if voltage < 3500 {
+                self.state = BatteryState::Low;
+            } else {
+                self.state = BatteryState::Ok;
+            }
+            soc
+        };
 
         if let Some(ref tx) = self.system_tx {
-            let _ = tx.try_send(Cmd::from_battery_update(soc, charger_state));
+            let _ = tx.try_send(Cmd::from_battery_update(reported_soc, charger_state));
         }
 
         if let Some(client) = telemetry_client {
@@ -365,12 +371,11 @@ pub fn handle_battery_cli<
     C: crate::ShellConfig,
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
-    subcommand: Option<&str>,
+    subcommand: Option<BatterySubcommand>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     let battery_ctrl = resolver.resolve_battery(None)?;
-    let sub = subcommand.ok_or("Missing battery subcommand")?;
-    let cmd = BatterySubcommand::try_from(sub)?;
+    let cmd = subcommand.ok_or("Missing battery subcommand")?;
 
     match cmd {
         BatterySubcommand::Status => {
@@ -412,6 +417,14 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> BatteryFeatureConfig<MutexRaw
 impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw, N>
     for BatteryFeatureConfig<MutexRaw, N>
 {
+    fn default_boot_trap_mask(&self) -> u32 {
+        if self.battery_tx.is_some() {
+            firmware_lib::BootTrapReason::Battery as u32
+        } else {
+            0
+        }
+    }
+
     fn on_init(&self) {
         let mut bm = self.battery_manager.borrow_mut();
         let low_threshold = bm.low_soc_threshold();
@@ -425,11 +438,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
         state_of_charge: u8,
         charger_state: model::types::ChargeState,
         status: model::types::SystemStatus,
-        boot_power_down: bool,
+        is_boot_trapped: bool,
     ) -> Option<(Option<BatteryUpdateAction>, crate::BatteryStatus)> {
         let mut bm = self.battery_manager.borrow_mut();
         let action =
-            bm.update_battery_status(state_of_charge, charger_state, status, boot_power_down);
+            bm.update_battery_status(state_of_charge, charger_state, status, is_boot_trapped);
         let battery_critical = bm.battery_critical();
         let charger_connected = bm.charger_connected();
         let soc_led_state = bm.get_soc_led_state();

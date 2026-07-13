@@ -1,6 +1,6 @@
 //! Shared CLI utilities and helper macros.
 
-/// Helper macro to generate CLI subcommand enums and implement TryFrom<&str>.
+/// Helper macro to generate CLI subcommand enums and implement FromArgument.
 #[macro_export]
 macro_rules! subcommand_enum {
     (
@@ -14,21 +14,22 @@ macro_rules! subcommand_enum {
         $err_msg:literal
     ) => {
         $(#[$meta])*
-        #[derive(Clone, Copy, PartialEq, Eq)]
+        #[derive(Clone, Copy, PartialEq, Eq, Debug)]
         $vis enum $name {
             $($(#[$vmeta])* $variant,)*
         }
 
-        impl TryFrom<&str> for $name {
-            type Error = &'static str;
-
-            fn try_from(value: &str) -> Result<Self, Self::Error> {
+        impl<'a> $crate::embedded_cli::arguments::FromArgument<'a> for $name {
+            fn from_arg(arg: &'a str) -> Result<Self, $crate::embedded_cli::arguments::FromArgumentError<'a>> {
                 $(
-                    if $crate::subcommand_enum!(@match_variant value, $variant $(, $str_val)?) {
+                    if $crate::subcommand_enum!(@match_variant arg, $variant $(, $str_val)?) {
                         return Ok(Self::$variant);
                     }
                 )*
-                Err($err_msg)
+                Err($crate::embedded_cli::arguments::FromArgumentError {
+                    value: arg,
+                    expected: $err_msg,
+                })
             }
         }
     };

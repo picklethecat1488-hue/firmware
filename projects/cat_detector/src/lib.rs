@@ -97,12 +97,7 @@ pub static SHARED_CHARGER: embassy_sync::mutex::Mutex<MutexRaw, ChargerDevice> =
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global instance of the ThermalController.
 pub static mut THERMAL_CTRL: Option<
-    controller::thermal_controller::ThermalController<
-        'static,
-        MutexRaw,
-        TempSensorDevice,
-        SystemCommand,
-    >,
+    controller::thermal_controller::ThermalController<'static, MutexRaw, TempSensorDevice>,
 > = None;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -218,10 +213,9 @@ pub async fn init_controllers(board: Board<'static>) {
         PANIC_FLASH = Some(embassy_rp::flash::Flash::new_blocking(flash));
 
         THERMAL_CTRL = Some(
-            controller::thermal_controller::ThermalController::new_with_shutdown(
+            controller::thermal_controller::ThermalController::new_with_shutdown_and_trap(
                 &SHARED_TEMP_SENSOR,
-                SYSTEM_CHANNEL.sender(),
-                SystemCommand::AlertTriggered,
+                THERMAL_ACTION_CHANNEL.sender(),
             ),
         );
 
@@ -313,6 +307,11 @@ pub const CRITICAL_BATTERY_SOC_THRESHOLD: u8 = 10;
 /// The state of charge hysteresis to prevent rapid toggling around thresholds.
 pub const BATTERY_SOC_HYSTERESIS: u8 = 2;
 
+/// Temperature threshold in milli-Celsius where the system starts warning/throttling.
+pub const OVERHEATING_TEMP_THRESHOLD_MC: i32 = 45000;
+/// Temperature threshold in milli-Celsius where the system goes to PowerDown.
+pub const CRITICAL_TEMP_THRESHOLD_MC: i32 = 60000;
+
 const _: () = {
     assert!(
         LOW_BATTERY_SOC_THRESHOLD > 0,
@@ -335,7 +334,11 @@ const _: () = {
 /// Bringup serial command and shell controller.
 pub use controller::shell_controller;
 
-pub use firmware_lib::BatteryUpdateAction;
+pub use firmware_lib::{
+    cbor,
+    types::{ProjectMetadata, STACK_SCAN_LIMIT},
+    BatteryUpdateAction,
+};
 pub use model::types::SystemStatus;
 
 /// Feature set for the Cat Detector app that implements SystemFeatureSet.
@@ -394,6 +397,12 @@ pub static SENSOR_WEST_CHANNEL: controller::SensorChannel<MutexRaw, 4> =
 /// Shared command channel for the Thermal Controller.
 pub static THERMAL_CHANNEL: controller::ThermalChannel<MutexRaw, 4> =
     controller::ThermalChannel::new();
+/// Shared status update channel from the Thermal Controller to the System Controller.
+pub static THERMAL_ACTION_CHANNEL: embassy_sync::channel::Channel<
+    MutexRaw,
+    controller::types::ThermalUpdateAction,
+    4,
+> = embassy_sync::channel::Channel::new();
 /// Shared command channel for the Battery Controller.
 pub static BATTERY_CHANNEL: controller::BatteryChannel<MutexRaw, 4> =
     controller::BatteryChannel::new();
@@ -467,6 +476,15 @@ pub fn system_time() -> u64 {
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 defmt::timestamp!("{=u64:us}", system_time());
 
+const METADATA_WRITER: cbor::ConstCborWriter<128> = ProjectMetadata::serialize(
+    "rp2040",
+    0x10000000 + STORAGE_PARTITION_START,
+    STORAGE_PARTITION_END - STORAGE_PARTITION_START,
+    FLASH_WRITE_SIZE as u32,
+    FLASH_ERASE_SIZE as u32,
+    STACK_SCAN_LIMIT,
+);
+
 /// Embedded project metadata for autodetect functionality.
 #[used]
 #[no_mangle]
@@ -474,23 +492,44 @@ defmt::timestamp!("{=u64:us}", system_time());
     all(target_arch = "arm", target_os = "none"),
     link_section = ".rodata.project_metadata"
 )]
-pub static PROJECT_METADATA: firmware_lib::types::ProjectMetadata =
-    firmware_lib::types::ProjectMetadata {
-        magic: *b"PROJMET\0",
-        version: 1,
-        chip: {
-            let mut buf = [0u8; 32];
-            let bytes = b"rp2040";
-            let mut i = 0;
-            while i < bytes.len() {
-                buf[i] = bytes[i];
-                i += 1;
-            }
-            buf
-        },
-        partition_address: 0x10000000 + STORAGE_PARTITION_START,
-        partition_size: (STORAGE_PARTITION_END - STORAGE_PARTITION_START),
-        flash_write_size: FLASH_WRITE_SIZE as u32,
-        flash_erase_size: FLASH_ERASE_SIZE as u32,
-        stack_scan_limit: firmware_lib::types::STACK_SCAN_LIMIT,
-    };
+pub static PROJECT_METADATA: [u8; METADATA_WRITER.len] = cbor::extract_bytes(METADATA_WRITER.buf);
+
+/// Creates the standard CatDetectorFeatureSet configured with the application's actual channels.
+pub fn create_default_feature_set(
+) -> CatDetectorFeatureSet<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4> {
+    CatDetectorFeatureSet {
+        features: (
+            controller::MotorFeatureConfig::new(
+                Some(MOTOR_CHANNEL.sender()),
+                model::types::MotorSpeed::MAX,
+            ),
+            controller::BatteryFeatureConfig::new(
+                Some(BATTERY_CHANNEL.sender()),
+                firmware_lib::BatteryManager::new(
+                    CRITICAL_BATTERY_SOC_THRESHOLD,
+                    BATTERY_SOC_HYSTERESIS,
+                    LOW_BATTERY_SOC_THRESHOLD,
+                    MID_BATTERY_SOC_THRESHOLD,
+                    HIGH_BATTERY_SOC_THRESHOLD,
+                ),
+            ),
+            controller::ProximityFeatureConfig::new(
+                &[
+                    SENSOR_NORTH_CHANNEL.sender(),
+                    SENSOR_EAST_CHANNEL.sender(),
+                    SENSOR_WEST_CHANNEL.sender(),
+                ],
+                DEFAULT_PRESS_THRESHOLD_MM,
+                DEFAULT_WAKE_THRESHOLD_MM,
+                controller::GestureAction::TogglePower,
+                Some(TELEMETRY_CHANNEL.sender()),
+            ),
+            controller::LedFeatureConfig::new(Some(LED_CHANNEL.sender())),
+            controller::ThermalFeatureConfig::new_with_thresholds(
+                Some(THERMAL_CHANNEL.sender()),
+                OVERHEATING_TEMP_THRESHOLD_MC,
+                CRITICAL_TEMP_THRESHOLD_MC,
+            ),
+        ),
+    }
+}
