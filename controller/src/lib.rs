@@ -18,6 +18,8 @@ pub mod sensor_controller;
 pub mod shell_controller;
 /// System state and orchestration controller.
 pub mod system_controller;
+/// System feature trait and tuples list dispatcher.
+pub mod system_feature;
 /// Telemetry storage pipeline and task.
 pub mod telemetry_controller;
 /// Thermal monitoring and regulation controller.
@@ -35,9 +37,8 @@ pub use motor_controller::MotorFeatureConfig;
 pub use sensor_controller::ProximityFeatureConfig;
 pub use sensor_controller::SensorCommand;
 pub use shell_controller::{ShellConfig, ShellDeviceResolver};
-pub use system_controller::{
-    FeatureList, ProximityEvent, SystemCommand, SystemController, SystemFeature, SystemFeatureSet,
-};
+pub use system_controller::{ProximityEvent, SystemCommand, SystemController, SystemFeatureSet};
+pub use system_feature::{FeatureList, SystemFeature};
 pub use thermal_controller::ThermalCommand;
 pub use thermal_controller::ThermalFeatureConfig;
 pub use types::{
