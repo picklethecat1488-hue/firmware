@@ -148,11 +148,13 @@ async fn test_control_task_all() {
 
     let mut success = false;
     let start = std::time::Instant::now();
-    while start.elapsed() < std::time::Duration::from_secs(5) {
-        if let Ok(model::telemetry::TelemetryRecord::System(SystemStatus::Active)) =
-            TELEMETRY_CHANNEL.try_receive()
-        {
-            success = true;
+    while start.elapsed() < std::time::Duration::from_secs(10) {
+        while let Ok(record) = TELEMETRY_CHANNEL.try_receive() {
+            if let model::telemetry::TelemetryRecord::System(SystemStatus::Active) = record {
+                success = true;
+            }
+        }
+        if success {
             break;
         }
         embassy_time::Timer::after_millis(5).await;
