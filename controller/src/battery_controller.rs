@@ -3,11 +3,11 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::BatteryTelemetryClient;
-use crate::{Sender, TelemetrySender};
+use crate::{BatteryReceiver, BlockingBatteryReader, Sender, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
-use firmware_lib::select_branch_with_timeout;
+use firmware_lib::{select_branch_with_timeout, subcommand_enum, BatteryUpdateAction};
 use model::interfaces::FuelGauge;
 use model::telemetry::TelemetryClient;
 use model::types::PeripheralError;
@@ -349,7 +349,14 @@ pub enum BatteryCommand {
     UpdateWakeLocks(u32),
 }
 
-use crate::{BatteryReceiver, BlockingBatteryReader};
+subcommand_enum! {
+    /// Battery subcommands for CLI processing.
+    pub enum BatterySubcommand {
+        /// Query battery status
+        Status,
+    }
+    "Invalid battery subcommand. Expected: status"
+}
 
 /// Processes battery-specific CLI subcommands.
 pub fn handle_battery_cli<
@@ -362,8 +369,11 @@ pub fn handle_battery_cli<
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     let battery_ctrl = resolver.resolve_battery(None)?;
-    match subcommand {
-        Some("status") => {
+    let sub = subcommand.ok_or("Missing battery subcommand")?;
+    let cmd = BatterySubcommand::try_from(sub)?;
+
+    match cmd {
+        BatterySubcommand::Status => {
             let (v, soc) = battery_ctrl
                 .read_battery_blocking()
                 .map_err(|_| "Failed to read battery")?;
@@ -375,7 +385,6 @@ pub fn handle_battery_cli<
             );
             Ok(())
         }
-        _ => Err("Invalid battery subcommand. Expected: status"),
     }
 }
 
@@ -417,10 +426,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
         charger_state: model::types::ChargeState,
         status: model::types::SystemStatus,
         boot_power_down: bool,
-    ) -> Option<(
-        Option<firmware_lib::BatteryUpdateAction>,
-        crate::BatteryStatus,
-    )> {
+    ) -> Option<(Option<BatteryUpdateAction>, crate::BatteryStatus)> {
         let mut bm = self.battery_manager.borrow_mut();
         let action =
             bm.update_battery_status(state_of_charge, charger_state, status, boot_power_down);

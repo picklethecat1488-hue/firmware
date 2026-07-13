@@ -8,8 +8,9 @@ use crate::types::{BatteryStatus, Device, DeviceSupport, GestureAction, Proximit
 use crate::{BlockingSystemWriter, Sender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
-use firmware_lib::select_branch_with_timeout;
-use firmware_lib::{BatteryUpdateAction, PeriodicTimer, PowerManager};
+use firmware_lib::{
+    select_branch_with_timeout, subcommand_enum, BatteryUpdateAction, PeriodicTimer, PowerManager,
+};
 
 /// One-way commands to control the global system state and notify it of events.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -430,6 +431,17 @@ macro_rules! impl_system_feature_set {
     };
 }
 
+subcommand_enum! {
+    /// System subcommands for CLI processing.
+    pub enum SystemSubcommand {
+        /// Record activity to wake/extend system active time
+        Activity,
+        /// Trigger simulated crash/panic
+        Crash,
+    }
+    "Invalid system subcommand. Expected: activity, crash"
+}
+
 /// Processes system-specific CLI subcommands.
 pub fn handle_system_cli<
     W: embedded_io::Write<Error = E>,
@@ -440,8 +452,11 @@ pub fn handle_system_cli<
     subcommand: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    match subcommand {
-        Some("activity") => {
+    let sub = subcommand.ok_or("Missing system subcommand")?;
+    let cmd = SystemSubcommand::try_from(sub)?;
+
+    match cmd {
+        SystemSubcommand::Activity => {
             let mut system_ctrl = resolver.resolve_system_ctrl(None);
             if let Ok(ref mut ctrl) = system_ctrl {
                 ctrl.record_activity()
@@ -454,10 +469,9 @@ pub fn handle_system_cli<
                 Ok(())
             }
         }
-        Some("crash") => {
+        SystemSubcommand::Crash => {
             panic!("Simulated crash dump flow");
         }
-        _ => Err("Invalid system subcommand. Expected: activity, crash"),
     }
 }
 

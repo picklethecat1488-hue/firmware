@@ -525,6 +525,19 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     }
 }
 
+use firmware_lib::subcommand_enum;
+
+subcommand_enum! {
+    /// Filesystem subcommands for CLI processing.
+    pub enum FilesystemSubcommand {
+        /// Format filesystem partition
+        Format,
+        /// List files in directory
+        Ls,
+    }
+    "Invalid fs subcommand. Expected: format, ls"
+}
+
 /// Processes filesystem-specific CLI subcommands.
 pub fn handle_fs_cli<
     W: embedded_io::Write<Error = E>,
@@ -539,8 +552,11 @@ pub fn handle_fs_cli<
     let mut fs_buf = resolver.lock_fs_buffer()?;
     let fs_buf_static = unsafe { fs_buf.as_static_mut() };
 
-    match subcommand {
-        Some("format") => {
+    let sub = subcommand.ok_or("Missing fs subcommand")?;
+    let cmd = FilesystemSubcommand::try_from(sub)?;
+
+    match cmd {
+        FilesystemSubcommand::Format => {
             let flash_ref = unsafe { &mut *partition.flash_ptr };
             let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
             let mut fs = crate::filesystem_controller::FilesystemController::new(
@@ -566,7 +582,7 @@ pub fn handle_fs_cli<
                 Err(()) => Err("Formatting failed!"),
             }
         }
-        Some("ls") => {
+        FilesystemSubcommand::Ls => {
             let flash_ref = unsafe { &mut *partition.flash_ptr };
             let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
             let mut fs = crate::filesystem_controller::FilesystemController::new(
@@ -607,6 +623,5 @@ pub fn handle_fs_cli<
                 }
             }
         }
-        _ => Err("Invalid fs subcommand. Expected: format, ls"),
     }
 }

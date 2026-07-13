@@ -3,8 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::MotorTelemetryClient;
-use crate::TelemetrySender;
-use crate::{BlockingMotorReader, BlockingMotorWriter};
+use crate::{BlockingMotorReader, BlockingMotorWriter, MotorReceiver, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::RawMutex;
@@ -402,8 +401,6 @@ pub enum MotorCommand {
     Stop,
 }
 
-use crate::MotorReceiver;
-
 impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
     for MotorController<M, C>
 {
@@ -467,6 +464,21 @@ impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
     }
 }
 
+use firmware_lib::subcommand_enum;
+
+subcommand_enum! {
+    /// Motor subcommands for CLI processing.
+    pub enum MotorSubcommand {
+        /// Set motor speed
+        Speed,
+        /// Stop motor
+        Stop,
+        /// Calibrate motor
+        Calibrate,
+    }
+    "Invalid motor subcommand. Expected: speed, stop, calibrate"
+}
+
 /// Processes motor-specific CLI subcommands.
 pub fn handle_motor_cli<
     W: embedded_io::Write<Error = E>,
@@ -484,8 +496,11 @@ pub fn handle_motor_cli<
     let mut fs_buf = resolver.lock_fs_buffer()?;
     let fs_buf_static = unsafe { fs_buf.as_static_mut() };
 
-    match subcommand {
-        Some("speed") => {
+    let sub = subcommand.ok_or("Missing motor subcommand")?;
+    let cmd = MotorSubcommand::try_from(sub)?;
+
+    match cmd {
+        MotorSubcommand::Speed => {
             let speed_str = arg1.ok_or("Missing speed parameter")?;
             let speed = speed_str
                 .parse::<i8>()
@@ -499,8 +514,8 @@ pub fn handle_motor_cli<
             let _ = core::writeln!(writer, "\r\nMotor current: {} mA", current);
             Ok(())
         }
-        Some("stop") => motor_ctrl.stop().map_err(|_| "Failed to stop motor"),
-        Some("calibrate") => {
+        MotorSubcommand::Stop => motor_ctrl.stop().map_err(|_| "Failed to stop motor"),
+        MotorSubcommand::Calibrate => {
             let state_str = arg1.ok_or("Missing calibration state")?;
             let state = match state_str {
                 "empty" => MotorCalState::Empty,
@@ -600,7 +615,6 @@ pub fn handle_motor_cli<
                 })
                 .map_err(|_| "Error saving calibration to flash")
         }
-        _ => Err("Invalid motor subcommand. Expected: speed, stop, calibrate"),
     }
 }
 

@@ -7,7 +7,7 @@ use crate::BlockingProximityReader;
 use crate::Sender;
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
-use firmware_lib::select_branch_with_timeout;
+use firmware_lib::{select_branch_with_timeout, subcommand_enum, BlockingAsyncFlash};
 use model::interfaces::ProximitySensor;
 use model::types::{Direction, PeripheralError};
 use peripherals::ToPeripheralError;
@@ -477,6 +477,19 @@ impl From<SensorDirection> for model::types::Direction {
     }
 }
 
+subcommand_enum! {
+    /// Sensor subcommands for CLI processing.
+    pub enum SensorSubcommand {
+        /// Read sensor values
+        Status,
+        /// Calibrate near proximity
+        CalNear = "cal_near",
+        /// Calibrate far proximity
+        CalFar = "cal_far",
+    }
+    "Invalid sensor subcommand. Expected: status, cal_near, cal_far"
+}
+
 /// Processes sensor-specific CLI subcommands by validating and delegating.
 pub fn handle_sensor_cli<
     W: embedded_io::Write<Error = E>,
@@ -491,8 +504,11 @@ pub fn handle_sensor_cli<
     let mut fs_buf = resolver.lock_fs_buffer()?;
     let fs_buf_static = unsafe { fs_buf.as_static_mut() };
 
-    match subcommand {
-        Some("status") => {
+    let sub = subcommand.ok_or("Missing sensor subcommand")?;
+    let cmd = SensorSubcommand::try_from(sub)?;
+
+    match cmd {
+        SensorSubcommand::Status => {
             let dn = resolver
                 .resolve_sensor(Some("north"))?
                 .read_distance_blocking()
@@ -514,7 +530,7 @@ pub fn handle_sensor_cli<
             );
             Ok(())
         }
-        Some("cal_near") => {
+        SensorSubcommand::CalNear => {
             let dir_str = arg1.ok_or("Missing direction parameter")?;
             let direction = match dir_str {
                 "north" => SensorDirection::North,
@@ -548,7 +564,7 @@ pub fn handle_sensor_cli<
 
             let partition = resolver.resolve_partition(None)?;
             let flash_ref = unsafe { &mut *partition.flash_ptr };
-            let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
+            let async_flash = BlockingAsyncFlash(flash_ref);
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
                 partition.start_address..partition.end_address,
@@ -581,7 +597,7 @@ pub fn handle_sensor_cli<
                 })
                 .map_err(|_| "Error saving calibration to flash")
         }
-        Some("cal_far") => {
+        SensorSubcommand::CalFar => {
             let dir_str = arg1.ok_or("Missing direction parameter")?;
             let direction = match dir_str {
                 "north" => SensorDirection::North,
@@ -615,7 +631,7 @@ pub fn handle_sensor_cli<
 
             let partition = resolver.resolve_partition(None)?;
             let flash_ref = unsafe { &mut *partition.flash_ptr };
-            let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
+            let async_flash = BlockingAsyncFlash(flash_ref);
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
                 partition.start_address..partition.end_address,
@@ -648,7 +664,6 @@ pub fn handle_sensor_cli<
                 })
                 .map_err(|_| "Error saving calibration to flash")
         }
-        _ => Err("Invalid sensor subcommand. Expected: status, cal_near, cal_far"),
     }
 }
 

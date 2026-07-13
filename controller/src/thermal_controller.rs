@@ -3,10 +3,11 @@
 #![deny(missing_docs)]
 
 use crate::types::ThermalState;
-use crate::{BlockingThermalReader, Sender, TelemetrySender};
+use crate::{BlockingThermalReader, Sender, TelemetrySender, ThermalReceiver};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
+use firmware_lib::subcommand_enum;
 use model::interfaces::TemperatureSensor;
 use model::types::PeripheralError;
 use peripherals::ToPeripheralError;
@@ -183,7 +184,16 @@ pub enum ThermalCommand {
     CheckTemp,
 }
 
-use crate::ThermalReceiver;
+subcommand_enum! {
+    /// Thermal subcommands for CLI processing.
+    pub enum ThermalSubcommand {
+        /// Read external temperature sensor
+        Status,
+        /// Read MCU temperature sensor
+        Mcu,
+    }
+    "Invalid thermal subcommand. Expected: status, mcu"
+}
 
 /// Processes thermal-specific CLI subcommands.
 pub fn handle_thermal_cli<
@@ -195,8 +205,11 @@ pub fn handle_thermal_cli<
     subcommand: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    match subcommand {
-        Some("status") => {
+    let sub = subcommand.ok_or("Missing thermal subcommand")?;
+    let cmd = ThermalSubcommand::try_from(sub)?;
+
+    match cmd {
+        ThermalSubcommand::Status => {
             let thermal_ctrl = resolver.resolve_thermal(None)?;
             let temp = thermal_ctrl
                 .read_temperature_blocking()
@@ -209,7 +222,7 @@ pub fn handle_thermal_cli<
             );
             Ok(())
         }
-        Some("mcu") => {
+        ThermalSubcommand::Mcu => {
             let sensor = resolver.resolve_temp_sensor(None)?;
             let temp = sensor
                 .read_temperature_milli_c()
@@ -222,7 +235,6 @@ pub fn handle_thermal_cli<
             );
             Ok(())
         }
-        _ => Err("Invalid thermal subcommand. Expected: status, mcu"),
     }
 }
 

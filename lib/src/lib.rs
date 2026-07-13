@@ -3,6 +3,9 @@
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
 #![deny(missing_docs)]
 
+/// CLI-related helpers and structures.
+pub mod cli;
+
 /// RP2040 panic handler module.
 pub mod panic_handler;
 
