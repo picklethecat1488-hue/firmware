@@ -5,6 +5,7 @@ use controller::motor_controller::MotorCommand;
 use controller::sensor_controller::SensorCommand;
 use controller::system_controller::{SystemCommand, SystemController};
 use controller::thermal_controller::ThermalCommand;
+use controller::BlockingSystemWriter;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::channel::Channel;
 
@@ -127,6 +128,9 @@ fn test_system_controller_flow() {
     assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
 
     // Send a battery update showing battery is ok -> transitions to Active
+    controller
+        .clear_boot_trap(firmware_lib::BootTrapReason::Thermal)
+        .unwrap();
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 85,
         charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
@@ -211,6 +215,9 @@ fn test_system_controller_flow() {
     assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
 
     // Send a battery update showing battery is ok -> transitions to Active
+    controller
+        .clear_boot_trap(firmware_lib::BootTrapReason::Thermal)
+        .unwrap();
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 85,
         charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
@@ -340,6 +347,9 @@ fn test_power_down_and_gesture_detection() {
     assert_eq!(led_state, SystemLedState::BlinksRedOncePerThirtySeconds);
 
     // 3. Transition to Active when battery level is no longer critical
+    controller
+        .clear_boot_trap(firmware_lib::BootTrapReason::Thermal)
+        .unwrap();
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 85,
         charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
@@ -447,7 +457,7 @@ fn test_system_controller_with_missing_controllers() {
         BootReason::Unknown,
     );
 
-    assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
+    assert_eq!(controller.power_manager.status(), SystemStatus::Active);
 
     // Verify it doesn't panic on updates
     controller
@@ -502,6 +512,9 @@ fn test_configurable_motor_speed() {
 
     // Initial battery update to clear boot power down trap and enter Active state
     controller
+        .clear_boot_trap(firmware_lib::BootTrapReason::Thermal)
+        .unwrap();
+    controller
         .handle_command(SystemCommand::BatteryUpdate {
             state_of_charge: 85,
             charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
@@ -543,6 +556,9 @@ fn test_proximity_wake_lock_behavior() {
 
     // Initial battery update to clear boot power down trap and enter Active state
     controller
+        .clear_boot_trap(firmware_lib::BootTrapReason::Thermal)
+        .unwrap();
+    controller
         .handle_command(SystemCommand::BatteryUpdate {
             state_of_charge: 85,
             charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
@@ -572,4 +588,69 @@ fn test_proximity_wake_lock_behavior() {
 
     // Check that wake lock is released
     assert_eq!(controller.power_manager.wake_locks(), 0);
+}
+
+#[test]
+fn test_boot_traps_clearing_integration() {
+    static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 4> = Channel::new();
+    static BATTERY_CHANNEL: Channel<CriticalSectionRawMutex, BatteryCommand, 4> = Channel::new();
+    static THERMAL_CHANNEL: Channel<CriticalSectionRawMutex, ThermalCommand, 4> = Channel::new();
+
+    macro_rules! process {
+        ($ctrl:expr) => {
+            while let Ok(cmd) = SYSTEM_CHANNEL.try_receive() {
+                let _ = $ctrl.handle_command(cmd);
+            }
+        };
+    }
+
+    let feature_set = create_test_feature_set!(
+        None,
+        Some(BATTERY_CHANNEL.sender()),
+        [],
+        None,
+        Some(THERMAL_CHANNEL.sender())
+    );
+    let mut controller = SystemController::new(
+        feature_set,
+        MOCK_TELEMETRY_CHANNEL.sender(),
+        BootReason::Unknown,
+    );
+
+    // Verify it boots into PowerDown because traps (Battery and Thermal) are active
+    assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
+    assert!(controller
+        .power_manager
+        .has_boot_trap(firmware_lib::BootTrapReason::Battery));
+    assert!(controller
+        .power_manager
+        .has_boot_trap(firmware_lib::BootTrapReason::Thermal));
+
+    // Clear only Battery boot trap via battery update
+    controller
+        .handle_command(SystemCommand::BatteryUpdate {
+            state_of_charge: 85,
+            charger_state: model::types::ChargeState::DoneOrStandbyOrUnplugged,
+        })
+        .unwrap();
+    process!(controller);
+
+    // Verify battery trap is cleared, but system is still PowerDown because thermal trap is active
+    assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
+    assert!(!controller
+        .power_manager
+        .has_boot_trap(firmware_lib::BootTrapReason::Battery));
+    assert!(controller
+        .power_manager
+        .has_boot_trap(firmware_lib::BootTrapReason::Thermal));
+
+    // Clear Thermal boot trap
+    controller
+        .clear_boot_trap(firmware_lib::BootTrapReason::Thermal)
+        .unwrap();
+    process!(controller);
+
+    // Verify all traps are cleared and system transitions to Active
+    assert_eq!(controller.power_manager.status(), SystemStatus::Active);
+    assert!(!controller.power_manager.is_boot_trapped());
 }

@@ -61,6 +61,65 @@ type FlashDevice = embassy_rp::flash::Flash<
     { app::FLASH_SIZE },
 >;
 
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+type ThermalControllerType = controller::thermal_controller::ThermalController<
+    'static,
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    app::TempSensorDevice,
+>;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+type BatteryControllerType = controller::battery_controller::BatteryController<
+    'static,
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    app::BatteryDevice,
+    app::ChargerDevice,
+    app::AlertPinType,
+    app::SystemCommand,
+>;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+type SensorControllerType = controller::sensor_controller::SensorController<
+    'static,
+    app::ProximitySensorDevice,
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    app::DataReadyPinType,
+    app::SystemCommand,
+    controller::sensor_controller::ProximityReader,
+>;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+type MotorControllerType =
+    controller::motor_controller::MotorController<MotorDevice, app::CurrentSensorDevice>;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+type SystemControllerType = controller::SystemController<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    cat_detector::CatDetectorFeatureSet<
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        4,
+    >,
+    4,
+>;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+struct AppConfig;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+controller::impl_shell_config! {
+    AppConfig {
+        I2c = I2cBus,
+        Motor = MotorDevice,
+        Flash = FlashDevice,
+        TempSensor = cat_detector::Rp2040TempSensor,
+        ThermalCtrl = ThermalControllerType,
+        BatteryCtrl = BatteryControllerType,
+        SensorCtrl = SensorControllerType,
+        MotorCtrl = MotorControllerType,
+        SystemCtrl = SystemControllerType,
+    }
+}
+
 /// Main application entry point for the bringup shell.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::main]
@@ -200,51 +259,17 @@ async fn main(spawner: Spawner) {
         }]
     };
 
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
-    type ThermalControllerType = controller::thermal_controller::ThermalController<
-        'static,
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        app::TempSensorDevice,
-        app::SystemCommand,
-    >;
+    let feature_set = app::create_default_feature_set();
+    let mut system_ctrl = controller::SystemController::new(
+        feature_set,
+        app::TELEMETRY_CHANNEL.sender(),
+        model::types::BootReason::Unknown,
+    );
 
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
-    type BatteryControllerType = controller::battery_controller::BatteryController<
-        'static,
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        app::BatteryDevice,
-        app::ChargerDevice,
-        app::AlertPinType,
-        app::SystemCommand,
-    >;
-
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
-    type SensorControllerType = controller::sensor_controller::SensorController<
-        'static,
-        app::ProximitySensorDevice,
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        app::DataReadyPinType,
-        app::SystemCommand,
-        controller::sensor_controller::ProximityReader,
-    >;
-
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
-    type MotorControllerType =
-        controller::motor_controller::MotorController<MotorDevice, app::CurrentSensorDevice>;
-
-    struct AppConfig;
-    controller::impl_shell_config! {
-        AppConfig {
-            I2c = I2cBus,
-            Motor = MotorDevice,
-            Flash = FlashDevice,
-            TempSensor = cat_detector::Rp2040TempSensor,
-            ThermalCtrl = ThermalControllerType,
-            BatteryCtrl = BatteryControllerType,
-            SensorCtrl = SensorControllerType,
-            MotorCtrl = MotorControllerType,
-        }
-    }
+    let system_ctrls = &[controller::NamedDevice {
+        name: "default",
+        device: &mut system_ctrl as *mut _,
+    }];
 
     let pointers = ShellControllerPointers::<AppConfig> {
         i2c_buses,
@@ -255,8 +280,8 @@ async fn main(spawner: Spawner) {
         motor_ctrls,
         thermals,
         batteries,
+        system_ctrls,
         fs_buffer: unsafe { &mut FS_BUF },
-        ..Default::default()
     };
 
     let mut processor = ShellController::<AppConfig>::new(pointers);

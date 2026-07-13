@@ -4,16 +4,19 @@
 
 pub use firmware_lib::gesture_detector::ProximityEvent;
 
-use crate::types::{BatteryStatus, Device, DeviceSupport, GestureAction, ProximityAction};
-use crate::{BlockingSystemWriter, Sender};
+use crate::types::{
+    BatteryStatus, Device, DeviceSupport, GestureAction, ProximityAction, ThermalUpdateAction,
+};
+use crate::{BlockingSystemWriter, PeripheralError, Sender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use firmware_lib::{
-    select_branch_with_timeout, subcommand_enum, BatteryUpdateAction, PeriodicTimer, PowerManager,
+    select_branch_with_timeout, subcommand_enum, transition_thermal_update, BatteryUpdateAction,
+    BootTrapMask, BootTrapReason, PeriodicTimer, PowerManager,
 };
 
 /// One-way commands to control the global system state and notify it of events.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SystemCommand {
     /// Notify system of activity, resetting inactivity timer and waking up if asleep.
     ActivityDetected,
@@ -44,6 +47,38 @@ pub enum SystemCommand {
     },
     /// A battery action was triggered and processed.
     BatteryAction(BatteryUpdateAction),
+}
+
+impl core::fmt::Debug for SystemCommand {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::ActivityDetected => write!(f, "ActivityDetected"),
+            Self::AlertTriggered => write!(f, "AlertTriggered"),
+            Self::BatteryUpdate {
+                state_of_charge,
+                charger_state,
+            } => f
+                .debug_struct("BatteryUpdate")
+                .field("state_of_charge", state_of_charge)
+                .field("charger_state", charger_state)
+                .finish(),
+            Self::ProximityUpdate {
+                direction,
+                distance_mm,
+            } => f
+                .debug_struct("ProximityUpdate")
+                .field("direction", direction)
+                .field("distance_mm", distance_mm)
+                .finish(),
+            Self::Gesture(g) => f.debug_tuple("Gesture").field(g).finish(),
+            Self::StateChanged { from, to } => f
+                .debug_struct("StateChanged")
+                .field("from", from)
+                .field("to", to)
+                .finish(),
+            Self::BatteryAction(a) => f.debug_tuple("BatteryAction").field(a).finish(),
+        }
+    }
 }
 
 impl crate::battery_controller::FromBatteryUpdate for SystemCommand {
@@ -77,6 +112,16 @@ pub trait SystemFeatureSet<MutexRaw: RawMutex + 'static, const N: usize> {
     /// Returns the inactivity timeout in seconds before entering Sleep.
     fn inactivity_timeout_seconds(&self) -> u32 {
         30
+    }
+
+    /// Returns the thermal overheating threshold in milli-Celsius.
+    fn thermal_overheating_temp_threshold(&self) -> i32 {
+        self.features().thermal_overheating_temp_threshold()
+    }
+
+    /// Returns the thermal critical threshold in milli-Celsius.
+    fn thermal_critical_temp_threshold(&self) -> i32 {
+        self.features().thermal_critical_temp_threshold()
     }
 
     /// Map an incoming gesture to a system action.
@@ -120,6 +165,8 @@ pub struct SystemController<
     pub feature_set: F,
     /// Current battery status summary.
     pub battery_status: Option<BatteryStatus>,
+    /// Countdown in seconds for logging active boot traps.
+    boot_trap_log_countdown: u8,
 }
 
 impl<
@@ -135,12 +182,39 @@ impl<
         telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, T_CAP>,
         boot_reason: BootReason,
     ) -> Self {
-        let power_manager = PowerManager::new(telemetry_tx, boot_reason);
+        let mut power_manager = PowerManager::new(telemetry_tx, boot_reason);
+        let default_mask = feature_set.features().default_boot_trap_mask();
+        power_manager
+            .set_boot_trap_mask(BootTrapMask::from_raw(default_mask))
+            .unwrap();
 
-        Self {
+        let mut ctrl = Self {
             power_manager,
             feature_set,
             battery_status: None,
+            boot_trap_log_countdown: 0,
+        };
+
+        if !ctrl.power_manager.is_boot_trapped() {
+            let _ = ctrl.set_status(SystemStatus::Active);
+        }
+
+        ctrl
+    }
+
+    fn log_boot_trap_cleared(&self, _cleared: BootTrapReason) {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        {
+            let cleared_str = match _cleared {
+                BootTrapReason::Battery => "Battery",
+                BootTrapReason::Thermal => "Thermal",
+            };
+            defmt::info!("SystemController: cleared boot trap: {}", cleared_str);
+            if self.power_manager.is_boot_trapped() {
+                self.log_active_boot_traps();
+            } else {
+                defmt::info!("SystemController: all boot traps cleared. exiting PowerDown state. Waking up to Active mode.");
+            }
         }
     }
 
@@ -192,7 +266,7 @@ impl<
             state_of_charge,
             charger_state,
             self.power_manager.status(),
-            self.power_manager.boot_power_down(),
+            self.power_manager.is_boot_trapped(),
         );
 
         if let Some((action, status)) = res {
@@ -275,12 +349,11 @@ impl<
                     self.set_status(SystemStatus::PowerDown)?;
                 }
                 BatteryUpdateAction::ClearBootTrap => {
-                    self.power_manager.set_boot_power_down(false);
-                    self.set_status(SystemStatus::Active)?;
-                    #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    defmt::info!(
-                        "SystemController: exiting PowerDown state. Waking up to Active mode."
-                    );
+                    self.power_manager.clear_boot_trap(BootTrapReason::Battery);
+                    self.log_boot_trap_cleared(BootTrapReason::Battery);
+                    if !self.power_manager.is_boot_trapped() {
+                        self.set_status(SystemStatus::Active)?;
+                    }
                 }
                 BatteryUpdateAction::ReportSoC => {
                     self.feature_set.features().on_battery_action(
@@ -290,6 +363,7 @@ impl<
                     );
                 }
             },
+
             SystemCommand::Gesture(gesture) => {
                 let current_status = self.power_manager.status();
                 self.feature_set
@@ -332,6 +406,64 @@ impl<
         Ok(())
     }
 
+    /// Handles updates from the thermal controller.
+    pub fn handle_thermal_action(
+        &mut self,
+        action: ThermalUpdateAction,
+    ) -> Result<(), firmware_lib::system::TransitionError> {
+        let current_status = self.power_manager.status();
+
+        match action {
+            ThermalUpdateAction::ClearBootTrap => {
+                self.power_manager.clear_boot_trap(BootTrapReason::Thermal);
+                self.log_boot_trap_cleared(BootTrapReason::Thermal);
+            }
+            ThermalUpdateAction::AlertTriggered => {
+                self.feature_set
+                    .features()
+                    .on_alert_triggered(current_status);
+            }
+        }
+
+        let is_boot_trapped = self.power_manager.is_boot_trapped();
+        let transition = transition_thermal_update(current_status, action, is_boot_trapped);
+
+        if transition.clear_wake_locks {
+            self.power_manager.clear_wake_locks();
+        }
+
+        if let Some(next_status) = transition.next_status {
+            self.set_status(next_status)?;
+        }
+
+        if action == ThermalUpdateAction::AlertTriggered {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::info!("SystemController: Alert triggered. LED indicator set to RED.");
+        }
+
+        Ok(())
+    }
+
+    fn log_active_boot_traps(&self) {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        {
+            let mask = self.power_manager.boot_trap_mask();
+            let mut battery = "";
+            let mut thermal = "";
+            if mask.has(BootTrapReason::Battery) {
+                battery = " Battery";
+            }
+            if mask.has(BootTrapReason::Thermal) {
+                thermal = " Thermal";
+            }
+            defmt::info!(
+                "SystemController: boot blocked by traps:{}{}",
+                battery,
+                thermal
+            );
+        }
+    }
+
     /// Ticks the inactivity timer and active mode duration timer by a specified duration in milliseconds.
     /// Returns true if the 1-second system tick boundary was crossed.
     pub fn tick_ms(&mut self, ms: u32) -> bool {
@@ -352,6 +484,18 @@ impl<
             {
                 let _ = self.set_status(SystemStatus::Sleep);
             }
+
+            // Periodic boot trap logging
+            if self.power_manager.is_boot_trapped() {
+                if self.boot_trap_log_countdown == 0 {
+                    self.boot_trap_log_countdown = 5; // Log every 5 seconds
+                    self.log_active_boot_traps();
+                } else {
+                    self.boot_trap_log_countdown = self.boot_trap_log_countdown.saturating_sub(1);
+                }
+            } else {
+                self.boot_trap_log_countdown = 0;
+            }
         }
 
         crossed
@@ -362,6 +506,12 @@ impl<
         mut self,
         command_rx: embassy_sync::channel::Receiver<'static, MutexRaw, SystemCommand, CMD_CAP>,
         gesture_rx: embassy_sync::channel::Receiver<'static, MutexRaw, Gesture, 4>,
+        thermal_rx: embassy_sync::channel::Receiver<
+            'static,
+            MutexRaw,
+            crate::types::ThermalUpdateAction,
+            4,
+        >,
     ) -> ! {
         self.feature_set.features().on_init();
         self.power_manager
@@ -384,6 +534,10 @@ impl<
                 },
                 gesture_rx.receive() => |gesture| {
                     let _ = self.handle_command(SystemCommand::Gesture(gesture));
+                    Some(())
+                },
+                thermal_rx.receive() => |action| {
+                    let _ = self.handle_thermal_action(action);
                     Some(())
                 },
             );
@@ -476,8 +630,26 @@ pub fn handle_system_cli<
 
 /// A single system feature that can react to system events and ticks.
 pub trait SystemFeature<MutexRaw: RawMutex + 'static, const N: usize> {
+    /// True if this feature defines/provides thermal thresholds.
+    const HAS_THERMAL_THRESHOLDS: bool = false;
+
     /// Hook called when the system starts running.
     fn on_init(&self) {}
+
+    /// Returns the default boot trap mask for this feature.
+    fn default_boot_trap_mask(&self) -> u32 {
+        0
+    }
+
+    /// Returns the thermal overheating threshold in milli-Celsius.
+    fn thermal_overheating_temp_threshold(&self) -> i32 {
+        45000
+    }
+
+    /// Returns the thermal critical threshold in milli-Celsius.
+    fn thermal_critical_temp_threshold(&self) -> i32 {
+        60000
+    }
 
     /// Returns true if the feature has a critical thermal alert.
     fn thermal_critical(&self) -> bool {
@@ -491,7 +663,7 @@ pub trait SystemFeature<MutexRaw: RawMutex + 'static, const N: usize> {
         _state_of_charge: u8,
         _charger_state: model::types::ChargeState,
         _status: model::types::SystemStatus,
-        _boot_power_down: bool,
+        _is_boot_trapped: bool,
     ) -> Option<(Option<BatteryUpdateAction>, BatteryStatus)> {
         None
     }
@@ -555,8 +727,15 @@ pub trait SystemFeature<MutexRaw: RawMutex + 'static, const N: usize> {
 
 /// Trait implemented by collections (like tuples) of system features to dispatch hooks.
 pub trait FeatureList<MutexRaw: RawMutex + 'static, const N: usize> {
+    /// Number of features that define thermal thresholds.
+    const THERMAL_FEATURE_COUNT: usize;
+    /// Compile-time check that at most one feature defines thermal thresholds.
+    const CHECK_THERMAL_FEATURE_COUNT: ();
+
     /// Dispatch on_init hook to all features.
     fn on_init(&self);
+    /// Combine default boot trap masks from all features.
+    fn default_boot_trap_mask(&self) -> u32;
     /// Combine thermal critical status from all features.
     fn thermal_critical(&self) -> bool;
     /// Dispatch on_battery_update hook to features.
@@ -565,7 +744,7 @@ pub trait FeatureList<MutexRaw: RawMutex + 'static, const N: usize> {
         state_of_charge: u8,
         charger_state: model::types::ChargeState,
         status: model::types::SystemStatus,
-        boot_power_down: bool,
+        is_boot_trapped: bool,
     ) -> Option<(Option<BatteryUpdateAction>, BatteryStatus)>;
     /// Dispatch on_proximity_update hook to features.
     fn on_proximity_update(
@@ -609,16 +788,35 @@ pub trait FeatureList<MutexRaw: RawMutex + 'static, const N: usize> {
     );
     /// Dispatch on_alert_triggered hook to all features.
     fn on_alert_triggered(&self, status: model::types::SystemStatus);
+    /// Combine thermal overheating thresholds from all features.
+    fn thermal_overheating_temp_threshold(&self) -> i32;
+    /// Combine thermal critical thresholds from all features.
+    fn thermal_critical_temp_threshold(&self) -> i32;
 }
 
 macro_rules! impl_feature_list_for_tuple {
     ($($T:ident),*) => {
         impl<MutexRaw: RawMutex + 'static, const N: usize, $($T: SystemFeature<MutexRaw, N>),*> FeatureList<MutexRaw, N> for ($($T,)*) {
+            const THERMAL_FEATURE_COUNT: usize = 0 $(+ if $T::HAS_THERMAL_THRESHOLDS { 1 } else { 0 })*;
+            const CHECK_THERMAL_FEATURE_COUNT: () = {
+                if <Self as FeatureList<MutexRaw, N>>::THERMAL_FEATURE_COUNT > 1 {
+                    panic!("Multiple features cannot define thermal thresholds!");
+                }
+            };
+
             #[inline(always)]
             fn on_init(&self) {
+                let _ = <Self as FeatureList<MutexRaw, N>>::CHECK_THERMAL_FEATURE_COUNT;
                 #[allow(non_snake_case)]
                 let ($($T,)*) = self;
-                $($T.on_init();)*
+                $( $T.on_init(); )*
+            }
+
+            #[inline(always)]
+            fn default_boot_trap_mask(&self) -> u32 {
+                #[allow(non_snake_case)]
+                let ($($T,)*) = self;
+                $( $T.default_boot_trap_mask() | )* 0
             }
 
             #[inline(always)]
@@ -629,11 +827,11 @@ macro_rules! impl_feature_list_for_tuple {
             }
 
             #[inline(always)]
-            fn on_battery_update(&self, _state_of_charge: u8, _charger_state: model::types::ChargeState, _status: model::types::SystemStatus, _boot_power_down: bool) -> Option<(Option<BatteryUpdateAction>, BatteryStatus)> {
+            fn on_battery_update(&self, _state_of_charge: u8, _charger_state: model::types::ChargeState, _status: model::types::SystemStatus, _is_boot_trapped: bool) -> Option<(Option<BatteryUpdateAction>, BatteryStatus)> {
                 #[allow(non_snake_case)]
                 let ($($T,)*) = self;
                 $(
-                    if let Some(res) = $T.on_battery_update(_state_of_charge, _charger_state, _status, _boot_power_down) {
+                    if let Some(res) = $T.on_battery_update(_state_of_charge, _charger_state, _status, _is_boot_trapped) {
                         return Some(res);
                     }
                 )*
@@ -707,6 +905,30 @@ macro_rules! impl_feature_list_for_tuple {
                 let ($($T,)*) = self;
                 $($T.on_alert_triggered(_status);)*
             }
+
+            #[inline(always)]
+            fn thermal_overheating_temp_threshold(&self) -> i32 {
+                #[allow(non_snake_case)]
+                let ($($T,)*) = self;
+                $(
+                    if $T::HAS_THERMAL_THRESHOLDS {
+                        return $T.thermal_overheating_temp_threshold();
+                    }
+                )*
+                45000
+            }
+
+            #[inline(always)]
+            fn thermal_critical_temp_threshold(&self) -> i32 {
+                #[allow(non_snake_case)]
+                let ($($T,)*) = self;
+                $(
+                    if $T::HAS_THERMAL_THRESHOLDS {
+                        return $T.thermal_critical_temp_threshold();
+                    }
+                )*
+                60000
+            }
         }
     }
 }
@@ -722,3 +944,31 @@ impl_feature_list_for_tuple!(A, B, C, D, E, F, G);
 impl_feature_list_for_tuple!(A, B, C, D, E, F, G, H);
 impl_feature_list_for_tuple!(A, B, C, D, E, F, G, H, I);
 impl_feature_list_for_tuple!(A, B, C, D, E, F, G, H, I, J);
+
+impl<
+        MutexRaw: RawMutex + 'static,
+        F: SystemFeatureSet<MutexRaw, N>,
+        const N: usize,
+        const T_CAP: usize,
+    > crate::BlockingSystemWriter for SystemController<MutexRaw, F, N, T_CAP>
+{
+    fn record_activity(&mut self) -> Result<(), PeripheralError> {
+        let _ = self.handle_command(SystemCommand::ActivityDetected);
+        Ok(())
+    }
+
+    fn clear_boot_trap(&mut self, reason: BootTrapReason) -> Result<(), PeripheralError> {
+        if self.power_manager.has_boot_trap(reason) {
+            self.power_manager.clear_boot_trap(reason);
+            self.log_boot_trap_cleared(reason);
+            if !self.power_manager.is_boot_trapped() {
+                let _ = self.set_status(SystemStatus::Active);
+            }
+        }
+        Ok(())
+    }
+
+    fn is_boot_trapped(&self) -> Result<bool, PeripheralError> {
+        Ok(self.power_manager.is_boot_trapped())
+    }
+}

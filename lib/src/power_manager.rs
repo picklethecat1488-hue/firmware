@@ -1,5 +1,5 @@
 use crate::system::{transition_power_down, transition_sleep, transition_wake, TransitionError};
-use crate::types::Sender;
+use crate::types::{BootTrapMask, BootTrapReason, Sender};
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::types::{BootReason, Gesture, SystemStatus, TelemetryRecord};
 
@@ -10,7 +10,7 @@ pub struct PowerManager<MutexRaw: RawMutex + 'static, const N: usize> {
     active_ms: u32,
     interval_ms: u32,
     tick_ms_accumulator: u32,
-    boot_power_down: bool,
+    boot_trap_mask: BootTrapMask,
     wake_locks: u32,
     telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, N>,
 }
@@ -23,7 +23,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> core::fmt::Debug for PowerMan
             .field("active_ms", &self.active_ms)
             .field("interval_ms", &self.interval_ms)
             .field("tick_ms_accumulator", &self.tick_ms_accumulator)
-            .field("boot_power_down", &self.boot_power_down)
+            .field("boot_trap_mask", &self.boot_trap_mask)
             .field("wake_locks", &self.wake_locks)
             .finish()
     }
@@ -36,7 +36,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> PartialEq for PowerManager<Mu
             && self.active_ms == other.active_ms
             && self.interval_ms == other.interval_ms
             && self.tick_ms_accumulator == other.tick_ms_accumulator
-            && self.boot_power_down == other.boot_power_down
+            && self.boot_trap_mask == other.boot_trap_mask
             && self.wake_locks == other.wake_locks
     }
 }
@@ -56,7 +56,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> PowerManager<MutexRaw, N> {
             active_ms: 0,
             interval_ms: 1000,
             tick_ms_accumulator: 0,
-            boot_power_down: true,
+            boot_trap_mask: BootTrapMask::from_raw(BootTrapReason::Battery as u32),
             wake_locks: 0,
             telemetry_tx,
         }
@@ -94,11 +94,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> PowerManager<MutexRaw, N> {
                         prev_status,
                         battery_critical,
                         thermal_critical,
-                        self.boot_power_down,
+                        self.is_boot_trapped(),
                     )
                     .is_none()
                     {
-                        if self.boot_power_down {
+                        if self.is_boot_trapped() {
                             return Err(TransitionError::BootPowerDownActive);
                         } else if battery_critical {
                             return Err(TransitionError::BatteryCritical);
@@ -216,14 +216,34 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> PowerManager<MutexRaw, N> {
         self.interval_ms = val;
     }
 
-    /// Returns the initial boot power down trap status.
-    pub const fn boot_power_down(&self) -> bool {
-        self.boot_power_down
+    /// Checks if any boot traps are still active.
+    pub const fn is_boot_trapped(&self) -> bool {
+        !self.boot_trap_mask.is_empty()
     }
 
-    /// Sets the initial boot power down trap status.
-    pub fn set_boot_power_down(&mut self, val: bool) {
-        self.boot_power_down = val;
+    /// Checks if a specific boot trap is active.
+    pub const fn has_boot_trap(&self, reason: BootTrapReason) -> bool {
+        self.boot_trap_mask.has(reason)
+    }
+
+    /// Clears a specific boot trap.
+    pub fn clear_boot_trap(&mut self, reason: BootTrapReason) {
+        self.boot_trap_mask.remove(reason);
+    }
+
+    /// Returns the boot trap mask.
+    pub const fn boot_trap_mask(&self) -> BootTrapMask {
+        self.boot_trap_mask
+    }
+
+    /// Sets the boot trap mask, returning an error if it contains invalid bits.
+    pub fn set_boot_trap_mask(
+        &mut self,
+        mask: BootTrapMask,
+    ) -> Result<(), crate::types::InvalidBootTrapMask> {
+        mask.validate()?;
+        self.boot_trap_mask = mask;
+        Ok(())
     }
 
     /// Process a tick of `ms` milliseconds.

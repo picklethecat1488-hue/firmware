@@ -56,8 +56,11 @@ pub use flash::BlockingAsyncFlash;
 pub use gesture_detector::{GestureDetector, ProximityEvent, ProximityGestureDetector};
 pub use periodic_timer::PeriodicTimer;
 pub use power_manager::PowerManager;
-pub use system::{BatteryUpdateAction, TransitionError};
+pub use system::{transition_thermal_update, BatteryUpdateAction, TransitionError};
 pub use thermal_manager::ThermalManager;
+pub use types::{
+    BootTrapMask, BootTrapReason, InvalidBootTrapMask, ThermalTransitionResult, ThermalUpdateAction,
+};
 
 /// Compile-time CBOR serialization helpers.
 pub mod cbor;

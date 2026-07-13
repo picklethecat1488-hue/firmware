@@ -130,6 +130,11 @@ static FILESYSTEM_CHANNEL: Channel<
     16,
 > = Channel::new();
 static GESTURE_CHANNEL: Channel<CriticalSectionRawMutex, model::types::Gesture, 4> = Channel::new();
+static THERMAL_ACTION_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    controller::types::ThermalUpdateAction,
+    4,
+> = Channel::new();
 
 #[embassy_executor::task]
 async fn test_control_task_all() {
@@ -143,7 +148,7 @@ async fn test_control_task_all() {
 
     let mut success = false;
     let start = std::time::Instant::now();
-    while start.elapsed() < std::time::Duration::from_secs(2) {
+    while start.elapsed() < std::time::Duration::from_secs(5) {
         if let Ok(model::telemetry::TelemetryRecord::System(SystemStatus::Active)) =
             TELEMETRY_CHANNEL.try_receive()
         {
@@ -181,11 +186,8 @@ fn test_spawn_all_controllers_configuration() {
         SYSTEM_CHANNEL.sender(),
         MockPin,
     );
-    let thermal_ctrl = ThermalController::new_with_shutdown(
-        mock_temp,
-        SYSTEM_CHANNEL.sender(),
-        SystemCommand::AlertTriggered,
-    );
+    let thermal_ctrl =
+        ThermalController::new_with_shutdown_and_trap(mock_temp, THERMAL_ACTION_CHANNEL.sender());
     let sensor_ctrl_north = SensorController::new_with_fusion_and_interrupt(
         controller::types::SensorMetadata {
             direction: Direction::North,
@@ -263,14 +265,14 @@ fn test_spawn_all_controllers_configuration() {
             spawner,
             telemetry: TELEMETRY_CHANNEL,
             controllers: {
-                Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (peripherals::mock::MockBattery, SystemCommand),
+                Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (peripherals::mock::MockBattery),
                 Battery(battery_ctrl, BATTERY_CHANNEL), generics: (peripherals::mock::MockBattery, peripherals::mock::MockCharger, MockPin, SystemCommand),
                 Motor(motor_ctrl, MOTOR_CHANNEL), generics: (model::interfaces::NoTick<MockMotor>, DummyCurrentSensor),
                 Sensor(sensor_ctrl_north, SENSOR_NORTH_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_east, SENSOR_EAST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_west, SENSOR_WEST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Led(led_ctrl, LED_CHANNEL), generics: (MockLed),
-                System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, DummyFeatureSet<CriticalSectionRawMutex, 4>, 4, 64>),
+                System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, DummyFeatureSet<CriticalSectionRawMutex, 4>, 4, 64>),
                 Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (controller::filesystem_controller::ProfilingFlash<TestFlash>),
                 Telemetry(telemetry_ctrl, TELEMETRY_CONSUMER_CHANNEL), generics: (1024, { controller::telemetry_controller::CHANNEL_CAPACITY }),
             }

@@ -107,7 +107,7 @@ impl BatteryManager {
         state_of_charge: u8,
         charger_state: ChargeState,
         system_status: SystemStatus,
-        boot_power_down: bool,
+        is_boot_trapped: bool,
     ) -> Option<BatteryUpdateAction> {
         let old_led_state = self.get_soc_led_state();
         let old_charger_connected = self.charger_connected;
@@ -132,7 +132,7 @@ impl BatteryManager {
 
         let res = transition_battery_update(
             system_status,
-            boot_power_down,
+            is_boot_trapped,
             self.battery_critical,
             info,
             thresholds,
@@ -157,7 +157,7 @@ impl BatteryManager {
                 None
             }
         } else if system_status == SystemStatus::PowerDown {
-            if boot_power_down && !self.charger_connected {
+            if is_boot_trapped && !self.charger_connected {
                 Some(BatteryUpdateAction::ClearBootTrap)
             } else if changed {
                 Some(BatteryUpdateAction::ReportSoC)
