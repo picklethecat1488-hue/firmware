@@ -8,6 +8,9 @@ controller::declare_shell_commands! {
         System,
     }
 }
+use controller::motor_controller::MotorSubcommand;
+use controller::sensor_controller::SensorSubcommand;
+use controller::system_controller::SystemSubcommand;
 use embedded_cli::cli::CliBuilder;
 use embedded_cli::command::RawCommand;
 use embedded_cli::service::{CommandProcessor, FromRaw, ProcessError};
@@ -61,7 +64,7 @@ fn test_crash_command_parsing() {
     assert!(matches!(
         processor.cmd,
         Some(CliCommand::System {
-            subcommand: Some("crash")
+            subcommand: Some(SystemSubcommand::Crash)
         })
     ));
 }
@@ -78,7 +81,7 @@ fn test_stop_command_parsing() {
     assert!(matches!(
         processor.cmd,
         Some(CliCommand::Motor {
-            subcommand: Some("stop"),
+            subcommand: Some(MotorSubcommand::Stop),
             ..
         })
     ));
@@ -96,7 +99,7 @@ fn test_cal_near_command_parsing() {
     assert!(matches!(
         processor.cmd,
         Some(CliCommand::Sensor {
-            subcommand: Some("cal_near"),
+            subcommand: Some(SensorSubcommand::CalNear),
             arg1: Some("north")
         })
     ));
@@ -114,7 +117,7 @@ fn test_cal_far_command_parsing() {
     assert!(matches!(
         processor.cmd,
         Some(CliCommand::Sensor {
-            subcommand: Some("cal_far"),
+            subcommand: Some(SensorSubcommand::CalFar),
             arg1: Some("east")
         })
     ));
@@ -132,7 +135,7 @@ fn test_cal_motor_command_parsing() {
     assert!(matches!(
         processor.cmd,
         Some(CliCommand::Motor {
-            subcommand: Some("calibrate"),
+            subcommand: Some(MotorSubcommand::Calibrate),
             arg1: Some("empty"),
             arg2: None,
             arg3: None
@@ -148,7 +151,7 @@ fn test_cal_motor_command_parsing() {
     assert!(matches!(
         processor2.cmd,
         Some(CliCommand::Motor {
-            subcommand: Some("calibrate"),
+            subcommand: Some(MotorSubcommand::Calibrate),
             arg1: Some("empty"),
             arg2: Some("3000"),
             arg3: None
@@ -164,7 +167,7 @@ fn test_cal_motor_command_parsing() {
     assert!(matches!(
         processor3.cmd,
         Some(CliCommand::Motor {
-            subcommand: Some("calibrate"),
+            subcommand: Some(MotorSubcommand::Calibrate),
             arg1: Some("empty"),
             arg2: Some("3000"),
             arg3: Some("2500")
@@ -180,7 +183,7 @@ fn test_cal_motor_command_parsing() {
     assert!(matches!(
         processor4.cmd,
         Some(CliCommand::Motor {
-            subcommand: Some("calibrate"),
+            subcommand: Some(MotorSubcommand::Calibrate),
             arg1: Some("overload"),
             arg2: None,
             arg3: None

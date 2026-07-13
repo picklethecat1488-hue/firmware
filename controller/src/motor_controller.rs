@@ -486,7 +486,7 @@ pub fn handle_motor_cli<
     C: crate::ShellConfig,
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
-    subcommand: Option<&str>,
+    subcommand: Option<MotorSubcommand>,
     arg1: Option<&str>,
     arg2: Option<&str>,
     arg3: Option<&str>,
@@ -496,8 +496,7 @@ pub fn handle_motor_cli<
     let mut fs_buf = resolver.lock_fs_buffer()?;
     let fs_buf_static = unsafe { fs_buf.as_static_mut() };
 
-    let sub = subcommand.ok_or("Missing motor subcommand")?;
-    let cmd = MotorSubcommand::try_from(sub)?;
+    let cmd = subcommand.ok_or("Missing motor subcommand")?;
 
     match cmd {
         MotorSubcommand::Speed => {
