@@ -365,12 +365,11 @@ pub fn handle_battery_cli<
     C: crate::ShellConfig,
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
-    subcommand: Option<&str>,
+    subcommand: Option<BatterySubcommand>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     let battery_ctrl = resolver.resolve_battery(None)?;
-    let sub = subcommand.ok_or("Missing battery subcommand")?;
-    let cmd = BatterySubcommand::try_from(sub)?;
+    let cmd = subcommand.ok_or("Missing battery subcommand")?;
 
     match cmd {
         BatterySubcommand::Status => {

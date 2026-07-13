@@ -497,15 +497,14 @@ pub fn handle_sensor_cli<
     C: crate::ShellConfig,
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
-    subcommand: Option<&str>,
+    subcommand: Option<SensorSubcommand>,
     arg1: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     let mut fs_buf = resolver.lock_fs_buffer()?;
     let fs_buf_static = unsafe { fs_buf.as_static_mut() };
 
-    let sub = subcommand.ok_or("Missing sensor subcommand")?;
-    let cmd = SensorSubcommand::try_from(sub)?;
+    let cmd = subcommand.ok_or("Missing sensor subcommand")?;
 
     match cmd {
         SensorSubcommand::Status => {

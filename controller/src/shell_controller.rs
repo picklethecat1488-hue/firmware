@@ -329,7 +329,7 @@ macro_rules! append_group_arm {
             #[command(name = "battery")]
             Battery {
                 /// Subcommand (status)
-                subcommand: Option<&'a str>,
+                subcommand: Option<$crate::battery_controller::BatterySubcommand>,
             },
         ] [
             $($matches)*
@@ -343,7 +343,7 @@ macro_rules! append_group_arm {
             #[command(name = "thermal")]
             Thermal {
                 /// Subcommand (status, mcu)
-                subcommand: Option<&'a str>,
+                subcommand: Option<$crate::thermal_controller::ThermalSubcommand>,
             },
         ] [
             $($matches)*
@@ -357,7 +357,7 @@ macro_rules! append_group_arm {
             #[command(name = "motor")]
             Motor {
                 /// Subcommand (speed, stop, calibrate)
-                subcommand: Option<&'a str>,
+                subcommand: Option<$crate::motor_controller::MotorSubcommand>,
                 /// First argument (speed or calibration state)
                 arg1: Option<&'a str>,
                 /// Second argument (max_rpm)
@@ -377,7 +377,7 @@ macro_rules! append_group_arm {
             #[command(name = "sensor")]
             Sensor {
                 /// Subcommand (status, cal_near, cal_far)
-                subcommand: Option<&'a str>,
+                subcommand: Option<$crate::sensor_controller::SensorSubcommand>,
                 /// First argument (direction: north, east, west)
                 arg1: Option<&'a str>,
             },
@@ -393,7 +393,7 @@ macro_rules! append_group_arm {
             #[command(name = "fs")]
             Fs {
                 /// Subcommand (format, ls)
-                subcommand: Option<&'a str>,
+                subcommand: Option<$crate::filesystem_controller::FilesystemSubcommand>,
             },
         ] [
             $($matches)*
@@ -407,7 +407,7 @@ macro_rules! append_group_arm {
             #[command(name = "system")]
             System {
                 /// Subcommand (activity, crash)
-                subcommand: Option<&'a str>,
+                subcommand: Option<$crate::system_controller::SystemSubcommand>,
             },
         ] [
             $($matches)*

@@ -202,11 +202,10 @@ pub fn handle_thermal_cli<
     C: crate::ShellConfig,
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
-    subcommand: Option<&str>,
+    subcommand: Option<ThermalSubcommand>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let sub = subcommand.ok_or("Missing thermal subcommand")?;
-    let cmd = ThermalSubcommand::try_from(sub)?;
+    let cmd = subcommand.ok_or("Missing thermal subcommand")?;
 
     match cmd {
         ThermalSubcommand::Status => {

@@ -449,11 +449,10 @@ pub fn handle_system_cli<
     C: crate::ShellConfig,
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
-    subcommand: Option<&str>,
+    subcommand: Option<SystemSubcommand>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let sub = subcommand.ok_or("Missing system subcommand")?;
-    let cmd = SystemSubcommand::try_from(sub)?;
+    let cmd = subcommand.ok_or("Missing system subcommand")?;
 
     match cmd {
         SystemSubcommand::Activity => {

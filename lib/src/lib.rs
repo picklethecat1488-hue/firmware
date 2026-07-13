@@ -6,6 +6,9 @@
 /// CLI-related helpers and structures.
 pub mod cli;
 
+#[doc(hidden)]
+pub use embedded_cli;
+
 /// RP2040 panic handler module.
 pub mod panic_handler;
 

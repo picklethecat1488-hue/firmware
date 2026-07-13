@@ -545,15 +545,14 @@ pub fn handle_fs_cli<
     C: crate::ShellConfig,
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
-    subcommand: Option<&str>,
+    subcommand: Option<FilesystemSubcommand>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     let partition = resolver.resolve_partition(None)?;
     let mut fs_buf = resolver.lock_fs_buffer()?;
     let fs_buf_static = unsafe { fs_buf.as_static_mut() };
 
-    let sub = subcommand.ok_or("Missing fs subcommand")?;
-    let cmd = FilesystemSubcommand::try_from(sub)?;
+    let cmd = subcommand.ok_or("Missing fs subcommand")?;
 
     match cmd {
         FilesystemSubcommand::Format => {
