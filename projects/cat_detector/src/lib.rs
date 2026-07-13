@@ -335,7 +335,11 @@ const _: () = {
 /// Bringup serial command and shell controller.
 pub use controller::shell_controller;
 
-pub use firmware_lib::BatteryUpdateAction;
+pub use firmware_lib::{
+    cbor,
+    types::{ProjectMetadata, STACK_SCAN_LIMIT},
+    BatteryUpdateAction,
+};
 pub use model::types::SystemStatus;
 
 /// Feature set for the Cat Detector app that implements SystemFeatureSet.
@@ -467,6 +471,15 @@ pub fn system_time() -> u64 {
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 defmt::timestamp!("{=u64:us}", system_time());
 
+const METADATA_WRITER: cbor::ConstCborWriter<128> = ProjectMetadata::serialize(
+    "rp2040",
+    0x10000000 + STORAGE_PARTITION_START,
+    STORAGE_PARTITION_END - STORAGE_PARTITION_START,
+    FLASH_WRITE_SIZE as u32,
+    FLASH_ERASE_SIZE as u32,
+    STACK_SCAN_LIMIT,
+);
+
 /// Embedded project metadata for autodetect functionality.
 #[used]
 #[no_mangle]
@@ -474,23 +487,4 @@ defmt::timestamp!("{=u64:us}", system_time());
     all(target_arch = "arm", target_os = "none"),
     link_section = ".rodata.project_metadata"
 )]
-pub static PROJECT_METADATA: firmware_lib::types::ProjectMetadata =
-    firmware_lib::types::ProjectMetadata {
-        magic: *b"PROJMET\0",
-        version: 1,
-        chip: {
-            let mut buf = [0u8; 32];
-            let bytes = b"rp2040";
-            let mut i = 0;
-            while i < bytes.len() {
-                buf[i] = bytes[i];
-                i += 1;
-            }
-            buf
-        },
-        partition_address: 0x10000000 + STORAGE_PARTITION_START,
-        partition_size: (STORAGE_PARTITION_END - STORAGE_PARTITION_START),
-        flash_write_size: FLASH_WRITE_SIZE as u32,
-        flash_erase_size: FLASH_ERASE_SIZE as u32,
-        stack_scan_limit: firmware_lib::types::STACK_SCAN_LIMIT,
-    };
+pub static PROJECT_METADATA: [u8; METADATA_WRITER.len] = cbor::extract_bytes(METADATA_WRITER.buf);

@@ -69,41 +69,24 @@ pub fn autodetect_project_info(elf_path: &std::path::Path) -> Result<ProjectInfo
     })?;
 
     let offset = (address - section_address) as usize;
-    if offset + 64 > section_data.len() {
+    if offset >= section_data.len() {
         return Err("Symbol address is out of section bounds".to_string());
     }
 
-    let data = &section_data[offset..offset + 64];
+    let remaining = section_data.len() - offset;
+    let max_len = if remaining > 512 { 512 } else { remaining };
+    let data = &section_data[offset..offset + max_len];
 
-    let magic = &data[0..8];
-    if magic != b"PROJMET\0" {
-        return Err("Invalid project metadata magic signature".to_string());
-    }
-
-    let version = u32::from_le_bytes(data[8..12].try_into().unwrap());
-    if version != 1 {
-        return Err(format!("Unsupported project metadata version: {}", version));
-    }
-
-    let chip_bytes = &data[12..44];
-    let chip_len = chip_bytes.iter().position(|&b| b == 0).unwrap_or(32);
-    let chip = std::str::from_utf8(&chip_bytes[..chip_len])
-        .map_err(|e| format!("Invalid UTF-8 in chip name metadata: {:?}", e))?
-        .to_string();
-
-    let partition_address = u32::from_le_bytes(data[44..48].try_into().unwrap());
-    let partition_size = u32::from_le_bytes(data[48..52].try_into().unwrap()) as usize;
-    let flash_write_size = u32::from_le_bytes(data[52..56].try_into().unwrap());
-    let flash_erase_size = u32::from_le_bytes(data[56..60].try_into().unwrap());
-    let stack_scan_limit = u32::from_le_bytes(data[60..64].try_into().unwrap());
+    let metadata: firmware_lib::types::ProjectMetadata<'_> =
+        minicbor::decode(data).map_err(|e| format!("Failed to decode CBOR metadata: {:?}", e))?;
 
     Ok(ProjectInfo {
-        chip,
-        partition_address,
-        partition_size,
-        flash_write_size,
-        flash_erase_size,
-        stack_scan_limit,
+        chip: metadata.chip.to_string(),
+        partition_address: metadata.partition_address,
+        partition_size: metadata.partition_size as usize,
+        flash_write_size: metadata.flash_write_size,
+        flash_erase_size: metadata.flash_erase_size,
+        stack_scan_limit: metadata.stack_scan_limit,
     })
 }
 
