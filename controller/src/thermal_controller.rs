@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use crate::tracing;
 use crate::types::ThermalState;
 use crate::{BlockingThermalReader, Sender, TelemetrySender, ThermalReceiver};
 use core::fmt::Write as _;
@@ -157,6 +158,7 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
     }
 
     /// Starts the controller's main infinite run loop, processing commands.
+    #[tracing::instrument(level = "debug", skip(command_rx, telemetry_tx))]
     pub async fn run(
         mut self,
         command_rx: ThermalReceiver<M, 4>,

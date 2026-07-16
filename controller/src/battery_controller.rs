@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::BatteryTelemetryClient;
+use crate::tracing;
 use crate::{BatteryReceiver, BlockingBatteryReader, Sender, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
@@ -249,6 +250,7 @@ where
     }
 
     /// Starts the controller's main infinite run loop, processing commands.
+    #[tracing::instrument(level = "debug", skip(command_rx, telemetry_tx))]
     pub async fn run(
         mut self,
         command_rx: BatteryReceiver<M, 4>,

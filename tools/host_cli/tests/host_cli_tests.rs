@@ -103,3 +103,21 @@ fn test_dump_logs_empty() {
         }
     }
 }
+
+#[test]
+fn test_cli_trace_argument() {
+    let bin_path = env!("CARGO_BIN_EXE_host_cli");
+
+    // Run host_cli with --trace option on non-existent ELF
+    let output = Command::new(bin_path)
+        .arg("--elf")
+        .arg("non_existent_file.elf")
+        .arg("--trace")
+        .arg("my_test_trace.json")
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Failed to read ELF file") || stderr.contains("error"));
+}

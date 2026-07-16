@@ -186,16 +186,30 @@ All asynchronously executed tasks, controller loops, and main entry points (`mai
 When printing custom enums or structs that do not implement `defmt::Format` directly:
 *   Derive `Debug` on the types and wrap them in `defmt::Debug2Format(&value)` to prevent compiler errors.
 
-### 4. Profiling Blocking Peripheral Calls via `#[instrument]`
-To identify latencies, stuck buses, or slow I/O polling, any potentially blocking operations (such as peripheral reads/writes, ADC polling, or I2C/SPI bus transactions) must be instrumented using `tracing`'s `#[instrument]` macro:
-*   **Purpose**: Automatically registers a trace span upon function entry/exit, collecting argument parameters and allowing tracing subscribers (such as `defmt-tracing`) to calculate execution elapsed time.
+### 4. Profiling Blocking Peripheral Calls via Tracing
+To identify latencies, stuck buses, or slow I/O polling, any potentially blocking operations (such as peripheral reads/writes, ADC polling, or I2C/SPI bus transactions) must be instrumented using `#[tracing::instrument]`:
+*   **Imports**: Always use the consolidated tracing facade module `use crate::tracing;` (which re-exports `firmware_lib::tracing`). Do NOT import the standard `tracing` crate directly, as it requires `alloc` and is incompatible with our target `no_std` environments.
+*   **Skip Self/Keyword Parameters**: When using `#[tracing::instrument]`, do NOT list `self` inside the `skip(...)` attribute. `self` is a keyword and causes macro parsing failures. The macro automatically ignores `self` during formatting anyway. Only list other parameters you want to exclude (e.g. channels or executors).
 *   **Example**:
     ```rust
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn read_voltage_mv(&mut self) -> Result<u32, Error> {
-        // Potentially blocking I/O/ADC read
+    use crate::tracing;
+
+    #[tracing::instrument(level = "debug", skip(command_rx))]
+    pub async fn run(&mut self, command_rx: Receiver) {
+        // ...
     }
     ```
+*   **Enabling Tracing (Compile Time)**:
+    Tracing is compiled out by default. To enable it on the target, compile/run with the `tracing` cargo feature:
+    ```bash
+    cargo build --package cat_detector --features tracing --target thumbv6m-none-eabi
+    ```
+*   **Reconstructing Spans & Perfetto Export (Host)**:
+    To capture and view the spans, run the host CLI tool with the `--trace <FILE>` option:
+    ```bash
+    cargo run -p host_cli -- --elf target/thumbv6m-none-eabi/debug/cat_detector --trace perfetto_trace.json
+    ```
+    This generates a trace file in Chrome JSON format. Load this file in [ui.perfetto.dev](https://ui.perfetto.dev) to interactively inspect execution timelines, spans, and nested events.
 
 ---
 

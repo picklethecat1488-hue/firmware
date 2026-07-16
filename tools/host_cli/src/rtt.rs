@@ -275,6 +275,8 @@ pub struct RttOptions<'a> {
     pub spinner: &'a indicatif::ProgressBar,
     /// Channel mode mapping for RTT
     pub channel_mode: crate::ChannelMode,
+    /// Enable tracing reconstruction
+    pub trace: bool,
 }
 
 pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
@@ -290,6 +292,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         show_raw_cli,
         spinner,
         channel_mode,
+        trace,
     } = opts;
     // Locate Symbol Address first
     let rtt_symbol_addr = match tool_common::find_symbol_address(elf_path, "_SEGGER_RTT") {
@@ -497,6 +500,14 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         // Set up defmt decoder
         let mut decoder = table.map(|table| table.new_stream_decoder());
 
+        let trace_decoder = if trace {
+            tracing_defmt_decoder::TraceDecoder::new(&elf_data).ok()
+        } else {
+            None
+        };
+
+        let mut trace_stream = trace_decoder.as_ref().map(|td| td.new_stream());
+
         let locations = if let Some(t) = table {
             t.get_locations(&elf_data).ok()
         } else {
@@ -569,7 +580,11 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                 match chan.read(target.as_mut(), &mut rtt_buf) {
                     Ok(n) if n > 0 => {
                         did_work = true;
-                        if let Some(ref mut dec) = decoder {
+                        if let Some(ref mut ts) = trace_stream {
+                            if let Err(e) = ts.process(&rtt_buf[..n]) {
+                                eprintln!("Error processing trace: {:?}", e);
+                            }
+                        } else if let Some(ref mut dec) = decoder {
                             dec.received(&rtt_buf[..n]);
                             loop {
                                 match dec.decode() {

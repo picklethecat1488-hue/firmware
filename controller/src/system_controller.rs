@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use crate::tracing;
 pub use firmware_lib::gesture_detector::ProximityEvent;
 
 use crate::system_feature::FeatureList;
@@ -503,6 +504,7 @@ impl<
     }
 
     /// Main execution loop.
+    #[tracing::instrument(level = "debug", skip(command_rx, gesture_rx, thermal_rx))]
     pub async fn run<const CMD_CAP: usize>(
         mut self,
         command_rx: embassy_sync::channel::Receiver<'static, MutexRaw, SystemCommand, CMD_CAP>,

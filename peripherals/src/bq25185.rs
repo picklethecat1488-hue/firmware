@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use crate::tracing;
 use embedded_hal::digital::InputPin;
 use model::interfaces::ChargeStatus;
 use model::types::ChargeState;
@@ -35,6 +36,7 @@ impl<P1: InputPin, P2: InputPin> ChargeStatus for Bq25185<P1, P2> {
     type Error = core::convert::Infallible;
 
     /// Checks the current charge state.
+    #[tracing::instrument(level = "trace")]
     fn get_charge_state(&mut self) -> Result<ChargeState, Self::Error> {
         Ok(self.get_state())
     }

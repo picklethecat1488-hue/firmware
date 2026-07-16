@@ -47,6 +47,9 @@ pub use types::{
     ThermalState, ThermalUpdateAction,
 };
 
+/// Consolidated tracing facade module from firmware_lib.
+pub use firmware_lib::tracing;
+
 /// Source of truth macro for generating all controller types, channels, and task running helper macros.
 #[macro_export]
 macro_rules! define_controllers {

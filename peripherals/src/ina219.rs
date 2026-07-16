@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
 use model::{
@@ -69,7 +70,7 @@ impl<I: I2c> Ina219<I> {
 impl<I: I2c> PowerSensor for Ina219<I> {
     type Error = PeripheralError;
 
-    /// Reads the current draw in milliamperes (mA).
+    #[tracing::instrument(level = "trace")]
     fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
         let res = self.read_register(0x04);
         if let Err(ref _e) = res {
@@ -83,8 +84,7 @@ impl<I: I2c> PowerSensor for Ina219<I> {
         Ok(val as i32)
     }
 
-    /// Reads the bus voltage in millivolts (mV).
-    /// Formula: Bus Voltage Register bits 3-15 shift right 3, LSB is 4 mV.
+    #[tracing::instrument(level = "trace")]
     fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
         let res = self.read_register(0x02);
         if let Err(ref _e) = res {

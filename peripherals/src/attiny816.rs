@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
 use model::interfaces::LedDriver;
@@ -79,6 +80,7 @@ impl<I: I2c> Attiny816<I> {
 impl<I: I2c> LedDriver for Attiny816<I> {
     type Error = PeripheralError;
 
+    #[tracing::instrument(level = "trace")]
     fn set_color(&mut self, r: u8, g: u8, b: u8) -> Result<(), Self::Error> {
         self.set_led_color(r, g, b)
     }

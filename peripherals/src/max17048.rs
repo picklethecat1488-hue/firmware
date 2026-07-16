@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
 use model::interfaces::FuelGauge;
@@ -50,6 +51,7 @@ impl<I: I2c> FuelGauge for Max17048<I> {
 
     /// Reads the battery cell voltage in millivolts (mV).
     /// Formula: VCELL * 78.125 uV
+    #[tracing::instrument(level = "trace")]
     fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
         let res = self.read_register(0x02);
         if let Err(ref _e) = res {
@@ -67,6 +69,7 @@ impl<I: I2c> FuelGauge for Max17048<I> {
 
     /// Reads the battery state of charge (percentage 0-100).
     /// Formula: High byte is percentage integer, low byte is fractional.
+    #[tracing::instrument(level = "trace")]
     fn read_state_of_charge(&mut self) -> Result<u8, Self::Error> {
         let res = self.read_register(0x04);
         if let Err(ref _e) = res {
@@ -82,6 +85,7 @@ impl<I: I2c> FuelGauge for Max17048<I> {
     }
 
     /// Configure voltage and state of charge alerts.
+    #[tracing::instrument(level = "trace")]
     fn configure_alerts(
         &mut self,
         voltage_min_mv: u32,

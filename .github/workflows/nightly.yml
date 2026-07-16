@@ -41,6 +41,9 @@ jobs:
       - name: Run Clippy (Target MCU)
         run: cargo clippy --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --lib --bins --target thumbv6m-none-eabi -- -D warnings | tee clippy_target_report.txt
 
+      - name: Run Clippy (Target MCU with Tracing)
+        run: cargo clippy --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --lib --bins --target thumbv6m-none-eabi --features tracing -- -D warnings
+
       - name: Upload Test Reports
         if: always()
         uses: actions/upload-artifact@v4

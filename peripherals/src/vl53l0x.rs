@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
 use model::interfaces::ProximitySensor;
@@ -197,9 +198,7 @@ impl<I: I2c> Vl53l0x<I> {
 impl<I: I2c> ProximitySensor for Vl53l0x<I> {
     type Error = PeripheralError;
 
-    /// Reads the range measurement in millimeters.
-    /// Triggers start of measurement and reads the resulting 2-byte range value from register `0x1E`.
-    /// Also clears the interrupt register `0x0B` to allow future interrupt cycles.
+    #[tracing::instrument(level = "trace")]
     fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
         let res = (|| {
             // Trigger a measurement (write 0x01 to register 0x00 for System Start)

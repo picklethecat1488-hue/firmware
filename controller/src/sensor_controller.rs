@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use crate::tracing;
 use crate::types::{SensorDirection, SensorMetadata};
 use crate::BlockingProximityReader;
 use crate::Sender;
@@ -355,6 +356,7 @@ where
     }
 
     /// Runs the controller's main run loop, executing periodic telemetry updates.
+    #[tracing::instrument(level = "debug", skip(command_rx))]
     pub async fn run(
         mut self,
         command_rx: embassy_sync::channel::Receiver<'static, M, SensorCommand, 4>,

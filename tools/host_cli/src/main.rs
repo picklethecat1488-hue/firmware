@@ -62,10 +62,25 @@ pub struct Cli {
     /// Print the autodetected chip name from ELF metadata and exit
     #[arg(long)]
     pub print_chip: bool,
+
+    /// Optional filename to output tracing events to in Perfetto/Chrome trace format
+    #[arg(long, value_name = "FILE")]
+    pub trace: Option<String>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+
+    let _chrome_guard = if let Some(ref trace_file) = cli.trace {
+        use tracing_subscriber::prelude::*;
+        let (chrome_layer, guard) = tracing_chrome::ChromeLayerBuilder::new()
+            .file(trace_file)
+            .build();
+        tracing_subscriber::registry().with(chrome_layer).init();
+        Some(guard)
+    } else {
+        None
+    };
 
     if cli.print_chip {
         let info = host_cli::autodetect_project_info(&cli.elf)?;
@@ -121,6 +136,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         show_raw_cli: cli.show_raw_cli,
         spinner: &spinner,
         channel_mode: cli.channel,
+        trace: cli.trace.is_some(),
     })?;
 
     Ok(())

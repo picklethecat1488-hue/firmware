@@ -12,6 +12,7 @@ use model::telemetry::TelemetryClient;
 use model::types::{MotorSpeed, PeripheralError, SystemStatus};
 use peripherals::ToPeripheralError;
 
+use crate::tracing;
 use crate::types::{MotorCalState, MotorSafetyStatus, MotorState};
 
 /// The tick interval of the motor controller (10ms / 100Hz).
@@ -345,6 +346,7 @@ where
     }
 
     /// Runs the controller's control loop infinitely, reading from the command channel.
+    #[tracing::instrument(level = "debug", skip(command_rx, telemetry_tx))]
     pub async fn run<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex, const N: usize>(
         mut self,
         command_rx: MotorReceiver<MutexRaw, N>,

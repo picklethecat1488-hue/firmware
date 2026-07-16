@@ -6,11 +6,15 @@ edition = "2021"
 [features]
 default = []
 mock = []
+tracing = ["firmware_lib/tracing", "dep:tracing-defmt", "dep:defmt"]
 
 [dependencies]
 embedded-hal = "1.0.0"
 model = { path = "../model" }
 embedded-storage = "0.3"
+firmware_lib = { path = "../lib" }
+tracing-defmt = { version = "0.1.2", optional = true }
+defmt = { version = "0.3", optional = true }
 
 [dev-dependencies]
 peripherals = { path = ".", features = ["mock"] }

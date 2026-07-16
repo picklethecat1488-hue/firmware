@@ -1,3 +1,4 @@
+use crate::tracing;
 use model::interfaces::{
     ChargeStatus, FuelGauge, LedDriver, Motor, PowerMeasurementMode, PowerSensor, ProximitySensor,
     TemperatureSensor,
@@ -35,6 +36,7 @@ impl Motor for MockMotor {
     type Error = ();
 
     /// Sets mock speed and updates run status.
+    #[tracing::instrument(level = "trace", skip(speed))]
     fn set_speed(&mut self, speed: MotorSpeed) -> Result<(), Self::Error> {
         if self.should_fail {
             Err(())
@@ -46,7 +48,7 @@ impl Motor for MockMotor {
         }
     }
 
-    /// Stops the mock motor.
+    #[tracing::instrument(level = "trace")]
     fn stop(&mut self) -> Result<(), Self::Error> {
         if self.should_fail {
             Err(())
