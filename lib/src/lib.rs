@@ -64,3 +64,6 @@ pub use types::{
 
 /// Compile-time CBOR serialization helpers.
 pub mod cbor;
+
+/// Shared directory index and key management utilities.
+pub mod directory;

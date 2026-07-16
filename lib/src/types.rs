@@ -95,6 +95,8 @@ pub struct PanicConfig {
     pub range: core::ops::Range<u32>,
     /// Static filesystem buffer used as workspace during panic writes
     pub fs_buf: &'static mut [u8],
+    /// Maximum number of rolling crash logs (modulo limit)
+    pub max_crash_logs: u32,
 }
 
 /// Result of a battery update state transition.

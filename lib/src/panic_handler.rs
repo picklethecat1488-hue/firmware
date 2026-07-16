@@ -134,6 +134,7 @@ pub fn init(
     flash: &'static mut dyn crate::types::PanicFlash,
     #[cfg(all(target_arch = "arm", target_os = "none"))] range: core::ops::Range<u32>,
     #[cfg(all(target_arch = "arm", target_os = "none"))] fs_buf: &'static mut [u8],
+    #[cfg(all(target_arch = "arm", target_os = "none"))] max_crash_logs: u32,
 ) {
     #[cfg(all(target_arch = "arm", target_os = "none"))]
     critical_section::with(|cs| {
@@ -141,6 +142,7 @@ pub fn init(
             flash,
             range,
             fs_buf,
+            max_crash_logs,
         }));
     });
 }
@@ -234,18 +236,12 @@ pub async fn write_crash_log_to_flash<F>(
     cache: &mut sequential_storage::cache::NoCache,
     buf: &mut [u8],
     encoded_bytes: &[u8],
+    max_crash_logs: u32,
 ) -> Result<(), F::Error>
 where
     F: embedded_storage_async::nor_flash::NorFlash,
 {
-    // Convert string path into fixed key
-    let string_to_key = |name: &str| -> [u8; 32] {
-        let mut k = [0u8; 32];
-        let bytes = name.as_bytes();
-        let len = core::cmp::min(bytes.len(), 32);
-        k[..len].copy_from_slice(&bytes[..len]);
-        k
-    };
+    use crate::directory::string_to_key;
 
     // Read the rolling crash index
     let current_idx = if let Ok(Some(bytes)) =
@@ -299,8 +295,8 @@ where
         }
     }
 
-    // Increment index modulo 5
-    let next_idx = (current_idx + 1) % 5;
+    // Increment index modulo max_crash_logs
+    let next_idx = (current_idx + 1) % max_crash_logs;
     let next_bytes = next_idx.to_le_bytes();
     let idx_key = string_to_key("crash_idx");
     if let Err(_e) = sequential_storage::map::store_item(
@@ -320,10 +316,9 @@ where
         );
     }
 
-    // Write directory file .dir so host_fs can find it
-    let mut current_dir = heapless::String::<128>::new();
-    let dir_key = string_to_key(".dir");
-    let existing_dir = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
+    // Read the directory index (.dir) file
+    let dir_key = crate::directory::string_to_key(".dir");
+    let existing_dir_res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
         flash,
         range.clone(),
         cache,
@@ -332,27 +327,15 @@ where
     )
     .await;
 
-    if let Ok(Some(bytes)) = existing_dir {
+    let mut existing_dir_str = "";
+    if let Ok(Some(bytes)) = existing_dir_res {
         if let Ok(s) = core::str::from_utf8(bytes) {
-            let _ = current_dir.push_str(s);
+            existing_dir_str = s;
         }
     }
 
-    // Check if filename is already in directory
-    let mut found = false;
-    for entry in current_dir.split('\n') {
-        if entry == filename.as_str() {
-            found = true;
-            break;
-        }
-    }
-
-    if !found {
-        if !current_dir.is_empty() {
-            let _ = current_dir.push_str("\n");
-        }
-        let _ = current_dir.push_str(filename.as_str());
-
+    // Use shared directory manager to append if not present
+    if let Some(new_dir) = crate::directory::add_to_directory(existing_dir_str, filename.as_str()) {
         // Store updated dir
         if let Err(_e) = sequential_storage::map::store_item(
             flash,
@@ -360,7 +343,7 @@ where
             cache,
             buf,
             &dir_key,
-            &current_dir.as_bytes(),
+            &new_dir.as_bytes(),
         )
         .await
         {
@@ -609,6 +592,7 @@ fn log_crash_and_reset_impl<
                     &mut cache,
                     config.fs_buf,
                     encoded_bytes,
+                    config.max_crash_logs,
                 )
                 .await;
             });

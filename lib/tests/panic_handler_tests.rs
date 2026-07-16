@@ -196,6 +196,7 @@ fn test_write_crash_log_to_flash_rolling() {
             &mut cache,
             &mut scratch,
             b"crash data 1",
+            10,
         )
         .await
         .unwrap();
@@ -209,6 +210,7 @@ fn test_write_crash_log_to_flash_rolling() {
             &mut cache,
             &mut scratch,
             b"crash data 2",
+            10,
         )
         .await
         .unwrap();

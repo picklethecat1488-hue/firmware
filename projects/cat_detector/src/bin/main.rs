@@ -63,6 +63,7 @@ async fn main(spawner: Spawner) {
         panic_flash,
         app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
         fs_buf_panic,
+        app::MAX_CRASH_LOGS,
     );
 
     // Initialize the FilesystemController using stolen FLASH peripheral (safe because panic handler only reads/writes on panic)
@@ -153,7 +154,7 @@ async fn main(spawner: Spawner) {
 
     // Declare telemetry controller statically to avoid stack overflow on the main thread MSP stack
     static mut TELEMETRY_CTRL: Option<
-        TelemetryController<1024, { model::telemetry::BUFFER_SIZE }>,
+        TelemetryController<{ app::MAX_RECORDS }, { model::telemetry::BUFFER_SIZE }>,
     > = None;
 
     let client =
@@ -178,7 +179,7 @@ async fn main(spawner: Spawner) {
             Led(led_ctrl, LED_CHANNEL), generics: (app::LedDevice),
             System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (app::SystemControllerType),
             Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (app::FlashDeviceType),
-            Telemetry(telemetry_ctrl, TELEMETRY_CHANNEL), generics: (1024, { controller::telemetry_controller::CHANNEL_CAPACITY }),
+            Telemetry(telemetry_ctrl, TELEMETRY_CHANNEL), generics: ({ app::MAX_RECORDS }, { controller::telemetry_controller::CHANNEL_CAPACITY }),
         }
     }
 }

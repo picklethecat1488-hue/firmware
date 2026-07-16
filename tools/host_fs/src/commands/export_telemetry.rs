@@ -56,7 +56,7 @@ pub async fn run(
                 );
             }
 
-            let max_records = 1024;
+            let max_records = cat_detector::MAX_RECORDS;
 
             if count > max_records || next_idx > max_records {
                 spinner.finish_and_clear();
