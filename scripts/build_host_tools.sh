@@ -7,10 +7,11 @@ while IFS= read -r pkg; do
     if [ -n "$pkg" ]; then
         TOOL_PACKAGES+=("$pkg")
     fi
-done < <(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | .name')
+done < <(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/") or contains("\\tools\\")) | .name')
 
 ORGANIZE_DIR=""
 ZIP_FILE=""
+TARGET=""
 WORKSPACE_ROOT="$(pwd)"
 
 while [[ $# -gt 0 ]]; do
@@ -23,6 +24,10 @@ while [[ $# -gt 0 ]]; do
             ZIP_FILE="$2"
             shift 2
             ;;
+        --target)
+            TARGET="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1" >&2
             exit 1
@@ -30,9 +35,18 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+RELEASE_DIR="target/release"
+if [ -n "$TARGET" ]; then
+    RELEASE_DIR="target/$TARGET/release"
+fi
+
 echo "Building Host Tools (Release)..."
 for tool in "${TOOL_PACKAGES[@]}"; do
-    cargo build --release -p "$tool"
+    if [ -n "$TARGET" ]; then
+        cargo build --release -p "$tool" --target "$TARGET"
+    else
+        cargo build --release -p "$tool"
+    fi
 done
 
 if [ -n "$ORGANIZE_DIR" ]; then
@@ -57,10 +71,10 @@ if [ -n "$ORGANIZE_DIR" ]; then
 
     mkdir -p "$ORGANIZE_DIR/release/$PLATFORM"
     for tool in "${TOOL_PACKAGES[@]}"; do
-        if [ -f "target/release/$tool" ]; then
-            cp "target/release/$tool" "$ORGANIZE_DIR/release/$PLATFORM/$tool"
-        elif [ -f "target/release/$tool.exe" ]; then
-            cp "target/release/$tool.exe" "$ORGANIZE_DIR/release/$PLATFORM/$tool.exe"
+        if [ -f "$RELEASE_DIR/$tool" ]; then
+            cp "$RELEASE_DIR/$tool" "$ORGANIZE_DIR/release/$PLATFORM/$tool"
+        elif [ -f "$RELEASE_DIR/$tool.exe" ]; then
+            cp "$RELEASE_DIR/$tool.exe" "$ORGANIZE_DIR/release/$PLATFORM/$tool.exe"
         fi
     done
 fi
@@ -76,10 +90,10 @@ if [ -n "$ZIP_FILE" ]; then
 
     STAGE_DIR=$(mktemp -d)
     for tool in "${TOOL_PACKAGES[@]}"; do
-        if [ -f "target/release/$tool" ]; then
-            cp "target/release/$tool" "$STAGE_DIR/"
-        elif [ -f "target/release/$tool.exe" ]; then
-            cp "target/release/$tool.exe" "$STAGE_DIR/"
+        if [ -f "$RELEASE_DIR/$tool" ]; then
+            cp "$RELEASE_DIR/$tool" "$STAGE_DIR/"
+        elif [ -f "$RELEASE_DIR/$tool.exe" ]; then
+            cp "$RELEASE_DIR/$tool.exe" "$STAGE_DIR/"
         fi
     done
     PYTHON_BIN=""
