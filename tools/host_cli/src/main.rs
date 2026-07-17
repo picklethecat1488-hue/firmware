@@ -5,6 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 mod rtt;
+use host_cli::tracing;
 
 #[derive(clap::ValueEnum, Clone, Debug, PartialEq)]
 pub enum ChannelMode {
@@ -71,16 +72,7 @@ pub struct Cli {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
-    let _chrome_guard = if let Some(ref trace_file) = cli.trace {
-        use tracing_subscriber::prelude::*;
-        let (chrome_layer, guard) = tracing_chrome::ChromeLayerBuilder::new()
-            .file(trace_file)
-            .build();
-        tracing_subscriber::registry().with(chrome_layer).init();
-        Some(guard)
-    } else {
-        None
-    };
+    let _chrome_guard = tracing::init_tracing(cli.trace.as_deref());
 
     if cli.print_chip {
         let info = host_cli::autodetect_project_info(&cli.elf)?;
@@ -138,6 +130,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         channel_mode: cli.channel,
         trace: cli.trace.is_some(),
     })?;
+
+    // Drop the tracing guard to ensure the trace file is written and flushed
+    if cli.trace.is_some() {
+        spinner.set_message("Flushing trace buffer to disk...");
+    }
+    drop(_chrome_guard);
+
+    // If tracing was enabled, post-process the trace file to group events by microcontroller task
+    if let Some(ref trace_file) = cli.trace {
+        spinner.set_message("Processing Perfetto trace timeline...");
+        if let Err(e) = tracing::post_process_trace(trace_file) {
+            eprintln!(
+                "Warning: failed to post-process Perfetto trace file: {:?}",
+                e
+            );
+        }
+    }
+    spinner.finish_and_clear();
 
     Ok(())
 }

@@ -1,3 +1,4 @@
+use crate::tracing::handle_tracing_line;
 use defmt_decoder::Table;
 use host_cli::{dump_logs, DefmtLogSource};
 use probe_rs::probe::list::Lister;
@@ -280,6 +281,12 @@ pub struct RttOptions<'a> {
 }
 
 pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
+    static RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+    RUNNING.store(true, std::sync::atomic::Ordering::SeqCst);
+    let _ = ctrlc::set_handler(move || {
+        RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
+    });
+
     let RttOptions {
         chip,
         table,
@@ -337,6 +344,9 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut is_reconnecting = false;
     loop {
+        if !RUNNING.load(std::sync::atomic::Ordering::SeqCst) {
+            break;
+        }
         // 1. Connection selection
         let mut gdb_client_store = None;
         let mut probe_rs_session_store = None;
@@ -591,49 +601,61 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                 match dec.decode() {
                                     Ok(frame) => {
                                         let plain_line = frame.display(false).to_string();
-                                        if plain_line.contains("Crash Dump: ") {
-                                            handle_intercepted_crash_dump(
-                                                &plain_line,
-                                                &addr2line_ctx,
-                                                table,
-                                            );
-                                        } else {
-                                            let display = frame.display(true);
-                                            let mut line_str = display.to_string();
-
-                                            let mut module_context = String::new();
-                                            if let Some(ref locs) = locations {
-                                                if let Some(loc) = locs.get(&frame.index()) {
-                                                    module_context =
-                                                        format!("\x1b[36m[{}]\x1b[0m ", loc.module);
-                                                }
+                                        match handle_tracing_line(&plain_line) {
+                                            Ok(true) => continue,
+                                            Err(e) => {
+                                                eprintln!("Error parsing trace line: {}", e);
+                                                continue;
                                             }
+                                            Ok(false) => {}
+                                        }
+                                        match handle_intercepted_crash_dump(
+                                            &plain_line,
+                                            &addr2line_ctx,
+                                            table,
+                                        ) {
+                                            Ok(true) => continue,
+                                            Err(e) => {
+                                                eprintln!("Error parsing crash dump: {}", e);
+                                                continue;
+                                            }
+                                            Ok(false) => {}
+                                        }
 
-                                            if !module_context.is_empty() {
-                                                let mut inserted = false;
-                                                for lvl in
-                                                    &["TRACE", "DEBUG", "INFO", "WARN", "ERROR"]
-                                                {
-                                                    if let Some(pos) = line_str.find(lvl) {
-                                                        let rest = &line_str[pos..];
-                                                        if let Some(space_pos) = rest.find(' ') {
-                                                            let insert_idx = pos + space_pos + 1;
-                                                            line_str.insert_str(
-                                                                insert_idx,
-                                                                &module_context,
-                                                            );
-                                                            inserted = true;
-                                                            break;
-                                                        }
+                                        let display = frame.display(true);
+                                        let mut line_str = display.to_string();
+
+                                        let mut module_context = String::new();
+                                        if let Some(ref locs) = locations {
+                                            if let Some(loc) = locs.get(&frame.index()) {
+                                                module_context =
+                                                    format!("\x1b[36m[{}]\x1b[0m ", loc.module);
+                                            }
+                                        }
+
+                                        if !module_context.is_empty() {
+                                            let mut inserted = false;
+                                            for lvl in &["TRACE", "DEBUG", "INFO", "WARN", "ERROR"]
+                                            {
+                                                if let Some(pos) = line_str.find(lvl) {
+                                                    let rest = &line_str[pos..];
+                                                    if let Some(space_pos) = rest.find(' ') {
+                                                        let insert_idx = pos + space_pos + 1;
+                                                        line_str.insert_str(
+                                                            insert_idx,
+                                                            &module_context,
+                                                        );
+                                                        inserted = true;
+                                                        break;
                                                     }
                                                 }
-                                                if !inserted {
-                                                    line_str =
-                                                        format!("{}{}", module_context, line_str);
-                                                }
                                             }
-                                            println!("{}", line_str);
+                                            if !inserted {
+                                                line_str =
+                                                    format!("{}{}", module_context, line_str);
+                                            }
                                         }
+                                        println!("{}", line_str);
                                     }
                                     Err(defmt_decoder::DecodeError::UnexpectedEof) => break,
                                     Err(defmt_decoder::DecodeError::Malformed) => {
@@ -719,6 +741,10 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
+            if !RUNNING.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+
             if run_error.is_some() {
                 break;
             }
@@ -729,8 +755,16 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if let Some(err) = run_error {
+            if !RUNNING.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
             eprintln!("\nConnection lost: {}. Reconnecting...", err);
-            std::thread::sleep(Duration::from_secs(1));
+            for _ in 0..10 {
+                if !RUNNING.load(std::sync::atomic::Ordering::SeqCst) {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
         } else {
             break;
         }
@@ -887,18 +921,19 @@ fn handle_intercepted_crash_dump<R>(
     log_line: &str,
     context: &Option<addr2line::Context<R>>,
     defmt_table: Option<&defmt_decoder::Table>,
-) where
+) -> Result<bool, &'static str>
+where
     R: addr2line::gimli::Reader<Offset = usize>,
 {
     let start_idx = match log_line.find("Crash Dump: ") {
         Some(idx) => idx + "Crash Dump: ".len(),
-        None => return,
+        None => return Ok(false),
     };
 
     let array_str = &log_line[start_idx..];
     let parts = split_cbor_display(array_str);
     if parts.len() < 9 {
-        return;
+        return Err("Malformed crash dump: CBOR array has fewer than 9 elements");
     }
 
     let revision_hash = parts[0].trim_matches('"').to_string();
@@ -946,4 +981,6 @@ fn handle_intercepted_crash_dump<R>(
         context,
         defmt_table,
     );
+
+    Ok(true)
 }
