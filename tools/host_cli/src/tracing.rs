@@ -1,81 +1,6 @@
 use std::fs;
 use tracing_subscriber::prelude::*;
 
-/// A builder for constructing Chrome Trace Event JSON objects.
-///
-/// Follows the standard Chrome Trace Event Format specification, enabling fluent construction
-/// of events with custom categories, phases, timestamps, and process/thread identifiers.
-pub struct ChromeTraceEventBuilder {
-    event: serde_json::Map<String, serde_json::Value>,
-}
-
-impl ChromeTraceEventBuilder {
-    /// Creates a new, empty trace event builder.
-    pub fn new() -> Self {
-        Self {
-            event: serde_json::Map::new(),
-        }
-    }
-
-    /// Sets the event category (e.g., "device" or "device_log").
-    pub fn category(mut self, cat: &str) -> Self {
-        self.event
-            .insert("cat".to_string(), serde_json::Value::from(cat));
-        self
-    }
-
-    /// Sets the event phase (e.g., "B" for Begin, "E" for End, "M" for Metadata).
-    pub fn phase(mut self, ph: &str) -> Self {
-        self.event
-            .insert("ph".to_string(), serde_json::Value::from(ph));
-        self
-    }
-
-    /// Sets the event name (e.g., the span name or log message).
-    pub fn name(mut self, name: &str) -> Self {
-        self.event
-            .insert("name".to_string(), serde_json::Value::from(name));
-        self
-    }
-
-    /// Sets the host-side timestamp value in microseconds.
-    pub fn timestamp(mut self, ts: serde_json::Value) -> Self {
-        self.event.insert("ts".to_string(), ts);
-        self
-    }
-
-    /// Sets the Process Identifier (PID).
-    pub fn pid(mut self, pid: i64) -> Self {
-        self.event
-            .insert("pid".to_string(), serde_json::Value::from(pid));
-        self
-    }
-
-    /// Sets the Thread Identifier (TID). In our post-processing, this maps to a virtual thread.
-    pub fn tid(mut self, tid: i64) -> Self {
-        self.event
-            .insert("tid".to_string(), serde_json::Value::from(tid));
-        self
-    }
-
-    /// Inserts a key-value argument into the event's "args" dictionary.
-    pub fn arg(mut self, key: &str, value: serde_json::Value) -> Self {
-        let args = self
-            .event
-            .entry("args".to_string())
-            .or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
-        if let Some(args_obj) = args.as_object_mut() {
-            args_obj.insert(key.to_string(), value);
-        }
-        self
-    }
-
-    /// Consumes the builder and returns the constructed `serde_json::Value`.
-    pub fn build(self) -> serde_json::Value {
-        serde_json::Value::Object(self.event)
-    }
-}
-
 /// Initializes the Chrome tracing subscriber if a trace file is provided.
 ///
 /// Configures a `ChromeLayer` to output traces to the designated filepath. Target logging
@@ -102,59 +27,24 @@ pub fn init_tracing(trace_file: Option<&str>) -> Option<tracing_chrome::FlushGua
     }
 }
 
-/// Extracts a dynamic, human-readable grouping/thread name from a nested Rust module path.
-///
-/// It splits the module path by colons (`::`) and retrieves the second segment
-/// (e.g., `"battery_controller"` from `"controller::battery_controller"` or `"max17048"` from `"peripherals::max17048"`).
-/// This allows the host CLI to remain project-agnostic while still grouping traces logically.
-fn get_group_name_from_module(module_path: &str) -> String {
-    module_path
-        .split("::")
-        .nth(1)
-        .or_else(|| module_path.split("::").next())
-        .filter(|s| !s.is_empty())
-        .unwrap_or("unknown")
-        .to_string()
-}
-
 /// Helper to check if a span ID represents a root or invalid context.
 fn is_root_or_empty_id(id: &str) -> bool {
     id.is_empty() || id == "0000000000000000" || id == "0"
 }
 
-/// Traces a span ID up the `parent_map` hierarchy to locate the root span.
-///
-/// Returns a tuple containing the root span's compile-time module path (extracted from ELF)
-/// and the root span's string name. Includes safety guards to prevent infinite loops if
-/// cyclical dependencies are somehow logged.
-fn find_root_module_and_name(
-    span_id: &str,
-    parent_map: &std::collections::HashMap<String, String>,
-    module_map: &std::collections::HashMap<String, String>,
-    name_map: &std::collections::HashMap<String, String>,
-) -> (String, String) {
-    let mut current_id = span_id.to_string();
+/// Helper to determine if a module segment represents a compiler/executor target wrapper.
+fn is_target_segment(s: &str) -> bool {
+    s == "task"
+        || s == "run"
+        || s.contains("{impl#")
+        || s.contains("__task")
+        || s.contains("async_fn")
+}
 
-    for _ in 0..1000 {
-        if let Some(parent) = parent_map.get(&current_id) {
-            let is_invalid = is_root_or_empty_id(parent)
-                || parent == &current_id
-                || !name_map.contains_key(parent);
-            if is_invalid {
-                break;
-            }
-            current_id = parent.clone();
-        } else {
-            break;
-        }
-    }
-
-    let root_span_name = name_map
-        .get(&current_id)
-        .cloned()
-        .unwrap_or_else(|| "unknown".to_string());
-    let root_module = module_map.get(&current_id).cloned().unwrap_or_default();
-    (root_module, root_span_name)
+/// Helper to determine if a module segment represents a valid user-defined task/run root name.
+/// This is the logical inverse of `is_target_segment`.
+fn is_root_segment(s: &str) -> bool {
+    !is_target_segment(s)
 }
 
 /// Helper to determine if an active span name (which might have namespace prefixes and parameters)
@@ -162,29 +52,6 @@ fn find_root_module_and_name(
 fn is_span_name_match(active_name: &str, exit_target_name: &str) -> bool {
     let base_active = active_name.split('(').next().unwrap_or(active_name).trim();
     base_active == exit_target_name || base_active.ends_with(&format!("::{}", exit_target_name))
-}
-
-/// Traces a span ID to its root and returns the logical controller/thread name for it.
-fn get_controller_name(
-    span_id: &str,
-    parent_map: &std::collections::HashMap<String, String>,
-    module_map: &std::collections::HashMap<String, String>,
-    name_map: &std::collections::HashMap<String, String>,
-) -> String {
-    let (root_module, root_span_name) =
-        find_root_module_and_name(span_id, parent_map, module_map, name_map);
-
-    if root_span_name.contains("::") {
-        root_span_name
-            .split("::")
-            .next()
-            .unwrap_or(&root_span_name)
-            .to_string()
-    } else if !root_module.is_empty() {
-        get_group_name_from_module(&root_module)
-    } else {
-        root_span_name
-    }
 }
 
 /// Helper to strip leading and trailing double quotes from a string.
@@ -218,13 +85,20 @@ pub fn post_process_trace(path: &str) -> Result<(), Box<dyn std::error::Error>> 
 
     let mut events: Vec<serde_json::Value> = serde_json::from_str(&content)?;
 
-    // Find the pid used in the trace
-    let pid = events
-        .iter()
-        .find_map(|val| val.get("pid").and_then(|p| p.as_i64()))
-        .unwrap_or(1);
+    // Stage 1: Sort events chronologically
+    sort_events_chronologically(&mut events);
 
-    // Sort events by timestamp (if present), keeping metadata events (without ts) at the front
+    // Stage 2: Filter and process events
+    let processed_events = process_trace_events(events);
+
+    // Stage 3: Write back serialized trace output
+    save_processed_trace(path, processed_events)?;
+
+    Ok(())
+}
+
+/// Stage 1: Sorts events chronologically by timestamp (if present), keeping metadata events at the front.
+fn sort_events_chronologically(events: &mut [serde_json::Value]) {
     events.sort_by(|a, b| {
         let ts_a = a.get("ts").and_then(|t| t.as_f64());
         let ts_b = b.get("ts").and_then(|t| t.as_f64());
@@ -235,19 +109,19 @@ pub fn post_process_trace(path: &str) -> Result<(), Box<dyn std::error::Error>> 
             (None, None) => std::cmp::Ordering::Equal,
         }
     });
+}
 
-    let mut thread_map = std::collections::HashMap::new();
-    let mut next_tid = 10;
-
+/// Stage 2: Filters and processes trace events chronologically on their native PID/TID.
+fn process_trace_events(events: Vec<serde_json::Value>) -> Vec<serde_json::Value> {
     let mut name_map = std::collections::HashMap::new();
     let mut parent_map = std::collections::HashMap::new();
     let mut module_map = std::collections::HashMap::new();
     let mut start_time_map = std::collections::HashMap::new();
-    let mut active_spans_map: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
+    let mut pid_map = std::collections::HashMap::new();
+    let mut tid_map = std::collections::HashMap::new();
     let mut global_active_spans: Vec<String> = Vec::new();
+    let mut generic_task_spans = std::collections::HashSet::new();
 
-    // Reconstruct spans and group logs into timelines
     let mut processed_events = Vec::new();
 
     for event in events {
@@ -271,6 +145,13 @@ pub fn post_process_trace(path: &str) -> Result<(), Box<dyn std::error::Error>> 
                             .unwrap_or(""),
                     );
 
+                    let module = strip_quotes(
+                        obj.get("args")
+                            .and_then(|a| a.get("module"))
+                            .and_then(|s| s.as_str())
+                            .unwrap_or(""),
+                    );
+
                     if parent_id.is_empty()
                         && obj.get("args").and_then(|a| a.get("parent_id")).is_none()
                     {
@@ -285,18 +166,18 @@ pub fn post_process_trace(path: &str) -> Result<(), Box<dyn std::error::Error>> 
                             .and_then(|s| s.as_str())
                             .unwrap_or(""),
                     );
-                    let module = strip_quotes(
-                        obj.get("args")
-                            .and_then(|a| a.get("module"))
-                            .and_then(|s| s.as_str())
-                            .unwrap_or(""),
-                    );
 
-                    if span_name == "run" && !module.is_empty() {
-                        if let Some(last_segment) = module.split("::").last() {
-                            span_name = last_segment.to_string();
+                    if (span_name == "run" || span_name == "task") && !module.is_empty() {
+                        let segments: Vec<&str> = module.split("::").collect();
+                        if let Some(target_segment) =
+                            segments.iter().rev().find(|&&s| is_root_segment(s))
+                        {
+                            span_name = target_segment.to_string();
                         }
                     }
+
+                    let event_pid = obj.get("pid").and_then(|p| p.as_i64()).unwrap_or(1);
+                    let event_tid = obj.get("tid").and_then(|t| t.as_i64()).unwrap_or(1);
 
                     name_map.insert(span_id.clone(), span_name.clone());
                     parent_map.insert(span_id.clone(), parent_id.clone());
@@ -307,25 +188,16 @@ pub fn post_process_trace(path: &str) -> Result<(), Box<dyn std::error::Error>> 
                         span_id.clone(),
                         obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0)),
                     );
+                    pid_map.insert(span_id.clone(), event_pid);
+                    tid_map.insert(span_id.clone(), event_tid);
 
-                    let controller_name =
-                        get_controller_name(&span_id, &parent_map, &module_map, &name_map);
-
-                    let vt_id = *thread_map
-                        .entry(controller_name.clone())
-                        .or_insert_with(|| {
-                            let id = next_tid;
-                            next_tid += 1;
-                            id
-                        });
-
-                    // If it is a root span (no parent), auto-close any remaining active spans on this controller's thread
-                    // to prevent RTT frame drops from stretching their duration. We close them using their original
-                    // start timestamps, collapsing them to 0-duration events on the timeline.
                     let is_root = is_root_or_empty_id(&parent_id);
                     if is_root {
-                        let active = active_spans_map.entry(controller_name.clone()).or_default();
-                        while let Some(exited_id) = active.pop() {
+                        while let Some(exited_id) = global_active_spans.pop() {
+                            if generic_task_spans.contains(&exited_id) {
+                                continue;
+                            }
+
                             let name = name_map
                                 .get(&exited_id)
                                 .cloned()
@@ -334,41 +206,33 @@ pub fn post_process_trace(path: &str) -> Result<(), Box<dyn std::error::Error>> 
                                 start_time_map.get(&exited_id).cloned().unwrap_or_else(|| {
                                     obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0))
                                 });
-                            let implicit_exit = ChromeTraceEventBuilder::new()
-                                .category("device")
-                                .phase("E")
-                                .name(&name)
-                                .timestamp(start_ts)
-                                .pid(pid)
-                                .tid(vt_id)
-                                .arg("implicit", serde_json::Value::from(true))
-                                .build();
+                            let exit_pid = pid_map.get(&exited_id).cloned().unwrap_or(event_pid);
+                            let exit_tid = tid_map.get(&exited_id).cloned().unwrap_or(event_tid);
+                            let implicit_exit = serde_json::json!({
+                                "cat": "device",
+                                "ph": "E",
+                                "name": name,
+                                "ts": start_ts,
+                                "pid": exit_pid,
+                                "tid": exit_tid,
+                                "args": {
+                                    "implicit": true
+                                }
+                            });
                             processed_events.push(implicit_exit);
-
-                            if let Some(pos) =
-                                global_active_spans.iter().position(|x| x == &exited_id)
-                            {
-                                global_active_spans.remove(pos);
-                            }
                         }
                     }
 
-                    active_spans_map
-                        .entry(controller_name)
-                        .or_default()
-                        .push(span_id.clone());
                     global_active_spans.push(span_id.clone());
 
-                    // Convert this log event into a standard Chrome Trace "B" (Begin) event
-                    let ts = obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0));
-                    final_event = ChromeTraceEventBuilder::new()
-                        .category("device")
-                        .phase("B")
-                        .name(&span_name)
-                        .timestamp(ts)
-                        .pid(pid)
-                        .tid(vt_id)
-                        .build();
+                    if span_name == "run" || span_name == "task" {
+                        generic_task_spans.insert(span_id.clone());
+                        keep_event = false;
+                    }
+
+                    final_event["cat"] = serde_json::Value::from("device");
+                    final_event["ph"] = serde_json::Value::from("B");
+                    final_event["name"] = serde_json::Value::from(span_name);
                 }
                 "device_span_exit" => {
                     let span_id = strip_quotes(
@@ -384,45 +248,19 @@ pub fn post_process_trace(path: &str) -> Result<(), Box<dyn std::error::Error>> 
                             .unwrap_or(""),
                     );
 
-                    let controller_name =
-                        get_controller_name(&span_id, &parent_map, &module_map, &name_map);
-
                     let mut resolved_span_id = span_id.clone();
-                    let mut resolved_controller = controller_name.clone();
 
                     if !target_name.is_empty() {
-                        // First, search the local controller's active stack
-                        let active = active_spans_map.entry(controller_name.clone()).or_default();
-                        if let Some(pos) = active.iter().rposition(|id| {
+                        if let Some(pos) = global_active_spans.iter().rposition(|id| {
                             if let Some(n) = name_map.get(id) {
                                 is_span_name_match(n, &target_name)
                             } else {
                                 false
                             }
                         }) {
-                            resolved_span_id = active[pos].clone();
-                        } else if controller_name == "unknown" || is_root_or_empty_id(&span_id) {
-                            // If not found (often because the context reverted to 0/unknown on root span exit),
-                            // scan the active stacks of other controllers to route this exit event correctly.
-                            for (c_name, active_list) in active_spans_map.iter() {
-                                if let Some(pos) = active_list.iter().rposition(|id| {
-                                    if let Some(n) = name_map.get(id) {
-                                        is_span_name_match(n, &target_name)
-                                    } else {
-                                        false
-                                    }
-                                }) {
-                                    resolved_span_id = active_list[pos].clone();
-                                    resolved_controller = c_name.clone();
-                                    break;
-                                }
-                            }
+                            resolved_span_id = global_active_spans[pos].clone();
                         }
                     }
-
-                    let active = active_spans_map
-                        .entry(resolved_controller.clone())
-                        .or_default();
 
                     let span_name = name_map.get(&resolved_span_id).cloned().unwrap_or_else(|| {
                         if !target_name.is_empty() {
@@ -432,28 +270,26 @@ pub fn post_process_trace(path: &str) -> Result<(), Box<dyn std::error::Error>> 
                         }
                     });
 
-                    let vt_id = *thread_map
-                        .entry(resolved_controller.clone())
-                        .or_insert_with(|| {
-                            let id = next_tid;
-                            next_tid += 1;
-                            id
-                        });
+                    let is_generic = generic_task_spans.remove(&resolved_span_id);
+                    if is_generic {
+                        keep_event = false;
+                    }
 
-                    // Convert this log event into a standard Chrome Trace "E" (End) event
                     let ts = obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0));
-                    final_event = ChromeTraceEventBuilder::new()
-                        .category("device")
-                        .phase("E")
-                        .name(&span_name)
-                        .timestamp(ts.clone())
-                        .pid(pid)
-                        .tid(vt_id)
-                        .build();
+                    final_event["cat"] = serde_json::Value::from("device");
+                    final_event["ph"] = serde_json::Value::from("E");
+                    final_event["name"] = serde_json::Value::from(span_name);
 
-                    if let Some(pos) = active.iter().position(|x| x == &resolved_span_id) {
-                        while active.len() > pos + 1 {
-                            if let Some(exited_id) = active.pop() {
+                    if let Some(pos) = global_active_spans
+                        .iter()
+                        .position(|x| x == &resolved_span_id)
+                    {
+                        while global_active_spans.len() > pos + 1 {
+                            if let Some(exited_id) = global_active_spans.pop() {
+                                if generic_task_spans.contains(&exited_id) {
+                                    continue;
+                                }
+
                                 let name = name_map
                                     .get(&exited_id)
                                     .cloned()
@@ -462,31 +298,23 @@ pub fn post_process_trace(path: &str) -> Result<(), Box<dyn std::error::Error>> 
                                     .get(&exited_id)
                                     .cloned()
                                     .unwrap_or_else(|| ts.clone());
-                                let implicit_exit = ChromeTraceEventBuilder::new()
-                                    .category("device")
-                                    .phase("E")
-                                    .name(&name)
-                                    .timestamp(start_ts)
-                                    .pid(pid)
-                                    .tid(vt_id)
-                                    .arg("implicit", serde_json::Value::from(true))
-                                    .build();
+                                let exit_pid = pid_map.get(&exited_id).cloned().unwrap_or(1);
+                                let exit_tid = tid_map.get(&exited_id).cloned().unwrap_or(1);
+                                let implicit_exit = serde_json::json!({
+                                    "cat": "device",
+                                    "ph": "E",
+                                    "name": name,
+                                    "ts": start_ts,
+                                    "pid": exit_pid,
+                                    "tid": exit_tid,
+                                    "args": {
+                                        "implicit": true
+                                    }
+                                });
                                 processed_events.push(implicit_exit);
-
-                                if let Some(g_pos) =
-                                    global_active_spans.iter().position(|x| x == &exited_id)
-                                {
-                                    global_active_spans.remove(g_pos);
-                                }
                             }
                         }
-                        active.pop();
-                    }
-                    if let Some(pos) = global_active_spans
-                        .iter()
-                        .position(|x| x == &resolved_span_id)
-                    {
-                        global_active_spans.remove(pos);
+                        global_active_spans.pop();
                     }
                 }
                 "device_log" => {
@@ -497,33 +325,10 @@ pub fn post_process_trace(path: &str) -> Result<(), Box<dyn std::error::Error>> 
                             .unwrap_or(""),
                     );
 
-                    let mut builder = ChromeTraceEventBuilder::new()
-                        .category("device_log")
-                        .phase(obj.get("ph").and_then(|p| p.as_str()).unwrap_or("i"))
-                        .name(if msg.is_empty() { "log" } else { &msg })
-                        .timestamp(obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0)))
-                        .pid(pid);
-
-                    if let Some(active_id) = global_active_spans.last() {
-                        let controller_name =
-                            get_controller_name(active_id, &parent_map, &module_map, &name_map);
-                        let vt_id = *thread_map.entry(controller_name).or_insert_with(|| {
-                            let id = next_tid;
-                            next_tid += 1;
-                            id
-                        });
-                        builder = builder.tid(vt_id);
-                    } else {
-                        builder = builder.tid(obj.get("tid").and_then(|t| t.as_i64()).unwrap_or(1));
-                    }
-                    final_event = builder.build();
+                    final_event["name"] =
+                        serde_json::Value::from(if msg.is_empty() { "log" } else { &msg });
                 }
-                _ => {
-                    let ph = obj.get("ph").and_then(|p| p.as_str()).unwrap_or("");
-                    if ph == "M" {
-                        keep_event = false;
-                    }
-                }
+                _ => {}
             }
         }
 
@@ -532,19 +337,14 @@ pub fn post_process_trace(path: &str) -> Result<(), Box<dyn std::error::Error>> 
         }
     }
 
-    // Add metadata events to define thread names dynamically from the root span names
-    for (name, tid) in thread_map {
-        let meta = ChromeTraceEventBuilder::new()
-            .name("thread_name")
-            .phase("M")
-            .pid(pid)
-            .tid(tid)
-            .arg("name", serde_json::Value::from(name))
-            .build();
+    processed_events
+}
 
-        processed_events.insert(0, meta);
-    }
-
+/// Stage 3: Serializes processed events back to trace file.
+fn save_processed_trace(
+    path: &str,
+    processed_events: Vec<serde_json::Value>,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Serialize back to file
     let serialized = serde_json::to_string_pretty(&processed_events)?;
     fs::write(path, serialized)?;

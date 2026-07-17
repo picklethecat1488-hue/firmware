@@ -141,7 +141,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     /// Stores/overwrites a file with the given name (key) and contents (value).
     #[crate::tracing::instrument(
         name = "filesystem_controller::write_file",
-        level = "debug",
+        level = "info",
         skip(content)
     )]
     pub async fn write_file(&mut self, name: &str, content: &[u8]) -> Result<(), ()> {
@@ -168,50 +168,62 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
             TELEMETRY_ENABLED.store(true, Ordering::Relaxed);
         }
 
-        if let Err(_e) = res {
-            #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::error!("store_item failed: {:?}", defmt::Debug2Format(&_e));
-            #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-            std::eprintln!("store_item failed: {:?}", _e);
-            return Err(());
-        }
+        match res {
+            Err(_e) => {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::error!("store_item failed: {:?}", defmt::Debug2Format(&_e));
+                #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+                std::eprintln!("store_item failed: {:?}", _e);
+                Err(())
+            }
+            Ok(()) => {
+                // If this is not the directory index itself, add it to the directory index
+                if name != ".dir" {
+                    let mut dir_buf = [0u8; DIR_BUF_SIZE];
+                    let mut existing_dir_str = "";
+                    if let Ok(Some(existing_dir)) = self.read_file(".dir", &mut dir_buf).await {
+                        if let Ok(s) = core::str::from_utf8(existing_dir) {
+                            existing_dir_str = s;
+                        }
+                    }
 
-        // If this is not the directory index itself, add it to the directory index
-        if name != ".dir" {
-            let mut dir_buf = [0u8; DIR_BUF_SIZE];
-            let mut existing_dir_str = "";
-            if let Ok(Some(existing_dir)) = self.read_file(".dir", &mut dir_buf).await {
-                if let Ok(s) = core::str::from_utf8(existing_dir) {
-                    existing_dir_str = s;
+                    if let Some(new_dir) =
+                        firmware_lib::directory::add_to_directory(existing_dir_str, name)
+                    {
+                        // Write directory directly to avoid async recursion cycle
+                        let dir_key = string_to_key(".dir");
+                        let _ = sequential_storage::map::store_item(
+                            &mut self.flash,
+                            self.range.clone(),
+                            &mut cache,
+                            self.buf,
+                            &dir_key,
+                            &new_dir.as_bytes(),
+                        )
+                        .await;
+                    }
                 }
-            }
-
-            if let Some(new_dir) = firmware_lib::directory::add_to_directory(existing_dir_str, name)
-            {
-                // Write directory directly to avoid async recursion cycle
-                let dir_key = string_to_key(".dir");
-                let _ = sequential_storage::map::store_item(
-                    &mut self.flash,
-                    self.range.clone(),
-                    &mut cache,
-                    self.buf,
-                    &dir_key,
-                    &new_dir.as_bytes(),
-                )
-                .await;
+                Ok(())
             }
         }
-
-        Ok(())
     }
 
     /// Fetches a file's content.
     #[crate::tracing::instrument(
         name = "filesystem_controller::read_file",
-        level = "debug",
+        level = "info",
         skip(out_buf)
     )]
     pub async fn read_file<'a>(
+        &mut self,
+        name: &str,
+        out_buf: &'a mut [u8],
+    ) -> Result<Option<&'a [u8]>, ()> {
+        self.read_file_raw(name, out_buf).await
+    }
+
+    /// Uninstrumented raw file read for boot/init contexts.
+    pub async fn read_file_raw<'a>(
         &mut self,
         name: &str,
         out_buf: &'a mut [u8],
@@ -254,7 +266,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     }
 
     /// Removes a file from storage.
-    #[crate::tracing::instrument(name = "filesystem_controller::remove_file", level = "debug")]
+    #[crate::tracing::instrument(name = "filesystem_controller::remove_file", level = "info")]
     pub async fn remove_file(&mut self, name: &str) -> Result<(), ()> {
         let mut cache = sequential_storage::cache::NoCache::new();
         let key = string_to_key(name);
@@ -270,35 +282,35 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
         .await;
 
         if res.is_err() {
-            return Err(());
-        }
-
-        // If this is not the directory index itself, remove it from the index
-        if name != ".dir" {
-            let mut dir_buf = [0u8; DIR_BUF_SIZE];
-            let mut existing_dir_str = "";
-            if let Ok(Some(existing_dir)) = self.read_file(".dir", &mut dir_buf).await {
-                if let Ok(s) = core::str::from_utf8(existing_dir) {
-                    existing_dir_str = s;
+            Err(())
+        } else {
+            // If this is not the directory index itself, remove it from the index
+            if name != ".dir" {
+                let mut dir_buf = [0u8; DIR_BUF_SIZE];
+                let mut existing_dir_str = "";
+                if let Ok(Some(existing_dir)) = self.read_file(".dir", &mut dir_buf).await {
+                    if let Ok(s) = core::str::from_utf8(existing_dir) {
+                        existing_dir_str = s;
+                    }
                 }
+
+                let new_dir =
+                    firmware_lib::directory::remove_from_directory(existing_dir_str, name);
+
+                // Write directory directly to avoid async recursion cycle
+                let dir_key = string_to_key(".dir");
+                let _ = sequential_storage::map::store_item(
+                    &mut self.flash,
+                    self.range.clone(),
+                    &mut cache,
+                    self.buf,
+                    &dir_key,
+                    &new_dir.as_bytes(),
+                )
+                .await;
             }
-
-            let new_dir = firmware_lib::directory::remove_from_directory(existing_dir_str, name);
-
-            // Write directory directly to avoid async recursion cycle
-            let dir_key = string_to_key(".dir");
-            let _ = sequential_storage::map::store_item(
-                &mut self.flash,
-                self.range.clone(),
-                &mut cache,
-                self.buf,
-                &dir_key,
-                &new_dir.as_bytes(),
-            )
-            .await;
+            Ok(())
         }
-
-        Ok(())
     }
 
     /// Returns a newline-separated string listing all files currently stored.
@@ -316,10 +328,6 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
 
     /// Verifies the filesystem health by trying to read the directory index.
     /// If it returns a Corrupted or InvalidValue error, it formats/erases the entire partition.
-    #[crate::tracing::instrument(
-        name = "filesystem_controller::verify_and_repair",
-        level = "debug"
-    )]
     pub async fn verify_and_repair(&mut self) -> Result<(), ()> {
         let mut cache = sequential_storage::cache::NoCache::new();
         let key = string_to_key(".dir");
@@ -345,11 +353,8 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
             {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::error!("Failed to erase corrupted partition!");
-                return Err(());
-            }
-
-            // Re-write an empty directory index
-            if sequential_storage::map::store_item(
+                Err(())
+            } else if sequential_storage::map::store_item(
                 &mut self.flash,
                 self.range.clone(),
                 &mut cache,
@@ -362,14 +367,15 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
             {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::error!("Failed to write empty directory after format!");
-                return Err(());
+                Err(())
+            } else {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::info!("Filesystem partition successfully reformatted.");
+                Ok(())
             }
-
-            #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::info!("Filesystem partition successfully reformatted.");
+        } else {
+            Ok(())
         }
-
-        Ok(())
     }
 }
 
