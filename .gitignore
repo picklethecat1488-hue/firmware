@@ -52,3 +52,4 @@ flash_dump.bin
 device_logs.log
 telemetry.csv
 perfetto_trace.json
+scancode-report.json
