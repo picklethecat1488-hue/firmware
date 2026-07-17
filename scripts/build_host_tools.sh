@@ -7,7 +7,7 @@ while IFS= read -r pkg; do
     if [ -n "$pkg" ]; then
         TOOL_PACKAGES+=("$pkg")
     fi
-done < <(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/") or contains("\\tools\\")) | .name')
+done < <(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/") or contains("\\tools\\")) | .name' | tr -d '\r')
 
 ORGANIZE_DIR=""
 ZIP_FILE=""
