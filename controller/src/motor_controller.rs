@@ -350,9 +350,10 @@ where
             }
         }
 
-        // 2. Call motor driver's tick() for software PWM toggling
-        self.motor.tick().map_err(|e| e.to_peripheral_error())?;
-
+        // 2. Call motor driver's tick() for software PWM toggling only when active
+        if self.active_speed.get() != 0 {
+            self.motor.tick().map_err(|e| e.to_peripheral_error())?;
+        }
         Ok(())
     }
 

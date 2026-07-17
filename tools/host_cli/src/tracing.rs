@@ -458,11 +458,15 @@ pub fn post_process_trace(path: &str) -> Result<(), Box<dyn std::error::Error>> 
                                     .get(&exited_id)
                                     .cloned()
                                     .unwrap_or_else(|| "unknown".to_string());
+                                let start_ts = start_time_map
+                                    .get(&exited_id)
+                                    .cloned()
+                                    .unwrap_or_else(|| ts.clone());
                                 let implicit_exit = ChromeTraceEventBuilder::new()
                                     .category("device")
                                     .phase("E")
                                     .name(&name)
-                                    .timestamp(ts.clone())
+                                    .timestamp(start_ts)
                                     .pid(pid)
                                     .tid(vt_id)
                                     .arg("implicit", serde_json::Value::from(true))

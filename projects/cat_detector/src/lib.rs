@@ -54,7 +54,7 @@ pub const STORAGE_PARTITION_START: u32 = 0x1C_0000; // 1.75 MB
 pub const STORAGE_PARTITION_END: u32 = 0x20_0000; // 2.00 MB
 
 /// Total number of telemetry chunks
-pub const NUM_CHUNKS: usize = 85;
+pub const NUM_CHUNKS: usize = 50;
 /// Total maximum number of records stored
 pub const MAX_RECORDS: usize = NUM_CHUNKS * model::telemetry::CHUNK_SIZE;
 /// Maximum number of rolling crash logs (modulo limit)

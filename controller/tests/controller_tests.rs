@@ -336,10 +336,20 @@ impl Tickable for MockTickableMotor {
 
 #[test]
 fn test_motor_controller_tickable_vs_notick() {
+    use model::calibration::Calibration;
+
     // 1. Test stateful Tickable motor
     let motor = MockTickableMotor::new();
     let sensor = MockCurrentSensor::new(150);
     let mut controller = MotorController::new(motor, sensor);
+
+    // Calibrate and start the motor so active_speed will ramp to non-zero
+    controller.set_calibration(model::calibration::CalibrationType::MotorCal {
+        current_limits: model::calibration::TwoPointCalibration { low: 0, high: 1000 },
+        max_rpm: 3000,
+        rpm_limit: 3000,
+    });
+    controller.handle_command(MotorCommand::SetSpeed(MotorSpeed::new(50).unwrap()), None);
 
     assert_eq!(controller.motor.tick_count, 0);
     assert!(controller.tick_motor().is_ok());
@@ -353,6 +363,14 @@ fn test_motor_controller_tickable_vs_notick() {
     let notick_motor = NoTick::new(MockTickableMotor::new());
     let sensor2 = MockCurrentSensor::new(150);
     let mut controller2 = MotorController::new(notick_motor, sensor2);
+
+    // Calibrate and start the motor so active_speed will ramp to non-zero
+    controller2.set_calibration(model::calibration::CalibrationType::MotorCal {
+        current_limits: model::calibration::TwoPointCalibration { low: 0, high: 1000 },
+        max_rpm: 3000,
+        rpm_limit: 3000,
+    });
+    controller2.handle_command(MotorCommand::SetSpeed(MotorSpeed::new(50).unwrap()), None);
 
     // Ticking shouldn't increase inner tick count or return error even if inner should fail,
     // because NoTick::tick() is a no-op that always returns Ok(()) without calling inner tick.
