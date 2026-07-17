@@ -504,6 +504,7 @@ impl<
     }
 
     /// Main execution loop.
+    #[allow(unreachable_code)]
     #[tracing::instrument(level = "debug", skip(command_rx, gesture_rx, thermal_rx))]
     pub async fn run<const CMD_CAP: usize>(
         mut self,

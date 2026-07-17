@@ -584,7 +584,8 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                             if let Err(e) = ts.process(&rtt_buf[..n]) {
                                 eprintln!("Error processing trace: {:?}", e);
                             }
-                        } else if let Some(ref mut dec) = decoder {
+                        }
+                        if let Some(ref mut dec) = decoder {
                             dec.received(&rtt_buf[..n]);
                             loop {
                                 match dec.decode() {

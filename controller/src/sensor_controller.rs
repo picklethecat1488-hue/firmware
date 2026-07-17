@@ -356,6 +356,7 @@ where
     }
 
     /// Runs the controller's main run loop, executing periodic telemetry updates.
+    #[allow(unreachable_code)]
     #[tracing::instrument(level = "debug", skip(command_rx))]
     pub async fn run(
         mut self,

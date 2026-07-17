@@ -250,6 +250,7 @@ where
     }
 
     /// Starts the controller's main infinite run loop, processing commands.
+    #[allow(unreachable_code)]
     #[tracing::instrument(level = "debug", skip(command_rx, telemetry_tx))]
     pub async fn run(
         mut self,

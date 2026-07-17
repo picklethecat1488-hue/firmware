@@ -346,6 +346,7 @@ where
     }
 
     /// Runs the controller's control loop infinitely, reading from the command channel.
+    #[allow(unreachable_code)]
     #[tracing::instrument(level = "debug", skip(command_rx, telemetry_tx))]
     pub async fn run<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex, const N: usize>(
         mut self,
