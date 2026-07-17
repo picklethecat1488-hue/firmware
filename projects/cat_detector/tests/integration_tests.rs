@@ -801,3 +801,43 @@ fn test_spawn_controllers_embassy_routing() {
         spawner.spawn(test_control_task()).unwrap();
     });
 }
+
+#[test]
+fn test_filesystem_utilization_limit() {
+    // Total partition size
+    let partition_size =
+        (cat_detector::STORAGE_PARTITION_END - cat_detector::STORAGE_PARTITION_START) as usize;
+
+    // Non-telemetry space budget
+    let vl53l0x_cal_size = 168;
+    let motor_cal_size = 168;
+    let crash_idx_size = 44;
+    let crash_logs_size = cat_detector::MAX_CRASH_LOGS as usize * 1240; // 1240 bytes per crash log
+    let dir_file_size = 2088; // estimated maximum .dir size
+    let telemetry_metadata_size = 52;
+    let non_telemetry_space = vl53l0x_cal_size
+        + motor_cal_size
+        + crash_idx_size
+        + crash_logs_size
+        + dir_file_size
+        + telemetry_metadata_size;
+
+    // Telemetry space budget
+    // Each chunk occupies CHUNK_FILE_SIZE bytes plus sequential_storage map metadata overhead (~40 bytes)
+    let telemetry_chunk_overhead = 40;
+    let telemetry_space =
+        cat_detector::NUM_CHUNKS * (model::telemetry::CHUNK_FILE_SIZE + telemetry_chunk_overhead);
+
+    let total_budget = non_telemetry_space + telemetry_space;
+    let utilization_ratio = total_budget as f64 / partition_size as f64;
+
+    // Assert that we have at least 25% headroom (utilization <= 75%)
+    // This leaves plenty of empty pages for sequential_storage GC to prevent choking.
+    assert!(
+        utilization_ratio <= 0.75,
+        "Filesystem capacity utilization is too high! Estimated active storage usage is {} bytes out of {} bytes partition size ({:.2}%). GC choking will occur unless utilization is <= 75.00%. Please reduce NUM_CHUNKS.",
+        total_budget,
+        partition_size,
+        utilization_ratio * 100.0
+    );
+}
