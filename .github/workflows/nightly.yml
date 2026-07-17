@@ -89,6 +89,7 @@ jobs:
 
   build-host-tools:
     name: Build Host Tools for ${{ matrix.os }}
+    needs: [test, test-python]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
