@@ -165,7 +165,12 @@ impl<
     pub fn notify_upstream(&self, data: Data) {
         if let Some(tx) = &self.upstream_tx {
             let cmd = Cmd::from_proximity_update(self.metadata, data.into());
-            tx.try_send(cmd).unwrap();
+            if tx.try_send(cmd).is_err() {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::warn!(
+                    "Sensor Controller: Upstream channel full, dropping proximity update."
+                );
+            }
         }
     }
 }

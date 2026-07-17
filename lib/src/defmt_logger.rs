@@ -3,7 +3,7 @@
 #![allow(static_mut_refs)]
 #![allow(dead_code)]
 
-use core::sync::atomic::{AtomicUsize, Ordering};
+use core::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
 
 const BUF_SIZE: usize = 1024;
 const MODE_MASK: usize = 0b11;
@@ -12,6 +12,15 @@ const MODE_MASK: usize = 0b11;
 pub const MODE_BLOCK_IF_FULL: usize = 2;
 /// Flag indicating non-blocking ring-buffer RTT write mode.
 pub const MODE_NON_BLOCKING_TRIM: usize = 1;
+
+/// Maximum duration in microseconds to block in write/flush mode before dropping logs (2 ms).
+const MAX_WRITE_TIMEOUT_US: u64 = 2000;
+
+/// Consecutive timeout counter to detect debugger detachment and fall back to non-blocking.
+static CONSECUTIVE_TIMEOUTS: AtomicU32 = AtomicU32::new(0);
+
+/// Maximum consecutive timeouts before assuming the debugger detached and falling back (200ms).
+const MAX_TIMEOUTS: u32 = 100;
 
 /// A single RTT channel.
 #[repr(C)]
@@ -33,6 +42,8 @@ pub struct Channel {
 impl Channel {
     /// Writes all the bytes to the RTT channel.
     pub fn write_all(&self, mut bytes: &[u8]) {
+        let start = embassy_time::Instant::now();
+        let mut timed_out = false;
         while !bytes.is_empty() {
             let consumed = if self.host_is_connected() {
                 self.blocking_write(bytes)
@@ -41,7 +52,22 @@ impl Channel {
             };
             if consumed != 0 {
                 bytes = &bytes[consumed..];
+            } else if start.elapsed().as_micros() > MAX_WRITE_TIMEOUT_US {
+                timed_out = true;
+                break;
             }
+        }
+
+        if timed_out {
+            let consecutive = CONSECUTIVE_TIMEOUTS.load(Ordering::Relaxed) + 1;
+            CONSECUTIVE_TIMEOUTS.store(consecutive, Ordering::Relaxed);
+            if consecutive > MAX_TIMEOUTS {
+                // Debugger detached. Fall back to non-blocking mode on this channel.
+                self.flags.store(MODE_NON_BLOCKING_TRIM, Ordering::Relaxed);
+                CONSECUTIVE_TIMEOUTS.store(0, Ordering::Relaxed);
+            }
+        } else {
+            CONSECUTIVE_TIMEOUTS.store(0, Ordering::Relaxed);
         }
     }
 
@@ -112,7 +138,26 @@ impl Channel {
         }
         let read = || self.read.load(Ordering::Relaxed);
         let write = || self.write.load(Ordering::Relaxed);
-        while read() != write() {}
+        let start = embassy_time::Instant::now();
+        let mut timed_out = false;
+        while read() != write() {
+            if start.elapsed().as_micros() > MAX_WRITE_TIMEOUT_US {
+                timed_out = true;
+                break;
+            }
+        }
+
+        if timed_out {
+            let consecutive = CONSECUTIVE_TIMEOUTS.load(Ordering::Relaxed) + 1;
+            CONSECUTIVE_TIMEOUTS.store(consecutive, Ordering::Relaxed);
+            if consecutive > MAX_TIMEOUTS {
+                // Debugger detached. Fall back to non-blocking mode on this channel.
+                self.flags.store(MODE_NON_BLOCKING_TRIM, Ordering::Relaxed);
+                CONSECUTIVE_TIMEOUTS.store(0, Ordering::Relaxed);
+            }
+        } else {
+            CONSECUTIVE_TIMEOUTS.store(0, Ordering::Relaxed);
+        }
     }
 
     fn host_is_connected(&self) -> bool {
