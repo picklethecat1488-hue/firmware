@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use crate::tracing;
 use crate::types::ThermalState;
 use crate::{BlockingThermalReader, Sender, TelemetrySender, ThermalReceiver};
 use core::fmt::Write as _;
@@ -97,6 +98,11 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
     }
 
     /// Updates the thermal status by locking and reading the peripheral.
+    #[tracing::instrument(
+        name = "thermal_controller::update",
+        level = "debug",
+        skip(telemetry_client)
+    )]
     pub async fn update<TC: model::telemetry::TelemetryClient<(i32, ThermalState)>>(
         &mut self,
         telemetry_client: Option<&mut TC>,

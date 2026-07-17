@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use crate::tracing;
 pub use firmware_lib::gesture_detector::ProximityEvent;
 
 use crate::system_feature::FeatureList;
@@ -239,6 +240,7 @@ impl<
     }
 
     /// Sets the current system status.
+    #[tracing::instrument(level = "trace", skip(status))]
     pub fn set_status(
         &mut self,
         status: SystemStatus,
@@ -258,6 +260,7 @@ impl<
     }
 
     /// Updates the battery status and processes any resulting state transition actions.
+    #[tracing::instrument(level = "trace", skip(charger_state))]
     pub fn update_battery_status(
         &mut self,
         state_of_charge: u8,
@@ -280,6 +283,7 @@ impl<
     }
 
     /// Handles an incoming SystemCommand.
+    #[tracing::instrument(level = "trace", skip(cmd))]
     pub fn handle_command(
         &mut self,
         cmd: SystemCommand,
@@ -408,6 +412,7 @@ impl<
     }
 
     /// Handles updates from the thermal controller.
+    #[tracing::instrument(level = "trace", skip(action))]
     pub fn handle_thermal_action(
         &mut self,
         action: ThermalUpdateAction,

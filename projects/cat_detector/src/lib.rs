@@ -52,6 +52,13 @@ pub const CHARGER_S2_PIN: u32 = 13;
 pub const STORAGE_PARTITION_START: u32 = 0x1C_0000; // 1.75 MB
 /// End address of the filesystem storage partition in flash (2.00 MB limit).
 pub const STORAGE_PARTITION_END: u32 = 0x20_0000; // 2.00 MB
+
+/// Total number of telemetry chunks
+pub const NUM_CHUNKS: usize = 85;
+/// Total maximum number of records stored
+pub const MAX_RECORDS: usize = NUM_CHUNKS * model::telemetry::CHUNK_SIZE;
+/// Maximum number of rolling crash logs (modulo limit)
+pub const MAX_CRASH_LOGS: u32 = 10;
 /// Total QSPI flash memory capacity on the board (2.00 MB).
 pub const FLASH_SIZE: usize = 2 * 1024 * 1024;
 /// Top address of the stack/SRAM (RP2040 has 264 KB SRAM, ending at 0x2004_0000).

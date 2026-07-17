@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+use crate::tracing;
 use embedded_hal::digital::OutputPin;
 use model::interfaces::{Motor, Tickable};
 use model::types::MotorSpeed;
@@ -34,6 +35,7 @@ where
     type Error = L9110sError<P1::Error, P2::Error>;
 
     /// Sets the motor speed.
+    #[tracing::instrument(level = "trace", skip(speed))]
     fn set_speed(&mut self, speed: MotorSpeed) -> Result<(), Self::Error> {
         let speed_raw = speed.get();
         self.speed = speed_raw;
@@ -52,6 +54,7 @@ where
     }
 
     /// Stops the motor by braking (both IA and IB set to low).
+    #[tracing::instrument(level = "trace")]
     fn stop(&mut self) -> Result<(), Self::Error> {
         self.speed = 0;
         self.tick_counter = 0;
@@ -68,7 +71,7 @@ where
 {
     type Error = L9110sError<P1::Error, P2::Error>;
 
-    /// Updates the duty cycle (soft-PWM) state of the motor.
+    #[tracing::instrument(level = "trace")]
     fn tick(&mut self) -> Result<(), Self::Error> {
         let abs_speed = self.speed.abs();
         if abs_speed == 0 || abs_speed >= 100 {

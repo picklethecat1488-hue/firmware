@@ -2,6 +2,7 @@
 
 pub mod dump;
 pub mod stream;
+pub mod tracing;
 
 pub use dump::dump_logs;
 pub use stream::stream_logs;

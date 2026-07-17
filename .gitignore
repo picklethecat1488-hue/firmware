@@ -51,3 +51,4 @@ bringup_report.md
 flash_dump.bin
 device_logs.log
 telemetry.csv
+perfetto_trace.json

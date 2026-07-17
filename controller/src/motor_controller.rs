@@ -12,6 +12,7 @@ use model::telemetry::TelemetryClient;
 use model::types::{MotorSpeed, PeripheralError, SystemStatus};
 use peripherals::ToPeripheralError;
 
+use crate::tracing;
 use crate::types::{MotorCalState, MotorSafetyStatus, MotorState};
 
 /// The tick interval of the motor controller (10ms / 100Hz).
@@ -131,6 +132,11 @@ where
     }
 
     /// Ticks the control loop, reading current sensor input and updating safety states.
+    #[tracing::instrument(
+        name = "motor_controller::update",
+        level = "debug",
+        skip(telemetry_client)
+    )]
     pub fn update(
         &mut self,
         mut telemetry_client: Option<
@@ -195,6 +201,11 @@ where
     }
 
     /// Handles a received MotorCommand.
+    #[tracing::instrument(
+        name = "motor_controller::handle_command",
+        level = "debug",
+        skip(cmd, telemetry_client)
+    )]
     pub fn handle_command(
         &mut self,
         cmd: MotorCommand,
@@ -286,6 +297,7 @@ where
 
     /// Ticks the motor controller at a high frequency (e.g. 100Hz / every 10ms).
     /// This updates the ramping of the motor speed and runs the motor driver's duty cycle ticks.
+    #[tracing::instrument(name = "motor_controller::tick_motor", level = "debug")]
     pub fn tick_motor(&mut self) -> Result<(), PeripheralError> {
         // 1. Ramping logic
         if self.state == MotorState::On {

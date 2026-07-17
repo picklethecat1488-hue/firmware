@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::BatteryTelemetryClient;
+use crate::tracing;
 use crate::{BatteryReceiver, BlockingBatteryReader, Sender, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
@@ -150,6 +151,11 @@ where
     }
 
     /// Updates the battery status by locking and reading the peripheral.
+    #[tracing::instrument(
+        name = "battery_controller::update",
+        level = "debug",
+        skip(telemetry_client)
+    )]
     pub async fn update(
         &mut self,
         telemetry_client: Option<

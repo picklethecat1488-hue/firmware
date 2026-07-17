@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Find all tool packages in the workspace
+TOOL_PACKAGES=()
+while IFS= read -r pkg; do
+    if [ -n "$pkg" ]; then
+        TOOL_PACKAGES+=("$pkg")
+    fi
+done < <(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | .name')
+
+ORGANIZE_DIR=""
+ZIP_FILE=""
+WORKSPACE_ROOT="$(pwd)"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --out-dir)
+            ORGANIZE_DIR="$2"
+            shift 2
+            ;;
+        --zip)
+            ZIP_FILE="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
+echo "Building Host Tools (Release)..."
+for tool in "${TOOL_PACKAGES[@]}"; do
+    cargo build --release -p "$tool"
+done
+
+if [ -n "$ORGANIZE_DIR" ]; then
+    echo "Organizing host tools into $ORGANIZE_DIR..."
+    
+    # Determine host platform name
+    HOST_OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    case "$HOST_OS" in
+        darwin)
+            PLATFORM="macos"
+            ;;
+        linux)
+            PLATFORM="linux"
+            ;;
+        mingw*|msys*|cygwin*|windows)
+            PLATFORM="windows"
+            ;;
+        *)
+            PLATFORM="linux" # fallback
+            ;;
+    esac
+
+    mkdir -p "$ORGANIZE_DIR/release/$PLATFORM"
+    for tool in "${TOOL_PACKAGES[@]}"; do
+        if [ -f "target/release/$tool" ]; then
+            cp "target/release/$tool" "$ORGANIZE_DIR/release/$PLATFORM/$tool"
+        elif [ -f "target/release/$tool.exe" ]; then
+            cp "target/release/$tool.exe" "$ORGANIZE_DIR/release/$PLATFORM/$tool.exe"
+        fi
+    done
+fi
+
+if [ -n "$ZIP_FILE" ]; then
+    echo "Creating zip archive $ZIP_FILE..."
+    ABS_ZIP_FILE=""
+    if [[ "$ZIP_FILE" = /* ]]; then
+        ABS_ZIP_FILE="$ZIP_FILE"
+    else
+        ABS_ZIP_FILE="$WORKSPACE_ROOT/$ZIP_FILE"
+    fi
+
+    STAGE_DIR=$(mktemp -d)
+    for tool in "${TOOL_PACKAGES[@]}"; do
+        if [ -f "target/release/$tool" ]; then
+            cp "target/release/$tool" "$STAGE_DIR/"
+        elif [ -f "target/release/$tool.exe" ]; then
+            cp "target/release/$tool.exe" "$STAGE_DIR/"
+        fi
+    done
+    (cd "$STAGE_DIR" && zip -r -q "$ABS_ZIP_FILE" .)
+    rm -rf "$STAGE_DIR"
+fi
