@@ -223,7 +223,10 @@ where
             }
         }
 
-        let voltage_changed = self.last_reported_voltage != Some(voltage);
+        let voltage_changed = match self.last_reported_voltage {
+            None => true,
+            Some(last) => (voltage as i32 - last as i32).abs() >= 10,
+        };
         let state_changed = self.last_reported_state != Some(self.state);
         if voltage_changed || state_changed {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -232,8 +235,12 @@ where
                 voltage,
                 self.state
             );
-            self.last_reported_voltage = Some(voltage);
-            self.last_reported_state = Some(self.state);
+            if voltage_changed {
+                self.last_reported_voltage = Some(voltage);
+            }
+            if state_changed {
+                self.last_reported_state = Some(self.state);
+            }
         }
 
         if read_failed {
