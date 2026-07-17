@@ -88,7 +88,7 @@ async fn main(spawner: Spawner) {
     // Read calibration file from flash
     let mut cal_buf = [0u8; 128];
     let proximity_cal = match fs_controller
-        .read_file("vl53l0x_cal.cbor", &mut cal_buf)
+        .read_file_raw("vl53l0x_cal.cbor", &mut cal_buf)
         .await
     {
         Ok(Some(bytes)) => {
@@ -101,7 +101,7 @@ async fn main(spawner: Spawner) {
 
     let mut motor_cal_buf = [0u8; 128];
     let motor_cal = match fs_controller
-        .read_file("motor_cal.cbor", &mut motor_cal_buf)
+        .read_file_raw("motor_cal.cbor", &mut motor_cal_buf)
         .await
     {
         Ok(Some(bytes)) => {

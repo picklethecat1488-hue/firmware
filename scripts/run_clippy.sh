@@ -37,3 +37,6 @@ run_and_report "cargo clippy --all-targets --color never -- -D warnings"
 
 echo "Running clippy on MCU Target (thumbv6m-none-eabi)..."
 run_and_report "cargo clippy --workspace ${EXCLUDE_ARGS[*]} --lib --bins --target thumbv6m-none-eabi --color never -- -D warnings"
+
+echo "Validating tracing hierarchy and early returns..."
+run_and_report "scripts/validate_tracing.py"

@@ -140,6 +140,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // If tracing was enabled, post-process the trace file to group events by microcontroller task
     if let Some(ref trace_file) = cli.trace {
         spinner.set_message("Processing Perfetto trace timeline...");
+        let raw_path = format!("{}.raw", trace_file);
+        if let Err(e) = fs::copy(trace_file, &raw_path) {
+            eprintln!(
+                "Warning: failed to save raw trace copy to {}: {:?}",
+                raw_path, e
+            );
+        }
         if let Err(e) = tracing::post_process_trace(trace_file) {
             eprintln!(
                 "Warning: failed to post-process Perfetto trace file: {:?}",

@@ -151,7 +151,7 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
     }
 
     /// Initializes the telemetry buffer from flash storage, or resets it if invalid/missing.
-    #[crate::tracing::instrument(name = "telemetry_controller::init", level = "debug")]
+    #[crate::tracing::instrument(name = "telemetry_controller::init", level = "info")]
     pub async fn init(&mut self) -> Result<(), ()> {
         let mut temp_buf = [0u8; 12];
         let (len, exists) = match self.fs.read_file("telemetry.rrd", &mut temp_buf).await {
@@ -188,45 +188,45 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
     }
 
     /// Flushes any pending RAM telemetry buffers (chunk data and header index) to the filesystem.
-    #[crate::tracing::instrument(name = "telemetry_controller::flush", level = "debug")]
+    #[crate::tracing::instrument(name = "telemetry_controller::flush", level = "info")]
     pub async fn flush(&mut self) -> Result<(), ()> {
         if !self.dirty {
-            return Ok(());
+            Ok(())
+        } else {
+            if let Some(chunk_idx) = self.current_chunk {
+                let name = model::telemetry::chunk_name(chunk_idx);
+                self.flush_pending_write().await?;
+                self.fs
+                    .start_write_file(
+                        name,
+                        &self.file_buf[..model::telemetry::CHUNK_FILE_SIZE],
+                        &TELEMETRY_WRITE_SIGNAL,
+                    )
+                    .await;
+                self.write_pending = true;
+
+                let header = self.serialize_header();
+                self.flush_pending_write().await?;
+
+                let mut header_buf = [0u8; 12];
+                header_buf.copy_from_slice(&header);
+
+                self.fs
+                    .start_write_file("telemetry.rrd", &header_buf, &TELEMETRY_WRITE_SIGNAL)
+                    .await;
+                self.write_pending = true;
+                self.flush_pending_write().await?;
+            }
+
+            self.dirty = false;
+            Ok(())
         }
-
-        if let Some(chunk_idx) = self.current_chunk {
-            let name = model::telemetry::chunk_name(chunk_idx);
-            self.flush_pending_write().await?;
-            self.fs
-                .start_write_file(
-                    name,
-                    &self.file_buf[..model::telemetry::CHUNK_FILE_SIZE],
-                    &TELEMETRY_WRITE_SIGNAL,
-                )
-                .await;
-            self.write_pending = true;
-
-            let header = self.serialize_header();
-            self.flush_pending_write().await?;
-
-            let mut header_buf = [0u8; 12];
-            header_buf.copy_from_slice(&header);
-
-            self.fs
-                .start_write_file("telemetry.rrd", &header_buf, &TELEMETRY_WRITE_SIGNAL)
-                .await;
-            self.write_pending = true;
-            self.flush_pending_write().await?;
-        }
-
-        self.dirty = false;
-        Ok(())
     }
 
     /// Pushes a telemetry record into the ring buffer and persists it to flash.
     #[crate::tracing::instrument(
         name = "telemetry_controller::push_record",
-        level = "debug",
+        level = "info",
         skip(record)
     )]
     pub async fn push_record(&mut self, record: TelemetryRecord) -> Result<(), ()> {
@@ -287,7 +287,7 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
     /// Reads all records from the current telemetry state in chronological order.
     #[crate::tracing::instrument(
         name = "telemetry_controller::read_records",
-        level = "debug",
+        level = "info",
         skip(callback)
     )]
     pub async fn read_records(&mut self, mut callback: impl FnMut(u64, TelemetryRecord)) -> bool {
@@ -298,52 +298,53 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
         let next_idx = self.next_idx as usize;
 
         if count > MAX_RECORDS || next_idx > MAX_RECORDS {
-            return false;
-        }
-
-        let total_iterations = if count < MAX_RECORDS {
-            count
+            false
         } else {
-            MAX_RECORDS
-        };
-        let mut current_chunk_idx = None;
-
-        for i in 0..total_iterations {
-            let idx = if count < MAX_RECORDS {
-                i
+            let total_iterations = if count < MAX_RECORDS {
+                count
             } else {
-                (next_idx + i) % MAX_RECORDS
+                MAX_RECORDS
             };
-            let chunk_idx = idx / model::telemetry::CHUNK_SIZE;
-            let slot_idx = idx % model::telemetry::CHUNK_SIZE;
+            let mut current_chunk_idx = None;
 
-            if current_chunk_idx != Some(chunk_idx) {
-                let name = model::telemetry::chunk_name(chunk_idx);
-                let base_ptr = self.file_buf.as_ptr() as usize;
-                self.file_buf.fill(0);
-                let mut read_len = 0;
-                let mut read_offset = 0;
-                if let Ok(Some(bytes)) = self.fs.read_file(name, &mut self.file_buf).await {
-                    read_len = bytes.len();
-                    read_offset = bytes.as_ptr() as usize - base_ptr;
-                }
-                if read_len > 0 && read_offset > 0 {
-                    self.file_buf
-                        .copy_within(read_offset..read_offset + read_len, 0);
-                }
-                current_chunk_idx = Some(chunk_idx);
-            }
+            for i in 0..total_iterations {
+                let idx = if count < MAX_RECORDS {
+                    i
+                } else {
+                    (next_idx + i) % MAX_RECORDS
+                };
+                let chunk_idx = idx / model::telemetry::CHUNK_SIZE;
+                let slot_idx = idx % model::telemetry::CHUNK_SIZE;
 
-            let offset = slot_idx * 20;
-            if offset + 20 <= self.file_buf.len() {
-                let slot: &[u8; 20] = self.file_buf[offset..offset + 20].try_into().ok().unwrap();
-                if let Some((ts, rec)) = TelemetryRecord::deserialize(slot) {
-                    callback(ts, rec);
+                if current_chunk_idx != Some(chunk_idx) {
+                    let name = model::telemetry::chunk_name(chunk_idx);
+                    let base_ptr = self.file_buf.as_ptr() as usize;
+                    self.file_buf.fill(0);
+                    let mut read_len = 0;
+                    let mut read_offset = 0;
+                    if let Ok(Some(bytes)) = self.fs.read_file(name, &mut self.file_buf).await {
+                        read_len = bytes.len();
+                        read_offset = bytes.as_ptr() as usize - base_ptr;
+                    }
+                    if read_len > 0 && read_offset > 0 {
+                        self.file_buf
+                            .copy_within(read_offset..read_offset + read_len, 0);
+                    }
+                    current_chunk_idx = Some(chunk_idx);
+                }
+
+                let offset = slot_idx * 20;
+                if offset + 20 <= self.file_buf.len() {
+                    let slot: &[u8; 20] =
+                        self.file_buf[offset..offset + 20].try_into().ok().unwrap();
+                    if let Some((ts, rec)) = TelemetryRecord::deserialize(slot) {
+                        callback(ts, rec);
+                    }
                 }
             }
+            self.current_chunk = current_chunk_idx;
+            true
         }
-        self.current_chunk = current_chunk_idx;
-        true
     }
 
     /// Starts the controller's main run loop, processing records.
