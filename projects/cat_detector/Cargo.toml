@@ -55,3 +55,7 @@ defmt = "0.3"
 
 [target.'cfg(not(all(target_arch = "arm", target_os = "none")))'.dev-dependencies]
 futures = "0.3"
+
+[features]
+default = []
+tracing = ["controller/tracing"]

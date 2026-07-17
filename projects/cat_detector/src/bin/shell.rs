@@ -173,6 +173,7 @@ async fn main(spawner: Spawner) {
         panic_flash,
         app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
         fs_buf,
+        app::MAX_CRASH_LOGS,
     );
 
     let temp_sensor_ptr = {

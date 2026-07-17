@@ -4,14 +4,18 @@
 extern crate std;
 
 use crate::{Sender, TelemetrySender};
-use core::cmp;
 use core::fmt::Write as _;
 use core::ops::Range;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
-use heapless::String;
+
+// =========================================================================
+// Filesystem Capacity & Buffer Constants
+// =========================================================================
+
+pub use firmware_lib::directory::{string_to_key, DIR_BUF_SIZE, KEY_SIZE};
 
 static TELEMETRY_ENABLED: AtomicBool = AtomicBool::new(true);
 
@@ -134,16 +138,12 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
         Self { flash, range, buf }
     }
 
-    /// Helper to convert a string path into a fixed-size 32-byte key.
-    fn string_to_key(name: &str) -> [u8; 32] {
-        let mut key = [0u8; 32];
-        let bytes = name.as_bytes();
-        let len = cmp::min(bytes.len(), 32);
-        key[..len].copy_from_slice(&bytes[..len]);
-        key
-    }
-
     /// Stores/overwrites a file with the given name (key) and contents (value).
+    #[crate::tracing::instrument(
+        name = "filesystem_controller::write_file",
+        level = "debug",
+        skip(content)
+    )]
     pub async fn write_file(&mut self, name: &str, content: &[u8]) -> Result<(), ()> {
         let is_telemetry = name.starts_with("telemetry");
         if is_telemetry {
@@ -151,7 +151,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
         }
 
         let mut cache = sequential_storage::cache::NoCache::new();
-        let key = Self::string_to_key(name);
+        let key = string_to_key(name);
 
         // Store item in map
         let res = sequential_storage::map::store_item(
@@ -178,38 +178,25 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
 
         // If this is not the directory index itself, add it to the directory index
         if name != ".dir" {
-            let mut dir_buf = [0u8; 512];
-            let mut current_dir = String::<512>::new();
+            let mut dir_buf = [0u8; DIR_BUF_SIZE];
+            let mut existing_dir_str = "";
             if let Ok(Some(existing_dir)) = self.read_file(".dir", &mut dir_buf).await {
                 if let Ok(s) = core::str::from_utf8(existing_dir) {
-                    let _ = current_dir.push_str(s);
+                    existing_dir_str = s;
                 }
             }
 
-            // Check if name is already in the list
-            let mut found = false;
-            for entry in current_dir.split('\n') {
-                if entry == name {
-                    found = true;
-                    break;
-                }
-            }
-
-            if !found {
-                if !current_dir.is_empty() {
-                    let _ = current_dir.push('\n');
-                }
-                let _ = current_dir.push_str(name);
-
+            if let Some(new_dir) = firmware_lib::directory::add_to_directory(existing_dir_str, name)
+            {
                 // Write directory directly to avoid async recursion cycle
-                let dir_key = Self::string_to_key(".dir");
+                let dir_key = string_to_key(".dir");
                 let _ = sequential_storage::map::store_item(
                     &mut self.flash,
                     self.range.clone(),
                     &mut cache,
                     self.buf,
                     &dir_key,
-                    &current_dir.as_bytes(),
+                    &new_dir.as_bytes(),
                 )
                 .await;
             }
@@ -219,15 +206,20 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     }
 
     /// Fetches a file's content.
+    #[crate::tracing::instrument(
+        name = "filesystem_controller::read_file",
+        level = "debug",
+        skip(out_buf)
+    )]
     pub async fn read_file<'a>(
         &mut self,
         name: &str,
         out_buf: &'a mut [u8],
     ) -> Result<Option<&'a [u8]>, ()> {
         let mut cache = sequential_storage::cache::NoCache::new();
-        let key = Self::string_to_key(name);
+        let key = string_to_key(name);
 
-        let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
+        let res = sequential_storage::map::fetch_item::<[u8; KEY_SIZE], &[u8], _>(
             &mut self.flash,
             self.range.clone(),
             &mut cache,
@@ -262,12 +254,13 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     }
 
     /// Removes a file from storage.
+    #[crate::tracing::instrument(name = "filesystem_controller::remove_file", level = "debug")]
     pub async fn remove_file(&mut self, name: &str) -> Result<(), ()> {
         let mut cache = sequential_storage::cache::NoCache::new();
-        let key = Self::string_to_key(name);
+        let key = string_to_key(name);
 
         // Remove from map
-        let res = sequential_storage::map::remove_item::<[u8; 32], _>(
+        let res = sequential_storage::map::remove_item::<[u8; KEY_SIZE], _>(
             &mut self.flash,
             self.range.clone(),
             &mut cache,
@@ -282,26 +275,18 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
 
         // If this is not the directory index itself, remove it from the index
         if name != ".dir" {
-            let mut dir_buf = [0u8; 512];
-            let mut current_dir = String::<512>::new();
+            let mut dir_buf = [0u8; DIR_BUF_SIZE];
+            let mut existing_dir_str = "";
             if let Ok(Some(existing_dir)) = self.read_file(".dir", &mut dir_buf).await {
                 if let Ok(s) = core::str::from_utf8(existing_dir) {
-                    let _ = current_dir.push_str(s);
+                    existing_dir_str = s;
                 }
             }
 
-            let mut new_dir = String::<512>::new();
-            for entry in current_dir.split('\n') {
-                if entry != name && !entry.is_empty() {
-                    if !new_dir.is_empty() {
-                        let _ = new_dir.push('\n');
-                    }
-                    let _ = new_dir.push_str(entry);
-                }
-            }
+            let new_dir = firmware_lib::directory::remove_from_directory(existing_dir_str, name);
 
             // Write directory directly to avoid async recursion cycle
-            let dir_key = Self::string_to_key(".dir");
+            let dir_key = string_to_key(".dir");
             let _ = sequential_storage::map::store_item(
                 &mut self.flash,
                 self.range.clone(),
@@ -331,10 +316,14 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
 
     /// Verifies the filesystem health by trying to read the directory index.
     /// If it returns a Corrupted or InvalidValue error, it formats/erases the entire partition.
+    #[crate::tracing::instrument(
+        name = "filesystem_controller::verify_and_repair",
+        level = "debug"
+    )]
     pub async fn verify_and_repair(&mut self) -> Result<(), ()> {
         let mut cache = sequential_storage::cache::NoCache::new();
-        let key = Self::string_to_key(".dir");
-        let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
+        let key = string_to_key(".dir");
+        let res = sequential_storage::map::fetch_item::<[u8; KEY_SIZE], &[u8], _>(
             &mut self.flash,
             self.range.clone(),
             &mut cache,
@@ -591,7 +580,7 @@ pub fn handle_fs_cli<
             );
 
             let _ = core::writeln!(writer, "\r\nListing directory...");
-            let mut dir_buf = [0u8; 512];
+            let mut dir_buf = [0u8; DIR_BUF_SIZE];
             let res = embassy_futures::block_on(fs.read_file(".dir", &mut dir_buf));
             match res {
                 Ok(Some(list)) => {

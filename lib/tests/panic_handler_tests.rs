@@ -58,8 +58,8 @@ fn test_scan_stack_heuristic() {
         match addr {
             // Address before 0x10000100 (0x100000FC): return mock 32-bit BL instruction (h1: 0xF000, h2: 0xD800)
             0x100000FC => Some(0xD800F000),
-            // Address before 0x10000200 (0x100001FC): return mock 16-bit BX instruction (h2: 0x4720)
-            0x100001FC => Some(0x47200000),
+            // Address before 0x10000200 (0x100001FC): return mock 16-bit BLX instruction (h2: 0x4790)
+            0x100001FC => Some(0x47900000),
             // Other addresses: return dummy non-call instructions
             _ => Some(0x00000000),
         }
@@ -81,13 +81,13 @@ fn test_scan_stack_from_sp_integration() {
 
     let stack_data = [
         0x10000101, // Valid BL return PC
-        0x10000201, // Valid BX/BLX return PC
+        0x10000201, // Valid BLX return PC
     ];
 
     let mock_read_mem = |addr: u32| -> Option<u32> {
         match addr {
             0x100000FC => Some(0xD800F000),
-            0x100001FC => Some(0x47200000),
+            0x100001FC => Some(0x47900000),
             _ => Some(0),
         }
     };
@@ -133,7 +133,7 @@ fn test_extract_system_logs_helper() {
     log_string("Log 1");
     log_string("Log 2");
 
-    let mut extract_buf = [0u8; 1024];
+    let mut extract_buf = [0u8; firmware_lib::types::CRASH_LOG_BUFFER_SIZE];
     let len = critical_section::with(|cs| extract_system_logs(&cs, &mut extract_buf));
 
     let extracted_str = core::str::from_utf8(&extract_buf[..len]).unwrap();
@@ -196,6 +196,7 @@ fn test_write_crash_log_to_flash_rolling() {
             &mut cache,
             &mut scratch,
             b"crash data 1",
+            10,
         )
         .await
         .unwrap();
@@ -209,6 +210,7 @@ fn test_write_crash_log_to_flash_rolling() {
             &mut cache,
             &mut scratch,
             b"crash data 2",
+            10,
         )
         .await
         .unwrap();
@@ -314,4 +316,50 @@ fn test_generate_uuid_properties() {
 
     // Different inputs produce different UUIDs
     assert_ne!(uuid1, uuid3);
+}
+
+#[test]
+fn test_ring_buffer_wrapping_and_discarding() {
+    let _lock = BUFFER_MUTEX.lock().unwrap();
+    critical_section::with(|cs| {
+        let mut buffer = CRASH_LOG_BUFFER.borrow(cs).borrow_mut();
+        buffer.head = 0;
+        buffer.tail = 0;
+        buffer.wrapped = false;
+        buffer.buffer.fill(0);
+    });
+
+    // Write 11 frames of 100 bytes each.
+    // Each frame starts with a unique prefix.
+    for i in 0..11 {
+        let mut frame_data = [0u8; 100];
+        let header = format!("Frame {:02}", i);
+        frame_data[..header.len()].copy_from_slice(header.as_bytes());
+        // Fill the rest with dummy data
+        frame_data[header.len()..].fill(b'.');
+        critical_section::with(|cs| {
+            let mut buffer = CRASH_LOG_BUFFER.borrow(cs).borrow_mut();
+            buffer.write_frame(&frame_data);
+        });
+    }
+
+    // Extract the logs
+    let mut extract_buf = [0u8; 1500];
+    let len = critical_section::with(|cs| extract_system_logs(&cs, &mut extract_buf));
+    let extracted_slice = &extract_buf[..len];
+
+    // Total capacity is 1024 bytes.
+    // Each frame takes 102 bytes in LogBuffer.
+    // So 10 frames take 1020 bytes.
+    // Writing the 11th frame (total 1122 bytes) causes it to overwrite the 1st frame (index 0).
+    // Let's verify that Frame 00 is discarded, and the extracted data contains Frame 01 through Frame 10!
+    let extracted_str = String::from_utf8_lossy(extracted_slice);
+
+    assert!(!extracted_str.contains("Frame 00"));
+    assert!(extracted_str.contains("Frame 01"));
+    assert!(extracted_str.contains("Frame 02"));
+    assert!(extracted_str.contains("Frame 10"));
+
+    // Check that we extracted exactly 10 frames of 100 bytes each = 1000 bytes
+    assert_eq!(len, 1000);
 }

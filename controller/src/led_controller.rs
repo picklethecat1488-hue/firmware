@@ -96,6 +96,11 @@ where
     }
 
     /// Sets and executes the LED color pattern.
+    #[crate::tracing::instrument(
+        name = "led_controller::set_pattern",
+        level = "debug",
+        skip(pattern)
+    )]
     pub async fn set_pattern(&mut self, pattern: SystemLedState) -> Result<(), PeripheralError> {
         let use_fade = matches!(
             (self.current_state, pattern),

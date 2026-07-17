@@ -6,6 +6,8 @@ edition = "2021"
 [dependencies]
 model = { path = "../model" }
 firmware_lib = { path = "../lib" }
+tracing-defmt = { version = "0.1.2", optional = true }
+defmt = { version = "0.3", optional = true }
 peripherals = { path = "../peripherals" }
 embassy-sync = "0.6.2"
 sequential-storage = "3.0.0"
@@ -33,3 +35,11 @@ futures = "0.3"
 
 [target.'cfg(not(all(target_arch = "arm", target_os = "none")))'.dev-dependencies]
 embassy-executor = { version = "0.7.0", features = ["arch-std", "executor-thread", "task-arena-size-1048576"] }
+
+[features]
+tracing = [
+    "firmware_lib/tracing",
+    "peripherals/tracing",
+    "dep:tracing-defmt",
+    "dep:defmt",
+]
