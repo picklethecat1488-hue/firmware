@@ -13,6 +13,9 @@ pub const MODE_BLOCK_IF_FULL: usize = 2;
 /// Flag indicating non-blocking ring-buffer RTT write mode.
 pub const MODE_NON_BLOCKING_TRIM: usize = 1;
 
+/// Maximum duration in microseconds to block in write/flush mode before dropping logs (2 ms).
+const MAX_WRITE_TIMEOUT_US: u64 = 2000;
+
 /// A single RTT channel.
 #[repr(C)]
 pub struct Channel {
@@ -33,6 +36,7 @@ pub struct Channel {
 impl Channel {
     /// Writes all the bytes to the RTT channel.
     pub fn write_all(&self, mut bytes: &[u8]) {
+        let start = embassy_time::Instant::now();
         while !bytes.is_empty() {
             let consumed = if self.host_is_connected() {
                 self.blocking_write(bytes)
@@ -41,6 +45,9 @@ impl Channel {
             };
             if consumed != 0 {
                 bytes = &bytes[consumed..];
+            } else if start.elapsed().as_micros() > MAX_WRITE_TIMEOUT_US {
+                // Host is too slow or SWD buffer overflowed. Drop remaining bytes to prevent lockup.
+                break;
             }
         }
     }
@@ -112,7 +119,12 @@ impl Channel {
         }
         let read = || self.read.load(Ordering::Relaxed);
         let write = || self.write.load(Ordering::Relaxed);
-        while read() != write() {}
+        let start = embassy_time::Instant::now();
+        while read() != write() {
+            if start.elapsed().as_micros() > MAX_WRITE_TIMEOUT_US {
+                break;
+            }
+        }
     }
 
     fn host_is_connected(&self) -> bool {
