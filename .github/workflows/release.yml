@@ -6,41 +6,9 @@ on:
       - 'v*'
 
 jobs:
-  build-host-tools:
-    name: Build Host Tools for ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install System Dependencies (Linux)
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libudev-dev pkg-config
-
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
-
-      - name: Build and Package Host Tools
-        shell: bash
-        run: ./scripts/build_host_tools.sh --zip host-tools-${{ matrix.os }}.zip
-
-      - name: Upload Host Tools Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: host-tools-${{ matrix.os }}
-          path: host-tools-${{ matrix.os }}.zip
-
-  build-and-release:
-    needs: build-host-tools
+  validate:
+    name: Run Unit Tests and Lints
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -69,6 +37,72 @@ jobs:
       - name: Run Clippy Verification (Target MCU)
         run: |
           cargo clippy --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --lib --bins --target thumbv6m-none-eabi -- -D warnings | tee clippy_target_report.txt
+
+      - name: Upload Validation Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-reports
+          path: |
+            test_report.txt
+            clippy_host_report.txt
+            clippy_target_report.txt
+
+  build-host-tools:
+    name: Build Host Tools for ${{ matrix.os }}
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev pkg-config
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Build and Package Host Tools
+        shell: bash
+        run: ./scripts/build_host_tools.sh --zip host-tools-${{ matrix.os }}.zip
+
+      - name: Upload Host Tools Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-tools-${{ matrix.os }}
+          path: host-tools-${{ matrix.os }}.zip
+
+  build-and-release:
+    needs: [validate, build-host-tools]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies (Linux)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev pkg-config
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: thumbv6m-none-eabi
+          components: llvm-tools-preview
+
+      - name: Download Validation Reports
+        uses: actions/download-artifact@v4
+        with:
+          name: validation-reports
+          path: ./
 
       - name: Build and Organize Firmware
         run: ./scripts/build_firmware.sh --out-dir build

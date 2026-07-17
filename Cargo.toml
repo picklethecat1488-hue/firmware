@@ -30,6 +30,19 @@ panic = "abort"          # Abort on panic to remove stack unwinding tables
 strip = false            # Keep symbols and debug info for MemBrowse analysis
 debug = 2                # Generate full debug symbols even for release builds
 
+# Override release settings for host tools to avoid LNK4072 warning on Windows
+[profile.release.package.host_cli]
+debug = 0
+strip = true
+
+[profile.release.package.host_fs]
+debug = 0
+strip = true
+
+[profile.release.package.tool_common]
+debug = 0
+strip = true
+
 [profile.dev]
 opt-level = 1            # Enable light optimization to drastically reduce async/embassy code size
 debug = 2                # Full debug info (allows inspecting local variables in debugger)
