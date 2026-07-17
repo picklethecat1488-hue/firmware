@@ -107,23 +107,14 @@ build_mcu_release() {
     restructure_target_dir "target/thumbv6m-none-eabi/release"
 }
 
-build_host_tools() {
-    echo "Building Host Tools (Release)..."
-    for tool in "${TOOL_PACKAGES[@]}"; do
-        cargo build --release -p "$tool"
-    done
-}
-
 # Execute builds
 if [ "$BUILD_MODE" = "debug" ]; then
     build_mcu_debug
 elif [ "$BUILD_MODE" = "release" ]; then
     build_mcu_release
-    build_host_tools
 else
     build_mcu_debug
     build_mcu_release
-    build_host_tools
 fi
 
 # Organize outputs if output directory is specified
@@ -133,23 +124,6 @@ if [ -n "$ORGANIZE_DIR" ]; then
     # Clean/create target folders
     rm -rf "$ORGANIZE_DIR"
     
-    # Determine host platform name
-    HOST_OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-    case "$HOST_OS" in
-        darwin)
-            PLATFORM="macos"
-            ;;
-        linux)
-            PLATFORM="linux"
-            ;;
-        mingw*|msys*|cygwin*|windows)
-            PLATFORM="windows"
-            ;;
-        *)
-            PLATFORM="linux" # fallback
-            ;;
-    esac
-
     if [ "$BUILD_MODE" = "debug" ] || [ "$BUILD_MODE" = "both" ]; then
         mkdir -p "$ORGANIZE_DIR/debug/embedded"
         # Copy target MCU debug binaries
@@ -160,15 +134,5 @@ if [ -n "$ORGANIZE_DIR" ]; then
         mkdir -p "$ORGANIZE_DIR/release/embedded"
         # Copy target MCU release binaries
         cp -R target/thumbv6m-none-eabi/release/cat_detector "$ORGANIZE_DIR/release/embedded/"
-        
-        # Copy host tools
-        mkdir -p "$ORGANIZE_DIR/release/$PLATFORM"
-        for tool in "${TOOL_PACKAGES[@]}"; do
-            if [ -f "target/release/$tool" ]; then
-                cp "target/release/$tool" "$ORGANIZE_DIR/release/$PLATFORM/$tool"
-            elif [ -f "target/release/$tool.exe" ]; then
-                cp "target/release/$tool.exe" "$ORGANIZE_DIR/release/$PLATFORM/$tool.exe"
-            fi
-        done
     fi
 fi

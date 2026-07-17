@@ -87,6 +87,35 @@ jobs:
           name: nightly-python-test-reports
           path: python_test_report.xml
 
+  build-host-tools:
+    name: Build Host Tools for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install System Dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev pkg-config
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Build and Package Host Tools
+        shell: bash
+        run: ./scripts/build_host_tools.sh --zip host-tools-${{ matrix.os }}.zip
+
+      - name: Upload Host Tools Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-tools-${{ matrix.os }}
+          path: host-tools-${{ matrix.os }}.zip
+
   build:
     name: Build Hardware Firmware
     needs: [test, test-python]
