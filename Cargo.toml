@@ -19,6 +19,9 @@ default-members = [
     "projects/cat_detector",
 ]
 
+[workspace.package]
+license = "GPL-3.0-only"
+
 [profile.release]
 opt-level = "z"          # Optimize for size
 lto = true               # Enable Link-Time Optimization

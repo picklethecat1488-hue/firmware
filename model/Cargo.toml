@@ -2,6 +2,7 @@
 name = "model"
 version = "0.1.0"
 edition = "2021"
+license.workspace = true
 
 [dependencies]
 minicbor = { version = "0.20.0", features = ["derive"] }
