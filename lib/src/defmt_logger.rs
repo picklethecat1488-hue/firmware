@@ -181,6 +181,10 @@ pub struct RttProtocol<W: RttWriter> {
     pub cs_restore: core::cell::UnsafeCell<critical_section::RestoreState>,
     /// Underlying defmt frame encoder.
     pub encoder: core::cell::UnsafeCell<defmt::Encoder>,
+    /// Buffer for accumulating the current frame bytes.
+    pub frame_buf: core::cell::UnsafeCell<[u8; 256]>,
+    /// Length of currently buffered frame bytes.
+    pub frame_len: core::cell::Cell<usize>,
 }
 
 unsafe impl<W: RttWriter> Sync for RttProtocol<W> {}
@@ -193,6 +197,8 @@ impl<W: RttWriter> RttProtocol<W> {
             taken: core::sync::atomic::AtomicBool::new(false),
             cs_restore: core::cell::UnsafeCell::new(critical_section::RestoreState::invalid()),
             encoder: core::cell::UnsafeCell::new(defmt::Encoder::new()),
+            frame_buf: core::cell::UnsafeCell::new([0u8; 256]),
+            frame_len: core::cell::Cell::new(0),
         }
     }
 
@@ -206,6 +212,7 @@ impl<W: RttWriter> RttProtocol<W> {
             .store(true, core::sync::atomic::Ordering::Relaxed);
         unsafe {
             self.cs_restore.get().write(restore);
+            self.frame_len.set(0);
             let encoder: &mut defmt::Encoder = &mut *self.encoder.get();
             encoder.start_frame(|b| {
                 self.write_encoded(b);
@@ -244,6 +251,17 @@ impl<W: RttWriter> RttProtocol<W> {
         encoder.end_frame(|b| {
             self.write_encoded(b);
         });
+
+        // Write the completed contiguous frame to CRASH_LOG_BUFFER
+        let cs = critical_section::CriticalSection::new();
+        let mut buffer = crate::panic_handler::CRASH_LOG_BUFFER
+            .borrow(cs)
+            .borrow_mut();
+        let f_len = self.frame_len.get();
+        let f_ptr = self.frame_buf.get() as *const u8;
+        let f_slice = core::slice::from_raw_parts(f_ptr, f_len);
+        buffer.write_frame(f_slice);
+
         let restore = self.cs_restore.get().read();
         self.taken
             .store(false, core::sync::atomic::Ordering::Relaxed);
@@ -251,11 +269,19 @@ impl<W: RttWriter> RttProtocol<W> {
     }
 
     fn write_encoded(&self, bytes: &[u8]) {
+        // Write to RTT immediately
         self.writer.write_all(bytes);
-        let cs = unsafe { critical_section::CriticalSection::new() };
-        let mut buffer = crate::panic_handler::CRASH_LOG_BUFFER
-            .borrow(cs)
-            .borrow_mut();
-        buffer.write_bytes(bytes);
+
+        // Accumulate in frame_buf for circular log writing
+        let len = self.frame_len.get();
+        let remaining = 256 - len;
+        let to_copy = bytes.len().min(remaining);
+        if to_copy > 0 {
+            unsafe {
+                let buf_ptr = self.frame_buf.get() as *mut u8;
+                core::ptr::copy_nonoverlapping(bytes.as_ptr(), buf_ptr.add(len), to_copy);
+            }
+            self.frame_len.set(len + to_copy);
+        }
     }
 }

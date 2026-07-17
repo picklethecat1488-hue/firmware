@@ -172,10 +172,10 @@ where
                 let h2 = (instr >> 16) as u16;
                 // 32-bit Thumb BL/BLX: h1 starts with 11110 (0xF000..0xF7FF), h2 starts with 11011 or 11111 (BL) or 11001 or 11101 (BLX)
                 let is_bl_blx_32 = (h1 & 0xF800 == 0xF000) && (h2 & 0xC800 == 0xC800);
-                // 16-bit Thumb BX/BLX: h2 matches 0x47xx pattern (0x4700..0x47FF)
-                let is_bx_blx_16 = h2 & 0xFF00 == 0x4700;
+                // 16-bit Thumb BLX: h2 matches 0x4780..0x47FF (BLX <reg>)
+                let is_blx_16 = (h2 & 0xFF80) == 0x4780;
 
-                if is_bl_blx_32 || is_bx_blx_16 {
+                if is_bl_blx_32 || is_blx_16 {
                     pcs[pc_count] = ret_addr;
                     pc_count += 1;
                 }
@@ -210,23 +210,31 @@ where
 /// Extracts circular system logs from the CRASH_LOG_BUFFER into the provided buffer.
 pub fn extract_system_logs(cs: &critical_section::CriticalSection, log_buf: &mut [u8]) -> usize {
     let buffer = CRASH_LOG_BUFFER.borrow(*cs).borrow();
-    let mut len = 0;
-    if buffer.wrapped {
-        let part1 = &buffer.buffer[buffer.head..];
-        let len1 = part1.len();
-        log_buf[..len1].copy_from_slice(part1);
-        len += len1;
-        let part2 = &buffer.buffer[..buffer.head];
-        let len2 = part2.len();
-        log_buf[len..len + len2].copy_from_slice(part2);
-        len += len2;
-    } else {
-        let part = &buffer.buffer[..buffer.head];
-        let len1 = part.len();
-        log_buf[..len1].copy_from_slice(part);
-        len += len1;
+    let mut write_idx = 0;
+    let mut read_idx = buffer.tail;
+
+    while read_idx != buffer.head {
+        // Read 2-byte length prefix
+        let l_high = buffer.buffer[read_idx];
+        let l_low = buffer.buffer[(read_idx + 1) % crate::types::CRASH_LOG_BUFFER_SIZE];
+        let len = ((l_high as usize) << 8) | (l_low as usize);
+
+        // Advance read_idx past length prefix
+        read_idx = (read_idx + 2) % crate::types::CRASH_LOG_BUFFER_SIZE;
+
+        // Copy frame data
+        for i in 0..len {
+            if write_idx < log_buf.len() {
+                log_buf[write_idx] =
+                    buffer.buffer[(read_idx + i) % crate::types::CRASH_LOG_BUFFER_SIZE];
+                write_idx += 1;
+            }
+        }
+
+        // Advance read_idx past frame data
+        read_idx = (read_idx + len) % crate::types::CRASH_LOG_BUFFER_SIZE;
     }
-    len
+    write_idx
 }
 
 /// Writes the serialized crash dump, increments the rolling index, and updates the directory listing.

@@ -1,12 +1,20 @@
 use core::fmt::Write;
 use minicbor::{Decode, Encode};
 
+/// Stack scan limit in words (8 KB stack coverage)
+pub const STACK_SCAN_LIMIT: u32 = 2048;
+
+/// Capacity of the global circular crash log buffer in bytes.
+pub const CRASH_LOG_BUFFER_SIZE: usize = 1024;
+
 /// Global circular log buffer for crash logging.
 pub struct LogBuffer {
     /// Internal byte buffer.
-    pub buffer: [u8; 1024],
+    pub buffer: [u8; CRASH_LOG_BUFFER_SIZE],
     /// Current write head.
     pub head: usize,
+    /// Index of the oldest valid frame start.
+    pub tail: usize,
     /// Whether the buffer has wrapped around.
     pub wrapped: bool,
 }
@@ -15,21 +23,54 @@ impl LogBuffer {
     /// Creates a new empty LogBuffer.
     pub const fn new() -> Self {
         Self {
-            buffer: [0u8; 1024],
+            buffer: [0u8; CRASH_LOG_BUFFER_SIZE],
             head: 0,
+            tail: 0,
             wrapped: false,
         }
     }
 
-    /// Write raw bytes to the circular log buffer.
-    pub fn write_bytes(&mut self, bytes: &[u8]) {
-        for &b in bytes {
+    /// Writes a complete frame of bytes to the circular log buffer.
+    /// Each frame is stored with a 2-byte length prefix to allow tracking frame boundaries.
+    pub fn write_frame(&mut self, frame: &[u8]) {
+        let frame_len = frame.len();
+        if frame_len > 1000 {
+            // Frame is too large to fit in the buffer, ignore it
+            return;
+        }
+        let total_bytes = 2 + frame_len;
+
+        if self.wrapped || self.head + total_bytes > CRASH_LOG_BUFFER_SIZE {
+            self.wrapped = true;
+        }
+
+        // If tail is inside the range of bytes we are about to overwrite, advance it
+        while self.wrapped && self.circular_distance(self.head, self.tail) < total_bytes {
+            // Read length prefix at tail
+            let l_high = self.buffer[self.tail];
+            let l_low = self.buffer[(self.tail + 1) % CRASH_LOG_BUFFER_SIZE];
+            let len = ((l_high as usize) << 8) | (l_low as usize);
+            // Advance tail past this frame
+            self.tail = (self.tail + 2 + len) % CRASH_LOG_BUFFER_SIZE;
+        }
+
+        // Write 2-byte length prefix
+        self.buffer[self.head] = (frame_len >> 8) as u8;
+        self.buffer[(self.head + 1) % CRASH_LOG_BUFFER_SIZE] = (frame_len & 0xFF) as u8;
+        self.head = (self.head + 2) % CRASH_LOG_BUFFER_SIZE;
+
+        // Write frame data
+        for &b in frame {
             self.buffer[self.head] = b;
-            self.head += 1;
-            if self.head >= 1024 {
-                self.head = 0;
-                self.wrapped = true;
-            }
+            self.head = (self.head + 1) % CRASH_LOG_BUFFER_SIZE;
+        }
+    }
+
+    fn circular_distance(&self, from: usize, to: usize) -> usize {
+        if to >= from {
+            to - from
+        } else {
+            CRASH_LOG_BUFFER_SIZE - from + to
         }
     }
 }
@@ -42,15 +83,7 @@ impl Default for LogBuffer {
 
 impl Write for LogBuffer {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        let bytes = s.as_bytes();
-        for &b in bytes {
-            self.buffer[self.head] = b;
-            self.head += 1;
-            if self.head >= 1024 {
-                self.head = 0;
-                self.wrapped = true;
-            }
-        }
+        self.write_frame(s.as_bytes());
         Ok(())
     }
 }
@@ -161,9 +194,6 @@ pub struct CrashDump<'a> {
     #[n(8)]
     pub uuid: [u8; 16],
 }
-
-/// Stack scan limit in words (8 KB stack coverage)
-pub const STACK_SCAN_LIMIT: u32 = 2048;
 
 /// Project metadata struct embedded in the ELF to allow autodetecting chip/partition layout.
 #[derive(Debug, Clone, Encode, Decode)]
