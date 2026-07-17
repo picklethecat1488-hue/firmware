@@ -82,6 +82,15 @@ if [ -n "$ZIP_FILE" ]; then
             cp "target/release/$tool.exe" "$STAGE_DIR/"
         fi
     done
-    (cd "$STAGE_DIR" && zip -r -q "$ABS_ZIP_FILE" .)
+    PYTHON_BIN=""
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON_BIN="python3"
+    elif command -v python >/dev/null 2>&1; then
+        PYTHON_BIN="python"
+    else
+        echo "Error: Python was not found to execute scripts/zip_folder.py!" >&2
+        exit 1
+    fi
+    "$PYTHON_BIN" "$WORKSPACE_ROOT/scripts/zip_folder.py" "$STAGE_DIR" "$ABS_ZIP_FILE"
     rm -rf "$STAGE_DIR"
 fi
