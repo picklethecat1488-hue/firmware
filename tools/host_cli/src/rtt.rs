@@ -601,7 +601,12 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                 match dec.decode() {
                                     Ok(frame) => {
                                         let plain_line = frame.display(false).to_string();
-                                        match handle_tracing_line(&plain_line) {
+                                        let module_path = locations
+                                            .as_ref()
+                                            .and_then(|locs| locs.get(&frame.index()))
+                                            .map(|loc| loc.module.as_str());
+
+                                        match handle_tracing_line(&plain_line, module_path) {
                                             Ok(true) => continue,
                                             Err(e) => {
                                                 eprintln!("Error parsing trace line: {}", e);

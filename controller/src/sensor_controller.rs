@@ -330,6 +330,7 @@ where
     }
 
     /// Ticks the sensor control loop, updating proximity distance.
+    #[tracing::instrument(name = "sensor_controller::update", level = "debug")]
     pub fn update(&mut self) -> Result<Reader::Data, Reader::Error> {
         let data = Reader::read_data(self.state_manager.sensor_mut(), &self.context)?;
 
@@ -341,6 +342,7 @@ where
     }
 
     /// Handles a SensorCommand.
+    #[tracing::instrument(name = "sensor_controller::handle_command", level = "debug", skip(cmd))]
     pub fn handle_command(&mut self, cmd: SensorCommand) {
         match cmd {
             SensorCommand::ReadSensors => {
@@ -356,8 +358,6 @@ where
     }
 
     /// Runs the controller's main run loop, executing periodic telemetry updates.
-    #[allow(unreachable_code)]
-    #[tracing::instrument(level = "debug", skip(command_rx))]
     pub async fn run(
         mut self,
         command_rx: embassy_sync::channel::Receiver<'static, M, SensorCommand, 4>,

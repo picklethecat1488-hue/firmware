@@ -139,6 +139,11 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     }
 
     /// Stores/overwrites a file with the given name (key) and contents (value).
+    #[crate::tracing::instrument(
+        name = "filesystem_controller::write_file",
+        level = "debug",
+        skip(content)
+    )]
     pub async fn write_file(&mut self, name: &str, content: &[u8]) -> Result<(), ()> {
         let is_telemetry = name.starts_with("telemetry");
         if is_telemetry {
@@ -201,6 +206,11 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     }
 
     /// Fetches a file's content.
+    #[crate::tracing::instrument(
+        name = "filesystem_controller::read_file",
+        level = "debug",
+        skip(out_buf)
+    )]
     pub async fn read_file<'a>(
         &mut self,
         name: &str,
@@ -244,6 +254,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     }
 
     /// Removes a file from storage.
+    #[crate::tracing::instrument(name = "filesystem_controller::remove_file", level = "debug")]
     pub async fn remove_file(&mut self, name: &str) -> Result<(), ()> {
         let mut cache = sequential_storage::cache::NoCache::new();
         let key = string_to_key(name);
@@ -305,6 +316,10 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
 
     /// Verifies the filesystem health by trying to read the directory index.
     /// If it returns a Corrupted or InvalidValue error, it formats/erases the entire partition.
+    #[crate::tracing::instrument(
+        name = "filesystem_controller::verify_and_repair",
+        level = "debug"
+    )]
     pub async fn verify_and_repair(&mut self) -> Result<(), ()> {
         let mut cache = sequential_storage::cache::NoCache::new();
         let key = string_to_key(".dir");

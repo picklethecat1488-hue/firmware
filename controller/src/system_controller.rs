@@ -240,6 +240,7 @@ impl<
     }
 
     /// Sets the current system status.
+    #[tracing::instrument(level = "trace", skip(status))]
     pub fn set_status(
         &mut self,
         status: SystemStatus,
@@ -259,6 +260,7 @@ impl<
     }
 
     /// Updates the battery status and processes any resulting state transition actions.
+    #[tracing::instrument(level = "trace", skip(charger_state))]
     pub fn update_battery_status(
         &mut self,
         state_of_charge: u8,
@@ -281,6 +283,7 @@ impl<
     }
 
     /// Handles an incoming SystemCommand.
+    #[tracing::instrument(level = "trace", skip(cmd))]
     pub fn handle_command(
         &mut self,
         cmd: SystemCommand,
@@ -409,6 +412,7 @@ impl<
     }
 
     /// Handles updates from the thermal controller.
+    #[tracing::instrument(level = "trace", skip(action))]
     pub fn handle_thermal_action(
         &mut self,
         action: ThermalUpdateAction,
@@ -504,8 +508,6 @@ impl<
     }
 
     /// Main execution loop.
-    #[allow(unreachable_code)]
-    #[tracing::instrument(level = "debug", skip(command_rx, gesture_rx, thermal_rx))]
     pub async fn run<const CMD_CAP: usize>(
         mut self,
         command_rx: embassy_sync::channel::Receiver<'static, MutexRaw, SystemCommand, CMD_CAP>,

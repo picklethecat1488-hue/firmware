@@ -98,6 +98,11 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
     }
 
     /// Updates the thermal status by locking and reading the peripheral.
+    #[tracing::instrument(
+        name = "thermal_controller::update",
+        level = "debug",
+        skip(telemetry_client)
+    )]
     pub async fn update<TC: model::telemetry::TelemetryClient<(i32, ThermalState)>>(
         &mut self,
         telemetry_client: Option<&mut TC>,
@@ -158,8 +163,6 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
     }
 
     /// Starts the controller's main infinite run loop, processing commands.
-    #[allow(unreachable_code)]
-    #[tracing::instrument(level = "debug", skip(command_rx, telemetry_tx))]
     pub async fn run(
         mut self,
         command_rx: ThermalReceiver<M, 4>,

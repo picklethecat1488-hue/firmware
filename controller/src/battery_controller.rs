@@ -151,6 +151,11 @@ where
     }
 
     /// Updates the battery status by locking and reading the peripheral.
+    #[tracing::instrument(
+        name = "battery_controller::update",
+        level = "debug",
+        skip(telemetry_client)
+    )]
     pub async fn update(
         &mut self,
         telemetry_client: Option<
@@ -250,8 +255,6 @@ where
     }
 
     /// Starts the controller's main infinite run loop, processing commands.
-    #[allow(unreachable_code)]
-    #[tracing::instrument(level = "debug", skip(command_rx, telemetry_tx))]
     pub async fn run(
         mut self,
         command_rx: BatteryReceiver<M, 4>,

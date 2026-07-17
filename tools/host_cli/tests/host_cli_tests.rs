@@ -301,21 +301,21 @@ fn test_handle_tracing_line_parsing() {
     let subscriber = tracing_subscriber::registry().with(layer);
     let _guard = set_default(subscriber);
 
-    // Test span_enter with ctx prefix
+    // Test span_enter with ctx prefix and brackets containing colons
     assert_eq!(
-        host_cli::tracing::handle_tracing_line("ctx=000102030405060708090a0b0c0d0e0f:0001020304050607 parent=0000000000000000 span_enter: sensor_task"),
+        host_cli::tracing::handle_tracing_line("33.986126 TRACE [peripherals::l9110s::{impl#2}::tick] ctx=000102030405060708090a0b0c0d0e0f:0001020304050607 parent=0000000000000000 span_enter: sensor_task", None),
         Ok(true)
     );
 
-    // Test span_exit without ctx prefix (raw hex id)
+    // Test span_exit without ctx prefix (raw hex id) and brackets containing colons
     assert_eq!(
-        host_cli::tracing::handle_tracing_line("000102030405060708090a0b0c0d0e0f:0001020304050607 parent=0000000000000000 span_exit: sensor_task"),
+        host_cli::tracing::handle_tracing_line("33.986126 TRACE [peripherals::l9110s::{impl#2}::tick] 000102030405060708090a0b0c0d0e0f:0001020304050607 parent=0000000000000000 span_exit: sensor_task", None),
         Ok(true)
     );
 
     // Test normal non-tracing line
     assert_eq!(
-        host_cli::tracing::handle_tracing_line("some normal log message"),
+        host_cli::tracing::handle_tracing_line("some normal log message", None),
         Ok(false)
     );
 
@@ -328,4 +328,64 @@ fn test_handle_tracing_line_parsing() {
 
     assert_eq!(recorded[1].0, "device_span_exit");
     assert_eq!(recorded[1].2, "0001020304050607");
+}
+
+#[test]
+fn test_post_process_run_span_renaming() {
+    use std::io::Write;
+    let temp_dir = std::env::temp_dir();
+    let file_path = temp_dir.join("test_run_rename.json");
+    let path = file_path.to_str().unwrap();
+
+    let mock_trace = r#"[
+        {"cat": "device_span_enter", "ts": 100, "pid": 42, "tid": 1, "args": {"span_id": "1", "span_name": "run", "module": "controller::system_controller"}},
+        {"cat": "device_span_exit", "ts": 120, "pid": 42, "tid": 1, "args": {"span_id": "1"}}
+    ]"#;
+
+    {
+        let mut file = std::fs::File::create(path).unwrap();
+        file.write_all(mock_trace.as_bytes()).unwrap();
+    }
+
+    // Run post processor
+    host_cli::tracing::post_process_trace(path).unwrap();
+
+    // Read and parse output
+    let content = std::fs::read_to_string(path).unwrap();
+    let events: Vec<serde_json::Value> = serde_json::from_str(&content).unwrap();
+
+    // Clean up temp file
+    let _ = std::fs::remove_file(path);
+
+    // We expect:
+    // - 1 thread metadata event defining "system_controller"
+    // - 1 "B" event named "system_controller"
+    // - 1 "E" event named "system_controller"
+    assert_eq!(events.len(), 3);
+
+    // Check thread metadata
+    assert_eq!(
+        events[0].get("name").and_then(|n| n.as_str()),
+        Some("thread_name")
+    );
+    assert_eq!(
+        events[0]
+            .get("args")
+            .and_then(|a| a.get("name"))
+            .and_then(|n| n.as_str()),
+        Some("system_controller")
+    );
+
+    // Check "B" and "E" events
+    assert_eq!(events[1].get("ph").and_then(|p| p.as_str()), Some("B"));
+    assert_eq!(
+        events[1].get("name").and_then(|n| n.as_str()),
+        Some("system_controller")
+    );
+
+    assert_eq!(events[2].get("ph").and_then(|p| p.as_str()), Some("E"));
+    assert_eq!(
+        events[2].get("name").and_then(|n| n.as_str()),
+        Some("system_controller")
+    );
 }

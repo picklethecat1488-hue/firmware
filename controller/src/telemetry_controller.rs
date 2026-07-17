@@ -143,6 +143,7 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
     }
 
     /// Initializes the telemetry buffer from flash storage, or resets it if invalid/missing.
+    #[crate::tracing::instrument(name = "telemetry_controller::init", level = "debug")]
     pub async fn init(&mut self) -> Result<(), ()> {
         let mut temp_buf = [0u8; 12];
         let (len, exists) = match self.fs.read_file("telemetry.rrd", &mut temp_buf).await {
@@ -179,6 +180,11 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
     }
 
     /// Pushes a telemetry record into the ring buffer and persists it to flash.
+    #[crate::tracing::instrument(
+        name = "telemetry_controller::push_record",
+        level = "debug",
+        skip(record)
+    )]
     pub async fn push_record(&mut self, record: TelemetryRecord) -> Result<(), ()> {
         let timestamp_us = get_timestamp_us();
 
@@ -186,7 +192,7 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
         let len = serialized[0] as usize;
         if len > 0 && len <= 19 {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::debug!("Writing Telemetry: {=[u8]:cbor}", &serialized[1..1 + len]);
+            defmt::trace!("Writing Telemetry: len={}", len);
         }
 
         // Determine which chunk file to write to
@@ -247,6 +253,11 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
     }
 
     /// Reads all records from the current telemetry state in chronological order.
+    #[crate::tracing::instrument(
+        name = "telemetry_controller::read_records",
+        level = "debug",
+        skip(callback)
+    )]
     pub async fn read_records(&mut self, mut callback: impl FnMut(u64, TelemetryRecord)) -> bool {
         let count = self.count as usize;
         let next_idx = self.next_idx as usize;
