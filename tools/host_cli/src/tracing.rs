@@ -604,7 +604,7 @@ impl SpanExitProcessor {
         obj: &serde_json::Map<String, serde_json::Value>,
         final_event: &mut serde_json::Value,
         processed_events: &mut Vec<serde_json::Value>,
-    ) {
+    ) -> bool {
         let span_id = obj.get("span_id").and_then(|s| s.as_str()).unwrap_or("");
         let target_name = obj
             .get("target_name")
@@ -630,6 +630,21 @@ impl SpanExitProcessor {
             }
         }
 
+        let mut keep = true;
+        if !task_context.is_empty() {
+            if let Some(active) = context.active_spans_map.get(&task_context) {
+                if !active.iter().any(|x| x == &resolved_span_id) {
+                    keep = false;
+                }
+            } else {
+                keep = false;
+            }
+        }
+
+        if !keep {
+            return false;
+        }
+
         let span_name = context.get_name(&resolved_span_id).unwrap_or_else(|| {
             if !target_name.is_empty() {
                 target_name.to_string()
@@ -641,9 +656,7 @@ impl SpanExitProcessor {
         let ts = obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0));
 
         // Cooperative Context Switch
-        if !task_context.is_empty() {
-            context.switch_context(&task_context, &ts, processed_events);
-        }
+        context.switch_context(&task_context, &ts, processed_events);
 
         final_event["cat"] = serde_json::Value::from("device");
         final_event["ph"] = serde_json::Value::from("E");
@@ -652,6 +665,7 @@ impl SpanExitProcessor {
             final_event["tid"] = serde_json::Value::from(t_tid);
         }
 
+        // Pop the span and any children that exited implicitly from active stack
         if !task_context.is_empty() {
             if let Some(mut active) = context.active_spans_map.remove(&task_context) {
                 if let Some(pos) = active.iter().position(|x| x == &resolved_span_id) {
@@ -678,11 +692,14 @@ impl SpanExitProcessor {
                     }
                     active.pop();
                 }
-                context.active_spans_map.insert(task_context, active);
+                context
+                    .active_spans_map
+                    .insert(task_context.clone(), active);
             }
         }
 
         context.global_last_active_span = context.get_parent_id(&resolved_span_id);
+        true
     }
 }
 
@@ -728,17 +745,22 @@ impl TraceStage for SpanProcessor {
                         );
                     }
                     TraceCategory::SpanExit => {
-                        self.exit_processor.process(
+                        let keep = self.exit_processor.process(
                             &mut self.context,
                             obj,
                             &mut final_event,
                             &mut processed_events,
                         );
+                        if !keep {
+                            continue;
+                        }
                     }
                     TraceCategory::Log => {
                         let msg = obj.get("msg").and_then(|m| m.as_str()).unwrap_or("");
-                        final_event["name"] =
-                            serde_json::Value::from(if msg.is_empty() { "log" } else { msg });
+                        if msg.is_empty() {
+                            continue;
+                        }
+                        final_event["name"] = serde_json::Value::from(msg);
                     }
                     TraceCategory::Other => {}
                 }
