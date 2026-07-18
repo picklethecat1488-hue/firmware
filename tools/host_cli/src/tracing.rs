@@ -32,21 +32,6 @@ fn is_root_or_empty_id(id: &str) -> bool {
     id.is_empty() || id == "0000000000000000" || id == "0"
 }
 
-/// Helper to determine if a module segment represents a compiler/executor target wrapper.
-fn is_target_segment(s: &str) -> bool {
-    s == "task"
-        || s == "run"
-        || s.contains("{impl#")
-        || s.contains("__task")
-        || s.contains("async_fn")
-}
-
-/// Helper to determine if a module segment represents a valid user-defined task/run root name.
-/// This is the logical inverse of `is_target_segment`.
-fn is_root_segment(s: &str) -> bool {
-    !is_target_segment(s)
-}
-
 /// Helper to determine if an active span name (which might have namespace prefixes and parameters)
 /// matches the exiting target name.
 fn is_span_name_match(active_name: &str, exit_target_name: &str) -> bool {
@@ -275,14 +260,24 @@ impl TraceStage for TelemetryDecoder {
 
 /// Context data containing all tracked spans state.
 pub struct SpanContext {
+    /// Maps span ID to the cleaned name of the span.
     pub name_map: std::collections::HashMap<String, String>,
+    /// Maps span ID to its parent span ID.
     pub parent_map: std::collections::HashMap<String, String>,
+    /// Maps span ID to the Rust module namespace path where it was defined.
     pub module_map: std::collections::HashMap<String, String>,
+    /// Maps span ID to its start timestamp value.
     pub start_time_map: std::collections::HashMap<String, serde_json::Value>,
+    /// Maps span ID to its telemetry process identifier.
     pub pid_map: std::collections::HashMap<String, i64>,
+    /// Maps span ID to its telemetry thread identifier.
     pub tid_map: std::collections::HashMap<String, i64>,
-    pub global_active_spans: Vec<String>,
-    pub generic_task_spans: std::collections::HashSet<String>,
+    /// Maps task context name to its stack of active span IDs.
+    pub active_spans_map: std::collections::HashMap<String, Vec<String>>,
+    /// Maps span ID to its parent task context name.
+    pub span_to_task: std::collections::HashMap<String, String>,
+    /// Tracks the globally most recently active span ID for parent fallback.
+    pub global_last_active_span: Option<String>,
 }
 
 impl SpanContext {
@@ -295,8 +290,9 @@ impl SpanContext {
             start_time_map: std::collections::HashMap::new(),
             pid_map: std::collections::HashMap::new(),
             tid_map: std::collections::HashMap::new(),
-            global_active_spans: Vec::new(),
-            generic_task_spans: std::collections::HashSet::new(),
+            active_spans_map: std::collections::HashMap::new(),
+            span_to_task: std::collections::HashMap::new(),
+            global_last_active_span: None,
         }
     }
 }
@@ -312,7 +308,7 @@ impl SpanEnterProcessor {
         obj: &serde_json::Map<String, serde_json::Value>,
         final_event: &mut serde_json::Value,
         processed_events: &mut Vec<serde_json::Value>,
-    ) -> bool {
+    ) {
         let span_id = obj.get("span_id").and_then(|s| s.as_str()).unwrap_or("");
         let mut parent_id = obj
             .get("parent_id")
@@ -322,23 +318,16 @@ impl SpanEnterProcessor {
         let module = obj.get("module").and_then(|s| s.as_str()).unwrap_or("");
 
         if parent_id.is_empty() && obj.get("parent_id").is_none() {
-            if let Some(active_id) = context.global_active_spans.last() {
+            if let Some(active_id) = &context.global_last_active_span {
                 parent_id = active_id.clone();
             }
         }
 
-        let mut span_name = obj
+        let span_name = obj
             .get("span_name")
             .and_then(|s| s.as_str())
             .unwrap_or("")
             .to_string();
-
-        if (span_name == "run" || span_name == "task") && !module.is_empty() {
-            let segments: Vec<&str> = module.split("::").collect();
-            if let Some(target_segment) = segments.iter().rev().find(|&&s| is_root_segment(s)) {
-                span_name = target_segment.to_string();
-            }
-        }
 
         let event_pid = obj.get("pid").and_then(|p| p.as_i64()).unwrap_or(1);
         let event_tid = obj.get("tid").and_then(|t| t.as_i64()).unwrap_or(1);
@@ -361,13 +350,26 @@ impl SpanEnterProcessor {
         context.pid_map.insert(span_id.to_string(), event_pid);
         context.tid_map.insert(span_id.to_string(), event_tid);
 
+        // Determine the task context for this new span
+        let task_context = if !is_root_or_empty_id(&parent_id) {
+            context
+                .span_to_task
+                .get(&parent_id)
+                .cloned()
+                .unwrap_or_else(|| span_name.clone())
+        } else {
+            span_name.clone()
+        };
+        context
+            .span_to_task
+            .insert(span_id.to_string(), task_context.clone());
+
+        // Get the active spans stack for this task context
+        let active = context.active_spans_map.entry(task_context).or_default();
+
         let is_root = is_root_or_empty_id(&parent_id);
         if is_root {
-            while let Some(exited_id) = context.global_active_spans.pop() {
-                if context.generic_task_spans.contains(&exited_id) {
-                    continue;
-                }
-
+            while let Some(exited_id) = active.pop() {
                 let name = context
                     .name_map
                     .get(&exited_id)
@@ -405,19 +407,12 @@ impl SpanEnterProcessor {
             }
         }
 
-        context.global_active_spans.push(span_id.to_string());
-
-        let mut keep_event = true;
-        if span_name == "run" || span_name == "task" {
-            context.generic_task_spans.insert(span_id.to_string());
-            keep_event = false;
-        }
+        active.push(span_id.to_string());
+        context.global_last_active_span = Some(span_id.to_string());
 
         final_event["cat"] = serde_json::Value::from("device");
         final_event["ph"] = serde_json::Value::from("B");
         final_event["name"] = serde_json::Value::from(span_name);
-
-        keep_event
     }
 }
 
@@ -432,7 +427,7 @@ impl SpanExitProcessor {
         obj: &serde_json::Map<String, serde_json::Value>,
         final_event: &mut serde_json::Value,
         processed_events: &mut Vec<serde_json::Value>,
-    ) -> bool {
+    ) {
         let span_id = obj.get("span_id").and_then(|s| s.as_str()).unwrap_or("");
         let target_name = obj
             .get("target_name")
@@ -440,16 +435,25 @@ impl SpanExitProcessor {
             .unwrap_or("");
 
         let mut resolved_span_id = span_id.to_string();
+        let mut task_context = context
+            .span_to_task
+            .get(&resolved_span_id)
+            .cloned()
+            .unwrap_or_default();
 
-        if !target_name.is_empty() {
-            if let Some(pos) = context.global_active_spans.iter().rposition(|id| {
-                if let Some(n) = context.name_map.get(id) {
-                    is_span_name_match(n, &target_name)
-                } else {
-                    false
+        if task_context.is_empty() && !target_name.is_empty() {
+            for (t_name, active) in &context.active_spans_map {
+                if let Some(pos) = active.iter().rposition(|id| {
+                    if let Some(n) = context.name_map.get(id) {
+                        is_span_name_match(n, &target_name)
+                    } else {
+                        false
+                    }
+                }) {
+                    resolved_span_id = active[pos].clone();
+                    task_context = t_name.clone();
+                    break;
                 }
-            }) {
-                resolved_span_id = context.global_active_spans[pos].clone();
             }
         }
 
@@ -465,58 +469,48 @@ impl SpanExitProcessor {
                 }
             });
 
-        let is_generic = context.generic_task_spans.remove(&resolved_span_id);
-        let mut keep_event = true;
-        if is_generic {
-            keep_event = false;
-        }
-
         let ts = obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0));
         final_event["cat"] = serde_json::Value::from("device");
         final_event["ph"] = serde_json::Value::from("E");
         final_event["name"] = serde_json::Value::from(span_name);
 
-        if let Some(pos) = context
-            .global_active_spans
-            .iter()
-            .position(|x| x == &resolved_span_id)
-        {
-            while context.global_active_spans.len() > pos + 1 {
-                if let Some(exited_id) = context.global_active_spans.pop() {
-                    if context.generic_task_spans.contains(&exited_id) {
-                        continue;
-                    }
-
-                    let name = context
-                        .name_map
-                        .get(&exited_id)
-                        .cloned()
-                        .unwrap_or_else(|| "unknown".to_string());
-                    let start_ts = context
-                        .start_time_map
-                        .get(&exited_id)
-                        .cloned()
-                        .unwrap_or_else(|| ts.clone());
-                    let exit_pid = context.pid_map.get(&exited_id).cloned().unwrap_or(1);
-                    let exit_tid = context.tid_map.get(&exited_id).cloned().unwrap_or(1);
-                    let implicit_exit = serde_json::json!({
-                        "cat": "device",
-                        "ph": "E",
-                        "name": name,
-                        "ts": start_ts,
-                        "pid": exit_pid,
-                        "tid": exit_tid,
-                        "args": {
-                            "implicit": true
+        if !task_context.is_empty() {
+            if let Some(active) = context.active_spans_map.get_mut(&task_context) {
+                if let Some(pos) = active.iter().position(|x| x == &resolved_span_id) {
+                    while active.len() > pos + 1 {
+                        if let Some(exited_id) = active.pop() {
+                            let name = context
+                                .name_map
+                                .get(&exited_id)
+                                .cloned()
+                                .unwrap_or_else(|| "unknown".to_string());
+                            let start_ts = context
+                                .start_time_map
+                                .get(&exited_id)
+                                .cloned()
+                                .unwrap_or_else(|| ts.clone());
+                            let exit_pid = context.pid_map.get(&exited_id).cloned().unwrap_or(1);
+                            let exit_tid = context.tid_map.get(&exited_id).cloned().unwrap_or(1);
+                            let implicit_exit = serde_json::json!({
+                                "cat": "device",
+                                "ph": "E",
+                                "name": name,
+                                "ts": start_ts,
+                                "pid": exit_pid,
+                                "tid": exit_tid,
+                                "args": {
+                                    "implicit": true
+                                }
+                            });
+                            processed_events.push(implicit_exit);
                         }
-                    });
-                    processed_events.push(implicit_exit);
+                    }
+                    active.pop();
                 }
             }
-            context.global_active_spans.pop();
         }
 
-        keep_event
+        context.global_last_active_span = context.parent_map.get(&resolved_span_id).cloned();
     }
 }
 
@@ -547,7 +541,6 @@ impl TraceStage for SpanProcessor {
         let mut processed_events = Vec::new();
 
         for event in events {
-            let mut keep_event = true;
             let mut final_event = event.clone();
 
             if let Some(obj) = event.as_object() {
@@ -555,7 +548,7 @@ impl TraceStage for SpanProcessor {
                 let category = TraceCategory::parse(target);
                 match category {
                     TraceCategory::SpanEnter => {
-                        keep_event = self.enter_processor.process(
+                        self.enter_processor.process(
                             &mut self.context,
                             obj,
                             &mut final_event,
@@ -563,7 +556,7 @@ impl TraceStage for SpanProcessor {
                         );
                     }
                     TraceCategory::SpanExit => {
-                        keep_event = self.exit_processor.process(
+                        self.exit_processor.process(
                             &mut self.context,
                             obj,
                             &mut final_event,
@@ -578,10 +571,7 @@ impl TraceStage for SpanProcessor {
                     TraceCategory::Other => {}
                 }
             }
-
-            if keep_event {
-                processed_events.push(final_event);
-            }
+            processed_events.push(final_event);
         }
 
         Ok(processed_events)
