@@ -310,6 +310,13 @@ pub trait SpanLookup {
     fn get_task(&self, span_id: &str) -> Option<String>;
 }
 
+/// State container tracking the currently active task context.
+#[derive(Clone, Debug, Default)]
+pub struct ActiveTaskState {
+    /// Name of the currently active task context.
+    pub current: Option<String>,
+}
+
 /// Context data containing all tracked spans state.
 pub struct SpanContext {
     /// Database of all tracked spans, keyed by span ID.
@@ -319,7 +326,7 @@ pub struct SpanContext {
     /// Tracks the globally most recently active span ID for parent fallback.
     pub global_last_active_span: Option<String>,
     /// Tracks the currently active task context for cooperative context switching.
-    pub current_task_context: Option<String>,
+    pub active_task: ActiveTaskState,
 }
 
 impl SpanContext {
@@ -329,7 +336,7 @@ impl SpanContext {
             spans: std::collections::HashMap::new(),
             active_spans_map: std::collections::HashMap::new(),
             global_last_active_span: None,
-            current_task_context: None,
+            active_task: ActiveTaskState::default(),
         }
     }
 }
@@ -358,60 +365,112 @@ impl SpanLookup for SpanContext {
     }
 }
 
-fn suspend_task(
-    context: &SpanContext,
-    task_name: &str,
-    ts: &serde_json::Value,
-    processed_events: &mut Vec<serde_json::Value>,
-) {
-    if let Some(active) = context.active_spans_map.get(task_name) {
-        for exited_id in active.iter().rev() {
-            let name = context
-                .get_name(exited_id)
-                .unwrap_or_else(|| "unknown".to_string());
-            let exit_pid = context.get_pid(exited_id).unwrap_or(1);
-            let exit_tid = context.get_tid(exited_id).unwrap_or(0);
-            let implicit_exit = serde_json::json!({
-                "cat": "device",
-                "ph": "E",
-                "name": name,
-                "ts": ts.clone(),
-                "pid": exit_pid,
-                "tid": exit_tid,
-                "args": {
-                    "suspended": true
-                }
-            });
-            processed_events.push(implicit_exit);
+/// Trait for managing cooperative task context suspension and resumption.
+pub trait TaskContext {
+    /// Returns the currently active task context name.
+    fn current_task(&self) -> Option<&str>;
+    /// Sets the currently active task context name.
+    fn set_current_task(&mut self, task: Option<String>);
+    /// Suspends active spans for the given task context.
+    fn suspend(
+        &self,
+        task_name: &str,
+        ts: &serde_json::Value,
+        processed_events: &mut Vec<serde_json::Value>,
+    );
+    /// Resumes active spans for the given task context.
+    fn resume(
+        &self,
+        task_name: &str,
+        ts: &serde_json::Value,
+        processed_events: &mut Vec<serde_json::Value>,
+    );
+
+    /// Performs cooperative context switching to a new target task.
+    fn switch_context(
+        &mut self,
+        target_task: &str,
+        ts: &serde_json::Value,
+        processed_events: &mut Vec<serde_json::Value>,
+    ) {
+        let mut switched = false;
+        if let Some(prev_task) = self.current_task() {
+            if prev_task != target_task {
+                self.suspend(prev_task, ts, processed_events);
+                switched = true;
+            }
         }
+        if switched || self.current_task().is_none() {
+            self.resume(target_task, ts, processed_events);
+        }
+        self.set_current_task(Some(target_task.to_string()));
     }
 }
 
-fn resume_task(
-    context: &SpanContext,
-    task_name: &str,
-    ts: &serde_json::Value,
-    processed_events: &mut Vec<serde_json::Value>,
-) {
-    if let Some(active) = context.active_spans_map.get(task_name) {
-        for resumed_id in active.iter() {
-            let name = context
-                .get_name(resumed_id)
-                .unwrap_or_else(|| "unknown".to_string());
-            let resume_pid = context.get_pid(resumed_id).unwrap_or(1);
-            let resume_tid = context.get_tid(resumed_id).unwrap_or(0);
-            let implicit_enter = serde_json::json!({
-                "cat": "device",
-                "ph": "B",
-                "name": name,
-                "ts": ts.clone(),
-                "pid": resume_pid,
-                "tid": resume_tid,
-                "args": {
-                    "resumed": true
-                }
-            });
-            processed_events.push(implicit_enter);
+impl TaskContext for SpanContext {
+    fn current_task(&self) -> Option<&str> {
+        self.active_task.current.as_deref()
+    }
+
+    fn set_current_task(&mut self, task: Option<String>) {
+        self.active_task.current = task;
+    }
+
+    fn suspend(
+        &self,
+        task_name: &str,
+        ts: &serde_json::Value,
+        processed_events: &mut Vec<serde_json::Value>,
+    ) {
+        if let Some(active) = self.active_spans_map.get(task_name) {
+            for exited_id in active.iter().rev() {
+                let name = self
+                    .get_name(exited_id)
+                    .unwrap_or_else(|| "unknown".to_string());
+                let exit_pid = self.get_pid(exited_id).unwrap_or(1);
+                let exit_tid = self.get_tid(exited_id).unwrap_or(0);
+                let implicit_exit = serde_json::json!({
+                    "cat": "device",
+                    "ph": "E",
+                    "name": name,
+                    "ts": ts.clone(),
+                    "pid": exit_pid,
+                    "tid": exit_tid,
+                    "args": {
+                        "suspended": true
+                    }
+                });
+                processed_events.push(implicit_exit);
+            }
+        }
+    }
+
+    fn resume(
+        &self,
+        task_name: &str,
+        ts: &serde_json::Value,
+        processed_events: &mut Vec<serde_json::Value>,
+    ) {
+        if let Some(active) = self.active_spans_map.get(task_name) {
+            for resumed_id in active.iter() {
+                let name = self
+                    .get_name(resumed_id)
+                    .unwrap_or_else(|| "unknown".to_string());
+                let resume_pid = self.get_pid(resumed_id).unwrap_or(1);
+                let resume_tid = self.get_tid(resumed_id).unwrap_or(0);
+                let implicit_enter = serde_json::json!({
+                    "cat": "device",
+                    "ph": "B",
+                    "name": name,
+                    "ts": ts.clone(),
+                    "pid": resume_pid,
+                    "tid": resume_tid,
+                    "args": {
+                        "resumed": true
+                    }
+                });
+                processed_events.push(implicit_enter);
+            }
         }
     }
 }
@@ -492,17 +551,7 @@ impl SpanEnterProcessor {
         let ts = obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0));
 
         // Cooperative Context Switch
-        let mut switched = false;
-        if let Some(prev_task) = &context.current_task_context {
-            if prev_task != &task_context {
-                suspend_task(context, prev_task, &ts, processed_events);
-                switched = true;
-            }
-        }
-        if switched || context.current_task_context.is_none() {
-            resume_task(context, &task_context, &ts, processed_events);
-        }
-        context.current_task_context = Some(task_context.clone());
+        context.switch_context(&task_context, &ts, processed_events);
 
         // Remove active stack temporarily to resolve borrow checker conflict when calling context.get_xxx
         let mut active = context
@@ -592,18 +641,8 @@ impl SpanExitProcessor {
         let ts = obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0));
 
         // Cooperative Context Switch
-        let mut switched = false;
         if !task_context.is_empty() {
-            if let Some(prev_task) = &context.current_task_context {
-                if prev_task != &task_context {
-                    suspend_task(context, prev_task, &ts, processed_events);
-                    switched = true;
-                }
-            }
-            if switched || context.current_task_context.is_none() {
-                resume_task(context, &task_context, &ts, processed_events);
-            }
-            context.current_task_context = Some(task_context.clone());
+            context.switch_context(&task_context, &ts, processed_events);
         }
 
         final_event["cat"] = serde_json::Value::from("device");
