@@ -34,7 +34,11 @@ fn is_root_or_empty_id(id: &str) -> bool {
 
 /// Helper to determine if a module segment represents a compiler/executor target wrapper.
 fn is_target_segment(s: &str) -> bool {
-    s == "run" || s.contains("{impl#") || s.contains("__task") || s.contains("async_fn")
+    s == "run"
+        || s == "task"
+        || s.contains("{impl#")
+        || s.contains("__task")
+        || s.contains("async_fn")
 }
 
 /// Helper to determine if a module segment represents a valid user-defined task/run root name.
@@ -405,7 +409,7 @@ impl SpanEnterProcessor {
             .unwrap_or("")
             .to_string();
 
-        if span_name == "run" && !module.is_empty() {
+        if (span_name == "run" || span_name == "task") && !module.is_empty() {
             let segments: Vec<&str> = module.split("::").collect();
             if let Some(target_segment) = segments.iter().rev().find(|&&s| is_root_segment(s)) {
                 span_name = target_segment.to_string();
