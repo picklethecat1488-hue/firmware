@@ -67,10 +67,18 @@ pub struct Cli {
     /// Optional filename to output tracing events to in Perfetto/Chrome trace format
     #[arg(long, value_name = "FILE")]
     pub trace: Option<String>,
+
+    /// Trace collection duration in seconds. Required when --trace is specified.
+    #[arg(long, value_name = "SECONDS")]
+    pub duration: Option<u64>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+
+    if cli.trace.is_some() && cli.duration.is_none() {
+        return Err("Argument error: --duration is required when --trace is specified".into());
+    }
 
     let _chrome_guard = tracing::init_tracing(cli.trace.as_deref());
 
@@ -129,6 +137,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         spinner: &spinner,
         channel_mode: cli.channel,
         trace: cli.trace.is_some(),
+        duration: cli.duration,
     })?;
 
     // Drop the tracing guard to ensure the trace file is written and flushed

@@ -278,14 +278,14 @@ pub struct RttOptions<'a> {
     pub channel_mode: crate::ChannelMode,
     /// Enable tracing reconstruction
     pub trace: bool,
+    /// Trace collection duration in seconds
+    pub duration: Option<u64>,
 }
 
 pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
-    static RUNNING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
-    RUNNING.store(true, std::sync::atomic::Ordering::SeqCst);
-    let _ = ctrlc::set_handler(move || {
-        RUNNING.store(false, std::sync::atomic::Ordering::SeqCst);
-    });
+    let mut running = true;
+
+    let start_time = std::time::Instant::now();
 
     let RttOptions {
         chip,
@@ -300,6 +300,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         spinner,
         channel_mode,
         trace,
+        duration,
     } = opts;
     // Locate Symbol Address first
     let rtt_symbol_addr = match tool_common::find_symbol_address(elf_path, "_SEGGER_RTT") {
@@ -344,7 +345,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut is_reconnecting = false;
     loop {
-        if !RUNNING.load(std::sync::atomic::Ordering::SeqCst) {
+        if !running {
             break;
         }
         // 1. Connection selection
@@ -746,7 +747,13 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            if !RUNNING.load(std::sync::atomic::Ordering::SeqCst) {
+            if let Some(secs) = duration {
+                if start_time.elapsed().as_secs() >= secs {
+                    running = false;
+                }
+            }
+
+            if !running {
                 break;
             }
 
@@ -760,12 +767,12 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if let Some(err) = run_error {
-            if !RUNNING.load(std::sync::atomic::Ordering::SeqCst) {
+            if !running {
                 break;
             }
             eprintln!("\nConnection lost: {}. Reconnecting...", err);
             for _ in 0..10 {
-                if !RUNNING.load(std::sync::atomic::Ordering::SeqCst) {
+                if !running {
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(100));

@@ -108,7 +108,27 @@ fn test_dump_logs_empty() {
 fn test_cli_trace_argument() {
     let bin_path = env!("CARGO_BIN_EXE_host_cli");
 
-    // Run host_cli with --trace option on non-existent ELF
+    // Run host_cli with --trace and --duration options on non-existent ELF
+    let output = Command::new(bin_path)
+        .arg("--elf")
+        .arg("non_existent_file.elf")
+        .arg("--trace")
+        .arg("my_test_trace.json")
+        .arg("--duration")
+        .arg("5")
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Failed to read ELF file"));
+}
+
+#[test]
+fn test_cli_trace_argument_missing_duration() {
+    let bin_path = env!("CARGO_BIN_EXE_host_cli");
+
+    // Run host_cli with --trace option but missing --duration
     let output = Command::new(bin_path)
         .arg("--elf")
         .arg("non_existent_file.elf")
@@ -119,7 +139,7 @@ fn test_cli_trace_argument() {
 
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("Failed to read ELF file") || stderr.contains("error"));
+    assert!(stderr.contains("duration is required"));
 }
 
 #[test]
