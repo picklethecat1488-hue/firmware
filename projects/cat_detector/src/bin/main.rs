@@ -31,6 +31,7 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+#[firmware_lib::tracing::instrument(name = "boot", level = "info", skip(spawner))]
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());

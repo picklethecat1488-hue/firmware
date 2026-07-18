@@ -32,6 +32,17 @@ fn is_root_or_empty_id(id: &str) -> bool {
     id.is_empty() || id == "0000000000000000" || id == "0"
 }
 
+/// Helper to determine if a module segment represents a compiler/executor target wrapper.
+fn is_target_segment(s: &str) -> bool {
+    s == "run" || s.contains("{impl#") || s.contains("__task") || s.contains("async_fn")
+}
+
+/// Helper to determine if a module segment represents a valid user-defined task/run root name.
+/// This is the logical inverse of `is_target_segment`.
+fn is_root_segment(s: &str) -> bool {
+    !is_target_segment(s)
+}
+
 /// Helper to determine if an active span name (which might have namespace prefixes and parameters)
 /// matches the exiting target name.
 fn is_span_name_match(active_name: &str, exit_target_name: &str) -> bool {
@@ -278,6 +289,10 @@ pub struct SpanContext {
     pub span_to_task: std::collections::HashMap<String, String>,
     /// Tracks the globally most recently active span ID for parent fallback.
     pub global_last_active_span: Option<String>,
+    /// Maps task context name to its assigned unique TID in Perfetto.
+    pub task_tid_map: std::collections::HashMap<String, i64>,
+    /// Incremental counter for assigning unique TIDs to tasks.
+    pub next_tid: i64,
 }
 
 impl SpanContext {
@@ -293,6 +308,8 @@ impl SpanContext {
             active_spans_map: std::collections::HashMap::new(),
             span_to_task: std::collections::HashMap::new(),
             global_last_active_span: None,
+            task_tid_map: std::collections::HashMap::new(),
+            next_tid: 10,
         }
     }
 }
@@ -323,11 +340,18 @@ impl SpanEnterProcessor {
             }
         }
 
-        let span_name = obj
+        let mut span_name = obj
             .get("span_name")
             .and_then(|s| s.as_str())
             .unwrap_or("")
             .to_string();
+
+        if span_name == "run" && !module.is_empty() {
+            let segments: Vec<&str> = module.split("::").collect();
+            if let Some(target_segment) = segments.iter().rev().find(|&&s| is_root_segment(s)) {
+                span_name = target_segment.to_string();
+            }
+        }
 
         let event_pid = obj.get("pid").and_then(|p| p.as_i64()).unwrap_or(1);
         let event_tid = obj.get("tid").and_then(|t| t.as_i64()).unwrap_or(1);
@@ -347,22 +371,45 @@ impl SpanEnterProcessor {
             span_id.to_string(),
             obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0)),
         );
-        context.pid_map.insert(span_id.to_string(), event_pid);
-        context.tid_map.insert(span_id.to_string(), event_tid);
 
-        // Determine the task context for this new span
+        // Determine the task context for this new span, using module path for uniqueness if available
         let task_context = if !is_root_or_empty_id(&parent_id) {
             context
                 .span_to_task
                 .get(&parent_id)
                 .cloned()
-                .unwrap_or_else(|| span_name.clone())
+                .unwrap_or_else(|| {
+                    if !module.is_empty() {
+                        module.to_string()
+                    } else {
+                        span_name.clone()
+                    }
+                })
         } else {
-            span_name.clone()
+            if !module.is_empty() {
+                module.to_string()
+            } else {
+                span_name.clone()
+            }
         };
         context
             .span_to_task
             .insert(span_id.to_string(), task_context.clone());
+
+        let task_tid = *context
+            .task_tid_map
+            .entry(task_context.clone())
+            .or_insert_with(|| {
+                if event_tid != 0 {
+                    event_tid
+                } else {
+                    let id = context.next_tid;
+                    context.next_tid += 1;
+                    id
+                }
+            });
+        context.pid_map.insert(span_id.to_string(), event_pid);
+        context.tid_map.insert(span_id.to_string(), task_tid);
 
         // Get the active spans stack for this task context
         let active = context.active_spans_map.entry(task_context).or_default();
@@ -375,28 +422,17 @@ impl SpanEnterProcessor {
                     .get(&exited_id)
                     .cloned()
                     .unwrap_or_else(|| "unknown".to_string());
-                let start_ts = context
-                    .start_time_map
-                    .get(&exited_id)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0))
-                    });
                 let exit_pid = context
                     .pid_map
                     .get(&exited_id)
                     .cloned()
                     .unwrap_or(event_pid);
-                let exit_tid = context
-                    .tid_map
-                    .get(&exited_id)
-                    .cloned()
-                    .unwrap_or(event_tid);
+                let exit_tid = context.tid_map.get(&exited_id).cloned().unwrap_or(task_tid);
                 let implicit_exit = serde_json::json!({
                     "cat": "device",
                     "ph": "E",
                     "name": name,
-                    "ts": start_ts,
+                    "ts": obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0)),
                     "pid": exit_pid,
                     "tid": exit_tid,
                     "args": {
@@ -413,6 +449,7 @@ impl SpanEnterProcessor {
         final_event["cat"] = serde_json::Value::from("device");
         final_event["ph"] = serde_json::Value::from("B");
         final_event["name"] = serde_json::Value::from(span_name);
+        final_event["tid"] = serde_json::Value::from(task_tid);
     }
 }
 
@@ -473,6 +510,9 @@ impl SpanExitProcessor {
         final_event["cat"] = serde_json::Value::from("device");
         final_event["ph"] = serde_json::Value::from("E");
         final_event["name"] = serde_json::Value::from(span_name);
+        if let Some(t_tid) = context.tid_map.get(&resolved_span_id).cloned() {
+            final_event["tid"] = serde_json::Value::from(t_tid);
+        }
 
         if !task_context.is_empty() {
             if let Some(active) = context.active_spans_map.get_mut(&task_context) {
@@ -484,18 +524,13 @@ impl SpanExitProcessor {
                                 .get(&exited_id)
                                 .cloned()
                                 .unwrap_or_else(|| "unknown".to_string());
-                            let start_ts = context
-                                .start_time_map
-                                .get(&exited_id)
-                                .cloned()
-                                .unwrap_or_else(|| ts.clone());
                             let exit_pid = context.pid_map.get(&exited_id).cloned().unwrap_or(1);
                             let exit_tid = context.tid_map.get(&exited_id).cloned().unwrap_or(1);
                             let implicit_exit = serde_json::json!({
                                 "cat": "device",
                                 "ph": "E",
                                 "name": name,
-                                "ts": start_ts,
+                                "ts": ts.clone(),
                                 "pid": exit_pid,
                                 "tid": exit_tid,
                                 "args": {
@@ -652,40 +687,58 @@ impl ParsedTracingLine {
         // Extract the prefix part before the keyword
         let prefix = &line[..keyword_pos];
 
-        // Isolate the span description payload (skip metadata prefix like timestamps and [module])
-        let payload = if let Some(last_bracket) = prefix.rfind(']') {
-            prefix[last_bracket + 1..].trim()
+        // Split prefix into words to handle variable formatting with/without timestamps or module names
+        let words: Vec<&str> = prefix.split_whitespace().collect();
+        let mut start_idx = 0;
+        if words.len() >= 2 {
+            let second_word = words[1];
+            if second_word == "TRACE"
+                || second_word == "DEBUG"
+                || second_word == "INFO"
+                || second_word == "WARN"
+                || second_word == "ERROR"
+            {
+                start_idx = 2;
+            }
+        }
+
+        // Skip module bracket context if present (e.g. [module])
+        if start_idx < words.len()
+            && words[start_idx].starts_with('[')
+            && words[start_idx].ends_with(']')
+        {
+            start_idx += 1;
+        }
+
+        if start_idx >= words.len() {
+            return None;
+        }
+
+        let ctx_word = words[start_idx];
+        let raw_ids = if ctx_word.starts_with("ctx=") {
+            &ctx_word[4..]
         } else {
-            prefix.trim()
+            ctx_word
         };
 
-        // Extract raw IDs (strip ctx= prefix if present)
-        let raw_ids = if payload.starts_with("ctx=") {
-            &payload[4..]
-        } else {
-            payload
-        };
-
-        // Get the first part of the raw_ids (separated by spaces, e.g. parent= is separated by space)
-        let id_part = raw_ids.split(' ').next().unwrap_or(raw_ids);
-
-        // Get the last ID in the colon-separated list of active contexts
-        let ids: Vec<&str> = id_part.split(':').collect();
-        let span_id = ids.last().unwrap_or(&id_part).to_string();
+        let ids: Vec<&str> = raw_ids.split(':').collect();
+        let span_id = ids.last().unwrap_or(&raw_ids).to_string();
 
         if span_id.is_empty() {
             return None;
         }
 
-        // Parent ID is the second-to-last ID in the list, fallback to parent= if list is 1 item
-        let parent_id = if ids.len() >= 2 {
-            ids[ids.len() - 2].to_string()
-        } else if let Some(parent_pos) = payload.find("parent=") {
-            let p_part = &payload[parent_pos + 7..];
-            p_part.split(' ').next().unwrap_or(p_part).to_string()
-        } else {
-            String::new()
-        };
+        let mut parent_id = String::new();
+        for &w in &words[start_idx..] {
+            if w.starts_with("parent=") {
+                parent_id = w[7..].to_string();
+                break;
+            }
+        }
+
+        if parent_id.is_empty() && ids.len() >= 2 {
+            parent_id = ids[ids.len() - 2].to_string();
+        }
 
         Some(Self {
             is_enter,
