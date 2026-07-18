@@ -273,24 +273,49 @@ impl TraceStage for TelemetryDecoder {
     }
 }
 
+/// Detailed attributes of a tracked span.
+#[derive(Clone, Debug)]
+pub struct SpanInfo {
+    /// Cleaned name of the span.
+    pub name: String,
+    /// Parent span ID.
+    pub parent_id: String,
+    /// Rust module namespace path where it was defined.
+    pub module: String,
+    /// Start timestamp value.
+    pub start_time: serde_json::Value,
+    /// Telemetry process identifier.
+    pub pid: i64,
+    /// Telemetry thread identifier.
+    pub tid: i64,
+    /// Parent task context name.
+    pub task: String,
+}
+
+/// Trait for looking up attributes of a span.
+pub trait SpanLookup {
+    /// Returns the cleaned name of the span.
+    fn get_name(&self, span_id: &str) -> Option<String>;
+    /// Returns the parent span ID.
+    fn get_parent_id(&self, span_id: &str) -> Option<String>;
+    /// Returns the module namespace.
+    fn get_module(&self, span_id: &str) -> Option<String>;
+    /// Returns the start time.
+    fn get_start_time(&self, span_id: &str) -> Option<serde_json::Value>;
+    /// Returns the PID.
+    fn get_pid(&self, span_id: &str) -> Option<i64>;
+    /// Returns the TID.
+    fn get_tid(&self, span_id: &str) -> Option<i64>;
+    /// Returns the task context name.
+    fn get_task(&self, span_id: &str) -> Option<String>;
+}
+
 /// Context data containing all tracked spans state.
 pub struct SpanContext {
-    /// Maps span ID to the cleaned name of the span.
-    pub name_map: std::collections::HashMap<String, String>,
-    /// Maps span ID to its parent span ID.
-    pub parent_map: std::collections::HashMap<String, String>,
-    /// Maps span ID to the Rust module namespace path where it was defined.
-    pub module_map: std::collections::HashMap<String, String>,
-    /// Maps span ID to its start timestamp value.
-    pub start_time_map: std::collections::HashMap<String, serde_json::Value>,
-    /// Maps span ID to its telemetry process identifier.
-    pub pid_map: std::collections::HashMap<String, i64>,
-    /// Maps span ID to its telemetry thread identifier.
-    pub tid_map: std::collections::HashMap<String, i64>,
+    /// Database of all tracked spans, keyed by span ID.
+    pub spans: std::collections::HashMap<String, SpanInfo>,
     /// Maps task context name to its stack of active span IDs.
     pub active_spans_map: std::collections::HashMap<String, Vec<String>>,
-    /// Maps span ID to its parent task context name.
-    pub span_to_task: std::collections::HashMap<String, String>,
     /// Tracks the globally most recently active span ID for parent fallback.
     pub global_last_active_span: Option<String>,
     /// Tracks the currently active task context for cooperative context switching.
@@ -301,17 +326,35 @@ impl SpanContext {
     /// Creates a new empty context.
     pub fn new() -> Self {
         Self {
-            name_map: std::collections::HashMap::new(),
-            parent_map: std::collections::HashMap::new(),
-            module_map: std::collections::HashMap::new(),
-            start_time_map: std::collections::HashMap::new(),
-            pid_map: std::collections::HashMap::new(),
-            tid_map: std::collections::HashMap::new(),
+            spans: std::collections::HashMap::new(),
             active_spans_map: std::collections::HashMap::new(),
-            span_to_task: std::collections::HashMap::new(),
             global_last_active_span: None,
             current_task_context: None,
         }
+    }
+}
+
+impl SpanLookup for SpanContext {
+    fn get_name(&self, span_id: &str) -> Option<String> {
+        self.spans.get(span_id).map(|s| s.name.clone())
+    }
+    fn get_parent_id(&self, span_id: &str) -> Option<String> {
+        self.spans.get(span_id).map(|s| s.parent_id.clone())
+    }
+    fn get_module(&self, span_id: &str) -> Option<String> {
+        self.spans.get(span_id).map(|s| s.module.clone())
+    }
+    fn get_start_time(&self, span_id: &str) -> Option<serde_json::Value> {
+        self.spans.get(span_id).map(|s| s.start_time.clone())
+    }
+    fn get_pid(&self, span_id: &str) -> Option<i64> {
+        self.spans.get(span_id).map(|s| s.pid)
+    }
+    fn get_tid(&self, span_id: &str) -> Option<i64> {
+        self.spans.get(span_id).map(|s| s.tid)
+    }
+    fn get_task(&self, span_id: &str) -> Option<String> {
+        self.spans.get(span_id).map(|s| s.task.clone())
     }
 }
 
@@ -324,12 +367,10 @@ fn suspend_task(
     if let Some(active) = context.active_spans_map.get(task_name) {
         for exited_id in active.iter().rev() {
             let name = context
-                .name_map
-                .get(exited_id)
-                .cloned()
+                .get_name(exited_id)
                 .unwrap_or_else(|| "unknown".to_string());
-            let exit_pid = context.pid_map.get(exited_id).cloned().unwrap_or(1);
-            let exit_tid = context.tid_map.get(exited_id).cloned().unwrap_or(0);
+            let exit_pid = context.get_pid(exited_id).unwrap_or(1);
+            let exit_tid = context.get_tid(exited_id).unwrap_or(0);
             let implicit_exit = serde_json::json!({
                 "cat": "device",
                 "ph": "E",
@@ -355,12 +396,10 @@ fn resume_task(
     if let Some(active) = context.active_spans_map.get(task_name) {
         for resumed_id in active.iter() {
             let name = context
-                .name_map
-                .get(resumed_id)
-                .cloned()
+                .get_name(resumed_id)
                 .unwrap_or_else(|| "unknown".to_string());
-            let resume_pid = context.pid_map.get(resumed_id).cloned().unwrap_or(1);
-            let resume_tid = context.tid_map.get(resumed_id).cloned().unwrap_or(0);
+            let resume_pid = context.get_pid(resumed_id).unwrap_or(1);
+            let resume_tid = context.get_tid(resumed_id).unwrap_or(0);
             let implicit_enter = serde_json::json!({
                 "cat": "device",
                 "ph": "B",
@@ -419,35 +458,15 @@ impl SpanEnterProcessor {
         let event_pid = obj.get("pid").and_then(|p| p.as_i64()).unwrap_or(1);
         let event_tid = obj.get("tid").and_then(|t| t.as_i64()).unwrap_or(1);
 
-        context
-            .name_map
-            .insert(span_id.to_string(), span_name.clone());
-        context
-            .parent_map
-            .insert(span_id.to_string(), parent_id.clone());
-        if !module.is_empty() {
-            context
-                .module_map
-                .insert(span_id.to_string(), module.to_string());
-        }
-        context.start_time_map.insert(
-            span_id.to_string(),
-            obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0)),
-        );
-
         // Determine the task context for this new span, using module path for uniqueness if available
         let task_context = if !is_root_or_empty_id(&parent_id) {
-            context
-                .span_to_task
-                .get(&parent_id)
-                .cloned()
-                .unwrap_or_else(|| {
-                    if !module.is_empty() {
-                        module.to_string()
-                    } else {
-                        span_name.clone()
-                    }
-                })
+            context.get_task(&parent_id).unwrap_or_else(|| {
+                if !module.is_empty() {
+                    module.to_string()
+                } else {
+                    span_name.clone()
+                }
+            })
         } else {
             if !module.is_empty() {
                 module.to_string()
@@ -455,12 +474,20 @@ impl SpanEnterProcessor {
                 span_name.clone()
             }
         };
-        context
-            .span_to_task
-            .insert(span_id.to_string(), task_context.clone());
 
-        context.pid_map.insert(span_id.to_string(), event_pid);
-        context.tid_map.insert(span_id.to_string(), event_tid);
+        // Populate and insert the unified SpanInfo database entry
+        context.spans.insert(
+            span_id.to_string(),
+            SpanInfo {
+                name: span_name.clone(),
+                parent_id: parent_id.clone(),
+                module: module.to_string(),
+                start_time: obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0)),
+                pid: event_pid,
+                tid: event_tid,
+                task: task_context.clone(),
+            },
+        );
 
         let ts = obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0));
 
@@ -477,27 +504,20 @@ impl SpanEnterProcessor {
         }
         context.current_task_context = Some(task_context.clone());
 
-        // Get the active spans stack for this task context
-        let active = context.active_spans_map.entry(task_context).or_default();
+        // Remove active stack temporarily to resolve borrow checker conflict when calling context.get_xxx
+        let mut active = context
+            .active_spans_map
+            .remove(&task_context)
+            .unwrap_or_default();
 
         let is_root = is_root_or_empty_id(&parent_id);
         if is_root {
             while let Some(exited_id) = active.pop() {
                 let name = context
-                    .name_map
-                    .get(&exited_id)
-                    .cloned()
+                    .get_name(&exited_id)
                     .unwrap_or_else(|| "unknown".to_string());
-                let exit_pid = context
-                    .pid_map
-                    .get(&exited_id)
-                    .cloned()
-                    .unwrap_or(event_pid);
-                let exit_tid = context
-                    .tid_map
-                    .get(&exited_id)
-                    .cloned()
-                    .unwrap_or(event_tid);
+                let exit_pid = context.get_pid(&exited_id).unwrap_or(event_pid);
+                let exit_tid = context.get_tid(&exited_id).unwrap_or(event_tid);
                 let implicit_exit = serde_json::json!({
                     "cat": "device",
                     "ph": "E",
@@ -514,6 +534,7 @@ impl SpanEnterProcessor {
         }
 
         active.push(span_id.to_string());
+        context.active_spans_map.insert(task_context, active);
         context.global_last_active_span = Some(span_id.to_string());
 
         final_event["cat"] = serde_json::Value::from("device");
@@ -542,17 +563,13 @@ impl SpanExitProcessor {
             .unwrap_or("");
 
         let mut resolved_span_id = span_id.to_string();
-        let mut task_context = context
-            .span_to_task
-            .get(&resolved_span_id)
-            .cloned()
-            .unwrap_or_default();
+        let mut task_context = context.get_task(&resolved_span_id).unwrap_or_default();
 
         if task_context.is_empty() && !target_name.is_empty() {
             for (t_name, active) in &context.active_spans_map {
                 if let Some(pos) = active.iter().rposition(|id| {
-                    if let Some(n) = context.name_map.get(id) {
-                        is_span_name_match(n, &target_name)
+                    if let Some(n) = context.get_name(id) {
+                        is_span_name_match(&n, &target_name)
                     } else {
                         false
                     }
@@ -564,17 +581,13 @@ impl SpanExitProcessor {
             }
         }
 
-        let span_name = context
-            .name_map
-            .get(&resolved_span_id)
-            .cloned()
-            .unwrap_or_else(|| {
-                if !target_name.is_empty() {
-                    target_name.to_string()
-                } else {
-                    "unknown".to_string()
-                }
-            });
+        let span_name = context.get_name(&resolved_span_id).unwrap_or_else(|| {
+            if !target_name.is_empty() {
+                target_name.to_string()
+            } else {
+                "unknown".to_string()
+            }
+        });
 
         let ts = obj.get("ts").cloned().unwrap_or(serde_json::Value::from(0));
 
@@ -596,22 +609,20 @@ impl SpanExitProcessor {
         final_event["cat"] = serde_json::Value::from("device");
         final_event["ph"] = serde_json::Value::from("E");
         final_event["name"] = serde_json::Value::from(span_name);
-        if let Some(t_tid) = context.tid_map.get(&resolved_span_id).cloned() {
+        if let Some(t_tid) = context.get_tid(&resolved_span_id) {
             final_event["tid"] = serde_json::Value::from(t_tid);
         }
 
         if !task_context.is_empty() {
-            if let Some(active) = context.active_spans_map.get_mut(&task_context) {
+            if let Some(mut active) = context.active_spans_map.remove(&task_context) {
                 if let Some(pos) = active.iter().position(|x| x == &resolved_span_id) {
                     while active.len() > pos + 1 {
                         if let Some(exited_id) = active.pop() {
                             let name = context
-                                .name_map
-                                .get(&exited_id)
-                                .cloned()
+                                .get_name(&exited_id)
                                 .unwrap_or_else(|| "unknown".to_string());
-                            let exit_pid = context.pid_map.get(&exited_id).cloned().unwrap_or(1);
-                            let exit_tid = context.tid_map.get(&exited_id).cloned().unwrap_or(1);
+                            let exit_pid = context.get_pid(&exited_id).unwrap_or(1);
+                            let exit_tid = context.get_tid(&exited_id).unwrap_or(1);
                             let implicit_exit = serde_json::json!({
                                 "cat": "device",
                                 "ph": "E",
@@ -628,10 +639,11 @@ impl SpanExitProcessor {
                     }
                     active.pop();
                 }
+                context.active_spans_map.insert(task_context, active);
             }
         }
 
-        context.global_last_active_span = context.parent_map.get(&resolved_span_id).cloned();
+        context.global_last_active_span = context.get_parent_id(&resolved_span_id);
     }
 }
 
