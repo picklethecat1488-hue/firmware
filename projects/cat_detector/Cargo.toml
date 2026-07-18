@@ -39,6 +39,7 @@ embedded-storage = "0.3"
 embedded-storage-async = "0.4.1"
 critical-section = "1.1"
 heapless = "0.8.0"
+tracing-defmt = { version = "0.1.2", optional = true }
 
 [target.'cfg(all(target_arch = "arm", target_os = "none"))'.dependencies]
 embassy-executor = { version = "0.7.0", features = ["task-arena-size-32768", "arch-cortex-m", "executor-thread"] }
@@ -59,4 +60,4 @@ futures = "0.3"
 
 [features]
 default = []
-tracing = ["controller/tracing"]
+tracing = ["controller/tracing", "dep:tracing-defmt"]

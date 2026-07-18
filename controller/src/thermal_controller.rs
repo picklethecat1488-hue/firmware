@@ -100,17 +100,17 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
     /// Updates the thermal status by locking and reading the peripheral.
     #[tracing::instrument(
         name = "thermal_controller::update",
-        level = "debug",
+        level = "info",
         skip(telemetry_client)
     )]
     pub async fn update<TC: model::telemetry::TelemetryClient<(i32, ThermalState)>>(
         &mut self,
-        telemetry_client: Option<&mut TC>,
+        mut telemetry_client: Option<&mut TC>,
     ) -> Result<(), B::Error> {
         let temp = {
             let mut sensor = self.temp.lock().await;
             match sensor.read_temperature_milli_c() {
-                Ok(t) => t,
+                Ok(t) => Ok(t),
                 Err(e) => {
                     let safe_temp = 25000; // 25°C
                     if self.first_update {
@@ -119,47 +119,52 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
                             let _ = tx.try_send(crate::types::ThermalUpdateAction::ClearBootTrap);
                         }
                     }
-                    if let Some(client) = telemetry_client {
+                    if let Some(ref mut client) = telemetry_client {
                         client.report((safe_temp, ThermalState::Normal));
                     }
-                    return Err(e);
+                    Err(e)
                 }
             }
         };
 
-        match self.state {
-            ThermalState::Normal => {
-                if temp > self.overheating_temp_milli_c {
-                    self.state = ThermalState::Overheating;
+        match temp {
+            Err(e) => Err(e),
+            Ok(temp) => {
+                match self.state {
+                    ThermalState::Normal => {
+                        if temp > self.overheating_temp_milli_c {
+                            self.state = ThermalState::Overheating;
+                        }
+                    }
+                    ThermalState::Overheating => {
+                        if temp < self.overheating_temp_milli_c - self.hysteresis_temp_milli_c {
+                            self.state = ThermalState::Normal;
+                        }
+                    }
                 }
-            }
-            ThermalState::Overheating => {
-                if temp < self.overheating_temp_milli_c - self.hysteresis_temp_milli_c {
-                    self.state = ThermalState::Normal;
+
+                // Critical threshold check: shut down system if temp > critical_temp_milli_c
+                if temp > self.critical_temp_milli_c {
+                    if let Some(tx) = &self.thermal_tx {
+                        tx.try_send(crate::types::ThermalUpdateAction::AlertTriggered)
+                            .unwrap();
+                        #[cfg(all(target_arch = "arm", target_os = "none"))]
+                        defmt::error!("Thermal Controller: Critical temperature exceeded ({} mC). Dispatching safety shutdown.", temp);
+                    }
+                } else if self.first_update {
+                    self.first_update = false;
+                    if let Some(tx) = &self.thermal_tx {
+                        let _ = tx.try_send(crate::types::ThermalUpdateAction::ClearBootTrap);
+                    }
                 }
+
+                if let Some(ref mut client) = telemetry_client {
+                    client.report((temp, self.state));
+                }
+
+                Ok(())
             }
         }
-
-        // Critical threshold check: shut down system if temp > critical_temp_milli_c
-        if temp > self.critical_temp_milli_c {
-            if let Some(tx) = &self.thermal_tx {
-                tx.try_send(crate::types::ThermalUpdateAction::AlertTriggered)
-                    .unwrap();
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::error!("Thermal Controller: Critical temperature exceeded ({} mC). Dispatching safety shutdown.", temp);
-            }
-        } else if self.first_update {
-            self.first_update = false;
-            if let Some(tx) = &self.thermal_tx {
-                let _ = tx.try_send(crate::types::ThermalUpdateAction::ClearBootTrap);
-            }
-        }
-
-        if let Some(client) = telemetry_client {
-            client.report((temp, self.state));
-        }
-
-        Ok(())
     }
 
     /// Starts the controller's main infinite run loop, processing commands.

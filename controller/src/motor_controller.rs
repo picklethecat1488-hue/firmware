@@ -134,7 +134,7 @@ where
     /// Ticks the control loop, reading current sensor input and updating safety states.
     #[tracing::instrument(
         name = "motor_controller::update",
-        level = "debug",
+        level = "info",
         skip(telemetry_client)
     )]
     pub fn update(
@@ -203,7 +203,7 @@ where
     /// Handles a received MotorCommand.
     #[tracing::instrument(
         name = "motor_controller::handle_command",
-        level = "debug",
+        level = "info",
         skip(cmd, telemetry_client)
     )]
     pub fn handle_command(
@@ -227,20 +227,20 @@ where
                             );
                             self.speed = speed;
                         }
-                        return;
-                    }
-                    if self.state == MotorState::Off {
-                        self.state = MotorState::On;
-                        if let Err(e) = self
-                            .current_sensor
-                            .set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
-                        {
-                            if let Some(ref client) = telemetry_client {
-                                client.report_error(e.to_peripheral_error());
+                    } else {
+                        if self.state == MotorState::Off {
+                            self.state = MotorState::On;
+                            if let Err(e) = self
+                                .current_sensor
+                                .set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
+                            {
+                                if let Some(ref client) = telemetry_client {
+                                    client.report_error(e.to_peripheral_error());
+                                }
                             }
                         }
+                        self.speed = speed;
                     }
-                    self.speed = speed;
                 } else {
                     // Set target speed to 0 and let it ramp down
                     self.speed = MotorSpeed::ZERO;
@@ -297,7 +297,7 @@ where
 
     /// Ticks the motor controller at a high frequency (e.g. 100Hz / every 10ms).
     /// This updates the ramping of the motor speed and runs the motor driver's duty cycle ticks.
-    #[tracing::instrument(name = "motor_controller::tick_motor", level = "debug")]
+    #[tracing::instrument(name = "motor_controller::tick_motor", level = "info")]
     pub fn tick_motor(&mut self) -> Result<(), PeripheralError> {
         // 1. Ramping logic
         if self.state == MotorState::On {

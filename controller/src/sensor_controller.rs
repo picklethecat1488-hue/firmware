@@ -335,7 +335,7 @@ where
     }
 
     /// Ticks the sensor control loop, updating proximity distance.
-    #[tracing::instrument(name = "sensor_controller::update", level = "debug")]
+    #[tracing::instrument(name = "sensor_controller::update", level = "info")]
     pub fn update(&mut self) -> Result<Reader::Data, Reader::Error> {
         let data = Reader::read_data(self.state_manager.sensor_mut(), &self.context)?;
 
@@ -347,7 +347,7 @@ where
     }
 
     /// Handles a SensorCommand.
-    #[tracing::instrument(name = "sensor_controller::handle_command", level = "debug", skip(cmd))]
+    #[tracing::instrument(name = "sensor_controller::handle_command", level = "info", skip(cmd))]
     pub fn handle_command(&mut self, cmd: SensorCommand) {
         match cmd {
             SensorCommand::ReadSensors => {

@@ -156,88 +156,16 @@ fn test_post_process_trace_dynamic_grouping() {
     // Clean up temp file
     let _ = std::fs::remove_file(path);
 
-    // We expect:
-    // - 2 thread metadata events at the beginning: one for "sensor_task" and one for "motor_task"
-    // - 9 original events modified with virtual TIDs
-    assert!(events.len() >= 11);
+    // We expect 9 original events, retaining their native PID 42 and TID 1.
+    assert_eq!(events.len(), 9);
 
-    // Check metadata events
-    let mut sensor_tid = None;
-    let mut motor_tid = None;
-
-    for event in &events {
-        let name = event.get("name").and_then(|n| n.as_str()).unwrap_or("");
-        let ph = event.get("ph").and_then(|p| p.as_str()).unwrap_or("");
-        if ph == "M" && name == "thread_name" {
-            let thread_name = event
-                .get("args")
-                .and_then(|a| a.get("name"))
-                .and_then(|n| n.as_str())
-                .unwrap_or("");
-            let tid = event.get("tid").and_then(|t| t.as_i64()).unwrap();
-            if thread_name == "sensor_task" {
-                sensor_tid = Some(tid);
-            } else if thread_name == "motor_task" {
-                motor_tid = Some(tid);
-            }
+    for (i, ev) in events.iter().enumerate() {
+        assert_eq!(ev.get("pid").and_then(|p| p.as_i64()), Some(42));
+        assert_eq!(ev.get("tid").and_then(|t| t.as_i64()), Some(1));
+        if i == 2 {
+            assert_eq!(ev.get("name").and_then(|n| n.as_str()), Some("read 120mm"));
         }
     }
-
-    assert!(sensor_tid.is_some());
-    assert!(motor_tid.is_some());
-    assert_ne!(sensor_tid, motor_tid);
-
-    // Verify that events have been mapped to correct virtual TIDs
-    let orig_events: Vec<&serde_json::Value> = events
-        .iter()
-        .filter(|e| e.get("ph").and_then(|p| p.as_str()).unwrap_or("") != "M")
-        .collect();
-
-    assert_eq!(orig_events.len(), 9);
-
-    // sensor_task events should have sensor_tid
-    assert_eq!(
-        orig_events[0].get("tid").and_then(|t| t.as_i64()),
-        sensor_tid
-    ); // sensor_task enter
-    assert_eq!(
-        orig_events[1].get("tid").and_then(|t| t.as_i64()),
-        sensor_tid
-    ); // read_distance enter
-    assert_eq!(
-        orig_events[2].get("tid").and_then(|t| t.as_i64()),
-        sensor_tid
-    ); // device_log
-    assert_eq!(
-        orig_events[2].get("name").and_then(|n| n.as_str()),
-        Some("read 120mm")
-    ); // device_log renamed to message
-    assert_eq!(
-        orig_events[3].get("tid").and_then(|t| t.as_i64()),
-        sensor_tid
-    ); // read_distance exit
-    assert_eq!(
-        orig_events[4].get("tid").and_then(|t| t.as_i64()),
-        sensor_tid
-    ); // sensor_task exit
-
-    // motor_task events should have motor_tid
-    assert_eq!(
-        orig_events[5].get("tid").and_then(|t| t.as_i64()),
-        motor_tid
-    );
-    assert_eq!(
-        orig_events[6].get("tid").and_then(|t| t.as_i64()),
-        motor_tid
-    );
-    assert_eq!(
-        orig_events[7].get("tid").and_then(|t| t.as_i64()),
-        motor_tid
-    );
-    assert_eq!(
-        orig_events[8].get("tid").and_then(|t| t.as_i64()),
-        motor_tid
-    );
 }
 
 #[test]
@@ -357,35 +285,22 @@ fn test_post_process_run_span_renaming() {
     // Clean up temp file
     let _ = std::fs::remove_file(path);
 
-    // We expect:
-    // - 1 thread metadata event defining "system_controller"
-    // - 1 "B" event named "system_controller"
-    // - 1 "E" event named "system_controller"
-    assert_eq!(events.len(), 3);
+    // We expect 2 events (the renamed span enter and exit events).
+    assert_eq!(events.len(), 2);
 
-    // Check thread metadata
     assert_eq!(
         events[0].get("name").and_then(|n| n.as_str()),
-        Some("thread_name")
-    );
-    assert_eq!(
-        events[0]
-            .get("args")
-            .and_then(|a| a.get("name"))
-            .and_then(|n| n.as_str()),
         Some("system_controller")
     );
+    assert_eq!(events[0].get("ph").and_then(|p| p.as_str()), Some("B"));
+    assert_eq!(events[0].get("pid").and_then(|p| p.as_i64()), Some(42));
+    assert_eq!(events[0].get("tid").and_then(|t| t.as_i64()), Some(1));
 
-    // Check "B" and "E" events
-    assert_eq!(events[1].get("ph").and_then(|p| p.as_str()), Some("B"));
     assert_eq!(
         events[1].get("name").and_then(|n| n.as_str()),
         Some("system_controller")
     );
-
-    assert_eq!(events[2].get("ph").and_then(|p| p.as_str()), Some("E"));
-    assert_eq!(
-        events[2].get("name").and_then(|n| n.as_str()),
-        Some("system_controller")
-    );
+    assert_eq!(events[1].get("ph").and_then(|p| p.as_str()), Some("E"));
+    assert_eq!(events[1].get("pid").and_then(|p| p.as_i64()), Some(42));
+    assert_eq!(events[1].get("tid").and_then(|t| t.as_i64()), Some(1));
 }
