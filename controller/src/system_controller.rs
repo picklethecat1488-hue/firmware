@@ -198,7 +198,7 @@ impl<
         };
 
         if !ctrl.power_manager.is_boot_trapped() {
-            let _ = ctrl.set_status(SystemStatus::Active);
+            let _ = ctrl.set_status_internal(SystemStatus::Active);
         }
 
         ctrl
@@ -242,6 +242,13 @@ impl<
     /// Sets the current system status.
     #[tracing::instrument(level = "trace", skip(status))]
     pub fn set_status(
+        &mut self,
+        status: SystemStatus,
+    ) -> Result<(), firmware_lib::system::TransitionError> {
+        self.set_status_internal(status)
+    }
+
+    fn set_status_internal(
         &mut self,
         status: SystemStatus,
     ) -> Result<(), firmware_lib::system::TransitionError> {

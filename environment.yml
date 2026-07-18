@@ -16,3 +16,6 @@ dependencies:
       - colorama
       - scancode-toolkit
       - typecode-libmagic
+      - tree-sitter
+      - tree-sitter-rust
+

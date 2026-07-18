@@ -153,7 +153,7 @@ where
     /// Updates the battery status by locking and reading the peripheral.
     #[tracing::instrument(
         name = "battery_controller::update",
-        level = "debug",
+        level = "info",
         skip(telemetry_client)
     )]
     pub async fn update(
@@ -245,11 +245,13 @@ where
 
         if read_failed {
             if let Some(err) = error_val {
-                return Err(err);
+                Err(err)
+            } else {
+                Ok(())
             }
+        } else {
+            Ok(())
         }
-
-        Ok(())
     }
 
     /// Wait for the battery alert pin to trigger an alert, or wait forever if no pin is configured.

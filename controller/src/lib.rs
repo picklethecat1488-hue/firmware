@@ -94,8 +94,12 @@ macro_rules! define_controllers {
                 #[allow(non_snake_case)]
                 mod $task_module {
                     use super::*;
+                    #[cfg(feature = "tracing")]
+                    use $crate::tracing::tracing_defmt;
 
+                    #[ $crate::tracing::instrument(name = stringify!($task_module), level = "info", skip($c, $r, $t)) ]
                     #[embassy_executor::task]
+                    #[allow(unreachable_code)]
                     pub async fn task(
                         mut $c: $($controller_ty)*,
                         $r: $($rx_ty)*,
@@ -153,8 +157,12 @@ macro_rules! define_controllers {
                 #[allow(non_snake_case)]
                 mod $task_module {
                     use super::*;
+                    #[cfg(feature = "tracing")]
+                    use $crate::tracing::tracing_defmt;
 
+                    #[ $crate::tracing::instrument(name = stringify!($task_module), level = "info", skip($c, $r)) ]
                     #[embassy_executor::task]
+                    #[allow(unreachable_code)]
                     pub async fn task(
                         mut $c: $($controller_ty)*,
                         $r: $($rx_ty)*
@@ -236,8 +244,12 @@ macro_rules! define_controllers {
                 #[allow(non_snake_case)]
                 mod $task_module {
                     use super::*;
+                    #[cfg(feature = "tracing")]
+                    use $crate::tracing::tracing_defmt;
 
+                    #[ $crate::tracing::instrument(name = stringify!($task_module), level = "info", skip($c, $r, $r2)) ]
                     #[embassy_executor::task]
+                    #[allow(unreachable_code)]
                     pub async fn task(
                         mut $c: $controller_type,
                         $r: $($rx_ty)*,
@@ -299,8 +311,12 @@ macro_rules! define_controllers {
                 #[allow(non_snake_case)]
                 mod $task_module {
                     use super::*;
+                    #[cfg(feature = "tracing")]
+                    use $crate::tracing::tracing_defmt;
 
+                    #[ $crate::tracing::instrument(name = stringify!($task_module), level = "info", skip($c, $r, $r2, $r3)) ]
                     #[embassy_executor::task]
+                    #[allow(unreachable_code)]
                     pub async fn task(
                         mut $c: $controller_type,
                         $r: $($rx_ty)*,
