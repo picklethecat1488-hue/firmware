@@ -18,6 +18,10 @@ use crate::types::{MotorCalState, MotorSafetyStatus, MotorState};
 /// The tick interval of the motor controller (10ms / 100Hz).
 pub const MOTOR_TICK_INTERVAL: embassy_time::Duration = embassy_time::Duration::from_millis(10);
 
+/// The tick interval of the motor controller when inactive (1s).
+pub const MOTOR_INACTIVE_TICK_INTERVAL: embassy_time::Duration =
+    embassy_time::Duration::from_secs(1);
+
 /// Safety limits for the motor controller.
 pub struct MotorLimits {
     /// Minimum current threshold in mA for dry-run detection.
@@ -375,30 +379,61 @@ where
             telemetry_client.report_error(e.to_peripheral_error());
         }
 
+        let mut last_telemetry = embassy_time::Instant::now();
         let mut ticker = embassy_time::Ticker::every(MOTOR_TICK_INTERVAL);
-        let mut slow_tick_counter = 0;
+        let mut was_active = false;
 
         loop {
-            // Process any available commands non-blockingly
-            while let Ok(cmd) = command_rx.try_receive() {
-                self.handle_command(cmd, Some(&mut telemetry_client));
-            }
+            let active = self.state == MotorState::On || self.active_speed.get() != 0;
 
-            // Tick ramping and duty cycle
-            if let Err(e) = self.tick_motor() {
-                telemetry_client.report_error(e);
-            }
+            if active {
+                if !was_active {
+                    ticker = embassy_time::Ticker::every(MOTOR_TICK_INTERVAL);
+                    was_active = true;
+                }
 
-            // Run telemetry, safety, and current monitoring once per second
-            slow_tick_counter += 1;
-            if slow_tick_counter >= 100 {
-                slow_tick_counter = 0;
-                if let Err(e) = self.update(Some(&mut telemetry_client)) {
+                // Process any available commands non-blockingly
+                while let Ok(cmd) = command_rx.try_receive() {
+                    self.handle_command(cmd, Some(&mut telemetry_client));
+                }
+
+                // Tick ramping and duty cycle
+                if let Err(e) = self.tick_motor() {
                     telemetry_client.report_error(e);
                 }
-            }
 
-            ticker.next().await;
+                // Run telemetry, safety, and current monitoring once per second
+                let now = embassy_time::Instant::now();
+                if now.duration_since(last_telemetry) >= MOTOR_INACTIVE_TICK_INTERVAL {
+                    last_telemetry = now;
+                    if let Err(e) = self.update(Some(&mut telemetry_client)) {
+                        telemetry_client.report_error(e);
+                    }
+                }
+
+                ticker.next().await;
+            } else {
+                was_active = false;
+
+                let now = embassy_time::Instant::now();
+                let elapsed = now.duration_since(last_telemetry);
+                if elapsed >= MOTOR_INACTIVE_TICK_INTERVAL {
+                    last_telemetry = now;
+                    if let Err(e) = self.update(Some(&mut telemetry_client)) {
+                        telemetry_client.report_error(e);
+                    }
+                } else {
+                    let timeout = MOTOR_INACTIVE_TICK_INTERVAL - elapsed;
+                    if let Some(cmd) =
+                        firmware_lib::with_timeout!(command_rx.receive(), timeout).await
+                    {
+                        self.handle_command(cmd, Some(&mut telemetry_client));
+                        while let Ok(next_cmd) = command_rx.try_receive() {
+                            self.handle_command(next_cmd, Some(&mut telemetry_client));
+                        }
+                    }
+                }
+            }
         }
     }
 }
