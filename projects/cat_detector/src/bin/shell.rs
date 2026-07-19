@@ -20,14 +20,7 @@ use controller::shell_controller::{ShellController, ShellControllerPointers};
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    app::handle_panic_with_sizes::<
-        { app::FLASH_SIZE },
-        { app::STACK_TOP },
-        { app::FLASH_START },
-        { app::FLASH_END },
-        { app::FLASH_WRITE_SIZE },
-        { app::FLASH_ERASE_SIZE },
-    >(info);
+    app::multicore::handle_panic(info);
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -42,6 +35,7 @@ controller::declare_shell_commands! {
         Sensor,
         Fs,
         System,
+        Core1,
     }
 }
 
@@ -119,6 +113,30 @@ controller::impl_shell_config! {
         SystemCtrl = SystemControllerType,
     }
 }
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+fn handle_core1_cli<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    C: controller::ShellConfig,
+>(
+    _ctrl: &mut ShellController<'_, C>,
+    subcommand: Option<controller::shell_controller::Core1Subcommand>,
+    _writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+) -> Result<(), &'static str> {
+    let cmd = subcommand.ok_or("Missing core1 subcommand")?;
+    match cmd {
+        controller::shell_controller::Core1Subcommand::Panic => {
+            #[cfg(feature = "core1")]
+            {
+                app::multicore::CORE1_COMMAND_CHANNEL
+                    .sender()
+                    .try_send(app::multicore::Core1Command::Panic)
+                    .map_err(|_| "Failed to send command to Core 1")?;
+            }
+            Ok(())
+        }
+    }
+}
 
 /// Main application entry point for the bringup shell.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -176,6 +194,26 @@ async fn main(spawner: Spawner) {
         app::MAX_CRASH_LOGS,
     );
 
+    #[cfg(feature = "core1")]
+    {
+        let core1 = unsafe { embassy_rp::peripherals::CORE1::steal() };
+        app::multicore::boot_core1(
+            core1,
+            #[cfg(feature = "motor-core")]
+            unsafe {
+                app::MOTOR_CTRL.take().unwrap()
+            },
+            #[cfg(feature = "sensors-core")]
+            unsafe {
+                (
+                    app::SENSOR_CTRL_NORTH.take().unwrap(),
+                    app::SENSOR_CTRL_EAST.take().unwrap(),
+                    app::SENSOR_CTRL_WEST.take().unwrap(),
+                )
+            },
+        );
+    }
+
     let temp_sensor_ptr = {
         let mut guard = app::SHARED_TEMP_SENSOR.lock().await;
         if let Some(ref mut sensor) = guard.0 {
@@ -208,7 +246,20 @@ async fn main(spawner: Spawner) {
         }
     });
 
-    let board_motor_ptr = unsafe { &mut app::MOTOR_CTRL.as_mut().unwrap().motor as *mut _ };
+    let board_motor_ptr = unsafe {
+        #[cfg(feature = "motor-core")]
+        {
+            if !app::multicore::MOTOR_CTRL_PTR.is_null() {
+                &mut (*(app::multicore::MOTOR_CTRL_PTR as *mut MotorControllerType)).motor as *mut _
+            } else {
+                core::ptr::null_mut()
+            }
+        }
+        #[cfg(not(feature = "motor-core"))]
+        {
+            &mut app::MOTOR_CTRL.as_mut().unwrap().motor as *mut _
+        }
+    };
 
     let i2c_buses = &[controller::NamedDevice {
         name: "default",
@@ -237,27 +288,57 @@ async fn main(spawner: Spawner) {
         &[]
     };
     let sensors = unsafe {
-        &[
-            controller::NamedDevice {
-                name: "north",
-                device: app::SENSOR_CTRL_NORTH.as_mut().unwrap() as *mut _,
-            },
-            controller::NamedDevice {
-                name: "east",
-                device: app::SENSOR_CTRL_EAST.as_mut().unwrap() as *mut _,
-            },
-            controller::NamedDevice {
-                name: "west",
-                device: app::SENSOR_CTRL_WEST.as_mut().unwrap() as *mut _,
-            },
-        ]
+        #[cfg(feature = "sensors-core")]
+        {
+            &[
+                controller::NamedDevice {
+                    name: "north",
+                    device: app::multicore::SENSOR_NORTH_PTR as *mut _,
+                },
+                controller::NamedDevice {
+                    name: "east",
+                    device: app::multicore::SENSOR_EAST_PTR as *mut _,
+                },
+                controller::NamedDevice {
+                    name: "west",
+                    device: app::multicore::SENSOR_WEST_PTR as *mut _,
+                },
+            ]
+        }
+        #[cfg(not(feature = "sensors-core"))]
+        {
+            &[
+                controller::NamedDevice {
+                    name: "north",
+                    device: app::SENSOR_CTRL_NORTH.as_mut().unwrap() as *mut _,
+                },
+                controller::NamedDevice {
+                    name: "east",
+                    device: app::SENSOR_CTRL_EAST.as_mut().unwrap() as *mut _,
+                },
+                controller::NamedDevice {
+                    name: "west",
+                    device: app::SENSOR_CTRL_WEST.as_mut().unwrap() as *mut _,
+                },
+            ]
+        }
     };
 
     let motor_ctrls = unsafe {
-        &[controller::NamedDevice {
-            name: "default",
-            device: app::MOTOR_CTRL.as_mut().unwrap() as *mut _,
-        }]
+        #[cfg(feature = "motor-core")]
+        {
+            &[controller::NamedDevice {
+                name: "default",
+                device: app::multicore::MOTOR_CTRL_PTR as *mut _,
+            }]
+        }
+        #[cfg(not(feature = "motor-core"))]
+        {
+            &[controller::NamedDevice {
+                name: "default",
+                device: app::MOTOR_CTRL.as_mut().unwrap() as *mut _,
+            }]
+        }
     };
 
     let feature_set = app::create_default_feature_set();

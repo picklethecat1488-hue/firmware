@@ -20,14 +20,7 @@ use {
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    app::handle_panic_with_sizes::<
-        { app::FLASH_SIZE },
-        { app::STACK_TOP },
-        { app::FLASH_START },
-        { app::FLASH_END },
-        { app::FLASH_WRITE_SIZE },
-        { app::FLASH_ERASE_SIZE },
-    >(info);
+    app::multicore::handle_panic(info);
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -38,98 +31,6 @@ unsafe impl Sync for SyncExecutor {}
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 static mut EXECUTOR_CORE0: Option<SyncExecutor> = None;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "core1")]
-static mut CORE1_STACK: embassy_rp::multicore::Stack<4096> = embassy_rp::multicore::Stack::new();
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "core1")]
-static mut EXECUTOR_CORE1: Option<SyncExecutor> = None;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-#[allow(dead_code)]
-type MotorType =
-    controller::motor_controller::MotorController<app::MotorDevice, app::CurrentSensorDevice>;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-#[allow(dead_code)]
-type SensorType = controller::sensor_controller::SensorController<
-    'static,
-    app::ProximitySensorDevice,
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    app::DataReadyPinType,
-    app::SystemCommand,
-    controller::sensor_controller::ProximityReader,
->;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "core1")]
-#[embassy_executor::task]
-async fn bootstrap_core1_task(
-    spawner: Spawner,
-    #[cfg(feature = "motor-core")] motor: MotorType,
-    #[cfg(feature = "sensors-core")] sensors: (SensorType, SensorType, SensorType),
-) {
-    #[cfg(feature = "motor-core")]
-    controller::spawn_controllers! {
-        spawner,
-        telemetry: TELEMETRY_CHANNEL,
-        controllers: {
-            Motor(motor, MOTOR_CHANNEL), generics: (app::MotorDevice, app::CurrentSensorDevice),
-        }
-    }
-
-    #[cfg(feature = "sensors-core")]
-    controller::spawn_controllers! {
-        spawner,
-        telemetry: TELEMETRY_CHANNEL,
-        controllers: {
-            Sensor(sensors.0, SENSOR_NORTH_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
-            Sensor(sensors.1, SENSOR_EAST_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
-            Sensor(sensors.2, SENSOR_WEST_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
-        }
-    }
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "core1")]
-fn boot_core1(
-    core1: embassy_rp::peripherals::CORE1,
-    #[cfg(feature = "motor-core")] motor: MotorType,
-    #[cfg(feature = "sensors-core")] sensors: (SensorType, SensorType, SensorType),
-) {
-    unsafe {
-        EXECUTOR_CORE1 = Some(SyncExecutor(embassy_executor::raw::Executor::new(
-            !0 as *mut (),
-        )));
-    }
-
-    let executor_c1 = unsafe { EXECUTOR_CORE1.as_ref().unwrap() };
-
-    embassy_rp::multicore::spawn_core1(core1, unsafe { &mut CORE1_STACK }, move || {
-        let spawner_c1 = executor_c1.0.spawner();
-
-        spawner_c1
-            .spawn(bootstrap_core1_task(
-                spawner_c1,
-                #[cfg(feature = "motor-core")]
-                motor,
-                #[cfg(feature = "sensors-core")]
-                sensors,
-            ))
-            .unwrap();
-
-        loop {
-            unsafe {
-                executor_c1.0.poll();
-                defmt::trace!("ctx=cpu_idle_c1 parent=0 span_enter: CPU Idle Core 1");
-                cortex_m::asm::wfe();
-                defmt::trace!("cpu_idle_c1 span_exit: CPU Idle Core 1");
-            }
-        }
-    });
-}
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[firmware_lib::tracing::instrument(name = "boot", level = "info", skip(spawner, board))]
@@ -260,7 +161,7 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
     #[cfg(feature = "core1")]
     {
         let core1 = unsafe { embassy_rp::peripherals::CORE1::steal() };
-        boot_core1(
+        app::multicore::boot_core1(
             core1,
             #[cfg(feature = "motor-core")]
             controller,

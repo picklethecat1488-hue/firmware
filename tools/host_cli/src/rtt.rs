@@ -985,6 +985,7 @@ where
         backtrace_len: backtrace_len as u32,
         system_logs: &system_logs,
         uuid,
+        cpu_id: 0,
     };
 
     tool_common::print_crash_dump(

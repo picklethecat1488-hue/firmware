@@ -193,6 +193,9 @@ pub struct CrashDump<'a> {
     #[cbor(with = "minicbor::bytes")]
     #[n(8)]
     pub uuid: [u8; 16],
+    /// CPU ID of the faulting core (0 or 1)
+    #[n(9)]
+    pub cpu_id: u32,
 }
 
 /// Project metadata struct embedded in the ELF to allow autodetecting chip/partition layout.
