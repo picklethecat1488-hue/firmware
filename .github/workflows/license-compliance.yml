@@ -19,8 +19,8 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install scancode-toolkit
-        run: pip install scancode-toolkit typecode-libmagic
+      - name: Install scancode-toolkit and styling libraries
+        run: pip install scancode-toolkit typecode-libmagic colorama halo
 
       - name: Verify license compliance
         run: python scripts/license_compliance.py --run-scan

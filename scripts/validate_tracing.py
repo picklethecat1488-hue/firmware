@@ -1,9 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 import os
 import re
 import sys
 import tree_sitter_rust as tsrust
 from tree_sitter import Language, Parser
+from colorama import init, Fore, Style
+from halo import Halo
+
+init(autoreset=True)
 
 # Load the Rust grammar using tree-sitter
 RUST_LANGUAGE = Language(tsrust.language())
@@ -164,14 +168,15 @@ def main():
 
     # 1. Discover all functions
     all_functions = []
-    for s_dir in scan_dirs:
-        if not os.path.exists(s_dir):
-            continue
-        for root, _, files in os.walk(s_dir):
-            for file in files:
-                if file.endswith(".rs"):
-                    filepath = os.path.join(root, file)
-                    all_functions.extend(parse_rs_file(filepath))
+    with Halo(text="Scanning and parsing AST for tracing hierarchy...", spinner="dots") as spinner:
+        for s_dir in scan_dirs:
+            if not os.path.exists(s_dir):
+                continue
+            for root, _, files in os.walk(s_dir):
+                for file in files:
+                    if file.endswith(".rs"):
+                        filepath = os.path.join(root, file)
+                        all_functions.extend(parse_rs_file(filepath))
 
     # Index functions by file for fast call-site context lookups
     funcs_by_file = {}
@@ -211,7 +216,7 @@ def main():
                     line_content = line_content.split("//")[0]
                 if "return " in line_content or "return;" in line_content:
                     print(
-                        f"ERROR: Instrumented function '{f['name']}' contains a 'return' statement (early returns bypass async span exits!)"
+                        f"{Fore.RED}ERROR:{Style.RESET_ALL} Instrumented function '{f['name']}' contains a 'return' statement (early returns bypass async span exits!)"
                     )
                     print(f"  File: {f['file']}:{idx + 1}")
                     print(f"  Line: {lines[idx].strip()}")
@@ -267,7 +272,7 @@ def main():
                                 # Check if the containing function is an uninstrumented boot/initialization context
                                 if is_boot_context(containing_func):
                                     print(
-                                        f"ERROR: Instrumented function '{target_name}' called from uninstrumented boot/init context '{containing_func['name']}'!"
+                                        f"{Fore.RED}ERROR:{Style.RESET_ALL} Instrumented function '{target_name}' called from uninstrumented boot/init context '{containing_func['name']}'!"
                                     )
                                     print(f"  File: {filepath}:{line_num}")
                                     print(f"  Line: {line_text.strip()}")
@@ -276,7 +281,7 @@ def main():
                         else:
                             # Call is outside any function body
                             print(
-                                f"ERROR: Instrumented function '{target_name}' called outside of any function context!"
+                                f"{Fore.RED}ERROR:{Style.RESET_ALL} Instrumented function '{target_name}' called outside of any function context!"
                             )
                             print(f"  File: {filepath}:{line_num}")
                             print(f"  Line: {line_text.strip()}")
@@ -289,10 +294,10 @@ def main():
         find_calls(tree.root_node)
 
     if errors > 0:
-        print(f"Validation FAILED: {errors} boot-time tracing hierarchy or early return violations found.")
+        print(f"{Fore.RED}Validation FAILED: {errors} boot-time tracing hierarchy or early return violations found.")
         sys.exit(1)
     else:
-        print("Validation PASSED: All instrumented functions are correctly nested and exit cleanly.")
+        print(f"{Fore.GREEN}Validation PASSED: All instrumented functions are correctly nested and exit cleanly.")
         sys.exit(0)
 
 

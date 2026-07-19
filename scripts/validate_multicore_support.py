@@ -1,9 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 import sys
 import re
 import os
 import tree_sitter_rust as tsrust
 from tree_sitter import Language, Parser
+from colorama import init, Fore, Style
+from halo import Halo
+
+init(autoreset=True)
 
 RUST_LANGUAGE = Language(tsrust.language())
 
@@ -163,7 +167,7 @@ def validate_call_graph(funcs_list, roots, feature, allowed_files=None):
                     continue
                 if feature not in d["ram_features"]:
                     print(
-                        f"WARNING: Driver function '{curr_name}' in {d['filepath']}:{d['line']} is reached in RAM call chain but missing RAM attribute for '{feature}'!"
+                        f"{Fore.YELLOW}WARNING:{Style.RESET_ALL} Driver function '{curr_name}' in {d['filepath']}:{d['line']} is reached in RAM call chain but missing RAM attribute for '{feature}'!"
                     )
                     print(
                         f'  Expected: #[cfg_attr(all(target_arch = "arm", feature = "{feature}"), link_section = ".data.ram_func")]'
@@ -174,7 +178,7 @@ def validate_call_graph(funcs_list, roots, feature, allowed_files=None):
                 if "forbidden_calls" in d:
                     for forbidden_name, line_num in d["forbidden_calls"]:
                         print(
-                            f"ERROR: Driver function '{curr_name}' in {d['filepath']}:{line_num} "
+                            f"{Fore.RED}ERROR:{Style.RESET_ALL} Driver function '{curr_name}' in {d['filepath']}:{line_num} "
                             f"executes on Core 1 call path but calls single-core blocking/interrupt control '{forbidden_name}'!"
                         )
                         print("  Expected: Use critical_section::with() for multicore-safe synchronization.")
@@ -192,20 +196,21 @@ def main():
     scan_dirs = ["controller/src", "peripherals/src"]
     all_functions = []
 
-    for s_dir in scan_dirs:
-        if not os.path.exists(s_dir):
-            continue
-        for root, _, files in os.walk(s_dir):
-            for file in files:
-                if file.endswith(".rs"):
-                    filepath = os.path.join(root, file)
-                    try:
-                        with open(filepath, "rb") as f:
-                            content = f.read()
-                        funcs = parse_code(content, filepath)
-                        all_functions.extend(funcs.values())
-                    except Exception as e:
-                        print(f"Error reading/parsing {filepath}: {e}", file=sys.stderr)
+    with Halo(text="Scanning and parsing AST for multicore support...", spinner="dots") as spinner:
+        for s_dir in scan_dirs:
+            if not os.path.exists(s_dir):
+                continue
+            for root, _, files in os.walk(s_dir):
+                for file in files:
+                    if file.endswith(".rs"):
+                        filepath = os.path.join(root, file)
+                        try:
+                            with open(filepath, "rb") as f:
+                                content = f.read()
+                            funcs = parse_code(content, filepath)
+                            all_functions.extend(funcs.values())
+                        except Exception as e:
+                            print(f"Error reading/parsing {filepath}: {e}", file=sys.stderr)
 
     # Validate motor-core call graph
     # Start from run, tick_motor, and update in motor_controller.rs
@@ -231,12 +236,12 @@ def main():
     total_errors = motor_errors + sensor_errors
 
     if total_errors > 0:
-        print(f"Validation FAILED: Found {total_errors} errors and {total_warnings} warnings.")
+        print(f"{Fore.RED}Validation FAILED: Found {total_errors} errors and {total_warnings} warnings.")
         sys.exit(1)
     elif total_warnings > 0:
-        print(f"Validation completed with {total_warnings} warnings.")
+        print(f"{Fore.YELLOW}Validation completed with {total_warnings} warnings.")
     else:
-        print("Validation passed: All checks successful.")
+        print(f"{Fore.GREEN}Validation passed: All checks successful.")
 
 
 if __name__ == "__main__":

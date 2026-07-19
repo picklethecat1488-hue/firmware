@@ -35,7 +35,7 @@ jobs:
       - name: Install Python dependencies for validations
         run: |
           python -m pip install --upgrade pip
-          pip install tree-sitter==0.26.0 tree-sitter-rust==0.24.2
+          pip install tree-sitter==0.26.0 tree-sitter-rust==0.24.2 colorama halo
 
       - name: Run Codebase Validations
         run: ./scripts/validate_codebase.sh validation_report.txt
