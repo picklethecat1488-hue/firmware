@@ -29,20 +29,21 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
-      - name: Check Formatting
-        run: cargo fmt --all --check | tee format_report.txt
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python dependencies for validations
+        run: |
+          python -m pip install --upgrade pip
+          pip install tree-sitter==0.26.0 tree-sitter-rust==0.24.2
+
+      - name: Run Codebase Validations
+        run: ./scripts/validate_codebase.sh validation_report.txt
 
       - name: Run Tests
         run: ./scripts/run_tests.sh test_report.txt
-
-      - name: Run Clippy (Host Targets)
-        run: cargo clippy --all-targets -- -D warnings | tee clippy_host_report.txt
-
-      - name: Run Clippy (Target MCU)
-        run: cargo clippy --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --lib --bins --target thumbv6m-none-eabi -- -D warnings | tee clippy_target_report.txt
-
-      - name: Run Clippy (Target MCU with Tracing)
-        run: cargo clippy --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --lib --bins --target thumbv6m-none-eabi --features tracing -- -D warnings
 
       - name: Upload Test Reports
         if: always()
@@ -50,10 +51,8 @@ jobs:
         with:
           name: nightly-test-reports
           path: |
-            format_report.txt
+            validation_report.txt
             test_report.txt
-            clippy_host_report.txt
-            clippy_target_report.txt
 
   test-python:
     name: Run Python Tests

@@ -42,4 +42,4 @@ echo "Validating tracing hierarchy and early returns..."
 run_and_report "scripts/validate_tracing.py"
 
 echo "Validating RAM placement for multicore execution..."
-run_and_report "scripts/validate_ram_functions.py"
+run_and_report "scripts/validate_multicore_support.py"
