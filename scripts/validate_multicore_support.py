@@ -75,9 +75,25 @@ def parse_code(content, filepath="<string>"):
                             break
 
                 calls = []
+                forbidden_calls = []
 
                 def find_calls_in_node(n):
                     if n.type == "call_expression":
+                        if len(n.children) > 0:
+                            func_node = n.children[0]
+                            func_text = func_node.text.decode("utf-8")
+                            if func_text in [
+                                "cortex_m::interrupt::free",
+                                "interrupt::free",
+                                "free",
+                                "cortex_m::register::primask::write",
+                                "primask::write",
+                                "primask::disable",
+                                "cortex_m::interrupt::disable",
+                                "interrupt::disable",
+                            ]:
+                                forbidden_calls.append((func_text, n.start_point[0] + 1))
+
                         name = get_called_function_name(n)
                         if name:
                             calls.append(name)
@@ -103,6 +119,7 @@ def parse_code(content, filepath="<string>"):
                     "line": node.start_point[0] + 1,
                     "ram_features": ram_features,
                     "calls": list(set(calls)),
+                    "forbidden_calls": forbidden_calls,
                 }
 
         for child in node.children:
@@ -128,6 +145,7 @@ def validate_call_graph(funcs_list, roots, feature, allowed_files=None):
     visited = set()
     queue = list(roots)
     warnings = 0
+    errors = 0
 
     while queue:
         curr_name = queue.pop(0)
@@ -153,11 +171,21 @@ def validate_call_graph(funcs_list, roots, feature, allowed_files=None):
                     print()
                     warnings += 1
 
+                if "forbidden_calls" in d:
+                    for forbidden_name, line_num in d["forbidden_calls"]:
+                        print(
+                            f"ERROR: Driver function '{curr_name}' in {d['filepath']}:{line_num} "
+                            f"executes on Core 1 call path but calls single-core blocking/interrupt control '{forbidden_name}'!"
+                        )
+                        print("  Expected: Use critical_section::with() for multicore-safe synchronization.")
+                        print()
+                        errors += 1
+
                 for child in d["calls"]:
                     if child not in visited:
                         queue.append(child)
 
-    return warnings
+    return warnings, errors
 
 
 def main():
@@ -182,7 +210,7 @@ def main():
     # Validate motor-core call graph
     # Start from run, tick_motor, and update in motor_controller.rs
     motor_roots = ["run", "tick_motor", "update"]
-    motor_warnings = validate_call_graph(
+    motor_warnings, motor_errors = validate_call_graph(
         funcs_list=all_functions,
         roots=motor_roots,
         feature="motor-core",
@@ -192,7 +220,7 @@ def main():
     # Validate sensors-core call graph
     # Start from run, and update in sensor_controller.rs
     sensor_roots = ["run", "update"]
-    sensor_warnings = validate_call_graph(
+    sensor_warnings, sensor_errors = validate_call_graph(
         funcs_list=all_functions,
         roots=sensor_roots,
         feature="sensors-core",
@@ -200,10 +228,15 @@ def main():
     )
 
     total_warnings = motor_warnings + sensor_warnings
-    if total_warnings > 0:
-        print(f"RAM placement check completed with {total_warnings} warnings.")
+    total_errors = motor_errors + sensor_errors
+
+    if total_errors > 0:
+        print(f"Validation FAILED: Found {total_errors} errors and {total_warnings} warnings.")
+        sys.exit(1)
+    elif total_warnings > 0:
+        print(f"Validation completed with {total_warnings} warnings.")
     else:
-        print("RAM placement check passed: All critical execution path functions have RAM routing attributes.")
+        print("Validation passed: All checks successful.")
 
 
 if __name__ == "__main__":
