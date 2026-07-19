@@ -69,6 +69,10 @@ impl<S: ProximitySensor> SensorReader<S> for ProximityReader {
     type Data = u16;
     type Error = S::Error;
 
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.ram_func"
+    )]
     fn read_data(sensor: &mut S, _ctx: &Self::Context) -> Result<Self::Data, Self::Error> {
         sensor.read_distance_mm()
     }
@@ -81,6 +85,10 @@ pub trait FromProximityUpdate {
 }
 
 impl FromProximityUpdate for () {
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.ram_func"
+    )]
     fn from_proximity_update(_metadata: SensorMetadata, _distance_mm: u16) -> Self {}
 }
 
@@ -162,6 +170,10 @@ impl<
     > SensorStateManager<'a, S, Data, M, Pin, Cmd>
 {
     /// Sends a command upstream if configured.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.ram_func"
+    )]
     pub fn notify_upstream(&self, data: Data) {
         if let Some(tx) = &self.upstream_tx {
             let cmd = Cmd::from_proximity_update(self.metadata, data.into());
@@ -310,6 +322,10 @@ where
     }
 
     /// Gets a mutable reference to the underlying sensor.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.ram_func"
+    )]
     pub fn sensor_mut(&mut self) -> &mut S {
         self.state_manager.sensor_mut()
     }
@@ -330,11 +346,19 @@ where
     }
 
     /// Gets whether periodic monitoring is enabled.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.ram_func"
+    )]
     pub fn is_periodic_enabled(&self) -> bool {
         self.state_manager.is_periodic_enabled()
     }
 
     /// Ticks the sensor control loop, updating proximity distance.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.ram_func"
+    )]
     #[tracing::instrument(name = "sensor_controller::update", level = "info")]
     pub fn update(&mut self) -> Result<Reader::Data, Reader::Error> {
         let data = Reader::read_data(self.state_manager.sensor_mut(), &self.context)?;
@@ -347,6 +371,10 @@ where
     }
 
     /// Handles a SensorCommand.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.ram_func"
+    )]
     #[tracing::instrument(name = "sensor_controller::handle_command", level = "info", skip(cmd))]
     pub fn handle_command(&mut self, cmd: SensorCommand) {
         match cmd {
@@ -363,6 +391,10 @@ where
     }
 
     /// Runs the controller's main run loop, executing periodic telemetry updates.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.ram_func"
+    )]
     pub async fn run(
         mut self,
         command_rx: embassy_sync::channel::Receiver<'static, M, SensorCommand, 4>,
@@ -441,6 +473,10 @@ impl<'a, S: ProximitySensor, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin
 where
     S::Error: ToPeripheralError,
 {
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.ram_func"
+    )]
     fn read_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
         self.sensor_mut()
             .read_distance_mm()

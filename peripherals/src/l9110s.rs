@@ -35,6 +35,10 @@ where
     type Error = L9110sError<P1::Error, P2::Error>;
 
     /// Sets the motor speed.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.ram_func"
+    )]
     #[tracing::instrument(level = "trace", skip(speed))]
     fn set_speed(&mut self, speed: MotorSpeed) -> Result<(), Self::Error> {
         let speed_raw = speed.get();
@@ -54,6 +58,10 @@ where
     }
 
     /// Stops the motor by braking (both IA and IB set to low).
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.ram_func"
+    )]
     #[tracing::instrument(level = "trace")]
     fn stop(&mut self) -> Result<(), Self::Error> {
         self.speed = 0;
@@ -71,6 +79,10 @@ where
 {
     type Error = L9110sError<P1::Error, P2::Error>;
 
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.ram_func"
+    )]
     #[tracing::instrument(level = "trace")]
     fn tick(&mut self) -> Result<(), Self::Error> {
         let abs_speed = self.speed.abs();

@@ -251,7 +251,10 @@ impl<W: RttWriter> RttProtocol<W> {
     pub fn acquire(&self) {
         let restore = unsafe { critical_section::acquire() };
         if self.taken.load(core::sync::atomic::Ordering::Relaxed) {
-            panic!("defmt logger taken reentrantly")
+            unsafe {
+                critical_section::release(restore);
+            }
+            panic!("defmt logger taken reentrantly");
         }
         self.taken
             .store(true, core::sync::atomic::Ordering::Relaxed);

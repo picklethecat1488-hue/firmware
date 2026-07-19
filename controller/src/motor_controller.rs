@@ -36,6 +36,10 @@ pub struct MotorLimits {
 
 impl MotorLimits {
     /// Checks if the given RPM and current draw violate configured safety limits.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.ram_func"
+    )]
     pub fn check_limits(&self, rpm: u32, current_ma: i32) -> MotorSafetyStatus {
         if self.rpm_limit > 0 && rpm > self.rpm_limit {
             return MotorSafetyStatus::RpmExceeded(rpm);
@@ -112,6 +116,10 @@ where
     }
 
     /// Returns the current estimated RPM based on the active speed and max_rpm calibration.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.ram_func"
+    )]
     pub fn current_rpm(&self) -> u32 {
         if self.limits.max_rpm == 0 {
             0
@@ -126,6 +134,10 @@ where
     }
 
     /// Directly reads the current draw (acting as a proxy for load torque) in mA from the sensor.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.ram_func"
+    )]
     pub fn read_torque_ma(&mut self) -> Result<i32, PeripheralError> {
         let current = self
             .current_sensor
@@ -136,6 +148,10 @@ where
     }
 
     /// Ticks the control loop, reading current sensor input and updating safety states.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.ram_func"
+    )]
     #[tracing::instrument(
         name = "motor_controller::update",
         level = "info",
@@ -205,6 +221,10 @@ where
     }
 
     /// Handles a received MotorCommand.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.ram_func"
+    )]
     #[tracing::instrument(
         name = "motor_controller::handle_command",
         level = "info",
@@ -301,6 +321,10 @@ where
 
     /// Ticks the motor controller at a high frequency (e.g. 100Hz / every 10ms).
     /// This updates the ramping of the motor speed and runs the motor driver's duty cycle ticks.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.ram_func"
+    )]
     #[tracing::instrument(name = "motor_controller::tick_motor", level = "info")]
     pub fn tick_motor(&mut self) -> Result<(), PeripheralError> {
         // 1. Ramping logic
@@ -362,6 +386,10 @@ where
     }
 
     /// Runs the controller's control loop infinitely, reading from the command channel.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.ram_func"
+    )]
     pub async fn run<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex, const N: usize>(
         mut self,
         command_rx: MotorReceiver<MutexRaw, N>,
@@ -474,6 +502,10 @@ where
     <M as Motor>::Error: ToPeripheralError,
     <M as Tickable>::Error: ToPeripheralError,
 {
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.ram_func"
+    )]
     fn read_current_ma_blocking(&mut self) -> Result<i32, PeripheralError> {
         self.read_torque_ma()
     }
@@ -485,12 +517,20 @@ where
     <M as Motor>::Error: ToPeripheralError,
     <M as Tickable>::Error: ToPeripheralError,
 {
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.ram_func"
+    )]
     fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
         let motor_speed = MotorSpeed::new(speed).ok_or(PeripheralError::InvalidConfiguration)?;
         let _ = self.motor.set_speed(motor_speed);
         Ok(())
     }
 
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.ram_func"
+    )]
     fn stop(&mut self) -> Result<(), PeripheralError> {
         let _ = self.motor.stop();
         Ok(())

@@ -8,6 +8,7 @@ use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use model::interfaces::NoTick;
+
 use model::types::{BootReason, ChargeState, Direction, SystemLedState, SystemStatus};
 use peripherals::mock::{
     DummyCurrentSensor, MockBattery, MockCharger, MockLed, MockMotor, MockProximitySensor,

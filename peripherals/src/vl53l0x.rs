@@ -162,6 +162,10 @@ impl<I: I2c> Vl53l0x<I> {
     }
 
     /// Clears the interrupt status register `SYSTEM_INTERRUPT_CLEAR` (0x0B).
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.ram_func"
+    )]
     pub fn clear_interrupt(&mut self) -> Result<(), PeripheralError> {
         let res = self
             .i2c
@@ -198,6 +202,10 @@ impl<I: I2c> Vl53l0x<I> {
 impl<I: I2c> ProximitySensor for Vl53l0x<I> {
     type Error = PeripheralError;
 
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.ram_func"
+    )]
     #[tracing::instrument(level = "trace")]
     fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
         let res = (|| {

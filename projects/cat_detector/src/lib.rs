@@ -282,6 +282,9 @@ pub async fn init_controllers(board: Board<'static>) {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+pub mod multicore;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 mod bsp_target;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]

@@ -128,6 +128,10 @@ pub static PANIC_CONFIG: embassy_sync::blocking_mutex::Mutex<
     core::cell::RefCell<Option<PanicConfig>>,
 > = embassy_sync::blocking_mutex::Mutex::new(core::cell::RefCell::new(None));
 
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global static storing the stack top address of Core 1 (set on boot)
+pub static mut CORE1_STACK_TOP: u32 = 0;
+
 /// Initialize the panic handler with flash access, target partition settings, and filesystem buffer.
 pub fn init(
     #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -428,13 +432,14 @@ pub fn generate_uuid(state: &CoreState, revision_hash: &str) -> [u8; 16] {
 /// Shared panic handler logic executing crash dump logging to flash memory with customizable write/erase sizes.
 pub fn handle_panic_with_sizes<
     const FLASH_SIZE: usize,
-    const STACK_TOP: u32,
     const FLASH_START: u32,
     const FLASH_END: u32,
     const WRITE_SIZE: usize,
     const ERASE_SIZE: usize,
 >(
     _info: &core::panic::PanicInfo,
+    stack_top: u32,
+    cpu_id: u32,
 ) -> ! {
     let mut state = CoreState::default();
     unsafe {
@@ -462,8 +467,8 @@ pub fn handle_panic_with_sizes<
         core::arch::asm!("mov {}, lr", out(reg) lr);
     }
 
-    log_crash_and_reset_impl::<FLASH_SIZE, STACK_TOP, FLASH_START, FLASH_END, WRITE_SIZE, ERASE_SIZE>(
-        sp, 0, lr, state.r0, state.r1, state.r2, state.r3,
+    log_crash_and_reset_impl::<FLASH_SIZE, FLASH_START, FLASH_END, WRITE_SIZE, ERASE_SIZE>(
+        sp, 0, lr, state.r0, state.r1, state.r2, state.r3, stack_top, cpu_id,
     )
 }
 
@@ -482,7 +487,7 @@ pub fn report_stuck_task_with_sizes<
     preempted_lr: u32,
 ) -> ! {
     cortex_m::interrupt::disable();
-    log_crash_and_reset_impl::<FLASH_SIZE, STACK_TOP, FLASH_START, FLASH_END, WRITE_SIZE, ERASE_SIZE>(
+    log_crash_and_reset_impl::<FLASH_SIZE, FLASH_START, FLASH_END, WRITE_SIZE, ERASE_SIZE>(
         preempted_sp,
         preempted_pc,
         preempted_lr,
@@ -490,13 +495,15 @@ pub fn report_stuck_task_with_sizes<
         0,
         0,
         0,
+        STACK_TOP,
+        0,
     )
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+#[allow(clippy::too_many_arguments)]
 fn log_crash_and_reset_impl<
     const FLASH_SIZE: usize,
-    const STACK_TOP: u32,
     const FLASH_START: u32,
     const FLASH_END: u32,
     const WRITE_SIZE: usize,
@@ -509,6 +516,8 @@ fn log_crash_and_reset_impl<
     r1: u32,
     r2: u32,
     r3: u32,
+    actual_stack_top: u32,
+    cpu_id: u32,
 ) -> ! {
     let mut state = CoreState {
         r0,
@@ -529,7 +538,7 @@ fn log_crash_and_reset_impl<
     };
     let mut pc_count = scan_stack_from_sp(
         sp as usize,
-        STACK_TOP as usize,
+        actual_stack_top as usize,
         FLASH_START,
         FLASH_END,
         &mut state.backtrace,
@@ -577,6 +586,7 @@ fn log_crash_and_reset_impl<
         backtrace_len: pc_count as u32,
         system_logs: logs_slice,
         uuid,
+        cpu_id,
     };
 
     // Serialize CrashDump into a buffer

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 License Compliance Scanner.
 
@@ -12,6 +12,10 @@ import os
 import subprocess
 import sys
 import shutil
+from colorama import init, Fore, Style
+from halo import Halo
+
+init(autoreset=True)
 
 # Conservative default allowlist (lowercased when compared)
 DEFAULT_ALLOWLIST = {
@@ -34,32 +38,32 @@ def run_scancode(workspace_root: str, report_path: str):
     """Run scancode-toolkit on the workspace."""
     scancode_path = shutil.which("scancode")
     if scancode_path:
-        print(f"Running license scan natively using {scancode_path}...")
-        cmd = [
-            "scancode",
-            "--license",
-            "--json-pp",
-            report_path,
-            "--ignore",
-            "target",
-            "--ignore",
-            ".venv",
-            "--ignore",
-            ".git",
-            "--ignore",
-            "build",
-            workspace_root,
-        ]
-        # Silence libmagic/libarchive UserWarnings by setting PYTHONWARNINGS=ignore for the subprocess
-        env = os.environ.copy()
-        env["PYTHONWARNINGS"] = "ignore"
-        try:
-            subprocess.run(cmd, check=True, env=env)
-            print(f"Scan completed successfully. Report saved to {report_path}")
-            return
-        except subprocess.CalledProcessError as e:
-            print(f"Error running scancode command: {e}", file=sys.stderr)
-            sys.exit(1)
+        with Halo(text=f"Running license scan natively using {scancode_path}...", spinner="dots") as spinner:
+            cmd = [
+                "scancode",
+                "--license",
+                "--json-pp",
+                report_path,
+                "--ignore",
+                "target",
+                "--ignore",
+                ".venv",
+                "--ignore",
+                ".git",
+                "--ignore",
+                "build",
+                workspace_root,
+            ]
+            # Silence libmagic/libarchive UserWarnings by setting PYTHONWARNINGS=ignore for the subprocess
+            env = os.environ.copy()
+            env["PYTHONWARNINGS"] = "ignore"
+            try:
+                subprocess.run(cmd, check=True, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                spinner.succeed(f"Scan completed successfully. Report saved to {report_path}")
+                return
+            except subprocess.CalledProcessError as e:
+                spinner.fail(f"Error running scancode command: {e}")
+                sys.exit(1)
 
     print("Error: 'scancode' executable not found on host.", file=sys.stderr)
     print("To install it locally, run: pip install scancode-toolkit", file=sys.stderr)
@@ -143,18 +147,23 @@ def main():
         run_scancode(args.workspace, args.report)
 
     # 2. Parse the generated report
-    print(f"Parsing scan report from {args.report}...")
-    licenses = parse_report(args.report)
-
-    # 3. Check for compliance violations
-    problematic = check_licenses(licenses, DEFAULT_ALLOWLIST)
+    with Halo(text=f"Parsing scan report from {args.report}...", spinner="dots") as spinner:
+        licenses = parse_report(args.report)
+        # 3. Check for compliance violations
+        problematic = check_licenses(licenses, DEFAULT_ALLOWLIST)
+        if not problematic:
+            spinner.succeed("Parsing completed. All licenses compliant.")
+        else:
+            spinner.fail("Parsing completed. Compliance violations detected!")
 
     if not problematic:
-        print("\nSUCCESS: No potentially incompatible or unknown dependency licenses found.")
+        print(
+            f"\n{Fore.GREEN}SUCCESS:{Style.RESET_ALL} No potentially incompatible or unknown dependency licenses found."
+        )
         sys.exit(0)
 
     # 4. Report violations and fail the run
-    print("\n[Violation] Potentially incompatible or unknown licenses detected:")
+    print(f"\n{Fore.RED}[Violation] Potentially incompatible or unknown licenses detected:{Style.RESET_ALL}")
     for pkg, lics in problematic.items():
         print(f"  - {pkg}: {', '.join(lics)}")
 
