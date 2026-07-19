@@ -14,22 +14,14 @@ use {
     cat_detector as app,
     controller::{telemetry_controller::TelemetryController, SystemController},
     embassy_executor::Spawner,
+    firmware_lib::core_monitor,
 };
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    app::multicore::handle_panic(info);
+    app::handle_panic(info);
 }
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-struct SyncExecutor(embassy_executor::raw::Executor);
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-unsafe impl Sync for SyncExecutor {}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-static mut EXECUTOR_CORE0: Option<SyncExecutor> = None;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[firmware_lib::tracing::instrument(name = "boot", level = "info", skip(spawner, board))]
@@ -58,6 +50,14 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
         app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
         fs_buf_panic,
         app::MAX_CRASH_LOGS,
+    );
+
+    core_monitor::init_core(
+        Some(spawner),
+        core_monitor::CpuId::Core0,
+        app::CORE_MONITOR_TIMEOUT_MS,
+        app::CORE_MONITOR_WARN_PCT,
+        true,
     );
 
     // Initialize the FilesystemController using stolen FLASH peripheral (safe because panic handler only reads/writes on panic)
@@ -158,7 +158,7 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
     };
 
     let core1 = unsafe { embassy_rp::peripherals::CORE1::steal() };
-    app::multicore::boot_core1(
+    app::boot_core1(
         core1,
         controller,
         (sensor_ctrl_north, sensor_ctrl_east, sensor_ctrl_west),
@@ -190,19 +190,12 @@ fn main() -> ! {
     // Initialize board peripherals and subcontrollers
     let board = app::Board::init(p);
 
-    unsafe {
-        EXECUTOR_CORE0 = Some(SyncExecutor(embassy_executor::raw::Executor::new(
-            !0 as *mut (),
-        )));
-    }
-    let executor_c0 = unsafe { EXECUTOR_CORE0.as_ref().unwrap() };
-    let spawner_c0 = executor_c0.0.spawner();
+    let spawner_c0 = board.spawner.unwrap();
 
     spawner_c0.spawn(bootstrap_task(spawner_c0, board)).unwrap();
-
     loop {
         unsafe {
-            executor_c0.0.poll();
+            app::Board::poll_executor(firmware_lib::types::CpuId::Core0);
             defmt::trace!("ctx=cpu_idle_c0 parent=0 span_enter: CPU Idle Core 0");
             cortex_m::asm::wfe();
             defmt::trace!("cpu_idle_c0 span_exit: CPU Idle Core 0");

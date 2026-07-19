@@ -64,77 +64,85 @@ pub fn print_crash_dump<R>(
         u[0], u[1], u[2], u[3], u[4], u[5], u[6], u[7],
         u[8], u[9], u[10], u[11], u[12], u[13], u[14], u[15]);
     println!("Revision Hash: {}", dump.revision_hash);
-    println!("CPU Core: Core {}", dump.cpu_id);
-    println!("Registers:");
-    println!("  R0: 0x{:08X}", dump.r0);
-    println!("  R1: 0x{:08X}", dump.r1);
-    println!("  R2: 0x{:08X}", dump.r2);
-    println!("  R3: 0x{:08X}", dump.r3);
 
-    println!("\nBacktrace:");
-    let pc_count = dump.backtrace_len as usize;
-    if pc_count == 0 {
-        println!("  (No backtrace frames captured. Check compiler optimization or stack pointer alignment)");
-    } else {
-        println!("  Raw PCs: {:x?}", &dump.backtrace[..pc_count]);
-        let mut frames_list = Vec::new();
-        for &pc in dump.backtrace.iter().take(pc_count) {
-            let addr = pc as u64;
-            let lookup_addr = addr.saturating_sub(1);
-            if let Some(ctx) = context {
-                if let Ok(frames) = symbolicate_addr(ctx, lookup_addr) {
-                    frames_list.push((addr, frames));
+    for (cpu_id, core) in dump.cores.iter().enumerate() {
+        println!("\n--------------------------------------------------------");
+        println!("CPU Core: Core {}", cpu_id);
+        println!("Panicked: {}", core.panicked);
+        println!("Registers:");
+        println!("  R0: 0x{:08X}", core.r0);
+        println!("  R1: 0x{:08X}", core.r1);
+        println!("  R2: 0x{:08X}", core.r2);
+        println!("  R3: 0x{:08X}", core.r3);
+        println!("  SP: 0x{:08X}", core.sp);
+        println!("  LR: 0x{:08X}", core.lr);
+        println!("  PC: 0x{:08X}", core.pc);
+
+        println!("\nBacktrace:");
+        let pc_count = core.backtrace_len as usize;
+        if pc_count == 0 {
+            println!("  (No backtrace frames captured. Check compiler optimization or stack pointer alignment)");
+        } else {
+            println!("  Raw PCs: {:x?}", &core.backtrace[..pc_count]);
+            let mut frames_list = Vec::new();
+            for &pc in core.backtrace.iter().take(pc_count) {
+                let addr = pc as u64;
+                let lookup_addr = addr.saturating_sub(1);
+                if let Some(ctx) = context {
+                    if let Ok(frames) = symbolicate_addr(ctx, lookup_addr) {
+                        frames_list.push((addr, frames));
+                    } else {
+                        frames_list.push((addr, Vec::new()));
+                    }
                 } else {
                     frames_list.push((addr, Vec::new()));
                 }
-            } else {
-                frames_list.push((addr, Vec::new()));
             }
-        }
 
-        // Detect the index of the panic entry point (e.g. rust_begin_unwind or panic_fmt)
-        let mut panic_entry_idx = None;
-        for (i, (_addr, frames)) in frames_list.iter().enumerate() {
-            for frame in frames {
-                let name = frame.func_name.to_lowercase();
-                if name.contains("rust_begin_unwind")
-                    || name.contains("panic_fmt")
-                    || name.contains("panic_impl")
-                    || name.contains("begin_panic")
-                {
-                    panic_entry_idx = Some(i);
+            // Detect the index of the panic entry point (e.g. rust_begin_unwind or panic_fmt)
+            let mut panic_entry_idx = None;
+            for (i, (_addr, frames)) in frames_list.iter().enumerate() {
+                for frame in frames {
+                    let name = frame.func_name.to_lowercase();
+                    if name.contains("rust_begin_unwind")
+                        || name.contains("panic_fmt")
+                        || name.contains("panic_impl")
+                        || name.contains("begin_panic")
+                    {
+                        panic_entry_idx = Some(i);
+                    }
                 }
             }
-        }
 
-        // If a panic entry point is found, filter out all frames up to and including it.
-        // This removes the stale logs / defmt buffer write history and panic internals.
-        let skip_count = if let Some(idx) = panic_entry_idx {
-            idx + 1
-        } else {
-            0
-        };
-
-        for (addr, frames) in frames_list.into_iter().skip(skip_count) {
-            if frames.is_empty() {
-                println!("  0x{:08X} - (no symbol found)", addr);
+            // If a panic entry point is found, filter out all frames up to and including it.
+            // This removes the stale logs / defmt buffer write history and panic internals.
+            let skip_count = if let Some(idx) = panic_entry_idx {
+                idx + 1
             } else {
-                let filtered_frames: Vec<_> = frames
-                    .into_iter()
-                    .filter(|f| !should_filter_frame(&f.func_name))
-                    .collect();
+                0
+            };
 
-                for frame in filtered_frames {
-                    if let Some(file) = frame.file {
-                        println!(
-                            "  0x{:08X} - {} ({}:{})",
-                            addr,
-                            frame.func_name,
-                            file,
-                            frame.line.unwrap_or(0)
-                        );
-                    } else {
-                        println!("  0x{:08X} - {} (??:0)", addr, frame.func_name);
+            for (addr, frames) in frames_list.into_iter().skip(skip_count) {
+                if frames.is_empty() {
+                    println!("  0x{:08X} - (no symbol found)", addr);
+                } else {
+                    let filtered_frames: Vec<_> = frames
+                        .into_iter()
+                        .filter(|f| !should_filter_frame(&f.func_name))
+                        .collect();
+
+                    for frame in filtered_frames {
+                        if let Some(file) = frame.file {
+                            println!(
+                                "  0x{:08X} - {} ({}:{})",
+                                addr,
+                                frame.func_name,
+                                file,
+                                frame.line.unwrap_or(0)
+                            );
+                        } else {
+                            println!("  0x{:08X} - {} (??:0)", addr, frame.func_name);
+                        }
                     }
                 }
             }
@@ -161,13 +169,28 @@ pub fn print_crash_dump<R>(
         println!("  (No defmt table loaded to decode system logs)");
     }
     println!("========================================================\n\n");
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+}
+
+fn is_crate_frame(name: &str, crate_name: &str) -> bool {
+    let name_lower = name.to_lowercase();
+    let pattern = format!("{}::", crate_name);
+    if name_lower.starts_with(&pattern) {
+        return true;
+    }
+    for prefix in &["<", "::", " ", "&", "[", "("] {
+        if name_lower.contains(&format!("{}{}", prefix, pattern)) {
+            return true;
+        }
+    }
+    false
 }
 
 fn should_filter_frame(name: &str) -> bool {
     let name_lower = name.to_lowercase();
-    name_lower.contains("core::")
-        || name_lower.contains("alloc::")
-        || name_lower.contains("std::")
+    is_crate_frame(name, "core")
+        || is_crate_frame(name, "alloc")
+        || is_crate_frame(name, "std")
         || name_lower.contains("compiler_builtins::")
         || name_lower.contains("embassy_executor::")
         || name_lower.contains("__udivmod")

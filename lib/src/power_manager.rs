@@ -15,6 +15,7 @@ pub struct PowerManager<MutexRaw: RawMutex + 'static, const N: usize> {
     telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, N>,
 }
 
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
 impl<MutexRaw: RawMutex + 'static, const N: usize> core::fmt::Debug for PowerManager<MutexRaw, N> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("PowerManager")

@@ -42,8 +42,8 @@ pub mod i2c;
 /// Shared types and traits for the library.
 pub mod types;
 
-/// Heartbeat and execution liveness monitoring module.
-pub mod heartbeat_monitor;
+/// Core and execution liveness monitoring module.
+pub mod core_monitor;
 
 /// Gesture detection library.
 pub mod gesture_detector;

@@ -282,7 +282,185 @@ pub async fn init_controllers(board: Board<'static>) {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-pub mod multicore;
+static mut CORE1_STACK: embassy_rp::multicore::Stack<4096> = embassy_rp::multicore::Stack::new();
+
+/// Global pointer to the active MotorController on Core 1 (populated during startup).
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[allow(dead_code)]
+pub static mut MOTOR_CTRL_PTR: *mut () = core::ptr::null_mut();
+
+/// Global pointer to the active North SensorController on Core 1.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[allow(dead_code)]
+pub static mut SENSOR_NORTH_PTR: *mut () = core::ptr::null_mut();
+
+/// Global pointer to the active East SensorController on Core 1.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[allow(dead_code)]
+pub static mut SENSOR_EAST_PTR: *mut () = core::ptr::null_mut();
+
+/// Global pointer to the active West SensorController on Core 1.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[allow(dead_code)]
+pub static mut SENSOR_WEST_PTR: *mut () = core::ptr::null_mut();
+
+/// Core 1 execution commands sent from Core 0 shell or orchestrator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Core1Command {
+    /// Request Core 1 to panic.
+    Panic,
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global channel for sending commands to Core 1 tasks.
+pub static CORE1_COMMAND_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    Core1Command,
+    4,
+> = embassy_sync::channel::Channel::new();
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+type MotorType =
+    controller::motor_controller::MotorController<crate::MotorDevice, crate::CurrentSensorDevice>;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+type SensorType = controller::sensor_controller::SensorController<
+    'static,
+    crate::ProximitySensorDevice,
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    crate::DataReadyPinType,
+    crate::SystemCommand,
+    controller::sensor_controller::ProximityReader,
+>;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[embassy_executor::task]
+async fn bootstrap_core1_task(
+    spawner: embassy_executor::Spawner,
+    mut motor: MotorType,
+    mut sensors: (SensorType, SensorType, SensorType),
+) {
+    // Initialize the core monitor for Core 1
+    firmware_lib::core_monitor::init_core(
+        Some(spawner),
+        firmware_lib::core_monitor::CpuId::Core1,
+        crate::CORE_MONITOR_TIMEOUT_MS,
+        crate::CORE_MONITOR_WARN_PCT,
+        true,
+    );
+
+    // Spawn the Core 1 command task
+    spawner
+        .spawn(core1_command_task(CORE1_COMMAND_CHANNEL.receiver()))
+        .unwrap();
+
+    unsafe {
+        let motor_ptr = core::ptr::addr_of_mut!(MOTOR_CTRL_PTR);
+        *motor_ptr = &mut motor as *mut _ as *mut ();
+        let north_ptr = core::ptr::addr_of_mut!(SENSOR_NORTH_PTR);
+        *north_ptr = &mut sensors.0 as *mut _ as *mut ();
+        let east_ptr = core::ptr::addr_of_mut!(SENSOR_EAST_PTR);
+        *east_ptr = &mut sensors.1 as *mut _ as *mut ();
+        let west_ptr = core::ptr::addr_of_mut!(SENSOR_WEST_PTR);
+        *west_ptr = &mut sensors.2 as *mut _ as *mut ();
+    }
+
+    controller::spawn_controllers! {
+        spawner,
+        telemetry: TELEMETRY_CHANNEL,
+        controllers: {
+            Motor(motor, MOTOR_CHANNEL), generics: (crate::MotorDevice, crate::CurrentSensorDevice),
+            Sensor(sensors.0, SENSOR_NORTH_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+            Sensor(sensors.1, SENSOR_EAST_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+            Sensor(sensors.2, SENSOR_WEST_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+        }
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[embassy_executor::task]
+#[allow(clippy::never_loop)]
+async fn core1_command_task(
+    rx: embassy_sync::channel::Receiver<
+        'static,
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        Core1Command,
+        4,
+    >,
+) {
+    loop {
+        let cmd = rx.receive().await;
+        match cmd {
+            Core1Command::Panic => {
+                panic!("Simulated Core 1 panic");
+            }
+        }
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Boots Core 1 and starts the RAM executor with the given controllers.
+pub fn boot_core1(
+    core1: embassy_rp::peripherals::CORE1,
+    motor: MotorType,
+    sensors: (SensorType, SensorType, SensorType),
+) {
+    unsafe {
+        firmware_lib::panic_handler::CORE1_STACK_TOP =
+            core::ptr::addr_of!(CORE1_STACK) as u32 + 4096;
+        crate::Board::init_executor_core1();
+    }
+
+    embassy_rp::multicore::spawn_core1(
+        core1,
+        unsafe {
+            let ptr = core::ptr::addr_of_mut!(CORE1_STACK);
+            &mut *ptr
+        },
+        move || {
+            let spawner_c1 = unsafe { crate::Board::spawner_core1() };
+            spawner_c1
+                .spawn(bootstrap_core1_task(spawner_c1, motor, sensors))
+                .unwrap();
+
+            loop {
+                unsafe {
+                    crate::Board::poll_executor(firmware_lib::types::CpuId::Core1);
+                    defmt::trace!("ctx=cpu_idle_c1 parent=0 span_enter: CPU Idle Core 1");
+                    cortex_m::asm::wfe();
+                    defmt::trace!("cpu_idle_c1 span_exit: CPU Idle Core 1");
+                }
+            }
+        },
+    );
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Handle a panic, performing multicore checks, resets, and delegating to flash writer.
+pub fn handle_panic(info: &core::panic::PanicInfo) -> ! {
+    let cpuid_val = unsafe { core::ptr::read_volatile(0xd0000000 as *const u32) };
+    let (cpuid, stack_top) = match cpuid_val {
+        0 => (firmware_lib::types::CpuId::Core0, 0x2004_2000),
+        1 => {
+            let top = unsafe { firmware_lib::panic_handler::CORE1_STACK_TOP };
+            (
+                firmware_lib::types::CpuId::Core1,
+                if top != 0 { top } else { 0x2004_0000 },
+            )
+        }
+        _ => loop {
+            cortex_m::asm::nop();
+        },
+    };
+
+    crate::handle_panic_with_sizes::<
+        { crate::FLASH_SIZE },
+        { crate::FLASH_START },
+        { crate::FLASH_END },
+        { crate::FLASH_WRITE_SIZE },
+        { crate::FLASH_ERASE_SIZE },
+    >(info, cpuid, stack_top);
+}
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 mod bsp_target;
@@ -446,12 +624,17 @@ pub type FlashDeviceType = controller::filesystem_controller::ProfilingFlash<
 /// Re-export the telemetry module from the controller crate
 pub use controller::telemetry_controller as telemetry;
 
+/// Default core monitor timeout in milliseconds.
+pub const CORE_MONITOR_TIMEOUT_MS: u32 = 10_000;
+
+/// Default core monitor warning threshold percentage.
+pub const CORE_MONITOR_WARN_PCT: u32 = 80;
+
 /// Re-export the run_filesystem_task macro from the controller crate
 pub use controller::run_filesystem_task;
 /// Re-export the run_telemetry_task macro from the controller crate
 pub use controller::run_telemetry_task;
 
-/// Re-export the modular panic handler function
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 pub use firmware_lib::panic_handler::handle_panic_with_sizes;
 
