@@ -38,6 +38,9 @@ futures = "0.3"
 embassy-executor = { version = "0.7.0", features = ["arch-std", "executor-thread", "task-arena-size-1048576"] }
 
 [features]
+core1 = ["peripherals/core1"]
+motor-core = ["core1", "peripherals/motor-core"]
+sensors-core = ["core1", "peripherals/sensors-core"]
 tracing = [
     "firmware_lib/tracing",
     "peripherals/tracing",

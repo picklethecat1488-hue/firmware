@@ -40,3 +40,6 @@ run_and_report "cargo clippy --workspace ${EXCLUDE_ARGS[*]} --lib --bins --targe
 
 echo "Validating tracing hierarchy and early returns..."
 run_and_report "scripts/validate_tracing.py"
+
+echo "Validating RAM placement for multicore execution..."
+run_and_report "scripts/validate_ram_functions.py"
