@@ -194,25 +194,14 @@ async fn main(spawner: Spawner) {
         app::MAX_CRASH_LOGS,
     );
 
-    #[cfg(feature = "core1")]
-    {
-        let core1 = unsafe { embassy_rp::peripherals::CORE1::steal() };
-        app::multicore::boot_core1(
-            core1,
-            #[cfg(feature = "motor-core")]
-            unsafe {
-                app::MOTOR_CTRL.take().unwrap()
-            },
-            #[cfg(feature = "sensors-core")]
-            unsafe {
-                (
-                    app::SENSOR_CTRL_NORTH.take().unwrap(),
-                    app::SENSOR_CTRL_EAST.take().unwrap(),
-                    app::SENSOR_CTRL_WEST.take().unwrap(),
-                )
-            },
-        );
-    }
+    let core1 = unsafe { embassy_rp::peripherals::CORE1::steal() };
+    app::multicore::boot_core1(core1, unsafe { app::MOTOR_CTRL.take().unwrap() }, unsafe {
+        (
+            app::SENSOR_CTRL_NORTH.take().unwrap(),
+            app::SENSOR_CTRL_EAST.take().unwrap(),
+            app::SENSOR_CTRL_WEST.take().unwrap(),
+        )
+    });
 
     let temp_sensor_ptr = {
         let mut guard = app::SHARED_TEMP_SENSOR.lock().await;
@@ -247,17 +236,10 @@ async fn main(spawner: Spawner) {
     });
 
     let board_motor_ptr = unsafe {
-        #[cfg(feature = "motor-core")]
-        {
-            if !app::multicore::MOTOR_CTRL_PTR.is_null() {
-                &mut (*(app::multicore::MOTOR_CTRL_PTR as *mut MotorControllerType)).motor as *mut _
-            } else {
-                core::ptr::null_mut()
-            }
-        }
-        #[cfg(not(feature = "motor-core"))]
-        {
-            &mut app::MOTOR_CTRL.as_mut().unwrap().motor as *mut _
+        if !app::multicore::MOTOR_CTRL_PTR.is_null() {
+            &mut (*(app::multicore::MOTOR_CTRL_PTR as *mut MotorControllerType)).motor as *mut _
+        } else {
+            core::ptr::null_mut()
         }
     };
 
@@ -288,57 +270,27 @@ async fn main(spawner: Spawner) {
         &[]
     };
     let sensors = unsafe {
-        #[cfg(feature = "sensors-core")]
-        {
-            &[
-                controller::NamedDevice {
-                    name: "north",
-                    device: app::multicore::SENSOR_NORTH_PTR as *mut _,
-                },
-                controller::NamedDevice {
-                    name: "east",
-                    device: app::multicore::SENSOR_EAST_PTR as *mut _,
-                },
-                controller::NamedDevice {
-                    name: "west",
-                    device: app::multicore::SENSOR_WEST_PTR as *mut _,
-                },
-            ]
-        }
-        #[cfg(not(feature = "sensors-core"))]
-        {
-            &[
-                controller::NamedDevice {
-                    name: "north",
-                    device: app::SENSOR_CTRL_NORTH.as_mut().unwrap() as *mut _,
-                },
-                controller::NamedDevice {
-                    name: "east",
-                    device: app::SENSOR_CTRL_EAST.as_mut().unwrap() as *mut _,
-                },
-                controller::NamedDevice {
-                    name: "west",
-                    device: app::SENSOR_CTRL_WEST.as_mut().unwrap() as *mut _,
-                },
-            ]
-        }
+        &[
+            controller::NamedDevice {
+                name: "north",
+                device: app::multicore::SENSOR_NORTH_PTR as *mut _,
+            },
+            controller::NamedDevice {
+                name: "east",
+                device: app::multicore::SENSOR_EAST_PTR as *mut _,
+            },
+            controller::NamedDevice {
+                name: "west",
+                device: app::multicore::SENSOR_WEST_PTR as *mut _,
+            },
+        ]
     };
 
     let motor_ctrls = unsafe {
-        #[cfg(feature = "motor-core")]
-        {
-            &[controller::NamedDevice {
-                name: "default",
-                device: app::multicore::MOTOR_CTRL_PTR as *mut _,
-            }]
-        }
-        #[cfg(not(feature = "motor-core"))]
-        {
-            &[controller::NamedDevice {
-                name: "default",
-                device: app::MOTOR_CTRL.as_mut().unwrap() as *mut _,
-            }]
-        }
+        &[controller::NamedDevice {
+            name: "default",
+            device: app::multicore::MOTOR_CTRL_PTR as *mut _,
+        }]
     };
 
     let feature_set = app::create_default_feature_set();

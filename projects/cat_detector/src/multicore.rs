@@ -3,7 +3,11 @@
 #![allow(static_mut_refs)]
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "core1")]
+use crate::{
+    MOTOR_CHANNEL, SENSOR_EAST_CHANNEL, SENSOR_NORTH_CHANNEL, SENSOR_WEST_CHANNEL,
+    TELEMETRY_CHANNEL,
+};
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 use embassy_executor::Spawner;
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -11,19 +15,15 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "core1")]
 struct SyncExecutor(embassy_executor::raw::Executor);
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "core1")]
 unsafe impl Sync for SyncExecutor {}
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "core1")]
 static mut CORE1_STACK: embassy_rp::multicore::Stack<4096> = embassy_rp::multicore::Stack::new();
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "core1")]
 static mut EXECUTOR_CORE1: Option<SyncExecutor> = None;
 
 /// Global pointer to the active MotorController on Core 1 (populated during startup).
@@ -59,12 +59,10 @@ pub static CORE1_COMMAND_CHANNEL: Channel<CriticalSectionRawMutex, Core1Command,
     Channel::new();
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "core1")]
 type MotorType =
     controller::motor_controller::MotorController<crate::MotorDevice, crate::CurrentSensorDevice>;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "core1")]
 type SensorType = controller::sensor_controller::SensorController<
     'static,
     crate::ProximitySensorDevice,
@@ -75,54 +73,39 @@ type SensorType = controller::sensor_controller::SensorController<
 >;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "core1")]
 #[embassy_executor::task]
 async fn bootstrap_core1_task(
     spawner: Spawner,
-    #[cfg(feature = "motor-core")] mut motor: MotorType,
-    #[cfg(feature = "sensors-core")] mut sensors: (SensorType, SensorType, SensorType),
+    mut motor: MotorType,
+    mut sensors: (SensorType, SensorType, SensorType),
 ) {
     // Spawn the Core 1 command task
     spawner
         .spawn(core1_command_task(CORE1_COMMAND_CHANNEL.receiver()))
         .unwrap();
 
-    #[cfg(feature = "motor-core")]
-    {
-        unsafe {
-            MOTOR_CTRL_PTR = &mut motor as *mut _ as *mut ();
-        }
-        controller::spawn_controllers! {
-            spawner,
-            telemetry: crate::TELEMETRY_CHANNEL,
-            controllers: {
-                Motor(motor, crate::MOTOR_CHANNEL), generics: (crate::MotorDevice, crate::CurrentSensorDevice),
-            }
-        }
+    unsafe {
+        MOTOR_CTRL_PTR = &mut motor as *mut _ as *mut ();
+        SENSOR_NORTH_PTR = &mut sensors.0 as *mut _ as *mut ();
+        SENSOR_EAST_PTR = &mut sensors.1 as *mut _ as *mut ();
+        SENSOR_WEST_PTR = &mut sensors.2 as *mut _ as *mut ();
     }
 
-    #[cfg(feature = "sensors-core")]
-    {
-        unsafe {
-            SENSOR_NORTH_PTR = &mut sensors.0 as *mut _ as *mut ();
-            SENSOR_EAST_PTR = &mut sensors.1 as *mut _ as *mut ();
-            SENSOR_WEST_PTR = &mut sensors.2 as *mut _ as *mut ();
-        }
-        controller::spawn_controllers! {
-            spawner,
-            telemetry: crate::TELEMETRY_CHANNEL,
-            controllers: {
-                Sensor(sensors.0, crate::SENSOR_NORTH_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
-                Sensor(sensors.1, crate::SENSOR_EAST_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
-                Sensor(sensors.2, crate::SENSOR_WEST_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
-            }
+    controller::spawn_controllers! {
+        spawner,
+        telemetry: TELEMETRY_CHANNEL,
+        controllers: {
+            Motor(motor, MOTOR_CHANNEL), generics: (crate::MotorDevice, crate::CurrentSensorDevice),
+            Sensor(sensors.0, SENSOR_NORTH_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+            Sensor(sensors.1, SENSOR_EAST_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+            Sensor(sensors.2, SENSOR_WEST_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
         }
     }
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "core1")]
 #[embassy_executor::task]
+#[allow(clippy::never_loop)]
 async fn core1_command_task(
     rx: embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, Core1Command, 4>,
 ) {
@@ -137,12 +120,11 @@ async fn core1_command_task(
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "core1")]
 /// Boots Core 1 and starts the RAM executor with the given controllers.
 pub fn boot_core1(
     core1: embassy_rp::peripherals::CORE1,
-    #[cfg(feature = "motor-core")] motor: MotorType,
-    #[cfg(feature = "sensors-core")] sensors: (SensorType, SensorType, SensorType),
+    motor: MotorType,
+    sensors: (SensorType, SensorType, SensorType),
 ) {
     unsafe {
         EXECUTOR_CORE1 = Some(SyncExecutor(embassy_executor::raw::Executor::new(
@@ -158,13 +140,7 @@ pub fn boot_core1(
         let spawner_c1 = executor_c1.0.spawner();
 
         spawner_c1
-            .spawn(bootstrap_core1_task(
-                spawner_c1,
-                #[cfg(feature = "motor-core")]
-                motor,
-                #[cfg(feature = "sensors-core")]
-                sensors,
-            ))
+            .spawn(bootstrap_core1_task(spawner_c1, motor, sensors))
             .unwrap();
 
         loop {

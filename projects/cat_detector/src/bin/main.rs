@@ -8,8 +8,7 @@
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
     app::{
-        BATTERY_CHANNEL, FILESYSTEM_CHANNEL, GESTURE_CHANNEL, LED_CHANNEL, MOTOR_CHANNEL,
-        SENSOR_EAST_CHANNEL, SENSOR_NORTH_CHANNEL, SENSOR_WEST_CHANNEL, SYSTEM_CHANNEL,
+        BATTERY_CHANNEL, FILESYSTEM_CHANNEL, GESTURE_CHANNEL, LED_CHANNEL, SYSTEM_CHANNEL,
         TELEMETRY_CHANNEL, THERMAL_ACTION_CHANNEL, THERMAL_CHANNEL,
     },
     cat_detector as app,
@@ -158,70 +157,14 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
         TELEMETRY_CTRL.as_mut().unwrap()
     };
 
-    #[cfg(feature = "core1")]
-    {
-        let core1 = unsafe { embassy_rp::peripherals::CORE1::steal() };
-        app::multicore::boot_core1(
-            core1,
-            #[cfg(feature = "motor-core")]
-            controller,
-            #[cfg(feature = "sensors-core")]
-            (sensor_ctrl_north, sensor_ctrl_east, sensor_ctrl_west),
-        );
-    }
+    let core1 = unsafe { embassy_rp::peripherals::CORE1::steal() };
+    app::multicore::boot_core1(
+        core1,
+        controller,
+        (sensor_ctrl_north, sensor_ctrl_east, sensor_ctrl_west),
+    );
 
     // Spawn tasks on Core 0
-    #[cfg(all(not(feature = "motor-core"), not(feature = "sensors-core")))]
-    controller::spawn_controllers! {
-        spawner,
-        telemetry: TELEMETRY_CHANNEL,
-        controllers: {
-            Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (app::TempSensorDevice),
-            Battery(power_ctrl, BATTERY_CHANNEL), generics: (app::BatteryDevice, app::ChargerDevice, app::AlertPinType, app::SystemCommand),
-            Motor(controller, MOTOR_CHANNEL), generics: (app::MotorDevice, app::CurrentSensorDevice),
-            Sensor(sensor_ctrl_north, SENSOR_NORTH_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
-            Sensor(sensor_ctrl_east, SENSOR_EAST_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
-            Sensor(sensor_ctrl_west, SENSOR_WEST_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
-            Led(led_ctrl, LED_CHANNEL), generics: (app::LedDevice),
-            System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (app::SystemControllerType),
-            Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (app::FlashDeviceType),
-            Telemetry(telemetry_ctrl, TELEMETRY_CHANNEL), generics: ({ app::MAX_RECORDS }, { controller::telemetry_controller::CHANNEL_CAPACITY }),
-        }
-    }
-
-    #[cfg(all(feature = "motor-core", not(feature = "sensors-core")))]
-    controller::spawn_controllers! {
-        spawner,
-        telemetry: TELEMETRY_CHANNEL,
-        controllers: {
-            Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (app::TempSensorDevice),
-            Battery(power_ctrl, BATTERY_CHANNEL), generics: (app::BatteryDevice, app::ChargerDevice, app::AlertPinType, app::SystemCommand),
-            Sensor(sensor_ctrl_north, SENSOR_NORTH_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
-            Sensor(sensor_ctrl_east, SENSOR_EAST_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
-            Sensor(sensor_ctrl_west, SENSOR_WEST_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
-            Led(led_ctrl, LED_CHANNEL), generics: (app::LedDevice),
-            System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (app::SystemControllerType),
-            Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (app::FlashDeviceType),
-            Telemetry(telemetry_ctrl, TELEMETRY_CHANNEL), generics: ({ app::MAX_RECORDS }, { controller::telemetry_controller::CHANNEL_CAPACITY }),
-        }
-    }
-
-    #[cfg(all(not(feature = "motor-core"), feature = "sensors-core"))]
-    controller::spawn_controllers! {
-        spawner,
-        telemetry: TELEMETRY_CHANNEL,
-        controllers: {
-            Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (app::TempSensorDevice),
-            Battery(power_ctrl, BATTERY_CHANNEL), generics: (app::BatteryDevice, app::ChargerDevice, app::AlertPinType, app::SystemCommand),
-            Motor(controller, MOTOR_CHANNEL), generics: (app::MotorDevice, app::CurrentSensorDevice),
-            Led(led_ctrl, LED_CHANNEL), generics: (app::LedDevice),
-            System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (app::SystemControllerType),
-            Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (app::FlashDeviceType),
-            Telemetry(telemetry_ctrl, TELEMETRY_CHANNEL), generics: ({ app::MAX_RECORDS }, { controller::telemetry_controller::CHANNEL_CAPACITY }),
-        }
-    }
-
-    #[cfg(all(feature = "motor-core", feature = "sensors-core"))]
     controller::spawn_controllers! {
         spawner,
         telemetry: TELEMETRY_CHANNEL,
