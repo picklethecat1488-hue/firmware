@@ -10,7 +10,7 @@ use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use firmware_lib::{select_branch_with_timeout, subcommand_enum, BlockingAsyncFlash};
 use model::interfaces::ProximitySensor;
-use model::types::{Direction, PeripheralError};
+use model::types::{Direction, PeriodicInterval, PeripheralError};
 use peripherals::ToPeripheralError;
 
 /// Trait for waiting on a data-ready interrupt pin.
@@ -35,10 +35,8 @@ impl DataReadyPin for DummyDataReadyPin {
 pub enum SensorCommand {
     /// Force proximity sensor check and print telemetry logs
     ReadSensors,
-    /// Enable periodic automatic readings
-    EnablePeriodic,
-    /// Disable periodic automatic readings (runs only via manual commands)
-    DisablePeriodic,
+    /// Set periodic automatic reading interval
+    SetInterval(PeriodicInterval),
 }
 
 /// Trait for reading data from a generic sensor type.
@@ -103,7 +101,7 @@ pub struct SensorStateManager<
 > {
     metadata: SensorMetadata,
     sensor: S,
-    periodic_enabled: bool,
+    periodic_interval: PeriodicInterval,
     upstream_tx: Option<Sender<'a, M, Cmd, 4>>,
     interrupt_pin: Option<Pin>,
     _marker: core::marker::PhantomData<Data>,
@@ -122,7 +120,7 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
         Self {
             metadata,
             sensor,
-            periodic_enabled: false,
+            periodic_interval: PeriodicInterval::None,
             upstream_tx,
             interrupt_pin,
             _marker: core::marker::PhantomData,
@@ -151,7 +149,16 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
 
     /// Gets whether periodic monitoring is enabled.
     pub fn is_periodic_enabled(&self) -> bool {
-        self.periodic_enabled
+        self.periodic_interval != PeriodicInterval::None
+    }
+
+    /// Gets the periodic monitoring interval.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.ram_func"
+    )]
+    pub fn periodic_interval(&self) -> PeriodicInterval {
+        self.periodic_interval
     }
 
     /// Sets whether periodic monitoring is enabled.
@@ -160,7 +167,20 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
         link_section = ".data.ram_func"
     )]
     pub fn set_periodic_enabled(&mut self, enabled: bool) {
-        self.periodic_enabled = enabled;
+        self.periodic_interval = if enabled {
+            PeriodicInterval::UpdateMs(1000)
+        } else {
+            PeriodicInterval::None
+        };
+    }
+
+    /// Sets the periodic monitoring interval.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.ram_func"
+    )]
+    pub fn set_periodic_interval(&mut self, interval: PeriodicInterval) {
+        self.periodic_interval = interval;
     }
 }
 
@@ -386,11 +406,8 @@ where
             SensorCommand::ReadSensors => {
                 let _ = self.update();
             }
-            SensorCommand::EnablePeriodic => {
-                self.set_periodic_enabled(true);
-            }
-            SensorCommand::DisablePeriodic => {
-                self.set_periodic_enabled(false);
+            SensorCommand::SetInterval(interval) => {
+                self.set_periodic_interval(interval);
             }
         }
     }
@@ -405,12 +422,10 @@ where
         command_rx: embassy_sync::channel::Receiver<'static, M, SensorCommand, 4>,
     ) -> ! {
         loop {
-            let timeout_dur = if self.is_periodic_enabled() {
-                embassy_time::Duration::from_millis(1000)
-            } else {
-                embassy_time::Duration::from_secs(3600 * 24 * 365)
+            let timeout_dur = match self.state_manager.periodic_interval() {
+                PeriodicInterval::None => crate::OVERFLOW_SAFE_MAX_DURATION,
+                PeriodicInterval::UpdateMs(ms) => embassy_time::Duration::from_millis(ms as u64),
             };
-
             let res = select_branch_with_timeout!(
                 timeout_dur,
                 command_rx.receive() => |cmd| {
@@ -422,8 +437,11 @@ where
                 },
             );
 
-            if res.is_none() {
-                let _ = self.update();
+            if res.is_none() && self.update().is_err() {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::warn!("SensorController: Periodic read failed; disabling periodic updates.");
+                self.state_manager
+                    .set_periodic_interval(PeriodicInterval::None);
             }
         }
     }
@@ -841,17 +859,45 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_C
         }
     }
 
-    fn on_tick(
+    fn on_state_changed(
         &self,
-        _elapsed_ms: u32,
-        _crossed_tick: bool,
-        _status: model::types::SystemStatus,
-        support: crate::DeviceSupport,
-        _wake_locks: u32,
+        _from: model::types::SystemStatus,
+        to: model::types::SystemStatus,
+        _support: crate::DeviceSupport,
+        _battery_status: Option<crate::BatteryStatus>,
+        _thermal_critical: bool,
     ) {
-        if support.proximity {
-            for sensor_tx in &self.sensor_txs {
-                let _ = sensor_tx.try_send(crate::SensorCommand::ReadSensors);
+        use crate::Periodic;
+        match to {
+            model::types::SystemStatus::Active => {
+                self.set_interval(PeriodicInterval::UpdateMs(200));
+            }
+            model::types::SystemStatus::Sleep => {
+                self.set_interval(PeriodicInterval::UpdateMs(1000));
+            }
+            model::types::SystemStatus::PowerDown => {
+                self.set_interval(PeriodicInterval::None);
+            }
+        }
+    }
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_CAP: usize>
+    crate::Periodic for ProximityFeatureConfig<MutexRaw, N, S_CAP, T_CAP>
+{
+    fn set_interval(&self, interval: PeriodicInterval) {
+        self.telemetry_client
+            .borrow_mut()
+            .report_interval(model::types::Device::Sensors, interval);
+        for sensor_tx in &self.sensor_txs {
+            if sensor_tx
+                .try_send(SensorCommand::SetInterval(interval))
+                .is_err()
+            {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::error!(
+                    "ProximityFeatureConfig: Failed to configure sensor periodic interval!"
+                );
             }
         }
     }

@@ -126,7 +126,7 @@ pub static mut LED_CTRL: Option<controller::led_controller::LedController<LedDev
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global instance of the North SensorController.
-pub static mut SENSOR_CTRL_NORTH: Option<
+pub static mut SENSOR_CTRL_NORTH_CORE0: Option<
     controller::sensor_controller::SensorController<
         'static,
         ProximitySensorDevice,
@@ -139,7 +139,7 @@ pub static mut SENSOR_CTRL_NORTH: Option<
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global instance of the East SensorController.
-pub static mut SENSOR_CTRL_EAST: Option<
+pub static mut SENSOR_CTRL_EAST_CORE0: Option<
     controller::sensor_controller::SensorController<
         'static,
         ProximitySensorDevice,
@@ -152,7 +152,7 @@ pub static mut SENSOR_CTRL_EAST: Option<
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global instance of the West SensorController.
-pub static mut SENSOR_CTRL_WEST: Option<
+pub static mut SENSOR_CTRL_WEST_CORE0: Option<
     controller::sensor_controller::SensorController<
         'static,
         ProximitySensorDevice,
@@ -165,7 +165,7 @@ pub static mut SENSOR_CTRL_WEST: Option<
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global instance of the MotorController.
-pub static mut MOTOR_CTRL: Option<
+pub static mut MOTOR_CTRL_CORE0: Option<
     controller::motor_controller::MotorController<MotorDevice, CurrentSensorDevice>,
 > = None;
 
@@ -238,7 +238,7 @@ pub async fn init_controllers(board: Board<'static>) {
 
         LED_CTRL = Some(controller::led_controller::LedController::new(led_driver));
 
-        SENSOR_CTRL_NORTH = Some(
+        SENSOR_CTRL_NORTH_CORE0 = Some(
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
                 controller::types::SensorMetadata {
                     direction: model::types::Direction::North,
@@ -250,7 +250,7 @@ pub async fn init_controllers(board: Board<'static>) {
             ),
         );
 
-        SENSOR_CTRL_EAST = Some(
+        SENSOR_CTRL_EAST_CORE0 = Some(
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
                 controller::types::SensorMetadata {
                     direction: model::types::Direction::East,
@@ -262,7 +262,7 @@ pub async fn init_controllers(board: Board<'static>) {
             ),
         );
 
-        SENSOR_CTRL_WEST = Some(
+        SENSOR_CTRL_WEST_CORE0 = Some(
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
                 controller::types::SensorMetadata {
                     direction: model::types::Direction::West,
@@ -274,7 +274,7 @@ pub async fn init_controllers(board: Board<'static>) {
             ),
         );
 
-        MOTOR_CTRL = Some(controller::motor_controller::MotorController::new(
+        MOTOR_CTRL_CORE0 = Some(controller::motor_controller::MotorController::new(
             motor,
             current_sensor,
         ));
@@ -287,22 +287,22 @@ static mut CORE1_STACK: embassy_rp::multicore::Stack<4096> = embassy_rp::multico
 /// Global pointer to the active MotorController on Core 1 (populated during startup).
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut MOTOR_CTRL_PTR: *mut () = core::ptr::null_mut();
+pub static mut MOTOR_CTRL_CORE1: *mut () = core::ptr::null_mut();
 
 /// Global pointer to the active North SensorController on Core 1.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut SENSOR_NORTH_PTR: *mut () = core::ptr::null_mut();
+pub static mut SENSOR_CTRL_NORTH_CORE1: *mut () = core::ptr::null_mut();
 
 /// Global pointer to the active East SensorController on Core 1.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut SENSOR_EAST_PTR: *mut () = core::ptr::null_mut();
+pub static mut SENSOR_CTRL_EAST_CORE1: *mut () = core::ptr::null_mut();
 
 /// Global pointer to the active West SensorController on Core 1.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut SENSOR_WEST_PTR: *mut () = core::ptr::null_mut();
+pub static mut SENSOR_CTRL_WEST_CORE1: *mut () = core::ptr::null_mut();
 
 /// Type alias for the motor controller.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -338,13 +338,13 @@ pub async fn bootstrap_core1_task(
     );
 
     unsafe {
-        let motor_ptr = core::ptr::addr_of_mut!(MOTOR_CTRL_PTR);
+        let motor_ptr = core::ptr::addr_of_mut!(MOTOR_CTRL_CORE1);
         *motor_ptr = &mut motor as *mut _ as *mut ();
-        let north_ptr = core::ptr::addr_of_mut!(SENSOR_NORTH_PTR);
+        let north_ptr = core::ptr::addr_of_mut!(SENSOR_CTRL_NORTH_CORE1);
         *north_ptr = &mut sensors.0 as *mut _ as *mut ();
-        let east_ptr = core::ptr::addr_of_mut!(SENSOR_EAST_PTR);
+        let east_ptr = core::ptr::addr_of_mut!(SENSOR_CTRL_EAST_CORE1);
         *east_ptr = &mut sensors.1 as *mut _ as *mut ();
-        let west_ptr = core::ptr::addr_of_mut!(SENSOR_WEST_PTR);
+        let west_ptr = core::ptr::addr_of_mut!(SENSOR_CTRL_WEST_CORE1);
         *west_ptr = &mut sensors.2 as *mut _ as *mut ();
     }
 

@@ -11,7 +11,7 @@ use embassy_sync::mutex::Mutex;
 use firmware_lib::{select_branch_with_timeout, subcommand_enum, BatteryUpdateAction};
 use model::interfaces::FuelGauge;
 use model::telemetry::TelemetryClient;
-use model::types::PeripheralError;
+use model::types::{PeriodicInterval, PeripheralError};
 use peripherals::ToPeripheralError;
 
 /// Trait for waiting on a battery alert pin.
@@ -282,9 +282,10 @@ where
             }
         }
 
+        let mut check_interval = embassy_time::Duration::from_millis(2000);
         loop {
             let res = select_branch_with_timeout!(
-                embassy_time::Duration::from_millis(2000),
+                check_interval,
                 command_rx.receive() => |cmd| {
                     match cmd {
                         BatteryCommand::CheckStatus => {
@@ -295,6 +296,15 @@ where
                         }
                         BatteryCommand::UpdateWakeLocks(mask) => {
                             self.active_wake_locks = mask;
+                        }
+                        BatteryCommand::SetInterval(interval) => {
+                            check_interval = match interval {
+                                PeriodicInterval::None => crate::OVERFLOW_SAFE_MAX_DURATION,
+                                PeriodicInterval::UpdateMs(ms) => {
+                                    embassy_time::Duration::from_millis(ms as u64)
+                                }
+                            };
+                            telemetry_client.report_interval(model::types::Device::Battery, interval);
                         }
                     }
                     Some(())
@@ -335,12 +345,22 @@ where
                     if let Err(e) = self.update(Some(&mut telemetry_client)).await {
                         let err = e.to_peripheral_error();
                         telemetry_client.report_error(err);
+                        #[cfg(all(target_arch = "arm", target_os = "none"))]
+                        defmt::warn!(
+                            "BatteryController: Periodic read failed; disabling periodic updates."
+                        );
+                        check_interval = crate::OVERFLOW_SAFE_MAX_DURATION;
                     }
-                } else {
+                } else if check_interval != crate::OVERFLOW_SAFE_MAX_DURATION {
                     // Default fallback
                     if let Err(e) = self.update(Some(&mut telemetry_client)).await {
                         let err = e.to_peripheral_error();
                         telemetry_client.report_error(err);
+                        #[cfg(all(target_arch = "arm", target_os = "none"))]
+                        defmt::warn!(
+                            "BatteryController: Periodic read failed; disabling periodic updates."
+                        );
+                        check_interval = crate::OVERFLOW_SAFE_MAX_DURATION;
                     }
                 }
             }
@@ -368,6 +388,8 @@ pub enum BatteryCommand {
     CheckStatus,
     /// Update the current active wake locks bitmask
     UpdateWakeLocks(u32),
+    /// Set periodic automatic checking interval
+    SetInterval(PeriodicInterval),
 }
 
 subcommand_enum! {
@@ -475,28 +497,40 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
         &self,
         _from: model::types::SystemStatus,
         _to: model::types::SystemStatus,
-        _support: crate::DeviceSupport,
+        support: crate::DeviceSupport,
         _battery_status: Option<crate::BatteryStatus>,
         _thermal_critical: bool,
     ) {
-        if let Some(ref battery_tx) = self.battery_tx {
-            let _ = battery_tx.try_send(crate::BatteryCommand::UpdateWakeLocks(0));
+        self.on_wake_locks_changed(0);
+        use crate::Periodic;
+        if support.battery {
+            self.set_interval(PeriodicInterval::UpdateMs(1000));
+        } else {
+            self.set_interval(PeriodicInterval::None);
         }
     }
 
-    fn on_tick(
-        &self,
-        _elapsed_ms: u32,
-        crossed_tick: bool,
-        _status: model::types::SystemStatus,
-        support: crate::DeviceSupport,
-        wake_locks: u32,
-    ) {
-        if crossed_tick && support.battery {
-            if let Some(ref battery_tx) = self.battery_tx {
-                let _ = battery_tx.try_send(crate::BatteryCommand::UpdateWakeLocks(wake_locks));
-                let _ = battery_tx.try_send(crate::BatteryCommand::CheckStatus);
-            }
+    fn on_wake_locks_changed(&self, wake_locks: u32) {
+        if let Some(ref battery_tx) = self.battery_tx {
+            let res = battery_tx.try_send(crate::BatteryCommand::UpdateWakeLocks(wake_locks));
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            res.expect("Failed to signal wake locks update to battery controller");
+            #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+            let _ = res;
+        }
+    }
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize> crate::Periodic
+    for BatteryFeatureConfig<MutexRaw, N>
+{
+    fn set_interval(&self, interval: PeriodicInterval) {
+        if let Some(ref battery_tx) = self.battery_tx {
+            let res = battery_tx.try_send(BatteryCommand::SetInterval(interval));
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            res.expect("Failed to send periodic interval to battery controller");
+            #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+            let _ = res;
         }
     }
 }

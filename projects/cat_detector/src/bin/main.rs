@@ -107,10 +107,10 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
     let thermal_ctrl = unsafe { app::THERMAL_CTRL.take().unwrap() };
     let power_ctrl = unsafe { app::BATTERY_CTRL.take().unwrap() };
     let led_ctrl = unsafe { app::LED_CTRL.take().unwrap() };
-    let mut controller = unsafe { app::MOTOR_CTRL.take().unwrap() };
-    let mut sensor_ctrl_north = unsafe { app::SENSOR_CTRL_NORTH.take().unwrap() };
-    let mut sensor_ctrl_east = unsafe { app::SENSOR_CTRL_EAST.take().unwrap() };
-    let mut sensor_ctrl_west = unsafe { app::SENSOR_CTRL_WEST.take().unwrap() };
+    let mut controller = unsafe { app::MOTOR_CTRL_CORE0.take().unwrap() };
+    let mut sensor_ctrl_north = unsafe { app::SENSOR_CTRL_NORTH_CORE0.take().unwrap() };
+    let mut sensor_ctrl_east = unsafe { app::SENSOR_CTRL_EAST_CORE0.take().unwrap() };
+    let mut sensor_ctrl_west = unsafe { app::SENSOR_CTRL_WEST_CORE0.take().unwrap() };
 
     use model::calibration::Calibration;
     use model::calibration::CalibrationType;

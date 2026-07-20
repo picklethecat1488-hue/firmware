@@ -243,12 +243,12 @@ async fn main(spawner: Spawner) {
     spawner_c1
         .spawn(app::bootstrap_core1_task(
             spawner_c1,
-            unsafe { app::MOTOR_CTRL.take().unwrap() },
+            unsafe { app::MOTOR_CTRL_CORE0.take().unwrap() },
             unsafe {
                 (
-                    app::SENSOR_CTRL_NORTH.take().unwrap(),
-                    app::SENSOR_CTRL_EAST.take().unwrap(),
-                    app::SENSOR_CTRL_WEST.take().unwrap(),
+                    app::SENSOR_CTRL_NORTH_CORE0.take().unwrap(),
+                    app::SENSOR_CTRL_EAST_CORE0.take().unwrap(),
+                    app::SENSOR_CTRL_WEST_CORE0.take().unwrap(),
                 )
             },
         ))
@@ -291,8 +291,8 @@ async fn main(spawner: Spawner) {
     });
 
     let board_motor_ptr = unsafe {
-        if !app::MOTOR_CTRL_PTR.is_null() {
-            &mut (*(app::MOTOR_CTRL_PTR as *mut MotorControllerType)).motor as *mut _
+        if !app::MOTOR_CTRL_CORE1.is_null() {
+            &mut (*(app::MOTOR_CTRL_CORE1 as *mut MotorControllerType)).motor as *mut _
         } else {
             core::ptr::null_mut()
         }
@@ -328,15 +328,15 @@ async fn main(spawner: Spawner) {
         &[
             controller::NamedDevice {
                 name: "north",
-                device: app::SENSOR_NORTH_PTR as *mut _,
+                device: app::SENSOR_CTRL_NORTH_CORE1 as *mut _,
             },
             controller::NamedDevice {
                 name: "east",
-                device: app::SENSOR_EAST_PTR as *mut _,
+                device: app::SENSOR_CTRL_EAST_CORE1 as *mut _,
             },
             controller::NamedDevice {
                 name: "west",
-                device: app::SENSOR_WEST_PTR as *mut _,
+                device: app::SENSOR_CTRL_WEST_CORE1 as *mut _,
             },
         ]
     };
@@ -344,7 +344,7 @@ async fn main(spawner: Spawner) {
     let motor_ctrls = unsafe {
         &[controller::NamedDevice {
             name: "default",
-            device: app::MOTOR_CTRL_PTR as *mut _,
+            device: app::MOTOR_CTRL_CORE1 as *mut _,
         }]
     };
 

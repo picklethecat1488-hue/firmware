@@ -10,7 +10,7 @@ use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use firmware_lib::subcommand_enum;
 use model::interfaces::TemperatureSensor;
-use model::types::PeripheralError;
+use model::types::{PeriodicInterval, PeripheralError};
 use peripherals::ToPeripheralError;
 
 /// A controller that periodically monitors system temperature from temperature sensors.
@@ -114,9 +114,15 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
                 Err(e) => {
                     let safe_temp = 25000; // 25°C
                     if self.first_update {
-                        self.first_update = false;
                         if let Some(tx) = &self.thermal_tx {
-                            let _ = tx.try_send(crate::types::ThermalUpdateAction::ClearBootTrap);
+                            if tx
+                                .try_send(crate::types::ThermalUpdateAction::ClearBootTrap)
+                                .is_ok()
+                            {
+                                self.first_update = false;
+                            }
+                        } else {
+                            self.first_update = false;
                         }
                     }
                     if let Some(ref mut client) = telemetry_client {
@@ -156,9 +162,15 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
                         defmt::error!("Thermal Controller: Critical temperature exceeded ({} mC). Dispatching safety shutdown.", temp);
                     }
                 } else if self.first_update {
-                    self.first_update = false;
                     if let Some(tx) = &self.thermal_tx {
-                        let _ = tx.try_send(crate::types::ThermalUpdateAction::ClearBootTrap);
+                        if tx
+                            .try_send(crate::types::ThermalUpdateAction::ClearBootTrap)
+                            .is_ok()
+                        {
+                            self.first_update = false;
+                        }
+                    } else {
+                        self.first_update = false;
                     }
                 }
 
@@ -182,20 +194,33 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
     ) -> ! {
         let mut telemetry_client =
             crate::telemetry_controller::ThermalTelemetryClient::new(Some(telemetry_tx));
+        let mut check_interval = embassy_time::Duration::from_millis(1500);
         loop {
-            match embassy_time::with_timeout(
-                embassy_time::Duration::from_millis(1500),
-                command_rx.receive(),
-            )
-            .await
-            {
+            match embassy_time::with_timeout(check_interval, command_rx.receive()).await {
                 Ok(cmd) => match cmd {
                     ThermalCommand::CheckTemp => {
                         let _ = self.update(Some(&mut telemetry_client)).await;
                     }
+                    ThermalCommand::SetInterval(interval) => {
+                        check_interval = match interval {
+                            PeriodicInterval::None => crate::OVERFLOW_SAFE_MAX_DURATION,
+                            PeriodicInterval::UpdateMs(ms) => {
+                                embassy_time::Duration::from_millis(ms as u64)
+                            }
+                        };
+                        telemetry_client.report_interval(model::types::Device::Thermal, interval);
+                    }
                 },
                 Err(_timeout) => {
-                    let _ = self.update(Some(&mut telemetry_client)).await;
+                    if check_interval != crate::OVERFLOW_SAFE_MAX_DURATION
+                        && self.update(Some(&mut telemetry_client)).await.is_err()
+                    {
+                        #[cfg(all(target_arch = "arm", target_os = "none"))]
+                        defmt::warn!(
+                            "ThermalController: Periodic read failed; disabling periodic updates."
+                        );
+                        check_interval = crate::OVERFLOW_SAFE_MAX_DURATION;
+                    }
                 }
             }
         }
@@ -223,6 +248,8 @@ where
 pub enum ThermalCommand {
     /// Force thermal status query and print telemetry logs
     CheckTemp,
+    /// Set periodic automatic checking interval
+    SetInterval(PeriodicInterval),
 }
 
 subcommand_enum! {
@@ -343,18 +370,33 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
         self.thermal_manager.borrow_mut().set_thermal_critical(true);
     }
 
-    fn on_tick(
+    fn on_state_changed(
         &self,
-        _elapsed_ms: u32,
-        crossed_tick: bool,
-        _status: model::types::SystemStatus,
+        _from: model::types::SystemStatus,
+        _to: model::types::SystemStatus,
         support: crate::DeviceSupport,
-        _wake_locks: u32,
+        _battery_status: Option<crate::BatteryStatus>,
+        _thermal_critical: bool,
     ) {
-        if crossed_tick && support.thermal {
-            if let Some(ref thermal_tx) = self.thermal_tx {
-                let _ = thermal_tx.try_send(crate::ThermalCommand::CheckTemp);
-            }
+        use crate::Periodic;
+        if support.thermal {
+            self.set_interval(PeriodicInterval::UpdateMs(1000));
+        } else {
+            self.set_interval(PeriodicInterval::None);
+        }
+    }
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize> crate::Periodic
+    for ThermalFeatureConfig<MutexRaw, N>
+{
+    fn set_interval(&self, interval: PeriodicInterval) {
+        if let Some(ref thermal_tx) = self.thermal_tx {
+            let res = thermal_tx.try_send(ThermalCommand::SetInterval(interval));
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            res.expect("Failed to send periodic interval to thermal controller");
+            #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+            let _ = res;
         }
     }
 }

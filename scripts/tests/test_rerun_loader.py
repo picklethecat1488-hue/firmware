@@ -156,3 +156,60 @@ def test_boot_warning_logged_to_rerun(tmp_path, monkeypatch):
 
     assert "🚨 SYSTEM RESET (Watchdog) 🚨" in logged[idx_boot][1].val
     assert "SYSTEM RESET: Watchdog" in logged[idx_status][1].val
+
+
+def test_periodic_interval_logged_to_rerun(tmp_path, monkeypatch):
+    csv_file = tmp_path / "test.csv"
+    csv_content = (
+        "timestamp_us,record_type,val1,val2,val3,val4\n"
+        "2000000,PeriodicInterval,Battery,1000,,\n"
+        "3000000,PeriodicInterval,Sensors,None,,\n"
+    )
+    csv_file.write_text(csv_content)
+
+    monkeypatch.setattr(sys, "argv", ["rerun-loader-csv", str(csv_file)])
+
+    logged = []
+
+    class MockRerun:
+        def init(self, app_id, recording_id=None):
+            pass
+
+        def connect_grpc(self):
+            pass
+
+        def spawn(self):
+            pass
+
+        def stdout(self):
+            pass
+
+        def set_time(self, name, duration):
+            pass
+
+        def log(self, entity_path, entity):
+            logged.append((entity_path, entity))
+
+        class Scalars:
+            def __init__(self, val):
+                self.val = val
+
+        class TextDocument:
+            def __init__(self, val):
+                self.val = val
+
+    monkeypatch.setitem(sys.modules, "rerun", MockRerun())
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
+
+    rerun_loader_csv.main()
+
+    # Find logged paths
+    paths = [item[0] for item in logged]
+    assert "periodic_interval/battery" in paths
+    assert "periodic_interval/sensors" in paths
+
+    idx_battery = paths.index("periodic_interval/battery")
+    idx_sensors = paths.index("periodic_interval/sensors")
+
+    assert logged[idx_battery][1].val == 1000.0
+    assert logged[idx_sensors][1].val == 0.0
