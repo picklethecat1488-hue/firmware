@@ -342,9 +342,15 @@ impl<
                 match action {
                     ProximityAction::AcquireWakeLock => {
                         self.power_manager.acquire_wake_lock(None);
+                        self.feature_set
+                            .features()
+                            .on_wake_locks_changed(self.power_manager.wake_locks());
                     }
                     ProximityAction::ReleaseWakeLock => {
                         self.power_manager.release_wake_lock(None);
+                        self.feature_set
+                            .features()
+                            .on_wake_locks_changed(self.power_manager.wake_locks());
                     }
                     ProximityAction::WakeSystem => {
                         if !self.battery_critical() && !self.thermal_critical() {
@@ -361,6 +367,7 @@ impl<
             SystemCommand::BatteryAction(action) => match action {
                 BatteryUpdateAction::GoToPowerDown => {
                     self.power_manager.clear_wake_locks();
+                    self.feature_set.features().on_wake_locks_changed(0);
                     self.set_status(SystemStatus::PowerDown)?;
                 }
                 BatteryUpdateAction::ClearBootTrap => {
@@ -397,6 +404,7 @@ impl<
                             }
                         } else {
                             self.power_manager.clear_wake_locks();
+                            self.feature_set.features().on_wake_locks_changed(0);
                             self.set_status(SystemStatus::PowerDown)?;
                         }
                     }
@@ -446,6 +454,7 @@ impl<
 
         if transition.clear_wake_locks {
             self.power_manager.clear_wake_locks();
+            self.feature_set.features().on_wake_locks_changed(0);
         }
 
         if let Some(next_status) = transition.next_status {
@@ -484,14 +493,6 @@ impl<
     /// Returns true if the 1-second system tick boundary was crossed.
     pub fn tick_ms(&mut self, ms: u32) -> bool {
         let crossed = self.power_manager.tick_ms(ms);
-        let status = self.power_manager.status();
-        let wake_locks = self.power_manager.wake_locks();
-
-        let support = self.feature_set.get_device_support(status);
-
-        self.feature_set
-            .features()
-            .on_tick(ms, crossed, status, support, wake_locks);
 
         if crossed {
             // Sleep after inactivity timeout

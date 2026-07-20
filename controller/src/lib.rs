@@ -3,6 +3,10 @@
 #![cfg_attr(not(test), no_std)]
 #![deny(missing_docs)]
 
+/// Target-safe maximum duration (1 year) to prevent time-queue addition overflows in embassy-time.
+pub const OVERFLOW_SAFE_MAX_DURATION: embassy_time::Duration =
+    embassy_time::Duration::from_secs(3600 * 24 * 365);
+
 /// Battery status and telemetry controller.
 pub mod battery_controller;
 /// Flat filesystem and storage controller.
@@ -38,7 +42,7 @@ pub use sensor_controller::ProximityFeatureConfig;
 pub use sensor_controller::SensorCommand;
 pub use shell_controller::{ShellConfig, ShellDeviceResolver};
 pub use system_controller::{ProximityEvent, SystemCommand, SystemController, SystemFeatureSet};
-pub use system_feature::{FeatureList, SystemFeature};
+pub use system_feature::{FeatureList, Periodic, PeriodicInterval, SystemFeature};
 pub use thermal_controller::ThermalCommand;
 pub use thermal_controller::ThermalFeatureConfig;
 pub use types::{

@@ -395,6 +395,18 @@ pub enum BootReason {
     Unknown,
 }
 
+/// Interval configuration for periodic tasks.
+#[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum PeriodicInterval {
+    /// Disable periodic execution.
+    #[n(0)]
+    None,
+    /// Run periodically with the specified interval in milliseconds.
+    #[n(1)]
+    UpdateMs(#[n(0)] u32),
+}
+
 dummy_debug!(BatteryStatus);
 dummy_debug!(BatteryState);
 dummy_debug!(MotorStatus);
@@ -409,5 +421,6 @@ dummy_debug!(ChargeState);
 dummy_debug!(Direction);
 dummy_debug!(PeripheralError);
 dummy_debug!(BootReason);
+dummy_debug!(PeriodicInterval);
 
 pub use crate::telemetry::TelemetryRecord;
