@@ -80,6 +80,8 @@ pub struct Board {
     pub pin_east: MockFlex,
     /// Mock West proximity interrupt pin
     pub pin_west: MockFlex,
+    /// Core 0 executor spawner
+    pub spawner: Option<embassy_executor::Spawner>,
 }
 
 impl Board {
@@ -134,7 +136,35 @@ impl Board {
             pin_north,
             pin_east,
             pin_west,
+            spawner: None,
         }
+    }
+
+    /// Run the executor loop for the specified core (dummy on host).
+    ///
+    /// # Safety
+    ///
+    /// This is a dummy method on host and is always safe to call.
+    pub unsafe fn run_executor(_cpu_id: firmware_lib::types::CpuId) -> ! {
+        loop {
+            std::thread::yield_now();
+        }
+    }
+
+    /// Mock initialization of the Embassy executor for Core 1.
+    ///
+    /// # Safety
+    ///
+    /// This is a mock function on host and is always safe to call.
+    pub unsafe fn init_executor_core1() {}
+
+    /// Mock spawner for Core 1.
+    ///
+    /// # Safety
+    ///
+    /// This is a mock function on host and is always safe to call.
+    pub unsafe fn spawner_core1() -> embassy_executor::Spawner {
+        panic!("Core 1 spawner should not be called on host");
     }
 }
 

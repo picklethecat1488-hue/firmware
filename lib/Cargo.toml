@@ -37,5 +37,7 @@ embassy-executor = { version = "0.7.0", features = ["arch-std", "executor-thread
 futures = "0.3"
 
 [features]
+default = []
 tracing = ["dep:tracing-defmt"]
+dual-core = []
 

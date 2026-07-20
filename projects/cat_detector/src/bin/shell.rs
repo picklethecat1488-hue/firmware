@@ -12,7 +12,7 @@
 use cat_detector as app;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-use {embassy_executor::Spawner, embedded_cli::cli::CliBuilder};
+use {embassy_executor::Spawner, embedded_cli::cli::CliBuilder, firmware_lib::core_monitor};
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use controller::shell_controller::{ShellController, ShellControllerPointers};
@@ -20,7 +20,7 @@ use controller::shell_controller::{ShellController, ShellControllerPointers};
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    app::multicore::handle_panic(info);
+    app::handle_panic(info);
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -113,6 +113,42 @@ controller::impl_shell_config! {
         SystemCtrl = SystemControllerType,
     }
 }
+/// Core 1 command enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Core1Command {
+    /// Panic command.
+    Panic,
+}
+
+/// Core 1 command channel.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub static CORE1_COMMAND_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    Core1Command,
+    4,
+> = embassy_sync::channel::Channel::new();
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[embassy_executor::task]
+#[allow(clippy::never_loop)]
+async fn core1_command_task(
+    rx: embassy_sync::channel::Receiver<
+        'static,
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        Core1Command,
+        4,
+    >,
+) {
+    loop {
+        let cmd = rx.receive().await;
+        match cmd {
+            Core1Command::Panic => {
+                panic!("Simulated Core 1 panic");
+            }
+        }
+    }
+}
+
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 fn handle_core1_cli<
     W: embedded_io::Write<Error = E>,
@@ -126,13 +162,11 @@ fn handle_core1_cli<
     let cmd = subcommand.ok_or("Missing core1 subcommand")?;
     match cmd {
         controller::shell_controller::Core1Subcommand::Panic => {
-            #[cfg(feature = "core1")]
-            {
-                app::multicore::CORE1_COMMAND_CHANNEL
-                    .sender()
-                    .try_send(app::multicore::Core1Command::Panic)
-                    .map_err(|_| "Failed to send command to Core 1")?;
-            }
+            let _ = core::writeln!(_writer, "Sending panic command to Core 1...");
+            CORE1_COMMAND_CHANNEL
+                .sender()
+                .try_send(Core1Command::Panic)
+                .map_err(|_| "Failed to send command to Core 1")?;
             Ok(())
         }
     }
@@ -194,14 +228,35 @@ async fn main(spawner: Spawner) {
         app::MAX_CRASH_LOGS,
     );
 
+    core_monitor::init_core(
+        Some(spawner),
+        core_monitor::CpuId::Core0,
+        app::CORE_MONITOR_TIMEOUT_MS,
+        app::CORE_MONITOR_WARN_PCT,
+        false,
+    );
+
     let core1 = unsafe { embassy_rp::peripherals::CORE1::steal() };
-    app::multicore::boot_core1(core1, unsafe { app::MOTOR_CTRL.take().unwrap() }, unsafe {
-        (
-            app::SENSOR_CTRL_NORTH.take().unwrap(),
-            app::SENSOR_CTRL_EAST.take().unwrap(),
-            app::SENSOR_CTRL_WEST.take().unwrap(),
-        )
-    });
+    app::boot_core1(core1);
+
+    let spawner_c1 = unsafe { app::Board::spawner_core1() };
+    spawner_c1
+        .spawn(app::bootstrap_core1_task(
+            spawner_c1,
+            unsafe { app::MOTOR_CTRL.take().unwrap() },
+            unsafe {
+                (
+                    app::SENSOR_CTRL_NORTH.take().unwrap(),
+                    app::SENSOR_CTRL_EAST.take().unwrap(),
+                    app::SENSOR_CTRL_WEST.take().unwrap(),
+                )
+            },
+        ))
+        .unwrap();
+
+    spawner_c1
+        .spawn(core1_command_task(CORE1_COMMAND_CHANNEL.receiver()))
+        .unwrap();
 
     let temp_sensor_ptr = {
         let mut guard = app::SHARED_TEMP_SENSOR.lock().await;
@@ -236,8 +291,8 @@ async fn main(spawner: Spawner) {
     });
 
     let board_motor_ptr = unsafe {
-        if !app::multicore::MOTOR_CTRL_PTR.is_null() {
-            &mut (*(app::multicore::MOTOR_CTRL_PTR as *mut MotorControllerType)).motor as *mut _
+        if !app::MOTOR_CTRL_PTR.is_null() {
+            &mut (*(app::MOTOR_CTRL_PTR as *mut MotorControllerType)).motor as *mut _
         } else {
             core::ptr::null_mut()
         }
@@ -273,15 +328,15 @@ async fn main(spawner: Spawner) {
         &[
             controller::NamedDevice {
                 name: "north",
-                device: app::multicore::SENSOR_NORTH_PTR as *mut _,
+                device: app::SENSOR_NORTH_PTR as *mut _,
             },
             controller::NamedDevice {
                 name: "east",
-                device: app::multicore::SENSOR_EAST_PTR as *mut _,
+                device: app::SENSOR_EAST_PTR as *mut _,
             },
             controller::NamedDevice {
                 name: "west",
-                device: app::multicore::SENSOR_WEST_PTR as *mut _,
+                device: app::SENSOR_WEST_PTR as *mut _,
             },
         ]
     };
@@ -289,7 +344,7 @@ async fn main(spawner: Spawner) {
     let motor_ctrls = unsafe {
         &[controller::NamedDevice {
             name: "default",
-            device: app::multicore::MOTOR_CTRL_PTR as *mut _,
+            device: app::MOTOR_CTRL_PTR as *mut _,
         }]
     };
 
@@ -320,7 +375,6 @@ async fn main(spawner: Spawner) {
 
     let mut processor = ShellController::<AppConfig>::new(pointers);
 
-    // Run the main input loop feeding bytes to the embedded-cli processor over RTT
     let mut local_proc = CatDetectorCliProcessor::new(&mut processor);
     firmware_lib::rtt::run_rtt_shell_loop::<CatDetectorCli, _, _, _>(&mut cli, &mut local_proc);
 }

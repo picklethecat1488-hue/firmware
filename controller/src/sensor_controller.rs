@@ -122,7 +122,7 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
         Self {
             metadata,
             sensor,
-            periodic_enabled: true,
+            periodic_enabled: false,
             upstream_tx,
             interrupt_pin,
             _marker: core::marker::PhantomData,
@@ -155,6 +155,10 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
     }
 
     /// Sets whether periodic monitoring is enabled.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.ram_func"
+    )]
     pub fn set_periodic_enabled(&mut self, enabled: bool) {
         self.periodic_enabled = enabled;
     }
@@ -284,6 +288,7 @@ impl<
     > SensorController<'a, S, M, Pin, Cmd, Reader>
 where
     Reader::Data: Copy + Into<u16>,
+    Reader::Error: core::fmt::Debug,
 {
     /// Creates a generic SensorController.
     pub fn new_generic(
@@ -403,7 +408,7 @@ where
             let timeout_dur = if self.is_periodic_enabled() {
                 embassy_time::Duration::from_millis(1000)
             } else {
-                embassy_time::Duration::MAX
+                embassy_time::Duration::from_secs(3600 * 24 * 365)
             };
 
             let res = select_branch_with_timeout!(

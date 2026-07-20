@@ -186,9 +186,12 @@ impl<
     ) -> Self {
         let mut power_manager = PowerManager::new(telemetry_tx, boot_reason);
         let default_mask = feature_set.features().default_boot_trap_mask();
-        power_manager
+        if power_manager
             .set_boot_trap_mask(BootTrapMask::from_raw(default_mask))
-            .unwrap();
+            .is_err()
+        {
+            panic!("invalid default boot trap mask");
+        }
 
         let mut ctrl = Self {
             power_manager,

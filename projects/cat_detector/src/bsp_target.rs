@@ -45,7 +45,14 @@ pub struct Board<'d> {
     pub pin_east: Flex<'d>,
     /// West proximity interrupt pin
     pub pin_west: Flex<'d>,
+    /// Core 0 executor spawner
+    pub spawner: Option<embassy_executor::Spawner>,
 }
+
+struct SyncExecutor(embassy_executor::raw::Executor);
+unsafe impl Sync for SyncExecutor {}
+static mut EXECUTOR_CORE0: Option<SyncExecutor> = None;
+static mut EXECUTOR_CORE1: Option<SyncExecutor> = None;
 
 impl<'d> Board<'d> {
     /// Initialize all hardware components and return the Board interface.
@@ -288,6 +295,18 @@ impl<'d> Board<'d> {
             firmware_lib::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
         );
 
+        unsafe {
+            let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE0);
+            *ptr = Some(SyncExecutor(embassy_executor::raw::Executor::new(
+                !0 as *mut (),
+            )));
+        }
+        let spawner = unsafe {
+            let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE0);
+            let executor_ref = (*ptr).as_ref().unwrap();
+            Some(executor_ref.0.spawner())
+        };
+
         Self {
             uart,
             i2c,
@@ -305,7 +324,56 @@ impl<'d> Board<'d> {
             pin_north,
             pin_east,
             pin_west,
+            spawner,
         }
+    }
+
+    /// Run the Embassy executor loop for the specified core.
+    ///
+    /// # Safety
+    ///
+    /// This function must be called from the main thread of the corresponding core and does not return.
+    pub unsafe fn run_executor(cpu_id: firmware_lib::types::CpuId) -> ! {
+        use firmware_lib::system::CpuScheduler;
+        match cpu_id {
+            firmware_lib::types::CpuId::Core0 => {
+                let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE0);
+                if let Some(ref mut executor) = *ptr {
+                    let executor_static: &'static embassy_executor::raw::Executor = &executor.0;
+                    executor_static.run_loop(cpu_id);
+                }
+            }
+            firmware_lib::types::CpuId::Core1 => {
+                let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE1);
+                if let Some(ref mut executor) = *ptr {
+                    let executor_static: &'static embassy_executor::raw::Executor = &executor.0;
+                    executor_static.run_loop(cpu_id);
+                }
+            }
+        }
+        loop {
+            cortex_m::asm::nop();
+        }
+    }
+
+    /// Initialize the Embassy executor for Core 1.
+    ///
+    /// # Safety
+    /// This function must be called only once and prior to spawning Core 1 tasks.
+    pub unsafe fn init_executor_core1() {
+        let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE1);
+        *ptr = Some(SyncExecutor(embassy_executor::raw::Executor::new(
+            !0 as *mut (),
+        )));
+    }
+
+    /// Returns the Spawner for Core 1.
+    ///
+    /// # Safety
+    /// This function must be called only after init_executor_core1 has been called.
+    pub unsafe fn spawner_core1() -> embassy_executor::Spawner {
+        let ptr = core::ptr::addr_of!(EXECUTOR_CORE1);
+        (*ptr).as_ref().unwrap().0.spawner()
     }
 }
 

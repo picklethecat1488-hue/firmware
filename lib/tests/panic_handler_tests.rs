@@ -23,6 +23,7 @@ fn test_crash_log_buffer_writing_and_wrapping() {
     critical_section::with(|cs| {
         let mut buffer = CRASH_LOG_BUFFER.borrow(cs).borrow_mut();
         buffer.head = 0;
+        buffer.tail = 0;
         buffer.wrapped = false;
         buffer.buffer.fill(0);
     });
@@ -127,7 +128,9 @@ fn test_extract_system_logs_helper() {
     critical_section::with(|cs| {
         let mut buffer = CRASH_LOG_BUFFER.borrow(cs).borrow_mut();
         buffer.head = 0;
+        buffer.tail = 0;
         buffer.wrapped = false;
+        buffer.buffer.fill(0);
     });
 
     log_string("Log 1");
@@ -362,4 +365,75 @@ fn test_ring_buffer_wrapping_and_discarding() {
 
     // Check that we extracted exactly 10 frames of 100 bytes each = 1000 bytes
     assert_eq!(len, 1000);
+}
+
+#[test]
+fn test_multicore_panic_serialization() {
+    use firmware_lib::panic_handler::serialize_crash_dump;
+    use firmware_lib::types::{CoreDump, CrashDump};
+
+    let mut core0_backtrace = [0u32; 32];
+    core0_backtrace[0] = 0x10001000;
+    core0_backtrace[1] = 0x10002000;
+
+    let mut core1_backtrace = [0u32; 32];
+    core1_backtrace[0] = 0x10003000;
+    core1_backtrace[1] = 0x10004000;
+
+    let core0_dump = CoreDump {
+        r0: 0x10,
+        r1: 0x11,
+        r2: 0x12,
+        r3: 0x13,
+        sp: 0x20041000,
+        lr: 0x10005000,
+        pc: 0x10006000,
+        backtrace: core0_backtrace,
+        backtrace_len: 2,
+        panicked: true,
+    };
+
+    let core1_dump = CoreDump {
+        r0: 0x20,
+        r1: 0x21,
+        r2: 0x22,
+        r3: 0x23,
+        sp: 0x2003f000,
+        lr: 0x10007000,
+        pc: 0x10008000,
+        backtrace: core1_backtrace,
+        backtrace_len: 2,
+        panicked: true,
+    };
+
+    let dump = CrashDump {
+        revision_hash: "mock_git_hash",
+        system_logs: b"Log line 1\nLog line 2\n",
+        uuid: [7u8; 16],
+        cores: [core0_dump, core1_dump],
+    };
+
+    let mut cbor_buf = [0u8; 1024];
+    let len = serialize_crash_dump(&dump, &mut cbor_buf).unwrap();
+    assert!(len > 0);
+
+    // Decode and verify
+    let decoded: CrashDump = minicbor::decode(&cbor_buf[..len]).unwrap();
+    assert_eq!(decoded.revision_hash, "mock_git_hash");
+    assert_eq!(decoded.system_logs, b"Log line 1\nLog line 2\n");
+    assert_eq!(decoded.uuid, [7u8; 16]);
+
+    // Verify Core 0
+    assert!(decoded.cores[0].panicked);
+    assert_eq!(decoded.cores[0].r0, 0x10);
+    assert_eq!(decoded.cores[0].sp, 0x20041000);
+    assert_eq!(decoded.cores[0].backtrace[0], 0x10001000);
+    assert_eq!(decoded.cores[0].backtrace_len, 2);
+
+    // Verify Core 1
+    assert!(decoded.cores[1].panicked);
+    assert_eq!(decoded.cores[1].r0, 0x20);
+    assert_eq!(decoded.cores[1].sp, 0x2003f000);
+    assert_eq!(decoded.cores[1].backtrace[0], 0x10003000);
+    assert_eq!(decoded.cores[1].backtrace_len, 2);
 }

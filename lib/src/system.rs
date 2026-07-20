@@ -177,3 +177,44 @@ unsafe impl defmt::Logger for HostLogger {
 
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 defmt::timestamp!("{=u64}", 0);
+
+/// Trait for executing the scheduler loop on a CPU core.
+pub trait CpuScheduler {
+    /// Runs the infinite scheduler loop for the given CPU core.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the main thread loop of the corresponding core.
+    unsafe fn run_loop(&'static self, cpu_id: crate::types::CpuId) -> !;
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl CpuScheduler for embassy_executor::raw::Executor {
+    unsafe fn run_loop(&'static self, cpu_id: crate::types::CpuId) -> ! {
+        loop {
+            self.poll();
+            match cpu_id {
+                crate::types::CpuId::Core0 => {
+                    defmt::trace!("ctx=cpu_idle_c0 parent=0 span_enter: CPU Idle Core 0");
+                    cortex_m::asm::wfe();
+                    defmt::trace!("cpu_idle_c0 span_exit: CPU Idle Core 0");
+                }
+                crate::types::CpuId::Core1 => {
+                    defmt::trace!("ctx=cpu_idle_c1 parent=0 span_enter: CPU Idle Core 1");
+                    cortex_m::asm::wfe();
+                    defmt::trace!("cpu_idle_c1 span_exit: CPU Idle Core 1");
+                }
+            }
+        }
+    }
+}
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+impl CpuScheduler for embassy_executor::raw::Executor {
+    unsafe fn run_loop(&'static self, _cpu_id: crate::types::CpuId) -> ! {
+        loop {
+            self.poll();
+            std::thread::yield_now();
+        }
+    }
+}

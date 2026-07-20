@@ -8,6 +8,10 @@
 pub use crate::types::LogBuffer;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+use crate::core_monitor;
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+use crate::types::CpuId;
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 pub use crate::types::PanicConfig;
 
 /// Static safe instance of the log buffer.
@@ -131,6 +135,27 @@ pub static PANIC_CONFIG: embassy_sync::blocking_mutex::Mutex<
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global static storing the stack top address of Core 1 (set on boot)
 pub static mut CORE1_STACK_TOP: u32 = 0;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[allow(clippy::declare_interior_mutable_const)]
+const INIT_STATE: crate::types::CorePanicState = crate::types::CorePanicState {
+    panicked: core::sync::atomic::AtomicBool::new(false),
+    r0: 0,
+    r1: 0,
+    r2: 0,
+    r3: 0,
+    sp: 0,
+    lr: 0,
+    pc: 0,
+    stack_top: 0,
+    message: [0u8; 64],
+    message_len: 0,
+};
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Shared static instance of captured panic state for all cores.
+pub static mut PANIC_STATE: [crate::types::CorePanicState; core_monitor::NUM_CORES] =
+    [INIT_STATE; core_monitor::NUM_CORES];
 
 /// Initialize the panic handler with flash access, target partition settings, and filesystem buffer.
 pub fn init(
@@ -437,130 +462,184 @@ pub fn handle_panic_with_sizes<
     const WRITE_SIZE: usize,
     const ERASE_SIZE: usize,
 >(
-    _info: &core::panic::PanicInfo,
+    info: &core::panic::PanicInfo,
+    cpu_id: CpuId,
     stack_top: u32,
-    cpu_id: u32,
 ) -> ! {
-    let mut state = CoreState::default();
+    let mut msg_buf = [0u8; 64];
+    struct BufferWriter<'a> {
+        buf: &'a mut [u8],
+        pos: usize,
+    }
+    impl<'a> core::fmt::Write for BufferWriter<'a> {
+        fn write_str(&mut self, s: &str) -> core::fmt::Result {
+            let bytes = s.as_bytes();
+            let len = bytes.len().min(self.buf.len() - self.pos);
+            self.buf[self.pos..self.pos + len].copy_from_slice(&bytes[..len]);
+            self.pos += len;
+            Ok(())
+        }
+    }
+    let mut writer = BufferWriter {
+        buf: &mut msg_buf,
+        pos: 0,
+    };
+    let _ = core::fmt::write(&mut writer, format_args!("{}", info.message()));
+    let message_len = writer.pos as u8;
+
+    let idx = match cpu_id {
+        CpuId::Core0 => 0,
+        CpuId::Core1 => 1,
+    };
+
     unsafe {
-        core::arch::asm!(
-            "mov {0}, r0",
-            "mov {1}, r1",
-            "mov {2}, r2",
-            "mov {3}, r3",
-            out(reg) state.r0,
-            out(reg) state.r1,
-            out(reg) state.r2,
-            out(reg) state.r3,
-        );
+        let ptr = core::ptr::addr_of_mut!(PANIC_STATE);
+        (*ptr)[idx].capture_snapshot(stack_top, &msg_buf, message_len);
+
+        (*ptr)[idx]
+            .panicked
+            .store(true, core::sync::atomic::Ordering::Release);
+    }
+    core_monitor::set_core_panicked(cpu_id, true);
+
+    if cpu_id != CpuId::Core0 {
+        // Loop forever in RAM with interrupts enabled so Core 1 can respond to flash pause requests from Core 0.
+        unsafe {
+            cortex_m::interrupt::enable();
+        }
+        loop {
+            cortex_m::asm::nop();
+        }
     }
 
     cortex_m::interrupt::disable();
-
-    let sp: u32;
-    unsafe {
-        core::arch::asm!("mov {}, sp", out(reg) sp);
-    }
-
-    let lr: u32;
-    unsafe {
-        core::arch::asm!("mov {}, lr", out(reg) lr);
-    }
-
-    log_crash_and_reset_impl::<FLASH_SIZE, FLASH_START, FLASH_END, WRITE_SIZE, ERASE_SIZE>(
-        sp, 0, lr, state.r0, state.r1, state.r2, state.r3, stack_top, cpu_id,
-    )
+    log_crash_and_reset_impl::<FLASH_SIZE, FLASH_START, FLASH_END, WRITE_SIZE, ERASE_SIZE>();
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Writes a crash dump for a stuck task and resets the system.
-pub fn report_stuck_task_with_sizes<
-    const FLASH_SIZE: usize,
-    const STACK_TOP: u32,
-    const FLASH_START: u32,
-    const FLASH_END: u32,
-    const WRITE_SIZE: usize,
-    const ERASE_SIZE: usize,
->(
-    preempted_sp: u32,
-    preempted_pc: u32,
-    preempted_lr: u32,
-) -> ! {
-    cortex_m::interrupt::disable();
-    log_crash_and_reset_impl::<FLASH_SIZE, FLASH_START, FLASH_END, WRITE_SIZE, ERASE_SIZE>(
-        preempted_sp,
-        preempted_pc,
-        preempted_lr,
-        0,
-        0,
-        0,
-        0,
-        STACK_TOP,
-        0,
-    )
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-#[allow(clippy::too_many_arguments)]
 fn log_crash_and_reset_impl<
     const FLASH_SIZE: usize,
     const FLASH_START: u32,
     const FLASH_END: u32,
     const WRITE_SIZE: usize,
     const ERASE_SIZE: usize,
->(
-    sp: u32,
-    pc: u32,
-    lr: u32,
-    r0: u32,
-    r1: u32,
-    r2: u32,
-    r3: u32,
-    actual_stack_top: u32,
-    cpu_id: u32,
-) -> ! {
-    let mut state = CoreState {
-        r0,
-        r1,
-        r2,
-        r3,
-        backtrace: [0u32; 32],
+>() -> ! {
+    let (core0_panicked, core1_panicked) = unsafe {
+        let ptr = core::ptr::addr_of!(PANIC_STATE);
+        (
+            (*ptr)[0]
+                .panicked
+                .load(core::sync::atomic::Ordering::Acquire),
+            (*ptr)[1]
+                .panicked
+                .load(core::sync::atomic::Ordering::Acquire),
+        )
     };
-    let read_mem = |addr: u32| {
-        if (FLASH_START..FLASH_END).contains(&addr) && (addr & 1 == 0) {
-            // Read as two 16-bit halfwords to prevent alignment HardFaults on Cortex-M0+
-            let low = unsafe { *(addr as *const u16) } as u32;
-            let high = unsafe { *((addr + 2) as *const u16) } as u32;
-            Some((high << 16) | low)
-        } else {
-            None
-        }
-    };
-    let mut pc_count = scan_stack_from_sp(
-        sp as usize,
-        actual_stack_top as usize,
-        FLASH_START,
-        FLASH_END,
-        &mut state.backtrace,
-        read_mem,
-    );
 
-    if pc != 0 {
-        let mut new_backtrace = [0u32; 32];
-        new_backtrace[0] = pc;
-        let mut idx = 1;
-        if lr != 0 && lr != pc {
-            new_backtrace[1] = lr;
-            idx = 2;
-        }
-        for i in 0..30 {
-            if idx + i < 32 {
-                new_backtrace[idx + i] = state.backtrace[i];
+    defmt::error!("--- PANIC DETECTED ---");
+    if core0_panicked {
+        let state = unsafe {
+            let ptr = core::ptr::addr_of!(PANIC_STATE);
+            (*ptr)[0].volatile_clone()
+        };
+        defmt::error!(
+            "Core 0: SP={=u32:08x} PC={=u32:08x} LR={=u32:08x}",
+            state.sp,
+            state.pc,
+            state.lr
+        );
+        if state.message_len > 0 {
+            let len = (state.message_len as usize).min(64);
+            if let Ok(msg_str) = core::str::from_utf8(&state.message[..len]) {
+                defmt::error!("  Message: {}", msg_str);
             }
         }
-        state.backtrace = new_backtrace;
-        pc_count = (pc_count + idx).min(32);
     }
+    if core1_panicked {
+        let state = unsafe {
+            let ptr = core::ptr::addr_of!(PANIC_STATE);
+            (*ptr)[1].volatile_clone()
+        };
+        defmt::error!(
+            "Core 1: SP={=u32:08x} PC={=u32:08x} LR={=u32:08x}",
+            state.sp,
+            state.pc,
+            state.lr
+        );
+        if state.message_len > 0 {
+            let len = (state.message_len as usize).min(64);
+            if let Ok(msg_str) = core::str::from_utf8(&state.message[..len]) {
+                defmt::error!("  Message: {}", msg_str);
+            }
+        }
+    }
+
+    let generate_core_dump = |state: crate::types::CorePanicState, panicked: bool| {
+        let mut backtrace = [0u32; 32];
+        let read_mem = |addr: u32| {
+            if (FLASH_START..FLASH_END).contains(&addr) && (addr & 1 == 0) {
+                // Read as two 16-bit halfwords to prevent alignment HardFaults on Cortex-M0+
+                let low = unsafe { *(addr as *const u16) } as u32;
+                let high = unsafe { *((addr + 2) as *const u16) } as u32;
+                Some((high << 16) | low)
+            } else {
+                None
+            }
+        };
+        let mut pc_count = 0;
+        if state.sp != 0 && state.stack_top != 0 {
+            pc_count = scan_stack_from_sp(
+                state.sp as usize,
+                state.stack_top as usize,
+                FLASH_START,
+                FLASH_END,
+                &mut backtrace,
+                read_mem,
+            );
+        }
+
+        crate::types::CoreDump {
+            r0: state.r0,
+            r1: state.r1,
+            r2: state.r2,
+            r3: state.r3,
+            sp: state.sp,
+            lr: state.lr,
+            pc: state.pc,
+            backtrace,
+            backtrace_len: pc_count as u32,
+            panicked,
+        }
+    };
+
+    let core0_dump = generate_core_dump(
+        unsafe {
+            let ptr = core::ptr::addr_of!(PANIC_STATE);
+            (*ptr)[0].volatile_clone()
+        },
+        core0_panicked,
+    );
+    let core1_dump = generate_core_dump(
+        unsafe {
+            let ptr = core::ptr::addr_of!(PANIC_STATE);
+            (*ptr)[1].volatile_clone()
+        },
+        core1_panicked,
+    );
+
+    let primary_dump = if core1_panicked {
+        &core1_dump
+    } else {
+        &core0_dump
+    };
+    let primary_core_state = CoreState {
+        r0: primary_dump.r0,
+        r1: primary_dump.r1,
+        r2: primary_dump.r2,
+        r3: primary_dump.r3,
+        backtrace: primary_dump.backtrace,
+    };
+    let uuid = generate_uuid(&primary_core_state, env!("GIT_HASH"));
 
     // A single static scratch buffer used for log extraction and CBOR serialization.
     // Partitioned as:
@@ -569,24 +648,15 @@ fn log_crash_and_reset_impl<
     static mut SCRATCH_BUF: [u8; 2700] = [0u8; 2700];
     let (log_buf, cbor_buf) = unsafe { SCRATCH_BUF.split_at_mut(1500) };
 
-    // 2. Extract logs from CRASH_LOG_BUFFER into a contiguous slice
-    defmt::error!("--- PANIC ---");
+    // Extract logs from CRASH_LOG_BUFFER into a contiguous slice
     let logs_len = critical_section::with(|cs| extract_system_logs(&cs, log_buf));
     let logs_slice = &log_buf[..logs_len];
 
-    let uuid = generate_uuid(&state, env!("GIT_HASH"));
-
     let dump = crate::types::CrashDump {
         revision_hash: env!("GIT_HASH"),
-        r0: state.r0,
-        r1: state.r1,
-        r2: state.r2,
-        r3: state.r3,
-        backtrace: state.backtrace,
-        backtrace_len: pc_count as u32,
         system_logs: logs_slice,
         uuid,
-        cpu_id,
+        cores: [core0_dump, core1_dump],
     };
 
     // Serialize CrashDump into a buffer
@@ -597,7 +667,7 @@ fn log_crash_and_reset_impl<
     let encoded_bytes = &cbor_buf[..encoded_len];
     defmt::error!("Crash Dump: {=[u8]:cbor}", encoded_bytes);
 
-    // 3. Write crash log to storage partition using rolling index
+    // Write crash log to storage partition using rolling index
     critical_section::with(|cs| {
         if let Some(config) = PANIC_CONFIG.borrow(cs).take() {
             // Build filesystem controller inside panic context using the adapter
@@ -618,14 +688,16 @@ fn log_crash_and_reset_impl<
     });
 
     // Give the host RTT client time to read and drain the buffers before CPU reset (1 second delay)
-    delay_us(1_000_000);
+    delay_us(1_000_000, CpuId::Core0);
 
     cortex_m::peripheral::SCB::sys_reset();
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-fn delay_us(us: u32) {
-    let freq = embassy_rp::clocks::clk_sys_freq();
+fn delay_us(us: u32, cpu_id: CpuId) {
+    let freq = core_monitor::CORE_MONITORS[cpu_id as usize]
+        .sys_clock_hz
+        .load(core::sync::atomic::Ordering::Relaxed);
     let cycles = us.saturating_mul(freq / 1_000_000);
     cortex_m::asm::delay(cycles);
 }

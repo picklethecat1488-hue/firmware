@@ -146,8 +146,12 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
                 // Critical threshold check: shut down system if temp > critical_temp_milli_c
                 if temp > self.critical_temp_milli_c {
                     if let Some(tx) = &self.thermal_tx {
-                        tx.try_send(crate::types::ThermalUpdateAction::AlertTriggered)
-                            .unwrap();
+                        if tx
+                            .try_send(crate::types::ThermalUpdateAction::AlertTriggered)
+                            .is_err()
+                        {
+                            panic!("failed to send thermal alert");
+                        }
                         #[cfg(all(target_arch = "arm", target_os = "none"))]
                         defmt::error!("Thermal Controller: Critical temperature exceeded ({} mC). Dispatching safety shutdown.", temp);
                     }

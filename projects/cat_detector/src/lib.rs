@@ -282,7 +282,131 @@ pub async fn init_controllers(board: Board<'static>) {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-pub mod multicore;
+static mut CORE1_STACK: embassy_rp::multicore::Stack<4096> = embassy_rp::multicore::Stack::new();
+
+/// Global pointer to the active MotorController on Core 1 (populated during startup).
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[allow(dead_code)]
+pub static mut MOTOR_CTRL_PTR: *mut () = core::ptr::null_mut();
+
+/// Global pointer to the active North SensorController on Core 1.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[allow(dead_code)]
+pub static mut SENSOR_NORTH_PTR: *mut () = core::ptr::null_mut();
+
+/// Global pointer to the active East SensorController on Core 1.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[allow(dead_code)]
+pub static mut SENSOR_EAST_PTR: *mut () = core::ptr::null_mut();
+
+/// Global pointer to the active West SensorController on Core 1.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[allow(dead_code)]
+pub static mut SENSOR_WEST_PTR: *mut () = core::ptr::null_mut();
+
+/// Type alias for the motor controller.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub type MotorType =
+    controller::motor_controller::MotorController<crate::MotorDevice, crate::CurrentSensorDevice>;
+
+/// Type alias for the sensor controller.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub type SensorType = controller::sensor_controller::SensorController<
+    'static,
+    crate::ProximitySensorDevice,
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    crate::DataReadyPinType,
+    crate::SystemCommand,
+    controller::sensor_controller::ProximityReader,
+>;
+
+/// Boots Core 1 peripherals and controllers.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[embassy_executor::task]
+pub async fn bootstrap_core1_task(
+    spawner: embassy_executor::Spawner,
+    mut motor: MotorType,
+    mut sensors: (SensorType, SensorType, SensorType),
+) {
+    // Initialize the core monitor for Core 1
+    firmware_lib::core_monitor::init_core(
+        Some(spawner),
+        firmware_lib::core_monitor::CpuId::Core1,
+        crate::CORE_MONITOR_TIMEOUT_MS,
+        crate::CORE_MONITOR_WARN_PCT,
+        true,
+    );
+
+    unsafe {
+        let motor_ptr = core::ptr::addr_of_mut!(MOTOR_CTRL_PTR);
+        *motor_ptr = &mut motor as *mut _ as *mut ();
+        let north_ptr = core::ptr::addr_of_mut!(SENSOR_NORTH_PTR);
+        *north_ptr = &mut sensors.0 as *mut _ as *mut ();
+        let east_ptr = core::ptr::addr_of_mut!(SENSOR_EAST_PTR);
+        *east_ptr = &mut sensors.1 as *mut _ as *mut ();
+        let west_ptr = core::ptr::addr_of_mut!(SENSOR_WEST_PTR);
+        *west_ptr = &mut sensors.2 as *mut _ as *mut ();
+    }
+
+    controller::spawn_controllers! {
+        spawner,
+        telemetry: TELEMETRY_CHANNEL,
+        controllers: {
+            Motor(motor, MOTOR_CHANNEL), generics: (crate::MotorDevice, crate::CurrentSensorDevice),
+            Sensor(sensors.0, SENSOR_NORTH_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+            Sensor(sensors.1, SENSOR_EAST_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+            Sensor(sensors.2, SENSOR_WEST_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+        }
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Boots Core 1 and starts the RAM executor.
+pub fn boot_core1(core1: embassy_rp::peripherals::CORE1) {
+    unsafe {
+        firmware_lib::panic_handler::CORE1_STACK_TOP =
+            core::ptr::addr_of!(CORE1_STACK) as u32 + 4096;
+        crate::Board::init_executor_core1();
+    }
+
+    embassy_rp::multicore::spawn_core1(
+        core1,
+        unsafe {
+            let ptr = core::ptr::addr_of_mut!(CORE1_STACK);
+            &mut *ptr
+        },
+        move || unsafe {
+            crate::Board::run_executor(firmware_lib::types::CpuId::Core1);
+        },
+    );
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Handle a panic, performing multicore checks, resets, and delegating to flash writer.
+pub fn handle_panic(info: &core::panic::PanicInfo) -> ! {
+    let cpuid_val = unsafe { core::ptr::read_volatile(0xd0000000 as *const u32) };
+    let (cpuid, stack_top) = match cpuid_val {
+        0 => (firmware_lib::types::CpuId::Core0, 0x2004_2000),
+        1 => {
+            let top = unsafe { firmware_lib::panic_handler::CORE1_STACK_TOP };
+            (
+                firmware_lib::types::CpuId::Core1,
+                if top != 0 { top } else { 0x2004_0000 },
+            )
+        }
+        _ => loop {
+            cortex_m::asm::nop();
+        },
+    };
+
+    crate::handle_panic_with_sizes::<
+        { crate::FLASH_SIZE },
+        { crate::FLASH_START },
+        { crate::FLASH_END },
+        { crate::FLASH_WRITE_SIZE },
+        { crate::FLASH_ERASE_SIZE },
+    >(info, cpuid, stack_top);
+}
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 mod bsp_target;
@@ -446,12 +570,17 @@ pub type FlashDeviceType = controller::filesystem_controller::ProfilingFlash<
 /// Re-export the telemetry module from the controller crate
 pub use controller::telemetry_controller as telemetry;
 
+/// Default core monitor timeout in milliseconds.
+pub const CORE_MONITOR_TIMEOUT_MS: u32 = 10_000;
+
+/// Default core monitor warning threshold percentage.
+pub const CORE_MONITOR_WARN_PCT: u32 = 80;
+
 /// Re-export the run_filesystem_task macro from the controller crate
 pub use controller::run_filesystem_task;
 /// Re-export the run_telemetry_task macro from the controller crate
 pub use controller::run_telemetry_task;
 
-/// Re-export the modular panic handler function
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 pub use firmware_lib::panic_handler::handle_panic_with_sizes;
 
@@ -460,31 +589,8 @@ pub use firmware_lib::panic_handler::init as init_panic_handler;
 
 /// Returns the current system uptime in microseconds since boot (64-bit precision).
 pub fn system_time() -> u64 {
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
-    {
-        unsafe {
-            let timer_high_addr = 0x4005_4008 as *const u32;
-            let timer_low_addr = 0x4005_400c as *const u32;
-            let mut high = *timer_high_addr;
-            let mut low = *timer_low_addr;
-            let high2 = *timer_high_addr;
-            if high != high2 {
-                high = high2;
-                low = *timer_low_addr;
-            }
-            ((high as u64) << 32) | (low as u64)
-        }
-    }
-    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-    {
-        static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-        let start = *START.get_or_init(std::time::Instant::now);
-        std::time::Instant::now().duration_since(start).as_micros() as u64
-    }
+    embassy_time::Instant::now().as_micros()
 }
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-defmt::timestamp!("{=u64:us}", system_time());
 
 const METADATA_WRITER: cbor::ConstCborWriter<128> = ProjectMetadata::serialize(
     "rp2040",
