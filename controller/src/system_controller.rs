@@ -3,7 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::tracing;
-pub use firmware_lib::gesture_detector::ProximityEvent;
+pub use platform::gesture_detector::ProximityEvent;
 
 use crate::system_feature::FeatureList;
 use crate::types::{
@@ -12,7 +12,7 @@ use crate::types::{
 use crate::{BlockingSystemWriter, PeripheralError, Sender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
-use firmware_lib::{
+use platform::{
     select_branch_with_timeout, subcommand_enum, transition_thermal_update, BatteryUpdateAction,
     BootTrapMask, BootTrapReason, PeriodicTimer, PowerManager,
 };
@@ -247,14 +247,14 @@ impl<
     pub fn set_status(
         &mut self,
         status: SystemStatus,
-    ) -> Result<(), firmware_lib::system::TransitionError> {
+    ) -> Result<(), platform::system::TransitionError> {
         self.set_status_internal(status)
     }
 
     fn set_status_internal(
         &mut self,
         status: SystemStatus,
-    ) -> Result<(), firmware_lib::system::TransitionError> {
+    ) -> Result<(), platform::system::TransitionError> {
         let battery_crit = self.battery_critical();
         let thermal_crit = self.thermal_critical();
         if let Some(prev) = self
@@ -275,7 +275,7 @@ impl<
         &mut self,
         state_of_charge: u8,
         charger_state: ChargeState,
-    ) -> Result<(), firmware_lib::system::TransitionError> {
+    ) -> Result<(), platform::system::TransitionError> {
         let res = self.feature_set.features().on_battery_update(
             state_of_charge,
             charger_state,
@@ -297,7 +297,7 @@ impl<
     pub fn handle_command(
         &mut self,
         cmd: SystemCommand,
-    ) -> Result<(), firmware_lib::system::TransitionError> {
+    ) -> Result<(), platform::system::TransitionError> {
         match cmd {
             SystemCommand::ActivityDetected => {
                 self.power_manager.set_inactive_ms(0);
@@ -434,7 +434,7 @@ impl<
     pub fn handle_thermal_action(
         &mut self,
         action: ThermalUpdateAction,
-    ) -> Result<(), firmware_lib::system::TransitionError> {
+    ) -> Result<(), platform::system::TransitionError> {
         let current_status = self.power_manager.status();
 
         match action {

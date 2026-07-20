@@ -1,5 +1,5 @@
-use firmware_lib::gesture_detector::{GestureDetector, ProximityGestureDetector};
 use model::types::Gesture;
+use platform::gesture_detector::{GestureDetector, ProximityGestureDetector};
 
 fn update_detector(
     detector: &mut ProximityGestureDetector,

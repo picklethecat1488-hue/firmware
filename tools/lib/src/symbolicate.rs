@@ -50,7 +50,7 @@ where
 /// Prints a formatted crash dump, symbolicating backtrace program counters and decoding defmt system logs.
 pub fn print_crash_dump<R>(
     header: &str,
-    dump: &firmware_lib::types::CrashDump,
+    dump: &platform::types::CrashDump,
     context: &Option<addr2line::Context<R>>,
     defmt_table: Option<&defmt_decoder::Table>,
 ) where

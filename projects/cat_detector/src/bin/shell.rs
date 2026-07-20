@@ -12,7 +12,7 @@
 use cat_detector as app;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-use {embassy_executor::Spawner, embedded_cli::cli::CliBuilder, firmware_lib::core_monitor};
+use {embassy_executor::Spawner, embedded_cli::cli::CliBuilder, platform::core_monitor};
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use controller::shell_controller::{ShellController, ShellControllerPointers};
@@ -185,10 +185,10 @@ async fn main(spawner: Spawner) {
     // Initialize board peripherals using the unified board configuration
     let board = app::Board::init(p);
 
-    let writer = firmware_lib::rtt::RttTxWriter;
+    let writer = platform::rtt::RttTxWriter;
 
     let mut cli: embedded_cli::cli::Cli<
-        firmware_lib::rtt::RttTxWriter,
+        platform::rtt::RttTxWriter,
         core::convert::Infallible,
         _,
         _,
@@ -376,7 +376,7 @@ async fn main(spawner: Spawner) {
     let mut processor = ShellController::<AppConfig>::new(pointers);
 
     let mut local_proc = CatDetectorCliProcessor::new(&mut processor);
-    firmware_lib::rtt::run_rtt_shell_loop::<CatDetectorCli, _, _, _>(&mut cli, &mut local_proc);
+    platform::rtt::run_rtt_shell_loop::<CatDetectorCli, _, _, _>(&mut cli, &mut local_proc);
 }
 
 /// Dummy host entry point to satisfy Cargo compilation requirements.

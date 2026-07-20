@@ -28,15 +28,15 @@ pub struct Board<'d> {
     /// Motor driver
     pub motor: peripherals::l9110s::L9110s<Flex<'d>, Flex<'d>>,
     /// Motor current sensor
-    pub current_sensor: peripherals::ina219::Ina219<firmware_lib::i2c::SharedI2cWrapper<'static>>,
+    pub current_sensor: peripherals::ina219::Ina219<platform::i2c::SharedI2cWrapper<'static>>,
     /// North proximity sensor
-    pub tof_north: peripherals::vl53l0x::Vl53l0x<firmware_lib::i2c::SharedI2cWrapper<'static>>,
+    pub tof_north: peripherals::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>,
     /// East proximity sensor
-    pub tof_east: peripherals::vl53l0x::Vl53l0x<firmware_lib::i2c::SharedI2cWrapper<'static>>,
+    pub tof_east: peripherals::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>,
     /// West proximity sensor
-    pub tof_west: peripherals::vl53l0x::Vl53l0x<firmware_lib::i2c::SharedI2cWrapper<'static>>,
+    pub tof_west: peripherals::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>,
     /// Status LED driver
-    pub led_driver: peripherals::attiny816::Attiny816<firmware_lib::i2c::SharedI2cWrapper<'static>>,
+    pub led_driver: peripherals::attiny816::Attiny816<platform::i2c::SharedI2cWrapper<'static>>,
     /// Fuel gauge alert/interrupt pin
     pub fuel_gauge_alert_pin: Flex<'d>,
     /// North proximity interrupt pin
@@ -271,28 +271,28 @@ impl<'d> Board<'d> {
 
         // Construct final drivers wrapping SHARED_I2C static cell
         let current_sensor = peripherals::ina219::Ina219::new(
-            firmware_lib::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
+            platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
         );
         let mut tof_north = peripherals::vl53l0x::Vl53l0x::new(
-            firmware_lib::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
+            platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
             0x30,
         );
         let _ = tof_north.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
 
         let mut tof_east = peripherals::vl53l0x::Vl53l0x::new(
-            firmware_lib::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
+            platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
             0x31,
         );
         let _ = tof_east.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
 
         let mut tof_west = peripherals::vl53l0x::Vl53l0x::new(
-            firmware_lib::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
+            platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
             0x32,
         );
         let _ = tof_west.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
 
         let led_driver = peripherals::attiny816::Attiny816::new(
-            firmware_lib::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
+            platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
         );
 
         unsafe {
@@ -333,17 +333,17 @@ impl<'d> Board<'d> {
     /// # Safety
     ///
     /// This function must be called from the main thread of the corresponding core and does not return.
-    pub unsafe fn run_executor(cpu_id: firmware_lib::types::CpuId) -> ! {
-        use firmware_lib::system::CpuScheduler;
+    pub unsafe fn run_executor(cpu_id: platform::types::CpuId) -> ! {
+        use platform::system::CpuScheduler;
         match cpu_id {
-            firmware_lib::types::CpuId::Core0 => {
+            platform::types::CpuId::Core0 => {
                 let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE0);
                 if let Some(ref mut executor) = *ptr {
                     let executor_static: &'static embassy_executor::raw::Executor = &executor.0;
                     executor_static.run_loop(cpu_id);
                 }
             }
-            firmware_lib::types::CpuId::Core1 => {
+            platform::types::CpuId::Core1 => {
                 let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE1);
                 if let Some(ref mut executor) = *ptr {
                     let executor_static: &'static embassy_executor::raw::Executor = &executor.0;
@@ -506,8 +506,7 @@ impl model::interfaces::ChargeStatus for SafeBq25185 {
 }
 
 /// The battery fuel gauge type.
-pub type BatteryDevice =
-    peripherals::max17048::Max17048<firmware_lib::i2c::SharedI2cWrapper<'static>>;
+pub type BatteryDevice = peripherals::max17048::Max17048<platform::i2c::SharedI2cWrapper<'static>>;
 /// The battery charger type.
 pub type ChargerDevice = SafeBq25185;
 /// The battery alert pin type.
@@ -516,14 +515,13 @@ pub type AlertPinType = AlertPinWrapper;
 pub type MotorDevice = peripherals::l9110s::L9110s<Flex<'static>, Flex<'static>>;
 /// The motor current sensor type.
 pub type CurrentSensorDevice =
-    peripherals::ina219::Ina219<firmware_lib::i2c::SharedI2cWrapper<'static>>;
+    peripherals::ina219::Ina219<platform::i2c::SharedI2cWrapper<'static>>;
 /// The proximity sensor type.
 pub type ProximitySensorDevice =
-    peripherals::vl53l0x::Vl53l0x<firmware_lib::i2c::SharedI2cWrapper<'static>>;
+    peripherals::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>;
 /// The proximity sensor interrupt pin type.
 pub type DataReadyPinType = ProximityPinWrapper;
 /// The LED driver type.
-pub type LedDevice =
-    peripherals::attiny816::Attiny816<firmware_lib::i2c::SharedI2cWrapper<'static>>;
+pub type LedDevice = peripherals::attiny816::Attiny816<platform::i2c::SharedI2cWrapper<'static>>;
 /// The temperature sensor type.
 pub type TempSensorDevice = SafeRp2040TempSensor;

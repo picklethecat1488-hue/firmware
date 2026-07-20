@@ -77,7 +77,7 @@ pub fn autodetect_project_info(elf_path: &std::path::Path) -> Result<ProjectInfo
     let max_len = if remaining > 512 { 512 } else { remaining };
     let data = &section_data[offset..offset + max_len];
 
-    let metadata: firmware_lib::types::ProjectMetadata<'_> =
+    let metadata: platform::types::ProjectMetadata<'_> =
         minicbor::decode(data).map_err(|e| format!("Failed to decode CBOR metadata: {:?}", e))?;
 
     Ok(ProjectInfo {

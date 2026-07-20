@@ -227,7 +227,7 @@ fn test_spawn_all_controllers_configuration() {
             ),
             controller::BatteryFeatureConfig::new(
                 Some(BATTERY_CHANNEL.sender()),
-                firmware_lib::BatteryManager::new(10, 2, 20, 21, 80),
+                platform::BatteryManager::new(10, 2, 20, 21, 80),
             ),
             controller::ProximityFeatureConfig::new(
                 &[

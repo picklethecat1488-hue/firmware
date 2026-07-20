@@ -1,4 +1,4 @@
-use firmware_lib::panic_handler::{
+use platform::panic_handler::{
     extract_system_logs, generate_uuid, scan_stack, scan_stack_from_sp, write_crash_log_to_flash,
     CoreState, CRASH_LOG_BUFFER,
 };
@@ -136,7 +136,7 @@ fn test_extract_system_logs_helper() {
     log_string("Log 1");
     log_string("Log 2");
 
-    let mut extract_buf = [0u8; firmware_lib::types::CRASH_LOG_BUFFER_SIZE];
+    let mut extract_buf = [0u8; platform::types::CRASH_LOG_BUFFER_SIZE];
     let len = critical_section::with(|cs| extract_system_logs(&cs, &mut extract_buf));
 
     let extracted_str = core::str::from_utf8(&extract_buf[..len]).unwrap();
@@ -369,8 +369,8 @@ fn test_ring_buffer_wrapping_and_discarding() {
 
 #[test]
 fn test_multicore_panic_serialization() {
-    use firmware_lib::panic_handler::serialize_crash_dump;
-    use firmware_lib::types::{CoreDump, CrashDump};
+    use platform::panic_handler::serialize_crash_dump;
+    use platform::types::{CoreDump, CrashDump};
 
     let mut core0_backtrace = [0u32; 32];
     core0_backtrace[0] = 0x10001000;

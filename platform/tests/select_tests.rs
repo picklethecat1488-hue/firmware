@@ -1,5 +1,5 @@
 use embassy_time::{Duration, Timer};
-use firmware_lib::{select_branch_with_timeout, with_timeout};
+use platform::{select_branch_with_timeout, with_timeout};
 
 async fn test_with_timeout_impl() {
     // Test future finishes before timeout

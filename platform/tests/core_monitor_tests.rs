@@ -1,5 +1,5 @@
 use core::sync::atomic::Ordering;
-use firmware_lib::core_monitor;
+use platform::core_monitor;
 
 #[test]
 fn test_core_monitor_flow() {
