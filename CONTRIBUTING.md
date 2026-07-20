@@ -368,10 +368,31 @@ probe-rs read b8 0x101C0000 262144 -f binary -o flash_dump.bin --chip RP2040
 
 ---
 
-### Build Checks
-Check target compilation via:
+### Build and Verification Checks
+We provide unified scripts and cargo aliases to make checking and verifying local changes fast and convenient:
+
+#### 1. Complete Pre-Commit Verification
+To verify code formatting, static tracing assertions, clippy rules, host unit/integration tests, and build checks before submitting code:
 ```bash
-cargo build --package cat_detector --target thumbv6m-none-eabi
+./scripts/verify.sh
+```
+This script executes formatting/tracing checks in parallel, runs target compilation checks, and compiles host tools in debug mode (reusing the test compiler cache) to complete all verification checks in under 30 seconds.
+
+#### 2. Cargo Check Aliases
+If you want to quickly run compilation checks on demand, you can use these configured cargo aliases:
+* **Check Host Crate Targets** (libraries, binaries, tests, and examples):
+  ```bash
+  cargo check-host
+  ```
+* **Check Target MCU Firmware**:
+  ```bash
+  cargo check-mcu
+  ```
+
+#### 3. Full MCU Target Build
+To build the final target MCU firmware image manually:
+```bash
+./scripts/build_firmware.sh
 ```
 
 ### Diagnostics and Telemetry Verification
