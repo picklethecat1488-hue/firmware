@@ -27,6 +27,7 @@ To keep peripheral logic target-independent and clean, we decouple hardware impl
     *   `power/`: Power management loops, wake locks, battery levels, and thermal controls.
     *   `io/`: Dynamic flash wrappers, I2C shared resource multiplexing, and hardware tickers.
     *   `services/`: Serial CLI command parsers, file directories, and gesture detection utilities.
+    *   `host/`: Common host-side developer tools utilities (e.g. ELF parsing, symbolication, GDB connections).
 *   **Peripheral Interfaces (`peripherals/`)**: Platform-independent implementations of hardware drivers over generic `embedded-hal` constraints.
 *   **Control Loop Coordinators (`controller/`)**: Project-agnostic domain orchestrators. Exposes CLI handlers that accept a reference to `ShellDeviceResolver` to lookup required peripherals on demand.
 *   **Projects (`projects/`)**: Configures microcontroller-specific packages (BSPs) to build driver setups and run application loops.
