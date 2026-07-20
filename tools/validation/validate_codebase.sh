@@ -16,7 +16,7 @@ while IFS= read -r pkg; do
     if [ -n "$pkg" ]; then
         EXCLUDE_ARGS+=("--exclude" "$pkg")
     fi
-done < <(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | .name')
+done < <(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/") or contains("/host/")) | .name')
 
 # Helper function to run commands and redirect both stdout and stderr
 run_and_report() {

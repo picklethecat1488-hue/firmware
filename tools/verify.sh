@@ -31,7 +31,7 @@ while IFS= read -r pkg; do
     if [ -n "$pkg" ]; then
         EXCLUDE_ARGS+=("--exclude" "$pkg")
     fi
-done < <(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | .name')
+done < <(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/") or contains("/host/")) | .name')
 
 cargo check --workspace "${EXCLUDE_ARGS[@]}" --bins --lib --target thumbv6m-none-eabi --color never
 echo "   Compilation checks passed!"
