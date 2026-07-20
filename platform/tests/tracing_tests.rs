@@ -1,6 +1,6 @@
 //! Unit tests for the conditional tracing facade.
 
-use firmware_lib::tracing;
+use platform::tracing;
 
 #[tracing::instrument(level = "debug")]
 fn test_instrumented_fn(x: u32) -> u32 {

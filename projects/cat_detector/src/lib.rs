@@ -76,8 +76,8 @@ pub const FLASH_ERASE_SIZE: usize = 4096;
 /// Thread-safe Mutex wrapping the active I2C peripheral for shared access between tasks.
 pub static SHARED_I2C: embassy_sync::blocking_mutex::Mutex<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    core::cell::RefCell<firmware_lib::i2c::SafeI2c>,
-> = embassy_sync::blocking_mutex::Mutex::new(core::cell::RefCell::new(firmware_lib::i2c::SafeI2c(
+    core::cell::RefCell<platform::i2c::SafeI2c>,
+> = embassy_sync::blocking_mutex::Mutex::new(core::cell::RefCell::new(platform::i2c::SafeI2c(
     None,
 )));
 
@@ -92,9 +92,9 @@ pub static SHARED_TEMP_SENSOR: embassy_sync::mutex::Mutex<MutexRaw, TempSensorDe
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global battery/fuel gauge mutex.
 pub static SHARED_BATTERY: embassy_sync::mutex::Mutex<MutexRaw, BatteryDevice> =
-    embassy_sync::mutex::Mutex::new(BatteryDevice::new(
-        firmware_lib::i2c::SharedI2cWrapper::new(&SHARED_I2C),
-    ));
+    embassy_sync::mutex::Mutex::new(BatteryDevice::new(platform::i2c::SharedI2cWrapper::new(
+        &SHARED_I2C,
+    )));
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global battery charger mutex.
@@ -329,9 +329,9 @@ pub async fn bootstrap_core1_task(
     mut sensors: (SensorType, SensorType, SensorType),
 ) {
     // Initialize the core monitor for Core 1
-    firmware_lib::core_monitor::init_core(
+    platform::core_monitor::init_core(
         Some(spawner),
-        firmware_lib::core_monitor::CpuId::Core1,
+        platform::core_monitor::CpuId::Core1,
         crate::CORE_MONITOR_TIMEOUT_MS,
         crate::CORE_MONITOR_WARN_PCT,
         true,
@@ -364,8 +364,7 @@ pub async fn bootstrap_core1_task(
 /// Boots Core 1 and starts the RAM executor.
 pub fn boot_core1(core1: embassy_rp::peripherals::CORE1) {
     unsafe {
-        firmware_lib::panic_handler::CORE1_STACK_TOP =
-            core::ptr::addr_of!(CORE1_STACK) as u32 + 4096;
+        platform::panic_handler::CORE1_STACK_TOP = core::ptr::addr_of!(CORE1_STACK) as u32 + 4096;
         crate::Board::init_executor_core1();
     }
 
@@ -376,7 +375,7 @@ pub fn boot_core1(core1: embassy_rp::peripherals::CORE1) {
             &mut *ptr
         },
         move || unsafe {
-            crate::Board::run_executor(firmware_lib::types::CpuId::Core1);
+            crate::Board::run_executor(platform::types::CpuId::Core1);
         },
     );
 }
@@ -386,11 +385,11 @@ pub fn boot_core1(core1: embassy_rp::peripherals::CORE1) {
 pub fn handle_panic(info: &core::panic::PanicInfo) -> ! {
     let cpuid_val = unsafe { core::ptr::read_volatile(0xd0000000 as *const u32) };
     let (cpuid, stack_top) = match cpuid_val {
-        0 => (firmware_lib::types::CpuId::Core0, 0x2004_2000),
+        0 => (platform::types::CpuId::Core0, 0x2004_2000),
         1 => {
-            let top = unsafe { firmware_lib::panic_handler::CORE1_STACK_TOP };
+            let top = unsafe { platform::panic_handler::CORE1_STACK_TOP };
             (
-                firmware_lib::types::CpuId::Core1,
+                platform::types::CpuId::Core1,
                 if top != 0 { top } else { 0x2004_0000 },
             )
         }
@@ -468,12 +467,12 @@ const _: () = {
 /// Bringup serial command and shell controller.
 pub use controller::shell_controller;
 
-pub use firmware_lib::{
+pub use model::types::SystemStatus;
+pub use platform::{
     cbor,
     types::{ProjectMetadata, STACK_SCAN_LIMIT},
     BatteryUpdateAction,
 };
-pub use model::types::SystemStatus;
 
 /// Feature set for the Cat Detector app that implements SystemFeatureSet.
 #[allow(clippy::type_complexity)]
@@ -517,8 +516,8 @@ pub static MOTOR_CHANNEL: controller::MotorChannel<MutexRaw, 4> = controller::Mo
 pub static SYSTEM_CHANNEL: controller::SystemChannel<MutexRaw, 4> =
     controller::SystemChannel::new();
 /// Shared channel for local gesture events.
-pub static GESTURE_CHANNEL: firmware_lib::gesture_detector::GestureChannel<MutexRaw, 4> =
-    firmware_lib::gesture_detector::GestureChannel::new();
+pub static GESTURE_CHANNEL: platform::gesture_detector::GestureChannel<MutexRaw, 4> =
+    platform::gesture_detector::GestureChannel::new();
 /// Shared command channel for the North Sensor Controller.
 pub static SENSOR_NORTH_CHANNEL: controller::SensorChannel<MutexRaw, 4> =
     controller::SensorChannel::new();
@@ -557,7 +556,7 @@ pub type SystemControllerType =
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// The concrete flash type used for the filesystem partition in production.
 pub type FlashDeviceType = controller::filesystem_controller::ProfilingFlash<
-    firmware_lib::BlockingAsyncFlash<
+    platform::BlockingAsyncFlash<
         embassy_rp::flash::Flash<
             'static,
             embassy_rp::peripherals::FLASH,
@@ -582,10 +581,10 @@ pub use controller::run_filesystem_task;
 pub use controller::run_telemetry_task;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-pub use firmware_lib::panic_handler::handle_panic_with_sizes;
+pub use platform::panic_handler::handle_panic_with_sizes;
 
 /// Re-export the modular panic handler initialization
-pub use firmware_lib::panic_handler::init as init_panic_handler;
+pub use platform::panic_handler::init as init_panic_handler;
 
 /// Returns the current system uptime in microseconds since boot (64-bit precision).
 pub fn system_time() -> u64 {
@@ -621,7 +620,7 @@ pub fn create_default_feature_set(
             ),
             controller::BatteryFeatureConfig::new(
                 Some(BATTERY_CHANNEL.sender()),
-                firmware_lib::BatteryManager::new(
+                platform::BatteryManager::new(
                     CRITICAL_BATTERY_SOC_THRESHOLD,
                     BATTERY_SOC_HYSTERESIS,
                     LOW_BATTERY_SOC_THRESHOLD,

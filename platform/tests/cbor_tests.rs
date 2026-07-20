@@ -1,4 +1,4 @@
-use firmware_lib::cbor::{extract_bytes, ConstCborWriter};
+use platform::cbor::{extract_bytes, ConstCborWriter};
 
 #[test]
 fn test_cbor_write_u32_boundaries() {

@@ -21,6 +21,12 @@ To keep peripheral logic target-independent and clean, we decouple hardware impl
 
 ### 3. Separation of Concerns
 *   **Domain Logic (`model/`)**: Pure states, serialization, and traits interfaces. Target-agnostic and free of framework/I2C dependencies.
+*   **Platform Abstractions (`platform/`)**: The core system abstraction library exposing hardware interfaces, telemetry, scheduling, and power management utilities. Restructured into distinct architectural subdomains:
+    *   `system/`: Low-level system scheduling, registers, panic handlers, Segger RTT, and concurrency helpers.
+    *   `telemetry/`: Defmt logging configuration, tracing macro configurations, and CBOR serialization.
+    *   `power/`: Power management loops, wake locks, battery levels, and thermal controls.
+    *   `io/`: Dynamic flash wrappers, I2C shared resource multiplexing, and hardware tickers.
+    *   `services/`: Serial CLI command parsers, file directories, and gesture detection utilities.
 *   **Peripheral Interfaces (`peripherals/`)**: Platform-independent implementations of hardware drivers over generic `embedded-hal` constraints.
 *   **Control Loop Coordinators (`controller/`)**: Project-agnostic domain orchestrators. Exposes CLI handlers that accept a reference to `ShellDeviceResolver` to lookup required peripherals on demand.
 *   **Projects (`projects/`)**: Configures microcontroller-specific packages (BSPs) to build driver setups and run application loops.
@@ -188,7 +194,7 @@ When printing custom enums or structs that do not implement `defmt::Format` dire
 
 ### 4. Profiling Blocking Peripheral Calls via Tracing
 To identify latencies, stuck buses, or slow I/O polling, any potentially blocking operations (such as peripheral reads/writes, ADC polling, or I2C/SPI bus transactions) must be instrumented using `#[tracing::instrument]`:
-*   **Imports**: Always use the consolidated tracing facade module `use crate::tracing;` (which re-exports `firmware_lib::tracing`). Do NOT import the standard `tracing` crate directly, as it requires `alloc` and is incompatible with our target `no_std` environments.
+*   **Imports**: Always use the consolidated tracing facade module `use crate::tracing;` (which re-exports `platform::tracing`). Do NOT import the standard `tracing` crate directly, as it requires `alloc` and is incompatible with our target `no_std` environments.
 *   **Skip Self/Keyword Parameters**: When using `#[tracing::instrument]`, do NOT list `self` inside the `skip(...)` attribute. `self` is a keyword and causes macro parsing failures. The macro automatically ignores `self` during formatting anyway. Only list other parameters you want to exclude (e.g. channels or executors).
 *   **Example**:
     ```rust

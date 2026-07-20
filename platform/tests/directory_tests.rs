@@ -1,4 +1,4 @@
-use firmware_lib::directory::{add_to_directory, remove_from_directory, string_to_key, KEY_SIZE};
+use platform::directory::{add_to_directory, remove_from_directory, string_to_key, KEY_SIZE};
 
 #[test]
 fn test_string_to_key_boundaries() {

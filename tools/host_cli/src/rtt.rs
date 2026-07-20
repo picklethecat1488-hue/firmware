@@ -963,7 +963,7 @@ where
         return Err("Malformed crash dump: no cores in CBOR cores array");
     }
 
-    let parse_core = |core_str: &str| -> Result<firmware_lib::types::CoreDump, &'static str> {
+    let parse_core = |core_str: &str| -> Result<platform::types::CoreDump, &'static str> {
         let fields = split_cbor_display(core_str);
         if fields.len() < 10 {
             return Err("Malformed core dump: fewer than 10 elements in CoreDump array");
@@ -990,7 +990,7 @@ where
             bt[i] = val;
         }
 
-        Ok(firmware_lib::types::CoreDump {
+        Ok(platform::types::CoreDump {
             r0,
             r1,
             r2,
@@ -1004,13 +1004,13 @@ where
         })
     };
 
-    let mut cores = [firmware_lib::types::CoreDump::new(); MAX_CORES];
+    let mut cores = [platform::types::CoreDump::new(); MAX_CORES];
 
     for (i, part) in core_parts.iter().enumerate().take(MAX_CORES) {
         cores[i] = parse_core(part)?;
     }
 
-    let dump = firmware_lib::types::CrashDump {
+    let dump = platform::types::CrashDump {
         revision_hash: &revision_hash,
         system_logs: &system_logs,
         uuid,

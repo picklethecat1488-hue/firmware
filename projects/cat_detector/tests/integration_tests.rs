@@ -7,12 +7,12 @@ use controller::{BlockingSystemWriter, SystemCommand, SystemController};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
-use firmware_lib::GestureDetector;
 use model::interfaces::NoTick;
 use model::types::{BootReason, ChargeState, Direction, MotorSpeed, SystemLedState, SystemStatus};
 use peripherals::mock::{
     DummyCurrentSensor, MockBattery, MockCharger, MockLed, MockMotor, MockProximitySensor,
 };
+use platform::GestureDetector;
 
 // Mock wrappers for interrupt pins
 struct MockPin;
@@ -135,7 +135,7 @@ fn test_system_integration_flow() {
                 ),
                 controller::BatteryFeatureConfig::new(
                     Some(BATTERY_CHANNEL.sender()),
-                    firmware_lib::BatteryManager::new(
+                    platform::BatteryManager::new(
                         cat_detector::CRITICAL_BATTERY_SOC_THRESHOLD,
                         cat_detector::BATTERY_SOC_HYSTERESIS,
                         cat_detector::LOW_BATTERY_SOC_THRESHOLD,
@@ -225,7 +225,7 @@ fn test_system_integration_flow() {
         assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
 
         // Clear thermal trap to allow waking up
-        let _ = system_ctrl.clear_boot_trap(firmware_lib::BootTrapReason::Thermal);
+        let _ = system_ctrl.clear_boot_trap(platform::BootTrapReason::Thermal);
 
         // 1. Simulate battery status report: SoC = 85% -> triggers system wake-up to Active
         {
@@ -736,7 +736,7 @@ fn test_spawn_controllers_embassy_routing() {
             ),
             controller::BatteryFeatureConfig::new(
                 Some(RUN_BATTERY_CHANNEL.sender()),
-                firmware_lib::BatteryManager::new(
+                platform::BatteryManager::new(
                     cat_detector::CRITICAL_BATTERY_SOC_THRESHOLD,
                     cat_detector::BATTERY_SOC_HYSTERESIS,
                     cat_detector::LOW_BATTERY_SOC_THRESHOLD,

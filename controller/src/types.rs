@@ -247,4 +247,4 @@ dummy_debug!(MotorState);
 dummy_debug!(MotorSafetyStatus);
 dummy_debug!(MotorCalState);
 
-pub use firmware_lib::ThermalUpdateAction;
+pub use platform::ThermalUpdateAction;

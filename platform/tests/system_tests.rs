@@ -1,11 +1,11 @@
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
-use firmware_lib::battery_manager::BatteryManager;
-use firmware_lib::power_manager::PowerManager;
-use firmware_lib::system::{BatteryUpdateAction, TransitionError};
-use firmware_lib::thermal_manager::ThermalManager;
-use firmware_lib::BootTrapMask;
 use model::types::{BootReason, ChargeState, SystemLedState, SystemStatus, TelemetryRecord};
+use platform::battery_manager::BatteryManager;
+use platform::power_manager::PowerManager;
+use platform::system::{BatteryUpdateAction, TransitionError};
+use platform::thermal_manager::ThermalManager;
+use platform::BootTrapMask;
 
 static TEST_TELEMETRY_CHANNEL: Channel<CriticalSectionRawMutex, TelemetryRecord, 16> =
     Channel::new();
@@ -154,7 +154,7 @@ fn test_interval_ms() {
 
 #[test]
 fn test_pure_transition_wake() {
-    use firmware_lib::system::transition_wake;
+    use platform::system::transition_wake;
 
     // Wake up is allowed from Sleep
     assert_eq!(
@@ -189,7 +189,7 @@ fn test_pure_transition_wake() {
 
 #[test]
 fn test_pure_transition_sleep() {
-    use firmware_lib::system::transition_sleep;
+    use platform::system::transition_sleep;
 
     // Active -> Sleep after inactivity timeout
     assert_eq!(
@@ -224,7 +224,7 @@ fn test_pure_transition_sleep() {
 
 #[test]
 fn test_pure_transition_power_down() {
-    use firmware_lib::system::transition_power_down;
+    use platform::system::transition_power_down;
 
     assert_eq!(
         transition_power_down(SystemStatus::Active, 0),

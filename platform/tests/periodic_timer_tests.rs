@@ -1,5 +1,5 @@
 use embassy_time::Duration;
-use firmware_lib::periodic_timer::PeriodicTimer;
+use platform::periodic_timer::PeriodicTimer;
 
 #[test]
 fn test_periodic_timer_flow() {

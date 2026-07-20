@@ -8,10 +8,10 @@ use crate::BlockingProximityReader;
 use crate::Sender;
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
-use firmware_lib::{select_branch_with_timeout, subcommand_enum, BlockingAsyncFlash};
 use model::interfaces::ProximitySensor;
 use model::types::{Direction, PeriodicInterval, PeripheralError};
 use peripherals::ToPeripheralError;
+use platform::{select_branch_with_timeout, subcommand_enum, BlockingAsyncFlash};
 
 /// Trait for waiting on a data-ready interrupt pin.
 #[allow(async_fn_in_trait)]
@@ -752,8 +752,7 @@ pub struct ProximityFeatureConfig<
     /// Sensor channel senders
     pub sensor_txs: heapless::Vec<crate::SensorSender<MutexRaw, N>, S_CAP>,
     /// Proximity gesture detector state
-    pub gesture_detector:
-        core::cell::RefCell<firmware_lib::gesture_detector::ProximityGestureDetector>,
+    pub gesture_detector: core::cell::RefCell<platform::gesture_detector::ProximityGestureDetector>,
     /// Proximity telemetry client
     pub telemetry_client:
         core::cell::RefCell<crate::telemetry_controller::ProximityTelemetryClient<MutexRaw, T_CAP>>,
@@ -785,7 +784,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_C
         Self {
             sensor_txs,
             gesture_detector: core::cell::RefCell::new(
-                firmware_lib::gesture_detector::ProximityGestureDetector::new(press_threshold_mm),
+                platform::gesture_detector::ProximityGestureDetector::new(press_threshold_mm),
             ),
             telemetry_client: core::cell::RefCell::new(
                 crate::telemetry_controller::ProximityTelemetryClient::new(
@@ -814,8 +813,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_C
         distance_mm: u16,
         status: model::types::SystemStatus,
     ) -> (Option<model::types::Gesture>, crate::ProximityAction) {
-        use firmware_lib::gesture_detector::GestureDetector as _;
         use model::telemetry::TelemetryClient as _;
+        use platform::gesture_detector::GestureDetector as _;
         self.telemetry_client
             .borrow_mut()
             .report((direction, distance_mm));

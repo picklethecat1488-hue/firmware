@@ -458,8 +458,7 @@ where
                     }
                 } else {
                     let timeout = MOTOR_INACTIVE_TICK_INTERVAL - elapsed;
-                    if let Some(cmd) =
-                        firmware_lib::with_timeout!(command_rx.receive(), timeout).await
+                    if let Some(cmd) = platform::with_timeout!(command_rx.receive(), timeout).await
                     {
                         self.handle_command(cmd, Some(&mut telemetry_client));
                         while let Ok(next_cmd) = command_rx.try_receive() {
@@ -558,7 +557,7 @@ impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
     }
 }
 
-use firmware_lib::subcommand_enum;
+use platform::subcommand_enum;
 
 subcommand_enum! {
     /// Motor subcommands for CLI processing.
@@ -660,7 +659,7 @@ pub fn handle_motor_cli<
 
             let partition = resolver.resolve_partition(None)?;
             let flash_ref = unsafe { &mut *partition.flash_ptr };
-            let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
+            let async_flash = platform::BlockingAsyncFlash(flash_ref);
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
                 partition.start_address..partition.end_address,

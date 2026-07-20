@@ -1,5 +1,5 @@
 use embedded_cli::arguments::FromArgument;
-use firmware_lib::subcommand_enum;
+use platform::subcommand_enum;
 
 subcommand_enum! {
     /// Test subcommand enum

@@ -1,7 +1,7 @@
 #![allow(static_mut_refs)]
 
 use core::sync::atomic::{AtomicUsize, Ordering};
-use firmware_lib::defmt_logger::{Channel, MODE_BLOCK_IF_FULL, MODE_NON_BLOCKING_TRIM};
+use platform::defmt_logger::{Channel, MODE_BLOCK_IF_FULL, MODE_NON_BLOCKING_TRIM};
 
 #[test]
 fn test_channel_write_wrapping() {
@@ -47,7 +47,7 @@ fn test_channel_blocking_write_full() {
     assert_eq!(written_extra, 0);
 }
 
-use firmware_lib::defmt_logger::{RttProtocol, RttWriter};
+use platform::defmt_logger::{RttProtocol, RttWriter};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -69,7 +69,7 @@ impl RttWriter for MockWriter {
 fn test_rtt_protocol_flow() {
     // Clear CRASH_LOG_BUFFER first
     critical_section::with(|cs| {
-        let mut buffer = firmware_lib::panic_handler::CRASH_LOG_BUFFER
+        let mut buffer = platform::panic_handler::CRASH_LOG_BUFFER
             .borrow(cs)
             .borrow_mut();
         buffer.head = 0;
@@ -115,7 +115,7 @@ fn test_rtt_protocol_flow() {
     // Check dual-logging to CRASH_LOG_BUFFER worked
     let mut crash_log_buf = [0u8; 128];
     let logs_len = critical_section::with(|cs| {
-        firmware_lib::panic_handler::extract_system_logs(&cs, &mut crash_log_buf)
+        platform::panic_handler::extract_system_logs(&cs, &mut crash_log_buf)
     });
     let crash_slice = &crash_log_buf[..logs_len];
     assert!(!crash_slice.is_empty());
@@ -143,7 +143,7 @@ fn test_rtt_protocol_reentrancy_panic() {
     assert!(res.is_err());
 }
 
-use firmware_lib::defmt_logger::{DefmtLogWriter, DefmtLogger};
+use platform::defmt_logger::{DefmtLogWriter, DefmtLogger};
 use std::sync::{Arc, Mutex};
 
 struct TestLoggerWriter {
@@ -168,7 +168,7 @@ fn test_defmt_logger_state_manager() {
 
     // 2. Verify active writer matches and receives write calls
     unsafe {
-        if let Some(w) = firmware_lib::defmt_logger::ACTIVE_WRITER {
+        if let Some(w) = platform::defmt_logger::ACTIVE_WRITER {
             w.write_all(&[0xDE, 0xAD, 0xBE, 0xEF]);
         }
     }
@@ -177,12 +177,12 @@ fn test_defmt_logger_state_manager() {
     // 3. Disable writer
     DefmtLogger::disable();
     unsafe {
-        assert!(firmware_lib::defmt_logger::ACTIVE_WRITER.is_none());
+        assert!(platform::defmt_logger::ACTIVE_WRITER.is_none());
     }
 
     // 4. Restore DEFAULT_RTT_WRITER for other tests
-    DefmtLogger::set_writer(&firmware_lib::defmt_logger::DEFAULT_RTT_WRITER);
+    DefmtLogger::set_writer(&platform::defmt_logger::DEFAULT_RTT_WRITER);
     unsafe {
-        assert!(firmware_lib::defmt_logger::ACTIVE_WRITER.is_some());
+        assert!(platform::defmt_logger::ACTIVE_WRITER.is_some());
     }
 }
