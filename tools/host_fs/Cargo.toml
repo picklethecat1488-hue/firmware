@@ -10,7 +10,7 @@ embedded-storage = "0.3.1"
 embedded-storage-async = "0.4.1"
 model = { path = "../../model" }
 platform = { path = "../../platform" }
-tool_common = { path = "../lib" }
+tool_common = { path = "../../platform/host" }
 cat_detector = { path = "../../projects/cat_detector" }
 defmt-decoder = "1.1.0"
 
