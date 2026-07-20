@@ -198,13 +198,8 @@ fn main() -> ! {
     let spawner_c0 = board.spawner.unwrap();
 
     spawner_c0.spawn(bootstrap_task(spawner_c0, board)).unwrap();
-    loop {
-        unsafe {
-            app::Board::poll_executor(firmware_lib::types::CpuId::Core0);
-            defmt::trace!("ctx=cpu_idle_c0 parent=0 span_enter: CPU Idle Core 0");
-            cortex_m::asm::wfe();
-            defmt::trace!("cpu_idle_c0 span_exit: CPU Idle Core 0");
-        }
+    unsafe {
+        app::Board::run_executor(firmware_lib::types::CpuId::Core0);
     }
 }
 

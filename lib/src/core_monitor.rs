@@ -172,14 +172,6 @@ macro_rules! define_systick_handler {
             }
             let idx = $cpu as usize;
             CORE_MONITORS[idx].check_liveness($cpu);
-
-            static mut TICK_COUNT: u32 = 0;
-            unsafe {
-                TICK_COUNT = TICK_COUNT.wrapping_add(1);
-                if TICK_COUNT % 1000 == 0 {
-                    defmt::error!("Core 1 SysTick fired 1000 times!");
-                }
-            }
         }
     };
 }

@@ -140,12 +140,16 @@ impl Board {
         }
     }
 
-    /// Dummy poll executor method for host.
+    /// Run the executor loop for the specified core (dummy on host).
     ///
     /// # Safety
     ///
     /// This is a dummy method on host and is always safe to call.
-    pub unsafe fn poll_executor(_cpu_id: firmware_lib::types::CpuId) {}
+    pub unsafe fn run_executor(_cpu_id: firmware_lib::types::CpuId) -> ! {
+        loop {
+            std::thread::yield_now();
+        }
+    }
 
     /// Mock initialization of the Embassy executor for Core 1.
     ///

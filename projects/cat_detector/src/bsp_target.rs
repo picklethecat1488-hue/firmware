@@ -328,25 +328,31 @@ impl<'d> Board<'d> {
         }
     }
 
-    /// Poll the Embassy executor for the specified core.
+    /// Run the Embassy executor loop for the specified core.
     ///
     /// # Safety
     ///
-    /// This function must be called from the main thread loop of the corresponding core.
-    pub unsafe fn poll_executor(cpu_id: firmware_lib::types::CpuId) {
+    /// This function must be called from the main thread of the corresponding core and does not return.
+    pub unsafe fn run_executor(cpu_id: firmware_lib::types::CpuId) -> ! {
+        use firmware_lib::system::CpuScheduler;
         match cpu_id {
             firmware_lib::types::CpuId::Core0 => {
                 let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE0);
                 if let Some(ref mut executor) = *ptr {
-                    executor.0.poll();
+                    let executor_static: &'static embassy_executor::raw::Executor = &executor.0;
+                    executor_static.run_loop(cpu_id);
                 }
             }
             firmware_lib::types::CpuId::Core1 => {
                 let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE1);
                 if let Some(ref mut executor) = *ptr {
-                    executor.0.poll();
+                    let executor_static: &'static embassy_executor::raw::Executor = &executor.0;
+                    executor_static.run_loop(cpu_id);
                 }
             }
+        }
+        loop {
+            cortex_m::asm::nop();
         }
     }
 

@@ -375,13 +375,8 @@ pub fn boot_core1(core1: embassy_rp::peripherals::CORE1) {
             let ptr = core::ptr::addr_of_mut!(CORE1_STACK);
             &mut *ptr
         },
-        move || loop {
-            unsafe {
-                crate::Board::poll_executor(firmware_lib::types::CpuId::Core1);
-                defmt::trace!("ctx=cpu_idle_c1 parent=0 span_enter: CPU Idle Core 1");
-                cortex_m::asm::wfe();
-                defmt::trace!("cpu_idle_c1 span_exit: CPU Idle Core 1");
-            }
+        move || unsafe {
+            crate::Board::run_executor(firmware_lib::types::CpuId::Core1);
         },
     );
 }
