@@ -23,4 +23,4 @@ jobs:
         run: pip install scancode-toolkit typecode-libmagic colorama halo
 
       - name: Verify license compliance
-        run: python scripts/license_compliance.py --run-scan
+        run: python tools/validation/license_compliance.py --run-scan
