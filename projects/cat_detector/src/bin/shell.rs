@@ -113,6 +113,42 @@ controller::impl_shell_config! {
         SystemCtrl = SystemControllerType,
     }
 }
+/// Core 1 command enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Core1Command {
+    /// Panic command.
+    Panic,
+}
+
+/// Core 1 command channel.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub static CORE1_COMMAND_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    Core1Command,
+    4,
+> = embassy_sync::channel::Channel::new();
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[embassy_executor::task]
+#[allow(clippy::never_loop)]
+async fn core1_command_task(
+    rx: embassy_sync::channel::Receiver<
+        'static,
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        Core1Command,
+        4,
+    >,
+) {
+    loop {
+        let cmd = rx.receive().await;
+        match cmd {
+            Core1Command::Panic => {
+                panic!("Simulated Core 1 panic");
+            }
+        }
+    }
+}
+
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 fn handle_core1_cli<
     W: embedded_io::Write<Error = E>,
@@ -126,9 +162,10 @@ fn handle_core1_cli<
     let cmd = subcommand.ok_or("Missing core1 subcommand")?;
     match cmd {
         controller::shell_controller::Core1Subcommand::Panic => {
-            app::CORE1_COMMAND_CHANNEL
+            let _ = core::writeln!(_writer, "Sending panic command to Core 1...");
+            CORE1_COMMAND_CHANNEL
                 .sender()
-                .try_send(app::Core1Command::Panic)
+                .try_send(Core1Command::Panic)
                 .map_err(|_| "Failed to send command to Core 1")?;
             Ok(())
         }
@@ -200,13 +237,26 @@ async fn main(spawner: Spawner) {
     );
 
     let core1 = unsafe { embassy_rp::peripherals::CORE1::steal() };
-    app::boot_core1(core1, unsafe { app::MOTOR_CTRL.take().unwrap() }, unsafe {
-        (
-            app::SENSOR_CTRL_NORTH.take().unwrap(),
-            app::SENSOR_CTRL_EAST.take().unwrap(),
-            app::SENSOR_CTRL_WEST.take().unwrap(),
-        )
-    });
+    app::boot_core1(core1);
+
+    let spawner_c1 = unsafe { app::Board::spawner_core1() };
+    spawner_c1
+        .spawn(app::bootstrap_core1_task(
+            spawner_c1,
+            unsafe { app::MOTOR_CTRL.take().unwrap() },
+            unsafe {
+                (
+                    app::SENSOR_CTRL_NORTH.take().unwrap(),
+                    app::SENSOR_CTRL_EAST.take().unwrap(),
+                    app::SENSOR_CTRL_WEST.take().unwrap(),
+                )
+            },
+        ))
+        .unwrap();
+
+    spawner_c1
+        .spawn(core1_command_task(CORE1_COMMAND_CHANNEL.receiver()))
+        .unwrap();
 
     let temp_sensor_ptr = {
         let mut guard = app::SHARED_TEMP_SENSOR.lock().await;

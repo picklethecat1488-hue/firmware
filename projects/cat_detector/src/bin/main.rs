@@ -158,11 +158,16 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
     };
 
     let core1 = unsafe { embassy_rp::peripherals::CORE1::steal() };
-    app::boot_core1(
-        core1,
-        controller,
-        (sensor_ctrl_north, sensor_ctrl_east, sensor_ctrl_west),
-    );
+    app::boot_core1(core1);
+
+    let spawner_c1 = unsafe { app::Board::spawner_core1() };
+    spawner_c1
+        .spawn(app::bootstrap_core1_task(
+            spawner_c1,
+            controller,
+            (sensor_ctrl_north, sensor_ctrl_east, sensor_ctrl_west),
+        ))
+        .unwrap();
 
     // Spawn tasks on Core 0
     controller::spawn_controllers! {

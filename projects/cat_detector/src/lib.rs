@@ -304,27 +304,14 @@ pub static mut SENSOR_EAST_PTR: *mut () = core::ptr::null_mut();
 #[allow(dead_code)]
 pub static mut SENSOR_WEST_PTR: *mut () = core::ptr::null_mut();
 
-/// Core 1 execution commands sent from Core 0 shell or orchestrator.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Core1Command {
-    /// Request Core 1 to panic.
-    Panic,
-}
-
+/// Type alias for the motor controller.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Global channel for sending commands to Core 1 tasks.
-pub static CORE1_COMMAND_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    Core1Command,
-    4,
-> = embassy_sync::channel::Channel::new();
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-type MotorType =
+pub type MotorType =
     controller::motor_controller::MotorController<crate::MotorDevice, crate::CurrentSensorDevice>;
 
+/// Type alias for the sensor controller.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-type SensorType = controller::sensor_controller::SensorController<
+pub type SensorType = controller::sensor_controller::SensorController<
     'static,
     crate::ProximitySensorDevice,
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
@@ -333,9 +320,10 @@ type SensorType = controller::sensor_controller::SensorController<
     controller::sensor_controller::ProximityReader,
 >;
 
+/// Boots Core 1 peripherals and controllers.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::task]
-async fn bootstrap_core1_task(
+pub async fn bootstrap_core1_task(
     spawner: embassy_executor::Spawner,
     mut motor: MotorType,
     mut sensors: (SensorType, SensorType, SensorType),
@@ -348,11 +336,6 @@ async fn bootstrap_core1_task(
         crate::CORE_MONITOR_WARN_PCT,
         true,
     );
-
-    // Spawn the Core 1 command task
-    spawner
-        .spawn(core1_command_task(CORE1_COMMAND_CHANNEL.receiver()))
-        .unwrap();
 
     unsafe {
         let motor_ptr = core::ptr::addr_of_mut!(MOTOR_CTRL_PTR);
@@ -378,33 +361,8 @@ async fn bootstrap_core1_task(
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[embassy_executor::task]
-#[allow(clippy::never_loop)]
-async fn core1_command_task(
-    rx: embassy_sync::channel::Receiver<
-        'static,
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        Core1Command,
-        4,
-    >,
-) {
-    loop {
-        let cmd = rx.receive().await;
-        match cmd {
-            Core1Command::Panic => {
-                panic!("Simulated Core 1 panic");
-            }
-        }
-    }
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Boots Core 1 and starts the RAM executor with the given controllers.
-pub fn boot_core1(
-    core1: embassy_rp::peripherals::CORE1,
-    motor: MotorType,
-    sensors: (SensorType, SensorType, SensorType),
-) {
+/// Boots Core 1 and starts the RAM executor.
+pub fn boot_core1(core1: embassy_rp::peripherals::CORE1) {
     unsafe {
         firmware_lib::panic_handler::CORE1_STACK_TOP =
             core::ptr::addr_of!(CORE1_STACK) as u32 + 4096;
@@ -417,19 +375,12 @@ pub fn boot_core1(
             let ptr = core::ptr::addr_of_mut!(CORE1_STACK);
             &mut *ptr
         },
-        move || {
-            let spawner_c1 = unsafe { crate::Board::spawner_core1() };
-            spawner_c1
-                .spawn(bootstrap_core1_task(spawner_c1, motor, sensors))
-                .unwrap();
-
-            loop {
-                unsafe {
-                    crate::Board::poll_executor(firmware_lib::types::CpuId::Core1);
-                    defmt::trace!("ctx=cpu_idle_c1 parent=0 span_enter: CPU Idle Core 1");
-                    cortex_m::asm::wfe();
-                    defmt::trace!("cpu_idle_c1 span_exit: CPU Idle Core 1");
-                }
+        move || loop {
+            unsafe {
+                crate::Board::poll_executor(firmware_lib::types::CpuId::Core1);
+                defmt::trace!("ctx=cpu_idle_c1 parent=0 span_enter: CPU Idle Core 1");
+                cortex_m::asm::wfe();
+                defmt::trace!("cpu_idle_c1 span_exit: CPU Idle Core 1");
             }
         },
     );
