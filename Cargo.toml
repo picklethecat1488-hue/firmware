@@ -5,7 +5,7 @@ members = [
     "peripherals",
     "controller",
     "lib",
-    "lib/tracing-mock-macros",
+    "lib/tracing-macros",
     "projects/cat_detector",
     "tools/host_fs",
     "tools/host_cli",

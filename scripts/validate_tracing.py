@@ -12,6 +12,22 @@ init(autoreset=True)
 # Load the Rust grammar using tree-sitter
 RUST_LANGUAGE = Language(tsrust.language())
 
+# Files excluded from core consistency validation (e.g. macro templates, mock test files)
+EXCLUDED_CORE_FILES = [
+    "controller/src/lib.rs",
+    "peripherals/src/mock.rs",
+]
+
+# Files excluded from call-site scans (e.g. macro templates to avoid false positives)
+EXCLUDED_CALLSITE_FILES = [
+    "controller/src/lib.rs",
+]
+
+# Rust attribute strings searched during discovery
+INSTRUMENT_ATTRIBUTES = ["tracing::instrument", "instrument"]
+CORE1_GATING_FEATURES = ["motor-core", "sensors-core"]
+EMBASSY_TASK_ATTRIBUTES = ["embassy_executor::task", "task"]
+
 
 def find_descendants(node, target_type, result):
     """Recursively find all descendant nodes of a specific type, excluding child functions/closures."""
@@ -57,6 +73,8 @@ def parse_rs_file(filepath):
                 is_instrumented = False
                 is_embassy_task = False
                 instrument_name = None
+                is_core1_gated = False
+                has_core1_instrument = False
 
                 if parent:
                     idx = -1
@@ -71,13 +89,19 @@ def parse_rs_file(filepath):
                         sibling = parent.children[k]
                         if sibling.type == "attribute_item":
                             attr_text = sibling.text.decode("utf-8")
-                            if "tracing::instrument" in attr_text or "instrument" in attr_text:
+                            if any(x in attr_text for x in INSTRUMENT_ATTRIBUTES):
                                 is_instrumented = True
                                 # Extract instrument name parameter if present
                                 match = re.search(r'\bname\s*=\s*"([^"]+)"', attr_text)
                                 if match:
                                     instrument_name = match.group(1)
-                            if "embassy_executor::task" in attr_text or "task" in attr_text:
+                                match_core = re.search(r'\bcore\d+\b', attr_text)
+                                if match_core and match_core.group(0) == "core1":
+                                    has_core1_instrument = True
+                            if any(x in attr_text for x in CORE1_GATING_FEATURES):
+                                if "link_section" in attr_text and ".data.ram_func" in attr_text:
+                                    is_core1_gated = True
+                            if any(x in attr_text for x in EMBASSY_TASK_ATTRIBUTES):
                                 is_embassy_task = True
                             k -= 1
                         elif sibling.type in ["line_comment", "block_comment", "\n"]:
@@ -110,6 +134,8 @@ def parse_rs_file(filepath):
                         "has_return": has_return,
                         "file": filepath,
                         "instrument_name": instrument_name,
+                        "is_core1_gated": is_core1_gated,
+                        "has_core1_instrument": has_core1_instrument,
                     }
                 )
 
@@ -138,27 +164,29 @@ def is_boot_context(func):
 def get_called_function_name(call_node):
     """Extract the function identifier being called from a call_expression node."""
     func_node = call_node.children[0]
-    if func_node.type == "identifier":
-        return func_node.text.decode("utf-8")
-    elif func_node.type == "field_expression":
-        # obj.foo() -> last child is field_identifier
-        for child in reversed(func_node.children):
-            if child.type == "field_identifier":
-                return child.text.decode("utf-8")
-    elif func_node.type == "scoped_identifier":
-        # Foo::foo() -> last child is identifier
-        for child in reversed(func_node.children):
-            if child.type == "identifier":
-                return child.text.decode("utf-8")
-    elif func_node.type == "generic_function":
-        # foo::<T>() -> first child is identifier
-        first_child = func_node.children[0]
-        if first_child.type == "identifier":
-            return first_child.text.decode("utf-8")
-        elif first_child.type == "scoped_identifier":
-            for child in reversed(first_child.children):
+    match func_node.type:
+        case "identifier":
+            return func_node.text.decode("utf-8")
+        case "field_expression":
+            # obj.foo() -> last child is field_identifier
+            for child in reversed(func_node.children):
+                if child.type == "field_identifier":
+                    return child.text.decode("utf-8")
+        case "scoped_identifier":
+            # Foo::foo() -> last child is identifier
+            for child in reversed(func_node.children):
                 if child.type == "identifier":
                     return child.text.decode("utf-8")
+        case "generic_function":
+            # foo::<T>() -> first child is identifier
+            first_child = func_node.children[0]
+            match first_child.type:
+                case "identifier":
+                    return first_child.text.decode("utf-8")
+                case "scoped_identifier":
+                    for child in reversed(first_child.children):
+                        if child.type == "identifier":
+                            return child.text.decode("utf-8")
     return None
 
 
@@ -199,6 +227,29 @@ def main():
 
     errors = 0
 
+    # 2.5 Check core instrumentation consistency
+    for f in all_functions:
+        if any(f["file"].endswith(ex) for ex in EXCLUDED_CORE_FILES):
+            continue
+
+        match (f["is_instrumented"], f["is_core1_gated"], f["has_core1_instrument"]):
+            case (True, True, False):
+                print(
+                    f"{Fore.RED}ERROR:{Style.RESET_ALL} Core 1 gated function '{f['name']}' must be instrumented with #[instrument(core1)]!"
+                )
+                print(f"  File: {f['file']}:{f['start_line']}")
+                print()
+                errors += 1
+            case (True, False, True):
+                print(
+                    f"{Fore.RED}ERROR:{Style.RESET_ALL} Core 0 function '{f['name']}' must NOT be instrumented with core1!"
+                )
+                print(f"  File: {f['file']}:{f['start_line']}")
+                print()
+                errors += 1
+            case _:
+                pass
+
     # 3. Check for early returns (i.e. 'return' statements) inside instrumented functions
     for f in instrumented_funcs:
         if f["has_return"]:
@@ -227,7 +278,7 @@ def main():
     # 4. Scan all files for call sites of non-task instrumented functions
     for filepath, file_funcs in funcs_by_file.items():
         # Skip macro definition files (templates in lib.rs) to avoid template false positives
-        if filepath.endswith("controller/src/lib.rs"):
+        if any(filepath.endswith(ex) for ex in EXCLUDED_CALLSITE_FILES):
             continue
 
         try:
