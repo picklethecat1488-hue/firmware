@@ -153,6 +153,7 @@ where
         link_section = ".data.ram_func"
     )]
     #[tracing::instrument(
+        core1 = "motor-core",
         name = "motor_controller::update",
         level = "info",
         skip(telemetry_client)
@@ -226,6 +227,7 @@ where
         link_section = ".data.ram_func"
     )]
     #[tracing::instrument(
+        core1 = "motor-core",
         name = "motor_controller::handle_command",
         level = "info",
         skip(cmd, telemetry_client)
@@ -325,7 +327,11 @@ where
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.ram_func"
     )]
-    #[tracing::instrument(name = "motor_controller::tick_motor", level = "info")]
+    #[tracing::instrument(
+        core1 = "motor-core",
+        name = "motor_controller::tick_motor",
+        level = "info"
+    )]
     pub fn tick_motor(&mut self) -> Result<(), PeripheralError> {
         // 1. Ramping logic
         if self.state == MotorState::On {

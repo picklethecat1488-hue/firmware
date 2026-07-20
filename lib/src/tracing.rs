@@ -4,9 +4,9 @@
 #![allow(unused_imports)]
 
 #[cfg(feature = "tracing")]
-pub use tracing_defmt::{self, *};
+pub use tracing_defmt::{self, debug, error, info, trace, warn};
 
 #[cfg(not(feature = "tracing"))]
 pub use defmt::{debug, error, info, trace, warn};
-#[cfg(not(feature = "tracing"))]
-pub use tracing_mock_macros::instrument;
+
+pub use tracing_macros::instrument;

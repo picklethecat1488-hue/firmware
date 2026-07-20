@@ -82,7 +82,7 @@ impl<I: I2c> PowerSensor for Ina219<I> {
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.ram_func"
     )]
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(core1 = "motor-core", level = "trace")]
     fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
         let res = self.read_register(0x04);
         if let Err(ref _e) = res {
@@ -100,7 +100,7 @@ impl<I: I2c> PowerSensor for Ina219<I> {
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.ram_func"
     )]
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(core1 = "motor-core", level = "trace")]
     fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
         let res = self.read_register(0x02);
         if let Err(ref _e) = res {

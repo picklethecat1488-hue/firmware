@@ -273,6 +273,69 @@ impl TraceStage for TelemetryDecoder {
     }
 }
 
+/// Pipeline stage that classifies events into CPU cores based on prefixes and metadata.
+pub struct CoreClassifier;
+
+impl TraceStage for CoreClassifier {
+    fn run(
+        &mut self,
+        mut events: Vec<serde_json::Value>,
+    ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        for event in &mut events {
+            if let Some(obj) = event.as_object_mut() {
+                let target = obj.get("cat").and_then(|c| c.as_str()).unwrap_or("");
+                let category = TraceCategory::parse(target);
+                match category {
+                    TraceCategory::SpanEnter => {
+                        let mut span_name = obj
+                            .get("span_name")
+                            .and_then(|s| s.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        let mut core = None;
+                        if span_name.starts_with("Core 1: ") {
+                            core = Some(1);
+                            span_name = span_name["Core 1: ".len()..].to_string();
+                        } else if span_name.starts_with("Core 0: ") {
+                            core = Some(0);
+                            span_name = span_name["Core 0: ".len()..].to_string();
+                        }
+
+                        if let Some(c) = core {
+                            obj.insert("core".to_string(), serde_json::json!(c));
+                        }
+                        obj.insert("span_name".to_string(), serde_json::Value::from(span_name));
+                    }
+                    TraceCategory::Log => {
+                        let mut msg = obj
+                            .get("msg")
+                            .and_then(|s| s.as_str())
+                            .unwrap_or("")
+                            .to_string();
+
+                        let mut core = None;
+                        if msg.starts_with("Core 1: ") {
+                            core = Some(1);
+                            msg = msg["Core 1: ".len()..].to_string();
+                        } else if msg.starts_with("Core 0: ") {
+                            core = Some(0);
+                            msg = msg["Core 0: ".len()..].to_string();
+                        }
+
+                        if let Some(c) = core {
+                            obj.insert("core".to_string(), serde_json::json!(c));
+                        }
+                        obj.insert("msg".to_string(), serde_json::Value::from(msg));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(events)
+    }
+}
+
 /// Detailed attributes of a tracked span.
 #[derive(Clone, Debug)]
 pub struct SpanInfo {
@@ -515,7 +578,6 @@ impl SpanEnterProcessor {
         }
 
         let event_pid = obj.get("pid").and_then(|p| p.as_i64()).unwrap_or(1);
-        let event_tid = obj.get("tid").and_then(|t| t.as_i64()).unwrap_or(1);
 
         // Determine the task context for this new span, using module path for uniqueness if available
         let task_context = if !is_root_or_empty_id(&parent_id) {
@@ -532,6 +594,15 @@ impl SpanEnterProcessor {
             } else {
                 span_name.clone()
             }
+        };
+
+        let core = obj.get("core").and_then(|c| c.as_i64());
+        let event_tid = if let Some(c) = core {
+            c
+        } else if !is_root_or_empty_id(&parent_id) {
+            context.get_tid(&parent_id).unwrap_or(0)
+        } else {
+            0
         };
 
         // Populate and insert the unified SpanInfo database entry
@@ -760,15 +831,57 @@ impl TraceStage for SpanProcessor {
                         if msg.is_empty() {
                             continue;
                         }
+
                         final_event["name"] = serde_json::Value::from(msg);
+                        let core = obj.get("core").and_then(|c| c.as_i64());
+                        let log_tid = if let Some(c) = core {
+                            c
+                        } else if let Some(ref last_id) = self.context.global_last_active_span {
+                            self.context.get_tid(last_id).unwrap_or(0)
+                        } else {
+                            0
+                        };
+                        final_event["tid"] = serde_json::Value::from(log_tid);
                     }
                     TraceCategory::Other => {}
+                }
+
+                let is_mapped = match category {
+                    TraceCategory::SpanEnter | TraceCategory::SpanExit | TraceCategory::Log => true,
+                    TraceCategory::Other => false,
+                };
+                if !is_mapped
+                    && final_event.get("tid").is_some()
+                    && final_event["tid"] == serde_json::json!(1)
+                {
+                    final_event["tid"] = serde_json::json!(0);
                 }
             }
             processed_events.push(final_event);
         }
 
-        Ok(processed_events)
+        let mut final_events = Vec::new();
+        final_events.push(serde_json::json!({
+            "name": "thread_name",
+            "ph": "M",
+            "pid": 1,
+            "tid": 0,
+            "args": {
+                "name": "CPU Core 0"
+            }
+        }));
+        final_events.push(serde_json::json!({
+            "name": "thread_name",
+            "ph": "M",
+            "pid": 1,
+            "tid": 1,
+            "args": {
+                "name": "CPU Core 1"
+            }
+        }));
+        final_events.extend(processed_events);
+
+        Ok(final_events)
     }
 }
 
@@ -797,6 +910,7 @@ pub fn post_process_trace(path: &str) -> Result<(), Box<dyn std::error::Error>> 
     let mut pipeline = TracePipeline::new()
         .add_stage(ChronologicalSorter)
         .add_stage(TelemetryDecoder::new())
+        .add_stage(CoreClassifier)
         .add_stage(SpanProcessor::new());
 
     let processed_events = pipeline.execute(events)?;

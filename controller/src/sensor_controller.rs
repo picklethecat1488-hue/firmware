@@ -384,7 +384,11 @@ where
         all(target_arch = "arm", feature = "sensors-core"),
         link_section = ".data.ram_func"
     )]
-    #[tracing::instrument(name = "sensor_controller::update", level = "info")]
+    #[tracing::instrument(
+        core1 = "sensors-core",
+        name = "sensor_controller::update",
+        level = "info"
+    )]
     pub fn update(&mut self) -> Result<Reader::Data, Reader::Error> {
         let data = Reader::read_data(self.state_manager.sensor_mut(), &self.context)?;
 
@@ -400,7 +404,12 @@ where
         all(target_arch = "arm", feature = "sensors-core"),
         link_section = ".data.ram_func"
     )]
-    #[tracing::instrument(name = "sensor_controller::handle_command", level = "info", skip(cmd))]
+    #[tracing::instrument(
+        core1 = "sensors-core",
+        name = "sensor_controller::handle_command",
+        level = "info",
+        skip(cmd)
+    )]
     pub fn handle_command(&mut self, cmd: SensorCommand) {
         match cmd {
             SensorCommand::ReadSensors => {
