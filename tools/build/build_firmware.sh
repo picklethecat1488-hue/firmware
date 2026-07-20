@@ -34,7 +34,7 @@ while IFS= read -r pkg; do
         TOOL_PACKAGES+=("$pkg")
         EXCLUDE_ARGS+=("--exclude" "$pkg")
     fi
-done < <(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | .name')
+done < <(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/") or contains("/host/")) | .name')
 
 # Check if multiple binary targets with the same name exist in the workspace
 DUPLICATE_BINS=$(cargo metadata --format-version 1 | jq -r '.packages[].targets[] | select(.kind[] == "bin") | .name' | sort | uniq -d)

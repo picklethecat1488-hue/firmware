@@ -3,7 +3,7 @@ import os
 import types
 import pytest
 
-script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "rerun-loader-csv"))
+script_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "helpers", "rerun-loader-csv"))
 
 # Load extensionless script as a module
 rerun_loader_csv = types.ModuleType("rerun_loader_csv")

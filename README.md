@@ -55,7 +55,7 @@ For interactive diagnostic shell execution, host logging tools, flash extraction
 
 ### Python Script Verification & Conda Setup
 
-For our target bringup scripts (`scripts/bringup.py`) and Rerun telemetry tools (`scripts/rerun-loader-csv`), we manage dependencies using Conda.
+For our target bringup scripts (`tools/helpers/bringup.py`) and Rerun telemetry tools (`tools/helpers/rerun-loader-csv`), we manage dependencies using Conda.
 
 #### 1. Enlisting in the Conda Environment
 
@@ -75,7 +75,7 @@ We use `pytest` for unit testing our Python helper scripts:
 
 ```bash
 # Run all python script unit tests
-pytest scripts/tests
+pytest tools/validation/tests
 ```
 
 ---

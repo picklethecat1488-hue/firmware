@@ -9,10 +9,10 @@ echo "1. Running static analysis & formatting checks in parallel..."
 cargo fmt --all --check &
 FMT_PID=$!
 
-python scripts/validate_tracing.py &
+python tools/validation/validate_tracing.py &
 TRACING_PID=$!
 
-python scripts/validate_multicore_support.py &
+python tools/validation/validate_multicore_support.py &
 MULTICORE_PID=$!
 
 # Wait and report failures immediately
@@ -46,7 +46,7 @@ fi
 
 # 4. Build debug firmware target and debug host tools
 echo "4. Building target binaries and host tools (Debug)..."
-./scripts/build_firmware.sh --debug-only
+./tools/build/build_firmware.sh --debug-only
 cargo build -p host_cli -p host_fs
 
 END_TIME=$(date +%s)
