@@ -10,12 +10,12 @@ import validate_multicore_support
 
 def test_compliant_call_chain():
     code = """
-    #[cfg_attr(all(target_arch = "arm", feature = "motor-core"), link_section = ".data.ram_func")]
+    #[cfg_attr(all(target_arch = "arm", feature = "motor-core"), link_section = ".data.core1_func")]
     pub fn start() {
         process();
     }
     
-    #[cfg_attr(all(target_arch = "arm", feature = "motor-core"), link_section = ".data.ram_func")]
+    #[cfg_attr(all(target_arch = "arm", feature = "motor-core"), link_section = ".data.core1_func")]
     fn process() {
         let x = 1;
     }
@@ -36,7 +36,7 @@ def test_compliant_call_chain():
 
 def test_missing_attribute_in_call_chain():
     code_missing = """
-    #[cfg_attr(all(target_arch = "arm", feature = "motor-core"), link_section = ".data.ram_func")]
+    #[cfg_attr(all(target_arch = "arm", feature = "motor-core"), link_section = ".data.core1_func")]
     pub fn start() {
         process();
     }
@@ -55,7 +55,7 @@ def test_missing_attribute_in_call_chain():
 
 def test_forbidden_calls_in_multicore_chain():
     code = """
-    #[cfg_attr(all(target_arch = "arm", feature = "motor-core"), link_section = ".data.ram_func")]
+    #[cfg_attr(all(target_arch = "arm", feature = "motor-core"), link_section = ".data.core1_func")]
     pub fn start() {
         cortex_m::interrupt::free(|cs| {
             let x = 1;

@@ -25,7 +25,7 @@ EXCLUDED_CALLSITE_FILES = [
 
 # Rust attribute strings searched during discovery
 INSTRUMENT_ATTRIBUTES = ["tracing::instrument", "instrument"]
-CORE1_GATING_FEATURES = ["motor-core", "sensors-core"]
+CORE1_GATING_FEATURES = ["motor-core", "sensors-core", "core1"]
 EMBASSY_TASK_ATTRIBUTES = ["embassy_executor::task", "task"]
 
 
@@ -98,9 +98,8 @@ def parse_rs_file(filepath):
                                 match_core = re.search(r"\bcore\d+\b", attr_text)
                                 if match_core and match_core.group(0) == "core1":
                                     has_core1_instrument = True
-                            if any(x in attr_text for x in CORE1_GATING_FEATURES):
-                                if "link_section" in attr_text and ".data.ram_func" in attr_text:
-                                    is_core1_gated = True
+                            if "link_section" in attr_text and ".data.core1_func" in attr_text:
+                                is_core1_gated = True
                             if any(x in attr_text for x in EMBASSY_TASK_ATTRIBUTES):
                                 is_embassy_task = True
                             k -= 1

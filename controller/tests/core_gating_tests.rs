@@ -38,10 +38,6 @@ fn test_core_gating_sensor_compiles() {
 
 #[test]
 fn test_feature_conditional_compilation() {
-    let motor_in_ram = cfg!(feature = "motor-core");
-    let sensors_in_ram = cfg!(feature = "sensors-core");
-    println!(
-        "Core gating test: motor-core={}, sensors-core={}",
-        motor_in_ram, sensors_in_ram
-    );
+    let core1_enabled = cfg!(feature = "core1");
+    println!("Core gating test: core1={}", core1_enabled);
 }
