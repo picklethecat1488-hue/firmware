@@ -38,7 +38,7 @@ impl MotorLimits {
     /// Checks if the given RPM and current draw violate configured safety limits.
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.ram_func"
+        link_section = ".data.core1_func"
     )]
     pub fn check_limits(&self, rpm: u32, current_ma: i32) -> MotorSafetyStatus {
         if self.rpm_limit > 0 && rpm > self.rpm_limit {
@@ -118,7 +118,7 @@ where
     /// Returns the current estimated RPM based on the active speed and max_rpm calibration.
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.ram_func"
+        link_section = ".data.core1_func"
     )]
     pub fn current_rpm(&self) -> u32 {
         if self.limits.max_rpm == 0 {
@@ -136,7 +136,7 @@ where
     /// Directly reads the current draw (acting as a proxy for load torque) in mA from the sensor.
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.ram_func"
+        link_section = ".data.core1_func"
     )]
     pub fn read_torque_ma(&mut self) -> Result<i32, PeripheralError> {
         let current = self
@@ -150,10 +150,10 @@ where
     /// Ticks the control loop, reading current sensor input and updating safety states.
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.ram_func"
+        link_section = ".data.core1_func"
     )]
     #[tracing::instrument(
-        core1 = "motor-core",
+        core1 = "core1",
         name = "motor_controller::update",
         level = "info",
         skip(telemetry_client)
@@ -224,10 +224,10 @@ where
     /// Handles a received MotorCommand.
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.ram_func"
+        link_section = ".data.core1_func"
     )]
     #[tracing::instrument(
-        core1 = "motor-core",
+        core1 = "core1",
         name = "motor_controller::handle_command",
         level = "info",
         skip(cmd, telemetry_client)
@@ -325,13 +325,9 @@ where
     /// This updates the ramping of the motor speed and runs the motor driver's duty cycle ticks.
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.ram_func"
+        link_section = ".data.core1_func"
     )]
-    #[tracing::instrument(
-        core1 = "motor-core",
-        name = "motor_controller::tick_motor",
-        level = "info"
-    )]
+    #[tracing::instrument(core1 = "core1", name = "motor_controller::tick_motor", level = "info")]
     pub fn tick_motor(&mut self) -> Result<(), PeripheralError> {
         // 1. Ramping logic
         if self.state == MotorState::On {
@@ -394,7 +390,7 @@ where
     /// Runs the controller's control loop infinitely, reading from the command channel.
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.ram_func"
+        link_section = ".data.core1_func"
     )]
     pub async fn run<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex, const N: usize>(
         mut self,
@@ -509,7 +505,7 @@ where
 {
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.ram_func"
+        link_section = ".data.core1_func"
     )]
     fn read_current_ma_blocking(&mut self) -> Result<i32, PeripheralError> {
         self.read_torque_ma()
@@ -524,7 +520,7 @@ where
 {
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.ram_func"
+        link_section = ".data.core1_func"
     )]
     fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
         let motor_speed = MotorSpeed::new(speed).ok_or(PeripheralError::InvalidConfiguration)?;
@@ -534,7 +530,7 @@ where
 
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.ram_func"
+        link_section = ".data.core1_func"
     )]
     fn stop(&mut self) -> Result<(), PeripheralError> {
         let _ = self.motor.stop();

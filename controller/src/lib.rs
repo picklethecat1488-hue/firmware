@@ -64,8 +64,8 @@ macro_rules! define_controllers {
             sender: $sender:ident,
             receiver: $receiver:ident,
             msg: $msg:ty,
+            $(#[$attr:meta])*
             task: $run_macro:ident {
-                $(core: $core:ident $(= $core_feature:literal)?,)?
                 generics: ($($gen:tt)*),
                 controller: [$($controller_ty:tt)*],
                 rx: [$($rx_ty:tt)*],
@@ -102,7 +102,8 @@ macro_rules! define_controllers {
                     #[cfg(feature = "tracing")]
                     use $crate::tracing::tracing_defmt;
 
-                    #[ $crate::tracing::instrument($($core $(= $core_feature)?,)? name = stringify!($task_module), level = "info", skip($c, $r, $t)) ]
+                    $(#[$attr])*
+                    #[ $crate::tracing::instrument(name = stringify!($task_module), level = "info", skip($c, $r, $t)) ]
                     #[embassy_executor::task]
                     #[allow(unreachable_code)]
                     pub async fn task(
@@ -130,8 +131,8 @@ macro_rules! define_controllers {
             sender: $sender:ident,
             receiver: $receiver:ident,
             msg: $msg:ty,
+            $(#[$attr:meta])*
             task: $run_macro:ident {
-                $(core: $core:ident $(= $core_feature:literal)?,)?
                 generics: ($($gen:tt)*),
                 controller: [$($controller_ty:tt)*],
                 rx: [$($rx_ty:tt)*],
@@ -166,7 +167,8 @@ macro_rules! define_controllers {
                     #[cfg(feature = "tracing")]
                     use $crate::tracing::tracing_defmt;
 
-                    #[ $crate::tracing::instrument($($core $(= $core_feature)?,)? name = stringify!($task_module), level = "info", skip($c, $r)) ]
+                    $(#[$attr])*
+                    #[ $crate::tracing::instrument(name = stringify!($task_module), level = "info", skip($c, $r)) ]
                     #[embassy_executor::task]
                     #[allow(unreachable_code)]
                     pub async fn task(
@@ -411,8 +413,8 @@ define_controllers! {
         sender: SensorSender,
         receiver: SensorReceiver,
         msg: crate::sensor_controller::SensorCommand,
+        #[cfg_attr(all(target_arch = "arm", feature = "sensors-core"), link_section = ".data.core1_func")]
         task: run_sensor_task {
-            core: core1 = "sensors-core",
             generics: ($sensor_type:ty, $pin_type:ty, $cmd_type:ty),
             controller: [$crate::sensor_controller::SensorController<
                 'static,
@@ -430,8 +432,8 @@ define_controllers! {
         sender: MotorSender,
         receiver: MotorReceiver,
         msg: crate::motor_controller::MotorCommand,
+        #[cfg_attr(all(target_arch = "arm", feature = "motor-core"), link_section = ".data.core1_func")]
         task: run_motor_task {
-            core: core1 = "motor-core",
             generics: ($motor_type:ty, $current_sensor_type:ty),
             controller: [$crate::motor_controller::MotorController<
                 $motor_type,

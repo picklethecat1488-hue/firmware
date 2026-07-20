@@ -60,7 +60,12 @@ futures = "0.3"
 
 [features]
 default = []
-tracing = ["controller/tracing", "dep:tracing-defmt"]
-core1 = ["controller/core1", "peripherals/core1"]
-motor-core = ["core1", "controller/motor-core", "peripherals/motor-core"]
-sensors-core = ["core1", "controller/sensors-core", "peripherals/sensors-core"]
+tracing = ["controller/tracing", "dep:tracing-defmt", "core1"]
+core1 = [
+    "controller/core1",
+    "peripherals/core1",
+    "motor-core",
+    "sensors-core",
+]
+motor-core = ["controller/motor-core", "peripherals/motor-core"]
+sensors-core = ["controller/sensors-core", "peripherals/sensors-core"]

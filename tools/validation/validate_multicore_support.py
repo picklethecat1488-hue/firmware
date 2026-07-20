@@ -12,7 +12,7 @@ init(autoreset=True)
 RUST_LANGUAGE = Language(tsrust.language())
 
 # Whitelist of features to check for RAM linker attributes
-SUPPORTED_FEATURES = ["motor-core", "sensors-core"]
+SUPPORTED_FEATURES = ["motor-core", "sensors-core", "core1"]
 
 
 def get_called_function_name(call_node):
@@ -68,9 +68,14 @@ def parse_code(content, filepath="<string>"):
                         sibling = parent.children[k]
                         if sibling.type == "attribute_item":
                             attr_text = sibling.text.decode("utf-8")
-                            if "link_section" in attr_text and ".data.ram_func" in attr_text:
+                            if "link_section" in attr_text and ".data.core1_func" in attr_text:
+                                has_feature = False
                                 for f in SUPPORTED_FEATURES:
-                                    if f in attr_text:
+                                    if f'feature = "{f}"' in attr_text or f"feature = '{f}'" in attr_text:
+                                        ram_features.add(f)
+                                        has_feature = True
+                                if not has_feature:
+                                    for f in SUPPORTED_FEATURES:
                                         ram_features.add(f)
                             k -= 1
                         elif sibling.type in ["line_comment", "block_comment", "\n"]:
@@ -165,13 +170,11 @@ def validate_call_graph(funcs_list, roots, feature, allowed_files=None):
                     or d["name"].endswith("_init")
                 ):
                     continue
-                if feature not in d["ram_features"]:
+                if feature not in d["ram_features"] and "core1" not in d["ram_features"]:
                     print(
                         f"{Fore.YELLOW}WARNING:{Style.RESET_ALL} Driver function '{curr_name}' in {d['filepath']}:{d['line']} is reached in RAM call chain but missing RAM attribute for '{feature}'!"
                     )
-                    print(
-                        f'  Expected: #[cfg_attr(all(target_arch = "arm", feature = "{feature}"), link_section = ".data.ram_func")]'
-                    )
+                    print(f'  Expected: #[cfg_attr(target_arch = "arm", link_section = ".data.core1_func")]')
                     print()
                     warnings += 1
 

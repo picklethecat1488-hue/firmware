@@ -37,9 +37,9 @@ where
     /// Sets the motor speed.
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.ram_func"
+        link_section = ".data.core1_func"
     )]
-    #[tracing::instrument(core1 = "motor-core", level = "trace", skip(speed))]
+    #[tracing::instrument(core1 = "core1", level = "trace", skip(speed))]
     fn set_speed(&mut self, speed: MotorSpeed) -> Result<(), Self::Error> {
         let speed_raw = speed.get();
         self.speed = speed_raw;
@@ -60,9 +60,9 @@ where
     /// Stops the motor by braking (both IA and IB set to low).
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.ram_func"
+        link_section = ".data.core1_func"
     )]
-    #[tracing::instrument(core1 = "motor-core", level = "trace")]
+    #[tracing::instrument(core1 = "core1", level = "trace")]
     fn stop(&mut self) -> Result<(), Self::Error> {
         self.speed = 0;
         self.tick_counter = 0;
@@ -81,9 +81,9 @@ where
 
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.ram_func"
+        link_section = ".data.core1_func"
     )]
-    #[tracing::instrument(core1 = "motor-core", level = "trace")]
+    #[tracing::instrument(core1 = "core1", level = "trace")]
     fn tick(&mut self) -> Result<(), Self::Error> {
         let abs_speed = self.speed.abs();
         if abs_speed == 0 || abs_speed >= 100 {
