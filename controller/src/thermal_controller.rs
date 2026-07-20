@@ -8,10 +8,10 @@ use crate::{BlockingThermalReader, Sender, TelemetrySender, ThermalReceiver};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
-use firmware_lib::subcommand_enum;
 use model::interfaces::TemperatureSensor;
 use model::types::{PeriodicInterval, PeripheralError};
 use peripherals::ToPeripheralError;
+use platform::subcommand_enum;
 
 /// A controller that periodically monitors system temperature from temperature sensors.
 pub struct ThermalController<'a, M: RawMutex, B> {
@@ -310,7 +310,7 @@ pub struct ThermalFeatureConfig<MutexRaw: RawMutex + 'static, const N: usize> {
     /// Thermal channel sender
     pub thermal_tx: Option<crate::ThermalSender<MutexRaw, N>>,
     /// Thermal manager for checking alerts
-    pub thermal_manager: core::cell::RefCell<firmware_lib::ThermalManager>,
+    pub thermal_manager: core::cell::RefCell<platform::ThermalManager>,
     /// Overheating temperature threshold in milli-Celsius
     pub overheating_temp_milli_c: i32,
     /// Critical temperature threshold in milli-Celsius
@@ -322,7 +322,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> ThermalFeatureConfig<MutexRaw
     pub fn new(thermal_tx: Option<crate::ThermalSender<MutexRaw, N>>) -> Self {
         Self {
             thermal_tx,
-            thermal_manager: core::cell::RefCell::new(firmware_lib::ThermalManager::new()),
+            thermal_manager: core::cell::RefCell::new(platform::ThermalManager::new()),
             overheating_temp_milli_c: 45000,
             critical_temp_milli_c: 60000,
         }
@@ -336,7 +336,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> ThermalFeatureConfig<MutexRaw
     ) -> Self {
         Self {
             thermal_tx,
-            thermal_manager: core::cell::RefCell::new(firmware_lib::ThermalManager::new()),
+            thermal_manager: core::cell::RefCell::new(platform::ThermalManager::new()),
             overheating_temp_milli_c,
             critical_temp_milli_c,
         }
@@ -348,7 +348,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
 {
     fn default_boot_trap_mask(&self) -> u32 {
         if self.thermal_tx.is_some() {
-            firmware_lib::BootTrapReason::Thermal as u32
+            platform::BootTrapReason::Thermal as u32
         } else {
             0
         }

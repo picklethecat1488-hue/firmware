@@ -145,7 +145,7 @@ impl Board {
     /// # Safety
     ///
     /// This is a dummy method on host and is always safe to call.
-    pub unsafe fn run_executor(_cpu_id: firmware_lib::types::CpuId) -> ! {
+    pub unsafe fn run_executor(_cpu_id: platform::types::CpuId) -> ! {
         loop {
             std::thread::yield_now();
         }

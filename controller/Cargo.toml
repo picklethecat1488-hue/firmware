@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 model = { path = "../model" }
-firmware_lib = { path = "../lib" }
+platform = { path = "../platform" }
 tracing-defmt = { version = "0.1.2", optional = true }
 defmt = { version = "0.3", optional = true }
 peripherals = { path = "../peripherals" }
@@ -42,7 +42,7 @@ core1 = ["peripherals/core1"]
 motor-core = ["core1", "peripherals/motor-core"]
 sensors-core = ["core1", "peripherals/sensors-core"]
 tracing = [
-    "firmware_lib/tracing",
+    "platform/tracing",
     "peripherals/tracing",
     "dep:tracing-defmt",
     "dep:defmt",

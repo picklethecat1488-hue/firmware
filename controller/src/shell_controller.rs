@@ -624,7 +624,7 @@ macro_rules! declare_shell_commands {
     };
 }
 
-firmware_lib::subcommand_enum! {
+platform::subcommand_enum! {
     /// Core 1 subcommands for CLI processing.
     pub enum Core1Subcommand {
         /// Force Core 1 to panic

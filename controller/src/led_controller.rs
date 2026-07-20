@@ -279,11 +279,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
 
     fn on_battery_action(
         &self,
-        action: firmware_lib::BatteryUpdateAction,
+        action: platform::BatteryUpdateAction,
         status: model::types::SystemStatus,
         battery_status: Option<crate::BatteryStatus>,
     ) {
-        if action == firmware_lib::BatteryUpdateAction::ReportSoC {
+        if action == platform::BatteryUpdateAction::ReportSoC {
             if let Some(ref led_tx) = self.led_tx {
                 if battery_status.map(|s| s.battery_critical).unwrap_or(false) {
                     let _ = led_tx.try_send(SystemLedState::BlinksRedOncePerThirtySeconds);

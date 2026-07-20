@@ -8,11 +8,11 @@ use crate::{BatteryReceiver, BlockingBatteryReader, Sender, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
-use firmware_lib::{select_branch_with_timeout, subcommand_enum, BatteryUpdateAction};
 use model::interfaces::FuelGauge;
 use model::telemetry::TelemetryClient;
 use model::types::{PeriodicInterval, PeripheralError};
 use peripherals::ToPeripheralError;
+use platform::{select_branch_with_timeout, subcommand_enum, BatteryUpdateAction};
 
 /// Trait for waiting on a battery alert pin.
 #[allow(async_fn_in_trait)]
@@ -435,14 +435,14 @@ pub struct BatteryFeatureConfig<MutexRaw: RawMutex + 'static, const N: usize> {
     /// Battery channel sender
     pub battery_tx: Option<crate::BatterySender<MutexRaw, N>>,
     /// Battery manager for battery thresholds and status
-    pub battery_manager: core::cell::RefCell<firmware_lib::BatteryManager>,
+    pub battery_manager: core::cell::RefCell<platform::BatteryManager>,
 }
 
 impl<MutexRaw: RawMutex + 'static, const N: usize> BatteryFeatureConfig<MutexRaw, N> {
     /// Creates a new `BatteryFeatureConfig`.
     pub fn new(
         battery_tx: Option<crate::BatterySender<MutexRaw, N>>,
-        battery_manager: firmware_lib::BatteryManager,
+        battery_manager: platform::BatteryManager,
     ) -> Self {
         Self {
             battery_tx,
@@ -456,7 +456,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
 {
     fn default_boot_trap_mask(&self) -> u32 {
         if self.battery_tx.is_some() {
-            firmware_lib::BootTrapReason::Battery as u32
+            platform::BootTrapReason::Battery as u32
         } else {
             0
         }

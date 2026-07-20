@@ -14,7 +14,7 @@ use {
     cat_detector as app,
     controller::{telemetry_controller::TelemetryController, SystemController},
     embassy_executor::Spawner,
-    firmware_lib::core_monitor,
+    platform::core_monitor,
 };
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -24,15 +24,13 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[firmware_lib::tracing::instrument(name = "boot", level = "info", skip(spawner, board))]
+#[platform::tracing::instrument(name = "boot", level = "info", skip(spawner, board))]
 #[embassy_executor::task]
 async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
     app::init_controllers(board).await;
 
     // Route defmt logs to RTT
-    firmware_lib::defmt_logger::DefmtLogger::set_writer(
-        &firmware_lib::defmt_logger::DEFAULT_RTT_WRITER,
-    );
+    platform::defmt_logger::DefmtLogger::set_writer(&platform::defmt_logger::DEFAULT_RTT_WRITER);
     defmt::info!("Booting Cat Detector App...");
 
     // Initialize the modular panic handler
@@ -67,7 +65,7 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
         embassy_rp::flash::Blocking,
         { app::FLASH_SIZE },
     >::new_blocking(fs_flash);
-    let async_flash = firmware_lib::BlockingAsyncFlash(raw_flash);
+    let async_flash = platform::BlockingAsyncFlash(raw_flash);
     let profiling_flash = controller::filesystem_controller::ProfilingFlash::new(async_flash);
     let mut fs_controller = controller::filesystem_controller::FilesystemController::new(
         profiling_flash,
@@ -199,7 +197,7 @@ fn main() -> ! {
 
     spawner_c0.spawn(bootstrap_task(spawner_c0, board)).unwrap();
     unsafe {
-        app::Board::run_executor(firmware_lib::types::CpuId::Core0);
+        app::Board::run_executor(platform::types::CpuId::Core0);
     }
 }
 

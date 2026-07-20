@@ -55,7 +55,7 @@ For interactive diagnostic shell execution, host logging tools, flash extraction
 
 ### Python Script Verification & Conda Setup
 
-For our target bringup scripts (`scripts/bringup.py`) and Rerun telemetry tools (`scripts/rerun-loader-csv`), we manage dependencies using Conda.
+For our target bringup scripts (`tools/helpers/bringup.py`) and Rerun telemetry tools (`tools/helpers/rerun-loader-csv`), we manage dependencies using Conda.
 
 #### 1. Enlisting in the Conda Environment
 
@@ -75,7 +75,7 @@ We use `pytest` for unit testing our Python helper scripts:
 
 ```bash
 # Run all python script unit tests
-pytest scripts/tests
+pytest tools/validation/tests
 ```
 
 ---
@@ -87,7 +87,7 @@ The workspace is organized into target-agnostic crates for logic/simulation, tar
 *   **[model/](model)**: Core platform-independent system models, state machines, protocols, and calculations (zero-dependency `#![no_std]`).
 *   **[peripherals/](peripherals)**: Abstractions (traits) for peripheral wrappers and concrete implementations based on `embedded-hal` (e.g. `VL53L0X`, `ATtiny816`, `L9110s`, `INA219`, `MAX17048`, `BQ25185`), alongside mock implementations for host testing.
 *   **[controller/](controller)**: Project-agnostic domain controllers and state machine orchestrators. Houses domain-specific CLI handlers that resolve dependencies via a generic `ShellDeviceResolver` trait.
-*   **[lib/](lib)**: Target-independent firmware platform support and diagnostic utility libraries (e.g., panic handlers, stack scanning, RTT loggers, circular log buffers).
+*   **[platform/](platform)**: Target-independent firmware platform support and diagnostic utility libraries (e.g., panic handlers, stack scanning, RTT loggers, circular log buffers).
 *   **[projects/](projects)**: Bare-metal microcontroller application projects (such as `cat_detector`). Deploys unified **Board Support Packages (BSPs)** that encapsulate all target/host driver and pin initialization.
 
 ### Architecture Diagram
@@ -246,8 +246,8 @@ Persistent files (such as calibration variables or telemetry logs) are stored in
 > [!IMPORTANT]
 > The `FilesystemController` wraps the underlying raw flash in `ProfilingFlash`. This interceptor automatically monitors flash write health and logs exact erase telemetry.
 
-### Diagnostics & Crash Logging (`firmware_lib::panic_handler`)
-To capture system crash data reliably without relying on active runtime loops, a generalized **ARMv6m+ (Thumb) Panic Handler** module (`firmware_lib::panic_handler`) is integrated. It operates directly at the low-level panic/NMI boundary:
+### Diagnostics & Crash Logging (`platform::panic_handler`)
+To capture system crash data reliably without relying on active runtime loops, a generalized **ARMv6m+ (Thumb) Panic Handler** module (`platform::panic_handler`) is integrated. It operates directly at the low-level panic/NMI boundary:
 1.  **Stack Scanner**: Performs a heuristic stack scan on the Cortex-M0+ stack, extracting candidate return program counters (PCs) within the flash code segment.
 2.  **Revision & Info Capture**: Retrieves the package version/revision hash and detailed panic information (file, line number, panic message).
 3.  **Circular System Logs**: Captures the last 1024 bytes of diagnostic logs from a global, critical-section protected `CRASH_LOG_BUFFER`.

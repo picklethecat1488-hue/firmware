@@ -4,7 +4,7 @@
 
 use crate::types::{BatteryStatus, DeviceSupport, GestureAction, ProximityAction};
 use embassy_sync::blocking_mutex::raw::RawMutex;
-use firmware_lib::BatteryUpdateAction;
+use platform::BatteryUpdateAction;
 
 /// A single system feature that can react to system events and ticks.
 pub trait SystemFeature<MutexRaw: RawMutex + 'static, const N: usize> {

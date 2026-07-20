@@ -7,7 +7,7 @@ license.workspace = true
 [features]
 default = []
 mock = []
-tracing = ["firmware_lib/tracing", "dep:tracing-defmt", "dep:defmt"]
+tracing = ["platform/tracing", "dep:tracing-defmt", "dep:defmt"]
 core1 = []
 motor-core = ["core1"]
 sensors-core = ["core1"]
@@ -16,7 +16,7 @@ sensors-core = ["core1"]
 embedded-hal = "1.0.0"
 model = { path = "../model" }
 embedded-storage = "0.3"
-firmware_lib = { path = "../lib" }
+platform = { path = "../platform" }
 tracing-defmt = { version = "0.1.2", optional = true }
 defmt = { version = "0.3", optional = true }
 

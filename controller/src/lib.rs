@@ -51,8 +51,8 @@ pub use types::{
     ThermalState, ThermalUpdateAction,
 };
 
-/// Consolidated tracing facade module from firmware_lib.
-pub use firmware_lib::tracing;
+/// Consolidated tracing facade module from platform.
+pub use platform::tracing;
 
 /// Source of truth macro for generating all controller types, channels, and task running helper macros.
 #[macro_export]
@@ -65,6 +65,7 @@ macro_rules! define_controllers {
             receiver: $receiver:ident,
             msg: $msg:ty,
             task: $run_macro:ident {
+                $(core: $core:ident $(= $core_feature:literal)?,)?
                 generics: ($($gen:tt)*),
                 controller: [$($controller_ty:tt)*],
                 rx: [$($rx_ty:tt)*],
@@ -101,7 +102,7 @@ macro_rules! define_controllers {
                     #[cfg(feature = "tracing")]
                     use $crate::tracing::tracing_defmt;
 
-                    #[ $crate::tracing::instrument(name = stringify!($task_module), level = "info", skip($c, $r, $t)) ]
+                    #[ $crate::tracing::instrument($($core $(= $core_feature)?,)? name = stringify!($task_module), level = "info", skip($c, $r, $t)) ]
                     #[embassy_executor::task]
                     #[allow(unreachable_code)]
                     pub async fn task(
@@ -130,6 +131,7 @@ macro_rules! define_controllers {
             receiver: $receiver:ident,
             msg: $msg:ty,
             task: $run_macro:ident {
+                $(core: $core:ident $(= $core_feature:literal)?,)?
                 generics: ($($gen:tt)*),
                 controller: [$($controller_ty:tt)*],
                 rx: [$($rx_ty:tt)*],
@@ -164,7 +166,7 @@ macro_rules! define_controllers {
                     #[cfg(feature = "tracing")]
                     use $crate::tracing::tracing_defmt;
 
-                    #[ $crate::tracing::instrument(name = stringify!($task_module), level = "info", skip($c, $r)) ]
+                    #[ $crate::tracing::instrument($($core $(= $core_feature)?,)? name = stringify!($task_module), level = "info", skip($c, $r)) ]
                     #[embassy_executor::task]
                     #[allow(unreachable_code)]
                     pub async fn task(
@@ -410,6 +412,7 @@ define_controllers! {
         receiver: SensorReceiver,
         msg: crate::sensor_controller::SensorCommand,
         task: run_sensor_task {
+            core: core1 = "sensors-core",
             generics: ($sensor_type:ty, $pin_type:ty, $cmd_type:ty),
             controller: [$crate::sensor_controller::SensorController<
                 'static,
@@ -428,6 +431,7 @@ define_controllers! {
         receiver: MotorReceiver,
         msg: crate::motor_controller::MotorCommand,
         task: run_motor_task {
+            core: core1 = "motor-core",
             generics: ($motor_type:ty, $current_sensor_type:ty),
             controller: [$crate::motor_controller::MotorController<
                 $motor_type,
@@ -462,7 +466,7 @@ define_controllers! {
             generics: ($controller_type:ty),
             controller: [controller],
             rx: [$crate::SystemReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>],
-            rx2: [firmware_lib::gesture_detector::GestureReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>],
+            rx2: [platform::gesture_detector::GestureReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>],
             rx3: [embassy_sync::channel::Receiver<'static, embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, $crate::ThermalUpdateAction, 4>],
             call: |controller, system_rx, gesture_rx, thermal_rx| controller.run(system_rx, gesture_rx, thermal_rx).await
         }
@@ -566,7 +570,7 @@ pub trait BlockingSystemWriter {
     /// Clears a specific boot trap.
     fn clear_boot_trap(
         &mut self,
-        _reason: firmware_lib::BootTrapReason,
+        _reason: platform::BootTrapReason,
     ) -> Result<(), PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }

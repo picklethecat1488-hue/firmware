@@ -206,7 +206,7 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
         all(target_arch = "arm", feature = "sensors-core"),
         link_section = ".data.ram_func"
     )]
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(core1 = "sensors-core", level = "trace")]
     fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
         let res = (|| {
             // Trigger a measurement (write 0x01 to register 0x00 for System Start)
