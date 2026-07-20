@@ -374,7 +374,7 @@ We provide unified scripts and cargo aliases to make checking and verifying loca
 #### 1. Complete Pre-Commit Verification
 To verify code formatting, static tracing assertions, clippy rules, host unit/integration tests, and build checks before submitting code:
 ```bash
-./scripts/verify.sh
+./tools/verify.sh
 ```
 This script executes formatting/tracing checks in parallel, runs target compilation checks, and compiles host tools in debug mode (reusing the test compiler cache) to complete all verification checks in under 30 seconds.
 
@@ -392,7 +392,7 @@ If you want to quickly run compilation checks on demand, you can use these confi
 #### 3. Full MCU Target Build
 To build the final target MCU firmware image manually:
 ```bash
-./scripts/build_firmware.sh
+./tools/build/build_firmware.sh
 ```
 
 ### Diagnostics and Telemetry Verification
@@ -418,9 +418,9 @@ When introducing or modifying telemetry records, filesystem files, or crash logs
      ```
    - Stream the CSV into the running viewer:
      ```bash
-     python scripts/rerun-loader-csv telemetry.csv
+     python tools/helpers/rerun-loader-csv telemetry.csv
      ```
-   *(Optional)* Symlink `scripts/rerun-loader-csv` into your system `PATH` (e.g., `/usr/local/bin/rerun-loader-csv` or `~/.local/bin/rerun-loader-csv`) to enable direct drag-and-drop or CLI loading via:
+   *(Optional)* Symlink `tools/helpers/rerun-loader-csv` into your system `PATH` (e.g., `/usr/local/bin/rerun-loader-csv` or `~/.local/bin/rerun-loader-csv`) to enable direct drag-and-drop or CLI loading via:
      ```bash
      rerun telemetry.csv
      ```

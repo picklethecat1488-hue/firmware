@@ -38,10 +38,10 @@ jobs:
           pip install tree-sitter==0.26.0 tree-sitter-rust==0.24.2 colorama halo
 
       - name: Run Codebase Validations
-        run: ./scripts/validate_codebase.sh validation_report.txt
+        run: ./tools/validation/validate_codebase.sh validation_report.txt
 
       - name: Run Tests
-        run: ./scripts/run_tests.sh test_report.txt
+        run: ./tools/run_tests.sh test_report.txt
 
       - name: Upload Validation Reports
         uses: actions/upload-artifact@v4
@@ -73,7 +73,7 @@ jobs:
 
       - name: Build and Package Host Tools
         shell: bash
-        run: ./scripts/build_host_tools.sh --zip host-tools-${{ matrix.os }}.zip
+        run: ./tools/build/build_host_tools.sh --zip host-tools-${{ matrix.os }}.zip
 
       - name: Upload Host Tools Artifact
         uses: actions/upload-artifact@v4
@@ -109,7 +109,7 @@ jobs:
           path: ./
 
       - name: Build and Organize Firmware
-        run: ./scripts/build_firmware.sh --out-dir build
+        run: ./tools/build/build_firmware.sh --out-dir build
 
       - name: Copy Verification Reports to Package
         run: |
@@ -118,7 +118,7 @@ jobs:
           cp clippy_target_report.txt build/
 
       - name: Binary Size Report
-        run: ./scripts/generate_size_report.sh build/size_report.txt
+        run: ./tools/helpers/generate_size_report.sh build/size_report.txt
 
       - name: Package Firmware Binaries and Reports
         run: |

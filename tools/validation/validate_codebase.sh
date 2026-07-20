@@ -39,7 +39,7 @@ echo "Running clippy on MCU Target (thumbv6m-none-eabi)..."
 run_and_report "cargo clippy --workspace ${EXCLUDE_ARGS[*]} --lib --bins --target thumbv6m-none-eabi --color never -- -D warnings"
 
 echo "Validating tracing hierarchy and early returns..."
-run_and_report "python scripts/validate_tracing.py"
+run_and_report "python tools/validation/validate_tracing.py"
 
 echo "Validating RAM placement for multicore execution..."
-run_and_report "python scripts/validate_multicore_support.py"
+run_and_report "python tools/validation/validate_multicore_support.py"
