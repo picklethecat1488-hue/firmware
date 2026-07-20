@@ -9,7 +9,7 @@ members = [
     "projects/cat_detector",
     "tools/host_fs",
     "tools/host_cli",
-    "tools/lib",
+    "platform/host",
 ]
 default-members = [
     "model",
