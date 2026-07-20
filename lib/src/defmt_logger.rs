@@ -333,3 +333,6 @@ impl<W: RttWriter> RttProtocol<W> {
         }
     }
 }
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+defmt::timestamp!("{=u64:us}", embassy_time::Instant::now().as_micros());
