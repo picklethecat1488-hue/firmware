@@ -1,7 +1,7 @@
 
 [alias]
 check-host = "check --workspace --all-targets"
-check-mcu = "check --workspace --bins --lib --target=thumbv6m-none-eabi"
+check-mcu = "check --workspace --bins --lib --target=thumbv6m-none-eabi --exclude=host_cli --exclude=host_fs --exclude=tool_common"
 
 [target.thumbv6m-none-eabi]
 runner = "/Users/daparker/gh/firmware/tools/runner.sh"
