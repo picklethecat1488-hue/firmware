@@ -304,6 +304,7 @@ where
                                     embassy_time::Duration::from_millis(ms as u64)
                                 }
                             };
+                            telemetry_client.report_interval(model::types::Device::Battery, interval);
                         }
                     }
                     Some(())
@@ -511,7 +512,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
 
     fn on_wake_locks_changed(&self, wake_locks: u32) {
         if let Some(ref battery_tx) = self.battery_tx {
-            let _ = battery_tx.try_send(crate::BatteryCommand::UpdateWakeLocks(wake_locks));
+            let res = battery_tx.try_send(crate::BatteryCommand::UpdateWakeLocks(wake_locks));
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            res.expect("Failed to signal wake locks update to battery controller");
+            #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+            let _ = res;
         }
     }
 }
@@ -521,7 +526,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::Periodic
 {
     fn set_interval(&self, interval: PeriodicInterval) {
         if let Some(ref battery_tx) = self.battery_tx {
-            let _ = battery_tx.try_send(BatteryCommand::SetInterval(interval));
+            let res = battery_tx.try_send(BatteryCommand::SetInterval(interval));
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            res.expect("Failed to send periodic interval to battery controller");
+            #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+            let _ = res;
         }
     }
 }

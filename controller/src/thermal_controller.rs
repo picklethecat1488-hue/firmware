@@ -114,9 +114,15 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
                 Err(e) => {
                     let safe_temp = 25000; // 25°C
                     if self.first_update {
-                        self.first_update = false;
                         if let Some(tx) = &self.thermal_tx {
-                            let _ = tx.try_send(crate::types::ThermalUpdateAction::ClearBootTrap);
+                            if tx
+                                .try_send(crate::types::ThermalUpdateAction::ClearBootTrap)
+                                .is_ok()
+                            {
+                                self.first_update = false;
+                            }
+                        } else {
+                            self.first_update = false;
                         }
                     }
                     if let Some(ref mut client) = telemetry_client {
@@ -156,9 +162,15 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
                         defmt::error!("Thermal Controller: Critical temperature exceeded ({} mC). Dispatching safety shutdown.", temp);
                     }
                 } else if self.first_update {
-                    self.first_update = false;
                     if let Some(tx) = &self.thermal_tx {
-                        let _ = tx.try_send(crate::types::ThermalUpdateAction::ClearBootTrap);
+                        if tx
+                            .try_send(crate::types::ThermalUpdateAction::ClearBootTrap)
+                            .is_ok()
+                        {
+                            self.first_update = false;
+                        }
+                    } else {
+                        self.first_update = false;
                     }
                 }
 
@@ -196,6 +208,7 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
                                 embassy_time::Duration::from_millis(ms as u64)
                             }
                         };
+                        telemetry_client.report_interval(model::types::Device::Thermal, interval);
                     }
                 },
                 Err(_timeout) => {
@@ -203,7 +216,9 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
                         && self.update(Some(&mut telemetry_client)).await.is_err()
                     {
                         #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        defmt::warn!("ThermalController: Periodic read failed; disabling periodic updates.");
+                        defmt::warn!(
+                            "ThermalController: Periodic read failed; disabling periodic updates."
+                        );
                         check_interval = crate::OVERFLOW_SAFE_MAX_DURATION;
                     }
                 }
@@ -377,7 +392,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::Periodic
 {
     fn set_interval(&self, interval: PeriodicInterval) {
         if let Some(ref thermal_tx) = self.thermal_tx {
-            let _ = thermal_tx.try_send(ThermalCommand::SetInterval(interval));
+            let res = thermal_tx.try_send(ThermalCommand::SetInterval(interval));
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            res.expect("Failed to send periodic interval to thermal controller");
+            #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+            let _ = res;
         }
     }
 }

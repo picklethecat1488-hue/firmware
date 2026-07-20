@@ -414,6 +414,7 @@ impl TelemetryCounters {
             TelemetryRecord::ChargerState(_) => 9,
             TelemetryRecord::PeripheralError(_) => 10,
             TelemetryRecord::Boot(_) => 11,
+            TelemetryRecord::PeriodicInterval(_, _) => 12,
         };
         self.counts[idx] += 1;
     }
@@ -550,6 +551,17 @@ impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
             last_state: None,
         }
     }
+
+    /// Reports a periodic interval change to telemetry.
+    pub fn report_interval(
+        &self,
+        device: model::types::Device,
+        interval: model::types::PeriodicInterval,
+    ) {
+        if let Some(ref tx) = self.tx {
+            let _ = tx.try_send(TelemetryRecord::PeriodicInterval(device, interval));
+        }
+    }
 }
 
 impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
@@ -601,6 +613,17 @@ impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
             wake_threshold_mm,
             last_logged_distance: [9999; 3],
             last_logged_in_range: [None; 3],
+        }
+    }
+
+    /// Reports a periodic interval change to telemetry.
+    pub fn report_interval(
+        &self,
+        device: model::types::Device,
+        interval: model::types::PeriodicInterval,
+    ) {
+        if let Some(ref tx) = self.tx {
+            let _ = tx.try_send(TelemetryRecord::PeriodicInterval(device, interval));
         }
     }
 }
@@ -727,6 +750,17 @@ impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
     pub fn report_error(&self, err: model::types::PeripheralError) {
         if let Some(ref tx) = self.tx {
             let _ = tx.try_send(TelemetryRecord::PeripheralError(err));
+        }
+    }
+
+    /// Reports a periodic interval change to telemetry.
+    pub fn report_interval(
+        &self,
+        device: model::types::Device,
+        interval: model::types::PeriodicInterval,
+    ) {
+        if let Some(ref tx) = self.tx {
+            let _ = tx.try_send(TelemetryRecord::PeriodicInterval(device, interval));
         }
     }
 }

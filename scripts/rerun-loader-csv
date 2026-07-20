@@ -128,6 +128,14 @@ def main():
                             msg += f", Reg: {val3}"
                         msg += ")"
                     rr.log("system/peripheral_error", rr.TextDocument(msg))
+                elif rec_type == "PeriodicInterval":
+                    try:
+                        device_str = val1
+                        interval_str = val2
+                        val_num = 0.0 if interval_str.lower() == "none" else float(interval_str)
+                        rr.log(f"periodic_interval/{device_str.lower()}", rr.Scalars(val_num))
+                    except ValueError:
+                        pass
     except Exception as e:
         print(f"Error parsing CSV: {e}", file=sys.stderr)
         sys.exit(1)

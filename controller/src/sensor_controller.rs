@@ -153,6 +153,10 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
     }
 
     /// Gets the periodic monitoring interval.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.ram_func"
+    )]
     pub fn periodic_interval(&self) -> PeriodicInterval {
         self.periodic_interval
     }
@@ -882,8 +886,19 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_C
     crate::Periodic for ProximityFeatureConfig<MutexRaw, N, S_CAP, T_CAP>
 {
     fn set_interval(&self, interval: PeriodicInterval) {
+        self.telemetry_client
+            .borrow_mut()
+            .report_interval(model::types::Device::Sensors, interval);
         for sensor_tx in &self.sensor_txs {
-            let _ = sensor_tx.try_send(SensorCommand::SetInterval(interval));
+            if sensor_tx
+                .try_send(SensorCommand::SetInterval(interval))
+                .is_err()
+            {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::error!(
+                    "ProximityFeatureConfig: Failed to configure sensor periodic interval!"
+                );
+            }
         }
     }
 }

@@ -250,6 +250,17 @@ pub async fn run(
                     model::telemetry::TelemetryRecord::Boot(reason) => {
                         writeln!(csv_file, "{},Boot,{:?},,,", ts, reason)?;
                     }
+                    model::telemetry::TelemetryRecord::PeriodicInterval(device, interval) => {
+                        let interval_str = match interval {
+                            model::types::PeriodicInterval::None => "None".to_string(),
+                            model::types::PeriodicInterval::UpdateMs(ms) => ms.to_string(),
+                        };
+                        writeln!(
+                            csv_file,
+                            "{},PeriodicInterval,{:?},{},,",
+                            ts, device, interval_str
+                        )?;
+                    }
                 }
             }
 

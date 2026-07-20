@@ -395,6 +395,27 @@ pub enum BootReason {
     Unknown,
 }
 
+/// Subsystem devices that can be power-managed and monitored.
+#[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum Device {
+    /// The motor.
+    #[n(0)]
+    Motor,
+    /// Proximity/gesture sensors.
+    #[n(1)]
+    Sensors,
+    /// Status indicator LED.
+    #[n(2)]
+    Led,
+    /// Battery / Fuel gauge.
+    #[n(3)]
+    Battery,
+    /// Thermal monitoring.
+    #[n(4)]
+    Thermal,
+}
+
 /// Interval configuration for periodic tasks.
 #[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
@@ -422,5 +443,6 @@ dummy_debug!(Direction);
 dummy_debug!(PeripheralError);
 dummy_debug!(BootReason);
 dummy_debug!(PeriodicInterval);
+dummy_debug!(Device);
 
 pub use crate::telemetry::TelemetryRecord;

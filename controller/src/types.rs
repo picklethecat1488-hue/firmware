@@ -51,22 +51,8 @@ pub struct BatteryStatus {
     pub soc_led_state: SystemLedState,
 }
 
-/// Devices that can be power-managed by the system.
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
-#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
-pub enum Device {
-    /// The motor.
-    Motor,
-    /// Proximity/gesture sensors.
-    Sensors,
-    /// Status indicator LED.
-    Led,
-    /// Battery / Fuel gauge.
-    Battery,
-    /// Thermal monitoring.
-    Thermal,
-}
+/// Re-export Device from model crate.
+pub use model::types::Device;
 
 /// Device activity support status in the current system state.
 #[derive(Clone, Copy)]
@@ -254,7 +240,6 @@ impl From<MotorCalState> for model::calibration::FourPointRef {
 dummy_debug!(GestureAction);
 dummy_debug!(ProximityAction);
 dummy_debug!(BatteryStatus);
-dummy_debug!(Device);
 dummy_debug!(DeviceSupport);
 dummy_debug!(SensorMetadata);
 dummy_debug!(SensorDirection);

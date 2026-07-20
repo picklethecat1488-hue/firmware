@@ -40,6 +40,9 @@ pub enum TelemetryRecord {
     /// System booted telemetry.
     #[n(11)]
     Boot(#[n(0)] BootReason),
+    /// Periodic update interval changed.
+    #[n(12)]
+    PeriodicInterval(#[n(0)] Device, #[n(1)] PeriodicInterval),
 }
 
 impl TelemetryRecord {
@@ -90,6 +93,7 @@ impl TelemetryRecord {
             Self::ChargerState(_) => "ChargerState",
             Self::PeripheralError(_) => "PeripheralError",
             Self::Boot(_) => "Boot",
+            Self::PeriodicInterval(_, _) => "PeriodicInterval",
         }
     }
 
@@ -108,6 +112,7 @@ impl TelemetryRecord {
             9 => "ChargerState",
             10 => "PeripheralError",
             11 => "Boot",
+            12 => "PeriodicInterval",
             _ => "Unknown",
         }
     }
@@ -127,7 +132,7 @@ pub const CHUNK_FILE_SIZE: usize = CHUNK_SIZE * 20;
 /// Default size of the telemetry file buffer
 pub const BUFFER_SIZE: usize = 3000;
 /// Total number of telemetry record types/variants.
-pub const NUM_TELEMETRY_VARIANTS: usize = 12;
+pub const NUM_TELEMETRY_VARIANTS: usize = 13;
 
 /// Macro to lookup the name of a telemetry record chunk.
 #[macro_export]

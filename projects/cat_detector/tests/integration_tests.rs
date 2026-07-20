@@ -208,6 +208,8 @@ fn test_system_integration_flow() {
             while let Ok(q) = SYSTEM_CHANNEL.try_receive() {
                 let _ = ctrl.handle_command(q);
             }
+            while BATTERY_CHANNEL.try_receive().is_ok() {}
+            while THERMAL_CHANNEL.try_receive().is_ok() {}
         };
 
         let tick_system = |ctrl: &mut SystemController<_, _, _>, ms: u32| {
@@ -215,6 +217,8 @@ fn test_system_integration_flow() {
             while let Ok(q) = SYSTEM_CHANNEL.try_receive() {
                 let _ = ctrl.handle_command(q);
             }
+            while BATTERY_CHANNEL.try_receive().is_ok() {}
+            while THERMAL_CHANNEL.try_receive().is_ok() {}
         };
 
         // Verify initial state is PowerDown
