@@ -87,3 +87,60 @@ def test_parse_cargo_target_custom():
 
     cmd_bin_release = "cargo run --bin custom_mcu_binary --release"
     assert bringup.parse_cargo_target(cmd_bin_release) == "target/release/custom_mcu_binary"
+
+
+def test_rtt_process_lifecycle_and_reconnect(monkeypatch):
+    """Verify that RttProcessWrapper correctly spawns host_cli and drains stdout."""
+    import subprocess
+    from unittest.mock import MagicMock
+
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = None
+    mock_proc.stdin = MagicMock()
+    mock_proc.stdout = MagicMock()
+    mock_proc.stderr = MagicMock()
+
+    # Mock subprocess.run to avoid cargo build during tests
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: MagicMock(returncode=0))
+
+    # Simulate reading lines from stdout
+    mock_proc.stdout.fileno.return_value = 10
+
+    # Mock os.read used inside readline
+    import os
+
+    mock_read_calls = [b"Welcome to target shell\n", b"shell> "]
+
+    def mock_os_read(fd, n):
+        if mock_read_calls:
+            return mock_read_calls.pop(0)
+        return b""
+
+    monkeypatch.setattr(os, "read", mock_os_read)
+
+    # Mock select.select to indicate data is available
+    import select
+
+    monkeypatch.setattr(select, "select", lambda r, w, x, t: ([10], [], []))
+
+    # Mock Popen
+    mock_popen = MagicMock(return_value=mock_proc)
+    monkeypatch.setattr(subprocess, "Popen", mock_popen)
+
+    # Test initialization
+    wrapper = bringup.RttProcessWrapper("test_elf")
+
+    assert mock_popen.called
+    args, kwargs = mock_popen.call_args
+    assert any("host_cli" in part for part in args[0])
+
+    # Test writing
+    wrapper.write(b"help\n")
+    mock_proc.stdin.write.assert_called_with(b"help\n")
+
+    # Test reading line-by-line
+    line1 = wrapper.readline()
+    assert line1 == b"Welcome to target shell\n"
+
+    line2 = wrapper.readline()
+    assert line2 == b"shell> "

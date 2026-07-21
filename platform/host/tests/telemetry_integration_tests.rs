@@ -327,3 +327,96 @@ fn test_read_telemetry_records_integration() {
         assert_eq!(records[1].1, rec2);
     });
 }
+
+#[test]
+fn test_read_telemetry_records_corrupted() {
+    futures::executor::block_on(async {
+        let mut cache = sequential_storage::cache::NoCache::new();
+        let mut buf = vec![0u8; 4096];
+        let parser = FlashTelemetryParser::new(3);
+
+        // 1. Telemetry file is too short (< 12 bytes)
+        {
+            let mut flash = MockFlash::new(1024 * 64);
+            let flash_range = 0..1024 * 64;
+            let key = string_to_key("telemetry.rrd");
+            let header_bytes = [0u8; 8];
+            sequential_storage::map::store_item::<[u8; 32], &[u8], _>(
+                &mut flash,
+                flash_range.clone(),
+                &mut cache,
+                &mut buf,
+                &key,
+                &&header_bytes[..],
+            )
+            .await
+            .unwrap();
+
+            let res = parser
+                .read_records(&mut flash, flash_range, &mut cache, &mut buf, 128)
+                .await;
+            assert!(res.is_err());
+            assert!(res.unwrap_err().contains("too short"));
+        }
+
+        // 2. Telemetry file is oversized (20 bytes)
+        {
+            let mut flash = MockFlash::new(1024 * 64);
+            let flash_range = 0..1024 * 64;
+            let key = string_to_key("telemetry.rrd");
+            let mut header_bytes = vec![0u8; 20];
+            let cursor = minicbor::encode::write::Cursor::new(&mut header_bytes[1..12]);
+            let mut encoder = minicbor::Encoder::new(cursor);
+            encoder.array(2).unwrap();
+            encoder.u32(0).unwrap();
+            encoder.u32(0).unwrap();
+            let header_len = encoder.into_writer().position();
+            header_bytes[0] = header_len as u8;
+
+            sequential_storage::map::store_item::<[u8; 32], &[u8], _>(
+                &mut flash,
+                flash_range.clone(),
+                &mut cache,
+                &mut buf,
+                &key,
+                &&header_bytes[..],
+            )
+            .await
+            .unwrap();
+
+            // Should succeed without panicking
+            let res = parser
+                .read_records(&mut flash, flash_range, &mut cache, &mut buf, 128)
+                .await;
+            assert!(res.is_ok());
+            assert!(res.unwrap().is_empty());
+        }
+
+        // 3. Telemetry file has invalid header CBOR format
+        {
+            let mut flash = MockFlash::new(1024 * 64);
+            let flash_range = 0..1024 * 64;
+            let key = string_to_key("telemetry.rrd");
+            let mut header_bytes = [0u8; 12];
+            header_bytes[0] = 5; // length of CBOR payload
+            header_bytes[1..6].copy_from_slice(b"badcb"); // completely invalid CBOR
+
+            sequential_storage::map::store_item::<[u8; 32], &[u8], _>(
+                &mut flash,
+                flash_range.clone(),
+                &mut cache,
+                &mut buf,
+                &key,
+                &&header_bytes[..],
+            )
+            .await
+            .unwrap();
+
+            let res = parser
+                .read_records(&mut flash, flash_range, &mut cache, &mut buf, 128)
+                .await;
+            assert!(res.is_err());
+            assert!(res.unwrap_err().contains("Failed to decode"));
+        }
+    });
+}
