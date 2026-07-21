@@ -9,6 +9,7 @@ steps:
     name: Format Filesystem Partition
     type: shell_command
     command: fs format
+    reboot: true
     expected_regex: "Formatting successful!|Type 'help' to print usage."
     description: Erase and format the sequential-storage partition.
 
@@ -150,6 +151,7 @@ steps:
     type: shell_command
     flash_before: shell
     command: system crash
+    reboot: true
     expected_regex: "Type 'help' to print usage."
     description: Force a CPU panic handler test execution to verify logging.
 
@@ -157,6 +159,7 @@ steps:
     name: Verify Core 1 Panic Capture
     type: shell_command
     command: core1 panic
+    reboot: true
     expected_regex: "Type 'help' to print usage."
     description: Trigger a simulated panic on Core 1 executor and verify crash log generation.
 
