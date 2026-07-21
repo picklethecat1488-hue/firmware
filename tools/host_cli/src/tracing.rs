@@ -1164,6 +1164,51 @@ fn save_processed_trace(
     Ok(())
 }
 
+/// Pipeline stage that aligns all target events to the host time domain
+/// using the target microcontroller timestamp to eliminate transport and decoding jitter.
+pub struct DeviceTimeAligner;
+
+impl TraceStage for DeviceTimeAligner {
+    fn run(
+        &mut self,
+        mut events: Vec<serde_json::Value>,
+    ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        // Find the first event with device_ts to compute the synchronization offset
+        let mut sync_offset = None;
+        for event in &events {
+            if let Some(obj) = event.as_object() {
+                if let Some(device_ts) = obj
+                    .get("args")
+                    .and_then(|a| a.get("device_ts"))
+                    .and_then(|t| t.as_f64())
+                {
+                    if let Some(host_ts) = obj.get("ts").and_then(|t| t.as_f64()) {
+                        sync_offset = Some(host_ts - device_ts);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Apply the synchronization offset to all events containing device_ts
+        if let Some(offset) = sync_offset {
+            for event in &mut events {
+                if let Some(obj) = event.as_object_mut() {
+                    if let Some(device_ts) = obj
+                        .get("args")
+                        .and_then(|a| a.get("device_ts"))
+                        .and_then(|t| t.as_f64())
+                    {
+                        obj.insert("ts".to_string(), serde_json::json!(device_ts + offset));
+                    }
+                }
+            }
+        }
+
+        Ok(events)
+    }
+}
+
 /// Post-processes the generated trace JSON file using a multi-stage transformation pipeline.
 pub fn post_process_trace(
     path: &str,
@@ -1180,6 +1225,7 @@ pub fn post_process_trace(
     let events: Vec<serde_json::Value> = serde_json::from_str(&content)?;
 
     let mut pipeline = TracePipeline::new()
+        .add_stage(DeviceTimeAligner)
         .add_stage(ChronologicalSorter)
         .add_stage(TelemetryDecoder::new())
         .add_stage(CoreAssigner::new(elf_path.map(|s| s.to_string())))
@@ -1202,6 +1248,8 @@ pub struct ParsedTracingLine {
     pub parent_id: String,
     /// The cleaned name of the span (with quotes stripped).
     pub span_name: String,
+    /// The parsed microcontroller timestamp in microseconds.
+    pub device_ts: Option<f64>,
 }
 
 impl ParsedTracingLine {
@@ -1270,6 +1318,21 @@ impl ParsedTracingLine {
         let ids: Vec<&str> = raw_ids.split(':').collect();
         let span_id = ids.last().unwrap_or(&raw_ids).to_string();
 
+        let mut device_ts = None;
+        if words.len() >= 2 {
+            let second_word = words[1];
+            if second_word == "TRACE"
+                || second_word == "DEBUG"
+                || second_word == "INFO"
+                || second_word == "WARN"
+                || second_word == "ERROR"
+            {
+                if let Ok(ts_sec) = words[0].parse::<f64>() {
+                    device_ts = Some(ts_sec * 1_000_000.0);
+                }
+            }
+        }
+
         if span_id.is_empty() {
             return None;
         }
@@ -1291,6 +1354,7 @@ impl ParsedTracingLine {
             span_id,
             parent_id,
             span_name,
+            device_ts,
         })
     }
 }
@@ -1305,19 +1369,22 @@ impl ParsedTracingLine {
 /// telemetry events, and forwarded to the host tracing pipeline.
 pub fn handle_tracing_line(line: &str, module: Option<&str>) -> Result<bool, &'static str> {
     if let Some(parsed) = ParsedTracingLine::parse(line) {
+        let ts = parsed.device_ts.unwrap_or(0.0);
         if parsed.is_enter {
             tracing::info!(
                 target: "device_span_enter",
                 span_name = parsed.span_name,
                 span_id = parsed.span_id,
                 parent_id = parsed.parent_id,
-                module = module.unwrap_or("")
+                module = module.unwrap_or(""),
+                device_ts = ts
             );
         } else {
             tracing::info!(
                 target: "device_span_exit",
                 span_id = parsed.span_id,
-                span_name = parsed.span_name
+                span_name = parsed.span_name,
+                device_ts = ts
             );
         }
         Ok(true)
