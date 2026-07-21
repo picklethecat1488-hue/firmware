@@ -281,13 +281,14 @@ fn test_handle_tracing_line_parsing() {
 
     // Test span_enter with ctx prefix and brackets containing colons
     assert_eq!(
-        host_cli::tracing::handle_tracing_line("33.986126 TRACE [peripherals::l9110s::{impl#2}::tick] ctx=000102030405060708090a0b0c0d0e0f:0001020304050607 parent=0000000000000000 span_enter: sensor_task", None),
+        host_cli::tracing::handle_tracing_line("33.986126 TRACE [peripherals::l9110s::{impl#2}::tick] ctx=000102030405060708090a0b0c0d0e0f:0001020304050607 parent=0000000000000000 span_enter: sensor_task", None, None),
         Ok(true)
     );
 
     assert_eq!(
         host_cli::tracing::handle_tracing_line(
             "platform::system::run_loop: cpu_idle_c0 span_exit: Core 0: CPU Idle Core 0",
+            None,
             None
         ),
         Ok(true)
@@ -295,18 +296,24 @@ fn test_handle_tracing_line_parsing() {
 
     // Test span_exit without ctx prefix (raw hex id) and brackets containing colons
     assert_eq!(
-        host_cli::tracing::handle_tracing_line("33.986126 TRACE [peripherals::l9110s::{impl#2}::tick] 000102030405060708090a0b0c0d0e0f:0001020304050607 parent=0000000000000000 span_exit: sensor_task", None),
+        host_cli::tracing::handle_tracing_line("33.986126 TRACE [peripherals::l9110s::{impl#2}::tick] 000102030405060708090a0b0c0d0e0f:0001020304050607 parent=0000000000000000 span_exit: sensor_task", None, None),
+        Ok(true)
+    );
+
+    // Test with ANSI color escape codes to ensure they are stripped correctly
+    assert_eq!(
+        host_cli::tracing::handle_tracing_line("\u{1b}[2m33.986126\u{1b}[0m \u{1b}[2mTRACE\u{1b}[0m \u{1b}[2m[peripherals::l9110s::{impl#2}::tick]\u{1b}[0m ctx=000102030405060708090a0b0c0d0e0f:0001020304050607 parent=0000000000000000 span_enter: sensor_task", None, None),
         Ok(true)
     );
 
     // Test normal non-tracing line
     assert_eq!(
-        host_cli::tracing::handle_tracing_line("some normal log message", None),
+        host_cli::tracing::handle_tracing_line("some normal log message", None, None),
         Ok(false)
     );
 
     let recorded = events.lock().unwrap();
-    assert_eq!(recorded.len(), 3);
+    assert_eq!(recorded.len(), 4);
 
     assert_eq!(recorded[0].0, "device_span_enter");
     assert_eq!(recorded[0].1, "sensor_task");
@@ -318,6 +325,21 @@ fn test_handle_tracing_line_parsing() {
 
     assert_eq!(recorded[2].0, "device_span_exit");
     assert_eq!(recorded[2].2, "0001020304050607");
+
+    assert_eq!(recorded[3].0, "device_span_enter");
+    assert_eq!(recorded[3].1, "sensor_task");
+    assert_eq!(recorded[3].2, "0001020304050607");
+
+    // Test direct ParsedTracingLine field accessors & line lifetime reference
+    let raw_line = "33.986126 TRACE [module] ctx=000102030405060708090a0b0c0d0e0f parent=0000000000000000 span_enter: sensor_task";
+    let parsed = host_cli::tracing::ParsedTracingLine::parse(raw_line).unwrap();
+    assert_eq!(parsed.line(), raw_line);
+    let (span_id, parent_id) = parsed.parse_ids();
+    assert_eq!(span_id, "000102030405060708090a0b0c0d0e0f");
+    assert_eq!(parent_id, "0000000000000000");
+    assert_eq!(parsed.span_name(), "sensor_task");
+    assert_eq!(parsed.is_enter(), true);
+    assert_eq!(parsed.device_ts(), Some(33.986126 * 1_000_000.0));
 }
 
 #[test]

@@ -596,7 +596,14 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                             .and_then(|locs| locs.get(&frame.index()))
                                             .map(|loc| loc.module.as_str());
 
-                                        match handle_tracing_line(&line_str, module_path) {
+                                        let device_ts = frame
+                                            .display_timestamp()
+                                            .map(|ts| ts.to_string())
+                                            .and_then(|s| s.trim().parse::<f64>().ok())
+                                            .map(|ts_sec| ts_sec * 1_000_000.0);
+
+                                        match handle_tracing_line(&line_str, module_path, device_ts)
+                                        {
                                             Ok(true) => continue,
                                             Err(e) => {
                                                 eprintln!("Error parsing trace line: {}", e);

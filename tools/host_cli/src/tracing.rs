@@ -1,6 +1,263 @@
 use std::fs;
 use tracing_subscriber::prelude::*;
 
+pub struct TraceEventRef<'a> {
+    obj: &'a serde_json::Map<String, serde_json::Value>,
+}
+
+impl<'a> TraceEventRef<'a> {
+    pub fn new(event: &'a serde_json::Value) -> Option<Self> {
+        event.as_object().map(|obj| Self { obj })
+    }
+
+    pub fn from_map(obj: &'a serde_json::Map<String, serde_json::Value>) -> Self {
+        Self { obj }
+    }
+
+    pub fn category(&self) -> TraceCategory {
+        let cat_str = self.obj.get("cat").and_then(|c| c.as_str()).unwrap_or("");
+        TraceCategory::parse(cat_str)
+    }
+
+    pub fn span_id(&self) -> String {
+        self.obj
+            .get("span_id")
+            .or_else(|| self.obj.get("args").and_then(|a| a.get("span_id")))
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string()
+    }
+
+    pub fn ts(&self) -> f64 {
+        self.obj.get("ts").and_then(|t| t.as_f64()).unwrap_or(0.0)
+    }
+
+    pub fn pid(&self) -> i64 {
+        self.obj.get("pid").and_then(|p| p.as_i64()).unwrap_or(1)
+    }
+
+    pub fn tid(&self) -> i64 {
+        self.obj.get("tid").and_then(|t| t.as_i64()).unwrap_or(0)
+    }
+
+    pub fn name(&self) -> String {
+        self.obj
+            .get("args")
+            .and_then(|a| a.get("span_name"))
+            .or_else(|| self.obj.get("span_name"))
+            .or_else(|| self.obj.get("name"))
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string()
+    }
+
+    pub fn target_name(&self) -> String {
+        self.obj
+            .get("target_name")
+            .or_else(|| self.obj.get("args").and_then(|a| a.get("span_name")))
+            .or_else(|| self.obj.get("span_name"))
+            .or_else(|| self.obj.get("name"))
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string()
+    }
+
+    pub fn msg(&self) -> String {
+        self.obj
+            .get("msg")
+            .or_else(|| {
+                self.obj.get("args").and_then(|a| {
+                    a.get("message")
+                        .or_else(|| a.get("msg"))
+                        .or_else(|| a.get("val"))
+                })
+            })
+            .or_else(|| self.obj.get("name"))
+            .and_then(|n| n.as_str())
+            .unwrap_or("")
+            .to_string()
+    }
+
+    pub fn parent_id(&self) -> String {
+        self.obj
+            .get("parent_id")
+            .or_else(|| self.obj.get("args").and_then(|a| a.get("parent_id")))
+            .and_then(|p| p.as_str())
+            .unwrap_or("")
+            .to_string()
+    }
+
+    pub fn module(&self) -> String {
+        self.obj
+            .get("module")
+            .or_else(|| self.obj.get("args").and_then(|a| a.get("module")))
+            .and_then(|s| s.as_str())
+            .unwrap_or("")
+            .to_string()
+    }
+
+    pub fn has_arg(&self, key: &str) -> bool {
+        self.obj.get("args").and_then(|a| a.get(key)).is_some()
+    }
+
+    pub fn file(&self) -> Option<&str> {
+        self.obj.get(".file").and_then(|f| f.as_str())
+    }
+
+    pub fn line(&self) -> Option<i64> {
+        self.obj.get(".line").and_then(|l| l.as_i64())
+    }
+
+    pub fn device_ts(&self) -> Option<f64> {
+        self.obj
+            .get("args")
+            .and_then(|a| a.get("device_ts"))
+            .and_then(|t| {
+                if let Some(f) = t.as_f64() {
+                    Some(f)
+                } else if let Some(s) = t.as_str() {
+                    s.parse::<f64>().ok()
+                } else {
+                    None
+                }
+            })
+    }
+}
+
+pub struct TraceEventMut<'a> {
+    obj: &'a mut serde_json::Map<String, serde_json::Value>,
+}
+
+impl<'a> TraceEventMut<'a> {
+    pub fn new(event: &'a mut serde_json::Value) -> Option<Self> {
+        event.as_object_mut().map(|obj| Self { obj })
+    }
+
+    pub fn from_map(obj: &'a mut serde_json::Map<String, serde_json::Value>) -> Self {
+        Self { obj }
+    }
+
+    pub fn as_ref(&self) -> TraceEventRef<'_> {
+        TraceEventRef { obj: self.obj }
+    }
+
+    pub fn category(&self) -> TraceCategory {
+        self.as_ref().category()
+    }
+
+    pub fn span_id(&self) -> String {
+        self.as_ref().span_id()
+    }
+
+    pub fn msg(&self) -> String {
+        self.as_ref().msg()
+    }
+
+    pub fn parent_id(&self) -> String {
+        self.as_ref().parent_id()
+    }
+
+    pub fn module(&self) -> String {
+        self.as_ref().module()
+    }
+
+    pub fn has_arg(&self, key: &str) -> bool {
+        self.as_ref().has_arg(key)
+    }
+
+    pub fn file(&self) -> Option<&str> {
+        self.obj.get(".file").and_then(|f| f.as_str())
+    }
+
+    pub fn line(&self) -> Option<i64> {
+        self.obj.get(".line").and_then(|l| l.as_i64())
+    }
+
+    pub fn name(&self) -> String {
+        self.as_ref().name()
+    }
+
+    pub fn target_name(&self) -> String {
+        self.as_ref().target_name()
+    }
+
+    pub fn device_ts(&self) -> Option<f64> {
+        self.as_ref().device_ts()
+    }
+
+    pub fn ts(&self) -> f64 {
+        self.as_ref().ts()
+    }
+
+    pub fn pid(&self) -> i64 {
+        self.as_ref().pid()
+    }
+
+    pub fn tid(&self) -> i64 {
+        self.as_ref().tid()
+    }
+
+    pub fn set_name(&mut self, name: &str) {
+        self.obj
+            .insert("name".to_string(), serde_json::Value::from(name));
+        self.obj
+            .insert("span_name".to_string(), serde_json::Value::from(name));
+        if let Some(args) = self.obj.get_mut("args").and_then(|a| a.as_object_mut()) {
+            args.insert("span_name".to_string(), serde_json::Value::from(name));
+        }
+    }
+
+    pub fn set_target_name(&mut self, name: &str) {
+        self.obj
+            .insert("target_name".to_string(), serde_json::Value::from(name));
+        if let Some(args) = self.obj.get_mut("args").and_then(|a| a.as_object_mut()) {
+            args.insert("span_name".to_string(), serde_json::Value::from(name));
+        }
+    }
+
+    pub fn set_span_id(&mut self, id: &str) {
+        self.obj
+            .insert("span_id".to_string(), serde_json::Value::from(id));
+    }
+
+    pub fn set_parent_id(&mut self, id: &str) {
+        self.obj
+            .insert("parent_id".to_string(), serde_json::Value::from(id));
+    }
+
+    pub fn set_module(&mut self, module: &str) {
+        self.obj
+            .insert("module".to_string(), serde_json::Value::from(module));
+    }
+
+    pub fn set_msg(&mut self, msg: &str) {
+        self.obj
+            .insert("name".to_string(), serde_json::Value::from(msg));
+        self.obj
+            .insert("msg".to_string(), serde_json::Value::from(msg));
+        if let Some(args) = self.obj.get_mut("args").and_then(|a| a.as_object_mut()) {
+            if args.contains_key("message") {
+                args.insert("message".to_string(), serde_json::Value::from(msg));
+            }
+            if args.contains_key("msg") {
+                args.insert("msg".to_string(), serde_json::Value::from(msg));
+            }
+        }
+    }
+
+    pub fn set_pid(&mut self, pid: i64) {
+        self.obj.insert("pid".to_string(), serde_json::json!(pid));
+    }
+
+    pub fn set_tid(&mut self, tid: i64) {
+        self.obj.insert("tid".to_string(), serde_json::json!(tid));
+    }
+
+    pub fn set_ts(&mut self, ts: f64) {
+        self.obj.insert("ts".to_string(), serde_json::json!(ts));
+    }
+}
+
 /// Initializes the Chrome tracing subscriber if a trace file is provided.
 ///
 /// Configures a `ChromeLayer` to output traces to the designated filepath. Target logging
@@ -54,16 +311,6 @@ fn is_span_name_match(active_name: &str, exit_target_name: &str) -> bool {
     base_active == exit_target_name || base_active.ends_with(&format!("::{}", exit_target_name))
 }
 
-/// Helper to strip leading and trailing double quotes from a string.
-fn strip_quotes(s: &str) -> String {
-    let s = s.trim();
-    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
-        s[1..s.len() - 1].to_string()
-    } else {
-        s.to_string()
-    }
-}
-
 /// Strongly-typed thread IDs representing execution tracks in Perfetto.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(i64)]
@@ -97,6 +344,14 @@ impl TraceCategory {
             "device_span_exit" => Self::SpanExit,
             "device_log" => Self::Log,
             _ => Self::Other,
+        }
+    }
+
+    pub fn keyword(&self) -> &'static str {
+        match self {
+            Self::SpanEnter => " span_enter: ",
+            Self::SpanExit => " span_exit: ",
+            _ => "",
         }
     }
 }
@@ -166,33 +421,18 @@ pub struct SpanEnterDecoder;
 
 impl SpanEnterDecoder {
     /// Decodes entry-specific trace telemetry arguments into the mutable JSON map.
-    pub fn decode(&self, obj: &mut serde_json::Map<String, serde_json::Value>) {
-        let span_id = strip_quotes(
-            obj.get("args")
-                .and_then(|a| a.get("span_id"))
-                .and_then(|s| s.as_str())
-                .unwrap_or(""),
-        );
-        let module = strip_quotes(
-            obj.get("args")
-                .and_then(|a| a.get("module"))
-                .and_then(|s| s.as_str())
-                .unwrap_or(""),
-        );
-        let span_name = strip_quotes(
-            obj.get("args")
-                .and_then(|a| a.get("span_name"))
-                .and_then(|s| s.as_str())
-                .unwrap_or(""),
-        );
+    pub fn decode(&self, ev: &mut TraceEventMut<'_>) {
+        let span_id = ev.span_id();
+        let module = ev.module();
+        let span_name = ev.name();
 
-        obj.insert("span_id".to_string(), serde_json::Value::from(span_id));
-        obj.insert("module".to_string(), serde_json::Value::from(module));
-        obj.insert("span_name".to_string(), serde_json::Value::from(span_name));
+        ev.set_span_id(&span_id);
+        ev.set_module(&module);
+        ev.set_name(&span_name);
 
-        if let Some(p_val) = obj.get("args").and_then(|a| a.get("parent_id")) {
-            let parent_id = strip_quotes(p_val.as_str().unwrap_or(""));
-            obj.insert("parent_id".to_string(), serde_json::Value::from(parent_id));
+        if ev.has_arg("parent_id") {
+            let parent_id = ev.parent_id();
+            ev.set_parent_id(&parent_id);
         }
     }
 }
@@ -202,25 +442,12 @@ pub struct SpanExitDecoder;
 
 impl SpanExitDecoder {
     /// Decodes exit-specific trace telemetry arguments into the mutable JSON map.
-    pub fn decode(&self, obj: &mut serde_json::Map<String, serde_json::Value>) {
-        let span_id = strip_quotes(
-            obj.get("args")
-                .and_then(|a| a.get("span_id"))
-                .and_then(|s| s.as_str())
-                .unwrap_or(""),
-        );
-        let target_name = strip_quotes(
-            obj.get("args")
-                .and_then(|a| a.get("span_name"))
-                .and_then(|s| s.as_str())
-                .unwrap_or(""),
-        );
+    pub fn decode(&self, ev: &mut TraceEventMut<'_>) {
+        let span_id = ev.span_id();
+        let target_name = ev.target_name();
 
-        obj.insert("span_id".to_string(), serde_json::Value::from(span_id));
-        obj.insert(
-            "target_name".to_string(),
-            serde_json::Value::from(target_name),
-        );
+        ev.set_span_id(&span_id);
+        ev.set_target_name(&target_name);
     }
 }
 
@@ -229,24 +456,19 @@ pub struct DeviceLogDecoder;
 
 impl DeviceLogDecoder {
     /// Decodes log-specific trace telemetry arguments into the mutable JSON map.
-    pub fn decode(&self, obj: &mut serde_json::Map<String, serde_json::Value>) {
-        let msg = strip_quotes(
-            obj.get("args")
-                .and_then(|args| args.get("message").or_else(|| args.get("val")))
-                .and_then(|v| v.as_str())
-                .unwrap_or(""),
-        );
-        obj.insert("msg".to_string(), serde_json::Value::from(msg));
+    pub fn decode(&self, ev: &mut TraceEventMut<'_>) {
+        let msg = ev.msg();
+        ev.set_msg(&msg);
     }
 }
 
-fn is_trace_metadata(msg: &str, obj: &serde_json::Map<String, serde_json::Value>) -> bool {
+fn is_trace_metadata(msg: &str, ev: TraceEventRef<'_>) -> bool {
     if msg.is_empty() || msg.contains("span_enter:") || msg.contains("span_exit:") {
         return true;
     }
-    if let Some(file) = obj.get(".file").and_then(|f| f.as_str()) {
+    if let Some(file) = ev.file() {
         if file.contains("tracing-defmt-decoder") {
-            if let Some(line) = obj.get(".line").and_then(|l| l.as_i64()) {
+            if let Some(line) = ev.line() {
                 if line != 229 {
                     return true;
                 }
@@ -287,43 +509,36 @@ impl TraceStage for TelemetryDecoder {
         for event in events {
             let mut event = event;
             if let Some(obj) = event.as_object_mut() {
-                let target = obj.get("cat").and_then(|c| c.as_str()).unwrap_or("");
-                let category = TraceCategory::parse(target);
+                let mut ev = TraceEventMut::from_map(obj);
+                let category = ev.category();
                 match category {
                     TraceCategory::SpanEnter => {
-                        self.enter_decoder.decode(obj);
+                        self.enter_decoder.decode(&mut ev);
                         processed_events.push(event);
                     }
                     TraceCategory::SpanExit => {
-                        self.exit_decoder.decode(obj);
+                        self.exit_decoder.decode(&mut ev);
                         processed_events.push(event);
                     }
                     TraceCategory::Log => {
-                        self.log_decoder.decode(obj);
+                        self.log_decoder.decode(&mut ev);
 
-                        let msg = obj
-                            .get("msg")
-                            .and_then(|m| m.as_str())
-                            .unwrap_or("")
-                            .to_string();
+                        let msg = ev.msg();
 
-                        if is_trace_metadata(&msg, obj) {
+                        if is_trace_metadata(&msg, ev.as_ref()) {
                             continue;
                         }
 
-                        let ts = obj.get("ts").and_then(|t| t.as_f64()).unwrap_or(0.0);
+                        let ts = ev.ts();
 
                         // 2. Identify structured telemetry log lines and parse/route them
                         if let Some(parsed_events) = self.telemetry_parser.parse_log(&msg, ts) {
                             processed_events.extend(parsed_events);
                         } else {
                             // Place normal logs onto the "Device Logs & Telemetry" track (tid: 3)
-                            obj.insert(
-                                "tid".to_string(),
-                                serde_json::json!(ThreadId::DeviceLogsAndTelemetry as i64),
-                            );
-                            obj.insert("name".to_string(), serde_json::Value::from(msg.clone()));
-                            obj.insert("msg".to_string(), serde_json::Value::from(msg.clone()));
+                            ev.set_tid(ThreadId::DeviceLogsAndTelemetry as i64);
+                            ev.set_name(&msg);
+                            ev.set_msg(&msg);
                             processed_events.push(event);
                         }
                     }
@@ -339,24 +554,41 @@ impl TraceStage for TelemetryDecoder {
     }
 }
 
-fn extract_core_from_name(mut name: String) -> (String, Option<i64>) {
-    let mut core = None;
-    if name.contains("Core 1:") || name.contains("cpu_idle_c1") || name.contains("CPU Idle Core 1")
-    {
-        core = Some(1);
-    } else if name.contains("Core 0:")
-        || name.contains("cpu_idle_c0")
-        || name.contains("CPU Idle Core 0")
-    {
-        core = Some(0);
-    }
+pub struct CoreMetadata {
+    pub name: String,
+    pub core: Option<i64>,
+    pub is_idle: bool,
+}
 
-    if name.starts_with("Core 1: ") {
-        name = name["Core 1: ".len()..].to_string();
-    } else if name.starts_with("Core 0: ") {
-        name = name["Core 0: ".len()..].to_string();
+impl CoreMetadata {
+    pub fn new(mut name: String) -> Self {
+        let mut core = None;
+        let is_idle = name.contains("cpu_idle_c") || name.contains("CPU Idle Core");
+
+        if name.contains("Core 1:")
+            || name.contains("cpu_idle_c1")
+            || name.contains("CPU Idle Core 1")
+        {
+            core = Some(1);
+        } else if name.contains("Core 0:")
+            || name.contains("cpu_idle_c0")
+            || name.contains("CPU Idle Core 0")
+        {
+            core = Some(0);
+        }
+
+        if name.starts_with("Core 1: ") {
+            name = name["Core 1: ".len()..].to_string();
+        } else if name.starts_with("Core 0: ") {
+            name = name["Core 0: ".len()..].to_string();
+        }
+
+        Self {
+            name,
+            core,
+            is_idle,
+        }
     }
-    (name, core)
 }
 
 /// Pipeline stage that assigns each trace event to CPU Core 0 or Core 1.
@@ -394,37 +626,26 @@ impl TraceStage for CoreAssigner {
 
         for event in &mut mcu_events {
             if let Some(obj) = event.as_object_mut() {
-                let tid = obj.get("tid").and_then(|t| t.as_i64()).unwrap_or(0);
+                let mut ev = TraceEventMut::from_map(obj);
+                let tid = ev.tid();
                 if tid == ThreadId::DeviceLogsAndTelemetry as i64 {
-                    let resolved_pid = obj.get("pid").and_then(|p| p.as_i64()).unwrap_or(last_pid);
+                    let resolved_pid = ev.pid().max(last_pid);
                     seen_pids.insert(resolved_pid);
-                    obj.insert("pid".to_string(), serde_json::json!(resolved_pid));
+                    ev.set_pid(resolved_pid);
                     continue;
                 }
 
-                let cat = obj.get("cat").and_then(|c| c.as_str()).unwrap_or("");
-                let category = TraceCategory::parse(cat);
+                let category = ev.category();
 
                 match category {
                     TraceCategory::SpanEnter => {
-                        let span_name = obj
-                            .get("span_name")
-                            .or_else(|| obj.get("name"))
-                            .and_then(|n| n.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        let parent_id = obj
-                            .get("parent_id")
-                            .and_then(|p| p.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        let span_id = obj
-                            .get("span_id")
-                            .and_then(|s| s.as_str())
-                            .unwrap_or("")
-                            .to_string();
+                        let span_name = ev.name();
+                        let parent_id = ev.parent_id();
+                        let span_id = ev.span_id();
 
-                        let (cleaned_name, core) = extract_core_from_name(span_name);
+                        let metadata = CoreMetadata::new(span_name);
+                        let cleaned_name = metadata.name;
+                        let core = metadata.core;
 
                         let resolved_core = if let Some(c) = core {
                             c
@@ -436,7 +657,7 @@ impl TraceStage for CoreAssigner {
                             0
                         };
 
-                        let event_pid = obj.get("pid").and_then(|p| p.as_i64()).unwrap_or(1);
+                        let event_pid = ev.pid();
                         let resolved_pid = if !parent_id.is_empty() {
                             *span_pids.get(&parent_id).unwrap_or(&event_pid)
                         } else {
@@ -452,38 +673,17 @@ impl TraceStage for CoreAssigner {
                         last_pid = resolved_pid;
                         seen_pids.insert(resolved_pid);
 
-                        obj.insert(
-                            "name".to_string(),
-                            serde_json::Value::from(cleaned_name.clone()),
-                        );
-                        obj.insert(
-                            "span_name".to_string(),
-                            serde_json::Value::from(cleaned_name.clone()),
-                        );
-                        if let Some(args) = obj.get_mut("args").and_then(|a| a.as_object_mut()) {
-                            args.insert(
-                                "span_name".to_string(),
-                                serde_json::Value::from(cleaned_name.clone()),
-                            );
-                        }
-                        obj.insert("pid".to_string(), serde_json::json!(resolved_pid));
-                        obj.insert("tid".to_string(), serde_json::json!(resolved_core + 1));
+                        ev.set_name(&cleaned_name);
+                        ev.set_pid(resolved_pid);
+                        ev.set_tid(resolved_core + 1);
                     }
                     TraceCategory::SpanExit => {
-                        let span_name = obj
-                            .get("target_name")
-                            .or_else(|| obj.get("span_name"))
-                            .or_else(|| obj.get("name"))
-                            .and_then(|n| n.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        let span_id = obj
-                            .get("span_id")
-                            .and_then(|s| s.as_str())
-                            .unwrap_or("")
-                            .to_string();
+                        let span_name = ev.target_name();
+                        let span_id = ev.span_id();
 
-                        let (cleaned_name, core) = extract_core_from_name(span_name);
+                        let metadata = CoreMetadata::new(span_name);
+                        let cleaned_name = metadata.name;
+                        let core = metadata.core;
 
                         let resolved_core =
                             if !span_id.is_empty() && span_cores.contains_key(&span_id) {
@@ -502,81 +702,44 @@ impl TraceStage for CoreAssigner {
                         last_pid = resolved_pid;
                         seen_pids.insert(resolved_pid);
 
-                        obj.insert(
-                            "name".to_string(),
-                            serde_json::Value::from(cleaned_name.clone()),
-                        );
-                        obj.insert(
-                            "target_name".to_string(),
-                            serde_json::Value::from(cleaned_name.clone()),
-                        );
-                        if let Some(args) = obj.get_mut("args").and_then(|a| a.as_object_mut()) {
-                            args.insert(
-                                "span_name".to_string(),
-                                serde_json::Value::from(cleaned_name.clone()),
-                            );
-                        }
-                        obj.insert("pid".to_string(), serde_json::json!(resolved_pid));
+                        ev.set_name(&cleaned_name);
+                        ev.set_target_name(&cleaned_name);
+                        ev.set_pid(resolved_pid);
                         let core_tid = if resolved_core == 1 {
                             ThreadId::Core1 as i64
                         } else {
                             ThreadId::Core0 as i64
                         };
-                        obj.insert("tid".to_string(), serde_json::json!(core_tid));
+                        ev.set_tid(core_tid);
                     }
                     TraceCategory::Log => {
-                        let msg = obj
-                            .get("msg")
-                            .or_else(|| obj.get("name"))
-                            .and_then(|n| n.as_str())
-                            .unwrap_or("")
-                            .to_string();
+                        let msg = ev.msg();
 
-                        let (cleaned_name, core) = extract_core_from_name(msg);
+                        let metadata = CoreMetadata::new(msg);
+                        let cleaned_name = metadata.name;
+                        let core = metadata.core;
 
                         let resolved_core = core.unwrap_or(last_core);
-                        let resolved_pid =
-                            obj.get("pid").and_then(|p| p.as_i64()).unwrap_or(last_pid);
+                        let resolved_pid = ev.pid().max(last_pid);
 
                         last_core = resolved_core;
                         last_pid = resolved_pid;
                         seen_pids.insert(resolved_pid);
 
-                        obj.insert(
-                            "name".to_string(),
-                            serde_json::Value::from(cleaned_name.clone()),
-                        );
-                        obj.insert(
-                            "msg".to_string(),
-                            serde_json::Value::from(cleaned_name.clone()),
-                        );
-                        if let Some(args) = obj.get_mut("args").and_then(|a| a.as_object_mut()) {
-                            if args.contains_key("message") {
-                                args.insert(
-                                    "message".to_string(),
-                                    serde_json::Value::from(cleaned_name.clone()),
-                                );
-                            }
-                            if args.contains_key("msg") {
-                                args.insert(
-                                    "msg".to_string(),
-                                    serde_json::Value::from(cleaned_name.clone()),
-                                );
-                            }
-                        }
-                        obj.insert("pid".to_string(), serde_json::json!(resolved_pid));
+                        ev.set_msg(&cleaned_name);
+                        ev.set_pid(resolved_pid);
                         let core_tid = if resolved_core == 1 {
                             ThreadId::Core1 as i64
                         } else {
                             ThreadId::Core0 as i64
                         };
-                        obj.insert("tid".to_string(), serde_json::json!(core_tid));
+                        ev.set_tid(core_tid);
                     }
                     TraceCategory::Other => {
-                        let resolved_pid = obj.get("pid").and_then(|p| p.as_i64()).unwrap_or(1);
+                        let resolved_pid = ev.pid();
                         seen_pids.insert(resolved_pid);
-                        obj.insert("pid".to_string(), serde_json::json!(resolved_pid));
-                        obj.insert("tid".to_string(), serde_json::json!(ThreadId::Core0 as i64));
+                        ev.set_pid(resolved_pid);
+                        ev.set_tid(ThreadId::Core0 as i64);
                     }
                 }
             }
@@ -844,12 +1007,9 @@ impl SpanEnterProcessor {
         final_event: &mut serde_json::Value,
         processed_events: &mut Vec<serde_json::Value>,
     ) {
-        let span_id = obj.get("span_id").and_then(|s| s.as_str()).unwrap_or("");
-        let mut parent_id = obj
-            .get("parent_id")
-            .and_then(|s| s.as_str())
-            .unwrap_or("")
-            .to_string();
+        let ev = TraceEventRef::from_map(obj);
+        let span_id = ev.span_id();
+        let mut parent_id = ev.parent_id();
         let module = obj.get("module").and_then(|s| s.as_str()).unwrap_or("");
 
         if parent_id.is_empty() && obj.get("parent_id").is_none() {
@@ -864,11 +1024,7 @@ impl SpanEnterProcessor {
             }
         }
 
-        let mut span_name = obj
-            .get("span_name")
-            .and_then(|s| s.as_str())
-            .unwrap_or("")
-            .to_string();
+        let mut span_name = ev.name();
 
         if (span_name == "run" || span_name == "task") && !module.is_empty() {
             let segments: Vec<&str> = module.split("::").collect();
@@ -970,11 +1126,9 @@ impl SpanExitProcessor {
         final_event: &mut serde_json::Value,
         processed_events: &mut Vec<serde_json::Value>,
     ) -> bool {
-        let span_id = obj.get("span_id").and_then(|s| s.as_str()).unwrap_or("");
-        let target_name = obj
-            .get("target_name")
-            .and_then(|s| s.as_str())
-            .unwrap_or("");
+        let ev = TraceEventRef::from_map(obj);
+        let span_id = ev.span_id();
+        let target_name = ev.target_name();
 
         let mut resolved_span_id = span_id.to_string();
         let mut task_context = context.get_task(&resolved_span_id).unwrap_or_default();
@@ -1102,12 +1256,9 @@ impl TraceStage for SpanProcessor {
         for event in events {
             let mut final_event = event.clone();
 
-            if let Some(obj) = event.as_object() {
-                let target = obj.get("cat").and_then(|c| c.as_str()).unwrap_or("");
-                let category = TraceCategory::parse(target);
-
-                // CoreAssigner runs before SpanProcessor, so the tid is already mapped to 1 (Core 0) or 2 (Core 1).
-                let event_tid = obj.get("tid").and_then(|t| t.as_i64()).unwrap_or(1);
+            if let Some(ev) = TraceEventRef::new(&event) {
+                let category = ev.category();
+                let event_tid = ev.tid().max(1);
                 let context = self
                     .contexts
                     .entry(event_tid)
@@ -1115,26 +1266,30 @@ impl TraceStage for SpanProcessor {
 
                 match category {
                     TraceCategory::SpanEnter => {
-                        self.enter_processor.process(
-                            context,
-                            obj,
-                            &mut final_event,
-                            &mut processed_events,
-                        );
+                        if let Some(obj) = event.as_object() {
+                            self.enter_processor.process(
+                                context,
+                                obj,
+                                &mut final_event,
+                                &mut processed_events,
+                            );
+                        }
                     }
                     TraceCategory::SpanExit => {
-                        let keep = self.exit_processor.process(
-                            context,
-                            obj,
-                            &mut final_event,
-                            &mut processed_events,
-                        );
-                        if !keep {
-                            continue;
+                        if let Some(obj) = event.as_object() {
+                            let keep = self.exit_processor.process(
+                                context,
+                                obj,
+                                &mut final_event,
+                                &mut processed_events,
+                            );
+                            if !keep {
+                                continue;
+                            }
                         }
                     }
                     TraceCategory::Log => {
-                        let msg = obj.get("msg").and_then(|m| m.as_str()).unwrap_or("");
+                        let msg = ev.msg();
                         if msg.is_empty()
                             || msg.contains("span_enter:")
                             || msg.contains("span_exit:")
@@ -1176,16 +1331,11 @@ impl TraceStage for DeviceTimeAligner {
         // Find the first event with device_ts to compute the synchronization offset
         let mut sync_offset = None;
         for event in &events {
-            if let Some(obj) = event.as_object() {
-                if let Some(device_ts) = obj
-                    .get("args")
-                    .and_then(|a| a.get("device_ts"))
-                    .and_then(|t| t.as_f64())
-                {
-                    if let Some(host_ts) = obj.get("ts").and_then(|t| t.as_f64()) {
-                        sync_offset = Some(host_ts - device_ts);
-                        break;
-                    }
+            if let Some(ev) = TraceEventRef::new(event) {
+                if let Some(device_ts) = ev.device_ts() {
+                    let host_ts = ev.ts();
+                    sync_offset = Some(host_ts - device_ts);
+                    break;
                 }
             }
         }
@@ -1193,12 +1343,12 @@ impl TraceStage for DeviceTimeAligner {
         // Apply the synchronization offset to all events containing device_ts
         if let Some(offset) = sync_offset {
             for event in &mut events {
-                if let Some(obj) = event.as_object_mut() {
-                    if let Some(device_ts) = obj
-                        .get("args")
-                        .and_then(|a| a.get("device_ts"))
-                        .and_then(|t| t.as_f64())
-                    {
+                let mut maybe_device_ts = None;
+                if let Some(ev) = TraceEventRef::new(event) {
+                    maybe_device_ts = ev.device_ts();
+                }
+                if let Some(device_ts) = maybe_device_ts {
+                    if let Some(obj) = event.as_object_mut() {
                         obj.insert("ts".to_string(), serde_json::json!(device_ts + offset));
                     }
                 }
@@ -1206,6 +1356,30 @@ impl TraceStage for DeviceTimeAligner {
         }
 
         Ok(events)
+    }
+}
+
+fn normalize_value_quotes(val: &mut serde_json::Value) {
+    match val {
+        serde_json::Value::String(s) => {
+            let trimmed = s.trim();
+            if trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2 {
+                *s = trimmed[1..trimmed.len() - 1].to_string();
+            } else if trimmed != s {
+                *s = trimmed.to_string();
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for v in map.values_mut() {
+                normalize_value_quotes(v);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for v in arr {
+                normalize_value_quotes(v);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -1222,7 +1396,10 @@ pub fn post_process_trace(
         return Ok(());
     }
 
-    let events: Vec<serde_json::Value> = serde_json::from_str(&content)?;
+    let mut events: Vec<serde_json::Value> = serde_json::from_str(&content)?;
+    for ev in &mut events {
+        normalize_value_quotes(ev);
+    }
 
     let mut pipeline = TracePipeline::new()
         .add_stage(DeviceTimeAligner)
@@ -1238,124 +1415,174 @@ pub fn post_process_trace(
     Ok(())
 }
 
-/// A structured representation of a parsed target defmt tracing line.
-pub struct ParsedTracingLine {
-    /// True if this represents a span entry, false for a span exit.
-    pub is_enter: bool,
-    /// The unique identifier of the active span.
-    pub span_id: String,
-    /// The parent span identifier (only populated for enters, empty otherwise).
-    pub parent_id: String,
-    /// The cleaned name of the span (with quotes stripped).
-    pub span_name: String,
-    /// The parsed microcontroller timestamp in microseconds.
-    pub device_ts: Option<f64>,
+fn strip_ansi_codes(s: &str) -> String {
+    let mut result = String::with_capacity(s.len());
+    let mut in_escape = false;
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            if chars.peek() == Some(&'[') {
+                in_escape = true;
+                chars.next(); // consume '['
+                continue;
+            }
+        }
+        if in_escape {
+            if c == 'm' {
+                in_escape = false;
+            }
+            continue;
+        }
+        result.push(c);
+    }
+    result
 }
 
-impl ParsedTracingLine {
-    /// Parses a raw defmt log line into a structured tracing line if it represents
-    /// a span transition (enter or exit).
-    pub fn parse(line: &str) -> Option<Self> {
-        let is_enter = line.contains(" span_enter: ");
-        let is_exit = line.contains(" span_exit: ");
-        if !is_enter && !is_exit {
-            return None;
-        }
+/// A structured representation of a parsed target defmt tracing line.
+pub struct ParsedTracingLine<'a> {
+    /// The original raw tracing line reference.
+    line: &'a str,
+}
 
-        let keyword = if is_enter {
-            " span_enter: "
+impl<'a> ParsedTracingLine<'a> {
+    pub fn line(&self) -> &'a str {
+        self.line
+    }
+
+    pub fn category(&self) -> TraceCategory {
+        if self.line.contains(" span_enter: ") {
+            TraceCategory::SpanEnter
+        } else if self.line.contains(" span_exit: ") {
+            TraceCategory::SpanExit
         } else {
-            " span_exit: "
-        };
-        let keyword_pos = line.find(keyword)?;
-
-        // Extract and clean the span name
-        let raw_name = &line[keyword_pos + keyword.len()..];
-        let mut span_name = raw_name.trim();
-        if span_name.starts_with('"') && span_name.ends_with('"') && span_name.len() >= 2 {
-            span_name = &span_name[1..span_name.len() - 1];
+            TraceCategory::Other
         }
-        let span_name = span_name.to_string();
+    }
+
+    pub fn is_enter(&self) -> bool {
+        self.category() == TraceCategory::SpanEnter
+    }
+
+    pub fn span_name(&self) -> String {
+        let clean_line = strip_ansi_codes(self.line);
+        let cat = self.category();
+        let keyword = cat.keyword();
+        if let Some(keyword_pos) = clean_line.find(keyword) {
+            let raw_name = &clean_line[keyword_pos + keyword.len()..];
+            let mut span_name = raw_name.trim();
+            if span_name.starts_with('"') && span_name.ends_with('"') && span_name.len() >= 2 {
+                span_name = &span_name[1..span_name.len() - 1];
+            }
+            span_name.to_string()
+        } else {
+            String::new()
+        }
+    }
+
+    pub fn device_ts(&self) -> Option<f64> {
+        let clean_line = strip_ansi_codes(self.line);
+        let cat = self.category();
+        let keyword = cat.keyword();
+        let keyword_pos = clean_line.find(keyword)?;
+        let prefix = &clean_line[..keyword_pos];
+        let words: Vec<&str> = prefix.split_whitespace().collect();
+        if !words.is_empty() {
+            if let Ok(ts_sec) = words[0].parse::<f64>() {
+                return Some(ts_sec * 1_000_000.0);
+            }
+        }
+        None
+    }
+
+    pub fn parse_ids(&self) -> (String, String) {
+        let clean_line = strip_ansi_codes(self.line);
+        let cat = self.category();
+        let keyword = cat.keyword();
+        let keyword_pos = match clean_line.find(keyword) {
+            Some(pos) => pos,
+            None => return (String::new(), String::new()),
+        };
 
         // Extract the prefix part before the keyword
-        let prefix = &line[..keyword_pos];
+        let prefix = &clean_line[..keyword_pos];
 
         // Split prefix into words to handle variable formatting with/without timestamps or module names
         let words: Vec<&str> = prefix.split_whitespace().collect();
-        let mut start_idx = 0;
-        if words.len() >= 2 {
-            let second_word = words[1];
-            if second_word == "TRACE"
-                || second_word == "DEBUG"
-                || second_word == "INFO"
-                || second_word == "WARN"
-                || second_word == "ERROR"
-            {
-                start_idx = 2;
-            }
-        }
-
-        // Skip module bracket context if present (e.g. [module] or module::path: or module::path)
-        while start_idx < words.len()
-            && (words[start_idx].starts_with('[')
-                || words[start_idx].contains("::")
-                || words[start_idx].ends_with(':'))
-        {
-            start_idx += 1;
-        }
-
-        if start_idx >= words.len() {
-            return None;
-        }
-
-        let ctx_word = words[start_idx];
-        let raw_ids = if ctx_word.starts_with("ctx=") {
-            &ctx_word[4..]
-        } else {
-            ctx_word
-        };
-
-        let ids: Vec<&str> = raw_ids.split(':').collect();
-        let span_id = ids.last().unwrap_or(&raw_ids).to_string();
-
+        let mut idx = 0;
         let mut device_ts = None;
-        if words.len() >= 2 {
-            let second_word = words[1];
-            if second_word == "TRACE"
-                || second_word == "DEBUG"
-                || second_word == "INFO"
-                || second_word == "WARN"
-                || second_word == "ERROR"
-            {
-                if let Ok(ts_sec) = words[0].parse::<f64>() {
-                    device_ts = Some(ts_sec * 1_000_000.0);
-                }
+
+        // 1. Check for timestamp at the very beginning
+        if idx < words.len() {
+            if let Ok(ts_sec) = words[idx].parse::<f64>() {
+                device_ts = Some(ts_sec * 1_000_000.0);
+                idx += 1;
             }
         }
 
-        if span_id.is_empty() {
-            return None;
+        // 2. Check for optional Log Level
+        if idx < words.len() {
+            let w = words[idx];
+            if w == "TRACE" || w == "DEBUG" || w == "INFO" || w == "WARN" || w == "ERROR" {
+                idx += 1;
+            }
         }
 
+        // 3. Skip module context brackets or paths
+        while idx < words.len()
+            && (words[idx].starts_with('[')
+                || words[idx].contains("::")
+                || words[idx].ends_with(':'))
+        {
+            idx += 1;
+        }
+
+        // 4. Extract span_id and parent_id
+        let mut span_id = String::new();
+        let mut ids = Vec::new();
+
+        if idx < words.len() {
+            let w = words[idx];
+            if !w.starts_with("parent=") {
+                let raw_ids = if w.starts_with("ctx=") { &w[4..] } else { w };
+                ids = raw_ids.split(':').collect();
+                span_id = ids.last().unwrap_or(&raw_ids).to_string();
+            }
+        }
+
+        // 5. Look for parent ID in all words
         let mut parent_id = String::new();
-        for &w in &words[start_idx..] {
+        for &w in &words {
             if w.starts_with("parent=") {
                 parent_id = w[7..].to_string();
                 break;
             }
         }
 
+        // Fallback to hierarchy for parent_id if not found via parent=
         if parent_id.is_empty() && ids.len() >= 2 {
             parent_id = ids[ids.len() - 2].to_string();
         }
 
-        Some(Self {
-            is_enter,
-            span_id,
-            parent_id,
-            span_name,
-            device_ts,
-        })
+        // If span_id is still empty, auto-generate a unique one from device_ts
+        if span_id.is_empty() {
+            if let Some(ts) = device_ts {
+                span_id = format!("auto_{}", ts as u64);
+            }
+        }
+
+        (span_id, parent_id)
+    }
+
+    /// Parses a raw defmt log line into a structured tracing line if it represents
+    /// a span transition (enter or exit).
+    pub fn parse(line: &'a str) -> Option<Self> {
+        let temp = Self { line };
+        let cat = temp.category();
+        if cat == TraceCategory::SpanEnter || cat == TraceCategory::SpanExit {
+            Some(temp)
+        } else {
+            None
+        }
     }
 }
 
@@ -1367,25 +1594,48 @@ impl ParsedTracingLine {
 ///
 /// Are parsed, converted to standard host `device_span_enter` and `device_span_exit`
 /// telemetry events, and forwarded to the host tracing pipeline.
-pub fn handle_tracing_line(line: &str, module: Option<&str>) -> Result<bool, &'static str> {
+pub fn handle_tracing_line(
+    line: &str,
+    module: Option<&str>,
+    external_ts: Option<f64>,
+) -> Result<bool, &'static str> {
     if let Some(parsed) = ParsedTracingLine::parse(line) {
-        let ts = parsed.device_ts.unwrap_or(0.0);
-        if parsed.is_enter {
-            tracing::info!(
-                target: "device_span_enter",
-                span_name = parsed.span_name,
-                span_id = parsed.span_id,
-                parent_id = parsed.parent_id,
-                module = module.unwrap_or(""),
-                device_ts = ts
-            );
+        let opt_ts = parsed.device_ts().or(external_ts);
+        let (span_id, parent_id) = parsed.parse_ids();
+        if let Some(ts) = opt_ts {
+            if parsed.is_enter() {
+                tracing::info!(
+                    target: "device_span_enter",
+                    span_name = parsed.span_name(),
+                    span_id = span_id,
+                    parent_id = parent_id,
+                    module = module.unwrap_or(""),
+                    device_ts = ts
+                );
+            } else {
+                tracing::info!(
+                    target: "device_span_exit",
+                    span_id = span_id,
+                    span_name = parsed.span_name(),
+                    device_ts = ts
+                );
+            }
         } else {
-            tracing::info!(
-                target: "device_span_exit",
-                span_id = parsed.span_id,
-                span_name = parsed.span_name,
-                device_ts = ts
-            );
+            if parsed.is_enter() {
+                tracing::info!(
+                    target: "device_span_enter",
+                    span_name = parsed.span_name(),
+                    span_id = span_id,
+                    parent_id = parent_id,
+                    module = module.unwrap_or("")
+                );
+            } else {
+                tracing::info!(
+                    target: "device_span_exit",
+                    span_id = span_id,
+                    span_name = parsed.span_name()
+                );
+            }
         }
         Ok(true)
     } else {
