@@ -13,6 +13,7 @@ platform = { path = "../../platform" }
 tool_common = { path = "../../platform/host" }
 cat_detector = { path = "../../projects/cat_detector" }
 defmt-decoder = "1.1.0"
+serde_json = "1.0"
 
 [target.'cfg(not(all(target_arch = "arm", target_os = "none")))'.dependencies]
 futures = "0.3"

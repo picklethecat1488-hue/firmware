@@ -46,9 +46,9 @@ pub enum TelemetryRecord {
 }
 
 impl TelemetryRecord {
-    /// Serialize the record and its timestamp into a fixed 20-byte array using CBOR.
-    pub fn serialize(&self, timestamp_us: u64) -> [u8; 20] {
-        let mut bytes = [0u8; 20];
+    /// Serialize the record and its timestamp into a fixed array using CBOR.
+    pub fn serialize(&self, timestamp_us: u64) -> [u8; TELEMETRY_RECORD_SIZE] {
+        let mut bytes = [0u8; TELEMETRY_RECORD_SIZE];
         // We write the CBOR payload starting at index 1 to leave room for the length byte.
         let cursor = minicbor::encode::write::Cursor::new(&mut bytes[1..]);
         let mut encoder = minicbor::Encoder::new(cursor);
@@ -57,17 +57,17 @@ impl TelemetryRecord {
             && encoder.encode(self).is_ok()
         {
             let len = encoder.into_writer().position();
-            if len <= 19 {
+            if len < TELEMETRY_MAX_SIZE {
                 bytes[0] = len as u8;
             }
         }
         bytes
     }
 
-    /// Deserialize the record and its timestamp from a fixed 20-byte array using CBOR.
-    pub fn deserialize(bytes: &[u8; 20]) -> Option<(u64, Self)> {
+    /// Deserialize the record and its timestamp from a fixed array using CBOR.
+    pub fn deserialize(bytes: &[u8; TELEMETRY_RECORD_SIZE]) -> Option<(u64, Self)> {
         let len = bytes[0] as usize;
-        if len == 0 || len > 19 {
+        if len == 0 || len > TELEMETRY_MAX_SIZE - 1 {
             return None;
         }
         let payload = &bytes[1..1 + len];
@@ -125,10 +125,15 @@ impl core::fmt::Debug for TelemetryRecord {
     }
 }
 
+/// Size of a serialized telemetry record in bytes
+pub const TELEMETRY_RECORD_SIZE: usize = 20;
+/// Max size of a telemetry record payload
+pub const TELEMETRY_MAX_SIZE: usize = TELEMETRY_RECORD_SIZE;
+
 /// Telemetry record chunking constants
 pub const CHUNK_SIZE: usize = 128;
 /// Size of one chunk in bytes
-pub const CHUNK_FILE_SIZE: usize = CHUNK_SIZE * 20;
+pub const CHUNK_FILE_SIZE: usize = CHUNK_SIZE * TELEMETRY_RECORD_SIZE;
 /// Default size of the telemetry file buffer
 pub const BUFFER_SIZE: usize = 3000;
 /// Total number of telemetry record types/variants.

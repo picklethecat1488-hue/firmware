@@ -11,3 +11,10 @@ rustc-demangle = "0.1"
 platform = { path = "../../platform" }
 defmt-decoder = "1.1.0"
 minicbor = { version = "0.20.0", features = ["derive"] }
+sequential-storage = "3.0.0"
+embedded-storage-async = "0.4.1"
+model = { path = "../../model" }
+serde_json = "1.0"
+
+[dev-dependencies]
+futures = "0.3"
