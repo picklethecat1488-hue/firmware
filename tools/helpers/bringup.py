@@ -594,6 +594,13 @@ def main():
                                 print(output_log.strip())
                                 print(f"{Fore.RED}----------------------------{Style.RESET_ALL}")
                             auto_pass = False
+
+                    # Gracefully close connection if step specifies target reboot
+                    if step.get("reboot", False):
+                        print_info("Step specified target reboot. Closing connection to allow clean startup...")
+                        ser.close()
+                        ser = None
+                        time.sleep(3.0)
                 else:
                     print(f"\n{Fore.RED}[ACTION REQUIRED]{Style.RESET_ALL}")
                     print(f"  Please open your device serial terminal and execute: {cmd}")
