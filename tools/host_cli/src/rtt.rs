@@ -511,14 +511,6 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         // Set up defmt decoder
         let mut decoder = table.map(|table| table.new_stream_decoder());
 
-        let trace_decoder = if trace {
-            tracing_defmt_decoder::TraceDecoder::new(&elf_data).ok()
-        } else {
-            None
-        };
-
-        let mut trace_stream = trace_decoder.as_ref().map(|td| td.new_stream());
-
         let locations = if let Some(t) = table {
             t.get_locations(&elf_data).ok()
         } else {
@@ -590,23 +582,21 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                 match chan.read(target.as_mut(), &mut rtt_buf) {
                     Ok(n) if n > 0 => {
                         did_work = true;
-                        if let Some(ref mut ts) = trace_stream {
-                            if let Err(e) = ts.process(&rtt_buf[..n]) {
-                                eprintln!("Error processing trace: {:?}", e);
-                            }
-                        }
                         if let Some(ref mut dec) = decoder {
                             dec.received(&rtt_buf[..n]);
                             loop {
                                 match dec.decode() {
                                     Ok(frame) => {
                                         let plain_line = frame.display(false).to_string();
+                                        let display = frame.display(true);
+                                        let line_str = display.to_string();
+
                                         let module_path = locations
                                             .as_ref()
                                             .and_then(|locs| locs.get(&frame.index()))
                                             .map(|loc| loc.module.as_str());
 
-                                        match handle_tracing_line(&plain_line, module_path) {
+                                        match handle_tracing_line(&line_str, module_path) {
                                             Ok(true) => continue,
                                             Err(e) => {
                                                 eprintln!("Error parsing trace line: {}", e);
@@ -627,8 +617,39 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                             Ok(false) => {}
                                         }
 
-                                        let display = frame.display(true);
-                                        let mut line_str = display.to_string();
+                                        // If tracing is enabled, manually log the device log event with target timestamp
+                                        if trace {
+                                            let msg = frame.display_message().to_string();
+                                            let device_ts = frame
+                                                .display_timestamp()
+                                                .map(|ts| ts.to_string())
+                                                .and_then(|s| s.trim().parse::<f64>().ok())
+                                                .map(|ts_sec| ts_sec * 1_000_000.0);
+
+                                            let (file, line, ns) = if let Some(loc) = locations
+                                                .as_ref()
+                                                .and_then(|locs| locs.get(&frame.index()))
+                                            {
+                                                (
+                                                    loc.file.display().to_string(),
+                                                    loc.line as i64,
+                                                    loc.module.clone(),
+                                                )
+                                            } else {
+                                                (String::new(), 0i64, "rp_pico".to_string())
+                                            };
+                                            tracing::info!(
+                                                target: "device_log",
+                                                code_filepath = file,
+                                                code_lineno = line,
+                                                code_namespace = ns,
+                                                device_ts = device_ts.unwrap_or(0.0),
+                                                "{}",
+                                                msg
+                                            );
+                                        }
+
+                                        let mut line_str = line_str.clone();
 
                                         let mut module_context = String::new();
                                         if let Some(ref locs) = locations {

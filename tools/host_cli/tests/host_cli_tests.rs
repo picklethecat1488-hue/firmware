@@ -176,8 +176,8 @@ fn test_post_process_trace_dynamic_grouping() {
     // Clean up temp file
     let _ = std::fs::remove_file(path);
 
-    // We expect 12 events: 3 metadata prepended + 9 original events.
-    assert_eq!(events.len(), 12);
+    // We expect 13 events: 4 metadata prepended + 9 original events.
+    assert_eq!(events.len(), 13);
 
     // Verify metadata events
     assert_eq!(
@@ -200,11 +200,20 @@ fn test_post_process_trace_dynamic_grouping() {
     assert_eq!(events[2].get("pid").and_then(|p| p.as_i64()), Some(42));
     assert_eq!(events[2].get("tid").and_then(|t| t.as_i64()), Some(2));
 
-    for (i, ev) in events[3..].iter().enumerate() {
+    assert_eq!(
+        events[3].get("name").and_then(|n| n.as_str()),
+        Some("thread_name")
+    );
+    assert_eq!(events[3].get("pid").and_then(|p| p.as_i64()), Some(42));
+    assert_eq!(events[3].get("tid").and_then(|t| t.as_i64()), Some(3));
+
+    for (i, ev) in events[4..].iter().enumerate() {
         assert_eq!(ev.get("pid").and_then(|p| p.as_i64()), Some(42));
-        assert_eq!(ev.get("tid").and_then(|t| t.as_i64()), Some(1));
         if i == 2 {
+            assert_eq!(ev.get("tid").and_then(|t| t.as_i64()), Some(3));
             assert_eq!(ev.get("name").and_then(|n| n.as_str()), Some("read 120mm"));
+        } else {
+            assert_eq!(ev.get("tid").and_then(|t| t.as_i64()), Some(1));
         }
     }
 }
@@ -338,8 +347,8 @@ fn test_post_process_run_span_renaming() {
     // Clean up temp file
     let _ = std::fs::remove_file(path);
 
-    // We expect 5 events (3 metadata prepended + 2 renamed events).
-    assert_eq!(events.len(), 5);
+    // We expect 6 events (4 metadata prepended + 2 renamed events).
+    assert_eq!(events.len(), 6);
 
     // Verify metadata events
     assert_eq!(
@@ -356,22 +365,27 @@ fn test_post_process_run_span_renaming() {
         Some("thread_name")
     );
     assert_eq!(events[2].get("tid").and_then(|t| t.as_i64()), Some(2));
-
     assert_eq!(
         events[3].get("name").and_then(|n| n.as_str()),
-        Some("system_controller")
+        Some("thread_name")
     );
-    assert_eq!(events[3].get("ph").and_then(|p| p.as_str()), Some("B"));
-    assert_eq!(events[3].get("pid").and_then(|p| p.as_i64()), Some(42));
-    assert_eq!(events[3].get("tid").and_then(|t| t.as_i64()), Some(1));
+    assert_eq!(events[3].get("tid").and_then(|t| t.as_i64()), Some(3));
 
     assert_eq!(
         events[4].get("name").and_then(|n| n.as_str()),
         Some("system_controller")
     );
-    assert_eq!(events[4].get("ph").and_then(|p| p.as_str()), Some("E"));
+    assert_eq!(events[4].get("ph").and_then(|p| p.as_str()), Some("B"));
     assert_eq!(events[4].get("pid").and_then(|p| p.as_i64()), Some(42));
     assert_eq!(events[4].get("tid").and_then(|t| t.as_i64()), Some(1));
+
+    assert_eq!(
+        events[5].get("name").and_then(|n| n.as_str()),
+        Some("system_controller")
+    );
+    assert_eq!(events[5].get("ph").and_then(|p| p.as_str()), Some("E"));
+    assert_eq!(events[5].get("pid").and_then(|p| p.as_i64()), Some(42));
+    assert_eq!(events[5].get("tid").and_then(|t| t.as_i64()), Some(1));
 }
 
 #[test]
