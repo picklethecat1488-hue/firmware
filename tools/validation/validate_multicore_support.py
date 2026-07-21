@@ -103,13 +103,27 @@ def parse_code(content, filepath="<string>"):
                             ]:
                                 forbidden_calls.append((func_text, n.start_point[0] + 1))
 
+                            # Check for forbidden flash or filesystem access
+                            if any(
+                                pattern in func_text
+                                for pattern in [
+                                    "sequential_storage",
+                                    "FilesystemClient",
+                                    "Flash",
+                                ]
+                            ):
+                                forbidden_calls.append((f"flash/fs access ({func_text})", n.start_point[0] + 1))
+
                         name = get_called_function_name(n)
                         if name:
                             calls.append(name)
                     elif n.type == "method_call_expression":
                         for child in n.children:
                             if child.type == "field_identifier":
-                                calls.append(child.text.decode("utf-8"))
+                                method_name = child.text.decode("utf-8")
+                                calls.append(method_name)
+                                if method_name == "erase":
+                                    forbidden_calls.append(("flash erase method call", n.start_point[0] + 1))
                                 break
 
                     if n != node and n.type == "function_item":
