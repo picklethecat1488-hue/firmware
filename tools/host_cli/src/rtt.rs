@@ -660,7 +660,9 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                                     format!("{}{}", module_context, line_str);
                                             }
                                         }
-                                        println!("{}", line_str);
+                                        if !line_str.contains("Device Telemetry: ") {
+                                            println!("{}", line_str);
+                                        }
                                     }
                                     Err(defmt_decoder::DecodeError::UnexpectedEof) => break,
                                     Err(defmt_decoder::DecodeError::Malformed) => {

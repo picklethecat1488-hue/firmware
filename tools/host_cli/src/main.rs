@@ -156,7 +156,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 raw_path, e
             );
         }
-        if let Err(e) = tracing::post_process_trace(trace_file) {
+        if let Err(e) = tracing::post_process_trace(trace_file, cli.elf.to_str()) {
             eprintln!(
                 "Warning: failed to post-process Perfetto trace file: {:?}",
                 e
