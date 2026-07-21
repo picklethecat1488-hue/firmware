@@ -273,16 +273,26 @@ where
         >,
     ) -> ! {
         let mut telemetry_client = BatteryTelemetryClient::new(Some(telemetry_tx));
+        let mut check_interval = embassy_time::Duration::from_millis(2000);
+        let mut boot_config_failed = false;
+
         // Configure alerts on boot (3.0V low threshold, 4.2V high threshold, 10% SOC empty alert, enable 1% SOC change alert)
         {
             let mut bat = self.battery.lock().await;
             if let Err(e) = bat.configure_alerts(3000, 4200, 10, true) {
                 let err = e.to_peripheral_error();
                 telemetry_client.report_error(err);
+                boot_config_failed = true;
             }
         }
 
-        let mut check_interval = embassy_time::Duration::from_millis(2000);
+        // Run initial status check on boot.
+        // If the fuel gauge is unresponsive/failing, this will report 100% SOC, clearing the boot trap.
+        if self.update(Some(&mut telemetry_client)).await.is_err() || boot_config_failed {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::warn!("BatteryController: Initial read failed; disabling periodic updates.");
+            check_interval = crate::OVERFLOW_SAFE_MAX_DURATION;
+        }
         loop {
             let res = select_branch_with_timeout!(
                 check_interval,
