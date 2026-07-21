@@ -454,6 +454,19 @@ pub fn generate_uuid(state: &CoreState, revision_hash: &str) -> [u8; 16] {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+#[link_section = ".data.ram_func"]
+#[inline(never)]
+fn panic_loop() -> ! {
+    unsafe {
+        // Enable interrupts so Core 1 can service the SIO inter-core interrupt handler in RAM
+        core::arch::asm!("cpsie i");
+        loop {
+            core::arch::asm!("nop");
+        }
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Shared panic handler logic executing crash dump logging to flash memory with customizable write/erase sizes.
 pub fn handle_panic_with_sizes<
     const FLASH_SIZE: usize,
@@ -502,17 +515,16 @@ pub fn handle_panic_with_sizes<
     }
     core_monitor::set_core_panicked(cpu_id, true);
 
-    if cpu_id != CpuId::Core0 {
-        // Loop forever in RAM with interrupts enabled so Core 1 can respond to flash pause requests from Core 0.
-        unsafe {
-            cortex_m::interrupt::enable();
-        }
-        loop {
-            cortex_m::asm::nop();
-        }
+    unsafe {
+        // Disable SysTick timer so it doesn't try to execute exceptions from FLASH
+        let syst = &*cortex_m::peripheral::SYST::PTR;
+        syst.csr.write(0);
     }
 
-    cortex_m::interrupt::disable();
+    if cpu_id != CpuId::Core0 {
+        // Put the core into a deadloop state until core0 and service the panic request.
+        panic_loop();
+    }
     log_crash_and_reset_impl::<FLASH_SIZE, FLASH_START, FLASH_END, WRITE_SIZE, ERASE_SIZE>();
 }
 
