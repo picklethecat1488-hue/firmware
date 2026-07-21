@@ -462,3 +462,64 @@ fn test_post_process_trace_telemetry() {
     // We expect 5 events (4 metadata + 1 parsed event)
     assert_eq!(events.len(), 5);
 }
+
+#[test]
+fn test_post_process_cpu_usage_step_chart() {
+    use std::io::Write;
+    let temp_dir = std::env::temp_dir();
+    let file_path = temp_dir.join("test_cpu_usage_step.json");
+    let path = file_path.to_str().unwrap();
+
+    let mock_trace = r#"[
+        {"cat": "device_span_enter", "ts": 10000, "pid": 42, "tid": 1, "args": {"span_id": "cpu_idle_c0", "span_name": "Core 0: CPU Idle Core 0"}},
+        {"cat": "device_span_exit", "ts": 15000, "pid": 42, "tid": 1, "args": {"span_id": "cpu_idle_c0"}}
+    ]"#;
+
+    {
+        let mut file = std::fs::File::create(path).unwrap();
+        file.write_all(mock_trace.as_bytes()).unwrap();
+    }
+
+    // Run post processor
+    host_cli::tracing::post_process_trace(path, None).unwrap();
+
+    // Read and parse output
+    let content = std::fs::read_to_string(path).unwrap();
+    let events: Vec<serde_json::Value> = serde_json::from_str(&content).unwrap();
+
+    // Clean up temp file
+    let _ = std::fs::remove_file(path);
+
+    // Let's filter out Core 0 CPU Usage events
+    let usage_events: Vec<&serde_json::Value> = events
+        .iter()
+        .filter(|e| e.get("name").and_then(|n| n.as_str()) == Some("Core 0 CPU Usage (%)"))
+        .collect();
+
+    // We expect exactly 2 counter events: 0% at ts=10000, and 100% at ts=15000
+    assert_eq!(usage_events.len(), 2);
+
+    assert_eq!(
+        usage_events[0].get("ts").and_then(|t| t.as_f64()),
+        Some(10000.0)
+    );
+    assert_eq!(
+        usage_events[0]
+            .get("args")
+            .and_then(|a| a.get("value"))
+            .and_then(|v| v.as_i64()),
+        Some(0)
+    );
+
+    assert_eq!(
+        usage_events[1].get("ts").and_then(|t| t.as_f64()),
+        Some(15000.0)
+    );
+    assert_eq!(
+        usage_events[1]
+            .get("args")
+            .and_then(|a| a.get("value"))
+            .and_then(|v| v.as_i64()),
+        Some(100)
+    );
+}

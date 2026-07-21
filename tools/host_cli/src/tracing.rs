@@ -1383,6 +1383,87 @@ fn normalize_value_quotes(val: &mut serde_json::Value) {
     }
 }
 
+/// Pipeline stage that converts CPU Idle span events into a continuous
+/// CPU Usage (%) counter track, removing the idle spans from the thread slice timeline.
+pub struct CpuUsageGenerator;
+
+impl TraceStage for CpuUsageGenerator {
+    fn run(
+        &mut self,
+        events: Vec<serde_json::Value>,
+    ) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
+        let mut final_events = Vec::new();
+        let mut cores_seen = std::collections::HashSet::new();
+
+        // 1. Find min_ts
+        let mut min_ts = f64::MAX;
+        for event in &events {
+            if let Some(ts) = event.get("ts").and_then(|t| t.as_f64()) {
+                if ts < min_ts {
+                    min_ts = ts;
+                }
+            }
+        }
+        if min_ts == f64::MAX {
+            min_ts = 0.0;
+        }
+
+        // 2. Process events
+        for event in events {
+            if let Some(obj) = event.as_object() {
+                let name = obj.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                let ph = obj.get("ph").and_then(|p| p.as_str()).unwrap_or("");
+                let ts = obj.get("ts").and_then(|t| t.as_f64()).unwrap_or(0.0);
+
+                if name == "CPU Idle Core 0" || name == "CPU Idle Core 1" {
+                    let core = if name == "CPU Idle Core 0" { 0 } else { 1 };
+
+                    // On the first idle event for a core, emit an initial 100% usage event at min_ts
+                    if cores_seen.insert(core) && min_ts < ts {
+                        let initial_event = serde_json::json!({
+                            "cat": "cpu_usage",
+                            "name": format!("Core {} CPU Usage (%)", core),
+                            "ph": "C",
+                            "pid": 1,
+                            "ts": min_ts,
+                            "args": {
+                                "value": 100
+                            }
+                        });
+                        final_events.push(initial_event);
+                    }
+
+                    let val = if ph == "B" { 0 } else { 100 };
+                    let counter_event = serde_json::json!({
+                        "cat": "cpu_usage",
+                        "name": format!("Core {} CPU Usage (%)", core),
+                        "ph": "C",
+                        "pid": 1,
+                        "ts": ts,
+                        "args": {
+                            "value": val
+                        }
+                    });
+                    final_events.push(counter_event);
+
+                    // Filter out the CPU Idle event itself
+                    continue;
+                }
+            }
+            final_events.push(event);
+        }
+
+        // Resort events by ts to ensure counter events are correctly ordered
+        final_events.sort_by(|a, b| {
+            let ts_a = a.get("ts").and_then(|t| t.as_f64()).unwrap_or(0.0);
+            let ts_b = b.get("ts").and_then(|t| t.as_f64()).unwrap_or(0.0);
+            ts_a.partial_cmp(&ts_b).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        Ok(final_events)
+    }
+}
+
 /// Post-processes the generated trace JSON file using a multi-stage transformation pipeline.
 pub fn post_process_trace(
     path: &str,
@@ -1406,7 +1487,8 @@ pub fn post_process_trace(
         .add_stage(ChronologicalSorter)
         .add_stage(TelemetryDecoder::new())
         .add_stage(CoreAssigner::new(elf_path.map(|s| s.to_string())))
-        .add_stage(SpanProcessor::new());
+        .add_stage(SpanProcessor::new())
+        .add_stage(CpuUsageGenerator);
 
     let processed_events = pipeline.execute(events)?;
 
