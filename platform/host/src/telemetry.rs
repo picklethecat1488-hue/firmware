@@ -351,7 +351,7 @@ impl FlashTelemetryParser {
         }
 
         let mut header_bytes = [0u8; 12];
-        header_bytes[..content.len()].copy_from_slice(content);
+        header_bytes.copy_from_slice(&content[..12]);
 
         let len = header_bytes[0] as usize;
         if len == 0 || len > 11 {

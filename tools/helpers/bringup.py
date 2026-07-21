@@ -582,6 +582,37 @@ def main():
                 if ser:
                     prompt_user_with_interactive_shell("Press Enter to send", ser)
                     output_log = run_serial_command(ser, cmd)
+                    # Gracefully close connection if step specifies target reboot,
+                    # wait for target to boot, and re-establish connection to read welcome banner.
+                    if step.get("reboot", False):
+                        print_info("Step specified target reboot. Closing connection...")
+                        ser.close()
+                        ser = None
+                        time.sleep(3.0)
+
+                        # Re-open connection immediately to capture the welcome banner
+                        rtt_binary = app_elf if current_app == "app" else shell_elf
+                        print_info(f"Re-opening RTT connection to capture welcome banner ({rtt_binary})...")
+                        try:
+                            ser = RttProcessWrapper(rtt_binary, channel="defmt" if current_app == "app" else "cli")
+                            # Wait a bit and read the welcome banner
+                            time.sleep(1.0)
+                            welcome_banner_lines = []
+                            start_read = time.time()
+                            while time.time() - start_read < 3.0:
+                                if ser.in_waiting:
+                                    line = ser.readline().decode("utf-8", errors="replace")
+                                    if not line:
+                                        break
+                                    welcome_banner_lines.append(line)
+                                else:
+                                    time.sleep(0.1)
+                            welcome_banner = "".join(welcome_banner_lines)
+                            print_success("Target rebooted and reconnected successfully.")
+                            output_log += "\n" + welcome_banner
+                        except Exception as e:
+                            print_error(f"Failed to reconnect after reboot: {e}")
+
                     if expected_regex:
                         has_match, matched_line = check_regex(output_log, expected_regex)
                         if has_match:
