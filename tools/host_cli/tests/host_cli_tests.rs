@@ -167,7 +167,7 @@ fn test_post_process_trace_dynamic_grouping() {
     }
 
     // Run post processor
-    host_cli::tracing::post_process_trace(path).unwrap();
+    host_cli::tracing::post_process_trace(path, None).unwrap();
 
     // Read and parse output
     let content = std::fs::read_to_string(path).unwrap();
@@ -176,22 +176,31 @@ fn test_post_process_trace_dynamic_grouping() {
     // Clean up temp file
     let _ = std::fs::remove_file(path);
 
-    // We expect 11 events: 2 metadata prepended + 9 original events.
-    assert_eq!(events.len(), 11);
+    // We expect 12 events: 3 metadata prepended + 9 original events.
+    assert_eq!(events.len(), 12);
 
     // Verify metadata events
     assert_eq!(
         events[0].get("name").and_then(|n| n.as_str()),
-        Some("thread_name")
+        Some("process_name")
     );
-    assert_eq!(events[0].get("tid").and_then(|t| t.as_i64()), Some(0));
+    assert_eq!(events[0].get("pid").and_then(|p| p.as_i64()), Some(42));
+
     assert_eq!(
         events[1].get("name").and_then(|n| n.as_str()),
         Some("thread_name")
     );
+    assert_eq!(events[1].get("pid").and_then(|p| p.as_i64()), Some(42));
     assert_eq!(events[1].get("tid").and_then(|t| t.as_i64()), Some(1));
 
-    for (i, ev) in events[2..].iter().enumerate() {
+    assert_eq!(
+        events[2].get("name").and_then(|n| n.as_str()),
+        Some("thread_name")
+    );
+    assert_eq!(events[2].get("pid").and_then(|p| p.as_i64()), Some(42));
+    assert_eq!(events[2].get("tid").and_then(|t| t.as_i64()), Some(2));
+
+    for (i, ev) in events[3..].iter().enumerate() {
         assert_eq!(ev.get("pid").and_then(|p| p.as_i64()), Some(42));
         assert_eq!(ev.get("tid").and_then(|t| t.as_i64()), Some(1));
         if i == 2 {
@@ -267,6 +276,14 @@ fn test_handle_tracing_line_parsing() {
         Ok(true)
     );
 
+    assert_eq!(
+        host_cli::tracing::handle_tracing_line(
+            "platform::system::run_loop: cpu_idle_c0 span_exit: Core 0: CPU Idle Core 0",
+            None
+        ),
+        Ok(true)
+    );
+
     // Test span_exit without ctx prefix (raw hex id) and brackets containing colons
     assert_eq!(
         host_cli::tracing::handle_tracing_line("33.986126 TRACE [peripherals::l9110s::{impl#2}::tick] 000102030405060708090a0b0c0d0e0f:0001020304050607 parent=0000000000000000 span_exit: sensor_task", None),
@@ -280,14 +297,18 @@ fn test_handle_tracing_line_parsing() {
     );
 
     let recorded = events.lock().unwrap();
-    assert_eq!(recorded.len(), 2);
+    assert_eq!(recorded.len(), 3);
 
     assert_eq!(recorded[0].0, "device_span_enter");
     assert_eq!(recorded[0].1, "sensor_task");
     assert_eq!(recorded[0].2, "0001020304050607");
 
     assert_eq!(recorded[1].0, "device_span_exit");
-    assert_eq!(recorded[1].2, "0001020304050607");
+    assert_eq!(recorded[1].1, "Core 0: CPU Idle Core 0");
+    assert_eq!(recorded[1].2, "cpu_idle_c0");
+
+    assert_eq!(recorded[2].0, "device_span_exit");
+    assert_eq!(recorded[2].2, "0001020304050607");
 }
 
 #[test]
@@ -308,7 +329,7 @@ fn test_post_process_run_span_renaming() {
     }
 
     // Run post processor
-    host_cli::tracing::post_process_trace(path).unwrap();
+    host_cli::tracing::post_process_trace(path, None).unwrap();
 
     // Read and parse output
     let content = std::fs::read_to_string(path).unwrap();
@@ -317,34 +338,91 @@ fn test_post_process_run_span_renaming() {
     // Clean up temp file
     let _ = std::fs::remove_file(path);
 
-    // We expect 4 events (2 metadata prepended + 2 renamed events).
-    assert_eq!(events.len(), 4);
+    // We expect 5 events (3 metadata prepended + 2 renamed events).
+    assert_eq!(events.len(), 5);
 
     // Verify metadata events
     assert_eq!(
         events[0].get("name").and_then(|n| n.as_str()),
-        Some("thread_name")
+        Some("process_name")
     );
-    assert_eq!(events[0].get("tid").and_then(|t| t.as_i64()), Some(0));
     assert_eq!(
         events[1].get("name").and_then(|n| n.as_str()),
         Some("thread_name")
     );
     assert_eq!(events[1].get("tid").and_then(|t| t.as_i64()), Some(1));
-
     assert_eq!(
         events[2].get("name").and_then(|n| n.as_str()),
-        Some("system_controller")
+        Some("thread_name")
     );
-    assert_eq!(events[2].get("ph").and_then(|p| p.as_str()), Some("B"));
-    assert_eq!(events[2].get("pid").and_then(|p| p.as_i64()), Some(42));
-    assert_eq!(events[2].get("tid").and_then(|t| t.as_i64()), Some(0));
+    assert_eq!(events[2].get("tid").and_then(|t| t.as_i64()), Some(2));
 
     assert_eq!(
         events[3].get("name").and_then(|n| n.as_str()),
         Some("system_controller")
     );
-    assert_eq!(events[3].get("ph").and_then(|p| p.as_str()), Some("E"));
+    assert_eq!(events[3].get("ph").and_then(|p| p.as_str()), Some("B"));
     assert_eq!(events[3].get("pid").and_then(|p| p.as_i64()), Some(42));
-    assert_eq!(events[3].get("tid").and_then(|t| t.as_i64()), Some(0));
+    assert_eq!(events[3].get("tid").and_then(|t| t.as_i64()), Some(1));
+
+    assert_eq!(
+        events[4].get("name").and_then(|n| n.as_str()),
+        Some("system_controller")
+    );
+    assert_eq!(events[4].get("ph").and_then(|p| p.as_str()), Some("E"));
+    assert_eq!(events[4].get("pid").and_then(|p| p.as_i64()), Some(42));
+    assert_eq!(events[4].get("tid").and_then(|t| t.as_i64()), Some(1));
+}
+
+#[test]
+fn test_post_process_trace_telemetry() {
+    use model::telemetry::TelemetryRecord;
+    use model::types::{MotorSpeed, MotorStatus};
+    use std::io::Write;
+
+    let rec = TelemetryRecord::Motor(MotorStatus::Running(MotorSpeed::new(75).unwrap()));
+    let serialized = rec.serialize(1000);
+    let len = serialized[0] as usize;
+    let payload = &serialized[1..1 + len];
+    let mut log_payload = String::new();
+    for (i, &b) in payload.iter().enumerate() {
+        if i > 0 {
+            log_payload.push_str(", ");
+        }
+        log_payload.push_str(&format!("{}", b));
+    }
+
+    let temp_dir = std::env::temp_dir();
+    let file_path = temp_dir.join("test_telemetry_post_process.json");
+    let path = file_path.to_str().unwrap();
+
+    let mock_trace = format!(
+        r#"[
+            {{"cat": "device_log", "ts": 1000, "pid": 42, "tid": 1, "args": {{"message": "Device Telemetry: [{}]"}}}}
+        ]"#,
+        log_payload
+    );
+
+    {
+        let mut file = std::fs::File::create(path).unwrap();
+        file.write_all(mock_trace.as_bytes()).unwrap();
+    }
+
+    // Run post processor
+    host_cli::tracing::post_process_trace(path, None).unwrap();
+
+    // Read and parse output
+    let content = std::fs::read_to_string(path).unwrap();
+    let events: Vec<serde_json::Value> = serde_json::from_str(&content).unwrap();
+
+    // Clean up temp file
+    let _ = std::fs::remove_file(path);
+
+    // Print events
+    for (i, ev) in events.iter().enumerate() {
+        println!("Event {}: {}", i, ev);
+    }
+
+    // We expect 5 events (4 metadata + 1 parsed event)
+    assert_eq!(events.len(), 5);
 }

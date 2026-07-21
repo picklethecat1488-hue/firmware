@@ -190,10 +190,16 @@ pub trait CpuScheduler {
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 impl CpuScheduler for embassy_executor::raw::Executor {
-    unsafe fn run_loop(&'static self, _cpu_id: crate::types::CpuId) -> ! {
+    unsafe fn run_loop(&'static self, cpu_id: crate::types::CpuId) -> ! {
+        let (ctx, name) = match cpu_id {
+            crate::types::CpuId::Core0 => ("cpu_idle_c0", "Core 0: CPU Idle Core 0"),
+            crate::types::CpuId::Core1 => ("cpu_idle_c1", "Core 1: CPU Idle Core 1"),
+        };
         loop {
             self.poll();
+            defmt::trace!("ctx={} parent=0 span_enter: {}", ctx, name);
             cortex_m::asm::wfe();
+            defmt::trace!("{} span_exit: {}", ctx, name);
         }
     }
 }
