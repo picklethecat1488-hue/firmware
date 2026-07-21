@@ -15,10 +15,18 @@ TRACING_PID=$!
 python tools/validation/validate_multicore_support.py &
 MULTICORE_PID=$!
 
+ruff check &
+RUFF_CHECK_PID=$!
+
+ruff format --check &
+RUFF_FORMAT_PID=$!
+
 # Wait and report failures immediately
 wait $FMT_PID || { echo "❌ Formatting check failed (run 'cargo fmt --all' to fix)"; exit 1; }
 wait $TRACING_PID || { echo "❌ Tracing hierarchy check failed"; exit 1; }
 wait $MULTICORE_PID || { echo "❌ Multicore placement check failed"; exit 1; }
+wait $RUFF_CHECK_PID || { echo "❌ Ruff lint check failed"; exit 1; }
+wait $RUFF_FORMAT_PID || { echo "❌ Ruff formatting check failed"; exit 1; }
 echo "   Static checks passed!"
 
 # 2. Fast Cargo Check for both Host and MCU Targets
@@ -43,6 +51,9 @@ if command -v cargo-nextest >/dev/null 2>&1; then
 else
     cargo test --color never
 fi
+
+echo "   Running Python tests..."
+pytest --color=yes
 
 # 4. Build debug firmware target and debug host tools
 echo "4. Building target binaries and host tools (Debug)..."
