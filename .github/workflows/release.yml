@@ -114,8 +114,7 @@ jobs:
       - name: Copy Verification Reports to Package
         run: |
           cp test_report.txt build/
-          cp clippy_host_report.txt build/
-          cp clippy_target_report.txt build/
+          cp validation_report.txt build/
 
       - name: Binary Size Report
         run: ./tools/helpers/generate_size_report.sh build/size_report.txt
@@ -165,6 +164,5 @@ jobs:
           name: release-validation-reports
           path: |
             test_report.txt
-            clippy_host_report.txt
-            clippy_target_report.txt
+            validation_report.txt
             build/size_report.txt
