@@ -9,10 +9,11 @@ sequential-storage = "3.0.0"
 embedded-storage = "0.3.1"
 embedded-storage-async = "0.4.1"
 model = { path = "../../model" }
-firmware_lib = { path = "../../lib" }
-tool_common = { path = "../lib" }
+platform = { path = "../../platform" }
+tool_common = { path = "../../platform/host" }
 cat_detector = { path = "../../projects/cat_detector" }
 defmt-decoder = "1.1.0"
+serde_json = "1.0"
 
 [target.'cfg(not(all(target_arch = "arm", target_os = "none")))'.dependencies]
 futures = "0.3"

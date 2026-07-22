@@ -5,155 +5,165 @@ flash_size: 262144
 cargo_target: "cargo run --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release"
 app_cargo_target: "cargo run --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_app --release"
 steps:
-  - id: "0.5"
+  - id: "1"
     name: Format Filesystem Partition
     type: shell_command
     command: fs format
+    reboot: true
     expected_regex: "Formatting successful!|Type 'help' to print usage."
     description: Erase and format the sequential-storage partition.
 
-  - id: "1"
+  - id: "2"
     name: Verify Fuel Gauge Communication
     type: shell_command
     command: battery status
     expected_regex: 'Direct battery reading: \d+ mV, \d+% state of charge'
     description: Verify communication with MAX17048 Fuel Gauge by querying voltage and SOC.
 
-  - id: "2"
+  - id: "3"
     name: Verify Thermal Monitoring
     type: shell_command
     command: thermal status
     expected_regex: 'Direct thermal reading \(ThermalController\): \d+\.\d+ C'
     description: Verify communication with the temperature sensor.
 
-  - id: "3"
+  - id: "4"
     name: Verify Time-of-Flight (Proximity) Sensors
     type: shell_command
     command: sensor status
     expected_regex: 'Direct proximity readings: North = \d+ mm, East = \d+ mm, West = \d+ mm'
     description: Verify range readings from all three VL53L0X ToF sensors.
 
-  - id: "4"
+  - id: "5"
     name: Verify RP2040 Microcontroller Temperature
     type: shell_command
     command: thermal mcu
     expected_regex: 'Direct system temperature reading \(RP2040\): \d+\.\d+ C'
     description: Verify the RP2040 internal core temperature.
 
-  - id: "5a"
+  - id: "6a"
     name: Calibrate North Sensor (Near)
     type: shell_command
     command: sensor cal_near north
     expected_regex: 'Saved cover calibration for North to flash.'
     description: Place target close (0mm) to the North proximity sensor first.
 
-  - id: "5b"
+  - id: "6b"
     name: Calibrate North Sensor (Far)
     type: shell_command
     command: sensor cal_far north
     expected_regex: 'Saved 100mm calibration for North to flash.'
     description: Place target at 100mm from the North proximity sensor first.
 
-  - id: "5c"
+  - id: "6c"
     name: Verify North Sensor Calibration
     type: shell_command
     command: sensor status
     expected_regex: 'Direct proximity readings: North = (9[0-9]|10[0-9]|110) mm'
     description: Verify North sensor reads correct calibrated distance (~100mm).
 
-  - id: "5d"
+  - id: "6d"
     name: Calibrate East Sensor (Near)
     type: shell_command
     command: sensor cal_near east
     expected_regex: 'Saved cover calibration for East to flash.'
     description: Place target close (0mm) to the East proximity sensor first.
 
-  - id: "5e"
+  - id: "6e"
     name: Calibrate East Sensor (Far)
     type: shell_command
     command: sensor cal_far east
     expected_regex: 'Saved 100mm calibration for East to flash.'
     description: Place target at 100mm from the East proximity sensor first.
 
-  - id: "5f"
+  - id: "6f"
     name: Verify East Sensor Calibration
     type: shell_command
     command: sensor status
     expected_regex: 'Direct proximity readings: .* East = (9[0-9]|10[0-9]|110) mm'
     description: Verify East sensor reads correct calibrated distance (~100mm).
 
-  - id: "5g"
+  - id: "6g"
     name: Calibrate West Sensor (Near)
     type: shell_command
     command: sensor cal_near west
     expected_regex: 'Saved cover calibration for West to flash.'
     description: Place target close (0mm) to the West proximity sensor first.
 
-  - id: "5h"
+  - id: "6h"
     name: Calibrate West Sensor (Far)
     type: shell_command
     command: sensor cal_far west
     expected_regex: 'Saved 100mm calibration for West to flash.'
     description: Place target at 100mm from the West proximity sensor first.
 
-  - id: "5i"
+  - id: "6i"
     name: Verify West Sensor Calibration
     type: shell_command
     command: sensor status
     expected_regex: 'Direct proximity readings: .* West = (9[0-9]|10[0-9]|110) mm'
     description: Verify West sensor reads correct calibrated distance (~100mm).
 
-  - id: "6a"
+  - id: "7a"
     name: Verify Actuator (Pump Motor) Start
     type: shell_command
     command: motor speed 50
     expected_regex: 'Motor current: \d+ mA'
     description: Spin pump motor at 50% speed.
 
-  - id: "6b"
+  - id: "7b"
     name: Verify Actuator (Pump Motor) Stop
     type: shell_command
     command: motor stop
     expected_regex: 'motor stop'
     description: Halt pump motor.
 
-  - id: "7a_empty"
+  - id: "8a"
     name: Calibrate Motor Current (Empty Bowl)
     type: shell_command
     command: motor calibrate empty 3000 2500
     expected_regex: 'Saved motor Empty calibration to flash.'
     description: Calibrate motor empty bowl state. Ensure bowl is empty first.
 
-  - id: "7a_low"
+  - id: "8b"
     name: Calibrate Motor Current (Low Water Level)
     type: shell_command
     command: motor calibrate low
     expected_regex: 'Saved motor Low calibration to flash.'
     description: Calibrate motor low bowl state. Fill bowl with low level of water (e.g. 100ml) first.
 
-  - id: "7a_high"
+  - id: "8c"
     name: Calibrate Motor Current (High Water Level)
     type: shell_command
     command: motor calibrate high
     expected_regex: 'Saved motor High calibration to flash.'
     description: Calibrate motor high bowl state. Fill bowl completely first.
 
-  - id: "7b"
+  - id: "8d"
     name: Calibrate Motor Current (Overload Stall)
     type: shell_command
     command: motor calibrate overload
     expected_regex: 'Saved motor Overload calibration to flash.'
     description: Calibrate motor overload state. Hold impeller in place (simulating stall) first.
 
-  - id: "11"
+  - id: "9a"
     name: Verify Panic and Crash Log Capture
     type: shell_command
     flash_before: shell
     command: system crash
+    reboot: true
     expected_regex: "Type 'help' to print usage."
     description: Force a CPU panic handler test execution to verify logging.
 
-  - id: "8"
+  - id: "9b"
+    name: Verify Core 1 Panic Capture
+    type: shell_command
+    command: core1 panic
+    reboot: true
+    expected_regex: "Type 'help' to print usage."
+    description: Trigger a simulated panic on Core 1 executor and verify crash log generation.
+
+  - id: "10"
     name: Verify System Power States
     type: interactive
     flash_before: app
@@ -162,14 +172,14 @@ steps:
       1. Let the system sit idle for 30 seconds until it automatically transitions to low-power Sleep state.
       2. Place an object close to one of the proximity sensors (e.g. North, East, or West ToF sensor) and verify the system returns to Active state.
 
-  - id: "10"
+  - id: "11"
     name: Verify Fuel Gauge Alert Interrupt
     type: manual
     flash_before: app
     description: Pull fuel gauge Alert line (GP10) to ground.
     expected: System wakes up, dispatches battery alert, and blinks NeoPixel red.
 
-  - id: "13"
+  - id: "12"
     name: Verify Directory Structure
     type: shell_command
     flash_before: shell
@@ -177,20 +187,20 @@ steps:
     expected_regex: 'vl53l0x_cal\.cbor'
     description: Query the filesystem to ensure directory references and files exist.
 
-  - id: "14"
+  - id: "13"
     name: Decode and Export Telemetry Stream
     type: host_command
     command: cargo run --package host_fs --bin host_fs -- --elf {shell_elf} export-telemetry telemetry.csv
     description: Decode CBOR updates in telemetry.rrd to telemetry.csv.
 
-  - id: "15"
+  - id: "14"
     name: Decode and Symbolicate Crash Dumps
     type: host_command
     command: cargo run --package host_fs --bin host_fs -- --elf {shell_elf} crash-log
     expected_regex: '(Location:|Backtrace:)'
     description: Verify panic log is decoded and symbolicated using debug ELF.
 
-  - id: "16"
+  - id: "15"
     name: Flash Production App
     type: manual
     flash_before: app

@@ -414,6 +414,20 @@ macro_rules! append_group_arm {
             $name::System { subcommand } => $crate::system_controller::handle_system_cli($ctrl, subcommand, $writer),
         ] -> $mode, $proc_name);
     };
+    (Core1, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
+        $crate::declare_shell_commands!(@accum $name, $ctrl, $writer, [$($tail),*] -> [
+            $($variants)*
+            /// Core 1 commands (core1 panic)
+            #[command(name = "core1")]
+            Core1 {
+                /// Subcommand (panic)
+                subcommand: Option<$crate::shell_controller::Core1Subcommand>,
+            },
+        ] [
+            $($matches)*
+            $name::Core1 { subcommand } => handle_core1_cli($ctrl, subcommand, $writer),
+        ] -> $mode, $proc_name);
+    };
 }
 
 /// Macro to emit shell commands processor directly on ShellController.
@@ -608,4 +622,13 @@ macro_rules! declare_shell_commands {
     (@accum $name:ident, $ctrl:ident, $writer:ident, [] -> [$($variants:tt)*] [$($matches:tt)*] -> wrapper, $proc_name:ident) => {
         $crate::emit_wrapper_commands!($name, $proc_name, $ctrl, $writer, [$($variants)*], [$($matches)*]);
     };
+}
+
+platform::subcommand_enum! {
+    /// Core 1 subcommands for CLI processing.
+    pub enum Core1Subcommand {
+        /// Force Core 1 to panic
+        Panic,
+    }
+    "Invalid core1 subcommand. Expected: panic"
 }

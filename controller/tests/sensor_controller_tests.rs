@@ -31,11 +31,15 @@ fn test_sensor_controller_flow() {
     );
 
     // Verify periodic state
-    assert!(controller.is_periodic_enabled());
-    controller.handle_command(SensorCommand::DisablePeriodic);
     assert!(!controller.is_periodic_enabled());
-    controller.handle_command(SensorCommand::EnablePeriodic);
+    controller.handle_command(SensorCommand::SetInterval(
+        controller::PeriodicInterval::UpdateMs(1000),
+    ));
     assert!(controller.is_periodic_enabled());
+    controller.handle_command(SensorCommand::SetInterval(
+        controller::PeriodicInterval::None,
+    ));
+    assert!(!controller.is_periodic_enabled());
 }
 
 #[test]

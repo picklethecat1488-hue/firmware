@@ -25,3 +25,6 @@ pub use led::LedDriver;
 
 pub mod tickable;
 pub use tickable::{NoTick, Tickable};
+
+pub mod periodic;
+pub use periodic::Periodic;

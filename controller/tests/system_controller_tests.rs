@@ -16,10 +16,10 @@ const INACTIVITY_TIMEOUT_SECONDS: u32 = 30;
 const CRITICAL_BATTERY_SOC_THRESHOLD: u8 = 10;
 const BATTERY_SOC_HYSTERESIS: u8 = 2;
 
-use firmware_lib::BatteryManager;
 use model::types::{
     BootReason, Gesture, MotorSpeed, SystemLedState, SystemStatus, TelemetryRecord,
 };
+use platform::BatteryManager;
 
 macro_rules! create_test_feature_set {
     ($motor_tx:expr, $battery_tx:expr, $sensors:expr, $led_tx:expr, $thermal_tx:expr) => {
@@ -129,7 +129,7 @@ fn test_system_controller_flow() {
 
     // Send a battery update showing battery is ok -> transitions to Active
     controller
-        .clear_boot_trap(firmware_lib::BootTrapReason::Thermal)
+        .clear_boot_trap(platform::BootTrapReason::Thermal)
         .unwrap();
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 85,
@@ -216,7 +216,7 @@ fn test_system_controller_flow() {
 
     // Send a battery update showing battery is ok -> transitions to Active
     controller
-        .clear_boot_trap(firmware_lib::BootTrapReason::Thermal)
+        .clear_boot_trap(platform::BootTrapReason::Thermal)
         .unwrap();
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 85,
@@ -348,7 +348,7 @@ fn test_power_down_and_gesture_detection() {
 
     // 3. Transition to Active when battery level is no longer critical
     controller
-        .clear_boot_trap(firmware_lib::BootTrapReason::Thermal)
+        .clear_boot_trap(platform::BootTrapReason::Thermal)
         .unwrap();
     controller.handle_command(SystemCommand::BatteryUpdate {
         state_of_charge: 85,
@@ -512,7 +512,7 @@ fn test_configurable_motor_speed() {
 
     // Initial battery update to clear boot power down trap and enter Active state
     controller
-        .clear_boot_trap(firmware_lib::BootTrapReason::Thermal)
+        .clear_boot_trap(platform::BootTrapReason::Thermal)
         .unwrap();
     controller
         .handle_command(SystemCommand::BatteryUpdate {
@@ -556,7 +556,7 @@ fn test_proximity_wake_lock_behavior() {
 
     // Initial battery update to clear boot power down trap and enter Active state
     controller
-        .clear_boot_trap(firmware_lib::BootTrapReason::Thermal)
+        .clear_boot_trap(platform::BootTrapReason::Thermal)
         .unwrap();
     controller
         .handle_command(SystemCommand::BatteryUpdate {
@@ -621,10 +621,10 @@ fn test_boot_traps_clearing_integration() {
     assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
     assert!(controller
         .power_manager
-        .has_boot_trap(firmware_lib::BootTrapReason::Battery));
+        .has_boot_trap(platform::BootTrapReason::Battery));
     assert!(controller
         .power_manager
-        .has_boot_trap(firmware_lib::BootTrapReason::Thermal));
+        .has_boot_trap(platform::BootTrapReason::Thermal));
 
     // Clear only Battery boot trap via battery update
     controller
@@ -639,14 +639,14 @@ fn test_boot_traps_clearing_integration() {
     assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
     assert!(!controller
         .power_manager
-        .has_boot_trap(firmware_lib::BootTrapReason::Battery));
+        .has_boot_trap(platform::BootTrapReason::Battery));
     assert!(controller
         .power_manager
-        .has_boot_trap(firmware_lib::BootTrapReason::Thermal));
+        .has_boot_trap(platform::BootTrapReason::Thermal));
 
     // Clear Thermal boot trap
     controller
-        .clear_boot_trap(firmware_lib::BootTrapReason::Thermal)
+        .clear_boot_trap(platform::BootTrapReason::Thermal)
         .unwrap();
     process!(controller);
 

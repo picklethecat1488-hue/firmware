@@ -8,10 +8,10 @@ use crate::BlockingProximityReader;
 use crate::Sender;
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
-use firmware_lib::{select_branch_with_timeout, subcommand_enum, BlockingAsyncFlash};
 use model::interfaces::ProximitySensor;
-use model::types::{Direction, PeripheralError};
+use model::types::{Direction, PeriodicInterval, PeripheralError};
 use peripherals::ToPeripheralError;
+use platform::{select_branch_with_timeout, subcommand_enum, BlockingAsyncFlash};
 
 /// Trait for waiting on a data-ready interrupt pin.
 #[allow(async_fn_in_trait)]
@@ -35,10 +35,8 @@ impl DataReadyPin for DummyDataReadyPin {
 pub enum SensorCommand {
     /// Force proximity sensor check and print telemetry logs
     ReadSensors,
-    /// Enable periodic automatic readings
-    EnablePeriodic,
-    /// Disable periodic automatic readings (runs only via manual commands)
-    DisablePeriodic,
+    /// Set periodic automatic reading interval
+    SetInterval(PeriodicInterval),
 }
 
 /// Trait for reading data from a generic sensor type.
@@ -69,6 +67,10 @@ impl<S: ProximitySensor> SensorReader<S> for ProximityReader {
     type Data = u16;
     type Error = S::Error;
 
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
     fn read_data(sensor: &mut S, _ctx: &Self::Context) -> Result<Self::Data, Self::Error> {
         sensor.read_distance_mm()
     }
@@ -81,6 +83,10 @@ pub trait FromProximityUpdate {
 }
 
 impl FromProximityUpdate for () {
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
     fn from_proximity_update(_metadata: SensorMetadata, _distance_mm: u16) -> Self {}
 }
 
@@ -95,7 +101,7 @@ pub struct SensorStateManager<
 > {
     metadata: SensorMetadata,
     sensor: S,
-    periodic_enabled: bool,
+    periodic_interval: PeriodicInterval,
     upstream_tx: Option<Sender<'a, M, Cmd, 4>>,
     interrupt_pin: Option<Pin>,
     _marker: core::marker::PhantomData<Data>,
@@ -114,7 +120,7 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
         Self {
             metadata,
             sensor,
-            periodic_enabled: true,
+            periodic_interval: PeriodicInterval::None,
             upstream_tx,
             interrupt_pin,
             _marker: core::marker::PhantomData,
@@ -143,12 +149,38 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
 
     /// Gets whether periodic monitoring is enabled.
     pub fn is_periodic_enabled(&self) -> bool {
-        self.periodic_enabled
+        self.periodic_interval != PeriodicInterval::None
+    }
+
+    /// Gets the periodic monitoring interval.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
+    pub fn periodic_interval(&self) -> PeriodicInterval {
+        self.periodic_interval
     }
 
     /// Sets whether periodic monitoring is enabled.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
     pub fn set_periodic_enabled(&mut self, enabled: bool) {
-        self.periodic_enabled = enabled;
+        self.periodic_interval = if enabled {
+            PeriodicInterval::UpdateMs(1000)
+        } else {
+            PeriodicInterval::None
+        };
+    }
+
+    /// Sets the periodic monitoring interval.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
+    pub fn set_periodic_interval(&mut self, interval: PeriodicInterval) {
+        self.periodic_interval = interval;
     }
 }
 
@@ -162,6 +194,10 @@ impl<
     > SensorStateManager<'a, S, Data, M, Pin, Cmd>
 {
     /// Sends a command upstream if configured.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
     pub fn notify_upstream(&self, data: Data) {
         if let Some(tx) = &self.upstream_tx {
             let cmd = Cmd::from_proximity_update(self.metadata, data.into());
@@ -272,6 +308,7 @@ impl<
     > SensorController<'a, S, M, Pin, Cmd, Reader>
 where
     Reader::Data: Copy + Into<u16>,
+    Reader::Error: core::fmt::Debug,
 {
     /// Creates a generic SensorController.
     pub fn new_generic(
@@ -310,6 +347,10 @@ where
     }
 
     /// Gets a mutable reference to the underlying sensor.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
     pub fn sensor_mut(&mut self) -> &mut S {
         self.state_manager.sensor_mut()
     }
@@ -330,12 +371,20 @@ where
     }
 
     /// Gets whether periodic monitoring is enabled.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
     pub fn is_periodic_enabled(&self) -> bool {
         self.state_manager.is_periodic_enabled()
     }
 
     /// Ticks the sensor control loop, updating proximity distance.
-    #[tracing::instrument(name = "sensor_controller::update", level = "info")]
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
+    #[tracing::instrument(core1 = "core1", name = "sensor_controller::update", level = "info")]
     pub fn update(&mut self) -> Result<Reader::Data, Reader::Error> {
         let data = Reader::read_data(self.state_manager.sensor_mut(), &self.context)?;
 
@@ -347,33 +396,41 @@ where
     }
 
     /// Handles a SensorCommand.
-    #[tracing::instrument(name = "sensor_controller::handle_command", level = "info", skip(cmd))]
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
+    #[tracing::instrument(
+        core1 = "core1",
+        name = "sensor_controller::handle_command",
+        level = "info",
+        skip(cmd)
+    )]
     pub fn handle_command(&mut self, cmd: SensorCommand) {
         match cmd {
             SensorCommand::ReadSensors => {
                 let _ = self.update();
             }
-            SensorCommand::EnablePeriodic => {
-                self.set_periodic_enabled(true);
-            }
-            SensorCommand::DisablePeriodic => {
-                self.set_periodic_enabled(false);
+            SensorCommand::SetInterval(interval) => {
+                self.set_periodic_interval(interval);
             }
         }
     }
 
     /// Runs the controller's main run loop, executing periodic telemetry updates.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
     pub async fn run(
         mut self,
         command_rx: embassy_sync::channel::Receiver<'static, M, SensorCommand, 4>,
     ) -> ! {
         loop {
-            let timeout_dur = if self.is_periodic_enabled() {
-                embassy_time::Duration::from_millis(1000)
-            } else {
-                embassy_time::Duration::MAX
+            let timeout_dur = match self.state_manager.periodic_interval() {
+                PeriodicInterval::None => crate::OVERFLOW_SAFE_MAX_DURATION,
+                PeriodicInterval::UpdateMs(ms) => embassy_time::Duration::from_millis(ms as u64),
             };
-
             let res = select_branch_with_timeout!(
                 timeout_dur,
                 command_rx.receive() => |cmd| {
@@ -385,8 +442,11 @@ where
                 },
             );
 
-            if res.is_none() {
-                let _ = self.update();
+            if res.is_none() && self.update().is_err() {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::warn!("SensorController: Periodic read failed; disabling periodic updates.");
+                self.state_manager
+                    .set_periodic_interval(PeriodicInterval::None);
             }
         }
     }
@@ -441,6 +501,10 @@ impl<'a, S: ProximitySensor, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin
 where
     S::Error: ToPeripheralError,
 {
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
     fn read_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
         self.sensor_mut()
             .read_distance_mm()
@@ -684,8 +748,7 @@ pub struct ProximityFeatureConfig<
     /// Sensor channel senders
     pub sensor_txs: heapless::Vec<crate::SensorSender<MutexRaw, N>, S_CAP>,
     /// Proximity gesture detector state
-    pub gesture_detector:
-        core::cell::RefCell<firmware_lib::gesture_detector::ProximityGestureDetector>,
+    pub gesture_detector: core::cell::RefCell<platform::gesture_detector::ProximityGestureDetector>,
     /// Proximity telemetry client
     pub telemetry_client:
         core::cell::RefCell<crate::telemetry_controller::ProximityTelemetryClient<MutexRaw, T_CAP>>,
@@ -717,7 +780,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_C
         Self {
             sensor_txs,
             gesture_detector: core::cell::RefCell::new(
-                firmware_lib::gesture_detector::ProximityGestureDetector::new(press_threshold_mm),
+                platform::gesture_detector::ProximityGestureDetector::new(press_threshold_mm),
             ),
             telemetry_client: core::cell::RefCell::new(
                 crate::telemetry_controller::ProximityTelemetryClient::new(
@@ -746,8 +809,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_C
         distance_mm: u16,
         status: model::types::SystemStatus,
     ) -> (Option<model::types::Gesture>, crate::ProximityAction) {
-        use firmware_lib::gesture_detector::GestureDetector as _;
         use model::telemetry::TelemetryClient as _;
+        use platform::gesture_detector::GestureDetector as _;
         self.telemetry_client
             .borrow_mut()
             .report((direction, distance_mm));
@@ -800,17 +863,45 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_C
         }
     }
 
-    fn on_tick(
+    fn on_state_changed(
         &self,
-        _elapsed_ms: u32,
-        _crossed_tick: bool,
-        _status: model::types::SystemStatus,
-        support: crate::DeviceSupport,
-        _wake_locks: u32,
+        _from: model::types::SystemStatus,
+        to: model::types::SystemStatus,
+        _support: crate::DeviceSupport,
+        _battery_status: Option<crate::BatteryStatus>,
+        _thermal_critical: bool,
     ) {
-        if support.proximity {
-            for sensor_tx in &self.sensor_txs {
-                let _ = sensor_tx.try_send(crate::SensorCommand::ReadSensors);
+        use crate::Periodic;
+        match to {
+            model::types::SystemStatus::Active => {
+                self.set_interval(PeriodicInterval::UpdateMs(200));
+            }
+            model::types::SystemStatus::Sleep => {
+                self.set_interval(PeriodicInterval::UpdateMs(1000));
+            }
+            model::types::SystemStatus::PowerDown => {
+                self.set_interval(PeriodicInterval::None);
+            }
+        }
+    }
+}
+
+impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_CAP: usize>
+    crate::Periodic for ProximityFeatureConfig<MutexRaw, N, S_CAP, T_CAP>
+{
+    fn set_interval(&self, interval: PeriodicInterval) {
+        self.telemetry_client
+            .borrow_mut()
+            .report_interval(model::types::Device::Sensors, interval);
+        for sensor_tx in &self.sensor_txs {
+            if sensor_tx
+                .try_send(SensorCommand::SetInterval(interval))
+                .is_err()
+            {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::error!(
+                    "ProximityFeatureConfig: Failed to configure sensor periodic interval!"
+                );
             }
         }
     }

@@ -3,7 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::tracing;
-pub use firmware_lib::gesture_detector::ProximityEvent;
+pub use platform::gesture_detector::ProximityEvent;
 
 use crate::system_feature::FeatureList;
 use crate::types::{
@@ -12,7 +12,7 @@ use crate::types::{
 use crate::{BlockingSystemWriter, PeripheralError, Sender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
-use firmware_lib::{
+use platform::{
     select_branch_with_timeout, subcommand_enum, transition_thermal_update, BatteryUpdateAction,
     BootTrapMask, BootTrapReason, PeriodicTimer, PowerManager,
 };
@@ -186,9 +186,12 @@ impl<
     ) -> Self {
         let mut power_manager = PowerManager::new(telemetry_tx, boot_reason);
         let default_mask = feature_set.features().default_boot_trap_mask();
-        power_manager
+        if power_manager
             .set_boot_trap_mask(BootTrapMask::from_raw(default_mask))
-            .unwrap();
+            .is_err()
+        {
+            panic!("invalid default boot trap mask");
+        }
 
         let mut ctrl = Self {
             power_manager,
@@ -244,14 +247,14 @@ impl<
     pub fn set_status(
         &mut self,
         status: SystemStatus,
-    ) -> Result<(), firmware_lib::system::TransitionError> {
+    ) -> Result<(), platform::system::TransitionError> {
         self.set_status_internal(status)
     }
 
     fn set_status_internal(
         &mut self,
         status: SystemStatus,
-    ) -> Result<(), firmware_lib::system::TransitionError> {
+    ) -> Result<(), platform::system::TransitionError> {
         let battery_crit = self.battery_critical();
         let thermal_crit = self.thermal_critical();
         if let Some(prev) = self
@@ -272,7 +275,7 @@ impl<
         &mut self,
         state_of_charge: u8,
         charger_state: ChargeState,
-    ) -> Result<(), firmware_lib::system::TransitionError> {
+    ) -> Result<(), platform::system::TransitionError> {
         let res = self.feature_set.features().on_battery_update(
             state_of_charge,
             charger_state,
@@ -294,7 +297,7 @@ impl<
     pub fn handle_command(
         &mut self,
         cmd: SystemCommand,
-    ) -> Result<(), firmware_lib::system::TransitionError> {
+    ) -> Result<(), platform::system::TransitionError> {
         match cmd {
             SystemCommand::ActivityDetected => {
                 self.power_manager.set_inactive_ms(0);
@@ -339,9 +342,15 @@ impl<
                 match action {
                     ProximityAction::AcquireWakeLock => {
                         self.power_manager.acquire_wake_lock(None);
+                        self.feature_set
+                            .features()
+                            .on_wake_locks_changed(self.power_manager.wake_locks());
                     }
                     ProximityAction::ReleaseWakeLock => {
                         self.power_manager.release_wake_lock(None);
+                        self.feature_set
+                            .features()
+                            .on_wake_locks_changed(self.power_manager.wake_locks());
                     }
                     ProximityAction::WakeSystem => {
                         if !self.battery_critical() && !self.thermal_critical() {
@@ -358,6 +367,7 @@ impl<
             SystemCommand::BatteryAction(action) => match action {
                 BatteryUpdateAction::GoToPowerDown => {
                     self.power_manager.clear_wake_locks();
+                    self.feature_set.features().on_wake_locks_changed(0);
                     self.set_status(SystemStatus::PowerDown)?;
                 }
                 BatteryUpdateAction::ClearBootTrap => {
@@ -394,6 +404,7 @@ impl<
                             }
                         } else {
                             self.power_manager.clear_wake_locks();
+                            self.feature_set.features().on_wake_locks_changed(0);
                             self.set_status(SystemStatus::PowerDown)?;
                         }
                     }
@@ -423,7 +434,7 @@ impl<
     pub fn handle_thermal_action(
         &mut self,
         action: ThermalUpdateAction,
-    ) -> Result<(), firmware_lib::system::TransitionError> {
+    ) -> Result<(), platform::system::TransitionError> {
         let current_status = self.power_manager.status();
 
         match action {
@@ -443,6 +454,7 @@ impl<
 
         if transition.clear_wake_locks {
             self.power_manager.clear_wake_locks();
+            self.feature_set.features().on_wake_locks_changed(0);
         }
 
         if let Some(next_status) = transition.next_status {
@@ -481,14 +493,6 @@ impl<
     /// Returns true if the 1-second system tick boundary was crossed.
     pub fn tick_ms(&mut self, ms: u32) -> bool {
         let crossed = self.power_manager.tick_ms(ms);
-        let status = self.power_manager.status();
-        let wake_locks = self.power_manager.wake_locks();
-
-        let support = self.feature_set.get_device_support(status);
-
-        self.feature_set
-            .features()
-            .on_tick(ms, crossed, status, support, wake_locks);
 
         if crossed {
             // Sleep after inactivity timeout

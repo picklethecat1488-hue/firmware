@@ -25,7 +25,7 @@ bench = false
 
 [dependencies]
 model = { path = "../../model" }
-firmware_lib = { path = "../../lib" }
+platform = { path = "../../platform", features = ["dual-core"] }
 peripherals = { path = "../../peripherals", features = ["mock"] }
 controller = { path = "../../controller" }
 embedded-hal = "1.0.0"
@@ -44,10 +44,10 @@ tracing-defmt = { version = "0.1.2", optional = true }
 [target.'cfg(all(target_arch = "arm", target_os = "none"))'.dependencies]
 embassy-executor = { version = "0.7.0", features = ["task-arena-size-32768", "arch-cortex-m", "executor-thread"] }
 embassy-time = { version = "0.4.0", features = ["defmt"] }
-embassy-rp = { version = "0.3.0", features = ["defmt", "rp2040", "time-driver"] }
+embassy-rp = { version = "0.3.0", features = ["defmt", "rp2040", "time-driver", "critical-section-impl"] }
 defmt = "0.3"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
-cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m = { version = "0.7" }
 cortex-m-rt = "0.7"
 
 [target.'cfg(not(all(target_arch = "arm", target_os = "none")))'.dependencies]
@@ -60,4 +60,12 @@ futures = "0.3"
 
 [features]
 default = []
-tracing = ["controller/tracing", "dep:tracing-defmt"]
+tracing = ["controller/tracing", "dep:tracing-defmt", "core1"]
+core1 = [
+    "controller/core1",
+    "peripherals/core1",
+    "motor-core",
+    "sensors-core",
+]
+motor-core = ["controller/motor-core", "peripherals/motor-core"]
+sensors-core = ["controller/sensors-core", "peripherals/sensors-core"]

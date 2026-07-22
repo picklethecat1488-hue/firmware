@@ -511,14 +511,6 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         // Set up defmt decoder
         let mut decoder = table.map(|table| table.new_stream_decoder());
 
-        let trace_decoder = if trace {
-            tracing_defmt_decoder::TraceDecoder::new(&elf_data).ok()
-        } else {
-            None
-        };
-
-        let mut trace_stream = trace_decoder.as_ref().map(|td| td.new_stream());
-
         let locations = if let Some(t) = table {
             t.get_locations(&elf_data).ok()
         } else {
@@ -582,7 +574,6 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         let mut rtt_buf = [0u8; 1024];
         let mut sent_buffer = Vec::<u8>::new();
         let mut run_error = None;
-
         loop {
             let mut did_work = false;
 
@@ -591,23 +582,28 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                 match chan.read(target.as_mut(), &mut rtt_buf) {
                     Ok(n) if n > 0 => {
                         did_work = true;
-                        if let Some(ref mut ts) = trace_stream {
-                            if let Err(e) = ts.process(&rtt_buf[..n]) {
-                                eprintln!("Error processing trace: {:?}", e);
-                            }
-                        }
                         if let Some(ref mut dec) = decoder {
                             dec.received(&rtt_buf[..n]);
                             loop {
                                 match dec.decode() {
                                     Ok(frame) => {
                                         let plain_line = frame.display(false).to_string();
+                                        let display = frame.display(true);
+                                        let line_str = display.to_string();
+
                                         let module_path = locations
                                             .as_ref()
                                             .and_then(|locs| locs.get(&frame.index()))
                                             .map(|loc| loc.module.as_str());
 
-                                        match handle_tracing_line(&plain_line, module_path) {
+                                        let device_ts = frame
+                                            .display_timestamp()
+                                            .map(|ts| ts.to_string())
+                                            .and_then(|s| s.trim().parse::<f64>().ok())
+                                            .map(|ts_sec| ts_sec * 1_000_000.0);
+
+                                        match handle_tracing_line(&line_str, module_path, device_ts)
+                                        {
                                             Ok(true) => continue,
                                             Err(e) => {
                                                 eprintln!("Error parsing trace line: {}", e);
@@ -628,8 +624,39 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                             Ok(false) => {}
                                         }
 
-                                        let display = frame.display(true);
-                                        let mut line_str = display.to_string();
+                                        // If tracing is enabled, manually log the device log event with target timestamp
+                                        if trace {
+                                            let msg = frame.display_message().to_string();
+                                            let device_ts = frame
+                                                .display_timestamp()
+                                                .map(|ts| ts.to_string())
+                                                .and_then(|s| s.trim().parse::<f64>().ok())
+                                                .map(|ts_sec| ts_sec * 1_000_000.0);
+
+                                            let (file, line, ns) = if let Some(loc) = locations
+                                                .as_ref()
+                                                .and_then(|locs| locs.get(&frame.index()))
+                                            {
+                                                (
+                                                    loc.file.display().to_string(),
+                                                    loc.line as i64,
+                                                    loc.module.clone(),
+                                                )
+                                            } else {
+                                                (String::new(), 0i64, "rp_pico".to_string())
+                                            };
+                                            tracing::info!(
+                                                target: "device_log",
+                                                code_filepath = file,
+                                                code_lineno = line,
+                                                code_namespace = ns,
+                                                device_ts = device_ts.unwrap_or(0.0),
+                                                "{}",
+                                                msg
+                                            );
+                                        }
+
+                                        let mut line_str = line_str.clone();
 
                                         let mut module_context = String::new();
                                         if let Some(ref locs) = locations {
@@ -661,7 +688,9 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                                     format!("{}{}", module_context, line_str);
                                             }
                                         }
-                                        println!("{}", line_str);
+                                        if !line_str.contains("Device Telemetry: ") {
+                                            println!("{}", line_str);
+                                        }
                                     }
                                     Err(defmt_decoder::DecodeError::UnexpectedEof) => break,
                                     Err(defmt_decoder::DecodeError::Malformed) => {
@@ -937,6 +966,8 @@ fn handle_intercepted_crash_dump<R>(
 where
     R: addr2line::gimli::Reader<Offset = usize>,
 {
+    const MAX_CORES: usize = 2;
+
     let start_idx = match log_line.find("Crash Dump: ") {
         Some(idx) => idx + "Crash Dump: ".len(),
         None => return Ok(false),
@@ -944,47 +975,76 @@ where
 
     let array_str = &log_line[start_idx..];
     let parts = split_cbor_display(array_str);
-    if parts.len() < 9 {
-        return Err("Malformed crash dump: CBOR array has fewer than 9 elements");
+    if parts.len() < 4 {
+        return Err("Malformed crash dump: CBOR array has fewer than 4 elements");
     }
 
     let revision_hash = parts[0].trim_matches('"').to_string();
-    let r0 = parse_u32(&parts[1]);
-    let r1 = parse_u32(&parts[2]);
-    let r2 = parse_u32(&parts[3]);
-    let r3 = parse_u32(&parts[4]);
-
-    let bt_str = parts[5].trim_matches(|c| c == '[' || c == ']');
-    let backtrace: Vec<u32> = if bt_str.trim().is_empty() {
-        Vec::new()
-    } else {
-        bt_str.split(',').map(parse_u32).collect()
-    };
-
-    let backtrace_len = parse_u32(&parts[6]) as usize;
-    let system_logs = decode_hex(&parts[7]);
-    let uuid_bytes = decode_hex(&parts[8]);
+    let system_logs = decode_hex(&parts[1]);
+    let uuid_bytes = decode_hex(&parts[2]);
     let mut uuid = [0u8; 16];
     if uuid_bytes.len() == 16 {
         uuid.copy_from_slice(&uuid_bytes);
     }
 
-    let dump = firmware_lib::types::CrashDump {
+    let cores_str = &parts[3];
+    let core_parts = split_cbor_display(cores_str);
+    if core_parts.is_empty() {
+        return Err("Malformed crash dump: no cores in CBOR cores array");
+    }
+
+    let parse_core = |core_str: &str| -> Result<platform::types::CoreDump, &'static str> {
+        let fields = split_cbor_display(core_str);
+        if fields.len() < 10 {
+            return Err("Malformed core dump: fewer than 10 elements in CoreDump array");
+        }
+        let r0 = parse_u32(&fields[0]);
+        let r1 = parse_u32(&fields[1]);
+        let r2 = parse_u32(&fields[2]);
+        let r3 = parse_u32(&fields[3]);
+        let sp = parse_u32(&fields[4]);
+        let lr = parse_u32(&fields[5]);
+        let pc = parse_u32(&fields[6]);
+
+        let bt_str = fields[7].trim_matches(|c| c == '[' || c == ']');
+        let backtrace: Vec<u32> = if bt_str.trim().is_empty() {
+            Vec::new()
+        } else {
+            bt_str.split(',').map(parse_u32).collect()
+        };
+        let backtrace_len = parse_u32(&fields[8]) as usize;
+        let panicked = fields[9].trim().parse::<bool>().unwrap_or(false);
+
+        let mut bt = [0u32; 32];
+        for (i, &val) in backtrace.iter().enumerate().take(32) {
+            bt[i] = val;
+        }
+
+        Ok(platform::types::CoreDump {
+            r0,
+            r1,
+            r2,
+            r3,
+            sp,
+            lr,
+            pc,
+            backtrace: bt,
+            backtrace_len: backtrace_len as u32,
+            panicked,
+        })
+    };
+
+    let mut cores = [platform::types::CoreDump::new(); MAX_CORES];
+
+    for (i, part) in core_parts.iter().enumerate().take(MAX_CORES) {
+        cores[i] = parse_core(part)?;
+    }
+
+    let dump = platform::types::CrashDump {
         revision_hash: &revision_hash,
-        r0,
-        r1,
-        r2,
-        r3,
-        backtrace: {
-            let mut bt = [0u32; 32];
-            for (i, &pc) in backtrace.iter().enumerate().take(32) {
-                bt[i] = pc;
-            }
-            bt
-        },
-        backtrace_len: backtrace_len as u32,
         system_logs: &system_logs,
         uuid,
+        cores,
     };
 
     tool_common::print_crash_dump(

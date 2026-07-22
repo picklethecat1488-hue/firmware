@@ -4,7 +4,7 @@
 
 use crate::types::{BatteryStatus, DeviceSupport, GestureAction, ProximityAction};
 use embassy_sync::blocking_mutex::raw::RawMutex;
-use firmware_lib::BatteryUpdateAction;
+use platform::BatteryUpdateAction;
 
 /// A single system feature that can react to system events and ticks.
 pub trait SystemFeature<MutexRaw: RawMutex + 'static, const N: usize> {
@@ -76,6 +76,9 @@ pub trait SystemFeature<MutexRaw: RawMutex + 'static, const N: usize> {
     ) {
     }
 
+    /// Hook called when the active wake locks change.
+    fn on_wake_locks_changed(&self, _wake_locks: u32) {}
+
     /// Hook called when a gesture is detected.
     fn on_gesture(&self, _gesture: model::types::Gesture, _status: model::types::SystemStatus) {}
 
@@ -88,20 +91,12 @@ pub trait SystemFeature<MutexRaw: RawMutex + 'static, const N: usize> {
         GestureAction::None
     }
 
-    /// Hook called periodically.
-    fn on_tick(
-        &self,
-        _elapsed_ms: u32,
-        _crossed_tick: bool,
-        _status: model::types::SystemStatus,
-        _support: DeviceSupport,
-        _wake_locks: u32,
-    ) {
-    }
-
     /// Hook called when a thermal or motor safety alert is triggered.
     fn on_alert_triggered(&self, _status: model::types::SystemStatus) {}
 }
+
+pub use model::interfaces::Periodic;
+pub use model::types::PeriodicInterval;
 
 /// Trait implemented by collections (like tuples) of system features to dispatch hooks.
 pub trait FeatureList<MutexRaw: RawMutex + 'static, const N: usize> {
@@ -147,6 +142,8 @@ pub trait FeatureList<MutexRaw: RawMutex + 'static, const N: usize> {
         status: model::types::SystemStatus,
         battery_status: Option<BatteryStatus>,
     );
+    /// Dispatch on_wake_locks_changed hook to all features.
+    fn on_wake_locks_changed(&self, wake_locks: u32);
     /// Dispatch on_gesture hook to all features.
     fn on_gesture(&self, gesture: model::types::Gesture, status: model::types::SystemStatus);
     /// Dispatch map_gesture hook to features.
@@ -155,15 +152,6 @@ pub trait FeatureList<MutexRaw: RawMutex + 'static, const N: usize> {
         gesture: model::types::Gesture,
         status: model::types::SystemStatus,
     ) -> GestureAction;
-    /// Dispatch on_tick hook to all features.
-    fn on_tick(
-        &self,
-        elapsed_ms: u32,
-        crossed_tick: bool,
-        status: model::types::SystemStatus,
-        support: DeviceSupport,
-        wake_locks: u32,
-    );
     /// Dispatch on_alert_triggered hook to all features.
     fn on_alert_triggered(&self, status: model::types::SystemStatus);
     /// Combine thermal overheating thresholds from all features.
@@ -251,6 +239,13 @@ macro_rules! impl_feature_list_for_tuple {
             }
 
             #[inline(always)]
+            fn on_wake_locks_changed(&self, _wake_locks: u32) {
+                #[allow(non_snake_case)]
+                let ($($T,)*) = self;
+                $($T.on_wake_locks_changed(_wake_locks);)*
+            }
+
+            #[inline(always)]
             fn on_gesture(&self, _gesture: model::types::Gesture, _status: model::types::SystemStatus) {
                 #[allow(non_snake_case)]
                 let ($($T,)*) = self;
@@ -270,12 +265,7 @@ macro_rules! impl_feature_list_for_tuple {
                 GestureAction::None
             }
 
-            #[inline(always)]
-            fn on_tick(&self, _elapsed_ms: u32, _crossed_tick: bool, _status: model::types::SystemStatus, _support: DeviceSupport, _wake_locks: u32) {
-                #[allow(non_snake_case)]
-                let ($($T,)*) = self;
-                $($T.on_tick(_elapsed_ms, _crossed_tick, _status, _support, _wake_locks);)*
-            }
+
 
             #[inline(always)]
             fn on_alert_triggered(&self, _status: model::types::SystemStatus) {

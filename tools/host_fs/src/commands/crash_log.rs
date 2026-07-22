@@ -50,7 +50,7 @@ where
                             Ok(Some(content)) => {
                                 // CBOR serialized crash dump
                                 let mut decoder = minicbor::Decoder::new(content);
-                                let dump_res: Result<firmware_lib::types::CrashDump, _> =
+                                let dump_res: Result<platform::types::CrashDump, _> =
                                     decoder.decode();
                                 match dump_res {
                                     Ok(dump) => {

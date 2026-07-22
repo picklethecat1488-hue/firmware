@@ -204,3 +204,75 @@ fn test_vl53l0x_init() {
     // 5. Interrupt clear (write to 0x30): register 0x0B -> 0x01
     assert_eq!(w[4], (0x30, vec![0x0B, 0x01]));
 }
+
+struct FailingI2c {
+    error_after_writes: usize,
+    write_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DummyError {
+    I2cFailure,
+}
+
+impl embedded_hal::i2c::Error for DummyError {
+    fn kind(&self) -> embedded_hal::i2c::ErrorKind {
+        embedded_hal::i2c::ErrorKind::Bus
+    }
+}
+
+impl embedded_hal::i2c::ErrorType for FailingI2c {
+    type Error = DummyError;
+}
+
+impl embedded_hal::i2c::I2c for FailingI2c {
+    fn read(&mut self, _address: u8, _read: &mut [u8]) -> Result<(), Self::Error> {
+        Err(DummyError::I2cFailure)
+    }
+    fn write(&mut self, _address: u8, _write: &[u8]) -> Result<(), Self::Error> {
+        self.write_count += 1;
+        if self.write_count > self.error_after_writes {
+            Err(DummyError::I2cFailure)
+        } else {
+            Ok(())
+        }
+    }
+    fn write_read(
+        &mut self,
+        _address: u8,
+        _write: &[u8],
+        _read: &mut [u8],
+    ) -> Result<(), Self::Error> {
+        Err(DummyError::I2cFailure)
+    }
+    fn transaction(
+        &mut self,
+        _address: u8,
+        _operations: &mut [embedded_hal::i2c::Operation<'_>],
+    ) -> Result<(), Self::Error> {
+        Err(DummyError::I2cFailure)
+    }
+}
+
+#[test]
+fn test_vl53l0x_i2c_error_propagation() {
+    use peripherals::vl53l0x::{InterruptMode, Vl53l0x};
+
+    // 1. Initial write fails
+    let i2c = FailingI2c {
+        error_after_writes: 0,
+        write_count: 0,
+    };
+    let mut sensor = Vl53l0x::new(i2c, 0x29);
+    let res = sensor.init(0x30, 250, InterruptMode::LowLevel);
+    assert!(res.is_err());
+
+    // 2. Middle write fails
+    let i2c = FailingI2c {
+        error_after_writes: 2,
+        write_count: 0,
+    };
+    let mut sensor = Vl53l0x::new(i2c, 0x29);
+    let res = sensor.init(0x30, 250, InterruptMode::LowLevel);
+    assert!(res.is_err());
+}

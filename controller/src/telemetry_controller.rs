@@ -233,55 +233,63 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
         let timestamp_us = get_timestamp_us();
 
         let serialized = record.serialize(timestamp_us);
+
         let len = serialized[0] as usize;
-        if len > 0 && len <= 19 {
-            #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::trace!("Writing Telemetry: len={}", len);
-        }
+        if len == 0 || len >= model::telemetry::TELEMETRY_MAX_SIZE {
+            #[cfg(all(target_arch = "arm", target_os = "none", feature = "tracing"))]
+            defmt::warn!("Unsupported telemetry record length: {}", len);
+            Err(())
+        } else {
+            #[cfg(all(target_arch = "arm", target_os = "none", feature = "tracing"))]
+            {
+                let payload = &serialized[1..1 + len];
+                defmt::trace!("Device Telemetry: {=[u8]}", payload);
+            }
 
-        // Determine which chunk file to write to
-        let idx = self.next_idx as usize;
-        let chunk_idx = idx / model::telemetry::CHUNK_SIZE;
-        let slot_idx = idx % model::telemetry::CHUNK_SIZE;
-        let name = model::telemetry::chunk_name(chunk_idx);
+            // Determine which chunk file to write to
+            let idx = self.next_idx as usize;
+            let chunk_idx = idx / model::telemetry::CHUNK_SIZE;
+            let slot_idx = idx % model::telemetry::CHUNK_SIZE;
+            let name = model::telemetry::chunk_name(chunk_idx);
 
-        // Manage caching of the current chunk data in self.file_buf
-        if self.current_chunk != Some(chunk_idx) {
-            // Flush the current chunk before loading the new one (if dirty)
+            // Manage caching of the current chunk data in self.file_buf
+            if self.current_chunk != Some(chunk_idx) {
+                // Flush the current chunk before loading the new one (if dirty)
+                self.flush().await?;
+
+                // Read the new chunk data from flash into self.file_buf
+                let base_ptr = self.file_buf.as_ptr() as usize;
+                self.file_buf.fill(0);
+                let mut read_len = 0;
+                let mut read_offset = 0;
+                if let Ok(Some(bytes)) = self.fs.read_file(name, &mut self.file_buf).await {
+                    read_len = bytes.len();
+                    read_offset = bytes.as_ptr() as usize - base_ptr;
+                }
+
+                // Copy read bytes to the beginning of self.file_buf
+                if read_len > 0 && read_offset > 0 {
+                    self.file_buf
+                        .copy_within(read_offset..read_offset + read_len, 0);
+                }
+
+                self.current_chunk = Some(chunk_idx);
+            }
+
+            // Copy serialized record to chunk slot in RAM
+            let offset = slot_idx * 20;
+            self.file_buf[offset..offset + 20].copy_from_slice(&serialized);
+
+            // Update metadata
+            self.next_idx = (self.next_idx + 1) % (MAX_RECORDS as u32);
+            self.count = core::cmp::min(self.count + 1, MAX_RECORDS as u32);
+            self.dirty = true;
+
+            #[cfg(test)]
             self.flush().await?;
 
-            // Read the new chunk data from flash into self.file_buf
-            let base_ptr = self.file_buf.as_ptr() as usize;
-            self.file_buf.fill(0);
-            let mut read_len = 0;
-            let mut read_offset = 0;
-            if let Ok(Some(bytes)) = self.fs.read_file(name, &mut self.file_buf).await {
-                read_len = bytes.len();
-                read_offset = bytes.as_ptr() as usize - base_ptr;
-            }
-
-            // Copy read bytes to the beginning of self.file_buf
-            if read_len > 0 && read_offset > 0 {
-                self.file_buf
-                    .copy_within(read_offset..read_offset + read_len, 0);
-            }
-
-            self.current_chunk = Some(chunk_idx);
+            Ok(())
         }
-
-        // Copy serialized record to chunk slot in RAM
-        let offset = slot_idx * 20;
-        self.file_buf[offset..offset + 20].copy_from_slice(&serialized);
-
-        // Update metadata
-        self.next_idx = (self.next_idx + 1) % (MAX_RECORDS as u32);
-        self.count = core::cmp::min(self.count + 1, MAX_RECORDS as u32);
-        self.dirty = true;
-
-        #[cfg(test)]
-        self.flush().await?;
-
-        Ok(())
     }
 
     /// Reads all records from the current telemetry state in chronological order.
@@ -414,6 +422,7 @@ impl TelemetryCounters {
             TelemetryRecord::ChargerState(_) => 9,
             TelemetryRecord::PeripheralError(_) => 10,
             TelemetryRecord::Boot(_) => 11,
+            TelemetryRecord::PeriodicInterval(_, _) => 12,
         };
         self.counts[idx] += 1;
     }
@@ -550,6 +559,17 @@ impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
             last_state: None,
         }
     }
+
+    /// Reports a periodic interval change to telemetry.
+    pub fn report_interval(
+        &self,
+        device: model::types::Device,
+        interval: model::types::PeriodicInterval,
+    ) {
+        if let Some(ref tx) = self.tx {
+            let _ = tx.try_send(TelemetryRecord::PeriodicInterval(device, interval));
+        }
+    }
 }
 
 impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
@@ -601,6 +621,17 @@ impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
             wake_threshold_mm,
             last_logged_distance: [9999; 3],
             last_logged_in_range: [None; 3],
+        }
+    }
+
+    /// Reports a periodic interval change to telemetry.
+    pub fn report_interval(
+        &self,
+        device: model::types::Device,
+        interval: model::types::PeriodicInterval,
+    ) {
+        if let Some(ref tx) = self.tx {
+            let _ = tx.try_send(TelemetryRecord::PeriodicInterval(device, interval));
         }
     }
 }
@@ -727,6 +758,17 @@ impl<M: embassy_sync::blocking_mutex::raw::RawMutex, const T_CAP: usize>
     pub fn report_error(&self, err: model::types::PeripheralError) {
         if let Some(ref tx) = self.tx {
             let _ = tx.try_send(TelemetryRecord::PeripheralError(err));
+        }
+    }
+
+    /// Reports a periodic interval change to telemetry.
+    pub fn report_interval(
+        &self,
+        device: model::types::Device,
+        interval: model::types::PeriodicInterval,
+    ) {
+        if let Some(ref tx) = self.tx {
+            let _ = tx.try_send(TelemetryRecord::PeriodicInterval(device, interval));
         }
     }
 }

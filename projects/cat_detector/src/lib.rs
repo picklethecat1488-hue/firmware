@@ -76,8 +76,8 @@ pub const FLASH_ERASE_SIZE: usize = 4096;
 /// Thread-safe Mutex wrapping the active I2C peripheral for shared access between tasks.
 pub static SHARED_I2C: embassy_sync::blocking_mutex::Mutex<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    core::cell::RefCell<firmware_lib::i2c::SafeI2c>,
-> = embassy_sync::blocking_mutex::Mutex::new(core::cell::RefCell::new(firmware_lib::i2c::SafeI2c(
+    core::cell::RefCell<platform::i2c::SafeI2c>,
+> = embassy_sync::blocking_mutex::Mutex::new(core::cell::RefCell::new(platform::i2c::SafeI2c(
     None,
 )));
 
@@ -92,9 +92,9 @@ pub static SHARED_TEMP_SENSOR: embassy_sync::mutex::Mutex<MutexRaw, TempSensorDe
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global battery/fuel gauge mutex.
 pub static SHARED_BATTERY: embassy_sync::mutex::Mutex<MutexRaw, BatteryDevice> =
-    embassy_sync::mutex::Mutex::new(BatteryDevice::new(
-        firmware_lib::i2c::SharedI2cWrapper::new(&SHARED_I2C),
-    ));
+    embassy_sync::mutex::Mutex::new(BatteryDevice::new(platform::i2c::SharedI2cWrapper::new(
+        &SHARED_I2C,
+    )));
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global battery charger mutex.
@@ -126,7 +126,7 @@ pub static mut LED_CTRL: Option<controller::led_controller::LedController<LedDev
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global instance of the North SensorController.
-pub static mut SENSOR_CTRL_NORTH: Option<
+pub static mut SENSOR_CTRL_NORTH_CORE0: Option<
     controller::sensor_controller::SensorController<
         'static,
         ProximitySensorDevice,
@@ -139,7 +139,7 @@ pub static mut SENSOR_CTRL_NORTH: Option<
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global instance of the East SensorController.
-pub static mut SENSOR_CTRL_EAST: Option<
+pub static mut SENSOR_CTRL_EAST_CORE0: Option<
     controller::sensor_controller::SensorController<
         'static,
         ProximitySensorDevice,
@@ -152,7 +152,7 @@ pub static mut SENSOR_CTRL_EAST: Option<
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global instance of the West SensorController.
-pub static mut SENSOR_CTRL_WEST: Option<
+pub static mut SENSOR_CTRL_WEST_CORE0: Option<
     controller::sensor_controller::SensorController<
         'static,
         ProximitySensorDevice,
@@ -165,7 +165,7 @@ pub static mut SENSOR_CTRL_WEST: Option<
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global instance of the MotorController.
-pub static mut MOTOR_CTRL: Option<
+pub static mut MOTOR_CTRL_CORE0: Option<
     controller::motor_controller::MotorController<MotorDevice, CurrentSensorDevice>,
 > = None;
 
@@ -238,7 +238,7 @@ pub async fn init_controllers(board: Board<'static>) {
 
         LED_CTRL = Some(controller::led_controller::LedController::new(led_driver));
 
-        SENSOR_CTRL_NORTH = Some(
+        SENSOR_CTRL_NORTH_CORE0 = Some(
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
                 controller::types::SensorMetadata {
                     direction: model::types::Direction::North,
@@ -250,7 +250,7 @@ pub async fn init_controllers(board: Board<'static>) {
             ),
         );
 
-        SENSOR_CTRL_EAST = Some(
+        SENSOR_CTRL_EAST_CORE0 = Some(
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
                 controller::types::SensorMetadata {
                     direction: model::types::Direction::East,
@@ -262,7 +262,7 @@ pub async fn init_controllers(board: Board<'static>) {
             ),
         );
 
-        SENSOR_CTRL_WEST = Some(
+        SENSOR_CTRL_WEST_CORE0 = Some(
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
                 controller::types::SensorMetadata {
                     direction: model::types::Direction::West,
@@ -274,11 +274,137 @@ pub async fn init_controllers(board: Board<'static>) {
             ),
         );
 
-        MOTOR_CTRL = Some(controller::motor_controller::MotorController::new(
+        MOTOR_CTRL_CORE0 = Some(controller::motor_controller::MotorController::new(
             motor,
             current_sensor,
         ));
     }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+static mut CORE1_STACK: embassy_rp::multicore::Stack<4096> = embassy_rp::multicore::Stack::new();
+
+/// Global pointer to the active MotorController on Core 1 (populated during startup).
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[allow(dead_code)]
+pub static mut MOTOR_CTRL_CORE1: *mut () = core::ptr::null_mut();
+
+/// Global pointer to the active North SensorController on Core 1.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[allow(dead_code)]
+pub static mut SENSOR_CTRL_NORTH_CORE1: *mut () = core::ptr::null_mut();
+
+/// Global pointer to the active East SensorController on Core 1.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[allow(dead_code)]
+pub static mut SENSOR_CTRL_EAST_CORE1: *mut () = core::ptr::null_mut();
+
+/// Global pointer to the active West SensorController on Core 1.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[allow(dead_code)]
+pub static mut SENSOR_CTRL_WEST_CORE1: *mut () = core::ptr::null_mut();
+
+/// Type alias for the motor controller.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub type MotorType =
+    controller::motor_controller::MotorController<crate::MotorDevice, crate::CurrentSensorDevice>;
+
+/// Type alias for the sensor controller.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub type SensorType = controller::sensor_controller::SensorController<
+    'static,
+    crate::ProximitySensorDevice,
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    crate::DataReadyPinType,
+    crate::SystemCommand,
+    controller::sensor_controller::ProximityReader,
+>;
+
+/// Boots Core 1 peripherals and controllers.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[embassy_executor::task]
+pub async fn bootstrap_core1_task(
+    spawner: embassy_executor::Spawner,
+    mut motor: MotorType,
+    mut sensors: (SensorType, SensorType, SensorType),
+) {
+    // Initialize the core monitor for Core 1
+    platform::core_monitor::init_core(
+        Some(spawner),
+        platform::core_monitor::CpuId::Core1,
+        crate::CORE_MONITOR_TIMEOUT_MS,
+        crate::CORE_MONITOR_WARN_PCT,
+        true,
+    );
+
+    unsafe {
+        let motor_ptr = core::ptr::addr_of_mut!(MOTOR_CTRL_CORE1);
+        *motor_ptr = &mut motor as *mut _ as *mut ();
+        let north_ptr = core::ptr::addr_of_mut!(SENSOR_CTRL_NORTH_CORE1);
+        *north_ptr = &mut sensors.0 as *mut _ as *mut ();
+        let east_ptr = core::ptr::addr_of_mut!(SENSOR_CTRL_EAST_CORE1);
+        *east_ptr = &mut sensors.1 as *mut _ as *mut ();
+        let west_ptr = core::ptr::addr_of_mut!(SENSOR_CTRL_WEST_CORE1);
+        *west_ptr = &mut sensors.2 as *mut _ as *mut ();
+    }
+
+    controller::spawn_controllers! {
+        spawner,
+        telemetry: TELEMETRY_CHANNEL,
+        controllers: {
+            Motor(motor, MOTOR_CHANNEL), generics: (crate::MotorDevice, crate::CurrentSensorDevice),
+            Sensor(sensors.0, SENSOR_NORTH_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+            Sensor(sensors.1, SENSOR_EAST_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+            Sensor(sensors.2, SENSOR_WEST_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+        }
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Boots Core 1 and starts the RAM executor.
+pub fn boot_core1(core1: embassy_rp::peripherals::CORE1) {
+    unsafe {
+        platform::panic_handler::CORE1_STACK_TOP = core::ptr::addr_of!(CORE1_STACK) as u32 + 4096;
+        crate::Board::init_executor_core1();
+    }
+
+    embassy_rp::multicore::spawn_core1(
+        core1,
+        unsafe {
+            let ptr = core::ptr::addr_of_mut!(CORE1_STACK);
+            &mut *ptr
+        },
+        move || unsafe {
+            crate::Board::run_executor(platform::types::CpuId::Core1);
+        },
+    );
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Handle a panic, performing multicore checks, resets, and delegating to flash writer.
+pub fn handle_panic(info: &core::panic::PanicInfo) -> ! {
+    let cpuid_val = unsafe { core::ptr::read_volatile(0xd0000000 as *const u32) };
+    let (cpuid, stack_top) = match cpuid_val {
+        0 => (platform::types::CpuId::Core0, 0x2004_2000),
+        1 => {
+            let top = unsafe { platform::panic_handler::CORE1_STACK_TOP };
+            (
+                platform::types::CpuId::Core1,
+                if top != 0 { top } else { 0x2004_0000 },
+            )
+        }
+        _ => loop {
+            cortex_m::asm::nop();
+        },
+    };
+
+    crate::handle_panic_with_sizes::<
+        { crate::FLASH_SIZE },
+        { crate::FLASH_START },
+        { crate::FLASH_END },
+        { crate::FLASH_WRITE_SIZE },
+        { crate::FLASH_ERASE_SIZE },
+    >(info, cpuid, stack_top);
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -341,12 +467,12 @@ const _: () = {
 /// Bringup serial command and shell controller.
 pub use controller::shell_controller;
 
-pub use firmware_lib::{
+pub use model::types::SystemStatus;
+pub use platform::{
     cbor,
     types::{ProjectMetadata, STACK_SCAN_LIMIT},
     BatteryUpdateAction,
 };
-pub use model::types::SystemStatus;
 
 /// Feature set for the Cat Detector app that implements SystemFeatureSet.
 #[allow(clippy::type_complexity)]
@@ -390,8 +516,8 @@ pub static MOTOR_CHANNEL: controller::MotorChannel<MutexRaw, 4> = controller::Mo
 pub static SYSTEM_CHANNEL: controller::SystemChannel<MutexRaw, 4> =
     controller::SystemChannel::new();
 /// Shared channel for local gesture events.
-pub static GESTURE_CHANNEL: firmware_lib::gesture_detector::GestureChannel<MutexRaw, 4> =
-    firmware_lib::gesture_detector::GestureChannel::new();
+pub static GESTURE_CHANNEL: platform::gesture_detector::GestureChannel<MutexRaw, 4> =
+    platform::gesture_detector::GestureChannel::new();
 /// Shared command channel for the North Sensor Controller.
 pub static SENSOR_NORTH_CHANNEL: controller::SensorChannel<MutexRaw, 4> =
     controller::SensorChannel::new();
@@ -430,7 +556,7 @@ pub type SystemControllerType =
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// The concrete flash type used for the filesystem partition in production.
 pub type FlashDeviceType = controller::filesystem_controller::ProfilingFlash<
-    firmware_lib::BlockingAsyncFlash<
+    platform::BlockingAsyncFlash<
         embassy_rp::flash::Flash<
             'static,
             embassy_rp::peripherals::FLASH,
@@ -443,45 +569,27 @@ pub type FlashDeviceType = controller::filesystem_controller::ProfilingFlash<
 /// Re-export the telemetry module from the controller crate
 pub use controller::telemetry_controller as telemetry;
 
+/// Default core monitor timeout in milliseconds.
+pub const CORE_MONITOR_TIMEOUT_MS: u32 = 10_000;
+
+/// Default core monitor warning threshold percentage.
+pub const CORE_MONITOR_WARN_PCT: u32 = 80;
+
 /// Re-export the run_filesystem_task macro from the controller crate
 pub use controller::run_filesystem_task;
 /// Re-export the run_telemetry_task macro from the controller crate
 pub use controller::run_telemetry_task;
 
-/// Re-export the modular panic handler function
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-pub use firmware_lib::panic_handler::handle_panic_with_sizes;
+pub use platform::panic_handler::handle_panic_with_sizes;
 
 /// Re-export the modular panic handler initialization
-pub use firmware_lib::panic_handler::init as init_panic_handler;
+pub use platform::panic_handler::init as init_panic_handler;
 
 /// Returns the current system uptime in microseconds since boot (64-bit precision).
 pub fn system_time() -> u64 {
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
-    {
-        unsafe {
-            let timer_high_addr = 0x4005_4008 as *const u32;
-            let timer_low_addr = 0x4005_400c as *const u32;
-            let mut high = *timer_high_addr;
-            let mut low = *timer_low_addr;
-            let high2 = *timer_high_addr;
-            if high != high2 {
-                high = high2;
-                low = *timer_low_addr;
-            }
-            ((high as u64) << 32) | (low as u64)
-        }
-    }
-    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-    {
-        static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-        let start = *START.get_or_init(std::time::Instant::now);
-        std::time::Instant::now().duration_since(start).as_micros() as u64
-    }
+    embassy_time::Instant::now().as_micros()
 }
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-defmt::timestamp!("{=u64:us}", system_time());
 
 const METADATA_WRITER: cbor::ConstCborWriter<128> = ProjectMetadata::serialize(
     "rp2040",
@@ -512,7 +620,7 @@ pub fn create_default_feature_set(
             ),
             controller::BatteryFeatureConfig::new(
                 Some(BATTERY_CHANNEL.sender()),
-                firmware_lib::BatteryManager::new(
+                platform::BatteryManager::new(
                     CRITICAL_BATTERY_SOC_THRESHOLD,
                     BATTERY_SOC_HYSTERESIS,
                     LOW_BATTERY_SOC_THRESHOLD,

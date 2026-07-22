@@ -49,6 +49,10 @@ impl<I: I2c> Ina219<I> {
     }
 
     /// Read a 16-bit register value from the device.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
     fn read_register(&mut self, reg: u8) -> Result<u16, PeripheralError> {
         let mut buf = [0u8; 2];
         self.i2c
@@ -58,6 +62,10 @@ impl<I: I2c> Ina219<I> {
     }
 
     /// Write a 16-bit register value to the device.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
     fn write_register(&mut self, reg: u8, val: u16) -> Result<(), PeripheralError> {
         let bytes = val.to_be_bytes();
         self.i2c
@@ -70,7 +78,11 @@ impl<I: I2c> Ina219<I> {
 impl<I: I2c> PowerSensor for Ina219<I> {
     type Error = PeripheralError;
 
-    #[tracing::instrument(level = "trace")]
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    #[tracing::instrument(core1 = "core1", level = "trace")]
     fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
         let res = self.read_register(0x04);
         if let Err(ref _e) = res {
@@ -84,7 +96,11 @@ impl<I: I2c> PowerSensor for Ina219<I> {
         Ok(val as i32)
     }
 
-    #[tracing::instrument(level = "trace")]
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    #[tracing::instrument(core1 = "core1", level = "trace")]
     fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
         let res = self.read_register(0x02);
         if let Err(ref _e) = res {
@@ -100,6 +116,10 @@ impl<I: I2c> PowerSensor for Ina219<I> {
     }
 
     /// Sets the operating mode of the sensor.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
     fn set_measurement_mode(&mut self, mode: PowerMeasurementMode) -> Result<(), Self::Error> {
         let res = (|| {
             let config = self.read_register(0x00)?;

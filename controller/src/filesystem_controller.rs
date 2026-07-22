@@ -15,7 +15,7 @@ use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
 // Filesystem Capacity & Buffer Constants
 // =========================================================================
 
-pub use firmware_lib::directory::{string_to_key, DIR_BUF_SIZE, KEY_SIZE};
+pub use platform::directory::{string_to_key, DIR_BUF_SIZE, KEY_SIZE};
 
 static TELEMETRY_ENABLED: AtomicBool = AtomicBool::new(true);
 
@@ -188,7 +188,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
                     }
 
                     if let Some(new_dir) =
-                        firmware_lib::directory::add_to_directory(existing_dir_str, name)
+                        platform::directory::add_to_directory(existing_dir_str, name)
                     {
                         // Write directory directly to avoid async recursion cycle
                         let dir_key = string_to_key(".dir");
@@ -294,8 +294,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
                     }
                 }
 
-                let new_dir =
-                    firmware_lib::directory::remove_from_directory(existing_dir_str, name);
+                let new_dir = platform::directory::remove_from_directory(existing_dir_str, name);
 
                 // Write directory directly to avoid async recursion cycle
                 let dir_key = string_to_key(".dir");
@@ -520,7 +519,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     }
 }
 
-use firmware_lib::subcommand_enum;
+use platform::subcommand_enum;
 
 subcommand_enum! {
     /// Filesystem subcommands for CLI processing.
@@ -552,7 +551,7 @@ pub fn handle_fs_cli<
     match cmd {
         FilesystemSubcommand::Format => {
             let flash_ref = unsafe { &mut *partition.flash_ptr };
-            let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
+            let async_flash = platform::BlockingAsyncFlash(flash_ref);
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
                 partition.start_address..partition.end_address,
@@ -578,7 +577,7 @@ pub fn handle_fs_cli<
         }
         FilesystemSubcommand::Ls => {
             let flash_ref = unsafe { &mut *partition.flash_ptr };
-            let async_flash = firmware_lib::BlockingAsyncFlash(flash_ref);
+            let async_flash = platform::BlockingAsyncFlash(flash_ref);
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
                 partition.start_address..partition.end_address,

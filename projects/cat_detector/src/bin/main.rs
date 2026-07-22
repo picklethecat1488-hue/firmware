@@ -8,46 +8,29 @@
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
     app::{
-        BATTERY_CHANNEL, FILESYSTEM_CHANNEL, GESTURE_CHANNEL, LED_CHANNEL, MOTOR_CHANNEL,
-        SENSOR_EAST_CHANNEL, SENSOR_NORTH_CHANNEL, SENSOR_WEST_CHANNEL, SYSTEM_CHANNEL,
+        BATTERY_CHANNEL, FILESYSTEM_CHANNEL, GESTURE_CHANNEL, LED_CHANNEL, SYSTEM_CHANNEL,
         TELEMETRY_CHANNEL, THERMAL_ACTION_CHANNEL, THERMAL_CHANNEL,
     },
     cat_detector as app,
     controller::{telemetry_controller::TelemetryController, SystemController},
     embassy_executor::Spawner,
+    platform::core_monitor,
 };
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    app::handle_panic_with_sizes::<
-        { app::FLASH_SIZE },
-        { app::STACK_TOP },
-        { app::FLASH_START },
-        { app::FLASH_END },
-        { app::FLASH_WRITE_SIZE },
-        { app::FLASH_ERASE_SIZE },
-    >(info);
+    app::handle_panic(info);
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[firmware_lib::tracing::instrument(name = "boot", level = "info", skip(spawner))]
-#[embassy_executor::main]
-async fn main(spawner: Spawner) {
-    let p = embassy_rp::init(Default::default());
-
-    // Configure hardware stack guard using Cortex-M MPU
-    app::configure_mpu_stack_guard();
-
-    // Initialize board peripherals and subcontrollers
-    let board = app::Board::init(p);
+#[platform::tracing::instrument(name = "boot", level = "info", skip(spawner, board))]
+#[embassy_executor::task]
+async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
     app::init_controllers(board).await;
 
     // Route defmt logs to RTT
-    firmware_lib::defmt_logger::DefmtLogger::set_writer(
-        &firmware_lib::defmt_logger::DEFAULT_RTT_WRITER,
-    );
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    platform::defmt_logger::DefmtLogger::set_writer(&platform::defmt_logger::DEFAULT_RTT_WRITER);
     defmt::info!("Booting Cat Detector App...");
 
     // Initialize the modular panic handler
@@ -67,6 +50,14 @@ async fn main(spawner: Spawner) {
         app::MAX_CRASH_LOGS,
     );
 
+    core_monitor::init_core(
+        Some(spawner),
+        core_monitor::CpuId::Core0,
+        app::CORE_MONITOR_TIMEOUT_MS,
+        app::CORE_MONITOR_WARN_PCT,
+        true,
+    );
+
     // Initialize the FilesystemController using stolen FLASH peripheral (safe because panic handler only reads/writes on panic)
     let fs_flash = unsafe { embassy_rp::peripherals::FLASH::steal() };
     let raw_flash = embassy_rp::flash::Flash::<
@@ -74,7 +65,7 @@ async fn main(spawner: Spawner) {
         embassy_rp::flash::Blocking,
         { app::FLASH_SIZE },
     >::new_blocking(fs_flash);
-    let async_flash = firmware_lib::BlockingAsyncFlash(raw_flash);
+    let async_flash = platform::BlockingAsyncFlash(raw_flash);
     let profiling_flash = controller::filesystem_controller::ProfilingFlash::new(async_flash);
     let mut fs_controller = controller::filesystem_controller::FilesystemController::new(
         profiling_flash,
@@ -93,7 +84,6 @@ async fn main(spawner: Spawner) {
         .await
     {
         Ok(Some(bytes)) => {
-            #[cfg(all(target_arch = "arm", target_os = "none"))]
             defmt::error!("vl53l0x calibration: {=[u8]:cbor}", bytes);
             minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes).unwrap_or_default()
         }
@@ -106,7 +96,6 @@ async fn main(spawner: Spawner) {
         .await
     {
         Ok(Some(bytes)) => {
-            #[cfg(all(target_arch = "arm", target_os = "none"))]
             defmt::error!("motor calibration: {=[u8]:cbor}", bytes);
             minicbor::decode::<model::calibration::MotorCalibration>(bytes).ok()
         }
@@ -116,10 +105,10 @@ async fn main(spawner: Spawner) {
     let thermal_ctrl = unsafe { app::THERMAL_CTRL.take().unwrap() };
     let power_ctrl = unsafe { app::BATTERY_CTRL.take().unwrap() };
     let led_ctrl = unsafe { app::LED_CTRL.take().unwrap() };
-    let mut controller = unsafe { app::MOTOR_CTRL.take().unwrap() };
-    let mut sensor_ctrl_north = unsafe { app::SENSOR_CTRL_NORTH.take().unwrap() };
-    let mut sensor_ctrl_east = unsafe { app::SENSOR_CTRL_EAST.take().unwrap() };
-    let mut sensor_ctrl_west = unsafe { app::SENSOR_CTRL_WEST.take().unwrap() };
+    let mut controller = unsafe { app::MOTOR_CTRL_CORE0.take().unwrap() };
+    let mut sensor_ctrl_north = unsafe { app::SENSOR_CTRL_NORTH_CORE0.take().unwrap() };
+    let mut sensor_ctrl_east = unsafe { app::SENSOR_CTRL_EAST_CORE0.take().unwrap() };
+    let mut sensor_ctrl_west = unsafe { app::SENSOR_CTRL_WEST_CORE0.take().unwrap() };
 
     use model::calibration::Calibration;
     use model::calibration::CalibrationType;
@@ -166,22 +155,49 @@ async fn main(spawner: Spawner) {
         TELEMETRY_CTRL.as_mut().unwrap()
     };
 
-    // Spawn all application tasks concurrently using the unified macro
+    let core1 = unsafe { embassy_rp::peripherals::CORE1::steal() };
+    app::boot_core1(core1);
+
+    let spawner_c1 = unsafe { app::Board::spawner_core1() };
+    spawner_c1
+        .spawn(app::bootstrap_core1_task(
+            spawner_c1,
+            controller,
+            (sensor_ctrl_north, sensor_ctrl_east, sensor_ctrl_west),
+        ))
+        .unwrap();
+
+    // Spawn tasks on Core 0
     controller::spawn_controllers! {
         spawner,
         telemetry: TELEMETRY_CHANNEL,
         controllers: {
             Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (app::TempSensorDevice),
             Battery(power_ctrl, BATTERY_CHANNEL), generics: (app::BatteryDevice, app::ChargerDevice, app::AlertPinType, app::SystemCommand),
-            Motor(controller, MOTOR_CHANNEL), generics: (app::MotorDevice, app::CurrentSensorDevice),
-            Sensor(sensor_ctrl_north, SENSOR_NORTH_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
-            Sensor(sensor_ctrl_east, SENSOR_EAST_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
-            Sensor(sensor_ctrl_west, SENSOR_WEST_CHANNEL), generics: (app::ProximitySensorDevice, app::DataReadyPinType, app::SystemCommand),
             Led(led_ctrl, LED_CHANNEL), generics: (app::LedDevice),
             System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (app::SystemControllerType),
             Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (app::FlashDeviceType),
             Telemetry(telemetry_ctrl, TELEMETRY_CHANNEL), generics: ({ app::MAX_RECORDS }, { controller::telemetry_controller::CHANNEL_CAPACITY }),
         }
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cortex_m_rt::entry]
+fn main() -> ! {
+    let p = embassy_rp::init(Default::default());
+
+    // Configure hardware stack guard using Cortex-M MPU
+    app::configure_mpu_stack_guard();
+
+    // Initialize board peripherals and subcontrollers
+    let board = app::Board::init(p);
+
+    let spawner_c0 = board.spawner.unwrap();
+
+    spawner_c0.spawn(bootstrap_task(spawner_c0, board)).unwrap();
+    unsafe {
+        app::Board::run_executor(platform::types::CpuId::Core0);
     }
 }
 

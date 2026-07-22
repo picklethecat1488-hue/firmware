@@ -29,20 +29,21 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@nextest
 
-      - name: Check Formatting
-        run: cargo fmt --all --check | tee format_report.txt
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python dependencies for validations
+        run: |
+          python -m pip install --upgrade pip
+          pip install tree-sitter==0.26.0 tree-sitter-rust==0.24.2 colorama halo
+
+      - name: Run Codebase Validations
+        run: ./tools/validation/validate_codebase.sh validation_report.txt
 
       - name: Run Tests
-        run: ./scripts/run_tests.sh test_report.txt
-
-      - name: Run Clippy (Host Targets)
-        run: cargo clippy --all-targets -- -D warnings | tee clippy_host_report.txt
-
-      - name: Run Clippy (Target MCU)
-        run: cargo clippy --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --lib --bins --target thumbv6m-none-eabi -- -D warnings | tee clippy_target_report.txt
-
-      - name: Run Clippy (Target MCU with Tracing)
-        run: cargo clippy --workspace $(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/")) | "--exclude " + .name') --lib --bins --target thumbv6m-none-eabi --features tracing -- -D warnings
+        run: ./tools/run_tests.sh test_report.txt
 
       - name: Upload Test Reports
         if: always()
@@ -50,10 +51,8 @@ jobs:
         with:
           name: nightly-test-reports
           path: |
-            format_report.txt
+            validation_report.txt
             test_report.txt
-            clippy_host_report.txt
-            clippy_target_report.txt
 
   test-python:
     name: Run Python Tests
@@ -72,13 +71,13 @@ jobs:
       - name: Run Ruff Lints & Formatting Checks
         shell: bash -el {0}
         run: |
-          ruff check scripts/
-          ruff format --check scripts/
+          ruff check tools/validation/ tools/helpers/
+          ruff format --check tools/validation/ tools/helpers/
 
       - name: Run Pytest
         shell: bash -el {0}
         run: |
-          pytest scripts/tests --junitxml=python_test_report.xml
+          pytest tools/validation/tests --junitxml=python_test_report.xml
 
       - name: Upload Python Test Report
         if: always()
@@ -109,7 +108,7 @@ jobs:
 
       - name: Build and Package Host Tools
         shell: bash
-        run: ./scripts/build_host_tools.sh --zip host-tools-${{ matrix.os }}.zip
+        run: ./tools/build/build_host_tools.sh --zip host-tools-${{ matrix.os }}.zip
 
       - name: Upload Host Tools Artifact
         uses: actions/upload-artifact@v4
@@ -139,7 +138,7 @@ jobs:
           components: llvm-tools-preview
 
       - name: Build and Organize Firmware
-        run: ./scripts/build_firmware.sh --out-dir build
+        run: ./tools/build/build_firmware.sh --out-dir build
 
       - name: Analyze cat_detector Memory (app)
         if: ${{ !env.ACT }}

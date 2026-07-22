@@ -4,18 +4,18 @@ members = [
     "model",
     "peripherals",
     "controller",
-    "lib",
-    "lib/tracing-mock-macros",
+    "platform",
+    "platform/tracing-macros",
     "projects/cat_detector",
     "tools/host_fs",
     "tools/host_cli",
-    "tools/lib",
+    "platform/host",
 ]
 default-members = [
     "model",
     "peripherals",
     "controller",
-    "lib",
+    "platform",
     "projects/cat_detector",
 ]
 

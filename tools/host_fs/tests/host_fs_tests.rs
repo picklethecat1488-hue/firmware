@@ -150,25 +150,44 @@ fn test_crash_log_decoding_integration() {
         0x10000234, 0x10000456, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
     ];
-    let dump = firmware_lib::types::CrashDump {
+    let dump = platform::types::CrashDump {
         revision_hash: "abcd123",
-        r0: 0x11111111,
-        r1: 0x22222222,
-        r2: 0x33333333,
-        r3: 0x44444444,
-        backtrace,
-        backtrace_len: 2,
         system_logs: b"mock log data",
         uuid: [
             0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc,
             0xde, 0xf0,
         ],
+        cores: [
+            platform::types::CoreDump {
+                r0: 0x11111111,
+                r1: 0x22222222,
+                r2: 0x33333333,
+                r3: 0x44444444,
+                sp: 0x20042000,
+                lr: 0x10000100,
+                pc: 0x10000200,
+                backtrace,
+                backtrace_len: 2,
+                panicked: true,
+            },
+            platform::types::CoreDump {
+                r0: 0,
+                r1: 0,
+                r2: 0,
+                r3: 0,
+                sp: 0,
+                lr: 0,
+                pc: 0,
+                backtrace: [0u32; 32],
+                backtrace_len: 0,
+                panicked: false,
+            },
+        ],
     };
 
     // Serialize it via the shared panic_handler serialization logic
     let mut cbor_buf = vec![0u8; 1024];
-    let encoded_len =
-        firmware_lib::panic_handler::serialize_crash_dump(&dump, &mut cbor_buf).unwrap();
+    let encoded_len = platform::panic_handler::serialize_crash_dump(&dump, &mut cbor_buf).unwrap();
     let encoded_bytes = &cbor_buf[..encoded_len];
 
     // 3. Write items to the flash

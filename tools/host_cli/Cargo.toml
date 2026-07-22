@@ -5,8 +5,8 @@ edition = "2021"
 license.workspace = true
 
 [dependencies]
-firmware_lib = { path = "../../lib" }
-tool_common = { path = "../lib" }
+platform = { path = "../../platform" }
+tool_common = { path = "../../platform/host" }
 defmt-decoder = "1.1.0"
 
 [target.'cfg(not(all(target_arch = "arm", target_os = "none")))'.dependencies]
@@ -26,4 +26,7 @@ tracing-defmt-decoder = "0.1.3"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 serde_json = "1.0"
 ctrlc = "3.4"
+
+[dev-dependencies]
+model = { path = "../../model" }
 

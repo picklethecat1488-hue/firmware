@@ -35,19 +35,19 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Python dependencies for tracing validation
+      - name: Install Python dependencies for validations
         run: |
           python -m pip install --upgrade pip
-          pip install tree-sitter==0.26.0 tree-sitter-rust==0.24.2
+          pip install tree-sitter==0.26.0 tree-sitter-rust==0.24.2 colorama halo
 
-      - name: Run Formatting and Clippy Lints
-        run: ./scripts/run_clippy.sh
+      - name: Run Codebase Validations
+        run: ./tools/validation/validate_codebase.sh
 
       - name: Run Tests
-        run: ./scripts/run_tests.sh test_report.txt
+        run: ./tools/run_tests.sh test_report.txt
 
       - name: Build Firmware and Tools
-        run: ./scripts/build_firmware.sh
+        run: ./tools/build/build_firmware.sh
 
       - name: Analyze cat_detector Memory
         if: ${{ !env.ACT }}
@@ -81,13 +81,13 @@ jobs:
       - name: Run Ruff Lints & Formatting Checks
         shell: bash -el {0}
         run: |
-          ruff check scripts/
-          ruff format --check scripts/
+          ruff check tools/validation/ tools/helpers/
+          ruff format --check tools/validation/ tools/helpers/
 
       - name: Run Pytest
         shell: bash -el {0}
         run: |
-          pytest scripts/tests --junitxml=python_test_report.xml
+          pytest tools/validation/tests --junitxml=python_test_report.xml
 
       - name: Upload Python Test Report
         if: always()

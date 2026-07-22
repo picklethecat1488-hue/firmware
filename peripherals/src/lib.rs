@@ -97,5 +97,5 @@ impl<E1: core::fmt::Debug, E2: core::fmt::Debug> ToPeripheralError
 /// Mock implementations of peripherals for host-based testing.
 pub mod mock;
 
-/// Consolidated tracing facade module from firmware_lib.
-pub use firmware_lib::tracing;
+/// Consolidated tracing facade module from platform.
+pub use platform::tracing;

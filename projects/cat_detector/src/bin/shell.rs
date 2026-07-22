@@ -12,7 +12,7 @@
 use cat_detector as app;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-use {embassy_executor::Spawner, embedded_cli::cli::CliBuilder};
+use {embassy_executor::Spawner, embedded_cli::cli::CliBuilder, platform::core_monitor};
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use controller::shell_controller::{ShellController, ShellControllerPointers};
@@ -20,14 +20,7 @@ use controller::shell_controller::{ShellController, ShellControllerPointers};
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    app::handle_panic_with_sizes::<
-        { app::FLASH_SIZE },
-        { app::STACK_TOP },
-        { app::FLASH_START },
-        { app::FLASH_END },
-        { app::FLASH_WRITE_SIZE },
-        { app::FLASH_ERASE_SIZE },
-    >(info);
+    app::handle_panic(info);
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -42,6 +35,7 @@ controller::declare_shell_commands! {
         Sensor,
         Fs,
         System,
+        Core1,
     }
 }
 
@@ -119,6 +113,64 @@ controller::impl_shell_config! {
         SystemCtrl = SystemControllerType,
     }
 }
+/// Core 1 command enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Core1Command {
+    /// Panic command.
+    Panic,
+}
+
+/// Core 1 command channel.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub static CORE1_COMMAND_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    Core1Command,
+    4,
+> = embassy_sync::channel::Channel::new();
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[embassy_executor::task]
+#[allow(clippy::never_loop)]
+async fn core1_command_task(
+    rx: embassy_sync::channel::Receiver<
+        'static,
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        Core1Command,
+        4,
+    >,
+) {
+    loop {
+        let cmd = rx.receive().await;
+        match cmd {
+            Core1Command::Panic => {
+                panic!("Simulated Core 1 panic");
+            }
+        }
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+fn handle_core1_cli<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    C: controller::ShellConfig,
+>(
+    _ctrl: &mut ShellController<'_, C>,
+    subcommand: Option<controller::shell_controller::Core1Subcommand>,
+    _writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+) -> Result<(), &'static str> {
+    let cmd = subcommand.ok_or("Missing core1 subcommand")?;
+    match cmd {
+        controller::shell_controller::Core1Subcommand::Panic => {
+            let _ = core::writeln!(_writer, "Sending panic command to Core 1...");
+            CORE1_COMMAND_CHANNEL
+                .sender()
+                .try_send(Core1Command::Panic)
+                .map_err(|_| "Failed to send command to Core 1")?;
+            Ok(())
+        }
+    }
+}
 
 /// Main application entry point for the bringup shell.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -133,10 +185,10 @@ async fn main(spawner: Spawner) {
     // Initialize board peripherals using the unified board configuration
     let board = app::Board::init(p);
 
-    let writer = firmware_lib::rtt::RttTxWriter;
+    let writer = platform::rtt::RttTxWriter;
 
     let mut cli: embedded_cli::cli::Cli<
-        firmware_lib::rtt::RttTxWriter,
+        platform::rtt::RttTxWriter,
         core::convert::Infallible,
         _,
         _,
@@ -176,6 +228,36 @@ async fn main(spawner: Spawner) {
         app::MAX_CRASH_LOGS,
     );
 
+    core_monitor::init_core(
+        Some(spawner),
+        core_monitor::CpuId::Core0,
+        app::CORE_MONITOR_TIMEOUT_MS,
+        app::CORE_MONITOR_WARN_PCT,
+        false,
+    );
+
+    let core1 = unsafe { embassy_rp::peripherals::CORE1::steal() };
+    app::boot_core1(core1);
+
+    let spawner_c1 = unsafe { app::Board::spawner_core1() };
+    spawner_c1
+        .spawn(app::bootstrap_core1_task(
+            spawner_c1,
+            unsafe { app::MOTOR_CTRL_CORE0.take().unwrap() },
+            unsafe {
+                (
+                    app::SENSOR_CTRL_NORTH_CORE0.take().unwrap(),
+                    app::SENSOR_CTRL_EAST_CORE0.take().unwrap(),
+                    app::SENSOR_CTRL_WEST_CORE0.take().unwrap(),
+                )
+            },
+        ))
+        .unwrap();
+
+    spawner_c1
+        .spawn(core1_command_task(CORE1_COMMAND_CHANNEL.receiver()))
+        .unwrap();
+
     let temp_sensor_ptr = {
         let mut guard = app::SHARED_TEMP_SENSOR.lock().await;
         if let Some(ref mut sensor) = guard.0 {
@@ -208,7 +290,13 @@ async fn main(spawner: Spawner) {
         }
     });
 
-    let board_motor_ptr = unsafe { &mut app::MOTOR_CTRL.as_mut().unwrap().motor as *mut _ };
+    let board_motor_ptr = unsafe {
+        if !app::MOTOR_CTRL_CORE1.is_null() {
+            &mut (*(app::MOTOR_CTRL_CORE1 as *mut MotorControllerType)).motor as *mut _
+        } else {
+            core::ptr::null_mut()
+        }
+    };
 
     let i2c_buses = &[controller::NamedDevice {
         name: "default",
@@ -240,15 +328,15 @@ async fn main(spawner: Spawner) {
         &[
             controller::NamedDevice {
                 name: "north",
-                device: app::SENSOR_CTRL_NORTH.as_mut().unwrap() as *mut _,
+                device: app::SENSOR_CTRL_NORTH_CORE1 as *mut _,
             },
             controller::NamedDevice {
                 name: "east",
-                device: app::SENSOR_CTRL_EAST.as_mut().unwrap() as *mut _,
+                device: app::SENSOR_CTRL_EAST_CORE1 as *mut _,
             },
             controller::NamedDevice {
                 name: "west",
-                device: app::SENSOR_CTRL_WEST.as_mut().unwrap() as *mut _,
+                device: app::SENSOR_CTRL_WEST_CORE1 as *mut _,
             },
         ]
     };
@@ -256,7 +344,7 @@ async fn main(spawner: Spawner) {
     let motor_ctrls = unsafe {
         &[controller::NamedDevice {
             name: "default",
-            device: app::MOTOR_CTRL.as_mut().unwrap() as *mut _,
+            device: app::MOTOR_CTRL_CORE1 as *mut _,
         }]
     };
 
@@ -287,9 +375,8 @@ async fn main(spawner: Spawner) {
 
     let mut processor = ShellController::<AppConfig>::new(pointers);
 
-    // Run the main input loop feeding bytes to the embedded-cli processor over RTT
     let mut local_proc = CatDetectorCliProcessor::new(&mut processor);
-    firmware_lib::rtt::run_rtt_shell_loop::<CatDetectorCli, _, _, _>(&mut cli, &mut local_proc);
+    platform::rtt::run_rtt_shell_loop::<CatDetectorCli, _, _, _>(&mut cli, &mut local_proc);
 }
 
 /// Dummy host entry point to satisfy Cargo compilation requirements.

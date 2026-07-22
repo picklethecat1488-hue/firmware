@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+import sys
+import os
+import csv
+
+# Exit code 3 is returned to Rerun to signal that this file is not supported by this loader
+ERR_INCOMPATIBLE = 3
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: rerun-loader-csv <file.csv>", file=sys.stderr)
+        sys.exit(ERR_INCOMPATIBLE)
+
+    filepath = sys.argv[1]
+    if not filepath.endswith(".csv"):
+        sys.exit(ERR_INCOMPATIBLE)
+
+    # Read the header to verify if it matches our custom telemetry CSV format
+    try:
+        with open(filepath, "r", newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            header = next(reader)
+    except Exception:
+        sys.exit(ERR_INCOMPATIBLE)
+
+    expected_header = ["timestamp_us", "record_type", "val1", "val2", "val3", "val4"]
+    if header != expected_header:
+        sys.exit(ERR_INCOMPATIBLE)
+
+    # Attempt to import rerun, showing a helpful error if it is missing
+    try:
+        import rerun as rr
+    except ImportError:
+        print("Error: The 'rerun-sdk' Python package is required to load this CSV file.", file=sys.stderr)
+        print("Please run: pip install rerun-sdk", file=sys.stderr)
+        sys.exit(1)
+
+    # Initialize Rerun session.
+    # If run directly (stdout is a TTY), we connect to a running viewer or spawn a new one.
+    # If stdout is piped (e.g. called by Rerun Viewer loader mechanism), we stream to stdout.
+    app_id = os.path.basename(filepath)
+    rr.init(app_id, recording_id=None)
+    if sys.stdout.isatty():
+        rr.spawn()
+    else:
+        rr.stdout()
+
+    # Parse and log records
+    try:
+        with open(filepath, "r", newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            next(reader) # Skip header
+            for row in reader:
+                if not row or len(row) < 2:
+                    continue
+                
+                try:
+                    ts_us = int(row[0])
+                except ValueError:
+                    continue
+                
+                rec_type = row[1]
+                val1 = row[2]
+                val2 = row[3]
+                val3 = row[4]
+                # val4 = row[5] (unused in expected schemas currently)
+
+                # Set the timeline timestamp as a duration in seconds
+                rr.set_time("timestamp", duration=ts_us / 1_000_000.0)
+
+                if rec_type == "Battery":
+                    try:
+                        rr.log("battery/voltage", rr.Scalars(float(val1)))
+                        rr.log("battery/temperature", rr.Scalars(float(val2)))
+                        rr.log("battery/state", rr.TextDocument(val3))
+                    except ValueError:
+                        pass
+                elif rec_type == "Motor":
+                    try:
+                        rr.log("motor/speed", rr.Scalars(float(val1)))
+                        rr.log("motor/running", rr.Scalars(1.0 if val2.lower() == "true" else 0.0))
+                    except ValueError:
+                        pass
+                elif rec_type == "Thermal":
+                    try:
+                        rr.log("thermal/temperature", rr.Scalars(float(val1) / 1000.0)) # convert mC to C
+                        rr.log("thermal/overheating", rr.Scalars(1.0 if val2.lower() == "true" else 0.0))
+                    except ValueError:
+                        pass
+                elif rec_type == "System":
+                    rr.log("system/status", rr.TextDocument(val1))
+                elif rec_type == "FuelGauge":
+                    try:
+                        rr.log("fuel_gauge/voltage", rr.Scalars(float(val1)))
+                        rr.log("fuel_gauge/soc", rr.Scalars(float(val2)))
+                    except ValueError:
+                        pass
+                elif rec_type == "Proximity":
+                    try:
+                        dir_str = val3 if val3 else "unknown"
+                        rr.log(f"proximity/{dir_str}/distance", rr.Scalars(float(val2)))
+                        rr.log(f"proximity/{dir_str}/state", rr.TextDocument(val1))
+                    except ValueError:
+                        pass
+                elif rec_type == "Led":
+                    rr.log("led/state", rr.TextDocument(val1))
+                elif rec_type == "Gesture":
+                    rr.log("gesture", rr.TextDocument(val1))
+                elif rec_type == "FlashTelemetry":
+                    try:
+                        rr.log("flash/sector", rr.Scalars(float(val1)))
+                        rr.log("flash/erase_duration_ms", rr.Scalars(float(val2)))
+                        rr.log("flash/erase_count", rr.Scalars(float(val3)))
+                    except ValueError:
+                        pass
+                elif rec_type == "ChargerState":
+                    rr.log("charger/state", rr.TextDocument(val1))
+                elif rec_type == "Boot":
+                    reason = val1 if val1 else "Unknown"
+                    msg = f"# 🚨 SYSTEM RESET ({reason}) 🚨\n\n**Warning:** The recording session was interrupted by a system reset."
+                    rr.log("system/boot_reason", rr.TextDocument(msg))
+                    rr.log("system/status", rr.TextDocument(f"SYSTEM RESET: {reason}"))
+                elif rec_type == "PeripheralError":
+                    msg = val1
+                    if val2:
+                        msg += f" (Addr: {val2}"
+                        if val3:
+                            msg += f", Reg: {val3}"
+                        msg += ")"
+                    rr.log("system/peripheral_error", rr.TextDocument(msg))
+                elif rec_type == "PeriodicInterval":
+                    try:
+                        device_str = val1
+                        interval_str = val2
+                        val_num = 0.0 if interval_str.lower() == "none" else float(interval_str)
+                        rr.log(f"periodic_interval/{device_str.lower()}", rr.Scalars(val_num))
+                    except ValueError:
+                        pass
+    except Exception as e:
+        print(f"Error parsing CSV: {e}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
