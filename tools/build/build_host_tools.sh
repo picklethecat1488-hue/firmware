@@ -102,9 +102,9 @@ if [ -n "$ZIP_FILE" ]; then
     elif command -v python >/dev/null 2>&1; then
         PYTHON_BIN="python"
     else
-        echo "Error: Python was not found to execute scripts/zip_folder.py!" >&2
+        echo "Error: Python was not found to execute tools/helpers/zip_folder.py!" >&2
         exit 1
     fi
-    "$PYTHON_BIN" "$WORKSPACE_ROOT/scripts/zip_folder.py" "$STAGE_DIR" "$ABS_ZIP_FILE"
+    "$PYTHON_BIN" "$WORKSPACE_ROOT/tools/helpers/zip_folder.py" "$STAGE_DIR" "$ABS_ZIP_FILE"
     rm -rf "$STAGE_DIR"
 fi
