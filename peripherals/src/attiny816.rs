@@ -17,6 +17,14 @@ macro_rules! log_warn {
 
 const BASE_NEOPIXEL: u8 = 0x0E;
 
+struct Command;
+impl Command {
+    const SET_PIN: u8 = 0x01;
+    const SET_BUF_LEN: u8 = 0x03;
+    const WRITE_BUF: u8 = 0x04;
+    const SHOW: u8 = 0x05;
+}
+
 /// Driver for the ATtiny816 custom NeoPixel LED driver over I2C.
 pub struct Attiny816<I> {
     i2c: I,
@@ -34,11 +42,11 @@ impl<I: I2c> Attiny816<I> {
         let res = (|| {
             // 1. Set Output Pin to 14
             self.i2c
-                .write(self.address, &[BASE_NEOPIXEL, 0x01, 14])
+                .write(self.address, &[BASE_NEOPIXEL, Command::SET_PIN, 14])
                 .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
             // 2. Set Buffer Length (3 bytes for 1 RGB NeoPixel)
             self.i2c
-                .write(self.address, &[BASE_NEOPIXEL, 0x03, 0, 3])
+                .write(self.address, &[BASE_NEOPIXEL, Command::SET_BUF_LEN, 0, 3])
                 .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
             Ok(())
         })();
@@ -58,11 +66,14 @@ impl<I: I2c> Attiny816<I> {
         let res = (|| {
             // 3. Write data to buffer (offset 0, standard GRB sequence)
             self.i2c
-                .write(self.address, &[BASE_NEOPIXEL, 0x04, 0, 0, g, r, b])
+                .write(
+                    self.address,
+                    &[BASE_NEOPIXEL, Command::WRITE_BUF, 0, 0, g, r, b],
+                )
                 .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
             // 4. Send show command
             self.i2c
-                .write(self.address, &[BASE_NEOPIXEL, 0x05])
+                .write(self.address, &[BASE_NEOPIXEL, Command::SHOW])
                 .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
             Ok(())
         })();

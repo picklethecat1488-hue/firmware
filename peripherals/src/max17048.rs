@@ -15,6 +15,30 @@ macro_rules! log_warn {
     };
 }
 
+struct Register;
+impl Register {
+    const VCELL: u8 = 0x02;
+    const SOC: u8 = 0x04;
+    const CONFIG: u8 = 0x0C;
+    const VALRT: u8 = 0x14;
+    const CRATE: u8 = 0x16;
+    const STATUS: u8 = 0x1A;
+}
+
+struct StatusMask;
+impl StatusMask {
+    const VH: u16 = 1 << 10;
+    const VL: u16 = 1 << 11;
+    const HD: u16 = 1 << 13;
+    const SC: u16 = 1 << 14;
+}
+
+struct ConfigMask;
+impl ConfigMask {
+    const ALRT: u16 = 1 << 5;
+    const ALSC: u16 = 1 << 6;
+}
+
 /// Driver for the MAX17048 fuel gauge communicating over I2C.
 pub struct Max17048<I> {
     i2c: I,
@@ -53,7 +77,7 @@ impl<I: I2c> FuelGauge for Max17048<I> {
     /// Formula: VCELL * 78.125 uV
     #[tracing::instrument(level = "trace")]
     fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
-        let res = self.read_register(0x02);
+        let res = self.read_register(Register::VCELL);
         if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to read cell voltage at address 0x{:02x}: {:?}",
@@ -71,7 +95,7 @@ impl<I: I2c> FuelGauge for Max17048<I> {
     /// Formula: High byte is percentage integer, low byte is fractional.
     #[tracing::instrument(level = "trace")]
     fn read_state_of_charge(&mut self) -> Result<u8, Self::Error> {
-        let res = self.read_register(0x04);
+        let res = self.read_register(Register::SOC);
         if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to read state of charge at address 0x{:02x}: {:?}",
@@ -94,23 +118,23 @@ impl<I: I2c> FuelGauge for Max17048<I> {
         enable_soc_change_alert: bool,
     ) -> Result<(), Self::Error> {
         let res = (|| {
-            // Write VALRT.MIN and VALRT.MAX to VALRT register (0x14)
+            // Write VALRT.MIN and VALRT.MAX to VALRT register
             let min_val = (voltage_min_mv / 20) as u8;
             let max_val = (voltage_max_mv / 20) as u8;
             let valrt_word = ((min_val as u16) << 8) | (max_val as u16);
-            self.write_register(0x14, valrt_word)?;
+            self.write_register(Register::VALRT, valrt_word)?;
 
-            // Configure empty alert threshold (ATHD) and SOC change alert (ALSC) in CONFIG register (0x0C)
-            let current_config = self.read_register(0x0C)?;
+            // Configure empty alert threshold (ATHD) and SOC change alert (ALSC) in CONFIG register
+            let current_config = self.read_register(Register::CONFIG)?;
             let rcomp = current_config & 0xFF00; // Keep RCOMP (bits 15-8)
             let clamped_soc_threshold = soc_threshold_pct.clamp(1, 32);
             let athd = 32 - clamped_soc_threshold;
-            let mut config_lsb = athd & 0x1F;
+            let mut config_lsb = (athd & 0x1F) as u16;
             if enable_soc_change_alert {
-                config_lsb |= 1 << 6;
+                config_lsb |= ConfigMask::ALSC;
             }
-            let new_config = rcomp | (config_lsb as u16);
-            self.write_register(0x0C, new_config)?;
+            let new_config = rcomp | config_lsb;
+            self.write_register(Register::CONFIG, new_config)?;
 
             Ok(())
         })();
@@ -128,32 +152,30 @@ impl<I: I2c> FuelGauge for Max17048<I> {
     /// Returns (has_voltage_alert, has_soc_alert).
     fn check_and_clear_alerts(&mut self) -> Result<(bool, bool), Self::Error> {
         let res = (|| {
-            let status = self.read_register(0x1A)?;
+            let status = self.read_register(Register::STATUS)?;
 
-            // VL = bit 11, VH = bit 10
-            let has_voltage_alert = (status & ((1 << 11) | (1 << 10))) != 0;
-            // HD = bit 13, SC = bit 14
-            let has_soc_alert = (status & ((1 << 13) | (1 << 14))) != 0;
+            let has_voltage_alert = (status & (StatusMask::VL | StatusMask::VH)) != 0;
+            let has_soc_alert = (status & (StatusMask::HD | StatusMask::SC)) != 0;
 
             let mut new_status = status;
 
             if has_soc_alert {
-                // Clear CONFIG.ALRT (bit 5) in CONFIG register (0x0C)
-                let config = self.read_register(0x0C)?;
-                let cleared_config = config & !(1 << 5);
-                self.write_register(0x0C, cleared_config)?;
+                // Clear CONFIG.ALRT in CONFIG register
+                let config = self.read_register(Register::CONFIG)?;
+                let cleared_config = config & !ConfigMask::ALRT;
+                self.write_register(Register::CONFIG, cleared_config)?;
 
                 // Clear status bits (SC and HD)
-                new_status &= !((1 << 14) | (1 << 13));
+                new_status &= !(StatusMask::SC | StatusMask::HD);
             }
 
             if has_voltage_alert {
                 // Clear status bits (VL and VH)
-                new_status &= !((1 << 11) | (1 << 10));
+                new_status &= !(StatusMask::VL | StatusMask::VH);
             }
 
             if new_status != status {
-                self.write_register(0x1A, new_status)?;
+                self.write_register(Register::STATUS, new_status)?;
             }
 
             Ok((has_voltage_alert, has_soc_alert))
@@ -175,13 +197,13 @@ impl<I: I2c> ChargeStatus for Max17048<I> {
     /// Checks the current charge state by reading CRATE and STATUS registers.
     #[tracing::instrument(level = "trace")]
     fn get_charge_state(&mut self) -> Result<ChargeState, Self::Error> {
-        let crate_val = self.read_register(0x16)? as i16;
-        let status = self.read_register(0x1A)?;
+        let crate_val = self.read_register(Register::CRATE)? as i16;
+        let status = self.read_register(Register::STATUS)?;
 
-        if (status & (1 << 10)) != 0 {
+        if (status & StatusMask::VH) != 0 {
             // VH (Voltage High) alert indicates a recoverable fault (e.g. overvoltage condition)
             Ok(ChargeState::RecoverableFault)
-        } else if (status & (1 << 11)) != 0 {
+        } else if (status & StatusMask::VL) != 0 {
             // VL (Voltage Low) alert indicates a non-recoverable or critical low voltage condition
             Ok(ChargeState::NonRecoverableFault)
         } else if crate_val > 0 {

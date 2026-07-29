@@ -17,6 +17,14 @@ macro_rules! log_warn {
     };
 }
 
+struct Register;
+impl Register {
+    const CONFIG: u8 = 0x00;
+    const BUS_VOLTAGE: u8 = 0x02;
+    const CURRENT: u8 = 0x04;
+    const CALIBRATION: u8 = 0x05;
+}
+
 /// Driver for the INA219 current and power monitor communicating over I2C.
 pub struct Ina219<I> {
     i2c: I,
@@ -33,9 +41,9 @@ impl<I: I2c> Ina219<I> {
     pub fn init(&mut self) -> Result<(), PeripheralError> {
         let res = (|| {
             // Write configuration word (0x399F default settings)
-            self.write_register(0x00, 0x399F)?;
+            self.write_register(Register::CONFIG, 0x399F)?;
             // Write calibration word (4096 LSB matches typical mA ranges)
-            self.write_register(0x05, 4096)?;
+            self.write_register(Register::CALIBRATION, 4096)?;
             Ok(())
         })();
         if let Err(ref _e) = res {
@@ -84,7 +92,7 @@ impl<I: I2c> PowerSensor for Ina219<I> {
     )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
     fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
-        let res = self.read_register(0x04);
+        let res = self.read_register(Register::CURRENT);
         if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to read current register at address 0x{:02x}: {:?}",
@@ -102,7 +110,7 @@ impl<I: I2c> PowerSensor for Ina219<I> {
     )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
     fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
-        let res = self.read_register(0x02);
+        let res = self.read_register(Register::BUS_VOLTAGE);
         if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to read voltage register at address 0x{:02x}: {:?}",
@@ -122,7 +130,7 @@ impl<I: I2c> PowerSensor for Ina219<I> {
     )]
     fn set_measurement_mode(&mut self, mode: PowerMeasurementMode) -> Result<(), Self::Error> {
         let res = (|| {
-            let config = self.read_register(0x00)?;
+            let config = self.read_register(Register::CONFIG)?;
             let mode_val = match mode {
                 PowerMeasurementMode::PowerDown => 0,
                 PowerMeasurementMode::OneShot(voltage, current) => match (voltage, current) {
@@ -139,7 +147,7 @@ impl<I: I2c> PowerSensor for Ina219<I> {
                 },
             };
             let new_config = (config & 0xFFF8) | mode_val;
-            self.write_register(0x00, new_config)?;
+            self.write_register(Register::CONFIG, new_config)?;
             Ok(())
         })();
         if let Err(ref _e) = res {
