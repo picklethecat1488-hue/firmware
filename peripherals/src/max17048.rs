@@ -5,8 +5,8 @@
 use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
-use model::interfaces::FuelGauge;
-use model::types::PeripheralError;
+use model::interfaces::{ChargeStatus, FuelGauge};
+use model::types::{ChargeState, PeripheralError};
 
 macro_rules! log_warn {
     ($fmt:literal $(, $arg:expr)*) => {
@@ -166,5 +166,28 @@ impl<I: I2c> FuelGauge for Max17048<I> {
             );
         }
         res
+    }
+}
+
+impl<I: I2c> ChargeStatus for Max17048<I> {
+    type Error = PeripheralError;
+
+    /// Checks the current charge state by reading CRATE and STATUS registers.
+    #[tracing::instrument(level = "trace")]
+    fn get_charge_state(&mut self) -> Result<ChargeState, Self::Error> {
+        let crate_val = self.read_register(0x16)? as i16;
+        let status = self.read_register(0x1A)?;
+
+        if (status & (1 << 10)) != 0 {
+            // VH (Voltage High) alert indicates a recoverable fault (e.g. overvoltage condition)
+            Ok(ChargeState::RecoverableFault)
+        } else if (status & (1 << 11)) != 0 {
+            // VL (Voltage Low) alert indicates a non-recoverable or critical low voltage condition
+            Ok(ChargeState::NonRecoverableFault)
+        } else if crate_val > 0 {
+            Ok(ChargeState::Charging)
+        } else {
+            Ok(ChargeState::DoneOrStandbyOrUnplugged)
+        }
     }
 }

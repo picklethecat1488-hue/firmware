@@ -43,11 +43,6 @@ pub const DEFAULT_WAKE_THRESHOLD_MM: u16 = 300;
 /// The default press threshold in millimeters under which gesture button presses are detected.
 pub const DEFAULT_PRESS_THRESHOLD_MM: u16 = 20;
 
-/// Charger Status 1 (S1 / STAT1 / FAULT) pin (GPIO 12)
-pub const CHARGER_S1_PIN: u32 = 12;
-/// Charger Status 2 (S2 / STAT2 / CHG) pin (GPIO 13)
-pub const CHARGER_S2_PIN: u32 = 13;
-
 /// Start address of the filesystem storage partition in flash (offset from start of flash).
 pub const STORAGE_PARTITION_START: u32 = 0x1C_0000; // 1.75 MB
 /// End address of the filesystem storage partition in flash (2.00 MB limit).
@@ -99,7 +94,9 @@ pub static SHARED_BATTERY: embassy_sync::mutex::Mutex<MutexRaw, BatteryDevice> =
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global battery charger mutex.
 pub static SHARED_CHARGER: embassy_sync::mutex::Mutex<MutexRaw, ChargerDevice> =
-    embassy_sync::mutex::Mutex::new(SafeBq25185(None));
+    embassy_sync::mutex::Mutex::new(ChargerDevice::new(platform::i2c::SharedI2cWrapper::new(
+        &SHARED_I2C,
+    )));
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global instance of the ThermalController.
@@ -189,7 +186,6 @@ pub async fn init_controllers(board: Board<'static>) {
         flash,
         i2c,
         temp_sensor,
-        charger,
         fuel_gauge_alert_pin,
         led_driver,
         tof_north,
@@ -210,10 +206,6 @@ pub async fn init_controllers(board: Board<'static>) {
     {
         let mut sensor = SHARED_TEMP_SENSOR.lock().await;
         sensor.0 = temp_sensor;
-    }
-    {
-        let mut chg = SHARED_CHARGER.lock().await;
-        chg.0 = charger;
     }
 
     unsafe {

@@ -276,3 +276,105 @@ fn test_vl53l0x_i2c_error_propagation() {
     let res = sensor.init(0x30, 250, InterruptMode::LowLevel);
     assert!(res.is_err());
 }
+
+struct Max17048MockI2c {
+    crate_val: i16,
+    status_val: u16,
+}
+
+impl embedded_hal::i2c::ErrorType for Max17048MockI2c {
+    type Error = core::convert::Infallible;
+}
+
+impl embedded_hal::i2c::I2c for Max17048MockI2c {
+    fn read(&mut self, _address: u8, _read: &mut [u8]) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn write(&mut self, _address: u8, _write: &[u8]) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn write_read(
+        &mut self,
+        _address: u8,
+        write: &[u8],
+        read: &mut [u8],
+    ) -> Result<(), Self::Error> {
+        assert_eq!(write.len(), 1);
+        let reg = write[0];
+        if reg == 0x16 {
+            let bytes = self.crate_val.to_be_bytes();
+            read[0] = bytes[0];
+            read[1] = bytes[1];
+        } else if reg == 0x1A {
+            let bytes = self.status_val.to_be_bytes();
+            read[0] = bytes[0];
+            read[1] = bytes[1];
+        }
+        Ok(())
+    }
+    fn transaction(
+        &mut self,
+        _address: u8,
+        _operations: &mut [embedded_hal::i2c::Operation<'_>],
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[test]
+fn test_max17048_charge_state() {
+    use model::interfaces::ChargeStatus;
+    use model::types::ChargeState;
+    use peripherals::max17048::Max17048;
+
+    // 1. CRATE > 0, no faults -> Charging
+    let mut i2c = Max17048MockI2c {
+        crate_val: 10,
+        status_val: 0,
+    };
+    let mut gauge = Max17048::new(&mut i2c);
+    assert_eq!(gauge.get_charge_state().unwrap(), ChargeState::Charging);
+
+    // 2. CRATE <= 0, no faults -> DoneOrStandbyOrUnplugged
+    let mut i2c = Max17048MockI2c {
+        crate_val: 0,
+        status_val: 0,
+    };
+    let mut gauge = Max17048::new(&mut i2c);
+    assert_eq!(
+        gauge.get_charge_state().unwrap(),
+        ChargeState::DoneOrStandbyOrUnplugged
+    );
+
+    let mut i2c = Max17048MockI2c {
+        crate_val: -5,
+        status_val: 0,
+    };
+    let mut gauge = Max17048::new(&mut i2c);
+    assert_eq!(
+        gauge.get_charge_state().unwrap(),
+        ChargeState::DoneOrStandbyOrUnplugged
+    );
+
+    // 3. VH (Voltage High) bit active (bit 10 set: status & (1 << 10) != 0) -> RecoverableFault
+    let mut i2c = Max17048MockI2c {
+        crate_val: 15,
+        status_val: 1 << 10,
+    };
+    let mut gauge = Max17048::new(&mut i2c);
+    assert_eq!(
+        gauge.get_charge_state().unwrap(),
+        ChargeState::RecoverableFault
+    );
+
+    // 4. VL (Voltage Low) bit active (bit 11 set: status & (1 << 11) != 0) -> NonRecoverableFault
+    let mut i2c = Max17048MockI2c {
+        crate_val: 15,
+        status_val: 1 << 11,
+    };
+    let mut gauge = Max17048::new(&mut i2c);
+    assert_eq!(
+        gauge.get_charge_state().unwrap(),
+        ChargeState::NonRecoverableFault
+    );
+}

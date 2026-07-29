@@ -23,8 +23,7 @@ pub struct Board<'d> {
     pub gpio_pins: [Option<Flex<'d>>; 30],
     /// Internal RP2040 temperature sensor
     pub temp_sensor: Option<Rp2040TempSensor>,
-    /// Concrete charger driver instance using S1/S2 GPIO pins
-    pub charger: Option<peripherals::bq25185::Bq25185<Flex<'d>, Flex<'d>>>,
+
     /// Motor driver
     pub motor: peripherals::l9110s::L9110s<Flex<'d>, Flex<'d>>,
     /// Motor current sensor
@@ -220,24 +219,6 @@ impl<'d> Board<'d> {
             }
         }
 
-        // 5. Configure Charger Status pins S1 (GP12) and S2 (GP13) as inputs with pull-ups
-        if let Some(ref mut pin) = gpio_pins[crate::CHARGER_S1_PIN as usize] {
-            pin.set_as_input();
-            pin.set_pull(Pull::Up);
-        }
-        if let Some(ref mut pin) = gpio_pins[crate::CHARGER_S2_PIN as usize] {
-            pin.set_as_input();
-            pin.set_pull(Pull::Up);
-        }
-
-        let s1 = gpio_pins[crate::CHARGER_S1_PIN as usize]
-            .take()
-            .expect("S1 pin must be available");
-        let s2 = gpio_pins[crate::CHARGER_S2_PIN as usize]
-            .take()
-            .expect("S2 pin must be available");
-        let charger = Some(peripherals::bq25185::Bq25185::new(s1, s2));
-
         let temp_sensor = Some(Rp2040TempSensor::new(p.ADC, p.ADC_TEMP_SENSOR));
 
         // Configure remaining drivers using local i2c before returning
@@ -313,7 +294,7 @@ impl<'d> Board<'d> {
             flash: p.FLASH,
             gpio_pins,
             temp_sensor,
-            charger,
+
             motor,
             current_sensor,
             tof_north,
@@ -490,25 +471,10 @@ impl model::interfaces::TemperatureSensor for SafeRp2040TempSensor {
     }
 }
 
-/// Safe wrapper around Bq25185 charger to handle None state.
-pub struct SafeBq25185(pub Option<peripherals::bq25185::Bq25185<Flex<'static>, Flex<'static>>>);
-
-impl model::interfaces::ChargeStatus for SafeBq25185 {
-    type Error = ();
-
-    fn get_charge_state(&mut self) -> Result<model::types::ChargeState, Self::Error> {
-        if let Some(ref mut chg) = self.0 {
-            Ok(chg.get_state())
-        } else {
-            Ok(model::types::ChargeState::DoneOrStandbyOrUnplugged)
-        }
-    }
-}
-
 /// The battery fuel gauge type.
 pub type BatteryDevice = peripherals::max17048::Max17048<platform::i2c::SharedI2cWrapper<'static>>;
 /// The battery charger type.
-pub type ChargerDevice = SafeBq25185;
+pub type ChargerDevice = peripherals::max17048::Max17048<platform::i2c::SharedI2cWrapper<'static>>;
 /// The battery alert pin type.
 pub type AlertPinType = AlertPinWrapper;
 /// The motor driver type.
