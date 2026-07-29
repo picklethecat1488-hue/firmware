@@ -8,14 +8,11 @@
 
 use embassy_rp::gpio::{Flex, Pin, Pull};
 use embassy_rp::i2c::{Config as I2cConfig, I2c};
-use embassy_rp::uart::{Config as UartConfig, Uart};
 use embassy_rp::Peripherals;
 use model::interfaces::Probeable;
 
 /// Helper structure containing all pre-initialized board interfaces.
 pub struct Board<'d> {
-    /// Blocking UART0 instance for interactive terminal shell
-    pub uart: Uart<'d, embassy_rp::peripherals::UART0, embassy_rp::uart::Blocking>,
     /// Blocking I2C0 instance for sensor communications
     pub i2c: I2c<'d, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Blocking>,
     /// The onboard flash peripheral
@@ -104,7 +101,6 @@ impl<'d> Board<'d> {
             }
         }
 
-        let uart = Uart::new_blocking(p.UART0, p.PIN_0, p.PIN_1, UartConfig::default());
         let mut i2c_config = I2cConfig::default();
         i2c_config.frequency = 400_000;
         let mut i2c = I2c::new_blocking(p.I2C0, p.PIN_5, p.PIN_4, i2c_config);
@@ -317,7 +313,6 @@ impl<'d> Board<'d> {
         };
 
         Self {
-            uart,
             i2c,
             flash: p.FLASH,
             gpio_pins,
