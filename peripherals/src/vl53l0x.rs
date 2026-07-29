@@ -334,3 +334,26 @@ impl<I: I2c> Probeable for Vl53l0x<I> {
         Ok(())
     }
 }
+
+/// Macro to initialize a VL53L0X proximity sensor during boot.
+#[macro_export]
+macro_rules! init_vl53l0x {
+    ($i2c:expr, $gpio_pins:expr, $name:expr, $xshut_pin:expr, $addr:expr, $threshold:expr) => {
+        if let Some(ref mut pin) = $gpio_pins[$xshut_pin as usize] {
+            pin.set_high();
+            ::cortex_m::asm::delay(20_000); // Wait for sensor to boot
+            let mut sensor = $crate::vl53l0x::Vl53l0x::new($i2c, 0x29);
+            {
+                use ::model::interfaces::Probeable;
+                if let Err(ref e) = sensor.read_chip_id() {
+                    defmt::warn!("{}: Probing failed: {:?}", $name, defmt::Debug2Format(e));
+                }
+                let _ = sensor.reset();
+            }
+            if let Err(e) = sensor.init($addr, $threshold, $crate::vl53l0x::InterruptMode::LowLevel)
+            {
+                defmt::warn!("{}: Init failed: {:?}", $name, defmt::Debug2Format(&e));
+            }
+        }
+    };
+}

@@ -138,17 +138,16 @@ impl<'d> Board<'d> {
         ];
 
         // 2. Assert XSHUT (active low) on all ToF sensors (GP2, GP3, GP6)
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_NORTH_XSHUT_PIN as usize] {
-            pin.set_as_output();
-            pin.set_low();
-        }
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_EAST_XSHUT_PIN as usize] {
-            pin.set_as_output();
-            pin.set_low();
-        }
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_WEST_XSHUT_PIN as usize] {
-            pin.set_as_output();
-            pin.set_low();
+        let xshut_pins = [
+            crate::TOF_NORTH_XSHUT_PIN,
+            crate::TOF_EAST_XSHUT_PIN,
+            crate::TOF_WEST_XSHUT_PIN,
+        ];
+        for &pin_idx in &xshut_pins {
+            if let Some(ref mut pin) = gpio_pins[pin_idx as usize] {
+                pin.set_as_output();
+                pin.set_low();
+            }
         }
 
         // 3. Configure Fuel Gauge Alert pin (GP10) as input with pull-up (active-low, open-drain)
@@ -158,74 +157,47 @@ impl<'d> Board<'d> {
         }
 
         // 4. Configure ToF Sensor Interrupt pins (GP7, GP8, GP9) as inputs with pull-ups (active-low, open-drain)
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_NORTH_INT_PIN as usize] {
-            pin.set_as_input();
-            pin.set_pull(Pull::Up);
-        }
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_EAST_INT_PIN as usize] {
-            pin.set_as_input();
-            pin.set_pull(Pull::Up);
-        }
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_WEST_INT_PIN as usize] {
-            pin.set_as_input();
-            pin.set_pull(Pull::Up);
+        let int_pins = [
+            crate::TOF_NORTH_INT_PIN,
+            crate::TOF_EAST_INT_PIN,
+            crate::TOF_WEST_INT_PIN,
+        ];
+        for &pin_idx in &int_pins {
+            if let Some(ref mut pin) = gpio_pins[pin_idx as usize] {
+                pin.set_as_input();
+                pin.set_pull(Pull::Up);
+            }
         }
 
         // Wait for sensors to register reset state
         cortex_m::asm::delay(20_000);
 
-        // Bring North sensor out of shutdown (GP2 high) and assign address 0x30
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_NORTH_XSHUT_PIN as usize] {
-            pin.set_high();
-            cortex_m::asm::delay(20_000); // Wait for sensor to boot
-            let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x29);
-            if let Err(ref e) = sensor.read_chip_id() {
-                defmt::warn!("North ToF: Probing failed: {:?}", defmt::Debug2Format(e));
-            }
-            let _ = sensor.reset();
-            if let Err(e) = sensor.init(
-                0x30,
-                crate::DEFAULT_WAKE_THRESHOLD_MM,
-                peripherals::vl53l0x::InterruptMode::LowLevel,
-            ) {
-                defmt::warn!("North ToF: Init failed: {:?}", defmt::Debug2Format(&e));
-            }
-        }
-
-        // Bring East sensor out of shutdown (GP3 high) and assign address 0x31
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_EAST_XSHUT_PIN as usize] {
-            pin.set_high();
-            cortex_m::asm::delay(20_000); // Wait for sensor to boot
-            let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x29);
-            if let Err(ref e) = sensor.read_chip_id() {
-                defmt::warn!("East ToF: Probing failed: {:?}", defmt::Debug2Format(e));
-            }
-            let _ = sensor.reset();
-            if let Err(e) = sensor.init(
-                0x31,
-                crate::DEFAULT_WAKE_THRESHOLD_MM,
-                peripherals::vl53l0x::InterruptMode::LowLevel,
-            ) {
-                defmt::warn!("East ToF: Init failed: {:?}", defmt::Debug2Format(&e));
-            }
-        }
-
-        // Bring West sensor out of shutdown (GP6 high) and assign address 0x32
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_WEST_XSHUT_PIN as usize] {
-            pin.set_high();
-            cortex_m::asm::delay(20_000); // Wait for sensor to boot
-            let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x29);
-            if let Err(ref e) = sensor.read_chip_id() {
-                defmt::warn!("West ToF: Probing failed: {:?}", defmt::Debug2Format(e));
-            }
-            let _ = sensor.reset();
-            if let Err(e) = sensor.init(
-                0x32,
-                crate::DEFAULT_WAKE_THRESHOLD_MM,
-                peripherals::vl53l0x::InterruptMode::LowLevel,
-            ) {
-                defmt::warn!("West ToF: Init failed: {:?}", defmt::Debug2Format(&e));
-            }
+        let sensors = [
+            (
+                "North ToF",
+                crate::TOF_NORTH_XSHUT_PIN,
+                crate::TOF_NORTH_I2C_ADDR,
+            ),
+            (
+                "East ToF",
+                crate::TOF_EAST_XSHUT_PIN,
+                crate::TOF_EAST_I2C_ADDR,
+            ),
+            (
+                "West ToF",
+                crate::TOF_WEST_XSHUT_PIN,
+                crate::TOF_WEST_I2C_ADDR,
+            ),
+        ];
+        for &(name, xshut_pin, addr) in &sensors {
+            peripherals::init_vl53l0x!(
+                &mut i2c,
+                gpio_pins,
+                name,
+                xshut_pin,
+                addr,
+                crate::DEFAULT_WAKE_THRESHOLD_MM
+            );
         }
 
         let temp_sensor = Some(Rp2040TempSensor::new(p.ADC, p.ADC_TEMP_SENSOR));
@@ -278,23 +250,18 @@ impl<'d> Board<'d> {
         let current_sensor = peripherals::ina219::Ina219::new(
             platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
         );
-        let mut tof_north = peripherals::vl53l0x::Vl53l0x::new(
-            platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
-            0x30,
-        );
-        let _ = tof_north.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
+        let make_tof = |addr| {
+            let mut sensor = peripherals::vl53l0x::Vl53l0x::new(
+                platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
+                addr,
+            );
+            let _ = sensor.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
+            sensor
+        };
 
-        let mut tof_east = peripherals::vl53l0x::Vl53l0x::new(
-            platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
-            0x31,
-        );
-        let _ = tof_east.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
-
-        let mut tof_west = peripherals::vl53l0x::Vl53l0x::new(
-            platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
-            0x32,
-        );
-        let _ = tof_west.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
+        let tof_north = make_tof(crate::TOF_NORTH_I2C_ADDR);
+        let tof_east = make_tof(crate::TOF_EAST_I2C_ADDR);
+        let tof_west = make_tof(crate::TOF_WEST_I2C_ADDR);
 
         let led_driver = peripherals::attiny816::Attiny816::new(
             platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),

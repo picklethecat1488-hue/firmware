@@ -34,6 +34,13 @@ pub const TOF_EAST_INT_PIN: u32 = 8;
 /// ToF Sensor 3 (West) Interrupt pin (GPIO 9)
 pub const TOF_WEST_INT_PIN: u32 = 9;
 
+/// ToF Sensor 1 (North) I2C Address (0x30)
+pub const TOF_NORTH_I2C_ADDR: u8 = 0x30;
+/// ToF Sensor 2 (East) I2C Address (0x31)
+pub const TOF_EAST_I2C_ADDR: u8 = 0x31;
+/// ToF Sensor 3 (West) I2C Address (0x32)
+pub const TOF_WEST_I2C_ADDR: u8 = 0x32;
+
 /// Fuel Gauge Interrupt/Alert pin (GPIO 10)
 pub const FUEL_GAUGE_INT_PIN: u32 = 10;
 
