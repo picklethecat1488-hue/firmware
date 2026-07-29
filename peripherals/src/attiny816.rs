@@ -108,6 +108,7 @@ impl StatusModule {
 impl<I: I2c> Probeable for Attiny816<I> {
     type Error = PeripheralError;
 
+    #[tracing::instrument(level = "trace")]
     fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         let mut buf = [0u8; 1];
         self.i2c
@@ -125,6 +126,7 @@ impl<I: I2c> Probeable for Attiny816<I> {
         }
     }
 
+    #[tracing::instrument(level = "trace")]
     fn reset(&mut self) -> Result<(), Self::Error> {
         self.i2c
             .write(
@@ -138,4 +140,39 @@ impl<I: I2c> Probeable for Attiny816<I> {
             .map_err(|e| e.to_i2c_error(self.address as u16, StatusModule::SWRST as u16))?;
         Ok(())
     }
+}
+
+/// Macro to initialize an ATtiny816 custom LED driver during boot.
+#[macro_export]
+macro_rules! init_attiny816 {
+    ($i2c:expr, $boot_status:expr) => {{
+        let mut led_drv = $crate::attiny816::Attiny816::new($i2c);
+        {
+            use ::model::interfaces::BootStatus;
+            use ::model::interfaces::Probeable;
+            use $crate::ToPeripheralError;
+            if let Err(ref e) = led_drv.read_chip_id() {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::warn!("ATtiny816: Probing failed: {:?}", defmt::Debug2Format(e));
+                let pe = e.to_peripheral_error();
+                $boot_status.record_error(pe);
+            }
+            if let Err(ref e) = led_drv.reset() {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::warn!("ATtiny816: Reset failed: {:?}", defmt::Debug2Format(e));
+                let pe = e.to_peripheral_error();
+                $boot_status.record_error(pe);
+            }
+        }
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        ::cortex_m::asm::delay(20_000);
+        if let Err(e) = led_drv.init() {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::warn!("ATtiny816: Init failed: {:?}", defmt::Debug2Format(&e));
+            use ::model::interfaces::BootStatus;
+            use $crate::ToPeripheralError;
+            let pe = e.to_peripheral_error();
+            $boot_status.record_error(pe);
+        }
+    }};
 }

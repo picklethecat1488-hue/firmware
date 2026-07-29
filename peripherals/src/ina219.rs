@@ -164,6 +164,7 @@ impl<I: I2c> PowerSensor for Ina219<I> {
 impl<I: I2c> Probeable for Ina219<I> {
     type Error = PeripheralError;
 
+    #[tracing::instrument(level = "trace")]
     fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         let id = self.read_register(Register::CONFIG)?;
         if id == 0x399F {
@@ -173,7 +174,41 @@ impl<I: I2c> Probeable for Ina219<I> {
         }
     }
 
+    #[tracing::instrument(level = "trace")]
     fn reset(&mut self) -> Result<(), Self::Error> {
         self.write_register(Register::CONFIG, 0x8000)
     }
+}
+
+/// Macro to initialize an INA219 current monitor during boot.
+#[macro_export]
+macro_rules! init_ina219 {
+    ($i2c:expr, $boot_status:expr) => {{
+        let mut current_sensor = $crate::ina219::Ina219::new($i2c);
+        {
+            use ::model::interfaces::BootStatus;
+            use ::model::interfaces::Probeable;
+            use $crate::ToPeripheralError;
+            if let Err(ref e) = current_sensor.read_chip_id() {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::warn!("INA219: Probing failed: {:?}", defmt::Debug2Format(e));
+                let pe = e.to_peripheral_error();
+                $boot_status.record_error(pe);
+            }
+            if let Err(ref e) = current_sensor.reset() {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::warn!("INA219: Reset failed: {:?}", defmt::Debug2Format(e));
+                let pe = e.to_peripheral_error();
+                $boot_status.record_error(pe);
+            }
+        }
+        if let Err(e) = current_sensor.init() {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::warn!("INA219: Init failed: {:?}", defmt::Debug2Format(&e));
+            use ::model::interfaces::BootStatus;
+            use $crate::ToPeripheralError;
+            let pe = e.to_peripheral_error();
+            $boot_status.record_error(pe);
+        }
+    }};
 }

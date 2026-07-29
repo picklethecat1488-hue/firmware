@@ -129,6 +129,10 @@ impl core::fmt::Debug for TelemetryRecord {
 pub const TELEMETRY_RECORD_SIZE: usize = 20;
 /// Max size of a telemetry record payload
 pub const TELEMETRY_MAX_SIZE: usize = TELEMETRY_RECORD_SIZE;
+/// Size of the telemetry header index file (telemetry.rrd) in bytes
+pub const TELEMETRY_HEADER_SIZE: usize = 12;
+/// Name of the telemetry header index file
+pub const TELEMETRY_HEADER_FILE: &str = "telemetry.rrd";
 
 /// Telemetry record chunking constants
 pub const CHUNK_SIZE: usize = 128;
@@ -139,104 +143,14 @@ pub const BUFFER_SIZE: usize = 3000;
 /// Total number of telemetry record types/variants.
 pub const NUM_TELEMETRY_VARIANTS: usize = 13;
 
-/// Macro to lookup the name of a telemetry record chunk.
-#[macro_export]
-macro_rules! telemetry_chunk_name_lookup {
-    ($idx:expr) => {
-        match $idx {
-            0 => "telemetry_0.rrd",
-            1 => "telemetry_1.rrd",
-            2 => "telemetry_2.rrd",
-            3 => "telemetry_3.rrd",
-            4 => "telemetry_4.rrd",
-            5 => "telemetry_5.rrd",
-            6 => "telemetry_6.rrd",
-            7 => "telemetry_7.rrd",
-            8 => "telemetry_8.rrd",
-            9 => "telemetry_9.rrd",
-            10 => "telemetry_10.rrd",
-            11 => "telemetry_11.rrd",
-            12 => "telemetry_12.rrd",
-            13 => "telemetry_13.rrd",
-            14 => "telemetry_14.rrd",
-            15 => "telemetry_15.rrd",
-            16 => "telemetry_16.rrd",
-            17 => "telemetry_17.rrd",
-            18 => "telemetry_18.rrd",
-            19 => "telemetry_19.rrd",
-            20 => "telemetry_20.rrd",
-            21 => "telemetry_21.rrd",
-            22 => "telemetry_22.rrd",
-            23 => "telemetry_23.rrd",
-            24 => "telemetry_24.rrd",
-            25 => "telemetry_25.rrd",
-            26 => "telemetry_26.rrd",
-            27 => "telemetry_27.rrd",
-            28 => "telemetry_28.rrd",
-            29 => "telemetry_29.rrd",
-            30 => "telemetry_30.rrd",
-            31 => "telemetry_31.rrd",
-            32 => "telemetry_32.rrd",
-            33 => "telemetry_33.rrd",
-            34 => "telemetry_34.rrd",
-            35 => "telemetry_35.rrd",
-            36 => "telemetry_36.rrd",
-            37 => "telemetry_37.rrd",
-            38 => "telemetry_38.rrd",
-            39 => "telemetry_39.rrd",
-            40 => "telemetry_40.rrd",
-            41 => "telemetry_41.rrd",
-            42 => "telemetry_42.rrd",
-            43 => "telemetry_43.rrd",
-            44 => "telemetry_44.rrd",
-            45 => "telemetry_45.rrd",
-            46 => "telemetry_46.rrd",
-            47 => "telemetry_47.rrd",
-            48 => "telemetry_48.rrd",
-            49 => "telemetry_49.rrd",
-            50 => "telemetry_50.rrd",
-            51 => "telemetry_51.rrd",
-            52 => "telemetry_52.rrd",
-            53 => "telemetry_53.rrd",
-            54 => "telemetry_54.rrd",
-            55 => "telemetry_55.rrd",
-            56 => "telemetry_56.rrd",
-            57 => "telemetry_57.rrd",
-            58 => "telemetry_58.rrd",
-            59 => "telemetry_59.rrd",
-            60 => "telemetry_60.rrd",
-            61 => "telemetry_61.rrd",
-            62 => "telemetry_62.rrd",
-            63 => "telemetry_63.rrd",
-            64 => "telemetry_64.rrd",
-            65 => "telemetry_65.rrd",
-            66 => "telemetry_66.rrd",
-            67 => "telemetry_67.rrd",
-            68 => "telemetry_68.rrd",
-            69 => "telemetry_69.rrd",
-            70 => "telemetry_70.rrd",
-            71 => "telemetry_71.rrd",
-            72 => "telemetry_72.rrd",
-            73 => "telemetry_73.rrd",
-            74 => "telemetry_74.rrd",
-            75 => "telemetry_75.rrd",
-            76 => "telemetry_76.rrd",
-            77 => "telemetry_77.rrd",
-            78 => "telemetry_78.rrd",
-            79 => "telemetry_79.rrd",
-            80 => "telemetry_80.rrd",
-            81 => "telemetry_81.rrd",
-            82 => "telemetry_82.rrd",
-            83 => "telemetry_83.rrd",
-            84 => "telemetry_84.rrd",
-            _ => "telemetry_0.rrd",
-        }
-    };
-}
-
-/// Return the file name of a telemetry record chunk
-pub fn chunk_name(idx: usize) -> &'static str {
-    telemetry_chunk_name_lookup!(idx)
+/// Format the file name of a telemetry record chunk into the provided buffer and return it.
+pub fn chunk_name<'a>(idx: usize, buf: &'a mut [u8]) -> &'a str {
+    use core::fmt::Write;
+    let mut s: heapless::String<32> = heapless::String::new();
+    let _ = core::write!(&mut s, "telemetry_{}.rrd", idx);
+    let bytes = s.as_bytes();
+    buf[..bytes.len()].copy_from_slice(bytes);
+    unsafe { core::str::from_utf8_unchecked(&buf[..bytes.len()]) }
 }
 
 /// Trait for a telemetry client that handles change detection, filtering, and reporting.

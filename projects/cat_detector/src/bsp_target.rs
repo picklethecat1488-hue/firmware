@@ -9,7 +9,7 @@
 use embassy_rp::gpio::{Flex, Pin, Pull};
 use embassy_rp::i2c::{Config as I2cConfig, I2c};
 use embassy_rp::Peripherals;
-use model::interfaces::Probeable;
+use platform::tracing;
 
 /// Helper structure containing all pre-initialized board interfaces.
 pub struct Board<'d> {
@@ -56,6 +56,7 @@ impl<'d> Board<'d> {
     ///
     /// # Arguments
     /// * `p` - The RP2040 peripheral set.
+    #[tracing::instrument(level = "trace", skip(p))]
     pub fn init(p: Peripherals) -> Self {
         // 1. Perform I2C bus unstuck on I2C0 (GP4 SDA, GP5 SCL) using raw registers
         // to avoid taking ownership of Pin types before constructing I2c.
@@ -172,6 +173,14 @@ impl<'d> Board<'d> {
         // Wait for sensors to register reset state
         cortex_m::asm::delay(20_000);
 
+        let temp_flash = unsafe { core::ptr::read(&p.FLASH) };
+        let mut raw_flash: crate::FlashDevice = embassy_rp::flash::Flash::new_blocking(temp_flash);
+        let mut boot_status = platform::flash::DirectFlashBootStatus::new(
+            &mut raw_flash,
+            crate::STORAGE_PARTITION_START..crate::STORAGE_PARTITION_END,
+            crate::MAX_RECORDS,
+        );
+
         let sensors = [
             (
                 "North ToF",
@@ -196,33 +205,17 @@ impl<'d> Board<'d> {
                 name,
                 xshut_pin,
                 addr,
-                crate::DEFAULT_WAKE_THRESHOLD_MM
+                crate::DEFAULT_WAKE_THRESHOLD_MM,
+                &mut boot_status
             );
         }
 
         let temp_sensor = Some(Rp2040TempSensor::new(p.ADC, p.ADC_TEMP_SENSOR));
 
         // Configure remaining drivers using local i2c before returning
-        let mut fuel_gauge_temp = peripherals::max17048::Max17048::new(&mut i2c);
-        if let Err(ref e) = fuel_gauge_temp.read_chip_id() {
-            defmt::warn!("MAX17048: Probing failed: {:?}", defmt::Debug2Format(e));
-        }
-        let _ = fuel_gauge_temp.reset();
-
-        let mut current_sensor_temp = peripherals::ina219::Ina219::new(&mut i2c);
-        if let Err(ref e) = current_sensor_temp.read_chip_id() {
-            defmt::warn!("INA219: Probing failed: {:?}", defmt::Debug2Format(e));
-        }
-        let _ = current_sensor_temp.reset();
-        let _ = current_sensor_temp.init();
-
-        let mut led_drv_temp = peripherals::attiny816::Attiny816::new(&mut i2c);
-        if let Err(ref e) = led_drv_temp.read_chip_id() {
-            defmt::warn!("ATtiny816: Probing failed: {:?}", defmt::Debug2Format(e));
-        }
-        let _ = led_drv_temp.reset();
-        cortex_m::asm::delay(20_000); // Wait for seesaw to boot after reset
-        let _ = led_drv_temp.init();
+        peripherals::init_max17048!(&mut i2c, &mut boot_status);
+        peripherals::init_ina219!(&mut i2c, &mut boot_status);
+        peripherals::init_attiny816!(&mut i2c, &mut boot_status);
 
         // Extract pins needed for drivers/controllers
         let motor_pin_ia = gpio_pins[crate::PUMP_PIN_IA as usize]
