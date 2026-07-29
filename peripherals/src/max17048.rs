@@ -5,7 +5,7 @@
 use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
-use model::interfaces::{ChargeStatus, FuelGauge};
+use model::interfaces::{ChargeStatus, FuelGauge, Probeable};
 use model::types::{ChargeState, PeripheralError};
 
 macro_rules! log_warn {
@@ -22,7 +22,9 @@ impl Register {
     const CONFIG: u8 = 0x0C;
     const VALRT: u8 = 0x14;
     const CRATE: u8 = 0x16;
+    const VRESET: u8 = 0x18;
     const STATUS: u8 = 0x1A;
+    const CMD: u8 = 0xFE;
 }
 
 struct StatusMask;
@@ -211,5 +213,22 @@ impl<I: I2c> ChargeStatus for Max17048<I> {
         } else {
             Ok(ChargeState::DoneOrStandbyOrUnplugged)
         }
+    }
+}
+
+impl<I: I2c> Probeable for Max17048<I> {
+    type Error = PeripheralError;
+
+    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+        let id = self.read_register(Register::VRESET)?;
+        if (id & 0x00F0) == 0x0010 {
+            Ok(id)
+        } else {
+            Err(PeripheralError::DeviceNotFound(id))
+        }
+    }
+
+    fn reset(&mut self) -> Result<(), Self::Error> {
+        self.write_register(Register::CMD, 0x5400)
     }
 }

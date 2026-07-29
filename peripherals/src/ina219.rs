@@ -6,7 +6,7 @@ use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
 use model::{
-    interfaces::{PowerMeasurementMode, PowerSensor},
+    interfaces::{PowerMeasurementMode, PowerSensor, Probeable},
     types::PeripheralError,
 };
 
@@ -158,5 +158,22 @@ impl<I: I2c> PowerSensor for Ina219<I> {
             );
         }
         res
+    }
+}
+
+impl<I: I2c> Probeable for Ina219<I> {
+    type Error = PeripheralError;
+
+    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+        let id = self.read_register(Register::CONFIG)?;
+        if id == 0x399F {
+            Ok(id)
+        } else {
+            Err(PeripheralError::DeviceNotFound(id))
+        }
+    }
+
+    fn reset(&mut self) -> Result<(), Self::Error> {
+        self.write_register(Register::CONFIG, 0x8000)
     }
 }

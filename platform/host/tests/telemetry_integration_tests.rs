@@ -208,7 +208,7 @@ fn test_parse_telemetry_record_log_all_variants() {
 
     // 12. PeripheralError
     let log = make_rtt_log(
-        TelemetryRecord::PeripheralError(PeripheralError::DeviceNotFound),
+        TelemetryRecord::PeripheralError(PeripheralError::DeviceNotFound(0x1234)),
         1011,
     );
     let events = parser.parse_log(&log, 1011.0).unwrap();
@@ -216,7 +216,7 @@ fn test_parse_telemetry_record_log_all_variants() {
     assert_eq!(events[0]["name"].as_str().unwrap(), "Peripheral Error");
     assert_eq!(
         events[0]["args"]["error"].as_str().unwrap(),
-        "DeviceNotFound"
+        "DeviceNotFound(0x1234)"
     );
     assert_eq!(events[0]["tid"].as_i64().unwrap(), 3);
 

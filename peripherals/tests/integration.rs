@@ -378,3 +378,195 @@ fn test_max17048_charge_state() {
         ChargeState::NonRecoverableFault
     );
 }
+
+struct ProbeableMockI2c {
+    reads: std::collections::VecDeque<Vec<u8>>,
+    writes: std::rc::Rc<std::cell::RefCell<Vec<Vec<u8>>>>,
+}
+
+impl embedded_hal::i2c::ErrorType for ProbeableMockI2c {
+    type Error = core::convert::Infallible;
+}
+
+impl embedded_hal::i2c::I2c for ProbeableMockI2c {
+    fn read(&mut self, _address: u8, _read: &mut [u8]) -> Result<(), Self::Error> {
+        if let Some(r) = self.reads.pop_front() {
+            _read.copy_from_slice(&r);
+        }
+        Ok(())
+    }
+    fn write(&mut self, _address: u8, _write: &[u8]) -> Result<(), Self::Error> {
+        self.writes.borrow_mut().push(_write.to_vec());
+        Ok(())
+    }
+    fn write_read(
+        &mut self,
+        _address: u8,
+        _write: &[u8],
+        _read: &mut [u8],
+    ) -> Result<(), Self::Error> {
+        self.writes.borrow_mut().push(_write.to_vec());
+        if let Some(r) = self.reads.pop_front() {
+            _read.copy_from_slice(&r);
+        }
+        Ok(())
+    }
+    fn transaction(
+        &mut self,
+        _address: u8,
+        _operations: &mut [embedded_hal::i2c::Operation<'_>],
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[test]
+fn test_probeable_max17048() {
+    use model::interfaces::Probeable;
+    use model::types::PeripheralError;
+    use peripherals::max17048::Max17048;
+
+    // 1. Success case
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0x00, 0x12]);
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c {
+        reads,
+        writes: writes.clone(),
+    };
+    let mut dev = Max17048::new(&mut i2c);
+
+    let id = dev.read_chip_id().unwrap();
+    assert_eq!(id, 0x0012);
+    assert_eq!(writes.borrow()[0], vec![0x18]);
+
+    assert!(dev.reset().is_ok());
+    assert_eq!(writes.borrow()[1], vec![0xFE, 0x54, 0x00]);
+
+    // 2. Mismatch case
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0x00, 0x22]);
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c {
+        reads,
+        writes: writes.clone(),
+    };
+    let mut dev = Max17048::new(&mut i2c);
+    assert_eq!(
+        dev.read_chip_id().unwrap_err(),
+        PeripheralError::DeviceNotFound(0x0022)
+    );
+}
+
+#[test]
+fn test_probeable_attiny816() {
+    use model::interfaces::Probeable;
+    use model::types::PeripheralError;
+    use peripherals::attiny816::Attiny816;
+
+    // 1. Success case
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0x86]);
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c {
+        reads,
+        writes: writes.clone(),
+    };
+    let mut dev = Attiny816::new(&mut i2c);
+
+    let id = dev.read_chip_id().unwrap();
+    assert_eq!(id, 0x86);
+    assert_eq!(writes.borrow()[0], vec![0x00, 0x01]);
+
+    assert!(dev.reset().is_ok());
+    assert_eq!(writes.borrow()[1], vec![0x00, 0x7F, 0xFF]);
+
+    // 2. Mismatch case
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0x55]);
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c {
+        reads,
+        writes: writes.clone(),
+    };
+    let mut dev = Attiny816::new(&mut i2c);
+    assert_eq!(
+        dev.read_chip_id().unwrap_err(),
+        PeripheralError::DeviceNotFound(0x55)
+    );
+}
+
+#[test]
+fn test_probeable_ina219() {
+    use model::interfaces::Probeable;
+    use model::types::PeripheralError;
+    use peripherals::ina219::Ina219;
+
+    // 1. Success case
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0x39, 0x9F]);
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c {
+        reads,
+        writes: writes.clone(),
+    };
+    let mut dev = Ina219::new(&mut i2c);
+
+    let id = dev.read_chip_id().unwrap();
+    assert_eq!(id, 0x399F);
+    assert_eq!(writes.borrow()[0], vec![0x00]);
+
+    assert!(dev.reset().is_ok());
+    assert_eq!(writes.borrow()[1], vec![0x00, 0x80, 0x00]);
+
+    // 2. Mismatch case
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0x12, 0x34]);
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c {
+        reads,
+        writes: writes.clone(),
+    };
+    let mut dev = Ina219::new(&mut i2c);
+    assert_eq!(
+        dev.read_chip_id().unwrap_err(),
+        PeripheralError::DeviceNotFound(0x1234)
+    );
+}
+
+#[test]
+fn test_probeable_vl53l0x() {
+    use model::interfaces::Probeable;
+    use model::types::PeripheralError;
+    use peripherals::vl53l0x::Vl53l0x;
+
+    // 1. Success case
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0xEE]);
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c {
+        reads,
+        writes: writes.clone(),
+    };
+    let mut dev = Vl53l0x::new(&mut i2c, 0x29);
+
+    let id = dev.read_chip_id().unwrap();
+    assert_eq!(id, 0xEE);
+    assert_eq!(writes.borrow()[0], vec![0xC0]);
+
+    assert!(dev.reset().is_ok());
+
+    // 2. Mismatch case
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0x99]);
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c {
+        reads,
+        writes: writes.clone(),
+    };
+    let mut dev = Vl53l0x::new(&mut i2c, 0x29);
+    assert_eq!(
+        dev.read_chip_id().unwrap_err(),
+        PeripheralError::DeviceNotFound(0x99)
+    );
+}

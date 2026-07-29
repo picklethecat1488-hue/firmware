@@ -5,7 +5,7 @@
 use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
-use model::interfaces::LedDriver;
+use model::interfaces::{LedDriver, Probeable};
 use model::types::PeripheralError;
 
 macro_rules! log_warn {
@@ -94,5 +94,48 @@ impl<I: I2c> LedDriver for Attiny816<I> {
     #[tracing::instrument(level = "trace")]
     fn set_color(&mut self, r: u8, g: u8, b: u8) -> Result<(), Self::Error> {
         self.set_led_color(r, g, b)
+    }
+}
+
+struct StatusModule;
+impl StatusModule {
+    const BASE: u8 = 0x00;
+    const HW_ID: u8 = 0x01;
+    const SWRST: u8 = 0x7F;
+    const SWRST_VAL: u8 = 0xFF;
+}
+
+impl<I: I2c> Probeable for Attiny816<I> {
+    type Error = PeripheralError;
+
+    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+        let mut buf = [0u8; 1];
+        self.i2c
+            .write_read(
+                self.address,
+                &[StatusModule::BASE, StatusModule::HW_ID],
+                &mut buf,
+            )
+            .map_err(|e| e.to_i2c_error(self.address as u16, StatusModule::HW_ID as u16))?;
+        let id = buf[0] as u16;
+        if id == 0x86 {
+            Ok(id)
+        } else {
+            Err(PeripheralError::DeviceNotFound(id))
+        }
+    }
+
+    fn reset(&mut self) -> Result<(), Self::Error> {
+        self.i2c
+            .write(
+                self.address,
+                &[
+                    StatusModule::BASE,
+                    StatusModule::SWRST,
+                    StatusModule::SWRST_VAL,
+                ],
+            )
+            .map_err(|e| e.to_i2c_error(self.address as u16, StatusModule::SWRST as u16))?;
+        Ok(())
     }
 }

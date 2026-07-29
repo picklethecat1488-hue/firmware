@@ -334,7 +334,7 @@ impl From<Direction> for u8 {
 pub enum PeripheralError {
     /// An expected device ID/WHO_AM_I register value did not match.
     #[n(0)]
-    DeviceNotFound,
+    DeviceNotFound(#[n(0)] u16),
     /// The parameters passed to a driver configuration function were invalid.
     #[n(1)]
     InvalidConfiguration,

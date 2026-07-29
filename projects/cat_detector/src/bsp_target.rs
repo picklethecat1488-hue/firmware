@@ -10,6 +10,7 @@ use embassy_rp::gpio::{Flex, Pin, Pull};
 use embassy_rp::i2c::{Config as I2cConfig, I2c};
 use embassy_rp::uart::{Config as UartConfig, Uart};
 use embassy_rp::Peripherals;
+use model::interfaces::Probeable;
 
 /// Helper structure containing all pre-initialized board interfaces.
 pub struct Board<'d> {
@@ -182,6 +183,10 @@ impl<'d> Board<'d> {
             pin.set_high();
             cortex_m::asm::delay(20_000); // Wait for sensor to boot
             let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x29);
+            if let Err(ref e) = sensor.read_chip_id() {
+                defmt::warn!("North ToF: Probing failed: {:?}", defmt::Debug2Format(e));
+            }
+            let _ = sensor.reset();
             if let Err(e) = sensor.init(
                 0x30,
                 crate::DEFAULT_WAKE_THRESHOLD_MM,
@@ -196,6 +201,10 @@ impl<'d> Board<'d> {
             pin.set_high();
             cortex_m::asm::delay(20_000); // Wait for sensor to boot
             let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x29);
+            if let Err(ref e) = sensor.read_chip_id() {
+                defmt::warn!("East ToF: Probing failed: {:?}", defmt::Debug2Format(e));
+            }
+            let _ = sensor.reset();
             if let Err(e) = sensor.init(
                 0x31,
                 crate::DEFAULT_WAKE_THRESHOLD_MM,
@@ -210,6 +219,10 @@ impl<'d> Board<'d> {
             pin.set_high();
             cortex_m::asm::delay(20_000); // Wait for sensor to boot
             let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x29);
+            if let Err(ref e) = sensor.read_chip_id() {
+                defmt::warn!("West ToF: Probing failed: {:?}", defmt::Debug2Format(e));
+            }
+            let _ = sensor.reset();
             if let Err(e) = sensor.init(
                 0x32,
                 crate::DEFAULT_WAKE_THRESHOLD_MM,
@@ -222,10 +235,25 @@ impl<'d> Board<'d> {
         let temp_sensor = Some(Rp2040TempSensor::new(p.ADC, p.ADC_TEMP_SENSOR));
 
         // Configure remaining drivers using local i2c before returning
+        let mut fuel_gauge_temp = peripherals::max17048::Max17048::new(&mut i2c);
+        if let Err(ref e) = fuel_gauge_temp.read_chip_id() {
+            defmt::warn!("MAX17048: Probing failed: {:?}", defmt::Debug2Format(e));
+        }
+        let _ = fuel_gauge_temp.reset();
+
         let mut current_sensor_temp = peripherals::ina219::Ina219::new(&mut i2c);
+        if let Err(ref e) = current_sensor_temp.read_chip_id() {
+            defmt::warn!("INA219: Probing failed: {:?}", defmt::Debug2Format(e));
+        }
+        let _ = current_sensor_temp.reset();
         let _ = current_sensor_temp.init();
 
         let mut led_drv_temp = peripherals::attiny816::Attiny816::new(&mut i2c);
+        if let Err(ref e) = led_drv_temp.read_chip_id() {
+            defmt::warn!("ATtiny816: Probing failed: {:?}", defmt::Debug2Format(e));
+        }
+        let _ = led_drv_temp.reset();
+        cortex_m::asm::delay(20_000); // Wait for seesaw to boot after reset
         let _ = led_drv_temp.init();
 
         // Extract pins needed for drivers/controllers

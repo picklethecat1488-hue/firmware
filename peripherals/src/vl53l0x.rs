@@ -5,7 +5,7 @@
 use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
-use model::interfaces::ProximitySensor;
+use model::interfaces::{Probeable, ProximitySensor};
 use model::types::PeripheralError;
 
 macro_rules! log_warn {
@@ -44,6 +44,7 @@ impl Register {
     const RESULT_RANGE_STATUS: u8 = 0x1E;
     const FINAL_RANGE_CONFIG_TIMEOUT_MACROP_HI: u8 = 0x71;
     const I2C_SLAVE_DEVICE_ADDRESS: u8 = 0x8A;
+    const IDENTIFICATION_MODEL_ID: u8 = 0xC0;
 }
 
 /// Driver for the VL53L0X Time-of-Flight sensor communicating over I2C.
@@ -303,5 +304,33 @@ impl<I: I2c> model::calibration::Calibration for Vl53l0x<I> {
                 );
             }
         }
+    }
+}
+
+impl<I: I2c> Probeable for Vl53l0x<I> {
+    type Error = PeripheralError;
+
+    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+        let mut buf = [0u8; 1];
+        self.i2c
+            .write_read(self.address, &[Register::IDENTIFICATION_MODEL_ID], &mut buf)
+            .map_err(|e| {
+                e.to_i2c_error(
+                    self.address as u16,
+                    Register::IDENTIFICATION_MODEL_ID as u16,
+                )
+            })?;
+        let id = buf[0] as u16;
+        if id == 0xEE {
+            Ok(id)
+        } else {
+            Err(PeripheralError::DeviceNotFound(id))
+        }
+    }
+
+    fn reset(&mut self) -> Result<(), Self::Error> {
+        // No software-initiated reset register on the VL53L0X.
+        // It relies on the hardware XSHUT pin for reset, so this is a no-op.
+        Ok(())
     }
 }

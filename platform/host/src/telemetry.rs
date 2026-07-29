@@ -196,8 +196,12 @@ fn telemetry_record_to_perfetto_json(rec: &TelemetryRecord, ts: f64) -> Vec<serd
             ));
         }
         TelemetryRecord::PeripheralError(err) => {
+            let err_string;
             let err_str = match err {
-                model::types::PeripheralError::DeviceNotFound => "DeviceNotFound",
+                model::types::PeripheralError::DeviceNotFound(val) => {
+                    err_string = format!("DeviceNotFound(0x{:04x})", val);
+                    &err_string
+                }
                 model::types::PeripheralError::InvalidConfiguration => "InvalidConfiguration",
                 model::types::PeripheralError::NotImplemented => "NotImplemented",
                 model::types::PeripheralError::DeviceNotAvailable => "DeviceNotAvailable",
