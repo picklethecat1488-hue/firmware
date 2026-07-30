@@ -118,7 +118,7 @@ def validate_file(filepath):
     return errors
 
 
-def main():
+def validate_debug_derive():
     total_errors = 0
     workspace_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -137,11 +137,11 @@ def main():
         print(
             f"\n{Fore.RED}Validation FAILED: Found {total_errors} enum(s) or struct(s) deriving Debug unconditionally.{Style.RESET_ALL}"
         )
-        sys.exit(1)
+        return 1
     else:
         print(f"{Fore.GREEN}Validation PASSED: All enums and structs conditionally derive Debug.{Style.RESET_ALL}")
-        sys.exit(0)
+        return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(validate_debug_derive())

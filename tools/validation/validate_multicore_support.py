@@ -245,7 +245,7 @@ def validate_call_graph(funcs_list, roots, feature, allowed_files=None):
     return warnings, errors
 
 
-def main():
+def validate_multicore_support():
     scan_dirs = ["controller/src", "peripherals/src"]
     all_functions = []
     all_controller_structs = []
@@ -313,12 +313,14 @@ def main():
 
     if total_errors > 0:
         print(f"{Fore.RED}Validation FAILED: Found {total_errors} errors and {total_warnings} warnings.")
-        sys.exit(1)
+        return 1
     elif total_warnings > 0:
         print(f"{Fore.YELLOW}Validation completed with {total_warnings} warnings.")
+        return 0
     else:
         print(f"{Fore.GREEN}Validation passed: All checks successful.")
+        return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(validate_multicore_support())
