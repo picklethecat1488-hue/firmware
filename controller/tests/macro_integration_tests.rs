@@ -247,7 +247,7 @@ fn test_spawn_all_controllers_configuration() {
     let system_ctrl =
         SystemController::new(feature_set, TELEMETRY_CHANNEL.sender(), BootReason::Unknown);
 
-    let fs_buf = Box::leak(vec![0u8; 4096].into_boxed_slice());
+    let fs_buf = Box::leak(vec![0u8; 8192].into_boxed_slice());
     let fs_controller = controller::filesystem_controller::FilesystemController::new(
         controller::filesystem_controller::ProfilingFlash::new(TestFlash::new()),
         0..1024 * 64,

@@ -291,8 +291,9 @@ fn test_read_telemetry_records_integration() {
         let slot2 = rec2.serialize(600);
 
         let mut chunk_bytes = vec![0u8; model::telemetry::CHUNK_FILE_SIZE];
-        chunk_bytes[..20].copy_from_slice(&slot1);
-        chunk_bytes[20..40].copy_from_slice(&slot2);
+        let size = model::telemetry::TELEMETRY_RECORD_SIZE;
+        chunk_bytes[..size].copy_from_slice(&slot1);
+        chunk_bytes[size..2 * size].copy_from_slice(&slot2);
 
         let chunk_key = string_to_key("telemetry_0.rrd");
         sequential_storage::map::store_item::<[u8; 32], &[u8], _>(

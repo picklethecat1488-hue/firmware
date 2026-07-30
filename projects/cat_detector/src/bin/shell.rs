@@ -212,15 +212,12 @@ async fn main(spawner: Spawner) {
         Ok(())
     });
 
-    // Declare statically to avoid stack allocation and stack overflow
-    static mut FS_BUF: [u8; 4096] = [0u8; 4096];
-
     // Initialize board peripherals and subcontrollers
     app::init_controllers(board).await;
 
     // Initialize the modular panic handler
     let panic_flash = unsafe { app::PANIC_FLASH.as_mut().unwrap() };
-    let fs_buf = unsafe { &mut FS_BUF };
+    let fs_buf = unsafe { &mut app::FS_BUF };
     app::init_panic_handler(
         panic_flash,
         app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
@@ -370,7 +367,7 @@ async fn main(spawner: Spawner) {
         thermals,
         batteries,
         system_ctrls,
-        fs_buffer: unsafe { &mut FS_BUF },
+        fs_buffer: unsafe { &mut app::FS_BUF },
     };
 
     let mut processor = ShellController::<AppConfig>::new(pointers);

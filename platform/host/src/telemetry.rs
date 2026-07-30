@@ -423,9 +423,12 @@ impl FlashTelemetryParser {
                 }
             }
 
-            let offset = slot_idx * 20;
-            if offset + 20 <= current_chunk_data.len() {
-                let slot: &[u8; 20] = current_chunk_data[offset..offset + 20].try_into().unwrap();
+            let offset = slot_idx * model::telemetry::TELEMETRY_RECORD_SIZE;
+            if offset + model::telemetry::TELEMETRY_RECORD_SIZE <= current_chunk_data.len() {
+                let slot: &[u8; model::telemetry::TELEMETRY_RECORD_SIZE] = current_chunk_data
+                    [offset..offset + model::telemetry::TELEMETRY_RECORD_SIZE]
+                    .try_into()
+                    .unwrap();
                 if let Some((ts, rec)) = TelemetryRecord::deserialize(slot) {
                     records.push((ts, rec));
                 }

@@ -53,7 +53,7 @@ impl embedded_storage_async::nor_flash::MultiwriteNorFlash for MockFlash {}
 fn test_telemetry_controller_ring_buffer() {
     futures::executor::block_on(async {
         let flash = MockFlash::new();
-        let buf = Box::leak(vec![0u8; 4096].into_boxed_slice());
+        let buf = Box::leak(vec![0u8; 8192].into_boxed_slice());
         let mut fs = FilesystemController::new(flash, 0..1024 * 64, buf);
 
         static FS_CHANNEL: embassy_sync::channel::Channel<
@@ -126,7 +126,7 @@ fn test_telemetry_controller_ring_buffer() {
 fn test_telemetry_controller_chunked_boundary() {
     futures::executor::block_on(async {
         let flash = MockFlash::new();
-        let buf = Box::leak(vec![0u8; 4096].into_boxed_slice());
+        let buf = Box::leak(vec![0u8; 8192].into_boxed_slice());
         let mut fs = FilesystemController::new(flash, 0..1024 * 64, buf);
 
         static FS_CHANNEL: embassy_sync::channel::Channel<

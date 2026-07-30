@@ -283,8 +283,9 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
             }
 
             // Copy serialized record to chunk slot in RAM
-            let offset = slot_idx * 20;
-            self.file_buf[offset..offset + 20].copy_from_slice(&serialized);
+            let offset = slot_idx * model::telemetry::TELEMETRY_RECORD_SIZE;
+            self.file_buf[offset..offset + model::telemetry::TELEMETRY_RECORD_SIZE]
+                .copy_from_slice(&serialized);
 
             // Update metadata
             self.next_idx = (self.next_idx + 1) % (MAX_RECORDS as u32);
@@ -348,10 +349,13 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
                     current_chunk_idx = Some(chunk_idx);
                 }
 
-                let offset = slot_idx * 20;
-                if offset + 20 <= self.file_buf.len() {
-                    let slot: &[u8; 20] =
-                        self.file_buf[offset..offset + 20].try_into().ok().unwrap();
+                let offset = slot_idx * model::telemetry::TELEMETRY_RECORD_SIZE;
+                if offset + model::telemetry::TELEMETRY_RECORD_SIZE <= self.file_buf.len() {
+                    let slot: &[u8; model::telemetry::TELEMETRY_RECORD_SIZE] = self.file_buf
+                        [offset..offset + model::telemetry::TELEMETRY_RECORD_SIZE]
+                        .try_into()
+                        .ok()
+                        .unwrap();
                     if let Some((ts, rec)) = TelemetryRecord::deserialize(slot) {
                         callback(ts, rec);
                     }
