@@ -9,7 +9,8 @@ use crate::types::{
 use model::types::SystemStatus;
 
 /// Errors that can occur during system state transitions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum TransitionError {
     /// Transition blocked because wake locks are still held.
     WakeLocksHeld(u32),
@@ -24,8 +25,9 @@ pub enum TransitionError {
 }
 
 /// Actions to be taken in response to a battery status update.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum BatteryUpdateAction {
     /// Go to power down mode immediately.
     GoToPowerDown,

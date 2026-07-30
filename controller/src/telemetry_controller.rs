@@ -201,7 +201,8 @@ impl<
 }
 
 /// Helper structure to track and count processed telemetry records.
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct TelemetryCounters {
     /// Count of updates logged per telemetry category.
     pub counts: [u32; model::telemetry::NUM_TELEMETRY_VARIANTS],

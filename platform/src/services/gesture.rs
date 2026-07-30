@@ -17,7 +17,8 @@ pub trait GestureDetector<Input> {
 }
 
 /// Proximity event from individual ToF sensors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum ProximityEvent {
     /// Sensor update with direction and distance.
     SensorUpdate {

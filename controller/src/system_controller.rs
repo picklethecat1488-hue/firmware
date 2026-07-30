@@ -78,7 +78,18 @@ impl core::fmt::Debug for SystemCommand {
                 .field("from", from)
                 .field("to", to)
                 .finish(),
-            Self::BatteryAction(a) => f.debug_tuple("BatteryAction").field(a).finish(),
+            Self::BatteryAction(_a) => {
+                #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+                {
+                    f.debug_tuple("BatteryAction").field(_a).finish()
+                }
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                {
+                    f.debug_tuple("BatteryAction")
+                        .field(&"BatteryUpdateAction")
+                        .finish()
+                }
+            }
         }
     }
 }

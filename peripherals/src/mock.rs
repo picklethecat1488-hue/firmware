@@ -425,7 +425,8 @@ impl Probeable for MockLed {
 }
 
 /// A dummy/no-op I2C driver.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Clone, Copy, Default)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct DummyI2c;
 
 impl embedded_hal::i2c::ErrorType for DummyI2c {
@@ -457,7 +458,8 @@ impl embedded_hal::i2c::I2c for DummyI2c {
 }
 
 /// A dummy/no-op motor driver.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Clone, Copy, Default)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct DummyMotor;
 
 impl Motor for DummyMotor {
@@ -471,7 +473,8 @@ impl Motor for DummyMotor {
 }
 
 /// A dummy/no-op flash driver.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Clone, Copy, Default)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct DummyFlash;
 
 impl embedded_storage::nor_flash::ErrorType for DummyFlash {
@@ -500,7 +503,8 @@ impl embedded_storage::nor_flash::NorFlash for DummyFlash {
 }
 
 /// A dummy/no-op temperature sensor.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Clone, Copy, Default)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct DummyTempSensor;
 
 impl TemperatureSensor for DummyTempSensor {

@@ -117,7 +117,8 @@ controller::impl_shell_config! {
     }
 }
 /// Core 1 command enum.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum Core1Command {
     /// Panic command.
     Panic,

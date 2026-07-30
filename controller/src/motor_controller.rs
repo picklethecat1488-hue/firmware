@@ -469,7 +469,8 @@ where
 }
 
 /// One-way commands sent to the Motor Controller from the shell or app.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum MotorCommand {
     /// Set the motor speed (0-100)
     SetSpeed(model::types::MotorSpeed),

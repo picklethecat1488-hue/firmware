@@ -30,8 +30,14 @@ pub fn serialize_crash_dump<'a>(
 }
 
 /// Error type for `PanicFlashAsyncAdapter`.
-#[derive(Debug, Copy, Clone)]
+#[derive(Copy, Clone)]
 pub struct PanicFlashError;
+
+impl core::fmt::Debug for PanicFlashError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("PanicFlashError")
+    }
+}
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 impl embedded_storage::nor_flash::NorFlashError for PanicFlashError {

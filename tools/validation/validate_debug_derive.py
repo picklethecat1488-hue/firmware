@@ -1,22 +1,22 @@
 #!/usr/bin/env python
 """
-Debug Derive Validator.
+Debug Derive Validator (Tree-Sitter based).
 
-Validates that Rust enums targeting embedded MCU devices do not unconditionally
-derive 'Debug' to conserve code size. Enums must conditionally derive 'Debug'
+Validates that Rust enums and structs targeting embedded MCU devices do not unconditionally
+derive 'Debug' to conserve code size. Enums and structs must conditionally derive 'Debug'
 via:
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 """
 
 import os
-import re
 import sys
+import tree_sitter_rust as tsrust
+from tree_sitter import Language, Parser
 from colorama import init, Fore, Style
 
 init(autoreset=True)
 
-ENUM_RE = re.compile(r"\b(?:pub\s+)?enum\s+([a-zA-Z0-9_]+)\b")
-DERIVE_RE = re.compile(r"#\[\s*derive\s*\(([^)]+)\)\s*\]", re.DOTALL)
+RUST_LANGUAGE = Language(tsrust.language())
 
 TARGET_DIRS = [
     "controller/src",
@@ -27,44 +27,94 @@ TARGET_DIRS = [
 ]
 
 
+def get_item_name(item_node):
+    """Extract the identifier name from an enum_item or struct_item node."""
+    for child in item_node.children:
+        if child.type in ["name", "type_identifier", "identifier"]:
+            return child.text.decode("utf-8")
+    return None
+
+
+def is_unconditional_derive_debug(attr_node):
+    """Check if an attribute_item node is a direct #[derive(...)] containing Debug."""
+    attribute_node = None
+    for child in attr_node.children:
+        if child.type == "attribute":
+            attribute_node = child
+            break
+
+    if not attribute_node:
+        return False
+
+    is_derive = False
+    token_tree_node = None
+    for child in attribute_node.children:
+        if child.type == "identifier" and child.text.decode("utf-8") == "derive":
+            is_derive = True
+        elif child.type == "token_tree":
+            token_tree_node = child
+
+    if not is_derive or not token_tree_node:
+        return False
+
+    identifiers = []
+
+    def find_identifiers(n):
+        if n.type == "identifier":
+            identifiers.append(n.text.decode("utf-8"))
+        for c in n.children:
+            find_identifiers(c)
+
+    find_identifiers(token_tree_node)
+
+    return "Debug" in identifiers
+
+
 def validate_file(filepath):
-    with open(filepath, "r", encoding="utf-8") as f:
+    with open(filepath, "rb") as f:
         content = f.read()
 
+    parser = Parser(RUST_LANGUAGE)
+    tree = parser.parse(content)
+
     errors = 0
-    lines = content.split("\n")
-    for match in ENUM_RE.finditer(content):
-        enum_name = match.group(1)
-        char_idx = match.start()
-        line_idx = content[:char_idx].count("\n")
 
-        # Look backwards for attributes preceding the enum
-        attrs = []
-        i = line_idx - 1
-        while i >= 0:
-            line = lines[i].strip()
-            if not line:
-                i -= 1
-                continue
-            if line.startswith("///") or line.startswith("//") or line.startswith("/*") or line.endswith("*/"):
-                i -= 1
-                continue
-            if line.startswith("#[") or (attrs and not line.startswith("#[")):
-                attrs.append(line)
-                i -= 1
-            else:
-                break
+    def traverse(node):
+        nonlocal errors
+        if node.type in ["enum_item", "struct_item"]:
+            item_name = get_item_name(node) or "<unknown>"
+            item_type = "Enum" if node.type == "enum_item" else "Struct"
 
-        attrs_text = "\n".join(reversed(attrs))
-        for args in DERIVE_RE.findall(attrs_text):
-            derived_traits = [t.strip() for t in args.split(",")]
-            if "Debug" in derived_traits:
-                print(
-                    f"{Fore.RED}ERROR:{Style.RESET_ALL} Enum '{enum_name}' in '{filepath}' at line {line_idx + 1} "
-                    f"unconditionally derives 'Debug'! Enums targeting embedded devices must conditionally "
-                    f'derive \'Debug\' via #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))].'
-                )
-                errors += 1
+            # Find preceding attribute items
+            parent = node.parent
+            if parent:
+                idx = -1
+                for i, child in enumerate(parent.children):
+                    if child.id == node.id:
+                        idx = i
+                        break
+                k = idx - 1
+                while k >= 0:
+                    sibling = parent.children[k]
+                    if sibling.type == "attribute_item":
+                        if is_unconditional_derive_debug(sibling):
+                            line_no = content[: node.start_byte].count(b"\n") + 1
+                            print(
+                                f"{Fore.RED}ERROR:{Style.RESET_ALL} {item_type} '{item_name}' in '{filepath}' at line {line_no} "
+                                f"unconditionally derives 'Debug'! {item_type}s targeting embedded devices must conditionally "
+                                f'derive \'Debug\' via #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))].'
+                            )
+                            errors += 1
+                        k -= 1
+                    elif sibling.type in ["line_comment", "block_comment", "\n"]:
+                        k -= 1
+                    else:
+                        break
+
+        for child in node.children:
+            traverse(child)
+
+    traverse(tree.root_node)
     return errors
 
 
@@ -85,11 +135,11 @@ def main():
 
     if total_errors > 0:
         print(
-            f"\n{Fore.RED}Validation FAILED: Found {total_errors} enum(s) deriving Debug unconditionally.{Style.RESET_ALL}"
+            f"\n{Fore.RED}Validation FAILED: Found {total_errors} enum(s) or struct(s) deriving Debug unconditionally.{Style.RESET_ALL}"
         )
         sys.exit(1)
     else:
-        print(f"{Fore.GREEN}Validation PASSED: All enums conditionally derive Debug.{Style.RESET_ALL}")
+        print(f"{Fore.GREEN}Validation PASSED: All enums and structs conditionally derive Debug.{Style.RESET_ALL}")
         sys.exit(0)
 
 

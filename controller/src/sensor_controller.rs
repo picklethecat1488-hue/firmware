@@ -31,7 +31,8 @@ impl DataReadyPin for DummyDataReadyPin {
 }
 
 /// One-way commands sent to the Sensor Controller.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum SensorCommand {
     /// Force proximity sensor check and print telemetry logs
     ReadSensors,
@@ -53,7 +54,8 @@ pub trait SensorReader<S> {
 }
 
 /// Context block for reading proximity sensors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct ProximityReaderContext {
     /// The proximity threshold in millimeters under which target presence is detected.
     pub wake_threshold_mm: u16,

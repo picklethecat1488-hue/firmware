@@ -245,7 +245,8 @@ where
 }
 
 /// One-way commands sent to the Thermal Controller from the shell.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum ThermalCommand {
     /// Force thermal status query and print telemetry logs
     CheckTemp,
@@ -395,7 +396,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::Periodic
         if let Some(ref thermal_tx) = self.thermal_tx {
             let res = thermal_tx.try_send(ThermalCommand::SetInterval(interval));
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            res.expect("Failed to send periodic interval to thermal controller");
+            res.map_err(|_| "TrySendError")
+                .expect("Failed to send periodic interval to thermal controller");
             #[cfg(not(all(target_arch = "arm", target_os = "none")))]
             let _ = res;
         }
