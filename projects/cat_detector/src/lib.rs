@@ -55,6 +55,25 @@ pub const STORAGE_PARTITION_START: u32 = 0x1C_0000; // 1.75 MB
 /// End address of the filesystem storage partition in flash (2.00 MB limit).
 pub const STORAGE_PARTITION_END: u32 = 0x20_0000; // 2.00 MB
 
+/// Start address of the map filesystem partition.
+pub const FS_PARTITION_START: u32 = 0x1C_0000;
+/// End address of the map filesystem partition.
+pub const FS_PARTITION_END: u32 = 0x1D_0000; // 64 KB
+
+/// Start address of the telemetry queue partition.
+pub const TELEMETRY_PARTITION_START: u32 = 0x1D_0000;
+/// End address of the telemetry queue partition.
+pub const TELEMETRY_PARTITION_END: u32 = 0x20_0000; // 192 KB
+
+// Statically verify that filesystem and telemetry partitions are within STORAGE bounds and do not overlap.
+platform::assert_partitions! {
+    storage_range: (STORAGE_PARTITION_START, STORAGE_PARTITION_END),
+    partition_ranges: [
+        (FS_PARTITION_START, FS_PARTITION_END),
+        (TELEMETRY_PARTITION_START, TELEMETRY_PARTITION_END)
+    ]
+}
+
 /// Total number of telemetry chunks
 pub const NUM_CHUNKS: usize = 77;
 /// Total maximum number of records stored
@@ -177,6 +196,10 @@ pub static mut MOTOR_CTRL_CORE0: Option<
 > = None;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global instance of the SystemController.
+pub static mut SYSTEM_CTRL: Option<SystemControllerType> = None;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Type alias for the blocking flash device.
 pub type FlashDevice = embassy_rp::flash::Flash<
     'static,
@@ -279,6 +302,12 @@ pub async fn init_controllers(board: Board<'static>) {
         MOTOR_CTRL_CORE0 = Some(controller::motor_controller::MotorController::new(
             motor,
             current_sensor,
+        ));
+
+        SYSTEM_CTRL = Some(controller::SystemController::new(
+            create_default_feature_set(),
+            TELEMETRY_CHANNEL.sender(),
+            crate::get_boot_reason(),
         ));
     }
 }
@@ -566,16 +595,7 @@ pub type SystemControllerType =
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// The concrete flash type used for the filesystem partition in production.
-pub type FlashDeviceType = controller::filesystem_controller::ProfilingFlash<
-    platform::BlockingAsyncFlash<
-        embassy_rp::flash::Flash<
-            'static,
-            embassy_rp::peripherals::FLASH,
-            embassy_rp::flash::Blocking,
-            { FLASH_SIZE },
-        >,
-    >,
->;
+pub type FlashDeviceType = platform::flash::TargetFlash<{ FLASH_SIZE }>;
 
 /// Re-export the telemetry module from the controller crate
 pub use controller::telemetry_controller as telemetry;

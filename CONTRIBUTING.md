@@ -334,9 +334,9 @@ cargo build -p host_fs --release
       cargo run -p host_fs -- --dump flash_dump.bin ls
       ```
 *   **Copy files to/from device (`cp`)**:
-    - *Copy telemetry from device to host*:
+    - *Copy calibration file from device to host*:
       ```bash
-      cargo run -p host_fs -- --elf target/thumbv6m-none-eabi/release/cat_detector_app cp dev:telemetry.rrd local_telemetry.rrd
+      cargo run -p host_fs -- --elf target/thumbv6m-none-eabi/release/cat_detector_app cp dev:vl53l0x_cal.cbor local_cal.cbor
       ```
     - *Copy new calibration config to device*:
       ```bash

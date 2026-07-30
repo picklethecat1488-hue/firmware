@@ -94,17 +94,23 @@ fn test_telemetry_records_size_bounds() {
 }
 
 #[test]
-fn test_header_serialization() {
-    let mut bytes = [0u8; 12];
+fn test_backwards_compatibility() {
+    // Manually serialize an old format [id, timestamp, record]
+    let rec = TelemetryRecord::Boot(BootReason::PowerOn);
+    let mut bytes = [0u8; model::telemetry::TELEMETRY_RECORD_SIZE];
     let cursor = minicbor::encode::write::Cursor::new(&mut bytes[1..]);
     let mut encoder = minicbor::Encoder::new(cursor);
-    let count = 0u32;
-    let next_idx = 0u32;
-    let ok =
-        encoder.array(2).is_ok() && encoder.u32(count).is_ok() && encoder.u32(next_idx).is_ok();
+    assert!(encoder.array(3).is_ok());
+    assert!(encoder.u32(42).is_ok()); // ID = 42
+    assert!(encoder.u64(12345).is_ok());
+    assert!(encoder.encode(&rec).is_ok());
     let len = encoder.into_writer().position();
-    if ok && len <= 11 {
-        bytes[0] = len as u8;
-    }
-    println!("OK: {}, len: {}, bytes: {:?}", ok, len, bytes);
+    bytes[0] = len as u8;
+
+    // Verify it deserializes and successfully parses timestamp and record
+    let decoded = TelemetryRecord::deserialize(&bytes);
+    assert!(decoded.is_some());
+    let (ts, decoded_rec) = decoded.unwrap();
+    assert_eq!(ts, 12345);
+    assert_eq!(decoded_rec, rec);
 }
