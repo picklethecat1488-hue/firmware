@@ -196,8 +196,12 @@ fn telemetry_record_to_perfetto_json(rec: &TelemetryRecord, ts: f64) -> Vec<serd
             ));
         }
         TelemetryRecord::PeripheralError(err) => {
+            let err_string;
             let err_str = match err {
-                model::types::PeripheralError::DeviceNotFound => "DeviceNotFound",
+                model::types::PeripheralError::DeviceNotFound(val) => {
+                    err_string = format!("DeviceNotFound(0x{:04x})", val);
+                    &err_string
+                }
                 model::types::PeripheralError::InvalidConfiguration => "InvalidConfiguration",
                 model::types::PeripheralError::NotImplemented => "NotImplemented",
                 model::types::PeripheralError::DeviceNotAvailable => "DeviceNotAvailable",
@@ -326,7 +330,7 @@ impl FlashTelemetryParser {
         F: MultiwriteNorFlash,
         F::Error: std::fmt::Debug,
     {
-        let key = string_to_key("telemetry.rrd");
+        let key = string_to_key(model::telemetry::TELEMETRY_HEADER_FILE);
 
         let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
             flash,
@@ -392,7 +396,8 @@ impl FlashTelemetryParser {
             let chunk_idx = idx / model::telemetry::CHUNK_SIZE;
             let slot_idx = idx % model::telemetry::CHUNK_SIZE;
             if current_chunk_idx != Some(chunk_idx) {
-                let name = model::telemetry::chunk_name(chunk_idx);
+                let mut name_buf = [0u8; platform::MAX_FILE_NAME_LEN];
+                let name = model::telemetry::chunk_name(chunk_idx, &mut name_buf);
                 let chunk_key = string_to_key(name);
 
                 let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(

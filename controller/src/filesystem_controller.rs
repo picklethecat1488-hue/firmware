@@ -391,7 +391,7 @@ pub enum FsRequest {
     /// Write file request
     WriteFile {
         /// File name
-        name: &'static str,
+        name: heapless::String<{ platform::MAX_FILE_NAME_LEN }>,
         /// Raw pointer to the content buffer
         content_ptr: *const u8,
         /// Length of the content buffer
@@ -402,7 +402,7 @@ pub enum FsRequest {
     /// Read file request
     ReadFile {
         /// File name
-        name: &'static str,
+        name: heapless::String<{ platform::MAX_FILE_NAME_LEN }>,
         /// Raw pointer to the output buffer
         buf_ptr: *mut u8,
         /// Length of the output buffer
@@ -428,10 +428,11 @@ impl FilesystemClient {
     }
 
     /// Stores/overwrites a file with the given name and contents asynchronously.
-    pub async fn write_file(&self, name: &'static str, content: &[u8]) -> Result<(), ()> {
+    pub async fn write_file(&self, name: &str, content: &[u8]) -> Result<(), ()> {
         let signal = Signal::new();
+        let name_str = heapless::String::try_from(name).map_err(|_| ())?;
         let request = FsRequest::WriteFile {
-            name,
+            name: name_str,
             content_ptr: content.as_ptr(),
             content_len: content.len(),
             signal: &signal as *const _,
@@ -444,13 +445,14 @@ impl FilesystemClient {
     /// The caller must ensure that the content buffer remains valid until the write completes.
     pub async fn start_write_file(
         &self,
-        name: &'static str,
+        name: &str,
         content: &[u8],
         signal: &'static Signal<CriticalSectionRawMutex, Result<(), ()>>,
     ) {
         signal.reset();
+        let name_str = heapless::String::try_from(name).unwrap_or_default();
         let request = FsRequest::WriteFile {
-            name,
+            name: name_str,
             content_ptr: content.as_ptr(),
             content_len: content.len(),
             signal: signal as *const _,
@@ -461,12 +463,13 @@ impl FilesystemClient {
     /// Fetches a file's content asynchronously.
     pub async fn read_file<'a>(
         &self,
-        name: &'static str,
+        name: &str,
         out_buf: &'a mut [u8],
     ) -> Result<Option<&'a [u8]>, ()> {
         let signal = Signal::new();
+        let name_str = heapless::String::try_from(name).map_err(|_| ())?;
         let request = FsRequest::ReadFile {
-            name,
+            name: name_str,
             buf_ptr: out_buf.as_mut_ptr(),
             buf_len: out_buf.len(),
             signal: &signal as *const _,
@@ -494,7 +497,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
                     signal,
                 } => {
                     let content = unsafe { core::slice::from_raw_parts(content_ptr, content_len) };
-                    let res = self.write_file(name, content).await;
+                    let res = self.write_file(name.as_str(), content).await;
                     unsafe { &*signal }.signal(res);
                 }
                 FsRequest::ReadFile {
@@ -505,7 +508,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
                 } => {
                     let buf = unsafe { core::slice::from_raw_parts_mut(buf_ptr, buf_len) };
                     let base_ptr = buf.as_ptr() as usize;
-                    let res = self.read_file(name, buf).await;
+                    let res = self.read_file(name.as_str(), buf).await;
                     let mapped_res = res.map(|opt| {
                         opt.map(|slice| {
                             let start = slice.as_ptr() as usize - base_ptr;

@@ -8,13 +8,11 @@
 
 use embassy_rp::gpio::{Flex, Pin, Pull};
 use embassy_rp::i2c::{Config as I2cConfig, I2c};
-use embassy_rp::uart::{Config as UartConfig, Uart};
 use embassy_rp::Peripherals;
+use platform::tracing;
 
 /// Helper structure containing all pre-initialized board interfaces.
 pub struct Board<'d> {
-    /// Blocking UART0 instance for interactive terminal shell
-    pub uart: Uart<'d, embassy_rp::peripherals::UART0, embassy_rp::uart::Blocking>,
     /// Blocking I2C0 instance for sensor communications
     pub i2c: I2c<'d, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Blocking>,
     /// The onboard flash peripheral
@@ -23,8 +21,7 @@ pub struct Board<'d> {
     pub gpio_pins: [Option<Flex<'d>>; 30],
     /// Internal RP2040 temperature sensor
     pub temp_sensor: Option<Rp2040TempSensor>,
-    /// Concrete charger driver instance using S1/S2 GPIO pins
-    pub charger: Option<peripherals::bq25185::Bq25185<Flex<'d>, Flex<'d>>>,
+
     /// Motor driver
     pub motor: peripherals::l9110s::L9110s<Flex<'d>, Flex<'d>>,
     /// Motor current sensor
@@ -59,6 +56,7 @@ impl<'d> Board<'d> {
     ///
     /// # Arguments
     /// * `p` - The RP2040 peripheral set.
+    #[tracing::instrument(level = "trace", skip(p))]
     pub fn init(p: Peripherals) -> Self {
         // 1. Perform I2C bus unstuck on I2C0 (GP4 SDA, GP5 SCL) using raw registers
         // to avoid taking ownership of Pin types before constructing I2c.
@@ -104,7 +102,6 @@ impl<'d> Board<'d> {
             }
         }
 
-        let uart = Uart::new_blocking(p.UART0, p.PIN_0, p.PIN_1, UartConfig::default());
         let mut i2c_config = I2cConfig::default();
         i2c_config.frequency = 400_000;
         let mut i2c = I2c::new_blocking(p.I2C0, p.PIN_5, p.PIN_4, i2c_config);
@@ -142,17 +139,16 @@ impl<'d> Board<'d> {
         ];
 
         // 2. Assert XSHUT (active low) on all ToF sensors (GP2, GP3, GP6)
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_NORTH_XSHUT_PIN as usize] {
-            pin.set_as_output();
-            pin.set_low();
-        }
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_EAST_XSHUT_PIN as usize] {
-            pin.set_as_output();
-            pin.set_low();
-        }
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_WEST_XSHUT_PIN as usize] {
-            pin.set_as_output();
-            pin.set_low();
+        let xshut_pins = [
+            crate::TOF_NORTH_XSHUT_PIN,
+            crate::TOF_EAST_XSHUT_PIN,
+            crate::TOF_WEST_XSHUT_PIN,
+        ];
+        for &pin_idx in &xshut_pins {
+            if let Some(ref mut pin) = gpio_pins[pin_idx as usize] {
+                pin.set_as_output();
+                pin.set_low();
+            }
         }
 
         // 3. Configure Fuel Gauge Alert pin (GP10) as input with pull-up (active-low, open-drain)
@@ -162,90 +158,64 @@ impl<'d> Board<'d> {
         }
 
         // 4. Configure ToF Sensor Interrupt pins (GP7, GP8, GP9) as inputs with pull-ups (active-low, open-drain)
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_NORTH_INT_PIN as usize] {
-            pin.set_as_input();
-            pin.set_pull(Pull::Up);
-        }
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_EAST_INT_PIN as usize] {
-            pin.set_as_input();
-            pin.set_pull(Pull::Up);
-        }
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_WEST_INT_PIN as usize] {
-            pin.set_as_input();
-            pin.set_pull(Pull::Up);
+        let int_pins = [
+            crate::TOF_NORTH_INT_PIN,
+            crate::TOF_EAST_INT_PIN,
+            crate::TOF_WEST_INT_PIN,
+        ];
+        for &pin_idx in &int_pins {
+            if let Some(ref mut pin) = gpio_pins[pin_idx as usize] {
+                pin.set_as_input();
+                pin.set_pull(Pull::Up);
+            }
         }
 
         // Wait for sensors to register reset state
         cortex_m::asm::delay(20_000);
 
-        // Bring North sensor out of shutdown (GP2 high) and assign address 0x30
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_NORTH_XSHUT_PIN as usize] {
-            pin.set_high();
-            cortex_m::asm::delay(20_000); // Wait for sensor to boot
-            let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x29);
-            if let Err(e) = sensor.init(
-                0x30,
+        let temp_flash = unsafe { core::ptr::read(&p.FLASH) };
+        let mut raw_flash: crate::FlashDevice = embassy_rp::flash::Flash::new_blocking(temp_flash);
+        let mut boot_status = platform::flash::DirectFlashBootStatus::new(
+            &mut raw_flash,
+            crate::STORAGE_PARTITION_START..crate::STORAGE_PARTITION_END,
+            crate::MAX_RECORDS,
+        );
+
+        let sensors = [
+            (
+                "North ToF",
+                crate::TOF_NORTH_XSHUT_PIN,
+                crate::TOF_NORTH_I2C_ADDR,
+            ),
+            (
+                "East ToF",
+                crate::TOF_EAST_XSHUT_PIN,
+                crate::TOF_EAST_I2C_ADDR,
+            ),
+            (
+                "West ToF",
+                crate::TOF_WEST_XSHUT_PIN,
+                crate::TOF_WEST_I2C_ADDR,
+            ),
+        ];
+        for &(name, xshut_pin, addr) in &sensors {
+            peripherals::init_vl53l0x!(
+                &mut i2c,
+                gpio_pins,
+                name,
+                xshut_pin,
+                addr,
                 crate::DEFAULT_WAKE_THRESHOLD_MM,
-                peripherals::vl53l0x::InterruptMode::LowLevel,
-            ) {
-                defmt::warn!("North ToF: Init failed: {:?}", defmt::Debug2Format(&e));
-            }
+                &mut boot_status
+            );
         }
-
-        // Bring East sensor out of shutdown (GP3 high) and assign address 0x31
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_EAST_XSHUT_PIN as usize] {
-            pin.set_high();
-            cortex_m::asm::delay(20_000); // Wait for sensor to boot
-            let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x29);
-            if let Err(e) = sensor.init(
-                0x31,
-                crate::DEFAULT_WAKE_THRESHOLD_MM,
-                peripherals::vl53l0x::InterruptMode::LowLevel,
-            ) {
-                defmt::warn!("East ToF: Init failed: {:?}", defmt::Debug2Format(&e));
-            }
-        }
-
-        // Bring West sensor out of shutdown (GP6 high) and assign address 0x32
-        if let Some(ref mut pin) = gpio_pins[crate::TOF_WEST_XSHUT_PIN as usize] {
-            pin.set_high();
-            cortex_m::asm::delay(20_000); // Wait for sensor to boot
-            let mut sensor = peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x29);
-            if let Err(e) = sensor.init(
-                0x32,
-                crate::DEFAULT_WAKE_THRESHOLD_MM,
-                peripherals::vl53l0x::InterruptMode::LowLevel,
-            ) {
-                defmt::warn!("West ToF: Init failed: {:?}", defmt::Debug2Format(&e));
-            }
-        }
-
-        // 5. Configure Charger Status pins S1 (GP12) and S2 (GP13) as inputs with pull-ups
-        if let Some(ref mut pin) = gpio_pins[crate::CHARGER_S1_PIN as usize] {
-            pin.set_as_input();
-            pin.set_pull(Pull::Up);
-        }
-        if let Some(ref mut pin) = gpio_pins[crate::CHARGER_S2_PIN as usize] {
-            pin.set_as_input();
-            pin.set_pull(Pull::Up);
-        }
-
-        let s1 = gpio_pins[crate::CHARGER_S1_PIN as usize]
-            .take()
-            .expect("S1 pin must be available");
-        let s2 = gpio_pins[crate::CHARGER_S2_PIN as usize]
-            .take()
-            .expect("S2 pin must be available");
-        let charger = Some(peripherals::bq25185::Bq25185::new(s1, s2));
 
         let temp_sensor = Some(Rp2040TempSensor::new(p.ADC, p.ADC_TEMP_SENSOR));
 
         // Configure remaining drivers using local i2c before returning
-        let mut current_sensor_temp = peripherals::ina219::Ina219::new(&mut i2c);
-        let _ = current_sensor_temp.init();
-
-        let mut led_drv_temp = peripherals::attiny816::Attiny816::new(&mut i2c);
-        let _ = led_drv_temp.init();
+        peripherals::init_max17048!(&mut i2c, &mut boot_status);
+        peripherals::init_ina219!(&mut i2c, &mut boot_status);
+        peripherals::init_attiny816!(&mut i2c, &mut boot_status);
 
         // Extract pins needed for drivers/controllers
         let motor_pin_ia = gpio_pins[crate::PUMP_PIN_IA as usize]
@@ -273,23 +243,18 @@ impl<'d> Board<'d> {
         let current_sensor = peripherals::ina219::Ina219::new(
             platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
         );
-        let mut tof_north = peripherals::vl53l0x::Vl53l0x::new(
-            platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
-            0x30,
-        );
-        let _ = tof_north.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
+        let make_tof = |addr| {
+            let mut sensor = peripherals::vl53l0x::Vl53l0x::new(
+                platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
+                addr,
+            );
+            let _ = sensor.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
+            sensor
+        };
 
-        let mut tof_east = peripherals::vl53l0x::Vl53l0x::new(
-            platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
-            0x31,
-        );
-        let _ = tof_east.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
-
-        let mut tof_west = peripherals::vl53l0x::Vl53l0x::new(
-            platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
-            0x32,
-        );
-        let _ = tof_west.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
+        let tof_north = make_tof(crate::TOF_NORTH_I2C_ADDR);
+        let tof_east = make_tof(crate::TOF_EAST_I2C_ADDR);
+        let tof_west = make_tof(crate::TOF_WEST_I2C_ADDR);
 
         let led_driver = peripherals::attiny816::Attiny816::new(
             platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
@@ -308,12 +273,11 @@ impl<'d> Board<'d> {
         };
 
         Self {
-            uart,
             i2c,
             flash: p.FLASH,
             gpio_pins,
             temp_sensor,
-            charger,
+
             motor,
             current_sensor,
             tof_north,
@@ -490,25 +454,10 @@ impl model::interfaces::TemperatureSensor for SafeRp2040TempSensor {
     }
 }
 
-/// Safe wrapper around Bq25185 charger to handle None state.
-pub struct SafeBq25185(pub Option<peripherals::bq25185::Bq25185<Flex<'static>, Flex<'static>>>);
-
-impl model::interfaces::ChargeStatus for SafeBq25185 {
-    type Error = ();
-
-    fn get_charge_state(&mut self) -> Result<model::types::ChargeState, Self::Error> {
-        if let Some(ref mut chg) = self.0 {
-            Ok(chg.get_state())
-        } else {
-            Ok(model::types::ChargeState::DoneOrStandbyOrUnplugged)
-        }
-    }
-}
-
 /// The battery fuel gauge type.
 pub type BatteryDevice = peripherals::max17048::Max17048<platform::i2c::SharedI2cWrapper<'static>>;
 /// The battery charger type.
-pub type ChargerDevice = SafeBq25185;
+pub type ChargerDevice = peripherals::max17048::Max17048<platform::i2c::SharedI2cWrapper<'static>>;
 /// The battery alert pin type.
 pub type AlertPinType = AlertPinWrapper;
 /// The motor driver type.

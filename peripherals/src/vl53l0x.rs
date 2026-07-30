@@ -5,7 +5,7 @@
 use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
-use model::interfaces::ProximitySensor;
+use model::interfaces::{Probeable, ProximitySensor};
 use model::types::PeripheralError;
 
 macro_rules! log_warn {
@@ -33,6 +33,19 @@ pub enum InterruptMode {
 /// The default minimum safety buffer/error margin (in millimeters) between the calibration cover reading
 /// and the hardware interrupt threshold, preventing the cover itself from triggering the sensor.
 pub const THRESHOLD_ERROR_MM: u16 = 20;
+
+struct Register;
+impl Register {
+    const SYSTEM_START: u8 = 0x00;
+    const SYSTEM_INTERRUPT_GPIO_CONFIG: u8 = 0x0A;
+    const SYSTEM_INTERRUPT_CLEAR: u8 = 0x0B;
+    const SYSTEM_THRESH_HIGH: u8 = 0x0C;
+    const SYSTEM_THRESH_LOW: u8 = 0x0E;
+    const RESULT_RANGE_STATUS: u8 = 0x1E;
+    const FINAL_RANGE_CONFIG_TIMEOUT_MACROP_HI: u8 = 0x71;
+    const I2C_SLAVE_DEVICE_ADDRESS: u8 = 0x8A;
+    const IDENTIFICATION_MODEL_ID: u8 = 0xC0;
+}
 
 /// Driver for the VL53L0X Time-of-Flight sensor communicating over I2C.
 pub struct Vl53l0x<I> {
@@ -79,8 +92,16 @@ impl<I: I2c> Vl53l0x<I> {
     pub fn set_address(&mut self, new_address: u8) -> Result<(), PeripheralError> {
         let res = self
             .i2c
-            .write(self.address, &[0x8A, new_address & 0x7F])
-            .map_err(|e| e.to_i2c_error(self.address as u16, 0x8A_u16));
+            .write(
+                self.address,
+                &[Register::I2C_SLAVE_DEVICE_ADDRESS, new_address & 0x7F],
+            )
+            .map_err(|e| {
+                e.to_i2c_error(
+                    self.address as u16,
+                    Register::I2C_SLAVE_DEVICE_ADDRESS as u16,
+                )
+            });
         if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to locate or set address to 0x{:02x} (current address: 0x{:02x}): {:?}",
@@ -131,20 +152,38 @@ impl<I: I2c> Vl53l0x<I> {
             // Write SYSTEM_THRESH_LOW (0x0E) - 16-bit value (MSB first)
             let low_bytes = self.threshold_mm.to_be_bytes();
             self.i2c
-                .write(self.address, &[0x0E, low_bytes[0], low_bytes[1]])
-                .map_err(|e| e.to_i2c_error(self.address as u16, 0x0E_u16))?;
+                .write(
+                    self.address,
+                    &[Register::SYSTEM_THRESH_LOW, low_bytes[0], low_bytes[1]],
+                )
+                .map_err(|e| {
+                    e.to_i2c_error(self.address as u16, Register::SYSTEM_THRESH_LOW as u16)
+                })?;
 
             // Write SYSTEM_THRESH_HIGH (0x0C) - 16-bit value (MSB first)
             let high_val = self.threshold_mm + self.hysteresis_mm;
             let high_bytes = high_val.to_be_bytes();
             self.i2c
-                .write(self.address, &[0x0C, high_bytes[0], high_bytes[1]])
-                .map_err(|e| e.to_i2c_error(self.address as u16, 0x0C_u16))?;
+                .write(
+                    self.address,
+                    &[Register::SYSTEM_THRESH_HIGH, high_bytes[0], high_bytes[1]],
+                )
+                .map_err(|e| {
+                    e.to_i2c_error(self.address as u16, Register::SYSTEM_THRESH_HIGH as u16)
+                })?;
 
             // Write SYSTEM_INTERRUPT_GPIO_CONFIG (0x0A) - 8-bit value
             self.i2c
-                .write(self.address, &[0x0A, mode as u8])
-                .map_err(|e| e.to_i2c_error(self.address as u16, 0x0A_u16))?;
+                .write(
+                    self.address,
+                    &[Register::SYSTEM_INTERRUPT_GPIO_CONFIG, mode as u8],
+                )
+                .map_err(|e| {
+                    e.to_i2c_error(
+                        self.address as u16,
+                        Register::SYSTEM_INTERRUPT_GPIO_CONFIG as u16,
+                    )
+                })?;
 
             // Clear any pending interrupt to start fresh
             self.clear_interrupt()?;
@@ -169,8 +208,10 @@ impl<I: I2c> Vl53l0x<I> {
     pub fn clear_interrupt(&mut self) -> Result<(), PeripheralError> {
         let res = self
             .i2c
-            .write(self.address, &[0x0B, 0x01])
-            .map_err(|e| e.to_i2c_error(self.address as u16, 0x0B_u16));
+            .write(self.address, &[Register::SYSTEM_INTERRUPT_CLEAR, 0x01])
+            .map_err(|e| {
+                e.to_i2c_error(self.address as u16, Register::SYSTEM_INTERRUPT_CLEAR as u16)
+            });
         if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to clear interrupt at address 0x{:02x}: {:?}",
@@ -186,8 +227,16 @@ impl<I: I2c> Vl53l0x<I> {
     pub fn set_timing_budget_200ms(&mut self) -> Result<(), PeripheralError> {
         let res = self
             .i2c
-            .write(self.address, &[0x71, 0x54, 0x36])
-            .map_err(|e| e.to_i2c_error(self.address as u16, 0x71_u16));
+            .write(
+                self.address,
+                &[Register::FINAL_RANGE_CONFIG_TIMEOUT_MACROP_HI, 0x54, 0x36],
+            )
+            .map_err(|e| {
+                e.to_i2c_error(
+                    self.address as u16,
+                    Register::FINAL_RANGE_CONFIG_TIMEOUT_MACROP_HI as u16,
+                )
+            });
         if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to set timing budget at address 0x{:02x}: {:?}",
@@ -211,14 +260,16 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
         let res = (|| {
             // Trigger a measurement (write 0x01 to register 0x00 for System Start)
             self.i2c
-                .write(self.address, &[0x00, 0x01])
-                .map_err(|e| e.to_i2c_error(self.address as u16, 0x00_u16))?;
+                .write(self.address, &[Register::SYSTEM_START, 0x01])
+                .map_err(|e| e.to_i2c_error(self.address as u16, Register::SYSTEM_START as u16))?;
 
             // Read 16-bit range result from register 0x1E (High Byte) and 0x1F (Low Byte)
             let mut buf = [0u8; 2];
             self.i2c
-                .write_read(self.address, &[0x1E], &mut buf)
-                .map_err(|e| e.to_i2c_error(self.address as u16, 0x1E_u16))?;
+                .write_read(self.address, &[Register::RESULT_RANGE_STATUS], &mut buf)
+                .map_err(|e| {
+                    e.to_i2c_error(self.address as u16, Register::RESULT_RANGE_STATUS as u16)
+                })?;
             let mut distance = u16::from_be_bytes(buf);
 
             // Clear interrupt status so the pin can trigger again (write 0x01 to register 0x0B)
@@ -254,4 +305,73 @@ impl<I: I2c> model::calibration::Calibration for Vl53l0x<I> {
             }
         }
     }
+}
+
+impl<I: I2c> Probeable for Vl53l0x<I> {
+    type Error = PeripheralError;
+
+    #[tracing::instrument(level = "trace")]
+    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+        let mut buf = [0u8; 1];
+        self.i2c
+            .write_read(self.address, &[Register::IDENTIFICATION_MODEL_ID], &mut buf)
+            .map_err(|e| {
+                e.to_i2c_error(
+                    self.address as u16,
+                    Register::IDENTIFICATION_MODEL_ID as u16,
+                )
+            })?;
+        let id = buf[0] as u16;
+        if id == 0xEE {
+            Ok(id)
+        } else {
+            Err(PeripheralError::DeviceNotFound(id))
+        }
+    }
+
+    #[tracing::instrument(level = "trace")]
+    fn reset(&mut self) -> Result<(), Self::Error> {
+        // No software-initiated reset register on the VL53L0X.
+        // It relies on the hardware XSHUT pin for reset, so this is a no-op.
+        Ok(())
+    }
+}
+
+/// Macro to initialize a VL53L0X proximity sensor during boot.
+#[macro_export]
+macro_rules! init_vl53l0x {
+    ($i2c:expr, $gpio_pins:expr, $name:expr, $xshut_pin:expr, $addr:expr, $threshold:expr, $boot_status:expr) => {
+        if let Some(ref mut pin) = $gpio_pins[$xshut_pin as usize] {
+            pin.set_high();
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            ::cortex_m::asm::delay(20_000); // Wait for sensor to boot
+            let mut sensor = $crate::vl53l0x::Vl53l0x::new($i2c, 0x29);
+            {
+                use ::model::interfaces::BootStatus;
+                use ::model::interfaces::Probeable;
+                use $crate::ToPeripheralError;
+                if let Err(ref e) = sensor.read_chip_id() {
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::warn!("{}: Probing failed: {:?}", $name, defmt::Debug2Format(e));
+                    let pe = e.to_peripheral_error();
+                    $boot_status.record_error(pe);
+                }
+                if let Err(ref e) = sensor.reset() {
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::warn!("{}: Reset failed: {:?}", $name, defmt::Debug2Format(e));
+                    let pe = e.to_peripheral_error();
+                    $boot_status.record_error(pe);
+                }
+            }
+            if let Err(e) = sensor.init($addr, $threshold, $crate::vl53l0x::InterruptMode::LowLevel)
+            {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::warn!("{}: Init failed: {:?}", $name, defmt::Debug2Format(&e));
+                use ::model::interfaces::BootStatus;
+                use $crate::ToPeripheralError;
+                let pe = e.to_peripheral_error();
+                $boot_status.record_error(pe);
+            }
+        }
+    };
 }

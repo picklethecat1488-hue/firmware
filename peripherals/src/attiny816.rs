@@ -5,7 +5,7 @@
 use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
-use model::interfaces::LedDriver;
+use model::interfaces::{LedDriver, Probeable};
 use model::types::PeripheralError;
 
 macro_rules! log_warn {
@@ -16,6 +16,14 @@ macro_rules! log_warn {
 }
 
 const BASE_NEOPIXEL: u8 = 0x0E;
+
+struct Command;
+impl Command {
+    const SET_PIN: u8 = 0x01;
+    const SET_BUF_LEN: u8 = 0x03;
+    const WRITE_BUF: u8 = 0x04;
+    const SHOW: u8 = 0x05;
+}
 
 /// Driver for the ATtiny816 custom NeoPixel LED driver over I2C.
 pub struct Attiny816<I> {
@@ -34,11 +42,11 @@ impl<I: I2c> Attiny816<I> {
         let res = (|| {
             // 1. Set Output Pin to 14
             self.i2c
-                .write(self.address, &[BASE_NEOPIXEL, 0x01, 14])
+                .write(self.address, &[BASE_NEOPIXEL, Command::SET_PIN, 14])
                 .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
             // 2. Set Buffer Length (3 bytes for 1 RGB NeoPixel)
             self.i2c
-                .write(self.address, &[BASE_NEOPIXEL, 0x03, 0, 3])
+                .write(self.address, &[BASE_NEOPIXEL, Command::SET_BUF_LEN, 0, 3])
                 .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
             Ok(())
         })();
@@ -58,11 +66,14 @@ impl<I: I2c> Attiny816<I> {
         let res = (|| {
             // 3. Write data to buffer (offset 0, standard GRB sequence)
             self.i2c
-                .write(self.address, &[BASE_NEOPIXEL, 0x04, 0, 0, g, r, b])
+                .write(
+                    self.address,
+                    &[BASE_NEOPIXEL, Command::WRITE_BUF, 0, 0, g, r, b],
+                )
                 .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
             // 4. Send show command
             self.i2c
-                .write(self.address, &[BASE_NEOPIXEL, 0x05])
+                .write(self.address, &[BASE_NEOPIXEL, Command::SHOW])
                 .map_err(|e| e.to_i2c_error(self.address as u16, BASE_NEOPIXEL as u16))?;
             Ok(())
         })();
@@ -84,4 +95,84 @@ impl<I: I2c> LedDriver for Attiny816<I> {
     fn set_color(&mut self, r: u8, g: u8, b: u8) -> Result<(), Self::Error> {
         self.set_led_color(r, g, b)
     }
+}
+
+struct StatusModule;
+impl StatusModule {
+    const BASE: u8 = 0x00;
+    const HW_ID: u8 = 0x01;
+    const SWRST: u8 = 0x7F;
+    const SWRST_VAL: u8 = 0xFF;
+}
+
+impl<I: I2c> Probeable for Attiny816<I> {
+    type Error = PeripheralError;
+
+    #[tracing::instrument(level = "trace")]
+    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+        let mut buf = [0u8; 1];
+        self.i2c
+            .write_read(
+                self.address,
+                &[StatusModule::BASE, StatusModule::HW_ID],
+                &mut buf,
+            )
+            .map_err(|e| e.to_i2c_error(self.address as u16, StatusModule::HW_ID as u16))?;
+        let id = buf[0] as u16;
+        if id == 0x86 {
+            Ok(id)
+        } else {
+            Err(PeripheralError::DeviceNotFound(id))
+        }
+    }
+
+    #[tracing::instrument(level = "trace")]
+    fn reset(&mut self) -> Result<(), Self::Error> {
+        self.i2c
+            .write(
+                self.address,
+                &[
+                    StatusModule::BASE,
+                    StatusModule::SWRST,
+                    StatusModule::SWRST_VAL,
+                ],
+            )
+            .map_err(|e| e.to_i2c_error(self.address as u16, StatusModule::SWRST as u16))?;
+        Ok(())
+    }
+}
+
+/// Macro to initialize an ATtiny816 custom LED driver during boot.
+#[macro_export]
+macro_rules! init_attiny816 {
+    ($i2c:expr, $boot_status:expr) => {{
+        let mut led_drv = $crate::attiny816::Attiny816::new($i2c);
+        {
+            use ::model::interfaces::BootStatus;
+            use ::model::interfaces::Probeable;
+            use $crate::ToPeripheralError;
+            if let Err(ref e) = led_drv.read_chip_id() {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::warn!("ATtiny816: Probing failed: {:?}", defmt::Debug2Format(e));
+                let pe = e.to_peripheral_error();
+                $boot_status.record_error(pe);
+            }
+            if let Err(ref e) = led_drv.reset() {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::warn!("ATtiny816: Reset failed: {:?}", defmt::Debug2Format(e));
+                let pe = e.to_peripheral_error();
+                $boot_status.record_error(pe);
+            }
+        }
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        ::cortex_m::asm::delay(20_000);
+        if let Err(e) = led_drv.init() {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::warn!("ATtiny816: Init failed: {:?}", defmt::Debug2Format(&e));
+            use ::model::interfaces::BootStatus;
+            use $crate::ToPeripheralError;
+            let pe = e.to_peripheral_error();
+            $boot_status.record_error(pe);
+        }
+    }};
 }
