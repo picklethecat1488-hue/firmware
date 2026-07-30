@@ -38,7 +38,7 @@ jobs:
           pip install tree-sitter==0.26.0 tree-sitter-rust==0.24.2 colorama halo
 
       - name: Run Codebase Validations
-        run: ./tools/validation/validate_codebase.sh validation_report.txt
+        run: python tools/validation/validate_all.py validation_report.txt
 
       - name: Run Tests
         run: ./tools/run_tests.sh test_report.txt
