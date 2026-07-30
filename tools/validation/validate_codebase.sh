@@ -43,3 +43,6 @@ run_and_report "python tools/validation/validate_tracing.py"
 
 echo "Validating RAM placement for multicore execution..."
 run_and_report "python tools/validation/validate_multicore_support.py"
+
+echo "Validating that enums do not derive Debug unconditionally..."
+run_and_report "python tools/validation/validate_debug_derive.py"

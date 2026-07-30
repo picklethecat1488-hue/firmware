@@ -109,7 +109,7 @@ where
 }
 
 /// Errors returned by the L9110S motor driver.
-#[derive(Debug)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum L9110sError<E1, E2> {
     /// Error controlling the IA input pin.
     PinIa(E1),
