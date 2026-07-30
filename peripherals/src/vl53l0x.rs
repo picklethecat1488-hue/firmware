@@ -16,7 +16,8 @@ macro_rules! log_warn {
 }
 
 /// Interrupt modes supported by the VL53L0X GPIO pin.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum InterruptMode {
     /// Disabled interrupt.
     Disabled = 0,

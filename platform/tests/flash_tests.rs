@@ -1,4 +1,5 @@
 use platform::flash::{read_file_direct, write_file_direct, write_telemetry_record_direct};
+use platform::types::{MapFilesystem, QueueFilesystem};
 
 struct TestFlash {
     data: Vec<u8>,
@@ -46,7 +47,7 @@ fn test_direct_file_operations() {
         let mut flash = TestFlash {
             data: vec![0xFF; 16 * 1024],
         };
-        let range = 0..16 * 1024;
+        let range = MapFilesystem(0..16 * 1024);
         let mut map_buf = vec![0u8; 4096];
 
         // Write a file
@@ -102,30 +103,28 @@ fn test_direct_telemetry_operations() {
         let mut flash = TestFlash {
             data: vec![0xFF; 16 * 1024],
         };
-        let range = 0..16 * 1024;
-        let mut map_buf = vec![0u8; 4096];
+        let telemetry_range = QueueFilesystem(8 * 1024..16 * 1024);
 
         let rec = model::telemetry::TelemetryRecord::PeripheralError(
             model::types::PeripheralError::DeviceNotFound(0x12),
         );
 
         // Write record
-        write_telemetry_record_direct(&mut flash, range.clone(), &mut map_buf, &rec, 45)
+        write_telemetry_record_direct(&mut flash, telemetry_range.clone(), &rec)
             .await
             .unwrap();
 
-        // Read telemetry.rrd
-        let mut header_buf = vec![0u8; model::telemetry::TELEMETRY_HEADER_SIZE];
-        let header_len = read_file_direct(
-            &mut flash,
-            range.clone(),
-            &mut map_buf,
-            model::telemetry::TELEMETRY_HEADER_FILE,
-            &mut header_buf,
-        )
-        .await
-        .unwrap()
-        .unwrap();
-        assert_eq!(header_len, model::telemetry::TELEMETRY_HEADER_SIZE);
+        // Read back record from telemetry queue partition
+        let mut cache = sequential_storage::cache::NoCache::new();
+        let mut iterator =
+            sequential_storage::queue::iter(&mut flash, telemetry_range.0.clone(), &mut cache)
+                .await
+                .unwrap();
+        let mut item_buf = [0u8; model::telemetry::TELEMETRY_RECORD_SIZE];
+        let entry = iterator.next(&mut item_buf).await.unwrap().unwrap();
+        let decoded =
+            model::telemetry::TelemetryRecord::deserialize_from_slice(entry.into_buf()).unwrap();
+        assert_eq!(decoded.0, 0); // timestamp
+        assert_eq!(decoded.1, rec); // Record
     });
 }

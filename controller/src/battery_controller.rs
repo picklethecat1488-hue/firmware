@@ -3,7 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::BatteryTelemetryClient;
-use crate::tracing;
+use crate::tracing::{self, controller_context};
 use crate::{BatteryReceiver, BlockingBatteryReader, Sender, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
@@ -63,6 +63,7 @@ impl FromBatteryUpdate for () {
 }
 
 /// A controller that periodically monitors battery status and wakes on alerts.
+#[controller_context]
 pub struct BatteryController<'a, M: RawMutex, B, C, Pin = DummyAlertPin, Cmd = ()> {
     battery: &'a Mutex<M, B>,
     charger: &'a Mutex<M, C>,
@@ -392,7 +393,8 @@ impl<'a, M: RawMutex, B: FuelGauge, C: model::interfaces::ChargeStatus, Pin, Cmd
 }
 
 /// One-way commands sent to the Battery Controller from the shell.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum BatteryCommand {
     /// Force battery status query and print telemetry logs
     CheckStatus,
@@ -524,7 +526,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
         if let Some(ref battery_tx) = self.battery_tx {
             let res = battery_tx.try_send(crate::BatteryCommand::UpdateWakeLocks(wake_locks));
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            res.expect("Failed to signal wake locks update to battery controller");
+            res.map_err(|_| "TrySendError")
+                .expect("Failed to signal wake locks update to battery controller");
             #[cfg(not(all(target_arch = "arm", target_os = "none")))]
             let _ = res;
         }
@@ -538,7 +541,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::Periodic
         if let Some(ref battery_tx) = self.battery_tx {
             let res = battery_tx.try_send(BatteryCommand::SetInterval(interval));
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            res.expect("Failed to send periodic interval to battery controller");
+            res.map_err(|_| "TrySendError")
+                .expect("Failed to send periodic interval to battery controller");
             #[cfg(not(all(target_arch = "arm", target_os = "none")))]
             let _ = res;
         }

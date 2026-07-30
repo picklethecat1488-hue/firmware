@@ -12,9 +12,10 @@ use {
         TELEMETRY_CHANNEL, THERMAL_ACTION_CHANNEL, THERMAL_CHANNEL,
     },
     cat_detector as app,
-    controller::{telemetry_controller::TelemetryController, SystemController},
+    controller::telemetry_controller::TelemetryController,
     embassy_executor::Spawner,
     platform::core_monitor,
+    platform::types::{MapFilesystem, QueueFilesystem},
 };
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -22,6 +23,15 @@ use {
 fn panic(info: &core::panic::PanicInfo) -> ! {
     app::handle_panic(info);
 }
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+// Define shared static FLASH mutex
+static mut FLASH_MUTEX: Option<
+    embassy_sync::mutex::Mutex<
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        platform::BlockingAsyncFlash<app::FlashDevice>,
+    >,
+> = None;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[platform::tracing::instrument(name = "boot", level = "info", skip(spawner, board))]
@@ -41,7 +51,7 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
 
     app::init_panic_handler(
         panic_flash,
-        app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
+        MapFilesystem(app::FS_PARTITION_START..app::FS_PARTITION_END),
         fs_buf_panic,
         app::MAX_CRASH_LOGS,
     );
@@ -62,10 +72,18 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
         { app::FLASH_SIZE },
     >::new_blocking(fs_flash);
     let async_flash = platform::BlockingAsyncFlash(raw_flash);
-    let profiling_flash = controller::filesystem_controller::ProfilingFlash::new(async_flash);
+
+    let flash_mutex = unsafe {
+        FLASH_MUTEX = Some(embassy_sync::mutex::Mutex::new(async_flash));
+        FLASH_MUTEX.as_ref().unwrap()
+    };
+
+    let fs_flash_mutex_ref = platform::flash::SharedFlashMutex::new(flash_mutex);
+    let profiling_flash =
+        controller::filesystem_controller::ProfilingFlash::new(fs_flash_mutex_ref);
     let mut fs_controller = controller::filesystem_controller::FilesystemController::new(
         profiling_flash,
-        app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
+        MapFilesystem(app::FS_PARTITION_START..app::FS_PARTITION_END),
         fs_buf_controller,
     );
     fs_controller.set_telemetry(app::TELEMETRY_CHANNEL.sender());
@@ -108,16 +126,14 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
 
     use model::calibration::Calibration;
     use model::calibration::CalibrationType;
-
     if let Some(cal) = motor_cal {
-        let min_ma = cal.dry_run_limit();
-        let max_ma = cal.stall_limit();
-        let max_rpm = cal.max_rpm.unwrap_or(0);
-        let rpm_limit = cal.rpm_limit.unwrap_or(0);
         controller.set_calibration(CalibrationType::MotorCal {
-            current_limits: model::calibration::TwoPointCalibration::new(min_ma, max_ma),
-            max_rpm,
-            rpm_limit,
+            current_limits: model::calibration::TwoPointCalibration {
+                low: cal.dry_run_limit(),
+                high: cal.stall_limit(),
+            },
+            max_rpm: cal.max_rpm.unwrap_or(0),
+            rpm_limit: cal.rpm_limit.unwrap_or(0),
         });
     }
 
@@ -131,23 +147,27 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
         proximity_cal[model::types::Direction::West],
     ));
 
-    // Initialize SystemController to coordinate all loops
-    let feature_set = app::create_default_feature_set();
-    let boot_reason = app::get_boot_reason();
-
-    let system_ctrl =
-        SystemController::new(feature_set, app::TELEMETRY_CHANNEL.sender(), boot_reason);
+    let system_ctrl = unsafe { app::SYSTEM_CTRL.take().unwrap() };
 
     // Declare telemetry controller statically to avoid stack overflow on the main thread MSP stack
     static mut TELEMETRY_CTRL: Option<
-        TelemetryController<{ app::MAX_RECORDS }, { model::telemetry::BUFFER_SIZE }>,
+        TelemetryController<
+            { app::MAX_RECORDS },
+            { model::telemetry::BUFFER_SIZE },
+            platform::flash::SharedFlashMutex<platform::BlockingAsyncFlash<app::FlashDevice>>,
+        >,
     > = None;
 
     let client =
         controller::filesystem_controller::FilesystemClient::new(app::FILESYSTEM_CHANNEL.sender());
 
+    let telemetry_flash_mutex_ref = platform::flash::SharedFlashMutex::new(flash_mutex);
     let telemetry_ctrl = unsafe {
-        TELEMETRY_CTRL = Some(TelemetryController::new(client));
+        TELEMETRY_CTRL = Some(TelemetryController::new(
+            telemetry_flash_mutex_ref,
+            QueueFilesystem(app::TELEMETRY_PARTITION_START..app::TELEMETRY_PARTITION_END),
+            client,
+        ));
         TELEMETRY_CTRL.as_mut().unwrap()
     };
 
@@ -173,7 +193,7 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
             Led(led_ctrl, LED_CHANNEL), generics: (app::LedDevice),
             System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (app::SystemControllerType),
             Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (app::FlashDeviceType),
-            Telemetry(telemetry_ctrl, TELEMETRY_CHANNEL), generics: ({ app::MAX_RECORDS }, { controller::telemetry_controller::CHANNEL_CAPACITY }),
+            Telemetry(telemetry_ctrl, TELEMETRY_CHANNEL), generics: ({ app::MAX_RECORDS }, { controller::telemetry_controller::CHANNEL_CAPACITY }, platform::flash::SharedFlashMutex<platform::BlockingAsyncFlash<app::FlashDevice>>),
         }
     }
 }

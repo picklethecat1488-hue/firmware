@@ -46,8 +46,9 @@ pub use system_feature::{FeatureList, Periodic, PeriodicInterval, SystemFeature}
 pub use thermal_controller::ThermalCommand;
 pub use thermal_controller::ThermalFeatureConfig;
 pub use types::{
-    BatteryStatus, Device, DeviceSupport, FlashPartition, GestureAction, MotorCalState, MotorError,
-    MotorSafetyStatus, MotorState, NamedDevice, NamedPartition, ProximityAction, SensorDirection,
+    BatteryStatus, Device, DeviceSupport, FlashPartition, GestureAction, MapFilesystem,
+    MotorCalState, MotorError, MotorSafetyStatus, MotorState, NamedDevice, NamedPartition,
+    PartitionKind, ProximityAction, QueueFilesystem, ResolvedPartition, SensorDirection,
     ThermalState, ThermalUpdateAction,
 };
 
@@ -481,10 +482,11 @@ define_controllers! {
         receiver: TelemetryReceiver,
         msg: model::telemetry::TelemetryRecord,
         task: run_telemetry_task {
-            generics: ($max_records:expr, $channel_size:expr),
+            generics: ($max_records:expr, $channel_size:expr, $flash_ty:ty),
             controller: [&'static mut $crate::telemetry_controller::TelemetryController<
                 $max_records,
                 { model::telemetry::BUFFER_SIZE },
+                $flash_ty,
             >],
             rx: [$crate::TelemetryReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, $channel_size>],
             call: |controller, rx| controller.run(rx).await
@@ -751,14 +753,15 @@ macro_rules! spawn_single_controller {
         $crate::run_filesystem_task!($spawner, $rx, $controller, $rx.receiver(), $flash_type);
     };
     // Telemetry
-    ($spawner:expr, Telemetry, $controller:expr, $rx:ident, $telemetry:expr, (), ($max_records:expr, $channel_size:expr)) => {
+    ($spawner:expr, Telemetry, $controller:expr, $rx:ident, $telemetry:expr, (), ($max_records:expr, $channel_size:expr, $flash_ty:ty)) => {
         $crate::run_telemetry_task!(
             $spawner,
             $rx,
             $controller,
             $rx.receiver(),
             $max_records,
-            $channel_size
+            $channel_size,
+            $flash_ty
         );
     };
     // System

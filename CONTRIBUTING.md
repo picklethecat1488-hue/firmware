@@ -174,6 +174,18 @@ To support hardware bringup and diagnostics without requiring active asynchronou
 
 ---
 
+## Controller Design & Constraints
+
+To maintain decoupled domain architectures and clean Embassy task separation:
+1. **Controller Struct Attribute**:
+   Every domain controller context struct defined inside the `controller` crate must be decorated with `#[crate::tracing::controller_context]` (e.g. `#[crate::tracing::controller_context] pub struct MotorController { ... }`).
+2. **Direct Instantiation Restrictions**:
+   Controllers must never directly instantiate other controllers (e.g. calling `FilesystemController::new` from `MotorController`). This strict isolation prevents duplicate peripheral/task ownership.
+3. **Platform-Level Diagnostic Reads**:
+   If diagnostics or calibration commands (which run inside CLI shell contexts) need to access files or direct storage without a running executor task, they must use stateless platform-level direct operations (such as `platform::flash::read_file_direct` and `platform::flash::write_file_direct`) instead of instantiating controller tasks directly.
+
+---
+
 ## Logging & Instrumentation Standards
 
 To ensure debugging, status tracking, and performance monitoring are unified across all binaries and target applications, we enforce the following logging and instrumentation standards:
@@ -334,9 +346,9 @@ cargo build -p host_fs --release
       cargo run -p host_fs -- --dump flash_dump.bin ls
       ```
 *   **Copy files to/from device (`cp`)**:
-    - *Copy telemetry from device to host*:
+    - *Copy calibration file from device to host*:
       ```bash
-      cargo run -p host_fs -- --elf target/thumbv6m-none-eabi/release/cat_detector_app cp dev:telemetry.rrd local_telemetry.rrd
+      cargo run -p host_fs -- --elf target/thumbv6m-none-eabi/release/cat_detector_app cp dev:vl53l0x_cal.cbor local_cal.cbor
       ```
     - *Copy new calibration config to device*:
       ```bash

@@ -1,7 +1,8 @@
 //! Thermal manager module.
 
 /// Manages temperature alerts and thermal critical status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct ThermalManager {
     thermal_critical: bool,
 }

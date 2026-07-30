@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::LedTelemetryClient;
+use crate::tracing::controller_context;
 use crate::{LedReceiver, TelemetrySender};
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use model::interfaces::LedDriver;
@@ -23,6 +24,7 @@ const FADE_STEPS: i32 = 10;
 const FADE_DELAY_MS: u32 = 20;
 
 /// A controller that manages status indicator LEDs.
+#[controller_context]
 pub struct LedController<D> {
     driver: D,
     current_state: SystemLedState,

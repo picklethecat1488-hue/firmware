@@ -3,7 +3,8 @@
 #![deny(missing_docs)]
 
 /// A general two-point calibration structure mapping raw readings at two reference points.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 #[cbor(array)]
 pub struct TwoPointCalibration<T> {
     /// Reading at the lower reference point (e.g. near / minimum).
@@ -38,7 +39,8 @@ impl TwoPointCalibration<u16> {
 }
 
 /// A generic four-point calibration structure mapping low, mid, high, and overload reference states.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 #[cbor(array)]
 pub struct FourPointCalibration<T> {
     /// Raw reading at the low reference point (e.g. empty).
@@ -68,7 +70,8 @@ impl<T> FourPointCalibration<T> {
 }
 
 /// Reference points for a four-point calibration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum FourPointRef {
     /// Low reference point (e.g., empty).
     Low,
@@ -105,7 +108,8 @@ impl<T> core::ops::IndexMut<FourPointRef> for FourPointCalibration<T> {
 }
 
 /// Time-of-Flight (ToF) offset calibration values for VL53L0X.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 #[cbor(array)]
 pub struct Vl53l0xCalibration {
     /// Calibration for each sensor direction.
@@ -128,7 +132,8 @@ impl core::ops::IndexMut<crate::types::Direction> for Vl53l0xCalibration {
 }
 
 /// Motor calibration data structure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 #[cbor(array)]
 pub struct MotorCalibration {
     /// Current calibration at four reference points (empty, 100ml, full, overload).
@@ -161,7 +166,8 @@ impl MotorCalibration {
 }
 
 /// Enum representing different types of calibration parameters.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum CalibrationType {
     /// Calibration for proximity sensors, specifying the cover (0mm) raw value and the 100mm raw value.
     ProximityCal(TwoPointCalibration<u16>),

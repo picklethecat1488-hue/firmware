@@ -48,14 +48,6 @@ impl embedded_storage_async::nor_flash::NorFlash for MockFlash {
 
 impl embedded_storage_async::nor_flash::MultiwriteNorFlash for MockFlash {}
 
-fn string_to_key(name: &str) -> [u8; 32] {
-    let mut key = [0u8; 32];
-    let bytes = name.as_bytes();
-    let len = std::cmp::min(bytes.len(), 32);
-    key[..len].copy_from_slice(&bytes[..len]);
-    key
-}
-
 fn make_rtt_log(rec: TelemetryRecord, ts: u64) -> String {
     let serialized = rec.serialize(ts);
     let len = serialized[0] as usize;
@@ -258,31 +250,7 @@ fn test_read_telemetry_records_integration() {
         let mut cache = sequential_storage::cache::NoCache::new();
         let mut buf = vec![0u8; 4096];
 
-        // 1. Store the telemetry header record in telemetry.rrd
-        let mut header_bytes = [0u8; 12];
-        let cursor = minicbor::encode::write::Cursor::new(&mut header_bytes[1..]);
-        let mut encoder = minicbor::Encoder::new(cursor);
-        let count = 2u32;
-        let next_idx = 2u32;
-        encoder.array(2).unwrap();
-        encoder.u32(count).unwrap();
-        encoder.u32(next_idx).unwrap();
-        let header_len = encoder.into_writer().position();
-        header_bytes[0] = header_len as u8;
-
-        let key = string_to_key(model::telemetry::TELEMETRY_HEADER_FILE);
-        sequential_storage::map::store_item::<[u8; 32], &[u8], _>(
-            &mut flash,
-            flash_range.clone(),
-            &mut cache,
-            &mut buf,
-            &key,
-            &&header_bytes[..],
-        )
-        .await
-        .unwrap();
-
-        // 2. Prepare chunk data containing 2 serialized telemetry records
+        // 1. Prepare 2 serialized telemetry records
         let rec1 =
             TelemetryRecord::Battery(BatteryStatus::VolTempState(3600, 24, BatteryState::Ok, 1));
         let rec2 = TelemetryRecord::Motor(MotorStatus::Running(MotorSpeed::new(50).unwrap()));
@@ -290,24 +258,30 @@ fn test_read_telemetry_records_integration() {
         let slot1 = rec1.serialize(500);
         let slot2 = rec2.serialize(600);
 
-        let mut chunk_bytes = vec![0u8; model::telemetry::CHUNK_FILE_SIZE];
-        let size = model::telemetry::TELEMETRY_RECORD_SIZE;
-        chunk_bytes[..size].copy_from_slice(&slot1);
-        chunk_bytes[size..2 * size].copy_from_slice(&slot2);
+        let len1 = slot1[0] as usize;
+        let len2 = slot2[0] as usize;
 
-        let chunk_key = string_to_key("telemetry_0.rrd");
-        sequential_storage::map::store_item::<[u8; 32], &[u8], _>(
+        sequential_storage::queue::push(
             &mut flash,
             flash_range.clone(),
             &mut cache,
-            &mut buf,
-            &chunk_key,
-            &&chunk_bytes[..],
+            &slot1[..1 + len1],
+            true,
         )
         .await
         .unwrap();
 
-        // 3. Read and parse telemetry records via shared library
+        sequential_storage::queue::push(
+            &mut flash,
+            flash_range.clone(),
+            &mut cache,
+            &slot2[..1 + len2],
+            true,
+        )
+        .await
+        .unwrap();
+
+        // 2. Read and parse telemetry records via shared library
         let max_records = 128;
         let parser = FlashTelemetryParser::new(3);
         let records = parser
@@ -322,102 +296,71 @@ fn test_read_telemetry_records_integration() {
             .unwrap();
 
         assert_eq!(records.len(), 2);
-        assert_eq!(records[0].0, 500);
-        assert_eq!(records[0].1, rec1);
-        assert_eq!(records[1].0, 600);
-        assert_eq!(records[1].1, rec2);
+        assert_eq!(records[0].0, 500); // timestamp
+        assert_eq!(records[0].1, rec1); // record
+        assert_eq!(records[1].0, 600); // timestamp
+        assert_eq!(records[1].1, rec2); // record
     });
 }
 
 #[test]
-fn test_read_telemetry_records_corrupted() {
+fn test_read_telemetry_records_corrupted_skips() {
     futures::executor::block_on(async {
+        let mut flash = MockFlash::new(1024 * 64);
+        let flash_range = 0..1024 * 64;
         let mut cache = sequential_storage::cache::NoCache::new();
         let mut buf = vec![0u8; 4096];
         let parser = FlashTelemetryParser::new(3);
 
-        // 1. Telemetry file is too short (< 12 bytes)
-        {
-            let mut flash = MockFlash::new(1024 * 64);
-            let flash_range = 0..1024 * 64;
-            let key = string_to_key(model::telemetry::TELEMETRY_HEADER_FILE);
-            let header_bytes = [0u8; 8];
-            sequential_storage::map::store_item::<[u8; 32], &[u8], _>(
-                &mut flash,
-                flash_range.clone(),
-                &mut cache,
-                &mut buf,
-                &key,
-                &&header_bytes[..],
-            )
+        // 1. Push a valid record
+        let rec1 = TelemetryRecord::Boot(model::types::BootReason::PowerOn);
+        let slot1 = rec1.serialize(100);
+        let len1 = slot1[0] as usize;
+        sequential_storage::queue::push(
+            &mut flash,
+            flash_range.clone(),
+            &mut cache,
+            &slot1[..1 + len1],
+            true,
+        )
+        .await
+        .unwrap();
+
+        // 2. Push some corrupted/garbage bytes to the queue
+        let bad_bytes = [4u8, 0x99, 0x88, 0x77, 0x66]; // Invalid CBOR
+        sequential_storage::queue::push(
+            &mut flash,
+            flash_range.clone(),
+            &mut cache,
+            &bad_bytes,
+            true,
+        )
+        .await
+        .unwrap();
+
+        // 3. Push another valid record
+        let rec2 = TelemetryRecord::Led(model::types::SystemLedState::Off);
+        let slot2 = rec2.serialize(200);
+        let len2 = slot2[0] as usize;
+        sequential_storage::queue::push(
+            &mut flash,
+            flash_range.clone(),
+            &mut cache,
+            &slot2[..1 + len2],
+            true,
+        )
+        .await
+        .unwrap();
+
+        // 4. Read back: should successfully skip the corrupted item and return the 2 valid records sorted chronologically
+        let res = parser
+            .read_records(&mut flash, flash_range, &mut cache, &mut buf, 128)
             .await
             .unwrap();
-
-            let res = parser
-                .read_records(&mut flash, flash_range, &mut cache, &mut buf, 128)
-                .await;
-            assert!(res.is_err());
-            assert!(res.unwrap_err().contains("too short"));
-        }
-
-        // 2. Telemetry file is oversized (20 bytes)
-        {
-            let mut flash = MockFlash::new(1024 * 64);
-            let flash_range = 0..1024 * 64;
-            let key = string_to_key(model::telemetry::TELEMETRY_HEADER_FILE);
-            let mut header_bytes = vec![0u8; 20];
-            let cursor = minicbor::encode::write::Cursor::new(&mut header_bytes[1..12]);
-            let mut encoder = minicbor::Encoder::new(cursor);
-            encoder.array(2).unwrap();
-            encoder.u32(0).unwrap();
-            encoder.u32(0).unwrap();
-            let header_len = encoder.into_writer().position();
-            header_bytes[0] = header_len as u8;
-
-            sequential_storage::map::store_item::<[u8; 32], &[u8], _>(
-                &mut flash,
-                flash_range.clone(),
-                &mut cache,
-                &mut buf,
-                &key,
-                &&header_bytes[..],
-            )
-            .await
-            .unwrap();
-
-            // Should succeed without panicking
-            let res = parser
-                .read_records(&mut flash, flash_range, &mut cache, &mut buf, 128)
-                .await;
-            assert!(res.is_ok());
-            assert!(res.unwrap().is_empty());
-        }
-
-        // 3. Telemetry file has invalid header CBOR format
-        {
-            let mut flash = MockFlash::new(1024 * 64);
-            let flash_range = 0..1024 * 64;
-            let key = string_to_key(model::telemetry::TELEMETRY_HEADER_FILE);
-            let mut header_bytes = [0u8; 12];
-            header_bytes[0] = 5; // length of CBOR payload
-            header_bytes[1..6].copy_from_slice(b"badcb"); // completely invalid CBOR
-
-            sequential_storage::map::store_item::<[u8; 32], &[u8], _>(
-                &mut flash,
-                flash_range.clone(),
-                &mut cache,
-                &mut buf,
-                &key,
-                &&header_bytes[..],
-            )
-            .await
-            .unwrap();
-
-            let res = parser
-                .read_records(&mut flash, flash_range, &mut cache, &mut buf, 128)
-                .await;
-            assert!(res.is_err());
-            assert!(res.unwrap_err().contains("Failed to decode"));
-        }
+        assert_eq!(res.len(), 2);
+        assert_eq!(res[0].0, 100);
+        assert_eq!(res[0].1, rec1);
+        assert_eq!(res[1].0, 200);
+        assert_eq!(res[1].1, rec2);
     });
 }

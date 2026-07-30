@@ -2,7 +2,7 @@
 
 #![deny(missing_docs)]
 
-use crate::tracing;
+use crate::tracing::{self, controller_context};
 pub use platform::gesture_detector::ProximityEvent;
 
 use crate::system_feature::FeatureList;
@@ -78,7 +78,18 @@ impl core::fmt::Debug for SystemCommand {
                 .field("from", from)
                 .field("to", to)
                 .finish(),
-            Self::BatteryAction(a) => f.debug_tuple("BatteryAction").field(a).finish(),
+            Self::BatteryAction(_a) => {
+                #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+                {
+                    f.debug_tuple("BatteryAction").field(_a).finish()
+                }
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                {
+                    f.debug_tuple("BatteryAction")
+                        .field(&"BatteryUpdateAction")
+                        .finish()
+                }
+            }
         }
     }
 }
@@ -155,6 +166,7 @@ pub trait SystemFeatureSet<MutexRaw: RawMutex + 'static, const N: usize> {
 }
 
 /// Controller responsible for tracking global status and coordinating other subsystems.
+#[controller_context]
 pub struct SystemController<
     MutexRaw: RawMutex + 'static,
     F: SystemFeatureSet<MutexRaw, N>,

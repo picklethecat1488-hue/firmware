@@ -117,7 +117,8 @@ impl core::fmt::Display for MotorSpeed {
 }
 
 /// Error indicating that a motor speed value is invalid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct InvalidSpeedError;
 
 impl TryFrom<u8> for MotorSpeed {

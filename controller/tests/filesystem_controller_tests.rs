@@ -52,7 +52,11 @@ fn test_filesystem_controller_flow() {
         let flash = MockFlash::new();
         let profiling_flash = ProfilingFlash::new(flash);
         let buf = Box::leak(vec![0u8; 8192].into_boxed_slice());
-        let mut fs = FilesystemController::new(profiling_flash, 0..1024 * 64, buf);
+        let mut fs = FilesystemController::new(
+            profiling_flash,
+            platform::types::MapFilesystem(0..1024 * 64),
+            buf,
+        );
 
         // Verify erase profiling works
         assert_eq!(fs.flash.erase_count(), 0);
@@ -110,7 +114,11 @@ fn test_filesystem_verify_and_repair_corruption() {
 
         let profiling_flash = ProfilingFlash::new(flash);
         let buf = Box::leak(vec![0u8; 8192].into_boxed_slice());
-        let mut fs = FilesystemController::new(profiling_flash, 0..1024 * 64, buf);
+        let mut fs = FilesystemController::new(
+            profiling_flash,
+            platform::types::MapFilesystem(0..1024 * 64),
+            buf,
+        );
 
         // Verify that verifying and repairing clears the corruption and reformats the partition
         assert!(fs.verify_and_repair().await.is_ok());

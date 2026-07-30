@@ -20,7 +20,7 @@ def test_compliant_call_chain():
         let x = 1;
     }
     """
-    funcs = validate_multicore_support.parse_code(code.encode("utf-8"), "test_file.rs")
+    funcs, _ = validate_multicore_support.parse_code(code.encode("utf-8"), "test_file.rs")
     assert "test_file.rs:start" in funcs
     assert "test_file.rs:process" in funcs
     assert "motor-core" in funcs["test_file.rs:start"]["ram_features"]
@@ -45,7 +45,7 @@ def test_missing_attribute_in_call_chain():
         let x = 1;
     }
     """
-    funcs_missing = validate_multicore_support.parse_code(code_missing.encode("utf-8"), "test_file_missing.rs")
+    funcs_missing, _ = validate_multicore_support.parse_code(code_missing.encode("utf-8"), "test_file_missing.rs")
     warnings_missing, errors_missing = validate_multicore_support.validate_call_graph(
         funcs_list=list(funcs_missing.values()), roots=["start"], feature="motor-core"
     )
@@ -62,7 +62,7 @@ def test_forbidden_calls_in_multicore_chain():
         });
     }
     """
-    funcs = validate_multicore_support.parse_code(code.encode("utf-8"), "test_file.rs")
+    funcs, _ = validate_multicore_support.parse_code(code.encode("utf-8"), "test_file.rs")
     assert "test_file.rs:start" in funcs
     assert len(funcs["test_file.rs:start"]["forbidden_calls"]) == 1
     assert funcs["test_file.rs:start"]["forbidden_calls"][0][0] == "cortex_m::interrupt::free"

@@ -322,7 +322,7 @@ pub struct PanicConfig {
     /// Flash driver reference
     pub flash: &'static mut dyn PanicFlash,
     /// Offset range in flash partition used for filesystem
-    pub range: core::ops::Range<u32>,
+    pub range: MapFilesystem,
     /// Static filesystem buffer used as workspace during panic writes
     pub fs_buf: &'static mut [u8],
     /// Maximum number of rolling crash logs (modulo limit)
@@ -682,4 +682,114 @@ impl CoreStatus {
     pub const fn new_empty() -> Self {
         Self::new(CpuId::Core0)
     }
+}
+
+/// A type-safe range wrapper representing the entire flash storage range.
+#[derive(Clone, PartialEq, Eq)]
+pub struct FlashRange(pub core::ops::Range<u32>);
+
+/// A type-safe range wrapper representing a map partition range.
+#[derive(Clone, PartialEq, Eq)]
+pub struct MapFilesystem(pub core::ops::Range<u32>);
+
+/// A type-safe range wrapper representing a queue partition range.
+#[derive(Clone, PartialEq, Eq)]
+pub struct QueueFilesystem(pub core::ops::Range<u32>);
+
+/// Compile-time static assertions for flash storage partitions.
+#[macro_export]
+macro_rules! assert_partitions {
+    (
+        storage_range: ($storage_start:expr, $storage_end:expr),
+        partition_ranges: [
+            ($p1_start:expr, $p1_end:expr),
+            ($p2_start:expr, $p2_end:expr)
+        ]
+    ) => {
+        const _: () = {
+            // Check storage bounds sanity
+            assert!(
+                $storage_start < $storage_end,
+                "Storage partition range is invalid"
+            );
+
+            // Check partition 1 bounds
+            assert!(
+                $p1_start >= $storage_start,
+                "Partition 1 starts before storage partition"
+            );
+            assert!(
+                $p1_end <= $storage_end,
+                "Partition 1 ends after storage partition"
+            );
+            assert!($p1_start < $p1_end, "Partition 1 range is invalid");
+
+            // Check partition 2 bounds
+            assert!(
+                $p2_start >= $storage_start,
+                "Partition 2 starts before storage partition"
+            );
+            assert!(
+                $p2_end <= $storage_end,
+                "Partition 2 ends after storage partition"
+            );
+            assert!($p2_start < $p2_end, "Partition 2 range is invalid");
+
+            // Check non-overlapping partitions
+            assert!(
+                $p1_end <= $p2_start || $p2_end <= $p1_start,
+                "Partitions overlap!"
+            );
+        };
+    };
+}
+
+/// Macro to define the embedded project metadata block for autodetect.
+#[macro_export]
+macro_rules! define_project_metadata {
+    (
+        chip: $chip:expr,
+        flash_base: $flash_base:expr,
+        storage_start: $storage_start:expr,
+        storage_end: $storage_end:expr,
+        flash_write_size: $flash_write_size:expr,
+        flash_erase_size: $flash_erase_size:expr
+    ) => {
+        const METADATA_WRITER: $crate::cbor::ConstCborWriter<128> =
+            $crate::types::ProjectMetadata::serialize(
+                $chip,
+                $flash_base + $storage_start,
+                $storage_end - $storage_start,
+                $flash_write_size as u32,
+                $flash_erase_size as u32,
+                $crate::types::STACK_SCAN_LIMIT,
+            );
+
+        /// Embedded project metadata for autodetect functionality.
+        #[used]
+        #[no_mangle]
+        #[cfg_attr(
+            all(target_arch = "arm", target_os = "none"),
+            link_section = ".rodata.project_metadata"
+        )]
+        pub static PROJECT_METADATA: [u8; METADATA_WRITER.len] =
+            $crate::cbor::extract_bytes(METADATA_WRITER.buf);
+
+        /// Anchor symbol to statically enforce define_project_metadata invocation.
+        #[used]
+        #[no_mangle]
+        pub static PROJECT_METADATA_ANCHOR: u8 = 0x42;
+    };
+}
+
+/// Macro to statically assert that a list of expressions (e.g., thresholds) are in strictly ascending order.
+#[macro_export]
+macro_rules! assert_ascending {
+    ($first:expr, $second:expr $(, $rest:expr)* $(,)?) => {
+        const _: () = {
+            assert!($first < $second, "Thresholds must be strictly ascending");
+        };
+        $crate::assert_ascending!($second $(, $rest)*);
+    };
+    ($last:expr $(,)?) => {};
 }

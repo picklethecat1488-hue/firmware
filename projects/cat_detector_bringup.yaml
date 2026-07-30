@@ -191,7 +191,7 @@ steps:
     name: Decode and Export Telemetry Stream
     type: host_command
     command: cargo run --package host_fs --bin host_fs -- --elf {shell_elf} export-telemetry telemetry.csv
-    description: Decode CBOR updates in telemetry.rrd to telemetry.csv.
+    description: Decode CBOR updates directly from flash queue partition to telemetry.csv.
 
   - id: "14"
     name: Decode and Symbolicate Crash Dumps

@@ -3,13 +3,13 @@
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 extern crate std;
 
+use crate::tracing::controller_context;
 use crate::{Sender, TelemetrySender};
 use core::fmt::Write as _;
-use core::ops::Range;
-use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
+use platform::types::MapFilesystem;
 
 // =========================================================================
 // Filesystem Capacity & Buffer Constants
@@ -17,124 +17,22 @@ use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
 
 pub use platform::directory::{string_to_key, DIR_BUF_SIZE, KEY_SIZE};
 
-static TELEMETRY_ENABLED: AtomicBool = AtomicBool::new(true);
-
-/// A profiling wrapper around a flash driver that counts and times page erases.
-pub struct ProfilingFlash<F: NorFlash> {
-    /// The inner flash driver instance being profiled
-    inner: F,
-    /// Total number of page erases performed since system boot
-    erase_count: u32,
-    /// Optional telemetry sender to log erase operations
-    telemetry_tx: Option<TelemetrySender<CriticalSectionRawMutex, 64>>,
-}
-
-impl<F: NorFlash> ProfilingFlash<F> {
-    /// Create a new ProfilingFlash wrapper.
-    pub fn new(inner: F) -> Self {
-        Self {
-            inner,
-            erase_count: 0,
-            telemetry_tx: None,
-        }
-    }
-
-    /// Set telemetry sender for flash erase profiling.
-    pub fn set_telemetry(&mut self, telemetry_tx: TelemetrySender<CriticalSectionRawMutex, 64>) {
-        self.telemetry_tx = Some(telemetry_tx);
-    }
-
-    /// Get total page erases performed since boot.
-    pub fn erase_count(&self) -> u32 {
-        self.erase_count
-    }
-}
-
-impl<F: NorFlash> embedded_storage_async::nor_flash::ErrorType for ProfilingFlash<F> {
-    type Error = F::Error;
-}
-
-impl<F: NorFlash> embedded_storage_async::nor_flash::ReadNorFlash for ProfilingFlash<F> {
-    const READ_SIZE: usize = F::READ_SIZE;
-
-    async fn read(&mut self, offset: u32, bytes: &mut [u8]) -> Result<(), Self::Error> {
-        self.inner.read(offset, bytes).await
-    }
-
-    fn capacity(&self) -> usize {
-        self.inner.capacity()
-    }
-}
-
-impl<F: NorFlash> embedded_storage_async::nor_flash::NorFlash for ProfilingFlash<F> {
-    const WRITE_SIZE: usize = F::WRITE_SIZE;
-    const ERASE_SIZE: usize = F::ERASE_SIZE;
-
-    async fn write(&mut self, offset: u32, bytes: &[u8]) -> Result<(), Self::Error> {
-        self.inner.write(offset, bytes).await
-    }
-
-    async fn erase(&mut self, from: u32, to: u32) -> Result<(), Self::Error> {
-        self.erase_count += 1;
-
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        let start = embassy_time::Instant::now();
-
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::debug!(
-            "[Profile] Flash erase starting at 0x{:X} to 0x{:X}",
-            from,
-            to
-        );
-
-        let res = self.inner.erase(from, to).await;
-
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        let duration_ms = {
-            let duration = start.elapsed();
-            let ms = duration.as_millis() as u32;
-            defmt::debug!(
-                "[Profile] Flash erase completed in {} ms (Total erases: {})",
-                ms,
-                self.erase_count
-            );
-            ms
-        };
-
-        #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-        let duration_ms = 0;
-
-        if TELEMETRY_ENABLED.load(Ordering::Relaxed) {
-            if let Some(tx) = &self.telemetry_tx {
-                let sector = from / F::ERASE_SIZE as u32;
-                let details = model::types::FlashEraseTelemetry {
-                    sector,
-                    duration_ms,
-                    erase_count: self.erase_count,
-                };
-                let _ = tx.try_send(model::telemetry::TelemetryRecord::FlashTelemetry(details));
-            }
-        }
-
-        res
-    }
-}
-
-impl<F: NorFlash + MultiwriteNorFlash> MultiwriteNorFlash for ProfilingFlash<F> {}
+pub use platform::flash::ProfilingFlash;
 
 /// File Controller managing raw files/telemetry in flash using sequential-storage map.
+#[controller_context]
 pub struct FilesystemController<F: NorFlash + MultiwriteNorFlash> {
     /// The underlying flash driver instance (possibly wrapped in profiling)
     pub flash: F,
     /// The physical partition address range in flash (start..end byte offsets)
-    range: Range<u32>,
+    range: MapFilesystem,
     /// Reference to a statically allocated buffer for sequential-storage operations
     buf: &'static mut [u8],
 }
 
 impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     /// Creates a new FilesystemController.
-    pub fn new(flash: F, range: Range<u32>, buf: &'static mut [u8]) -> Self {
+    pub fn new(flash: F, range: MapFilesystem, buf: &'static mut [u8]) -> Self {
         Self { flash, range, buf }
     }
 
@@ -145,28 +43,19 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
         skip(content)
     )]
     pub async fn write_file(&mut self, name: &str, content: &[u8]) -> Result<(), ()> {
-        let is_telemetry = name.starts_with("telemetry");
-        if is_telemetry {
-            TELEMETRY_ENABLED.store(false, Ordering::Relaxed);
-        }
-
         let mut cache = sequential_storage::cache::NoCache::new();
         let key = string_to_key(name);
 
         // Store item in map
         let res = sequential_storage::map::store_item(
             &mut self.flash,
-            self.range.clone(),
+            self.range.0.clone(),
             &mut cache,
             self.buf,
             &key,
             &content,
         )
         .await;
-
-        if is_telemetry {
-            TELEMETRY_ENABLED.store(true, Ordering::Relaxed);
-        }
 
         match res {
             Err(_e) => {
@@ -194,7 +83,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
                         let dir_key = string_to_key(".dir");
                         let _ = sequential_storage::map::store_item(
                             &mut self.flash,
-                            self.range.clone(),
+                            self.range.0.clone(),
                             &mut cache,
                             self.buf,
                             &dir_key,
@@ -233,7 +122,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
 
         let res = sequential_storage::map::fetch_item::<[u8; KEY_SIZE], &[u8], _>(
             &mut self.flash,
-            self.range.clone(),
+            self.range.0.clone(),
             &mut cache,
             self.buf,
             &key,
@@ -274,7 +163,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
         // Remove from map
         let res = sequential_storage::map::remove_item::<[u8; KEY_SIZE], _>(
             &mut self.flash,
-            self.range.clone(),
+            self.range.0.clone(),
             &mut cache,
             self.buf,
             &key,
@@ -300,7 +189,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
                 let dir_key = string_to_key(".dir");
                 let _ = sequential_storage::map::store_item(
                     &mut self.flash,
-                    self.range.clone(),
+                    self.range.0.clone(),
                     &mut cache,
                     self.buf,
                     &dir_key,
@@ -320,7 +209,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     /// Erases the entire filesystem partition.
     pub async fn format(&mut self) -> Result<(), ()> {
         self.flash
-            .erase(self.range.start, self.range.end)
+            .erase(self.range.0.start, self.range.0.end)
             .await
             .map_err(|_| ())
     }
@@ -332,7 +221,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
         let key = string_to_key(".dir");
         let res = sequential_storage::map::fetch_item::<[u8; KEY_SIZE], &[u8], _>(
             &mut self.flash,
-            self.range.clone(),
+            self.range.0.clone(),
             &mut cache,
             self.buf,
             &key,
@@ -346,7 +235,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
             // Erase the entire range
             if self
                 .flash
-                .erase(self.range.start, self.range.end)
+                .erase(self.range.0.start, self.range.0.end)
                 .await
                 .is_err()
             {
@@ -355,7 +244,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
                 Err(())
             } else if sequential_storage::map::store_item(
                 &mut self.flash,
-                self.range.clone(),
+                self.range.0.clone(),
                 &mut cache,
                 self.buf,
                 &key,
@@ -535,6 +424,19 @@ subcommand_enum! {
     "Invalid fs subcommand. Expected: format, ls"
 }
 
+subcommand_enum! {
+    /// Format target for partition erasure.
+    pub enum FormatTarget {
+        /// Erase only the filesystem partition
+        Fs,
+        /// Erase only the telemetry partition
+        Telemetry,
+        /// Erase both partitions
+        All,
+    }
+    "Invalid format target. Expected: fs, telemetry, all"
+}
+
 /// Processes filesystem-specific CLI subcommands.
 pub fn handle_fs_cli<
     W: embedded_io::Write<Error = E>,
@@ -543,47 +445,122 @@ pub fn handle_fs_cli<
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
     subcommand: Option<FilesystemSubcommand>,
+    target: Option<FormatTarget>,
+    partition_name: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let partition = resolver.resolve_partition(None)?;
     let mut fs_buf = resolver.lock_fs_buffer()?;
     let fs_buf_static = unsafe { fs_buf.as_static_mut() };
 
     let cmd = subcommand.ok_or("Missing fs subcommand")?;
+    let target = target.unwrap_or(FormatTarget::Fs);
 
     match cmd {
         FilesystemSubcommand::Format => {
-            let flash_ref = unsafe { &mut *partition.flash_ptr };
-            let async_flash = platform::BlockingAsyncFlash(flash_ref);
-            let mut fs = crate::filesystem_controller::FilesystemController::new(
-                async_flash,
-                partition.start_address..partition.end_address,
-                fs_buf_static,
-            );
-
-            let _ = core::writeln!(writer, "\r\nFormatting filesystem...");
-            let res = embassy_futures::block_on(fs.format());
-            match res {
-                Ok(()) => {
-                    let _ =
-                        core::writeln!(writer, "Formatting successful! Rebooting target system...");
-                    #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    {
-                        embassy_time::block_for(embassy_time::Duration::from_secs(2));
-                        cortex_m::peripheral::SCB::sys_reset();
-                    }
-                    #[allow(unreachable_code)]
-                    Ok(())
+            let (start_address, end_address, flash_ptr) = match target {
+                FormatTarget::Fs => {
+                    let range = match resolver.resolve_partition(partition_name)? {
+                        crate::ResolvedPartition::Map(range, ptr) => (range.0, ptr),
+                        _ => return Err("Expected a map filesystem partition"),
+                    };
+                    (range.0.start, range.0.end, range.1)
                 }
-                Err(()) => Err("Formatting failed!"),
+                FormatTarget::Telemetry => {
+                    let name = partition_name.or(Some("telemetry"));
+                    let range = match resolver.resolve_partition(name)? {
+                        crate::ResolvedPartition::Queue(range, ptr) => (range.0, ptr),
+                        _ => return Err("Expected a telemetry/queue filesystem partition"),
+                    };
+                    (range.0.start, range.0.end, range.1)
+                }
+                FormatTarget::All => {
+                    let map_partition = match resolver.resolve_partition(Some("default"))? {
+                        crate::ResolvedPartition::Map(range, ptr) => (range.0, ptr),
+                        _ => return Err("Expected a map partition named 'default'"),
+                    };
+                    let queue_partition = match resolver.resolve_partition(Some("telemetry"))? {
+                        crate::ResolvedPartition::Queue(range, ptr) => (range.0, ptr),
+                        _ => return Err("Expected a queue partition named 'telemetry'"),
+                    };
+                    (
+                        map_partition.0.start,
+                        queue_partition.0.end,
+                        map_partition.1,
+                    )
+                }
+            };
+
+            let flash_ref = unsafe { &mut *flash_ptr };
+            let mut async_flash = platform::BlockingAsyncFlash(flash_ref);
+
+            match target {
+                FormatTarget::Fs => {
+                    let _ = core::writeln!(writer, "\r\nFormatting filesystem partition...");
+                    let res =
+                        embassy_futures::block_on(async_flash.erase(start_address, end_address));
+                    match res {
+                        Ok(()) => {
+                            let _ = core::writeln!(
+                                writer,
+                                "Formatting successful! Rebooting target system..."
+                            );
+                            #[cfg(all(target_arch = "arm", target_os = "none"))]
+                            {
+                                embassy_time::block_for(embassy_time::Duration::from_secs(2));
+                                cortex_m::peripheral::SCB::sys_reset();
+                            }
+                            #[allow(unreachable_code)]
+                            Ok(())
+                        }
+                        Err(_) => Err("Formatting failed!"),
+                    }
+                }
+                FormatTarget::Telemetry => {
+                    let _ = core::writeln!(writer, "\r\nFormatting telemetry partition...");
+                    let res =
+                        embassy_futures::block_on(async_flash.erase(start_address, end_address));
+                    match res {
+                        Ok(()) => {
+                            let _ =
+                                core::writeln!(writer, "Formatting successful! Telemetry cleared.");
+                            Ok(())
+                        }
+                        Err(_) => Err("Formatting failed!"),
+                    }
+                }
+                FormatTarget::All => {
+                    let _ = core::writeln!(writer, "\r\nFormatting all partitions...");
+                    let res =
+                        embassy_futures::block_on(async_flash.erase(start_address, end_address));
+                    match res {
+                        Ok(()) => {
+                            let _ = core::writeln!(
+                                writer,
+                                "Formatting successful! Rebooting target system..."
+                            );
+                            #[cfg(all(target_arch = "arm", target_os = "none"))]
+                            {
+                                embassy_time::block_for(embassy_time::Duration::from_secs(2));
+                                cortex_m::peripheral::SCB::sys_reset();
+                            }
+                            #[allow(unreachable_code)]
+                            Ok(())
+                        }
+                        Err(_) => Err("Formatting failed!"),
+                    }
+                }
             }
         }
         FilesystemSubcommand::Ls => {
-            let flash_ref = unsafe { &mut *partition.flash_ptr };
+            let (map_fs, flash_ptr) = match resolver.resolve_partition(partition_name)? {
+                crate::ResolvedPartition::Map(fs, ptr) => (fs, ptr),
+                _ => return Err("Requested partition is not a map filesystem"),
+            };
+            let flash_ref = unsafe { &mut *flash_ptr };
             let async_flash = platform::BlockingAsyncFlash(flash_ref);
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
-                partition.start_address..partition.end_address,
+                map_fs,
                 fs_buf_static,
             );
 

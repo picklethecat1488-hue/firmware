@@ -10,6 +10,7 @@ use embassy_rp::gpio::{Flex, Pin, Pull};
 use embassy_rp::i2c::{Config as I2cConfig, I2c};
 use embassy_rp::Peripherals;
 use platform::tracing;
+use platform::types::QueueFilesystem;
 
 /// Helper structure containing all pre-initialized board interfaces.
 pub struct Board<'d> {
@@ -177,8 +178,7 @@ impl<'d> Board<'d> {
         let mut raw_flash: crate::FlashDevice = embassy_rp::flash::Flash::new_blocking(temp_flash);
         let mut boot_status = platform::flash::DirectFlashBootStatus::new(
             &mut raw_flash,
-            crate::STORAGE_PARTITION_START..crate::STORAGE_PARTITION_END,
-            crate::MAX_RECORDS,
+            QueueFilesystem(crate::TELEMETRY_PARTITION_START..crate::TELEMETRY_PARTITION_END),
         );
 
         let sensors = [

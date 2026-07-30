@@ -405,3 +405,20 @@ fn test_update_battery_status_actions() {
         None
     );
 }
+
+#[test]
+fn test_assert_ascending_macro() {
+    platform::assert_ascending!(1, 2, 3);
+    platform::assert_ascending!(10, 20, 30, 40, 50);
+}
+
+#[test]
+fn test_assert_partitions_macro() {
+    platform::assert_partitions! {
+        storage_range: (0x1000, 0x5000),
+        partition_ranges: [
+            (0x1000, 0x2000),
+            (0x2000, 0x3000)
+        ]
+    }
+}

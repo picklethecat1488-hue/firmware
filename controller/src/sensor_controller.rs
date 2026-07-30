@@ -2,7 +2,7 @@
 
 #![deny(missing_docs)]
 
-use crate::tracing;
+use crate::tracing::{self, controller_context};
 use crate::types::{SensorDirection, SensorMetadata};
 use crate::BlockingProximityReader;
 use crate::Sender;
@@ -31,7 +31,8 @@ impl DataReadyPin for DummyDataReadyPin {
 }
 
 /// One-way commands sent to the Sensor Controller.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum SensorCommand {
     /// Force proximity sensor check and print telemetry logs
     ReadSensors,
@@ -53,7 +54,8 @@ pub trait SensorReader<S> {
 }
 
 /// Context block for reading proximity sensors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct ProximityReaderContext {
     /// The proximity threshold in millimeters under which target presence is detected.
     pub wake_threshold_mm: u16,
@@ -225,6 +227,7 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin: DataReady
 }
 
 /// A controller that coordinates readings from a single proximity (ToF) sensor.
+#[controller_context]
 pub struct SensorController<
     'a,
     S,
@@ -571,6 +574,7 @@ pub fn handle_sensor_cli<
     resolver: &impl crate::ShellDeviceResolver<C>,
     subcommand: Option<SensorSubcommand>,
     arg1: Option<&str>,
+    partition_name: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     let mut fs_buf = resolver.lock_fs_buffer()?;
@@ -633,24 +637,27 @@ pub fn handle_sensor_cli<
                 d_raw
             );
 
-            let partition = resolver.resolve_partition(None)?;
-            let flash_ref = unsafe { &mut *partition.flash_ptr };
-            let async_flash = BlockingAsyncFlash(flash_ref);
-            let mut fs = crate::filesystem_controller::FilesystemController::new(
-                async_flash,
-                partition.start_address..partition.end_address,
-                fs_buf_static,
-            );
+            let (map_fs, flash_ptr) = match resolver.resolve_partition(partition_name)? {
+                crate::ResolvedPartition::Map(fs, ptr) => (fs, ptr),
+                _ => return Err("Requested partition is not a map filesystem"),
+            };
+            let flash_ref = unsafe { &mut *flash_ptr };
+            let mut async_flash = BlockingAsyncFlash(flash_ref);
 
             let mut buf = [0u8; 128];
-            let mut proximity_cal =
-                embassy_futures::block_on(fs.read_file("vl53l0x_cal.cbor", &mut buf))
-                    .ok()
-                    .flatten()
-                    .and_then(|bytes| {
-                        minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes).ok()
-                    })
-                    .unwrap_or_default();
+            let mut proximity_cal = embassy_futures::block_on(platform::flash::read_file_direct(
+                &mut async_flash,
+                map_fs.clone(),
+                fs_buf_static,
+                "vl53l0x_cal.cbor",
+                &mut buf,
+            ))
+            .ok()
+            .flatten()
+            .and_then(|len| {
+                minicbor::decode::<model::calibration::Vl53l0xCalibration>(&buf[..len]).ok()
+            })
+            .unwrap_or_default();
 
             let dir = model::types::Direction::from(direction);
             proximity_cal[dir].low = d_raw;
@@ -661,12 +668,17 @@ pub fn handle_sensor_cli<
             encoder.encode(proximity_cal).unwrap();
             let len = encoder.into_writer().position();
 
-            embassy_futures::block_on(fs.write_file("vl53l0x_cal.cbor", &write_buf[..len]))
-                .map(|_| {
-                    let _ =
-                        core::writeln!(writer, "Saved cover calibration for {} to flash.", name);
-                })
-                .map_err(|_| "Error saving calibration to flash")
+            embassy_futures::block_on(platform::flash::write_file_direct(
+                &mut async_flash,
+                map_fs.clone(),
+                fs_buf_static,
+                "vl53l0x_cal.cbor",
+                &write_buf[..len],
+            ))
+            .map(|_| {
+                let _ = core::writeln!(writer, "Saved cover calibration for {} to flash.", name);
+            })
+            .map_err(|_| "Error saving calibration to flash")
         }
         SensorSubcommand::CalFar => {
             let dir_str = arg1.ok_or("Missing direction parameter")?;
@@ -700,24 +712,27 @@ pub fn handle_sensor_cli<
                 d_raw
             );
 
-            let partition = resolver.resolve_partition(None)?;
-            let flash_ref = unsafe { &mut *partition.flash_ptr };
-            let async_flash = BlockingAsyncFlash(flash_ref);
-            let mut fs = crate::filesystem_controller::FilesystemController::new(
-                async_flash,
-                partition.start_address..partition.end_address,
-                fs_buf_static,
-            );
+            let (map_fs, flash_ptr) = match resolver.resolve_partition(partition_name)? {
+                crate::ResolvedPartition::Map(fs, ptr) => (fs, ptr),
+                _ => return Err("Requested partition is not a map filesystem"),
+            };
+            let flash_ref = unsafe { &mut *flash_ptr };
+            let mut async_flash = BlockingAsyncFlash(flash_ref);
 
             let mut buf = [0u8; 128];
-            let mut proximity_cal =
-                embassy_futures::block_on(fs.read_file("vl53l0x_cal.cbor", &mut buf))
-                    .ok()
-                    .flatten()
-                    .and_then(|bytes| {
-                        minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes).ok()
-                    })
-                    .unwrap_or_default();
+            let mut proximity_cal = embassy_futures::block_on(platform::flash::read_file_direct(
+                &mut async_flash,
+                map_fs.clone(),
+                fs_buf_static,
+                "vl53l0x_cal.cbor",
+                &mut buf,
+            ))
+            .ok()
+            .flatten()
+            .and_then(|len| {
+                minicbor::decode::<model::calibration::Vl53l0xCalibration>(&buf[..len]).ok()
+            })
+            .unwrap_or_default();
 
             let dir = model::types::Direction::from(direction);
             proximity_cal[dir].high = d_raw;
@@ -728,12 +743,17 @@ pub fn handle_sensor_cli<
             encoder.encode(proximity_cal).unwrap();
             let len = encoder.into_writer().position();
 
-            embassy_futures::block_on(fs.write_file("vl53l0x_cal.cbor", &write_buf[..len]))
-                .map(|_| {
-                    let _ =
-                        core::writeln!(writer, "Saved 100mm calibration for {} to flash.", name);
-                })
-                .map_err(|_| "Error saving calibration to flash")
+            embassy_futures::block_on(platform::flash::write_file_direct(
+                &mut async_flash,
+                map_fs,
+                fs_buf_static,
+                "vl53l0x_cal.cbor",
+                &write_buf[..len],
+            ))
+            .map(|_| {
+                let _ = core::writeln!(writer, "Saved 100mm calibration for {} to flash.", name);
+            })
+            .map_err(|_| "Error saving calibration to flash")
         }
     }
 }

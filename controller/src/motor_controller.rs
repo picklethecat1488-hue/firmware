@@ -12,7 +12,7 @@ use model::telemetry::TelemetryClient;
 use model::types::{MotorSpeed, PeripheralError, SystemStatus};
 use peripherals::ToPeripheralError;
 
-use crate::tracing;
+use crate::tracing::{self, controller_context};
 use crate::types::{MotorCalState, MotorSafetyStatus, MotorState};
 
 /// The tick interval of the motor controller (10ms / 100Hz).
@@ -55,6 +55,7 @@ impl MotorLimits {
 }
 
 /// A generalized motor controller that orchestrates motor driver outputs and current sensor monitoring.
+#[controller_context]
 pub struct MotorController<M, C> {
     state: MotorState,
     /// The physical or mock motor peripheral.
@@ -468,7 +469,8 @@ where
 }
 
 /// One-way commands sent to the Motor Controller from the shell or app.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum MotorCommand {
     /// Set the motor speed (0-100)
     SetSpeed(model::types::MotorSpeed),
@@ -579,6 +581,7 @@ pub fn handle_motor_cli<
     arg1: Option<&str>,
     arg2: Option<&str>,
     arg3: Option<&str>,
+    partition_name: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     let motor_ctrl = resolver.resolve_motor_ctrl(None)?;
@@ -653,23 +656,27 @@ pub fn handle_motor_cli<
             );
             let _ = motor.stop();
 
-            let partition = resolver.resolve_partition(None)?;
-            let flash_ref = unsafe { &mut *partition.flash_ptr };
-            let async_flash = platform::BlockingAsyncFlash(flash_ref);
-            let mut fs = crate::filesystem_controller::FilesystemController::new(
-                async_flash,
-                partition.start_address..partition.end_address,
-                fs_buf_static,
-            );
+            let (map_fs, flash_ptr) = match resolver.resolve_partition(partition_name)? {
+                crate::ResolvedPartition::Map(fs, ptr) => (fs, ptr),
+                _ => return Err("Requested partition is not a map filesystem"),
+            };
+            let flash_ref = unsafe { &mut *flash_ptr };
+            let mut async_flash = platform::BlockingAsyncFlash(flash_ref);
 
             let mut buf = [0u8; 128];
-            let cal = embassy_futures::block_on(fs.read_file("motor_cal.cbor", &mut buf))
-                .ok()
-                .flatten()
-                .and_then(|bytes| {
-                    minicbor::decode::<model::calibration::MotorCalibration>(bytes).ok()
-                })
-                .unwrap_or_default();
+            let cal = embassy_futures::block_on(platform::flash::read_file_direct(
+                &mut async_flash,
+                map_fs.clone(),
+                fs_buf_static,
+                "motor_cal.cbor",
+                &mut buf,
+            ))
+            .ok()
+            .flatten()
+            .and_then(|len| {
+                minicbor::decode::<model::calibration::MotorCalibration>(&buf[..len]).ok()
+            })
+            .unwrap_or_default();
 
             let mut cal = cal;
             let ref_point = model::calibration::FourPointRef::from(state);
@@ -697,11 +704,17 @@ pub fn handle_motor_cli<
             encoder.encode(cal).unwrap();
             let len = encoder.into_writer().position();
 
-            embassy_futures::block_on(fs.write_file("motor_cal.cbor", &write_buf[..len]))
-                .map(|_| {
-                    let _ = core::writeln!(writer, "Saved motor {} calibration to flash.", name);
-                })
-                .map_err(|_| "Error saving calibration to flash")
+            embassy_futures::block_on(platform::flash::write_file_direct(
+                &mut async_flash,
+                map_fs,
+                fs_buf_static,
+                "motor_cal.cbor",
+                &write_buf[..len],
+            ))
+            .map(|_| {
+                let _ = core::writeln!(writer, "Saved motor {} calibration to flash.", name);
+            })
+            .map_err(|_| "Error saving calibration to flash")
         }
     }
 }

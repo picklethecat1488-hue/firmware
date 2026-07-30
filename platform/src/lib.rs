@@ -18,6 +18,8 @@ pub mod panic_handler;
 #[path = "io/flash.rs"]
 pub mod flash;
 
+pub use flash::SharedFlashMutex;
+
 /// SWD Real-Time Transfer (RTT) logging backend.
 #[path = "system/rtt.rs"]
 pub mod rtt;

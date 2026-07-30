@@ -5,7 +5,8 @@ use crate::types::{BatteryThresholds, BatteryUpdateInfo};
 use model::types::{ChargeState, SystemLedState, SystemStatus};
 
 /// Manages battery thresholds, state of charge, and battery critical detection.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct BatteryManager {
     battery_critical: bool,
     charger_connected: bool,

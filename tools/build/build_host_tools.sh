@@ -9,6 +9,8 @@ while IFS= read -r pkg; do
     fi
 done < <(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/") or contains("\\tools\\") or contains("/host/") or contains("\\host\\")) | .name' | tr -d '\r')
 
+# Default values
+BUILD_MODE="release"
 ORGANIZE_DIR="target/out"
 ZIP_FILE=""
 TARGET=""
@@ -16,6 +18,10 @@ WORKSPACE_ROOT="$(pwd)"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --debug)
+            BUILD_MODE="debug"
+            shift
+            ;;
         --out-dir)
             ORGANIZE_DIR="$2"
             shift 2
@@ -35,17 +41,22 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-RELEASE_DIR="target/release"
-if [ -n "$TARGET" ]; then
-    RELEASE_DIR="target/$TARGET/release"
+RELEASE_DIR="target/$BUILD_MODE"
+CARGO_PROFILE_FLAGS=("--release")
+if [ "$BUILD_MODE" = "debug" ]; then
+    CARGO_PROFILE_FLAGS=()
 fi
 
-echo "Building Host Tools (Release)..."
+if [ -n "$TARGET" ]; then
+    RELEASE_DIR="target/$TARGET/$BUILD_MODE"
+fi
+
+echo "Building Host Tools ($BUILD_MODE)..."
 for tool in "${TOOL_PACKAGES[@]}"; do
     if [ -n "$TARGET" ]; then
-        cargo build --release -p "$tool" --target "$TARGET"
+        cargo build "${CARGO_PROFILE_FLAGS[@]}" -p "$tool" --target "$TARGET"
     else
-        cargo build --release -p "$tool"
+        cargo build "${CARGO_PROFILE_FLAGS[@]}" -p "$tool"
     fi
 done
 
@@ -69,12 +80,12 @@ if [ -n "$ORGANIZE_DIR" ]; then
             ;;
     esac
 
-    mkdir -p "$ORGANIZE_DIR/release/$PLATFORM"
+    mkdir -p "$ORGANIZE_DIR/$BUILD_MODE/$PLATFORM"
     for tool in "${TOOL_PACKAGES[@]}"; do
         if [ -f "$RELEASE_DIR/$tool" ]; then
-            cp "$RELEASE_DIR/$tool" "$ORGANIZE_DIR/release/$PLATFORM/$tool"
+            cp "$RELEASE_DIR/$tool" "$ORGANIZE_DIR/$BUILD_MODE/$PLATFORM/$tool"
         elif [ -f "$RELEASE_DIR/$tool.exe" ]; then
-            cp "$RELEASE_DIR/$tool.exe" "$ORGANIZE_DIR/release/$PLATFORM/$tool.exe"
+            cp "$RELEASE_DIR/$tool.exe" "$ORGANIZE_DIR/$BUILD_MODE/$PLATFORM/$tool.exe"
         fi
     done
 fi

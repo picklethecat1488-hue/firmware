@@ -3,7 +3,8 @@
 #![deny(missing_docs)]
 
 /// Operating mode of the power sensor.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum PowerMeasurementMode {
     /// Power-down mode (quiescent current state).
     PowerDown,

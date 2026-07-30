@@ -189,7 +189,7 @@ def get_called_function_name(call_node):
     return None
 
 
-def main():
+def validate_tracing():
     # Directories to scan
     scan_dirs = ["controller/src", "projects/cat_detector/src", "peripherals/src"]
 
@@ -345,11 +345,11 @@ def main():
 
     if errors > 0:
         print(f"{Fore.RED}Validation FAILED: {errors} boot-time tracing hierarchy or early return violations found.")
-        sys.exit(1)
+        return 1
     else:
         print(f"{Fore.GREEN}Validation PASSED: All instrumented functions are correctly nested and exit cleanly.")
-        sys.exit(0)
+        return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(validate_tracing())

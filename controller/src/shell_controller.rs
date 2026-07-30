@@ -162,7 +162,7 @@ macro_rules! define_shell_resolver_and_controller {
             fn resolve_partition(
                 &self,
                 name: Option<&str>,
-            ) -> Result<crate::FlashPartition<C::Flash>, &'static str>;
+            ) -> Result<crate::ResolvedPartition<C::Flash>, &'static str>;
             /// Lock the shared filesystem scratch buffer for exclusive access.
             fn lock_fs_buffer(&self) -> Result<crate::shell_controller::FsBufferGuard<'_>, &'static str>;
         }
@@ -212,14 +212,22 @@ macro_rules! define_shell_resolver_and_controller {
             pub fn resolve_partition(
                 &self,
                 name: Option<&str>,
-            ) -> Result<crate::FlashPartition<C::Flash>, &'static str> {
+            ) -> Result<crate::ResolvedPartition<C::Flash>, &'static str> {
                 let matched = match name {
                     Some(n) => self.flash_partitions.iter().find(|p| p.name == n),
                     None => self.flash_partitions.first(),
                 };
-                matched
-                    .map(|p| p.partition)
-                    .ok_or("Requested flash partition not found or none registered")
+                let p = matched.ok_or("Requested flash partition not found or none registered")?;
+                match p.kind {
+                    crate::PartitionKind::Map => Ok(crate::ResolvedPartition::Map(
+                        crate::MapFilesystem(p.partition.start_address..p.partition.end_address),
+                        p.partition.flash_ptr,
+                    )),
+                    crate::PartitionKind::Queue => Ok(crate::ResolvedPartition::Queue(
+                        crate::QueueFilesystem(p.partition.start_address..p.partition.end_address),
+                        p.partition.flash_ptr,
+                    )),
+                }
             }
         }
 
@@ -232,7 +240,7 @@ macro_rules! define_shell_resolver_and_controller {
             fn resolve_partition(
                 &self,
                 name: Option<&str>,
-            ) -> Result<crate::FlashPartition<C::Flash>, &'static str> {
+            ) -> Result<crate::ResolvedPartition<C::Flash>, &'static str> {
                 self.resolve_partition(name)
             }
             fn lock_fs_buffer(&self) -> Result<crate::shell_controller::FsBufferGuard<'_>, &'static str> {
@@ -353,7 +361,7 @@ macro_rules! append_group_arm {
     (Motor, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
         $crate::declare_shell_commands!(@accum $name, $ctrl, $writer, [$($tail),*] -> [
             $($variants)*
-            /// Motor commands (motor speed <speed>, motor stop, motor calibrate <state> [max_rpm] [rpm_limit])
+            /// Motor commands (motor speed <speed>, motor stop, motor calibrate <state> [max_rpm] [rpm_limit] [--partition <partition>])
             #[command(name = "motor")]
             Motor {
                 /// Subcommand (speed, stop, calibrate)
@@ -364,40 +372,51 @@ macro_rules! append_group_arm {
                 arg2: Option<&'a str>,
                 /// Third argument (rpm_limit)
                 arg3: Option<&'a str>,
+                /// Optional partition name
+                #[arg(long = "partition")]
+                partition: Option<&'a str>,
             },
         ] [
             $($matches)*
-            $name::Motor { subcommand, arg1, arg2, arg3 } => $crate::motor_controller::handle_motor_cli($ctrl, subcommand, arg1, arg2, arg3, $writer),
+            $name::Motor { subcommand, arg1, arg2, arg3, partition } => $crate::motor_controller::handle_motor_cli($ctrl, subcommand, arg1, arg2, arg3, partition, $writer),
         ] -> $mode, $proc_name);
     };
     (Sensor, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
         $crate::declare_shell_commands!(@accum $name, $ctrl, $writer, [$($tail),*] -> [
             $($variants)*
-            /// Sensor commands (sensor status, sensor cal_near <dir>, sensor cal_far <dir>)
+            /// Sensor commands (sensor status, sensor cal_near <dir>, sensor cal_far <dir> [--partition <partition>])
             #[command(name = "sensor")]
             Sensor {
                 /// Subcommand (status, cal_near, cal_far)
                 subcommand: Option<$crate::sensor_controller::SensorSubcommand>,
                 /// First argument (direction: north, east, west)
                 arg1: Option<&'a str>,
+                /// Optional partition name
+                #[arg(long = "partition")]
+                partition: Option<&'a str>,
             },
         ] [
             $($matches)*
-            $name::Sensor { subcommand, arg1 } => $crate::sensor_controller::handle_sensor_cli($ctrl, subcommand, arg1, $writer),
+            $name::Sensor { subcommand, arg1, partition } => $crate::sensor_controller::handle_sensor_cli($ctrl, subcommand, arg1, partition, $writer),
         ] -> $mode, $proc_name);
     };
     (Fs, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
         $crate::declare_shell_commands!(@accum $name, $ctrl, $writer, [$($tail),*] -> [
             $($variants)*
-            /// Filesystem commands (fs format, fs ls)
+            /// Filesystem commands (fs format, fs ls [--partition <partition>])
             #[command(name = "fs")]
             Fs {
                 /// Subcommand (format, ls)
                 subcommand: Option<$crate::filesystem_controller::FilesystemSubcommand>,
+                /// Optional target to format (fs, telemetry, all)
+                target: Option<$crate::filesystem_controller::FormatTarget>,
+                /// Optional partition name
+                #[arg(long = "partition")]
+                partition: Option<&'a str>,
             },
         ] [
             $($matches)*
-            $name::Fs { subcommand } => $crate::filesystem_controller::handle_fs_cli($ctrl, subcommand, $writer),
+            $name::Fs { subcommand, target, partition } => $crate::filesystem_controller::handle_fs_cli($ctrl, subcommand, target, partition, $writer),
         ] -> $mode, $proc_name);
     };
     (System, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {

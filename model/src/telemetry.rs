@@ -71,11 +71,38 @@ impl TelemetryRecord {
             return None;
         }
         let payload = &bytes[1..1 + len];
+        Self::deserialize_from_slice_payload(payload)
+    }
+
+    /// Helper to deserialize a raw CBOR payload slice (without length prefix byte).
+    fn deserialize_from_slice_payload(payload: &[u8]) -> Option<(u64, Self)> {
         let mut decoder = minicbor::Decoder::new(payload);
-        let _array_len = decoder.array().ok()?;
-        let timestamp_us = decoder.u64().ok()?;
-        let record = decoder.decode().ok()?;
-        Some((timestamp_us, record))
+        let array_len = decoder.array().ok()??;
+        if array_len == 3 {
+            let _id = decoder.u32().ok()?;
+            let timestamp_us = decoder.u64().ok()?;
+            let record = decoder.decode().ok()?;
+            Some((timestamp_us, record))
+        } else if array_len == 2 {
+            let timestamp_us = decoder.u64().ok()?;
+            let record = decoder.decode().ok()?;
+            Some((timestamp_us, record))
+        } else {
+            None
+        }
+    }
+
+    /// Deserialize the record and its timestamp from a slice containing the length byte followed by CBOR.
+    pub fn deserialize_from_slice(bytes: &[u8]) -> Option<(u64, Self)> {
+        if bytes.is_empty() {
+            return None;
+        }
+        let len = bytes[0] as usize;
+        if len == 0 || len != bytes.len() - 1 {
+            return None;
+        }
+        let payload = &bytes[1..];
+        Self::deserialize_from_slice_payload(payload)
     }
 
     /// Returns the static string representation of the variant name.
@@ -126,7 +153,7 @@ impl core::fmt::Debug for TelemetryRecord {
 }
 
 /// Size of a serialized telemetry record in bytes
-pub const TELEMETRY_RECORD_SIZE: usize = 36;
+pub const TELEMETRY_RECORD_SIZE: usize = 40;
 /// Max size of a telemetry record payload
 pub const TELEMETRY_MAX_SIZE: usize = TELEMETRY_RECORD_SIZE;
 /// Size of the telemetry header index file (telemetry.rrd) in bytes
@@ -142,16 +169,6 @@ pub const CHUNK_FILE_SIZE: usize = CHUNK_SIZE * TELEMETRY_RECORD_SIZE;
 pub const BUFFER_SIZE: usize = 3000;
 /// Total number of telemetry record types/variants.
 pub const NUM_TELEMETRY_VARIANTS: usize = 13;
-
-/// Format the file name of a telemetry record chunk into the provided buffer and return it.
-pub fn chunk_name(idx: usize, buf: &mut [u8]) -> &str {
-    use core::fmt::Write;
-    let mut s: heapless::String<32> = heapless::String::new();
-    let _ = core::write!(&mut s, "telemetry_{}.rrd", idx);
-    let bytes = s.as_bytes();
-    buf[..bytes.len()].copy_from_slice(bytes);
-    unsafe { core::str::from_utf8_unchecked(&buf[..bytes.len()]) }
-}
 
 /// Trait for a telemetry client that handles change detection, filtering, and reporting.
 pub trait TelemetryClient<T> {
