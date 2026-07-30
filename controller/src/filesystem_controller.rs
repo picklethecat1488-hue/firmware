@@ -6,7 +6,6 @@ extern crate std;
 use crate::{Sender, TelemetrySender};
 use core::fmt::Write as _;
 use core::ops::Range;
-use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
@@ -17,110 +16,7 @@ use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
 
 pub use platform::directory::{string_to_key, DIR_BUF_SIZE, KEY_SIZE};
 
-static TELEMETRY_ENABLED: AtomicBool = AtomicBool::new(true);
-
-/// A profiling wrapper around a flash driver that counts and times page erases.
-pub struct ProfilingFlash<F: NorFlash> {
-    /// The inner flash driver instance being profiled
-    inner: F,
-    /// Total number of page erases performed since system boot
-    erase_count: u32,
-    /// Optional telemetry sender to log erase operations
-    telemetry_tx: Option<TelemetrySender<CriticalSectionRawMutex, 64>>,
-}
-
-impl<F: NorFlash> ProfilingFlash<F> {
-    /// Create a new ProfilingFlash wrapper.
-    pub fn new(inner: F) -> Self {
-        Self {
-            inner,
-            erase_count: 0,
-            telemetry_tx: None,
-        }
-    }
-
-    /// Set telemetry sender for flash erase profiling.
-    pub fn set_telemetry(&mut self, telemetry_tx: TelemetrySender<CriticalSectionRawMutex, 64>) {
-        self.telemetry_tx = Some(telemetry_tx);
-    }
-
-    /// Get total page erases performed since boot.
-    pub fn erase_count(&self) -> u32 {
-        self.erase_count
-    }
-}
-
-impl<F: NorFlash> embedded_storage_async::nor_flash::ErrorType for ProfilingFlash<F> {
-    type Error = F::Error;
-}
-
-impl<F: NorFlash> embedded_storage_async::nor_flash::ReadNorFlash for ProfilingFlash<F> {
-    const READ_SIZE: usize = F::READ_SIZE;
-
-    async fn read(&mut self, offset: u32, bytes: &mut [u8]) -> Result<(), Self::Error> {
-        self.inner.read(offset, bytes).await
-    }
-
-    fn capacity(&self) -> usize {
-        self.inner.capacity()
-    }
-}
-
-impl<F: NorFlash> embedded_storage_async::nor_flash::NorFlash for ProfilingFlash<F> {
-    const WRITE_SIZE: usize = F::WRITE_SIZE;
-    const ERASE_SIZE: usize = F::ERASE_SIZE;
-
-    async fn write(&mut self, offset: u32, bytes: &[u8]) -> Result<(), Self::Error> {
-        self.inner.write(offset, bytes).await
-    }
-
-    async fn erase(&mut self, from: u32, to: u32) -> Result<(), Self::Error> {
-        self.erase_count += 1;
-
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        let start = embassy_time::Instant::now();
-
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::debug!(
-            "[Profile] Flash erase starting at 0x{:X} to 0x{:X}",
-            from,
-            to
-        );
-
-        let res = self.inner.erase(from, to).await;
-
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        let duration_ms = {
-            let duration = start.elapsed();
-            let ms = duration.as_millis() as u32;
-            defmt::debug!(
-                "[Profile] Flash erase completed in {} ms (Total erases: {})",
-                ms,
-                self.erase_count
-            );
-            ms
-        };
-
-        #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-        let duration_ms = 0;
-
-        if TELEMETRY_ENABLED.load(Ordering::Relaxed) {
-            if let Some(tx) = &self.telemetry_tx {
-                let sector = from / F::ERASE_SIZE as u32;
-                let details = model::types::FlashEraseTelemetry {
-                    sector,
-                    duration_ms,
-                    erase_count: self.erase_count,
-                };
-                let _ = tx.try_send(model::telemetry::TelemetryRecord::FlashTelemetry(details));
-            }
-        }
-
-        res
-    }
-}
-
-impl<F: NorFlash + MultiwriteNorFlash> MultiwriteNorFlash for ProfilingFlash<F> {}
+pub use platform::flash::ProfilingFlash;
 
 /// File Controller managing raw files/telemetry in flash using sequential-storage map.
 pub struct FilesystemController<F: NorFlash + MultiwriteNorFlash> {
@@ -145,11 +41,6 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
         skip(content)
     )]
     pub async fn write_file(&mut self, name: &str, content: &[u8]) -> Result<(), ()> {
-        let is_telemetry = name.starts_with("telemetry");
-        if is_telemetry {
-            TELEMETRY_ENABLED.store(false, Ordering::Relaxed);
-        }
-
         let mut cache = sequential_storage::cache::NoCache::new();
         let key = string_to_key(name);
 
@@ -163,10 +54,6 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
             &content,
         )
         .await;
-
-        if is_telemetry {
-            TELEMETRY_ENABLED.store(true, Ordering::Relaxed);
-        }
 
         match res {
             Err(_e) => {
@@ -535,6 +422,19 @@ subcommand_enum! {
     "Invalid fs subcommand. Expected: format, ls"
 }
 
+subcommand_enum! {
+    /// Format target for partition erasure.
+    pub enum FormatTarget {
+        /// Erase only the filesystem partition
+        Fs,
+        /// Erase only the telemetry partition
+        Telemetry,
+        /// Erase both partitions
+        All,
+    }
+    "Invalid format target. Expected: fs, telemetry, all"
+}
+
 /// Processes filesystem-specific CLI subcommands.
 pub fn handle_fs_cli<
     W: embedded_io::Write<Error = E>,
@@ -543,6 +443,7 @@ pub fn handle_fs_cli<
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
     subcommand: Option<FilesystemSubcommand>,
+    target: Option<FormatTarget>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     let partition = resolver.resolve_partition(None)?;
@@ -550,32 +451,74 @@ pub fn handle_fs_cli<
     let fs_buf_static = unsafe { fs_buf.as_static_mut() };
 
     let cmd = subcommand.ok_or("Missing fs subcommand")?;
+    let target = target.unwrap_or(FormatTarget::Fs);
 
     match cmd {
         FilesystemSubcommand::Format => {
             let flash_ref = unsafe { &mut *partition.flash_ptr };
-            let async_flash = platform::BlockingAsyncFlash(flash_ref);
-            let mut fs = crate::filesystem_controller::FilesystemController::new(
-                async_flash,
-                partition.start_address..partition.end_address,
-                fs_buf_static,
-            );
+            let mut async_flash = platform::BlockingAsyncFlash(flash_ref);
 
-            let _ = core::writeln!(writer, "\r\nFormatting filesystem...");
-            let res = embassy_futures::block_on(fs.format());
-            match res {
-                Ok(()) => {
-                    let _ =
-                        core::writeln!(writer, "Formatting successful! Rebooting target system...");
-                    #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    {
-                        embassy_time::block_for(embassy_time::Duration::from_secs(2));
-                        cortex_m::peripheral::SCB::sys_reset();
+            match target {
+                FormatTarget::Fs => {
+                    let _ = core::writeln!(writer, "\r\nFormatting filesystem partition...");
+                    let res = embassy_futures::block_on(
+                        async_flash
+                            .erase(partition.start_address, partition.start_address + 64 * 1024),
+                    );
+                    match res {
+                        Ok(()) => {
+                            let _ = core::writeln!(
+                                writer,
+                                "Formatting successful! Rebooting target system..."
+                            );
+                            #[cfg(all(target_arch = "arm", target_os = "none"))]
+                            {
+                                embassy_time::block_for(embassy_time::Duration::from_secs(2));
+                                cortex_m::peripheral::SCB::sys_reset();
+                            }
+                            #[allow(unreachable_code)]
+                            Ok(())
+                        }
+                        Err(_) => Err("Formatting failed!"),
                     }
-                    #[allow(unreachable_code)]
-                    Ok(())
                 }
-                Err(()) => Err("Formatting failed!"),
+                FormatTarget::Telemetry => {
+                    let _ = core::writeln!(writer, "\r\nFormatting telemetry partition...");
+                    let res = embassy_futures::block_on(
+                        async_flash
+                            .erase(partition.start_address + 64 * 1024, partition.end_address),
+                    );
+                    match res {
+                        Ok(()) => {
+                            let _ =
+                                core::writeln!(writer, "Formatting successful! Telemetry cleared.");
+                            Ok(())
+                        }
+                        Err(_) => Err("Formatting failed!"),
+                    }
+                }
+                FormatTarget::All => {
+                    let _ = core::writeln!(writer, "\r\nFormatting all partitions...");
+                    let res = embassy_futures::block_on(
+                        async_flash.erase(partition.start_address, partition.end_address),
+                    );
+                    match res {
+                        Ok(()) => {
+                            let _ = core::writeln!(
+                                writer,
+                                "Formatting successful! Rebooting target system..."
+                            );
+                            #[cfg(all(target_arch = "arm", target_os = "none"))]
+                            {
+                                embassy_time::block_for(embassy_time::Duration::from_secs(2));
+                                cortex_m::peripheral::SCB::sys_reset();
+                            }
+                            #[allow(unreachable_code)]
+                            Ok(())
+                        }
+                        Err(_) => Err("Formatting failed!"),
+                    }
+                }
             }
         }
         FilesystemSubcommand::Ls => {

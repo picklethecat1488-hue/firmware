@@ -1,26 +1,19 @@
-use embedded_storage_async::nor_flash::MultiwriteNorFlash;
+use embedded_storage_async::nor_flash::NorFlash;
 use model::telemetry::TelemetryRecord;
-use std::cmp;
-
-/// Helper utility to hash or pad a string filename into a 32-byte key
-/// used by the sequential-storage map.
-fn string_to_key(name: &str) -> [u8; 32] {
-    let mut key = [0u8; 32];
-    let bytes = name.as_bytes();
-    let len = cmp::min(bytes.len(), 32);
-    key[..len].copy_from_slice(&bytes[..len]);
-    key
-}
 
 /// Unified trait representing a host-side telemetry parser.
 pub trait TelemetryParser {
     /// Deserializes a raw CBOR payload (array of timestamp and TelemetryRecord) back into its parts.
     fn deserialize_raw_cbor(&self, payload: &[u8]) -> Option<(u64, TelemetryRecord)> {
         let mut decoder = minicbor::Decoder::new(payload);
-        let _array_len = decoder.array().ok()?;
-        let ts = decoder.u64().ok()?;
-        let record = decoder.decode().ok()?;
-        Some((ts, record))
+        let array_len = decoder.array().ok()?;
+        if array_len == Some(2) {
+            let ts = decoder.u64().ok()?;
+            let record = decoder.decode().ok()?;
+            Some((ts, record))
+        } else {
+            None
+        }
     }
 
     /// Converts a TelemetryRecord into a list of Perfetto JSON events.
@@ -323,117 +316,32 @@ impl FlashTelemetryParser {
         flash: &mut F,
         flash_range: std::ops::Range<u32>,
         cache: &mut sequential_storage::cache::NoCache,
-        buf: &mut [u8],
-        max_records: usize,
+        _buf: &mut [u8],
+        _max_records: usize,
     ) -> Result<Vec<(u64, TelemetryRecord)>, String>
     where
-        F: MultiwriteNorFlash,
+        F: NorFlash,
         F::Error: std::fmt::Debug,
     {
-        let key = string_to_key(model::telemetry::TELEMETRY_HEADER_FILE);
-
-        let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
-            flash,
-            flash_range.clone(),
-            cache,
-            buf,
-            &key,
-        )
-        .await
-        .map_err(|e| format!("Failed to fetch telemetry.rrd: {:?}", e))?;
-
-        let content = match res {
-            Some(content) => content,
-            None => return Ok(Vec::new()),
-        };
-
-        if content.len() < 12 {
-            return Err(format!(
-                "Telemetry file is too short ({} bytes)",
-                content.len()
-            ));
-        }
-
-        let mut header_bytes = [0u8; 12];
-        header_bytes.copy_from_slice(&content[..12]);
-
-        let len = header_bytes[0] as usize;
-        if len == 0 || len > 11 {
-            return Err("Invalid telemetry header length".to_string());
-        }
-
-        let mut decoder = minicbor::Decoder::new(&header_bytes[1..1 + len]);
-        let array_len = decoder
-            .array()
-            .map_err(|e| format!("Failed to decode header array: {:?}", e))?;
-        if array_len != Some(2) {
-            return Err("Invalid telemetry header format".to_string());
-        }
-
-        let count = decoder
-            .u32()
-            .map_err(|e| format!("Failed to decode count: {:?}", e))? as usize;
-        let next_idx = decoder
-            .u32()
-            .map_err(|e| format!("Failed to decode next_idx: {:?}", e))?
-            as usize;
+        let mut iterator = sequential_storage::queue::iter(flash, flash_range, cache)
+            .await
+            .map_err(|e| format!("Failed to initialize queue iterator: {:?}", e))?;
 
         let mut records = Vec::new();
-        let mut current_chunk_idx = None;
-        let mut current_chunk_data = [0u8; model::telemetry::CHUNK_FILE_SIZE];
-
-        let total_iterations = if count < max_records {
-            count
-        } else {
-            max_records
-        };
-        for i in 0..total_iterations {
-            let idx = if count < max_records {
-                i
-            } else {
-                (next_idx + i) % max_records
-            };
-            let chunk_idx = idx / model::telemetry::CHUNK_SIZE;
-            let slot_idx = idx % model::telemetry::CHUNK_SIZE;
-            if current_chunk_idx != Some(chunk_idx) {
-                let mut name_buf = [0u8; platform::MAX_FILE_NAME_LEN];
-                let name = model::telemetry::chunk_name(chunk_idx, &mut name_buf);
-                let chunk_key = string_to_key(name);
-
-                let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
-                    flash,
-                    flash_range.clone(),
-                    cache,
-                    buf,
-                    &chunk_key,
-                )
-                .await
-                .map_err(|e| format!("Failed to read telemetry chunk {}: {:?}", chunk_idx, e))?;
-
-                match res {
-                    Some(bytes) => {
-                        current_chunk_data.fill(0);
-                        let len = std::cmp::min(bytes.len(), current_chunk_data.len());
-                        current_chunk_data[..len].copy_from_slice(&bytes[..len]);
-                        current_chunk_idx = Some(chunk_idx);
-                    }
-                    None => {
-                        return Err(format!("Telemetry chunk {} not found", chunk_idx));
-                    }
-                }
-            }
-
-            let offset = slot_idx * model::telemetry::TELEMETRY_RECORD_SIZE;
-            if offset + model::telemetry::TELEMETRY_RECORD_SIZE <= current_chunk_data.len() {
-                let slot: &[u8; model::telemetry::TELEMETRY_RECORD_SIZE] = current_chunk_data
-                    [offset..offset + model::telemetry::TELEMETRY_RECORD_SIZE]
-                    .try_into()
-                    .unwrap();
-                if let Some((ts, rec)) = TelemetryRecord::deserialize(slot) {
-                    records.push((ts, rec));
-                }
+        let mut item_buf = [0u8; model::telemetry::TELEMETRY_RECORD_SIZE];
+        while let Some(entry) = iterator
+            .next(&mut item_buf)
+            .await
+            .map_err(|e| format!("Failed to read queue item: {:?}", e))?
+        {
+            let bytes = entry.into_buf();
+            if let Some((ts, rec)) = TelemetryRecord::deserialize_from_slice(bytes) {
+                records.push((ts, rec));
             }
         }
+
+        // Sort records by timestamp
+        records.sort_unstable_by_key(|&(ts, _)| ts);
 
         Ok(records)
     }

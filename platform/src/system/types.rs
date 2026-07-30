@@ -683,3 +683,51 @@ impl CoreStatus {
         Self::new(CpuId::Core0)
     }
 }
+
+/// Compile-time static assertions for flash storage partitions.
+#[macro_export]
+macro_rules! assert_partitions {
+    (
+        storage_range: ($storage_start:expr, $storage_end:expr),
+        partition_ranges: [
+            ($p1_start:expr, $p1_end:expr),
+            ($p2_start:expr, $p2_end:expr)
+        ]
+    ) => {
+        const _: () = {
+            // Check storage bounds sanity
+            assert!(
+                $storage_start < $storage_end,
+                "Storage partition range is invalid"
+            );
+
+            // Check partition 1 bounds
+            assert!(
+                $p1_start >= $storage_start,
+                "Partition 1 starts before storage partition"
+            );
+            assert!(
+                $p1_end <= $storage_end,
+                "Partition 1 ends after storage partition"
+            );
+            assert!($p1_start < $p1_end, "Partition 1 range is invalid");
+
+            // Check partition 2 bounds
+            assert!(
+                $p2_start >= $storage_start,
+                "Partition 2 starts before storage partition"
+            );
+            assert!(
+                $p2_end <= $storage_end,
+                "Partition 2 ends after storage partition"
+            );
+            assert!($p2_start < $p2_end, "Partition 2 range is invalid");
+
+            // Check non-overlapping partitions
+            assert!(
+                $p1_end <= $p2_start || $p2_end <= $p1_start,
+                "Partitions overlap!"
+            );
+        };
+    };
+}

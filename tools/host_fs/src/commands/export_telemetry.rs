@@ -11,7 +11,7 @@ pub async fn run(
     out_csv: &str,
     buf: &mut [u8],
 ) -> io::Result<()> {
-    spinner.set_message("Fetching telemetry.rrd from filesystem...");
+    spinner.set_message("Fetching telemetry from filesystem...");
 
     let max_records = cat_detector::MAX_RECORDS;
     let parser = tool_common::FlashTelemetryParser::new(999);

@@ -13,6 +13,7 @@ use model::types::{BootReason, ChargeState, Direction, SystemLedState, SystemSta
 use peripherals::mock::{
     DummyCurrentSensor, MockBattery, MockCharger, MockLed, MockMotor, MockProximitySensor,
 };
+use platform::flash::SharedFlashMutex;
 
 // 1. Mock wrappers for interrupt pins
 struct MockPin;
@@ -33,7 +34,7 @@ struct TestFlash {
 }
 
 impl TestFlash {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             data: [0xFF; 1024 * 64],
         }
@@ -247,17 +248,26 @@ fn test_spawn_all_controllers_configuration() {
     let system_ctrl =
         SystemController::new(feature_set, TELEMETRY_CHANNEL.sender(), BootReason::Unknown);
 
+    static FLASH_MUTEX: embassy_sync::mutex::Mutex<CriticalSectionRawMutex, TestFlash> =
+        embassy_sync::mutex::Mutex::new(TestFlash::new());
+
     let fs_buf = Box::leak(vec![0u8; 8192].into_boxed_slice());
+    let fs_flash = SharedFlashMutex::new(&FLASH_MUTEX);
     let fs_controller = controller::filesystem_controller::FilesystemController::new(
-        controller::filesystem_controller::ProfilingFlash::new(TestFlash::new()),
-        0..1024 * 64,
+        controller::filesystem_controller::ProfilingFlash::new(fs_flash),
+        0..32 * 1024,
         fs_buf,
     );
 
     let client =
         controller::filesystem_controller::FilesystemClient::new(FILESYSTEM_CHANNEL.sender());
+    let telemetry_flash = SharedFlashMutex::new(&FLASH_MUTEX);
     let telemetry_ctrl = Box::leak(Box::new(
-        controller::telemetry_controller::TelemetryController::new(client),
+        controller::telemetry_controller::TelemetryController::new(
+            telemetry_flash,
+            32 * 1024..64 * 1024,
+            client,
+        ),
     ));
 
     use embassy_executor::Executor;
@@ -276,8 +286,8 @@ fn test_spawn_all_controllers_configuration() {
                 Sensor(sensor_ctrl_west, SENSOR_WEST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Led(led_ctrl, LED_CHANNEL), generics: (MockLed),
                 System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, DummyFeatureSet<CriticalSectionRawMutex, 4>, 4, 64>),
-                Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (controller::filesystem_controller::ProfilingFlash<TestFlash>),
-                Telemetry(telemetry_ctrl, TELEMETRY_CONSUMER_CHANNEL), generics: (1024, { controller::telemetry_controller::CHANNEL_CAPACITY }),
+                Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (controller::filesystem_controller::ProfilingFlash<SharedFlashMutex<TestFlash>>),
+                Telemetry(telemetry_ctrl, TELEMETRY_CONSUMER_CHANNEL), generics: (1024, { controller::telemetry_controller::CHANNEL_CAPACITY }, SharedFlashMutex<TestFlash>),
             }
         }
 

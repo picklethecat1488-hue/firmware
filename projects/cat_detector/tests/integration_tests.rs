@@ -32,7 +32,7 @@ struct TestFlash {
 }
 
 impl TestFlash {
-    fn new() -> Self {
+    const fn new() -> Self {
         Self {
             data: [0xFF; 1024 * 64],
         }
@@ -765,17 +765,26 @@ fn test_spawn_controllers_embassy_routing() {
         BootReason::Unknown,
     );
 
+    static FLASH_MUTEX: embassy_sync::mutex::Mutex<CriticalSectionRawMutex, TestFlash> =
+        embassy_sync::mutex::Mutex::new(TestFlash::new());
+
     let fs_buf = Box::leak(vec![0u8; 8192].into_boxed_slice());
+    let fs_flash = platform::flash::SharedFlashMutex::new(&FLASH_MUTEX);
     let fs_controller = controller::filesystem_controller::FilesystemController::new(
-        controller::filesystem_controller::ProfilingFlash::new(TestFlash::new()),
-        0..1024 * 64,
+        controller::filesystem_controller::ProfilingFlash::new(fs_flash),
+        0..32 * 1024,
         fs_buf,
     );
 
     let client =
         controller::filesystem_controller::FilesystemClient::new(RUN_FILESYSTEM_CHANNEL.sender());
+    let telemetry_flash = platform::flash::SharedFlashMutex::new(&FLASH_MUTEX);
     let telemetry_ctrl = Box::leak(Box::new(
-        controller::telemetry_controller::TelemetryController::new(client),
+        controller::telemetry_controller::TelemetryController::new(
+            telemetry_flash,
+            32 * 1024..64 * 1024,
+            client,
+        ),
     ));
 
     // 3. Run Embassy Executor
@@ -796,8 +805,8 @@ fn test_spawn_controllers_embassy_routing() {
                 Sensor(sensor_ctrl_west, RUN_SENSOR_WEST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Led(led_ctrl, RUN_LED_CHANNEL), generics: (MockLed),
                 System(system_ctrl, RUN_SYSTEM_CHANNEL, RUN_GESTURE_CHANNEL, RUN_THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, cat_detector::CatDetectorFeatureSet<CriticalSectionRawMutex, 4>, 4, 64>),
-                Filesystem(fs_controller, RUN_FILESYSTEM_CHANNEL), generics: (controller::filesystem_controller::ProfilingFlash<TestFlash>),
-                Telemetry(telemetry_ctrl, RUN_TELEMETRY_CONSUMER_CHANNEL), generics: ({ cat_detector::MAX_RECORDS }, { controller::telemetry_controller::CHANNEL_CAPACITY }),
+                Filesystem(fs_controller, RUN_FILESYSTEM_CHANNEL), generics: (controller::filesystem_controller::ProfilingFlash<platform::flash::SharedFlashMutex<TestFlash>>),
+                Telemetry(telemetry_ctrl, RUN_TELEMETRY_CONSUMER_CHANNEL), generics: ({ cat_detector::MAX_RECORDS }, { controller::telemetry_controller::CHANNEL_CAPACITY }, platform::flash::SharedFlashMutex<TestFlash>),
             }
         }
 
@@ -808,40 +817,33 @@ fn test_spawn_controllers_embassy_routing() {
 
 #[test]
 fn test_filesystem_utilization_limit() {
-    // Total partition size
-    let partition_size =
-        (cat_detector::STORAGE_PARTITION_END - cat_detector::STORAGE_PARTITION_START) as usize;
+    // 1. Filesystem partition size (64 KB)
+    let fs_partition_size =
+        (cat_detector::FS_PARTITION_END - cat_detector::FS_PARTITION_START) as usize;
+    assert_eq!(fs_partition_size, 64 * 1024);
 
-    // Non-telemetry space budget
+    // Active filesystem files budget
     let vl53l0x_cal_size = 168;
     let motor_cal_size = 168;
     let crash_idx_size = 44;
     let crash_logs_size = cat_detector::MAX_CRASH_LOGS as usize * 1240; // 1240 bytes per crash log
     let dir_file_size = 2088; // estimated maximum .dir size
-    let telemetry_metadata_size = 52;
-    let non_telemetry_space = vl53l0x_cal_size
-        + motor_cal_size
-        + crash_idx_size
-        + crash_logs_size
-        + dir_file_size
-        + telemetry_metadata_size;
+    let fs_active_space =
+        vl53l0x_cal_size + motor_cal_size + crash_idx_size + crash_logs_size + dir_file_size;
 
-    // Telemetry space budget
-    // Each chunk occupies CHUNK_FILE_SIZE bytes plus sequential_storage map metadata overhead (~40 bytes)
-    let telemetry_chunk_overhead = 40;
-    let telemetry_space =
-        cat_detector::NUM_CHUNKS * (model::telemetry::CHUNK_FILE_SIZE + telemetry_chunk_overhead);
+    let fs_utilization_ratio = fs_active_space as f64 / fs_partition_size as f64;
 
-    let total_budget = non_telemetry_space + telemetry_space;
-    let utilization_ratio = total_budget as f64 / partition_size as f64;
-
-    // Assert that we have at least 25% headroom (utilization <= 75%)
-    // This leaves plenty of empty pages for sequential_storage GC to prevent choking.
+    // Assert that we have at least 25% headroom in the filesystem partition
     assert!(
-        utilization_ratio <= 0.75,
-        "Filesystem capacity utilization is too high! Estimated active storage usage is {} bytes out of {} bytes partition size ({:.2}%). GC choking will occur unless utilization is <= 75.00%. Please reduce NUM_CHUNKS.",
-        total_budget,
-        partition_size,
-        utilization_ratio * 100.0
+        fs_utilization_ratio <= 0.75,
+        "Filesystem partition utilization is too high! Estimated active storage usage is {} bytes out of {} bytes partition size ({:.2}%). GC choking will occur unless utilization is <= 75.00%.",
+        fs_active_space,
+        fs_partition_size,
+        fs_utilization_ratio * 100.0
     );
+
+    // 2. Telemetry partition size (192 KB)
+    let telemetry_partition_size =
+        (cat_detector::TELEMETRY_PARTITION_END - cat_detector::TELEMETRY_PARTITION_START) as usize;
+    assert_eq!(telemetry_partition_size, 192 * 1024);
 }
