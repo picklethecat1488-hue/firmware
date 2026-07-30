@@ -769,3 +769,15 @@ macro_rules! define_project_metadata {
         pub static PROJECT_METADATA_ANCHOR: u8 = 0x42;
     };
 }
+
+/// Macro to statically assert that a list of expressions (e.g., thresholds) are in strictly ascending order.
+#[macro_export]
+macro_rules! assert_ascending {
+    ($first:expr, $second:expr $(, $rest:expr)* $(,)?) => {
+        const _: () = {
+            assert!($first < $second, "Thresholds must be strictly ascending");
+        };
+        $crate::assert_ascending!($second $(, $rest)*);
+    };
+    ($last:expr $(,)?) => {};
+}
