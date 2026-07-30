@@ -219,6 +219,7 @@ impl<I: I2c> ChargeStatus for Max17048<I> {
 impl<I: I2c> Probeable for Max17048<I> {
     type Error = PeripheralError;
 
+    #[tracing::instrument(level = "trace")]
     fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         let id = self.read_register(Register::VRESET)?;
         if (id & 0x00F0) == 0x0010 {
@@ -228,7 +229,33 @@ impl<I: I2c> Probeable for Max17048<I> {
         }
     }
 
+    #[tracing::instrument(level = "trace")]
     fn reset(&mut self) -> Result<(), Self::Error> {
         self.write_register(Register::CMD, 0x5400)
     }
+}
+
+/// Macro to initialize a MAX17048 fuel gauge during boot.
+#[macro_export]
+macro_rules! init_max17048 {
+    ($i2c:expr, $boot_status:expr) => {{
+        let mut fuel_gauge = $crate::max17048::Max17048::new($i2c);
+        {
+            use ::model::interfaces::BootStatus;
+            use ::model::interfaces::Probeable;
+            use $crate::ToPeripheralError;
+            if let Err(ref e) = fuel_gauge.read_chip_id() {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::warn!("MAX17048: Probing failed: {:?}", defmt::Debug2Format(e));
+                let pe = e.to_peripheral_error();
+                $boot_status.record_error(pe);
+            }
+            if let Err(ref e) = fuel_gauge.reset() {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::warn!("MAX17048: Reset failed: {:?}", defmt::Debug2Format(e));
+                let pe = e.to_peripheral_error();
+                $boot_status.record_error(pe);
+            }
+        }
+    }};
 }

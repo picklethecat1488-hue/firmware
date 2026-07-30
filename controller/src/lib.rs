@@ -344,6 +344,8 @@ macro_rules! define_controllers {
         $crate::define_controllers! { $($rest)* }
     };
 
+
+
     // Base case: empty
     () => {};
 }
@@ -629,7 +631,7 @@ macro_rules! spawn_controllers {
         telemetry: $telemetry:expr,
         controllers: {
             $(
-                $name:ident ( $controller:expr, $rx:ident $(, $extra_rx:ident)* )
+                $name:ident ( $controller:expr, $rx:ident $(, $extra_rx:expr)* )
                 , generics: ($($gen:tt)*)
             ),* $(,)?
         }
@@ -662,7 +664,7 @@ macro_rules! spawn_controllers {
         $spawner:expr,
         controllers: {
             $(
-                $name:ident ( $controller:expr, $rx:ident $(, $extra_rx:ident)* )
+                $name:ident ( $controller:expr, $rx:ident $(, $extra_rx:expr)* )
                 , generics: ($($gen:tt)*)
             ),* $(,)?
         }
@@ -760,7 +762,7 @@ macro_rules! spawn_single_controller {
         );
     };
     // System
-    ($spawner:expr, System, $controller:expr, $rx:ident, $telemetry:expr, ($gesture_rx:ident, $thermal_action_rx:ident), ($controller_type:ty)) => {
+    ($spawner:expr, System, $controller:expr, $rx:ident, $telemetry:expr, ($gesture_rx:expr, $thermal_action_rx:expr), ($controller_type:ty)) => {
         $crate::run_system_task!(
             $spawner,
             $rx,

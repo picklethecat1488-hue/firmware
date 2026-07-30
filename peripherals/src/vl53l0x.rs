@@ -310,6 +310,7 @@ impl<I: I2c> model::calibration::Calibration for Vl53l0x<I> {
 impl<I: I2c> Probeable for Vl53l0x<I> {
     type Error = PeripheralError;
 
+    #[tracing::instrument(level = "trace")]
     fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         let mut buf = [0u8; 1];
         self.i2c
@@ -328,6 +329,7 @@ impl<I: I2c> Probeable for Vl53l0x<I> {
         }
     }
 
+    #[tracing::instrument(level = "trace")]
     fn reset(&mut self) -> Result<(), Self::Error> {
         // No software-initiated reset register on the VL53L0X.
         // It relies on the hardware XSHUT pin for reset, so this is a no-op.
@@ -338,21 +340,37 @@ impl<I: I2c> Probeable for Vl53l0x<I> {
 /// Macro to initialize a VL53L0X proximity sensor during boot.
 #[macro_export]
 macro_rules! init_vl53l0x {
-    ($i2c:expr, $gpio_pins:expr, $name:expr, $xshut_pin:expr, $addr:expr, $threshold:expr) => {
+    ($i2c:expr, $gpio_pins:expr, $name:expr, $xshut_pin:expr, $addr:expr, $threshold:expr, $boot_status:expr) => {
         if let Some(ref mut pin) = $gpio_pins[$xshut_pin as usize] {
             pin.set_high();
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
             ::cortex_m::asm::delay(20_000); // Wait for sensor to boot
             let mut sensor = $crate::vl53l0x::Vl53l0x::new($i2c, 0x29);
             {
+                use ::model::interfaces::BootStatus;
                 use ::model::interfaces::Probeable;
+                use $crate::ToPeripheralError;
                 if let Err(ref e) = sensor.read_chip_id() {
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::warn!("{}: Probing failed: {:?}", $name, defmt::Debug2Format(e));
+                    let pe = e.to_peripheral_error();
+                    $boot_status.record_error(pe);
                 }
-                let _ = sensor.reset();
+                if let Err(ref e) = sensor.reset() {
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::warn!("{}: Reset failed: {:?}", $name, defmt::Debug2Format(e));
+                    let pe = e.to_peripheral_error();
+                    $boot_status.record_error(pe);
+                }
             }
             if let Err(e) = sensor.init($addr, $threshold, $crate::vl53l0x::InterruptMode::LowLevel)
             {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::warn!("{}: Init failed: {:?}", $name, defmt::Debug2Format(&e));
+                use ::model::interfaces::BootStatus;
+                use $crate::ToPeripheralError;
+                let pe = e.to_peripheral_error();
+                $boot_status.record_error(pe);
             }
         }
     };

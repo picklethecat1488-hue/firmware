@@ -37,9 +37,14 @@ impl DataType {
         if name.starts_with("crash_") && (name.ends_with(".log") || name.ends_with(".cbor")) {
             return DataType::CrashLog;
         }
+        if name == model::telemetry::TELEMETRY_HEADER_FILE
+            || name == "telemetry.bin"
+            || name == "telemetry.cbor"
+        {
+            return DataType::Telemetry;
+        }
         match name {
             "calibration.bin" | "calibration.protobuf" => DataType::Calibration,
-            "telemetry.bin" | "telemetry.cbor" | "telemetry.rrd" => DataType::Telemetry,
             "crash.log" | "crash.cbor" => DataType::CrashLog,
             _ => DataType::Unknown,
         }

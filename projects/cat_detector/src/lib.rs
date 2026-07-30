@@ -545,6 +545,15 @@ pub static TELEMETRY_CHANNEL: controller::TelemetryChannel<
     MutexRaw,
     { controller::telemetry_controller::CHANNEL_CAPACITY },
 > = controller::TelemetryChannel::new();
+
+const _: () = {
+    let max_boot_errors = 16;
+    let safe_headroom = 16;
+    assert!(
+        controller::telemetry_controller::CHANNEL_CAPACITY >= max_boot_errors + safe_headroom,
+        "TELEMETRY_CHANNEL capacity is too small to buffer all boot-time errors with safe headroom"
+    );
+};
 /// Shared command channel for filesystem operations.
 pub static FILESYSTEM_CHANNEL: controller::FilesystemChannel<MutexRaw, 16> =
     controller::FilesystemChannel::new();

@@ -6,6 +6,9 @@
 /// The fixed size key length in bytes for filename mapping.
 pub const KEY_SIZE: usize = 32;
 
+/// The maximum length of a filename supported by the filesystem.
+pub const MAX_FILE_NAME_LEN: usize = 32;
+
 /// The maximum size of the directory index listing buffer and string in bytes.
 pub const DIR_BUF_SIZE: usize = 2048;
 

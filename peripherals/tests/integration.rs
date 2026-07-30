@@ -570,3 +570,158 @@ fn test_probeable_vl53l0x() {
         PeripheralError::DeviceNotFound(0x99)
     );
 }
+
+struct TestBootStatus {
+    errors: Vec<model::types::PeripheralError>,
+}
+
+impl model::interfaces::BootStatus for TestBootStatus {
+    fn record_error(&mut self, error: model::types::PeripheralError) {
+        self.errors.push(error);
+    }
+}
+
+#[test]
+fn test_macro_init_vl53l0x() {
+    // 1. Happy case
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0xEE]); // chip ID
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c { reads, writes };
+
+    let mut gpio_pins: [Option<MockPin>; 30] = Default::default();
+    let pin_state = core::cell::Cell::new(false);
+    gpio_pins[2] = Some(MockPin {
+        is_high: &pin_state,
+    });
+
+    let mut errors = TestBootStatus { errors: vec![] };
+    peripherals::init_vl53l0x!(
+        &mut i2c,
+        &mut gpio_pins,
+        "ToF Test",
+        2,
+        0x30,
+        100,
+        &mut errors
+    );
+
+    assert!(errors.errors.is_empty());
+    assert!(pin_state.get());
+
+    // 2. Sad case (Wrong chip ID)
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0x44]); // wrong ID
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c { reads, writes };
+
+    let mut gpio_pins: [Option<MockPin>; 30] = Default::default();
+    let pin_state = core::cell::Cell::new(false);
+    gpio_pins[2] = Some(MockPin {
+        is_high: &pin_state,
+    });
+
+    let mut errors = TestBootStatus { errors: vec![] };
+    peripherals::init_vl53l0x!(
+        &mut i2c,
+        &mut gpio_pins,
+        "ToF Test",
+        2,
+        0x30,
+        100,
+        &mut errors
+    );
+
+    assert_eq!(errors.errors.len(), 1);
+    assert_eq!(
+        errors.errors[0],
+        model::types::PeripheralError::DeviceNotFound(0x44)
+    );
+}
+
+#[test]
+fn test_macro_init_max17048() {
+    // 1. Happy case
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0x00, 0x10]); // VRESET matching (val & 0x00F0) == 0x0010
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c { reads, writes };
+
+    let mut errors = TestBootStatus { errors: vec![] };
+    peripherals::init_max17048!(&mut i2c, &mut errors);
+
+    assert!(errors.errors.is_empty());
+
+    // 2. Sad case (Wrong chip ID)
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0x00, 0x55]); // wrong ID
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c { reads, writes };
+
+    let mut errors = TestBootStatus { errors: vec![] };
+    peripherals::init_max17048!(&mut i2c, &mut errors);
+
+    assert_eq!(errors.errors.len(), 1);
+    assert_eq!(
+        errors.errors[0],
+        model::types::PeripheralError::DeviceNotFound(0x55)
+    );
+}
+
+#[test]
+fn test_macro_init_ina219() {
+    // 1. Happy case
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0x39, 0x9F]); // expected INA219 chip ID
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c { reads, writes };
+
+    let mut errors = TestBootStatus { errors: vec![] };
+    peripherals::init_ina219!(&mut i2c, &mut errors);
+
+    assert!(errors.errors.is_empty());
+
+    // 2. Sad case (Wrong chip ID)
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0x11, 0x11]); // wrong ID
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c { reads, writes };
+
+    let mut errors = TestBootStatus { errors: vec![] };
+    peripherals::init_ina219!(&mut i2c, &mut errors);
+
+    assert_eq!(errors.errors.len(), 1);
+    assert_eq!(
+        errors.errors[0],
+        model::types::PeripheralError::DeviceNotFound(0x1111)
+    );
+}
+
+#[test]
+fn test_macro_init_attiny816() {
+    // 1. Happy case
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0x86]); // expected chip ID
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c { reads, writes };
+
+    let mut errors = TestBootStatus { errors: vec![] };
+    peripherals::init_attiny816!(&mut i2c, &mut errors);
+
+    assert!(errors.errors.is_empty());
+
+    // 2. Sad case (Wrong chip ID)
+    let mut reads = std::collections::VecDeque::new();
+    reads.push_back(vec![0x99]); // wrong ID
+    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
+    let mut i2c = ProbeableMockI2c { reads, writes };
+
+    let mut errors = TestBootStatus { errors: vec![] };
+    peripherals::init_attiny816!(&mut i2c, &mut errors);
+
+    assert_eq!(errors.errors.len(), 1);
+    assert_eq!(
+        errors.errors[0],
+        model::types::PeripheralError::DeviceNotFound(0x99)
+    );
+}
