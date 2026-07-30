@@ -94,23 +94,6 @@ impl<
     pub const TELEMETRY_FLUSH_INTERVAL: embassy_time::Duration =
         embassy_time::Duration::from_secs(15);
 
-    /// Flushes any pending asynchronous database update.
-    pub async fn flush_pending_write(&mut self) -> Result<(), ()> {
-        Ok(())
-    }
-
-    /// Initializes the telemetry controller.
-    #[crate::tracing::instrument(name = "telemetry_controller::init", level = "info")]
-    pub async fn init(&mut self) -> Result<(), ()> {
-        Ok(())
-    }
-
-    /// Flushes pending telemetry data.
-    #[crate::tracing::instrument(name = "telemetry_controller::flush", level = "info")]
-    pub async fn flush(&mut self) -> Result<(), ()> {
-        Ok(())
-    }
-
     /// Pushes a telemetry record into the ring buffer and persists it to flash queue.
     #[crate::tracing::instrument(
         name = "telemetry_controller::push_record",
@@ -176,7 +159,6 @@ impl<
         &mut self,
         rx: TelemetryReceiver<CriticalSectionRawMutex, N>,
     ) -> ! {
-        let _ = self.init().await;
         let mut last_print = embassy_time::Instant::now();
         let mut counters = TelemetryCounters::default();
 

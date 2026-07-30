@@ -77,8 +77,6 @@ fn test_telemetry_controller_ring_buffer() {
 
         let fs_fut = fs.run(FS_CHANNEL.receiver());
         let test_fut = async {
-            assert!(telemetry.init().await.is_ok());
-
             // Push 50 records
             for i in 0..50 {
                 controller::telemetry_controller::TEST_MOCK_TIME.store(i as u64, Ordering::Relaxed);
@@ -155,8 +153,6 @@ fn test_telemetry_controller_wrap() {
 
         let fs_fut = fs.run(FS_CHANNEL.receiver());
         let test_fut = async {
-            assert!(telemetry.init().await.is_ok());
-
             // Push 500 records (will easily overflow 8 KB and trigger erasure)
             for i in 0..500 {
                 controller::telemetry_controller::TEST_MOCK_TIME.store(i as u64, Ordering::Relaxed);

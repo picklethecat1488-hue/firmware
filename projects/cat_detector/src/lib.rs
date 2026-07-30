@@ -7,6 +7,32 @@
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
 #![deny(missing_docs)]
 
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+mod bsp_target;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub use bsp_target::*;
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+mod bsp_host;
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+pub use bsp_host::*;
+
+pub use controller::{
+    run_filesystem_task, run_telemetry_task, shell_controller, telemetry_controller as telemetry,
+    BatteryFeatureConfig, FilesystemChannel, LedFeatureConfig, MotorFeatureConfig, ProximityEvent,
+    ProximityFeatureConfig, SystemCommand, SystemController, SystemFeatureSet, TelemetryChannel,
+    ThermalFeatureConfig,
+};
+pub use model::types::SystemStatus;
+pub use platform::BatteryUpdateAction;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub use platform::panic_handler::handle_panic_with_sizes;
+
+pub use platform::panic_handler::init as init_panic_handler;
+
 /// Pump IA pin (GPIO 14)
 pub const PUMP_PIN_IA: u32 = 14;
 /// Pump IB pin (GPIO 15)
@@ -444,25 +470,6 @@ pub fn handle_panic(info: &core::panic::PanicInfo) -> ! {
     >(info, cpuid, stack_top);
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-mod bsp_target;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-pub use bsp_target::*;
-
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
-mod bsp_host;
-
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
-pub use bsp_host::*;
-
-/// System state and orchestration controller.
-pub use controller::{
-    BatteryFeatureConfig, LedFeatureConfig, MotorFeatureConfig, ProximityEvent,
-    ProximityFeatureConfig, SystemCommand, SystemController, SystemFeatureSet,
-    ThermalFeatureConfig,
-};
-
 /// The default inactivity timeout in seconds before transitioning to Sleep.
 pub const INACTIVITY_TIMEOUT_SECONDS: u32 = 30;
 /// The critical state of charge threshold under which battery is considered critical.
@@ -496,12 +503,6 @@ platform::assert_ascending!(
 );
 
 platform::assert_ascending!(OVERHEATING_TEMP_THRESHOLD_MC, CRITICAL_TEMP_THRESHOLD_MC,);
-
-/// Bringup serial command and shell controller.
-pub use controller::shell_controller;
-
-pub use model::types::SystemStatus;
-pub use platform::BatteryUpdateAction;
 
 /// Feature set for the Cat Detector app that implements SystemFeatureSet.
 #[allow(clippy::type_complexity)]
@@ -587,25 +588,11 @@ pub type SystemControllerType =
 /// The concrete flash type used for the filesystem partition in production.
 pub type FlashDeviceType = platform::flash::TargetFlash<{ FLASH_SIZE }>;
 
-/// Re-export the telemetry module from the controller crate
-pub use controller::telemetry_controller as telemetry;
-
 /// Default core monitor timeout in milliseconds.
 pub const CORE_MONITOR_TIMEOUT_MS: u32 = 10_000;
 
 /// Default core monitor warning threshold percentage.
 pub const CORE_MONITOR_WARN_PCT: u32 = 80;
-
-/// Re-export the run_filesystem_task macro from the controller crate
-pub use controller::run_filesystem_task;
-/// Re-export the run_telemetry_task macro from the controller crate
-pub use controller::run_telemetry_task;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-pub use platform::panic_handler::handle_panic_with_sizes;
-
-/// Re-export the modular panic handler initialization
-pub use platform::panic_handler::init as init_panic_handler;
 
 platform::define_project_metadata! {
     chip: "rp2040",
