@@ -194,6 +194,17 @@ pub struct DefmtLogger;
 impl DefmtLogger {
     /// Sets the active global writer for defmt logging.
     pub fn set_writer(writer: &'static dyn DefmtLogWriter) {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        {
+            // Reference the project metadata anchor symbol to statically verify macro invocation at link time.
+            extern "Rust" {
+                static PROJECT_METADATA_ANCHOR: u8;
+            }
+            unsafe {
+                let _ = core::ptr::read_volatile(&PROJECT_METADATA_ANCHOR);
+            }
+        }
+
         critical_section::with(|_| unsafe {
             ACTIVE_WRITER = Some(writer);
         });

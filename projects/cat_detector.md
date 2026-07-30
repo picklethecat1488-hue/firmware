@@ -29,6 +29,7 @@ sequenceDiagram
     Participant BC as BatteryController
     Participant TC as ThermalController
     Participant TMC as TelemetryController
+    Participant Flash as Shared Flash (QSPI)
 
     Main->>Main: Board::init() (Pico Pins/I2C/Dynamic Driver Setup)
     Main->>SC: Spawn run_system_task
@@ -42,8 +43,7 @@ sequenceDiagram
     Main->>TMC: Spawn run_telemetry_task
 
     par System Control Loop
-        SC->>SC: Monitor inactivity (30s timeout)
-        SC->>SC: Coordinate sleep mode transitions
+        SC->>SC: Coordinate sleep mode transitions & inactivity (30s timeout)
     and Motor Control Loop
         MC->>MC: Read INA219 Current Sensor
         MC->>MC: Update FSM (Stall & Dry Run Protection)
@@ -66,7 +66,7 @@ sequenceDiagram
         TC->>TMC: Send TelemetryRecord
     and Telemetry Loop
         TMC->>TMC: Receive TelemetryRecord
-        TMC->>FSC: Write telemetry.rrd (via FsRequest)
+        TMC->>Flash: Write record directly to queue range (using SharedFlashMutex)
     end
 ```
 
@@ -158,11 +158,11 @@ The bringup script compiles and downloads the `shell` binary back to verify file
     *   *Type*: Target Shell Command
     *   *Flash Before*: `shell`
     *   *Command*: `fs ls`
-    *   *Expected Output*: Lists directory contents (`vl53l0x_cal.cbor`, `crash_0.cbor`, `telemetry.rrd`).
+    *   *Expected Output*: Lists directory contents (`vl53l0x_cal.cbor`, `crash_0.cbor`).
 *   **Step 14: Decode and Export Telemetry Stream**
     *   *Type*: Host Command
     *   *Command*: `cargo run --package host_fs --bin host_fs -- --elf {shell_elf} export-telemetry telemetry.csv`
-    *   *Expected Output*: Decodes CBOR updates in `telemetry.rrd` to `telemetry.csv`.
+    *   *Expected Output*: Decodes CBOR updates directly from the flash queue partition to `telemetry.csv`.
 *   **Step 15: Decode and Symbolicate Crash Dumps**
     *   *Type*: Host Command
     *   *Command*: `cargo run --package host_fs --bin host_fs -- --elf {shell_elf} crash-log`

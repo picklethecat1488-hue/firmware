@@ -394,10 +394,12 @@ macro_rules! append_group_arm {
             Fs {
                 /// Subcommand (format, ls)
                 subcommand: Option<$crate::filesystem_controller::FilesystemSubcommand>,
+                /// Optional target to format (fs, telemetry, all)
+                target: Option<$crate::filesystem_controller::FormatTarget>,
             },
         ] [
             $($matches)*
-            $name::Fs { subcommand } => $crate::filesystem_controller::handle_fs_cli($ctrl, subcommand, $writer),
+            $name::Fs { subcommand, target } => $crate::filesystem_controller::handle_fs_cli($ctrl, subcommand, target, $writer),
         ] -> $mode, $proc_name);
     };
     (System, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {

@@ -133,10 +133,6 @@ pub static PANIC_CONFIG: embassy_sync::blocking_mutex::Mutex<
 > = embassy_sync::blocking_mutex::Mutex::new(core::cell::RefCell::new(None));
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Global static storing the stack top address of Core 1 (set on boot)
-pub static mut CORE1_STACK_TOP: u32 = 0;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(clippy::declare_interior_mutable_const)]
 const INIT_STATE: crate::types::CorePanicState = crate::types::CorePanicState {
     panicked: core::sync::atomic::AtomicBool::new(false),
@@ -166,14 +162,24 @@ pub fn init(
     #[cfg(all(target_arch = "arm", target_os = "none"))] max_crash_logs: u32,
 ) {
     #[cfg(all(target_arch = "arm", target_os = "none"))]
-    critical_section::with(|cs| {
-        PANIC_CONFIG.borrow(cs).replace(Some(PanicConfig {
-            flash,
-            range,
-            fs_buf,
-            max_crash_logs,
-        }));
-    });
+    {
+        // Reference the project metadata anchor symbol to statically verify macro invocation at link time.
+        extern "Rust" {
+            static PROJECT_METADATA_ANCHOR: u8;
+        }
+        unsafe {
+            let _ = core::ptr::read_volatile(&PROJECT_METADATA_ANCHOR);
+        }
+
+        critical_section::with(|cs| {
+            PANIC_CONFIG.borrow(cs).replace(Some(PanicConfig {
+                flash,
+                range,
+                fs_buf,
+                max_crash_logs,
+            }));
+        });
+    }
 }
 
 /// Heuristic stack scanner that walks a slice of stack words and extracts return PCs

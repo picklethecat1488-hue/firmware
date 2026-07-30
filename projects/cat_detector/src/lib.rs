@@ -7,6 +7,32 @@
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
 #![deny(missing_docs)]
 
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+mod bsp_target;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub use bsp_target::*;
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+mod bsp_host;
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+pub use bsp_host::*;
+
+pub use controller::{
+    run_filesystem_task, run_telemetry_task, shell_controller, telemetry_controller as telemetry,
+    BatteryFeatureConfig, FilesystemChannel, LedFeatureConfig, MotorFeatureConfig, ProximityEvent,
+    ProximityFeatureConfig, SystemCommand, SystemController, SystemFeatureSet, TelemetryChannel,
+    ThermalFeatureConfig,
+};
+pub use model::types::SystemStatus;
+pub use platform::BatteryUpdateAction;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub use platform::panic_handler::handle_panic_with_sizes;
+
+pub use platform::panic_handler::init as init_panic_handler;
+
 /// Pump IA pin (GPIO 14)
 pub const PUMP_PIN_IA: u32 = 14;
 /// Pump IB pin (GPIO 15)
@@ -54,6 +80,25 @@ pub const DEFAULT_PRESS_THRESHOLD_MM: u16 = 20;
 pub const STORAGE_PARTITION_START: u32 = 0x1C_0000; // 1.75 MB
 /// End address of the filesystem storage partition in flash (2.00 MB limit).
 pub const STORAGE_PARTITION_END: u32 = 0x20_0000; // 2.00 MB
+
+/// Start address of the map filesystem partition.
+pub const FS_PARTITION_START: u32 = 0x1C_0000;
+/// End address of the map filesystem partition.
+pub const FS_PARTITION_END: u32 = 0x1D_0000; // 64 KB
+
+/// Start address of the telemetry queue partition.
+pub const TELEMETRY_PARTITION_START: u32 = 0x1D_0000;
+/// End address of the telemetry queue partition.
+pub const TELEMETRY_PARTITION_END: u32 = 0x20_0000; // 192 KB
+
+// Statically verify that filesystem and telemetry partitions are within STORAGE bounds and do not overlap.
+platform::assert_partitions! {
+    storage_range: (STORAGE_PARTITION_START, STORAGE_PARTITION_END),
+    partition_ranges: [
+        (FS_PARTITION_START, FS_PARTITION_END),
+        (TELEMETRY_PARTITION_START, TELEMETRY_PARTITION_END)
+    ]
+}
 
 /// Total number of telemetry chunks
 pub const NUM_CHUNKS: usize = 77;
@@ -177,6 +222,10 @@ pub static mut MOTOR_CTRL_CORE0: Option<
 > = None;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global instance of the SystemController.
+pub static mut SYSTEM_CTRL: Option<SystemControllerType> = None;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Type alias for the blocking flash device.
 pub type FlashDevice = embassy_rp::flash::Flash<
     'static,
@@ -280,11 +329,29 @@ pub async fn init_controllers(board: Board<'static>) {
             motor,
             current_sensor,
         ));
+
+        SYSTEM_CTRL = Some(controller::SystemController::new(
+            create_default_feature_set(),
+            TELEMETRY_CHANNEL.sender(),
+            crate::get_boot_reason(),
+        ));
     }
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-static mut CORE1_STACK: embassy_rp::multicore::Stack<4096> = embassy_rp::multicore::Stack::new();
+/// Core 1 stack size in bytes.
+pub const CORE1_STACK_SIZE: usize = 4096;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Core 1 default stack top address.
+pub const CORE1_DEFAULT_STACK_TOP: u32 = 0x2004_0000;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+static mut CORE1_STACK: embassy_rp::multicore::Stack<CORE1_STACK_SIZE> =
+    embassy_rp::multicore::Stack::new();
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+static mut CORE1_STACK_TOP: u32 = CORE1_DEFAULT_STACK_TOP;
 
 /// Global pointer to the active MotorController on Core 1 (populated during startup).
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -366,7 +433,7 @@ pub async fn bootstrap_core1_task(
 /// Boots Core 1 and starts the RAM executor.
 pub fn boot_core1(core1: embassy_rp::peripherals::CORE1) {
     unsafe {
-        platform::panic_handler::CORE1_STACK_TOP = core::ptr::addr_of!(CORE1_STACK) as u32 + 4096;
+        CORE1_STACK_TOP = core::ptr::addr_of!(CORE1_STACK) as u32 + CORE1_STACK_SIZE as u32;
         crate::Board::init_executor_core1();
     }
 
@@ -387,14 +454,8 @@ pub fn boot_core1(core1: embassy_rp::peripherals::CORE1) {
 pub fn handle_panic(info: &core::panic::PanicInfo) -> ! {
     let cpuid_val = unsafe { core::ptr::read_volatile(0xd0000000 as *const u32) };
     let (cpuid, stack_top) = match cpuid_val {
-        0 => (platform::types::CpuId::Core0, 0x2004_2000),
-        1 => {
-            let top = unsafe { platform::panic_handler::CORE1_STACK_TOP };
-            (
-                platform::types::CpuId::Core1,
-                if top != 0 { top } else { 0x2004_0000 },
-            )
-        }
+        0 => (platform::types::CpuId::Core0, STACK_TOP),
+        1 => (platform::types::CpuId::Core1, unsafe { CORE1_STACK_TOP }),
         _ => loop {
             cortex_m::asm::nop();
         },
@@ -409,36 +470,16 @@ pub fn handle_panic(info: &core::panic::PanicInfo) -> ! {
     >(info, cpuid, stack_top);
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-mod bsp_target;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-pub use bsp_target::*;
-
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
-mod bsp_host;
-
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
-pub use bsp_host::*;
-
-/// System state and orchestration controller.
-pub use controller::{
-    BatteryFeatureConfig, LedFeatureConfig, MotorFeatureConfig, ProximityEvent,
-    ProximityFeatureConfig, SystemCommand, SystemController, SystemFeatureSet,
-    ThermalFeatureConfig,
-};
-
 /// The default inactivity timeout in seconds before transitioning to Sleep.
 pub const INACTIVITY_TIMEOUT_SECONDS: u32 = 30;
+/// The critical state of charge threshold under which battery is considered critical.
+pub const CRITICAL_BATTERY_SOC_THRESHOLD: u8 = 10;
 /// The state of charge threshold under which battery is considered low.
 pub const LOW_BATTERY_SOC_THRESHOLD: u8 = 20;
 /// The state of charge threshold under which battery is considered medium.
 pub const MID_BATTERY_SOC_THRESHOLD: u8 = 21;
 /// The state of charge threshold under which battery is considered high.
 pub const HIGH_BATTERY_SOC_THRESHOLD: u8 = 80;
-
-/// The critical state of charge threshold under which battery is considered critical.
-pub const CRITICAL_BATTERY_SOC_THRESHOLD: u8 = 10;
 /// The state of charge hysteresis to prevent rapid toggling around thresholds.
 pub const BATTERY_SOC_HYSTERESIS: u8 = 2;
 
@@ -449,32 +490,19 @@ pub const CRITICAL_TEMP_THRESHOLD_MC: i32 = 60000;
 
 const _: () = {
     assert!(
-        LOW_BATTERY_SOC_THRESHOLD > 0,
-        "Low battery threshold be nonzero"
-    );
-    assert!(
-        CRITICAL_BATTERY_SOC_THRESHOLD < LOW_BATTERY_SOC_THRESHOLD,
-        "Critical battery threshold must be lower than the low battery threshold"
-    );
-    assert!(
-        LOW_BATTERY_SOC_THRESHOLD < MID_BATTERY_SOC_THRESHOLD,
-        "Low battery threshold must be lower than the mid battery threshold"
-    );
-    assert!(
-        MID_BATTERY_SOC_THRESHOLD < HIGH_BATTERY_SOC_THRESHOLD,
-        "Mid battery threshold must be lower than the high battery threshold"
+        CRITICAL_BATTERY_SOC_THRESHOLD > 0,
+        "Critical battery threshold must be nonzero"
     );
 };
 
-/// Bringup serial command and shell controller.
-pub use controller::shell_controller;
+platform::assert_ascending!(
+    CRITICAL_BATTERY_SOC_THRESHOLD,
+    LOW_BATTERY_SOC_THRESHOLD,
+    MID_BATTERY_SOC_THRESHOLD,
+    HIGH_BATTERY_SOC_THRESHOLD,
+);
 
-pub use model::types::SystemStatus;
-pub use platform::{
-    cbor,
-    types::{ProjectMetadata, STACK_SCAN_LIMIT},
-    BatteryUpdateAction,
-};
+platform::assert_ascending!(OVERHEATING_TEMP_THRESHOLD_MC, CRITICAL_TEMP_THRESHOLD_MC,);
 
 /// Feature set for the Cat Detector app that implements SystemFeatureSet.
 #[allow(clippy::type_complexity)]
@@ -549,14 +577,6 @@ pub static TELEMETRY_CHANNEL: controller::TelemetryChannel<
     { controller::telemetry_controller::CHANNEL_CAPACITY },
 > = controller::TelemetryChannel::new();
 
-const _: () = {
-    let max_boot_errors = 16;
-    let safe_headroom = 16;
-    assert!(
-        controller::telemetry_controller::CHANNEL_CAPACITY >= max_boot_errors + safe_headroom,
-        "TELEMETRY_CHANNEL capacity is too small to buffer all boot-time errors with safe headroom"
-    );
-};
 /// Shared command channel for filesystem operations.
 pub static FILESYSTEM_CHANNEL: controller::FilesystemChannel<MutexRaw, 16> =
     controller::FilesystemChannel::new();
@@ -566,19 +586,7 @@ pub type SystemControllerType =
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// The concrete flash type used for the filesystem partition in production.
-pub type FlashDeviceType = controller::filesystem_controller::ProfilingFlash<
-    platform::BlockingAsyncFlash<
-        embassy_rp::flash::Flash<
-            'static,
-            embassy_rp::peripherals::FLASH,
-            embassy_rp::flash::Blocking,
-            { FLASH_SIZE },
-        >,
-    >,
->;
-
-/// Re-export the telemetry module from the controller crate
-pub use controller::telemetry_controller as telemetry;
+pub type FlashDeviceType = platform::flash::TargetFlash<{ FLASH_SIZE }>;
 
 /// Default core monitor timeout in milliseconds.
 pub const CORE_MONITOR_TIMEOUT_MS: u32 = 10_000;
@@ -586,39 +594,14 @@ pub const CORE_MONITOR_TIMEOUT_MS: u32 = 10_000;
 /// Default core monitor warning threshold percentage.
 pub const CORE_MONITOR_WARN_PCT: u32 = 80;
 
-/// Re-export the run_filesystem_task macro from the controller crate
-pub use controller::run_filesystem_task;
-/// Re-export the run_telemetry_task macro from the controller crate
-pub use controller::run_telemetry_task;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-pub use platform::panic_handler::handle_panic_with_sizes;
-
-/// Re-export the modular panic handler initialization
-pub use platform::panic_handler::init as init_panic_handler;
-
-/// Returns the current system uptime in microseconds since boot (64-bit precision).
-pub fn system_time() -> u64 {
-    embassy_time::Instant::now().as_micros()
+platform::define_project_metadata! {
+    chip: "rp2040",
+    flash_base: 0x10000000,
+    storage_start: STORAGE_PARTITION_START,
+    storage_end: STORAGE_PARTITION_END,
+    flash_write_size: FLASH_WRITE_SIZE,
+    flash_erase_size: FLASH_ERASE_SIZE
 }
-
-const METADATA_WRITER: cbor::ConstCborWriter<128> = ProjectMetadata::serialize(
-    "rp2040",
-    0x10000000 + STORAGE_PARTITION_START,
-    STORAGE_PARTITION_END - STORAGE_PARTITION_START,
-    FLASH_WRITE_SIZE as u32,
-    FLASH_ERASE_SIZE as u32,
-    STACK_SCAN_LIMIT,
-);
-
-/// Embedded project metadata for autodetect functionality.
-#[used]
-#[no_mangle]
-#[cfg_attr(
-    all(target_arch = "arm", target_os = "none"),
-    link_section = ".rodata.project_metadata"
-)]
-pub static PROJECT_METADATA: [u8; METADATA_WRITER.len] = cbor::extract_bytes(METADATA_WRITER.buf);
 
 /// Creates the standard CatDetectorFeatureSet configured with the application's actual channels.
 pub fn create_default_feature_set(
