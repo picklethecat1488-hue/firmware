@@ -465,15 +465,14 @@ pub use controller::{
 
 /// The default inactivity timeout in seconds before transitioning to Sleep.
 pub const INACTIVITY_TIMEOUT_SECONDS: u32 = 30;
+/// The critical state of charge threshold under which battery is considered critical.
+pub const CRITICAL_BATTERY_SOC_THRESHOLD: u8 = 10;
 /// The state of charge threshold under which battery is considered low.
 pub const LOW_BATTERY_SOC_THRESHOLD: u8 = 20;
 /// The state of charge threshold under which battery is considered medium.
 pub const MID_BATTERY_SOC_THRESHOLD: u8 = 21;
 /// The state of charge threshold under which battery is considered high.
 pub const HIGH_BATTERY_SOC_THRESHOLD: u8 = 80;
-
-/// The critical state of charge threshold under which battery is considered critical.
-pub const CRITICAL_BATTERY_SOC_THRESHOLD: u8 = 10;
 /// The state of charge hysteresis to prevent rapid toggling around thresholds.
 pub const BATTERY_SOC_HYSTERESIS: u8 = 2;
 
@@ -484,22 +483,19 @@ pub const CRITICAL_TEMP_THRESHOLD_MC: i32 = 60000;
 
 const _: () = {
     assert!(
-        LOW_BATTERY_SOC_THRESHOLD > 0,
-        "Low battery threshold be nonzero"
-    );
-    assert!(
-        CRITICAL_BATTERY_SOC_THRESHOLD < LOW_BATTERY_SOC_THRESHOLD,
-        "Critical battery threshold must be lower than the low battery threshold"
-    );
-    assert!(
-        LOW_BATTERY_SOC_THRESHOLD < MID_BATTERY_SOC_THRESHOLD,
-        "Low battery threshold must be lower than the mid battery threshold"
-    );
-    assert!(
-        MID_BATTERY_SOC_THRESHOLD < HIGH_BATTERY_SOC_THRESHOLD,
-        "Mid battery threshold must be lower than the high battery threshold"
+        CRITICAL_BATTERY_SOC_THRESHOLD > 0,
+        "Critical battery threshold must be nonzero"
     );
 };
+
+platform::assert_ascending!(
+    CRITICAL_BATTERY_SOC_THRESHOLD,
+    LOW_BATTERY_SOC_THRESHOLD,
+    MID_BATTERY_SOC_THRESHOLD,
+    HIGH_BATTERY_SOC_THRESHOLD,
+);
+
+platform::assert_ascending!(OVERHEATING_TEMP_THRESHOLD_MC, CRITICAL_TEMP_THRESHOLD_MC,);
 
 /// Bringup serial command and shell controller.
 pub use controller::shell_controller;
