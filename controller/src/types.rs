@@ -1,6 +1,7 @@
 //! Common types used across the controllers.
 
 use model::types::{Direction, SystemLedState};
+pub use platform::types::{MapFilesystem, QueueFilesystem};
 
 macro_rules! dummy_debug {
     ($ty:ident) => {
@@ -115,6 +116,44 @@ impl<D> Copy for NamedDevice<D> {}
 unsafe impl<D> Send for NamedDevice<D> {}
 unsafe impl<D> Sync for NamedDevice<D> {}
 
+/// The filesystem kind of a partition.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum PartitionKind {
+    /// Map filesystem partition.
+    Map,
+    /// Queue/Telemetry filesystem partition.
+    Queue,
+}
+
+/// A resolved flash partition with its associated filesystem type wrapper.
+#[derive(Clone)]
+pub enum ResolvedPartition<F> {
+    /// Map filesystem partition.
+    Map(MapFilesystem, *mut F),
+    /// Queue/Telemetry filesystem partition.
+    Queue(QueueFilesystem, *mut F),
+}
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+impl<F> core::fmt::Debug for ResolvedPartition<F> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Map(range, ptr) => f
+                .debug_tuple("Map")
+                .field(&format_args!("MapFilesystem({:?})", range.0))
+                .field(ptr)
+                .finish(),
+            Self::Queue(range, ptr) => f
+                .debug_tuple("Queue")
+                .field(&format_args!("QueueFilesystem({:?})", range.0))
+                .field(ptr)
+                .finish(),
+        }
+    }
+}
+
 /// Binds a partition name to a flash partition.
 #[derive(PartialEq, Eq)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
@@ -123,6 +162,8 @@ pub struct NamedPartition<F> {
     pub name: &'static str,
     /// The associated flash partition details.
     pub partition: FlashPartition<F>,
+    /// The filesystem type for this partition.
+    pub kind: PartitionKind,
 }
 
 impl<F> Clone for NamedPartition<F> {

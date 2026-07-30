@@ -234,6 +234,7 @@ fn test_shell_controller_integration_each_command() {
             start_address: 0,
             end_address: 1024 * 64,
         },
+        kind: controller::PartitionKind::Map,
     }];
     let batteries = &[controller::NamedDevice {
         name: "default",
@@ -447,6 +448,7 @@ fn test_wrapper_processor_integration() {
             start_address: 0,
             end_address: 1024 * 64,
         },
+        kind: controller::PartitionKind::Map,
     }];
     let batteries = &[controller::NamedDevice {
         name: "default",

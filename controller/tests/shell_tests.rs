@@ -114,7 +114,8 @@ fn test_cal_near_command_parsing() {
         processor.cmd,
         Some(CliCommand::Sensor {
             subcommand: Some(SensorSubcommand::CalNear),
-            arg1: Some("north")
+            arg1: Some("north"),
+            ..
         })
     ));
 }
@@ -132,7 +133,8 @@ fn test_cal_far_command_parsing() {
         processor.cmd,
         Some(CliCommand::Sensor {
             subcommand: Some(SensorSubcommand::CalFar),
-            arg1: Some("east")
+            arg1: Some("east"),
+            ..
         })
     ));
 }
@@ -152,7 +154,8 @@ fn test_cal_motor_command_parsing() {
             subcommand: Some(MotorSubcommand::Calibrate),
             arg1: Some("empty"),
             arg2: None,
-            arg3: None
+            arg3: None,
+            ..
         })
     ));
 
@@ -168,7 +171,8 @@ fn test_cal_motor_command_parsing() {
             subcommand: Some(MotorSubcommand::Calibrate),
             arg1: Some("empty"),
             arg2: Some("3000"),
-            arg3: None
+            arg3: None,
+            ..
         })
     ));
 
@@ -184,7 +188,8 @@ fn test_cal_motor_command_parsing() {
             subcommand: Some(MotorSubcommand::Calibrate),
             arg1: Some("empty"),
             arg2: Some("3000"),
-            arg3: Some("2500")
+            arg3: Some("2500"),
+            ..
         })
     ));
 
@@ -200,7 +205,8 @@ fn test_cal_motor_command_parsing() {
             subcommand: Some(MotorSubcommand::Calibrate),
             arg1: Some("overload"),
             arg2: None,
-            arg3: None
+            arg3: None,
+            ..
         })
     ));
 }

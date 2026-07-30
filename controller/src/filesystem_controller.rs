@@ -446,9 +446,9 @@ pub fn handle_fs_cli<
     resolver: &impl crate::ShellDeviceResolver<C>,
     subcommand: Option<FilesystemSubcommand>,
     target: Option<FormatTarget>,
+    partition_name: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let partition = resolver.resolve_partition(None)?;
     let mut fs_buf = resolver.lock_fs_buffer()?;
     let fs_buf_static = unsafe { fs_buf.as_static_mut() };
 
@@ -457,16 +457,47 @@ pub fn handle_fs_cli<
 
     match cmd {
         FilesystemSubcommand::Format => {
-            let flash_ref = unsafe { &mut *partition.flash_ptr };
+            let (start_address, end_address, flash_ptr) = match target {
+                FormatTarget::Fs => {
+                    let range = match resolver.resolve_partition(partition_name)? {
+                        crate::ResolvedPartition::Map(range, ptr) => (range.0, ptr),
+                        _ => return Err("Expected a map filesystem partition"),
+                    };
+                    (range.0.start, range.0.end, range.1)
+                }
+                FormatTarget::Telemetry => {
+                    let name = partition_name.or(Some("telemetry"));
+                    let range = match resolver.resolve_partition(name)? {
+                        crate::ResolvedPartition::Queue(range, ptr) => (range.0, ptr),
+                        _ => return Err("Expected a telemetry/queue filesystem partition"),
+                    };
+                    (range.0.start, range.0.end, range.1)
+                }
+                FormatTarget::All => {
+                    let map_partition = match resolver.resolve_partition(Some("default"))? {
+                        crate::ResolvedPartition::Map(range, ptr) => (range.0, ptr),
+                        _ => return Err("Expected a map partition named 'default'"),
+                    };
+                    let queue_partition = match resolver.resolve_partition(Some("telemetry"))? {
+                        crate::ResolvedPartition::Queue(range, ptr) => (range.0, ptr),
+                        _ => return Err("Expected a queue partition named 'telemetry'"),
+                    };
+                    (
+                        map_partition.0.start,
+                        queue_partition.0.end,
+                        map_partition.1,
+                    )
+                }
+            };
+
+            let flash_ref = unsafe { &mut *flash_ptr };
             let mut async_flash = platform::BlockingAsyncFlash(flash_ref);
 
             match target {
                 FormatTarget::Fs => {
                     let _ = core::writeln!(writer, "\r\nFormatting filesystem partition...");
-                    let res = embassy_futures::block_on(
-                        async_flash
-                            .erase(partition.start_address, partition.start_address + 64 * 1024),
-                    );
+                    let res =
+                        embassy_futures::block_on(async_flash.erase(start_address, end_address));
                     match res {
                         Ok(()) => {
                             let _ = core::writeln!(
@@ -486,10 +517,8 @@ pub fn handle_fs_cli<
                 }
                 FormatTarget::Telemetry => {
                     let _ = core::writeln!(writer, "\r\nFormatting telemetry partition...");
-                    let res = embassy_futures::block_on(
-                        async_flash
-                            .erase(partition.start_address + 64 * 1024, partition.end_address),
-                    );
+                    let res =
+                        embassy_futures::block_on(async_flash.erase(start_address, end_address));
                     match res {
                         Ok(()) => {
                             let _ =
@@ -501,9 +530,8 @@ pub fn handle_fs_cli<
                 }
                 FormatTarget::All => {
                     let _ = core::writeln!(writer, "\r\nFormatting all partitions...");
-                    let res = embassy_futures::block_on(
-                        async_flash.erase(partition.start_address, partition.end_address),
-                    );
+                    let res =
+                        embassy_futures::block_on(async_flash.erase(start_address, end_address));
                     match res {
                         Ok(()) => {
                             let _ = core::writeln!(
@@ -524,11 +552,15 @@ pub fn handle_fs_cli<
             }
         }
         FilesystemSubcommand::Ls => {
-            let flash_ref = unsafe { &mut *partition.flash_ptr };
+            let (map_fs, flash_ptr) = match resolver.resolve_partition(partition_name)? {
+                crate::ResolvedPartition::Map(fs, ptr) => (fs, ptr),
+                _ => return Err("Requested partition is not a map filesystem"),
+            };
+            let flash_ref = unsafe { &mut *flash_ptr };
             let async_flash = platform::BlockingAsyncFlash(flash_ref);
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
-                MapFilesystem(partition.start_address..partition.end_address),
+                map_fs,
                 fs_buf_static,
             );
 

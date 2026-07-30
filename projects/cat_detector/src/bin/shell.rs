@@ -315,6 +315,7 @@ async fn main(spawner: Spawner) {
                     start_address: app::FS_PARTITION_START,
                     end_address: app::FS_PARTITION_END,
                 },
+                kind: controller::PartitionKind::Map,
             },
             controller::NamedPartition {
                 name: "telemetry",
@@ -323,6 +324,7 @@ async fn main(spawner: Spawner) {
                     start_address: app::TELEMETRY_PARTITION_START,
                     end_address: app::TELEMETRY_PARTITION_END,
                 },
+                kind: controller::PartitionKind::Queue,
             },
         ]
     };

@@ -46,8 +46,9 @@ pub use system_feature::{FeatureList, Periodic, PeriodicInterval, SystemFeature}
 pub use thermal_controller::ThermalCommand;
 pub use thermal_controller::ThermalFeatureConfig;
 pub use types::{
-    BatteryStatus, Device, DeviceSupport, FlashPartition, GestureAction, MotorCalState, MotorError,
-    MotorSafetyStatus, MotorState, NamedDevice, NamedPartition, ProximityAction, SensorDirection,
+    BatteryStatus, Device, DeviceSupport, FlashPartition, GestureAction, MapFilesystem,
+    MotorCalState, MotorError, MotorSafetyStatus, MotorState, NamedDevice, NamedPartition,
+    PartitionKind, ProximityAction, QueueFilesystem, ResolvedPartition, SensorDirection,
     ThermalState, ThermalUpdateAction,
 };
 

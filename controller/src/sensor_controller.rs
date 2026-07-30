@@ -11,7 +11,6 @@ use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::interfaces::ProximitySensor;
 use model::types::{Direction, PeriodicInterval, PeripheralError};
 use peripherals::ToPeripheralError;
-use platform::types::MapFilesystem;
 use platform::{select_branch_with_timeout, subcommand_enum, BlockingAsyncFlash};
 
 /// Trait for waiting on a data-ready interrupt pin.
@@ -573,6 +572,7 @@ pub fn handle_sensor_cli<
     resolver: &impl crate::ShellDeviceResolver<C>,
     subcommand: Option<SensorSubcommand>,
     arg1: Option<&str>,
+    partition_name: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     let mut fs_buf = resolver.lock_fs_buffer()?;
@@ -635,14 +635,17 @@ pub fn handle_sensor_cli<
                 d_raw
             );
 
-            let partition = resolver.resolve_partition(None)?;
-            let flash_ref = unsafe { &mut *partition.flash_ptr };
+            let (map_fs, flash_ptr) = match resolver.resolve_partition(partition_name)? {
+                crate::ResolvedPartition::Map(fs, ptr) => (fs, ptr),
+                _ => return Err("Requested partition is not a map filesystem"),
+            };
+            let flash_ref = unsafe { &mut *flash_ptr };
             let mut async_flash = BlockingAsyncFlash(flash_ref);
 
             let mut buf = [0u8; 128];
             let mut proximity_cal = embassy_futures::block_on(platform::flash::read_file_direct(
                 &mut async_flash,
-                MapFilesystem(partition.start_address..partition.end_address),
+                map_fs.clone(),
                 fs_buf_static,
                 "vl53l0x_cal.cbor",
                 &mut buf,
@@ -665,7 +668,7 @@ pub fn handle_sensor_cli<
 
             embassy_futures::block_on(platform::flash::write_file_direct(
                 &mut async_flash,
-                MapFilesystem(partition.start_address..partition.end_address),
+                map_fs.clone(),
                 fs_buf_static,
                 "vl53l0x_cal.cbor",
                 &write_buf[..len],
@@ -707,14 +710,17 @@ pub fn handle_sensor_cli<
                 d_raw
             );
 
-            let partition = resolver.resolve_partition(None)?;
-            let flash_ref = unsafe { &mut *partition.flash_ptr };
+            let (map_fs, flash_ptr) = match resolver.resolve_partition(partition_name)? {
+                crate::ResolvedPartition::Map(fs, ptr) => (fs, ptr),
+                _ => return Err("Requested partition is not a map filesystem"),
+            };
+            let flash_ref = unsafe { &mut *flash_ptr };
             let mut async_flash = BlockingAsyncFlash(flash_ref);
 
             let mut buf = [0u8; 128];
             let mut proximity_cal = embassy_futures::block_on(platform::flash::read_file_direct(
                 &mut async_flash,
-                MapFilesystem(partition.start_address..partition.end_address),
+                map_fs.clone(),
                 fs_buf_static,
                 "vl53l0x_cal.cbor",
                 &mut buf,
@@ -737,7 +743,7 @@ pub fn handle_sensor_cli<
 
             embassy_futures::block_on(platform::flash::write_file_direct(
                 &mut async_flash,
-                MapFilesystem(partition.start_address..partition.end_address),
+                map_fs,
                 fs_buf_static,
                 "vl53l0x_cal.cbor",
                 &write_buf[..len],

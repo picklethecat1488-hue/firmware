@@ -14,7 +14,6 @@ use peripherals::ToPeripheralError;
 
 use crate::tracing::{self, controller_context};
 use crate::types::{MotorCalState, MotorSafetyStatus, MotorState};
-use platform::types::MapFilesystem;
 
 /// The tick interval of the motor controller (10ms / 100Hz).
 pub const MOTOR_TICK_INTERVAL: embassy_time::Duration = embassy_time::Duration::from_millis(10);
@@ -581,6 +580,7 @@ pub fn handle_motor_cli<
     arg1: Option<&str>,
     arg2: Option<&str>,
     arg3: Option<&str>,
+    partition_name: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     let motor_ctrl = resolver.resolve_motor_ctrl(None)?;
@@ -655,14 +655,17 @@ pub fn handle_motor_cli<
             );
             let _ = motor.stop();
 
-            let partition = resolver.resolve_partition(None)?;
-            let flash_ref = unsafe { &mut *partition.flash_ptr };
+            let (map_fs, flash_ptr) = match resolver.resolve_partition(partition_name)? {
+                crate::ResolvedPartition::Map(fs, ptr) => (fs, ptr),
+                _ => return Err("Requested partition is not a map filesystem"),
+            };
+            let flash_ref = unsafe { &mut *flash_ptr };
             let mut async_flash = platform::BlockingAsyncFlash(flash_ref);
 
             let mut buf = [0u8; 128];
             let cal = embassy_futures::block_on(platform::flash::read_file_direct(
                 &mut async_flash,
-                MapFilesystem(partition.start_address..partition.end_address),
+                map_fs.clone(),
                 fs_buf_static,
                 "motor_cal.cbor",
                 &mut buf,
@@ -702,7 +705,7 @@ pub fn handle_motor_cli<
 
             embassy_futures::block_on(platform::flash::write_file_direct(
                 &mut async_flash,
-                MapFilesystem(partition.start_address..partition.end_address),
+                map_fs,
                 fs_buf_static,
                 "motor_cal.cbor",
                 &write_buf[..len],
