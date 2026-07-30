@@ -47,7 +47,7 @@ fi
 
 # Check if we should only build debug, release, or both
 BUILD_MODE="both"
-ORGANIZE_DIR=""
+ORGANIZE_DIR="target/out"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in

@@ -138,13 +138,13 @@ jobs:
           components: llvm-tools-preview
 
       - name: Build and Organize Firmware
-        run: ./tools/build/build_firmware.sh --out-dir build
+        run: ./tools/build/build_firmware.sh --out-dir target/out
 
       - name: Analyze cat_detector Memory (app)
         if: ${{ !env.ACT }}
         uses: membrowse/membrowse-action@v1
         with:
-          elf: build/release/embedded/cat_detector/app
+          elf: target/out/release/embedded/cat_detector/app
           target_name: cat_detector
           api_key: ${{ secrets.MEMBROWSE_API_KEY }}
 
@@ -152,10 +152,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: nightly-test-reports
-          path: build/
+          path: target/out/
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: nightly-build
-          path: build/
+          path: target/out/

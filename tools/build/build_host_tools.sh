@@ -9,7 +9,7 @@ while IFS= read -r pkg; do
     fi
 done < <(cargo metadata --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("/tools/") or contains("\\tools\\") or contains("/host/") or contains("\\host\\")) | .name' | tr -d '\r')
 
-ORGANIZE_DIR=""
+ORGANIZE_DIR="target/out"
 ZIP_FILE=""
 TARGET=""
 WORKSPACE_ROOT="$(pwd)"
