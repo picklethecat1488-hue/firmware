@@ -85,7 +85,7 @@ pytest tools/validation/tests
 The workspace is organized into target-agnostic crates for logic/simulation, target-independent platform libraries, and target-specific project deployments:
 
 *   **[model/](model)**: Core platform-independent system models, state machines, protocols, and calculations (zero-dependency `#![no_std]`).
-*   **[peripherals/](peripherals)**: Abstractions (traits) for peripheral wrappers and concrete implementations based on `embedded-hal` (e.g. `VL53L0X`, `ATtiny816`, `L9110s`, `INA219`, `MAX17048`, `BQ25185`), alongside mock implementations for host testing.
+*   **[peripherals/](peripherals)**: Abstractions (traits) for peripheral wrappers and concrete implementations based on `embedded-hal` (e.g. `VL53L0X`, `ATtiny816`, `L9110s`, `INA219`, `MAX17048`), alongside mock implementations for host testing.
 *   **[controller/](controller)**: Project-agnostic domain controllers and state machine orchestrators. Houses domain-specific CLI handlers that resolve dependencies via a generic `ShellDeviceResolver` trait.
 *   **[platform/](platform)**: Target-independent firmware platform support and diagnostic utility libraries (e.g., panic handlers, stack scanning, RTT loggers, circular log buffers).
 *   **[projects/](projects)**: Bare-metal microcontroller application projects (such as `cat_detector`). Deploys unified **Board Support Packages (BSPs)** that encapsulate all target/host driver and pin initialization.
@@ -176,8 +176,7 @@ The `peripherals` crate implements the concrete, platform-independent drivers an
 *   **`GpioMotor`**: A concrete wrapper that implements `Motor` by toggling a digital output pin (`OutputPin`) high/low.
 
 **Concrete Driver Implementations**:
-*   `max17048::Max17048`: Implements `TemperatureSensor` and `FuelGauge` traits, scaling registers to VCELL mV and SOC %. [MAX17048 Datasheet](https://www.analog.com/media/en/technical-documentation/data-sheets/MAX17048-MAX17049.pdf)
-*   `bq25185::Bq25185`: Implements `Charger` trait for linear charger and power path management. [BQ25185 Datasheet](https://www.ti.com/lit/ds/symlink/bq25185.pdf)
+*   `max17048::Max17048`: Implements `TemperatureSensor`, `FuelGauge`, and `ChargeStatus` traits, scaling registers to VCELL mV and SOC %, and tracking charge status using CRATE and STATUS registers. [MAX17048 Datasheet](https://www.analog.com/media/en/technical-documentation/data-sheets/MAX17048-MAX17049.pdf)
 *   `ina219::Ina219`: Implements `CurrentSensor` and `PowerSensor` traits, calibrating shunt voltage calculations for current monitoring. [INA219 Datasheet](https://www.ti.com/lit/ds/symlink/ina219.pdf)
 *   `vl53l0x::Vl53l0x`: Implements `ProximitySensor` trait, driving ranges and supporting dynamic address assignment at register `0x8A`. Supports GPIO interrupts (Low Level, High Level) utilizing programmed `SYSTEM_THRESH_LOW` and `SYSTEM_THRESH_HIGH` threshold registers (with parametric hysteresis), and a timing budget increased to 200ms. [VL53L0X Datasheet](https://www.st.com/resource/en/datasheet/vl53l0x.pdf) | [VL53L0X API Guide (UM2039)](https://www.st.com/resource/en/user_manual/um2039-world-smallest-timeofflight-ranging-and-gesture-detection-sensor-application-programming-interface-stmicroelectronics.pdf) | [VL53L0X Register Map](https://github.com/GrimbiXcode/VL53L0X-Register-Map)
 *   `l9110s::L9110s`: Implements `Motor` trait for h-bridge motor driver control using two `OutputPin` channels. [L9110S Datasheet](https://www.elecrow.com/download/datasheet-l9110.pdf)
@@ -227,8 +226,7 @@ The system integrates with the following hardware nodes connected via the RP2040
 
 | Component | I2C Address | Pico Connection | Software Binding | Role |
 | :--- | :--- | :--- | :--- | :--- |
-| **MAX17048 Fuel Gauge** | `0x36` | SDA (GP4) / SCL (GP5)<br>Alert (GP10) | `FuelGauge` & `TemperatureSensor` Traits / `BatteryController` | Monitored by the battery loop to update state of charge and dispatch alerts. |
-| **BQ25185 Charger & Boost** | `0x6B` | SDA (GP4) / SCL (GP5) | `Bq25185` / `Charger` Trait | Tracks battery charging state and configures input current limits. |
+| **MAX17048 Fuel Gauge** | `0x36` | SDA (GP4) / SCL (GP5)<br>Alert (GP10) | `FuelGauge`, `TemperatureSensor`, & `ChargeStatus` Traits / `BatteryController` | Monitored by the battery loop to update state of charge, charge status, and dispatch alerts. |
 | **INA219 Current Sensor** | `0x40` | SDA (GP4) / SCL (GP5) | `CurrentSensor` / I2C Bus | Monitors N20 motor current to detect dry running (torque drop) or stall conditions. |
 | **VL53L0X Time-of-Flight Sensors** | `0x29` (boot)<br>*Dynamic re-addressing to `0x30`, `0x31`, `0x32`* | SDA (GP4) / SCL (GP5)<br>XSHUT Pins (GP2, GP3, GP4)<br>Interrupts (GP5, GP6, GP7) | `ProximitySensor` / `SensorController` | Used to calculate target approach and activate water flow via data fusion. |
 | **ATtiny816 LED Driver** | `0x60` | SDA (GP4) / SCL (GP5) | `LedDriver` / `LedController` | Drives visual state-of-charge and error alerts on the RGB indicator. |

@@ -208,7 +208,7 @@ fn test_parse_telemetry_record_log_all_variants() {
 
     // 12. PeripheralError
     let log = make_rtt_log(
-        TelemetryRecord::PeripheralError(PeripheralError::DeviceNotFound),
+        TelemetryRecord::PeripheralError(PeripheralError::DeviceNotFound(0x1234)),
         1011,
     );
     let events = parser.parse_log(&log, 1011.0).unwrap();
@@ -216,7 +216,7 @@ fn test_parse_telemetry_record_log_all_variants() {
     assert_eq!(events[0]["name"].as_str().unwrap(), "Peripheral Error");
     assert_eq!(
         events[0]["args"]["error"].as_str().unwrap(),
-        "DeviceNotFound"
+        "DeviceNotFound(0x1234)"
     );
     assert_eq!(events[0]["tid"].as_i64().unwrap(), 3);
 
@@ -270,7 +270,7 @@ fn test_read_telemetry_records_integration() {
         let header_len = encoder.into_writer().position();
         header_bytes[0] = header_len as u8;
 
-        let key = string_to_key("telemetry.rrd");
+        let key = string_to_key(model::telemetry::TELEMETRY_HEADER_FILE);
         sequential_storage::map::store_item::<[u8; 32], &[u8], _>(
             &mut flash,
             flash_range.clone(),
@@ -291,8 +291,9 @@ fn test_read_telemetry_records_integration() {
         let slot2 = rec2.serialize(600);
 
         let mut chunk_bytes = vec![0u8; model::telemetry::CHUNK_FILE_SIZE];
-        chunk_bytes[..20].copy_from_slice(&slot1);
-        chunk_bytes[20..40].copy_from_slice(&slot2);
+        let size = model::telemetry::TELEMETRY_RECORD_SIZE;
+        chunk_bytes[..size].copy_from_slice(&slot1);
+        chunk_bytes[size..2 * size].copy_from_slice(&slot2);
 
         let chunk_key = string_to_key("telemetry_0.rrd");
         sequential_storage::map::store_item::<[u8; 32], &[u8], _>(
@@ -339,7 +340,7 @@ fn test_read_telemetry_records_corrupted() {
         {
             let mut flash = MockFlash::new(1024 * 64);
             let flash_range = 0..1024 * 64;
-            let key = string_to_key("telemetry.rrd");
+            let key = string_to_key(model::telemetry::TELEMETRY_HEADER_FILE);
             let header_bytes = [0u8; 8];
             sequential_storage::map::store_item::<[u8; 32], &[u8], _>(
                 &mut flash,
@@ -363,7 +364,7 @@ fn test_read_telemetry_records_corrupted() {
         {
             let mut flash = MockFlash::new(1024 * 64);
             let flash_range = 0..1024 * 64;
-            let key = string_to_key("telemetry.rrd");
+            let key = string_to_key(model::telemetry::TELEMETRY_HEADER_FILE);
             let mut header_bytes = vec![0u8; 20];
             let cursor = minicbor::encode::write::Cursor::new(&mut header_bytes[1..12]);
             let mut encoder = minicbor::Encoder::new(cursor);
@@ -396,7 +397,7 @@ fn test_read_telemetry_records_corrupted() {
         {
             let mut flash = MockFlash::new(1024 * 64);
             let flash_range = 0..1024 * 64;
-            let key = string_to_key("telemetry.rrd");
+            let key = string_to_key(model::telemetry::TELEMETRY_HEADER_FILE);
             let mut header_bytes = [0u8; 12];
             header_bytes[0] = 5; // length of CBOR payload
             header_bytes[1..6].copy_from_slice(b"badcb"); // completely invalid CBOR

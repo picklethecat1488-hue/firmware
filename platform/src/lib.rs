@@ -85,6 +85,8 @@ pub mod cbor;
 #[path = "services/directory.rs"]
 pub mod directory;
 
+pub use directory::MAX_FILE_NAME_LEN;
+
 /// Consolidated conditional tracing module.
 #[path = "telemetry/tracing.rs"]
 pub mod tracing;

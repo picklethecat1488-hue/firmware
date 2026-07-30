@@ -1,7 +1,7 @@
 use crate::tracing;
 use model::interfaces::{
-    ChargeStatus, FuelGauge, LedDriver, Motor, PowerMeasurementMode, PowerSensor, ProximitySensor,
-    TemperatureSensor,
+    ChargeStatus, FuelGauge, LedDriver, Motor, PowerMeasurementMode, PowerSensor, Probeable,
+    ProximitySensor, TemperatureSensor,
 };
 use model::types::MotorSpeed;
 
@@ -106,6 +106,24 @@ impl PowerSensor for MockCurrentSensor {
     }
 }
 
+impl Probeable for MockCurrentSensor {
+    type Error = ();
+    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(0x399F)
+        }
+    }
+    fn reset(&mut self) -> Result<(), Self::Error> {
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(())
+        }
+    }
+}
+
 /// A mock implementation of a Battery for unit testing on the host or bare-metal tasks.
 pub struct MockBattery {
     /// Simulated battery voltage in millivolts.
@@ -184,6 +202,24 @@ impl FuelGauge for MockBattery {
     }
 }
 
+impl Probeable for MockBattery {
+    type Error = ();
+    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(0x0010)
+        }
+    }
+    fn reset(&mut self) -> Result<(), Self::Error> {
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(())
+        }
+    }
+}
+
 /// A simulated current sensor that always returns a healthy current draw.
 pub struct DummyCurrentSensor;
 
@@ -199,6 +235,16 @@ impl PowerSensor for DummyCurrentSensor {
     }
 
     fn set_measurement_mode(&mut self, _mode: PowerMeasurementMode) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+impl Probeable for DummyCurrentSensor {
+    type Error = core::convert::Infallible;
+    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+        Ok(0x399F)
+    }
+    fn reset(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -236,6 +282,24 @@ impl ProximitySensor for MockProximitySensor {
     }
 }
 
+impl Probeable for MockProximitySensor {
+    type Error = ();
+    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(0xEE)
+        }
+    }
+    fn reset(&mut self) -> Result<(), Self::Error> {
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(())
+        }
+    }
+}
+
 /// A simulated proximity sensor that returns a default distance.
 pub struct DummyProximitySensor {
     /// Distance in millimeters.
@@ -262,6 +326,16 @@ impl ProximitySensor for DummyProximitySensor {
     }
 }
 
+impl Probeable for DummyProximitySensor {
+    type Error = core::convert::Infallible;
+    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+        Ok(0xEE)
+    }
+    fn reset(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
 impl model::calibration::Calibration for DummyProximitySensor {}
 
 /// A mock implementation of a ChargeStatus for unit testing.
@@ -282,6 +356,16 @@ impl ChargeStatus for MockCharger {
 
     fn get_charge_state(&mut self) -> Result<model::types::ChargeState, Self::Error> {
         Ok(self.state)
+    }
+}
+
+impl Probeable for MockCharger {
+    type Error = ();
+    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+        Ok(0x0010)
+    }
+    fn reset(&mut self) -> Result<(), Self::Error> {
+        Ok(())
     }
 }
 
@@ -317,6 +401,24 @@ impl LedDriver for MockLed {
             Err(())
         } else {
             self.color = (r, g, b);
+            Ok(())
+        }
+    }
+}
+
+impl Probeable for MockLed {
+    type Error = ();
+    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(0x86)
+        }
+    }
+    fn reset(&mut self) -> Result<(), Self::Error> {
+        if self.should_fail {
+            Err(())
+        } else {
             Ok(())
         }
     }

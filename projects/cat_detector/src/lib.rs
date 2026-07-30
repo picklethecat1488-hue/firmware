@@ -34,6 +34,13 @@ pub const TOF_EAST_INT_PIN: u32 = 8;
 /// ToF Sensor 3 (West) Interrupt pin (GPIO 9)
 pub const TOF_WEST_INT_PIN: u32 = 9;
 
+/// ToF Sensor 1 (North) I2C Address (0x30)
+pub const TOF_NORTH_I2C_ADDR: u8 = 0x30;
+/// ToF Sensor 2 (East) I2C Address (0x31)
+pub const TOF_EAST_I2C_ADDR: u8 = 0x31;
+/// ToF Sensor 3 (West) I2C Address (0x32)
+pub const TOF_WEST_I2C_ADDR: u8 = 0x32;
+
 /// Fuel Gauge Interrupt/Alert pin (GPIO 10)
 pub const FUEL_GAUGE_INT_PIN: u32 = 10;
 
@@ -43,22 +50,20 @@ pub const DEFAULT_WAKE_THRESHOLD_MM: u16 = 300;
 /// The default press threshold in millimeters under which gesture button presses are detected.
 pub const DEFAULT_PRESS_THRESHOLD_MM: u16 = 20;
 
-/// Charger Status 1 (S1 / STAT1 / FAULT) pin (GPIO 12)
-pub const CHARGER_S1_PIN: u32 = 12;
-/// Charger Status 2 (S2 / STAT2 / CHG) pin (GPIO 13)
-pub const CHARGER_S2_PIN: u32 = 13;
-
 /// Start address of the filesystem storage partition in flash (offset from start of flash).
 pub const STORAGE_PARTITION_START: u32 = 0x1C_0000; // 1.75 MB
 /// End address of the filesystem storage partition in flash (2.00 MB limit).
 pub const STORAGE_PARTITION_END: u32 = 0x20_0000; // 2.00 MB
 
 /// Total number of telemetry chunks
-pub const NUM_CHUNKS: usize = 50;
+pub const NUM_CHUNKS: usize = 77;
 /// Total maximum number of records stored
 pub const MAX_RECORDS: usize = NUM_CHUNKS * model::telemetry::CHUNK_SIZE;
 /// Maximum number of rolling crash logs (modulo limit)
 pub const MAX_CRASH_LOGS: u32 = 10;
+/// Static working buffer for filesystem and panic handler operations.
+/// Shared across the app and shell binaries to avoid duplicate stack/static allocations.
+pub static mut FS_BUF: [u8; 8192] = [0u8; 8192];
 /// Total QSPI flash memory capacity on the board (2.00 MB).
 pub const FLASH_SIZE: usize = 2 * 1024 * 1024;
 /// Top address of the stack/SRAM (RP2040 has 264 KB SRAM, ending at 0x2004_0000).
@@ -99,7 +104,9 @@ pub static SHARED_BATTERY: embassy_sync::mutex::Mutex<MutexRaw, BatteryDevice> =
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global battery charger mutex.
 pub static SHARED_CHARGER: embassy_sync::mutex::Mutex<MutexRaw, ChargerDevice> =
-    embassy_sync::mutex::Mutex::new(SafeBq25185(None));
+    embassy_sync::mutex::Mutex::new(ChargerDevice::new(platform::i2c::SharedI2cWrapper::new(
+        &SHARED_I2C,
+    )));
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global instance of the ThermalController.
@@ -189,7 +196,6 @@ pub async fn init_controllers(board: Board<'static>) {
         flash,
         i2c,
         temp_sensor,
-        charger,
         fuel_gauge_alert_pin,
         led_driver,
         tof_north,
@@ -210,10 +216,6 @@ pub async fn init_controllers(board: Board<'static>) {
     {
         let mut sensor = SHARED_TEMP_SENSOR.lock().await;
         sensor.0 = temp_sensor;
-    }
-    {
-        let mut chg = SHARED_CHARGER.lock().await;
-        chg.0 = charger;
     }
 
     unsafe {
@@ -546,6 +548,15 @@ pub static TELEMETRY_CHANNEL: controller::TelemetryChannel<
     MutexRaw,
     { controller::telemetry_controller::CHANNEL_CAPACITY },
 > = controller::TelemetryChannel::new();
+
+const _: () = {
+    let max_boot_errors = 16;
+    let safe_headroom = 16;
+    assert!(
+        controller::telemetry_controller::CHANNEL_CAPACITY >= max_boot_errors + safe_headroom,
+        "TELEMETRY_CHANNEL capacity is too small to buffer all boot-time errors with safe headroom"
+    );
+};
 /// Shared command channel for filesystem operations.
 pub static FILESYSTEM_CHANNEL: controller::FilesystemChannel<MutexRaw, 16> =
     controller::FilesystemChannel::new();

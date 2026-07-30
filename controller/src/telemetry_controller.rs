@@ -70,7 +70,7 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
     TelemetryController<MAX_RECORDS, BUFFER_SIZE>
 {
     /// Total size of the telemetry.rrd metadata file (12-byte CBOR header).
-    pub const FILE_SIZE: usize = 12;
+    pub const FILE_SIZE: usize = model::telemetry::TELEMETRY_HEADER_SIZE;
 
     /// Interval at which telemetry stats are logged.
     pub const STATS_LOG_INTERVAL: embassy_time::Duration = embassy_time::Duration::from_secs(60);
@@ -154,7 +154,11 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
     #[crate::tracing::instrument(name = "telemetry_controller::init", level = "info")]
     pub async fn init(&mut self) -> Result<(), ()> {
         let mut temp_buf = [0u8; 12];
-        let (len, exists) = match self.fs.read_file("telemetry.rrd", &mut temp_buf).await {
+        let (len, exists) = match self
+            .fs
+            .read_file(model::telemetry::TELEMETRY_HEADER_FILE, &mut temp_buf)
+            .await
+        {
             Ok(Some(bytes)) => {
                 let len = bytes.len();
                 self.file_buf[..len].copy_from_slice(bytes);
@@ -176,7 +180,7 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
             self.flush_pending_write().await?;
             self.fs
                 .start_write_file(
-                    "telemetry.rrd",
+                    model::telemetry::TELEMETRY_HEADER_FILE,
                     &self.file_buf[..Self::FILE_SIZE],
                     &TELEMETRY_WRITE_SIGNAL,
                 )
@@ -194,7 +198,8 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
             Ok(())
         } else {
             if let Some(chunk_idx) = self.current_chunk {
-                let name = model::telemetry::chunk_name(chunk_idx);
+                let mut name_buf = [0u8; platform::MAX_FILE_NAME_LEN];
+                let name = model::telemetry::chunk_name(chunk_idx, &mut name_buf);
                 self.flush_pending_write().await?;
                 self.fs
                     .start_write_file(
@@ -212,7 +217,11 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
                 header_buf.copy_from_slice(&header);
 
                 self.fs
-                    .start_write_file("telemetry.rrd", &header_buf, &TELEMETRY_WRITE_SIGNAL)
+                    .start_write_file(
+                        model::telemetry::TELEMETRY_HEADER_FILE,
+                        &header_buf,
+                        &TELEMETRY_WRITE_SIGNAL,
+                    )
                     .await;
                 self.write_pending = true;
                 self.flush_pending_write().await?;
@@ -240,17 +249,14 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
             defmt::warn!("Unsupported telemetry record length: {}", len);
             Err(())
         } else {
-            #[cfg(all(target_arch = "arm", target_os = "none", feature = "tracing"))]
-            {
-                let payload = &serialized[1..1 + len];
-                defmt::trace!("Device Telemetry: {=[u8]}", payload);
-            }
+            platform::tracing::trace_telemetry_record(&record);
 
             // Determine which chunk file to write to
             let idx = self.next_idx as usize;
             let chunk_idx = idx / model::telemetry::CHUNK_SIZE;
             let slot_idx = idx % model::telemetry::CHUNK_SIZE;
-            let name = model::telemetry::chunk_name(chunk_idx);
+            let mut name_buf = [0u8; platform::MAX_FILE_NAME_LEN];
+            let name = model::telemetry::chunk_name(chunk_idx, &mut name_buf);
 
             // Manage caching of the current chunk data in self.file_buf
             if self.current_chunk != Some(chunk_idx) {
@@ -277,8 +283,9 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
             }
 
             // Copy serialized record to chunk slot in RAM
-            let offset = slot_idx * 20;
-            self.file_buf[offset..offset + 20].copy_from_slice(&serialized);
+            let offset = slot_idx * model::telemetry::TELEMETRY_RECORD_SIZE;
+            self.file_buf[offset..offset + model::telemetry::TELEMETRY_RECORD_SIZE]
+                .copy_from_slice(&serialized);
 
             // Update metadata
             self.next_idx = (self.next_idx + 1) % (MAX_RECORDS as u32);
@@ -325,7 +332,8 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
                 let slot_idx = idx % model::telemetry::CHUNK_SIZE;
 
                 if current_chunk_idx != Some(chunk_idx) {
-                    let name = model::telemetry::chunk_name(chunk_idx);
+                    let mut name_buf = [0u8; platform::MAX_FILE_NAME_LEN];
+                    let name = model::telemetry::chunk_name(chunk_idx, &mut name_buf);
                     let base_ptr = self.file_buf.as_ptr() as usize;
                     self.file_buf.fill(0);
                     let mut read_len = 0;
@@ -341,10 +349,13 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize>
                     current_chunk_idx = Some(chunk_idx);
                 }
 
-                let offset = slot_idx * 20;
-                if offset + 20 <= self.file_buf.len() {
-                    let slot: &[u8; 20] =
-                        self.file_buf[offset..offset + 20].try_into().ok().unwrap();
+                let offset = slot_idx * model::telemetry::TELEMETRY_RECORD_SIZE;
+                if offset + model::telemetry::TELEMETRY_RECORD_SIZE <= self.file_buf.len() {
+                    let slot: &[u8; model::telemetry::TELEMETRY_RECORD_SIZE] = self.file_buf
+                        [offset..offset + model::telemetry::TELEMETRY_RECORD_SIZE]
+                        .try_into()
+                        .ok()
+                        .unwrap();
                     if let Some((ts, rec)) = TelemetryRecord::deserialize(slot) {
                         callback(ts, rec);
                     }

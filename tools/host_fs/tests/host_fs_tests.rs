@@ -24,7 +24,7 @@ fn test_data_type_decoding() {
         DataType::Calibration
     );
     assert_eq!(
-        DataType::from_filename("telemetry.rrd"),
+        DataType::from_filename(model::telemetry::TELEMETRY_HEADER_FILE),
         DataType::Telemetry
     );
     assert_eq!(DataType::from_filename("crash.log"), DataType::CrashLog);

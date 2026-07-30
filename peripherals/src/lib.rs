@@ -8,8 +8,7 @@ pub use model::types::MotorSpeed;
 
 /// Concrete driver implementation for the ATtiny816 custom LED driver.
 pub mod attiny816;
-/// Concrete driver implementation for the BQ25185 battery charger.
-pub mod bq25185;
+
 /// Concrete driver implementation for the INA219 current monitor.
 pub mod ina219;
 /// Concrete driver implementation for the L9110S motor driver.

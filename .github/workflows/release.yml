@@ -109,19 +109,19 @@ jobs:
           path: ./
 
       - name: Build and Organize Firmware
-        run: ./tools/build/build_firmware.sh --out-dir build
+        run: ./tools/build/build_firmware.sh --out-dir target/out
 
       - name: Copy Verification Reports to Package
         run: |
-          cp test_report.txt build/
-          cp validation_report.txt build/
+          cp test_report.txt target/out/
+          cp validation_report.txt target/out/
 
       - name: Binary Size Report
-        run: ./tools/helpers/generate_size_report.sh build/size_report.txt
+        run: ./tools/helpers/generate_size_report.sh target/out/size_report.txt
 
       - name: Package Firmware Binaries and Reports
         run: |
-          zip -r firmware.zip build/
+          zip -r firmware.zip target/out/
 
       - name: Download Host Tools (Linux)
         uses: actions/download-artifact@v4
@@ -167,4 +167,4 @@ jobs:
           path: |
             test_report.txt
             validation_report.txt
-            build/size_report.txt
+            target/out/size_report.txt
