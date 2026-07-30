@@ -2,7 +2,7 @@
 
 #![deny(missing_docs)]
 
-use crate::tracing;
+use crate::tracing::{self, controller_context};
 use crate::types::ThermalState;
 use crate::{BlockingThermalReader, Sender, TelemetrySender, ThermalReceiver};
 use core::fmt::Write as _;
@@ -14,6 +14,7 @@ use peripherals::ToPeripheralError;
 use platform::subcommand_enum;
 
 /// A controller that periodically monitors system temperature from temperature sensors.
+#[controller_context]
 pub struct ThermalController<'a, M: RawMutex, B> {
     temp: &'a Mutex<M, B>,
     thermal_tx: Option<Sender<'a, M, crate::types::ThermalUpdateAction, 4>>,

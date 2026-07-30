@@ -177,7 +177,9 @@ impl<'d> Board<'d> {
         let mut raw_flash: crate::FlashDevice = embassy_rp::flash::Flash::new_blocking(temp_flash);
         let mut boot_status = platform::flash::DirectFlashBootStatus::new(
             &mut raw_flash,
-            crate::TELEMETRY_PARTITION_START..crate::TELEMETRY_PARTITION_END,
+            platform::types::QueueFilesystem(
+                crate::TELEMETRY_PARTITION_START..crate::TELEMETRY_PARTITION_END,
+            ),
         );
 
         let sensors = [

@@ -81,3 +81,9 @@ pub fn instrument(args: TokenStream, item: TokenStream) -> TokenStream {
     }
     .into()
 }
+
+/// Procedural macro marker attribute for controller context structures.
+#[proc_macro_attribute]
+pub fn controller_context(_args: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}

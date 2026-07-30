@@ -46,7 +46,7 @@ fn test_direct_file_operations() {
         let mut flash = TestFlash {
             data: vec![0xFF; 16 * 1024],
         };
-        let range = 0..16 * 1024;
+        let range = platform::types::MapFilesystem(0..16 * 1024);
         let mut map_buf = vec![0u8; 4096];
 
         // Write a file
@@ -102,7 +102,7 @@ fn test_direct_telemetry_operations() {
         let mut flash = TestFlash {
             data: vec![0xFF; 16 * 1024],
         };
-        let telemetry_range = 8 * 1024..16 * 1024;
+        let telemetry_range = platform::types::QueueFilesystem(8 * 1024..16 * 1024);
 
         let rec = model::telemetry::TelemetryRecord::PeripheralError(
             model::types::PeripheralError::DeviceNotFound(0x12),
@@ -116,7 +116,7 @@ fn test_direct_telemetry_operations() {
         // Read back record from telemetry queue partition
         let mut cache = sequential_storage::cache::NoCache::new();
         let mut iterator =
-            sequential_storage::queue::iter(&mut flash, telemetry_range.clone(), &mut cache)
+            sequential_storage::queue::iter(&mut flash, telemetry_range.0.clone(), &mut cache)
                 .await
                 .unwrap();
         let mut item_buf = [0u8; model::telemetry::TELEMETRY_RECORD_SIZE];

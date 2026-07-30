@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::filesystem_controller::FilesystemClient;
+use crate::tracing::controller_context;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use model::telemetry::{IntoTelemetryRecord, TelemetryClient, TelemetryRecord};
@@ -33,13 +34,14 @@ fn get_timestamp_us() -> u64 {
 }
 
 /// Struct that maintains all of the telemetry state, RRD buffer, and filesystem client reference.
+#[controller_context]
 pub struct TelemetryController<
     const MAX_RECORDS: usize = 45,
     const BUFFER_SIZE: usize = { model::telemetry::BUFFER_SIZE },
     F = (),
 > {
     flash: F,
-    flash_range: core::ops::Range<u32>,
+    flash_range: platform::types::QueueFilesystem,
     #[allow(dead_code)]
     fs: FilesystemClient,
 }
@@ -60,7 +62,11 @@ impl Default for TelemetryController<45, { model::telemetry::BUFFER_SIZE }, ()> 
             embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
             16,
         > = crate::FilesystemChannel::new();
-        Self::new((), 0..0, FilesystemClient::new(DUMMY_CHANNEL.sender()))
+        Self::new(
+            (),
+            platform::types::QueueFilesystem(0..0),
+            FilesystemClient::new(DUMMY_CHANNEL.sender()),
+        )
     }
 }
 
@@ -68,7 +74,11 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize, F>
     TelemetryController<MAX_RECORDS, BUFFER_SIZE, F>
 {
     /// Creates a new `TelemetryController` instance.
-    pub const fn new(flash: F, flash_range: core::ops::Range<u32>, fs: FilesystemClient) -> Self {
+    pub const fn new(
+        flash: F,
+        flash_range: platform::types::QueueFilesystem,
+        fs: FilesystemClient,
+    ) -> Self {
         Self {
             flash,
             flash_range,
@@ -117,7 +127,7 @@ impl<
             platform::flash::TELEMETRY_ENABLED.store(false, Ordering::Relaxed);
             let push_res = sequential_storage::queue::push(
                 &mut self.flash,
-                self.flash_range.clone(),
+                self.flash_range.0.clone(),
                 &mut cache,
                 &serialized[..1 + len],
                 true, // allow_overwrite_old_data = true
@@ -137,8 +147,12 @@ impl<
     )]
     pub async fn read_records(&mut self, mut callback: impl FnMut(u64, TelemetryRecord)) -> bool {
         let mut cache = sequential_storage::cache::NoCache::new();
-        match sequential_storage::queue::iter(&mut self.flash, self.flash_range.clone(), &mut cache)
-            .await
+        match sequential_storage::queue::iter(
+            &mut self.flash,
+            self.flash_range.0.clone(),
+            &mut cache,
+        )
+        .await
         {
             Ok(mut iterator) => {
                 let mut item_buf = [0u8; model::telemetry::TELEMETRY_RECORD_SIZE];

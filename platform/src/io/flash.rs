@@ -2,7 +2,6 @@
 
 #![deny(missing_docs)]
 
-use core::ops::Range;
 use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
 
 /// Adapter exposing a blocking nor-flash driver as an asynchronous nor-flash driver.
@@ -150,7 +149,7 @@ impl<F: embedded_storage::nor_flash::NorFlash> embedded_storage_async::nor_flash
 /// Fetches a file's content directly from flash using sequential-storage without a running controller task.
 pub async fn read_file_direct<F: NorFlash + MultiwriteNorFlash>(
     flash: &mut F,
-    range: Range<u32>,
+    range: crate::types::MapFilesystem,
     buf: &mut [u8],
     name: &str,
     out_buf: &mut [u8],
@@ -158,7 +157,7 @@ pub async fn read_file_direct<F: NorFlash + MultiwriteNorFlash>(
     let mut cache = sequential_storage::cache::NoCache::new();
     let key = crate::directory::string_to_key(name);
     let res = sequential_storage::map::fetch_item::<[u8; crate::directory::KEY_SIZE], &[u8], _>(
-        flash, range, &mut cache, buf, &key,
+        flash, range.0, &mut cache, buf, &key,
     )
     .await;
     match res {
@@ -178,16 +177,22 @@ pub async fn read_file_direct<F: NorFlash + MultiwriteNorFlash>(
 /// Stores/overwrites a file directly in flash using sequential-storage, updating the directory listing.
 pub async fn write_file_direct<F: NorFlash + MultiwriteNorFlash>(
     flash: &mut F,
-    range: Range<u32>,
+    range: crate::types::MapFilesystem,
     buf: &mut [u8],
     name: &str,
     content: &[u8],
 ) -> Result<(), ()> {
     let mut cache = sequential_storage::cache::NoCache::new();
     let key = crate::directory::string_to_key(name);
-    let res =
-        sequential_storage::map::store_item(flash, range.clone(), &mut cache, buf, &key, &content)
-            .await;
+    let res = sequential_storage::map::store_item(
+        flash,
+        range.0.clone(),
+        &mut cache,
+        buf,
+        &key,
+        &content,
+    )
+    .await;
     if res.is_err() {
         return Err(());
     }
@@ -206,7 +211,7 @@ pub async fn write_file_direct<F: NorFlash + MultiwriteNorFlash>(
             let dir_key = crate::directory::string_to_key(".dir");
             let _ = sequential_storage::map::store_item(
                 flash,
-                range,
+                range.0,
                 &mut cache,
                 buf,
                 &dir_key,
@@ -221,7 +226,7 @@ pub async fn write_file_direct<F: NorFlash + MultiwriteNorFlash>(
 /// Writes a telemetry record directly to flash queue storage.
 pub async fn write_telemetry_record_direct<F: NorFlash + MultiwriteNorFlash>(
     flash: &mut F,
-    telemetry_range: Range<u32>,
+    telemetry_range: crate::types::QueueFilesystem,
     record: &model::telemetry::TelemetryRecord,
 ) -> Result<(), ()> {
     #[cfg(any(test, not(all(target_arch = "arm", target_os = "none"))))]
@@ -235,7 +240,7 @@ pub async fn write_telemetry_record_direct<F: NorFlash + MultiwriteNorFlash>(
         let mut cache = sequential_storage::cache::NoCache::new();
         let push_res = sequential_storage::queue::push(
             flash,
-            telemetry_range.clone(),
+            telemetry_range.0.clone(),
             &mut cache,
             &slot[..1 + len],
             true, // allow_overwrite_old_data = true
@@ -255,7 +260,7 @@ pub struct DirectFlashBootStatus<
     F: embedded_storage::nor_flash::NorFlash + embedded_storage::nor_flash::MultiwriteNorFlash,
 > {
     flash: &'a mut F,
-    telemetry_range: Range<u32>,
+    telemetry_range: crate::types::QueueFilesystem,
 }
 
 impl<
@@ -264,7 +269,7 @@ impl<
     > DirectFlashBootStatus<'a, F>
 {
     /// Create a new direct flash boot status recorder.
-    pub fn new(flash: &'a mut F, telemetry_range: Range<u32>) -> Self {
+    pub fn new(flash: &'a mut F, telemetry_range: crate::types::QueueFilesystem) -> Self {
         Self {
             flash,
             telemetry_range,

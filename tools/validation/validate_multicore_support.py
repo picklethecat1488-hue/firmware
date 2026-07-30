@@ -39,15 +39,50 @@ def get_called_function_name(call_node):
     return None
 
 
+def get_struct_name(struct_node):
+    """Extract the struct identifier name from a struct_item node."""
+    for child in struct_node.children:
+        if child.type == "type_identifier":
+            return child.text.decode("utf-8")
+    return None
+
+
 def parse_code(content, filepath="<string>"):
     """Parse Rust code using tree-sitter to find functions, attributes, and calls."""
     parser = Parser(RUST_LANGUAGE)
     tree = parser.parse(content)
 
     functions = {}
+    controller_structs = []
 
     def traverse(node):
-        if node.type == "function_item":
+        if node.type == "struct_item":
+            is_controller_context = False
+            parent = node.parent
+            if parent:
+                idx = -1
+                for i, child in enumerate(parent.children):
+                    if child.id == node.id:
+                        idx = i
+                        break
+                k = idx - 1
+                while k >= 0:
+                    sibling = parent.children[k]
+                    if sibling.type == "attribute_item":
+                        attr_text = sibling.text.decode("utf-8")
+                        if "controller_context" in attr_text:
+                            is_controller_context = True
+                        k -= 1
+                    elif sibling.type in ["line_comment", "block_comment", "\n"]:
+                        k -= 1
+                    else:
+                        break
+            if is_controller_context:
+                s_name = get_struct_name(node)
+                if s_name:
+                    controller_structs.append({"name": s_name, "filepath": filepath})
+
+        elif node.type == "function_item":
             fn_name = None
             for child in node.children:
                 if child.type in ["name", "identifier"]:
@@ -143,13 +178,14 @@ def parse_code(content, filepath="<string>"):
                     "ram_features": ram_features,
                     "calls": list(set(calls)),
                     "forbidden_calls": forbidden_calls,
+                    "text": node.text.decode("utf-8"),
                 }
 
         for child in node.children:
             traverse(child)
 
     traverse(tree.root_node)
-    return functions
+    return functions, controller_structs
 
 
 def validate_call_graph(funcs_list, roots, feature, allowed_files=None):
@@ -212,6 +248,7 @@ def validate_call_graph(funcs_list, roots, feature, allowed_files=None):
 def main():
     scan_dirs = ["controller/src", "peripherals/src"]
     all_functions = []
+    all_controller_structs = []
 
     with Halo(text="Scanning and parsing AST for multicore support...", spinner="dots") as spinner:
         for s_dir in scan_dirs:
@@ -224,8 +261,9 @@ def main():
                         try:
                             with open(filepath, "rb") as f:
                                 content = f.read()
-                            funcs = parse_code(content, filepath)
+                            funcs, structs = parse_code(content, filepath)
                             all_functions.extend(funcs.values())
+                            all_controller_structs.extend(structs)
                         except Exception as e:
                             print(f"Error reading/parsing {filepath}: {e}", file=sys.stderr)
 
@@ -249,8 +287,29 @@ def main():
         allowed_files=["sensor_controller.rs", "vl53l0x.rs"],
     )
 
+    # Validate that controllers don't instantiate other controllers directly
+    instantiation_errors = 0
+    for func in all_functions:
+        filepath = func["filepath"]
+        filename = os.path.basename(filepath)
+        if filepath.startswith("controller/src/") and filename not in ["shell_controller.rs"]:
+            for ctrl in all_controller_structs:
+                if filepath == ctrl["filepath"]:
+                    continue
+
+                pattern = f"{ctrl['name']}::"
+                if pattern in func["text"]:
+                    print(
+                        f"{Fore.RED}ERROR:{Style.RESET_ALL} Controller file '{filepath}' directly references '{ctrl['name']}' via '{pattern}' in function '{func['name']}' at line {func['line']}!"
+                    )
+                    print(
+                        f"  Expected: Controllers must communicate via client/channel interfaces, not direct instantiation or static references."
+                    )
+                    print()
+                    instantiation_errors += 1
+
     total_warnings = motor_warnings + sensor_warnings
-    total_errors = motor_errors + sensor_errors
+    total_errors = motor_errors + sensor_errors + instantiation_errors
 
     if total_errors > 0:
         print(f"{Fore.RED}Validation FAILED: Found {total_errors} errors and {total_warnings} warnings.")

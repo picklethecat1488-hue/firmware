@@ -187,7 +187,7 @@ fn test_write_crash_log_to_flash_rolling() {
     let mut flash = MockFlash {
         data: vec![0xFF; 65536], // 64KB mock partition
     };
-    let range = 0..65536;
+    let range = platform::types::MapFilesystem(0..65536);
     let mut cache = sequential_storage::cache::NoCache::new();
     let mut scratch = [0u8; 1500];
 
@@ -233,7 +233,7 @@ fn test_write_crash_log_to_flash_rolling() {
         let mut dir_buf = [0u8; 128];
         let dir_val = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
             &mut flash,
-            range.clone(),
+            range.0.clone(),
             &mut cache,
             &mut dir_buf,
             &string_to_key(".dir"),
@@ -249,7 +249,7 @@ fn test_write_crash_log_to_flash_rolling() {
         let mut crash0_buf = [0u8; 128];
         let crash0_val = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
             &mut flash,
-            range.clone(),
+            range.0.clone(),
             &mut cache,
             &mut crash0_buf,
             &string_to_key("crash_0.cbor"),
@@ -263,7 +263,7 @@ fn test_write_crash_log_to_flash_rolling() {
         let mut crash1_buf = [0u8; 128];
         let crash1_val = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
             &mut flash,
-            range.clone(),
+            range.0.clone(),
             &mut cache,
             &mut crash1_buf,
             &string_to_key("crash_1.cbor"),

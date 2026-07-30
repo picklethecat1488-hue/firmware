@@ -255,7 +255,7 @@ fn test_spawn_all_controllers_configuration() {
     let fs_flash = SharedFlashMutex::new(&FLASH_MUTEX);
     let fs_controller = controller::filesystem_controller::FilesystemController::new(
         controller::filesystem_controller::ProfilingFlash::new(fs_flash),
-        0..32 * 1024,
+        platform::types::MapFilesystem(0..32 * 1024),
         fs_buf,
     );
 
@@ -265,7 +265,7 @@ fn test_spawn_all_controllers_configuration() {
     let telemetry_ctrl = Box::leak(Box::new(
         controller::telemetry_controller::TelemetryController::new(
             telemetry_flash,
-            32 * 1024..64 * 1024,
+            platform::types::QueueFilesystem(32 * 1024..64 * 1024),
             client,
         ),
     ));
