@@ -731,3 +731,41 @@ macro_rules! assert_partitions {
         };
     };
 }
+
+/// Macro to define the embedded project metadata block for autodetect.
+#[macro_export]
+macro_rules! define_project_metadata {
+    (
+        chip: $chip:expr,
+        flash_base: $flash_base:expr,
+        storage_start: $storage_start:expr,
+        storage_end: $storage_end:expr,
+        flash_write_size: $flash_write_size:expr,
+        flash_erase_size: $flash_erase_size:expr
+    ) => {
+        const METADATA_WRITER: $crate::cbor::ConstCborWriter<128> =
+            $crate::types::ProjectMetadata::serialize(
+                $chip,
+                $flash_base + $storage_start,
+                $storage_end - $storage_start,
+                $flash_write_size as u32,
+                $flash_erase_size as u32,
+                $crate::types::STACK_SCAN_LIMIT,
+            );
+
+        /// Embedded project metadata for autodetect functionality.
+        #[used]
+        #[no_mangle]
+        #[cfg_attr(
+            all(target_arch = "arm", target_os = "none"),
+            link_section = ".rodata.project_metadata"
+        )]
+        pub static PROJECT_METADATA: [u8; METADATA_WRITER.len] =
+            $crate::cbor::extract_bytes(METADATA_WRITER.buf);
+
+        /// Anchor symbol to statically enforce define_project_metadata invocation.
+        #[used]
+        #[no_mangle]
+        pub static PROJECT_METADATA_ANCHOR: u8 = 0x42;
+    };
+}
