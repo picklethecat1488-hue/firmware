@@ -12,7 +12,10 @@
 use cat_detector as app;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-use {embassy_executor::Spawner, embedded_cli::cli::CliBuilder, platform::core_monitor};
+use {
+    embassy_executor::Spawner, embedded_cli::cli::CliBuilder, platform::core_monitor,
+    platform::types::MapFilesystem,
+};
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use controller::shell_controller::{ShellController, ShellControllerPointers};
@@ -220,7 +223,7 @@ async fn main(spawner: Spawner) {
     let fs_buf = unsafe { &mut app::FS_BUF };
     app::init_panic_handler(
         panic_flash,
-        app::STORAGE_PARTITION_START..app::STORAGE_PARTITION_END,
+        MapFilesystem(app::FS_PARTITION_START..app::FS_PARTITION_END),
         fs_buf,
         app::MAX_CRASH_LOGS,
     );
@@ -304,14 +307,24 @@ async fn main(spawner: Spawner) {
         device: board_motor_ptr,
     }];
     let flash_partitions = unsafe {
-        &[controller::NamedPartition {
-            name: "default",
-            partition: controller::FlashPartition {
-                flash_ptr: app::PANIC_FLASH.as_mut().unwrap() as *mut _,
-                start_address: app::STORAGE_PARTITION_START,
-                end_address: app::STORAGE_PARTITION_END,
+        &[
+            controller::NamedPartition {
+                name: "default",
+                partition: controller::FlashPartition {
+                    flash_ptr: app::PANIC_FLASH.as_mut().unwrap() as *mut _,
+                    start_address: app::FS_PARTITION_START,
+                    end_address: app::FS_PARTITION_END,
+                },
             },
-        }]
+            controller::NamedPartition {
+                name: "telemetry",
+                partition: controller::FlashPartition {
+                    flash_ptr: app::PANIC_FLASH.as_mut().unwrap() as *mut _,
+                    start_address: app::TELEMETRY_PARTITION_START,
+                    end_address: app::TELEMETRY_PARTITION_END,
+                },
+            },
+        ]
     };
     let temp_sensors: &[controller::NamedDevice<_>] = if !temp_sensor_ptr.is_null() {
         &[controller::NamedDevice {

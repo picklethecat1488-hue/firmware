@@ -2,7 +2,7 @@
 
 #![deny(missing_docs)]
 
-use crate::tracing;
+use crate::tracing::{self, controller_context};
 pub use platform::gesture_detector::ProximityEvent;
 
 use crate::system_feature::FeatureList;
@@ -155,6 +155,7 @@ pub trait SystemFeatureSet<MutexRaw: RawMutex + 'static, const N: usize> {
 }
 
 /// Controller responsible for tracking global status and coordinating other subsystems.
+#[controller_context]
 pub struct SystemController<
     MutexRaw: RawMutex + 'static,
     F: SystemFeatureSet<MutexRaw, N>,

@@ -12,8 +12,9 @@ use model::telemetry::TelemetryClient;
 use model::types::{MotorSpeed, PeripheralError, SystemStatus};
 use peripherals::ToPeripheralError;
 
-use crate::tracing;
+use crate::tracing::{self, controller_context};
 use crate::types::{MotorCalState, MotorSafetyStatus, MotorState};
+use platform::types::MapFilesystem;
 
 /// The tick interval of the motor controller (10ms / 100Hz).
 pub const MOTOR_TICK_INTERVAL: embassy_time::Duration = embassy_time::Duration::from_millis(10);
@@ -55,6 +56,7 @@ impl MotorLimits {
 }
 
 /// A generalized motor controller that orchestrates motor driver outputs and current sensor monitoring.
+#[controller_context]
 pub struct MotorController<M, C> {
     state: MotorState,
     /// The physical or mock motor peripheral.
@@ -655,21 +657,22 @@ pub fn handle_motor_cli<
 
             let partition = resolver.resolve_partition(None)?;
             let flash_ref = unsafe { &mut *partition.flash_ptr };
-            let async_flash = platform::BlockingAsyncFlash(flash_ref);
-            let mut fs = crate::filesystem_controller::FilesystemController::new(
-                async_flash,
-                partition.start_address..partition.end_address,
-                fs_buf_static,
-            );
+            let mut async_flash = platform::BlockingAsyncFlash(flash_ref);
 
             let mut buf = [0u8; 128];
-            let cal = embassy_futures::block_on(fs.read_file("motor_cal.cbor", &mut buf))
-                .ok()
-                .flatten()
-                .and_then(|bytes| {
-                    minicbor::decode::<model::calibration::MotorCalibration>(bytes).ok()
-                })
-                .unwrap_or_default();
+            let cal = embassy_futures::block_on(platform::flash::read_file_direct(
+                &mut async_flash,
+                MapFilesystem(partition.start_address..partition.end_address),
+                fs_buf_static,
+                "motor_cal.cbor",
+                &mut buf,
+            ))
+            .ok()
+            .flatten()
+            .and_then(|len| {
+                minicbor::decode::<model::calibration::MotorCalibration>(&buf[..len]).ok()
+            })
+            .unwrap_or_default();
 
             let mut cal = cal;
             let ref_point = model::calibration::FourPointRef::from(state);
@@ -697,11 +700,17 @@ pub fn handle_motor_cli<
             encoder.encode(cal).unwrap();
             let len = encoder.into_writer().position();
 
-            embassy_futures::block_on(fs.write_file("motor_cal.cbor", &write_buf[..len]))
-                .map(|_| {
-                    let _ = core::writeln!(writer, "Saved motor {} calibration to flash.", name);
-                })
-                .map_err(|_| "Error saving calibration to flash")
+            embassy_futures::block_on(platform::flash::write_file_direct(
+                &mut async_flash,
+                MapFilesystem(partition.start_address..partition.end_address),
+                fs_buf_static,
+                "motor_cal.cbor",
+                &write_buf[..len],
+            ))
+            .map(|_| {
+                let _ = core::writeln!(writer, "Saved motor {} calibration to flash.", name);
+            })
+            .map_err(|_| "Error saving calibration to flash")
         }
     }
 }

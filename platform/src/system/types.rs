@@ -322,7 +322,7 @@ pub struct PanicConfig {
     /// Flash driver reference
     pub flash: &'static mut dyn PanicFlash,
     /// Offset range in flash partition used for filesystem
-    pub range: core::ops::Range<u32>,
+    pub range: MapFilesystem,
     /// Static filesystem buffer used as workspace during panic writes
     pub fs_buf: &'static mut [u8],
     /// Maximum number of rolling crash logs (modulo limit)
@@ -683,6 +683,18 @@ impl CoreStatus {
         Self::new(CpuId::Core0)
     }
 }
+
+/// A type-safe range wrapper representing the entire flash storage range.
+#[derive(Clone, PartialEq, Eq)]
+pub struct FlashRange(pub core::ops::Range<u32>);
+
+/// A type-safe range wrapper representing a map partition range.
+#[derive(Clone, PartialEq, Eq)]
+pub struct MapFilesystem(pub core::ops::Range<u32>);
+
+/// A type-safe range wrapper representing a queue partition range.
+#[derive(Clone, PartialEq, Eq)]
+pub struct QueueFilesystem(pub core::ops::Range<u32>);
 
 /// Compile-time static assertions for flash storage partitions.
 #[macro_export]

@@ -9,7 +9,7 @@ pub use tracing_defmt::{self, debug, error, info, trace, warn};
 #[cfg(not(feature = "tracing"))]
 pub use defmt::{debug, error, info, trace, warn};
 
-pub use tracing_macros::instrument;
+pub use tracing_macros::{controller_context, instrument};
 
 /// Trace a telemetry record to the defmt console/RTT buffer when tracing is enabled on target.
 pub fn trace_telemetry_record(record: &model::telemetry::TelemetryRecord) {

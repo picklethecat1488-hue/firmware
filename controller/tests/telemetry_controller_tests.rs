@@ -3,6 +3,7 @@ use controller::telemetry_controller::{TelemetryController, TelemetryCounters};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use model::types::{BatteryState, BatteryStatus, BootReason, TelemetryRecord};
 use platform::flash::SharedFlashMutex;
+use platform::types::{MapFilesystem, QueueFilesystem};
 use std::sync::atomic::Ordering;
 
 struct MockFlash {
@@ -59,7 +60,7 @@ fn test_telemetry_controller_ring_buffer() {
 
         let buf = Box::leak(vec![0u8; 8192].into_boxed_slice());
         let fs_flash = SharedFlashMutex::new(&FLASH_MUTEX);
-        let mut fs = FilesystemController::new(fs_flash, 0..32 * 1024, buf);
+        let mut fs = FilesystemController::new(fs_flash, MapFilesystem(0..32 * 1024), buf);
 
         static FS_CHANNEL: embassy_sync::channel::Channel<
             CriticalSectionRawMutex,
@@ -71,7 +72,7 @@ fn test_telemetry_controller_ring_buffer() {
         let telemetry_flash = SharedFlashMutex::new(&FLASH_MUTEX);
         let mut telemetry = TelemetryController::<45, { model::telemetry::BUFFER_SIZE }, _>::new(
             telemetry_flash,
-            32 * 1024..64 * 1024,
+            QueueFilesystem(32 * 1024..64 * 1024),
             client,
         );
 
@@ -134,7 +135,7 @@ fn test_telemetry_controller_wrap() {
 
         let buf = Box::leak(vec![0u8; 8192].into_boxed_slice());
         let fs_flash = SharedFlashMutex::new(&FLASH_MUTEX);
-        let mut fs = FilesystemController::new(fs_flash, 0..32 * 1024, buf);
+        let mut fs = FilesystemController::new(fs_flash, MapFilesystem(0..32 * 1024), buf);
 
         static FS_CHANNEL: embassy_sync::channel::Channel<
             CriticalSectionRawMutex,
@@ -147,7 +148,7 @@ fn test_telemetry_controller_wrap() {
         let telemetry_flash = SharedFlashMutex::new(&FLASH_MUTEX);
         let mut telemetry = TelemetryController::<200, { model::telemetry::BUFFER_SIZE }, _>::new(
             telemetry_flash,
-            32 * 1024..40 * 1024,
+            QueueFilesystem(32 * 1024..40 * 1024),
             client,
         );
 

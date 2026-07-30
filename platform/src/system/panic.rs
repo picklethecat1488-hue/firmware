@@ -6,6 +6,7 @@
 //! to a rolling flash memory partition using target-agnostic flash abstractions.
 
 pub use crate::types::LogBuffer;
+use crate::types::MapFilesystem;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use crate::core_monitor;
@@ -157,7 +158,7 @@ pub static mut PANIC_STATE: [crate::types::CorePanicState; core_monitor::NUM_COR
 pub fn init(
     #[cfg(all(target_arch = "arm", target_os = "none"))]
     flash: &'static mut dyn crate::types::PanicFlash,
-    #[cfg(all(target_arch = "arm", target_os = "none"))] range: core::ops::Range<u32>,
+    #[cfg(all(target_arch = "arm", target_os = "none"))] range: MapFilesystem,
     #[cfg(all(target_arch = "arm", target_os = "none"))] fs_buf: &'static mut [u8],
     #[cfg(all(target_arch = "arm", target_os = "none"))] max_crash_logs: u32,
 ) {
@@ -275,7 +276,7 @@ pub fn extract_system_logs(cs: &critical_section::CriticalSection, log_buf: &mut
 /// Writes the serialized crash dump, increments the rolling index, and updates the directory listing.
 pub async fn write_crash_log_to_flash<F>(
     flash: &mut F,
-    range: core::ops::Range<u32>,
+    range: MapFilesystem,
     cache: &mut sequential_storage::cache::NoCache,
     buf: &mut [u8],
     encoded_bytes: &[u8],
@@ -290,7 +291,7 @@ where
     let current_idx = if let Ok(Some(bytes)) =
         sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
             flash,
-            range.clone(),
+            range.0.clone(),
             cache,
             buf,
             &string_to_key("crash_idx"),
@@ -313,7 +314,7 @@ where
 
     match sequential_storage::map::store_item(
         flash,
-        range.clone(),
+        range.0.clone(),
         cache,
         buf,
         &log_key,
@@ -344,7 +345,7 @@ where
     let idx_key = string_to_key("crash_idx");
     if let Err(_e) = sequential_storage::map::store_item(
         flash,
-        range.clone(),
+        range.0.clone(),
         cache,
         buf,
         &idx_key,
@@ -363,7 +364,7 @@ where
     let dir_key = crate::directory::string_to_key(".dir");
     let existing_dir_res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
         flash,
-        range.clone(),
+        range.0.clone(),
         cache,
         buf,
         &dir_key,
@@ -382,7 +383,7 @@ where
         // Store updated dir
         if let Err(_e) = sequential_storage::map::store_item(
             flash,
-            range.clone(),
+            range.0.clone(),
             cache,
             buf,
             &dir_key,

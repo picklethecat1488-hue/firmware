@@ -2,7 +2,7 @@
 
 #![deny(missing_docs)]
 
-use crate::tracing;
+use crate::tracing::{self, controller_context};
 use crate::types::{SensorDirection, SensorMetadata};
 use crate::BlockingProximityReader;
 use crate::Sender;
@@ -11,6 +11,7 @@ use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::interfaces::ProximitySensor;
 use model::types::{Direction, PeriodicInterval, PeripheralError};
 use peripherals::ToPeripheralError;
+use platform::types::MapFilesystem;
 use platform::{select_branch_with_timeout, subcommand_enum, BlockingAsyncFlash};
 
 /// Trait for waiting on a data-ready interrupt pin.
@@ -225,6 +226,7 @@ impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin: DataReady
 }
 
 /// A controller that coordinates readings from a single proximity (ToF) sensor.
+#[controller_context]
 pub struct SensorController<
     'a,
     S,
@@ -635,22 +637,22 @@ pub fn handle_sensor_cli<
 
             let partition = resolver.resolve_partition(None)?;
             let flash_ref = unsafe { &mut *partition.flash_ptr };
-            let async_flash = BlockingAsyncFlash(flash_ref);
-            let mut fs = crate::filesystem_controller::FilesystemController::new(
-                async_flash,
-                partition.start_address..partition.end_address,
-                fs_buf_static,
-            );
+            let mut async_flash = BlockingAsyncFlash(flash_ref);
 
             let mut buf = [0u8; 128];
-            let mut proximity_cal =
-                embassy_futures::block_on(fs.read_file("vl53l0x_cal.cbor", &mut buf))
-                    .ok()
-                    .flatten()
-                    .and_then(|bytes| {
-                        minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes).ok()
-                    })
-                    .unwrap_or_default();
+            let mut proximity_cal = embassy_futures::block_on(platform::flash::read_file_direct(
+                &mut async_flash,
+                MapFilesystem(partition.start_address..partition.end_address),
+                fs_buf_static,
+                "vl53l0x_cal.cbor",
+                &mut buf,
+            ))
+            .ok()
+            .flatten()
+            .and_then(|len| {
+                minicbor::decode::<model::calibration::Vl53l0xCalibration>(&buf[..len]).ok()
+            })
+            .unwrap_or_default();
 
             let dir = model::types::Direction::from(direction);
             proximity_cal[dir].low = d_raw;
@@ -661,12 +663,17 @@ pub fn handle_sensor_cli<
             encoder.encode(proximity_cal).unwrap();
             let len = encoder.into_writer().position();
 
-            embassy_futures::block_on(fs.write_file("vl53l0x_cal.cbor", &write_buf[..len]))
-                .map(|_| {
-                    let _ =
-                        core::writeln!(writer, "Saved cover calibration for {} to flash.", name);
-                })
-                .map_err(|_| "Error saving calibration to flash")
+            embassy_futures::block_on(platform::flash::write_file_direct(
+                &mut async_flash,
+                MapFilesystem(partition.start_address..partition.end_address),
+                fs_buf_static,
+                "vl53l0x_cal.cbor",
+                &write_buf[..len],
+            ))
+            .map(|_| {
+                let _ = core::writeln!(writer, "Saved cover calibration for {} to flash.", name);
+            })
+            .map_err(|_| "Error saving calibration to flash")
         }
         SensorSubcommand::CalFar => {
             let dir_str = arg1.ok_or("Missing direction parameter")?;
@@ -702,22 +709,22 @@ pub fn handle_sensor_cli<
 
             let partition = resolver.resolve_partition(None)?;
             let flash_ref = unsafe { &mut *partition.flash_ptr };
-            let async_flash = BlockingAsyncFlash(flash_ref);
-            let mut fs = crate::filesystem_controller::FilesystemController::new(
-                async_flash,
-                partition.start_address..partition.end_address,
-                fs_buf_static,
-            );
+            let mut async_flash = BlockingAsyncFlash(flash_ref);
 
             let mut buf = [0u8; 128];
-            let mut proximity_cal =
-                embassy_futures::block_on(fs.read_file("vl53l0x_cal.cbor", &mut buf))
-                    .ok()
-                    .flatten()
-                    .and_then(|bytes| {
-                        minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes).ok()
-                    })
-                    .unwrap_or_default();
+            let mut proximity_cal = embassy_futures::block_on(platform::flash::read_file_direct(
+                &mut async_flash,
+                MapFilesystem(partition.start_address..partition.end_address),
+                fs_buf_static,
+                "vl53l0x_cal.cbor",
+                &mut buf,
+            ))
+            .ok()
+            .flatten()
+            .and_then(|len| {
+                minicbor::decode::<model::calibration::Vl53l0xCalibration>(&buf[..len]).ok()
+            })
+            .unwrap_or_default();
 
             let dir = model::types::Direction::from(direction);
             proximity_cal[dir].high = d_raw;
@@ -728,12 +735,17 @@ pub fn handle_sensor_cli<
             encoder.encode(proximity_cal).unwrap();
             let len = encoder.into_writer().position();
 
-            embassy_futures::block_on(fs.write_file("vl53l0x_cal.cbor", &write_buf[..len]))
-                .map(|_| {
-                    let _ =
-                        core::writeln!(writer, "Saved 100mm calibration for {} to flash.", name);
-                })
-                .map_err(|_| "Error saving calibration to flash")
+            embassy_futures::block_on(platform::flash::write_file_direct(
+                &mut async_flash,
+                MapFilesystem(partition.start_address..partition.end_address),
+                fs_buf_static,
+                "vl53l0x_cal.cbor",
+                &write_buf[..len],
+            ))
+            .map(|_| {
+                let _ = core::writeln!(writer, "Saved 100mm calibration for {} to flash.", name);
+            })
+            .map_err(|_| "Error saving calibration to flash")
         }
     }
 }
