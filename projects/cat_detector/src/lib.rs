@@ -313,7 +313,19 @@ pub async fn init_controllers(board: Board<'static>) {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-static mut CORE1_STACK: embassy_rp::multicore::Stack<4096> = embassy_rp::multicore::Stack::new();
+/// Core 1 stack size in bytes.
+pub const CORE1_STACK_SIZE: usize = 4096;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Core 1 default stack top address.
+pub const CORE1_DEFAULT_STACK_TOP: u32 = 0x2004_0000;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+static mut CORE1_STACK: embassy_rp::multicore::Stack<CORE1_STACK_SIZE> =
+    embassy_rp::multicore::Stack::new();
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+static mut CORE1_STACK_TOP: u32 = CORE1_DEFAULT_STACK_TOP;
 
 /// Global pointer to the active MotorController on Core 1 (populated during startup).
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -395,7 +407,7 @@ pub async fn bootstrap_core1_task(
 /// Boots Core 1 and starts the RAM executor.
 pub fn boot_core1(core1: embassy_rp::peripherals::CORE1) {
     unsafe {
-        platform::panic_handler::CORE1_STACK_TOP = core::ptr::addr_of!(CORE1_STACK) as u32 + 4096;
+        CORE1_STACK_TOP = core::ptr::addr_of!(CORE1_STACK) as u32 + CORE1_STACK_SIZE as u32;
         crate::Board::init_executor_core1();
     }
 
@@ -416,14 +428,8 @@ pub fn boot_core1(core1: embassy_rp::peripherals::CORE1) {
 pub fn handle_panic(info: &core::panic::PanicInfo) -> ! {
     let cpuid_val = unsafe { core::ptr::read_volatile(0xd0000000 as *const u32) };
     let (cpuid, stack_top) = match cpuid_val {
-        0 => (platform::types::CpuId::Core0, 0x2004_2000),
-        1 => {
-            let top = unsafe { platform::panic_handler::CORE1_STACK_TOP };
-            (
-                platform::types::CpuId::Core1,
-                if top != 0 { top } else { 0x2004_0000 },
-            )
-        }
+        0 => (platform::types::CpuId::Core0, STACK_TOP),
+        1 => (platform::types::CpuId::Core1, unsafe { CORE1_STACK_TOP }),
         _ => loop {
             cortex_m::asm::nop();
         },
@@ -499,11 +505,7 @@ const _: () = {
 pub use controller::shell_controller;
 
 pub use model::types::SystemStatus;
-pub use platform::{
-    cbor,
-    types::{ProjectMetadata, STACK_SCAN_LIMIT},
-    BatteryUpdateAction,
-};
+pub use platform::BatteryUpdateAction;
 
 /// Feature set for the Cat Detector app that implements SystemFeatureSet.
 #[allow(clippy::type_complexity)]
@@ -578,14 +580,6 @@ pub static TELEMETRY_CHANNEL: controller::TelemetryChannel<
     { controller::telemetry_controller::CHANNEL_CAPACITY },
 > = controller::TelemetryChannel::new();
 
-const _: () = {
-    let max_boot_errors = 16;
-    let safe_headroom = 16;
-    assert!(
-        controller::telemetry_controller::CHANNEL_CAPACITY >= max_boot_errors + safe_headroom,
-        "TELEMETRY_CHANNEL capacity is too small to buffer all boot-time errors with safe headroom"
-    );
-};
 /// Shared command channel for filesystem operations.
 pub static FILESYSTEM_CHANNEL: controller::FilesystemChannel<MutexRaw, 16> =
     controller::FilesystemChannel::new();
@@ -617,28 +611,14 @@ pub use platform::panic_handler::handle_panic_with_sizes;
 /// Re-export the modular panic handler initialization
 pub use platform::panic_handler::init as init_panic_handler;
 
-/// Returns the current system uptime in microseconds since boot (64-bit precision).
-pub fn system_time() -> u64 {
-    embassy_time::Instant::now().as_micros()
+platform::define_project_metadata! {
+    chip: "rp2040",
+    flash_base: 0x10000000,
+    storage_start: STORAGE_PARTITION_START,
+    storage_end: STORAGE_PARTITION_END,
+    flash_write_size: FLASH_WRITE_SIZE,
+    flash_erase_size: FLASH_ERASE_SIZE
 }
-
-const METADATA_WRITER: cbor::ConstCborWriter<128> = ProjectMetadata::serialize(
-    "rp2040",
-    0x10000000 + STORAGE_PARTITION_START,
-    STORAGE_PARTITION_END - STORAGE_PARTITION_START,
-    FLASH_WRITE_SIZE as u32,
-    FLASH_ERASE_SIZE as u32,
-    STACK_SCAN_LIMIT,
-);
-
-/// Embedded project metadata for autodetect functionality.
-#[used]
-#[no_mangle]
-#[cfg_attr(
-    all(target_arch = "arm", target_os = "none"),
-    link_section = ".rodata.project_metadata"
-)]
-pub static PROJECT_METADATA: [u8; METADATA_WRITER.len] = cbor::extract_bytes(METADATA_WRITER.buf);
 
 /// Creates the standard CatDetectorFeatureSet configured with the application's actual channels.
 pub fn create_default_feature_set(

@@ -340,9 +340,6 @@ impl FlashTelemetryParser {
             }
         }
 
-        // Sort records by timestamp
-        records.sort_unstable_by_key(|&(ts, _)| ts);
-
         Ok(records)
     }
 }
