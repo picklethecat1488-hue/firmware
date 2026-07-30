@@ -765,7 +765,7 @@ fn test_spawn_controllers_embassy_routing() {
         BootReason::Unknown,
     );
 
-    let fs_buf = Box::leak(vec![0u8; 4096].into_boxed_slice());
+    let fs_buf = Box::leak(vec![0u8; 8192].into_boxed_slice());
     let fs_controller = controller::filesystem_controller::FilesystemController::new(
         controller::filesystem_controller::ProfilingFlash::new(TestFlash::new()),
         0..1024 * 64,

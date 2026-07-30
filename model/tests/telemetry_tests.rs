@@ -24,6 +24,73 @@ fn test_cbor_serialization() {
     let (ts_erase, record_erase) = decoded_erase.unwrap();
     assert_eq!(ts_erase, 123456);
     assert_eq!(record_erase, erase_rec);
+
+    // Test Boot serialization
+    let boot_rec = TelemetryRecord::Boot(BootReason::Watchdog);
+    let boot_bytes = boot_rec.serialize(789);
+    let decoded_boot = TelemetryRecord::deserialize(&boot_bytes);
+    assert!(decoded_boot.is_some());
+    let (ts_boot, record_boot) = decoded_boot.unwrap();
+    assert_eq!(ts_boot, 789);
+    assert_eq!(record_boot, boot_rec);
+
+    // Test Thermal serialization
+    let thermal_rec = TelemetryRecord::Thermal(ThermalStatus::TempOverheating(28000, false));
+    let thermal_bytes = thermal_rec.serialize(9999);
+    let decoded_thermal = TelemetryRecord::deserialize(&thermal_bytes);
+    assert!(decoded_thermal.is_some());
+    let (ts_thermal, record_thermal) = decoded_thermal.unwrap();
+    assert_eq!(ts_thermal, 9999);
+    assert_eq!(record_thermal, thermal_rec);
+}
+
+#[test]
+fn test_telemetry_records_size_bounds() {
+    let max_ts = u64::MAX; // worst-case 9-byte timestamp
+
+    let records = vec![
+        TelemetryRecord::Battery(BatteryStatus::VolTempState(
+            u32::MAX,
+            i32::MAX,
+            BatteryState::Critical,
+            u32::MAX,
+        )),
+        TelemetryRecord::Motor(MotorStatus::Running(MotorSpeed::MAX)),
+        TelemetryRecord::Motor(MotorStatus::Brake),
+        TelemetryRecord::Thermal(ThermalStatus::TempOverheating(i32::MAX, true)),
+        TelemetryRecord::System(SystemStatus::Active),
+        TelemetryRecord::FuelGauge(FuelGaugeTelemetry::VolSoc(u32::MAX, u8::MAX)),
+        TelemetryRecord::Proximity(ProximityTelemetry::InRange(Direction::West, u16::MAX)),
+        TelemetryRecord::Proximity(ProximityTelemetry::OutRange(Direction::East, u16::MAX)),
+        TelemetryRecord::Led(SystemLedState::SolidOrange),
+        TelemetryRecord::Gesture(Gesture::DualLongPress),
+        TelemetryRecord::FlashTelemetry(FlashEraseTelemetry {
+            sector: u32::MAX,
+            duration_ms: u32::MAX,
+            erase_count: u32::MAX,
+        }),
+        TelemetryRecord::ChargerState(ChargeState::Charging),
+        TelemetryRecord::PeripheralError(PeripheralError::I2CNackAddress(u16::MAX, u16::MAX)),
+        TelemetryRecord::Boot(BootReason::Watchdog),
+        TelemetryRecord::PeriodicInterval(Device::Battery, PeriodicInterval::UpdateMs(u32::MAX)),
+    ];
+
+    for rec in records {
+        let bytes = rec.serialize(max_ts);
+        let len = bytes[0] as usize;
+        assert!(
+            len > 0,
+            "Serialization failed (len is 0) for record: {:?}",
+            rec
+        );
+        assert!(
+            len < model::telemetry::TELEMETRY_MAX_SIZE,
+            "Record {:?} exceeded max size limit of {}. Serialized len: {}",
+            rec,
+            model::telemetry::TELEMETRY_MAX_SIZE,
+            len
+        );
+    }
 }
 
 #[test]

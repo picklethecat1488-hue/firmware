@@ -33,15 +33,11 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
     platform::defmt_logger::DefmtLogger::set_writer(&platform::defmt_logger::DEFAULT_RTT_WRITER);
     defmt::info!("Booting Cat Detector App...");
 
-    // Initialize the modular panic handler
-    // Declare statically to avoid stack allocation and stack overflow
-    static mut FS_BUF: [u8; 4096] = [0u8; 4096];
-
     let panic_flash = unsafe { app::PANIC_FLASH.as_mut().unwrap() };
     // Obtain separate static mut references for the panic handler and filesystem controller.
     // This is safe because the panic handler only runs after the application halts/panics.
-    let fs_buf_panic = unsafe { &mut *core::ptr::addr_of_mut!(FS_BUF) };
-    let fs_buf_controller = unsafe { &mut *core::ptr::addr_of_mut!(FS_BUF) };
+    let fs_buf_panic = unsafe { &mut *core::ptr::addr_of_mut!(app::FS_BUF) };
+    let fs_buf_controller = unsafe { &mut *core::ptr::addr_of_mut!(app::FS_BUF) };
 
     app::init_panic_handler(
         panic_flash,

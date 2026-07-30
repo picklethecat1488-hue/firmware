@@ -126,7 +126,7 @@ impl core::fmt::Debug for TelemetryRecord {
 }
 
 /// Size of a serialized telemetry record in bytes
-pub const TELEMETRY_RECORD_SIZE: usize = 20;
+pub const TELEMETRY_RECORD_SIZE: usize = 36;
 /// Max size of a telemetry record payload
 pub const TELEMETRY_MAX_SIZE: usize = TELEMETRY_RECORD_SIZE;
 /// Size of the telemetry header index file (telemetry.rrd) in bytes
@@ -135,7 +135,7 @@ pub const TELEMETRY_HEADER_SIZE: usize = 12;
 pub const TELEMETRY_HEADER_FILE: &str = "telemetry.rrd";
 
 /// Telemetry record chunking constants
-pub const CHUNK_SIZE: usize = 128;
+pub const CHUNK_SIZE: usize = 64;
 /// Size of one chunk in bytes
 pub const CHUNK_FILE_SIZE: usize = CHUNK_SIZE * TELEMETRY_RECORD_SIZE;
 /// Default size of the telemetry file buffer
