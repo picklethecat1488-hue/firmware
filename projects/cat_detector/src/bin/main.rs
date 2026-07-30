@@ -50,7 +50,7 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
 
     app::init_panic_handler(
         panic_flash,
-        app::FS_PARTITION_START..app::FS_PARTITION_END,
+        platform::types::MapFilesystem(app::FS_PARTITION_START..app::FS_PARTITION_END),
         fs_buf_panic,
         app::MAX_CRASH_LOGS,
     );
@@ -82,7 +82,7 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
         controller::filesystem_controller::ProfilingFlash::new(fs_flash_mutex_ref);
     let mut fs_controller = controller::filesystem_controller::FilesystemController::new(
         profiling_flash,
-        app::FS_PARTITION_START..app::FS_PARTITION_END,
+        platform::types::MapFilesystem(app::FS_PARTITION_START..app::FS_PARTITION_END),
         fs_buf_controller,
     );
     fs_controller.set_telemetry(app::TELEMETRY_CHANNEL.sender());
@@ -164,7 +164,9 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
     let telemetry_ctrl = unsafe {
         TELEMETRY_CTRL = Some(TelemetryController::new(
             telemetry_flash_mutex_ref,
-            app::TELEMETRY_PARTITION_START..app::TELEMETRY_PARTITION_END,
+            platform::types::QueueFilesystem(
+                app::TELEMETRY_PARTITION_START..app::TELEMETRY_PARTITION_END,
+            ),
             client,
         ));
         TELEMETRY_CTRL.as_mut().unwrap()

@@ -3,7 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::BatteryTelemetryClient;
-use crate::tracing;
+use crate::tracing::{self, controller_context};
 use crate::{BatteryReceiver, BlockingBatteryReader, Sender, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
@@ -63,6 +63,7 @@ impl FromBatteryUpdate for () {
 }
 
 /// A controller that periodically monitors battery status and wakes on alerts.
+#[controller_context]
 pub struct BatteryController<'a, M: RawMutex, B, C, Pin = DummyAlertPin, Cmd = ()> {
     battery: &'a Mutex<M, B>,
     charger: &'a Mutex<M, C>,

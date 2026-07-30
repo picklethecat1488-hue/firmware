@@ -3,9 +3,9 @@
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 extern crate std;
 
+use crate::tracing::controller_context;
 use crate::{Sender, TelemetrySender};
 use core::fmt::Write as _;
-use core::ops::Range;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use embedded_storage_async::nor_flash::{MultiwriteNorFlash, NorFlash};
@@ -19,18 +19,19 @@ pub use platform::directory::{string_to_key, DIR_BUF_SIZE, KEY_SIZE};
 pub use platform::flash::ProfilingFlash;
 
 /// File Controller managing raw files/telemetry in flash using sequential-storage map.
+#[controller_context]
 pub struct FilesystemController<F: NorFlash + MultiwriteNorFlash> {
     /// The underlying flash driver instance (possibly wrapped in profiling)
     pub flash: F,
     /// The physical partition address range in flash (start..end byte offsets)
-    range: Range<u32>,
+    range: platform::types::MapFilesystem,
     /// Reference to a statically allocated buffer for sequential-storage operations
     buf: &'static mut [u8],
 }
 
 impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     /// Creates a new FilesystemController.
-    pub fn new(flash: F, range: Range<u32>, buf: &'static mut [u8]) -> Self {
+    pub fn new(flash: F, range: platform::types::MapFilesystem, buf: &'static mut [u8]) -> Self {
         Self { flash, range, buf }
     }
 
@@ -47,7 +48,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
         // Store item in map
         let res = sequential_storage::map::store_item(
             &mut self.flash,
-            self.range.clone(),
+            self.range.0.clone(),
             &mut cache,
             self.buf,
             &key,
@@ -81,7 +82,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
                         let dir_key = string_to_key(".dir");
                         let _ = sequential_storage::map::store_item(
                             &mut self.flash,
-                            self.range.clone(),
+                            self.range.0.clone(),
                             &mut cache,
                             self.buf,
                             &dir_key,
@@ -120,7 +121,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
 
         let res = sequential_storage::map::fetch_item::<[u8; KEY_SIZE], &[u8], _>(
             &mut self.flash,
-            self.range.clone(),
+            self.range.0.clone(),
             &mut cache,
             self.buf,
             &key,
@@ -161,7 +162,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
         // Remove from map
         let res = sequential_storage::map::remove_item::<[u8; KEY_SIZE], _>(
             &mut self.flash,
-            self.range.clone(),
+            self.range.0.clone(),
             &mut cache,
             self.buf,
             &key,
@@ -187,7 +188,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
                 let dir_key = string_to_key(".dir");
                 let _ = sequential_storage::map::store_item(
                     &mut self.flash,
-                    self.range.clone(),
+                    self.range.0.clone(),
                     &mut cache,
                     self.buf,
                     &dir_key,
@@ -207,7 +208,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     /// Erases the entire filesystem partition.
     pub async fn format(&mut self) -> Result<(), ()> {
         self.flash
-            .erase(self.range.start, self.range.end)
+            .erase(self.range.0.start, self.range.0.end)
             .await
             .map_err(|_| ())
     }
@@ -219,7 +220,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
         let key = string_to_key(".dir");
         let res = sequential_storage::map::fetch_item::<[u8; KEY_SIZE], &[u8], _>(
             &mut self.flash,
-            self.range.clone(),
+            self.range.0.clone(),
             &mut cache,
             self.buf,
             &key,
@@ -233,7 +234,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
             // Erase the entire range
             if self
                 .flash
-                .erase(self.range.start, self.range.end)
+                .erase(self.range.0.start, self.range.0.end)
                 .await
                 .is_err()
             {
@@ -242,7 +243,7 @@ impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
                 Err(())
             } else if sequential_storage::map::store_item(
                 &mut self.flash,
-                self.range.clone(),
+                self.range.0.clone(),
                 &mut cache,
                 self.buf,
                 &key,
@@ -526,7 +527,7 @@ pub fn handle_fs_cli<
             let async_flash = platform::BlockingAsyncFlash(flash_ref);
             let mut fs = crate::filesystem_controller::FilesystemController::new(
                 async_flash,
-                partition.start_address..partition.end_address,
+                platform::types::MapFilesystem(partition.start_address..partition.end_address),
                 fs_buf_static,
             );
 
