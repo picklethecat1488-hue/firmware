@@ -1,0 +1,110 @@
+// This file is dynamically generated at build time by build.rs. Do not edit directly.
+
+{% for ctrl in controllers %}
+/// Channel type for {{ ctrl.name }} controller.
+pub type {{ ctrl.name }}Channel<MutexRaw, const N: usize> =
+    embassy_sync::channel::Channel<MutexRaw, {{ ctrl.msg_type|safe }}, N>;
+/// Sender type for {{ ctrl.name }} controller.
+pub type {{ ctrl.name }}Sender<MutexRaw, const N: usize> =
+    embassy_sync::channel::Sender<'static, MutexRaw, {{ ctrl.msg_type|safe }}, N>;
+/// Receiver type for {{ ctrl.name }} controller.
+pub type {{ ctrl.name }}Receiver<MutexRaw, const N: usize> =
+    embassy_sync::channel::Receiver<'static, MutexRaw, {{ ctrl.msg_type|safe }}, N>;
+{% endfor %}
+
+{% for ctrl in controllers %}
+/// Task runner macro for the {{ ctrl.name }} controller.
+#[macro_export]
+macro_rules! run_{{ ctrl.name|lower }}_task {
+    (
+        $spawner:expr,
+        $task_module:ident,
+        $controller:expr
+        {% for param in ctrl.macro_params_slice() %}
+            , {{ param|safe }}
+        {% endfor %}
+    ) => {
+        #[allow(non_snake_case)]
+        mod $task_module {
+            use super::*;
+            #[cfg(feature = "tracing")]
+            use $crate::tracing::tracing_defmt;
+
+            {% for attr in ctrl.attributes_slice() %}
+                {{ attr|safe }}
+            {% endfor %}
+            #[ $crate::tracing::instrument(
+                name = stringify!($task_module),
+                level = "info",
+                skip(
+                    c
+                    {% for p in ctrl.extra_params_inferred() %}
+                        , {{ p.name }}
+                    {% endfor %}
+                )
+            ) ]
+            #[embassy_executor::task]
+            #[allow(unreachable_code)]
+            pub async fn task(
+                mut c: {{ ctrl.controller_type|safe }}
+                {% for p in ctrl.extra_params_inferred() %}
+                    , {{ p.name }}: {{ p.type|safe }}
+                {% endfor %}
+            ) {
+                c.run(
+                    {%- for p in ctrl.extra_params_inferred() -%}
+                        {{ p.name }}{% if !loop.last %}, {% endif %}
+                    {%- endfor -%}
+                ).await;
+            }
+        }
+
+        $spawner
+            .spawn($task_module::task(
+                $controller
+                {% for arg in ctrl.task_call_args_slice() %}
+                    , {{ arg|safe }}
+                {% endfor %}
+            ))
+            .unwrap();
+    };
+}
+{% endfor %}
+
+/// Helper macro to delegate the spawning of a single controller to its respective task macro.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! spawn_single_controller {
+{% for ctrl in controllers %}
+    (
+        $spawner:expr,
+        {{ ctrl.name }},
+        $controller:expr,
+        $rx:ident,
+        $telemetry:expr,
+        (
+            {% for rx in ctrl.spawn_extra_rxs_slice() %}
+                {{ rx }}:expr {% if !loop.last %}, {% endif %}
+            {% endfor %}
+        ),
+        (
+            {% for gen in ctrl.macro_generics_slice() %}
+                {{ gen }} {% if !loop.last %}, {% endif %}
+            {% endfor %}
+        )
+    ) => {
+        #[allow(unused_parens)]
+        $crate::run_{{ ctrl.name|lower }}_task!(
+            $spawner,
+            $rx,
+            $controller
+            {% for arg in ctrl.spawn_call_args_slice() %}
+                , {{ arg|safe }}
+            {% endfor %}
+            {% for gen in ctrl.spawn_generics_slice() %}
+                , {{ gen|safe }}
+            {% endfor %}
+        );
+    };
+{% endfor %}
+}
