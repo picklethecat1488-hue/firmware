@@ -793,3 +793,52 @@ macro_rules! assert_ascending {
     };
     ($last:expr $(,)?) => {};
 }
+
+/// A guard that locks the shared filesystem scratch buffer for exclusive access.
+/// Releases the lock when dropped.
+pub struct FsBufferGuard<'a> {
+    buffer: *mut [u8],
+    lock: &'a core::cell::Cell<bool>,
+}
+
+unsafe impl<'a> Send for FsBufferGuard<'a> {}
+unsafe impl<'a> Sync for FsBufferGuard<'a> {}
+
+impl<'a> core::ops::Deref for FsBufferGuard<'a> {
+    type Target = [u8];
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.buffer }
+    }
+}
+
+impl<'a> core::ops::DerefMut for FsBufferGuard<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.buffer }
+    }
+}
+
+impl<'a> Drop for FsBufferGuard<'a> {
+    fn drop(&mut self) {
+        self.lock.set(false);
+    }
+}
+
+impl<'a> FsBufferGuard<'a> {
+    /// Create a new `FsBufferGuard`.
+    ///
+    /// # Safety
+    /// The caller must ensure that only one guard is created at any time,
+    /// and that the pointer remains valid.
+    pub unsafe fn new(buffer: *mut [u8], lock: &'a core::cell::Cell<bool>) -> Self {
+        Self { buffer, lock }
+    }
+
+    /// Retrieve the underlying static buffer reference.
+    ///
+    /// # Safety
+    /// The caller must ensure that the returned static reference is not stored
+    /// or used after this guard is dropped.
+    pub unsafe fn as_static_mut(&mut self) -> &'static mut [u8] {
+        &mut *self.buffer
+    }
+}

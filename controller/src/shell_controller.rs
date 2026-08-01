@@ -8,46 +8,7 @@ use crate::{
     BlockingThermalReader,
 };
 use model::interfaces::TemperatureSensor;
-
-/// A guard that locks the shared filesystem scratch buffer for exclusive access.
-/// Releases the lock when dropped.
-pub struct FsBufferGuard<'a> {
-    buffer: *mut [u8],
-    lock: &'a core::cell::Cell<bool>,
-}
-
-unsafe impl<'a> Send for FsBufferGuard<'a> {}
-unsafe impl<'a> Sync for FsBufferGuard<'a> {}
-
-impl<'a> core::ops::Deref for FsBufferGuard<'a> {
-    type Target = [u8];
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.buffer }
-    }
-}
-
-impl<'a> core::ops::DerefMut for FsBufferGuard<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.buffer }
-    }
-}
-
-impl<'a> Drop for FsBufferGuard<'a> {
-    fn drop(&mut self) {
-        self.lock.set(false);
-    }
-}
-
-impl<'a> FsBufferGuard<'a> {
-    /// Retrieve the underlying static buffer reference.
-    ///
-    /// # Safety
-    /// The caller must ensure that the returned static reference is not stored
-    /// or used after this guard is dropped.
-    pub unsafe fn as_static_mut(&mut self) -> &'static mut [u8] {
-        &mut *self.buffer
-    }
-}
+use platform::FsBufferGuard;
 
 /// Configuration trait for the ShellController.
 /// Encapsulates the target-specific raw mutex and peripheral types.
@@ -164,7 +125,7 @@ macro_rules! define_shell_resolver_and_controller {
                 name: Option<&str>,
             ) -> Result<crate::ResolvedPartition<C::Flash>, &'static str>;
             /// Lock the shared filesystem scratch buffer for exclusive access.
-            fn lock_fs_buffer(&self) -> Result<crate::shell_controller::FsBufferGuard<'_>, &'static str>;
+            fn lock_fs_buffer(&self) -> Result<FsBufferGuard<'_>, &'static str>;
         }
 
         /// Controller responsible for processing shell commands.
@@ -243,7 +204,7 @@ macro_rules! define_shell_resolver_and_controller {
             ) -> Result<crate::ResolvedPartition<C::Flash>, &'static str> {
                 self.resolve_partition(name)
             }
-            fn lock_fs_buffer(&self) -> Result<crate::shell_controller::FsBufferGuard<'_>, &'static str> {
+            fn lock_fs_buffer(&self) -> Result<FsBufferGuard<'_>, &'static str> {
                 if self.fs_buffer_locked.get() {
                     return Err("Filesystem scratch buffer is already locked");
                 }
@@ -251,9 +212,8 @@ macro_rules! define_shell_resolver_and_controller {
                     return Err("Filesystem scratch buffer is not configured");
                 }
                 self.fs_buffer_locked.set(true);
-                Ok(crate::shell_controller::FsBufferGuard {
-                    buffer: self.fs_buffer,
-                    lock: &self.fs_buffer_locked,
+                Ok(unsafe {
+                    FsBufferGuard::new(self.fs_buffer, &self.fs_buffer_locked)
                 })
             }
         }
