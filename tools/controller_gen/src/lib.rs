@@ -49,6 +49,8 @@ pub struct Controller {
     pub impl_generics: String,
     /// Full generic type representation inside the impl block header.
     pub impl_type: String,
+    /// Types that need to be held in PhantomData for dummy struct mock definitions.
+    pub impl_phantom: Option<String>,
 }
 
 impl Controller {
@@ -120,6 +122,11 @@ impl Controller {
 
         params
     }
+
+    /// Helper to get a clean string representation of the phantom generics.
+    pub fn impl_phantom_str(&self) -> &str {
+        self.impl_phantom.as_deref().unwrap_or("")
+    }
 }
 
 /// Root TOML configuration mapping holding the list of all defined controllers.
@@ -153,6 +160,8 @@ pub struct RunLoopTemplate {
     pub impl_generics: String,
     /// Full type declaration of the controller in the impl block.
     pub impl_type: String,
+    /// Type to be held in PhantomData inside the generated struct boilerplate.
+    pub impl_phantom: String,
 }
 
 /// Searches upward from the current directory to locate the path of `controllers.toml`.

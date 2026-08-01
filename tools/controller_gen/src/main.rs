@@ -60,6 +60,7 @@ fn main() {
                     is_system: ctrl.is_system.unwrap_or(false),
                     impl_generics: ctrl.impl_generics.clone(),
                     impl_type: ctrl.impl_type.clone(),
+                    impl_phantom: ctrl.impl_phantom_str().to_string(),
                 };
                 let run_loop_output = run_loop_template
                     .render()

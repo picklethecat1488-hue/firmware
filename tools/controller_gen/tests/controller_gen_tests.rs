@@ -64,8 +64,11 @@ fn test_runloop_template_rendering() {
         is_system: false,
         impl_generics: "<D>".to_string(),
         impl_type: "TestController<D>".to_string(),
+        impl_phantom: "D".to_string(),
     };
     let output = run_loop_template.render().unwrap();
+    assert!(output.contains("#[crate::tracing::controller_context]"));
+    assert!(output.contains("pub struct TestController<D>"));
     assert!(output.contains("impl<D> TestController<D>"));
     assert!(output.contains("pub async fn run<MutexRaw: RawMutex, const SIZE: usize>"));
     assert!(output.contains("r: TestReceiver<MutexRaw, SIZE>"));

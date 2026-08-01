@@ -16,6 +16,11 @@ pub use controller::sensor_controller;
 pub use controller::system_controller;
 pub use controller::thermal_controller;
 
+// Mock tracing module for #[crate::tracing::controller_context]
+pub mod tracing {
+    pub use platform::tracing::controller_context;
+}
+
 // Include the generated mock structures, clients, and aliases
 include!(concat!(env!("OUT_DIR"), "/generated_test_mocks.rs"));
 

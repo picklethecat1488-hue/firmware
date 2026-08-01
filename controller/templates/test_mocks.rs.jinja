@@ -26,15 +26,6 @@ impl {{ ctrl.name }}TelemetryClient {
 }
 {%- endif %}
 
-// Dummy controller struct for {{ ctrl.name }}
-{% if ctrl.impl_generics != "" -%}
-pub struct {{ ctrl.name }}Controller{{ ctrl.impl_generics|safe }} {
-    _marker: core::marker::PhantomData<{{ ctrl.impl_phantom_str()|safe }}>,
-}
-{%- else -%}
-pub struct {{ ctrl.name }}Controller;
-{%- endif %}
-
 pub type {{ ctrl.name }}Receiver<MutexRaw, const S: usize> =
     embassy_sync::channel::Receiver<'static, MutexRaw, {{ ctrl.msg_type|safe }}, S>;
 {% endfor %}

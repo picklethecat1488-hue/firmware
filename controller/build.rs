@@ -120,6 +120,7 @@ struct RunLoopTemplate {
     is_system: bool,
     impl_generics: String,
     impl_type: String,
+    impl_phantom: String,
 }
 
 #[derive(Template)]
@@ -167,6 +168,7 @@ fn main() {
             is_system: ctrl.is_system.unwrap_or(false),
             impl_generics: ctrl.impl_generics.clone(),
             impl_type: ctrl.impl_type.clone(),
+            impl_phantom: ctrl.impl_phantom_str().to_string(),
         };
         let rendered = runloop_tmpl
             .render()

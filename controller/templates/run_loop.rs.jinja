@@ -1,3 +1,11 @@
+#[crate::tracing::controller_context]
+pub struct {{ name }}Controller{{ impl_generics|safe }} {
+    // TODO: Add fields (e.g. drivers, configuration) here
+    {% if impl_generics != "" -%}
+    _marker: core::marker::PhantomData<{{ impl_phantom|safe }}>,
+    {%- endif %}
+}
+
 impl{{ impl_generics|safe }} {{ impl_type|safe }} {
     /// Runs the controller's command processing loop.
     pub async fn run<MutexRaw: RawMutex, const SIZE: usize>(
