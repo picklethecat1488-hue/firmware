@@ -12,7 +12,7 @@ struct Param {
     r#type: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct Controller {
     name: String,
     msg_type: String,
@@ -28,6 +28,9 @@ struct Controller {
     has_telemetry: Option<bool>,
     receiver_capacity: Option<String>,
     is_system: Option<bool>,
+    impl_generics: String,
+    impl_type: String,
+    impl_phantom: Option<String>,
 }
 
 impl Controller {
@@ -91,9 +94,13 @@ impl Controller {
 
         params
     }
+
+    fn impl_phantom_str(&self) -> &str {
+        self.impl_phantom.as_deref().unwrap_or("")
+    }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct ControllerConfig {
     controllers: Vec<Controller>,
 }
@@ -101,6 +108,23 @@ struct ControllerConfig {
 #[derive(Template)]
 #[template(path = "generated_controllers.rs.jinja")]
 struct GeneratedControllersTemplate {
+    controllers: Vec<Controller>,
+}
+
+#[derive(Template)]
+#[template(path = "run_loop.rs.jinja")]
+struct RunLoopTemplate {
+    name: String,
+    msg_type: String,
+    has_telemetry: bool,
+    is_system: bool,
+    impl_generics: String,
+    impl_type: String,
+}
+
+#[derive(Template)]
+#[template(path = "test_mocks.rs.jinja")]
+struct TestMocksTemplate {
     controllers: Vec<Controller>,
 }
 
@@ -112,6 +136,8 @@ fn main() {
     // Tell Cargo to rerun this build script if config or template changes
     println!("cargo:rerun-if-changed=controllers.toml");
     println!("cargo:rerun-if-changed=templates/generated_controllers.rs.jinja");
+    println!("cargo:rerun-if-changed=templates/run_loop.rs.jinja");
+    println!("cargo:rerun-if-changed=templates/test_mocks.rs.jinja");
 
     let out_dir = env::var("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("generated_controllers.rs");
@@ -123,11 +149,40 @@ fn main() {
     let config: ControllerConfig =
         toml::from_str(&config_content).expect("Failed to parse controllers.toml");
 
-    // Render the template using Rinja
+    // Render the controllers template using Rinja
     let template = GeneratedControllersTemplate {
-        controllers: config.controllers,
+        controllers: config.controllers.clone(),
     };
     let output = template.render().expect("Failed to render Rinja template");
-
     f.write_all(output.as_bytes()).unwrap();
+
+    // Generate boilerplate runloops code for validation in integration tests
+    let mut runloops_f = File::create(Path::new(&out_dir).join("generated_runloops.rs")).unwrap();
+    let mut runloops_content = String::new();
+    for ctrl in &config.controllers {
+        let runloop_tmpl = RunLoopTemplate {
+            name: ctrl.name.clone(),
+            msg_type: ctrl.msg_type.clone(),
+            has_telemetry: ctrl.has_telemetry.unwrap_or(true),
+            is_system: ctrl.is_system.unwrap_or(false),
+            impl_generics: ctrl.impl_generics.clone(),
+            impl_type: ctrl.impl_type.clone(),
+        };
+        let rendered = runloop_tmpl
+            .render()
+            .expect("Failed to render runloop template in build.rs");
+        runloops_content.push_str(&rendered);
+        runloops_content.push_str("\n\n");
+    }
+    runloops_f.write_all(runloops_content.as_bytes()).unwrap();
+
+    // Generate mock structs and receiver aliases for integration tests
+    let mut mocks_f = File::create(Path::new(&out_dir).join("generated_test_mocks.rs")).unwrap();
+    let mocks_template = TestMocksTemplate {
+        controllers: config.controllers,
+    };
+    let mocks_output = mocks_template
+        .render()
+        .expect("Failed to render mocks template in build.rs");
+    mocks_f.write_all(mocks_output.as_bytes()).unwrap();
 }

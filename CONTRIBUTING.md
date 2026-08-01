@@ -188,6 +188,18 @@ To maintain decoupled domain architectures and clean Embassy task separation:
    - To add a new controller or modify module parameters, edit the configuration in [controller/controllers.toml](file:///Users/daparker/gh/firmware/controller/controllers.toml).
    - The template file [controller/templates/generated_controllers.rs.jinja](file:///Users/daparker/gh/firmware/controller/templates/generated_controllers.rs.jinja) defines the code layout.
    - The `has_telemetry` flag defaults to `true`. If a controller does not use telemetry reporting, explicitly set `has_telemetry = false` in the TOML file.
+   - **Host Code Generation Viewer Tool (`controller_gen`)**:
+     We provide a host utility to print and inspect the rendered Rust code for a specific controller or for all controllers to stdout.
+     ```bash
+     # Inspect generated macros/channels for a specific controller (e.g. Led)
+     cargo run -p controller_gen -- Led
+
+     # List all currently defined controllers
+     cargo run -p controller_gen -- list
+     
+     # Inspect generated output for all controllers
+     cargo run -p controller_gen
+     ```
 
 ---
 
