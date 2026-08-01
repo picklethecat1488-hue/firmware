@@ -107,11 +107,11 @@ impl GestureDetector<(Direction, u16)> for ProximityGestureDetector {
 }
 
 /// Channel type for gesture communication.
-pub type GestureChannel<MutexRaw, const N: usize> =
+pub type GestureChannel<MutexRaw, const N: usize = 4> =
     embassy_sync::channel::Channel<MutexRaw, Gesture, N>;
 /// Sender type for gesture communication.
-pub type GestureSender<MutexRaw, const N: usize> =
+pub type GestureSender<MutexRaw, const N: usize = 4> =
     embassy_sync::channel::Sender<'static, MutexRaw, Gesture, N>;
 /// Receiver type for gesture communication.
-pub type GestureReceiver<MutexRaw, const N: usize> =
+pub type GestureReceiver<MutexRaw, const N: usize = 4> =
     embassy_sync::channel::Receiver<'static, MutexRaw, Gesture, N>;

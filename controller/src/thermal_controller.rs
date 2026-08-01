@@ -310,9 +310,9 @@ pub fn handle_thermal_cli<
 }
 
 /// Standard config implementation for ThermalFeature.
-pub struct ThermalFeatureConfig<MutexRaw: RawMutex + 'static, const T_CAP: usize = 4> {
+pub struct ThermalFeatureConfig<MutexRaw: RawMutex + 'static> {
     /// Thermal channel sender
-    pub thermal_tx: Option<crate::ThermalSender<MutexRaw, T_CAP>>,
+    pub thermal_tx: Option<crate::ThermalSender<MutexRaw>>,
     /// Thermal manager for checking alerts
     pub thermal_manager: core::cell::RefCell<platform::ThermalManager>,
     /// Overheating temperature threshold in milli-Celsius
@@ -321,9 +321,9 @@ pub struct ThermalFeatureConfig<MutexRaw: RawMutex + 'static, const T_CAP: usize
     pub critical_temp_milli_c: i32,
 }
 
-impl<MutexRaw: RawMutex + 'static, const T_CAP: usize> ThermalFeatureConfig<MutexRaw, T_CAP> {
+impl<MutexRaw: RawMutex + 'static> ThermalFeatureConfig<MutexRaw> {
     /// Creates a new `ThermalFeatureConfig`.
-    pub fn new(thermal_tx: Option<crate::ThermalSender<MutexRaw, T_CAP>>) -> Self {
+    pub fn new(thermal_tx: Option<crate::ThermalSender<MutexRaw>>) -> Self {
         Self {
             thermal_tx,
             thermal_manager: core::cell::RefCell::new(platform::ThermalManager::new()),
@@ -334,7 +334,7 @@ impl<MutexRaw: RawMutex + 'static, const T_CAP: usize> ThermalFeatureConfig<Mute
 
     /// Creates a new `ThermalFeatureConfig` with custom thresholds.
     pub fn new_with_thresholds(
-        thermal_tx: Option<crate::ThermalSender<MutexRaw, T_CAP>>,
+        thermal_tx: Option<crate::ThermalSender<MutexRaw>>,
         overheating_temp_milli_c: i32,
         critical_temp_milli_c: i32,
     ) -> Self {
@@ -347,8 +347,8 @@ impl<MutexRaw: RawMutex + 'static, const T_CAP: usize> ThermalFeatureConfig<Mute
     }
 }
 
-impl<MutexRaw: RawMutex + 'static, const T_CAP: usize, const N: usize>
-    crate::SystemFeature<MutexRaw, N> for ThermalFeatureConfig<MutexRaw, T_CAP>
+impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw, N>
+    for ThermalFeatureConfig<MutexRaw>
 {
     fn default_boot_trap_mask(&self) -> u32 {
         if self.thermal_tx.is_some() {
@@ -391,9 +391,7 @@ impl<MutexRaw: RawMutex + 'static, const T_CAP: usize, const N: usize>
     }
 }
 
-impl<MutexRaw: RawMutex + 'static, const N: usize> crate::Periodic
-    for ThermalFeatureConfig<MutexRaw, N>
-{
+impl<MutexRaw: RawMutex + 'static> crate::Periodic for ThermalFeatureConfig<MutexRaw> {
     fn set_interval(&self, interval: PeriodicInterval) {
         if let Some(ref thermal_tx) = self.thermal_tx {
             let res = thermal_tx.try_send(ThermalCommand::SetInterval(interval));

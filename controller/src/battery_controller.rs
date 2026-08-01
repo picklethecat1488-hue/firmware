@@ -2,9 +2,10 @@
 
 #![deny(missing_docs)]
 
+use crate::system_controller::SystemCommand;
 use crate::telemetry_controller::BatteryTelemetryClient;
 use crate::tracing::{self, controller_context};
-use crate::{BatteryReceiver, BlockingBatteryReader, Sender, TelemetrySender};
+use crate::{BatteryReceiver, BlockingBatteryReader, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
@@ -84,31 +85,24 @@ impl<E: ToPeripheralError> ToPeripheralError for BatteryControllerError<E> {
 #[controller_context]
 pub struct BatteryController<
     'a,
-    M: RawMutex,
+    M: RawMutex + 'static,
     B,
     C,
     Pin = DummyAlertPin,
-    Cmd = (),
     const SYS_CAP: usize = 16,
 > {
     battery: &'a Mutex<M, B>,
     charger: &'a Mutex<M, C>,
     state: BatteryState,
-    system_tx: Option<Sender<'a, M, Cmd, SYS_CAP>>,
+    system_tx: Option<crate::SystemSender<M, SYS_CAP>>,
     alert_pin: Option<Pin>,
     last_reported_voltage: Option<u32>,
     last_reported_state: Option<BatteryState>,
     active_wake_locks: u32,
 }
 
-impl<
-        'a,
-        M: RawMutex,
-        B: FuelGauge,
-        C: model::interfaces::ChargeStatus,
-        Cmd: FromBatteryUpdate + Clone + core::fmt::Debug,
-        const SYS_CAP: usize,
-    > BatteryController<'a, M, B, C, DummyAlertPin, Cmd, SYS_CAP>
+impl<'a, M: RawMutex, B: FuelGauge, C: model::interfaces::ChargeStatus, const SYS_CAP: usize>
+    BatteryController<'a, M, B, C, DummyAlertPin, SYS_CAP>
 {
     /// Creates a new battery controller referencing a shared battery peripheral.
     pub fn new(battery: &'a Mutex<M, B>, charger: &'a Mutex<M, C>) -> Self {
@@ -128,7 +122,7 @@ impl<
     pub fn new_with_system(
         battery: &'a Mutex<M, B>,
         charger: &'a Mutex<M, C>,
-        system_tx: Sender<'a, M, Cmd, SYS_CAP>,
+        system_tx: crate::SystemSender<M, SYS_CAP>,
     ) -> Self {
         Self {
             battery,
@@ -149,9 +143,8 @@ impl<
         B: FuelGauge,
         C: model::interfaces::ChargeStatus,
         Pin: BatteryAlertPin,
-        Cmd: FromBatteryUpdate + Clone + core::fmt::Debug,
         const SYS_CAP: usize,
-    > BatteryController<'a, M, B, C, Pin, Cmd, SYS_CAP>
+    > BatteryController<'a, M, B, C, Pin, SYS_CAP>
 where
     <B as FuelGauge>::Error: ToPeripheralError,
 {
@@ -159,7 +152,7 @@ where
     pub fn new_with_system_and_alert(
         battery: &'a Mutex<M, B>,
         charger: &'a Mutex<M, C>,
-        system_tx: Sender<'a, M, Cmd, SYS_CAP>,
+        system_tx: crate::SystemSender<M, SYS_CAP>,
         alert_pin: Pin,
     ) -> Self {
         Self {
@@ -187,12 +180,7 @@ where
     )]
     pub async fn update(
         &mut self,
-        telemetry_client: Option<
-            &mut BatteryTelemetryClient<
-                CriticalSectionRawMutex,
-                { crate::telemetry_controller::CHANNEL_CAPACITY },
-            >,
-        >,
+        telemetry_client: Option<&mut BatteryTelemetryClient<CriticalSectionRawMutex>>,
     ) -> Result<(), BatteryControllerError<B::Error>> {
         let mut read_failed = false;
         let mut error_val = None;
@@ -226,8 +214,11 @@ where
         };
 
         if let Some(ref tx) = self.system_tx {
-            tx.try_send(Cmd::from_battery_update(reported_soc, charger_state))
-                .map_err(|_| BatteryControllerError::SystemChannelSendFailed)?;
+            tx.try_send(SystemCommand::from_battery_update(
+                reported_soc,
+                charger_state,
+            ))
+            .map_err(|_| BatteryControllerError::SystemChannelSendFailed)?;
         }
 
         if let Some(client) = telemetry_client {
@@ -293,10 +284,10 @@ where
         }
     }
 
-    fn handle_update_error<const T_CAP: usize>(
+    fn handle_update_error(
         &self,
         e: BatteryControllerError<<B as FuelGauge>::Error>,
-        telemetry_client: &mut BatteryTelemetryClient<CriticalSectionRawMutex, T_CAP>,
+        telemetry_client: &mut BatteryTelemetryClient<CriticalSectionRawMutex>,
         check_interval: Option<&mut embassy_time::Duration>,
     ) {
         match e {
@@ -400,7 +391,7 @@ where
                     if let Some(ref tx) = self.system_tx {
                         // SOC = 0, charging = false triggers battery_critical and SystemCommand::PowerDown in SystemController
                         if tx
-                            .try_send(Cmd::from_battery_update(
+                            .try_send(SystemCommand::from_battery_update(
                                 0,
                                 model::types::ChargeState::DoneOrStandbyOrUnplugged,
                             ))
@@ -440,9 +431,8 @@ impl<
         B: FuelGauge,
         C: model::interfaces::ChargeStatus,
         Pin,
-        Cmd,
         const SYS_CAP: usize,
-    > crate::BlockingBatteryReader for BatteryController<'a, M, B, C, Pin, Cmd, SYS_CAP>
+    > crate::BlockingBatteryReader for BatteryController<'a, M, B, C, Pin, SYS_CAP>
 {
     fn read_battery_blocking(&self) -> Result<(u32, u8), PeripheralError> {
         if let Ok(mut bat) = self.battery.try_lock() {
@@ -505,17 +495,17 @@ pub fn handle_battery_cli<
 }
 
 /// Standard config implementation for BatteryFeature.
-pub struct BatteryFeatureConfig<MutexRaw: RawMutex + 'static, const B_CAP: usize = 4> {
+pub struct BatteryFeatureConfig<MutexRaw: RawMutex + 'static> {
     /// Battery channel sender
-    pub battery_tx: Option<crate::BatterySender<MutexRaw, B_CAP>>,
+    pub battery_tx: Option<crate::BatterySender<MutexRaw>>,
     /// Battery manager for battery thresholds and status
     pub battery_manager: core::cell::RefCell<platform::BatteryManager>,
 }
 
-impl<MutexRaw: RawMutex + 'static, const B_CAP: usize> BatteryFeatureConfig<MutexRaw, B_CAP> {
+impl<MutexRaw: RawMutex + 'static> BatteryFeatureConfig<MutexRaw> {
     /// Creates a new `BatteryFeatureConfig`.
     pub fn new(
-        battery_tx: Option<crate::BatterySender<MutexRaw, B_CAP>>,
+        battery_tx: Option<crate::BatterySender<MutexRaw>>,
         battery_manager: platform::BatteryManager,
     ) -> Self {
         Self {
@@ -525,8 +515,8 @@ impl<MutexRaw: RawMutex + 'static, const B_CAP: usize> BatteryFeatureConfig<Mute
     }
 }
 
-impl<MutexRaw: RawMutex + 'static, const B_CAP: usize, const N: usize>
-    crate::SystemFeature<MutexRaw, N> for BatteryFeatureConfig<MutexRaw, B_CAP>
+impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw, N>
+    for BatteryFeatureConfig<MutexRaw>
 {
     fn default_boot_trap_mask(&self) -> u32 {
         if self.battery_tx.is_some() {
@@ -596,15 +586,15 @@ impl<MutexRaw: RawMutex + 'static, const B_CAP: usize, const N: usize>
     }
 }
 
-impl<MutexRaw: RawMutex + 'static, const N: usize> crate::Periodic
-    for BatteryFeatureConfig<MutexRaw, N>
-{
+impl<MutexRaw: RawMutex + 'static> crate::Periodic for BatteryFeatureConfig<MutexRaw> {
     fn set_interval(&self, interval: PeriodicInterval) {
         if let Some(ref battery_tx) = self.battery_tx {
-            battery_tx
-                .try_send(BatteryCommand::SetInterval(interval))
-                .map_err(|_| "TrySendError")
+            let res = battery_tx.try_send(BatteryCommand::SetInterval(interval));
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            res.map_err(|_| "TrySendError")
                 .expect("Failed to send periodic interval to battery controller");
+            #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+            let _ = res;
         }
     }
 }

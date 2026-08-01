@@ -3,13 +3,18 @@
 #![deny(missing_docs)]
 
 use crate::tracing::{self, controller_context};
-pub use platform::gesture_detector::ProximityEvent;
+pub use platform::gesture_detector::{GestureReceiver, ProximityEvent};
 
 use crate::system_feature::FeatureList;
 use crate::types::{
     BatteryStatus, Device, DeviceSupport, GestureAction, ProximityAction, ThermalUpdateAction,
 };
-use crate::{BlockingSystemWriter, PeripheralError, Sender};
+use crate::{BlockingSystemWriter, PeripheralError};
+
+/// Receiver type for thermal update action communication.
+pub type ThermalUpdateReceiver<MutexRaw, const N: usize = 4> =
+    embassy_sync::channel::Receiver<'static, MutexRaw, ThermalUpdateAction, N>;
+
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use platform::{
@@ -171,10 +176,9 @@ pub struct SystemController<
     MutexRaw: RawMutex + 'static,
     F: SystemFeatureSet<MutexRaw, N>,
     const N: usize = 16,
-    const T_CAP: usize = { crate::telemetry_controller::CHANNEL_CAPACITY },
 > {
     /// Subsystem manager for power, transitions, and timers
-    pub power_manager: PowerManager<MutexRaw, T_CAP>,
+    pub power_manager: PowerManager<MutexRaw>,
     /// The app-defined feature set containing event hooks and channel configurations
     pub feature_set: F,
     /// Current battery status summary.
@@ -183,17 +187,13 @@ pub struct SystemController<
     boot_trap_log_countdown: u8,
 }
 
-impl<
-        MutexRaw: RawMutex + 'static,
-        F: SystemFeatureSet<MutexRaw, N>,
-        const N: usize,
-        const T_CAP: usize,
-    > SystemController<MutexRaw, F, N, T_CAP>
+impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: usize>
+    SystemController<MutexRaw, F, N>
 {
     /// Creates a new SystemController instance.
     pub fn new(
         feature_set: F,
-        telemetry_tx: Sender<'static, MutexRaw, TelemetryRecord, T_CAP>,
+        telemetry_tx: crate::TelemetrySender<MutexRaw>,
         boot_reason: BootReason,
     ) -> Self {
         let mut power_manager = PowerManager::new(telemetry_tx, boot_reason);
@@ -531,16 +531,11 @@ impl<
     }
 
     /// Main execution loop.
-    pub async fn run<const CMD_CAP: usize>(
+    pub async fn run(
         mut self,
-        command_rx: embassy_sync::channel::Receiver<'static, MutexRaw, SystemCommand, CMD_CAP>,
-        gesture_rx: embassy_sync::channel::Receiver<'static, MutexRaw, Gesture, 4>,
-        thermal_rx: embassy_sync::channel::Receiver<
-            'static,
-            MutexRaw,
-            crate::types::ThermalUpdateAction,
-            4,
-        >,
+        command_rx: crate::SystemReceiver<MutexRaw>,
+        gesture_rx: GestureReceiver<MutexRaw>,
+        thermal_rx: ThermalUpdateReceiver<MutexRaw>,
     ) -> ! {
         self.feature_set.features().on_init();
         self.power_manager
@@ -657,12 +652,8 @@ pub fn handle_system_cli<
     }
 }
 
-impl<
-        MutexRaw: RawMutex + 'static,
-        F: SystemFeatureSet<MutexRaw, N>,
-        const N: usize,
-        const T_CAP: usize,
-    > crate::BlockingSystemWriter for SystemController<MutexRaw, F, N, T_CAP>
+impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: usize>
+    crate::BlockingSystemWriter for SystemController<MutexRaw, F, N>
 {
     fn record_activity(&mut self) -> Result<(), PeripheralError> {
         let _ = self.handle_command(SystemCommand::ActivityDetected);

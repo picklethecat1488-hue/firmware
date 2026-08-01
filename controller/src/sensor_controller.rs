@@ -794,19 +794,14 @@ pub fn handle_sensor_cli<
 }
 
 /// Standard config implementation for ProximityFeature.
-pub struct ProximityFeatureConfig<
-    MutexRaw: RawMutex + 'static,
-    const P_CAP: usize = 4,
-    const S_CAP: usize = 3,
-    const T_CAP: usize = { crate::telemetry_controller::CHANNEL_CAPACITY },
-> {
+pub struct ProximityFeatureConfig<MutexRaw: RawMutex + 'static, const S_CAP: usize = 3> {
     /// Sensor channel senders
-    pub sensor_txs: heapless::Vec<crate::SensorSender<MutexRaw, P_CAP>, S_CAP>,
+    pub sensor_txs: heapless::Vec<crate::SensorSender<MutexRaw>, S_CAP>,
     /// Proximity gesture detector state
     pub gesture_detector: core::cell::RefCell<platform::gesture_detector::ProximityGestureDetector>,
     /// Proximity telemetry client
     pub telemetry_client:
-        core::cell::RefCell<crate::telemetry_controller::ProximityTelemetryClient<MutexRaw, T_CAP>>,
+        core::cell::RefCell<crate::telemetry_controller::ProximityTelemetryClient<MutexRaw>>,
     /// Active proximity detection state
     pub proximity_active: core::cell::Cell<bool>,
     /// Proximity detection threshold
@@ -817,16 +812,14 @@ pub struct ProximityFeatureConfig<
     pub dual_long_press_action: crate::GestureAction,
 }
 
-impl<MutexRaw: RawMutex + 'static, const P_CAP: usize, const S_CAP: usize, const T_CAP: usize>
-    ProximityFeatureConfig<MutexRaw, P_CAP, S_CAP, T_CAP>
-{
+impl<MutexRaw: RawMutex + 'static, const S_CAP: usize> ProximityFeatureConfig<MutexRaw, S_CAP> {
     /// Creates a new `ProximityFeatureConfig` with the given list of sensor senders (up to S_CAP).
     pub fn new(
-        sensor_senders: &[crate::SensorSender<MutexRaw, P_CAP>],
+        sensor_senders: &[crate::SensorSender<MutexRaw>],
         press_threshold_mm: u16,
         wake_threshold_mm: u16,
         dual_long_press_action: crate::GestureAction,
-        telemetry_tx: Option<crate::TelemetrySender<MutexRaw, T_CAP>>,
+        telemetry_tx: Option<crate::TelemetrySender<MutexRaw>>,
     ) -> Self {
         let mut sensor_txs = heapless::Vec::new();
         for sender in sensor_senders {
@@ -855,13 +848,8 @@ impl<MutexRaw: RawMutex + 'static, const P_CAP: usize, const S_CAP: usize, const
     }
 }
 
-impl<
-        MutexRaw: RawMutex + 'static,
-        const P_CAP: usize,
-        const S_CAP: usize,
-        const T_CAP: usize,
-        const N: usize,
-    > crate::SystemFeature<MutexRaw, N> for ProximityFeatureConfig<MutexRaw, P_CAP, S_CAP, T_CAP>
+impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
+    crate::SystemFeature<MutexRaw, N> for ProximityFeatureConfig<MutexRaw, S_CAP>
 {
     fn on_proximity_update(
         &self,
@@ -946,8 +934,8 @@ impl<
     }
 }
 
-impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_CAP: usize>
-    crate::Periodic for ProximityFeatureConfig<MutexRaw, N, S_CAP, T_CAP>
+impl<MutexRaw: RawMutex + 'static, const S_CAP: usize> crate::Periodic
+    for ProximityFeatureConfig<MutexRaw, S_CAP>
 {
     fn set_interval(&self, interval: PeriodicInterval) {
         self.telemetry_client

@@ -127,6 +127,19 @@ impl Controller {
     pub fn impl_phantom_str(&self) -> &str {
         self.impl_phantom.as_deref().unwrap_or("")
     }
+
+    /// Gets default capacity suffix for generated controllers.
+    pub fn default_capacity_suffix(&self) -> String {
+        if let Some(ref cap) = self.receiver_capacity {
+            if cap.starts_with('$') {
+                " = { crate::telemetry_controller::CHANNEL_CAPACITY }".to_string()
+            } else {
+                format!(" = {}", cap)
+            }
+        } else {
+            " = 4".to_string()
+        }
+    }
 }
 
 /// Root TOML configuration mapping holding the list of all defined controllers.

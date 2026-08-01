@@ -810,13 +810,13 @@ fn test_spawn_controllers_embassy_routing() {
             telemetry: RUN_TELEMETRY_CHANNEL,
             controllers: {
                 Thermal(thermal_ctrl, RUN_THERMAL_CHANNEL), generics: (peripherals::mock::MockBattery),
-                Battery(battery_ctrl, RUN_BATTERY_CHANNEL), generics: (peripherals::mock::MockBattery, peripherals::mock::MockCharger, MockPin, SystemCommand),
+                Battery(battery_ctrl, RUN_BATTERY_CHANNEL), generics: (peripherals::mock::MockBattery, peripherals::mock::MockCharger, MockPin),
                 Motor(motor_ctrl, RUN_MOTOR_CHANNEL), generics: (model::interfaces::NoTick<MockMotor>, DummyCurrentSensor),
                 Sensor(sensor_ctrl_north, RUN_SENSOR_NORTH_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_east, RUN_SENSOR_EAST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_west, RUN_SENSOR_WEST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Led(led_ctrl, RUN_LED_CHANNEL), generics: (MockLed),
-                System(system_ctrl, RUN_SYSTEM_CHANNEL, RUN_GESTURE_CHANNEL, RUN_THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, cat_detector::CatDetectorFeatureSet<CriticalSectionRawMutex, 16>, 16, 64>),
+                System(system_ctrl, RUN_SYSTEM_CHANNEL, RUN_GESTURE_CHANNEL, RUN_THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, cat_detector::CatDetectorFeatureSet<CriticalSectionRawMutex, 16>, 16>),
                 Filesystem(fs_controller, RUN_FILESYSTEM_CHANNEL), generics: (controller::filesystem_controller::ProfilingFlash<platform::flash::SharedFlashMutex<TestFlash>>),
                 Telemetry(telemetry_ctrl, RUN_TELEMETRY_CONSUMER_CHANNEL), generics: ({ cat_detector::MAX_RECORDS }, { controller::telemetry_controller::CHANNEL_CAPACITY }, platform::flash::SharedFlashMutex<TestFlash>),
             }

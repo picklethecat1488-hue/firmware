@@ -98,6 +98,18 @@ impl Controller {
     fn impl_phantom_str(&self) -> &str {
         self.impl_phantom.as_deref().unwrap_or("")
     }
+
+    fn default_capacity_suffix(&self) -> String {
+        if let Some(ref cap) = self.receiver_capacity {
+            if cap.starts_with('$') {
+                " = { crate::telemetry_controller::CHANNEL_CAPACITY }".to_string()
+            } else {
+                format!(" = {}", cap)
+            }
+        } else {
+            " = 4".to_string()
+        }
+    }
 }
 
 #[derive(Deserialize, Clone)]

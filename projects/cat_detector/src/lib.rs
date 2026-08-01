@@ -168,7 +168,6 @@ pub static mut BATTERY_CTRL: Option<
         BatteryDevice,
         ChargerDevice,
         AlertPinType,
-        SystemCommand,
     >,
 > = None;
 
@@ -512,11 +511,11 @@ pub struct CatDetectorFeatureSet<
 > {
     /// Tuple of active system features
     pub features: (
-        controller::MotorFeatureConfig<MutexRaw, 4>,
-        controller::BatteryFeatureConfig<MutexRaw, 4>,
-        controller::ProximityFeatureConfig<MutexRaw, 4>,
-        controller::LedFeatureConfig<MutexRaw, 4>,
-        controller::ThermalFeatureConfig<MutexRaw, 4>,
+        controller::MotorFeatureConfig<MutexRaw>,
+        controller::BatteryFeatureConfig<MutexRaw>,
+        controller::ProximityFeatureConfig<MutexRaw>,
+        controller::LedFeatureConfig<MutexRaw>,
+        controller::ThermalFeatureConfig<MutexRaw>,
     ),
 }
 
@@ -524,11 +523,11 @@ impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: u
     controller::SystemFeatureSet<MutexRaw, N> for CatDetectorFeatureSet<MutexRaw, N>
 {
     type Features = (
-        controller::MotorFeatureConfig<MutexRaw, 4>,
-        controller::BatteryFeatureConfig<MutexRaw, 4>,
-        controller::ProximityFeatureConfig<MutexRaw, 4>,
-        controller::LedFeatureConfig<MutexRaw, 4>,
-        controller::ThermalFeatureConfig<MutexRaw, 4>,
+        controller::MotorFeatureConfig<MutexRaw>,
+        controller::BatteryFeatureConfig<MutexRaw>,
+        controller::ProximityFeatureConfig<MutexRaw>,
+        controller::LedFeatureConfig<MutexRaw>,
+        controller::ThermalFeatureConfig<MutexRaw>,
     );
 
     fn features(&self) -> &Self::Features {

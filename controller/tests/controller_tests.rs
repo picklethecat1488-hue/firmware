@@ -1,15 +1,5 @@
-use controller::battery_controller::FromBatteryUpdate;
 use controller::motor_controller::{MotorCommand, MotorController};
 use controller::MotorState;
-
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct TestCmd(pub u8);
-
-impl FromBatteryUpdate for TestCmd {
-    fn from_battery_update(state_of_charge: u8, _charger_state: model::types::ChargeState) -> Self {
-        TestCmd(state_of_charge)
-    }
-}
 use model::calibration::Calibration;
 use model::interfaces::{Motor, NoTick, Tickable};
 use model::types::MotorSpeed;
@@ -232,7 +222,7 @@ fn test_battery_controller_sad_cases() {
 
         let system_channel = Box::leak(Box::new(embassy_sync::channel::Channel::<
             CriticalSectionRawMutex,
-            TestCmd,
+            controller::system_controller::SystemCommand,
             16,
         >::new()));
         let system_tx = system_channel.sender();

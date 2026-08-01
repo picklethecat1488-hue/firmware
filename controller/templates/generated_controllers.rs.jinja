@@ -2,13 +2,13 @@
 
 {% for ctrl in controllers %}
 /// Channel type for {{ ctrl.name }} controller.
-pub type {{ ctrl.name }}Channel<MutexRaw, const N: usize> =
+pub type {{ ctrl.name }}Channel<MutexRaw, const N: usize{{ ctrl.default_capacity_suffix() }}> =
     embassy_sync::channel::Channel<MutexRaw, {{ ctrl.msg_type|safe }}, N>;
 /// Sender type for {{ ctrl.name }} controller.
-pub type {{ ctrl.name }}Sender<MutexRaw, const N: usize> =
+pub type {{ ctrl.name }}Sender<MutexRaw, const N: usize{{ ctrl.default_capacity_suffix() }}> =
     embassy_sync::channel::Sender<'static, MutexRaw, {{ ctrl.msg_type|safe }}, N>;
 /// Receiver type for {{ ctrl.name }} controller.
-pub type {{ ctrl.name }}Receiver<MutexRaw, const N: usize> =
+pub type {{ ctrl.name }}Receiver<MutexRaw, const N: usize{{ ctrl.default_capacity_suffix() }}> =
     embassy_sync::channel::Receiver<'static, MutexRaw, {{ ctrl.msg_type|safe }}, N>;
 {% endfor %}
 

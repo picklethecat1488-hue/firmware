@@ -14,15 +14,15 @@ impl_phantom = "D"
 [[controllers]]
 name = "Battery"
 msg_type = "crate::battery_controller::BatteryCommand"
-macro_params = ["$rx:expr", "$telemetry_tx:expr", "$battery_type:ty", "$charger_type:ty", "$pin_type:ty", "$cmd_type:ty"]
+macro_params = ["$rx:expr", "$telemetry_tx:expr", "$battery_type:ty", "$charger_type:ty", "$pin_type:ty"]
 task_call_args = ["$rx", "$telemetry_tx"]
-controller_type = "$crate::battery_controller::BatteryController<'static, embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, $battery_type, $charger_type, $pin_type, $cmd_type>"
+controller_type = "$crate::battery_controller::BatteryController<'static, embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, $battery_type, $charger_type, $pin_type>"
 spawn_call_args = ["$rx.receiver()", "$telemetry.sender()"]
-macro_generics = ["$battery_type:ty", "$charger_type:ty", "$pin_type:ty", "$cmd_type:ty"]
-spawn_generics = ["$battery_type", "$charger_type", "$pin_type", "$cmd_type"]
-impl_generics = "<'a, M, B, C, P, CMD>"
-impl_type = "BatteryController<'a, M, B, C, P, CMD>"
-impl_phantom = "(&'a (), M, B, C, P, CMD)"
+macro_generics = ["$battery_type:ty", "$charger_type:ty", "$pin_type:ty"]
+spawn_generics = ["$battery_type", "$charger_type", "$pin_type"]
+impl_generics = "<'a, M, B, C, P>"
+impl_type = "BatteryController<'a, M, B, C, P>"
+impl_phantom = "(&'a (), M, B, C, P)"
 
 [[controllers]]
 name = "Thermal"

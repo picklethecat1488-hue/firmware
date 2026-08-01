@@ -226,20 +226,20 @@ where
 }
 
 /// Standard config implementation for LedFeature.
-pub struct LedFeatureConfig<MutexRaw: RawMutex + 'static, const L_CAP: usize = 4> {
+pub struct LedFeatureConfig<MutexRaw: RawMutex + 'static> {
     /// LED channel sender
-    pub led_tx: Option<crate::LedSender<MutexRaw, L_CAP>>,
+    pub led_tx: Option<crate::LedSender<MutexRaw>>,
 }
 
-impl<MutexRaw: RawMutex + 'static, const L_CAP: usize> LedFeatureConfig<MutexRaw, L_CAP> {
+impl<MutexRaw: RawMutex + 'static> LedFeatureConfig<MutexRaw> {
     /// Creates a new `LedFeatureConfig`.
-    pub fn new(led_tx: Option<crate::LedSender<MutexRaw, L_CAP>>) -> Self {
+    pub fn new(led_tx: Option<crate::LedSender<MutexRaw>>) -> Self {
         Self { led_tx }
     }
 }
 
-impl<MutexRaw: RawMutex + 'static, const L_CAP: usize, const N: usize>
-    crate::SystemFeature<MutexRaw, N> for LedFeatureConfig<MutexRaw, L_CAP>
+impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw, N>
+    for LedFeatureConfig<MutexRaw>
 {
     fn on_init(&self) {
         if let Some(ref led_tx) = self.led_tx {

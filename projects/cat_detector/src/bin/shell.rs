@@ -72,7 +72,6 @@ type BatteryControllerType = controller::battery_controller::BatteryController<
     app::BatteryDevice,
     app::ChargerDevice,
     app::AlertPinType,
-    app::SystemCommand,
 >;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
