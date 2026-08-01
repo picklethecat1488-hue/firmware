@@ -62,13 +62,39 @@ impl FromBatteryUpdate for () {
     }
 }
 
+/// Battery controller errors.
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum BatteryControllerError<E> {
+    /// An error returned by the fuel gauge driver.
+    FuelGauge(E),
+    /// Critical error: failed to notify the system channel about battery status or charger state change.
+    SystemChannelSendFailed,
+}
+
+impl<E: ToPeripheralError> ToPeripheralError for BatteryControllerError<E> {
+    fn to_peripheral_error(&self) -> model::types::PeripheralError {
+        match self {
+            Self::FuelGauge(e) => e.to_peripheral_error(),
+            Self::SystemChannelSendFailed => model::types::PeripheralError::Unknown,
+        }
+    }
+}
+
 /// A controller that periodically monitors battery status and wakes on alerts.
 #[controller_context]
-pub struct BatteryController<'a, M: RawMutex, B, C, Pin = DummyAlertPin, Cmd = ()> {
+pub struct BatteryController<
+    'a,
+    M: RawMutex,
+    B,
+    C,
+    Pin = DummyAlertPin,
+    Cmd = (),
+    const SYS_CAP: usize = 16,
+> {
     battery: &'a Mutex<M, B>,
     charger: &'a Mutex<M, C>,
     state: BatteryState,
-    system_tx: Option<Sender<'a, M, Cmd, 4>>,
+    system_tx: Option<Sender<'a, M, Cmd, SYS_CAP>>,
     alert_pin: Option<Pin>,
     last_reported_voltage: Option<u32>,
     last_reported_state: Option<BatteryState>,
@@ -81,7 +107,8 @@ impl<
         B: FuelGauge,
         C: model::interfaces::ChargeStatus,
         Cmd: FromBatteryUpdate + Clone + core::fmt::Debug,
-    > BatteryController<'a, M, B, C, DummyAlertPin, Cmd>
+        const SYS_CAP: usize,
+    > BatteryController<'a, M, B, C, DummyAlertPin, Cmd, SYS_CAP>
 {
     /// Creates a new battery controller referencing a shared battery peripheral.
     pub fn new(battery: &'a Mutex<M, B>, charger: &'a Mutex<M, C>) -> Self {
@@ -101,7 +128,7 @@ impl<
     pub fn new_with_system(
         battery: &'a Mutex<M, B>,
         charger: &'a Mutex<M, C>,
-        system_tx: Sender<'a, M, Cmd, 4>,
+        system_tx: Sender<'a, M, Cmd, SYS_CAP>,
     ) -> Self {
         Self {
             battery,
@@ -123,7 +150,8 @@ impl<
         C: model::interfaces::ChargeStatus,
         Pin: BatteryAlertPin,
         Cmd: FromBatteryUpdate + Clone + core::fmt::Debug,
-    > BatteryController<'a, M, B, C, Pin, Cmd>
+        const SYS_CAP: usize,
+    > BatteryController<'a, M, B, C, Pin, Cmd, SYS_CAP>
 where
     <B as FuelGauge>::Error: ToPeripheralError,
 {
@@ -131,7 +159,7 @@ where
     pub fn new_with_system_and_alert(
         battery: &'a Mutex<M, B>,
         charger: &'a Mutex<M, C>,
-        system_tx: Sender<'a, M, Cmd, 4>,
+        system_tx: Sender<'a, M, Cmd, SYS_CAP>,
         alert_pin: Pin,
     ) -> Self {
         Self {
@@ -165,7 +193,7 @@ where
                 { crate::telemetry_controller::CHANNEL_CAPACITY },
             >,
         >,
-    ) -> Result<(), B::Error> {
+    ) -> Result<(), BatteryControllerError<B::Error>> {
         let mut read_failed = false;
         let mut error_val = None;
         let (voltage, soc) = {
@@ -198,7 +226,8 @@ where
         };
 
         if let Some(ref tx) = self.system_tx {
-            let _ = tx.try_send(Cmd::from_battery_update(reported_soc, charger_state));
+            tx.try_send(Cmd::from_battery_update(reported_soc, charger_state))
+                .map_err(|_| BatteryControllerError::SystemChannelSendFailed)?;
         }
 
         if let Some(client) = telemetry_client {
@@ -246,7 +275,7 @@ where
 
         if read_failed {
             if let Some(err) = error_val {
-                Err(err)
+                Err(BatteryControllerError::FuelGauge(err))
             } else {
                 Ok(())
             }
@@ -261,6 +290,27 @@ where
             pin.wait_for_alert().await;
         } else {
             core::future::pending::<()>().await;
+        }
+    }
+
+    fn handle_update_error<const T_CAP: usize>(
+        &self,
+        e: BatteryControllerError<<B as FuelGauge>::Error>,
+        telemetry_client: &mut BatteryTelemetryClient<CriticalSectionRawMutex, T_CAP>,
+        check_interval: Option<&mut embassy_time::Duration>,
+    ) {
+        match e {
+            BatteryControllerError::FuelGauge(err) => {
+                telemetry_client.report_error(err.to_peripheral_error());
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::error!("BatteryController: status read failed!");
+                if let Some(interval) = check_interval {
+                    *interval = crate::OVERFLOW_SAFE_MAX_DURATION;
+                }
+            }
+            BatteryControllerError::SystemChannelSendFailed => {
+                panic!("BatteryController: Failed to send battery update to system channel!");
+            }
         }
     }
 
@@ -288,11 +338,14 @@ where
         }
 
         // Run initial status check on boot.
-        // If the fuel gauge is unresponsive/failing, this will report 100% SOC, clearing the boot trap.
-        if self.update(Some(&mut telemetry_client)).await.is_err() || boot_config_failed {
+        if let Err(e) = self.update(Some(&mut telemetry_client)).await {
+            self.handle_update_error(e, &mut telemetry_client, Some(&mut check_interval));
+        }
+
+        if boot_config_failed {
+            telemetry_client.report_error(model::types::PeripheralError::InvalidConfiguration);
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::warn!("BatteryController: Initial read failed; disabling periodic updates.");
-            check_interval = crate::OVERFLOW_SAFE_MAX_DURATION;
+            defmt::error!("BatteryController: Boot alert configuration failed!");
         }
         loop {
             let res = select_branch_with_timeout!(
@@ -301,8 +354,7 @@ where
                     match cmd {
                         BatteryCommand::CheckStatus => {
                             if let Err(e) = self.update(Some(&mut telemetry_client)).await {
-                                let err = e.to_peripheral_error();
-                                telemetry_client.report_error(err);
+                                self.handle_update_error(e, &mut telemetry_client, None);
                             }
                         }
                         BatteryCommand::UpdateWakeLocks(mask) => {
@@ -347,31 +399,34 @@ where
                     self.state = BatteryState::Low;
                     if let Some(ref tx) = self.system_tx {
                         // SOC = 0, charging = false triggers battery_critical and SystemCommand::PowerDown in SystemController
-                        let _ = tx.try_send(Cmd::from_battery_update(
-                            0,
-                            model::types::ChargeState::DoneOrStandbyOrUnplugged,
-                        ));
+                        if tx
+                            .try_send(Cmd::from_battery_update(
+                                0,
+                                model::types::ChargeState::DoneOrStandbyOrUnplugged,
+                            ))
+                            .is_err()
+                        {
+                            telemetry_client.report_error(model::types::PeripheralError::Unknown);
+                            #[cfg(all(target_arch = "arm", target_os = "none"))]
+                            defmt::error!("BatteryController: Critical battery alert send failed!");
+                        }
                     }
                 } else if is_soc_alert {
                     if let Err(e) = self.update(Some(&mut telemetry_client)).await {
-                        let err = e.to_peripheral_error();
-                        telemetry_client.report_error(err);
-                        #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        defmt::warn!(
-                            "BatteryController: Periodic read failed; disabling periodic updates."
+                        self.handle_update_error(
+                            e,
+                            &mut telemetry_client,
+                            Some(&mut check_interval),
                         );
-                        check_interval = crate::OVERFLOW_SAFE_MAX_DURATION;
                     }
                 } else if check_interval != crate::OVERFLOW_SAFE_MAX_DURATION {
                     // Default fallback
                     if let Err(e) = self.update(Some(&mut telemetry_client)).await {
-                        let err = e.to_peripheral_error();
-                        telemetry_client.report_error(err);
-                        #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        defmt::warn!(
-                            "BatteryController: Periodic read failed; disabling periodic updates."
+                        self.handle_update_error(
+                            e,
+                            &mut telemetry_client,
+                            Some(&mut check_interval),
                         );
-                        check_interval = crate::OVERFLOW_SAFE_MAX_DURATION;
                     }
                 }
             }
@@ -379,8 +434,15 @@ where
     }
 }
 
-impl<'a, M: RawMutex, B: FuelGauge, C: model::interfaces::ChargeStatus, Pin, Cmd>
-    crate::BlockingBatteryReader for BatteryController<'a, M, B, C, Pin, Cmd>
+impl<
+        'a,
+        M: RawMutex,
+        B: FuelGauge,
+        C: model::interfaces::ChargeStatus,
+        Pin,
+        Cmd,
+        const SYS_CAP: usize,
+    > crate::BlockingBatteryReader for BatteryController<'a, M, B, C, Pin, Cmd, SYS_CAP>
 {
     fn read_battery_blocking(&self) -> Result<(u32, u8), PeripheralError> {
         if let Ok(mut bat) = self.battery.try_lock() {
@@ -443,17 +505,17 @@ pub fn handle_battery_cli<
 }
 
 /// Standard config implementation for BatteryFeature.
-pub struct BatteryFeatureConfig<MutexRaw: RawMutex + 'static, const N: usize> {
+pub struct BatteryFeatureConfig<MutexRaw: RawMutex + 'static, const B_CAP: usize = 4> {
     /// Battery channel sender
-    pub battery_tx: Option<crate::BatterySender<MutexRaw, N>>,
+    pub battery_tx: Option<crate::BatterySender<MutexRaw, B_CAP>>,
     /// Battery manager for battery thresholds and status
     pub battery_manager: core::cell::RefCell<platform::BatteryManager>,
 }
 
-impl<MutexRaw: RawMutex + 'static, const N: usize> BatteryFeatureConfig<MutexRaw, N> {
+impl<MutexRaw: RawMutex + 'static, const B_CAP: usize> BatteryFeatureConfig<MutexRaw, B_CAP> {
     /// Creates a new `BatteryFeatureConfig`.
     pub fn new(
-        battery_tx: Option<crate::BatterySender<MutexRaw, N>>,
+        battery_tx: Option<crate::BatterySender<MutexRaw, B_CAP>>,
         battery_manager: platform::BatteryManager,
     ) -> Self {
         Self {
@@ -463,8 +525,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> BatteryFeatureConfig<MutexRaw
     }
 }
 
-impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw, N>
-    for BatteryFeatureConfig<MutexRaw, N>
+impl<MutexRaw: RawMutex + 'static, const B_CAP: usize, const N: usize>
+    crate::SystemFeature<MutexRaw, N> for BatteryFeatureConfig<MutexRaw, B_CAP>
 {
     fn default_boot_trap_mask(&self) -> u32 {
         if self.battery_tx.is_some() {
@@ -513,7 +575,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
         _battery_status: Option<crate::BatteryStatus>,
         _thermal_critical: bool,
     ) {
-        self.on_wake_locks_changed(0);
+        <Self as crate::SystemFeature<MutexRaw, N>>::on_wake_locks_changed(self, 0);
         use crate::Periodic;
         if support.battery {
             self.set_interval(PeriodicInterval::UpdateMs(1000));
@@ -539,12 +601,10 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::Periodic
 {
     fn set_interval(&self, interval: PeriodicInterval) {
         if let Some(ref battery_tx) = self.battery_tx {
-            let res = battery_tx.try_send(BatteryCommand::SetInterval(interval));
-            #[cfg(all(target_arch = "arm", target_os = "none"))]
-            res.map_err(|_| "TrySendError")
+            battery_tx
+                .try_send(BatteryCommand::SetInterval(interval))
+                .map_err(|_| "TrySendError")
                 .expect("Failed to send periodic interval to battery controller");
-            #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-            let _ = res;
         }
     }
 }

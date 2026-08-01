@@ -94,9 +94,9 @@ type SystemControllerType = controller::SystemController<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     cat_detector::CatDetectorFeatureSet<
         embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        4,
+        16,
     >,
-    4,
+    16,
 >;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]

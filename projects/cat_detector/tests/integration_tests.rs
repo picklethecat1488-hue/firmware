@@ -78,7 +78,7 @@ impl embedded_storage_async::nor_flash::MultiwriteNorFlash for TestFlash {}
 fn test_system_integration_flow() {
     futures::executor::block_on(async {
         // Channels
-        static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 4> = Channel::new();
+        static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 16> = Channel::new();
         static MOTOR_CHANNEL: Channel<CriticalSectionRawMutex, MotorCommand, 4> = Channel::new();
         static SENSOR_NORTH_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> =
             Channel::new();
@@ -128,7 +128,7 @@ fn test_system_integration_flow() {
             rpm_limit: 0,
         });
         let mut led_ctrl = LedController::new(mock_led);
-        let feature_set = cat_detector::CatDetectorFeatureSet {
+        let feature_set = cat_detector::CatDetectorFeatureSet::<CriticalSectionRawMutex, 16> {
             features: (
                 controller::MotorFeatureConfig::new(
                     Some(MOTOR_CHANNEL.sender()),
@@ -229,6 +229,7 @@ fn test_system_integration_flow() {
         let _ = system_ctrl.clear_boot_trap(platform::BootTrapReason::Thermal);
 
         // 1. Simulate battery status report: SoC = 85% -> triggers system wake-up to Active
+        println!("--- RUNNING STEP 1 ---");
         {
             let mut bat = mock_battery.lock().await;
             bat.state_of_charge = 85;
@@ -256,6 +257,7 @@ fn test_system_integration_flow() {
         assert_eq!(led_ctrl.current_state(), SystemLedState::SolidGreen);
 
         // 2. Simulate object detection: North sensor reads 150mm
+        println!("--- RUNNING STEP 2 ---");
         sensor_ctrl_north.sensor_mut().distance_mm = 150;
         sensor_ctrl_north.update().unwrap();
         let cmd = SYSTEM_CHANNEL.receive().await;
@@ -274,6 +276,7 @@ fn test_system_integration_flow() {
         assert_eq!(motor_ctrl.motor.speed, 100);
 
         // 3. Simulate critical low battery: SoC drops to 5%
+        println!("--- RUNNING STEP 3 ---");
         {
             let mut bat = mock_battery.lock().await;
             bat.state_of_charge = 5;
@@ -301,6 +304,7 @@ fn test_system_integration_flow() {
         assert_eq!(motor_ctrl.motor.speed, 0);
 
         // 4. Simulate battery hysteresis recovery: SoC rising to 11% (not charging)
+        println!("--- RUNNING STEP 4 ---");
         // Since critical_soc_threshold = 10, soc_hysteresis = 2, recovery must be >= 12% to transition back to normal.
         // Let's set SoC to 11% (recovery check should fail, remaining in critical)
         let cmd = SystemCommand::BatteryUpdate {
@@ -314,6 +318,7 @@ fn test_system_integration_flow() {
         assert!(LED_CHANNEL.try_receive().is_err());
 
         // Now set SoC to 13% and state to Charging (should enter PowerDown and show Orange)
+        println!("--- RUNNING STEP 4B ---");
         let cmd = SystemCommand::BatteryUpdate {
             state_of_charge: 13,
             charger_state: ChargeState::Charging,
@@ -324,6 +329,7 @@ fn test_system_integration_flow() {
         assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidOrange));
 
         // Disconnect charger and set SoC to 50% (should remain in PowerDown and set LED Off)
+        println!("--- RUNNING STEP 4C ---");
         let cmd = SystemCommand::BatteryUpdate {
             state_of_charge: 50,
             charger_state: ChargeState::DoneOrStandbyOrUnplugged,
@@ -338,6 +344,7 @@ fn test_system_integration_flow() {
             gd.borrow_mut().register_distance(Direction::East, 15);
             gd.borrow_mut().register_distance(Direction::West, 15);
         }
+        println!("--- RUNNING STEP 4D ---");
         let g = system_ctrl
             .feature_set
             .features
@@ -400,6 +407,7 @@ fn test_system_integration_flow() {
         assert_eq!(motor_ctrl.motor.speed, 100);
 
         // 5. Simulate thermal critical: Temp reaches 61°C (61000 mC)
+        println!("--- RUNNING STEP 5 ---");
         {
             let mut temp_sensor = mock_temp.lock().await;
             temp_sensor.temperature_milli_c = 61000;
@@ -413,6 +421,8 @@ fn test_system_integration_flow() {
             .unwrap();
         let action = THERMAL_ACTION_CHANNEL.receive().await;
         let _ = system_ctrl.handle_thermal_action(action);
+        while BATTERY_CHANNEL.try_receive().is_ok() {}
+        while THERMAL_CHANNEL.try_receive().is_ok() {}
         drain_telemetry();
 
         // Critical temperature triggers safety shutdown -> Sleep state
@@ -432,6 +442,7 @@ fn test_system_integration_flow() {
 
         // 6. Simulate Sleep -> Active -> PowerDown -> Active (Charging) -> Sleep transition
         // 3. Simulated Proximity detection to exit Sleep
+        println!("--- RUNNING STEP 6 ---");
         system_ctrl
             .feature_set
             .features
@@ -612,7 +623,7 @@ fn test_system_integration_flow() {
         );
     });
 }
-static RUN_SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 4> = Channel::new();
+static RUN_SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 16> = Channel::new();
 static RUN_MOTOR_CHANNEL: Channel<CriticalSectionRawMutex, MotorCommand, 4> = Channel::new();
 static RUN_SENSOR_NORTH_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> =
     Channel::new();
@@ -805,7 +816,7 @@ fn test_spawn_controllers_embassy_routing() {
                 Sensor(sensor_ctrl_east, RUN_SENSOR_EAST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_west, RUN_SENSOR_WEST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Led(led_ctrl, RUN_LED_CHANNEL), generics: (MockLed),
-                System(system_ctrl, RUN_SYSTEM_CHANNEL, RUN_GESTURE_CHANNEL, RUN_THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, cat_detector::CatDetectorFeatureSet<CriticalSectionRawMutex, 4>, 4, 64>),
+                System(system_ctrl, RUN_SYSTEM_CHANNEL, RUN_GESTURE_CHANNEL, RUN_THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, cat_detector::CatDetectorFeatureSet<CriticalSectionRawMutex, 16>, 16, 64>),
                 Filesystem(fs_controller, RUN_FILESYSTEM_CHANNEL), generics: (controller::filesystem_controller::ProfilingFlash<platform::flash::SharedFlashMutex<TestFlash>>),
                 Telemetry(telemetry_ctrl, RUN_TELEMETRY_CONSUMER_CHANNEL), generics: ({ cat_detector::MAX_RECORDS }, { controller::telemetry_controller::CHANNEL_CAPACITY }, platform::flash::SharedFlashMutex<TestFlash>),
             }

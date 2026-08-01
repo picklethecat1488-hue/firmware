@@ -93,6 +93,7 @@ macro_generics = ["$controller_type:ty"]
 spawn_generics = ["$controller_type"]
 is_system = true
 has_telemetry = false
+receiver_capacity = "16"
 impl_generics = ""
 impl_type = "SystemController"
 

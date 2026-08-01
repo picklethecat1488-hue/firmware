@@ -105,6 +105,8 @@ fn test_system_controller_flow() {
             while let Ok(cmd) = SYSTEM_CHANNEL.try_receive() {
                 $ctrl.handle_command(cmd);
             }
+            while BATTERY_CHANNEL.try_receive().is_ok() {}
+            while THERMAL_CHANNEL.try_receive().is_ok() {}
         };
     }
 
@@ -313,6 +315,8 @@ fn test_power_down_and_gesture_detection() {
             while let Ok(cmd) = SYSTEM_CHANNEL.try_receive() {
                 $ctrl.handle_command(cmd);
             }
+            while BATTERY_CHANNEL.try_receive().is_ok() {}
+            while THERMAL_CHANNEL.try_receive().is_ok() {}
         };
     }
 
@@ -601,6 +605,8 @@ fn test_boot_traps_clearing_integration() {
             while let Ok(cmd) = SYSTEM_CHANNEL.try_receive() {
                 let _ = $ctrl.handle_command(cmd);
             }
+            while BATTERY_CHANNEL.try_receive().is_ok() {}
+            while THERMAL_CHANNEL.try_receive().is_ok() {}
         };
     }
 

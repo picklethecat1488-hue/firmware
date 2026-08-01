@@ -508,15 +508,15 @@ platform::assert_ascending!(OVERHEATING_TEMP_THRESHOLD_MC, CRITICAL_TEMP_THRESHO
 #[allow(clippy::type_complexity)]
 pub struct CatDetectorFeatureSet<
     MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static,
-    const N: usize,
+    const N: usize = 16,
 > {
     /// Tuple of active system features
     pub features: (
-        controller::MotorFeatureConfig<MutexRaw, N>,
-        controller::BatteryFeatureConfig<MutexRaw, N>,
-        controller::ProximityFeatureConfig<MutexRaw, N>,
-        controller::LedFeatureConfig<MutexRaw, N>,
-        controller::ThermalFeatureConfig<MutexRaw, N>,
+        controller::MotorFeatureConfig<MutexRaw, 4>,
+        controller::BatteryFeatureConfig<MutexRaw, 4>,
+        controller::ProximityFeatureConfig<MutexRaw, 4>,
+        controller::LedFeatureConfig<MutexRaw, 4>,
+        controller::ThermalFeatureConfig<MutexRaw, 4>,
     ),
 }
 
@@ -524,11 +524,11 @@ impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: u
     controller::SystemFeatureSet<MutexRaw, N> for CatDetectorFeatureSet<MutexRaw, N>
 {
     type Features = (
-        controller::MotorFeatureConfig<MutexRaw, N>,
-        controller::BatteryFeatureConfig<MutexRaw, N>,
-        controller::ProximityFeatureConfig<MutexRaw, N>,
-        controller::LedFeatureConfig<MutexRaw, N>,
-        controller::ThermalFeatureConfig<MutexRaw, N>,
+        controller::MotorFeatureConfig<MutexRaw, 4>,
+        controller::BatteryFeatureConfig<MutexRaw, 4>,
+        controller::ProximityFeatureConfig<MutexRaw, 4>,
+        controller::LedFeatureConfig<MutexRaw, 4>,
+        controller::ThermalFeatureConfig<MutexRaw, 4>,
     );
 
     fn features(&self) -> &Self::Features {
@@ -543,7 +543,7 @@ impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: u
 /// Shared command channel for the Motor Controller.
 pub static MOTOR_CHANNEL: controller::MotorChannel<MutexRaw, 4> = controller::MotorChannel::new();
 /// Shared command channel for the System Controller.
-pub static SYSTEM_CHANNEL: controller::SystemChannel<MutexRaw, 4> =
+pub static SYSTEM_CHANNEL: controller::SystemChannel<MutexRaw, 16> =
     controller::SystemChannel::new();
 /// Shared channel for local gesture events.
 pub static GESTURE_CHANNEL: platform::gesture_detector::GestureChannel<MutexRaw, 4> =
@@ -582,7 +582,7 @@ pub static FILESYSTEM_CHANNEL: controller::FilesystemChannel<MutexRaw, 16> =
     controller::FilesystemChannel::new();
 /// Type alias for the Cat Detector System Controller.
 pub type SystemControllerType =
-    controller::SystemController<MutexRaw, CatDetectorFeatureSet<MutexRaw, 4>>;
+    controller::SystemController<MutexRaw, CatDetectorFeatureSet<MutexRaw, 16>, 16>;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// The concrete flash type used for the filesystem partition in production.
@@ -605,7 +605,7 @@ platform::define_project_metadata! {
 
 /// Creates the standard CatDetectorFeatureSet configured with the application's actual channels.
 pub fn create_default_feature_set(
-) -> CatDetectorFeatureSet<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4> {
+) -> CatDetectorFeatureSet<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 16> {
     CatDetectorFeatureSet {
         features: (
             controller::MotorFeatureConfig::new(

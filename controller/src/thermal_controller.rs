@@ -15,9 +15,9 @@ use platform::subcommand_enum;
 
 /// A controller that periodically monitors system temperature from temperature sensors.
 #[controller_context]
-pub struct ThermalController<'a, M: RawMutex, B> {
+pub struct ThermalController<'a, M: RawMutex, B, const SYS_CAP: usize = 4> {
     temp: &'a Mutex<M, B>,
-    thermal_tx: Option<Sender<'a, M, crate::types::ThermalUpdateAction, 4>>,
+    thermal_tx: Option<Sender<'a, M, crate::types::ThermalUpdateAction, SYS_CAP>>,
     state: ThermalState,
     overheating_temp_milli_c: i32,
     critical_temp_milli_c: i32,
@@ -25,7 +25,9 @@ pub struct ThermalController<'a, M: RawMutex, B> {
     first_update: bool,
 }
 
-impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
+impl<'a, M: RawMutex, B: TemperatureSensor, const SYS_CAP: usize>
+    ThermalController<'a, M, B, SYS_CAP>
+{
     /// Creates a new thermal controller referencing a shared temperature peripheral without shutdown coordination.
     pub fn new(temp: &'a Mutex<M, B>) -> Self {
         Self {
@@ -42,7 +44,7 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
     /// Creates a new thermal controller with safety shutdown capabilities.
     pub fn new_with_shutdown(
         temp: &'a Mutex<M, B>,
-        thermal_tx: Sender<'a, M, crate::types::ThermalUpdateAction, 4>,
+        thermal_tx: Sender<'a, M, crate::types::ThermalUpdateAction, SYS_CAP>,
     ) -> Self {
         Self {
             temp,
@@ -58,7 +60,7 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
     /// Creates a new thermal controller with safety shutdown and boot trap clearing capabilities.
     pub fn new_with_shutdown_and_trap(
         temp: &'a Mutex<M, B>,
-        thermal_tx: Sender<'a, M, crate::types::ThermalUpdateAction, 4>,
+        thermal_tx: Sender<'a, M, crate::types::ThermalUpdateAction, SYS_CAP>,
     ) -> Self {
         Self::new_with_shutdown(temp, thermal_tx)
     }
@@ -228,8 +230,8 @@ impl<'a, M: RawMutex, B: TemperatureSensor> ThermalController<'a, M, B> {
     }
 }
 
-impl<'a, M: RawMutex, B: TemperatureSensor> crate::BlockingThermalReader
-    for ThermalController<'a, M, B>
+impl<'a, M: RawMutex, B: TemperatureSensor, const SYS_CAP: usize> crate::BlockingThermalReader
+    for ThermalController<'a, M, B, SYS_CAP>
 where
     B::Error: ToPeripheralError,
 {
@@ -308,9 +310,9 @@ pub fn handle_thermal_cli<
 }
 
 /// Standard config implementation for ThermalFeature.
-pub struct ThermalFeatureConfig<MutexRaw: RawMutex + 'static, const N: usize> {
+pub struct ThermalFeatureConfig<MutexRaw: RawMutex + 'static, const T_CAP: usize = 4> {
     /// Thermal channel sender
-    pub thermal_tx: Option<crate::ThermalSender<MutexRaw, N>>,
+    pub thermal_tx: Option<crate::ThermalSender<MutexRaw, T_CAP>>,
     /// Thermal manager for checking alerts
     pub thermal_manager: core::cell::RefCell<platform::ThermalManager>,
     /// Overheating temperature threshold in milli-Celsius
@@ -319,9 +321,9 @@ pub struct ThermalFeatureConfig<MutexRaw: RawMutex + 'static, const N: usize> {
     pub critical_temp_milli_c: i32,
 }
 
-impl<MutexRaw: RawMutex + 'static, const N: usize> ThermalFeatureConfig<MutexRaw, N> {
+impl<MutexRaw: RawMutex + 'static, const T_CAP: usize> ThermalFeatureConfig<MutexRaw, T_CAP> {
     /// Creates a new `ThermalFeatureConfig`.
-    pub fn new(thermal_tx: Option<crate::ThermalSender<MutexRaw, N>>) -> Self {
+    pub fn new(thermal_tx: Option<crate::ThermalSender<MutexRaw, T_CAP>>) -> Self {
         Self {
             thermal_tx,
             thermal_manager: core::cell::RefCell::new(platform::ThermalManager::new()),
@@ -332,7 +334,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> ThermalFeatureConfig<MutexRaw
 
     /// Creates a new `ThermalFeatureConfig` with custom thresholds.
     pub fn new_with_thresholds(
-        thermal_tx: Option<crate::ThermalSender<MutexRaw, N>>,
+        thermal_tx: Option<crate::ThermalSender<MutexRaw, T_CAP>>,
         overheating_temp_milli_c: i32,
         critical_temp_milli_c: i32,
     ) -> Self {
@@ -345,8 +347,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> ThermalFeatureConfig<MutexRaw
     }
 }
 
-impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw, N>
-    for ThermalFeatureConfig<MutexRaw, N>
+impl<MutexRaw: RawMutex + 'static, const T_CAP: usize, const N: usize>
+    crate::SystemFeature<MutexRaw, N> for ThermalFeatureConfig<MutexRaw, T_CAP>
 {
     fn default_boot_trap_mask(&self) -> u32 {
         if self.thermal_tx.is_some() {

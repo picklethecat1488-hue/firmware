@@ -720,16 +720,19 @@ pub fn handle_motor_cli<
 }
 
 /// Standard config implementation for MotorFeature.
-pub struct MotorFeatureConfig<MutexRaw: RawMutex + 'static, const N: usize> {
+pub struct MotorFeatureConfig<MutexRaw: RawMutex + 'static, const M_CAP: usize = 4> {
     /// Motor channel sender
-    pub motor_tx: Option<crate::MotorSender<MutexRaw, N>>,
+    pub motor_tx: Option<crate::MotorSender<MutexRaw, M_CAP>>,
     /// Maximum motor speed
     pub max_speed: MotorSpeed,
 }
 
-impl<MutexRaw: RawMutex + 'static, const N: usize> MotorFeatureConfig<MutexRaw, N> {
+impl<MutexRaw: RawMutex + 'static, const M_CAP: usize> MotorFeatureConfig<MutexRaw, M_CAP> {
     /// Creates a new `MotorFeatureConfig`.
-    pub fn new(motor_tx: Option<crate::MotorSender<MutexRaw, N>>, max_speed: MotorSpeed) -> Self {
+    pub fn new(
+        motor_tx: Option<crate::MotorSender<MutexRaw, M_CAP>>,
+        max_speed: MotorSpeed,
+    ) -> Self {
         Self {
             motor_tx,
             max_speed,
@@ -737,8 +740,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> MotorFeatureConfig<MutexRaw, 
     }
 }
 
-impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw, N>
-    for MotorFeatureConfig<MutexRaw, N>
+impl<MutexRaw: RawMutex + 'static, const M_CAP: usize, const N: usize>
+    crate::SystemFeature<MutexRaw, N> for MotorFeatureConfig<MutexRaw, M_CAP>
 {
     fn on_state_changed(
         &self,

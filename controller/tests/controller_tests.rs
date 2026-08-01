@@ -233,7 +233,7 @@ fn test_battery_controller_sad_cases() {
         let system_channel = Box::leak(Box::new(embassy_sync::channel::Channel::<
             CriticalSectionRawMutex,
             TestCmd,
-            4,
+            16,
         >::new()));
         let system_tx = system_channel.sender();
 

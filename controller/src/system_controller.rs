@@ -170,7 +170,7 @@ pub trait SystemFeatureSet<MutexRaw: RawMutex + 'static, const N: usize> {
 pub struct SystemController<
     MutexRaw: RawMutex + 'static,
     F: SystemFeatureSet<MutexRaw, N>,
-    const N: usize = 4,
+    const N: usize = 16,
     const T_CAP: usize = { crate::telemetry_controller::CHANNEL_CAPACITY },
 > {
     /// Subsystem manager for power, transitions, and timers
