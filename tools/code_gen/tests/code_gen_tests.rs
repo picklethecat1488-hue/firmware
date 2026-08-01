@@ -1,4 +1,4 @@
-use controller_gen::{find_controllers_toml, ControllerConfig, RunLoopTemplate};
+use code_gen::{find_controllers_toml, ControllerConfig, RunLoopTemplate};
 use rinja::Template;
 use std::fs;
 

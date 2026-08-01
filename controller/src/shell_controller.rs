@@ -3,85 +3,14 @@
 #![deny(missing_docs)]
 #![allow(static_mut_refs)]
 
-use crate::{
-    BlockingBatteryReader, BlockingMotorReader, BlockingMotorWriter, BlockingProximityReader,
-    BlockingThermalReader,
-};
-use model::interfaces::TemperatureSensor;
 use platform::FsBufferGuard;
 
-/// Configuration trait for the ShellController.
-/// Encapsulates the target-specific raw mutex and peripheral types.
-pub trait ShellConfig {
-    /// Type of the shared I2C bus driver.
-    type I2c: embedded_hal::i2c::I2c + 'static;
-    /// Type of the physical motor peripheral.
-    type Motor: model::interfaces::Motor + 'static;
-    /// Type of the physical flash peripheral.
-    type Flash: embedded_storage::nor_flash::NorFlash + 'static;
-    /// Type of the battery controller.
-    type BatteryCtrl: BlockingBatteryReader + 'static;
-    /// Type of the thermal controller.
-    type ThermalCtrl: BlockingThermalReader + 'static;
-    /// Type of the proximity sensor controller.
-    type SensorCtrl: BlockingProximityReader + 'static;
-    /// Type of the motor controller.
-    type MotorCtrl: BlockingMotorReader + BlockingMotorWriter + 'static;
-    /// Type of the system temperature sensor.
-    type TempSensor: TemperatureSensor + 'static;
-    /// Type of the system orchestrator/writer.
-    type SystemCtrl: crate::BlockingSystemWriter + 'static;
-}
-
-/// Helper macro to extract a type by name from a list of key-value pairs, or fallback to a default type.
-#[macro_export]
-macro_rules! get_key_or_default {
-    (I2c, [ I2c = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
-    (Motor, [ Motor = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
-    (Flash, [ Flash = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
-    (TempSensor, [ TempSensor = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
-    (BatteryCtrl, [ BatteryCtrl = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
-    (ThermalCtrl, [ ThermalCtrl = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
-    (SensorCtrl, [ SensorCtrl = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
-    (MotorCtrl, [ MotorCtrl = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
-    (SystemCtrl, [ SystemCtrl = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
-
-    // Fallthrough: discard non-matching head and recurse
-    ($key:ident, [ $other:ident = $val:ty, $($rest:tt)* ], $default:ty) => {
-        $crate::get_key_or_default!($key, [ $($rest)* ], $default)
-    };
-
-    // Base case: key not found
-    ($key:ident, [], $default:ty) => { $default };
-}
-
-/// Macro to implement the `ShellConfig` trait for a custom configuration struct.
-///
-/// Permits specifying the associated types in any order, defaulting unspecified ones to `()`.
-#[macro_export]
-macro_rules! impl_shell_config {
-    (
-        $name:ty {
-            $($key:ident = $val:ty),* $(,)?
-        }
-    ) => {
-        impl $crate::shell_controller::ShellConfig for $name {
-            type I2c = $crate::get_key_or_default!(I2c, [ $($key = $val,)* ], ());
-            type Motor = $crate::get_key_or_default!(Motor, [ $($key = $val,)* ], ());
-            type Flash = $crate::get_key_or_default!(Flash, [ $($key = $val,)* ], ());
-            type TempSensor = $crate::get_key_or_default!(TempSensor, [ $($key = $val,)* ], ());
-            type BatteryCtrl = $crate::get_key_or_default!(BatteryCtrl, [ $($key = $val,)* ], ());
-            type ThermalCtrl = $crate::get_key_or_default!(ThermalCtrl, [ $($key = $val,)* ], ());
-            type SensorCtrl = $crate::get_key_or_default!(SensorCtrl, [ $($key = $val,)* ], ());
-            type MotorCtrl = $crate::get_key_or_default!(MotorCtrl, [ $($key = $val,)* ], ());
-            type SystemCtrl = $crate::get_key_or_default!(SystemCtrl, [ $($key = $val,)* ], ());
-        }
-    };
-}
+pub use crate::ShellConfig;
 
 /// Macro to define `ShellControllerPointers`, `ShellController`, and the `ShellDeviceResolver` trait.
 ///
 /// This serves as the single source of truth for all shell metadata required to support subcommands.
+#[macro_export]
 macro_rules! define_shell_resolver_and_controller {
     (
         $(
@@ -94,10 +23,10 @@ macro_rules! define_shell_resolver_and_controller {
         pub struct ShellControllerPointers<'a, C: ShellConfig> {
             $(
                 #[doc = $doc]
-                pub $field: &'a [crate::NamedDevice<C::$associated_type>],
+                pub $field: &'a [$crate::NamedDevice<C::$associated_type>],
             )*
             /// Named flash storage partitions.
-            pub flash_partitions: &'a [crate::NamedPartition<C::Flash>],
+            pub flash_partitions: &'a [$crate::NamedPartition<C::Flash>],
             /// Shared filesystem scratch buffer.
             pub fs_buffer: &'a mut [u8],
         }
@@ -123,15 +52,17 @@ macro_rules! define_shell_resolver_and_controller {
             fn resolve_partition(
                 &self,
                 name: Option<&str>,
-            ) -> Result<crate::ResolvedPartition<C::Flash>, &'static str>;
+            ) -> Result<$crate::ResolvedPartition<C::Flash>, &'static str>;
             /// Lock the shared filesystem scratch buffer for exclusive access.
             fn lock_fs_buffer(&self) -> Result<FsBufferGuard<'_>, &'static str>;
+            /// Trigger a panic/crash on a specific core.
+            fn trigger_core_panic(&self, core_id: u32) -> Result<(), &'static str>;
         }
 
         /// Controller responsible for processing shell commands.
         pub struct ShellController<'a, C: ShellConfig> {
-            $( $field: &'a [crate::NamedDevice<C::$associated_type>], )*
-            flash_partitions: &'a [crate::NamedPartition<C::Flash>],
+            $( $field: &'a [$crate::NamedDevice<C::$associated_type>], )*
+            flash_partitions: &'a [$crate::NamedPartition<C::Flash>],
             fs_buffer: *mut [u8],
             fs_buffer_locked: core::cell::Cell<bool>,
         }
@@ -156,7 +87,7 @@ macro_rules! define_shell_resolver_and_controller {
             #[allow(clippy::mut_from_ref)]
             pub fn resolve_device<'b, D>(
                 &self,
-                devices: &'b [crate::NamedDevice<D>],
+                devices: &'b [$crate::NamedDevice<D>],
                 name: Option<&str>,
             ) -> Result<&'b mut D, &'static str> {
                 let matched = match name {
@@ -173,19 +104,19 @@ macro_rules! define_shell_resolver_and_controller {
             pub fn resolve_partition(
                 &self,
                 name: Option<&str>,
-            ) -> Result<crate::ResolvedPartition<C::Flash>, &'static str> {
+            ) -> Result<$crate::ResolvedPartition<C::Flash>, &'static str> {
                 let matched = match name {
                     Some(n) => self.flash_partitions.iter().find(|p| p.name == n),
                     None => self.flash_partitions.first(),
                 };
                 let p = matched.ok_or("Requested flash partition not found or none registered")?;
                 match p.kind {
-                    crate::PartitionKind::Map => Ok(crate::ResolvedPartition::Map(
-                        crate::MapFilesystem(p.partition.start_address..p.partition.end_address),
+                    $crate::PartitionKind::Map => Ok($crate::ResolvedPartition::Map(
+                        $crate::MapFilesystem(p.partition.start_address..p.partition.end_address),
                         p.partition.flash_ptr,
                     )),
-                    crate::PartitionKind::Queue => Ok(crate::ResolvedPartition::Queue(
-                        crate::QueueFilesystem(p.partition.start_address..p.partition.end_address),
+                    $crate::PartitionKind::Queue => Ok($crate::ResolvedPartition::Queue(
+                        $crate::QueueFilesystem(p.partition.start_address..p.partition.end_address),
                         p.partition.flash_ptr,
                     )),
                 }
@@ -201,7 +132,7 @@ macro_rules! define_shell_resolver_and_controller {
             fn resolve_partition(
                 &self,
                 name: Option<&str>,
-            ) -> Result<crate::ResolvedPartition<C::Flash>, &'static str> {
+            ) -> Result<$crate::ResolvedPartition<C::Flash>, &'static str> {
                 self.resolve_partition(name)
             }
             fn lock_fs_buffer(&self) -> Result<FsBufferGuard<'_>, &'static str> {
@@ -216,35 +147,14 @@ macro_rules! define_shell_resolver_and_controller {
                     FsBufferGuard::new(self.fs_buffer, &self.fs_buffer_locked)
                 })
             }
+            fn trigger_core_panic(&self, core_id: u32) -> Result<(), &'static str> {
+                C::trigger_core_panic(self, core_id)
+            }
         }
     };
 }
 
-define_shell_resolver_and_controller! {
-    #[doc = "Named I2C buses."]
-    I2c, i2c_buses, resolve_i2c,
-
-    #[doc = "Named motor drivers."]
-    Motor, motors, resolve_motor,
-
-    #[doc = "Named battery gauges."]
-    BatteryCtrl, batteries, resolve_battery,
-
-    #[doc = "Named thermal sensors."]
-    ThermalCtrl, thermals, resolve_thermal,
-
-    #[doc = "Named sensor controllers."]
-    SensorCtrl, sensors, resolve_sensor,
-
-    #[doc = "Named motor current controllers."]
-    MotorCtrl, motor_ctrls, resolve_motor_ctrl,
-
-    #[doc = "Named microcontroller temperature sensors."]
-    TempSensor, temp_sensors, resolve_temp_sensor,
-
-    #[doc = "Named system controllers."]
-    SystemCtrl, system_ctrls, resolve_system_ctrl,
-}
+invoke_define_shell_resolver_and_controller!();
 
 /// Helper macro to append a specific command group's variant and match arm to the accumulator.
 ///
@@ -288,127 +198,6 @@ define_shell_resolver_and_controller! {
 ///    ```
 /// This design keeps the controllers completely decoupled from the specific applications while allowing
 /// infinite CLI customizability and code reuse.
-#[macro_export]
-macro_rules! append_group_arm {
-    (Battery, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
-        $crate::declare_shell_commands!(@accum $name, $ctrl, $writer, [$($tail),*] -> [
-            $($variants)*
-            /// Battery commands (battery status)
-            #[command(name = "battery")]
-            Battery {
-                /// Subcommand (status)
-                subcommand: Option<$crate::battery_controller::BatterySubcommand>,
-            },
-        ] [
-            $($matches)*
-            $name::Battery { subcommand } => $crate::battery_controller::handle_battery_cli($ctrl, subcommand, $writer),
-        ] -> $mode, $proc_name);
-    };
-    (Thermal, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
-        $crate::declare_shell_commands!(@accum $name, $ctrl, $writer, [$($tail),*] -> [
-            $($variants)*
-            /// Thermal commands (thermal status, thermal mcu)
-            #[command(name = "thermal")]
-            Thermal {
-                /// Subcommand (status, mcu)
-                subcommand: Option<$crate::thermal_controller::ThermalSubcommand>,
-            },
-        ] [
-            $($matches)*
-            $name::Thermal { subcommand } => $crate::thermal_controller::handle_thermal_cli($ctrl, subcommand, $writer),
-        ] -> $mode, $proc_name);
-    };
-    (Motor, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
-        $crate::declare_shell_commands!(@accum $name, $ctrl, $writer, [$($tail),*] -> [
-            $($variants)*
-            /// Motor commands (motor speed <speed>, motor stop, motor calibrate <state> [max_rpm] [rpm_limit] [--partition <partition>])
-            #[command(name = "motor")]
-            Motor {
-                /// Subcommand (speed, stop, calibrate)
-                subcommand: Option<$crate::motor_controller::MotorSubcommand>,
-                /// First argument (speed or calibration state)
-                arg1: Option<&'a str>,
-                /// Second argument (max_rpm)
-                arg2: Option<&'a str>,
-                /// Third argument (rpm_limit)
-                arg3: Option<&'a str>,
-                /// Optional partition name
-                #[arg(long = "partition")]
-                partition: Option<&'a str>,
-            },
-        ] [
-            $($matches)*
-            $name::Motor { subcommand, arg1, arg2, arg3, partition } => $crate::motor_controller::handle_motor_cli($ctrl, subcommand, arg1, arg2, arg3, partition, $writer),
-        ] -> $mode, $proc_name);
-    };
-    (Sensor, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
-        $crate::declare_shell_commands!(@accum $name, $ctrl, $writer, [$($tail),*] -> [
-            $($variants)*
-            /// Sensor commands (sensor status, sensor cal_near <dir>, sensor cal_far <dir> [--partition <partition>])
-            #[command(name = "sensor")]
-            Sensor {
-                /// Subcommand (status, cal_near, cal_far)
-                subcommand: Option<$crate::sensor_controller::SensorSubcommand>,
-                /// First argument (direction: north, east, west)
-                arg1: Option<&'a str>,
-                /// Optional partition name
-                #[arg(long = "partition")]
-                partition: Option<&'a str>,
-            },
-        ] [
-            $($matches)*
-            $name::Sensor { subcommand, arg1, partition } => $crate::sensor_controller::handle_sensor_cli($ctrl, subcommand, arg1, partition, $writer),
-        ] -> $mode, $proc_name);
-    };
-    (Fs, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
-        $crate::declare_shell_commands!(@accum $name, $ctrl, $writer, [$($tail),*] -> [
-            $($variants)*
-            /// Filesystem commands (fs format, fs ls [--partition <partition>])
-            #[command(name = "fs")]
-            Fs {
-                /// Subcommand (format, ls)
-                subcommand: Option<$crate::filesystem_controller::FilesystemSubcommand>,
-                /// Optional target to format (fs, telemetry, all)
-                target: Option<$crate::filesystem_controller::FormatTarget>,
-                /// Optional partition name
-                #[arg(long = "partition")]
-                partition: Option<&'a str>,
-            },
-        ] [
-            $($matches)*
-            $name::Fs { subcommand, target, partition } => $crate::filesystem_controller::handle_fs_cli($ctrl, subcommand, target, partition, $writer),
-        ] -> $mode, $proc_name);
-    };
-    (System, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
-        $crate::declare_shell_commands!(@accum $name, $ctrl, $writer, [$($tail),*] -> [
-            $($variants)*
-            /// System commands (system activity, system crash)
-            #[command(name = "system")]
-            System {
-                /// Subcommand (activity, crash)
-                subcommand: Option<$crate::system_controller::SystemSubcommand>,
-            },
-        ] [
-            $($matches)*
-            $name::System { subcommand } => $crate::system_controller::handle_system_cli($ctrl, subcommand, $writer),
-        ] -> $mode, $proc_name);
-    };
-    (Core1, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
-        $crate::declare_shell_commands!(@accum $name, $ctrl, $writer, [$($tail),*] -> [
-            $($variants)*
-            /// Core 1 commands (core1 panic)
-            #[command(name = "core1")]
-            Core1 {
-                /// Subcommand (panic)
-                subcommand: Option<$crate::shell_controller::Core1Subcommand>,
-            },
-        ] [
-            $($matches)*
-            $name::Core1 { subcommand } => handle_core1_cli($ctrl, subcommand, $writer),
-        ] -> $mode, $proc_name);
-    };
-}
-
 /// Macro to emit shell commands processor directly on ShellController.
 #[macro_export]
 macro_rules! emit_direct_commands {
@@ -601,13 +390,4 @@ macro_rules! declare_shell_commands {
     (@accum $name:ident, $ctrl:ident, $writer:ident, [] -> [$($variants:tt)*] [$($matches:tt)*] -> wrapper, $proc_name:ident) => {
         $crate::emit_wrapper_commands!($name, $proc_name, $ctrl, $writer, [$($variants)*], [$($matches)*]);
     };
-}
-
-platform::subcommand_enum! {
-    /// Core 1 subcommands for CLI processing.
-    pub enum Core1Subcommand {
-        /// Force Core 1 to panic
-        Panic,
-    }
-    "Invalid core1 subcommand. Expected: panic"
 }

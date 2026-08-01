@@ -113,14 +113,129 @@ impl Controller {
 }
 
 #[derive(Deserialize, Clone)]
+struct CliResolverField {
+    associated_type: String,
+    field: String,
+    resolve_fn: String,
+    doc: String,
+    bounds: String,
+    type_lifetime: Option<String>,
+}
+
+impl CliResolverField {
+    fn bounds(&self) -> String {
+        let lifetime = self.type_lifetime.as_deref().unwrap_or("'static");
+        format!("{} + {}", self.bounds, lifetime)
+    }
+}
+
+#[derive(Deserialize, Clone)]
+struct CliArg {
+    name: String,
+    r#type: String,
+    help: String,
+    attributes: Option<Vec<String>>,
+}
+
+impl CliArg {
+    fn attributes_slice(&self) -> Vec<String> {
+        if let Some(ref attrs) = self.attributes {
+            attrs.clone()
+        } else if self.name != "arg1"
+            && self.name != "arg2"
+            && self.name != "arg3"
+            && self.name != "target"
+        {
+            vec![format!("#[arg(long = \"{}\")]", self.name)]
+        } else {
+            vec![]
+        }
+    }
+
+    fn rust_type(&self) -> String {
+        match self.r#type.as_str() {
+            "string" => "Option<&'a str>".to_string(),
+            "int" => "Option<i32>".to_string(),
+            "float" => "Option<f32>".to_string(),
+            "bool" => "Option<bool>".to_string(),
+            custom => {
+                if custom.contains("::") && !custom.contains("$crate") {
+                    custom
+                        .replace("filesystem_controller::", "PLACEHOLDER_FS::")
+                        .replace("system_controller::", "PLACEHOLDER_SYS::")
+                        .replace("battery_controller::", "PLACEHOLDER_BAT::")
+                        .replace("thermal_controller::", "PLACEHOLDER_THM::")
+                        .replace("motor_controller::", "PLACEHOLDER_MTR::")
+                        .replace("sensor_controller::", "PLACEHOLDER_SNS::")
+                        .replace("shell_controller::", "PLACEHOLDER_SHL::")
+                        .replace("PLACEHOLDER_FS::", "$crate::filesystem_controller::")
+                        .replace("PLACEHOLDER_SYS::", "$crate::system_controller::")
+                        .replace("PLACEHOLDER_BAT::", "$crate::battery_controller::")
+                        .replace("PLACEHOLDER_THM::", "$crate::thermal_controller::")
+                        .replace("PLACEHOLDER_MTR::", "$crate::motor_controller::")
+                        .replace("PLACEHOLDER_SNS::", "$crate::sensor_controller::")
+                        .replace("PLACEHOLDER_SHL::", "$crate::shell_controller::")
+                } else {
+                    custom.to_string()
+                }
+            }
+        }
+    }
+    fn rust_type_sample(&self) -> String {
+        self.rust_type()
+            .replace("$crate::", "controller::")
+            .replace("&'a str", "&str")
+    }
+}
+
+#[derive(Deserialize, Clone)]
+struct CliCommand {
+    group: String,
+    cmd_name: String,
+    variant: String,
+    subcommand_type: String,
+    handler: String,
+    help: String,
+    args: Option<Vec<CliArg>>,
+}
+
+impl CliCommand {
+    fn args_slice(&self) -> &[CliArg] {
+        self.args.as_deref().unwrap_or(&[])
+    }
+
+    fn handler_short_name(&self) -> &str {
+        self.handler.split("::").last().unwrap()
+    }
+
+    fn subcommand_type_path(&self) -> String {
+        if self.subcommand_type.contains("::") && !self.subcommand_type.starts_with("platform::") {
+            format!("controller::{}", self.subcommand_type)
+        } else {
+            self.subcommand_type.clone()
+        }
+    }
+}
+
+#[derive(Deserialize, Clone)]
 struct ControllerConfig {
     controllers: Vec<Controller>,
+}
+
+#[derive(Deserialize, Clone)]
+struct ShellConfigToml {
+    #[serde(default)]
+    cli_resolver_fields: Vec<CliResolverField>,
+    #[serde(default)]
+    cli_commands: Vec<CliCommand>,
 }
 
 #[derive(Template)]
 #[template(path = "generated_controllers.rs.jinja")]
 struct GeneratedControllersTemplate {
     controllers: Vec<Controller>,
+    cli_resolver_fields: Vec<CliResolverField>,
+    cli_commands: Vec<CliCommand>,
 }
 
 #[derive(Template)]
@@ -141,6 +256,18 @@ struct TestMocksTemplate {
     controllers: Vec<Controller>,
 }
 
+#[derive(Template)]
+#[template(path = "sample_cli.rs.jinja")]
+struct SampleCliTemplate {
+    cli_commands: Vec<CliCommand>,
+}
+
+#[derive(Template)]
+#[template(path = "cli_skeletons_test.rs.jinja")]
+struct CliSkeletonsTestTemplate {
+    cli_commands: Vec<CliCommand>,
+}
+
 fn main() {
     if std::env::var("CARGO_FEATURE_TRACING").is_ok() {
         println!("cargo:rustc-env=DEFMT_LOG={}", LOG_LEVEL);
@@ -148,9 +275,11 @@ fn main() {
 
     // Tell Cargo to rerun this build script if config or template changes
     println!("cargo:rerun-if-changed=controllers.toml");
+    println!("cargo:rerun-if-changed=shell.toml");
     println!("cargo:rerun-if-changed=templates/generated_controllers.rs.jinja");
     println!("cargo:rerun-if-changed=templates/run_loop.rs.jinja");
     println!("cargo:rerun-if-changed=templates/test_mocks.rs.jinja");
+    println!("cargo:rerun-if-changed=templates/cli_skeletons_test.rs.jinja");
 
     let out_dir = env::var("OUT_DIR").unwrap();
     let dest_path = Path::new(&out_dir).join("generated_controllers.rs");
@@ -162,12 +291,44 @@ fn main() {
     let config: ControllerConfig =
         toml::from_str(&config_content).expect("Failed to parse controllers.toml");
 
+    // Read and parse shell.toml config file
+    let shell_content = std::fs::read_to_string("shell.toml")
+        .or_else(|_| std::fs::read_to_string(Path::new("controller").join("shell.toml")))
+        .expect("Failed to read shell.toml");
+    let shell_config: ShellConfigToml =
+        toml::from_str(&shell_content).expect("Failed to parse shell.toml");
+
     // Render the controllers template using Rinja
     let template = GeneratedControllersTemplate {
         controllers: config.controllers.clone(),
+        cli_resolver_fields: shell_config.cli_resolver_fields.clone(),
+        cli_commands: shell_config.cli_commands.clone(),
     };
     let output = template.render().expect("Failed to render Rinja template");
     f.write_all(output.as_bytes()).unwrap();
+
+    // Generate sample CLI implementation for validation
+    let mut sample_cli_f =
+        File::create(Path::new(&out_dir).join("generated_sample_cli.rs")).unwrap();
+    let sample_cli_tmpl = SampleCliTemplate {
+        cli_commands: shell_config.cli_commands.clone(),
+    };
+    let sample_cli_content = sample_cli_tmpl
+        .render()
+        .expect("Failed to render sample CLI template in build.rs");
+    sample_cli_f
+        .write_all(sample_cli_content.as_bytes())
+        .unwrap();
+
+    // Generate skeleton CLI handlers integration test
+    let mut skeletons_f = File::create(Path::new(&out_dir).join("cli_skeletons_test.rs")).unwrap();
+    let skeletons_tmpl = CliSkeletonsTestTemplate {
+        cli_commands: shell_config.cli_commands.clone(),
+    };
+    let skeletons_content = skeletons_tmpl
+        .render()
+        .expect("Failed to render CLI skeletons test template");
+    skeletons_f.write_all(skeletons_content.as_bytes()).unwrap();
 
     // Generate boilerplate runloops code for validation in integration tests
     let mut runloops_f = File::create(Path::new(&out_dir).join("generated_runloops.rs")).unwrap();

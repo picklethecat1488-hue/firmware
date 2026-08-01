@@ -1,0 +1,25 @@
+#[allow(clippy::match_single_binding)]
+pub fn {{ cmd.handler_short_name() }}<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    C: controller::ShellConfig,
+>(
+    resolver: &impl controller::ShellDeviceResolver<C>,
+    subcommand: Option<{{ cmd.subcommand_type_path() }}>,
+    {%- for arg in cmd.args_slice() %}
+    {{ arg.name }}: {{ arg.rust_type_sample()|safe }},
+    {%- endfor %}
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+) -> Result<(), &'static str> {
+    let subcommand = subcommand.ok_or("Missing subcommand")?;
+    let _ = resolver;
+    let _ = writer;
+    {%- for arg in cmd.args_slice() %}
+    let _ = {{ arg.name }};
+    {%- endfor %}
+
+    match subcommand {
+        // TODO: Implement match arms for {{ cmd.subcommand_type_path() }} variants
+        _ => Err("Not implemented"),
+    }
+}
