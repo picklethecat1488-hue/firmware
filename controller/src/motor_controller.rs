@@ -161,12 +161,7 @@ where
     )]
     pub fn update(
         &mut self,
-        mut telemetry_client: Option<
-            &mut MotorTelemetryClient<
-                CriticalSectionRawMutex,
-                { crate::telemetry_controller::CHANNEL_CAPACITY },
-            >,
-        >,
+        mut telemetry_client: Option<&mut MotorTelemetryClient<CriticalSectionRawMutex>>,
     ) -> Result<(), PeripheralError> {
         let is_running = self.state == MotorState::On;
 
@@ -236,12 +231,7 @@ where
     pub fn handle_command(
         &mut self,
         cmd: MotorCommand,
-        mut telemetry_client: Option<
-            &mut MotorTelemetryClient<
-                CriticalSectionRawMutex,
-                { crate::telemetry_controller::CHANNEL_CAPACITY },
-            >,
-        >,
+        mut telemetry_client: Option<&mut MotorTelemetryClient<CriticalSectionRawMutex>>,
     ) {
         match cmd {
             MotorCommand::SetSpeed(speed) => {
@@ -720,16 +710,16 @@ pub fn handle_motor_cli<
 }
 
 /// Standard config implementation for MotorFeature.
-pub struct MotorFeatureConfig<MutexRaw: RawMutex + 'static, const N: usize> {
+pub struct MotorFeatureConfig<MutexRaw: RawMutex + 'static> {
     /// Motor channel sender
-    pub motor_tx: Option<crate::MotorSender<MutexRaw, N>>,
+    pub motor_tx: Option<crate::MotorSender<MutexRaw>>,
     /// Maximum motor speed
     pub max_speed: MotorSpeed,
 }
 
-impl<MutexRaw: RawMutex + 'static, const N: usize> MotorFeatureConfig<MutexRaw, N> {
+impl<MutexRaw: RawMutex + 'static> MotorFeatureConfig<MutexRaw> {
     /// Creates a new `MotorFeatureConfig`.
-    pub fn new(motor_tx: Option<crate::MotorSender<MutexRaw, N>>, max_speed: MotorSpeed) -> Self {
+    pub fn new(motor_tx: Option<crate::MotorSender<MutexRaw>>, max_speed: MotorSpeed) -> Self {
         Self {
             motor_tx,
             max_speed,
@@ -738,7 +728,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> MotorFeatureConfig<MutexRaw, 
 }
 
 impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw, N>
-    for MotorFeatureConfig<MutexRaw, N>
+    for MotorFeatureConfig<MutexRaw>
 {
     fn on_state_changed(
         &self,

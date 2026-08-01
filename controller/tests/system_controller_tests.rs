@@ -60,11 +60,11 @@ static MOCK_TELEMETRY_CHANNEL: Channel<
 #[allow(clippy::type_complexity)]
 pub struct TestFeatureSet<MutexRaw: RawMutex + 'static, const N: usize> {
     pub features: (
-        controller::MotorFeatureConfig<MutexRaw, N>,
-        controller::BatteryFeatureConfig<MutexRaw, N>,
-        controller::ProximityFeatureConfig<MutexRaw, N>,
-        controller::LedFeatureConfig<MutexRaw, N>,
-        controller::ThermalFeatureConfig<MutexRaw, N>,
+        controller::MotorFeatureConfig<MutexRaw>,
+        controller::BatteryFeatureConfig<MutexRaw>,
+        controller::ProximityFeatureConfig<MutexRaw>,
+        controller::LedFeatureConfig<MutexRaw>,
+        controller::ThermalFeatureConfig<MutexRaw>,
     ),
 }
 
@@ -72,11 +72,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> controller::SystemFeatureSet<
     for TestFeatureSet<MutexRaw, N>
 {
     type Features = (
-        controller::MotorFeatureConfig<MutexRaw, N>,
-        controller::BatteryFeatureConfig<MutexRaw, N>,
-        controller::ProximityFeatureConfig<MutexRaw, N>,
-        controller::LedFeatureConfig<MutexRaw, N>,
-        controller::ThermalFeatureConfig<MutexRaw, N>,
+        controller::MotorFeatureConfig<MutexRaw>,
+        controller::BatteryFeatureConfig<MutexRaw>,
+        controller::ProximityFeatureConfig<MutexRaw>,
+        controller::LedFeatureConfig<MutexRaw>,
+        controller::ThermalFeatureConfig<MutexRaw>,
     );
 
     fn features(&self) -> &Self::Features {
@@ -90,7 +90,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> controller::SystemFeatureSet<
 
 #[test]
 fn test_system_controller_flow() {
-    static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 4> = Channel::new();
+    static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 16> = Channel::new();
     static MOTOR_CHANNEL: Channel<CriticalSectionRawMutex, MotorCommand, 4> = Channel::new();
     static SENSOR_NORTH_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> =
         Channel::new();
@@ -105,10 +105,12 @@ fn test_system_controller_flow() {
             while let Ok(cmd) = SYSTEM_CHANNEL.try_receive() {
                 $ctrl.handle_command(cmd);
             }
+            while BATTERY_CHANNEL.try_receive().is_ok() {}
+            while THERMAL_CHANNEL.try_receive().is_ok() {}
         };
     }
 
-    let feature_set = create_test_feature_set!(
+    let feature_set: TestFeatureSet<_, 4> = create_test_feature_set!(
         Some(MOTOR_CHANNEL.sender()),
         Some(BATTERY_CHANNEL.sender()),
         [
@@ -195,7 +197,7 @@ fn test_system_controller_flow() {
     while LED_CHANNEL.try_receive().is_ok() {}
 
     // Use a fresh controller instance to test ToF proximity data fusion and active delay gating
-    let feature_set2 = create_test_feature_set!(
+    let feature_set2: TestFeatureSet<_, 4> = create_test_feature_set!(
         Some(MOTOR_CHANNEL.sender()),
         Some(BATTERY_CHANNEL.sender()),
         [
@@ -298,7 +300,7 @@ fn test_system_controller_flow() {
 
 #[test]
 fn test_power_down_and_gesture_detection() {
-    static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 4> = Channel::new();
+    static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 16> = Channel::new();
     static MOTOR_CHANNEL: Channel<CriticalSectionRawMutex, MotorCommand, 4> = Channel::new();
     static SENSOR_NORTH_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> =
         Channel::new();
@@ -313,10 +315,12 @@ fn test_power_down_and_gesture_detection() {
             while let Ok(cmd) = SYSTEM_CHANNEL.try_receive() {
                 $ctrl.handle_command(cmd);
             }
+            while BATTERY_CHANNEL.try_receive().is_ok() {}
+            while THERMAL_CHANNEL.try_receive().is_ok() {}
         };
     }
 
-    let feature_set3 = create_test_feature_set!(
+    let feature_set3: TestFeatureSet<_, 4> = create_test_feature_set!(
         Some(MOTOR_CHANNEL.sender()),
         Some(BATTERY_CHANNEL.sender()),
         [
@@ -439,7 +443,7 @@ fn test_invalid_critical_soc_threshold_recovery() {
 
 #[test]
 fn test_system_controller_with_missing_controllers() {
-    static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 4> = Channel::new();
+    static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 16> = Channel::new();
 
     macro_rules! process {
         ($ctrl:expr) => {
@@ -480,7 +484,7 @@ fn test_configurable_motor_speed() {
     static MOTOR_CHANNEL: Channel<CriticalSectionRawMutex, MotorCommand, 4> = Channel::new();
 
     let custom_speed = MotorSpeed::new_saturating(50);
-    let feature_set = TestFeatureSet {
+    let feature_set: TestFeatureSet<_, 4> = TestFeatureSet {
         features: (
             controller::MotorFeatureConfig::new(Some(MOTOR_CHANNEL.sender()), custom_speed),
             controller::BatteryFeatureConfig::new(
@@ -528,7 +532,7 @@ fn test_configurable_motor_speed() {
 
 #[test]
 fn test_proximity_wake_lock_behavior() {
-    static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 4> = Channel::new();
+    static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 16> = Channel::new();
     static SENSOR_NORTH_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> =
         Channel::new();
     static SENSOR_EAST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
@@ -547,7 +551,8 @@ fn test_proximity_wake_lock_behavior() {
         SENSOR_EAST_CHANNEL.sender(),
         SENSOR_WEST_CHANNEL.sender(),
     ];
-    let feature_set = create_test_feature_set!(None, None, mock_sensors, None, None);
+    let feature_set: TestFeatureSet<_, 4> =
+        create_test_feature_set!(None, None, mock_sensors, None, None);
     let mut controller = SystemController::new(
         feature_set,
         MOCK_TELEMETRY_CHANNEL.sender(),
@@ -592,7 +597,7 @@ fn test_proximity_wake_lock_behavior() {
 
 #[test]
 fn test_boot_traps_clearing_integration() {
-    static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 4> = Channel::new();
+    static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 16> = Channel::new();
     static BATTERY_CHANNEL: Channel<CriticalSectionRawMutex, BatteryCommand, 4> = Channel::new();
     static THERMAL_CHANNEL: Channel<CriticalSectionRawMutex, ThermalCommand, 4> = Channel::new();
 
@@ -601,10 +606,12 @@ fn test_boot_traps_clearing_integration() {
             while let Ok(cmd) = SYSTEM_CHANNEL.try_receive() {
                 let _ = $ctrl.handle_command(cmd);
             }
+            while BATTERY_CHANNEL.try_receive().is_ok() {}
+            while THERMAL_CHANNEL.try_receive().is_ok() {}
         };
     }
 
-    let feature_set = create_test_feature_set!(
+    let feature_set: TestFeatureSet<_, 4> = create_test_feature_set!(
         None,
         Some(BATTERY_CHANNEL.sender()),
         [],

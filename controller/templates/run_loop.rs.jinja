@@ -1,0 +1,35 @@
+#[crate::tracing::controller_context]
+pub struct {{ name }}Controller{{ impl_generics|safe }} {
+    // TODO: Add fields (e.g. drivers, configuration) here
+    {% if impl_generics != "" -%}
+    _marker: core::marker::PhantomData<{{ impl_phantom|safe }}>,
+    {%- endif %}
+}
+
+impl{{ impl_generics|safe }} {{ impl_type|safe }} {
+    /// Runs the controller's command processing loop.
+    pub async fn run<MutexRaw: RawMutex, const SIZE: usize>(
+        mut self,
+        r: {{ name }}Receiver<MutexRaw, SIZE>,
+        {% if is_system -%}
+        r2: platform::gesture_detector::GestureReceiver<MutexRaw, SIZE>,
+        r3: embassy_sync::channel::Receiver<'static, MutexRaw, crate::ThermalUpdateAction, SIZE>,
+        {%- endif -%}
+        {% if has_telemetry -%}
+        t: TelemetrySender<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, { crate::telemetry_controller::CHANNEL_CAPACITY }>,
+        {%- endif -%}
+    ) -> ! {
+        {% if has_telemetry -%}
+        // Initialize your telemetry client
+        let mut telemetry_client = {{ name }}TelemetryClient::new(Some(t));
+        {%- endif %}
+        loop {
+            // Receive command from the channel
+            let cmd = r.receive().await;
+            match cmd {
+                // TODO: Implement command match logic for message type: {{ msg_type }}
+                _ => {}
+            }
+        }
+    }
+}

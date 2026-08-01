@@ -226,20 +226,20 @@ where
 }
 
 /// Standard config implementation for LedFeature.
-pub struct LedFeatureConfig<MutexRaw: RawMutex + 'static, const N: usize> {
+pub struct LedFeatureConfig<MutexRaw: RawMutex + 'static> {
     /// LED channel sender
-    pub led_tx: Option<crate::LedSender<MutexRaw, N>>,
+    pub led_tx: Option<crate::LedSender<MutexRaw>>,
 }
 
-impl<MutexRaw: RawMutex + 'static, const N: usize> LedFeatureConfig<MutexRaw, N> {
+impl<MutexRaw: RawMutex + 'static> LedFeatureConfig<MutexRaw> {
     /// Creates a new `LedFeatureConfig`.
-    pub fn new(led_tx: Option<crate::LedSender<MutexRaw, N>>) -> Self {
+    pub fn new(led_tx: Option<crate::LedSender<MutexRaw>>) -> Self {
         Self { led_tx }
     }
 }
 
 impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw, N>
-    for LedFeatureConfig<MutexRaw, N>
+    for LedFeatureConfig<MutexRaw>
 {
     fn on_init(&self) {
         if let Some(ref led_tx) = self.led_tx {

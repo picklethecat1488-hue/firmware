@@ -100,23 +100,31 @@ pub struct SensorStateManager<
     M: embassy_sync::blocking_mutex::raw::RawMutex = embassy_sync::blocking_mutex::raw::NoopRawMutex,
     Pin = DummyDataReadyPin,
     Cmd = (),
+    const SYS_CAP: usize = 16,
 > {
     metadata: SensorMetadata,
     sensor: S,
     periodic_interval: PeriodicInterval,
-    upstream_tx: Option<Sender<'a, M, Cmd, 4>>,
+    upstream_tx: Option<Sender<'a, M, Cmd, SYS_CAP>>,
     interrupt_pin: Option<Pin>,
     _marker: core::marker::PhantomData<Data>,
 }
 
-impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd>
-    SensorStateManager<'a, S, Data, M, Pin, Cmd>
+impl<
+        'a,
+        S,
+        Data,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        Pin,
+        Cmd,
+        const SYS_CAP: usize,
+    > SensorStateManager<'a, S, Data, M, Pin, Cmd, SYS_CAP>
 {
     /// Creates a new SensorStateManager.
     pub const fn new(
         metadata: SensorMetadata,
         sensor: S,
-        upstream_tx: Option<Sender<'a, M, Cmd, 4>>,
+        upstream_tx: Option<Sender<'a, M, Cmd, SYS_CAP>>,
         interrupt_pin: Option<Pin>,
     ) -> Self {
         Self {
@@ -193,7 +201,8 @@ impl<
         M: embassy_sync::blocking_mutex::raw::RawMutex,
         Pin,
         Cmd: FromProximityUpdate + Clone + core::fmt::Debug,
-    > SensorStateManager<'a, S, Data, M, Pin, Cmd>
+        const SYS_CAP: usize,
+    > SensorStateManager<'a, S, Data, M, Pin, Cmd, SYS_CAP>
 {
     /// Sends a command upstream if configured.
     #[cfg_attr(
@@ -213,8 +222,15 @@ impl<
     }
 }
 
-impl<'a, S, Data, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin: DataReadyPin, Cmd>
-    SensorStateManager<'a, S, Data, M, Pin, Cmd>
+impl<
+        'a,
+        S,
+        Data,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        Pin: DataReadyPin,
+        Cmd,
+        const SYS_CAP: usize,
+    > SensorStateManager<'a, S, Data, M, Pin, Cmd, SYS_CAP>
 {
     /// Waits for the data ready interrupt to trigger if the interrupt pin is configured.
     pub async fn wait_for_data_ready(&mut self) {
@@ -235,24 +251,39 @@ pub struct SensorController<
     Pin = DummyDataReadyPin,
     Cmd = (),
     Reader: SensorReader<S> = ProximityReader,
+    const SYS_CAP: usize = 16,
 > {
-    state_manager: SensorStateManager<'a, S, Reader::Data, M, Pin, Cmd>,
+    state_manager: SensorStateManager<'a, S, Reader::Data, M, Pin, Cmd, SYS_CAP>,
     latest_data: Reader::Data,
     context: Reader::Context,
 }
 
-impl<'a, S, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd, Reader: SensorReader<S>>
-    core::ops::Deref for SensorController<'a, S, M, Pin, Cmd, Reader>
+impl<
+        'a,
+        S,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        Pin,
+        Cmd,
+        Reader: SensorReader<S>,
+        const SYS_CAP: usize,
+    > core::ops::Deref for SensorController<'a, S, M, Pin, Cmd, Reader, SYS_CAP>
 {
-    type Target = SensorStateManager<'a, S, Reader::Data, M, Pin, Cmd>;
+    type Target = SensorStateManager<'a, S, Reader::Data, M, Pin, Cmd, SYS_CAP>;
 
     fn deref(&self) -> &Self::Target {
         &self.state_manager
     }
 }
 
-impl<'a, S, M: embassy_sync::blocking_mutex::raw::RawMutex, Pin, Cmd, Reader: SensorReader<S>>
-    core::ops::DerefMut for SensorController<'a, S, M, Pin, Cmd, Reader>
+impl<
+        'a,
+        S,
+        M: embassy_sync::blocking_mutex::raw::RawMutex,
+        Pin,
+        Cmd,
+        Reader: SensorReader<S>,
+        const SYS_CAP: usize,
+    > core::ops::DerefMut for SensorController<'a, S, M, Pin, Cmd, Reader, SYS_CAP>
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.state_manager
@@ -267,6 +298,7 @@ impl<'a, S: ProximitySensor>
         DummyDataReadyPin,
         (),
         ProximityReader,
+        16,
     >
 {
     /// Creates a new SensorController managing a single proximity sensor.
@@ -284,13 +316,14 @@ impl<
         S: ProximitySensor,
         M: embassy_sync::blocking_mutex::raw::RawMutex,
         Cmd: FromProximityUpdate + Clone + core::fmt::Debug,
-    > SensorController<'a, S, M, DummyDataReadyPin, Cmd, ProximityReader>
+        const SYS_CAP: usize,
+    > SensorController<'a, S, M, DummyDataReadyPin, Cmd, ProximityReader, SYS_CAP>
 {
     /// Creates a new SensorController with upstream system notification.
     pub fn new_with_fusion(
         metadata: SensorMetadata,
         sensor: S,
-        upstream_tx: Sender<'a, M, Cmd, 4>,
+        upstream_tx: Sender<'a, M, Cmd, SYS_CAP>,
         wake_threshold_mm: u16,
     ) -> Self {
         Self {
@@ -308,7 +341,8 @@ impl<
         Pin: DataReadyPin,
         Cmd: FromProximityUpdate + Clone + core::fmt::Debug,
         Reader: SensorReader<S>,
-    > SensorController<'a, S, M, Pin, Cmd, Reader>
+        const SYS_CAP: usize,
+    > SensorController<'a, S, M, Pin, Cmd, Reader, SYS_CAP>
 where
     Reader::Data: Copy + Into<u16>,
     Reader::Error: core::fmt::Debug,
@@ -333,7 +367,7 @@ where
         metadata: SensorMetadata,
         sensor: S,
         latest_data: Reader::Data,
-        upstream_tx: Sender<'a, M, Cmd, 4>,
+        upstream_tx: Sender<'a, M, Cmd, SYS_CAP>,
         interrupt_pin: Option<Pin>,
         context: Reader::Context,
     ) -> Self {
@@ -461,13 +495,14 @@ impl<
         M: embassy_sync::blocking_mutex::raw::RawMutex,
         Pin: DataReadyPin,
         Cmd: FromProximityUpdate + Clone + core::fmt::Debug,
-    > SensorController<'a, S, M, Pin, Cmd, ProximityReader>
+        const SYS_CAP: usize,
+    > SensorController<'a, S, M, Pin, Cmd, ProximityReader, SYS_CAP>
 {
     /// Creates a new SensorController with upstream system notification and interrupt pin support.
     pub fn new_with_fusion_and_interrupt(
         metadata: SensorMetadata,
         sensor: S,
-        upstream_tx: Sender<'a, M, Cmd, 4>,
+        upstream_tx: Sender<'a, M, Cmd, SYS_CAP>,
         interrupt_pin: Pin,
         wake_threshold_mm: u16,
     ) -> Self {
@@ -759,19 +794,14 @@ pub fn handle_sensor_cli<
 }
 
 /// Standard config implementation for ProximityFeature.
-pub struct ProximityFeatureConfig<
-    MutexRaw: RawMutex + 'static,
-    const N: usize,
-    const S_CAP: usize = 3,
-    const T_CAP: usize = { crate::telemetry_controller::CHANNEL_CAPACITY },
-> {
+pub struct ProximityFeatureConfig<MutexRaw: RawMutex + 'static, const S_CAP: usize = 3> {
     /// Sensor channel senders
-    pub sensor_txs: heapless::Vec<crate::SensorSender<MutexRaw, N>, S_CAP>,
+    pub sensor_txs: heapless::Vec<crate::SensorSender<MutexRaw>, S_CAP>,
     /// Proximity gesture detector state
     pub gesture_detector: core::cell::RefCell<platform::gesture_detector::ProximityGestureDetector>,
     /// Proximity telemetry client
     pub telemetry_client:
-        core::cell::RefCell<crate::telemetry_controller::ProximityTelemetryClient<MutexRaw, T_CAP>>,
+        core::cell::RefCell<crate::telemetry_controller::ProximityTelemetryClient<MutexRaw>>,
     /// Active proximity detection state
     pub proximity_active: core::cell::Cell<bool>,
     /// Proximity detection threshold
@@ -782,16 +812,14 @@ pub struct ProximityFeatureConfig<
     pub dual_long_press_action: crate::GestureAction,
 }
 
-impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_CAP: usize>
-    ProximityFeatureConfig<MutexRaw, N, S_CAP, T_CAP>
-{
+impl<MutexRaw: RawMutex + 'static, const S_CAP: usize> ProximityFeatureConfig<MutexRaw, S_CAP> {
     /// Creates a new `ProximityFeatureConfig` with the given list of sensor senders (up to S_CAP).
     pub fn new(
-        sensor_senders: &[crate::SensorSender<MutexRaw, N>],
+        sensor_senders: &[crate::SensorSender<MutexRaw>],
         press_threshold_mm: u16,
         wake_threshold_mm: u16,
         dual_long_press_action: crate::GestureAction,
-        telemetry_tx: Option<crate::TelemetrySender<MutexRaw, T_CAP>>,
+        telemetry_tx: Option<crate::TelemetrySender<MutexRaw>>,
     ) -> Self {
         let mut sensor_txs = heapless::Vec::new();
         for sender in sensor_senders {
@@ -820,8 +848,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_C
     }
 }
 
-impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_CAP: usize>
-    crate::SystemFeature<MutexRaw, N> for ProximityFeatureConfig<MutexRaw, N, S_CAP, T_CAP>
+impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
+    crate::SystemFeature<MutexRaw, N> for ProximityFeatureConfig<MutexRaw, S_CAP>
 {
     fn on_proximity_update(
         &self,
@@ -906,8 +934,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_C
     }
 }
 
-impl<MutexRaw: RawMutex + 'static, const N: usize, const S_CAP: usize, const T_CAP: usize>
-    crate::Periodic for ProximityFeatureConfig<MutexRaw, N, S_CAP, T_CAP>
+impl<MutexRaw: RawMutex + 'static, const S_CAP: usize> crate::Periodic
+    for ProximityFeatureConfig<MutexRaw, S_CAP>
 {
     fn set_interval(&self, interval: PeriodicInterval) {
         self.telemetry_client

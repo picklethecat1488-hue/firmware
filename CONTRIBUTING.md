@@ -183,6 +183,23 @@ To maintain decoupled domain architectures and clean Embassy task separation:
    Controllers must never directly instantiate other controllers (e.g. calling `FilesystemController::new` from `MotorController`). This strict isolation prevents duplicate peripheral/task ownership.
 3. **Platform-Level Diagnostic Reads**:
    If diagnostics or calibration commands (which run inside CLI shell contexts) need to access files or direct storage without a running executor task, they must use stateless platform-level direct operations (such as `platform::flash::read_file_direct` and `platform::flash::write_file_direct`) instead of instantiating controller tasks directly.
+4. **Controller Code Generation (`controllers.toml` / Rinja Templates)**:
+   All controllers, their channel definitions, task runner macros (`run_*_task!`), and `spawn_single_controller!` matching arms are automatically generated at build time using the **Rinja** template engine. 
+   - To add a new controller or modify module parameters, edit the configuration in [controller/controllers.toml](file:///Users/daparker/gh/firmware/controller/controllers.toml).
+   - The template file [controller/templates/generated_controllers.rs.jinja](file:///Users/daparker/gh/firmware/controller/templates/generated_controllers.rs.jinja) defines the code layout.
+   - The `has_telemetry` flag defaults to `true`. If a controller does not use telemetry reporting, explicitly set `has_telemetry = false` in the TOML file.
+   - **Host Code Generation Viewer Tool (`controller_gen`)**:
+     We provide a host utility to print and inspect the rendered Rust code for a specific controller or for all controllers to stdout.
+     ```bash
+     # Inspect generated macros/channels for a specific controller (e.g. Led)
+     cargo run -p controller_gen -- Led
+
+     # List all currently defined controllers
+     cargo run -p controller_gen -- list
+     
+     # Inspect generated output for all controllers
+     cargo run -p controller_gen
+     ```
 
 ---
 

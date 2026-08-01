@@ -26,6 +26,7 @@ sys.path.insert(0, workspace_root)
 from tools.validation.validate_tracing import validate_tracing
 from tools.validation.validate_multicore_support import validate_multicore_support
 from tools.validation.validate_debug_derive import validate_debug_derive
+from tools.validation.validate_controller_context import validate_controller_context
 
 # Globals for spinner control
 spinner = None
@@ -263,6 +264,11 @@ def main():
             "Tracing Hierarchy Validator",
             run_python_validator,
             (validate_tracing, output_file),
+        ),
+        (
+            "Controller Context Validator",
+            run_python_validator,
+            (validate_controller_context, output_file),
         ),
         (
             "Multicore Support Validator",

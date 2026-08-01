@@ -72,7 +72,6 @@ type BatteryControllerType = controller::battery_controller::BatteryController<
     app::BatteryDevice,
     app::ChargerDevice,
     app::AlertPinType,
-    app::SystemCommand,
 >;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -94,9 +93,9 @@ type SystemControllerType = controller::SystemController<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     cat_detector::CatDetectorFeatureSet<
         embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        4,
+        16,
     >,
-    4,
+    16,
 >;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]

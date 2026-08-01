@@ -189,7 +189,7 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
         telemetry: TELEMETRY_CHANNEL,
         controllers: {
             Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (app::TempSensorDevice),
-            Battery(power_ctrl, BATTERY_CHANNEL), generics: (app::BatteryDevice, app::ChargerDevice, app::AlertPinType, app::SystemCommand),
+            Battery(power_ctrl, BATTERY_CHANNEL), generics: (app::BatteryDevice, app::ChargerDevice, app::AlertPinType),
             Led(led_ctrl, LED_CHANNEL), generics: (app::LedDevice),
             System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (app::SystemControllerType),
             Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (app::FlashDeviceType),
