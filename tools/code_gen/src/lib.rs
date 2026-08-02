@@ -349,7 +349,6 @@ pub fn print_help(available: &[Controller]) {
     println!("Code Generator host tool");
     println!();
     println!("Usage:");
-    println!("  cargo run -p code_gen -- [ControllerName]");
     println!("  cargo run -p code_gen -- list-controllers");
     println!("  cargo run -p code_gen -- list-clis");
     println!("  cargo run -p code_gen -- cli-sample [<group_or_command>]");
