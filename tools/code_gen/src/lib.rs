@@ -8,8 +8,10 @@ use serde::Deserialize;
 use std::path::PathBuf;
 
 /// A single parameter for the controller's task/run functions.
+#[derive(Deserialize, Clone)]
 pub struct Param {
     /// Name of the parameter.
+    #[serde(rename = "param")]
     pub name: String,
     /// Type signature of the parameter.
     pub r#type: String,
@@ -51,6 +53,8 @@ pub struct Controller {
     pub impl_type: String,
     /// Types that need to be held in PhantomData for dummy struct mock definitions.
     pub impl_phantom: Option<String>,
+    /// Explicit parameter types passed to the controller's run method.
+    pub run_params: Vec<Param>,
 }
 
 impl Controller {
@@ -90,37 +94,8 @@ impl Controller {
     }
 
     /// Programmatically infers the extra receiver and telemetry parameters for this controller.
-    pub fn extra_params_inferred(&self) -> Vec<Param> {
-        let mut params = Vec::new();
-
-        let cap = self.receiver_capacity.as_deref().unwrap_or("4");
-        params.push(Param {
-            name: "r".to_string(),
-            r#type: format!(
-                "$crate::{}Receiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, {}>",
-                self.name, cap
-            ),
-        });
-
-        if self.is_system.unwrap_or(false) {
-            params.push(Param {
-                name: "r2".to_string(),
-                r#type: "platform::gesture_detector::GestureReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>".to_string(),
-            });
-            params.push(Param {
-                name: "r3".to_string(),
-                r#type: "embassy_sync::channel::Receiver<'static, embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, $crate::ThermalUpdateAction, 4>".to_string(),
-            });
-        }
-
-        if self.has_telemetry.unwrap_or(true) {
-            params.push(Param {
-                name: "t".to_string(),
-                r#type: "$crate::TelemetrySender<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, { $crate::telemetry_controller::CHANNEL_CAPACITY }>".to_string(),
-            });
-        }
-
-        params
+    pub fn extra_params_inferred(&self) -> &[Param] {
+        &self.run_params
     }
 
     /// Helper to get a clean string representation of the phantom generics.
@@ -188,34 +163,30 @@ impl CliArg {
             "int" => "Option<i32>".to_string(),
             "float" => "Option<f32>".to_string(),
             "bool" => "Option<bool>".to_string(),
-            custom => {
-                if custom.contains("::") && !custom.contains("$crate") {
-                    custom
-                        .replace("filesystem_controller::", "PLACEHOLDER_FS::")
-                        .replace("system_controller::", "PLACEHOLDER_SYS::")
-                        .replace("battery_controller::", "PLACEHOLDER_BAT::")
-                        .replace("thermal_controller::", "PLACEHOLDER_THM::")
-                        .replace("motor_controller::", "PLACEHOLDER_MTR::")
-                        .replace("sensor_controller::", "PLACEHOLDER_SNS::")
-                        .replace("shell_controller::", "PLACEHOLDER_SHL::")
-                        .replace("PLACEHOLDER_FS::", "$crate::filesystem_controller::")
-                        .replace("PLACEHOLDER_SYS::", "$crate::system_controller::")
-                        .replace("PLACEHOLDER_BAT::", "$crate::battery_controller::")
-                        .replace("PLACEHOLDER_THM::", "$crate::thermal_controller::")
-                        .replace("PLACEHOLDER_MTR::", "$crate::motor_controller::")
-                        .replace("PLACEHOLDER_SNS::", "$crate::sensor_controller::")
-                        .replace("PLACEHOLDER_SHL::", "$crate::shell_controller::")
-                } else {
-                    custom.to_string()
-                }
-            }
+            custom => resolve_crate_path(custom),
         }
     }
+
     pub fn rust_type_sample(&self) -> String {
         self.rust_type()
             .replace("$crate::", "controller::")
             .replace("&'a str", "&str")
     }
+}
+
+fn resolve_crate_path(custom: &str) -> String {
+    let mut result = custom.to_string();
+    if let Some(idx) = result.find("_controller::") {
+        let bytes = result.as_bytes();
+        let mut start = idx;
+        while start > 0 && (bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_') {
+            start -= 1;
+        }
+        if !(start >= 8 && &result[start - 8..start] == "$crate::") {
+            result.insert_str(start, "$crate::");
+        }
+    }
+    result
 }
 
 #[derive(Deserialize, Clone)]
@@ -264,7 +235,7 @@ pub struct ShellConfigToml {
 
 /// Rinja template for generated macro and channel definitions.
 #[derive(Template)]
-#[template(path = "generated_controllers.rs.jinja")]
+#[template(path = "generated_controllers.rs.jinja", escape = "none")]
 pub struct GeneratedControllersTemplate {
     /// The list of controllers to render.
     pub controllers: Vec<Controller>,
@@ -274,21 +245,21 @@ pub struct GeneratedControllersTemplate {
 
 /// Rinja template for rendering a sample CLI implementation.
 #[derive(Template)]
-#[template(path = "sample_cli.rs.jinja")]
+#[template(path = "sample_cli.rs.jinja", escape = "none")]
 pub struct SampleCliTemplate {
     pub cli_commands: Vec<CliCommand>,
 }
 
 /// Rinja template for rendering a single CLI handler function skeleton.
 #[derive(Template)]
-#[template(path = "cli_handler_skeleton.rs.jinja")]
+#[template(path = "cli_handler_skeleton.rs.jinja", escape = "none")]
 pub struct CliHandlerSkeletonTemplate {
     pub cmd: CliCommand,
 }
 
 /// Rinja template for the boilerplate implementation of the asynchronous `run(...)` loop.
 #[derive(Template)]
-#[template(path = "run_loop.rs.jinja")]
+#[template(path = "run_loop.rs.jinja", escape = "none")]
 pub struct RunLoopTemplate {
     /// Name of the controller.
     pub name: String,

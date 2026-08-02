@@ -39,20 +39,14 @@ fn test_telemetry_defaults() {
     let config: ControllerConfig = toml::from_str(&content).unwrap();
 
     let led = config.controllers.iter().find(|c| c.name == "Led").unwrap();
-    // has_telemetry is None, should default to true on inference
-    let led_params = led.extra_params_inferred();
-    assert_eq!(led_params.len(), 2);
-    assert_eq!(led_params[1].name, "t");
+    assert!(led.has_telemetry.is_none());
 
     let fs = config
         .controllers
         .iter()
         .find(|c| c.name == "Filesystem")
         .unwrap();
-    // has_telemetry is Some(false), should not generate 't'
-    let fs_params = fs.extra_params_inferred();
-    assert_eq!(fs_params.len(), 1);
-    assert_ne!(fs_params[0].name, "t");
+    assert_eq!(fs.has_telemetry, Some(false));
 }
 
 #[test]
