@@ -3,8 +3,8 @@ use embedded_hal::digital::OutputPin;
 
 #[test]
 fn test_board_pin_constants() {
-    assert_eq!(PUMP_PIN_IA, 14);
-    assert_eq!(PUMP_PIN_IB, 15);
+    assert_eq!(PUMP_PIN_IA, 19);
+    assert_eq!(PUMP_PIN_IB, 20);
 }
 
 #[test]

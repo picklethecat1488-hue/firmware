@@ -53,74 +53,55 @@ static mut EXECUTOR_CORE0: Option<SyncExecutor> = None;
 static mut EXECUTOR_CORE1: Option<SyncExecutor> = None;
 
 impl<'d> Board<'d> {
+    /// Perform an I2C bus recovery sequence the given bus pins.
+    fn recover_i2c_bus(scl: &mut Flex, sda: &mut Flex) {
+        scl.set_as_output();
+        scl.set_high();
+
+        sda.set_as_input();
+        sda.set_pull(Pull::Up);
+
+        // Toggle SCL up to 9 times or until SDA releases (goes high)
+        for _ in 0..9 {
+            if sda.is_high() {
+                break;
+            }
+            scl.set_low();
+            cortex_m::asm::delay(200);
+            scl.set_high();
+            cortex_m::asm::delay(200);
+        }
+    }
+
     /// Initialize all hardware components and return the Board interface.
     ///
     /// # Arguments
     /// * `p` - The RP2040 peripheral set.
     #[tracing::instrument(level = "trace", skip(p))]
     pub fn init(p: Peripherals) -> Self {
-        // 1. Perform I2C bus unstuck on I2C0 (GP4 SDA, GP5 SCL) using raw registers
-        // to avoid taking ownership of Pin types before constructing I2c.
-        unsafe {
-            const SIO_BASE: u32 = 0xd000_0000;
-            const SIO_GPIO_OUT_SET: *mut u32 = (SIO_BASE + 0x14) as *mut u32;
-            const SIO_GPIO_OUT_CLR: *mut u32 = (SIO_BASE + 0x18) as *mut u32;
-            const SIO_GPIO_OE_SET: *mut u32 = (SIO_BASE + 0x24) as *mut u32;
-            const SIO_GPIO_IN: *const u32 = (SIO_BASE + 0x04) as *const u32;
-
-            const IO_BANK0_BASE: u32 = 0x4001_4000;
-            const IO_BANK0_GPIO4_CTRL: *mut u32 = (IO_BANK0_BASE + 0x24) as *mut u32;
-            const IO_BANK0_GPIO5_CTRL: *mut u32 = (IO_BANK0_BASE + 0x2c) as *mut u32;
-
-            const PADS_BANK0_BASE: u32 = 0x4001_c000;
-            const PADS_BANK0_GPIO4: *mut u32 = (PADS_BANK0_BASE + 0x14) as *mut u32;
-            const PADS_BANK0_GPIO5: *mut u32 = (PADS_BANK0_BASE + 0x18) as *mut u32;
-
-            // Set pin functions to SIO (GPIO function is 5 on RP2040)
-            core::ptr::write_volatile(IO_BANK0_GPIO5_CTRL, 5);
-            core::ptr::write_volatile(IO_BANK0_GPIO4_CTRL, 5);
-
-            // Enable pull-ups on SCL/SDA pads
-            core::ptr::write_volatile(PADS_BANK0_GPIO5, 0x5a);
-            core::ptr::write_volatile(PADS_BANK0_GPIO4, 0x5a);
-
-            // Set SCL (GP5) as output high
-            core::ptr::write_volatile(SIO_GPIO_OUT_SET, 1 << 5);
-            core::ptr::write_volatile(SIO_GPIO_OE_SET, 1 << 5);
-
-            // Toggle SCL up to 9 times or until SDA releases (goes high)
-            for _ in 0..9 {
-                let sda_val = core::ptr::read_volatile(SIO_GPIO_IN);
-                if (sda_val & (1 << 4)) != 0 {
-                    break;
-                }
-                // Drive SCL low
-                core::ptr::write_volatile(SIO_GPIO_OUT_CLR, 1 << 5);
-                cortex_m::asm::delay(200);
-                // Drive SCL high
-                core::ptr::write_volatile(SIO_GPIO_OUT_SET, 1 << 5);
-                cortex_m::asm::delay(200);
-            }
-        }
+        // 1. Perform I2C bus unstuck on I2C0 (GP12 SDA, GP13 SCL) using Embassy Flex GPIO.
+        let mut scl = Flex::new(unsafe { embassy_rp::peripherals::PIN_13::steal() });
+        let mut sda = Flex::new(unsafe { embassy_rp::peripherals::PIN_12::steal() });
+        Self::recover_i2c_bus(&mut scl, &mut sda);
 
         let mut i2c_config = I2cConfig::default();
         i2c_config.frequency = 400_000;
-        let mut i2c = I2c::new_blocking(p.I2C0, p.PIN_5, p.PIN_4, i2c_config);
+        let mut i2c = I2c::new_blocking(p.I2C0, p.PIN_13, p.PIN_12, i2c_config);
         let mut gpio_pins: [Option<Flex<'d>>; 30] = [
             None, // 0 - UART TX
             None, // 1 - UART RX
             Some(Flex::new(p.PIN_2.degrade())),
             Some(Flex::new(p.PIN_3.degrade())),
-            None, // 4 - I2C SDA
-            None, // 5 - I2C SCL
+            Some(Flex::new(p.PIN_4.degrade())),
+            Some(Flex::new(p.PIN_5.degrade())),
             Some(Flex::new(p.PIN_6.degrade())),
             Some(Flex::new(p.PIN_7.degrade())),
             Some(Flex::new(p.PIN_8.degrade())),
             Some(Flex::new(p.PIN_9.degrade())),
             Some(Flex::new(p.PIN_10.degrade())),
             Some(Flex::new(p.PIN_11.degrade())),
-            Some(Flex::new(p.PIN_12.degrade())),
-            Some(Flex::new(p.PIN_13.degrade())),
+            None, // 12 - I2C SDA
+            None, // 13 - I2C SCL
             Some(Flex::new(p.PIN_14.degrade())),
             Some(Flex::new(p.PIN_15.degrade())),
             Some(Flex::new(p.PIN_16.degrade())),
