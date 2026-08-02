@@ -147,7 +147,8 @@ pub fn handle_i2c_cli<W: embedded_io::Write<Error = E>, E: embedded_io::Error, R
                         let _ = write!(line, "   ");
                     } else {
                         // Attempt empty write to check for ACK using 7-bit address
-                        match i2c.write(addr_7bit, &[]) {
+                        let mut buf = [0];
+                        match i2c.read(addr_7bit, &mut buf) {
                             Ok(_) => {
                                 let _ = write!(line, " {:02x}", addr);
                             }
