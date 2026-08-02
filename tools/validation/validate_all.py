@@ -27,6 +27,7 @@ from tools.validation.validate_tracing import validate_tracing
 from tools.validation.validate_multicore_support import validate_multicore_support
 from tools.validation.validate_debug_derive import validate_debug_derive
 from tools.validation.validate_controller_context import validate_controller_context
+from tools.validation.validate_constant_addresses import validate_constant_addresses
 
 # Globals for spinner control
 spinner = None
@@ -279,6 +280,11 @@ def main():
             "Debug Derive Validator",
             run_python_validator,
             (validate_debug_derive, output_file),
+        ),
+        (
+            "Constant Address Validator",
+            run_python_validator,
+            (validate_constant_addresses, output_file),
         ),
         (
             "Python Lint (Ruff)",
