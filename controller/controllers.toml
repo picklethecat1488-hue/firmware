@@ -111,3 +111,5 @@ has_telemetry = false
 impl_generics = "<const MAX_RECORDS: usize, const BUFFER_SIZE: usize, F>"
 impl_type = "TelemetryController<MAX_RECORDS, BUFFER_SIZE, F>"
 impl_phantom = "F"
+
+

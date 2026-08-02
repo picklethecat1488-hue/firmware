@@ -142,11 +142,124 @@ impl Controller {
     }
 }
 
+#[derive(Deserialize, Clone)]
+pub struct CliResolverField {
+    pub associated_type: String,
+    pub field: String,
+    pub resolve_fn: String,
+    pub doc: String,
+    pub bounds: String,
+    pub type_lifetime: Option<String>,
+}
+
+impl CliResolverField {
+    pub fn bounds(&self) -> String {
+        let lifetime = self.type_lifetime.as_deref().unwrap_or("'static");
+        format!("{} + {}", self.bounds, lifetime)
+    }
+}
+
+#[derive(Deserialize, Clone)]
+pub struct CliArg {
+    pub name: String,
+    pub r#type: String,
+    pub help: String,
+    pub attributes: Option<Vec<String>>,
+}
+
+impl CliArg {
+    pub fn attributes_slice(&self) -> Vec<String> {
+        if let Some(ref attrs) = self.attributes {
+            attrs.clone()
+        } else if self.name != "arg1"
+            && self.name != "arg2"
+            && self.name != "arg3"
+            && self.name != "target"
+        {
+            vec![format!("#[arg(long = \"{}\")]", self.name)]
+        } else {
+            vec![]
+        }
+    }
+
+    pub fn rust_type(&self) -> String {
+        match self.r#type.as_str() {
+            "string" => "Option<&'a str>".to_string(),
+            "int" => "Option<i32>".to_string(),
+            "float" => "Option<f32>".to_string(),
+            "bool" => "Option<bool>".to_string(),
+            custom => {
+                if custom.contains("::") && !custom.contains("$crate") {
+                    custom
+                        .replace("filesystem_controller::", "PLACEHOLDER_FS::")
+                        .replace("system_controller::", "PLACEHOLDER_SYS::")
+                        .replace("battery_controller::", "PLACEHOLDER_BAT::")
+                        .replace("thermal_controller::", "PLACEHOLDER_THM::")
+                        .replace("motor_controller::", "PLACEHOLDER_MTR::")
+                        .replace("sensor_controller::", "PLACEHOLDER_SNS::")
+                        .replace("shell_controller::", "PLACEHOLDER_SHL::")
+                        .replace("PLACEHOLDER_FS::", "$crate::filesystem_controller::")
+                        .replace("PLACEHOLDER_SYS::", "$crate::system_controller::")
+                        .replace("PLACEHOLDER_BAT::", "$crate::battery_controller::")
+                        .replace("PLACEHOLDER_THM::", "$crate::thermal_controller::")
+                        .replace("PLACEHOLDER_MTR::", "$crate::motor_controller::")
+                        .replace("PLACEHOLDER_SNS::", "$crate::sensor_controller::")
+                        .replace("PLACEHOLDER_SHL::", "$crate::shell_controller::")
+                } else {
+                    custom.to_string()
+                }
+            }
+        }
+    }
+    pub fn rust_type_sample(&self) -> String {
+        self.rust_type()
+            .replace("$crate::", "controller::")
+            .replace("&'a str", "&str")
+    }
+}
+
+#[derive(Deserialize, Clone)]
+pub struct CliCommand {
+    pub group: String,
+    pub cmd_name: String,
+    pub variant: String,
+    pub subcommand_type: String,
+    pub handler: String,
+    pub help: String,
+    pub args: Option<Vec<CliArg>>,
+}
+
+impl CliCommand {
+    pub fn args_slice(&self) -> &[CliArg] {
+        self.args.as_deref().unwrap_or(&[])
+    }
+
+    pub fn handler_short_name(&self) -> &str {
+        self.handler.split("::").last().unwrap()
+    }
+
+    pub fn subcommand_type_path(&self) -> String {
+        if self.subcommand_type.contains("::") && !self.subcommand_type.starts_with("platform::") {
+            format!("controller::{}", self.subcommand_type)
+        } else {
+            self.subcommand_type.clone()
+        }
+    }
+}
+
 /// Root TOML configuration mapping holding the list of all defined controllers.
 #[derive(Deserialize)]
 pub struct ControllerConfig {
     /// List of all configured controllers.
     pub controllers: Vec<Controller>,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct ShellConfigToml {
+    #[serde(default)]
+    pub cli_resolver_fields: Vec<CliResolverField>,
+    #[serde(default)]
+    pub cli_commands: Vec<CliCommand>,
 }
 
 /// Rinja template for generated macro and channel definitions.
@@ -155,6 +268,22 @@ pub struct ControllerConfig {
 pub struct GeneratedControllersTemplate {
     /// The list of controllers to render.
     pub controllers: Vec<Controller>,
+    pub cli_resolver_fields: Vec<CliResolverField>,
+    pub cli_commands: Vec<CliCommand>,
+}
+
+/// Rinja template for rendering a sample CLI implementation.
+#[derive(Template)]
+#[template(path = "sample_cli.rs.jinja")]
+pub struct SampleCliTemplate {
+    pub cli_commands: Vec<CliCommand>,
+}
+
+/// Rinja template for rendering a single CLI handler function skeleton.
+#[derive(Template)]
+#[template(path = "cli_handler_skeleton.rs.jinja")]
+pub struct CliHandlerSkeletonTemplate {
+    pub cmd: CliCommand,
 }
 
 /// Rinja template for the boilerplate implementation of the asynchronous `run(...)` loop.
@@ -197,17 +326,40 @@ pub fn find_controllers_toml() -> PathBuf {
     }
 }
 
+/// Searches upward from the current directory to locate the path of `shell.toml`.
+pub fn find_shell_toml() -> PathBuf {
+    let mut path = std::env::current_dir().unwrap();
+    loop {
+        let toml_path = path.join("controller/shell.toml");
+        if toml_path.exists() {
+            return toml_path;
+        }
+        let direct_toml_path = path.join("shell.toml");
+        if direct_toml_path.exists() {
+            return direct_toml_path;
+        }
+        if !path.pop() {
+            panic!("Could not locate shell.toml in current directory or any parent directories!");
+        }
+    }
+}
+
 /// Prints usage help instructions and lists the available controller options.
 pub fn print_help(available: &[Controller]) {
-    println!("Controller Code Generator host tool");
+    println!("Code Generator host tool");
     println!();
     println!("Usage:");
-    println!("  cargo run -p controller_gen -- [ControllerName]");
-    println!("  cargo run -p controller_gen -- list");
+    println!("  cargo run -p code_gen -- list-controllers");
+    println!("  cargo run -p code_gen -- list-clis");
+    println!("  cargo run -p code_gen -- cli-sample [<group_or_command>]");
+    println!("  cargo run -p code_gen -- runloop-sample [<ControllerName>]");
     println!();
     println!("Options:");
-    println!("  -h, --help      Show this help message");
-    println!("  -l, --list      List all defined controllers");
+    println!("  -h, --help            Show this help message");
+    println!("  list-controllers      List all defined controllers");
+    println!("  list-clis             List all defined CLI commands/groups");
+    println!("  cli-sample            Output compiling sample CLI implementation (or specific command handler if target is given)");
+    println!("  runloop-sample        Output boilerplate runloop implementations");
     println!();
     println!("Available controllers in controllers.toml:");
     for ctrl in available {

@@ -10,7 +10,7 @@ members = [
     "tools/host_fs",
     "tools/host_cli",
     "platform/host",
-    "tools/controller_gen",
+    "tools/code_gen",
 ]
 default-members = [
     "model",

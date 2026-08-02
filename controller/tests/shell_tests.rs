@@ -6,28 +6,14 @@ controller::declare_shell_commands! {
         Sensor,
         Fs,
         System,
-        Core1,
     }
 }
 use controller::motor_controller::MotorSubcommand;
 use controller::sensor_controller::SensorSubcommand;
-use controller::shell_controller::Core1Subcommand;
-use controller::system_controller::SystemSubcommand;
+use controller::system_controller::{CpuTarget, SystemSubcommand};
 use embedded_cli::cli::CliBuilder;
 use embedded_cli::command::RawCommand;
 use embedded_cli::service::{CommandProcessor, FromRaw, ProcessError};
-
-fn handle_core1_cli<
-    W: embedded_io::Write<Error = E>,
-    E: embedded_io::Error,
-    C: controller::ShellConfig,
->(
-    _ctrl: &mut controller::shell_controller::ShellController<'_, C>,
-    _subcommand: Option<Core1Subcommand>,
-    _writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-) -> Result<(), &'static str> {
-    Ok(())
-}
 
 struct DummyWriter;
 impl embedded_io::ErrorType for DummyWriter {
@@ -78,7 +64,8 @@ fn test_crash_command_parsing() {
     assert!(matches!(
         processor.cmd,
         Some(CliCommand::System {
-            subcommand: Some(SystemSubcommand::Crash)
+            subcommand: Some(SystemSubcommand::Crash),
+            arg1: None
         })
     ));
 }
@@ -212,18 +199,19 @@ fn test_cal_motor_command_parsing() {
 }
 
 #[test]
-fn test_core1_panic_command_parsing() {
+fn test_system_crash_core1_command_parsing() {
     let mut cli = CliBuilder::default().writer(DummyWriter).build().unwrap();
 
     let mut processor = TestProcessor { cmd: None };
-    for byte in b"core1 panic\n" {
+    for byte in b"system crash core1\n" {
         let _ = cli.process_byte::<CliCommand, _>(*byte, &mut processor);
     }
 
     assert!(matches!(
         processor.cmd,
-        Some(CliCommand::Core1 {
-            subcommand: Some(Core1Subcommand::Panic)
+        Some(CliCommand::System {
+            subcommand: Some(SystemSubcommand::Crash),
+            arg1: Some(CpuTarget::Core1)
         })
     ));
 }

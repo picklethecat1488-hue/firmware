@@ -38,7 +38,6 @@ controller::declare_shell_commands! {
         Sensor,
         Fs,
         System,
-        Core1,
     }
 }
 
@@ -114,6 +113,21 @@ controller::impl_shell_config! {
         MotorCtrl = MotorControllerType,
         SystemCtrl = SystemControllerType,
     }
+
+    fn trigger_core_panic(
+        _resolver: &controller::shell_controller::ShellController<'_, Self>,
+        core_id: u32,
+    ) -> Result<(), &'static str> {
+        if core_id == 1 {
+            CORE1_COMMAND_CHANNEL
+                .sender()
+                .try_send(Core1Command::Panic)
+                .map_err(|_| "Failed to send command to Core 1")?;
+            Ok(())
+        } else {
+            panic!("Simulated Core 0 panic");
+        }
+    }
 }
 /// Core 1 command enum.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -148,29 +162,6 @@ async fn core1_command_task(
             Core1Command::Panic => {
                 panic!("Simulated Core 1 panic");
             }
-        }
-    }
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-fn handle_core1_cli<
-    W: embedded_io::Write<Error = E>,
-    E: embedded_io::Error,
-    C: controller::ShellConfig,
->(
-    _ctrl: &mut ShellController<'_, C>,
-    subcommand: Option<controller::shell_controller::Core1Subcommand>,
-    _writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-) -> Result<(), &'static str> {
-    let cmd = subcommand.ok_or("Missing core1 subcommand")?;
-    match cmd {
-        controller::shell_controller::Core1Subcommand::Panic => {
-            let _ = core::writeln!(_writer, "Sending panic command to Core 1...");
-            CORE1_COMMAND_CHANNEL
-                .sender()
-                .try_send(Core1Command::Panic)
-                .map_err(|_| "Failed to send command to Core 1")?;
-            Ok(())
         }
     }
 }
