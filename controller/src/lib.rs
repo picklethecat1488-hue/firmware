@@ -58,6 +58,9 @@ pub use types::{
 /// Consolidated tracing facade module from platform.
 pub use platform::tracing;
 
+/// Re-export CriticalSectionRawMutex for use by generated macros and receiver type configurations.
+pub use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+
 /// Macro to spawn any permutation of controllers concurrently on the provided spawner.
 ///
 /// Automatically handles telemetry wiring and extracts channel receivers.

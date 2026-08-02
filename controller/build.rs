@@ -7,7 +7,9 @@ use std::path::Path;
 
 const LOG_LEVEL: &str = "trace";
 
+#[derive(Deserialize, Clone)]
 struct Param {
+    #[serde(rename = "param")]
     name: String,
     r#type: String,
 }
@@ -31,6 +33,7 @@ struct Controller {
     impl_generics: String,
     impl_type: String,
     impl_phantom: Option<String>,
+    run_params: Vec<Param>,
 }
 
 impl Controller {
@@ -62,37 +65,8 @@ impl Controller {
         self.attributes.as_deref().unwrap_or(&[])
     }
 
-    fn extra_params_inferred(&self) -> Vec<Param> {
-        let mut params = Vec::new();
-
-        let cap = self.receiver_capacity.as_deref().unwrap_or("4");
-        params.push(Param {
-            name: "r".to_string(),
-            r#type: format!(
-                "$crate::{}Receiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, {}>",
-                self.name, cap
-            ),
-        });
-
-        if self.is_system.unwrap_or(false) {
-            params.push(Param {
-                name: "r2".to_string(),
-                r#type: "platform::gesture_detector::GestureReceiver<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>".to_string(),
-            });
-            params.push(Param {
-                name: "r3".to_string(),
-                r#type: "embassy_sync::channel::Receiver<'static, embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, $crate::ThermalUpdateAction, 4>".to_string(),
-            });
-        }
-
-        if self.has_telemetry.unwrap_or(true) {
-            params.push(Param {
-                name: "t".to_string(),
-                r#type: "$crate::TelemetrySender<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, { $crate::telemetry_controller::CHANNEL_CAPACITY }>".to_string(),
-            });
-        }
-
-        params
+    fn extra_params_inferred(&self) -> &[Param] {
+        &self.run_params
     }
 
     fn impl_phantom_str(&self) -> &str {
@@ -158,34 +132,30 @@ impl CliArg {
             "int" => "Option<i32>".to_string(),
             "float" => "Option<f32>".to_string(),
             "bool" => "Option<bool>".to_string(),
-            custom => {
-                if custom.contains("::") && !custom.contains("$crate") {
-                    custom
-                        .replace("filesystem_controller::", "PLACEHOLDER_FS::")
-                        .replace("system_controller::", "PLACEHOLDER_SYS::")
-                        .replace("battery_controller::", "PLACEHOLDER_BAT::")
-                        .replace("thermal_controller::", "PLACEHOLDER_THM::")
-                        .replace("motor_controller::", "PLACEHOLDER_MTR::")
-                        .replace("sensor_controller::", "PLACEHOLDER_SNS::")
-                        .replace("shell_controller::", "PLACEHOLDER_SHL::")
-                        .replace("PLACEHOLDER_FS::", "$crate::filesystem_controller::")
-                        .replace("PLACEHOLDER_SYS::", "$crate::system_controller::")
-                        .replace("PLACEHOLDER_BAT::", "$crate::battery_controller::")
-                        .replace("PLACEHOLDER_THM::", "$crate::thermal_controller::")
-                        .replace("PLACEHOLDER_MTR::", "$crate::motor_controller::")
-                        .replace("PLACEHOLDER_SNS::", "$crate::sensor_controller::")
-                        .replace("PLACEHOLDER_SHL::", "$crate::shell_controller::")
-                } else {
-                    custom.to_string()
-                }
-            }
+            custom => resolve_crate_path(custom),
         }
     }
+
     fn rust_type_sample(&self) -> String {
         self.rust_type()
             .replace("$crate::", "controller::")
             .replace("&'a str", "&str")
     }
+}
+
+fn resolve_crate_path(custom: &str) -> String {
+    let mut result = custom.to_string();
+    if let Some(idx) = result.find("_controller::") {
+        let bytes = result.as_bytes();
+        let mut start = idx;
+        while start > 0 && (bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_') {
+            start -= 1;
+        }
+        if !(start >= 8 && &result[start - 8..start] == "$crate::") {
+            result.insert_str(start, "$crate::");
+        }
+    }
+    result
 }
 
 #[derive(Deserialize, Clone)]

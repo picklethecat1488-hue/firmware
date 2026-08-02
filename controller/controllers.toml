@@ -10,6 +10,10 @@ spawn_generics = ["$driver_type"]
 impl_generics = "<D>"
 impl_type = "LedController<D>"
 impl_phantom = "D"
+run_params = [
+    { param = "r", type = "$crate::LedReceiver<$crate::CriticalSectionRawMutex>" },
+    { param = "t", type = "$crate::TelemetrySender<$crate::CriticalSectionRawMutex>" }
+]
 
 [[controllers]]
 name = "Battery"
@@ -23,6 +27,10 @@ spawn_generics = ["$battery_type", "$charger_type", "$pin_type"]
 impl_generics = "<'a, M, B, C, P>"
 impl_type = "BatteryController<'a, M, B, C, P>"
 impl_phantom = "(&'a (), M, B, C, P)"
+run_params = [
+    { param = "r", type = "$crate::BatteryReceiver<$crate::CriticalSectionRawMutex>" },
+    { param = "t", type = "$crate::TelemetrySender<$crate::CriticalSectionRawMutex>" }
+]
 
 [[controllers]]
 name = "Thermal"
@@ -36,6 +44,10 @@ spawn_generics = ["$battery_type"]
 impl_generics = "<'a, M, B>"
 impl_type = "ThermalController<'a, M, B>"
 impl_phantom = "(&'a (), M, B)"
+run_params = [
+    { param = "r", type = "$crate::ThermalReceiver<$crate::CriticalSectionRawMutex>" },
+    { param = "t", type = "$crate::TelemetrySender<$crate::CriticalSectionRawMutex>" }
+]
 
 [[controllers]]
 name = "Sensor"
@@ -51,6 +63,9 @@ has_telemetry = false
 impl_generics = "<'a, S, M, P, CMD>"
 impl_type = "SensorController<'a, S, M, P, CMD>"
 impl_phantom = "(&'a (), S, M, P, CMD)"
+run_params = [
+    { param = "r", type = "$crate::SensorReceiver<$crate::CriticalSectionRawMutex>" }
+]
 
 [[controllers]]
 name = "Motor"
@@ -65,6 +80,10 @@ attributes = ['#[cfg_attr(all(target_arch = "arm", feature = "motor-core"), link
 impl_generics = "<M, C>"
 impl_type = "MotorController<M, C>"
 impl_phantom = "(M, C)"
+run_params = [
+    { param = "r", type = "$crate::MotorReceiver<$crate::CriticalSectionRawMutex>" },
+    { param = "t", type = "$crate::TelemetrySender<$crate::CriticalSectionRawMutex>" }
+]
 
 [[controllers]]
 name = "Filesystem"
@@ -80,6 +99,9 @@ has_telemetry = false
 impl_generics = "<F>"
 impl_type = "FilesystemController<F>"
 impl_phantom = "F"
+run_params = [
+    { param = "r", type = "$crate::FilesystemReceiver<$crate::CriticalSectionRawMutex>" }
+]
 
 [[controllers]]
 name = "System"
@@ -96,6 +118,11 @@ has_telemetry = false
 receiver_capacity = "16"
 impl_generics = ""
 impl_type = "SystemController"
+run_params = [
+    { param = "r", type = "$crate::SystemReceiver<$crate::CriticalSectionRawMutex>" },
+    { param = "r2", type = "platform::gesture_detector::GestureReceiver<$crate::CriticalSectionRawMutex>" },
+    { param = "r3", type = "$crate::system_controller::ThermalUpdateReceiver<$crate::CriticalSectionRawMutex>" }
+]
 
 [[controllers]]
 name = "Telemetry"
@@ -111,5 +138,6 @@ has_telemetry = false
 impl_generics = "<const MAX_RECORDS: usize, const BUFFER_SIZE: usize, F>"
 impl_type = "TelemetryController<MAX_RECORDS, BUFFER_SIZE, F>"
 impl_phantom = "F"
-
-
+run_params = [
+    { param = "r", type = "$crate::TelemetryReceiver<$crate::CriticalSectionRawMutex>" }
+]
