@@ -190,19 +190,31 @@ To maintain decoupled domain architectures and clean Embassy task separation:
    - The template files are defined in `controller/templates/` (e.g. [generated_controllers.rs.jinja](file:///Users/daparker/gh/firmware/controller/templates/generated_controllers.rs.jinja) and [sample_cli.rs.jinja](file:///Users/daparker/gh/firmware/controller/templates/sample_cli.rs.jinja)).
    - The `has_telemetry` flag defaults to `true`. If a controller does not use telemetry reporting, explicitly set `has_telemetry = false` in the TOML file.
    - **Host Code Generation Viewer Tool (`code_gen`)**:
-     We provide a host utility to print and inspect the rendered Rust code for a specific controller, all controllers, or the sample CLI code to stdout.
+     We provide a host utility to print and inspect the rendered Rust code, list controllers/CLIs, and output sample implementations to the filesystem (defaulting to `target/out`).
      ```bash
      # Inspect generated macros/channels for a specific controller (e.g. Led)
      cargo run -p code_gen -- Led
 
      # List all currently defined controllers
-     cargo run -p code_gen -- list
-     
-     # Inspect generated output for all controllers
-     cargo run -p code_gen
+     cargo run -p code_gen -- list-controllers
 
-     # Generate a compiling sample CLI implementation for validation
+     # List all currently defined CLI commands/groups
+     cargo run -p code_gen -- list-clis
+     
+     # Generate a compiling sample CLI wrapper code under target/out/sample_cli.rs
      cargo run -p code_gen -- cli-sample
+
+     # Generate specific CLI subcommand handler skeletons (e.g. Motor, Battery)
+     cargo run -p code_gen -- cli-sample Motor Battery
+
+     # Generate all boilerplate runloop implementations under target/out/sample_runloops.rs
+     cargo run -p code_gen -- runloop-sample
+
+     # Generate a specific controller's runloop boilerplate (e.g. Motor)
+     cargo run -p code_gen -- runloop-sample Motor
+
+     # Specify a custom output directory using --out-dir
+     cargo run -p code_gen -- cli-sample Motor --out-dir target/out/my_custom_dir
      ```
 
 ---

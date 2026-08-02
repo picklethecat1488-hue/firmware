@@ -7,25 +7,35 @@
 You can run the tool directly using `cargo run`:
 
 ```bash
-# Show help
+# Show help (default behavior when no arguments are passed)
+cargo run -p code_gen
 cargo run -p code_gen -- --help
 
 # List all defined controllers
-cargo run -p code_gen -- list
+cargo run -p code_gen -- list-controllers
 
-# Generate and print the Rust code block for a specific controller (e.g., Led)
-cargo run -p code_gen -- Led
+# List all defined CLI commands/groups
+cargo run -p code_gen -- list-clis
 
-# Generate and print the code blocks for all controllers
-cargo run -p code_gen
-
-# Generate and print a compiling sample CLI implementation
+# Generate and write compiling sample CLI wrapper code to target/out/sample_cli.rs
 cargo run -p code_gen -- cli-sample
+
+# Generate specific CLI subcommand handler skeletons (e.g., Motor, Battery)
+cargo run -p code_gen -- cli-sample Motor Battery
+
+# Generate all boilerplate runloops under target/out/sample_runloops.rs
+cargo run -p code_gen -- runloop-sample
+
+# Generate a specific controller's runloop boilerplate (e.g., Motor) under target/out/motor_runloop.rs
+cargo run -p code_gen -- runloop-sample Motor
+
+# Specify a custom output directory using --out-dir
+cargo run -p code_gen -- cli-sample Motor --out-dir target/out/my_custom_dir
 ```
 
 ## How It Works
 
 1. It searches upward from the current working directory to locate the `controller/controllers.toml` and `controller/shell.toml` metadata registries.
 2. It parses the metadata configuration and infers the necessary receiver, telemetry, and system-specific channel types.
-3. It filters the controllers list based on the optional command line argument.
-4. It renders the matching templates to `stdout`.
+3. For file-generation actions (e.g. `cli-sample`, `runloop-sample`), it renders the corresponding Rinja templates and writes the files under the designated `--out-dir` (defaulting to `target/out`), displaying generation progress with an `indicatif` spinner.
+

@@ -344,12 +344,11 @@ pub fn find_shell_toml() -> PathBuf {
     }
 }
 
-/// Prints usage help instructions and lists the available controller options.
-pub fn print_help(available: &[Controller]) {
+/// Prints usage help instructions.
+pub fn print_help() {
     println!("Code Generator host tool");
     println!();
     println!("Usage:");
-    println!("  cargo run -p code_gen -- [ControllerName]");
     println!("  cargo run -p code_gen -- list-controllers");
     println!("  cargo run -p code_gen -- list-clis");
     println!("  cargo run -p code_gen -- cli-sample [<group_or_command>]");
@@ -361,9 +360,4 @@ pub fn print_help(available: &[Controller]) {
     println!("  list-clis             List all defined CLI commands/groups");
     println!("  cli-sample            Output compiling sample CLI implementation (or specific command handler if target is given)");
     println!("  runloop-sample        Output boilerplate runloop implementations");
-    println!();
-    println!("Available controllers in controllers.toml:");
-    for ctrl in available {
-        println!("  - {}", ctrl.name);
-    }
 }
