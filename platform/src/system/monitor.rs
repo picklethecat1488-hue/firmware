@@ -208,6 +208,11 @@ unsafe fn SysTick() {
     }
 
     CORE_MONITORS[0].check_liveness(CpuId::Core0);
+
+    // Poll RTT down channel for incoming CLI characters
+    if crate::rtt::rtt_has_input() {
+        crate::rtt::RTT_SIGNAL.signal(());
+    }
 }
 
 define_systick_handler!(systick_handler_core1, CORE1_VECTOR_TABLE, CpuId::Core1);
