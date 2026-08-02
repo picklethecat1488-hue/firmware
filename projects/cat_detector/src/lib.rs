@@ -33,32 +33,32 @@ pub use platform::panic_handler::handle_panic_with_sizes;
 
 pub use platform::panic_handler::init as init_panic_handler;
 
-/// Pump IA pin (GPIO 14)
-pub const PUMP_PIN_IA: u32 = 14;
-/// Pump IB pin (GPIO 15)
-pub const PUMP_PIN_IB: u32 = 15;
-/// I2C SDA pin (GPIO 4)
-pub const I2C_SDA_PIN: u32 = 4;
-/// I2C SCL pin (GPIO 5)
-pub const I2C_SCL_PIN: u32 = 5;
+/// Pump IA pin (GPIO 19)
+pub const PUMP_PIN_IA: u32 = 19;
+/// Pump IB pin (GPIO 20)
+pub const PUMP_PIN_IB: u32 = 20;
+/// I2C SDA pin (GPIO 12)
+pub const I2C_SDA_PIN: u32 = 12;
+/// I2C SCL pin (GPIO 13)
+pub const I2C_SCL_PIN: u32 = 13;
 /// UART TX pin (GPIO 0)
 pub const UART_TX_PIN: u32 = 0;
 /// UART RX pin (GPIO 1)
 pub const UART_RX_PIN: u32 = 1;
 
-/// ToF Sensor 1 (North) XSHUT pin (GPIO 2)
-pub const TOF_NORTH_XSHUT_PIN: u32 = 2;
-/// ToF Sensor 2 (East) XSHUT pin (GPIO 3)
-pub const TOF_EAST_XSHUT_PIN: u32 = 3;
+/// ToF Sensor 1 (North) XSHUT pin (GPIO 4)
+pub const TOF_NORTH_XSHUT_PIN: u32 = 4;
+/// ToF Sensor 2 (East) XSHUT pin (GPIO 5)
+pub const TOF_EAST_XSHUT_PIN: u32 = 5;
 /// ToF Sensor 3 (West) XSHUT pin (GPIO 6)
 pub const TOF_WEST_XSHUT_PIN: u32 = 6;
 
 /// ToF Sensor 1 (North) Interrupt pin (GPIO 7)
 pub const TOF_NORTH_INT_PIN: u32 = 7;
-/// ToF Sensor 2 (East) Interrupt pin (GPIO 8)
-pub const TOF_EAST_INT_PIN: u32 = 8;
-/// ToF Sensor 3 (West) Interrupt pin (GPIO 9)
-pub const TOF_WEST_INT_PIN: u32 = 9;
+/// ToF Sensor 2 (East) Interrupt pin (GPIO 9)
+pub const TOF_EAST_INT_PIN: u32 = 9;
+/// ToF Sensor 3 (West) Interrupt pin (GPIO 10)
+pub const TOF_WEST_INT_PIN: u32 = 10;
 
 /// ToF Sensor 1 (North) I2C Address (0x30)
 pub const TOF_NORTH_I2C_ADDR: u8 = 0x30;
@@ -67,8 +67,8 @@ pub const TOF_EAST_I2C_ADDR: u8 = 0x31;
 /// ToF Sensor 3 (West) I2C Address (0x32)
 pub const TOF_WEST_I2C_ADDR: u8 = 0x32;
 
-/// Fuel Gauge Interrupt/Alert pin (GPIO 10)
-pub const FUEL_GAUGE_INT_PIN: u32 = 10;
+/// Fuel Gauge Interrupt/Alert pin (GPIO 14)
+pub const FUEL_GAUGE_INT_PIN: u32 = 14;
 
 /// The default wake threshold in millimeters under which target presence is detected.
 pub const DEFAULT_WAKE_THRESHOLD_MM: u16 = 300;
