@@ -213,7 +213,7 @@ unsafe impl defmt::Logger for Logger {
 
 /// Helper function to execute the non-blocking RTT character receive loop,
 /// routing bytes into the embedded-cli processor.
-pub fn run_rtt_shell_loop<
+pub async fn run_rtt_shell_loop<
     C: embedded_cli::service::Autocomplete + embedded_cli::service::Help,
     P: embedded_cli::service::CommandProcessor<RttTxWriter, core::convert::Infallible>,
     B1: embedded_cli::buffer::Buffer,
@@ -228,7 +228,7 @@ pub fn run_rtt_shell_loop<
         if read_rtt(&mut rx_byte) > 0 {
             let _ = _cli.process_byte::<C, _>(rx_byte[0], _processor);
         } else {
-            cortex_m::asm::delay(10_000);
+            embassy_time::Timer::after(embassy_time::Duration::from_millis(100)).await;
         }
     }
     #[cfg(not(all(target_arch = "arm", target_os = "none")))]

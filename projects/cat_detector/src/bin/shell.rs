@@ -379,7 +379,7 @@ async fn main(spawner: Spawner) {
     let mut processor = ShellController::<AppConfig>::new(pointers);
 
     let mut local_proc = CatDetectorCliProcessor::new(&mut processor);
-    platform::rtt::run_rtt_shell_loop::<CatDetectorCli, _, _, _>(&mut cli, &mut local_proc);
+    platform::rtt::run_rtt_shell_loop::<CatDetectorCli, _, _, _>(&mut cli, &mut local_proc).await;
 }
 
 /// Dummy host entry point to satisfy Cargo compilation requirements.
