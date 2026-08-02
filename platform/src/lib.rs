@@ -52,6 +52,10 @@ pub mod periodic_timer;
 #[path = "io/i2c.rs"]
 pub mod i2c;
 
+/// GPIO diagnostic and status utilities.
+#[path = "io/gpio.rs"]
+pub mod gpio;
+
 /// Shared types and traits for the library.
 #[path = "system/types.rs"]
 pub mod types;

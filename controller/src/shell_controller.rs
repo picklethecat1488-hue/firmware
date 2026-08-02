@@ -123,6 +123,14 @@ macro_rules! define_shell_resolver_and_controller {
             }
         }
 
+        impl<'a, C: ShellConfig> platform::i2c::I2cResolver for ShellController<'a, C> {
+            type I2c = C::I2c;
+            #[allow(clippy::mut_from_ref)]
+            fn resolve_i2c(&self, name: Option<&str>) -> Result<&mut Self::I2c, &'static str> {
+                self.resolve_device(self.i2c_buses, name)
+            }
+        }
+
         impl<'a, C: ShellConfig> ShellDeviceResolver<C> for ShellController<'a, C> {
             $(
                 fn $resolve_fn(&self, name: Option<&str>) -> Result<&mut C::$associated_type, &'static str> {
