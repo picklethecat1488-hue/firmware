@@ -78,13 +78,13 @@ impl embedded_storage_async::nor_flash::MultiwriteNorFlash for TestFlash {}
 
 // 3. Dummy Feature Set for testing SystemController
 #[allow(clippy::type_complexity)]
-pub struct DummyFeatureSet<MutexRaw: RawMutex + 'static, const N: usize> {
+pub struct DummyFeatureSet<MutexRaw: RawMutex + 'static, const N: usize = 16> {
     pub features: (
-        controller::MotorFeatureConfig<MutexRaw, N>,
-        controller::BatteryFeatureConfig<MutexRaw, N>,
-        controller::ProximityFeatureConfig<MutexRaw, N>,
-        controller::LedFeatureConfig<MutexRaw, N>,
-        controller::ThermalFeatureConfig<MutexRaw, N>,
+        controller::MotorFeatureConfig<MutexRaw>,
+        controller::BatteryFeatureConfig<MutexRaw>,
+        controller::ProximityFeatureConfig<MutexRaw>,
+        controller::LedFeatureConfig<MutexRaw>,
+        controller::ThermalFeatureConfig<MutexRaw>,
     ),
 }
 
@@ -92,11 +92,11 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> controller::SystemFeatureSet<
     for DummyFeatureSet<MutexRaw, N>
 {
     type Features = (
-        controller::MotorFeatureConfig<MutexRaw, N>,
-        controller::BatteryFeatureConfig<MutexRaw, N>,
-        controller::ProximityFeatureConfig<MutexRaw, N>,
-        controller::LedFeatureConfig<MutexRaw, N>,
-        controller::ThermalFeatureConfig<MutexRaw, N>,
+        controller::MotorFeatureConfig<MutexRaw>,
+        controller::BatteryFeatureConfig<MutexRaw>,
+        controller::ProximityFeatureConfig<MutexRaw>,
+        controller::LedFeatureConfig<MutexRaw>,
+        controller::ThermalFeatureConfig<MutexRaw>,
     );
 
     fn features(&self) -> &Self::Features {
@@ -109,7 +109,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> controller::SystemFeatureSet<
 }
 
 // Global channels for static integration test runs
-static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 4> = Channel::new();
+static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 16> = Channel::new();
 static MOTOR_CHANNEL: Channel<CriticalSectionRawMutex, MotorCommand, 4> = Channel::new();
 static SENSOR_NORTH_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
 static SENSOR_EAST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
@@ -280,13 +280,13 @@ fn test_spawn_all_controllers_configuration() {
             telemetry: TELEMETRY_CHANNEL,
             controllers: {
                 Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (peripherals::mock::MockBattery),
-                Battery(battery_ctrl, BATTERY_CHANNEL), generics: (peripherals::mock::MockBattery, peripherals::mock::MockCharger, MockPin, SystemCommand),
+                Battery(battery_ctrl, BATTERY_CHANNEL), generics: (peripherals::mock::MockBattery, peripherals::mock::MockCharger, MockPin),
                 Motor(motor_ctrl, MOTOR_CHANNEL), generics: (model::interfaces::NoTick<MockMotor>, DummyCurrentSensor),
                 Sensor(sensor_ctrl_north, SENSOR_NORTH_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_east, SENSOR_EAST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_west, SENSOR_WEST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Led(led_ctrl, LED_CHANNEL), generics: (MockLed),
-                System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, DummyFeatureSet<CriticalSectionRawMutex, 4>, 4, 64>),
+                System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, DummyFeatureSet<CriticalSectionRawMutex, 16>, 16>),
                 Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (controller::filesystem_controller::ProfilingFlash<SharedFlashMutex<TestFlash>>),
                 Telemetry(telemetry_ctrl, TELEMETRY_CONSUMER_CHANNEL), generics: (1024, { controller::telemetry_controller::CHANNEL_CAPACITY }, SharedFlashMutex<TestFlash>),
             }

@@ -211,9 +211,32 @@ unsafe impl defmt::Logger for Logger {
     }
 }
 
+/// Global signal to notify the CLI runloop that RTT input is available.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub static RTT_SIGNAL: embassy_sync::signal::Signal<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    (),
+> = embassy_sync::signal::Signal::new();
+
+/// Check if the RTT down channel has unread data.
+pub fn rtt_has_input() -> bool {
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    unsafe {
+        let write = _SEGGER_RTT.down_channels[0]
+            .write
+            .load(core::sync::atomic::Ordering::Acquire);
+        let read = _SEGGER_RTT.down_channels[0]
+            .read
+            .load(core::sync::atomic::Ordering::Relaxed);
+        read != write
+    }
+    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+    false
+}
+
 /// Helper function to execute the non-blocking RTT character receive loop,
 /// routing bytes into the embedded-cli processor.
-pub fn run_rtt_shell_loop<
+pub async fn run_rtt_shell_loop<
     C: embedded_cli::service::Autocomplete + embedded_cli::service::Help,
     P: embedded_cli::service::CommandProcessor<RttTxWriter, core::convert::Infallible>,
     B1: embedded_cli::buffer::Buffer,
@@ -224,11 +247,12 @@ pub fn run_rtt_shell_loop<
 ) -> ! {
     #[cfg(all(target_arch = "arm", target_os = "none"))]
     loop {
+        RTT_SIGNAL.wait().await;
+        RTT_SIGNAL.reset();
+
         let mut rx_byte = [0u8; 1];
-        if read_rtt(&mut rx_byte) > 0 {
+        while read_rtt(&mut rx_byte) > 0 {
             let _ = _cli.process_byte::<C, _>(rx_byte[0], _processor);
-        } else {
-            cortex_m::asm::delay(10_000);
         }
     }
     #[cfg(not(all(target_arch = "arm", target_os = "none")))]

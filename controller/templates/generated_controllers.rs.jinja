@@ -1,0 +1,215 @@
+// This file is dynamically generated at build time by build.rs. Do not edit directly.
+
+{% for ctrl in controllers %}
+/// Channel type for {{ ctrl.name }} controller.
+pub type {{ ctrl.name }}Channel<MutexRaw, const N: usize{{ ctrl.default_capacity_suffix() }}> =
+    embassy_sync::channel::Channel<MutexRaw, {{ ctrl.msg_type|safe }}, N>;
+/// Sender type for {{ ctrl.name }} controller.
+pub type {{ ctrl.name }}Sender<MutexRaw, const N: usize{{ ctrl.default_capacity_suffix() }}> =
+    embassy_sync::channel::Sender<'static, MutexRaw, {{ ctrl.msg_type|safe }}, N>;
+/// Receiver type for {{ ctrl.name }} controller.
+pub type {{ ctrl.name }}Receiver<MutexRaw, const N: usize{{ ctrl.default_capacity_suffix() }}> =
+    embassy_sync::channel::Receiver<'static, MutexRaw, {{ ctrl.msg_type|safe }}, N>;
+{% endfor %}
+
+{% for ctrl in controllers %}
+/// Task runner macro for the {{ ctrl.name }} controller.
+#[macro_export]
+macro_rules! run_{{ ctrl.name|lower }}_task {
+    (
+        $spawner:expr,
+        $task_module:ident,
+        $controller:expr
+        {% for param in ctrl.macro_params_slice() %}
+            , {{ param|safe }}
+        {% endfor %}
+    ) => {
+        #[allow(non_snake_case)]
+        mod $task_module {
+            use super::*;
+            #[cfg(feature = "tracing")]
+            use $crate::tracing::tracing_defmt;
+
+            {% for attr in ctrl.attributes_slice() %}
+                {{ attr|safe }}
+            {% endfor %}
+            #[ $crate::tracing::instrument(
+                name = stringify!($task_module),
+                level = "info",
+                skip(
+                    c
+                    {% for p in ctrl.extra_params_inferred() %}
+                        , {{ p.name }}
+                    {% endfor %}
+                )
+            ) ]
+            #[embassy_executor::task]
+            #[allow(unreachable_code)]
+            pub async fn task(
+                mut c: {{ ctrl.controller_type|safe }}
+                {% for p in ctrl.extra_params_inferred() %}
+                    , {{ p.name }}: {{ p.type|safe }}
+                {% endfor %}
+            ) {
+                c.run(
+                    {%- for p in ctrl.extra_params_inferred() -%}
+                        {{ p.name }}{% if !loop.last %}, {% endif %}
+                    {%- endfor -%}
+                ).await;
+            }
+        }
+
+        $spawner
+            .spawn($task_module::task(
+                $controller
+                {% for arg in ctrl.task_call_args_slice() %}
+                    , {{ arg|safe }}
+                {% endfor %}
+            ))
+            .unwrap();
+    };
+}
+{% endfor %}
+
+/// Helper macro to delegate the spawning of a single controller to its respective task macro.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! spawn_single_controller {
+{% for ctrl in controllers %}
+    (
+        $spawner:expr,
+        {{ ctrl.name }},
+        $controller:expr,
+        $rx:ident,
+        $telemetry:expr,
+        (
+            {% for rx in ctrl.spawn_extra_rxs_slice() %}
+                {{ rx }}:expr {% if !loop.last %}, {% endif %}
+            {% endfor %}
+        ),
+        (
+            {% for gen in ctrl.macro_generics_slice() %}
+                {{ gen }} {% if !loop.last %}, {% endif %}
+            {% endfor %}
+        )
+    ) => {
+        #[allow(unused_parens)]
+        $crate::run_{{ ctrl.name|lower }}_task!(
+            $spawner,
+            $rx,
+            $controller
+            {% for arg in ctrl.spawn_call_args_slice() %}
+                , {{ arg|safe }}
+            {% endfor %}
+            {% for gen in ctrl.spawn_generics_slice() %}
+                , {{ gen|safe }}
+            {% endfor %}
+        );
+    };
+{% endfor %}
+}
+
+/// Macro to implement the `ShellConfig` trait for a custom configuration struct.
+#[macro_export]
+macro_rules! impl_shell_config {
+    (
+        $name:ty {
+            $($key:ident = $val:ty),* $(,)?
+        }
+        $($methods:tt)*
+    ) => {
+        impl $crate::shell_controller::ShellConfig for $name {
+            type Flash = $crate::get_key_or_default!(Flash, [ $($key = $val,)* ], ());
+            {%- for field in cli_resolver_fields %}
+            type {{ field.associated_type }} = $crate::get_key_or_default!({{ field.associated_type }}, [ $($key = $val,)* ], ());
+            {%- endfor %}
+
+            $($methods)*
+        }
+    };
+}
+
+/// Macro to append a specific command group's variant and match arm to the accumulator.
+#[macro_export]
+macro_rules! append_group_arm {
+    {%- for cmd in cli_commands %}
+    ({{ cmd.group }}, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
+        $crate::declare_shell_commands!(@accum $name, $ctrl, $writer, [$($tail),*] -> [
+            $($variants)*
+            /// {{ cmd.help }}
+            #[command(name = "{{ cmd.cmd_name }}")]
+            {{ cmd.variant }} {
+                /// Subcommand
+                subcommand: Option<{% if cmd.subcommand_type.contains("::") && !cmd.subcommand_type.contains("platform::") %}$crate::{% endif %}{{ cmd.subcommand_type|safe }}>,
+                {%- for arg in cmd.args_slice() %}
+                /// {{ arg.help }}
+                {%- for attr in arg.attributes_slice() %}
+                {{ attr|safe }}
+                {%- endfor %}
+                {{ arg.name }}: {{ arg.rust_type()|safe }},
+                {%- endfor %}
+            },
+        ] [
+            $($matches)*
+            $name::{{ cmd.variant }} { subcommand {%- for arg in cmd.args_slice() %}, {{ arg.name }}{% endfor %} } => {% if cmd.handler.contains("::") && !cmd.handler.contains("C::") && !cmd.handler.contains("platform::") %}$crate::{% endif %}{{ cmd.handler|safe }}($ctrl, subcommand {%- for arg in cmd.args_slice() %}, {{ arg.name }}{% endfor %}, $writer),
+        ] -> $mode, $proc_name);
+    };
+    {%- endfor %}
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! invoke_define_shell_resolver_and_controller {
+    () => {
+        $crate::define_shell_resolver_and_controller! {
+            {%- for field in cli_resolver_fields %}
+            #[doc = "{{ field.doc }}"]
+            {{ field.associated_type }}, {{ field.field }}, {{ field.resolve_fn }}{% if !loop.last %},{% endif %}
+            {%- endfor %}
+        }
+    };
+}
+
+/// Helper macro to extract a type by name from a list of key-value pairs, or fallback to a default type.
+#[macro_export]
+macro_rules! get_key_or_default {
+    (Flash, [ Flash = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
+    {%- for field in cli_resolver_fields %}
+    ({{ field.associated_type }}, [ {{ field.associated_type }} = $val:ty, $($rest:tt)* ], $default:ty) => { $val };
+    {%- endfor %}
+
+    // Fallthrough: discard non-matching head and recurse
+    ($key:ident, [ $other:ident = $val:ty, $($rest:tt)* ], $default:ty) => {
+        $crate::get_key_or_default!($key, [ $($rest)* ], $default)
+    };
+
+    // Base case: key not found
+    ($key:ident, [], $default:ty) => { $default };
+}
+
+/// Configuration trait for the ShellController.
+/// Encapsulates the target-specific raw mutex and peripheral types.
+pub trait ShellConfig {
+    /// Type of the physical flash peripheral.
+    type Flash: embedded_storage::nor_flash::NorFlash + 'static;
+    {%- for field in cli_resolver_fields %}
+    /// {{ field.doc }}
+    type {{ field.associated_type }}: {{ field.bounds()|safe }};
+    {%- endfor %}
+
+
+    /// Trigger a panic/crash on a specific core.
+    fn trigger_core_panic(
+        _resolver: &crate::shell_controller::ShellController<'_, Self>,
+        core_id: u32,
+    ) -> Result<(), &'static str>
+    where
+        Self: Sized,
+    {
+        if core_id == 0 {
+            panic!("Simulated Core 0 panic");
+        } else {
+            Err("Core 1 panic not supported on this platform/configuration")
+        }
+    }
+}

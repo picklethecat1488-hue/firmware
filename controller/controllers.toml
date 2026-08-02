@@ -1,0 +1,143 @@
+[[controllers]]
+name = "Led"
+msg_type = "model::types::SystemLedState"
+macro_params = ["$rx:expr", "$telemetry_tx:expr", "$driver_type:ty"]
+task_call_args = ["$rx", "$telemetry_tx"]
+controller_type = "$crate::led_controller::LedController<$driver_type>"
+spawn_call_args = ["$rx.receiver()", "$telemetry.sender()"]
+macro_generics = ["$driver_type:ty"]
+spawn_generics = ["$driver_type"]
+impl_generics = "<D>"
+impl_type = "LedController<D>"
+impl_phantom = "D"
+run_params = [
+    { param = "r", type = "$crate::LedReceiver<$crate::CriticalSectionRawMutex>" },
+    { param = "t", type = "$crate::TelemetrySender<$crate::CriticalSectionRawMutex>" }
+]
+
+[[controllers]]
+name = "Battery"
+msg_type = "crate::battery_controller::BatteryCommand"
+macro_params = ["$rx:expr", "$telemetry_tx:expr", "$battery_type:ty", "$charger_type:ty", "$pin_type:ty"]
+task_call_args = ["$rx", "$telemetry_tx"]
+controller_type = "$crate::battery_controller::BatteryController<'static, embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, $battery_type, $charger_type, $pin_type>"
+spawn_call_args = ["$rx.receiver()", "$telemetry.sender()"]
+macro_generics = ["$battery_type:ty", "$charger_type:ty", "$pin_type:ty"]
+spawn_generics = ["$battery_type", "$charger_type", "$pin_type"]
+impl_generics = "<'a, M, B, C, P>"
+impl_type = "BatteryController<'a, M, B, C, P>"
+impl_phantom = "(&'a (), M, B, C, P)"
+run_params = [
+    { param = "r", type = "$crate::BatteryReceiver<$crate::CriticalSectionRawMutex>" },
+    { param = "t", type = "$crate::TelemetrySender<$crate::CriticalSectionRawMutex>" }
+]
+
+[[controllers]]
+name = "Thermal"
+msg_type = "crate::thermal_controller::ThermalCommand"
+macro_params = ["$rx:expr", "$telemetry_tx:expr", "$battery_type:ty"]
+task_call_args = ["$rx", "$telemetry_tx"]
+controller_type = "$crate::thermal_controller::ThermalController<'static, embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, $battery_type>"
+spawn_call_args = ["$rx.receiver()", "$telemetry.sender()"]
+macro_generics = ["$battery_type:ty"]
+spawn_generics = ["$battery_type"]
+impl_generics = "<'a, M, B>"
+impl_type = "ThermalController<'a, M, B>"
+impl_phantom = "(&'a (), M, B)"
+run_params = [
+    { param = "r", type = "$crate::ThermalReceiver<$crate::CriticalSectionRawMutex>" },
+    { param = "t", type = "$crate::TelemetrySender<$crate::CriticalSectionRawMutex>" }
+]
+
+[[controllers]]
+name = "Sensor"
+msg_type = "crate::sensor_controller::SensorCommand"
+macro_params = ["$rx:expr", "$sensor_type:ty", "$pin_type:ty", "$cmd_type:ty"]
+task_call_args = ["$rx"]
+controller_type = "$crate::sensor_controller::SensorController<'static, $sensor_type, embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, $pin_type, $cmd_type>"
+spawn_call_args = ["$rx.receiver()"]
+macro_generics = ["$sensor_type:ty", "$pin_type:ty", "$cmd_type:ty"]
+spawn_generics = ["$sensor_type", "$pin_type", "$cmd_type"]
+attributes = ['#[cfg_attr(all(target_arch = "arm", feature = "sensors-core"), link_section = ".data.core1_func")]']
+has_telemetry = false
+impl_generics = "<'a, S, M, P, CMD>"
+impl_type = "SensorController<'a, S, M, P, CMD>"
+impl_phantom = "(&'a (), S, M, P, CMD)"
+run_params = [
+    { param = "r", type = "$crate::SensorReceiver<$crate::CriticalSectionRawMutex>" }
+]
+
+[[controllers]]
+name = "Motor"
+msg_type = "crate::motor_controller::MotorCommand"
+macro_params = ["$rx:expr", "$telemetry_tx:expr", "$motor_type:ty", "$current_sensor_type:ty"]
+task_call_args = ["$rx", "$telemetry_tx"]
+controller_type = "$crate::motor_controller::MotorController<$motor_type, $current_sensor_type>"
+spawn_call_args = ["$rx.receiver()", "$telemetry.sender()"]
+macro_generics = ["$motor_type:ty", "$current_sensor_type:ty"]
+spawn_generics = ["$motor_type", "$current_sensor_type"]
+attributes = ['#[cfg_attr(all(target_arch = "arm", feature = "motor-core"), link_section = ".data.core1_func")]']
+impl_generics = "<M, C>"
+impl_type = "MotorController<M, C>"
+impl_phantom = "(M, C)"
+run_params = [
+    { param = "r", type = "$crate::MotorReceiver<$crate::CriticalSectionRawMutex>" },
+    { param = "t", type = "$crate::TelemetrySender<$crate::CriticalSectionRawMutex>" }
+]
+
+[[controllers]]
+name = "Filesystem"
+msg_type = "crate::filesystem_controller::FsRequest"
+macro_params = ["$rx:expr", "$flash_type:ty"]
+task_call_args = ["$rx"]
+controller_type = "$crate::filesystem_controller::FilesystemController<$flash_type>"
+spawn_call_args = ["$rx.receiver()"]
+macro_generics = ["$flash_type:ty"]
+spawn_generics = ["$flash_type"]
+receiver_capacity = "16"
+has_telemetry = false
+impl_generics = "<F>"
+impl_type = "FilesystemController<F>"
+impl_phantom = "F"
+run_params = [
+    { param = "r", type = "$crate::FilesystemReceiver<$crate::CriticalSectionRawMutex>" }
+]
+
+[[controllers]]
+name = "System"
+msg_type = "crate::system_controller::SystemCommand"
+macro_params = ["$rx:expr", "$gesture_rx:expr", "$thermal_rx:expr", "$controller_type:ty"]
+task_call_args = ["$rx", "$gesture_rx", "$thermal_rx"]
+controller_type = "$controller_type"
+spawn_call_args = ["$rx.receiver()", "$gesture_rx.receiver()", "$thermal_action_rx.receiver()"]
+spawn_extra_rxs = ["$gesture_rx", "$thermal_action_rx"]
+macro_generics = ["$controller_type:ty"]
+spawn_generics = ["$controller_type"]
+is_system = true
+has_telemetry = false
+receiver_capacity = "16"
+impl_generics = ""
+impl_type = "SystemController"
+run_params = [
+    { param = "r", type = "$crate::SystemReceiver<$crate::CriticalSectionRawMutex>" },
+    { param = "r2", type = "platform::gesture_detector::GestureReceiver<$crate::CriticalSectionRawMutex>" },
+    { param = "r3", type = "$crate::system_controller::ThermalUpdateReceiver<$crate::CriticalSectionRawMutex>" }
+]
+
+[[controllers]]
+name = "Telemetry"
+msg_type = "model::telemetry::TelemetryRecord"
+macro_params = ["$rx:expr", "$max_records:expr", "$channel_size:expr", "$flash_ty:ty"]
+task_call_args = ["$rx"]
+controller_type = "&'static mut $crate::telemetry_controller::TelemetryController<$max_records, { model::telemetry::BUFFER_SIZE }, $flash_ty>"
+spawn_call_args = ["$rx.receiver()"]
+macro_generics = ["$max_records:expr", "$channel_size:expr", "$flash_ty:ty"]
+spawn_generics = ["$max_records", "$channel_size", "$flash_ty"]
+receiver_capacity = "$channel_size"
+has_telemetry = false
+impl_generics = "<const MAX_RECORDS: usize, const BUFFER_SIZE: usize, F>"
+impl_type = "TelemetryController<MAX_RECORDS, BUFFER_SIZE, F>"
+impl_phantom = "F"
+run_params = [
+    { param = "r", type = "$crate::TelemetryReceiver<$crate::CriticalSectionRawMutex>" }
+]

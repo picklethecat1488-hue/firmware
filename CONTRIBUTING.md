@@ -183,6 +183,39 @@ To maintain decoupled domain architectures and clean Embassy task separation:
    Controllers must never directly instantiate other controllers (e.g. calling `FilesystemController::new` from `MotorController`). This strict isolation prevents duplicate peripheral/task ownership.
 3. **Platform-Level Diagnostic Reads**:
    If diagnostics or calibration commands (which run inside CLI shell contexts) need to access files or direct storage without a running executor task, they must use stateless platform-level direct operations (such as `platform::flash::read_file_direct` and `platform::flash::write_file_direct`) instead of instantiating controller tasks directly.
+4. **Controller & CLI Code Generation (`controllers.toml` / `shell.toml` / Rinja Templates)**:
+   All controllers, their channel definitions, task runner macros (`run_*_task!`), `spawn_single_controller!` matching arms, and interactive CLI resolvers/commands are automatically generated at build time using the **Rinja** template engine. 
+   - To add a new controller or modify module parameters, edit the configuration in [controller/controllers.toml](file:///Users/daparker/gh/firmware/controller/controllers.toml).
+   - To add or modify interactive CLI subcommands, arguments, or resolver fields, edit [shell.toml](file:///Users/daparker/gh/firmware/shell.toml).
+   - The template files are defined in `controller/templates/` (e.g. [generated_controllers.rs.jinja](file:///Users/daparker/gh/firmware/controller/templates/generated_controllers.rs.jinja) and [sample_cli.rs.jinja](file:///Users/daparker/gh/firmware/controller/templates/sample_cli.rs.jinja)).
+   - The `has_telemetry` flag defaults to `true`. If a controller does not use telemetry reporting, explicitly set `has_telemetry = false` in the TOML file.
+   - **Host Code Generation Viewer Tool (`code_gen`)**:
+     We provide a host utility to print and inspect the rendered Rust code, list controllers/CLIs, and output sample implementations to the filesystem (defaulting to `target/out`).
+     ```bash
+     # Inspect generated macros/channels for a specific controller (e.g. Led)
+     cargo run -p code_gen -- Led
+
+     # List all currently defined controllers
+     cargo run -p code_gen -- list-controllers
+
+     # List all currently defined CLI commands/groups
+     cargo run -p code_gen -- list-clis
+     
+     # Generate a compiling sample CLI wrapper code under target/out/sample_cli.rs
+     cargo run -p code_gen -- cli-sample
+
+     # Generate specific CLI subcommand handler skeletons (e.g. Motor, Battery)
+     cargo run -p code_gen -- cli-sample Motor Battery
+
+     # Generate all boilerplate runloop implementations under target/out/sample_runloops.rs
+     cargo run -p code_gen -- runloop-sample
+
+     # Generate a specific controller's runloop boilerplate (e.g. Motor)
+     cargo run -p code_gen -- runloop-sample Motor
+
+     # Specify a custom output directory using --out-dir
+     cargo run -p code_gen -- cli-sample Motor --out-dir target/out/my_custom_dir
+     ```
 
 ---
 

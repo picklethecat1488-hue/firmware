@@ -70,13 +70,17 @@ pub mod select;
 
 pub use battery_manager::BatteryManager;
 pub use flash::BlockingAsyncFlash;
-pub use gesture_detector::{GestureDetector, ProximityEvent, ProximityGestureDetector};
+pub use gesture_detector::{
+    GestureChannel, GestureDetector, GestureReceiver, GestureSender, ProximityEvent,
+    ProximityGestureDetector,
+};
 pub use periodic_timer::PeriodicTimer;
 pub use power_manager::PowerManager;
 pub use system::{transition_thermal_update, BatteryUpdateAction, TransitionError};
 pub use thermal_manager::ThermalManager;
 pub use types::{
-    BootTrapMask, BootTrapReason, InvalidBootTrapMask, ThermalTransitionResult, ThermalUpdateAction,
+    BootTrapMask, BootTrapReason, FsBufferGuard, InvalidBootTrapMask, ThermalTransitionResult,
+    ThermalUpdateAction,
 };
 
 /// Compile-time CBOR serialization helpers.

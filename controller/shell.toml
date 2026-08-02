@@ -1,0 +1,121 @@
+[[cli_resolver_fields]]
+associated_type = "I2c"
+field = "i2c_buses"
+resolve_fn = "resolve_i2c"
+doc = "Named I2C buses."
+bounds = "embedded_hal::i2c::I2c"
+
+[[cli_resolver_fields]]
+associated_type = "Motor"
+field = "motors"
+resolve_fn = "resolve_motor"
+doc = "Named motor drivers."
+bounds = "model::interfaces::Motor"
+
+[[cli_resolver_fields]]
+associated_type = "BatteryCtrl"
+field = "batteries"
+resolve_fn = "resolve_battery"
+doc = "Named battery gauges."
+bounds = "crate::BlockingBatteryReader"
+
+[[cli_resolver_fields]]
+associated_type = "ThermalCtrl"
+field = "thermals"
+resolve_fn = "resolve_thermal"
+doc = "Named thermal sensors."
+bounds = "crate::BlockingThermalReader"
+
+[[cli_resolver_fields]]
+associated_type = "SensorCtrl"
+field = "sensors"
+resolve_fn = "resolve_sensor"
+doc = "Named sensor controllers."
+bounds = "crate::BlockingProximityReader"
+
+[[cli_resolver_fields]]
+associated_type = "MotorCtrl"
+field = "motor_ctrls"
+resolve_fn = "resolve_motor_ctrl"
+doc = "Named motor current controllers."
+bounds = "crate::BlockingMotorReader + crate::BlockingMotorWriter"
+
+[[cli_resolver_fields]]
+associated_type = "TempSensor"
+field = "temp_sensors"
+resolve_fn = "resolve_temp_sensor"
+doc = "Named microcontroller temperature sensors."
+bounds = "model::interfaces::TemperatureSensor"
+
+[[cli_resolver_fields]]
+associated_type = "SystemCtrl"
+field = "system_ctrls"
+resolve_fn = "resolve_system_ctrl"
+doc = "Named system controllers."
+bounds = "crate::BlockingSystemWriter"
+
+[[cli_commands]]
+group = "Battery"
+cmd_name = "battery"
+variant = "Battery"
+subcommand_type = "battery_controller::BatterySubcommand"
+handler = "battery_controller::handle_battery_cli"
+help = "Battery commands (battery status)"
+
+[[cli_commands]]
+group = "Thermal"
+cmd_name = "thermal"
+variant = "Thermal"
+subcommand_type = "thermal_controller::ThermalSubcommand"
+handler = "thermal_controller::handle_thermal_cli"
+help = "Thermal commands (thermal status, thermal mcu)"
+
+[[cli_commands]]
+group = "Motor"
+cmd_name = "motor"
+variant = "Motor"
+subcommand_type = "motor_controller::MotorSubcommand"
+handler = "motor_controller::handle_motor_cli"
+help = "Motor commands (motor speed <speed>, motor stop, motor calibrate <state> [max_rpm] [rpm_limit] [--partition <partition>])"
+args = [
+    { name = "arg1", type = "string", help = "First argument (speed or calibration state)" },
+    { name = "arg2", type = "string", help = "Second argument (max_rpm)" },
+    { name = "arg3", type = "string", help = "Third argument (rpm_limit)" },
+    { name = "partition", type = "string", help = "Optional partition name" }
+]
+
+[[cli_commands]]
+group = "Sensor"
+cmd_name = "sensor"
+variant = "Sensor"
+subcommand_type = "sensor_controller::SensorSubcommand"
+handler = "sensor_controller::handle_sensor_cli"
+help = "Sensor commands (sensor status, sensor cal_near <dir>, sensor cal_far <dir> [--partition <partition>])"
+args = [
+    { name = "arg1", type = "string", help = "First argument (direction: north, east, west)" },
+    { name = "partition", type = "string", help = "Optional partition name" }
+]
+
+[[cli_commands]]
+group = "Fs"
+cmd_name = "fs"
+variant = "Fs"
+subcommand_type = "filesystem_controller::FilesystemSubcommand"
+handler = "filesystem_controller::handle_fs_cli"
+help = "Filesystem commands (fs format, fs ls [--partition <partition>])"
+args = [
+    { name = "target", type = "Option<filesystem_controller::FormatTarget>", help = "Optional target to format (fs, telemetry, all)" },
+    { name = "partition", type = "string", help = "Optional partition name" }
+]
+
+[[cli_commands]]
+group = "System"
+cmd_name = "system"
+variant = "System"
+subcommand_type = "system_controller::SystemSubcommand"
+handler = "system_controller::handle_system_cli"
+help = "System commands (system activity, system crash [core])"
+args = [
+    { name = "arg1", type = "Option<system_controller::CpuTarget>", help = "Optional target core (core0, core1)" }
+]
+

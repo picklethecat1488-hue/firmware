@@ -10,6 +10,7 @@ members = [
     "tools/host_fs",
     "tools/host_cli",
     "platform/host",
+    "tools/code_gen",
 ]
 default-members = [
     "model",
@@ -44,8 +45,8 @@ debug = 0
 strip = true
 
 [profile.dev]
-opt-level = 1            # Enable light optimization to drastically reduce async/embassy code size
-debug = 2                # Full debug info (allows inspecting local variables in debugger)
+opt-level = "s"            # Optimize for size to reduce async/embassy code size and RAM usage
+debug = 2                  # Full debug info (allows inspecting local variables in debugger)
 
 [profile.test]
 debug = 2            # Full debug info (allows inspecting local variables in debugger)

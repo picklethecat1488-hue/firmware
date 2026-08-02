@@ -4,7 +4,7 @@
 extern crate std;
 
 use crate::tracing::controller_context;
-use crate::{Sender, TelemetrySender};
+use crate::TelemetrySender;
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
@@ -307,12 +307,12 @@ unsafe impl Sync for FsRequest {}
 /// Client interface for interacting with the pipelined filesystem.
 #[derive(Clone, Copy)]
 pub struct FilesystemClient {
-    sender: Sender<'static, CriticalSectionRawMutex, FsRequest, 16>,
+    sender: crate::FilesystemSender<CriticalSectionRawMutex>,
 }
 
 impl FilesystemClient {
     /// Create a new FilesystemClient.
-    pub fn new(sender: Sender<'static, CriticalSectionRawMutex, FsRequest, 16>) -> Self {
+    pub fn new(sender: crate::FilesystemSender<CriticalSectionRawMutex>) -> Self {
         Self { sender }
     }
 

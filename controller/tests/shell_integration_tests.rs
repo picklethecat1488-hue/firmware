@@ -32,7 +32,7 @@ controller::impl_shell_config! {
         ThermalCtrl = MockThermalCtrl,
         SensorCtrl = MockSensorCtrl,
         MotorCtrl = MockMotorCtrl,
-        SystemCtrl = embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, SystemCommand, 4>,
+        SystemCtrl = embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, SystemCommand, 16>,
     }
 }
 
@@ -202,7 +202,7 @@ impl model::interfaces::TemperatureSensor for MockTempSensor {
 }
 
 static MOTOR_CHANNEL: Channel<CriticalSectionRawMutex, MotorCommand, 4> = Channel::new();
-static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 4> = Channel::new();
+static SYSTEM_CHANNEL: Channel<CriticalSectionRawMutex, SystemCommand, 16> = Channel::new();
 
 #[test]
 fn test_shell_controller_integration_each_command() {

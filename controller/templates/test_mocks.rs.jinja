@@ -1,0 +1,31 @@
+// This file is dynamically generated at build time by build.rs. Do not edit directly.
+
+// Mock module paths for crate:: telemetry resolution
+pub mod telemetry_controller {
+    pub const CHANNEL_CAPACITY: usize = 64;
+}
+pub type ThermalUpdateAction = controller::types::ThermalUpdateAction;
+
+pub type TelemetrySender<MutexRaw, const N: usize> =
+    embassy_sync::channel::Sender<'static, MutexRaw, model::telemetry::TelemetryRecord, N>;
+
+{% for ctrl in controllers %}
+{% if ctrl.has_telemetry.unwrap_or(true) -%}
+pub struct {{ ctrl.name }}TelemetryClient;
+impl {{ ctrl.name }}TelemetryClient {
+    pub fn new(
+        _t: Option<
+            TelemetrySender<
+                embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+                { controller::telemetry_controller::CHANNEL_CAPACITY },
+            >,
+        >,
+    ) -> Self {
+        Self
+    }
+}
+{%- endif %}
+
+pub type {{ ctrl.name }}Receiver<MutexRaw, const S: usize> =
+    embassy_sync::channel::Receiver<'static, MutexRaw, {{ ctrl.msg_type|safe }}, S>;
+{% endfor %}

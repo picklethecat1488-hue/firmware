@@ -4,7 +4,7 @@ use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::types::{BootReason, Gesture, SystemStatus, TelemetryRecord};
 
 /// Manages system status transitions, wake locks, and sleep timers.
-pub struct PowerManager<MutexRaw: RawMutex + 'static, const N: usize> {
+pub struct PowerManager<MutexRaw: RawMutex + 'static, const N: usize = 64> {
     status: SystemStatus,
     inactive_ms: u32,
     active_ms: u32,
