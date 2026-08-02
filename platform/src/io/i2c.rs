@@ -137,19 +137,19 @@ pub fn handle_i2c_cli<W: embedded_io::Write<Error = E>, E: embedded_io::Error, R
                 writer,
                 "     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f"
             );
-            for row in 0..16 {
+            for row in 0..8 {
                 let mut line = heapless::String::<64>::new();
                 let _ = write!(line, "{:02x}:", row * 16);
                 for col in 0..16 {
-                    let addr = row * 16 + col;
-                    let addr_7bit = addr >> 1;
+                    let addr_7bit = row * 16 + col;
                     if !(0x08..=0x77).contains(&addr_7bit) {
                         let _ = write!(line, "   ");
                     } else {
-                        // Attempt empty write to check for ACK using 7-bit address
-                        match i2c.write(addr_7bit, &[]) {
+                        // Attempt a single byte read to check for ACK using 7-bit address
+                        let mut buf = [0];
+                        match i2c.read(addr_7bit, &mut buf) {
                             Ok(_) => {
-                                let _ = write!(line, " {:02x}", addr);
+                                let _ = write!(line, " {:02x}", addr_7bit);
                             }
                             Err(_) => {
                                 let _ = write!(line, " --");

@@ -154,8 +154,8 @@ fn test_i2c_scan() {
 
     let output_str = core::str::from_utf8(&mock_write.buf).unwrap();
     assert!(output_str.contains("Scanning I2C bus..."));
-    assert!(output_str.contains("78"));
-    assert!(output_str.contains("79"));
+    assert!(output_str.contains("3c"));
+    assert!(!output_str.contains("78"));
 }
 
 #[test]
