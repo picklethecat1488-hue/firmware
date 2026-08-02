@@ -264,7 +264,7 @@ pub struct ShellConfigToml {
 
 /// Rinja template for generated macro and channel definitions.
 #[derive(Template)]
-#[template(path = "generated_controllers.rs.jinja")]
+#[template(path = "generated_controllers.rs.jinja", escape = "none")]
 pub struct GeneratedControllersTemplate {
     /// The list of controllers to render.
     pub controllers: Vec<Controller>,
@@ -274,21 +274,21 @@ pub struct GeneratedControllersTemplate {
 
 /// Rinja template for rendering a sample CLI implementation.
 #[derive(Template)]
-#[template(path = "sample_cli.rs.jinja")]
+#[template(path = "sample_cli.rs.jinja", escape = "none")]
 pub struct SampleCliTemplate {
     pub cli_commands: Vec<CliCommand>,
 }
 
 /// Rinja template for rendering a single CLI handler function skeleton.
 #[derive(Template)]
-#[template(path = "cli_handler_skeleton.rs.jinja")]
+#[template(path = "cli_handler_skeleton.rs.jinja", escape = "none")]
 pub struct CliHandlerSkeletonTemplate {
     pub cmd: CliCommand,
 }
 
 /// Rinja template for the boilerplate implementation of the asynchronous `run(...)` loop.
 #[derive(Template)]
-#[template(path = "run_loop.rs.jinja")]
+#[template(path = "run_loop.rs.jinja", escape = "none")]
 pub struct RunLoopTemplate {
     /// Name of the controller.
     pub name: String,

@@ -231,7 +231,7 @@ struct ShellConfigToml {
 }
 
 #[derive(Template)]
-#[template(path = "generated_controllers.rs.jinja")]
+#[template(path = "generated_controllers.rs.jinja", escape = "none")]
 struct GeneratedControllersTemplate {
     controllers: Vec<Controller>,
     cli_resolver_fields: Vec<CliResolverField>,
@@ -239,7 +239,7 @@ struct GeneratedControllersTemplate {
 }
 
 #[derive(Template)]
-#[template(path = "run_loop.rs.jinja")]
+#[template(path = "run_loop.rs.jinja", escape = "none")]
 struct RunLoopTemplate {
     name: String,
     msg_type: String,
@@ -251,19 +251,19 @@ struct RunLoopTemplate {
 }
 
 #[derive(Template)]
-#[template(path = "test_mocks.rs.jinja")]
+#[template(path = "test_mocks.rs.jinja", escape = "none")]
 struct TestMocksTemplate {
     controllers: Vec<Controller>,
 }
 
 #[derive(Template)]
-#[template(path = "sample_cli.rs.jinja")]
+#[template(path = "sample_cli.rs.jinja", escape = "none")]
 struct SampleCliTemplate {
     cli_commands: Vec<CliCommand>,
 }
 
 #[derive(Template)]
-#[template(path = "cli_skeletons_test.rs.jinja")]
+#[template(path = "cli_skeletons_test.rs.jinja", escape = "none")]
 struct CliSkeletonsTestTemplate {
     cli_commands: Vec<CliCommand>,
 }
