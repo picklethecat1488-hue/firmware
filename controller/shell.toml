@@ -119,3 +119,25 @@ args = [
     { name = "arg1", type = "Option<system_controller::CpuTarget>", help = "Optional target core (core0, core1)" }
 ]
 
+[[cli_commands]]
+group = "I2c"
+cmd_name = "i2c"
+variant = "I2c"
+subcommand_type = "platform::i2c::I2cSubcommand"
+handler = "platform::i2c::handle_i2c_cli"
+help = "I2C commands (i2c scan)"
+args = [
+    { name = "bus", type = "string", help = "Target bus name" }
+]
+
+[[cli_commands]]
+group = "Gpio"
+cmd_name = "gpio"
+variant = "Gpio"
+subcommand_type = "platform::gpio::GpioSubcommand"
+handler = "platform::gpio::handle_gpio_cli"
+help = "GPIO commands (gpio status, gpio read <pin>)"
+args = [
+    { name = "pin", type = "Option<u32>", help = "Pin number to read" }
+]
+

@@ -7,3 +7,4 @@ license.workspace = true
 [dependencies]
 minicbor = { version = "0.20.0", features = ["derive"] }
 heapless = "0.8.0"
+embedded-hal = "1.0.0"

@@ -38,6 +38,8 @@ controller::declare_shell_commands! {
         Sensor,
         Fs,
         System,
+        I2c,
+        Gpio,
     }
 }
 
