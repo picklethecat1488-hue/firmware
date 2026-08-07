@@ -9,7 +9,7 @@ use crate::{BatteryReceiver, BlockingBatteryReader, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
-use model::interfaces::FuelGauge;
+use model::interfaces::{FuelGauge, Tickable};
 use model::telemetry::TelemetryClient;
 use model::types::{PeriodicInterval, PeripheralError};
 use peripherals::ToPeripheralError;
@@ -105,8 +105,15 @@ pub struct BatteryController<
     active_wake_locks: u32,
 }
 
-impl<'a, M: RawMutex, B: FuelGauge, C: model::interfaces::ChargeStatus, const SYS_CAP: usize>
-    BatteryController<'a, M, B, C, DummyAlertPin, SYS_CAP>
+impl<
+        'a,
+        M: RawMutex,
+        B: FuelGauge + Tickable<Error = <B as FuelGauge>::Error>,
+        C: model::interfaces::ChargeStatus,
+        const SYS_CAP: usize,
+    > BatteryController<'a, M, B, C, DummyAlertPin, SYS_CAP>
+where
+    <B as FuelGauge>::Error: ToPeripheralError,
 {
     /// Creates a new battery controller referencing a shared battery peripheral.
     pub fn new(battery: &'a Mutex<M, B>, charger: &'a Mutex<M, C>) -> Self {
@@ -144,7 +151,7 @@ impl<'a, M: RawMutex, B: FuelGauge, C: model::interfaces::ChargeStatus, const SY
 impl<
         'a,
         M: RawMutex,
-        B: FuelGauge,
+        B: FuelGauge + Tickable<Error = <B as FuelGauge>::Error>,
         C: model::interfaces::ChargeStatus,
         Pin: BatteryAlertPin,
         const SYS_CAP: usize,
@@ -185,11 +192,12 @@ where
     pub async fn update(
         &mut self,
         telemetry_client: Option<&mut BatteryTelemetryClient<CriticalSectionRawMutex>>,
-    ) -> Result<(), BatteryControllerError<B::Error>> {
+    ) -> Result<(), BatteryControllerError<<B as FuelGauge>::Error>> {
         let mut read_failed = false;
         let mut error_val = None;
         let (voltage, soc) = {
             let mut bat = self.battery.lock().await;
+            let _ = bat.tick();
             match (bat.read_voltage_mv(), bat.read_state_of_charge()) {
                 (Ok(v), Ok(s)) => (v, s),
                 (Err(e), _) | (_, Err(e)) => {
@@ -436,7 +444,7 @@ where
 impl<
         'a,
         M: RawMutex,
-        B: FuelGauge,
+        B: FuelGauge + Tickable<Error = <B as FuelGauge>::Error>,
         C: model::interfaces::ChargeStatus,
         Pin,
         const SYS_CAP: usize,

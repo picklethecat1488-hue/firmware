@@ -55,7 +55,7 @@ impl MotorLimits {
 }
 
 /// A generalized motor controller that orchestrates motor driver outputs and current sensor monitoring.
-#[controller_context]
+#[controller_context(core1_feature = "motor-core")]
 pub struct MotorController<M, C> {
     state: MotorState,
     /// The physical or mock motor peripheral.

@@ -1,7 +1,7 @@
 use crate::tracing;
 use model::interfaces::{
     ChargeStatus, FuelGauge, LedDriver, Motor, PowerMeasurementMode, PowerSensor, Probeable,
-    ProximitySensor, TemperatureSensor,
+    ProximitySensor, TemperatureSensor, Tickable,
 };
 use model::types::MotorSpeed;
 
@@ -156,6 +156,18 @@ impl TemperatureSensor for MockBattery {
             Err(())
         } else {
             Ok(self.temperature_milli_c)
+        }
+    }
+}
+
+impl Tickable for MockBattery {
+    type Error = ();
+
+    fn tick(&mut self) -> Result<(), Self::Error> {
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(())
         }
     }
 }

@@ -243,7 +243,7 @@ impl<
 }
 
 /// A controller that coordinates readings from a single proximity (ToF) sensor.
-#[controller_context]
+#[controller_context(core1_feature = "sensors-core")]
 pub struct SensorController<
     'a,
     S,

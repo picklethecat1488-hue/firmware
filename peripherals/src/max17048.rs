@@ -5,7 +5,7 @@
 use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
-use model::interfaces::{ChargeStatus, FuelGauge, Probeable};
+use model::interfaces::{ChargeStatus, FuelGauge, Probeable, Tickable};
 use model::types::{ChargeState, PeripheralError};
 
 macro_rules! log_warn {
@@ -42,16 +42,29 @@ impl ConfigMask {
     const ALSC: u16 = 1 << 6;
 }
 
+const MAX_CHARGE_COUNTER: i32 = 10;
+const VOLTAGE_CHANGE_STEP_THRESHOLD: i32 = 5;
+const VOLTAGE_JUMP_THRESHOLD: i32 = 15;
+
 /// Driver for the MAX17048 fuel gauge communicating over I2C.
 pub struct Max17048<I> {
     i2c: I,
     address: u8,
+    last_vcell: Option<u32>,
+    last_soc: Option<u8>,
+    charge_detect_counter: i32,
 }
 
 impl<I: I2c> Max17048<I> {
     /// Creates a new MAX17048 driver instance with the default I2C address (0x36).
     pub const fn new(i2c: I) -> Self {
-        Self { i2c, address: 0x36 }
+        Self {
+            i2c,
+            address: 0x36,
+            last_vcell: None,
+            last_soc: None,
+            charge_detect_counter: 0,
+        }
     }
 
     /// Initialize the fuel gauge.
@@ -214,6 +227,44 @@ impl<I: I2c> FuelGauge for Max17048<I> {
     }
 }
 
+impl<I: I2c> Tickable for Max17048<I> {
+    type Error = PeripheralError;
+
+    /// Updates the state of the fuel gauge by tracking voltage and SOC trends over time.
+    #[tracing::instrument(level = "trace")]
+    fn tick(&mut self) -> Result<(), Self::Error> {
+        let voltage = self.read_voltage_mv()?;
+        let soc = self.read_state_of_charge()?;
+
+        if let (Some(last_v), Some(last_s)) = (self.last_vcell, self.last_soc) {
+            let v_diff = voltage as i32 - last_v as i32;
+            let s_diff = soc as i32 - last_s as i32;
+
+            if v_diff >= VOLTAGE_JUMP_THRESHOLD {
+                self.charge_detect_counter = MAX_CHARGE_COUNTER;
+            } else if v_diff <= -VOLTAGE_JUMP_THRESHOLD {
+                self.charge_detect_counter = -MAX_CHARGE_COUNTER;
+            } else {
+                let s_step = 5 * s_diff.signum();
+                let v_step = if v_diff == 0 {
+                    -self.charge_detect_counter.signum()
+                } else if v_diff.abs() >= VOLTAGE_CHANGE_STEP_THRESHOLD {
+                    4 * v_diff.signum()
+                } else {
+                    2 * v_diff.signum()
+                };
+
+                self.charge_detect_counter = (self.charge_detect_counter + s_step + v_step)
+                    .clamp(-MAX_CHARGE_COUNTER, MAX_CHARGE_COUNTER);
+            }
+        }
+
+        self.last_vcell = Some(voltage);
+        self.last_soc = Some(soc);
+        Ok(())
+    }
+}
+
 impl<I: I2c> ChargeStatus for Max17048<I> {
     type Error = PeripheralError;
 
@@ -223,19 +274,28 @@ impl<I: I2c> ChargeStatus for Max17048<I> {
         let crate_val = self.read_register(Register::CRATE)? as i16;
         let status = self.read_register(Register::STATUS)?;
 
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!("MAX17048: CRATE={}, STATUS=0x{:04X}", crate_val, status);
-
         if (status & StatusMask::VH) != 0 {
             // VH (Voltage High) alert indicates a recoverable fault (e.g. overvoltage condition)
             Ok(ChargeState::RecoverableFault)
         } else if (status & StatusMask::VL) != 0 {
             // VL (Voltage Low) alert indicates a non-recoverable or critical low voltage condition
             Ok(ChargeState::NonRecoverableFault)
-        } else if crate_val > 0 {
-            Ok(ChargeState::Charging)
         } else {
-            Ok(ChargeState::DoneOrStandbyOrUnplugged)
+            let mut charging = crate_val > 0;
+
+            if self.last_vcell.is_some() {
+                if self.charge_detect_counter >= 3 {
+                    charging = true;
+                } else if self.charge_detect_counter <= -3 {
+                    charging = false;
+                }
+            }
+
+            if charging {
+                Ok(ChargeState::Charging)
+            } else {
+                Ok(ChargeState::DoneOrStandbyOrUnplugged)
+            }
         }
     }
 }
