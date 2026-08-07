@@ -88,6 +88,11 @@ impl<'d> Board<'d> {
             let mut scl = Flex::new(unsafe { embassy_rp::peripherals::PIN_13::steal() });
             let mut sda = Flex::new(unsafe { embassy_rp::peripherals::PIN_12::steal() });
             Self::recover_i2c_bus(&mut scl, &mut sda);
+
+            // Configure internal pull-ups on the pins using the Flex API
+            // before releasing them to the hardware I2C controller.
+            scl.set_pull(Pull::Up);
+            sda.set_pull(Pull::Up);
         }
 
         let mut i2c_config = I2cConfig::default();

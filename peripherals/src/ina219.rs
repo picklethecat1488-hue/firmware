@@ -167,7 +167,7 @@ impl<I: I2c> Probeable for Ina219<I> {
     #[tracing::instrument(level = "trace")]
     fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         let id = self.read_register(Register::CONFIG)?;
-        if id == 0x399F {
+        if (id & 0xFFF8) == 0x3998 {
             Ok(id)
         } else {
             Err(PeripheralError::DeviceNotFound(id))

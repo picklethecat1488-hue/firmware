@@ -222,7 +222,7 @@ impl<I: I2c> Probeable for Max17048<I> {
     #[tracing::instrument(level = "trace")]
     fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         let id = self.read_register(Register::VRESET)?;
-        if (id & 0x00F0) == 0x0010 {
+        if (id & 0x00F0) == 0x0010 || (id & 0xFF00) == 0x9600 {
             Ok(id)
         } else {
             Err(PeripheralError::DeviceNotFound(id))
@@ -231,7 +231,20 @@ impl<I: I2c> Probeable for Max17048<I> {
 
     #[tracing::instrument(level = "trace")]
     fn reset(&mut self) -> Result<(), Self::Error> {
-        self.write_register(Register::CMD, 0x5400)
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        {
+            // Writing 0x5400 to CMD resets the chip. Since the chip resets its I2C interface
+            // immediately, it may abort the I2C transaction or fail to ACK the STOP condition,
+            // resulting in a bus error (I2COther). We trigger the write, wait for the reset
+            // to complete, and verify the chip is alive by reading the ID.
+            let _ = self.write_register(Register::CMD, 0x5400);
+            ::embassy_time::block_for(::embassy_time::Duration::from_millis(15)); // Wait for reset (datasheet: 15ms)
+            self.read_chip_id().map(|_| ())
+        }
+        #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+        {
+            self.write_register(Register::CMD, 0x5400)
+        }
     }
 }
 
