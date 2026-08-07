@@ -6,11 +6,17 @@
 #![cfg(all(target_arch = "arm", target_os = "none"))]
 #![deny(missing_docs)]
 
+use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Flex, Pin, Pull};
 use embassy_rp::i2c::{Config as I2cConfig, I2c};
+use embassy_rp::pio::InterruptHandler;
 use embassy_rp::Peripherals;
 use platform::tracing;
 use platform::types::QueueFilesystem;
+
+bind_interrupts!(struct Irqs {
+    PIO0_IRQ_0 => InterruptHandler<embassy_rp::peripherals::PIO0>;
+});
 
 /// Helper structure containing all pre-initialized board interfaces.
 pub struct Board<'d> {
@@ -34,7 +40,7 @@ pub struct Board<'d> {
     /// West proximity sensor
     pub tof_west: peripherals::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>,
     /// Status LED driver
-    pub led_driver: peripherals::attiny816::Attiny816<platform::i2c::SharedI2cWrapper<'static>>,
+    pub led_driver: peripherals::ws2812::Ws2812<'d, embassy_rp::peripherals::PIO0, 0>,
     /// Fuel gauge alert/interrupt pin
     pub fuel_gauge_alert_pin: Flex<'d>,
     /// North proximity interrupt pin
@@ -110,7 +116,7 @@ impl<'d> Board<'d> {
             Some(Flex::new(p.PIN_8.degrade())),
             Some(Flex::new(p.PIN_9.degrade())),
             Some(Flex::new(p.PIN_10.degrade())),
-            Some(Flex::new(p.PIN_11.degrade())),
+            None, // 11 - WS2812 LED (driven via PIO0)
             None, // 12 - I2C SDA
             None, // 13 - I2C SCL
             Some(Flex::new(p.PIN_14.degrade())),
@@ -207,7 +213,6 @@ impl<'d> Board<'d> {
         // Configure remaining drivers using local i2c before returning
         peripherals::init_max17048!(&mut i2c, &mut boot_status);
         peripherals::init_ina219!(&mut i2c, &mut boot_status);
-        peripherals::init_attiny816!(&mut i2c, &mut boot_status);
 
         // Extract pins needed for drivers/controllers
         let motor_pin_ia = gpio_pins[crate::PUMP_PIN_IA as usize]
@@ -248,9 +253,7 @@ impl<'d> Board<'d> {
         let tof_east = make_tof(crate::TOF_EAST_I2C_ADDR);
         let tof_west = make_tof(crate::TOF_WEST_I2C_ADDR);
 
-        let led_driver = peripherals::attiny816::Attiny816::new(
-            platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
-        );
+        let led_driver = peripherals::init_ws2812!(p.PIO0, p.DMA_CH0, p.PIN_11, &mut boot_status);
 
         unsafe {
             let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE0);
@@ -463,6 +466,6 @@ pub type ProximitySensorDevice =
 /// The proximity sensor interrupt pin type.
 pub type DataReadyPinType = ProximityPinWrapper;
 /// The LED driver type.
-pub type LedDevice = peripherals::attiny816::Attiny816<platform::i2c::SharedI2cWrapper<'static>>;
+pub type LedDevice = peripherals::ws2812::Ws2812<'static, embassy_rp::peripherals::PIO0, 0>;
 /// The temperature sensor type.
 pub type TempSensorDevice = SafeRp2040TempSensor;

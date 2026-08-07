@@ -49,6 +49,7 @@ defmt = "0.3"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 cortex-m = { version = "0.7" }
 cortex-m-rt = "0.7"
+fixed = "1.31.0"
 
 [target.'cfg(not(all(target_arch = "arm", target_os = "none")))'.dependencies]
 embassy-executor = { version = "0.7.0", features = ["arch-std", "executor-thread", "task-arena-size-1048576"] }
