@@ -188,59 +188,83 @@ def parse_code(content, filepath="<string>"):
     return functions, controller_structs
 
 
-def validate_call_graph(funcs_list, roots, feature, allowed_files=None):
+def validate_call_graph(funcs_list, roots, feature, root_files=None):
     """Trace call graph from roots and check that reached functions have RAM placement attribute."""
-    if allowed_files is not None:
-        filtered_funcs = [
-            f for f in funcs_list if any(os.path.basename(f["filepath"]) == f_name for f_name in allowed_files)
-        ]
-    else:
-        filtered_funcs = funcs_list
-
+    # Build maps of definitions
     defs_by_name = {}
-    for f in filtered_funcs:
+    defs_by_key = {}
+    for f in funcs_list:
         defs_by_name.setdefault(f["name"], []).append(f)
+        defs_by_key[f"{f['filepath']}:{f['name']}"] = f
 
     visited = set()
-    queue = list(roots)
+    queue = []
+
+    # Initialize queue with root function keys matched by name and root_files
+    for r in roots:
+        if r in defs_by_name:
+            for f in defs_by_name[r]:
+                if root_files is None or any(os.path.basename(f["filepath"]) == rf for rf in root_files):
+                    key = f"{f['filepath']}:{f['name']}"
+                    queue.append(key)
+
     warnings = 0
     errors = 0
+    parent_map = {}
 
     while queue:
-        curr_name = queue.pop(0)
-        if curr_name in visited:
+        curr_key = queue.pop(0)
+        if curr_key in visited:
             continue
-        visited.add(curr_name)
+        visited.add(curr_key)
 
-        if curr_name in defs_by_name:
-            for d in defs_by_name[curr_name]:
-                if (
-                    d["name"] in ["new", "init", "bootstrap_core1_task"]
-                    or d["name"].startswith("new_")
-                    or d["name"].endswith("_init")
-                ):
-                    continue
-                if feature not in d["ram_features"] and "core1" not in d["ram_features"]:
+        if curr_key in defs_by_key:
+            d = defs_by_key[curr_key]
+            if (
+                d["name"] in ["new", "init", "bootstrap_core1_task"]
+                or d["name"].startswith("new_")
+                or d["name"].endswith("_init")
+            ):
+                continue
+            if feature not in d["ram_features"] and "core1" not in d["ram_features"]:
+                # Print the call path
+                path = []
+                step = curr_key
+                while step in parent_map:
+                    path.append(step.split(":")[-1])
+                    step = parent_map[step]
+                path.append(step.split(":")[-1])
+                path.reverse()
+                path_str = " -> ".join(path)
+
+                print(
+                    f"{Fore.YELLOW}WARNING:{Style.RESET_ALL} Driver function '{d['name']}' in {d['filepath']}:{d['line']} is reached in RAM call chain but missing RAM attribute for '{feature}'!"
+                )
+                print(f"  Path: {path_str}")
+                print(f'  Expected: #[cfg_attr(target_arch = "arm", link_section = ".data.core1_func")]')
+                print()
+                warnings += 1
+
+            if "forbidden_calls" in d:
+                for forbidden_name, line_num in d["forbidden_calls"]:
                     print(
-                        f"{Fore.YELLOW}WARNING:{Style.RESET_ALL} Driver function '{curr_name}' in {d['filepath']}:{d['line']} is reached in RAM call chain but missing RAM attribute for '{feature}'!"
+                        f"{Fore.RED}ERROR:{Style.RESET_ALL} Driver function '{d['name']}' in {d['filepath']}:{line_num} "
+                        f"executes on Core 1 call path but calls single-core blocking/interrupt control '{forbidden_name}'!"
                     )
-                    print(f'  Expected: #[cfg_attr(target_arch = "arm", link_section = ".data.core1_func")]')
+                    print("  Expected: Use critical_section::with() for multicore-safe synchronization.")
                     print()
-                    warnings += 1
+                    errors += 1
 
-                if "forbidden_calls" in d:
-                    for forbidden_name, line_num in d["forbidden_calls"]:
-                        print(
-                            f"{Fore.RED}ERROR:{Style.RESET_ALL} Driver function '{curr_name}' in {d['filepath']}:{line_num} "
-                            f"executes on Core 1 call path but calls single-core blocking/interrupt control '{forbidden_name}'!"
-                        )
-                        print("  Expected: Use critical_section::with() for multicore-safe synchronization.")
-                        print()
-                        errors += 1
-
-                for child in d["calls"]:
-                    if child not in visited:
-                        queue.append(child)
+            for child in d["calls"]:
+                if child in defs_by_name:
+                    # Prioritize definitions within the same source file to avoid cross-controller name collisions
+                    local_defs = [child_f for child_f in defs_by_name[child] if child_f["filepath"] == d["filepath"]]
+                    targets = local_defs if local_defs else defs_by_name[child]
+                    for child_f in targets:
+                        child_key = f"{child_f['filepath']}:{child_f['name']}"
+                        if child_key not in visited and child_key not in parent_map:
+                            parent_map[child_key] = curr_key
+                            queue.append(child_key)
 
     return warnings, errors
 
@@ -256,7 +280,7 @@ def validate_multicore_support():
                 continue
             for root, _, files in os.walk(s_dir):
                 for file in files:
-                    if file.endswith(".rs"):
+                    if file.endswith(".rs") and file != "mock.rs":
                         filepath = os.path.join(root, file)
                         try:
                             with open(filepath, "rb") as f:
@@ -274,7 +298,7 @@ def validate_multicore_support():
         funcs_list=all_functions,
         roots=motor_roots,
         feature="motor-core",
-        allowed_files=["motor_controller.rs", "l9110s.rs", "ina219.rs"],
+        root_files=["motor_controller.rs"],
     )
 
     # Validate sensors-core call graph
@@ -284,7 +308,7 @@ def validate_multicore_support():
         funcs_list=all_functions,
         roots=sensor_roots,
         feature="sensors-core",
-        allowed_files=["sensor_controller.rs", "vl53l0x.rs"],
+        root_files=["sensor_controller.rs"],
     )
 
     # Validate that controllers don't instantiate other controllers directly

@@ -18,24 +18,44 @@
     {
       "type": "cortex-debug",
       "request": "launch",
-      "name": "Debug App (Cortex-Debug J-Link)",
+      "name": "Debug App Core 0 (J-Link)",
       "servertype": "jlink",
       "cwd": "${workspaceFolder}",
       "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
-      "device": "RP2040",
+      "device": "RP2040_M0_0",
       "interface": "swd",
       "runToEntryPoint": "main"
     },
     {
       "type": "cortex-debug",
+      "request": "attach",
+      "name": "Attach App Core 1 (J-Link)",
+      "servertype": "jlink",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
+      "device": "RP2040_M0_1",
+      "interface": "swd"
+    },
+    {
+      "type": "cortex-debug",
       "request": "launch",
-      "name": "Debug Shell (Cortex-Debug J-Link)",
+      "name": "Debug Shell Core 0 (J-Link)",
       "servertype": "jlink",
       "cwd": "${workspaceFolder}",
       "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
-      "device": "RP2040",
+      "device": "RP2040_M0_0",
       "interface": "swd",
       "runToEntryPoint": "main"
+    },
+    {
+      "type": "cortex-debug",
+      "request": "attach",
+      "name": "Attach Shell Core 1 (J-Link)",
+      "servertype": "jlink",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
+      "device": "RP2040_M0_1",
+      "interface": "swd"
     },
     {
       "type": "cortex-debug",

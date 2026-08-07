@@ -80,15 +80,21 @@ where
         to: (u8, u8, u8),
         delay: &mut DL,
     ) -> Result<(), PeripheralError> {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        defmt::info!("fade_to start: from={:?} to={:?}", from, to);
         for step in 1..=FADE_STEPS {
             let r = (from.0 as i32 + (to.0 as i32 - from.0 as i32) * step / FADE_STEPS) as u8;
             let g = (from.1 as i32 + (to.1 as i32 - from.1 as i32) * step / FADE_STEPS) as u8;
             let b = (from.2 as i32 + (to.2 as i32 - from.2 as i32) * step / FADE_STEPS) as u8;
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::info!("fade_to step {}: {} {} {}", step, r, g, b);
             self.driver
                 .set_color(r, g, b)
                 .map_err(|e| e.to_peripheral_error())?;
             delay.delay_ms(FADE_DELAY_MS).await;
         }
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        defmt::info!("fade_to end");
         Ok(())
     }
 

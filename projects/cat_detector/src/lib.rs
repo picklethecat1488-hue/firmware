@@ -339,7 +339,7 @@ pub async fn init_controllers(board: Board<'static>) {
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Core 1 stack size in bytes.
-pub const CORE1_STACK_SIZE: usize = 4096;
+pub const CORE1_STACK_SIZE: usize = 16384;
 
 platform::boot_multicore!(crate::Board, CORE1_STACK_SIZE);
 
@@ -391,11 +391,18 @@ pub type SensorType = controller::sensor_controller::SensorController<
 /// Boots Core 1 peripherals and controllers.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::task]
+#[cfg_attr(target_arch = "arm", link_section = ".data.core1_func")]
 pub async fn bootstrap_core1_task(
     spawner: embassy_executor::Spawner,
     mut motor: MotorType,
     mut sensors: (SensorType, SensorType, SensorType),
 ) {
+    // Configure MPU Stack Guard for Core 1
+    let guard_addr = CORE1_STACK_BOTTOM.load(core::sync::atomic::Ordering::Acquire);
+    if guard_addr != 0 {
+        platform::core_monitor::configure_mpu_stack_guard(guard_addr);
+    }
+
     // Initialize the core monitor for Core 1
     platform::core_monitor::init_core(
         Some(spawner),
@@ -551,6 +558,9 @@ pub const CORE_MONITOR_TIMEOUT_MS: u32 = 10_000;
 
 /// Default core monitor warning threshold percentage.
 pub const CORE_MONITOR_WARN_PCT: u32 = 80;
+
+/// The hardware stack guard address for Core 0 (the bottom of Core 0's stack).
+pub const CORE0_STACK_BOTTOM: u32 = 0x2003_C000;
 
 platform::define_project_metadata! {
     chip: "rp2040",

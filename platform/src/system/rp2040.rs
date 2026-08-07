@@ -1,40 +1,6 @@
 //! RP2040 platform support traits and concrete implementations.
 
-use crate::types::CpuId;
-
-/// Target-agnostic wrapper for a multicore execution stack.
-pub struct MulticoreStack<const SIZE: usize> {
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
-    /// The target specific Embassy RP multicore Stack.
-    pub stack: embassy_rp::multicore::Stack<SIZE>,
-    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-    /// Dummy field for host compilation.
-    pub stack: [u32; SIZE],
-}
-
-impl<const SIZE: usize> Default for MulticoreStack<SIZE> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<const SIZE: usize> MulticoreStack<SIZE> {
-    /// Creates a new stack.
-    pub const fn new() -> Self {
-        Self {
-            #[cfg(all(target_arch = "arm", target_os = "none"))]
-            stack: embassy_rp::multicore::Stack::new(),
-            #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-            stack: [0; SIZE],
-        }
-    }
-
-    /// Returns the address of the top of the stack.
-    pub fn stack_top(&self) -> u32 {
-        let base = self as *const Self as u32;
-        base + (SIZE * 4) as u32
-    }
-}
+use crate::types::{CpuId, MulticoreStack};
 
 /// Trait to manage platform multicore initialization and execution.
 pub trait PlatformMulticore {
@@ -141,7 +107,11 @@ impl PlatformMulticore for Rp2040Multicore {
         match core_id {
             CpuId::Core1 => {
                 let core1 = embassy_rp::peripherals::CORE1::steal();
-                embassy_rp::multicore::spawn_core1(core1, &mut stack.stack, entry);
+                let embassy_stack = unsafe {
+                    &mut *(core::ptr::addr_of_mut!(stack.mem)
+                        as *mut embassy_rp::multicore::Stack<SIZE>)
+                };
+                embassy_rp::multicore::spawn_core1(core1, embassy_stack, entry);
                 Ok(())
             }
             _ => Err("Invalid target core for spawn"),
@@ -341,13 +311,32 @@ macro_rules! boot_multicore {
         pub const CORE1_DEFAULT_STACK_TOP: u32 = 0x2004_0000;
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
-        static mut CORE1_STACK: $crate::rp2040::MulticoreStack<$stack_size> =
-            $crate::rp2040::MulticoreStack::new();
+        static mut CORE1_STACK: $crate::types::MulticoreStack<$stack_size> =
+            $crate::types::MulticoreStack::new();
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         /// Core 1 stack top address.
         pub static CORE1_STACK_TOP: core::sync::atomic::AtomicU32 =
             core::sync::atomic::AtomicU32::new(CORE1_DEFAULT_STACK_TOP);
+
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        /// Core 1 stack bottom address.
+        pub static CORE1_STACK_BOTTOM: core::sync::atomic::AtomicU32 =
+            core::sync::atomic::AtomicU32::new(0);
+
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        fn core1_entry() -> ! {
+            unsafe {
+                core::arch::asm!(
+                    "movs r0, #0",
+                    "mov lr, r0",
+                    "ldr r0, ={entry}",
+                    "bx r0",
+                    entry = sym core1_entry_point,
+                    options(noreturn)
+                );
+            }
+        }
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         fn core1_entry_point() -> ! {
@@ -362,14 +351,16 @@ macro_rules! boot_multicore {
             use $crate::rp2040::PlatformMulticore as _;
             let stack_ptr = core::ptr::addr_of_mut!(CORE1_STACK);
             let stack_top = unsafe { (*stack_ptr).stack_top() };
+            let stack_bottom = unsafe { (*stack_ptr).stack_bottom() };
             CORE1_STACK_TOP.store(stack_top, core::sync::atomic::Ordering::Release);
+            CORE1_STACK_BOTTOM.store(stack_bottom, core::sync::atomic::Ordering::Release);
 
             unsafe {
                 <$board>::init_executor_core1();
                 let _ = $crate::rp2040::Rp2040Multicore.spawn_core(
                     $crate::types::CpuId::Core1,
                     &mut *stack_ptr,
-                    core1_entry_point,
+                    core1_entry,
                 );
             }
         }
