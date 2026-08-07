@@ -355,22 +355,22 @@ platform::define_panic_handler!(
 /// Global pointer to the active MotorController on Core 1 (populated during startup).
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut MOTOR_CTRL_CORE1: *mut () = core::ptr::null_mut();
+pub static MOTOR_CTRL_CORE1: platform::OnceLock<*mut ()> = platform::OnceLock::new();
 
 /// Global pointer to the active North SensorController on Core 1.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut SENSOR_CTRL_NORTH_CORE1: *mut () = core::ptr::null_mut();
+pub static SENSOR_CTRL_NORTH_CORE1: platform::OnceLock<*mut ()> = platform::OnceLock::new();
 
 /// Global pointer to the active East SensorController on Core 1.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut SENSOR_CTRL_EAST_CORE1: *mut () = core::ptr::null_mut();
+pub static SENSOR_CTRL_EAST_CORE1: platform::OnceLock<*mut ()> = platform::OnceLock::new();
 
 /// Global pointer to the active West SensorController on Core 1.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut SENSOR_CTRL_WEST_CORE1: *mut () = core::ptr::null_mut();
+pub static SENSOR_CTRL_WEST_CORE1: platform::OnceLock<*mut ()> = platform::OnceLock::new();
 
 /// Type alias for the motor controller.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -412,16 +412,10 @@ pub async fn bootstrap_core1_task(
         true,
     );
 
-    unsafe {
-        let motor_ptr = core::ptr::addr_of_mut!(MOTOR_CTRL_CORE1);
-        *motor_ptr = &mut motor as *mut _ as *mut ();
-        let north_ptr = core::ptr::addr_of_mut!(SENSOR_CTRL_NORTH_CORE1);
-        *north_ptr = &mut sensors.0 as *mut _ as *mut ();
-        let east_ptr = core::ptr::addr_of_mut!(SENSOR_CTRL_EAST_CORE1);
-        *east_ptr = &mut sensors.1 as *mut _ as *mut ();
-        let west_ptr = core::ptr::addr_of_mut!(SENSOR_CTRL_WEST_CORE1);
-        *west_ptr = &mut sensors.2 as *mut _ as *mut ();
-    }
+    let _ = MOTOR_CTRL_CORE1.set(&mut motor as *mut _ as *mut ());
+    let _ = SENSOR_CTRL_NORTH_CORE1.set(&mut sensors.0 as *mut _ as *mut ());
+    let _ = SENSOR_CTRL_EAST_CORE1.set(&mut sensors.1 as *mut _ as *mut ());
+    let _ = SENSOR_CTRL_WEST_CORE1.set(&mut sensors.2 as *mut _ as *mut ());
 
     controller::spawn_controllers! {
         spawner,
