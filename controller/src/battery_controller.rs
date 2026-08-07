@@ -73,6 +73,10 @@ pub enum BatteryControllerError<E> {
 }
 
 impl<E: ToPeripheralError> ToPeripheralError for BatteryControllerError<E> {
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "core1"),
+        link_section = ".data.core1_func"
+    )]
     fn to_peripheral_error(&self) -> model::types::PeripheralError {
         match self {
             Self::FuelGauge(e) => e.to_peripheral_error(),
