@@ -61,15 +61,18 @@ impl<'d> Board<'d> {
         sda.set_as_input();
         sda.set_pull(Pull::Up);
 
-        // Toggle SCL up to 9 times or until SDA releases (goes high)
-        for _ in 0..9 {
+        // Give pull-up resistor time to charge bus capacitance and settle (~8 microseconds)
+        embassy_time::block_for(embassy_time::Duration::from_micros(8));
+
+        // Toggle SCL up to 16 times or until SDA releases (goes high)
+        for _ in 0..16 {
             if sda.is_high() {
                 break;
             }
             scl.set_low();
-            cortex_m::asm::delay(200);
+            embassy_time::block_for(embassy_time::Duration::from_micros(400));
             scl.set_high();
-            cortex_m::asm::delay(200);
+            embassy_time::block_for(embassy_time::Duration::from_micros(400));
         }
     }
 
