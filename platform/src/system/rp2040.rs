@@ -325,6 +325,20 @@ macro_rules! boot_multicore {
             core::sync::atomic::AtomicU32::new(0);
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
+        fn core1_entry() -> ! {
+            unsafe {
+                core::arch::asm!(
+                    "movs r0, #0",
+                    "mov lr, r0",
+                    "ldr r0, ={entry}",
+                    "bx r0",
+                    entry = sym core1_entry_point,
+                    options(noreturn)
+                );
+            }
+        }
+
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
         fn core1_entry_point() -> ! {
             unsafe {
                 <$board>::run_executor($crate::types::CpuId::Core1);
@@ -346,7 +360,7 @@ macro_rules! boot_multicore {
                 let _ = $crate::rp2040::Rp2040Multicore.spawn_core(
                     $crate::types::CpuId::Core1,
                     &mut *stack_ptr,
-                    core1_entry_point,
+                    core1_entry,
                 );
             }
         }
