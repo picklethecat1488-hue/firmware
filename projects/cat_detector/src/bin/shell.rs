@@ -40,6 +40,7 @@ controller::declare_shell_commands! {
         System,
         I2c,
         Gpio,
+        Led,
     }
 }
 
@@ -114,6 +115,7 @@ controller::impl_shell_config! {
         SensorCtrl = SensorControllerType,
         MotorCtrl = MotorControllerType,
         SystemCtrl = SystemControllerType,
+        LedCtrl = controller::led_controller::LedController<app::LedDevice>,
     }
 
     fn trigger_core_panic(
@@ -147,6 +149,12 @@ pub static CORE1_COMMAND_CHANNEL: embassy_sync::channel::Channel<
     4,
 > = embassy_sync::channel::Channel::new();
 
+/// Static holder for LED Sender to resolve lifetimes.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub static mut LED_SENDER: Option<
+    controller::LedSender<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>,
+> = None;
+
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::task]
 #[allow(clippy::never_loop)]
@@ -168,11 +176,21 @@ async fn core1_command_task(
     }
 }
 
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[embassy_executor::task]
+async fn led_task(led_ctrl: controller::led_controller::LedController<app::LedDevice>) {
+    led_ctrl
+        .run::<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>(
+            app::LED_CHANNEL.receiver(),
+            app::TELEMETRY_CHANNEL.sender(),
+        )
+        .await;
+}
+
 /// Main application entry point for the bringup shell.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let _ = spawner;
     let p = embassy_rp::init(Default::default());
 
     // Configure hardware stack guard using Cortex-M MPU
@@ -365,6 +383,13 @@ async fn main(spawner: Spawner) {
         device: &mut system_ctrl as *mut _,
     }];
 
+    let leds = unsafe {
+        &[controller::NamedDevice {
+            name: "default",
+            device: app::LED_CTRL.as_mut().unwrap() as *mut _,
+        }]
+    };
+
     let pointers = ShellControllerPointers::<AppConfig> {
         i2c_buses,
         motors,
@@ -375,6 +400,7 @@ async fn main(spawner: Spawner) {
         thermals,
         batteries,
         system_ctrls,
+        leds,
         fs_buffer: unsafe { &mut app::FS_BUF },
     };
 

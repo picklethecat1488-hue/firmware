@@ -19,6 +19,7 @@ embedded-storage = "0.3"
 platform = { path = "../platform" }
 embassy-time = "0.4.0"
 smart-leds-trait = "0.2.1"
+fixed = "1.31.0"
 tracing-defmt = { version = "0.1.2", optional = true }
 defmt = { version = "0.3", optional = true }
 
