@@ -245,7 +245,38 @@ where
         // Log the initial state
         telemetry_client.report(state);
 
+        let mut last_logged_state = None;
+
         loop {
+            if Some(state) != last_logged_state {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                {
+                    #[derive(defmt::Format)]
+                    enum LogLedState {
+                        Off,
+                        SolidGreen,
+                        SolidBlue,
+                        SolidYellow,
+                        SolidOrange,
+                        BlinksRedFourTimes,
+                        BlinksRedOncePerThirtySeconds,
+                    }
+                    let anim = match state {
+                        SystemLedState::Off => LogLedState::Off,
+                        SystemLedState::SolidGreen => LogLedState::SolidGreen,
+                        SystemLedState::SolidBlue => LogLedState::SolidBlue,
+                        SystemLedState::SolidYellow => LogLedState::SolidYellow,
+                        SystemLedState::SolidOrange => LogLedState::SolidOrange,
+                        SystemLedState::BlinksRedFourTimes => LogLedState::BlinksRedFourTimes,
+                        SystemLedState::BlinksRedOncePerThirtySeconds => {
+                            LogLedState::BlinksRedOncePerThirtySeconds
+                        }
+                    };
+                    defmt::info!("LED Controller: Playing animation {:?}", anim);
+                }
+                last_logged_state = Some(state);
+            }
+
             match state {
                 SystemLedState::BlinksRedOncePerThirtySeconds => {
                     let now = embassy_time::Instant::now();
