@@ -6,11 +6,17 @@
 #![cfg(all(target_arch = "arm", target_os = "none"))]
 #![deny(missing_docs)]
 
+use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Flex, Pin, Pull};
 use embassy_rp::i2c::{Config as I2cConfig, I2c};
+use embassy_rp::pio::InterruptHandler;
 use embassy_rp::Peripherals;
 use platform::tracing;
 use platform::types::QueueFilesystem;
+
+bind_interrupts!(struct Irqs {
+    PIO0_IRQ_0 => InterruptHandler<embassy_rp::peripherals::PIO0>;
+});
 
 /// Helper structure containing all pre-initialized board interfaces.
 pub struct Board<'d> {
@@ -34,7 +40,7 @@ pub struct Board<'d> {
     /// West proximity sensor
     pub tof_west: peripherals::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>,
     /// Status LED driver
-    pub led_driver: peripherals::attiny816::Attiny816<platform::i2c::SharedI2cWrapper<'static>>,
+    pub led_driver: peripherals::ws2812::Ws2812<'d, embassy_rp::peripherals::PIO0, 0>,
     /// Fuel gauge alert/interrupt pin
     pub fuel_gauge_alert_pin: Flex<'d>,
     /// North proximity interrupt pin
@@ -47,52 +53,21 @@ pub struct Board<'d> {
     pub spawner: Option<embassy_executor::Spawner>,
 }
 
-struct SyncExecutor(embassy_executor::raw::Executor);
-unsafe impl Sync for SyncExecutor {}
-static mut EXECUTOR_CORE0: Option<SyncExecutor> = None;
-static mut EXECUTOR_CORE1: Option<SyncExecutor> = None;
-
 impl<'d> Board<'d> {
-    /// Perform an I2C bus recovery sequence the given bus pins.
-    fn recover_i2c_bus(scl: &mut Flex, sda: &mut Flex) {
-        scl.set_as_output();
-        scl.set_high();
-
-        sda.set_as_input();
-        sda.set_pull(Pull::Up);
-
-        // Give pull-up resistor time to charge bus capacitance and settle (~8 microseconds)
-        embassy_time::block_for(embassy_time::Duration::from_micros(8));
-
-        // Toggle SCL up to 16 times or until SDA releases (goes high)
-        for _ in 0..16 {
-            if sda.is_high() {
-                break;
-            }
-            scl.set_low();
-            embassy_time::block_for(embassy_time::Duration::from_micros(400));
-            scl.set_high();
-            embassy_time::block_for(embassy_time::Duration::from_micros(400));
-        }
-    }
-
     /// Initialize all hardware components and return the Board interface.
     ///
     /// # Arguments
     /// * `p` - The RP2040 peripheral set.
     #[tracing::instrument(level = "trace", skip(p))]
     pub fn init(p: Peripherals) -> Self {
-        // 1. Perform I2C bus unstuck on I2C0 (GP12 SDA, GP13 SCL) using Embassy Flex GPIO.
-        // This is needed to unstuck the bus on a debug reset or panic.
-        {
-            let mut scl = Flex::new(unsafe { embassy_rp::peripherals::PIN_13::steal() });
-            let mut sda = Flex::new(unsafe { embassy_rp::peripherals::PIN_12::steal() });
-            Self::recover_i2c_bus(&mut scl, &mut sda);
-
-            // Configure internal pull-ups on the pins using the Flex API
-            // before releasing them to the hardware I2C controller.
-            scl.set_pull(Pull::Up);
-            sda.set_pull(Pull::Up);
+        // 1. Perform I2C bus unstuck on I2C0 (GP12 SDA, GP13 SCL) using the platform support recovery tool.
+        unsafe {
+            use platform::rp2040::PlatformI2cRecovery as _;
+            let recovery = platform::rp2040::Rp2040I2cRecovery {
+                sda_pin: 12,
+                scl_pin: 13,
+            };
+            let _ = recovery.recover_i2c_bus();
         }
 
         let mut i2c_config = I2cConfig::default();
@@ -110,7 +85,7 @@ impl<'d> Board<'d> {
             Some(Flex::new(p.PIN_8.degrade())),
             Some(Flex::new(p.PIN_9.degrade())),
             Some(Flex::new(p.PIN_10.degrade())),
-            Some(Flex::new(p.PIN_11.degrade())),
+            None, // 11 - WS2812 LED (driven via PIO0)
             None, // 12 - I2C SDA
             None, // 13 - I2C SCL
             Some(Flex::new(p.PIN_14.degrade())),
@@ -207,7 +182,6 @@ impl<'d> Board<'d> {
         // Configure remaining drivers using local i2c before returning
         peripherals::init_max17048!(&mut i2c, &mut boot_status);
         peripherals::init_ina219!(&mut i2c, &mut boot_status);
-        peripherals::init_attiny816!(&mut i2c, &mut boot_status);
 
         // Extract pins needed for drivers/controllers
         let motor_pin_ia = gpio_pins[crate::PUMP_PIN_IA as usize]
@@ -248,20 +222,11 @@ impl<'d> Board<'d> {
         let tof_east = make_tof(crate::TOF_EAST_I2C_ADDR);
         let tof_west = make_tof(crate::TOF_WEST_I2C_ADDR);
 
-        let led_driver = peripherals::attiny816::Attiny816::new(
-            platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
-        );
+        let led_driver = peripherals::init_ws2812!(p.PIO0, p.PIN_11, &mut boot_status);
 
-        unsafe {
-            let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE0);
-            *ptr = Some(SyncExecutor(embassy_executor::raw::Executor::new(
-                !0 as *mut (),
-            )));
-        }
         let spawner = unsafe {
-            let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE0);
-            let executor_ref = (*ptr).as_ref().unwrap();
-            Some(executor_ref.0.spawner())
+            use platform::rp2040::PlatformMulticore as _;
+            Some(platform::rp2040::Rp2040Multicore.spawner(platform::types::CpuId::Core0))
         };
 
         Self {
@@ -290,26 +255,8 @@ impl<'d> Board<'d> {
     ///
     /// This function must be called from the main thread of the corresponding core and does not return.
     pub unsafe fn run_executor(cpu_id: platform::types::CpuId) -> ! {
-        use platform::system::CpuScheduler;
-        match cpu_id {
-            platform::types::CpuId::Core0 => {
-                let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE0);
-                if let Some(ref mut executor) = *ptr {
-                    let executor_static: &'static embassy_executor::raw::Executor = &executor.0;
-                    executor_static.run_loop(cpu_id);
-                }
-            }
-            platform::types::CpuId::Core1 => {
-                let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE1);
-                if let Some(ref mut executor) = *ptr {
-                    let executor_static: &'static embassy_executor::raw::Executor = &executor.0;
-                    executor_static.run_loop(cpu_id);
-                }
-            }
-        }
-        loop {
-            cortex_m::asm::nop();
-        }
+        use platform::rp2040::PlatformMulticore as _;
+        platform::rp2040::Rp2040Multicore.run_executor(cpu_id);
     }
 
     /// Initialize the Embassy executor for Core 1.
@@ -317,10 +264,8 @@ impl<'d> Board<'d> {
     /// # Safety
     /// This function must be called only once and prior to spawning Core 1 tasks.
     pub unsafe fn init_executor_core1() {
-        let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE1);
-        *ptr = Some(SyncExecutor(embassy_executor::raw::Executor::new(
-            !0 as *mut (),
-        )));
+        use platform::rp2040::PlatformMulticore as _;
+        platform::rp2040::Rp2040Multicore.init_executor(platform::types::CpuId::Core1);
     }
 
     /// Returns the Spawner for Core 1.
@@ -328,8 +273,8 @@ impl<'d> Board<'d> {
     /// # Safety
     /// This function must be called only after init_executor_core1 has been called.
     pub unsafe fn spawner_core1() -> embassy_executor::Spawner {
-        let ptr = core::ptr::addr_of!(EXECUTOR_CORE1);
-        (*ptr).as_ref().unwrap().0.spawner()
+        use platform::rp2040::PlatformMulticore as _;
+        platform::rp2040::Rp2040Multicore.spawner(platform::types::CpuId::Core1)
     }
 }
 
@@ -463,6 +408,6 @@ pub type ProximitySensorDevice =
 /// The proximity sensor interrupt pin type.
 pub type DataReadyPinType = ProximityPinWrapper;
 /// The LED driver type.
-pub type LedDevice = peripherals::attiny816::Attiny816<platform::i2c::SharedI2cWrapper<'static>>;
+pub type LedDevice = peripherals::ws2812::Ws2812<'static, embassy_rp::peripherals::PIO0, 0>;
 /// The temperature sensor type.
 pub type TempSensorDevice = SafeRp2040TempSensor;

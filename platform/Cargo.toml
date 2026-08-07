@@ -41,4 +41,6 @@ futures = "0.3"
 default = []
 tracing = ["dep:tracing-defmt"]
 dual-core = []
+rp2040 = []
+
 

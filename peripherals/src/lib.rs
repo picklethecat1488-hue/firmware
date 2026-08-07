@@ -6,8 +6,8 @@
 pub use model::interfaces::{Motor, Tickable};
 pub use model::types::MotorSpeed;
 
-/// Concrete driver implementation for the ATtiny816 custom LED driver.
-pub mod attiny816;
+/// Concrete driver implementation for the WS2812 NeoPixel driver.
+pub mod ws2812;
 
 /// Concrete driver implementation for the INA219 current monitor.
 pub mod ina219;
