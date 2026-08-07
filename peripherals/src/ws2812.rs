@@ -76,14 +76,8 @@ impl<'d, PIO: Instance, const SM: usize> LedDriver for Ws2812<'d, PIO, SM> {
     type Error = PeripheralError;
 
     fn set_color(&mut self, r: u8, g: u8, b: u8) -> Result<(), Self::Error> {
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!("ws2812::set_color({}, {}, {}) start", r, g, b);
-
         let word = (u32::from(g) << 24) | (u32::from(r) << 16) | (u32::from(b) << 8);
         self.sm.tx().push(word);
-
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!("ws2812::set_color pushed");
 
         // WS2812 bit frequency is 800 kHz.
         // 1 bit period = 1.25 microseconds (1250 ns).
@@ -92,9 +86,6 @@ impl<'d, PIO: Instance, const SM: usize> LedDriver for Ws2812<'d, PIO, SM> {
         let bit_period_ns = 1250; // 1.25 microseconds in nanoseconds
         let reset_duration = embassy_time::Duration::from_nanos(44 * bit_period_ns);
         embassy_time::block_for(reset_duration);
-
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!("ws2812::set_color end");
 
         Ok(())
     }

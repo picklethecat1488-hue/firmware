@@ -255,11 +255,15 @@ where
         let state_changed = self.last_reported_state != Some(self.state);
         if voltage_changed || state_changed {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::info!(
-                "Battery Controller: Voltage is {} mV, State: {:?}",
-                voltage,
-                self.state
-            );
+            {
+                defmt::info!(
+                    "Battery Controller: Voltage is {} mV, SoC: {}%, Charging: {}, State: {:?}",
+                    voltage,
+                    reported_soc,
+                    charger_state == model::types::ChargeState::Charging,
+                    self.state
+                );
+            }
             if voltage_changed {
                 self.last_reported_voltage = Some(voltage);
             }

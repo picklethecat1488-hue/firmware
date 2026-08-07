@@ -80,21 +80,15 @@ where
         to: (u8, u8, u8),
         delay: &mut DL,
     ) -> Result<(), PeripheralError> {
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!("fade_to start: from={:?} to={:?}", from, to);
         for step in 1..=FADE_STEPS {
             let r = (from.0 as i32 + (to.0 as i32 - from.0 as i32) * step / FADE_STEPS) as u8;
             let g = (from.1 as i32 + (to.1 as i32 - from.1 as i32) * step / FADE_STEPS) as u8;
             let b = (from.2 as i32 + (to.2 as i32 - from.2 as i32) * step / FADE_STEPS) as u8;
-            #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::info!("fade_to step {}: {} {} {}", step, r, g, b);
             self.driver
                 .set_color(r, g, b)
                 .map_err(|e| e.to_peripheral_error())?;
             delay.delay_ms(FADE_DELAY_MS).await;
         }
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!("fade_to end");
         Ok(())
     }
 
@@ -116,12 +110,6 @@ where
         use_fade: bool,
         delay: &mut DL,
     ) -> Result<(), PeripheralError> {
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!(
-            "update_color_with_delay start: pattern={:?} use_fade={}",
-            defmt::Debug2Format(&pattern),
-            use_fade
-        );
         let from = self.current_color;
         let to = match pattern {
             SystemLedState::Off => (0, 0, 0),
@@ -137,16 +125,12 @@ where
             if use_fade && (from == (0, 0, 0) || to == (0, 0, 0)) {
                 self.fade_to(from, to, delay).await?;
             } else {
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::info!("update_color_with_delay no-fade set: {:?}", to);
                 self.driver
                     .set_color(to.0, to.1, to.2)
                     .map_err(|e| e.to_peripheral_error())?;
             }
             self.current_color = to;
         }
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!("update_color_with_delay end");
         Ok(())
     }
 
@@ -172,6 +156,32 @@ where
         pattern: SystemLedState,
         delay: &mut DL,
     ) -> Result<(), PeripheralError> {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        {
+            #[derive(defmt::Format)]
+            enum LogLedState {
+                Off,
+                SolidGreen,
+                SolidBlue,
+                SolidYellow,
+                SolidOrange,
+                BlinksRedFourTimes,
+                BlinksRedOncePerThirtySeconds,
+            }
+            let anim = match pattern {
+                SystemLedState::Off => LogLedState::Off,
+                SystemLedState::SolidGreen => LogLedState::SolidGreen,
+                SystemLedState::SolidBlue => LogLedState::SolidBlue,
+                SystemLedState::SolidYellow => LogLedState::SolidYellow,
+                SystemLedState::SolidOrange => LogLedState::SolidOrange,
+                SystemLedState::BlinksRedFourTimes => LogLedState::BlinksRedFourTimes,
+                SystemLedState::BlinksRedOncePerThirtySeconds => {
+                    LogLedState::BlinksRedOncePerThirtySeconds
+                }
+            };
+            defmt::info!("LED Controller: Playing animation {:?}", anim);
+        }
+
         let use_fade = matches!(
             (self.current_state, pattern),
             (SystemLedState::Off, SystemLedState::SolidGreen)
