@@ -441,9 +441,44 @@ dummy_debug!(Gesture);
 dummy_debug!(FlashEraseTelemetry);
 dummy_debug!(ChargeState);
 dummy_debug!(Direction);
-dummy_debug!(PeripheralError);
 dummy_debug!(BootReason);
 dummy_debug!(PeriodicInterval);
 dummy_debug!(Device);
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl core::fmt::Debug for PeripheralError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::DeviceNotFound(id) => write!(f, "DeviceNotFound({:#x})", id),
+            Self::InvalidConfiguration => f.write_str("InvalidConfiguration"),
+            Self::NotImplemented => f.write_str("NotImplemented"),
+            Self::DeviceNotAvailable => f.write_str("DeviceNotAvailable"),
+            Self::Unknown => f.write_str("Unknown"),
+            Self::PinError => f.write_str("PinError"),
+            Self::I2CBusError(addr, reg) => {
+                write!(f, "I2CBusError(addr: {:#x}, reg: {:#x})", addr, reg)
+            }
+            Self::I2CArbitrationLoss(addr, reg) => {
+                write!(f, "I2CArbitrationLoss(addr: {:#x}, reg: {:#x})", addr, reg)
+            }
+            Self::I2COverrun(addr, reg) => {
+                write!(f, "I2COverrun(addr: {:#x}, reg: {:#x})", addr, reg)
+            }
+            Self::I2CNackAddress(addr, reg) => {
+                write!(f, "I2CNackAddress(addr: {:#x}, reg: {:#x})", addr, reg)
+            }
+            Self::I2CNackData(addr, reg) => {
+                write!(f, "I2CNackData(addr: {:#x}, reg: {:#x})", addr, reg)
+            }
+            Self::I2CNackUnknown(addr, reg) => {
+                write!(f, "I2CNackUnknown(addr: {:#x}, reg: {:#x})", addr, reg)
+            }
+            Self::I2COther(addr, reg) => write!(f, "I2COther(addr: {:#x}, reg: {:#x})", addr, reg),
+            Self::I2CUnknown(addr, reg) => {
+                write!(f, "I2CUnknown(addr: {:#x}, reg: {:#x})", addr, reg)
+            }
+        }
+    }
+}
 
 pub use crate::telemetry::TelemetryRecord;
