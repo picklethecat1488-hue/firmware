@@ -203,9 +203,6 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
 fn main() -> ! {
     let p = embassy_rp::init(Default::default());
 
-    // Configure hardware stack guard using Cortex-M MPU
-    app::configure_mpu_stack_guard();
-
     // Initialize board peripherals and subcontrollers
     let board = app::Board::init(p);
 

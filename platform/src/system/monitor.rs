@@ -5,6 +5,8 @@
 use core::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+use cortex_m;
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 use cortex_m_rt::exception;
 
 pub use crate::types::{CoreMonitor, CoreStatus, CpuId};
@@ -320,4 +322,37 @@ impl CoreMonitor for CoreStatus {
     fn cpuid(&self) -> CpuId {
         self.cpu_id
     }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Configures the Cortex-M MPU to guard the bottom of a core's stack.
+///
+/// Uses Region 0 to protect a 256-byte area at `guard_addr`. If the stack pointer
+/// exceeds this boundary, it immediately triggers a HardFault rather than silently
+/// corrupting memory.
+pub fn configure_mpu_stack_guard(guard_addr: u32) {
+    let cp = unsafe { cortex_m::peripheral::Peripherals::steal() };
+    let mpu = cp.MPU;
+
+    unsafe {
+        // Disable MPU during configuration
+        mpu.ctrl.write(0);
+
+        // Configure Region 0 to guard the stack bottom
+        mpu.rnr.write(0);
+        mpu.rbar.write(guard_addr);
+        // RASR attribute:
+        // - XN (bit 28): 1 (Execute-Never)
+        // - AP (bits 26:24): 000 (No Access)
+        // - TEX, C, B: 000, 1, 1 (SRAM cache/buffer attributes) -> bit 17=1, bit 16=1
+        // - SIZE (bits 5:1): 7 (256 bytes)
+        // - ENABLE (bit 0): 1
+        // Value: (1 << 28) | (1 << 17) | (1 << 16) | (7 << 1) | 1 = 0x1003_000F
+        mpu.rasr.write(0x1003_000F);
+
+        // Enable MPU with PRIVDEFENA=1 (enables default memory map for privileged access,
+        // so that the rest of flash/RAM is accessible normally).
+        mpu.ctrl.write(1 | (1 << 2));
+    }
+    defmt::info!("MPU stack guard configured at 0x{:08x}", guard_addr);
 }

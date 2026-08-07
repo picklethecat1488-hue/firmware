@@ -1,9 +1,7 @@
 #![cfg(feature = "rp2040")]
 
-use platform::rp2040::{
-    MulticoreStack, PlatformI2cRecovery, PlatformMulticore, Rp2040I2cRecovery, Rp2040Panic,
-};
-use platform::types::CpuId;
+use platform::rp2040::{PlatformI2cRecovery, PlatformMulticore, Rp2040I2cRecovery, Rp2040Panic};
+use platform::types::{CpuId, MulticoreStack};
 use std::sync::atomic::AtomicU32;
 
 #[test]
@@ -12,6 +10,16 @@ fn test_multicore_stack_layout() {
     let base_addr = &stack as *const _ as u32;
     let expected_top = base_addr + 4096;
     assert_eq!(stack.stack_top(), expected_top);
+    assert_eq!(stack.stack_bottom(), base_addr);
+}
+
+#[test]
+fn test_multicore_stack_default() {
+    let stack: MulticoreStack<1024> = Default::default();
+    let base_addr = &stack as *const _ as u32;
+    let expected_top = base_addr + 4096;
+    assert_eq!(stack.stack_top(), expected_top);
+    assert_eq!(stack.stack_bottom(), base_addr);
 }
 
 #[test]

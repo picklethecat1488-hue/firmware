@@ -83,8 +83,8 @@ pub use power_manager::PowerManager;
 pub use system::{transition_thermal_update, BatteryUpdateAction, TransitionError};
 pub use thermal_manager::ThermalManager;
 pub use types::{
-    BootTrapMask, BootTrapReason, FsBufferGuard, InvalidBootTrapMask, ThermalTransitionResult,
-    ThermalUpdateAction,
+    BootTrapMask, BootTrapReason, FsBufferGuard, InvalidBootTrapMask, MulticoreStack,
+    ThermalTransitionResult, ThermalUpdateAction,
 };
 
 /// Compile-time CBOR serialization helpers.

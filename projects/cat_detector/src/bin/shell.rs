@@ -193,9 +193,6 @@ async fn led_task(led_ctrl: controller::led_controller::LedController<app::LedDe
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
-    // Configure hardware stack guard using Cortex-M MPU
-    app::configure_mpu_stack_guard();
-
     // Initialize board peripherals using the unified board configuration
     let board = app::Board::init(p);
 
