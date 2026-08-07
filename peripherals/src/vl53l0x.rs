@@ -345,7 +345,7 @@ macro_rules! init_vl53l0x {
         if let Some(ref mut pin) = $gpio_pins[$xshut_pin as usize] {
             pin.set_high();
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            ::cortex_m::asm::delay(20_000); // Wait for sensor to boot
+            ::embassy_time::block_for(::embassy_time::Duration::from_millis(2)); // Wait for sensor to boot (min 1.2ms)
             let mut sensor = $crate::vl53l0x::Vl53l0x::new($i2c, 0x29);
             {
                 use ::model::interfaces::BootStatus;
