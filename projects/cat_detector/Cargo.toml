@@ -25,7 +25,7 @@ bench = false
 
 [dependencies]
 model = { path = "../../model" }
-platform = { path = "../../platform", features = ["dual-core"] }
+platform = { path = "../../platform", features = ["dual-core", "rp2040"] }
 peripherals = { path = "../../peripherals", features = ["mock"] }
 controller = { path = "../../controller" }
 embedded-hal = "1.0.0"

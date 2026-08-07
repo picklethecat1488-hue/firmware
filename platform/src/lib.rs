@@ -100,3 +100,8 @@ pub use directory::MAX_FILE_NAME_LEN;
 /// Consolidated conditional tracing module.
 #[path = "telemetry/tracing.rs"]
 pub mod tracing;
+
+/// RP2040 platform support module exposing traits and utilities for multicore, panic, and I2C.
+#[cfg(feature = "rp2040")]
+#[path = "system/rp2040.rs"]
+pub mod rp2040;

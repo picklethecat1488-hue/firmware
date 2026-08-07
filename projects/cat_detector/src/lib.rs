@@ -341,16 +341,16 @@ pub async fn init_controllers(board: Board<'static>) {
 /// Core 1 stack size in bytes.
 pub const CORE1_STACK_SIZE: usize = 4096;
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Core 1 default stack top address.
-pub const CORE1_DEFAULT_STACK_TOP: u32 = 0x2004_0000;
+platform::boot_multicore!(crate::Board, CORE1_STACK_SIZE);
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-static mut CORE1_STACK: embassy_rp::multicore::Stack<CORE1_STACK_SIZE> =
-    embassy_rp::multicore::Stack::new();
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-static mut CORE1_STACK_TOP: u32 = CORE1_DEFAULT_STACK_TOP;
+platform::define_panic_handler!(
+    crate::STACK_TOP,
+    { crate::FLASH_SIZE },
+    { crate::FLASH_START },
+    { crate::FLASH_END },
+    { crate::FLASH_WRITE_SIZE },
+    { crate::FLASH_ERASE_SIZE }
+);
 
 /// Global pointer to the active MotorController on Core 1 (populated during startup).
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -426,47 +426,6 @@ pub async fn bootstrap_core1_task(
             Sensor(sensors.2, SENSOR_WEST_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
         }
     }
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Boots Core 1 and starts the RAM executor.
-pub fn boot_core1(core1: embassy_rp::peripherals::CORE1) {
-    unsafe {
-        CORE1_STACK_TOP = core::ptr::addr_of!(CORE1_STACK) as u32 + CORE1_STACK_SIZE as u32;
-        crate::Board::init_executor_core1();
-    }
-
-    embassy_rp::multicore::spawn_core1(
-        core1,
-        unsafe {
-            let ptr = core::ptr::addr_of_mut!(CORE1_STACK);
-            &mut *ptr
-        },
-        move || unsafe {
-            crate::Board::run_executor(platform::types::CpuId::Core1);
-        },
-    );
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Handle a panic, performing multicore checks, resets, and delegating to flash writer.
-pub fn handle_panic(info: &core::panic::PanicInfo) -> ! {
-    let cpuid_val = unsafe { core::ptr::read_volatile(0xd0000000 as *const u32) };
-    let (cpuid, stack_top) = match cpuid_val {
-        0 => (platform::types::CpuId::Core0, STACK_TOP),
-        1 => (platform::types::CpuId::Core1, unsafe { CORE1_STACK_TOP }),
-        _ => loop {
-            cortex_m::asm::nop();
-        },
-    };
-
-    crate::handle_panic_with_sizes::<
-        { crate::FLASH_SIZE },
-        { crate::FLASH_START },
-        { crate::FLASH_END },
-        { crate::FLASH_WRITE_SIZE },
-        { crate::FLASH_ERASE_SIZE },
-    >(info, cpuid, stack_top);
 }
 
 /// The default inactivity timeout in seconds before transitioning to Sleep.
