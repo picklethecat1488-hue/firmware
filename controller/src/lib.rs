@@ -135,6 +135,21 @@ use model::types::PeripheralError;
 pub trait BlockingBatteryReader {
     /// Read voltage (mV) and state of charge (%).
     fn read_battery_blocking(&self) -> Result<(u32, u8), PeripheralError>;
+
+    /// Configure alerts on the battery.
+    fn configure_alerts(&self, _v_min_mv: u32, _v_max_mv: u32) -> Result<(), PeripheralError> {
+        Err(PeripheralError::NotImplemented)
+    }
+
+    /// Check and clear alerts on the battery.
+    fn check_and_clear_alerts(&self) -> Result<(bool, bool), PeripheralError> {
+        Err(PeripheralError::NotImplemented)
+    }
+
+    /// Read the current physical state of the alert pin (true = low/asserted, false = high/deasserted).
+    fn read_alert_pin(&self) -> Result<bool, PeripheralError> {
+        Err(PeripheralError::NotImplemented)
+    }
 }
 
 /// Trait for reading temperature blocking-ly.

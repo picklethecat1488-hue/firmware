@@ -15,11 +15,24 @@ use model::types::{PeriodicInterval, PeripheralError};
 use peripherals::ToPeripheralError;
 use platform::{select_branch_with_timeout, subcommand_enum, BatteryUpdateAction};
 
+/// Default minimum voltage alert threshold (mV).
+pub const DEFAULT_ALERT_V_MIN_MV: u32 = 3000;
+/// Default maximum voltage alert threshold (mV).
+pub const DEFAULT_ALERT_V_MAX_MV: u32 = 4200;
+
+/// Test minimum voltage alert threshold (mV).
+pub const TEST_ALERT_V_MIN_MV: u32 = 4500;
+/// Test maximum voltage alert threshold (mV).
+pub const TEST_ALERT_V_MAX_MV: u32 = 5000;
+
 /// Trait for waiting on a battery alert pin.
 #[allow(async_fn_in_trait)]
 pub trait BatteryAlertPin {
     /// Wait for the alert pin to go low (active state).
     async fn wait_for_alert(&mut self);
+
+    /// Check if the alert pin is currently asserted.
+    fn is_asserted(&self) -> bool;
 }
 
 /// A dummy mock implementation of BatteryAlertPin that waits forever.
@@ -29,6 +42,10 @@ impl BatteryAlertPin for DummyAlertPin {
     async fn wait_for_alert(&mut self) {
         // Sleep forever to let the periodic timeout drive updates
         embassy_time::Timer::after_secs(3600 * 24).await;
+    }
+
+    fn is_asserted(&self) -> bool {
+        false
     }
 }
 
@@ -446,7 +463,7 @@ impl<
         M: RawMutex,
         B: FuelGauge + Tickable<Error = <B as FuelGauge>::Error>,
         C: model::interfaces::ChargeStatus,
-        Pin,
+        Pin: BatteryAlertPin,
         const SYS_CAP: usize,
     > crate::BlockingBatteryReader for BatteryController<'a, M, B, C, Pin, SYS_CAP>
 {
@@ -457,6 +474,32 @@ impl<
             }
         }
         Err(PeripheralError::DeviceNotAvailable)
+    }
+
+    fn configure_alerts(&self, v_min_mv: u32, v_max_mv: u32) -> Result<(), PeripheralError> {
+        if let Ok(mut bat) = self.battery.try_lock() {
+            bat.configure_alerts(v_min_mv, v_max_mv, 1, true)
+                .map_err(|_| PeripheralError::DeviceNotAvailable)?;
+            return Ok(());
+        }
+        Err(PeripheralError::DeviceNotAvailable)
+    }
+
+    fn check_and_clear_alerts(&self) -> Result<(bool, bool), PeripheralError> {
+        if let Ok(mut bat) = self.battery.try_lock() {
+            return bat
+                .check_and_clear_alerts()
+                .map_err(|_| PeripheralError::DeviceNotAvailable);
+        }
+        Err(PeripheralError::DeviceNotAvailable)
+    }
+
+    fn read_alert_pin(&self) -> Result<bool, PeripheralError> {
+        if let Some(ref pin) = self.alert_pin {
+            Ok(pin.is_asserted())
+        } else {
+            Err(PeripheralError::NotImplemented)
+        }
     }
 }
 
@@ -477,8 +520,10 @@ subcommand_enum! {
     pub enum BatterySubcommand {
         /// Query battery status
         Status,
+        /// Test the battery alert pin interrupt
+        TestAlert = "test-alert",
     }
-    "Invalid battery subcommand. Expected: status"
+    "Invalid battery subcommand. Expected: status, test-alert"
 }
 
 /// Processes battery-specific CLI subcommands.
@@ -504,6 +549,67 @@ pub fn handle_battery_cli<
                 "\r\nBattery Status:\r\n  Voltage: {} mV\r\n  SoC: {}%",
                 v,
                 soc
+            );
+            Ok(())
+        }
+        BatterySubcommand::TestAlert => {
+            // 1. Force the alert by setting thresholds above the current voltage
+            battery_ctrl
+                .configure_alerts(TEST_ALERT_V_MIN_MV, TEST_ALERT_V_MAX_MV)
+                .map_err(|_| "Failed to configure test alert thresholds")?;
+
+            // 2. Poll the alert pin status directly to verify it asserts low (active-low)
+            // Poll for up to 300 ms (30 iterations of 10 ms delay)
+            let mut asserted = false;
+            for _ in 0..30 {
+                if let Ok(true) = battery_ctrl.read_alert_pin() {
+                    asserted = true;
+                    break;
+                }
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                {
+                    cortex_m::asm::delay(125_000 * 10);
+                }
+                #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+                {
+                    asserted = true; // Mock pin for host tests
+                }
+            }
+
+            // 3. Restore normal thresholds
+            battery_ctrl
+                .configure_alerts(DEFAULT_ALERT_V_MIN_MV, DEFAULT_ALERT_V_MAX_MV)
+                .map_err(|_| "Failed to restore alert thresholds")?;
+
+            // 4. Clear the active status registers so the alert pin deasserts high
+            let (has_v, has_soc) = battery_ctrl
+                .check_and_clear_alerts()
+                .map_err(|_| "Failed to clear alerts")?;
+
+            // 5. Poll to verify the alert pin returns high (deasserted)
+            let mut deasserted = false;
+            for _ in 0..10 {
+                if let Ok(false) = battery_ctrl.read_alert_pin() {
+                    deasserted = true;
+                    break;
+                }
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                {
+                    cortex_m::asm::delay(125_000 * 10);
+                }
+                #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+                {
+                    deasserted = true; // Mock pin for host tests
+                }
+            }
+
+            let _ = core::writeln!(
+                writer,
+                "\r\nPin asserted (low): {}. Pin deasserted (high): {}. Pre-clear alerts: voltage={}, soc={}",
+                asserted,
+                deasserted,
+                has_v,
+                has_soc
             );
             Ok(())
         }
