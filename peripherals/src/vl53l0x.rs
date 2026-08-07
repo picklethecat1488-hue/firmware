@@ -5,6 +5,7 @@
 use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
+use model::calibration::{Calibration, CalibrationType, TwoPointCalibration};
 use model::interfaces::{Probeable, ProximitySensor};
 use model::types::PeripheralError;
 
@@ -42,7 +43,9 @@ impl Register {
     const SYSTEM_INTERRUPT_CLEAR: u8 = 0x0B;
     const SYSTEM_THRESH_HIGH: u8 = 0x0C;
     const SYSTEM_THRESH_LOW: u8 = 0x0E;
-    const RESULT_RANGE_STATUS: u8 = 0x1E;
+    const RESULT_INTERRUPT_STATUS: u8 = 0x13;
+    const RESULT_RANGE_STATUS: u8 = 0x14;
+    const RESULT_RANGE_VAL: u8 = 0x1E;
     const FINAL_RANGE_CONFIG_TIMEOUT_MACROP_HI: u8 = 0x71;
     const I2C_SLAVE_DEVICE_ADDRESS: u8 = 0x8A;
     const IDENTIFICATION_MODEL_ID: u8 = 0xC0;
@@ -55,7 +58,7 @@ pub struct Vl53l0x<I> {
     threshold_mm: u16,
     hysteresis_mm: u16,
     /// Two-point calibration values mapping raw sensor readings.
-    calibration: model::calibration::TwoPointCalibration<u16>,
+    calibration: TwoPointCalibration<u16>,
 }
 
 impl<I: I2c> Vl53l0x<I> {
@@ -66,7 +69,7 @@ impl<I: I2c> Vl53l0x<I> {
             address,
             threshold_mm: 300,
             hysteresis_mm: 50,
-            calibration: model::calibration::TwoPointCalibration::new(0, 100),
+            calibration: TwoPointCalibration::new(0, 100),
         }
     }
 
@@ -122,7 +125,7 @@ impl<I: I2c> Vl53l0x<I> {
     }
 
     /// Gets the current calibration.
-    pub fn calibration(&self) -> model::calibration::TwoPointCalibration<u16> {
+    pub fn calibration(&self) -> TwoPointCalibration<u16> {
         self.calibration
     }
 
@@ -247,6 +250,47 @@ impl<I: I2c> Vl53l0x<I> {
         }
         res
     }
+
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
+    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+        // Poll for measurement completion
+        // Set a timeout of 100ms (100 * 1ms)
+        for _ in 0..100 {
+            let mut status_13 = [0u8; 1];
+            self.i2c
+                .write_read(
+                    self.address,
+                    &[Register::RESULT_INTERRUPT_STATUS],
+                    &mut status_13,
+                )
+                .map_err(|e| {
+                    e.to_i2c_error(
+                        self.address as u16,
+                        Register::RESULT_INTERRUPT_STATUS as u16,
+                    )
+                })?;
+
+            let mut status_14 = [0u8; 1];
+            self.i2c
+                .write_read(
+                    self.address,
+                    &[Register::RESULT_RANGE_STATUS],
+                    &mut status_14,
+                )
+                .map_err(|e| {
+                    e.to_i2c_error(self.address as u16, Register::RESULT_RANGE_STATUS as u16)
+                })?;
+
+            if (status_13[0] & 0x07) != 0 || (status_14[0] & 0x01) != 0 {
+                return Ok(());
+            }
+            ::embassy_time::block_for(::embassy_time::Duration::from_millis(1));
+        }
+        Err(PeripheralError::DeviceNotAvailable)
+    }
 }
 
 impl<I: I2c> ProximitySensor for Vl53l0x<I> {
@@ -264,12 +308,15 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
                 .write(self.address, &[Register::SYSTEM_START, 0x01])
                 .map_err(|e| e.to_i2c_error(self.address as u16, Register::SYSTEM_START as u16))?;
 
+            // Wait for measurement to complete
+            self.wait_for_measurement()?;
+
             // Read 16-bit range result from register 0x1E (High Byte) and 0x1F (Low Byte)
             let mut buf = [0u8; 2];
             self.i2c
-                .write_read(self.address, &[Register::RESULT_RANGE_STATUS], &mut buf)
+                .write_read(self.address, &[Register::RESULT_RANGE_VAL], &mut buf)
                 .map_err(|e| {
-                    e.to_i2c_error(self.address as u16, Register::RESULT_RANGE_STATUS as u16)
+                    e.to_i2c_error(self.address as u16, Register::RESULT_RANGE_VAL as u16)
                 })?;
             let mut distance = u16::from_be_bytes(buf);
 
@@ -289,11 +336,45 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
         }
         res
     }
+
+    fn read_distance_raw(&mut self) -> Result<u16, Self::Error> {
+        let res = (|| {
+            // Trigger a measurement (write 0x01 to register 0x00 for System Start)
+            self.i2c
+                .write(self.address, &[Register::SYSTEM_START, 0x01])
+                .map_err(|e| e.to_i2c_error(self.address as u16, Register::SYSTEM_START as u16))?;
+
+            // Wait for measurement to complete
+            self.wait_for_measurement()?;
+
+            // Read 16-bit range result from register 0x1E (High Byte) and 0x1F (Low Byte)
+            let mut buf = [0u8; 2];
+            self.i2c
+                .write_read(self.address, &[Register::RESULT_RANGE_VAL], &mut buf)
+                .map_err(|e| {
+                    e.to_i2c_error(self.address as u16, Register::RESULT_RANGE_VAL as u16)
+                })?;
+            let distance = u16::from_be_bytes(buf);
+
+            // Clear interrupt status so the pin can trigger again (write 0x01 to register 0x0B)
+            self.clear_interrupt()?;
+
+            Ok(distance)
+        })();
+        if let Err(ref _e) = res {
+            log_warn!(
+                "{}: Failed to read raw distance at address 0x{:02x}: {:?}",
+                self.address,
+                defmt::Debug2Format(_e)
+            );
+        }
+        res
+    }
 }
 
-impl<I: I2c> model::calibration::Calibration for Vl53l0x<I> {
-    fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
-        if let model::calibration::CalibrationType::ProximityCal(cal) = calibration {
+impl<I: I2c> Calibration for Vl53l0x<I> {
+    fn set_calibration(&mut self, calibration: CalibrationType) {
+        if let CalibrationType::ProximityCal(cal) = calibration {
             if self.threshold_mm > cal.low + THRESHOLD_ERROR_MM {
                 self.calibration = cal;
             } else {
@@ -305,6 +386,10 @@ impl<I: I2c> model::calibration::Calibration for Vl53l0x<I> {
                 );
             }
         }
+    }
+
+    fn get_calibration(&self) -> Option<CalibrationType> {
+        Some(CalibrationType::ProximityCal(self.calibration))
     }
 }
 

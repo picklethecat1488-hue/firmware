@@ -73,6 +73,7 @@ macro_rules! spawn_controllers {
         controllers: {
             $(
                 $name:ident ( $controller:expr, $rx:ident $(, $extra_rx:expr)* )
+                $( register: $register:expr )?
                 , generics: ($($gen:tt)*)
             ),* $(,)?
         }
@@ -96,6 +97,7 @@ macro_rules! spawn_controllers {
                 $telemetry,
                 ($( $extra_rx ),*),
                 ($($gen)*)
+                $(, register: $register)?
             );
         )*
     };
@@ -106,6 +108,7 @@ macro_rules! spawn_controllers {
         controllers: {
             $(
                 $name:ident ( $controller:expr, $rx:ident $(, $extra_rx:expr)* )
+                $( register: $register:expr )?
                 , generics: ($($gen:tt)*)
             ),* $(,)?
         }
@@ -116,6 +119,7 @@ macro_rules! spawn_controllers {
             controllers: {
                 $(
                     $name ( $controller, $rx $(, $extra_rx)* )
+                    $( register: $register )?
                     , generics: ($($gen)*)
                 ),*
             }
@@ -162,6 +166,24 @@ pub trait BlockingThermalReader {
 pub trait BlockingProximityReader {
     /// Read distance in millimeters.
     fn read_distance_blocking(&mut self) -> Result<u16, PeripheralError>;
+
+    /// Read raw distance in millimeters (ignoring calibration mapping).
+    fn read_raw_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
+        self.read_distance_blocking()
+    }
+
+    /// Get the latest cached proximity distance in millimeters.
+    fn latest_distance(&self) -> u16 {
+        1000
+    }
+
+    /// Send a command to the sensor controller background task.
+    fn send_command(
+        &mut self,
+        _cmd: crate::sensor_controller::SensorCommand,
+    ) -> Result<(), PeripheralError> {
+        Err(PeripheralError::NotImplemented)
+    }
 }
 
 impl BlockingBatteryReader for () {
@@ -199,14 +221,14 @@ pub trait BlockingMotorWriter {
     /// Set motor speed.
     fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError>;
     /// Stop the motor.
-    fn stop(&mut self) -> Result<(), PeripheralError>;
+    fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError>;
 }
 
 impl BlockingMotorWriter for () {
     fn set_motor_speed(&mut self, _: i8) -> Result<(), PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
-    fn stop(&mut self) -> Result<(), PeripheralError> {
+    fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
 }
@@ -251,7 +273,7 @@ impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: u
         self.try_send(MotorCommand::SetSpeed(motor_speed))
             .map_err(|_| PeripheralError::DeviceNotAvailable)
     }
-    fn stop(&mut self) -> Result<(), PeripheralError> {
+    fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError> {
         self.try_send(MotorCommand::Stop)
             .map_err(|_| PeripheralError::DeviceNotAvailable)
     }

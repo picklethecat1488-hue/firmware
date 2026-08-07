@@ -15,7 +15,69 @@ pub type {{ ctrl.name }}Receiver<MutexRaw, const N: usize{{ ctrl.default_capacit
 {% for ctrl in controllers %}
 /// Task runner macro for the {{ ctrl.name }} controller.
 #[macro_export]
+#[allow(clippy::crate_in_macro_def)]
 macro_rules! run_{{ ctrl.name|lower }}_task {
+    // Branch with register
+    (
+        $spawner:expr,
+        $task_module:ident,
+        $controller:expr
+        {% for param in ctrl.macro_params_slice() %}
+            , {{ param|safe }}
+        {% endfor %}
+        , register: $register:expr
+    ) => {
+        #[allow(non_snake_case)]
+        mod $task_module {
+            use super::*;
+            #[cfg(feature = "tracing")]
+            use $crate::tracing::tracing_defmt;
+
+            {% for attr in ctrl.attributes_slice() %}
+                {{ attr|safe }}
+            {% endfor %}
+            #[ $crate::tracing::instrument(
+                name = stringify!($task_module),
+                level = "info",
+                skip(
+                    c
+                    {% for p in ctrl.extra_params_inferred() %}
+                        , {{ p.name }}
+                    {% endfor %}
+                )
+            ) ]
+            #[embassy_executor::task]
+            #[allow(unreachable_code)]
+            pub async fn task(
+                mut c: {{ ctrl.controller_type|safe }}
+                {% for p in ctrl.extra_params_inferred() %}
+                    , {{ p.name }}: {{ p.type|safe }}
+                {% endfor %}
+                , register: Option<&'static ::platform::OnceLock<*mut ()>>
+            ) {
+                if let Some(r) = register {
+                    let _ = r.set(&mut c as *mut _ as *mut ());
+                }
+                c.run(
+                    {%- for p in ctrl.extra_params_inferred() -%}
+                        {{ p.name }}{% if !loop.last %}, {% endif %}
+                    {%- endfor -%}
+                ).await;
+            }
+        }
+
+        $spawner
+            .spawn($task_module::task(
+                $controller
+                {% for arg in ctrl.task_call_args_slice() %}
+                    , {{ arg|safe }}
+                {% endfor %}
+                , Some(&$register)
+            ))
+            .unwrap();
+    };
+
+    // Branch without register
     (
         $spawner:expr,
         $task_module:ident,
@@ -50,7 +112,11 @@ macro_rules! run_{{ ctrl.name|lower }}_task {
                 {% for p in ctrl.extra_params_inferred() %}
                     , {{ p.name }}: {{ p.type|safe }}
                 {% endfor %}
+                , register: Option<&'static ::platform::OnceLock<*mut ()>>
             ) {
+                if let Some(r) = register {
+                    let _ = r.set(&mut c as *mut _ as *mut ());
+                }
                 c.run(
                     {%- for p in ctrl.extra_params_inferred() -%}
                         {{ p.name }}{% if !loop.last %}, {% endif %}
@@ -65,6 +131,7 @@ macro_rules! run_{{ ctrl.name|lower }}_task {
                 {% for arg in ctrl.task_call_args_slice() %}
                     , {{ arg|safe }}
                 {% endfor %}
+                , None
             ))
             .unwrap();
     };
@@ -76,6 +143,41 @@ macro_rules! run_{{ ctrl.name|lower }}_task {
 #[doc(hidden)]
 macro_rules! spawn_single_controller {
 {% for ctrl in controllers %}
+    // Branch with register
+    (
+        $spawner:expr,
+        {{ ctrl.name }},
+        $controller:expr,
+        $rx:ident,
+        $telemetry:expr,
+        (
+            {% for rx in ctrl.spawn_extra_rxs_slice() %}
+                {{ rx }}:expr {% if !loop.last %}, {% endif %}
+            {% endfor %}
+        ),
+        (
+            {% for gen in ctrl.macro_generics_slice() %}
+                {{ gen }} {% if !loop.last %}, {% endif %}
+            {% endfor %}
+        ),
+        register: $register:expr
+    ) => {
+        #[allow(unused_parens)]
+        $crate::run_{{ ctrl.name|lower }}_task!(
+            $spawner,
+            $rx,
+            $controller
+            {% for arg in ctrl.spawn_call_args_slice() %}
+                , {{ arg|safe }}
+            {% endfor %}
+            {% for gen in ctrl.spawn_generics_slice() %}
+                , {{ gen|safe }}
+            {% endfor %}
+            , register: $register
+        );
+    };
+
+    // Branch without register
     (
         $spawner:expr,
         {{ ctrl.name }},

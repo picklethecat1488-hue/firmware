@@ -384,7 +384,7 @@ where
         link_section = ".data.core1_func"
     )]
     pub async fn run<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex, const N: usize>(
-        mut self,
+        &mut self,
         command_rx: MotorReceiver<MutexRaw, N>,
         telemetry_tx: TelemetrySender<
             CriticalSectionRawMutex,
@@ -495,10 +495,6 @@ where
     <M as Motor>::Error: ToPeripheralError,
     <M as Tickable>::Error: ToPeripheralError,
 {
-    #[cfg_attr(
-        all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.core1_func"
-    )]
     fn read_current_ma_blocking(&mut self) -> Result<i32, PeripheralError> {
         self.read_torque_ma()
     }
@@ -510,21 +506,13 @@ where
     <M as Motor>::Error: ToPeripheralError,
     <M as Tickable>::Error: ToPeripheralError,
 {
-    #[cfg_attr(
-        all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.core1_func"
-    )]
     fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
         let motor_speed = MotorSpeed::new(speed).ok_or(PeripheralError::InvalidConfiguration)?;
         let _ = self.motor.set_speed(motor_speed);
         Ok(())
     }
 
-    #[cfg_attr(
-        all(target_arch = "arm", feature = "motor-core"),
-        link_section = ".data.core1_func"
-    )]
-    fn stop(&mut self) -> Result<(), PeripheralError> {
+    fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError> {
         let _ = self.motor.stop();
         Ok(())
     }
@@ -595,7 +583,9 @@ pub fn handle_motor_cli<
             let _ = core::writeln!(writer, "\r\nMotor current: {} mA", current);
             Ok(())
         }
-        MotorSubcommand::Stop => motor_ctrl.stop().map_err(|_| "Failed to stop motor"),
+        MotorSubcommand::Stop => motor_ctrl
+            .stop_motor_blocking()
+            .map_err(|_| "Failed to stop motor"),
         MotorSubcommand::Calibrate => {
             let state_str = arg1.ok_or("Missing calibration state")?;
             let state = match state_str {
@@ -608,24 +598,17 @@ pub fn handle_motor_cli<
             let max_rpm = arg2.and_then(|s| s.parse::<u32>().ok());
             let rpm_limit = arg3.and_then(|s| s.parse::<u32>().ok());
 
-            let motor = resolver.resolve_motor(None)?;
             let _ = core::writeln!(writer, "\r\nStarting motor for calibration...");
-            let _ = motor.set_speed(model::types::MotorSpeed::MAX);
+            let _ = motor_ctrl.set_motor_speed(100);
 
             let _ = core::writeln!(writer, "Waiting 1 second for motor to ramp up...");
             embassy_time::block_for(embassy_time::Duration::from_millis(1000));
 
-            let i2c = resolver.resolve_i2c(None)?;
-            let mut current_sensor = peripherals::ina219::Ina219::new(i2c);
-            current_sensor
-                .init()
-                .map_err(|_| "Failed to initialize INA219 current sensor")?;
-
             let mut sum = 0;
             for _ in 0..5 {
-                let current_val = current_sensor
-                    .read_current_ma()
-                    .map_err(|_| "Failed to read current from INA219 current sensor")?;
+                let current_val = motor_ctrl
+                    .read_current_ma_blocking()
+                    .map_err(|_| "Failed to read current from motor controller")?;
                 sum += current_val;
                 embassy_time::block_for(embassy_time::Duration::from_millis(100));
             }
@@ -644,7 +627,7 @@ pub fn handle_motor_cli<
                 name,
                 current
             );
-            let _ = motor.stop();
+            let _ = motor_ctrl.stop_motor_blocking();
 
             let (map_fs, flash_ptr) = match resolver.resolve_partition(partition_name)? {
                 crate::ResolvedPartition::Map(fs, ptr) => (fs, ptr),

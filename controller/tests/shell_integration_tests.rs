@@ -171,6 +171,10 @@ impl BlockingProximityReader for MockSensorCtrl {
     fn read_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
         Ok(self.distance)
     }
+
+    fn latest_distance(&self) -> u16 {
+        self.distance
+    }
 }
 
 struct MockMotorCtrl {
@@ -186,7 +190,7 @@ impl BlockingMotorWriter for MockMotorCtrl {
         self.speed.set(speed);
         Ok(())
     }
-    fn stop(&mut self) -> Result<(), PeripheralError> {
+    fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError> {
         self.speed.set(0);
         let _ = MOTOR_CHANNEL.try_send(MotorCommand::Stop);
         Ok(())

@@ -186,4 +186,9 @@ pub enum CalibrationType {
 pub trait Calibration {
     /// Sets the calibration parameters. By default, this does nothing (no-op).
     fn set_calibration(&mut self, _calibration: CalibrationType) {}
+
+    /// Gets the current calibration parameters. By default, this returns None.
+    fn get_calibration(&self) -> Option<CalibrationType> {
+        None
+    }
 }

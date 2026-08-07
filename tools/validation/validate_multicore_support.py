@@ -6,6 +6,7 @@ import tree_sitter_rust as tsrust
 from tree_sitter import Language, Parser
 from colorama import init, Fore, Style
 from halo import Halo
+import glob
 
 init(autoreset=True)
 
@@ -13,6 +14,9 @@ RUST_LANGUAGE = Language(tsrust.language())
 
 # Whitelist of features to check for RAM linker attributes
 SUPPORTED_FEATURES = ["motor-core", "sensors-core", "core1"]
+
+# Boot entry points whitelisted to bypass cross-core caller checks
+CROSS_CORE_FUNCS = {"new", "init", "bootstrap_core1_task"}
 
 
 def get_called_function_name(call_node):
@@ -338,6 +342,9 @@ def validate_call_graph(funcs_list, roots, feature, root_files=None):
 
 def validate_multicore_support():
     scan_dirs = ["controller/src", "peripherals/src"]
+    for p in glob.glob("projects/*/src"):
+        scan_dirs.append(p)
+
     all_functions = []
     all_controller_structs = []
 
@@ -402,6 +409,32 @@ def validate_multicore_support():
                     instantiation_errors += 1
 
     total_errors += instantiation_errors
+
+    # Validate that Core 0 context/CLI functions do not call Core 1 functions directly
+    cross_core_errors = 0
+    core1_func_names = {f["name"] for f in all_functions if len(f["ram_features"]) > 0}
+
+    for func in all_functions:
+        filepath = func["filepath"]
+        func_name = func["name"]
+        # Check if this function runs on Core 0
+        is_core0 = ("projects/" in filepath and "/src/bin/" in filepath) or (
+            filepath.startswith("controller/src/") and func_name.startswith("handle_") and func_name.endswith("_cli")
+        )
+        if is_core0:
+            for called in func["calls"]:
+                if called in core1_func_names and called not in CROSS_CORE_FUNCS:
+                    print(
+                        f"{Fore.RED}ERROR:{Style.RESET_ALL} Core 0 function '{func_name}' in {filepath}:{func['line']} "
+                        f"calls Core 1 function/method '{called}' (decorated with core1_func)!"
+                    )
+                    print(
+                        f"  Expected: Core 0 code must not directly invoke Core 1 functions. Use message channels or cached state."
+                    )
+                    print()
+                    cross_core_errors += 1
+
+    total_errors += cross_core_errors
 
     if total_errors > 0:
         print(f"{Fore.RED}Validation FAILED: Found {total_errors} errors and {total_warnings} warnings.")

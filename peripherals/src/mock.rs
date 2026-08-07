@@ -292,6 +292,10 @@ impl ProximitySensor for MockProximitySensor {
             Ok(self.distance_mm)
         }
     }
+
+    fn read_distance_raw(&mut self) -> Result<u16, Self::Error> {
+        self.read_distance_mm()
+    }
 }
 
 impl Probeable for MockProximitySensor {
@@ -335,6 +339,10 @@ impl ProximitySensor for DummyProximitySensor {
 
     fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
         Ok(self.distance_mm)
+    }
+
+    fn read_distance_raw(&mut self) -> Result<u16, Self::Error> {
+        self.read_distance_mm()
     }
 }
 
