@@ -116,12 +116,6 @@ where
         use_fade: bool,
         delay: &mut DL,
     ) -> Result<(), PeripheralError> {
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!(
-            "update_color_with_delay start: pattern={:?} use_fade={}",
-            defmt::Debug2Format(&pattern),
-            use_fade
-        );
         let from = self.current_color;
         let to = match pattern {
             SystemLedState::Off => (0, 0, 0),
@@ -137,16 +131,12 @@ where
             if use_fade && (from == (0, 0, 0) || to == (0, 0, 0)) {
                 self.fade_to(from, to, delay).await?;
             } else {
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::info!("update_color_with_delay no-fade set: {:?}", to);
                 self.driver
                     .set_color(to.0, to.1, to.2)
                     .map_err(|e| e.to_peripheral_error())?;
             }
             self.current_color = to;
         }
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        defmt::info!("update_color_with_delay end");
         Ok(())
     }
 
