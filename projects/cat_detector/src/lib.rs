@@ -339,7 +339,7 @@ pub async fn init_controllers(board: Board<'static>) {
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Core 1 stack size in bytes.
-pub const CORE1_STACK_SIZE: usize = 4096;
+pub const CORE1_STACK_SIZE: usize = 16384;
 
 platform::boot_multicore!(crate::Board, CORE1_STACK_SIZE);
 
