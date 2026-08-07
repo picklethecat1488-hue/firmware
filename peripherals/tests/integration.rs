@@ -606,6 +606,7 @@ fn test_macro_init_max17048() {
     // 1. Happy case
     let mut reads = std::collections::VecDeque::new();
     reads.push_back(vec![0x00, 0x10]); // VRESET matching (val & 0x00F0) == 0x0010
+    reads.push_back(vec![0x00, 0x00]); // STATUS register with RI clear (0x0000)
     let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
     let mut i2c = ProbeableMockI2c { reads, writes };
 

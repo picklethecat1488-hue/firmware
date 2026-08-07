@@ -19,6 +19,7 @@ struct Register;
 impl Register {
     const VCELL: u8 = 0x02;
     const SOC: u8 = 0x04;
+    const MODE: u8 = 0x06;
     const CONFIG: u8 = 0x0C;
     const VALRT: u8 = 0x14;
     const CRATE: u8 = 0x16;
@@ -51,6 +52,26 @@ impl<I: I2c> Max17048<I> {
     /// Creates a new MAX17048 driver instance with the default I2C address (0x36).
     pub const fn new(i2c: I) -> Self {
         Self { i2c, address: 0x36 }
+    }
+
+    /// Initialize the fuel gauge.
+    /// Checks the RI (Reset Indicator) bit in STATUS. If set, clears RI and triggers a Quick-Start.
+    #[tracing::instrument(level = "trace")]
+    pub fn init(&mut self) -> Result<(), PeripheralError> {
+        let status = self.read_register(Register::STATUS)?;
+        // RI is bit 8 (0x0100)
+        if (status & 0x0100) != 0 {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::info!("MAX17048: Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.");
+
+            // Clear RI bit by writing 0x00FF (clearing bit 8, keeping lower byte 0xFF)
+            self.write_register(Register::STATUS, status & !0x0100)?;
+
+            // Trigger Quick-Start by writing 0x4000 to MODE
+            let mode = self.read_register(Register::MODE)?;
+            self.write_register(Register::MODE, mode | 0x4000)?;
+        }
+        Ok(())
     }
 
     /// Read a 16-bit register value from the device.
@@ -202,6 +223,9 @@ impl<I: I2c> ChargeStatus for Max17048<I> {
         let crate_val = self.read_register(Register::CRATE)? as i16;
         let status = self.read_register(Register::STATUS)?;
 
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        defmt::info!("MAX17048: CRATE={}, STATUS=0x{:04X}", crate_val, status);
+
         if (status & StatusMask::VH) != 0 {
             // VH (Voltage High) alert indicates a recoverable fault (e.g. overvoltage condition)
             Ok(ChargeState::RecoverableFault)
@@ -263,9 +287,12 @@ macro_rules! init_max17048 {
                 let pe = e.to_peripheral_error();
                 $boot_status.record_error(pe);
             }
-            if let Err(ref e) = fuel_gauge.reset() {
+            if let Err(ref e) = fuel_gauge.init() {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::warn!("MAX17048: Reset failed: {:?}", defmt::Debug2Format(e));
+                defmt::warn!(
+                    "MAX17048: Initialization failed: {:?}",
+                    defmt::Debug2Format(e)
+                );
                 let pe = e.to_peripheral_error();
                 $boot_status.record_error(pe);
             }
