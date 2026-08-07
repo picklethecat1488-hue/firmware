@@ -11,14 +11,38 @@ use model::telemetry::TelemetryClient;
 use model::types::PeripheralError;
 use model::types::SystemLedState;
 use peripherals::ToPeripheralError;
+use platform::subcommand_enum;
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-async fn sleep_ms(ms: u32) {
-    embassy_time::Timer::after_millis(ms as u64).await;
+/// Trait to abstract delays for LED patterns (blocking vs async).
+#[allow(async_fn_in_trait)]
+pub trait LedDelay {
+    /// Delay for a number of milliseconds.
+    async fn delay_ms(&mut self, ms: u32);
 }
 
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
-async fn sleep_ms(_ms: u32) {}
+/// Delay implementation for asynchronous execution.
+pub struct AsyncDelay;
+
+impl LedDelay for AsyncDelay {
+    async fn delay_ms(&mut self, ms: u32) {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        embassy_time::Timer::after_millis(ms as u64).await;
+        #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+        let _ = ms;
+    }
+}
+
+/// Delay implementation for synchronous blocking execution.
+pub struct BlockingDelay;
+
+impl LedDelay for BlockingDelay {
+    async fn delay_ms(&mut self, ms: u32) {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        embassy_time::block_for(embassy_time::Duration::from_millis(ms as u64));
+        #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+        let _ = ms;
+    }
+}
 
 const FADE_STEPS: i32 = 10;
 const FADE_DELAY_MS: u32 = 20;
@@ -50,10 +74,11 @@ where
     }
 
     /// Fades the LED color from one RGB color to another.
-    async fn fade_to(
+    async fn fade_to<DL: LedDelay>(
         &mut self,
         from: (u8, u8, u8),
         to: (u8, u8, u8),
+        delay: &mut DL,
     ) -> Result<(), PeripheralError> {
         for step in 1..=FADE_STEPS {
             let r = (from.0 as i32 + (to.0 as i32 - from.0 as i32) * step / FADE_STEPS) as u8;
@@ -62,7 +87,7 @@ where
             self.driver
                 .set_color(r, g, b)
                 .map_err(|e| e.to_peripheral_error())?;
-            sleep_ms(FADE_DELAY_MS).await;
+            delay.delay_ms(FADE_DELAY_MS).await;
         }
         Ok(())
     }
@@ -72,6 +97,18 @@ where
         &mut self,
         pattern: SystemLedState,
         use_fade: bool,
+    ) -> Result<(), PeripheralError> {
+        let mut delay = AsyncDelay;
+        self.update_color_with_delay(pattern, use_fade, &mut delay)
+            .await
+    }
+
+    /// Updates the LED color based on the target pattern, applying fade transitions if enabled, with a custom delay.
+    pub async fn update_color_with_delay<DL: LedDelay>(
+        &mut self,
+        pattern: SystemLedState,
+        use_fade: bool,
+        delay: &mut DL,
     ) -> Result<(), PeripheralError> {
         let from = self.current_color;
         let to = match pattern {
@@ -86,7 +123,7 @@ where
 
         if from != to {
             if use_fade && (from == (0, 0, 0) || to == (0, 0, 0)) {
-                self.fade_to(from, to).await?;
+                self.fade_to(from, to, delay).await?;
             } else {
                 self.driver
                     .set_color(to.0, to.1, to.2)
@@ -104,6 +141,21 @@ where
         skip(pattern)
     )]
     pub async fn set_pattern(&mut self, pattern: SystemLedState) -> Result<(), PeripheralError> {
+        let mut delay = AsyncDelay;
+        self.set_pattern_with_delay(pattern, &mut delay).await
+    }
+
+    /// Sets and executes the LED color pattern with a custom delay.
+    #[crate::tracing::instrument(
+        name = "led_controller::set_pattern_with_delay",
+        level = "info",
+        skip(pattern, delay)
+    )]
+    pub async fn set_pattern_with_delay<DL: LedDelay>(
+        &mut self,
+        pattern: SystemLedState,
+        delay: &mut DL,
+    ) -> Result<(), PeripheralError> {
         let use_fade = matches!(
             (self.current_state, pattern),
             (SystemLedState::Off, SystemLedState::SolidGreen)
@@ -116,7 +168,37 @@ where
                 | (SystemLedState::SolidOrange, SystemLedState::Off)
         );
         self.current_state = pattern;
-        self.update_color(pattern, use_fade).await
+
+        match pattern {
+            SystemLedState::BlinksRedFourTimes => {
+                for _ in 0..4 {
+                    self.update_color_with_delay(SystemLedState::BlinksRedFourTimes, false, delay)
+                        .await?;
+                    delay.delay_ms(150).await;
+                    self.update_color_with_delay(SystemLedState::Off, false, delay)
+                        .await?;
+                    delay.delay_ms(150).await;
+                }
+                self.current_state = SystemLedState::Off;
+            }
+            SystemLedState::BlinksRedOncePerThirtySeconds => {
+                self.update_color_with_delay(
+                    SystemLedState::BlinksRedOncePerThirtySeconds,
+                    false,
+                    delay,
+                )
+                .await?;
+                delay.delay_ms(500).await;
+                self.update_color_with_delay(SystemLedState::Off, false, delay)
+                    .await?;
+                self.current_state = SystemLedState::Off;
+            }
+            _ => {
+                self.update_color_with_delay(pattern, use_fade, delay)
+                    .await?;
+            }
+        }
+        Ok(())
     }
 
     /// Runs the controller's command processing loop.
@@ -132,6 +214,7 @@ where
         let mut state = SystemLedState::Off;
         let mut blink_timer = embassy_time::Instant::now();
         let mut led_on = false;
+        let mut delay = AsyncDelay;
 
         // Log the initial state
         telemetry_client.report(state);
@@ -146,13 +229,13 @@ where
                         blink_timer + embassy_time::Duration::from_secs(30)
                     };
 
-                    let delay = if next_change > now {
+                    let delay_dur = if next_change > now {
                         next_change - now
                     } else {
                         embassy_time::Duration::from_millis(0)
                     };
 
-                    match embassy_time::with_timeout(delay, command_rx.receive()).await {
+                    match embassy_time::with_timeout(delay_dur, command_rx.receive()).await {
                         Ok(new_cmd) => {
                             state = new_cmd;
                             led_on = false;
@@ -163,16 +246,18 @@ where
                             blink_timer = embassy_time::Instant::now();
                             if led_on {
                                 if let Err(e) = self
-                                    .update_color(
+                                    .update_color_with_delay(
                                         SystemLedState::BlinksRedOncePerThirtySeconds,
                                         false,
+                                        &mut delay,
                                     )
                                     .await
                                 {
                                     telemetry_client.report_error(e);
                                 }
-                            } else if let Err(e) =
-                                self.update_color(SystemLedState::Off, false).await
+                            } else if let Err(e) = self
+                                .update_color_with_delay(SystemLedState::Off, false, &mut delay)
+                                .await
                             {
                                 telemetry_client.report_error(e);
                             }
@@ -183,16 +268,23 @@ where
                     // One-shot blinking pattern: Blink 4 times.
                     for _ in 0..4 {
                         if let Err(e) = self
-                            .update_color(SystemLedState::BlinksRedFourTimes, false)
+                            .update_color_with_delay(
+                                SystemLedState::BlinksRedFourTimes,
+                                false,
+                                &mut delay,
+                            )
                             .await
                         {
                             telemetry_client.report_error(e);
                         }
-                        sleep_ms(150).await;
-                        if let Err(e) = self.update_color(SystemLedState::Off, false).await {
+                        delay.delay_ms(150).await;
+                        if let Err(e) = self
+                            .update_color_with_delay(SystemLedState::Off, false, &mut delay)
+                            .await
+                        {
                             telemetry_client.report_error(e);
                         }
-                        sleep_ms(150).await;
+                        delay.delay_ms(150).await;
                     }
                     // After blinking 4 times, reset state to Off or wait for next command
                     state = SystemLedState::Off;
@@ -211,12 +303,15 @@ where
                             | (SystemLedState::SolidYellow, SystemLedState::Off)
                             | (SystemLedState::SolidOrange, SystemLedState::Off)
                     );
-                    if let Err(e) = self.update_color(state, use_fade).await {
+                    self.current_state = state;
+                    if let Err(e) = self
+                        .update_color_with_delay(state, use_fade, &mut delay)
+                        .await
+                    {
                         telemetry_client.report_error(e);
                     }
                     let new_cmd = command_rx.receive().await;
                     state = new_cmd;
-                    self.current_state = state;
                 }
             }
 
@@ -313,5 +408,71 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
                 let _ = led_tx.try_send(SystemLedState::BlinksRedFourTimes);
             }
         }
+    }
+}
+
+subcommand_enum! {
+    /// LED subcommands for CLI processing.
+    pub enum LedSubcommand {
+        /// Turn LED off
+        Off = "off",
+        /// Set solid green
+        Green = "green",
+        /// Set solid blue
+        Blue = "blue",
+        /// Set solid yellow
+        Yellow = "yellow",
+        /// Set solid orange
+        Orange = "orange",
+        /// Blink red 4 times
+        BlinkFour = "blink-four",
+        /// Blink red once every 30 seconds
+        BlinkSlow = "blink-slow",
+    }
+    "off, green, blue, yellow, orange, blink-four, blink-slow"
+}
+
+/// Processes LED-specific CLI subcommands.
+pub fn handle_led_cli<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    C: crate::ShellConfig,
+>(
+    resolver: &impl crate::ShellDeviceResolver<C>,
+    subcommand: Option<LedSubcommand>,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+) -> Result<(), &'static str> {
+    use crate::BlockingLedWriter as _;
+    use core::fmt::Write as _;
+    let led_ctrl = resolver.resolve_led(None)?;
+    let cmd = subcommand.ok_or(
+        "Missing LED subcommand. Expected: off, green, blue, yellow, orange, blink-four, blink-slow",
+    )?;
+
+    let pattern = match cmd {
+        LedSubcommand::Off => SystemLedState::Off,
+        LedSubcommand::Green => SystemLedState::SolidGreen,
+        LedSubcommand::Blue => SystemLedState::SolidBlue,
+        LedSubcommand::Yellow => SystemLedState::SolidYellow,
+        LedSubcommand::Orange => SystemLedState::SolidOrange,
+        LedSubcommand::BlinkFour => SystemLedState::BlinksRedFourTimes,
+        LedSubcommand::BlinkSlow => SystemLedState::BlinksRedOncePerThirtySeconds,
+    };
+
+    led_ctrl
+        .set_pattern_blocking(pattern)
+        .map_err(|_| "Failed to set LED pattern")?;
+
+    let _ = core::writeln!(writer, "\r\nLED pattern set successfully");
+    Ok(())
+}
+
+impl<D: LedDriver> crate::BlockingLedWriter for LedController<D>
+where
+    <D as LedDriver>::Error: ToPeripheralError,
+{
+    fn set_pattern_blocking(&mut self, pattern: SystemLedState) -> Result<(), PeripheralError> {
+        let mut delay = BlockingDelay;
+        embassy_futures::block_on(self.set_pattern_with_delay(pattern, &mut delay))
     }
 }

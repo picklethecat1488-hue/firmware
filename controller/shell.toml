@@ -54,6 +54,13 @@ resolve_fn = "resolve_system_ctrl"
 doc = "Named system controllers."
 bounds = "crate::BlockingSystemWriter"
 
+[[cli_resolver_fields]]
+associated_type = "LedCtrl"
+field = "leds"
+resolve_fn = "resolve_led"
+doc = "Named RGB/Indicator LED controls."
+bounds = "crate::BlockingLedWriter"
+
 [[cli_commands]]
 group = "Battery"
 cmd_name = "battery"
@@ -140,4 +147,13 @@ help = "GPIO commands (gpio status, gpio read <pin>)"
 args = [
     { name = "pin", type = "Option<u32>", help = "Pin number to read" }
 ]
+
+[[cli_commands]]
+group = "Led"
+cmd_name = "led"
+variant = "Led"
+subcommand_type = "led_controller::LedSubcommand"
+handler = "led_controller::handle_led_cli"
+help = "LED commands (led off, led green, led blue, led yellow, led orange, led blink-four, led blink-slow)"
+
 

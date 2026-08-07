@@ -663,6 +663,6 @@ fn test_macro_init_ina219() {
 #[allow(unused_mut)]
 fn test_macro_init_ws2812() {
     let mut errors = TestBootStatus { errors: vec![] };
-    let _dev = peripherals::init_ws2812!((), (), (), &mut errors);
+    let _dev = peripherals::init_ws2812!((), (), &mut errors);
     assert!(errors.errors.is_empty());
 }

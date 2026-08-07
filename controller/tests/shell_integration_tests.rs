@@ -284,6 +284,7 @@ fn test_shell_controller_integration_each_command() {
         motor_ctrls,
         temp_sensors,
         system_ctrls,
+        leds: &[],
         fs_buffer: unsafe { &mut TEST_FS_BUF_1 },
     };
 

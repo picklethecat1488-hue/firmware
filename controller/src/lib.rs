@@ -250,3 +250,33 @@ impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: u
             .map_err(|_| PeripheralError::DeviceNotAvailable)
     }
 }
+
+/// Trait for controlling LED color state pattern.
+pub trait BlockingLedWriter {
+    /// Set the current LED state pattern.
+    fn set_pattern_blocking(
+        &mut self,
+        pattern: model::types::SystemLedState,
+    ) -> Result<(), PeripheralError>;
+}
+
+impl BlockingLedWriter for () {
+    fn set_pattern_blocking(
+        &mut self,
+        _pattern: model::types::SystemLedState,
+    ) -> Result<(), PeripheralError> {
+        Err(PeripheralError::NotImplemented)
+    }
+}
+
+impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: usize>
+    BlockingLedWriter for LedSender<MutexRaw, N>
+{
+    fn set_pattern_blocking(
+        &mut self,
+        pattern: model::types::SystemLedState,
+    ) -> Result<(), PeripheralError> {
+        self.try_send(pattern)
+            .map_err(|_| PeripheralError::DeviceNotAvailable)
+    }
+}

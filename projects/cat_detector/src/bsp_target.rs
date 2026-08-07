@@ -222,7 +222,7 @@ impl<'d> Board<'d> {
         let tof_east = make_tof(crate::TOF_EAST_I2C_ADDR);
         let tof_west = make_tof(crate::TOF_WEST_I2C_ADDR);
 
-        let led_driver = peripherals::init_ws2812!(p.PIO0, p.DMA_CH0, p.PIN_11, &mut boot_status);
+        let led_driver = peripherals::init_ws2812!(p.PIO0, p.PIN_11, &mut boot_status);
 
         let spawner = unsafe {
             use platform::rp2040::PlatformMulticore as _;
