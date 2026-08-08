@@ -200,6 +200,36 @@ impl Default for FuelGaugeTelemetry {
     }
 }
 
+/// A typesafe representation of a single proximity sensor reading.
+#[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum SensorReading {
+    /// Reading is invalid (e.g. startup stale 0 reading, sensor error).
+    #[n(0)]
+    Invalid,
+    /// No target detected / out of range.
+    #[n(1)]
+    OutOfRange,
+    /// Target detected within range (distance in mm).
+    #[n(2)]
+    Valid(#[n(0)] u16),
+}
+
+/// Diagnostic information from a proximity sensor reading.
+#[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub struct SensorDiagnostics {
+    /// Raw measured reading.
+    #[n(0)]
+    pub raw_reading: SensorReading,
+    /// Hardware ranging status code.
+    #[n(1)]
+    pub range_status: u8,
+    /// Signal return rate.
+    #[n(2)]
+    pub peak_signal_rate: u16,
+}
+
 /// Telemetry data from the proximity (ToF) sensors.
 #[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
@@ -444,6 +474,8 @@ dummy_debug!(Direction);
 dummy_debug!(BootReason);
 dummy_debug!(PeriodicInterval);
 dummy_debug!(Device);
+dummy_debug!(SensorReading);
+dummy_debug!(SensorDiagnostics);
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 impl core::fmt::Debug for PeripheralError {

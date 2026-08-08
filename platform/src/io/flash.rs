@@ -430,3 +430,46 @@ pub type TargetFlash<const FLASH_SIZE: usize> = ProfilingFlash<
         >,
     >,
 >;
+
+/// Reads and decodes a CBOR-encoded calibration file directly from flash using sequential-storage in a blocking fashion.
+pub fn read_calibration_direct_blocking<
+    F: NorFlash + MultiwriteNorFlash,
+    C: for<'b> minicbor::Decode<'b, ()>,
+>(
+    flash: &mut F,
+    range: MapFilesystem,
+    buf: &mut [u8],
+    name: &str,
+    decode_buf: &mut [u8],
+) -> Option<C> {
+    embassy_futures::block_on(read_file_direct(flash, range, buf, name, decode_buf))
+        .ok()
+        .flatten()
+        .and_then(|len| minicbor::decode::<C>(&decode_buf[..len]).ok())
+}
+
+/// Encodes and writes a CBOR-encoded calibration file directly to flash in a blocking fashion.
+#[allow(clippy::result_unit_err)]
+pub fn write_calibration_direct_blocking<
+    F: NorFlash + MultiwriteNorFlash,
+    C: minicbor::Encode<()>,
+>(
+    flash: &mut F,
+    range: MapFilesystem,
+    buf: &mut [u8],
+    name: &str,
+    content: &C,
+    encode_buf: &mut [u8],
+) -> Result<(), ()> {
+    let cursor = minicbor::encode::write::Cursor::new(&mut *encode_buf);
+    let mut encoder = minicbor::Encoder::new(cursor);
+    encoder.encode(content).map_err(|_| ())?;
+    let len = encoder.into_writer().position();
+    embassy_futures::block_on(write_file_direct(
+        flash,
+        range,
+        buf,
+        name,
+        &encode_buf[..len],
+    ))
+}

@@ -187,7 +187,7 @@ fn test_vl53l0x_init() {
 
     // Verify written values
     let w = writes.borrow();
-    assert_eq!(w.len(), 5);
+    assert_eq!(w.len(), 7);
 
     // 1. Address change (write to 0x29): register 0x8A -> 0x30
     assert_eq!(w[0], (0x29, vec![0x8A, 0x30]));
@@ -203,6 +203,12 @@ fn test_vl53l0x_init() {
 
     // 5. Interrupt clear (write to 0x30): register 0x0B -> 0x01
     assert_eq!(w[4], (0x30, vec![0x0B, 0x01]));
+
+    // 6. Timing budget configuration (write to 0x30): register 0x71 -> 0x54, 0x36
+    assert_eq!(w[5], (0x30, vec![0x71, 0x54, 0x36]));
+
+    // 7. Signal rate limit check (write to 0x30): register 0x44 -> 0x00, 0x06
+    assert_eq!(w[6], (0x30, vec![0x44, 0x00, 0x06]));
 }
 
 struct FailingI2c {

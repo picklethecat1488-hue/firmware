@@ -14,10 +14,10 @@ fn test_sensor_controller_flow() {
         300,
     );
 
-    assert_eq!(controller.latest_distance(), 1000);
+    assert_eq!(controller.latest_distance(), 8190);
     assert_eq!(
         controller.telemetry(),
-        ProximityTelemetry::OutRange(Direction::North, 1000)
+        ProximityTelemetry::OutRange(Direction::North, 8190)
     );
     assert_eq!(controller.direction(), Direction::North);
 

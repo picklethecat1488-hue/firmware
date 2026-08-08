@@ -229,6 +229,7 @@ async fn main(spawner: Spawner) {
     // Initialize the modular panic handler
     let panic_flash = unsafe { app::PANIC_FLASH.as_mut().unwrap() };
     let fs_buf = unsafe { &mut app::FS_BUF };
+
     app::init_panic_handler(
         panic_flash,
         MapFilesystem(app::FS_PARTITION_START..app::FS_PARTITION_END),

@@ -133,7 +133,7 @@ pub static DUMMY_TELEMETRY_CHANNEL: TelemetryChannel<
     { telemetry_controller::CHANNEL_CAPACITY },
 > = TelemetryChannel::new();
 
-use model::types::PeripheralError;
+use model::types::{PeripheralError, SensorDiagnostics};
 
 /// Trait for reading battery status blocking-ly.
 pub trait BlockingBatteryReader {
@@ -182,6 +182,19 @@ pub trait BlockingProximityReader {
         &mut self,
         _cmd: crate::sensor_controller::SensorCommand,
     ) -> Result<(), PeripheralError> {
+        Err(PeripheralError::NotImplemented)
+    }
+
+    /// Update the reader's internal calibration parameters.
+    fn update_calibration(
+        &mut self,
+        _cal: model::calibration::CalibrationType,
+    ) -> Result<(), PeripheralError> {
+        Ok(())
+    }
+
+    /// Read diagnostics blocking-ly.
+    fn read_diagnostics_blocking(&mut self) -> Result<SensorDiagnostics, PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
 }

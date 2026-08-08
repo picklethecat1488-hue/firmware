@@ -177,6 +177,30 @@ impl BlockingProximityReader for MockSensorCtrl {
     }
 }
 
+impl model::calibration::Calibration for MockSensorCtrl {
+    const CALIBRATION_FILE_NAME: &'static str = "vl53l0x_cal.cbor";
+    type Store = model::calibration::Vl53l0xCalibration;
+
+    fn get_from_store(
+        store: &Self::Store,
+        direction: model::types::Direction,
+    ) -> Option<model::calibration::CalibrationType> {
+        Some(model::calibration::CalibrationType::ProximityCal(
+            store[direction],
+        ))
+    }
+
+    fn update_store(
+        store: &mut Self::Store,
+        direction: model::types::Direction,
+        calibration: model::calibration::CalibrationType,
+    ) {
+        if let model::calibration::CalibrationType::ProximityCal(cal) = calibration {
+            store[direction] = cal;
+        }
+    }
+}
+
 struct MockMotorCtrl {
     speed: core::cell::Cell<i8>,
 }
@@ -198,6 +222,43 @@ impl BlockingMotorWriter for MockMotorCtrl {
         self.speed.set(0);
         let _ = MOTOR_CHANNEL.try_send(MotorCommand::Stop);
         Ok(())
+    }
+}
+
+impl model::calibration::Calibration for MockMotorCtrl {
+    const CALIBRATION_FILE_NAME: &'static str = "motor_cal.cbor";
+    type Store = model::calibration::MotorCalibration;
+
+    fn get_from_store(
+        store: &Self::Store,
+        _direction: model::types::Direction,
+    ) -> Option<model::calibration::CalibrationType> {
+        Some(model::calibration::CalibrationType::MotorCal {
+            current_limits: model::calibration::TwoPointCalibration::new(
+                store.current_ma.low,
+                store.current_ma.overload,
+            ),
+            max_rpm: store.max_rpm.unwrap_or(0),
+            rpm_limit: store.rpm_limit.unwrap_or(0),
+        })
+    }
+
+    fn update_store(
+        store: &mut Self::Store,
+        _direction: model::types::Direction,
+        calibration: model::calibration::CalibrationType,
+    ) {
+        if let model::calibration::CalibrationType::MotorCal {
+            current_limits,
+            max_rpm,
+            rpm_limit,
+        } = calibration
+        {
+            store.current_ma.low = current_limits.low;
+            store.current_ma.overload = current_limits.high;
+            store.max_rpm = Some(max_rpm);
+            store.rpm_limit = Some(rpm_limit);
+        }
     }
 }
 
