@@ -17,7 +17,7 @@ const CRITICAL_BATTERY_SOC_THRESHOLD: u8 = 10;
 const BATTERY_SOC_HYSTERESIS: u8 = 2;
 
 use model::types::{
-    BootReason, Gesture, MotorSpeed, SystemLedState, SystemStatus, TelemetryRecord,
+    BootReason, Gesture, MotorSpeed, SensorReading, SystemLedState, SystemStatus, TelemetryRecord,
 };
 use platform::BatteryManager;
 
@@ -262,7 +262,7 @@ fn test_system_controller_flow() {
 
     controller.handle_command(SystemCommand::ProximityUpdate {
         direction: model::types::Direction::North,
-        distance_mm: 15,
+        reading: SensorReading::Valid(15),
     });
     process!(controller);
 
@@ -291,7 +291,7 @@ fn test_system_controller_flow() {
 
     controller.handle_command(SystemCommand::ProximityUpdate {
         direction: model::types::Direction::North,
-        distance_mm: 15,
+        reading: SensorReading::Valid(15),
     });
     process!(controller);
     // The pump should NOT start since system is in PowerDown (no SetSpeed command in queue)
@@ -574,7 +574,7 @@ fn test_proximity_wake_lock_behavior() {
     controller
         .handle_command(SystemCommand::ProximityUpdate {
             direction: model::types::Direction::North,
-            distance_mm: 50, // wake threshold is 300
+            reading: SensorReading::Valid(50), // wake threshold is 300
         })
         .unwrap();
     process!(controller);
@@ -586,7 +586,7 @@ fn test_proximity_wake_lock_behavior() {
     controller
         .handle_command(SystemCommand::ProximityUpdate {
             direction: model::types::Direction::North,
-            distance_mm: 400,
+            reading: SensorReading::Valid(400),
         })
         .unwrap();
     process!(controller);

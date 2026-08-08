@@ -3,7 +3,7 @@ use model::interfaces::{
     ChargeStatus, FuelGauge, LedDriver, Motor, PowerMeasurementMode, PowerSensor, Probeable,
     ProximitySensor, TemperatureSensor, Tickable, WaitableMeasurement,
 };
-use model::types::{MotorSpeed, PeripheralError};
+use model::types::{MotorSpeed, PeripheralError, SensorDiagnostics, SensorReading};
 
 /// A mock implementation of a Motor for unit testing on the host.
 pub struct MockMotor {
@@ -311,23 +311,38 @@ impl WaitableMeasurement for MockProximitySensor {
 impl ProximitySensor for MockProximitySensor {
     type Error = ();
 
-    fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
+    fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
         if self.should_fail {
             Err(())
+        } else if self.distance_mm == 0 {
+            Ok(SensorReading::Invalid)
+        } else if self.distance_mm == 8190 {
+            Ok(SensorReading::OutOfRange)
         } else {
-            Ok(self.distance_mm)
+            Ok(SensorReading::Valid(self.distance_mm))
         }
     }
 
-    fn read_distance_raw(&mut self) -> Result<u16, Self::Error> {
+    fn read_distance_raw(&mut self) -> Result<SensorReading, Self::Error> {
         self.read_distance_mm()
     }
 
-    fn read_diagnostics(&mut self) -> Result<(u16, u8, u16), Self::Error> {
+    fn read_diagnostics(&mut self) -> Result<SensorDiagnostics, Self::Error> {
         if self.should_fail {
             Err(())
         } else {
-            Ok((self.distance_mm, 0, 100))
+            let reading = if self.distance_mm == 0 {
+                SensorReading::Invalid
+            } else if self.distance_mm == 8190 {
+                SensorReading::OutOfRange
+            } else {
+                SensorReading::Valid(self.distance_mm)
+            };
+            Ok(SensorDiagnostics {
+                raw_reading: reading,
+                range_status: 0,
+                peak_signal_rate: 100,
+            })
         }
     }
 }
@@ -377,16 +392,33 @@ impl WaitableMeasurement for DummyProximitySensor {
 impl ProximitySensor for DummyProximitySensor {
     type Error = core::convert::Infallible;
 
-    fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
-        Ok(self.distance_mm)
+    fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
+        if self.distance_mm == 0 {
+            Ok(SensorReading::Invalid)
+        } else if self.distance_mm == 8190 {
+            Ok(SensorReading::OutOfRange)
+        } else {
+            Ok(SensorReading::Valid(self.distance_mm))
+        }
     }
 
-    fn read_distance_raw(&mut self) -> Result<u16, Self::Error> {
+    fn read_distance_raw(&mut self) -> Result<SensorReading, Self::Error> {
         self.read_distance_mm()
     }
 
-    fn read_diagnostics(&mut self) -> Result<(u16, u8, u16), Self::Error> {
-        Ok((self.distance_mm, 0, 100))
+    fn read_diagnostics(&mut self) -> Result<SensorDiagnostics, Self::Error> {
+        let reading = if self.distance_mm == 0 {
+            SensorReading::Invalid
+        } else if self.distance_mm == 8190 {
+            SensorReading::OutOfRange
+        } else {
+            SensorReading::Valid(self.distance_mm)
+        };
+        Ok(SensorDiagnostics {
+            raw_reading: reading,
+            range_status: 0,
+            peak_signal_rate: 100,
+        })
     }
 }
 

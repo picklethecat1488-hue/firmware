@@ -75,3 +75,26 @@ fn test_vl53l0x_calibration() {
     assert_eq!(cal[Direction::East].low, 20);
     assert_eq!(cal[Direction::West].low, 30);
 }
+
+#[test]
+fn test_cbor_serialization_structure() {
+    let mut cal = Vl53l0xCalibration::default();
+    cal[Direction::North] = TwoPointCalibration::new(38, 20);
+    cal[Direction::East] = TwoPointCalibration::new(42, 20);
+    cal[Direction::West] = TwoPointCalibration::new(48, 20);
+
+    let mut buf = [0u8; 128];
+    let cursor = minicbor::encode::write::Cursor::new(&mut buf[..]);
+    let mut encoder = minicbor::Encoder::new(cursor);
+    encoder.encode(cal).unwrap();
+    let len = encoder.into_writer().position();
+
+    // Now let's decode it back
+    let decoded = minicbor::decode::<Vl53l0xCalibration>(&buf[..len]).unwrap();
+    assert_eq!(decoded[Direction::North].low, 38);
+    assert_eq!(decoded[Direction::North].high, 20);
+    assert_eq!(decoded[Direction::East].low, 42);
+    assert_eq!(decoded[Direction::East].high, 20);
+    assert_eq!(decoded[Direction::West].low, 48);
+    assert_eq!(decoded[Direction::West].high, 20);
+}

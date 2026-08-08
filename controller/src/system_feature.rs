@@ -50,7 +50,7 @@ pub trait SystemFeature<MutexRaw: RawMutex + 'static, const N: usize> {
     fn on_proximity_update(
         &self,
         _direction: model::types::Direction,
-        _distance_mm: u16,
+        _reading: model::types::SensorReading,
         _status: model::types::SystemStatus,
     ) -> (Option<model::types::Gesture>, ProximityAction) {
         (None, ProximityAction::None)
@@ -123,7 +123,7 @@ pub trait FeatureList<MutexRaw: RawMutex + 'static, const N: usize> {
     fn on_proximity_update(
         &self,
         direction: model::types::Direction,
-        distance_mm: u16,
+        reading: model::types::SensorReading,
         status: model::types::SystemStatus,
     ) -> (Option<model::types::Gesture>, ProximityAction);
     /// Dispatch on_state_changed hook to all features.
@@ -205,7 +205,7 @@ macro_rules! impl_feature_list_for_tuple {
             }
 
             #[inline(always)]
-            fn on_proximity_update(&self, _direction: model::types::Direction, _distance_mm: u16, _status: model::types::SystemStatus) -> (Option<model::types::Gesture>, ProximityAction) {
+            fn on_proximity_update(&self, _direction: model::types::Direction, _reading: model::types::SensorReading, _status: model::types::SystemStatus) -> (Option<model::types::Gesture>, ProximityAction) {
                 #[allow(non_snake_case)]
                 let ($($T,)*) = self;
                 #[allow(unused_mut)]
@@ -213,7 +213,7 @@ macro_rules! impl_feature_list_for_tuple {
                 #[allow(unused_mut)]
                 let mut merged_action = ProximityAction::None;
                 $(
-                    let (g, a) = $T.on_proximity_update(_direction, _distance_mm, _status);
+                    let (g, a) = $T.on_proximity_update(_direction, _reading, _status);
                     if g.is_some() {
                         merged_gesture = g;
                     }

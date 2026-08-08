@@ -7,7 +7,7 @@ use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
 use model::calibration::{Calibration, CalibrationType, TwoPointCalibration};
 use model::interfaces::{Probeable, ProximitySensor, WaitableMeasurement};
-use model::types::PeripheralError;
+use model::types::{PeripheralError, SensorDiagnostics, SensorReading};
 
 macro_rules! log_warn {
     ($fmt:literal $(, $arg:expr)*) => {
@@ -88,6 +88,11 @@ impl<I: I2c> Vl53l0x<I> {
         }
         self.set_threshold_mm(threshold_mm)?;
         self.configure_interrupt(interrupt_mode)?;
+
+        // Configure High Sensitivity mode for dark/matte targets (like black/grey cat fur)
+        self.set_timing_budget_200ms()?;
+        self.set_signal_rate_limit(6)?; // 0.05 MCPS limit (default is 0.25 MCPS)
+
         Ok(())
     }
 
@@ -250,6 +255,25 @@ impl<I: I2c> Vl53l0x<I> {
         }
         res
     }
+
+    /// Sets the return signal rate limit check threshold (in fixed-point Q9.7 MCPS format).
+    /// Standard is 0.25 MCPS (32). Lowering it (e.g. to 0.05 MCPS (6)) allows detecting dark/matte targets.
+    pub fn set_signal_rate_limit(&mut self, limit_mcps: u16) -> Result<(), PeripheralError> {
+        let bytes = limit_mcps.to_be_bytes();
+        let res = self
+            .i2c
+            .write(self.address, &[0x44, bytes[0], bytes[1]])
+            .map_err(|e| e.to_i2c_error(self.address as u16, 0x44));
+        if let Err(ref _e) = res {
+            log_warn!(
+                "{}: Failed to set signal rate limit to {} at address 0x{:02x}: {:?}",
+                limit_mcps,
+                self.address,
+                defmt::Debug2Format(_e)
+            );
+        }
+        res
+    }
 }
 
 impl<I: I2c> WaitableMeasurement for Vl53l0x<I> {
@@ -259,8 +283,8 @@ impl<I: I2c> WaitableMeasurement for Vl53l0x<I> {
     )]
     fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
         // Poll for measurement completion
-        // Set a timeout of 100ms (100 * 1ms)
-        for _ in 0..100 {
+        // Set a timeout of 500ms (50 * 10ms)
+        for _ in 0..50 {
             let mut status_13 = [0u8; 1];
             self.i2c
                 .write_read(
@@ -289,7 +313,7 @@ impl<I: I2c> WaitableMeasurement for Vl53l0x<I> {
             if (status_13[0] & 0x07) != 0 || (status_14[0] & 0x01) != 0 {
                 return Ok(());
             }
-            ::embassy_time::block_for(::embassy_time::Duration::from_millis(1));
+            ::embassy_time::block_for(::embassy_time::Duration::from_millis(10));
         }
         Err(PeripheralError::DeviceNotAvailable)
     }
@@ -303,7 +327,7 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
         link_section = ".data.core1_func"
     )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
-    fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
+    fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
         let res = (|| {
             // Trigger a measurement (write 0x01 to register 0x00 for System Start)
             self.i2c
@@ -318,9 +342,6 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
                     e.to_i2c_error(self.address as u16, Register::RESULT_RANGE_STATUS as u16)
                 })?;
             let range_status = (status[0] >> 3) & 0x0F;
-
-            // Wait for measurement to complete
-            self.wait_for_measurement()?;
 
             // Read 16-bit range result from register 0x1E (High Byte) and 0x1F (Low Byte)
             let mut buf = [0u8; 2];
@@ -361,16 +382,16 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
             }
 
             // Apply dead-zone override & error/stale handling
-            let final_dist = if distance == 0 {
-                8190
+            let reading = if distance == 0 {
+                SensorReading::Invalid
             } else if range_status == 3 || range_status == 11 {
-                self.calibration.map(20, 100)
+                SensorReading::Valid(self.calibration.map(20, 100))
             } else if range_status != 0 {
-                8190
+                SensorReading::OutOfRange
             } else {
-                self.calibration.map(distance, 100)
+                SensorReading::Valid(self.calibration.map(distance, 100))
             };
-            Ok(final_dist)
+            Ok(reading)
         })();
         if let Err(ref _e) = res {
             log_warn!(
@@ -386,7 +407,7 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
         all(target_arch = "arm", feature = "sensors-core"),
         link_section = ".data.core1_func"
     )]
-    fn read_distance_raw(&mut self) -> Result<u16, Self::Error> {
+    fn read_distance_raw(&mut self) -> Result<SensorReading, Self::Error> {
         let res = (|| {
             // Trigger a measurement (write 0x01 to register 0x00 for System Start)
             self.i2c
@@ -401,9 +422,6 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
                     e.to_i2c_error(self.address as u16, Register::RESULT_RANGE_STATUS as u16)
                 })?;
             let range_status = (status[0] >> 3) & 0x0F;
-
-            // Wait for measurement to complete
-            self.wait_for_measurement()?;
 
             // Read 16-bit range result from register 0x1E (High Byte) and 0x1F (Low Byte)
             let mut buf = [0u8; 2];
@@ -444,16 +462,16 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
             }
 
             // Apply dead-zone override & error/stale handling
-            let final_dist = if distance == 0 {
-                8190
+            let reading = if distance == 0 {
+                SensorReading::Invalid
             } else if range_status == 3 || range_status == 11 {
-                20
+                SensorReading::Valid(20)
             } else if range_status != 0 {
-                8190
+                SensorReading::OutOfRange
             } else {
-                distance
+                SensorReading::Valid(distance)
             };
-            Ok(final_dist)
+            Ok(reading)
         })();
         if let Err(ref _e) = res {
             log_warn!(
@@ -469,7 +487,7 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
         all(target_arch = "arm", feature = "sensors-core"),
         link_section = ".data.core1_func"
     )]
-    fn read_diagnostics(&mut self) -> Result<(u16, u8, u16), Self::Error> {
+    fn read_diagnostics(&mut self) -> Result<SensorDiagnostics, Self::Error> {
         let res = (|| {
             self.i2c
                 .write(self.address, &[Register::SYSTEM_START, 0x01])
@@ -502,17 +520,21 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
 
             self.clear_interrupt()?;
 
-            let final_dist = if distance == 0 {
-                8190
+            let reading = if distance == 0 {
+                SensorReading::Invalid
             } else if range_status == 3 || range_status == 11 {
-                20
+                SensorReading::Valid(20)
             } else if range_status != 0 {
-                8190
+                SensorReading::OutOfRange
             } else {
-                distance
+                SensorReading::Valid(distance)
             };
 
-            Ok((final_dist, range_status, peak_rate))
+            Ok(SensorDiagnostics {
+                raw_reading: reading,
+                range_status,
+                peak_signal_rate: peak_rate,
+            })
         })();
         if let Err(ref _e) = res {
             log_warn!(
