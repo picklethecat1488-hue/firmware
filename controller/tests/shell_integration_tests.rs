@@ -181,7 +181,8 @@ impl BlockingProximityReader for MockSensorCtrl {
         cmd: controller::sensor_controller::SensorCommand,
     ) -> Result<(), PeripheralError> {
         match cmd {
-            controller::sensor_controller::SensorCommand::ReadRawSensorsWithSignal(sig_ptr) => {
+            controller::sensor_controller::SensorCommand::ReadRawSensorsWithSignal(sig_ptr)
+            | controller::sensor_controller::SensorCommand::ReadSensorsWithSignal(sig_ptr) => {
                 let sig = unsafe { &*sig_ptr.0 };
                 let reading = if self.distance == u16::MAX {
                     model::types::SensorReading::Invalid
