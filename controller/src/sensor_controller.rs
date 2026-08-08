@@ -44,6 +44,21 @@ impl core::fmt::Debug for CliSignalPtr {
     }
 }
 
+/// Wrapper for the diagnostic CLI signal pointer.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct DiagnosticSignalPtr(
+    pub *const ::platform::OnceLock<Result<(u16, u8, u16), PeripheralError>>,
+);
+
+unsafe impl Send for DiagnosticSignalPtr {}
+unsafe impl Sync for DiagnosticSignalPtr {}
+
+impl core::fmt::Debug for DiagnosticSignalPtr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "DiagnosticSignalPtr({:p})", self.0)
+    }
+}
+
 /// Type alias for the sensor command sender.
 pub type SensorSender<M> = embassy_sync::channel::Sender<'static, M, SensorCommand, 4>;
 
@@ -55,6 +70,10 @@ pub enum SensorCommand {
     ReadSensors,
     /// Force proximity sensor check and signal completion via OnceLock
     ReadSensorsWithSignal(CliSignalPtr),
+    /// Force raw proximity sensor check and signal completion via OnceLock
+    ReadRawSensorsWithSignal(CliSignalPtr),
+    /// Force diagnostic proximity sensor check and signal completion via OnceLock
+    ReadDiagnosticsWithSignal(DiagnosticSignalPtr),
     /// Set periodic automatic reading interval
     SetInterval(PeriodicInterval),
 }
@@ -358,7 +377,7 @@ impl<
 
 impl<
         'a,
-        S,
+        S: ProximitySensor,
         M: embassy_sync::blocking_mutex::raw::RawMutex,
         Pin: DataReadyPin,
         Cmd: FromProximityUpdate + Clone + core::fmt::Debug,
@@ -489,6 +508,28 @@ where
                     let _ = lock.set(res);
                 }
             }
+            SensorCommand::ReadRawSensorsWithSignal(signal_ptr) => {
+                let res = self
+                    .state_manager
+                    .sensor_mut()
+                    .read_distance_raw()
+                    .map_err(|_| PeripheralError::DeviceNotAvailable);
+                unsafe {
+                    let lock = &*signal_ptr.0;
+                    let _ = lock.set(res);
+                }
+            }
+            SensorCommand::ReadDiagnosticsWithSignal(signal_ptr) => {
+                let res = self
+                    .state_manager
+                    .sensor_mut()
+                    .read_diagnostics()
+                    .map_err(|_| PeripheralError::DeviceNotAvailable);
+                unsafe {
+                    let lock = &*signal_ptr.0;
+                    let _ = lock.set(res);
+                }
+            }
             SensorCommand::SetInterval(interval) => {
                 self.set_periodic_interval(interval);
             }
@@ -587,15 +628,24 @@ where
     S::Error: ToPeripheralError,
 {
     fn read_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
-        self.sensor_mut()
-            .read_distance_mm()
-            .map_err(|e| e.to_peripheral_error())
+        let lock = ::platform::OnceLock::new();
+        let lock_ptr = CliSignalPtr(&lock as *const _);
+        self.send_command(SensorCommand::ReadSensorsWithSignal(lock_ptr))?;
+        *lock.wait()
     }
 
     fn read_raw_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
-        self.sensor_mut()
-            .read_distance_raw()
-            .map_err(|e| e.to_peripheral_error())
+        let lock = ::platform::OnceLock::new();
+        let lock_ptr = CliSignalPtr(&lock as *const _);
+        self.send_command(SensorCommand::ReadRawSensorsWithSignal(lock_ptr))?;
+        *lock.wait()
+    }
+
+    fn read_diagnostics_blocking(&mut self) -> Result<(u16, u8, u16), PeripheralError> {
+        let lock = ::platform::OnceLock::new();
+        let lock_ptr = DiagnosticSignalPtr(&lock as *const _);
+        self.send_command(SensorCommand::ReadDiagnosticsWithSignal(lock_ptr))?;
+        *lock.wait()
     }
 
     fn latest_distance(&self) -> u16 {
@@ -724,9 +774,17 @@ pub fn handle_sensor_cli<
             };
 
             let sensor_ctrl = resolver.resolve_sensor(Some(dir_str))?;
-            let d_raw = sensor_ctrl
-                .read_raw_distance_blocking()
-                .map_err(|_| "Proximity sensor failed to read raw distance")?;
+            let mut d_raw = 8190;
+            for _ in 0..10 {
+                if let Ok(d) = sensor_ctrl.read_raw_distance_blocking() {
+                    if d < 900 {
+                        d_raw = d;
+                        break;
+                    }
+                }
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                embassy_time::block_for(embassy_time::Duration::from_millis(50));
+            }
 
             if d_raw >= 900 {
                 return Err("Sensor disconnected or target out of range");
@@ -796,9 +854,17 @@ pub fn handle_sensor_cli<
             };
 
             let sensor_ctrl = resolver.resolve_sensor(Some(dir_str))?;
-            let d_raw = sensor_ctrl
-                .read_raw_distance_blocking()
-                .map_err(|_| "Proximity sensor failed to read raw distance")?;
+            let mut d_raw = 8190;
+            for _ in 0..10 {
+                if let Ok(d) = sensor_ctrl.read_raw_distance_blocking() {
+                    if d < 900 {
+                        d_raw = d;
+                        break;
+                    }
+                }
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                embassy_time::block_for(embassy_time::Duration::from_millis(50));
+            }
 
             if d_raw >= 900 {
                 return Err("Sensor disconnected or target out of range");

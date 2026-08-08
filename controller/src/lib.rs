@@ -184,6 +184,19 @@ pub trait BlockingProximityReader {
     ) -> Result<(), PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
+
+    /// Update the reader's internal calibration parameters.
+    fn update_calibration(
+        &mut self,
+        _cal: model::calibration::CalibrationType,
+    ) -> Result<(), PeripheralError> {
+        Ok(())
+    }
+
+    /// Read diagnostics: (raw_distance, range_status, peak_signal_rate) blocking-ly.
+    fn read_diagnostics_blocking(&mut self) -> Result<(u16, u8, u16), PeripheralError> {
+        Err(PeripheralError::NotImplemented)
+    }
 }
 
 impl BlockingBatteryReader for () {
