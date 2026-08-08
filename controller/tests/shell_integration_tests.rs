@@ -190,6 +190,10 @@ impl BlockingMotorWriter for MockMotorCtrl {
         self.speed.set(speed);
         Ok(())
     }
+    fn set_motor_speed_rpm(&mut self, rpm: i32) -> Result<(), PeripheralError> {
+        let speed_val = (rpm * 100) / 3000;
+        self.set_motor_speed(speed_val.clamp(-100, 100) as i8)
+    }
     fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError> {
         self.speed.set(0);
         let _ = MOTOR_CHANNEL.try_send(MotorCommand::Stop);
