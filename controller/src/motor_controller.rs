@@ -556,10 +556,12 @@ subcommand_enum! {
         Speed,
         /// Stop motor
         Stop,
+        /// Read motor current
+        Current,
         /// Calibrate motor
         Calibrate,
     }
-    "Invalid motor subcommand. Expected: speed, stop, calibrate"
+    "Invalid motor subcommand. Expected: speed, stop, current, calibrate"
 }
 
 /// Processes motor-specific CLI subcommands.
@@ -600,6 +602,13 @@ pub fn handle_motor_cli<
         MotorSubcommand::Stop => motor_ctrl
             .stop_motor_blocking()
             .map_err(|_| "Failed to stop motor"),
+        MotorSubcommand::Current => {
+            let current = motor_ctrl
+                .read_current_ma_blocking()
+                .map_err(|_| "Failed to read motor current")?;
+            let _ = core::writeln!(writer, "\r\nMotor current: {} mA", current);
+            Ok(())
+        }
         MotorSubcommand::Calibrate => {
             let state_str = arg1.ok_or("Missing calibration state")?;
             let state = match state_str {

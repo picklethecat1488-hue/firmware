@@ -34,3 +34,6 @@ pub use probeable::Probeable;
 
 pub mod boot_status;
 pub use boot_status::BootStatus;
+
+pub mod waitable;
+pub use waitable::WaitableMeasurement;

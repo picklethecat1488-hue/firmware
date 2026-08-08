@@ -6,7 +6,7 @@ use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
 use model::calibration::{Calibration, CalibrationType, TwoPointCalibration};
-use model::interfaces::{Probeable, ProximitySensor};
+use model::interfaces::{Probeable, ProximitySensor, WaitableMeasurement};
 use model::types::PeripheralError;
 
 macro_rules! log_warn {
@@ -250,7 +250,9 @@ impl<I: I2c> Vl53l0x<I> {
         }
         res
     }
+}
 
+impl<I: I2c> WaitableMeasurement for Vl53l0x<I> {
     #[cfg_attr(
         all(target_arch = "arm", feature = "sensors-core"),
         link_section = ".data.core1_func"

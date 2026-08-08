@@ -1,9 +1,9 @@
 use crate::tracing;
 use model::interfaces::{
     ChargeStatus, FuelGauge, LedDriver, Motor, PowerMeasurementMode, PowerSensor, Probeable,
-    ProximitySensor, TemperatureSensor, Tickable,
+    ProximitySensor, TemperatureSensor, Tickable, WaitableMeasurement,
 };
-use model::types::MotorSpeed;
+use model::types::{MotorSpeed, PeripheralError};
 
 /// A mock implementation of a Motor for unit testing on the host.
 pub struct MockMotor {
@@ -74,6 +74,16 @@ impl MockCurrentSensor {
         Self {
             current_ma,
             should_fail: false,
+        }
+    }
+}
+
+impl WaitableMeasurement for MockCurrentSensor {
+    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+        if self.should_fail {
+            Err(PeripheralError::DeviceNotAvailable)
+        } else {
+            Ok(())
         }
     }
 }
@@ -235,6 +245,12 @@ impl Probeable for MockBattery {
 /// A simulated current sensor that always returns a healthy current draw.
 pub struct DummyCurrentSensor;
 
+impl WaitableMeasurement for DummyCurrentSensor {
+    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+        Ok(())
+    }
+}
+
 impl PowerSensor for DummyCurrentSensor {
     type Error = core::convert::Infallible;
 
@@ -278,6 +294,16 @@ impl MockProximitySensor {
             distance_mm,
             threshold_mm: 300,
             should_fail: false,
+        }
+    }
+}
+
+impl WaitableMeasurement for MockProximitySensor {
+    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+        if self.should_fail {
+            Err(PeripheralError::DeviceNotAvailable)
+        } else {
+            Ok(())
         }
     }
 }
@@ -331,6 +357,12 @@ impl DummyProximitySensor {
             distance_mm,
             threshold_mm: 300,
         }
+    }
+}
+
+impl WaitableMeasurement for DummyProximitySensor {
+    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+        Ok(())
     }
 }
 
