@@ -725,6 +725,8 @@ impl<
         Cmd,
     > Calibration for SensorController<'a, S, M, Pin, Cmd, ProximityReader>
 {
+    const CALIBRATION_FILE_NAME: &'static str = S::CALIBRATION_FILE_NAME;
+
     fn set_calibration(&mut self, calibration: CalibrationType) {
         self.sensor_mut().set_calibration(calibration);
     }
@@ -829,16 +831,13 @@ pub fn handle_sensor_cli<
                 let mut async_flash = BlockingAsyncFlash(flash_ref);
 
                 let mut buf = [0u8; 128];
-                embassy_futures::block_on(platform::flash::read_file_direct(
+                platform::flash::read_calibration_direct_blocking::<_, Vl53l0xCalibration>(
                     &mut async_flash,
                     map_fs,
                     fs_buf_static,
-                    "vl53l0x_cal.cbor",
+                    C::SensorCtrl::CALIBRATION_FILE_NAME,
                     &mut buf,
-                ))
-                .ok()
-                .flatten()
-                .and_then(|len| minicbor::decode::<Vl53l0xCalibration>(&buf[..len]).ok())
+                )
             })();
 
             let _ = core::writeln!(writer);
@@ -962,34 +961,28 @@ pub fn handle_sensor_cli<
             let mut async_flash = BlockingAsyncFlash(flash_ref);
 
             let mut buf = [0u8; 128];
-            let mut proximity_cal = embassy_futures::block_on(platform::flash::read_file_direct(
-                &mut async_flash,
-                map_fs.clone(),
-                fs_buf_static,
-                "vl53l0x_cal.cbor",
-                &mut buf,
-            ))
-            .ok()
-            .flatten()
-            .and_then(|len| minicbor::decode::<Vl53l0xCalibration>(&buf[..len]).ok())
-            .unwrap_or_default();
+            let mut proximity_cal =
+                platform::flash::read_calibration_direct_blocking::<_, Vl53l0xCalibration>(
+                    &mut async_flash,
+                    map_fs.clone(),
+                    fs_buf_static,
+                    C::SensorCtrl::CALIBRATION_FILE_NAME,
+                    &mut buf,
+                )
+                .unwrap_or_default();
 
             let dir = model::types::Direction::from(direction);
             proximity_cal[dir].low = d_val;
 
             let mut write_buf = [0u8; 128];
-            let cursor = minicbor::encode::write::Cursor::new(&mut write_buf[..]);
-            let mut encoder = minicbor::Encoder::new(cursor);
-            encoder.encode(proximity_cal).unwrap();
-            let len = encoder.into_writer().position();
-
-            embassy_futures::block_on(platform::flash::write_file_direct(
+            platform::flash::write_calibration_direct_blocking(
                 &mut async_flash,
                 map_fs.clone(),
                 fs_buf_static,
-                "vl53l0x_cal.cbor",
-                &write_buf[..len],
-            ))
+                C::SensorCtrl::CALIBRATION_FILE_NAME,
+                &proximity_cal,
+                &mut write_buf,
+            )
             .map(|_| {
                 let _ = sensor_ctrl.update_calibration(
                     model::calibration::CalibrationType::ProximityCal(proximity_cal[dir]),
@@ -1055,34 +1048,28 @@ pub fn handle_sensor_cli<
             let mut async_flash = BlockingAsyncFlash(flash_ref);
 
             let mut buf = [0u8; 128];
-            let mut proximity_cal = embassy_futures::block_on(platform::flash::read_file_direct(
-                &mut async_flash,
-                map_fs.clone(),
-                fs_buf_static,
-                "vl53l0x_cal.cbor",
-                &mut buf,
-            ))
-            .ok()
-            .flatten()
-            .and_then(|len| minicbor::decode::<Vl53l0xCalibration>(&buf[..len]).ok())
-            .unwrap_or_default();
+            let mut proximity_cal =
+                platform::flash::read_calibration_direct_blocking::<_, Vl53l0xCalibration>(
+                    &mut async_flash,
+                    map_fs.clone(),
+                    fs_buf_static,
+                    C::SensorCtrl::CALIBRATION_FILE_NAME,
+                    &mut buf,
+                )
+                .unwrap_or_default();
 
             let dir = model::types::Direction::from(direction);
             proximity_cal[dir].high = d_val;
 
             let mut write_buf = [0u8; 128];
-            let cursor = minicbor::encode::write::Cursor::new(&mut write_buf[..]);
-            let mut encoder = minicbor::Encoder::new(cursor);
-            encoder.encode(proximity_cal).unwrap();
-            let len = encoder.into_writer().position();
-
-            embassy_futures::block_on(platform::flash::write_file_direct(
+            platform::flash::write_calibration_direct_blocking(
                 &mut async_flash,
                 map_fs,
                 fs_buf_static,
-                "vl53l0x_cal.cbor",
-                &write_buf[..len],
-            ))
+                C::SensorCtrl::CALIBRATION_FILE_NAME,
+                &proximity_cal,
+                &mut write_buf,
+            )
             .map(|_| {
                 let _ = sensor_ctrl.update_calibration(
                     model::calibration::CalibrationType::ProximityCal(proximity_cal[dir]),

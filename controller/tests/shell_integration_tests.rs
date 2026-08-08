@@ -177,6 +177,10 @@ impl BlockingProximityReader for MockSensorCtrl {
     }
 }
 
+impl model::calibration::Calibration for MockSensorCtrl {
+    const CALIBRATION_FILE_NAME: &'static str = "vl53l0x_cal.cbor";
+}
+
 struct MockMotorCtrl {
     speed: core::cell::Cell<i8>,
 }
@@ -199,6 +203,10 @@ impl BlockingMotorWriter for MockMotorCtrl {
         let _ = MOTOR_CHANNEL.try_send(MotorCommand::Stop);
         Ok(())
     }
+}
+
+impl model::calibration::Calibration for MockMotorCtrl {
+    const CALIBRATION_FILE_NAME: &'static str = "motor_cal.cbor";
 }
 
 struct MockTempSensor;

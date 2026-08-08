@@ -125,6 +125,11 @@ pub struct Vl53l0xCalibration {
     pub sensors: [TwoPointCalibration<u16>; 3],
 }
 
+impl Vl53l0xCalibration {
+    /// Calibration filename in flash.
+    pub const CALIBRATION_FILE_NAME: &'static str = "vl53l0x_cal.cbor";
+}
+
 impl core::ops::Index<crate::types::Direction> for Vl53l0xCalibration {
     type Output = TwoPointCalibration<u16>;
 
@@ -156,6 +161,9 @@ pub struct MotorCalibration {
 }
 
 impl MotorCalibration {
+    /// Calibration filename in flash.
+    pub const CALIBRATION_FILE_NAME: &'static str = "motor_cal.cbor";
+
     /// Gets the calculated dry run/minimum current limit.
     pub fn dry_run_limit(&self) -> i32 {
         (self.current_ma.low + self.current_ma.mid) / 2
@@ -192,6 +200,9 @@ pub enum CalibrationType {
 
 /// Trait representing a peripheral or controller that can be calibrated.
 pub trait Calibration {
+    /// Filename used to store calibration data in flash.
+    const CALIBRATION_FILE_NAME: &'static str;
+
     /// Sets the calibration parameters. By default, this does nothing (no-op).
     fn set_calibration(&mut self, _calibration: CalibrationType) {}
 

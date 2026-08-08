@@ -548,6 +548,9 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
 }
 
 impl<I: I2c> Calibration for Vl53l0x<I> {
+    const CALIBRATION_FILE_NAME: &'static str =
+        model::calibration::Vl53l0xCalibration::CALIBRATION_FILE_NAME;
+
     fn set_calibration(&mut self, calibration: CalibrationType) {
         if let CalibrationType::ProximityCal(cal) = calibration {
             if self.threshold_mm > cal.low + THRESHOLD_ERROR_MM {

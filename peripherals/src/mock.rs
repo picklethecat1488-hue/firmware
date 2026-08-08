@@ -298,6 +298,10 @@ impl MockProximitySensor {
     }
 }
 
+impl model::calibration::Calibration for MockProximitySensor {
+    const CALIBRATION_FILE_NAME: &'static str = "dummy_cal.cbor";
+}
+
 impl WaitableMeasurement for MockProximitySensor {
     fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
         if self.should_fail {
@@ -432,7 +436,9 @@ impl Probeable for DummyProximitySensor {
     }
 }
 
-impl model::calibration::Calibration for DummyProximitySensor {}
+impl model::calibration::Calibration for DummyProximitySensor {
+    const CALIBRATION_FILE_NAME: &'static str = "dummy_cal.cbor";
+}
 
 /// A mock implementation of a ChargeStatus for unit testing.
 pub struct MockCharger {

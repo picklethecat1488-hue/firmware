@@ -49,6 +49,9 @@ impl controller::BlockingProximityReader for MockSensorCtrl {
         100
     }
 }
+impl model::calibration::Calibration for MockSensorCtrl {
+    const CALIBRATION_FILE_NAME: &'static str = "vl53l0x_cal.cbor";
+}
 
 pub struct MockMotorCtrl;
 impl controller::BlockingMotorReader for MockMotorCtrl {
@@ -66,6 +69,9 @@ impl controller::BlockingMotorWriter for MockMotorCtrl {
     fn stop_motor_blocking(&mut self) -> Result<(), model::types::PeripheralError> {
         Ok(())
     }
+}
+impl model::calibration::Calibration for MockMotorCtrl {
+    const CALIBRATION_FILE_NAME: &'static str = "motor_cal.cbor";
 }
 
 pub struct SampleShellConfig;
