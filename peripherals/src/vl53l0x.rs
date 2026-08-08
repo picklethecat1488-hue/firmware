@@ -75,7 +75,7 @@ impl<I: I2c> Vl53l0x<I> {
     /// Minimum physical sensor range limit.
     pub const MIN_RANGE_MM: u16 = 20;
     /// Maximum physical sensor range limit.
-    pub const MAX_RANGE_MM: u16 = 100;
+    pub const MAX_RANGE_MM: u16 = 1000;
 
     /// Creates a new VL53L0X driver instance at the specified address.
     pub const fn new(i2c: I, address: u8) -> Self {
@@ -86,7 +86,7 @@ impl<I: I2c> Vl53l0x<I> {
             hysteresis_mm: 50,
             calibration: TwoPointCalibration::new_with_range(
                 0,
-                100,
+                1000,
                 Self::MIN_RANGE_MM,
                 Self::MAX_RANGE_MM,
             ),

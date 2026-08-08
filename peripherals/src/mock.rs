@@ -321,7 +321,7 @@ impl model::calibration::Calibration for MockProximitySensor {
                 cal.min_range = Some(20);
             }
             if cal.max_range.is_none() {
-                cal.max_range = Some(100);
+                cal.max_range = Some(1000);
             }
             store[direction] = cal;
         }
@@ -485,7 +485,7 @@ impl model::calibration::Calibration for DummyProximitySensor {
                 cal.min_range = Some(20);
             }
             if cal.max_range.is_none() {
-                cal.max_range = Some(100);
+                cal.max_range = Some(1000);
             }
             store[direction] = cal;
         }
