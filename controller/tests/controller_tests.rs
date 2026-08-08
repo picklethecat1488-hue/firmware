@@ -37,6 +37,7 @@ fn test_motor_controller_flow() {
 
     // Simulate dry run (low current draw)
     controller.current_sensor.current_ma = 10; // below 15mA threshold
+    controller.bypass_startup_blanking();
     controller.update(None).unwrap(); // triggers PowerOff -> state becomes Off
     assert_eq!(controller.state(), MotorState::Off);
     assert_eq!(controller.motor.speed, 0); // motor should be stopped
@@ -54,6 +55,7 @@ fn test_motor_controller_flow() {
 
     // Simulate stall (high current draw)
     controller.current_sensor.current_ma = 900; // above 800mA threshold
+    controller.bypass_startup_blanking();
     controller.update(None).unwrap(); // triggers PowerOff -> state becomes Off
     assert_eq!(controller.state(), MotorState::Off);
     assert_eq!(controller.motor.speed, 0); // motor should be stopped

@@ -22,6 +22,9 @@ pub const MOTOR_TICK_INTERVAL: embassy_time::Duration = embassy_time::Duration::
 pub const MOTOR_INACTIVE_TICK_INTERVAL: embassy_time::Duration =
     embassy_time::Duration::from_secs(1);
 
+/// Startup blanking period (3 seconds at 100Hz = 300 ticks) during which safety limits/cutoff checks are bypassed.
+pub const MOTOR_STARTUP_BLANKING_TICKS: u32 = 300;
+
 /// Safety limits for the motor controller.
 pub struct MotorLimits {
     /// Minimum current threshold in mA for dry-run detection.
@@ -68,6 +71,7 @@ pub struct MotorController<M, C> {
     active_speed: MotorSpeed,
     calibration_present: bool,
     limits: MotorLimits,
+    startup_ticks: u32,
 }
 
 impl<M: Motor + Tickable, C: PowerSensor> MotorController<M, C>
@@ -92,6 +96,7 @@ where
                 max_rpm: 0,
                 rpm_limit: 0,
             },
+            startup_ticks: 0,
         }
     }
 
@@ -173,7 +178,7 @@ where
         };
 
         // If the motor is running, verify safety limits (RPM and load torque)
-        if self.state == MotorState::On {
+        if self.state == MotorState::On && self.startup_ticks > MOTOR_STARTUP_BLANKING_TICKS {
             let rpm = self.current_rpm();
             match self.limits.check_limits(rpm, current) {
                 MotorSafetyStatus::RpmExceeded(_rpm_val) => {
@@ -223,6 +228,7 @@ where
     )]
     fn set_running_state(&mut self, running: bool) -> Result<(), PeripheralError> {
         if running {
+            self.startup_ticks = 0;
             if self.state == MotorState::Off {
                 self.state = MotorState::On;
                 self.current_sensor
@@ -328,6 +334,7 @@ where
     pub fn tick_motor(&mut self) -> Result<(), PeripheralError> {
         // 1. Ramping logic
         if self.state == MotorState::On {
+            self.startup_ticks = self.startup_ticks.saturating_add(1);
             if self.active_speed < self.speed {
                 // Ramp up
                 let next = (self.active_speed.get() + 1).min(self.speed.get());
@@ -461,6 +468,11 @@ where
                 }
             }
         }
+    }
+
+    /// Bypasses the startup blanking period immediately (primarily for testing).
+    pub fn bypass_startup_blanking(&mut self) {
+        self.startup_ticks = MOTOR_STARTUP_BLANKING_TICKS + 1;
     }
 }
 
