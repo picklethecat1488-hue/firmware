@@ -5,7 +5,7 @@
 use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
-use model::interfaces::{ChargeStatus, FuelGauge, Probeable};
+use model::interfaces::{ChargeStatus, FuelGauge, Probeable, Tickable};
 use model::types::{ChargeState, PeripheralError};
 
 macro_rules! log_warn {
@@ -19,6 +19,7 @@ struct Register;
 impl Register {
     const VCELL: u8 = 0x02;
     const SOC: u8 = 0x04;
+    const MODE: u8 = 0x06;
     const CONFIG: u8 = 0x0C;
     const VALRT: u8 = 0x14;
     const CRATE: u8 = 0x16;
@@ -41,16 +42,49 @@ impl ConfigMask {
     const ALSC: u16 = 1 << 6;
 }
 
+const MAX_CHARGE_COUNTER: i32 = 10;
+const VOLTAGE_CHANGE_STEP_THRESHOLD: i32 = 5;
+const VOLTAGE_JUMP_THRESHOLD: i32 = 15;
+
 /// Driver for the MAX17048 fuel gauge communicating over I2C.
 pub struct Max17048<I> {
     i2c: I,
     address: u8,
+    last_vcell: Option<u32>,
+    last_soc: Option<u8>,
+    charge_detect_counter: i32,
 }
 
 impl<I: I2c> Max17048<I> {
     /// Creates a new MAX17048 driver instance with the default I2C address (0x36).
     pub const fn new(i2c: I) -> Self {
-        Self { i2c, address: 0x36 }
+        Self {
+            i2c,
+            address: 0x36,
+            last_vcell: None,
+            last_soc: None,
+            charge_detect_counter: 0,
+        }
+    }
+
+    /// Initialize the fuel gauge.
+    /// Checks the RI (Reset Indicator) bit in STATUS. If set, clears RI and triggers a Quick-Start.
+    #[tracing::instrument(level = "trace")]
+    pub fn init(&mut self) -> Result<(), PeripheralError> {
+        let status = self.read_register(Register::STATUS)?;
+        // RI is bit 8 (0x0100)
+        if (status & 0x0100) != 0 {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::info!("MAX17048: Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.");
+
+            // Clear RI bit by writing 0x00FF (clearing bit 8, keeping lower byte 0xFF)
+            self.write_register(Register::STATUS, status & !0x0100)?;
+
+            // Trigger Quick-Start by writing 0x4000 to MODE
+            let mode = self.read_register(Register::MODE)?;
+            self.write_register(Register::MODE, mode | 0x4000)?;
+        }
+        Ok(())
     }
 
     /// Read a 16-bit register value from the device.
@@ -193,6 +227,44 @@ impl<I: I2c> FuelGauge for Max17048<I> {
     }
 }
 
+impl<I: I2c> Tickable for Max17048<I> {
+    type Error = PeripheralError;
+
+    /// Updates the state of the fuel gauge by tracking voltage and SOC trends over time.
+    #[tracing::instrument(level = "trace")]
+    fn tick(&mut self) -> Result<(), Self::Error> {
+        let voltage = self.read_voltage_mv()?;
+        let soc = self.read_state_of_charge()?;
+
+        if let (Some(last_v), Some(last_s)) = (self.last_vcell, self.last_soc) {
+            let v_diff = voltage as i32 - last_v as i32;
+            let s_diff = soc as i32 - last_s as i32;
+
+            if v_diff >= VOLTAGE_JUMP_THRESHOLD {
+                self.charge_detect_counter = MAX_CHARGE_COUNTER;
+            } else if v_diff <= -VOLTAGE_JUMP_THRESHOLD {
+                self.charge_detect_counter = -MAX_CHARGE_COUNTER;
+            } else {
+                let s_step = 5 * s_diff.signum();
+                let v_step = if v_diff == 0 {
+                    -self.charge_detect_counter.signum()
+                } else if v_diff.abs() >= VOLTAGE_CHANGE_STEP_THRESHOLD {
+                    4 * v_diff.signum()
+                } else {
+                    2 * v_diff.signum()
+                };
+
+                self.charge_detect_counter = (self.charge_detect_counter + s_step + v_step)
+                    .clamp(-MAX_CHARGE_COUNTER, MAX_CHARGE_COUNTER);
+            }
+        }
+
+        self.last_vcell = Some(voltage);
+        self.last_soc = Some(soc);
+        Ok(())
+    }
+}
+
 impl<I: I2c> ChargeStatus for Max17048<I> {
     type Error = PeripheralError;
 
@@ -208,10 +280,22 @@ impl<I: I2c> ChargeStatus for Max17048<I> {
         } else if (status & StatusMask::VL) != 0 {
             // VL (Voltage Low) alert indicates a non-recoverable or critical low voltage condition
             Ok(ChargeState::NonRecoverableFault)
-        } else if crate_val > 0 {
-            Ok(ChargeState::Charging)
         } else {
-            Ok(ChargeState::DoneOrStandbyOrUnplugged)
+            let mut charging = crate_val > 0;
+
+            if self.last_vcell.is_some() {
+                if self.charge_detect_counter >= 3 {
+                    charging = true;
+                } else if self.charge_detect_counter <= -3 {
+                    charging = false;
+                }
+            }
+
+            if charging {
+                Ok(ChargeState::Charging)
+            } else {
+                Ok(ChargeState::DoneOrStandbyOrUnplugged)
+            }
         }
     }
 }
@@ -222,7 +306,7 @@ impl<I: I2c> Probeable for Max17048<I> {
     #[tracing::instrument(level = "trace")]
     fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         let id = self.read_register(Register::VRESET)?;
-        if (id & 0x00F0) == 0x0010 {
+        if (id & 0x00F0) == 0x0010 || (id & 0xFF00) == 0x9600 {
             Ok(id)
         } else {
             Err(PeripheralError::DeviceNotFound(id))
@@ -231,7 +315,20 @@ impl<I: I2c> Probeable for Max17048<I> {
 
     #[tracing::instrument(level = "trace")]
     fn reset(&mut self) -> Result<(), Self::Error> {
-        self.write_register(Register::CMD, 0x5400)
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        {
+            // Writing 0x5400 to CMD resets the chip. Since the chip resets its I2C interface
+            // immediately, it may abort the I2C transaction or fail to ACK the STOP condition,
+            // resulting in a bus error (I2COther). We trigger the write, wait for the reset
+            // to complete, and verify the chip is alive by reading the ID.
+            let _ = self.write_register(Register::CMD, 0x5400);
+            ::embassy_time::block_for(::embassy_time::Duration::from_millis(15)); // Wait for reset (datasheet: 15ms)
+            self.read_chip_id().map(|_| ())
+        }
+        #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+        {
+            self.write_register(Register::CMD, 0x5400)
+        }
     }
 }
 
@@ -250,9 +347,12 @@ macro_rules! init_max17048 {
                 let pe = e.to_peripheral_error();
                 $boot_status.record_error(pe);
             }
-            if let Err(ref e) = fuel_gauge.reset() {
+            if let Err(ref e) = fuel_gauge.init() {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::warn!("MAX17048: Reset failed: {:?}", defmt::Debug2Format(e));
+                defmt::warn!(
+                    "MAX17048: Initialization failed: {:?}",
+                    defmt::Debug2Format(e)
+                );
                 let pe = e.to_peripheral_error();
                 $boot_status.record_error(pe);
             }

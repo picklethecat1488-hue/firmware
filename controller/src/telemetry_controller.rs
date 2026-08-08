@@ -501,6 +501,10 @@ impl<M: embassy_sync::blocking_mutex::raw::RawMutex + 'static> MotorTelemetryCli
     }
 
     /// Reports a peripheral error to telemetry.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
     pub fn report_error(&self, err: model::types::PeripheralError) {
         if let Some(ref tx) = self.tx {
             let _ = tx.try_send(TelemetryRecord::PeripheralError(err));
@@ -511,6 +515,10 @@ impl<M: embassy_sync::blocking_mutex::raw::RawMutex + 'static> MotorTelemetryCli
 impl<M: embassy_sync::blocking_mutex::raw::RawMutex + 'static>
     TelemetryClient<model::types::MotorStatus> for MotorTelemetryClient<M>
 {
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
     fn report(&mut self, status: model::types::MotorStatus) {
         if let Some(ref tx) = self.tx {
             let _ = tx.try_send(TelemetryRecord::Motor(status));
@@ -594,6 +602,10 @@ impl<M: embassy_sync::blocking_mutex::raw::RawMutex + 'static> LedTelemetryClien
     }
 
     /// Reports a peripheral error to telemetry.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "core1"),
+        link_section = ".data.core1_func"
+    )]
     pub fn report_error(&self, err: model::types::PeripheralError) {
         if let Some(ref tx) = self.tx {
             let _ = tx.try_send(TelemetryRecord::PeripheralError(err));
@@ -604,6 +616,10 @@ impl<M: embassy_sync::blocking_mutex::raw::RawMutex + 'static> LedTelemetryClien
 impl<M: embassy_sync::blocking_mutex::raw::RawMutex + 'static>
     TelemetryClient<model::types::SystemLedState> for LedTelemetryClient<M>
 {
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "core1"),
+        link_section = ".data.core1_func"
+    )]
     fn report(&mut self, state: model::types::SystemLedState) {
         if let Some(ref tx) = self.tx {
             let changed = match self.last_state {

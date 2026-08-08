@@ -38,6 +38,9 @@ controller::declare_shell_commands! {
         Sensor,
         Fs,
         System,
+        I2c,
+        Gpio,
+        Led,
     }
 }
 
@@ -112,6 +115,7 @@ controller::impl_shell_config! {
         SensorCtrl = SensorControllerType,
         MotorCtrl = MotorControllerType,
         SystemCtrl = SystemControllerType,
+        LedCtrl = controller::led_controller::LedController<app::LedDevice>,
     }
 
     fn trigger_core_panic(
@@ -145,6 +149,12 @@ pub static CORE1_COMMAND_CHANNEL: embassy_sync::channel::Channel<
     4,
 > = embassy_sync::channel::Channel::new();
 
+/// Static holder for LED Sender to resolve lifetimes.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub static mut LED_SENDER: Option<
+    controller::LedSender<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>,
+> = None;
+
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::task]
 #[allow(clippy::never_loop)]
@@ -166,15 +176,22 @@ async fn core1_command_task(
     }
 }
 
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[embassy_executor::task]
+async fn led_task(led_ctrl: controller::led_controller::LedController<app::LedDevice>) {
+    led_ctrl
+        .run::<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>(
+            app::LED_CHANNEL.receiver(),
+            app::TELEMETRY_CHANNEL.sender(),
+        )
+        .await;
+}
+
 /// Main application entry point for the bringup shell.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let _ = spawner;
     let p = embassy_rp::init(Default::default());
-
-    // Configure hardware stack guard using Cortex-M MPU
-    app::configure_mpu_stack_guard();
 
     // Initialize board peripherals using the unified board configuration
     let board = app::Board::init(p);
@@ -281,13 +298,9 @@ async fn main(spawner: Spawner) {
         }
     });
 
-    let board_motor_ptr = unsafe {
-        if !app::MOTOR_CTRL_CORE1.is_null() {
-            &mut (*(app::MOTOR_CTRL_CORE1 as *mut MotorControllerType)).motor as *mut _
-        } else {
-            core::ptr::null_mut()
-        }
-    };
+    let raw_motor_ptr = *app::MOTOR_CTRL_CORE1.wait();
+    let board_motor_ptr =
+        unsafe { &mut (*(raw_motor_ptr as *mut MotorControllerType)).motor as *mut _ };
 
     let i2c_buses = &[controller::NamedDevice {
         name: "default",
@@ -327,29 +340,25 @@ async fn main(spawner: Spawner) {
     } else {
         &[]
     };
-    let sensors = unsafe {
-        &[
-            controller::NamedDevice {
-                name: "north",
-                device: app::SENSOR_CTRL_NORTH_CORE1 as *mut _,
-            },
-            controller::NamedDevice {
-                name: "east",
-                device: app::SENSOR_CTRL_EAST_CORE1 as *mut _,
-            },
-            controller::NamedDevice {
-                name: "west",
-                device: app::SENSOR_CTRL_WEST_CORE1 as *mut _,
-            },
-        ]
-    };
+    let sensors = &[
+        controller::NamedDevice {
+            name: "north",
+            device: *app::SENSOR_CTRL_NORTH_CORE1.wait() as *mut _,
+        },
+        controller::NamedDevice {
+            name: "east",
+            device: *app::SENSOR_CTRL_EAST_CORE1.wait() as *mut _,
+        },
+        controller::NamedDevice {
+            name: "west",
+            device: *app::SENSOR_CTRL_WEST_CORE1.wait() as *mut _,
+        },
+    ];
 
-    let motor_ctrls = unsafe {
-        &[controller::NamedDevice {
-            name: "default",
-            device: app::MOTOR_CTRL_CORE1 as *mut _,
-        }]
-    };
+    let motor_ctrls = &[controller::NamedDevice {
+        name: "default",
+        device: *app::MOTOR_CTRL_CORE1.wait() as *mut _,
+    }];
 
     let feature_set = app::create_default_feature_set();
     let mut system_ctrl = controller::SystemController::new(
@@ -363,6 +372,13 @@ async fn main(spawner: Spawner) {
         device: &mut system_ctrl as *mut _,
     }];
 
+    let leds = unsafe {
+        &[controller::NamedDevice {
+            name: "default",
+            device: app::LED_CTRL.as_mut().unwrap() as *mut _,
+        }]
+    };
+
     let pointers = ShellControllerPointers::<AppConfig> {
         i2c_buses,
         motors,
@@ -373,6 +389,7 @@ async fn main(spawner: Spawner) {
         thermals,
         batteries,
         system_ctrls,
+        leds,
         fs_buffer: unsafe { &mut app::FS_BUF },
     };
 

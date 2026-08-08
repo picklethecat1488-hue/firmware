@@ -54,13 +54,20 @@ resolve_fn = "resolve_system_ctrl"
 doc = "Named system controllers."
 bounds = "crate::BlockingSystemWriter"
 
+[[cli_resolver_fields]]
+associated_type = "LedCtrl"
+field = "leds"
+resolve_fn = "resolve_led"
+doc = "Named RGB/Indicator LED controls."
+bounds = "crate::BlockingLedWriter"
+
 [[cli_commands]]
 group = "Battery"
 cmd_name = "battery"
 variant = "Battery"
 subcommand_type = "battery_controller::BatterySubcommand"
 handler = "battery_controller::handle_battery_cli"
-help = "Battery commands (battery status)"
+help = "Battery commands (battery status, battery test-alert)"
 
 [[cli_commands]]
 group = "Thermal"
@@ -76,7 +83,7 @@ cmd_name = "motor"
 variant = "Motor"
 subcommand_type = "motor_controller::MotorSubcommand"
 handler = "motor_controller::handle_motor_cli"
-help = "Motor commands (motor speed <speed>, motor stop, motor calibrate <state> [max_rpm] [rpm_limit] [--partition <partition>])"
+help = "Motor commands (motor speed <speed>, motor rpm-speed <rpm>, motor stop, motor current, motor calibrate <state> [max_rpm] [rpm_limit] [--partition <partition>])"
 args = [
     { name = "arg1", type = "string", help = "First argument (speed or calibration state)" },
     { name = "arg2", type = "string", help = "Second argument (max_rpm)" },
@@ -118,4 +125,35 @@ help = "System commands (system activity, system crash [core])"
 args = [
     { name = "arg1", type = "Option<system_controller::CpuTarget>", help = "Optional target core (core0, core1)" }
 ]
+
+[[cli_commands]]
+group = "I2c"
+cmd_name = "i2c"
+variant = "I2c"
+subcommand_type = "platform::i2c::I2cSubcommand"
+handler = "platform::i2c::handle_i2c_cli"
+help = "I2C commands (i2c scan)"
+args = [
+    { name = "bus", type = "string", help = "Target bus name" }
+]
+
+[[cli_commands]]
+group = "Gpio"
+cmd_name = "gpio"
+variant = "Gpio"
+subcommand_type = "platform::gpio::GpioSubcommand"
+handler = "platform::gpio::handle_gpio_cli"
+help = "GPIO commands (gpio status, gpio read <pin>)"
+args = [
+    { name = "pin", type = "Option<u32>", help = "Pin number to read" }
+]
+
+[[cli_commands]]
+group = "Led"
+cmd_name = "led"
+variant = "Led"
+subcommand_type = "led_controller::LedSubcommand"
+handler = "led_controller::handle_led_cli"
+help = "LED commands (led off, led green, led blue, led yellow, led orange, led blink-four, led blink-slow)"
+
 

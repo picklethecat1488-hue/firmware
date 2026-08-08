@@ -14,8 +14,10 @@ pub enum PowerMeasurementMode {
     Continuous(bool, bool),
 }
 
+use crate::interfaces::WaitableMeasurement;
+
 /// Trait representing a power monitoring sensor capable of reading current and voltage.
-pub trait PowerSensor {
+pub trait PowerSensor: WaitableMeasurement {
     /// Error type returned by the physical hardware.
     type Error;
 

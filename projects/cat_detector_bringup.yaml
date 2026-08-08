@@ -121,7 +121,7 @@ steps:
   - id: "8a"
     name: Calibrate Motor Current (Empty Bowl)
     type: shell_command
-    command: motor calibrate empty 3000 2500
+    command: motor calibrate empty 1000 1200
     expected_regex: 'Saved motor Empty calibration to flash.'
     description: Calibrate motor empty bowl state. Ensure bowl is empty first.
 
@@ -174,10 +174,11 @@ steps:
 
   - id: "11"
     name: Verify Fuel Gauge Alert Interrupt
-    type: manual
-    flash_before: app
-    description: Pull fuel gauge Alert line (GP10) to ground.
-    expected: System wakes up, dispatches battery alert, and blinks NeoPixel red.
+    type: shell_command
+    flash_before: shell
+    command: battery test-alert
+    expected_regex: "Alert interrupt test completed\\.\\s+Pin asserted \\(low\\): true\\s+Pin deasserted \\(high\\): true"
+    description: Execute the battery test-alert command to pulse the hardware alert interrupt pin and clear alerts.
 
   - id: "12"
     name: Verify Directory Structure

@@ -1,9 +1,9 @@
 use crate::tracing;
 use model::interfaces::{
     ChargeStatus, FuelGauge, LedDriver, Motor, PowerMeasurementMode, PowerSensor, Probeable,
-    ProximitySensor, TemperatureSensor,
+    ProximitySensor, TemperatureSensor, Tickable, WaitableMeasurement,
 };
-use model::types::MotorSpeed;
+use model::types::{MotorSpeed, PeripheralError};
 
 /// A mock implementation of a Motor for unit testing on the host.
 pub struct MockMotor {
@@ -74,6 +74,16 @@ impl MockCurrentSensor {
         Self {
             current_ma,
             should_fail: false,
+        }
+    }
+}
+
+impl WaitableMeasurement for MockCurrentSensor {
+    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+        if self.should_fail {
+            Err(PeripheralError::DeviceNotAvailable)
+        } else {
+            Ok(())
         }
     }
 }
@@ -160,6 +170,18 @@ impl TemperatureSensor for MockBattery {
     }
 }
 
+impl Tickable for MockBattery {
+    type Error = ();
+
+    fn tick(&mut self) -> Result<(), Self::Error> {
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(())
+        }
+    }
+}
+
 impl FuelGauge for MockBattery {
     type Error = ();
 
@@ -223,6 +245,12 @@ impl Probeable for MockBattery {
 /// A simulated current sensor that always returns a healthy current draw.
 pub struct DummyCurrentSensor;
 
+impl WaitableMeasurement for DummyCurrentSensor {
+    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+        Ok(())
+    }
+}
+
 impl PowerSensor for DummyCurrentSensor {
     type Error = core::convert::Infallible;
 
@@ -270,6 +298,16 @@ impl MockProximitySensor {
     }
 }
 
+impl WaitableMeasurement for MockProximitySensor {
+    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+        if self.should_fail {
+            Err(PeripheralError::DeviceNotAvailable)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 impl ProximitySensor for MockProximitySensor {
     type Error = ();
 
@@ -279,6 +317,10 @@ impl ProximitySensor for MockProximitySensor {
         } else {
             Ok(self.distance_mm)
         }
+    }
+
+    fn read_distance_raw(&mut self) -> Result<u16, Self::Error> {
+        self.read_distance_mm()
     }
 }
 
@@ -318,11 +360,21 @@ impl DummyProximitySensor {
     }
 }
 
+impl WaitableMeasurement for DummyProximitySensor {
+    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+        Ok(())
+    }
+}
+
 impl ProximitySensor for DummyProximitySensor {
     type Error = core::convert::Infallible;
 
     fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
         Ok(self.distance_mm)
+    }
+
+    fn read_distance_raw(&mut self) -> Result<u16, Self::Error> {
+        self.read_distance_mm()
     }
 }
 

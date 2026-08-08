@@ -459,44 +459,6 @@ fn test_probeable_max17048() {
 }
 
 #[test]
-fn test_probeable_attiny816() {
-    use model::interfaces::Probeable;
-    use model::types::PeripheralError;
-    use peripherals::attiny816::Attiny816;
-
-    // 1. Success case
-    let mut reads = std::collections::VecDeque::new();
-    reads.push_back(vec![0x86]);
-    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
-    let mut i2c = ProbeableMockI2c {
-        reads,
-        writes: writes.clone(),
-    };
-    let mut dev = Attiny816::new(&mut i2c);
-
-    let id = dev.read_chip_id().unwrap();
-    assert_eq!(id, 0x86);
-    assert_eq!(writes.borrow()[0], vec![0x00, 0x01]);
-
-    assert!(dev.reset().is_ok());
-    assert_eq!(writes.borrow()[1], vec![0x00, 0x7F, 0xFF]);
-
-    // 2. Mismatch case
-    let mut reads = std::collections::VecDeque::new();
-    reads.push_back(vec![0x55]);
-    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
-    let mut i2c = ProbeableMockI2c {
-        reads,
-        writes: writes.clone(),
-    };
-    let mut dev = Attiny816::new(&mut i2c);
-    assert_eq!(
-        dev.read_chip_id().unwrap_err(),
-        PeripheralError::DeviceNotFound(0x55)
-    );
-}
-
-#[test]
 fn test_probeable_ina219() {
     use model::interfaces::Probeable;
     use model::types::PeripheralError;
@@ -644,6 +606,7 @@ fn test_macro_init_max17048() {
     // 1. Happy case
     let mut reads = std::collections::VecDeque::new();
     reads.push_back(vec![0x00, 0x10]); // VRESET matching (val & 0x00F0) == 0x0010
+    reads.push_back(vec![0x00, 0x00]); // STATUS register with RI clear (0x0000)
     let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
     let mut i2c = ProbeableMockI2c { reads, writes };
 
@@ -698,30 +661,9 @@ fn test_macro_init_ina219() {
 }
 
 #[test]
-fn test_macro_init_attiny816() {
-    // 1. Happy case
-    let mut reads = std::collections::VecDeque::new();
-    reads.push_back(vec![0x86]); // expected chip ID
-    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
-    let mut i2c = ProbeableMockI2c { reads, writes };
-
+#[allow(unused_mut)]
+fn test_macro_init_ws2812() {
     let mut errors = TestBootStatus { errors: vec![] };
-    peripherals::init_attiny816!(&mut i2c, &mut errors);
-
+    let _dev = peripherals::init_ws2812!((), (), &mut errors);
     assert!(errors.errors.is_empty());
-
-    // 2. Sad case (Wrong chip ID)
-    let mut reads = std::collections::VecDeque::new();
-    reads.push_back(vec![0x99]); // wrong ID
-    let writes = std::rc::Rc::new(std::cell::RefCell::new(vec![]));
-    let mut i2c = ProbeableMockI2c { reads, writes };
-
-    let mut errors = TestBootStatus { errors: vec![] };
-    peripherals::init_attiny816!(&mut i2c, &mut errors);
-
-    assert_eq!(errors.errors.len(), 1);
-    assert_eq!(
-        errors.errors[0],
-        model::types::PeripheralError::DeviceNotFound(0x99)
-    );
 }

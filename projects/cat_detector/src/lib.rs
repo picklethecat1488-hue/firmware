@@ -33,32 +33,32 @@ pub use platform::panic_handler::handle_panic_with_sizes;
 
 pub use platform::panic_handler::init as init_panic_handler;
 
-/// Pump IA pin (GPIO 14)
-pub const PUMP_PIN_IA: u32 = 14;
-/// Pump IB pin (GPIO 15)
-pub const PUMP_PIN_IB: u32 = 15;
-/// I2C SDA pin (GPIO 4)
-pub const I2C_SDA_PIN: u32 = 4;
-/// I2C SCL pin (GPIO 5)
-pub const I2C_SCL_PIN: u32 = 5;
+/// Pump IA pin (GPIO 19)
+pub const PUMP_PIN_IA: u32 = 19;
+/// Pump IB pin (GPIO 20)
+pub const PUMP_PIN_IB: u32 = 20;
+/// I2C SDA pin (GPIO 12)
+pub const I2C_SDA_PIN: u32 = 12;
+/// I2C SCL pin (GPIO 13)
+pub const I2C_SCL_PIN: u32 = 13;
 /// UART TX pin (GPIO 0)
 pub const UART_TX_PIN: u32 = 0;
 /// UART RX pin (GPIO 1)
 pub const UART_RX_PIN: u32 = 1;
 
-/// ToF Sensor 1 (North) XSHUT pin (GPIO 2)
-pub const TOF_NORTH_XSHUT_PIN: u32 = 2;
-/// ToF Sensor 2 (East) XSHUT pin (GPIO 3)
-pub const TOF_EAST_XSHUT_PIN: u32 = 3;
+/// ToF Sensor 1 (North) XSHUT pin (GPIO 4)
+pub const TOF_NORTH_XSHUT_PIN: u32 = 4;
+/// ToF Sensor 2 (East) XSHUT pin (GPIO 5)
+pub const TOF_EAST_XSHUT_PIN: u32 = 5;
 /// ToF Sensor 3 (West) XSHUT pin (GPIO 6)
 pub const TOF_WEST_XSHUT_PIN: u32 = 6;
 
 /// ToF Sensor 1 (North) Interrupt pin (GPIO 7)
 pub const TOF_NORTH_INT_PIN: u32 = 7;
-/// ToF Sensor 2 (East) Interrupt pin (GPIO 8)
-pub const TOF_EAST_INT_PIN: u32 = 8;
-/// ToF Sensor 3 (West) Interrupt pin (GPIO 9)
-pub const TOF_WEST_INT_PIN: u32 = 9;
+/// ToF Sensor 2 (East) Interrupt pin (GPIO 9)
+pub const TOF_EAST_INT_PIN: u32 = 9;
+/// ToF Sensor 3 (West) Interrupt pin (GPIO 10)
+pub const TOF_WEST_INT_PIN: u32 = 10;
 
 /// ToF Sensor 1 (North) I2C Address (0x30)
 pub const TOF_NORTH_I2C_ADDR: u8 = 0x30;
@@ -67,8 +67,8 @@ pub const TOF_EAST_I2C_ADDR: u8 = 0x31;
 /// ToF Sensor 3 (West) I2C Address (0x32)
 pub const TOF_WEST_I2C_ADDR: u8 = 0x32;
 
-/// Fuel Gauge Interrupt/Alert pin (GPIO 10)
-pub const FUEL_GAUGE_INT_PIN: u32 = 10;
+/// Fuel Gauge Interrupt/Alert pin (GPIO 14)
+pub const FUEL_GAUGE_INT_PIN: u32 = 14;
 
 /// The default wake threshold in millimeters under which target presence is detected.
 pub const DEFAULT_WAKE_THRESHOLD_MM: u16 = 300;
@@ -288,7 +288,7 @@ pub async fn init_controllers(board: Board<'static>) {
 
         LED_CTRL = Some(controller::led_controller::LedController::new(led_driver));
 
-        SENSOR_CTRL_NORTH_CORE0 = Some(
+        let mut north =
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
                 controller::types::SensorMetadata {
                     direction: model::types::Direction::North,
@@ -297,10 +297,11 @@ pub async fn init_controllers(board: Board<'static>) {
                 SYSTEM_CHANNEL.sender(),
                 ProximityPinWrapper(pin_north),
                 DEFAULT_WAKE_THRESHOLD_MM,
-            ),
-        );
+            );
+        north.bind_command_tx(SENSOR_NORTH_CHANNEL.sender());
+        SENSOR_CTRL_NORTH_CORE0 = Some(north);
 
-        SENSOR_CTRL_EAST_CORE0 = Some(
+        let mut east =
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
                 controller::types::SensorMetadata {
                     direction: model::types::Direction::East,
@@ -309,10 +310,11 @@ pub async fn init_controllers(board: Board<'static>) {
                 SYSTEM_CHANNEL.sender(),
                 ProximityPinWrapper(pin_east),
                 DEFAULT_WAKE_THRESHOLD_MM,
-            ),
-        );
+            );
+        east.bind_command_tx(SENSOR_EAST_CHANNEL.sender());
+        SENSOR_CTRL_EAST_CORE0 = Some(east);
 
-        SENSOR_CTRL_WEST_CORE0 = Some(
+        let mut west =
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
                 controller::types::SensorMetadata {
                     direction: model::types::Direction::West,
@@ -321,8 +323,9 @@ pub async fn init_controllers(board: Board<'static>) {
                 SYSTEM_CHANNEL.sender(),
                 ProximityPinWrapper(pin_west),
                 DEFAULT_WAKE_THRESHOLD_MM,
-            ),
-        );
+            );
+        west.bind_command_tx(SENSOR_WEST_CHANNEL.sender());
+        SENSOR_CTRL_WEST_CORE0 = Some(west);
 
         MOTOR_CTRL_CORE0 = Some(controller::motor_controller::MotorController::new(
             motor,
@@ -339,38 +342,38 @@ pub async fn init_controllers(board: Board<'static>) {
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Core 1 stack size in bytes.
-pub const CORE1_STACK_SIZE: usize = 4096;
+pub const CORE1_STACK_SIZE: usize = 16384;
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Core 1 default stack top address.
-pub const CORE1_DEFAULT_STACK_TOP: u32 = 0x2004_0000;
+platform::boot_multicore!(crate::Board, CORE1_STACK_SIZE);
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-static mut CORE1_STACK: embassy_rp::multicore::Stack<CORE1_STACK_SIZE> =
-    embassy_rp::multicore::Stack::new();
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-static mut CORE1_STACK_TOP: u32 = CORE1_DEFAULT_STACK_TOP;
+platform::define_panic_handler!(
+    crate::STACK_TOP,
+    { crate::FLASH_SIZE },
+    { crate::FLASH_START },
+    { crate::FLASH_END },
+    { crate::FLASH_WRITE_SIZE },
+    { crate::FLASH_ERASE_SIZE }
+);
 
 /// Global pointer to the active MotorController on Core 1 (populated during startup).
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut MOTOR_CTRL_CORE1: *mut () = core::ptr::null_mut();
+pub static MOTOR_CTRL_CORE1: platform::OnceLock<*mut ()> = platform::OnceLock::new();
 
 /// Global pointer to the active North SensorController on Core 1.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut SENSOR_CTRL_NORTH_CORE1: *mut () = core::ptr::null_mut();
+pub static SENSOR_CTRL_NORTH_CORE1: platform::OnceLock<*mut ()> = platform::OnceLock::new();
 
 /// Global pointer to the active East SensorController on Core 1.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut SENSOR_CTRL_EAST_CORE1: *mut () = core::ptr::null_mut();
+pub static SENSOR_CTRL_EAST_CORE1: platform::OnceLock<*mut ()> = platform::OnceLock::new();
 
 /// Global pointer to the active West SensorController on Core 1.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut SENSOR_CTRL_WEST_CORE1: *mut () = core::ptr::null_mut();
+pub static SENSOR_CTRL_WEST_CORE1: platform::OnceLock<*mut ()> = platform::OnceLock::new();
 
 /// Type alias for the motor controller.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -391,11 +394,18 @@ pub type SensorType = controller::sensor_controller::SensorController<
 /// Boots Core 1 peripherals and controllers.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::task]
+#[cfg_attr(target_arch = "arm", link_section = ".data.core1_func")]
 pub async fn bootstrap_core1_task(
     spawner: embassy_executor::Spawner,
-    mut motor: MotorType,
-    mut sensors: (SensorType, SensorType, SensorType),
+    motor: MotorType,
+    sensors: (SensorType, SensorType, SensorType),
 ) {
+    // Configure MPU Stack Guard for Core 1
+    let guard_addr = CORE1_STACK_BOTTOM.load(core::sync::atomic::Ordering::Acquire);
+    if guard_addr != 0 {
+        platform::core_monitor::configure_mpu_stack_guard(guard_addr);
+    }
+
     // Initialize the core monitor for Core 1
     platform::core_monitor::init_core(
         Some(spawner),
@@ -405,68 +415,16 @@ pub async fn bootstrap_core1_task(
         true,
     );
 
-    unsafe {
-        let motor_ptr = core::ptr::addr_of_mut!(MOTOR_CTRL_CORE1);
-        *motor_ptr = &mut motor as *mut _ as *mut ();
-        let north_ptr = core::ptr::addr_of_mut!(SENSOR_CTRL_NORTH_CORE1);
-        *north_ptr = &mut sensors.0 as *mut _ as *mut ();
-        let east_ptr = core::ptr::addr_of_mut!(SENSOR_CTRL_EAST_CORE1);
-        *east_ptr = &mut sensors.1 as *mut _ as *mut ();
-        let west_ptr = core::ptr::addr_of_mut!(SENSOR_CTRL_WEST_CORE1);
-        *west_ptr = &mut sensors.2 as *mut _ as *mut ();
-    }
-
     controller::spawn_controllers! {
         spawner,
         telemetry: TELEMETRY_CHANNEL,
         controllers: {
-            Motor(motor, MOTOR_CHANNEL), generics: (crate::MotorDevice, crate::CurrentSensorDevice),
-            Sensor(sensors.0, SENSOR_NORTH_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
-            Sensor(sensors.1, SENSOR_EAST_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
-            Sensor(sensors.2, SENSOR_WEST_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+            Motor(motor, MOTOR_CHANNEL) register: MOTOR_CTRL_CORE1, generics: (crate::MotorDevice, crate::CurrentSensorDevice),
+            Sensor(sensors.0, SENSOR_NORTH_CHANNEL) register: SENSOR_CTRL_NORTH_CORE1, generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+            Sensor(sensors.1, SENSOR_EAST_CHANNEL) register: SENSOR_CTRL_EAST_CORE1, generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+            Sensor(sensors.2, SENSOR_WEST_CHANNEL) register: SENSOR_CTRL_WEST_CORE1, generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
         }
     }
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Boots Core 1 and starts the RAM executor.
-pub fn boot_core1(core1: embassy_rp::peripherals::CORE1) {
-    unsafe {
-        CORE1_STACK_TOP = core::ptr::addr_of!(CORE1_STACK) as u32 + CORE1_STACK_SIZE as u32;
-        crate::Board::init_executor_core1();
-    }
-
-    embassy_rp::multicore::spawn_core1(
-        core1,
-        unsafe {
-            let ptr = core::ptr::addr_of_mut!(CORE1_STACK);
-            &mut *ptr
-        },
-        move || unsafe {
-            crate::Board::run_executor(platform::types::CpuId::Core1);
-        },
-    );
-}
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Handle a panic, performing multicore checks, resets, and delegating to flash writer.
-pub fn handle_panic(info: &core::panic::PanicInfo) -> ! {
-    let cpuid_val = unsafe { core::ptr::read_volatile(0xd0000000 as *const u32) };
-    let (cpuid, stack_top) = match cpuid_val {
-        0 => (platform::types::CpuId::Core0, STACK_TOP),
-        1 => (platform::types::CpuId::Core1, unsafe { CORE1_STACK_TOP }),
-        _ => loop {
-            cortex_m::asm::nop();
-        },
-    };
-
-    crate::handle_panic_with_sizes::<
-        { crate::FLASH_SIZE },
-        { crate::FLASH_START },
-        { crate::FLASH_END },
-        { crate::FLASH_WRITE_SIZE },
-        { crate::FLASH_ERASE_SIZE },
-    >(info, cpuid, stack_top);
 }
 
 /// The default inactivity timeout in seconds before transitioning to Sleep.
@@ -592,6 +550,9 @@ pub const CORE_MONITOR_TIMEOUT_MS: u32 = 10_000;
 
 /// Default core monitor warning threshold percentage.
 pub const CORE_MONITOR_WARN_PCT: u32 = 80;
+
+/// The hardware stack guard address for Core 0 (the bottom of Core 0's stack).
+pub const CORE0_STACK_BOTTOM: u32 = 0x2003_C000;
 
 platform::define_project_metadata! {
     chip: "rp2040",

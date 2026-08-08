@@ -615,6 +615,37 @@ impl CpuId {
     }
 }
 
+#[repr(C, align(256))]
+/// Target-agnostic wrapper for a multicore execution stack.
+pub struct MulticoreStack<const SIZE: usize> {
+    /// The stack memory buffer.
+    pub mem: [u32; SIZE],
+}
+
+impl<const SIZE: usize> Default for MulticoreStack<SIZE> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const SIZE: usize> MulticoreStack<SIZE> {
+    /// Creates a new stack.
+    pub const fn new() -> Self {
+        Self { mem: [0; SIZE] }
+    }
+
+    /// Returns the address of the top of the stack.
+    pub fn stack_top(&self) -> u32 {
+        let base = self as *const Self as u32;
+        base + (SIZE * 4) as u32
+    }
+
+    /// Returns the address of the bottom of the stack.
+    pub fn stack_bottom(&self) -> u32 {
+        self as *const Self as u32
+    }
+}
+
 /// Trait representing execution and stall monitoring capabilities for a core.
 pub trait CoreMonitor {
     /// Perform the liveness check.

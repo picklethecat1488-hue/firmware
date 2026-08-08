@@ -45,6 +45,9 @@ impl controller::BlockingProximityReader for MockSensorCtrl {
     fn read_distance_blocking(&mut self) -> Result<u16, model::types::PeripheralError> {
         Ok(100)
     }
+    fn latest_distance(&self) -> u16 {
+        100
+    }
 }
 
 pub struct MockMotorCtrl;
@@ -57,7 +60,10 @@ impl controller::BlockingMotorWriter for MockMotorCtrl {
     fn set_motor_speed(&mut self, _speed: i8) -> Result<(), model::types::PeripheralError> {
         Ok(())
     }
-    fn stop(&mut self) -> Result<(), model::types::PeripheralError> {
+    fn set_motor_speed_rpm(&mut self, _rpm: i32) -> Result<(), model::types::PeripheralError> {
+        Ok(())
+    }
+    fn stop_motor_blocking(&mut self) -> Result<(), model::types::PeripheralError> {
         Ok(())
     }
 }

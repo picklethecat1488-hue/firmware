@@ -6,6 +6,7 @@ import tree_sitter_rust as tsrust
 from tree_sitter import Language, Parser
 from colorama import init, Fore, Style
 from halo import Halo
+import glob
 
 init(autoreset=True)
 
@@ -13,6 +14,9 @@ RUST_LANGUAGE = Language(tsrust.language())
 
 # Whitelist of features to check for RAM linker attributes
 SUPPORTED_FEATURES = ["motor-core", "sensors-core", "core1"]
+
+# Boot entry points whitelisted to bypass cross-core caller checks
+CROSS_CORE_FUNCS = {"new", "init", "bootstrap_core1_task"}
 
 
 def get_called_function_name(call_node):
@@ -45,6 +49,25 @@ def get_struct_name(struct_node):
         if child.type == "type_identifier":
             return child.text.decode("utf-8")
     return None
+
+
+def parse_impl_info(impl_text):
+    """Extract trait name and struct name from impl header text."""
+    impl_text = re.sub(r"//.*", "", impl_text)
+    impl_text = re.sub(r"\s+", " ", impl_text)
+
+    match_for = re.search(
+        r"impl\s*(?:<[^>]+>)?\s*([a-zA-Z0-9_:]+)(?:<[^>]+>)?\s*for\s*([a-zA-Z0-9_:]+)",
+        impl_text,
+    )
+    if match_for:
+        return match_for.group(1), match_for.group(2)
+
+    match_concrete = re.search(r"impl\s*(?:<[^>]+>)?\s*([a-zA-Z0-9_:]+)", impl_text)
+    if match_concrete:
+        return None, match_concrete.group(1)
+
+    return None, None
 
 
 def parse_code(content, filepath="<string>"):
@@ -80,7 +103,33 @@ def parse_code(content, filepath="<string>"):
             if is_controller_context:
                 s_name = get_struct_name(node)
                 if s_name:
-                    controller_structs.append({"name": s_name, "filepath": filepath})
+                    core1_feature = None
+                    core1_roots = None
+                    # Search back for the controller_context attribute to parse its arguments
+                    k = idx - 1
+                    while k >= 0:
+                        sibling = parent.children[k]
+                        if sibling.type == "attribute_item":
+                            attr_text = sibling.text.decode("utf-8")
+                            if "controller_context" in attr_text:
+                                match = re.search(r'core1_feature\s*=\s*"([^"]+)"', attr_text)
+                                if match:
+                                    core1_feature = match.group(1)
+                                roots_match = re.search(r"core1_roots\s*=\s*\[([^\]]+)\]", attr_text)
+                                if roots_match:
+                                    core1_roots = [
+                                        r.strip().strip('"').strip("'") for r in roots_match.group(1).split(",")
+                                    ]
+                                break
+                        k -= 1
+                    controller_structs.append(
+                        {
+                            "name": s_name,
+                            "filepath": filepath,
+                            "core1_feature": core1_feature,
+                            "core1_roots": core1_roots,
+                        }
+                    )
 
         elif node.type == "function_item":
             fn_name = None
@@ -171,6 +220,20 @@ def parse_code(content, filepath="<string>"):
                     if child.type == "block":
                         find_calls_in_node(child)
 
+                parent_impl = None
+                curr = node.parent
+                while curr:
+                    if curr.type == "impl_item":
+                        parent_impl = curr
+                        break
+                    curr = curr.parent
+
+                trait_name = None
+                struct_name = None
+                if parent_impl:
+                    impl_text = parent_impl.text.decode("utf-8")
+                    trait_name, struct_name = parse_impl_info(impl_text)
+
                 functions[f"{filepath}:{fn_name}"] = {
                     "name": fn_name,
                     "filepath": filepath,
@@ -179,6 +242,8 @@ def parse_code(content, filepath="<string>"):
                     "calls": list(set(calls)),
                     "forbidden_calls": forbidden_calls,
                     "text": node.text.decode("utf-8"),
+                    "trait_name": trait_name,
+                    "struct_name": struct_name,
                 }
 
         for child in node.children:
@@ -188,65 +253,98 @@ def parse_code(content, filepath="<string>"):
     return functions, controller_structs
 
 
-def validate_call_graph(funcs_list, roots, feature, allowed_files=None):
+def validate_call_graph(funcs_list, roots, feature, root_files=None):
     """Trace call graph from roots and check that reached functions have RAM placement attribute."""
-    if allowed_files is not None:
-        filtered_funcs = [
-            f for f in funcs_list if any(os.path.basename(f["filepath"]) == f_name for f_name in allowed_files)
-        ]
-    else:
-        filtered_funcs = funcs_list
-
+    # Build maps of definitions
     defs_by_name = {}
-    for f in filtered_funcs:
+    defs_by_key = {}
+    core1_structs = set()
+    for f in funcs_list:
         defs_by_name.setdefault(f["name"], []).append(f)
+        defs_by_key[f"{f['filepath']}:{f['name']}"] = f
+        if f.get("struct_name") and (feature in f["ram_features"] or "core1" in f["ram_features"]):
+            core1_structs.add(f["struct_name"])
 
     visited = set()
-    queue = list(roots)
+    queue = []
+
+    # Initialize queue with root function keys matched by name and root_files
+    for r in roots:
+        if r in defs_by_name:
+            for f in defs_by_name[r]:
+                if root_files is None or any(os.path.basename(f["filepath"]) == rf for rf in root_files):
+                    key = f"{f['filepath']}:{f['name']}"
+                    queue.append(key)
+
     warnings = 0
     errors = 0
+    parent_map = {}
 
     while queue:
-        curr_name = queue.pop(0)
-        if curr_name in visited:
+        curr_key = queue.pop(0)
+        if curr_key in visited:
             continue
-        visited.add(curr_name)
+        visited.add(curr_key)
 
-        if curr_name in defs_by_name:
-            for d in defs_by_name[curr_name]:
-                if (
-                    d["name"] in ["new", "init", "bootstrap_core1_task"]
-                    or d["name"].startswith("new_")
-                    or d["name"].endswith("_init")
-                ):
-                    continue
-                if feature not in d["ram_features"] and "core1" not in d["ram_features"]:
+        if curr_key in defs_by_key:
+            d = defs_by_key[curr_key]
+            if (
+                d["name"] in ["new", "init", "bootstrap_core1_task"]
+                or d["name"].startswith("new_")
+                or d["name"].endswith("_init")
+            ):
+                continue
+            if feature not in d["ram_features"] and "core1" not in d["ram_features"]:
+                # Print the call path
+                path = []
+                step = curr_key
+                while step in parent_map:
+                    path.append(step.split(":")[-1])
+                    step = parent_map[step]
+                path.append(step.split(":")[-1])
+                path.reverse()
+                path_str = " -> ".join(path)
+
+                print(
+                    f"{Fore.YELLOW}WARNING:{Style.RESET_ALL} Driver function '{d['name']}' in {d['filepath']}:{d['line']} is reached in RAM call chain but missing RAM attribute for '{feature}'!"
+                )
+                print(f"  Path: {path_str}")
+                print(f'  Expected: #[cfg_attr(target_arch = "arm", link_section = ".data.core1_func")]')
+                print()
+                warnings += 1
+
+            if "forbidden_calls" in d:
+                for forbidden_name, line_num in d["forbidden_calls"]:
                     print(
-                        f"{Fore.YELLOW}WARNING:{Style.RESET_ALL} Driver function '{curr_name}' in {d['filepath']}:{d['line']} is reached in RAM call chain but missing RAM attribute for '{feature}'!"
+                        f"{Fore.RED}ERROR:{Style.RESET_ALL} Driver function '{d['name']}' in {d['filepath']}:{line_num} "
+                        f"executes on Core 1 call path but calls single-core blocking/interrupt control '{forbidden_name}'!"
                     )
-                    print(f'  Expected: #[cfg_attr(target_arch = "arm", link_section = ".data.core1_func")]')
+                    print("  Expected: Use critical_section::with() for multicore-safe synchronization.")
                     print()
-                    warnings += 1
+                    errors += 1
 
-                if "forbidden_calls" in d:
-                    for forbidden_name, line_num in d["forbidden_calls"]:
-                        print(
-                            f"{Fore.RED}ERROR:{Style.RESET_ALL} Driver function '{curr_name}' in {d['filepath']}:{line_num} "
-                            f"executes on Core 1 call path but calls single-core blocking/interrupt control '{forbidden_name}'!"
-                        )
-                        print("  Expected: Use critical_section::with() for multicore-safe synchronization.")
-                        print()
-                        errors += 1
-
-                for child in d["calls"]:
-                    if child not in visited:
-                        queue.append(child)
+            for child in d["calls"]:
+                if child in defs_by_name:
+                    # Prioritize definitions within the same source file to avoid cross-controller name collisions
+                    local_defs = [child_f for child_f in defs_by_name[child] if child_f["filepath"] == d["filepath"]]
+                    targets = local_defs if local_defs else defs_by_name[child]
+                    for child_f in targets:
+                        # Skip trait implementations for structs that are not Core 1 structs
+                        if child_f.get("trait_name") and child_f.get("struct_name") not in core1_structs:
+                            continue
+                        child_key = f"{child_f['filepath']}:{child_f['name']}"
+                        if child_key not in visited and child_key not in parent_map:
+                            parent_map[child_key] = curr_key
+                            queue.append(child_key)
 
     return warnings, errors
 
 
 def validate_multicore_support():
     scan_dirs = ["controller/src", "peripherals/src"]
+    for p in glob.glob("projects/*/src"):
+        scan_dirs.append(p)
+
     all_functions = []
     all_controller_structs = []
 
@@ -256,7 +354,7 @@ def validate_multicore_support():
                 continue
             for root, _, files in os.walk(s_dir):
                 for file in files:
-                    if file.endswith(".rs"):
+                    if file.endswith(".rs") and file != "mock.rs":
                         filepath = os.path.join(root, file)
                         try:
                             with open(filepath, "rb") as f:
@@ -267,25 +365,27 @@ def validate_multicore_support():
                         except Exception as e:
                             print(f"Error reading/parsing {filepath}: {e}", file=sys.stderr)
 
-    # Validate motor-core call graph
-    # Start from run, tick_motor, and update in motor_controller.rs
-    motor_roots = ["run", "tick_motor", "update"]
-    motor_warnings, motor_errors = validate_call_graph(
-        funcs_list=all_functions,
-        roots=motor_roots,
-        feature="motor-core",
-        allowed_files=["motor_controller.rs", "l9110s.rs", "ina219.rs"],
-    )
+    # Validate call graphs for all controller contexts running on Core 1
+    total_warnings = 0
+    total_errors = 0
+    for ctrl in all_controller_structs:
+        feature = ctrl.get("core1_feature")
+        if not feature:
+            continue
 
-    # Validate sensors-core call graph
-    # Start from run, and update in sensor_controller.rs
-    sensor_roots = ["run", "update"]
-    sensor_warnings, sensor_errors = validate_call_graph(
-        funcs_list=all_functions,
-        roots=sensor_roots,
-        feature="sensors-core",
-        allowed_files=["sensor_controller.rs", "vl53l0x.rs"],
-    )
+        # Resolve roots from core1_roots attribute, defaulting to ["run"]
+        roots = ctrl.get("core1_roots")
+        if not roots:
+            roots = ["run"]
+
+        warnings, errors = validate_call_graph(
+            funcs_list=all_functions,
+            roots=roots,
+            feature=feature,
+            root_files=[os.path.basename(ctrl["filepath"])],
+        )
+        total_warnings += warnings
+        total_errors += errors
 
     # Validate that controllers don't instantiate other controllers directly
     instantiation_errors = 0
@@ -308,8 +408,33 @@ def validate_multicore_support():
                     print()
                     instantiation_errors += 1
 
-    total_warnings = motor_warnings + sensor_warnings
-    total_errors = motor_errors + sensor_errors + instantiation_errors
+    total_errors += instantiation_errors
+
+    # Validate that Core 0 context/CLI functions do not call Core 1 functions directly
+    cross_core_errors = 0
+    core1_func_names = {f["name"] for f in all_functions if len(f["ram_features"]) > 0}
+
+    for func in all_functions:
+        filepath = func["filepath"]
+        func_name = func["name"]
+        # Check if this function runs on Core 0
+        is_core0 = ("projects/" in filepath and "/src/bin/" in filepath) or (
+            filepath.startswith("controller/src/") and func_name.startswith("handle_") and func_name.endswith("_cli")
+        )
+        if is_core0:
+            for called in func["calls"]:
+                if called in core1_func_names and called not in CROSS_CORE_FUNCS:
+                    print(
+                        f"{Fore.RED}ERROR:{Style.RESET_ALL} Core 0 function '{func_name}' in {filepath}:{func['line']} "
+                        f"calls Core 1 function/method '{called}' (decorated with core1_func)!"
+                    )
+                    print(
+                        f"  Expected: Core 0 code must not directly invoke Core 1 functions. Use message channels or cached state."
+                    )
+                    print()
+                    cross_core_errors += 1
+
+    total_errors += cross_core_errors
 
     if total_errors > 0:
         print(f"{Fore.RED}Validation FAILED: Found {total_errors} errors and {total_warnings} warnings.")

@@ -399,6 +399,13 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
             },
 
             SystemCommand::Gesture(gesture) => {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                {
+                    let gest_str = match gesture {
+                        Gesture::DualLongPress => "DualLongPress",
+                    };
+                    defmt::info!("SystemController: Gesture input detected: {}", gest_str);
+                }
                 let current_status = self.power_manager.status();
                 self.feature_set
                     .features()
@@ -424,6 +431,24 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
                 }
             }
             SystemCommand::StateChanged { from, to } => {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                {
+                    let from_str = match from {
+                        SystemStatus::PowerDown => "PowerDown",
+                        SystemStatus::Active => "Active",
+                        SystemStatus::Sleep => "Sleep",
+                    };
+                    let to_str = match to {
+                        SystemStatus::PowerDown => "PowerDown",
+                        SystemStatus::Active => "Active",
+                        SystemStatus::Sleep => "Sleep",
+                    };
+                    defmt::info!(
+                        "SystemController: State transition: {} -> {}",
+                        from_str,
+                        to_str
+                    );
+                }
                 if to == SystemStatus::Active {
                     self.power_manager.reset_on_wake();
                 }

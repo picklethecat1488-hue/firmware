@@ -6,8 +6,8 @@
 pub use model::interfaces::{Motor, Tickable};
 pub use model::types::MotorSpeed;
 
-/// Concrete driver implementation for the ATtiny816 custom LED driver.
-pub mod attiny816;
+/// Concrete driver implementation for the WS2812 NeoPixel driver.
+pub mod ws2812;
 
 /// Concrete driver implementation for the INA219 current monitor.
 pub mod ina219;
@@ -39,6 +39,10 @@ where
     E: embedded_hal::i2c::Error,
 {
     #[inline]
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "core1"),
+        link_section = ".data.core1_func"
+    )]
     fn to_i2c_error(&self, address: u16, register: u16) -> PeripheralError {
         use embedded_hal::i2c::{ErrorKind, NoAcknowledgeSource};
         match self.kind() {
@@ -88,6 +92,10 @@ impl<E1: core::fmt::Debug, E2: core::fmt::Debug> ToPeripheralError
     for crate::l9110s::L9110sError<E1, E2>
 {
     #[inline]
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
     fn to_peripheral_error(&self) -> PeripheralError {
         PeripheralError::PinError
     }

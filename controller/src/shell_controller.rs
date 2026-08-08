@@ -47,6 +47,9 @@ macro_rules! define_shell_resolver_and_controller {
             $(
                 #[doc = $doc]
                 fn $resolve_fn(&self, name: Option<&str>) -> Result<&mut C::$associated_type, &'static str>;
+
+                /// Get the list of all registered named devices for this type.
+                fn $field(&self) -> &[$crate::NamedDevice<C::$associated_type>];
             )*
             /// Resolves the flash partition.
             fn resolve_partition(
@@ -123,10 +126,22 @@ macro_rules! define_shell_resolver_and_controller {
             }
         }
 
+        impl<'a, C: ShellConfig> platform::i2c::I2cResolver for ShellController<'a, C> {
+            type I2c = C::I2c;
+            #[allow(clippy::mut_from_ref)]
+            fn resolve_i2c(&self, name: Option<&str>) -> Result<&mut Self::I2c, &'static str> {
+                self.resolve_device(self.i2c_buses, name)
+            }
+        }
+
         impl<'a, C: ShellConfig> ShellDeviceResolver<C> for ShellController<'a, C> {
             $(
                 fn $resolve_fn(&self, name: Option<&str>) -> Result<&mut C::$associated_type, &'static str> {
                     self.resolve_device(self.$field, name)
+                }
+
+                fn $field(&self) -> &[$crate::NamedDevice<C::$associated_type>] {
+                    self.$field
                 }
             )*
             fn resolve_partition(

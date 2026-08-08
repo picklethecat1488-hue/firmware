@@ -32,6 +32,14 @@ impl TwoPointCalibration<u16> {
             } else {
                 (((raw - self.low) as u32 * scale) / (self.high - self.low) as u32) as u16
             }
+        } else if self.low > self.high {
+            if raw >= self.low {
+                0
+            } else if raw <= self.high {
+                scale as u16
+            } else {
+                (((self.low - raw) as u32 * scale) / (self.low - self.high) as u32) as u16
+            }
         } else {
             raw
         }
@@ -186,4 +194,9 @@ pub enum CalibrationType {
 pub trait Calibration {
     /// Sets the calibration parameters. By default, this does nothing (no-op).
     fn set_calibration(&mut self, _calibration: CalibrationType) {}
+
+    /// Gets the current calibration parameters. By default, this returns None.
+    fn get_calibration(&self) -> Option<CalibrationType> {
+        None
+    }
 }

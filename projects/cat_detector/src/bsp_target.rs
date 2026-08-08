@@ -6,11 +6,17 @@
 #![cfg(all(target_arch = "arm", target_os = "none"))]
 #![deny(missing_docs)]
 
+use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Flex, Pin, Pull};
 use embassy_rp::i2c::{Config as I2cConfig, I2c};
+use embassy_rp::pio::InterruptHandler;
 use embassy_rp::Peripherals;
 use platform::tracing;
 use platform::types::QueueFilesystem;
+
+bind_interrupts!(struct Irqs {
+    PIO0_IRQ_0 => InterruptHandler<embassy_rp::peripherals::PIO0>;
+});
 
 /// Helper structure containing all pre-initialized board interfaces.
 pub struct Board<'d> {
@@ -34,7 +40,7 @@ pub struct Board<'d> {
     /// West proximity sensor
     pub tof_west: peripherals::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>,
     /// Status LED driver
-    pub led_driver: peripherals::attiny816::Attiny816<platform::i2c::SharedI2cWrapper<'static>>,
+    pub led_driver: peripherals::ws2812::Ws2812<'d, embassy_rp::peripherals::PIO0, 0>,
     /// Fuel gauge alert/interrupt pin
     pub fuel_gauge_alert_pin: Flex<'d>,
     /// North proximity interrupt pin
@@ -47,11 +53,6 @@ pub struct Board<'d> {
     pub spawner: Option<embassy_executor::Spawner>,
 }
 
-struct SyncExecutor(embassy_executor::raw::Executor);
-unsafe impl Sync for SyncExecutor {}
-static mut EXECUTOR_CORE0: Option<SyncExecutor> = None;
-static mut EXECUTOR_CORE1: Option<SyncExecutor> = None;
-
 impl<'d> Board<'d> {
     /// Initialize all hardware components and return the Board interface.
     ///
@@ -59,68 +60,37 @@ impl<'d> Board<'d> {
     /// * `p` - The RP2040 peripheral set.
     #[tracing::instrument(level = "trace", skip(p))]
     pub fn init(p: Peripherals) -> Self {
-        // 1. Perform I2C bus unstuck on I2C0 (GP4 SDA, GP5 SCL) using raw registers
-        // to avoid taking ownership of Pin types before constructing I2c.
+        // Configure hardware stack guard using Cortex-M MPU
+        platform::core_monitor::configure_mpu_stack_guard(crate::CORE0_STACK_BOTTOM);
+
+        // 1. Perform I2C bus unstuck on I2C0 (GP12 SDA, GP13 SCL) using the platform support recovery tool.
         unsafe {
-            const SIO_BASE: u32 = 0xd000_0000;
-            const SIO_GPIO_OUT_SET: *mut u32 = (SIO_BASE + 0x14) as *mut u32;
-            const SIO_GPIO_OUT_CLR: *mut u32 = (SIO_BASE + 0x18) as *mut u32;
-            const SIO_GPIO_OE_SET: *mut u32 = (SIO_BASE + 0x24) as *mut u32;
-            const SIO_GPIO_IN: *const u32 = (SIO_BASE + 0x04) as *const u32;
-
-            const IO_BANK0_BASE: u32 = 0x4001_4000;
-            const IO_BANK0_GPIO4_CTRL: *mut u32 = (IO_BANK0_BASE + 0x24) as *mut u32;
-            const IO_BANK0_GPIO5_CTRL: *mut u32 = (IO_BANK0_BASE + 0x2c) as *mut u32;
-
-            const PADS_BANK0_BASE: u32 = 0x4001_c000;
-            const PADS_BANK0_GPIO4: *mut u32 = (PADS_BANK0_BASE + 0x14) as *mut u32;
-            const PADS_BANK0_GPIO5: *mut u32 = (PADS_BANK0_BASE + 0x18) as *mut u32;
-
-            // Set pin functions to SIO (GPIO function is 5 on RP2040)
-            core::ptr::write_volatile(IO_BANK0_GPIO5_CTRL, 5);
-            core::ptr::write_volatile(IO_BANK0_GPIO4_CTRL, 5);
-
-            // Enable pull-ups on SCL/SDA pads
-            core::ptr::write_volatile(PADS_BANK0_GPIO5, 0x5a);
-            core::ptr::write_volatile(PADS_BANK0_GPIO4, 0x5a);
-
-            // Set SCL (GP5) as output high
-            core::ptr::write_volatile(SIO_GPIO_OUT_SET, 1 << 5);
-            core::ptr::write_volatile(SIO_GPIO_OE_SET, 1 << 5);
-
-            // Toggle SCL up to 9 times or until SDA releases (goes high)
-            for _ in 0..9 {
-                let sda_val = core::ptr::read_volatile(SIO_GPIO_IN);
-                if (sda_val & (1 << 4)) != 0 {
-                    break;
-                }
-                // Drive SCL low
-                core::ptr::write_volatile(SIO_GPIO_OUT_CLR, 1 << 5);
-                cortex_m::asm::delay(200);
-                // Drive SCL high
-                core::ptr::write_volatile(SIO_GPIO_OUT_SET, 1 << 5);
-                cortex_m::asm::delay(200);
-            }
+            use platform::rp2040::PlatformI2cRecovery as _;
+            let recovery = platform::rp2040::Rp2040I2cRecovery {
+                sda_pin: 12,
+                scl_pin: 13,
+            };
+            let _ = recovery.recover_i2c_bus();
         }
 
         let mut i2c_config = I2cConfig::default();
         i2c_config.frequency = 400_000;
-        let mut i2c = I2c::new_blocking(p.I2C0, p.PIN_5, p.PIN_4, i2c_config);
+        let mut i2c = I2c::new_blocking(p.I2C0, p.PIN_13, p.PIN_12, i2c_config);
         let mut gpio_pins: [Option<Flex<'d>>; 30] = [
             None, // 0 - UART TX
             None, // 1 - UART RX
             Some(Flex::new(p.PIN_2.degrade())),
             Some(Flex::new(p.PIN_3.degrade())),
-            None, // 4 - I2C SDA
-            None, // 5 - I2C SCL
+            Some(Flex::new(p.PIN_4.degrade())),
+            Some(Flex::new(p.PIN_5.degrade())),
             Some(Flex::new(p.PIN_6.degrade())),
             Some(Flex::new(p.PIN_7.degrade())),
             Some(Flex::new(p.PIN_8.degrade())),
             Some(Flex::new(p.PIN_9.degrade())),
             Some(Flex::new(p.PIN_10.degrade())),
-            Some(Flex::new(p.PIN_11.degrade())),
-            Some(Flex::new(p.PIN_12.degrade())),
-            Some(Flex::new(p.PIN_13.degrade())),
+            None, // 11 - WS2812 LED (driven via PIO0)
+            None, // 12 - I2C SDA
+            None, // 13 - I2C SCL
             Some(Flex::new(p.PIN_14.degrade())),
             Some(Flex::new(p.PIN_15.degrade())),
             Some(Flex::new(p.PIN_16.degrade())),
@@ -215,15 +185,16 @@ impl<'d> Board<'d> {
         // Configure remaining drivers using local i2c before returning
         peripherals::init_max17048!(&mut i2c, &mut boot_status);
         peripherals::init_ina219!(&mut i2c, &mut boot_status);
-        peripherals::init_attiny816!(&mut i2c, &mut boot_status);
 
         // Extract pins needed for drivers/controllers
-        let motor_pin_ia = gpio_pins[crate::PUMP_PIN_IA as usize]
+        let mut motor_pin_ia = gpio_pins[crate::PUMP_PIN_IA as usize]
             .take()
             .expect("Motor pin IA must be available");
-        let motor_pin_ib = gpio_pins[crate::PUMP_PIN_IB as usize]
+        let mut motor_pin_ib = gpio_pins[crate::PUMP_PIN_IB as usize]
             .take()
             .expect("Motor pin IB must be available");
+        motor_pin_ia.set_as_output();
+        motor_pin_ib.set_as_output();
         let motor = peripherals::l9110s::L9110s::new(motor_pin_ia, motor_pin_ib);
 
         let fuel_gauge_alert_pin = gpio_pins[crate::FUEL_GAUGE_INT_PIN as usize]
@@ -256,20 +227,11 @@ impl<'d> Board<'d> {
         let tof_east = make_tof(crate::TOF_EAST_I2C_ADDR);
         let tof_west = make_tof(crate::TOF_WEST_I2C_ADDR);
 
-        let led_driver = peripherals::attiny816::Attiny816::new(
-            platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
-        );
+        let led_driver = peripherals::init_ws2812!(p.PIO0, p.PIN_11, &mut boot_status);
 
-        unsafe {
-            let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE0);
-            *ptr = Some(SyncExecutor(embassy_executor::raw::Executor::new(
-                !0 as *mut (),
-            )));
-        }
         let spawner = unsafe {
-            let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE0);
-            let executor_ref = (*ptr).as_ref().unwrap();
-            Some(executor_ref.0.spawner())
+            use platform::rp2040::PlatformMulticore as _;
+            Some(platform::rp2040::Rp2040Multicore.spawner(platform::types::CpuId::Core0))
         };
 
         Self {
@@ -298,26 +260,8 @@ impl<'d> Board<'d> {
     ///
     /// This function must be called from the main thread of the corresponding core and does not return.
     pub unsafe fn run_executor(cpu_id: platform::types::CpuId) -> ! {
-        use platform::system::CpuScheduler;
-        match cpu_id {
-            platform::types::CpuId::Core0 => {
-                let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE0);
-                if let Some(ref mut executor) = *ptr {
-                    let executor_static: &'static embassy_executor::raw::Executor = &executor.0;
-                    executor_static.run_loop(cpu_id);
-                }
-            }
-            platform::types::CpuId::Core1 => {
-                let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE1);
-                if let Some(ref mut executor) = *ptr {
-                    let executor_static: &'static embassy_executor::raw::Executor = &executor.0;
-                    executor_static.run_loop(cpu_id);
-                }
-            }
-        }
-        loop {
-            cortex_m::asm::nop();
-        }
+        use platform::rp2040::PlatformMulticore as _;
+        platform::rp2040::Rp2040Multicore.run_executor(cpu_id);
     }
 
     /// Initialize the Embassy executor for Core 1.
@@ -325,10 +269,8 @@ impl<'d> Board<'d> {
     /// # Safety
     /// This function must be called only once and prior to spawning Core 1 tasks.
     pub unsafe fn init_executor_core1() {
-        let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE1);
-        *ptr = Some(SyncExecutor(embassy_executor::raw::Executor::new(
-            !0 as *mut (),
-        )));
+        use platform::rp2040::PlatformMulticore as _;
+        platform::rp2040::Rp2040Multicore.init_executor(platform::types::CpuId::Core1);
     }
 
     /// Returns the Spawner for Core 1.
@@ -336,8 +278,8 @@ impl<'d> Board<'d> {
     /// # Safety
     /// This function must be called only after init_executor_core1 has been called.
     pub unsafe fn spawner_core1() -> embassy_executor::Spawner {
-        let ptr = core::ptr::addr_of!(EXECUTOR_CORE1);
-        (*ptr).as_ref().unwrap().0.spawner()
+        use platform::rp2040::PlatformMulticore as _;
+        platform::rp2040::Rp2040Multicore.spawner(platform::types::CpuId::Core1)
     }
 }
 
@@ -371,42 +313,6 @@ impl model::interfaces::TemperatureSensor for Rp2040TempSensor {
     }
 }
 
-/// Configures the Cortex-M MPU to guard the bottom of the stack.
-///
-/// Uses Region 0 to protect a 256-byte area at `0x2003_C000`, giving a 16KB stack
-/// limit (from `STACK_TOP` = `0x2004_0000`). If the stack pointer exceeds this boundary,
-/// it immediately triggers a HardFault rather than silently corrupting memory.
-pub fn configure_mpu_stack_guard() {
-    let cp = unsafe { cortex_m::peripheral::Peripherals::steal() };
-    let mpu = cp.MPU;
-
-    // We choose 0x2003_C000 as the guard region address.
-    // This allows the stack to grow down to 0x2003_C000 (16KB stack from 0x2004_0000).
-    let guard_addr = 0x2003_C000;
-
-    unsafe {
-        // Disable MPU during configuration
-        mpu.ctrl.write(0);
-
-        // Configure Region 0 to guard the stack bottom
-        mpu.rnr.write(0);
-        mpu.rbar.write(guard_addr);
-        // RASR attribute:
-        // - XN (bit 28): 1 (Execute-Never)
-        // - AP (bits 26:24): 000 (No Access)
-        // - TEX, C, B: 000, 1, 1 (SRAM cache/buffer attributes) -> bit 17=1, bit 16=1
-        // - SIZE (bits 5:1): 7 (256 bytes)
-        // - ENABLE (bit 0): 1
-        // Value: (1 << 28) | (1 << 17) | (1 << 16) | (7 << 1) | 1 = 0x1003_000F
-        mpu.rasr.write(0x1003_000F);
-
-        // Enable MPU with PRIVDEFENA=1 (enables default memory map for privileged access,
-        // so that the rest of flash/RAM is accessible normally).
-        mpu.ctrl.write(1 | (1 << 2));
-    }
-    defmt::info!("MPU stack guard configured at 0x{:08x}", guard_addr);
-}
-
 /// Reads the RP2040 chip reset registers to determine the cause of the boot.
 pub fn get_boot_reason() -> model::types::BootReason {
     let reg = unsafe { core::ptr::read_volatile(0x40064008 as *const u32) };
@@ -427,6 +333,10 @@ pub struct AlertPinWrapper(pub Flex<'static>);
 impl controller::battery_controller::BatteryAlertPin for AlertPinWrapper {
     async fn wait_for_alert(&mut self) {
         self.0.wait_for_low().await;
+    }
+
+    fn is_asserted(&self) -> bool {
+        self.0.is_low()
     }
 }
 
@@ -471,6 +381,6 @@ pub type ProximitySensorDevice =
 /// The proximity sensor interrupt pin type.
 pub type DataReadyPinType = ProximityPinWrapper;
 /// The LED driver type.
-pub type LedDevice = peripherals::attiny816::Attiny816<platform::i2c::SharedI2cWrapper<'static>>;
+pub type LedDevice = peripherals::ws2812::Ws2812<'static, embassy_rp::peripherals::PIO0, 0>;
 /// The temperature sensor type.
 pub type TempSensorDevice = SafeRp2040TempSensor;

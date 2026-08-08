@@ -52,6 +52,10 @@ pub mod periodic_timer;
 #[path = "io/i2c.rs"]
 pub mod i2c;
 
+/// GPIO diagnostic and status utilities.
+#[path = "io/gpio.rs"]
+pub mod gpio;
+
 /// Shared types and traits for the library.
 #[path = "system/types.rs"]
 pub mod types;
@@ -79,8 +83,8 @@ pub use power_manager::PowerManager;
 pub use system::{transition_thermal_update, BatteryUpdateAction, TransitionError};
 pub use thermal_manager::ThermalManager;
 pub use types::{
-    BootTrapMask, BootTrapReason, FsBufferGuard, InvalidBootTrapMask, ThermalTransitionResult,
-    ThermalUpdateAction,
+    BootTrapMask, BootTrapReason, FsBufferGuard, InvalidBootTrapMask, MulticoreStack,
+    ThermalTransitionResult, ThermalUpdateAction,
 };
 
 /// Compile-time CBOR serialization helpers.
@@ -96,3 +100,12 @@ pub use directory::MAX_FILE_NAME_LEN;
 /// Consolidated conditional tracing module.
 #[path = "telemetry/tracing.rs"]
 pub mod tracing;
+
+#[cfg(feature = "rp2040")]
+#[path = "system/rp2040.rs"]
+pub mod rp2040;
+
+/// OnceLock synchronization primitive.
+#[path = "system/once_lock.rs"]
+pub mod once_lock;
+pub use once_lock::OnceLock;

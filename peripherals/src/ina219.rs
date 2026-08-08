@@ -6,7 +6,7 @@ use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
 use model::{
-    interfaces::{PowerMeasurementMode, PowerSensor, Probeable},
+    interfaces::{PowerMeasurementMode, PowerSensor, Probeable, WaitableMeasurement},
     types::PeripheralError,
 };
 
@@ -83,6 +83,25 @@ impl<I: I2c> Ina219<I> {
     }
 }
 
+impl<I: I2c> WaitableMeasurement for Ina219<I> {
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+        // Poll CNVR bit (bit 1) in the Bus Voltage Register (0x02)
+        // Set a timeout of 100ms (100 * 1ms)
+        for _ in 0..100 {
+            let bus_voltage = self.read_register(Register::BUS_VOLTAGE)?;
+            if (bus_voltage & 0x0002) != 0 {
+                return Ok(());
+            }
+            ::embassy_time::block_for(::embassy_time::Duration::from_millis(1));
+        }
+        Err(PeripheralError::DeviceNotAvailable)
+    }
+}
+
 impl<I: I2c> PowerSensor for Ina219<I> {
     type Error = PeripheralError;
 
@@ -92,6 +111,7 @@ impl<I: I2c> PowerSensor for Ina219<I> {
     )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
     fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
+        self.wait_for_measurement()?;
         let res = self.read_register(Register::CURRENT);
         if let Err(ref _e) = res {
             log_warn!(
@@ -110,6 +130,7 @@ impl<I: I2c> PowerSensor for Ina219<I> {
     )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
     fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
+        self.wait_for_measurement()?;
         let res = self.read_register(Register::BUS_VOLTAGE);
         if let Err(ref _e) = res {
             log_warn!(
@@ -167,7 +188,7 @@ impl<I: I2c> Probeable for Ina219<I> {
     #[tracing::instrument(level = "trace")]
     fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         let id = self.read_register(Register::CONFIG)?;
-        if id == 0x399F {
+        if (id & 0xFFF8) == 0x3998 {
             Ok(id)
         } else {
             Err(PeripheralError::DeviceNotFound(id))
