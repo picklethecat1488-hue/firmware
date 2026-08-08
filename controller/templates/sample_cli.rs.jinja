@@ -60,6 +60,9 @@ impl controller::BlockingMotorWriter for MockMotorCtrl {
     fn set_motor_speed(&mut self, _speed: i8) -> Result<(), model::types::PeripheralError> {
         Ok(())
     }
+    fn set_motor_speed_rpm(&mut self, _rpm: i32) -> Result<(), model::types::PeripheralError> {
+        Ok(())
+    }
     fn stop_motor_blocking(&mut self) -> Result<(), model::types::PeripheralError> {
         Ok(())
     }

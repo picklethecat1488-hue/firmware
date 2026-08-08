@@ -539,8 +539,27 @@ where
         Ok(())
     }
 
+    fn set_motor_speed_rpm(&mut self, rpm: i32) -> Result<(), PeripheralError> {
+        let max_rpm = self.limits.max_rpm;
+        if max_rpm == 0 {
+            return Err(PeripheralError::InvalidConfiguration);
+        }
+        let speed_val = (rpm * 100) / (max_rpm as i32);
+        let speed_val_clamped = speed_val.clamp(-100, 100) as i8;
+        self.set_motor_speed(speed_val_clamped)
+    }
+
     fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError> {
         self.set_running_state(false)
+    }
+
+    fn update_calibration(
+        &mut self,
+        cal: model::calibration::CalibrationType,
+    ) -> Result<(), PeripheralError> {
+        use model::calibration::Calibration as _;
+        self.set_calibration(cal);
+        Ok(())
     }
 }
 
@@ -566,6 +585,8 @@ subcommand_enum! {
     pub enum MotorSubcommand {
         /// Set motor speed
         Speed,
+        /// Set motor speed using target RPM
+        RpmSpeed = "rpm-speed",
         /// Stop motor
         Stop,
         /// Read motor current
@@ -573,7 +594,7 @@ subcommand_enum! {
         /// Calibrate motor
         Calibrate,
     }
-    "Invalid motor subcommand. Expected: speed, stop, current, calibrate"
+    "Invalid motor subcommand. Expected: speed, rpm-speed, stop, current, calibrate"
 }
 
 /// Processes motor-specific CLI subcommands.
@@ -605,6 +626,20 @@ pub fn handle_motor_cli<
             motor_ctrl
                 .set_motor_speed(speed)
                 .map_err(|_| "Failed to set motor speed")?;
+            let current = motor_ctrl
+                .read_current_ma_blocking()
+                .map_err(|_| "Failed to read motor current")?;
+            let _ = core::writeln!(writer, "\r\nMotor current: {} mA", current);
+            Ok(())
+        }
+        MotorSubcommand::RpmSpeed => {
+            let rpm_str = arg1.ok_or("Missing RPM parameter")?;
+            let rpm = rpm_str
+                .parse::<i32>()
+                .map_err(|_| "Invalid RPM parameter")?;
+            motor_ctrl.set_motor_speed_rpm(rpm).map_err(|_| {
+                "Failed to set motor speed by RPM (ensure motor is calibrated first)"
+            })?;
             let current = motor_ctrl
                 .read_current_ma_blocking()
                 .map_err(|_| "Failed to read motor current")?;
@@ -720,6 +755,16 @@ pub fn handle_motor_cli<
                 &write_buf[..len],
             ))
             .map(|_| {
+                let current_limits = model::calibration::TwoPointCalibration {
+                    low: cal.dry_run_limit(),
+                    high: cal.stall_limit(),
+                };
+                let _ =
+                    motor_ctrl.update_calibration(model::calibration::CalibrationType::MotorCal {
+                        current_limits,
+                        max_rpm: cal.max_rpm.unwrap_or(0),
+                        rpm_limit: cal.rpm_limit.unwrap_or(0),
+                    });
                 let _ = core::writeln!(writer, "Saved motor {} calibration to flash.", name);
             })
             .map_err(|_| "Error saving calibration to flash")

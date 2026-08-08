@@ -83,7 +83,7 @@ cmd_name = "motor"
 variant = "Motor"
 subcommand_type = "motor_controller::MotorSubcommand"
 handler = "motor_controller::handle_motor_cli"
-help = "Motor commands (motor speed <speed>, motor stop, motor current, motor calibrate <state> [max_rpm] [rpm_limit] [--partition <partition>])"
+help = "Motor commands (motor speed <speed>, motor rpm-speed <rpm>, motor stop, motor current, motor calibrate <state> [max_rpm] [rpm_limit] [--partition <partition>])"
 args = [
     { name = "arg1", type = "string", help = "First argument (speed or calibration state)" },
     { name = "arg2", type = "string", help = "Second argument (max_rpm)" },

@@ -121,7 +121,7 @@ steps:
   - id: "8a"
     name: Calibrate Motor Current (Empty Bowl)
     type: shell_command
-    command: motor calibrate empty 3000 2500
+    command: motor calibrate empty 1000 1200
     expected_regex: 'Saved motor Empty calibration to flash.'
     description: Calibrate motor empty bowl state. Ensure bowl is empty first.
 

@@ -220,12 +220,24 @@ impl BlockingMotorReader for () {
 pub trait BlockingMotorWriter {
     /// Set motor speed.
     fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError>;
+    /// Set motor speed using target RPM.
+    fn set_motor_speed_rpm(&mut self, rpm: i32) -> Result<(), PeripheralError>;
     /// Stop the motor.
     fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError>;
+    /// Update the writer's internal calibration parameters.
+    fn update_calibration(
+        &mut self,
+        _cal: model::calibration::CalibrationType,
+    ) -> Result<(), PeripheralError> {
+        Ok(())
+    }
 }
 
 impl BlockingMotorWriter for () {
     fn set_motor_speed(&mut self, _: i8) -> Result<(), PeripheralError> {
+        Err(PeripheralError::NotImplemented)
+    }
+    fn set_motor_speed_rpm(&mut self, _: i32) -> Result<(), PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
     fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError> {
@@ -271,6 +283,10 @@ impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: u
         let motor_speed =
             model::types::MotorSpeed::new(speed).ok_or(PeripheralError::InvalidConfiguration)?;
         self.try_send(MotorCommand::SetSpeed(motor_speed))
+            .map_err(|_| PeripheralError::DeviceNotAvailable)
+    }
+    fn set_motor_speed_rpm(&mut self, rpm: i32) -> Result<(), PeripheralError> {
+        self.try_send(MotorCommand::SetSpeedRpm(rpm))
             .map_err(|_| PeripheralError::DeviceNotAvailable)
     }
     fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError> {
