@@ -2,8 +2,10 @@
 
 #![deny(missing_docs)]
 
+use crate::interfaces::WaitableMeasurement;
+
 /// Trait representing a proximity or distance sensor.
-pub trait ProximitySensor {
+pub trait ProximitySensor: WaitableMeasurement {
     /// Error type returned by the physical hardware.
     type Error;
 
