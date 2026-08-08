@@ -11,19 +11,37 @@ fn test_autodetect_project_info() {
     let src_path = temp_dir.join("dummy.rs");
     let bin_path = temp_dir.join("dummy_bin");
 
+    let writer = platform::types::ProjectMetadata::serialize(
+        "rp2040",
+        4,
+        4096,
+        2048,
+        0x10000000,
+        0x101C0000,
+        64 * 1024,
+        0x101D0000,
+        192 * 1024,
+    );
+    let len = writer.len;
+    let mut bytes_str = String::new();
+    for i in 0..len {
+        bytes_str.push_str(&format!("0x{:02x}, ", writer.buf[i]));
+    }
+
     fs::write(
         &src_path,
-        r#"
+        format!(
+            r#"
 #[used]
 #[no_mangle]
-pub static PROJECT_METADATA: [u8; 25] = [
-    0x86, 0x66, 0x72, 0x70, 0x32, 0x30, 0x34, 0x30, 0x1a, 0x10, 0x1c, 0x00,
-    0x00, 0x1a, 0x00, 0x04, 0x00, 0x00, 0x04, 0x19, 0x10, 0x00, 0x19, 0x08,
-    0x00
+pub static PROJECT_METADATA: [u8; {}] = [
+    {}
 ];
 
-fn main() {}
+fn main() {{}}
 "#,
+            len, bytes_str
+        ),
     )
     .unwrap();
 
@@ -48,9 +66,15 @@ fn main() {}
     );
     let info = res.unwrap();
     assert_eq!(info.chip, "rp2040");
-    assert_eq!(info.partition_address, 0x101C0000);
-    assert_eq!(info.partition_size, 256 * 1024);
     assert_eq!(info.flash_write_size, 4);
     assert_eq!(info.flash_erase_size, 4096);
     assert_eq!(info.stack_scan_limit, 2048);
+    assert_eq!(info.flash_start, 0x10000000);
+    assert_eq!(info.partitions.len(), 2);
+    assert_eq!(info.partitions[0].kind, 0);
+    assert_eq!(info.partitions[0].address, 0x101C0000);
+    assert_eq!(info.partitions[0].size, 64 * 1024);
+    assert_eq!(info.partitions[1].kind, 1);
+    assert_eq!(info.partitions[1].address, 0x101D0000);
+    assert_eq!(info.partitions[1].size, 192 * 1024);
 }

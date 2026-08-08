@@ -557,10 +557,12 @@ pub const CORE0_STACK_BOTTOM: u32 = 0x2003_C000;
 platform::define_project_metadata! {
     chip: "rp2040",
     flash_base: 0x10000000,
-    storage_start: STORAGE_PARTITION_START,
-    storage_end: STORAGE_PARTITION_END,
     flash_write_size: FLASH_WRITE_SIZE,
-    flash_erase_size: FLASH_ERASE_SIZE
+    flash_erase_size: FLASH_ERASE_SIZE,
+    fs_start: FS_PARTITION_START,
+    fs_end: FS_PARTITION_END,
+    telemetry_start: TELEMETRY_PARTITION_START,
+    telemetry_end: TELEMETRY_PARTITION_END
 }
 
 /// Creates the standard CatDetectorFeatureSet configured with the application's actual channels.

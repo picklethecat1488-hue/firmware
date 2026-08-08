@@ -442,6 +442,21 @@ pub struct CrashDump<'a> {
     pub cores: [CoreDump; 2],
 }
 
+/// Individual partition layout metadata.
+#[derive(Clone, Copy, Encode, Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub struct PartitionMetadata {
+    /// Type/kind of partition (0 = Calibration, 1 = Telemetry)
+    #[n(0)]
+    pub kind: u32,
+    /// The virtual memory flash address of the partition
+    #[n(1)]
+    pub address: u32,
+    /// The size of the partition in bytes
+    #[n(2)]
+    pub size: u32,
+}
+
 /// Project metadata struct embedded in the ELF to allow autodetecting chip/partition layout.
 #[derive(Clone, Encode, Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
@@ -449,41 +464,55 @@ pub struct ProjectMetadata<'a> {
     /// Chip name (e.g. "rp2040")
     #[n(0)]
     pub chip: &'a str,
-    /// The virtual memory flash address of the storage partition
-    #[n(1)]
-    pub partition_address: u32,
-    /// The size of the storage partition in bytes
-    #[n(2)]
-    pub partition_size: u32,
     /// Flash write alignment/size in bytes
-    #[n(3)]
+    #[n(1)]
     pub flash_write_size: u32,
     /// Flash erase sector size in bytes
-    #[n(4)]
+    #[n(2)]
     pub flash_erase_size: u32,
     /// Stack scan limit in words
-    #[n(5)]
+    #[n(3)]
     pub stack_scan_limit: u32,
+    /// Flash base address (e.g. 0x1000_0000)
+    #[n(4)]
+    pub flash_start: u32,
+    /// Array of partition metadata
+    #[n(5)]
+    pub partitions: [PartitionMetadata; 2],
 }
 
 impl<'a> ProjectMetadata<'a> {
     /// Statically serializes all fields into CBOR format.
+    #[allow(clippy::too_many_arguments)]
     pub const fn serialize(
         chip: &'a str,
-        partition_address: u32,
-        partition_size: u32,
         flash_write_size: u32,
         flash_erase_size: u32,
         stack_scan_limit: u32,
+        flash_start: u32,
+        fs_address: u32,
+        fs_size: u32,
+        telemetry_address: u32,
+        telemetry_size: u32,
     ) -> crate::cbor::ConstCborWriter<128> {
         crate::cbor::ConstCborWriter::<128>::new()
             .write_array_header(6)
             .write_str(chip)
-            .write_u32(partition_address)
-            .write_u32(partition_size)
             .write_u32(flash_write_size)
             .write_u32(flash_erase_size)
             .write_u32(stack_scan_limit)
+            .write_u32(flash_start)
+            .write_array_header(2)
+            // FS partition
+            .write_array_header(3)
+            .write_u32(0)
+            .write_u32(fs_address)
+            .write_u32(fs_size)
+            // Telemetry partition
+            .write_array_header(3)
+            .write_u32(1)
+            .write_u32(telemetry_address)
+            .write_u32(telemetry_size)
     }
 }
 
@@ -781,19 +810,26 @@ macro_rules! define_project_metadata {
     (
         chip: $chip:expr,
         flash_base: $flash_base:expr,
-        storage_start: $storage_start:expr,
-        storage_end: $storage_end:expr,
         flash_write_size: $flash_write_size:expr,
-        flash_erase_size: $flash_erase_size:expr
+        flash_erase_size: $flash_erase_size:expr,
+        fs_start: $fs_start:expr,
+        fs_end: $fs_end:expr,
+        telemetry_start: $telemetry_start:expr,
+        telemetry_end: $telemetry_end:expr
     ) => {
         const METADATA_WRITER: $crate::cbor::ConstCborWriter<128> =
             $crate::types::ProjectMetadata::serialize(
                 $chip,
-                $flash_base + $storage_start,
-                $storage_end - $storage_start,
                 $flash_write_size as u32,
                 $flash_erase_size as u32,
                 $crate::types::STACK_SCAN_LIMIT,
+                $flash_base as u32,
+                // fs partition
+                $flash_base + $fs_start,
+                $fs_end - $fs_start,
+                // telemetry partition
+                $flash_base + $telemetry_start,
+                $telemetry_end - $telemetry_start,
             );
 
         /// Embedded project metadata for autodetect functionality.

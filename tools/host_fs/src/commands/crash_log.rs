@@ -14,14 +14,13 @@ pub async fn run<R>(
 where
     R: addr2line::gimli::Reader<Offset = usize>,
 {
-    let (dir_buf, file_buf) = buf.split_at_mut(1024 * 8);
     spinner.set_message("Fetching directory list (.dir)...");
     let key = string_to_key(".dir");
     let res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
         flash,
         flash_range.clone(),
         cache,
-        dir_buf,
+        buf,
         &key,
     )
     .await;
@@ -31,17 +30,18 @@ where
     match res {
         Ok(Some(list)) => {
             if let Ok(s) = std::str::from_utf8(list) {
+                let filenames: Vec<String> = s.split('\n').map(|name| name.to_string()).collect();
                 let mut found_crash = false;
-                for filename in s.split('\n') {
+                for filename in filenames {
                     if filename.starts_with("crash_") && filename.ends_with(".cbor") {
                         found_crash = true;
-                        let log_key = string_to_key(filename);
+                        let log_key = string_to_key(&filename);
                         let content_res =
                             sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
                                 flash,
                                 flash_range.clone(),
                                 cache,
-                                file_buf,
+                                buf,
                                 &log_key,
                             )
                             .await;

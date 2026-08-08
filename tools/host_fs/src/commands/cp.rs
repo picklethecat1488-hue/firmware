@@ -26,7 +26,6 @@ pub async fn run(
         dest,
         dump_option,
     } = args;
-    let (dir_buf, file_buf) = buf.split_at_mut(1024 * 8);
     let src_is_dev = src.starts_with("dev:");
     let dest_is_dev = dest.starts_with("dev:");
 
@@ -41,7 +40,7 @@ pub async fn run(
                 flash,
                 flash_range.clone(),
                 cache,
-                file_buf,
+                buf,
                 &key,
             )
             .await;
@@ -77,7 +76,7 @@ pub async fn run(
                 flash,
                 flash_range.clone(),
                 cache,
-                file_buf,
+                buf,
                 &key,
                 &file_content_slice,
             )
@@ -96,7 +95,7 @@ pub async fn run(
                 flash,
                 flash_range.clone(),
                 cache,
-                dir_buf,
+                buf,
                 &dir_key,
             )
             .await;
@@ -128,7 +127,7 @@ pub async fn run(
                     flash,
                     flash_range.clone(),
                     cache,
-                    file_buf,
+                    buf,
                     &dir_key,
                     &dir_bytes,
                 )
