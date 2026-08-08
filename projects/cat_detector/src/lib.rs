@@ -288,7 +288,7 @@ pub async fn init_controllers(board: Board<'static>) {
 
         LED_CTRL = Some(controller::led_controller::LedController::new(led_driver));
 
-        SENSOR_CTRL_NORTH_CORE0 = Some(
+        let mut north =
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
                 controller::types::SensorMetadata {
                     direction: model::types::Direction::North,
@@ -297,10 +297,11 @@ pub async fn init_controllers(board: Board<'static>) {
                 SYSTEM_CHANNEL.sender(),
                 ProximityPinWrapper(pin_north),
                 DEFAULT_WAKE_THRESHOLD_MM,
-            ),
-        );
+            );
+        north.bind_command_tx(SENSOR_NORTH_CHANNEL.sender());
+        SENSOR_CTRL_NORTH_CORE0 = Some(north);
 
-        SENSOR_CTRL_EAST_CORE0 = Some(
+        let mut east =
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
                 controller::types::SensorMetadata {
                     direction: model::types::Direction::East,
@@ -309,10 +310,11 @@ pub async fn init_controllers(board: Board<'static>) {
                 SYSTEM_CHANNEL.sender(),
                 ProximityPinWrapper(pin_east),
                 DEFAULT_WAKE_THRESHOLD_MM,
-            ),
-        );
+            );
+        east.bind_command_tx(SENSOR_EAST_CHANNEL.sender());
+        SENSOR_CTRL_EAST_CORE0 = Some(east);
 
-        SENSOR_CTRL_WEST_CORE0 = Some(
+        let mut west =
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
                 controller::types::SensorMetadata {
                     direction: model::types::Direction::West,
@@ -321,8 +323,9 @@ pub async fn init_controllers(board: Board<'static>) {
                 SYSTEM_CHANNEL.sender(),
                 ProximityPinWrapper(pin_west),
                 DEFAULT_WAKE_THRESHOLD_MM,
-            ),
-        );
+            );
+        west.bind_command_tx(SENSOR_WEST_CHANNEL.sender());
+        SENSOR_CTRL_WEST_CORE0 = Some(west);
 
         MOTOR_CTRL_CORE0 = Some(controller::motor_controller::MotorController::new(
             motor,
@@ -355,22 +358,22 @@ platform::define_panic_handler!(
 /// Global pointer to the active MotorController on Core 1 (populated during startup).
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut MOTOR_CTRL_CORE1: *mut () = core::ptr::null_mut();
+pub static MOTOR_CTRL_CORE1: platform::OnceLock<*mut ()> = platform::OnceLock::new();
 
 /// Global pointer to the active North SensorController on Core 1.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut SENSOR_CTRL_NORTH_CORE1: *mut () = core::ptr::null_mut();
+pub static SENSOR_CTRL_NORTH_CORE1: platform::OnceLock<*mut ()> = platform::OnceLock::new();
 
 /// Global pointer to the active East SensorController on Core 1.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut SENSOR_CTRL_EAST_CORE1: *mut () = core::ptr::null_mut();
+pub static SENSOR_CTRL_EAST_CORE1: platform::OnceLock<*mut ()> = platform::OnceLock::new();
 
 /// Global pointer to the active West SensorController on Core 1.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[allow(dead_code)]
-pub static mut SENSOR_CTRL_WEST_CORE1: *mut () = core::ptr::null_mut();
+pub static SENSOR_CTRL_WEST_CORE1: platform::OnceLock<*mut ()> = platform::OnceLock::new();
 
 /// Type alias for the motor controller.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -394,8 +397,8 @@ pub type SensorType = controller::sensor_controller::SensorController<
 #[cfg_attr(target_arch = "arm", link_section = ".data.core1_func")]
 pub async fn bootstrap_core1_task(
     spawner: embassy_executor::Spawner,
-    mut motor: MotorType,
-    mut sensors: (SensorType, SensorType, SensorType),
+    motor: MotorType,
+    sensors: (SensorType, SensorType, SensorType),
 ) {
     // Configure MPU Stack Guard for Core 1
     let guard_addr = CORE1_STACK_BOTTOM.load(core::sync::atomic::Ordering::Acquire);
@@ -412,25 +415,14 @@ pub async fn bootstrap_core1_task(
         true,
     );
 
-    unsafe {
-        let motor_ptr = core::ptr::addr_of_mut!(MOTOR_CTRL_CORE1);
-        *motor_ptr = &mut motor as *mut _ as *mut ();
-        let north_ptr = core::ptr::addr_of_mut!(SENSOR_CTRL_NORTH_CORE1);
-        *north_ptr = &mut sensors.0 as *mut _ as *mut ();
-        let east_ptr = core::ptr::addr_of_mut!(SENSOR_CTRL_EAST_CORE1);
-        *east_ptr = &mut sensors.1 as *mut _ as *mut ();
-        let west_ptr = core::ptr::addr_of_mut!(SENSOR_CTRL_WEST_CORE1);
-        *west_ptr = &mut sensors.2 as *mut _ as *mut ();
-    }
-
     controller::spawn_controllers! {
         spawner,
         telemetry: TELEMETRY_CHANNEL,
         controllers: {
-            Motor(motor, MOTOR_CHANNEL), generics: (crate::MotorDevice, crate::CurrentSensorDevice),
-            Sensor(sensors.0, SENSOR_NORTH_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
-            Sensor(sensors.1, SENSOR_EAST_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
-            Sensor(sensors.2, SENSOR_WEST_CHANNEL), generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+            Motor(motor, MOTOR_CHANNEL) register: MOTOR_CTRL_CORE1, generics: (crate::MotorDevice, crate::CurrentSensorDevice),
+            Sensor(sensors.0, SENSOR_NORTH_CHANNEL) register: SENSOR_CTRL_NORTH_CORE1, generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+            Sensor(sensors.1, SENSOR_EAST_CHANNEL) register: SENSOR_CTRL_EAST_CORE1, generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
+            Sensor(sensors.2, SENSOR_WEST_CHANNEL) register: SENSOR_CTRL_WEST_CORE1, generics: (crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand),
         }
     }
 }

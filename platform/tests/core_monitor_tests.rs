@@ -91,3 +91,69 @@ fn test_core_monitor_flow() {
         assert!(is_stuck_final);
     }
 }
+
+#[test]
+fn test_once_lock_flow() {
+    let lock: platform::OnceLock<u32> = platform::OnceLock::new();
+    assert_eq!(lock.get(), None);
+
+    assert!(lock.set(42).is_ok());
+    assert_eq!(*lock.wait(), 42);
+    assert_eq!(lock.get(), Some(&42));
+
+    assert!(lock.set(100).is_err());
+}
+
+#[test]
+fn test_once_lock_blocking_wait() {
+    use std::sync::Arc;
+    let lock = Arc::new(platform::OnceLock::<u32>::new());
+    let lock_clone = Arc::clone(&lock);
+
+    let handle = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(15));
+        assert!(lock_clone.set(99).is_ok());
+    });
+
+    assert_eq!(*lock.wait(), 99);
+    handle.join().unwrap();
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+struct SendPtr(pub *mut ());
+unsafe impl Send for SendPtr {}
+unsafe impl Sync for SendPtr {}
+
+#[test]
+fn test_once_lock_integration_pointer_flow() {
+    let lock: platform::OnceLock<SendPtr> = platform::OnceLock::new();
+    assert!(lock.get().is_none());
+
+    let mut val = 42u32;
+    let ptr = SendPtr(&mut val as *mut u32 as *mut ());
+    assert!(lock.set(ptr).is_ok());
+    assert_eq!(*lock.wait(), ptr);
+    assert_eq!(lock.get(), Some(&ptr));
+
+    let mut val2 = 100u32;
+    assert!(lock.set(SendPtr(&mut val2 as *mut u32 as *mut ())).is_err());
+}
+
+#[test]
+fn test_once_lock_integration_pointer_blocking() {
+    use std::sync::Arc;
+    let lock = Arc::new(platform::OnceLock::<SendPtr>::new());
+    let lock_clone = Arc::clone(&lock);
+
+    let mut val = 123u32;
+    let ptr = SendPtr(&mut val as *mut u32 as *mut ());
+
+    let handle = std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(15));
+        assert!(lock_clone.set(ptr).is_ok());
+    });
+
+    assert_eq!(*lock.wait(), ptr);
+    handle.join().unwrap();
+}

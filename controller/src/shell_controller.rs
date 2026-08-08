@@ -47,6 +47,9 @@ macro_rules! define_shell_resolver_and_controller {
             $(
                 #[doc = $doc]
                 fn $resolve_fn(&self, name: Option<&str>) -> Result<&mut C::$associated_type, &'static str>;
+
+                /// Get the list of all registered named devices for this type.
+                fn $field(&self) -> &[$crate::NamedDevice<C::$associated_type>];
             )*
             /// Resolves the flash partition.
             fn resolve_partition(
@@ -135,6 +138,10 @@ macro_rules! define_shell_resolver_and_controller {
             $(
                 fn $resolve_fn(&self, name: Option<&str>) -> Result<&mut C::$associated_type, &'static str> {
                     self.resolve_device(self.$field, name)
+                }
+
+                fn $field(&self) -> &[$crate::NamedDevice<C::$associated_type>] {
+                    self.$field
                 }
             )*
             fn resolve_partition(

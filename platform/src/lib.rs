@@ -101,7 +101,11 @@ pub use directory::MAX_FILE_NAME_LEN;
 #[path = "telemetry/tracing.rs"]
 pub mod tracing;
 
-/// RP2040 platform support module exposing traits and utilities for multicore, panic, and I2C.
 #[cfg(feature = "rp2040")]
 #[path = "system/rp2040.rs"]
 pub mod rp2040;
+
+/// OnceLock synchronization primitive.
+#[path = "system/once_lock.rs"]
+pub mod once_lock;
+pub use once_lock::OnceLock;

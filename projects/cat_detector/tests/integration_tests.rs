@@ -21,6 +21,10 @@ impl controller::battery_controller::BatteryAlertPin for MockPin {
     async fn wait_for_alert(&mut self) {
         embassy_time::Timer::after_millis(50).await;
     }
+
+    fn is_asserted(&self) -> bool {
+        false
+    }
 }
 impl controller::sensor_controller::DataReadyPin for MockPin {
     async fn wait_for_data_ready(&mut self) {

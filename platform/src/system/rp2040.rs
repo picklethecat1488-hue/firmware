@@ -105,6 +105,7 @@ impl PlatformMulticore for Rp2040Multicore {
         entry: fn() -> !,
     ) -> Result<(), &'static str> {
         match core_id {
+            #[cfg(feature = "dual-core")]
             CpuId::Core1 => {
                 let core1 = embassy_rp::peripherals::CORE1::steal();
                 let embassy_stack = unsafe {

@@ -188,6 +188,10 @@ impl controller::battery_controller::BatteryAlertPin for MockFlex {
     async fn wait_for_alert(&mut self) {
         embassy_time::Timer::after_secs(3600 * 24).await;
     }
+
+    fn is_asserted(&self) -> bool {
+        false
+    }
 }
 
 impl controller::sensor_controller::DataReadyPin for MockFlex {

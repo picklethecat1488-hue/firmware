@@ -67,7 +67,7 @@ cmd_name = "battery"
 variant = "Battery"
 subcommand_type = "battery_controller::BatterySubcommand"
 handler = "battery_controller::handle_battery_cli"
-help = "Battery commands (battery status)"
+help = "Battery commands (battery status, battery test-alert)"
 
 [[cli_commands]]
 group = "Thermal"

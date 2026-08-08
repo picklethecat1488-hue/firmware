@@ -332,6 +332,10 @@ impl controller::battery_controller::BatteryAlertPin for AlertPinWrapper {
     async fn wait_for_alert(&mut self) {
         self.0.wait_for_low().await;
     }
+
+    fn is_asserted(&self) -> bool {
+        self.0.is_low()
+    }
 }
 
 /// Wrapper around Flex for sensor interrupt data ready pin.

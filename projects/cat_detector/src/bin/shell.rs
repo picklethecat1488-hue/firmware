@@ -298,13 +298,9 @@ async fn main(spawner: Spawner) {
         }
     });
 
-    let board_motor_ptr = unsafe {
-        if !app::MOTOR_CTRL_CORE1.is_null() {
-            &mut (*(app::MOTOR_CTRL_CORE1 as *mut MotorControllerType)).motor as *mut _
-        } else {
-            core::ptr::null_mut()
-        }
-    };
+    let raw_motor_ptr = *app::MOTOR_CTRL_CORE1.wait();
+    let board_motor_ptr =
+        unsafe { &mut (*(raw_motor_ptr as *mut MotorControllerType)).motor as *mut _ };
 
     let i2c_buses = &[controller::NamedDevice {
         name: "default",
@@ -344,29 +340,25 @@ async fn main(spawner: Spawner) {
     } else {
         &[]
     };
-    let sensors = unsafe {
-        &[
-            controller::NamedDevice {
-                name: "north",
-                device: app::SENSOR_CTRL_NORTH_CORE1 as *mut _,
-            },
-            controller::NamedDevice {
-                name: "east",
-                device: app::SENSOR_CTRL_EAST_CORE1 as *mut _,
-            },
-            controller::NamedDevice {
-                name: "west",
-                device: app::SENSOR_CTRL_WEST_CORE1 as *mut _,
-            },
-        ]
-    };
+    let sensors = &[
+        controller::NamedDevice {
+            name: "north",
+            device: *app::SENSOR_CTRL_NORTH_CORE1.wait() as *mut _,
+        },
+        controller::NamedDevice {
+            name: "east",
+            device: *app::SENSOR_CTRL_EAST_CORE1.wait() as *mut _,
+        },
+        controller::NamedDevice {
+            name: "west",
+            device: *app::SENSOR_CTRL_WEST_CORE1.wait() as *mut _,
+        },
+    ];
 
-    let motor_ctrls = unsafe {
-        &[controller::NamedDevice {
-            name: "default",
-            device: app::MOTOR_CTRL_CORE1 as *mut _,
-        }]
-    };
+    let motor_ctrls = &[controller::NamedDevice {
+        name: "default",
+        device: *app::MOTOR_CTRL_CORE1.wait() as *mut _,
+    }];
 
     let feature_set = app::create_default_feature_set();
     let mut system_ctrl = controller::SystemController::new(
