@@ -493,6 +493,7 @@ impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
     for MotorController<M, C>
 {
     const CALIBRATION_FILE_NAME: &'static str = "motor_cal.cbor";
+    type Store = model::calibration::MotorCalibration;
 
     fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
         if let model::calibration::CalibrationType::MotorCal {
@@ -506,6 +507,38 @@ impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
             self.limits.max_current_ma = current_limits.high;
             self.limits.max_rpm = max_rpm;
             self.limits.rpm_limit = rpm_limit;
+        }
+    }
+
+    fn get_from_store(
+        store: &Self::Store,
+        _direction: model::types::Direction,
+    ) -> Option<model::calibration::CalibrationType> {
+        Some(model::calibration::CalibrationType::MotorCal {
+            current_limits: model::calibration::TwoPointCalibration::new(
+                store.current_ma.low,
+                store.current_ma.overload,
+            ),
+            max_rpm: store.max_rpm.unwrap_or(0),
+            rpm_limit: store.rpm_limit.unwrap_or(0),
+        })
+    }
+
+    fn update_store(
+        store: &mut Self::Store,
+        _direction: model::types::Direction,
+        calibration: model::calibration::CalibrationType,
+    ) {
+        if let model::calibration::CalibrationType::MotorCal {
+            current_limits,
+            max_rpm,
+            rpm_limit,
+        } = calibration
+        {
+            store.current_ma.low = current_limits.low;
+            store.current_ma.overload = current_limits.high;
+            store.max_rpm = Some(max_rpm);
+            store.rpm_limit = Some(rpm_limit);
         }
     }
 }
@@ -752,10 +785,10 @@ pub fn handle_motor_cli<
                 &mut write_buf,
             )
             .map(|_| {
-                let current_limits = model::calibration::TwoPointCalibration {
-                    low: cal.dry_run_limit(),
-                    high: cal.stall_limit(),
-                };
+                let current_limits = model::calibration::TwoPointCalibration::new(
+                    cal.dry_run_limit(),
+                    cal.stall_limit(),
+                );
                 let _ =
                     motor_ctrl.update_calibration(model::calibration::CalibrationType::MotorCal {
                         current_limits,

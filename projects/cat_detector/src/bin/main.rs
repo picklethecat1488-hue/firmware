@@ -127,10 +127,10 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
     use model::calibration::CalibrationType;
     if let Some(cal) = motor_cal {
         controller.set_calibration(CalibrationType::MotorCal {
-            current_limits: model::calibration::TwoPointCalibration {
-                low: cal.dry_run_limit(),
-                high: cal.stall_limit(),
-            },
+            current_limits: model::calibration::TwoPointCalibration::new(
+                cal.dry_run_limit(),
+                cal.stall_limit(),
+            ),
             max_rpm: cal.max_rpm.unwrap_or(0),
             rpm_limit: cal.rpm_limit.unwrap_or(0),
         });

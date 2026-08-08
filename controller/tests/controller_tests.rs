@@ -337,7 +337,7 @@ fn test_motor_controller_tickable_vs_notick() {
 
     // Calibrate and start the motor so active_speed will ramp to non-zero
     controller.set_calibration(model::calibration::CalibrationType::MotorCal {
-        current_limits: model::calibration::TwoPointCalibration { low: 0, high: 1000 },
+        current_limits: model::calibration::TwoPointCalibration::new(0, 1000),
         max_rpm: 3000,
         rpm_limit: 3000,
     });
@@ -358,7 +358,7 @@ fn test_motor_controller_tickable_vs_notick() {
 
     // Calibrate and start the motor so active_speed will ramp to non-zero
     controller2.set_calibration(model::calibration::CalibrationType::MotorCal {
-        current_limits: model::calibration::TwoPointCalibration { low: 0, high: 1000 },
+        current_limits: model::calibration::TwoPointCalibration::new(0, 1000),
         max_rpm: 3000,
         rpm_limit: 3000,
     });

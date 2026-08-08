@@ -51,6 +51,16 @@ impl Register {
     const IDENTIFICATION_MODEL_ID: u8 = 0xC0;
 }
 
+struct RangeStatus;
+impl RangeStatus {
+    const VALID: u8 = 0;
+    const MIN_RANGE_FAIL: u8 = 3;
+    /// Status 8 and 11 represent low-signal conditions under high-sensitivity / low-signal threshold modes.
+    /// In these modes, the sensor correctly measures the distance but flags it with a low-signal warning.
+    const VALID_LOW_SIGNAL_8: u8 = 8;
+    const VALID_LOW_SIGNAL_11: u8 = 11;
+}
+
 /// Driver for the VL53L0X Time-of-Flight sensor communicating over I2C.
 pub struct Vl53l0x<I> {
     i2c: I,
@@ -62,6 +72,11 @@ pub struct Vl53l0x<I> {
 }
 
 impl<I: I2c> Vl53l0x<I> {
+    /// Minimum physical sensor range limit.
+    pub const MIN_RANGE_MM: u16 = 20;
+    /// Maximum physical sensor range limit.
+    pub const MAX_RANGE_MM: u16 = 100;
+
     /// Creates a new VL53L0X driver instance at the specified address.
     pub const fn new(i2c: I, address: u8) -> Self {
         Self {
@@ -69,7 +84,12 @@ impl<I: I2c> Vl53l0x<I> {
             address,
             threshold_mm: 300,
             hysteresis_mm: 50,
-            calibration: TwoPointCalibration::new(0, 100),
+            calibration: TwoPointCalibration::new_with_range(
+                0,
+                100,
+                Self::MIN_RANGE_MM,
+                Self::MAX_RANGE_MM,
+            ),
         }
     }
 
@@ -334,6 +354,8 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
                 .write(self.address, &[Register::SYSTEM_START, 0x01])
                 .map_err(|e| e.to_i2c_error(self.address as u16, Register::SYSTEM_START as u16))?;
 
+            self.wait_for_measurement()?;
+
             // Read range status register 0x14
             let mut status = [0u8; 1];
             self.i2c
@@ -371,7 +393,7 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
                 let _ = self.i2c.write_read(self.address, &[0x1C], &mut buf_ambient);
                 let ambient_rate = u16::from_be_bytes(buf_ambient);
 
-                defmt::trace!(
+                defmt::debug!(
                     "VL53L0X [0x{:02x}] mm-read: Raw Dist = {} mm, Range Status = {}, Peak Rate = {} Mcps, Ambient Rate = {} Mcps",
                     self.address,
                     distance,
@@ -382,14 +404,19 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
             }
 
             // Apply dead-zone override & error/stale handling
+            let is_min_range_fail = range_status == RangeStatus::MIN_RANGE_FAIL;
+            let is_range_valid = range_status == RangeStatus::VALID
+                || range_status == RangeStatus::VALID_LOW_SIGNAL_8
+                || range_status == RangeStatus::VALID_LOW_SIGNAL_11;
+
             let reading = if distance == 0 {
                 SensorReading::Invalid
-            } else if range_status == 3 || range_status == 11 {
-                SensorReading::Valid(self.calibration.map(20, 100))
-            } else if range_status != 0 {
-                SensorReading::OutOfRange
+            } else if is_min_range_fail {
+                SensorReading::Valid(self.calibration.map(Self::MIN_RANGE_MM))
+            } else if is_range_valid {
+                SensorReading::Valid(self.calibration.map(distance))
             } else {
-                SensorReading::Valid(self.calibration.map(distance, 100))
+                SensorReading::OutOfRange
             };
             Ok(reading)
         })();
@@ -451,7 +478,7 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
                 let _ = self.i2c.write_read(self.address, &[0x1C], &mut buf_ambient);
                 let ambient_rate = u16::from_be_bytes(buf_ambient);
 
-                defmt::trace!(
+                defmt::debug!(
                     "VL53L0X [0x{:02x}] raw-read: Raw Dist = {} mm, Range Status = {}, Peak Rate = {} Mcps, Ambient Rate = {} Mcps",
                     self.address,
                     distance,
@@ -462,14 +489,19 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
             }
 
             // Apply dead-zone override & error/stale handling
+            let is_min_range_fail = range_status == RangeStatus::MIN_RANGE_FAIL;
+            let is_range_valid = range_status == RangeStatus::VALID
+                || range_status == RangeStatus::VALID_LOW_SIGNAL_8
+                || range_status == RangeStatus::VALID_LOW_SIGNAL_11;
+
             let reading = if distance == 0 {
                 SensorReading::Invalid
-            } else if range_status == 3 || range_status == 11 {
-                SensorReading::Valid(20)
-            } else if range_status != 0 {
-                SensorReading::OutOfRange
-            } else {
+            } else if is_min_range_fail {
+                SensorReading::Valid(Self::MIN_RANGE_MM)
+            } else if is_range_valid {
                 SensorReading::Valid(distance)
+            } else {
+                SensorReading::OutOfRange
             };
             Ok(reading)
         })();
@@ -520,14 +552,19 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
 
             self.clear_interrupt()?;
 
+            let is_min_range_fail = range_status == RangeStatus::MIN_RANGE_FAIL;
+            let is_range_valid = range_status == RangeStatus::VALID
+                || range_status == RangeStatus::VALID_LOW_SIGNAL_8
+                || range_status == RangeStatus::VALID_LOW_SIGNAL_11;
+
             let reading = if distance == 0 {
                 SensorReading::Invalid
-            } else if range_status == 3 || range_status == 11 {
-                SensorReading::Valid(20)
-            } else if range_status != 0 {
-                SensorReading::OutOfRange
-            } else {
+            } else if is_min_range_fail {
+                SensorReading::Valid(Self::MIN_RANGE_MM)
+            } else if is_range_valid {
                 SensorReading::Valid(distance)
+            } else {
+                SensorReading::OutOfRange
             };
 
             Ok(SensorDiagnostics {
@@ -551,6 +588,8 @@ impl<I: I2c> Calibration for Vl53l0x<I> {
     const CALIBRATION_FILE_NAME: &'static str =
         model::calibration::Vl53l0xCalibration::CALIBRATION_FILE_NAME;
 
+    type Store = model::calibration::Vl53l0xCalibration;
+
     fn set_calibration(&mut self, calibration: CalibrationType) {
         if let CalibrationType::ProximityCal(cal) = calibration {
             if self.threshold_mm > cal.low + THRESHOLD_ERROR_MM {
@@ -568,6 +607,29 @@ impl<I: I2c> Calibration for Vl53l0x<I> {
 
     fn get_calibration(&self) -> Option<CalibrationType> {
         Some(CalibrationType::ProximityCal(self.calibration))
+    }
+
+    fn get_from_store(
+        store: &Self::Store,
+        direction: model::types::Direction,
+    ) -> Option<CalibrationType> {
+        Some(CalibrationType::ProximityCal(store[direction]))
+    }
+
+    fn update_store(
+        store: &mut Self::Store,
+        direction: model::types::Direction,
+        calibration: CalibrationType,
+    ) {
+        if let CalibrationType::ProximityCal(mut cal) = calibration {
+            if cal.min_range.is_none() {
+                cal.min_range = Some(Self::MIN_RANGE_MM);
+            }
+            if cal.max_range.is_none() {
+                cal.max_range = Some(Self::MAX_RANGE_MM);
+            }
+            store[direction] = cal;
+        }
     }
 }
 

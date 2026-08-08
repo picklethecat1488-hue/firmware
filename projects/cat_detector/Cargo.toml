@@ -70,3 +70,4 @@ core1 = [
 ]
 motor-core = ["controller/motor-core", "peripherals/motor-core"]
 sensors-core = ["controller/sensors-core", "peripherals/sensors-core"]
+verbose-sensor-logging = ["peripherals/verbose-sensor-logging"]

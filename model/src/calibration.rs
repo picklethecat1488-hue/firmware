@@ -13,32 +13,58 @@ pub struct TwoPointCalibration<T> {
     /// Reading at the upper reference point (e.g. far / maximum).
     #[n(1)]
     pub high: T,
+    /// Minimum range or lower bound of calibrated physical scale.
+    #[n(2)]
+    pub min_range: Option<T>,
+    /// Maximum range or upper bound of calibrated physical scale.
+    #[n(3)]
+    pub max_range: Option<T>,
 }
 
 impl<T> TwoPointCalibration<T> {
     /// Create a new two-point calibration.
     pub const fn new(low: T, high: T) -> Self {
-        Self { low, high }
+        Self {
+            low,
+            high,
+            min_range: None,
+            max_range: None,
+        }
+    }
+
+    /// Create a new two-point calibration with range limits.
+    pub const fn new_with_range(low: T, high: T, min_range: T, max_range: T) -> Self {
+        Self {
+            low,
+            high,
+            min_range: Some(min_range),
+            max_range: Some(max_range),
+        }
     }
 }
 
 impl TwoPointCalibration<u16> {
     /// Interpolate or map a raw reading using the two-point calibration.
-    /// Maps `low` to 0, and `high` to `scale` (e.g. 100).
-    pub fn map(&self, raw: u16, scale: u32) -> u16 {
+    /// Maps `low` to `min_range` (default 0), and `high` to `max_range` (default 100).
+    pub fn map(&self, raw: u16) -> u16 {
+        let min_r = self.min_range.unwrap_or(0);
+        let max_r = self.max_range.unwrap_or(u16::MAX);
+
         if self.high > self.low {
             if raw <= self.low {
-                0
+                min_r
             } else {
-                (((raw - self.low) as u32 * scale) / (self.high - self.low) as u32) as u16
+                let range = (max_r - min_r) as u32;
+                min_r + (((raw - self.low) as u32 * range) / (self.high - self.low) as u32) as u16
             }
         } else if self.low > self.high {
             if raw >= self.low {
-                0
+                min_r
             } else if raw <= self.high {
-                scale as u16
+                max_r
             } else {
-                (((self.low - raw) as u32 * scale) / (self.low - self.high) as u32) as u16
+                let range = (max_r - min_r) as u32;
+                min_r + (((self.low - raw) as u32 * range) / (self.low - self.high) as u32) as u16
             }
         } else {
             raw
@@ -203,11 +229,30 @@ pub trait Calibration {
     /// Filename used to store calibration data in flash.
     const CALIBRATION_FILE_NAME: &'static str;
 
+    /// Associated type representing the full file structure stored in flash.
+    type Store: for<'b> minicbor::Decode<'b, ()> + minicbor::Encode<()> + Default;
+
     /// Sets the calibration parameters. By default, this does nothing (no-op).
     fn set_calibration(&mut self, _calibration: CalibrationType) {}
 
     /// Gets the current calibration parameters. By default, this returns None.
     fn get_calibration(&self) -> Option<CalibrationType> {
         None
+    }
+
+    /// Gets the calibration parameters for a specific sub-device/direction from a store.
+    fn get_from_store(
+        _store: &Self::Store,
+        _direction: crate::types::Direction,
+    ) -> Option<CalibrationType> {
+        None
+    }
+
+    /// Updates the calibration storage structure with new parameters for a given direction.
+    fn update_store(
+        _store: &mut Self::Store,
+        _direction: crate::types::Direction,
+        _calibration: CalibrationType,
+    ) {
     }
 }

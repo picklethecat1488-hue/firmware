@@ -300,6 +300,32 @@ impl MockProximitySensor {
 
 impl model::calibration::Calibration for MockProximitySensor {
     const CALIBRATION_FILE_NAME: &'static str = "dummy_cal.cbor";
+    type Store = model::calibration::Vl53l0xCalibration;
+
+    fn get_from_store(
+        store: &Self::Store,
+        direction: model::types::Direction,
+    ) -> Option<model::calibration::CalibrationType> {
+        Some(model::calibration::CalibrationType::ProximityCal(
+            store[direction],
+        ))
+    }
+
+    fn update_store(
+        store: &mut Self::Store,
+        direction: model::types::Direction,
+        calibration: model::calibration::CalibrationType,
+    ) {
+        if let model::calibration::CalibrationType::ProximityCal(mut cal) = calibration {
+            if cal.min_range.is_none() {
+                cal.min_range = Some(20);
+            }
+            if cal.max_range.is_none() {
+                cal.max_range = Some(100);
+            }
+            store[direction] = cal;
+        }
+    }
 }
 
 impl WaitableMeasurement for MockProximitySensor {
@@ -438,6 +464,32 @@ impl Probeable for DummyProximitySensor {
 
 impl model::calibration::Calibration for DummyProximitySensor {
     const CALIBRATION_FILE_NAME: &'static str = "dummy_cal.cbor";
+    type Store = model::calibration::Vl53l0xCalibration;
+
+    fn get_from_store(
+        store: &Self::Store,
+        direction: model::types::Direction,
+    ) -> Option<model::calibration::CalibrationType> {
+        Some(model::calibration::CalibrationType::ProximityCal(
+            store[direction],
+        ))
+    }
+
+    fn update_store(
+        store: &mut Self::Store,
+        direction: model::types::Direction,
+        calibration: model::calibration::CalibrationType,
+    ) {
+        if let model::calibration::CalibrationType::ProximityCal(mut cal) = calibration {
+            if cal.min_range.is_none() {
+                cal.min_range = Some(20);
+            }
+            if cal.max_range.is_none() {
+                cal.max_range = Some(100);
+            }
+            store[direction] = cal;
+        }
+    }
 }
 
 /// A mock implementation of a ChargeStatus for unit testing.
