@@ -175,6 +175,27 @@ impl BlockingProximityReader for MockSensorCtrl {
     fn latest_distance(&self) -> u16 {
         self.distance
     }
+
+    fn send_command(
+        &mut self,
+        cmd: controller::sensor_controller::SensorCommand,
+    ) -> Result<(), PeripheralError> {
+        match cmd {
+            controller::sensor_controller::SensorCommand::ReadRawSensorsWithSignal(sig_ptr) => {
+                let sig = unsafe { &*sig_ptr.0 };
+                let reading = if self.distance == u16::MAX {
+                    model::types::SensorReading::Invalid
+                } else if self.distance >= 8190 {
+                    model::types::SensorReading::OutOfRange
+                } else {
+                    model::types::SensorReading::Valid(self.distance)
+                };
+                let _ = sig.set(Ok(reading));
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
 }
 
 impl model::calibration::Calibration for MockSensorCtrl {
@@ -624,4 +645,158 @@ fn test_fs_buffer_guard_locking() {
         Err(e) => assert_eq!(e, "Filesystem scratch buffer is not configured"),
         _ => panic!("Expected lock on unconfigured buffer to fail"),
     }
+}
+
+#[derive(Clone)]
+struct SharedWriter {
+    output: std::sync::Arc<std::sync::Mutex<std::vec::Vec<u8>>>,
+}
+
+impl SharedWriter {
+    fn new() -> Self {
+        Self {
+            output: std::sync::Arc::new(std::sync::Mutex::new(std::vec::Vec::new())),
+        }
+    }
+}
+
+impl embedded_io::ErrorType for SharedWriter {
+    type Error = core::convert::Infallible;
+}
+
+impl embedded_io::Write for SharedWriter {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
+        self.output.lock().unwrap().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[test]
+fn test_sensor_calibration_bounds_checking() {
+    let mut i2c = DummyI2c;
+    let mut motor = MockMotor;
+    let mut flash = MockFlash::new();
+    let mut battery_ctrl = MockBatteryCtrl;
+    let mut thermal_ctrl = MockThermalCtrl;
+    // Set distance to 950 (which is >= MAX_CALIBRATION_RAW_MM (900))
+    let mut sensor_north_ctrl = MockSensorCtrl { distance: 950 };
+    let mut sensor_east_ctrl = MockSensorCtrl { distance: 200 };
+    let mut sensor_west_ctrl = MockSensorCtrl { distance: 300 };
+    let mut motor_ctrl = MockMotorCtrl {
+        speed: core::cell::Cell::new(0),
+    };
+    let mut temp_sensor = MockTempSensor;
+
+    let i2c_buses = &[controller::NamedDevice {
+        name: "default",
+        device: &mut i2c as *mut _,
+    }];
+    let motors = &[controller::NamedDevice {
+        name: "default",
+        device: &mut motor as *mut _,
+    }];
+    let flash_partitions = &[controller::NamedPartition {
+        name: "default",
+        partition: controller::FlashPartition {
+            flash_ptr: &mut flash as *mut _,
+            start_address: 0,
+            end_address: 1024 * 64,
+        },
+        kind: controller::PartitionKind::Map,
+    }];
+    let batteries = &[controller::NamedDevice {
+        name: "default",
+        device: &mut battery_ctrl as *mut _,
+    }];
+    let thermals = &[controller::NamedDevice {
+        name: "default",
+        device: &mut thermal_ctrl as *mut _,
+    }];
+    let sensors = &[
+        controller::NamedDevice {
+            name: "north",
+            device: &mut sensor_north_ctrl as *mut _,
+        },
+        controller::NamedDevice {
+            name: "east",
+            device: &mut sensor_east_ctrl as *mut _,
+        },
+        controller::NamedDevice {
+            name: "west",
+            device: &mut sensor_west_ctrl as *mut _,
+        },
+    ];
+    let motor_ctrls = &[controller::NamedDevice {
+        name: "default",
+        device: &mut motor_ctrl as *mut _,
+    }];
+    let temp_sensors = &[controller::NamedDevice {
+        name: "default",
+        device: &mut temp_sensor as *mut _,
+    }];
+
+    let mut system_sender = SYSTEM_CHANNEL.sender();
+    let system_ctrls = &[controller::NamedDevice {
+        name: "default",
+        device: &mut system_sender as *mut _,
+    }];
+
+    static mut TEST_FS_BUF_2: [u8; 4096] = [0u8; 4096];
+    let pointers = ShellControllerPointers::<TestConfig> {
+        i2c_buses,
+        motors,
+        flash_partitions,
+        batteries,
+        thermals,
+        sensors,
+        motor_ctrls,
+        temp_sensors,
+        system_ctrls,
+        leds: &[],
+        fs_buffer: unsafe { &mut TEST_FS_BUF_2 },
+    };
+
+    let mut shell = ShellController::<TestConfig>::new(pointers);
+    let mut shell_proc = CliCommandProcessor::new(&mut shell);
+
+    // 1. Test CalNear out of bounds
+    let shared_writer = SharedWriter::new();
+    let mut cli = CliBuilder::default()
+        .writer(shared_writer.clone())
+        .build()
+        .unwrap();
+
+    for b in b"sensor cal_near north\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
+    }
+
+    let output_bytes = shared_writer.output.lock().unwrap();
+    let output_str = String::from_utf8_lossy(&output_bytes);
+    assert!(
+        output_str.contains("Target too far") || output_str.contains("Target out of range"),
+        "Unexpected output: {}",
+        output_str
+    );
+
+    // 2. Test CalFar out of bounds
+    let shared_writer_far = SharedWriter::new();
+    let mut cli_far = CliBuilder::default()
+        .writer(shared_writer_far.clone())
+        .build()
+        .unwrap();
+
+    for b in b"sensor cal_far north\n" {
+        let _ = cli_far.process_byte::<CliCommand, _>(*b, &mut shell_proc);
+    }
+
+    let output_bytes_far = shared_writer_far.output.lock().unwrap();
+    let output_str_far = String::from_utf8_lossy(&output_bytes_far);
+    assert!(
+        output_str_far.contains("Target too far") || output_str_far.contains("Target out of range"),
+        "Unexpected output: {}",
+        output_str_far
+    );
 }

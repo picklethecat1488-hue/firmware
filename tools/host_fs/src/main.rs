@@ -220,8 +220,8 @@ fn main() -> io::Result<()> {
     }
 
     // Determine buffer size from project metadata partition size, falling back to flash capacity
-    let buffer_size = if let Some(ref info) = info {
-        info.partition_size
+    let buffer_size = if info.is_some() {
+        partition_size_val as usize
     } else {
         flash.capacity()
     };
