@@ -32,6 +32,14 @@ impl TwoPointCalibration<u16> {
             } else {
                 (((raw - self.low) as u32 * scale) / (self.high - self.low) as u32) as u16
             }
+        } else if self.low > self.high {
+            if raw >= self.low {
+                0
+            } else if raw <= self.high {
+                scale as u16
+            } else {
+                (((self.low - raw) as u32 * scale) / (self.low - self.high) as u32) as u16
+            }
         } else {
             raw
         }
