@@ -217,6 +217,30 @@ where
         Ok(())
     }
 
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    fn set_running_state(&mut self, running: bool) -> Result<(), PeripheralError> {
+        if running {
+            if self.state == MotorState::Off {
+                self.state = MotorState::On;
+                self.current_sensor
+                    .set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
+                    .map_err(|e| e.to_peripheral_error())?;
+            }
+        } else {
+            self.state = MotorState::Off;
+            self.active_speed = MotorSpeed::ZERO;
+            self.speed = MotorSpeed::ZERO;
+            self.motor.stop().map_err(|e| e.to_peripheral_error())?;
+            let _ = self
+                .current_sensor
+                .set_measurement_mode(PowerMeasurementMode::PowerDown);
+        }
+        Ok(())
+    }
+
     /// Handles a received MotorCommand.
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
@@ -245,15 +269,9 @@ where
                             self.speed = speed;
                         }
                     } else {
-                        if self.state == MotorState::Off {
-                            self.state = MotorState::On;
-                            if let Err(e) = self
-                                .current_sensor
-                                .set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
-                            {
-                                if let Some(ref client) = telemetry_client {
-                                    client.report_error(e.to_peripheral_error());
-                                }
+                        if let Err(e) = self.set_running_state(true) {
+                            if let Some(ref client) = telemetry_client {
+                                client.report_error(e);
                             }
                         }
                         self.speed = speed;
@@ -281,21 +299,9 @@ where
                 );
             }
             MotorCommand::Stop => {
-                // Immediate emergency stop
-                self.state = MotorState::Off;
-                self.speed = MotorSpeed::ZERO;
-                self.active_speed = MotorSpeed::ZERO;
-                if let Err(e) = self.motor.stop() {
+                if let Err(e) = self.set_running_state(false) {
                     if let Some(ref client) = telemetry_client {
-                        client.report_error(e.to_peripheral_error());
-                    }
-                }
-                if let Err(e) = self
-                    .current_sensor
-                    .set_measurement_mode(PowerMeasurementMode::PowerDown)
-                {
-                    if let Some(ref client) = telemetry_client {
-                        client.report_error(e.to_peripheral_error());
+                        client.report_error(e);
                     }
                 }
             }
@@ -508,13 +514,21 @@ where
 {
     fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
         let motor_speed = MotorSpeed::new(speed).ok_or(PeripheralError::InvalidConfiguration)?;
-        let _ = self.motor.set_speed(motor_speed);
+        if motor_speed != MotorSpeed::ZERO {
+            self.set_running_state(true)?;
+            self.speed = motor_speed;
+            self.active_speed = motor_speed;
+            self.motor
+                .set_speed(motor_speed)
+                .map_err(|e| e.to_peripheral_error())?;
+        } else {
+            self.set_running_state(false)?;
+        }
         Ok(())
     }
 
     fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError> {
-        let _ = self.motor.stop();
-        Ok(())
+        self.set_running_state(false)
     }
 }
 

@@ -187,12 +187,14 @@ impl<'d> Board<'d> {
         peripherals::init_ina219!(&mut i2c, &mut boot_status);
 
         // Extract pins needed for drivers/controllers
-        let motor_pin_ia = gpio_pins[crate::PUMP_PIN_IA as usize]
+        let mut motor_pin_ia = gpio_pins[crate::PUMP_PIN_IA as usize]
             .take()
             .expect("Motor pin IA must be available");
-        let motor_pin_ib = gpio_pins[crate::PUMP_PIN_IB as usize]
+        let mut motor_pin_ib = gpio_pins[crate::PUMP_PIN_IB as usize]
             .take()
             .expect("Motor pin IB must be available");
+        motor_pin_ia.set_as_output();
+        motor_pin_ib.set_as_output();
         let motor = peripherals::l9110s::L9110s::new(motor_pin_ia, motor_pin_ib);
 
         let fuel_gauge_alert_pin = gpio_pins[crate::FUEL_GAUGE_INT_PIN as usize]
