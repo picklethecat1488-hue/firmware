@@ -69,8 +69,43 @@ fn main() -> io::Result<()> {
     }
 
     let (partition_offset, partition_size_val) = if let Some(ref info) = info {
-        let default_offset = info.partition_address.saturating_sub(0x1000_0000);
-        let default_size = info.partition_size as u32;
+        let fs_partition = info
+            .partitions
+            .iter()
+            .find(|p| p.kind == 0)
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Filesystem partition not found in ELF metadata",
+                )
+            })?;
+        let telemetry_partition =
+            info.partitions
+                .iter()
+                .find(|p| p.kind == 1)
+                .ok_or_else(|| {
+                    io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        "Telemetry partition not found in ELF metadata",
+                    )
+                })?;
+
+        let (default_offset, default_size) = match &cli.command {
+            Commands::ExportTelemetry { .. } => {
+                // Telemetry queue resides in the telemetry partition
+                (
+                    telemetry_partition.address.saturating_sub(info.flash_start),
+                    telemetry_partition.size as u32,
+                )
+            }
+            _ => {
+                // Map filesystem commands only target the map partition
+                (
+                    fs_partition.address.saturating_sub(info.flash_start),
+                    fs_partition.size as u32,
+                )
+            }
+        };
         (
             offset_override.unwrap_or(default_offset),
             size_override.unwrap_or(default_size),
@@ -125,23 +160,30 @@ fn main() -> io::Result<()> {
                 };
                 spinner.set_message(format!(
                     "Connecting to device at {} (address: 0x{:08X}) via OpenOCD GDB...",
-                    addr, info.partition_address
+                    addr,
+                    partition_offset + info.flash_start
                 ));
                 let gdb_flash = host_fs::flash::GdbFlash::new(
                     &addr,
-                    info.partition_address,
-                    info.partition_size,
+                    partition_offset + info.flash_start,
+                    partition_size_val as usize,
+                    info.flash_start,
                 )
                 .map_err(io::Error::other)?;
                 EitherFlash::Gdb(Box::new(gdb_flash))
             } else {
                 spinner.set_message(format!(
                     "Connecting to device (chip: {}, address: 0x{:08X}) via probe-rs...",
-                    info.chip, info.partition_address
+                    info.chip,
+                    partition_offset + info.flash_start
                 ));
-                let probe_flash =
-                    ProbeFlash::new(&info.chip, info.partition_address, info.partition_size)
-                        .map_err(io::Error::other)?;
+                let probe_flash = ProbeFlash::new(
+                    &info.chip,
+                    partition_offset + info.flash_start,
+                    partition_size_val as usize,
+                    info.flash_start,
+                )
+                .map_err(io::Error::other)?;
                 EitherFlash::Probe(Box::new(probe_flash))
             }
         }
@@ -178,8 +220,8 @@ fn main() -> io::Result<()> {
     }
 
     // Determine buffer size from project metadata partition size, falling back to flash capacity
-    let buffer_size = if let Some(ref info) = info {
-        info.partition_size
+    let buffer_size = if info.is_some() {
+        partition_size_val as usize
     } else {
         flash.capacity()
     };

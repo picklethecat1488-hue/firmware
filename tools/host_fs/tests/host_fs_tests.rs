@@ -368,3 +368,54 @@ fn test_cli_rm() {
     let _ = std::fs::remove_file(&src1_path);
     let _ = std::fs::remove_file(&src2_path);
 }
+
+#[test]
+fn test_cli_rm_small_dump() {
+    use std::fs::File;
+    use std::io::Write;
+    use std::process::Command;
+
+    let bin_path = env!("CARGO_BIN_EXE_host_fs");
+
+    let dump_path = std::env::temp_dir().join("test_cli_rm_small_dump_flash_dump.bin");
+    let src_path = std::env::temp_dir().join("test_cli_rm_small_dump_src.txt");
+    let _ = std::fs::remove_file(&dump_path);
+    let _ = std::fs::remove_file(&src_path);
+
+    // 1. Create a dummy flash dump file of 8KB (exactly two 4KB sectors)
+    let mut dump_file = File::create(&dump_path).unwrap();
+    dump_file.write_all(&vec![0xFF; 8192]).unwrap();
+    drop(dump_file);
+
+    // 2. Create a source file to copy
+    let mut src_file = File::create(&src_path).unwrap();
+    src_file
+        .write_all(b"Hello from small buffer test!")
+        .unwrap();
+    drop(src_file);
+
+    // 3. Copy file to device
+    let status = Command::new(bin_path)
+        .arg("--dump")
+        .arg(&dump_path)
+        .arg("cp")
+        .arg(&src_path)
+        .arg("dev:test_small.txt")
+        .status()
+        .unwrap();
+    assert!(status.success(), "Failed to copy file into small dump");
+
+    // 4. Remove file from device
+    let status = Command::new(bin_path)
+        .arg("--dump")
+        .arg(&dump_path)
+        .arg("rm")
+        .arg("test_small.txt")
+        .status()
+        .unwrap();
+    assert!(status.success(), "Failed to remove file from small dump");
+
+    // Clean up
+    let _ = std::fs::remove_file(&dump_path);
+    let _ = std::fs::remove_file(&src_path);
+}

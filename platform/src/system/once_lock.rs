@@ -42,13 +42,18 @@ impl<T> OnceLock<T> {
             *slot = Some(value);
         }
         self.initialized.store(true, Ordering::Release);
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        cortex_m::asm::sev();
         Ok(())
     }
 
     /// Gets the reference to the underlying value, blocking/spinning if it is not initialized yet.
     pub fn wait(&self) -> &T {
         while !self.initialized.load(Ordering::Acquire) {
-            core::hint::spin_loop();
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            cortex_m::asm::wfe();
+            #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+            std::thread::yield_now();
         }
         // SAFETY: The value is initialized and will never be modified again.
         unsafe { (*self.cell.get()).as_ref().unwrap() }

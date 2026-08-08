@@ -1,20 +1,31 @@
 use object::{Object, ObjectSection, ObjectSymbol};
 
+/// Parsed partition information.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartitionInfo {
+    /// The kind/type of the partition (e.g. 0 = Calibration, 1 = Telemetry).
+    pub kind: u32,
+    /// The virtual memory flash address of the partition.
+    pub address: u32,
+    /// The size of the partition in bytes.
+    pub size: usize,
+}
+
 /// Parsed project information from the ELF metadata section.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectInfo {
     /// Chip name (e.g. "rp2040")
     pub chip: String,
-    /// The virtual memory flash address of the storage partition
-    pub partition_address: u32,
-    /// The size of the storage partition in bytes
-    pub partition_size: usize,
     /// Flash write alignment/size in bytes
     pub flash_write_size: u32,
     /// Flash erase sector size in bytes
     pub flash_erase_size: u32,
     /// Stack scan limit in words
     pub stack_scan_limit: u32,
+    /// Flash base address (e.g. 0x1000_0000)
+    pub flash_start: u32,
+    /// List of flash partitions
+    pub partitions: Vec<PartitionInfo>,
 }
 
 /// Autodetects chip and layout parameters from an ELF file's project metadata section.
@@ -80,13 +91,23 @@ pub fn autodetect_project_info(elf_path: &std::path::Path) -> Result<ProjectInfo
     let metadata: platform::types::ProjectMetadata<'_> =
         minicbor::decode(data).map_err(|e| format!("Failed to decode CBOR metadata: {:?}", e))?;
 
+    let partitions = metadata
+        .partitions
+        .iter()
+        .map(|p| PartitionInfo {
+            kind: p.kind,
+            address: p.address,
+            size: p.size as usize,
+        })
+        .collect();
+
     Ok(ProjectInfo {
         chip: metadata.chip.to_string(),
-        partition_address: metadata.partition_address,
-        partition_size: metadata.partition_size as usize,
         flash_write_size: metadata.flash_write_size,
         flash_erase_size: metadata.flash_erase_size,
         stack_scan_limit: metadata.stack_scan_limit,
+        flash_start: metadata.flash_start,
+        partitions,
     })
 }
 

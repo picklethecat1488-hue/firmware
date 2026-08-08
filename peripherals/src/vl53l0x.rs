@@ -339,15 +339,15 @@ impl<I: I2c> WaitableMeasurement for Vl53l0x<I> {
     }
 }
 
-impl<I: I2c> ProximitySensor for Vl53l0x<I> {
-    type Error = PeripheralError;
-
+impl<I: I2c> Vl53l0x<I> {
     #[cfg_attr(
         all(target_arch = "arm", feature = "sensors-core"),
         link_section = ".data.core1_func"
     )]
-    #[tracing::instrument(core1 = "core1", level = "trace")]
-    fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
+    fn read_distance_internal(
+        &mut self,
+        calibrate: bool,
+    ) -> Result<SensorReading, PeripheralError> {
         let res = (|| {
             // Trigger a measurement (write 0x01 to register 0x00 for System Start)
             self.i2c
@@ -393,14 +393,25 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
                 let _ = self.i2c.write_read(self.address, &[0x1C], &mut buf_ambient);
                 let ambient_rate = u16::from_be_bytes(buf_ambient);
 
-                defmt::debug!(
-                    "VL53L0X [0x{:02x}] mm-read: Raw Dist = {} mm, Range Status = {}, Peak Rate = {} Mcps, Ambient Rate = {} Mcps",
-                    self.address,
-                    distance,
-                    range_status,
-                    peak_rate,
-                    ambient_rate
-                );
+                if calibrate {
+                    defmt::debug!(
+                        "VL53L0X [0x{:02x}] mm-read: Raw Dist = {} mm, Range Status = {}, Peak Rate = {} Mcps, Ambient Rate = {} Mcps",
+                        self.address,
+                        distance,
+                        range_status,
+                        peak_rate,
+                        ambient_rate
+                    );
+                } else {
+                    defmt::debug!(
+                        "VL53L0X [0x{:02x}] raw-read: Raw Dist = {} mm, Range Status = {}, Peak Rate = {} Mcps, Ambient Rate = {} Mcps",
+                        self.address,
+                        distance,
+                        range_status,
+                        peak_rate,
+                        ambient_rate
+                    );
+                }
             }
 
             // Apply dead-zone override & error/stale handling
@@ -412,22 +423,51 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
             let reading = if distance == 0 {
                 SensorReading::Invalid
             } else if is_min_range_fail {
-                SensorReading::Valid(self.calibration.map(Self::MIN_RANGE_MM))
+                SensorReading::Valid(if calibrate {
+                    self.calibration.map(Self::MIN_RANGE_MM)
+                } else {
+                    Self::MIN_RANGE_MM
+                })
             } else if is_range_valid {
-                SensorReading::Valid(self.calibration.map(distance))
+                SensorReading::Valid(if calibrate {
+                    self.calibration.map(distance)
+                } else {
+                    distance
+                })
             } else {
                 SensorReading::OutOfRange
             };
             Ok(reading)
         })();
         if let Err(ref _e) = res {
-            log_warn!(
-                "{}: Failed to read distance at address 0x{:02x}: {:?}",
-                self.address,
-                defmt::Debug2Format(_e)
-            );
+            if calibrate {
+                log_warn!(
+                    "{}: Failed to read distance at address 0x{:02x}: {:?}",
+                    self.address,
+                    defmt::Debug2Format(_e)
+                );
+            } else {
+                log_warn!(
+                    "{}: Failed to read raw distance at address 0x{:02x}: {:?}",
+                    self.address,
+                    defmt::Debug2Format(_e)
+                );
+            }
         }
         res
+    }
+}
+
+impl<I: I2c> ProximitySensor for Vl53l0x<I> {
+    type Error = PeripheralError;
+
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
+    #[tracing::instrument(core1 = "core1", level = "trace")]
+    fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
+        self.read_distance_internal(true)
     }
 
     #[cfg_attr(
@@ -435,84 +475,7 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
         link_section = ".data.core1_func"
     )]
     fn read_distance_raw(&mut self) -> Result<SensorReading, Self::Error> {
-        let res = (|| {
-            // Trigger a measurement (write 0x01 to register 0x00 for System Start)
-            self.i2c
-                .write(self.address, &[Register::SYSTEM_START, 0x01])
-                .map_err(|e| e.to_i2c_error(self.address as u16, Register::SYSTEM_START as u16))?;
-
-            // Read range status register 0x14
-            let mut status = [0u8; 1];
-            self.i2c
-                .write_read(self.address, &[Register::RESULT_RANGE_STATUS], &mut status)
-                .map_err(|e| {
-                    e.to_i2c_error(self.address as u16, Register::RESULT_RANGE_STATUS as u16)
-                })?;
-            let range_status = (status[0] >> 3) & 0x0F;
-
-            // Read 16-bit range result from register 0x1E (High Byte) and 0x1F (Low Byte)
-            let mut buf = [0u8; 2];
-            self.i2c
-                .write_read(self.address, &[Register::RESULT_RANGE_VAL], &mut buf)
-                .map_err(|e| {
-                    e.to_i2c_error(self.address as u16, Register::RESULT_RANGE_VAL as u16)
-                })?;
-            let distance = u16::from_be_bytes(buf);
-
-            // Clear interrupt status so the pin can trigger again (write 0x01 to register 0x0B)
-            self.clear_interrupt()?;
-
-            #[cfg(all(
-                target_arch = "arm",
-                target_os = "none",
-                feature = "verbose-sensor-logging"
-            ))]
-            {
-                // Read peak signal rate (registers 0x1A and 0x1B)
-                let mut buf_rate = [0u8; 2];
-                let _ = self.i2c.write_read(self.address, &[0x1A], &mut buf_rate);
-                let peak_rate = u16::from_be_bytes(buf_rate);
-
-                // Read ambient rate (registers 0x1C and 0x1D)
-                let mut buf_ambient = [0u8; 2];
-                let _ = self.i2c.write_read(self.address, &[0x1C], &mut buf_ambient);
-                let ambient_rate = u16::from_be_bytes(buf_ambient);
-
-                defmt::debug!(
-                    "VL53L0X [0x{:02x}] raw-read: Raw Dist = {} mm, Range Status = {}, Peak Rate = {} Mcps, Ambient Rate = {} Mcps",
-                    self.address,
-                    distance,
-                    range_status,
-                    peak_rate,
-                    ambient_rate
-                );
-            }
-
-            // Apply dead-zone override & error/stale handling
-            let is_min_range_fail = range_status == RangeStatus::MIN_RANGE_FAIL;
-            let is_range_valid = range_status == RangeStatus::VALID
-                || range_status == RangeStatus::VALID_LOW_SIGNAL_8
-                || range_status == RangeStatus::VALID_LOW_SIGNAL_11;
-
-            let reading = if distance == 0 {
-                SensorReading::Invalid
-            } else if is_min_range_fail {
-                SensorReading::Valid(Self::MIN_RANGE_MM)
-            } else if is_range_valid {
-                SensorReading::Valid(distance)
-            } else {
-                SensorReading::OutOfRange
-            };
-            Ok(reading)
-        })();
-        if let Err(ref _e) = res {
-            log_warn!(
-                "{}: Failed to read raw distance at address 0x{:02x}: {:?}",
-                self.address,
-                defmt::Debug2Format(_e)
-            );
-        }
-        res
+        self.read_distance_internal(false)
     }
 
     #[cfg_attr(

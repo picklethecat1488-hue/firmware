@@ -12,14 +12,13 @@ pub async fn run(
     dump_option: &Option<String>,
     buf: &mut [u8],
 ) -> io::Result<()> {
-    let (dir_buf, file_buf) = buf.split_at_mut(1024 * 8);
     spinner.set_message("Reading directory index (.dir)...");
     let dir_key = string_to_key(".dir");
     let dir_res = sequential_storage::map::fetch_item::<[u8; 32], &[u8], _>(
         flash,
         flash_range.clone(),
         cache,
-        dir_buf,
+        buf,
         &dir_key,
     )
     .await;
@@ -65,7 +64,7 @@ pub async fn run(
             flash,
             flash_range.clone(),
             cache,
-            file_buf,
+            buf,
             &key,
         )
         .await;
@@ -85,7 +84,7 @@ pub async fn run(
             flash,
             flash_range.clone(),
             cache,
-            file_buf,
+            buf,
             &dir_key,
         )
         .await;
@@ -107,7 +106,7 @@ pub async fn run(
                 flash,
                 flash_range.clone(),
                 cache,
-                file_buf,
+                buf,
                 &dir_key,
             )
             .await;
@@ -122,7 +121,7 @@ pub async fn run(
                 flash,
                 flash_range.clone(),
                 cache,
-                file_buf,
+                buf,
                 &dir_key,
                 &new_dir_str.as_bytes(),
             )

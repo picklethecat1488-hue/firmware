@@ -101,7 +101,12 @@ pub struct ProbeFlash {
 
 impl ProbeFlash {
     /// Creates a new ProbeFlash instance by attaching to the target chip and bulk-reading the partition.
-    pub fn new(chip: &str, base_address: u32, capacity: usize) -> Result<Self, String> {
+    pub fn new(
+        chip: &str,
+        base_address: u32,
+        capacity: usize,
+        flash_start: u32,
+    ) -> Result<Self, String> {
         let lister = Lister::new();
         let probes = lister.list_all();
         let probe_info = probes
@@ -135,7 +140,7 @@ impl ProbeFlash {
         let sector_size = 4096;
         let num_sectors = capacity.div_ceil(sector_size);
         let dirty_sectors = vec![false; num_sectors];
-        let offset_shift = base_address.saturating_sub(0x10000000);
+        let offset_shift = base_address.saturating_sub(flash_start);
 
         Ok(Self {
             session,
@@ -266,7 +271,12 @@ pub struct GdbFlash {
 }
 
 impl GdbFlash {
-    pub fn new(addr: &str, base_address: u32, capacity: usize) -> Result<Self, String> {
+    pub fn new(
+        addr: &str,
+        base_address: u32,
+        capacity: usize,
+        flash_start: u32,
+    ) -> Result<Self, String> {
         let mut gdb = tool_common::GdbClient::connect(addr)?;
 
         let mut data = vec![0u8; capacity];
@@ -275,7 +285,7 @@ impl GdbFlash {
         let sector_size = 4096;
         let num_sectors = capacity.div_ceil(sector_size);
         let dirty_sectors = vec![false; num_sectors];
-        let offset_shift = base_address.saturating_sub(0x10000000);
+        let offset_shift = base_address.saturating_sub(flash_start);
 
         Ok(Self {
             gdb,
