@@ -13,42 +13,21 @@ pub struct TwoPointCalibration<T> {
     /// Reading at the upper reference point (e.g. far / maximum).
     #[n(1)]
     pub high: T,
-    /// Minimum range or lower bound of calibrated physical scale.
-    #[n(2)]
-    pub min_range: Option<T>,
-    /// Maximum range or upper bound of calibrated physical scale.
-    #[n(3)]
-    pub max_range: Option<T>,
 }
 
 impl<T> TwoPointCalibration<T> {
     /// Create a new two-point calibration.
     pub const fn new(low: T, high: T) -> Self {
-        Self {
-            low,
-            high,
-            min_range: None,
-            max_range: None,
-        }
-    }
-
-    /// Create a new two-point calibration with range limits.
-    pub const fn new_with_range(low: T, high: T, min_range: T, max_range: T) -> Self {
-        Self {
-            low,
-            high,
-            min_range: Some(min_range),
-            max_range: Some(max_range),
-        }
+        Self { low, high }
     }
 }
 
 impl TwoPointCalibration<u16> {
     /// Interpolate or map a raw reading using the two-point calibration.
-    /// Maps `low` to `min_range` (default 0), and `high` to `max_range` (default 100).
+    /// Maps `low` to 0, and `high` to 100.
     pub fn map(&self, raw: u16) -> u16 {
-        let min_r = self.min_range.unwrap_or(0);
-        let max_r = self.max_range.unwrap_or(u16::MAX);
+        let min_r = 0;
+        let max_r = 100;
 
         if self.high > self.low {
             if raw <= self.low {

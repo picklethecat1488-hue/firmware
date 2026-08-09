@@ -398,21 +398,19 @@ impl<M: embassy_sync::blocking_mutex::raw::RawMutex + 'static>
 }
 
 /// Telemetry client for proximity status reporting.
-pub struct ProximityTelemetryClient<M: embassy_sync::blocking_mutex::raw::RawMutex + 'static> {
+pub struct SensorTelemetryClient<M: embassy_sync::blocking_mutex::raw::RawMutex + 'static> {
     tx: Option<TelemetrySender<M>>,
     wake_threshold_mm: u16,
-    last_logged_distance: [u16; 3],
-    last_logged_in_range: [Option<bool>; 3],
+    last_logged_reading: [Option<model::types::SensorReading>; 3],
 }
 
-impl<M: embassy_sync::blocking_mutex::raw::RawMutex + 'static> ProximityTelemetryClient<M> {
-    /// Creates a new `ProximityTelemetryClient`.
+impl<M: embassy_sync::blocking_mutex::raw::RawMutex + 'static> SensorTelemetryClient<M> {
+    /// Creates a new `SensorTelemetryClient`.
     pub fn new(tx: Option<TelemetrySender<M>>, wake_threshold_mm: u16) -> Self {
         Self {
             tx,
             wake_threshold_mm,
-            last_logged_distance: [9999; 3],
-            last_logged_in_range: [None; 3],
+            last_logged_reading: [None; 3],
         }
     }
 
@@ -429,29 +427,48 @@ impl<M: embassy_sync::blocking_mutex::raw::RawMutex + 'static> ProximityTelemetr
 }
 
 impl<M: embassy_sync::blocking_mutex::raw::RawMutex + 'static>
-    TelemetryClient<(model::types::Direction, u16)> for ProximityTelemetryClient<M>
+    TelemetryClient<(model::types::Direction, model::types::SensorReading)>
+    for SensorTelemetryClient<M>
 {
-    fn report(&mut self, (direction, distance_mm): (model::types::Direction, u16)) {
+    fn report(
+        &mut self,
+        (direction, reading): (model::types::Direction, model::types::SensorReading),
+    ) {
         if let Some(ref tx) = self.tx {
             let idx = match direction {
                 model::types::Direction::North => 0,
                 model::types::Direction::East => 1,
                 model::types::Direction::West => 2,
             };
-            let in_range = distance_mm < self.wake_threshold_mm;
-            let in_range_changed = Some(in_range) != self.last_logged_in_range[idx];
-            let distance_changed_significantly =
-                (distance_mm as i32 - self.last_logged_distance[idx] as i32).abs() >= 50;
 
-            if in_range_changed || distance_changed_significantly {
-                let prox = if in_range {
-                    model::types::ProximityTelemetry::InRange(direction, distance_mm)
-                } else {
-                    model::types::ProximityTelemetry::OutRange(direction, distance_mm)
-                };
-                let _ = tx.try_send(TelemetryRecord::Proximity(prox));
-                self.last_logged_distance[idx] = distance_mm;
-                self.last_logged_in_range[idx] = Some(in_range);
+            let should_log = match (reading, self.last_logged_reading[idx]) {
+                (
+                    model::types::SensorReading::Invalid,
+                    Some(model::types::SensorReading::Invalid),
+                ) => false,
+                (model::types::SensorReading::Invalid, _) => true,
+                (
+                    model::types::SensorReading::Proximity(_),
+                    Some(model::types::SensorReading::Invalid),
+                ) => true,
+                (model::types::SensorReading::Proximity(_), None) => true,
+                (
+                    model::types::SensorReading::Proximity(d),
+                    Some(model::types::SensorReading::Proximity(last_d)),
+                ) => {
+                    let in_range = d < self.wake_threshold_mm;
+                    let last_in_range = last_d < self.wake_threshold_mm;
+                    let range_changed = in_range != last_in_range;
+                    let diff_changed = (d as i32 - last_d as i32).abs() >= 50;
+                    range_changed || diff_changed
+                }
+            };
+
+            if should_log {
+                let _ = tx.try_send(TelemetryRecord::Proximity(
+                    model::types::SensorTelemetry::Status(direction, reading),
+                ));
+                self.last_logged_reading[idx] = Some(reading);
             }
         }
     }

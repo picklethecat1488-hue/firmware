@@ -3,7 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::interfaces::WaitableMeasurement;
-use crate::types::{SensorDiagnostics, SensorReading};
+use crate::types::SensorReading;
 
 /// Trait representing a proximity or distance sensor.
 pub trait ProximitySensor: WaitableMeasurement {
@@ -15,7 +15,4 @@ pub trait ProximitySensor: WaitableMeasurement {
 
     /// Reads the raw measured distance in millimeters (ignoring calibration mapping).
     fn read_distance_raw(&mut self) -> Result<SensorReading, Self::Error>;
-
-    /// Reads diagnostic information.
-    fn read_diagnostics(&mut self) -> Result<SensorDiagnostics, Self::Error>;
 }

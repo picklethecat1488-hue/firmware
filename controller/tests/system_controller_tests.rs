@@ -262,7 +262,7 @@ fn test_system_controller_flow() {
 
     controller.handle_command(SystemCommand::ProximityUpdate {
         direction: model::types::Direction::North,
-        reading: SensorReading::Valid(15),
+        reading: SensorReading::Proximity(15),
     });
     process!(controller);
 
@@ -291,7 +291,7 @@ fn test_system_controller_flow() {
 
     controller.handle_command(SystemCommand::ProximityUpdate {
         direction: model::types::Direction::North,
-        reading: SensorReading::Valid(15),
+        reading: SensorReading::Proximity(15),
     });
     process!(controller);
     // The pump should NOT start since system is in PowerDown (no SetSpeed command in queue)
@@ -574,7 +574,7 @@ fn test_proximity_wake_lock_behavior() {
     controller
         .handle_command(SystemCommand::ProximityUpdate {
             direction: model::types::Direction::North,
-            reading: SensorReading::Valid(50), // wake threshold is 300
+            reading: SensorReading::Proximity(50), // wake threshold is 300
         })
         .unwrap();
     process!(controller);
@@ -586,7 +586,7 @@ fn test_proximity_wake_lock_behavior() {
     controller
         .handle_command(SystemCommand::ProximityUpdate {
             direction: model::types::Direction::North,
-            reading: SensorReading::Valid(400),
+            reading: SensorReading::Proximity(400),
         })
         .unwrap();
     process!(controller);

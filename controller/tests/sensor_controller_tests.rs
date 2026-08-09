@@ -1,6 +1,6 @@
 use controller::sensor_controller::{SensorCommand, SensorController};
 use controller::types::SensorMetadata;
-use model::types::{Direction, ProximityTelemetry};
+use model::types::Direction;
 use peripherals::mock::MockProximitySensor;
 
 #[test]
@@ -14,20 +14,32 @@ fn test_sensor_controller_flow() {
         300,
     );
 
-    assert_eq!(controller.latest_distance(), 8190);
+    assert_eq!(
+        controller.latest_distance(),
+        model::types::SensorReading::Invalid
+    );
     assert_eq!(
         controller.telemetry(),
-        ProximityTelemetry::OutRange(Direction::North, 8190)
+        model::types::SensorTelemetry::Status(
+            Direction::North,
+            model::types::SensorReading::Invalid
+        )
     );
     assert_eq!(controller.direction(), Direction::North);
 
     // Call update to sample ToF measurements
     controller.update().unwrap();
 
-    assert_eq!(controller.latest_distance(), 10);
+    assert_eq!(
+        controller.latest_distance(),
+        model::types::SensorReading::Proximity(10)
+    );
     assert_eq!(
         controller.telemetry(),
-        ProximityTelemetry::InRange(Direction::North, 10)
+        model::types::SensorTelemetry::Status(
+            Direction::North,
+            model::types::SensorReading::Proximity(10)
+        )
     );
 
     // Verify periodic state

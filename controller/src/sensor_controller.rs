@@ -10,9 +10,7 @@ use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::calibration::{Calibration, CalibrationType};
 use model::interfaces::ProximitySensor;
-use model::types::{
-    Direction, PeriodicInterval, PeripheralError, SensorDiagnostics, SensorReading,
-};
+use model::types::{Direction, PeriodicInterval, PeripheralError, SensorReading};
 use peripherals::ToPeripheralError;
 use platform::{select_branch_with_timeout, subcommand_enum, BlockingAsyncFlash};
 
@@ -51,21 +49,6 @@ impl core::fmt::Debug for ProximitySignalPtr {
     }
 }
 
-/// Wrapper for the diagnostic CLI signal pointer.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct DiagnosticSignalPtr(
-    pub *const ::platform::OnceLock<Result<SensorDiagnostics, PeripheralError>>,
-);
-
-unsafe impl Send for DiagnosticSignalPtr {}
-unsafe impl Sync for DiagnosticSignalPtr {}
-
-impl core::fmt::Debug for DiagnosticSignalPtr {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "DiagnosticSignalPtr({:p})", self.0)
-    }
-}
-
 /// Type alias for the sensor command sender.
 pub type SensorSender<M> = embassy_sync::channel::Sender<'static, M, SensorCommand, 4>;
 
@@ -79,8 +62,6 @@ pub enum SensorCommand {
     ReadSensorsWithSignal(ProximitySignalPtr),
     /// Force raw proximity sensor check and signal completion via OnceLock
     ReadRawSensorsWithSignal(ProximitySignalPtr),
-    /// Force diagnostic proximity sensor check and signal completion via OnceLock
-    ReadDiagnosticsWithSignal(DiagnosticSignalPtr),
     /// Set periodic automatic reading interval
     SetInterval(PeriodicInterval),
 }
@@ -351,7 +332,7 @@ impl<'a, S: ProximitySensor>
     pub const fn new(metadata: SensorMetadata, sensor: S, wake_threshold_mm: u16) -> Self {
         Self {
             state_manager: SensorStateManager::new(metadata, sensor, None, None),
-            latest_data: SensorReading::OutOfRange,
+            latest_data: SensorReading::Invalid,
             context: ProximityReaderContext { wake_threshold_mm },
             command_tx: None,
         }
@@ -375,7 +356,7 @@ impl<
     ) -> Self {
         Self {
             state_manager: SensorStateManager::new(metadata, sensor, Some(upstream_tx), None),
-            latest_data: SensorReading::OutOfRange,
+            latest_data: SensorReading::Invalid,
             context: ProximityReaderContext { wake_threshold_mm },
             command_tx: None,
         }
@@ -526,17 +507,6 @@ where
                     let _ = lock.set(res);
                 }
             }
-            SensorCommand::ReadDiagnosticsWithSignal(signal_ptr) => {
-                let res = self
-                    .state_manager
-                    .sensor_mut()
-                    .read_diagnostics()
-                    .map_err(|_| PeripheralError::DeviceNotAvailable);
-                unsafe {
-                    let lock = &*signal_ptr.0;
-                    let _ = lock.set(res);
-                }
-            }
             SensorCommand::SetInterval(interval) => {
                 self.set_periodic_interval(interval);
             }
@@ -620,35 +590,20 @@ impl<
                 Some(upstream_tx),
                 Some(interrupt_pin),
             ),
-            latest_data: SensorReading::OutOfRange,
+            latest_data: SensorReading::Invalid,
             context: ProximityReaderContext { wake_threshold_mm },
             command_tx: None,
         }
     }
 
     /// Gets the current proximity telemetry reading.
-    pub fn telemetry(&self) -> model::types::ProximityTelemetry {
-        let dir = self.direction();
-        match self.latest_data {
-            SensorReading::Valid(d) => {
-                if d < self.context.wake_threshold_mm {
-                    model::types::ProximityTelemetry::InRange(dir, d)
-                } else {
-                    model::types::ProximityTelemetry::OutRange(dir, d)
-                }
-            }
-            SensorReading::OutOfRange | SensorReading::Invalid => {
-                model::types::ProximityTelemetry::OutRange(dir, 8190)
-            }
-        }
+    pub fn telemetry(&self) -> model::types::SensorTelemetry {
+        model::types::SensorTelemetry::Status(self.direction(), self.latest_data)
     }
 
     /// Gets the latest read proximity telemetry distance.
-    pub fn latest_distance(&self) -> u16 {
-        match self.latest_data {
-            SensorReading::Valid(d) => d,
-            SensorReading::OutOfRange | SensorReading::Invalid => 8190,
-        }
+    pub fn latest_distance(&self) -> SensorReading {
+        self.latest_data
     }
 }
 
@@ -662,33 +617,22 @@ impl<
 where
     S::Error: ToPeripheralError,
 {
-    fn read_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
+    fn read_distance_blocking(&mut self) -> Result<SensorReading, PeripheralError> {
         let lock = ::platform::OnceLock::new();
         let lock_ptr = ProximitySignalPtr(&lock as *const _);
         self.send_command(SensorCommand::ReadSensorsWithSignal(lock_ptr))?;
-        let reading = *lock.wait();
-        match reading? {
-            SensorReading::Valid(d) => Ok(d),
-            SensorReading::OutOfRange | SensorReading::Invalid => Ok(8190),
-        }
+        *lock.wait()
     }
 
-    fn read_raw_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
+    fn read_raw_distance_blocking(&mut self) -> Result<SensorReading, PeripheralError> {
         let lock = ::platform::OnceLock::new();
         let lock_ptr = ProximitySignalPtr(&lock as *const _);
         self.send_command(SensorCommand::ReadRawSensorsWithSignal(lock_ptr))?;
-        let reading = *lock.wait();
-        match reading? {
-            SensorReading::Valid(d) => Ok(d),
-            SensorReading::OutOfRange | SensorReading::Invalid => Ok(8190),
-        }
+        *lock.wait()
     }
 
-    fn latest_distance(&self) -> u16 {
-        match self.latest_data {
-            SensorReading::Valid(d) => d,
-            SensorReading::OutOfRange | SensorReading::Invalid => 8190,
-        }
+    fn latest_distance(&self) -> SensorReading {
+        self.latest_data
     }
 
     fn send_command(
@@ -710,13 +654,6 @@ where
         use model::calibration::Calibration as _;
         self.set_calibration(cal);
         Ok(())
-    }
-
-    fn read_diagnostics_blocking(&mut self) -> Result<SensorDiagnostics, PeripheralError> {
-        let lock = ::platform::OnceLock::new();
-        let lock_ptr = DiagnosticSignalPtr(&lock as *const _);
-        self.send_command(SensorCommand::ReadDiagnosticsWithSignal(lock_ptr))?;
-        *lock.wait()
     }
 }
 
@@ -870,11 +807,15 @@ pub fn handle_sensor_cli<
             let _ = core::writeln!(writer);
 
             for _ in 0..num_readings {
-                for named in resolver.sensors() {
+                let sensors = resolver.sensors();
+                let count = core::cmp::min(sensors.len(), 8);
+                let mut readings = [Err(PeripheralError::DeviceNotAvailable); 8];
+
+                for (i, named) in sensors.iter().take(count).enumerate() {
                     let sensor = unsafe { &mut *named.device };
                     let lock = ::platform::OnceLock::new();
                     let lock_ptr = ProximitySignalPtr(&lock as *const _);
-                    let dist = if sensor
+                    readings[i] = if sensor
                         .send_command(SensorCommand::ReadSensorsWithSignal(lock_ptr))
                         .is_ok()
                     {
@@ -882,7 +823,10 @@ pub fn handle_sensor_cli<
                     } else {
                         Err(PeripheralError::DeviceNotAvailable)
                     };
+                }
 
+                for (i, named) in sensors.iter().take(count).enumerate() {
+                    let dist = readings[i];
                     let direction = match named.name {
                         "north" => Some(model::types::Direction::North),
                         "east" => Some(model::types::Direction::East),
@@ -894,7 +838,7 @@ pub fn handle_sensor_cli<
                     let mut val_writer = WriteBuffer::new(&mut val_buf);
                     match dist {
                         Ok(reading) => match reading {
-                            SensorReading::Valid(d) => {
+                            SensorReading::Proximity(d) => {
                                 if let (Some(dir), Some(cal)) = (direction, proximity_cal.as_ref())
                                 {
                                     let cal_d = match <C::SensorCtrl as Calibration>::get_from_store(
@@ -909,21 +853,6 @@ pub fn handle_sensor_cli<
                                         core::write!(&mut val_writer, "{}mm (cal: {}mm)", d, cal_d);
                                 } else {
                                     let _ = core::write!(&mut val_writer, "{}mm", d);
-                                }
-                            }
-                            SensorReading::OutOfRange => {
-                                let cal_d = u16::MAX;
-                                if let (Some(_dir), Some(_cal)) =
-                                    (direction, proximity_cal.as_ref())
-                                {
-                                    let _ = core::write!(
-                                        &mut val_writer,
-                                        "{}mm (cal: {}mm)",
-                                        u16::MAX,
-                                        cal_d
-                                    );
-                                } else {
-                                    let _ = core::write!(&mut val_writer, "{}mm", u16::MAX);
                                 }
                             }
                             SensorReading::Invalid => {
@@ -956,7 +885,7 @@ pub fn handle_sensor_cli<
             };
 
             let sensor_ctrl = resolver.resolve_sensor(Some(dir_str))?;
-            let mut d_raw = SensorReading::OutOfRange;
+            let mut d_raw = SensorReading::Invalid;
             for _ in 0..10 {
                 let lock = ::platform::OnceLock::new();
                 let lock_ptr = ProximitySignalPtr(&lock as *const _);
@@ -966,7 +895,7 @@ pub fn handle_sensor_cli<
                 {
                     if let Ok(reading) = *lock.wait() {
                         d_raw = reading;
-                        if let SensorReading::Valid(d) = reading {
+                        if let SensorReading::Proximity(d) = reading {
                             if d < MAX_CALIBRATION_RAW_MM {
                                 break;
                             }
@@ -980,14 +909,13 @@ pub fn handle_sensor_cli<
             }
 
             let d_val = match d_raw {
-                SensorReading::Valid(d) => {
+                SensorReading::Proximity(d) => {
                     if d < MAX_CALIBRATION_RAW_MM {
                         d
                     } else {
                         return Err("Target too far for cover calibration");
                     }
                 }
-                SensorReading::OutOfRange => return Err("Target out of range"),
                 SensorReading::Invalid => return Err("Sensor disconnected or invalid reading"),
             };
 
@@ -1060,7 +988,7 @@ pub fn handle_sensor_cli<
             };
 
             let sensor_ctrl = resolver.resolve_sensor(Some(dir_str))?;
-            let mut d_raw = SensorReading::OutOfRange;
+            let mut d_raw = SensorReading::Invalid;
             for _ in 0..10 {
                 let lock = ::platform::OnceLock::new();
                 let lock_ptr = ProximitySignalPtr(&lock as *const _);
@@ -1070,7 +998,7 @@ pub fn handle_sensor_cli<
                 {
                     if let Ok(reading) = *lock.wait() {
                         d_raw = reading;
-                        if let SensorReading::Valid(d) = reading {
+                        if let SensorReading::Proximity(d) = reading {
                             if d < MAX_CALIBRATION_RAW_MM {
                                 break;
                             }
@@ -1084,14 +1012,13 @@ pub fn handle_sensor_cli<
             }
 
             let d_val = match d_raw {
-                SensorReading::Valid(d) => {
+                SensorReading::Proximity(d) => {
                     if d < MAX_CALIBRATION_RAW_MM {
                         d
                     } else {
                         return Err("Target too far for 100mm calibration");
                     }
                 }
-                SensorReading::OutOfRange => return Err("Target out of range"),
                 SensorReading::Invalid => return Err("Sensor disconnected or invalid reading"),
             };
 
@@ -1159,7 +1086,7 @@ pub struct ProximityFeatureConfig<MutexRaw: RawMutex + 'static, const S_CAP: usi
     pub gesture_detector: core::cell::RefCell<platform::gesture_detector::ProximityGestureDetector>,
     /// Proximity telemetry client
     pub telemetry_client:
-        core::cell::RefCell<crate::telemetry_controller::ProximityTelemetryClient<MutexRaw>>,
+        core::cell::RefCell<crate::telemetry_controller::SensorTelemetryClient<MutexRaw>>,
     /// Active proximity detection state
     pub proximity_active: core::cell::Cell<bool>,
     /// Proximity detection threshold
@@ -1189,7 +1116,7 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize> ProximityFeatureConfig<Mu
                 platform::gesture_detector::ProximityGestureDetector::new(press_threshold_mm),
             ),
             telemetry_client: core::cell::RefCell::new(
-                crate::telemetry_controller::ProximityTelemetryClient::new(
+                crate::telemetry_controller::SensorTelemetryClient::new(
                     telemetry_tx,
                     wake_threshold_mm,
                 ),
@@ -1219,8 +1146,7 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
         use platform::gesture_detector::GestureDetector as _;
 
         let distance_mm = match reading {
-            SensorReading::Valid(d) => d,
-            SensorReading::OutOfRange => 8190,
+            SensorReading::Proximity(d) => d,
             SensorReading::Invalid => {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::warn!(
@@ -1238,7 +1164,7 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
 
         self.telemetry_client
             .borrow_mut()
-            .report((direction, distance_mm));
+            .report((direction, reading));
 
         let gesture = if let SensorReading::Invalid = reading {
             None

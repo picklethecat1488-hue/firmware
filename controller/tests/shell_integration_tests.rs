@@ -168,12 +168,20 @@ struct MockSensorCtrl {
     distance: u16,
 }
 impl BlockingProximityReader for MockSensorCtrl {
-    fn read_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
-        Ok(self.distance)
+    fn read_distance_blocking(&mut self) -> Result<model::types::SensorReading, PeripheralError> {
+        if self.distance == u16::MAX || self.distance >= 8190 {
+            Ok(model::types::SensorReading::Invalid)
+        } else {
+            Ok(model::types::SensorReading::Proximity(self.distance))
+        }
     }
 
-    fn latest_distance(&self) -> u16 {
-        self.distance
+    fn latest_distance(&self) -> model::types::SensorReading {
+        if self.distance == u16::MAX || self.distance >= 8190 {
+            model::types::SensorReading::Invalid
+        } else {
+            model::types::SensorReading::Proximity(self.distance)
+        }
     }
 
     fn send_command(
@@ -184,12 +192,10 @@ impl BlockingProximityReader for MockSensorCtrl {
             controller::sensor_controller::SensorCommand::ReadRawSensorsWithSignal(sig_ptr)
             | controller::sensor_controller::SensorCommand::ReadSensorsWithSignal(sig_ptr) => {
                 let sig = unsafe { &*sig_ptr.0 };
-                let reading = if self.distance == u16::MAX {
+                let reading = if self.distance == u16::MAX || self.distance >= 8190 {
                     model::types::SensorReading::Invalid
-                } else if self.distance >= 8190 {
-                    model::types::SensorReading::OutOfRange
                 } else {
-                    model::types::SensorReading::Valid(self.distance)
+                    model::types::SensorReading::Proximity(self.distance)
                 };
                 let _ = sig.set(Ok(reading));
                 Ok(())

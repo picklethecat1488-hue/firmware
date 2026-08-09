@@ -119,29 +119,28 @@ fn telemetry_record_to_perfetto_json(rec: &TelemetryRecord, ts: f64) -> Vec<serd
             }
         },
         TelemetryRecord::Proximity(p) => match p {
-            model::types::ProximityTelemetry::InRange(dir, d) => {
+            model::types::SensorTelemetry::Status(dir, reading) => {
                 let dir_str = match dir {
                     model::types::Direction::North => "North",
                     model::types::Direction::East => "East",
                     model::types::Direction::West => "West",
                 };
-                events.push(make_telemetry_event(
-                    &format!("Proximity ({})", dir_str),
-                    ts,
-                    serde_json::json!({ "value": d, "in_range": true }),
-                ));
-            }
-            model::types::ProximityTelemetry::OutRange(dir, d) => {
-                let dir_str = match dir {
-                    model::types::Direction::North => "North",
-                    model::types::Direction::East => "East",
-                    model::types::Direction::West => "West",
-                };
-                events.push(make_telemetry_event(
-                    &format!("Proximity ({})", dir_str),
-                    ts,
-                    serde_json::json!({ "value": d, "in_range": false }),
-                ));
+                match reading {
+                    model::types::SensorReading::Proximity(d) => {
+                        events.push(make_telemetry_event(
+                            &format!("Proximity ({})", dir_str),
+                            ts,
+                            serde_json::json!({ "value": d, "valid": true }),
+                        ));
+                    }
+                    model::types::SensorReading::Invalid => {
+                        events.push(make_telemetry_event(
+                            &format!("Proximity ({})", dir_str),
+                            ts,
+                            serde_json::json!({ "value": null, "valid": false }),
+                        ));
+                    }
+                }
             }
         },
         TelemetryRecord::Led(led) => {

@@ -3,7 +3,7 @@ use model::interfaces::{
     ChargeStatus, FuelGauge, LedDriver, Motor, PowerMeasurementMode, PowerSensor, Probeable,
     ProximitySensor, TemperatureSensor, Tickable, WaitableMeasurement,
 };
-use model::types::{MotorSpeed, PeripheralError, SensorDiagnostics, SensorReading};
+use model::types::{MotorSpeed, PeripheralError, SensorReading};
 
 /// A mock implementation of a Motor for unit testing on the host.
 pub struct MockMotor {
@@ -316,13 +316,7 @@ impl model::calibration::Calibration for MockProximitySensor {
         direction: model::types::Direction,
         calibration: model::calibration::CalibrationType,
     ) {
-        if let model::calibration::CalibrationType::ProximityCal(mut cal) = calibration {
-            if cal.min_range.is_none() {
-                cal.min_range = Some(20);
-            }
-            if cal.max_range.is_none() {
-                cal.max_range = Some(1000);
-            }
+        if let model::calibration::CalibrationType::ProximityCal(cal) = calibration {
             store[direction] = cal;
         }
     }
@@ -344,36 +338,15 @@ impl ProximitySensor for MockProximitySensor {
     fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
         if self.should_fail {
             Err(())
-        } else if self.distance_mm == 0 {
+        } else if self.distance_mm == 0 || self.distance_mm == 8190 {
             Ok(SensorReading::Invalid)
-        } else if self.distance_mm == 8190 {
-            Ok(SensorReading::OutOfRange)
         } else {
-            Ok(SensorReading::Valid(self.distance_mm))
+            Ok(SensorReading::Proximity(self.distance_mm))
         }
     }
 
     fn read_distance_raw(&mut self) -> Result<SensorReading, Self::Error> {
         self.read_distance_mm()
-    }
-
-    fn read_diagnostics(&mut self) -> Result<SensorDiagnostics, Self::Error> {
-        if self.should_fail {
-            Err(())
-        } else {
-            let reading = if self.distance_mm == 0 {
-                SensorReading::Invalid
-            } else if self.distance_mm == 8190 {
-                SensorReading::OutOfRange
-            } else {
-                SensorReading::Valid(self.distance_mm)
-            };
-            Ok(SensorDiagnostics {
-                raw_reading: reading,
-                range_status: 0,
-                peak_signal_rate: 100,
-            })
-        }
     }
 }
 
@@ -423,32 +396,15 @@ impl ProximitySensor for DummyProximitySensor {
     type Error = core::convert::Infallible;
 
     fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
-        if self.distance_mm == 0 {
+        if self.distance_mm == 0 || self.distance_mm == 8190 {
             Ok(SensorReading::Invalid)
-        } else if self.distance_mm == 8190 {
-            Ok(SensorReading::OutOfRange)
         } else {
-            Ok(SensorReading::Valid(self.distance_mm))
+            Ok(SensorReading::Proximity(self.distance_mm))
         }
     }
 
     fn read_distance_raw(&mut self) -> Result<SensorReading, Self::Error> {
         self.read_distance_mm()
-    }
-
-    fn read_diagnostics(&mut self) -> Result<SensorDiagnostics, Self::Error> {
-        let reading = if self.distance_mm == 0 {
-            SensorReading::Invalid
-        } else if self.distance_mm == 8190 {
-            SensorReading::OutOfRange
-        } else {
-            SensorReading::Valid(self.distance_mm)
-        };
-        Ok(SensorDiagnostics {
-            raw_reading: reading,
-            range_status: 0,
-            peak_signal_rate: 100,
-        })
     }
 }
 
@@ -480,13 +436,7 @@ impl model::calibration::Calibration for DummyProximitySensor {
         direction: model::types::Direction,
         calibration: model::calibration::CalibrationType,
     ) {
-        if let model::calibration::CalibrationType::ProximityCal(mut cal) = calibration {
-            if cal.min_range.is_none() {
-                cal.min_range = Some(20);
-            }
-            if cal.max_range.is_none() {
-                cal.max_range = Some(1000);
-            }
+        if let model::calibration::CalibrationType::ProximityCal(cal) = calibration {
             store[direction] = cal;
         }
     }

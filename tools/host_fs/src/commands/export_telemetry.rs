@@ -91,12 +91,14 @@ fn write_csv_trace(out_path: &str, records: &[(u64, TelemetryRecord)]) -> io::Re
                 }
             },
             TelemetryRecord::Proximity(p) => match p {
-                model::types::ProximityTelemetry::InRange(dir, d) => {
-                    writeln!(csv_file, "{},Proximity,InRange,{},{:?},", ts, d, dir)?;
-                }
-                model::types::ProximityTelemetry::OutRange(dir, d) => {
-                    writeln!(csv_file, "{},Proximity,OutRange,{},{:?},", ts, d, dir)?;
-                }
+                model::types::SensorTelemetry::Status(dir, reading) => match reading {
+                    model::types::SensorReading::Proximity(d) => {
+                        writeln!(csv_file, "{},Proximity,Valid,{},{:?},", ts, d, dir)?;
+                    }
+                    model::types::SensorReading::Invalid => {
+                        writeln!(csv_file, "{},Proximity,Invalid,0,{:?},", ts, dir)?;
+                    }
+                },
             },
             TelemetryRecord::Led(led) => {
                 writeln!(csv_file, "{},Led,{:?},,,", ts, led)?;

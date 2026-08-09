@@ -60,8 +60,14 @@ fn test_telemetry_records_size_bounds() {
         TelemetryRecord::Thermal(ThermalStatus::TempOverheating(i32::MAX, true)),
         TelemetryRecord::System(SystemStatus::Active),
         TelemetryRecord::FuelGauge(FuelGaugeTelemetry::VolSoc(u32::MAX, u8::MAX)),
-        TelemetryRecord::Proximity(ProximityTelemetry::InRange(Direction::West, u16::MAX)),
-        TelemetryRecord::Proximity(ProximityTelemetry::OutRange(Direction::East, u16::MAX)),
+        TelemetryRecord::Proximity(SensorTelemetry::Status(
+            Direction::West,
+            SensorReading::Proximity(u16::MAX),
+        )),
+        TelemetryRecord::Proximity(SensorTelemetry::Status(
+            Direction::East,
+            SensorReading::Invalid,
+        )),
         TelemetryRecord::Led(SystemLedState::SolidOrange),
         TelemetryRecord::Gesture(Gesture::DualLongPress),
         TelemetryRecord::FlashTelemetry(FlashEraseTelemetry {
