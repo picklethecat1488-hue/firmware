@@ -5,9 +5,9 @@
 use crate::tracing;
 use crate::I2cToPeripheralError;
 use embedded_hal::i2c::I2c;
-use model::calibration::{Calibration, CalibrationType, TwoPointCalibration};
+use model::calibration::{ApplyCalibration, Calibration, TwoPointCalibration};
 use model::interfaces::{Probeable, ProximitySensor, WaitableMeasurement};
-use model::types::{PeripheralError, SensorReading};
+use model::types::{Direction, PeripheralError, SensorReading};
 
 macro_rules! log_warn {
     ($fmt:literal $(, $arg:expr)*) => {
@@ -70,6 +70,8 @@ pub struct Vl53l0x<I> {
     interrupt_mode: InterruptMode,
     /// Active crosstalk compensation peak rate in milli-MCPS.
     xtalk_m_mcps: u16,
+    /// Sensor direction.
+    pub direction: Direction,
 }
 
 impl<I: I2c> Vl53l0x<I> {
@@ -79,10 +81,11 @@ impl<I: I2c> Vl53l0x<I> {
     pub const MAX_RANGE_MM: u16 = 1000;
 
     /// Creates a new VL53L0X driver instance at the specified address.
-    pub const fn new(i2c: I, address: u8) -> Self {
+    pub const fn new(i2c: I, address: u8, direction: Direction) -> Self {
         Self {
             i2c,
             address,
+            direction,
             threshold_mm: 300,
             hysteresis_mm: 50,
             calibration: None,
@@ -507,30 +510,6 @@ impl<I: I2c> Vl53l0x<I> {
         }
         res
     }
-
-    #[cfg_attr(
-        all(target_arch = "arm", feature = "sensors-core"),
-        link_section = ".data.core1_func"
-    )]
-    fn read_distance_internal(
-        &mut self,
-        calibrate: bool,
-    ) -> Result<SensorReading, PeripheralError> {
-        let (raw_reading, _) = self.read_raw_distance_and_rate_internal()?;
-        let reading = match raw_reading {
-            SensorReading::Proximity(d) => SensorReading::Proximity(if calibrate {
-                if let Some(cal) = self.calibration {
-                    cal.map(d)
-                } else {
-                    d
-                }
-            } else {
-                d
-            }),
-            other => other,
-        };
-        Ok(reading)
-    }
 }
 
 impl<I: I2c> ProximitySensor for Vl53l0x<I> {
@@ -542,15 +521,8 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
     )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
     fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
-        self.read_distance_internal(true)
-    }
-
-    #[cfg_attr(
-        all(target_arch = "arm", feature = "sensors-core"),
-        link_section = ".data.core1_func"
-    )]
-    fn read_distance_raw(&mut self) -> Result<SensorReading, Self::Error> {
-        self.read_distance_internal(false)
+        let (raw_reading, _) = self.read_raw_distance_and_rate_internal()?;
+        Ok(raw_reading)
     }
 
     #[cfg_attr(
@@ -568,45 +540,53 @@ impl<I: I2c> Calibration for Vl53l0x<I> {
 
     type Store = model::calibration::Vl53l0xCalibration;
 
-    fn set_calibration(&mut self, calibration: CalibrationType) {
-        if let CalibrationType::ProximityCal(cal, xtalk) = calibration {
-            if self.threshold_mm > cal.low + THRESHOLD_ERROR_MM {
-                self.calibration = Some(cal);
-                let _ = self.set_crosstalk_compensation(xtalk);
-            } else {
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::error!(
-                    "Invalid proximity calibration (low = {}, threshold_mm = {}). Ignoring and using defaults.",
-                    cal.low,
-                    self.threshold_mm
-                );
-            }
+    fn set_calibration(&mut self, store: &Self::Store) {
+        let dir = self.direction;
+        let cal = store.sensors[dir as usize];
+        let xtalk = store.xtalk_m_mcps[dir as usize];
+        if self.threshold_mm > cal.low + THRESHOLD_ERROR_MM {
+            self.calibration = Some(cal);
+            let _ = self.set_crosstalk_compensation(xtalk);
+        } else {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::error!(
+                "Invalid proximity calibration (low = {}, threshold_mm = {}). Ignoring and using defaults.",
+                cal.low,
+                self.threshold_mm
+            );
         }
     }
 
-    fn get_calibration(&self) -> Option<CalibrationType> {
-        self.calibration
-            .map(|cal| CalibrationType::ProximityCal(cal, self.xtalk_m_mcps))
+    fn get_calibration(&self) -> Self::Store {
+        let mut store = Self::Store::default();
+        let dir = self.direction;
+        if let Some(cal) = self.calibration {
+            store.sensors[dir as usize] = cal;
+        }
+        store.xtalk_m_mcps[dir as usize] = self.xtalk_m_mcps;
+        store
     }
+}
 
-    fn get_from_store(
-        store: &Self::Store,
-        direction: model::types::Direction,
-    ) -> Option<CalibrationType> {
-        Some(CalibrationType::ProximityCal(
-            store.sensors[direction as usize],
-            store.xtalk_m_mcps[direction as usize],
-        ))
-    }
+impl<I: I2c> ApplyCalibration for Vl53l0x<I> {
+    type Input = SensorReading;
+    type Output = SensorReading;
+    type Error = &'static str;
 
-    fn update_store(
-        store: &mut Self::Store,
-        direction: model::types::Direction,
-        calibration: CalibrationType,
-    ) {
-        if let CalibrationType::ProximityCal(cal, xtalk) = calibration {
-            store.sensors[direction as usize] = cal;
-            store.xtalk_m_mcps[direction as usize] = xtalk;
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
+    fn apply_calibration(&self, reading: Self::Input) -> Result<Self::Output, Self::Error> {
+        match reading {
+            SensorReading::Proximity(distance) => {
+                if let Some(cal) = self.calibration {
+                    Ok(SensorReading::Proximity(cal.map(distance)))
+                } else {
+                    Ok(reading)
+                }
+            }
+            _ => Err("Non-proximity reading cannot be calibrated"),
         }
     }
 }
@@ -649,7 +629,7 @@ macro_rules! init_vl53l0x {
             pin.set_high();
             #[cfg(all(target_arch = "arm", target_os = "none"))]
             ::embassy_time::block_for(::embassy_time::Duration::from_millis(2)); // Wait for sensor to boot (min 1.2ms)
-            let mut sensor = $crate::vl53l0x::Vl53l0x::new($i2c, 0x29);
+            let mut sensor = $crate::vl53l0x::Vl53l0x::new($i2c, 0x29, ::model::types::Direction::North);
             {
                 use ::model::interfaces::BootStatus;
                 use ::model::interfaces::Probeable;

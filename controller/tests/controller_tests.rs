@@ -14,11 +14,11 @@ fn test_motor_controller_flow() {
     assert_eq!(controller.state(), MotorState::Off);
 
     // Apply motor calibration so that it can be started
-    use model::calibration::{Calibration, CalibrationType};
-    controller.set_calibration(CalibrationType::MotorCal {
-        current_limits: model::calibration::TwoPointCalibration::new(80, 800),
-        max_rpm: 3000,
-        rpm_limit: 0,
+    use model::calibration::Calibration;
+    controller.set_calibration(&model::calibration::MotorCalibration {
+        current_ma: model::calibration::FourPointCalibration::new(80, 0, 0, 800),
+        max_rpm: Some(3000),
+        rpm_limit: Some(0),
     });
 
     // Turn on the motor using handle_command
@@ -89,10 +89,10 @@ fn test_motor_controller_sad_cases() {
     motor.should_fail = true; // Make motor fail
     let sensor = MockCurrentSensor::new(150);
     let mut controller = MotorController::new(NoTick::new(motor), sensor);
-    controller.set_calibration(model::calibration::CalibrationType::MotorCal {
-        current_limits: model::calibration::TwoPointCalibration::new(80, 800),
-        max_rpm: 3000,
-        rpm_limit: 0,
+    controller.set_calibration(&model::calibration::MotorCalibration {
+        current_ma: model::calibration::FourPointCalibration::new(80, 0, 0, 800),
+        max_rpm: Some(3000),
+        rpm_limit: Some(0),
     });
 
     // Try starting motor. Since motor is failing, update() or handle_command() should report errors
@@ -129,10 +129,10 @@ fn test_motor_controller_sad_cases() {
     let mut sensor2 = MockCurrentSensor::new(150);
     sensor2.should_fail = true; // Make current sensor fail
     let mut controller2 = MotorController::new(NoTick::new(motor2), sensor2);
-    controller2.set_calibration(model::calibration::CalibrationType::MotorCal {
-        current_limits: model::calibration::TwoPointCalibration::new(80, 800),
-        max_rpm: 3000,
-        rpm_limit: 0,
+    controller2.set_calibration(&model::calibration::MotorCalibration {
+        current_ma: model::calibration::FourPointCalibration::new(80, 0, 0, 800),
+        max_rpm: Some(3000),
+        rpm_limit: Some(0),
     });
     controller2.handle_command(MotorCommand::SetSpeed(MotorSpeed::MAX), None); // start motor first (no failure on motor)
 
@@ -336,10 +336,10 @@ fn test_motor_controller_tickable_vs_notick() {
     let mut controller = MotorController::new(motor, sensor);
 
     // Calibrate and start the motor so active_speed will ramp to non-zero
-    controller.set_calibration(model::calibration::CalibrationType::MotorCal {
-        current_limits: model::calibration::TwoPointCalibration::new(0, 1000),
-        max_rpm: 3000,
-        rpm_limit: 3000,
+    controller.set_calibration(&model::calibration::MotorCalibration {
+        current_ma: model::calibration::FourPointCalibration::new(0, 0, 0, 1000),
+        max_rpm: Some(3000),
+        rpm_limit: Some(3000),
     });
     controller.handle_command(MotorCommand::SetSpeed(MotorSpeed::new(50).unwrap()), None);
 
@@ -357,10 +357,10 @@ fn test_motor_controller_tickable_vs_notick() {
     let mut controller2 = MotorController::new(notick_motor, sensor2);
 
     // Calibrate and start the motor so active_speed will ramp to non-zero
-    controller2.set_calibration(model::calibration::CalibrationType::MotorCal {
-        current_limits: model::calibration::TwoPointCalibration::new(0, 1000),
-        max_rpm: 3000,
-        rpm_limit: 3000,
+    controller2.set_calibration(&model::calibration::MotorCalibration {
+        current_ma: model::calibration::FourPointCalibration::new(0, 0, 0, 1000),
+        max_rpm: Some(3000),
+        rpm_limit: Some(3000),
     });
     controller2.handle_command(MotorCommand::SetSpeed(MotorSpeed::new(50).unwrap()), None);
 
@@ -378,10 +378,10 @@ fn test_motor_controller_rpm_command() {
     let mut controller = MotorController::new(NoTick::new(motor), sensor);
 
     // Set calibration with max RPM = 3000
-    controller.set_calibration(model::calibration::CalibrationType::MotorCal {
-        current_limits: model::calibration::TwoPointCalibration::new(80, 800),
-        max_rpm: 3000,
-        rpm_limit: 0,
+    controller.set_calibration(&model::calibration::MotorCalibration {
+        current_ma: model::calibration::FourPointCalibration::new(80, 0, 0, 800),
+        max_rpm: Some(3000),
+        rpm_limit: Some(0),
     });
 
     // Handle SetSpeedRpm(1500) -> sets speed to 50%

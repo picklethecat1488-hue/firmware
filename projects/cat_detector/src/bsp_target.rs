@@ -214,18 +214,19 @@ impl<'d> Board<'d> {
         let current_sensor = peripherals::ina219::Ina219::new(
             platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
         );
-        let make_tof = |addr| {
+        let make_tof = |addr, direction| {
             let mut sensor = peripherals::vl53l0x::Vl53l0x::new(
                 platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
                 addr,
+                direction,
             );
             let _ = sensor.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
             sensor
         };
 
-        let tof_north = make_tof(crate::TOF_NORTH_I2C_ADDR);
-        let tof_east = make_tof(crate::TOF_EAST_I2C_ADDR);
-        let tof_west = make_tof(crate::TOF_WEST_I2C_ADDR);
+        let tof_north = make_tof(crate::TOF_NORTH_I2C_ADDR, model::types::Direction::North);
+        let tof_east = make_tof(crate::TOF_EAST_I2C_ADDR, model::types::Direction::East);
+        let tof_west = make_tof(crate::TOF_WEST_I2C_ADDR, model::types::Direction::West);
 
         let led_driver = peripherals::init_ws2812!(p.PIO0, p.PIN_11, &mut boot_status);
 

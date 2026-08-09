@@ -301,25 +301,17 @@ impl MockProximitySensor {
 impl model::calibration::Calibration for MockProximitySensor {
     const CALIBRATION_FILE_NAME: &'static str = "dummy_cal.cbor";
     type Store = model::calibration::Vl53l0xCalibration;
+}
 
-    fn get_from_store(
-        store: &Self::Store,
-        direction: model::types::Direction,
-    ) -> Option<model::calibration::CalibrationType> {
-        Some(model::calibration::CalibrationType::ProximityCal(
-            store.sensors[direction as usize],
-            store.xtalk_m_mcps[direction as usize],
-        ))
-    }
+impl model::calibration::ApplyCalibration for MockProximitySensor {
+    type Input = SensorReading;
+    type Output = SensorReading;
+    type Error = &'static str;
 
-    fn update_store(
-        store: &mut Self::Store,
-        direction: model::types::Direction,
-        calibration: model::calibration::CalibrationType,
-    ) {
-        if let model::calibration::CalibrationType::ProximityCal(cal, xtalk) = calibration {
-            store.sensors[direction as usize] = cal;
-            store.xtalk_m_mcps[direction as usize] = xtalk;
+    fn apply_calibration(&self, reading: Self::Input) -> Result<Self::Output, Self::Error> {
+        match reading {
+            SensorReading::Proximity(_) => Ok(reading),
+            _ => Err("Non-proximity reading cannot be calibrated"),
         }
     }
 }
@@ -347,12 +339,8 @@ impl ProximitySensor for MockProximitySensor {
         }
     }
 
-    fn read_distance_raw(&mut self) -> Result<SensorReading, Self::Error> {
-        self.read_distance_mm()
-    }
-
     fn read_raw_distance_and_rate(&mut self) -> Result<(SensorReading, u16), Self::Error> {
-        let reading = self.read_distance_raw()?;
+        let reading = self.read_distance_mm()?;
         Ok((reading, 2500)) // Return a dummy peak rate of 2500 (19.5 Mcps)
     }
 }
@@ -410,12 +398,8 @@ impl ProximitySensor for DummyProximitySensor {
         }
     }
 
-    fn read_distance_raw(&mut self) -> Result<SensorReading, Self::Error> {
-        self.read_distance_mm()
-    }
-
     fn read_raw_distance_and_rate(&mut self) -> Result<(SensorReading, u16), Self::Error> {
-        let reading = self.read_distance_raw()?;
+        let reading = self.read_distance_mm()?;
         Ok((reading, 2500)) // Return a dummy peak rate of 2500 (19.5 Mcps)
     }
 }
@@ -433,25 +417,17 @@ impl Probeable for DummyProximitySensor {
 impl model::calibration::Calibration for DummyProximitySensor {
     const CALIBRATION_FILE_NAME: &'static str = "dummy_cal.cbor";
     type Store = model::calibration::Vl53l0xCalibration;
+}
 
-    fn get_from_store(
-        store: &Self::Store,
-        direction: model::types::Direction,
-    ) -> Option<model::calibration::CalibrationType> {
-        Some(model::calibration::CalibrationType::ProximityCal(
-            store.sensors[direction as usize],
-            store.xtalk_m_mcps[direction as usize],
-        ))
-    }
+impl model::calibration::ApplyCalibration for DummyProximitySensor {
+    type Input = SensorReading;
+    type Output = SensorReading;
+    type Error = &'static str;
 
-    fn update_store(
-        store: &mut Self::Store,
-        direction: model::types::Direction,
-        calibration: model::calibration::CalibrationType,
-    ) {
-        if let model::calibration::CalibrationType::ProximityCal(cal, xtalk) = calibration {
-            store.sensors[direction as usize] = cal;
-            store.xtalk_m_mcps[direction as usize] = xtalk;
+    fn apply_calibration(&self, reading: Self::Input) -> Result<Self::Output, Self::Error> {
+        match reading {
+            SensorReading::Proximity(_) => Ok(reading),
+            _ => Err("Non-proximity reading cannot be calibrated"),
         }
     }
 }
