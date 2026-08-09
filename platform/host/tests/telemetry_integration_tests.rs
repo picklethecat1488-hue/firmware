@@ -144,13 +144,17 @@ fn test_parse_telemetry_record_log_all_variants() {
 
     // 7. Proximity InRange
     let log = make_rtt_log(
-        TelemetryRecord::Proximity(ProximityTelemetry::InRange(Direction::North, 150)),
+        TelemetryRecord::Proximity(SensorTelemetry::Status(
+            Direction::North,
+            SensorReading::Proximity(150),
+        )),
         1006,
     );
     let events = parser.parse_log(&log, 1006.0).unwrap();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0]["name"].as_str().unwrap(), "Proximity (North)");
     assert_eq!(events[0]["args"]["value"].as_i64().unwrap(), 150);
+    assert_eq!(events[0]["args"]["valid"].as_bool().unwrap(), true);
     assert_eq!(events[0]["tid"].as_i64().unwrap(), 3);
 
     // 8. Led

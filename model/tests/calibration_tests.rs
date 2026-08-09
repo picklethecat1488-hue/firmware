@@ -6,7 +6,7 @@ use model::types::Direction;
 #[test]
 fn test_two_point_calibration_map() {
     // Standard mapping: low < high
-    let cal = TwoPointCalibration::new_with_range(20, 120, 0, 100);
+    let cal = TwoPointCalibration::new(20, 120);
     assert_eq!(cal.map(20), 0);
     assert_eq!(cal.map(120), 100);
     assert_eq!(cal.map(70), 50);
@@ -14,7 +14,7 @@ fn test_two_point_calibration_map() {
     assert_eq!(cal.map(170), 150);
 
     // Inverse mapping: low > high
-    let cal_inv = TwoPointCalibration::new_with_range(100, 20, 0, 100);
+    let cal_inv = TwoPointCalibration::new(100, 20);
     assert_eq!(cal_inv.map(100), 0);
     assert_eq!(cal_inv.map(20), 100);
     assert_eq!(cal_inv.map(60), 50);
@@ -25,20 +25,10 @@ fn test_two_point_calibration_map() {
 #[test]
 fn test_two_point_calibration_edge_cases() {
     // Equal low and high: low == high
-    let cal_equal = TwoPointCalibration::new_with_range(50, 50, 0, 100);
+    let cal_equal = TwoPointCalibration::new(50, 50);
     assert_eq!(cal_equal.map(0), 0);
     assert_eq!(cal_equal.map(50), 50);
     assert_eq!(cal_equal.map(100), 100);
-
-    // Test custom min_range and max_range
-    let cal_custom = TwoPointCalibration::new_with_range(20, 120, 10, 50);
-    assert_eq!(cal_custom.map(20), 10);
-    assert_eq!(cal_custom.map(120), 50);
-    assert_eq!(cal_custom.map(70), 30);
-
-    // Scale is 0 (min_range == max_range)
-    let cal = TwoPointCalibration::new_with_range(10, 110, 5, 5);
-    assert_eq!(cal.map(60), 5);
 }
 
 #[test]

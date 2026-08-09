@@ -207,44 +207,23 @@ pub enum SensorReading {
     /// Reading is invalid (e.g. startup stale 0 reading, sensor error).
     #[n(0)]
     Invalid,
-    /// No target detected / out of range.
-    #[n(1)]
-    OutOfRange,
     /// Target detected within range (distance in mm).
-    #[n(2)]
-    Valid(#[n(0)] u16),
-}
-
-/// Diagnostic information from a proximity sensor reading.
-#[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
-#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
-pub struct SensorDiagnostics {
-    /// Raw measured reading.
-    #[n(0)]
-    pub raw_reading: SensorReading,
-    /// Hardware ranging status code.
     #[n(1)]
-    pub range_status: u8,
-    /// Signal return rate.
-    #[n(2)]
-    pub peak_signal_rate: u16,
+    Proximity(#[n(0)] u16),
 }
 
 /// Telemetry data from the proximity (ToF) sensors.
 #[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
-pub enum ProximityTelemetry {
-    /// Target is detected within active range (direction, value in mm).
+pub enum SensorTelemetry {
+    /// Telemetry status wrapping a direction and its sensor reading.
     #[n(0)]
-    InRange(#[n(0)] Direction, #[n(1)] u16),
-    /// Target is out of range (direction, value in mm).
-    #[n(1)]
-    OutRange(#[n(0)] Direction, #[n(1)] u16),
+    Status(#[n(0)] Direction, #[n(1)] SensorReading),
 }
 
-impl Default for ProximityTelemetry {
+impl Default for SensorTelemetry {
     fn default() -> Self {
-        Self::OutRange(Direction::North, 1000)
+        Self::Status(Direction::North, SensorReading::Invalid)
     }
 }
 
@@ -465,7 +444,7 @@ dummy_debug!(MotorStatus);
 dummy_debug!(ThermalStatus);
 dummy_debug!(SystemStatus);
 dummy_debug!(FuelGaugeTelemetry);
-dummy_debug!(ProximityTelemetry);
+dummy_debug!(SensorTelemetry);
 dummy_debug!(SystemLedState);
 dummy_debug!(Gesture);
 dummy_debug!(FlashEraseTelemetry);
@@ -475,7 +454,6 @@ dummy_debug!(BootReason);
 dummy_debug!(PeriodicInterval);
 dummy_debug!(Device);
 dummy_debug!(SensorReading);
-dummy_debug!(SensorDiagnostics);
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 impl core::fmt::Debug for PeripheralError {

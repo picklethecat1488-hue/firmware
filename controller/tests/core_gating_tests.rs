@@ -30,10 +30,10 @@ fn test_core_gating_sensor_compiles() {
         300,
     );
 
-    assert_eq!(sensor_ctrl.latest_data(), SensorReading::OutOfRange);
+    assert_eq!(sensor_ctrl.latest_data(), SensorReading::Invalid);
     let update_res = sensor_ctrl.update();
     assert!(update_res.is_ok());
-    assert_eq!(sensor_ctrl.latest_data(), SensorReading::Valid(500));
+    assert_eq!(sensor_ctrl.latest_data(), SensorReading::Proximity(500));
 }
 
 #[test]

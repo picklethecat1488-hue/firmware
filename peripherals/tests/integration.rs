@@ -84,6 +84,10 @@ fn test_vl53l0x_threshold_validation() {
     sensor.set_calibration(CalibrationType::ProximityCal(
         model::calibration::TwoPointCalibration::new(50, 150),
     ));
+    assert_eq!(
+        sensor.calibration(),
+        Some(model::calibration::TwoPointCalibration::new(50, 150))
+    );
 
     // 4. Setting calibration with threshold_mm <= near + THRESHOLD_ERROR_MM should be ignored.
     let mut s = Vl53l0x::new(DummyI2c, 0x30);
@@ -91,7 +95,7 @@ fn test_vl53l0x_threshold_validation() {
     s.set_calibration(CalibrationType::ProximityCal(
         model::calibration::TwoPointCalibration::new(90, 150),
     ));
-    assert_eq!(s.calibration().low, 0);
+    assert!(s.calibration().is_none());
 }
 
 #[test]
@@ -187,7 +191,7 @@ fn test_vl53l0x_init() {
 
     // Verify written values
     let w = writes.borrow();
-    assert_eq!(w.len(), 7);
+    assert_eq!(w.len(), 8);
 
     // 1. Address change (write to 0x29): register 0x8A -> 0x30
     assert_eq!(w[0], (0x29, vec![0x8A, 0x30]));
@@ -204,11 +208,14 @@ fn test_vl53l0x_init() {
     // 5. Interrupt clear (write to 0x30): register 0x0B -> 0x01
     assert_eq!(w[4], (0x30, vec![0x0B, 0x01]));
 
-    // 6. Timing budget configuration (write to 0x30): register 0x71 -> 0x54, 0x36
-    assert_eq!(w[5], (0x30, vec![0x71, 0x54, 0x36]));
+    // 6. Sequence steps configuration (write to 0x30): register 0x01 -> 0xFF
+    assert_eq!(w[5], (0x30, vec![0x01, 0xFF]));
 
-    // 7. Signal rate limit check (write to 0x30): register 0x44 -> 0x00, 0x06
-    assert_eq!(w[6], (0x30, vec![0x44, 0x00, 0x06]));
+    // 7. Timing budget configuration (write to 0x30): register 0x71 -> 0x54, 0x36
+    assert_eq!(w[6], (0x30, vec![0x71, 0x54, 0x36]));
+
+    // 8. Signal rate limit check (write to 0x30): register 0x44 -> 0x00, 0x06
+    assert_eq!(w[7], (0x30, vec![0x44, 0x00, 0x06]));
 }
 
 struct FailingI2c {

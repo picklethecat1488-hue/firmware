@@ -133,7 +133,7 @@ pub static DUMMY_TELEMETRY_CHANNEL: TelemetryChannel<
     { telemetry_controller::CHANNEL_CAPACITY },
 > = TelemetryChannel::new();
 
-use model::types::{PeripheralError, SensorDiagnostics};
+use model::types::PeripheralError;
 
 /// Trait for reading battery status blocking-ly.
 pub trait BlockingBatteryReader {
@@ -165,16 +165,18 @@ pub trait BlockingThermalReader {
 /// Trait for reading proximity distance blocking-ly.
 pub trait BlockingProximityReader {
     /// Read distance in millimeters.
-    fn read_distance_blocking(&mut self) -> Result<u16, PeripheralError>;
+    fn read_distance_blocking(&mut self) -> Result<model::types::SensorReading, PeripheralError>;
 
     /// Read raw distance in millimeters (ignoring calibration mapping).
-    fn read_raw_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
+    fn read_raw_distance_blocking(
+        &mut self,
+    ) -> Result<model::types::SensorReading, PeripheralError> {
         self.read_distance_blocking()
     }
 
     /// Get the latest cached proximity distance in millimeters.
-    fn latest_distance(&self) -> u16 {
-        1000
+    fn latest_distance(&self) -> model::types::SensorReading {
+        model::types::SensorReading::Invalid
     }
 
     /// Send a command to the sensor controller background task.
@@ -192,11 +194,6 @@ pub trait BlockingProximityReader {
     ) -> Result<(), PeripheralError> {
         Ok(())
     }
-
-    /// Read diagnostics blocking-ly.
-    fn read_diagnostics_blocking(&mut self) -> Result<SensorDiagnostics, PeripheralError> {
-        Err(PeripheralError::NotImplemented)
-    }
 }
 
 impl BlockingBatteryReader for () {
@@ -212,7 +209,7 @@ impl BlockingThermalReader for () {
 }
 
 impl BlockingProximityReader for () {
-    fn read_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
+    fn read_distance_blocking(&mut self) -> Result<model::types::SensorReading, PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
 }

@@ -148,7 +148,7 @@ The `model` crate contains pure, target-agnostic domain models, status telemetry
     *   `ThermalStatus`: Enum tracking ambient system temperature and overheating flags (e.g. `TempOverheating`).
     *   `SystemStatus`: Enum representing the operating mode of the system (`Active` or `Sleep`).
     *   `FuelGaugeTelemetry`: Enum representing cell voltage and state-of-charge percentage (e.g. `VolSoc`).
-    *   `ProximityTelemetry`: Enum containing the single range reading representing target state: `InRange(u16)` or `OutRange(u16)`.
+    *   `SensorTelemetry`: Enum containing the direction and its `SensorReading` status.
     *   `SystemLedState`: Enum holding active NeoPixel color patterns based on battery state of charge:
         *   `BlinksRedOncePerThirtySeconds`: Critical low charge (SoC < critical threshold).
         *   `SolidOrange`: Low charge (SoC < 20%).
