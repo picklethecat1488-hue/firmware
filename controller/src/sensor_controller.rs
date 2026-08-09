@@ -950,7 +950,7 @@ pub fn handle_sensor_cli<
             let mut current_tp =
                 match <C::SensorCtrl as Calibration>::get_from_store(&proximity_cal, dir) {
                     Some(model::calibration::CalibrationType::ProximityCal(tp)) => tp,
-                    _ => model::calibration::TwoPointCalibration::new(0, u16::MAX),
+                    _ => model::calibration::TwoPointCalibration::new(0, 0),
                 };
             current_tp.low = d_val;
 
@@ -1053,7 +1053,7 @@ pub fn handle_sensor_cli<
             let mut current_tp =
                 match <C::SensorCtrl as Calibration>::get_from_store(&proximity_cal, dir) {
                     Some(model::calibration::CalibrationType::ProximityCal(tp)) => tp,
-                    _ => model::calibration::TwoPointCalibration::new(0, u16::MAX),
+                    _ => model::calibration::TwoPointCalibration::new(0, 0),
                 };
             current_tp.high = d_val;
 

@@ -84,6 +84,10 @@ fn test_vl53l0x_threshold_validation() {
     sensor.set_calibration(CalibrationType::ProximityCal(
         model::calibration::TwoPointCalibration::new(50, 150),
     ));
+    assert_eq!(
+        sensor.calibration(),
+        Some(model::calibration::TwoPointCalibration::new(50, 150))
+    );
 
     // 4. Setting calibration with threshold_mm <= near + THRESHOLD_ERROR_MM should be ignored.
     let mut s = Vl53l0x::new(DummyI2c, 0x30);
@@ -91,7 +95,7 @@ fn test_vl53l0x_threshold_validation() {
     s.set_calibration(CalibrationType::ProximityCal(
         model::calibration::TwoPointCalibration::new(90, 150),
     ));
-    assert_eq!(s.calibration().low, 20);
+    assert!(s.calibration().is_none());
 }
 
 #[test]
