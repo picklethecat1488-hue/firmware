@@ -163,7 +163,13 @@ pub trait BlockingThermalReader {
 }
 
 /// Trait for reading proximity distance blocking-ly.
-pub trait BlockingProximityReader {
+pub trait BlockingProximityReader:
+    model::calibration::ApplyCalibration<
+    Input = model::types::SensorReading,
+    Output = model::types::SensorReading,
+    Error = &'static str,
+>
+{
     /// Read distance in millimeters.
     fn read_distance_blocking(&mut self) -> Result<model::types::SensorReading, PeripheralError>;
 
@@ -190,7 +196,7 @@ pub trait BlockingProximityReader {
     /// Update the reader's internal calibration parameters.
     fn update_calibration(
         &mut self,
-        _cal: model::calibration::CalibrationType,
+        _cal: &model::calibration::Vl53l0xCalibration,
     ) -> Result<(), PeripheralError> {
         Ok(())
     }
@@ -237,7 +243,7 @@ pub trait BlockingMotorWriter {
     /// Update the writer's internal calibration parameters.
     fn update_calibration(
         &mut self,
-        _cal: model::calibration::CalibrationType,
+        _cal: &model::calibration::MotorCalibration,
     ) -> Result<(), PeripheralError> {
         Ok(())
     }

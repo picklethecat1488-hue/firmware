@@ -13,6 +13,6 @@ pub trait ProximitySensor: WaitableMeasurement {
     /// Reads the current measured distance in millimeters.
     fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error>;
 
-    /// Reads the raw measured distance in millimeters (ignoring calibration mapping).
-    fn read_distance_raw(&mut self) -> Result<SensorReading, Self::Error>;
+    /// Reads the raw measured distance and the peak signal rate in Q9.7 format.
+    fn read_raw_distance_and_rate(&mut self) -> Result<(SensorReading, u16), Self::Error>;
 }

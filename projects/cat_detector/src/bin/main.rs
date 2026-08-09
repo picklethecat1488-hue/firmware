@@ -124,27 +124,13 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
     let mut sensor_ctrl_east = unsafe { app::SENSOR_CTRL_EAST_CORE0.take().unwrap() };
     let mut sensor_ctrl_west = unsafe { app::SENSOR_CTRL_WEST_CORE0.take().unwrap() };
 
-    use model::calibration::CalibrationType;
     if let Some(cal) = motor_cal {
-        controller.set_calibration(CalibrationType::MotorCal {
-            current_limits: model::calibration::TwoPointCalibration::new(
-                cal.dry_run_limit(),
-                cal.stall_limit(),
-            ),
-            max_rpm: cal.max_rpm.unwrap_or(0),
-            rpm_limit: cal.rpm_limit.unwrap_or(0),
-        });
+        controller.set_calibration(&cal);
     }
 
-    sensor_ctrl_north.set_calibration(CalibrationType::ProximityCal(
-        proximity_cal[model::types::Direction::North],
-    ));
-    sensor_ctrl_east.set_calibration(CalibrationType::ProximityCal(
-        proximity_cal[model::types::Direction::East],
-    ));
-    sensor_ctrl_west.set_calibration(CalibrationType::ProximityCal(
-        proximity_cal[model::types::Direction::West],
-    ));
+    sensor_ctrl_north.set_calibration(&proximity_cal);
+    sensor_ctrl_east.set_calibration(&proximity_cal);
+    sensor_ctrl_west.set_calibration(&proximity_cal);
 
     let system_ctrl = unsafe { app::SYSTEM_CTRL.take().unwrap() };
 

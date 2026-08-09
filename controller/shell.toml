@@ -31,14 +31,14 @@ associated_type = "SensorCtrl"
 field = "sensors"
 resolve_fn = "resolve_sensor"
 doc = "Named sensor controllers."
-bounds = "crate::BlockingProximityReader + model::calibration::Calibration"
+bounds = "crate::BlockingProximityReader + model::calibration::Calibration<Store = model::calibration::Vl53l0xCalibration>"
 
 [[cli_resolver_fields]]
 associated_type = "MotorCtrl"
 field = "motor_ctrls"
 resolve_fn = "resolve_motor_ctrl"
 doc = "Named motor current controllers."
-bounds = "crate::BlockingMotorReader + crate::BlockingMotorWriter + model::calibration::Calibration"
+bounds = "crate::BlockingMotorReader + crate::BlockingMotorWriter + model::calibration::Calibration<Store = model::calibration::MotorCalibration>"
 
 [[cli_resolver_fields]]
 associated_type = "TempSensor"

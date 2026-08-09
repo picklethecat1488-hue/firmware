@@ -495,50 +495,24 @@ impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
     const CALIBRATION_FILE_NAME: &'static str = "motor_cal.cbor";
     type Store = model::calibration::MotorCalibration;
 
-    fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
-        if let model::calibration::CalibrationType::MotorCal {
-            current_limits,
-            max_rpm,
-            rpm_limit,
-        } = calibration
-        {
-            self.calibration_present = true;
-            self.limits.min_current_ma = current_limits.low;
-            self.limits.max_current_ma = current_limits.high;
-            self.limits.max_rpm = max_rpm;
-            self.limits.rpm_limit = rpm_limit;
-        }
+    fn set_calibration(&mut self, store: &Self::Store) {
+        self.calibration_present = true;
+        self.limits.min_current_ma = store.current_ma.low;
+        self.limits.max_current_ma = store.current_ma.overload;
+        self.limits.max_rpm = store.max_rpm.unwrap_or(0);
+        self.limits.rpm_limit = store.rpm_limit.unwrap_or(0);
     }
 
-    fn get_from_store(
-        store: &Self::Store,
-        _direction: model::types::Direction,
-    ) -> Option<model::calibration::CalibrationType> {
-        Some(model::calibration::CalibrationType::MotorCal {
-            current_limits: model::calibration::TwoPointCalibration::new(
-                store.current_ma.low,
-                store.current_ma.overload,
+    fn get_calibration(&self) -> Self::Store {
+        model::calibration::MotorCalibration {
+            current_ma: model::calibration::FourPointCalibration::new(
+                self.limits.min_current_ma,
+                0,
+                0,
+                self.limits.max_current_ma,
             ),
-            max_rpm: store.max_rpm.unwrap_or(0),
-            rpm_limit: store.rpm_limit.unwrap_or(0),
-        })
-    }
-
-    fn update_store(
-        store: &mut Self::Store,
-        _direction: model::types::Direction,
-        calibration: model::calibration::CalibrationType,
-    ) {
-        if let model::calibration::CalibrationType::MotorCal {
-            current_limits,
-            max_rpm,
-            rpm_limit,
-        } = calibration
-        {
-            store.current_ma.low = current_limits.low;
-            store.current_ma.overload = current_limits.high;
-            store.max_rpm = Some(max_rpm);
-            store.rpm_limit = Some(rpm_limit);
+            max_rpm: Some(self.limits.max_rpm),
+            rpm_limit: Some(self.limits.rpm_limit),
         }
     }
 }
@@ -591,7 +565,7 @@ where
 
     fn update_calibration(
         &mut self,
-        cal: model::calibration::CalibrationType,
+        cal: &model::calibration::MotorCalibration,
     ) -> Result<(), PeripheralError> {
         use model::calibration::Calibration as _;
         self.set_calibration(cal);
@@ -785,16 +759,7 @@ pub fn handle_motor_cli<
                 &mut write_buf,
             )
             .map(|_| {
-                let current_limits = model::calibration::TwoPointCalibration::new(
-                    cal.dry_run_limit(),
-                    cal.stall_limit(),
-                );
-                let _ =
-                    motor_ctrl.update_calibration(model::calibration::CalibrationType::MotorCal {
-                        current_limits,
-                        max_rpm: cal.max_rpm.unwrap_or(0),
-                        rpm_limit: cal.rpm_limit.unwrap_or(0),
-                    });
+                let _ = motor_ctrl.update_calibration(&cal);
                 let _ = core::writeln!(writer, "Saved motor {} calibration to flash.", name);
             })
             .map_err(|_| "Error saving calibration to flash")
