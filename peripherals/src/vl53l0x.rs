@@ -55,6 +55,7 @@ impl Register {
 struct RangeStatus {
     valid: bool,
     min_range: bool,
+    max_range: bool,
 }
 
 /// Driver for the VL53L0X Time-of-Flight sensor communicating over I2C.
@@ -373,10 +374,11 @@ impl<I: I2c> Vl53l0x<I> {
                 status[0]
             );
         }
-        let min_range_status = (status[0] >> 3) & 0x0F;
+        let range_status_code = (status[0] >> 3) & 0x0F;
         Ok(RangeStatus {
             valid: (status[0] & 0x01) != 0,
-            min_range: min_range_status == 3,
+            min_range: range_status_code == 3,
+            max_range: range_status_code == 8,
         })
     }
 
@@ -470,7 +472,7 @@ impl<I: I2c> Vl53l0x<I> {
                     );
             }
 
-            let reading = if !range_status.valid {
+            let reading = if !range_status.valid || range_status.max_range {
                 SensorReading::Invalid
             } else if range_status.min_range {
                 SensorReading::Proximity(Self::MIN_RANGE_MM)
