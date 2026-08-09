@@ -214,7 +214,8 @@ impl model::calibration::Calibration for MockSensorCtrl {
         direction: model::types::Direction,
     ) -> Option<model::calibration::CalibrationType> {
         Some(model::calibration::CalibrationType::ProximityCal(
-            store[direction],
+            store.sensors[direction as usize],
+            store.xtalk_m_mcps[direction as usize],
         ))
     }
 
@@ -223,8 +224,9 @@ impl model::calibration::Calibration for MockSensorCtrl {
         direction: model::types::Direction,
         calibration: model::calibration::CalibrationType,
     ) {
-        if let model::calibration::CalibrationType::ProximityCal(cal) = calibration {
-            store[direction] = cal;
+        if let model::calibration::CalibrationType::ProximityCal(cal, xtalk) = calibration {
+            store.sensors[direction as usize] = cal;
+            store.xtalk_m_mcps[direction as usize] = xtalk;
         }
     }
 }

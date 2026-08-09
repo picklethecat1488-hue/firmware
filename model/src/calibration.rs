@@ -120,6 +120,9 @@ impl<T> core::ops::IndexMut<FourPointRef> for FourPointCalibration<T> {
     }
 }
 
+/// Maximum number of proximity sensors.
+pub const MAX_PROXIMITY_SENSORS: usize = 4;
+
 /// Time-of-Flight (ToF) offset calibration values for VL53L0X.
 #[derive(Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
@@ -127,7 +130,10 @@ impl<T> core::ops::IndexMut<FourPointRef> for FourPointCalibration<T> {
 pub struct Vl53l0xCalibration {
     /// Calibration for each sensor direction.
     #[n(0)]
-    pub sensors: [TwoPointCalibration<u16>; 3],
+    pub sensors: [TwoPointCalibration<u16>; MAX_PROXIMITY_SENSORS],
+    /// Crosstalk compensation rates in milli-MCPS for each direction (default is 0/none).
+    #[n(1)]
+    pub xtalk_m_mcps: [u16; MAX_PROXIMITY_SENSORS],
 }
 
 impl Vl53l0xCalibration {
@@ -190,8 +196,8 @@ impl MotorCalibration {
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum CalibrationType {
-    /// Calibration for proximity sensors, specifying the cover (0mm) raw value and the 100mm raw value.
-    ProximityCal(TwoPointCalibration<u16>),
+    /// Calibration for proximity sensors, specifying the cover (0mm) raw value, the 100mm raw value, and crosstalk in milli-MCPS.
+    ProximityCal(TwoPointCalibration<u16>, u16),
     /// Calibration for motor current/load values, physical maximum RPM, and RPM safety limit.
     MotorCal {
         /// Current limit range (min/max).

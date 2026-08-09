@@ -137,13 +137,16 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
     }
 
     sensor_ctrl_north.set_calibration(CalibrationType::ProximityCal(
-        proximity_cal[model::types::Direction::North],
+        proximity_cal.sensors[model::types::Direction::North as usize],
+        proximity_cal.xtalk_m_mcps[model::types::Direction::North as usize],
     ));
     sensor_ctrl_east.set_calibration(CalibrationType::ProximityCal(
-        proximity_cal[model::types::Direction::East],
+        proximity_cal.sensors[model::types::Direction::East as usize],
+        proximity_cal.xtalk_m_mcps[model::types::Direction::East as usize],
     ));
     sensor_ctrl_west.set_calibration(CalibrationType::ProximityCal(
-        proximity_cal[model::types::Direction::West],
+        proximity_cal.sensors[model::types::Direction::West as usize],
+        proximity_cal.xtalk_m_mcps[model::types::Direction::West as usize],
     ));
 
     let system_ctrl = unsafe { app::SYSTEM_CTRL.take().unwrap() };

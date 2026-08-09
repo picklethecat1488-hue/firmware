@@ -42,62 +42,83 @@ steps:
     description: Verify the RP2040 internal core temperature.
 
   - id: "6a"
+    name: Calibrate North Sensor (Crosstalk)
+    type: shell_command
+    command: sensor cal_xtalk north 100
+    expected_regex: 'Saved crosstalk calibration for North to flash'
+    description: Place target at 100mm from the North proximity sensor first to compensate for crosstalk.
+
+  - id: "6b"
     name: Calibrate North Sensor (Near)
     type: shell_command
     command: sensor cal_near north
     expected_regex: 'Saved cover calibration for North to flash.'
     description: Place target close (0mm) to the North proximity sensor first.
 
-  - id: "6b"
+  - id: "6c"
     name: Calibrate North Sensor (Far)
     type: shell_command
     command: sensor cal_far north
     expected_regex: 'Saved 100mm calibration for North to flash.'
     description: Place target at 100mm from the North proximity sensor first.
 
-  - id: "6c"
+  - id: "6d"
     name: Verify North Sensor Calibration
     type: shell_command
     command: sensor status
     expected_regex: 'Direct proximity readings: North = (9[0-9]|10[0-9]|110) mm'
     description: Verify North sensor reads correct calibrated distance (~100mm).
 
-  - id: "6d"
+  - id: "6e"
+    name: Calibrate East Sensor (Crosstalk)
+    type: shell_command
+    command: sensor cal_xtalk east 100
+    expected_regex: 'Saved crosstalk calibration for East to flash'
+    description: Place target at 100mm from the East proximity sensor first to compensate for crosstalk.
+
+  - id: "6f"
     name: Calibrate East Sensor (Near)
     type: shell_command
     command: sensor cal_near east
     expected_regex: 'Saved cover calibration for East to flash.'
     description: Place target close (0mm) to the East proximity sensor first.
 
-  - id: "6e"
+  - id: "6g"
     name: Calibrate East Sensor (Far)
     type: shell_command
     command: sensor cal_far east
     expected_regex: 'Saved 100mm calibration for East to flash.'
     description: Place target at 100mm from the East proximity sensor first.
 
-  - id: "6f"
+  - id: "6h"
     name: Verify East Sensor Calibration
     type: shell_command
     command: sensor status
     expected_regex: 'Direct proximity readings: .* East = (9[0-9]|10[0-9]|110) mm'
     description: Verify East sensor reads correct calibrated distance (~100mm).
 
-  - id: "6g"
+  - id: "6i"
+    name: Calibrate West Sensor (Crosstalk)
+    type: shell_command
+    command: sensor cal_xtalk west 100
+    expected_regex: 'Saved crosstalk calibration for West to flash'
+    description: Place target at 100mm from the West proximity sensor first to compensate for crosstalk.
+
+  - id: "6j"
     name: Calibrate West Sensor (Near)
     type: shell_command
     command: sensor cal_near west
     expected_regex: 'Saved cover calibration for West to flash.'
     description: Place target close (0mm) to the West proximity sensor first.
 
-  - id: "6h"
+  - id: "6k"
     name: Calibrate West Sensor (Far)
     type: shell_command
     command: sensor cal_far west
     expected_regex: 'Saved 100mm calibration for West to flash.'
     description: Place target at 100mm from the West proximity sensor first.
 
-  - id: "6i"
+  - id: "6l"
     name: Verify West Sensor Calibration
     type: shell_command
     command: sensor status

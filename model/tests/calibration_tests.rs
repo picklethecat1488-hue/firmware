@@ -60,16 +60,23 @@ fn test_vl53l0x_calibration() {
     // Default values should be (0, 0) for all sensors
     assert_eq!(cal[Direction::North].low, 0);
     assert_eq!(cal[Direction::North].high, 0);
+    assert_eq!(cal.xtalk_m_mcps[Direction::North as usize], 0);
 
     let sensor_cal = TwoPointCalibration::new(10, 100);
     cal[Direction::North] = sensor_cal;
     cal[Direction::East] = TwoPointCalibration::new(20, 120);
     cal[Direction::West] = TwoPointCalibration::new(30, 130);
+    cal.xtalk_m_mcps[Direction::North as usize] = 50;
+    cal.xtalk_m_mcps[Direction::East as usize] = 100;
+    cal.xtalk_m_mcps[Direction::West as usize] = 150;
 
     assert_eq!(cal[Direction::North].low, 10);
     assert_eq!(cal[Direction::North].high, 100);
     assert_eq!(cal[Direction::East].low, 20);
     assert_eq!(cal[Direction::West].low, 30);
+    assert_eq!(cal.xtalk_m_mcps[Direction::North as usize], 50);
+    assert_eq!(cal.xtalk_m_mcps[Direction::East as usize], 100);
+    assert_eq!(cal.xtalk_m_mcps[Direction::West as usize], 150);
 }
 
 #[test]
@@ -78,6 +85,7 @@ fn test_cbor_serialization_structure() {
     cal[Direction::North] = TwoPointCalibration::new(38, 20);
     cal[Direction::East] = TwoPointCalibration::new(42, 20);
     cal[Direction::West] = TwoPointCalibration::new(48, 20);
+    cal.xtalk_m_mcps = [12, 34, 56, 0];
 
     let mut buf = [0u8; 128];
     let cursor = minicbor::encode::write::Cursor::new(&mut buf[..]);
@@ -93,4 +101,5 @@ fn test_cbor_serialization_structure() {
     assert_eq!(decoded[Direction::East].high, 20);
     assert_eq!(decoded[Direction::West].low, 48);
     assert_eq!(decoded[Direction::West].high, 20);
+    assert_eq!(decoded.xtalk_m_mcps, [12, 34, 56, 0]);
 }

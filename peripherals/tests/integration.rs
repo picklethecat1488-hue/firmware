@@ -83,6 +83,7 @@ fn test_vl53l0x_threshold_validation() {
     // 3. Setting calibration with threshold_mm > near + THRESHOLD_ERROR_MM should succeed.
     sensor.set_calibration(CalibrationType::ProximityCal(
         model::calibration::TwoPointCalibration::new(50, 150),
+        0,
     ));
     assert_eq!(
         sensor.calibration(),
@@ -94,6 +95,7 @@ fn test_vl53l0x_threshold_validation() {
     let _ = s.set_threshold_mm(100);
     s.set_calibration(CalibrationType::ProximityCal(
         model::calibration::TwoPointCalibration::new(90, 150),
+        0,
     ));
     assert!(s.calibration().is_none());
 }

@@ -40,12 +40,27 @@ pub struct ProximitySignalPtr(
 unsafe impl Send for ProximitySignalPtr {}
 unsafe impl Sync for ProximitySignalPtr {}
 
+/// Wrapper for the crosstalk CLI signal pointer to implement Send and Sync.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct XTalkSignalPtr(
+    pub *const ::platform::OnceLock<Result<(SensorReading, u16), PeripheralError>>,
+);
+
+unsafe impl Send for XTalkSignalPtr {}
+unsafe impl Sync for XTalkSignalPtr {}
+
 /// Maximum raw distance value in mm allowed during proximity sensor calibration.
 const MAX_CALIBRATION_RAW_MM: u16 = 900;
 
 impl core::fmt::Debug for ProximitySignalPtr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "ProximitySignalPtr({:p})", self.0)
+    }
+}
+
+impl core::fmt::Debug for XTalkSignalPtr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "XTalkSignalPtr({:p})", self.0)
     }
 }
 
@@ -62,6 +77,8 @@ pub enum SensorCommand {
     ReadSensorsWithSignal(ProximitySignalPtr),
     /// Force raw proximity sensor check and signal completion via OnceLock
     ReadRawSensorsWithSignal(ProximitySignalPtr),
+    /// Force raw proximity sensor check with return rate and signal completion via OnceLock
+    ReadXTalkRawWithSignal(XTalkSignalPtr),
     /// Set periodic automatic reading interval
     SetInterval(PeriodicInterval),
 }
@@ -507,6 +524,17 @@ where
                     let _ = lock.set(res);
                 }
             }
+            SensorCommand::ReadXTalkRawWithSignal(signal_ptr) => {
+                let res = self
+                    .state_manager
+                    .sensor_mut()
+                    .read_raw_distance_and_rate()
+                    .map_err(|_| PeripheralError::DeviceNotAvailable);
+                unsafe {
+                    let lock = &*signal_ptr.0;
+                    let _ = lock.set(res);
+                }
+            }
             SensorCommand::SetInterval(interval) => {
                 self.set_periodic_interval(interval);
             }
@@ -721,8 +749,10 @@ subcommand_enum! {
         CalNear = "cal_near",
         /// Calibrate far proximity
         CalFar = "cal_far",
+        /// Calibrate crosstalk
+        CalXTalk = "cal_xtalk",
     }
-    "Invalid sensor subcommand. Expected: status, cal_near, cal_far"
+    "Invalid sensor subcommand. Expected: status, cal_near, cal_far, cal_xtalk"
 }
 
 /// Processes sensor-specific CLI subcommands by validating and delegating.
@@ -837,28 +867,45 @@ pub fn handle_sensor_cli<
                     let mut val_buf = [0u8; 32];
                     let mut val_writer = WriteBuffer::new(&mut val_buf);
                     match dist {
-                        Ok(reading) => match reading {
-                            SensorReading::Proximity(d) => {
-                                if let (Some(dir), Some(cal)) = (direction, proximity_cal.as_ref())
-                                {
-                                    let cal_d = match <C::SensorCtrl as Calibration>::get_from_store(
+                        Ok(reading) => {
+                            match reading {
+                                SensorReading::Proximity(d) => {
+                                    if let (Some(dir), Some(cal)) =
+                                        (direction, proximity_cal.as_ref())
+                                    {
+                                        let (cal_d, xtalk) = match <C::SensorCtrl as Calibration>::get_from_store(
                                         cal, dir,
                                     ) {
                                         Some(
-                                            model::calibration::CalibrationType::ProximityCal(tp),
-                                        ) => tp.map(d),
-                                        _ => d,
+                                            model::calibration::CalibrationType::ProximityCal(tp, xtalk),
+                                        ) => (tp.map(d), xtalk),
+                                        _ => (d, 0),
                                     };
-                                    let _ =
-                                        core::write!(&mut val_writer, "{}mm (cal: {}mm)", d, cal_d);
-                                } else {
-                                    let _ = core::write!(&mut val_writer, "{}mm", d);
+                                        if xtalk > 0 {
+                                            let _ = core::write!(
+                                                &mut val_writer,
+                                                "{}mm (cal: {}mm, xtalk: {}mMCPS)",
+                                                d,
+                                                cal_d,
+                                                xtalk
+                                            );
+                                        } else {
+                                            let _ = core::write!(
+                                                &mut val_writer,
+                                                "{}mm (cal: {}mm)",
+                                                d,
+                                                cal_d
+                                            );
+                                        }
+                                    } else {
+                                        let _ = core::write!(&mut val_writer, "{}mm", d);
+                                    }
+                                }
+                                SensorReading::Invalid => {
+                                    let _ = core::write!(&mut val_writer, "INVALID");
                                 }
                             }
-                            SensorReading::Invalid => {
-                                let _ = core::write!(&mut val_writer, "INVALID");
-                            }
-                        },
+                        }
                         Err(_) => {
                             let _ = core::write!(&mut val_writer, "FAILED");
                         }
@@ -947,14 +994,17 @@ pub fn handle_sensor_cli<
             .unwrap_or_default();
 
             let dir = model::types::Direction::from(direction);
-            let mut current_tp =
+            let (mut current_tp, current_xtalk) =
                 match <C::SensorCtrl as Calibration>::get_from_store(&proximity_cal, dir) {
-                    Some(model::calibration::CalibrationType::ProximityCal(tp)) => tp,
-                    _ => model::calibration::TwoPointCalibration::new(0, 0),
+                    Some(model::calibration::CalibrationType::ProximityCal(tp, xtalk)) => {
+                        (tp, xtalk)
+                    }
+                    _ => (model::calibration::TwoPointCalibration::new(0, 0), 0),
                 };
             current_tp.low = d_val;
 
-            let cal_type = model::calibration::CalibrationType::ProximityCal(current_tp);
+            let cal_type =
+                model::calibration::CalibrationType::ProximityCal(current_tp, current_xtalk);
             <C::SensorCtrl as Calibration>::update_store(&mut proximity_cal, dir, cal_type);
 
             let mut write_buf = [0u8; 128];
@@ -1050,14 +1100,17 @@ pub fn handle_sensor_cli<
             .unwrap_or_default();
 
             let dir = model::types::Direction::from(direction);
-            let mut current_tp =
+            let (mut current_tp, current_xtalk) =
                 match <C::SensorCtrl as Calibration>::get_from_store(&proximity_cal, dir) {
-                    Some(model::calibration::CalibrationType::ProximityCal(tp)) => tp,
-                    _ => model::calibration::TwoPointCalibration::new(0, 0),
+                    Some(model::calibration::CalibrationType::ProximityCal(tp, xtalk)) => {
+                        (tp, xtalk)
+                    }
+                    _ => (model::calibration::TwoPointCalibration::new(0, 0), 0),
                 };
             current_tp.high = d_val;
 
-            let cal_type = model::calibration::CalibrationType::ProximityCal(current_tp);
+            let cal_type =
+                model::calibration::CalibrationType::ProximityCal(current_tp, current_xtalk);
             <C::SensorCtrl as Calibration>::update_store(&mut proximity_cal, dir, cal_type);
 
             let mut write_buf = [0u8; 128];
@@ -1072,6 +1125,126 @@ pub fn handle_sensor_cli<
             .map(|_| {
                 let _ = sensor_ctrl.update_calibration(cal_type);
                 let _ = core::writeln!(writer, "Saved 100mm calibration for {} to flash.", name);
+            })
+            .map_err(|_| "Error saving calibration to flash")
+        }
+        SensorSubcommand::CalXTalk => {
+            let dir_str = arg1.ok_or("Missing direction parameter")?;
+            let direction = match dir_str {
+                "north" => SensorDirection::North,
+                "east" => SensorDirection::East,
+                "west" => SensorDirection::West,
+                _ => return Err("Invalid direction. Expected: north, east, west"),
+            };
+
+            let name = match direction {
+                SensorDirection::North => "North",
+                SensorDirection::East => "East",
+                SensorDirection::West => "West",
+            };
+
+            let cal_distance = if let Some(s) = partition_name {
+                s.parse::<u16>()
+                    .map_err(|_| "Invalid calibration distance")?
+            } else {
+                100 // Default to 100mm
+            };
+
+            let sensor_ctrl = resolver.resolve_sensor(Some(dir_str))?;
+            let mut d_raw = SensorReading::Invalid;
+            let mut peak_rate_raw = 0u16;
+
+            for _ in 0..10 {
+                let lock = ::platform::OnceLock::new();
+                let lock_ptr = XTalkSignalPtr(&lock as *const _);
+                if sensor_ctrl
+                    .send_command(SensorCommand::ReadXTalkRawWithSignal(lock_ptr))
+                    .is_ok()
+                {
+                    if let Ok((reading, rate)) = *lock.wait() {
+                        d_raw = reading;
+                        peak_rate_raw = rate;
+                        if let SensorReading::Proximity(_) = reading {
+                            break;
+                        }
+                    }
+                }
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                embassy_time::block_for(embassy_time::Duration::from_millis(50));
+            }
+
+            let d_val = match d_raw {
+                SensorReading::Proximity(d) => d,
+                SensorReading::Invalid => return Err("Sensor disconnected or invalid reading"),
+            };
+
+            if d_val >= cal_distance {
+                return Err("Measured distance must be less than calibration distance (crosstalk pulls reading closer)");
+            }
+
+            // Calculate crosstalk rate in milli-MCPS:
+            // R_xtalk_m = (PeakRate * 1000 * (CalDist - MeasuredDist)) / (128 * CalDist)
+            let diff = cal_distance - d_val;
+            let xtalk_m_mcps =
+                ((peak_rate_raw as u32 * 1000 * diff as u32) / (128 * cal_distance as u32)) as u16;
+
+            let _ = core::writeln!(
+                writer,
+                "\r\nCalibrating crosstalk for {} sensor: Raw distance = {} mm, Peak Rate = {}, Calculated Crosstalk = {} mMCPS",
+                name,
+                d_val,
+                peak_rate_raw,
+                xtalk_m_mcps
+            );
+
+            let (map_fs, flash_ptr) = match resolver.resolve_partition(None)? {
+                crate::ResolvedPartition::Map(fs, ptr) => (fs, ptr),
+                _ => return Err("Requested partition is not a map filesystem"),
+            };
+            let flash_ref = unsafe { &mut *flash_ptr };
+            let mut async_flash = BlockingAsyncFlash(flash_ref);
+
+            let mut buf = [0u8; 128];
+            let mut proximity_cal = platform::flash::read_calibration_direct_blocking::<
+                _,
+                <C::SensorCtrl as Calibration>::Store,
+            >(
+                &mut async_flash,
+                map_fs.clone(),
+                fs_buf_static,
+                <C::SensorCtrl as Calibration>::CALIBRATION_FILE_NAME,
+                &mut buf,
+            )
+            .unwrap_or_default();
+
+            let dir = model::types::Direction::from(direction);
+            let current_tp =
+                match <C::SensorCtrl as Calibration>::get_from_store(&proximity_cal, dir) {
+                    Some(model::calibration::CalibrationType::ProximityCal(tp, _)) => tp,
+                    _ => model::calibration::TwoPointCalibration::new(0, 0),
+                };
+
+            let cal_type =
+                model::calibration::CalibrationType::ProximityCal(current_tp, xtalk_m_mcps);
+            <C::SensorCtrl as Calibration>::update_store(&mut proximity_cal, dir, cal_type);
+
+            let mut write_buf = [0u8; 128];
+            platform::flash::write_calibration_direct_blocking(
+                &mut async_flash,
+                map_fs.clone(),
+                fs_buf_static,
+                <C::SensorCtrl as Calibration>::CALIBRATION_FILE_NAME,
+                &proximity_cal,
+                &mut write_buf,
+            )
+            .map(|_| {
+                let _ = sensor_ctrl.update_calibration(cal_type);
+                let _ = core::writeln!(
+                    writer,
+                    "Saved crosstalk calibration for {} to flash ({} mMCPS).",
+                    name,
+                    xtalk_m_mcps
+                );
             })
             .map_err(|_| "Error saving calibration to flash")
         }
