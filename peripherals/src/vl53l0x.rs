@@ -65,6 +65,8 @@ pub struct Vl53l0x<I> {
     hysteresis_mm: u16,
     /// Two-point calibration values mapping raw sensor readings.
     calibration: Option<TwoPointCalibration<u16>>,
+    /// Configured interrupt mode.
+    interrupt_mode: InterruptMode,
 }
 
 impl<I: I2c> Vl53l0x<I> {
@@ -81,6 +83,7 @@ impl<I: I2c> Vl53l0x<I> {
             threshold_mm: 300,
             hysteresis_mm: 50,
             calibration: None,
+            interrupt_mode: InterruptMode::Disabled,
         }
     }
 
@@ -220,6 +223,8 @@ impl<I: I2c> Vl53l0x<I> {
             // Clear any pending interrupt to start fresh
             self.clear_interrupt()?;
 
+            self.interrupt_mode = mode;
+
             Ok(())
         })();
         if let Err(ref _e) = res {
@@ -306,14 +311,14 @@ impl<I: I2c> WaitableMeasurement for Vl53l0x<I> {
     )]
     fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
         // Poll for measurement completion
-        // Set a timeout of 500ms (50 * 10ms)
-        for _ in 0..50 {
-            let mut status_13 = [0u8; 1];
+        // Set a timeout of 240ms (24 * 10ms)
+        for _ in 0..24 {
+            let mut status = [0u8; 1];
             self.i2c
                 .write_read(
                     self.address,
                     &[Register::RESULT_INTERRUPT_STATUS],
-                    &mut status_13,
+                    &mut status,
                 )
                 .map_err(|e| {
                     e.to_i2c_error(
@@ -322,18 +327,19 @@ impl<I: I2c> WaitableMeasurement for Vl53l0x<I> {
                     )
                 })?;
 
-            let mut status_14 = [0u8; 1];
-            self.i2c
-                .write_read(
+            #[cfg(all(
+                target_arch = "arm",
+                target_os = "none",
+                feature = "verbose-sensor-logging"
+            ))]
+            {
+                defmt::debug!(
+                    "VL53L0X [0x{:02x}] interrupt-status: {:02x}",
                     self.address,
-                    &[Register::RESULT_RANGE_STATUS],
-                    &mut status_14,
-                )
-                .map_err(|e| {
-                    e.to_i2c_error(self.address as u16, Register::RESULT_RANGE_STATUS as u16)
-                })?;
-
-            if (status_13[0] & 0x07) != 0 || (status_14[0] & 0x01) != 0 {
+                    status[0]
+                );
+            }
+            if (status[0] & 0x07) == 4 {
                 return Ok(());
             }
             ::embassy_time::block_for(::embassy_time::Duration::from_millis(10));
@@ -355,7 +361,6 @@ impl<I: I2c> Vl53l0x<I> {
             .map_err(|e| {
                 e.to_i2c_error(self.address as u16, Register::RESULT_RANGE_STATUS as u16)
             })?;
-        let range_status = (status[0] >> 3) & 0x0F;
         #[cfg(all(
             target_arch = "arm",
             target_os = "none",
@@ -365,12 +370,13 @@ impl<I: I2c> Vl53l0x<I> {
             defmt::debug!(
                 "VL53L0X [0x{:02x}] range-status: {:02x}",
                 self.address,
-                range_status
+                status[0]
             );
         }
+        let min_range_status = (status[0] >> 3) & 0x0F;
         Ok(RangeStatus {
             valid: (status[0] & 0x01) != 0,
-            min_range: range_status == 3,
+            min_range: min_range_status == 3,
         })
     }
 
@@ -383,12 +389,47 @@ impl<I: I2c> Vl53l0x<I> {
         calibrate: bool,
     ) -> Result<SensorReading, PeripheralError> {
         let res = (|| {
+            // Temporarily configure interrupt mode to NewSampleReady (4)
+            self.i2c
+                .write(
+                    self.address,
+                    &[
+                        Register::SYSTEM_INTERRUPT_GPIO_CONFIG,
+                        InterruptMode::NewSampleReady as u8,
+                    ],
+                )
+                .map_err(|e| {
+                    e.to_i2c_error(
+                        self.address as u16,
+                        Register::SYSTEM_INTERRUPT_GPIO_CONFIG as u16,
+                    )
+                })?;
+
             // Trigger a measurement (write 0x01 to register 0x00 for System Start)
             self.i2c
                 .write(self.address, &[Register::SYSTEM_START, 0x01])
                 .map_err(|e| e.to_i2c_error(self.address as u16, Register::SYSTEM_START as u16))?;
 
-            self.wait_for_measurement()?;
+            let wait_res = self.wait_for_measurement();
+
+            // Restore the configured interrupt mode
+            let restore_res = self.i2c
+                .write(
+                    self.address,
+                    &[
+                        Register::SYSTEM_INTERRUPT_GPIO_CONFIG,
+                        self.interrupt_mode as u8,
+                    ],
+                )
+                .map_err(|e| {
+                    e.to_i2c_error(
+                        self.address as u16,
+                        Register::SYSTEM_INTERRUPT_GPIO_CONFIG as u16,
+                    )
+                });
+
+            wait_res?;
+            restore_res?;
 
             let range_status = self.read_range_status()?;
 
