@@ -363,7 +363,15 @@ where
 
         // Run initial status check on boot.
         if let Err(e) = self.update(Some(&mut telemetry_client)).await {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::warn!("BatteryController: Boot read failed/timed out!");
             self.handle_update_error(e, &mut telemetry_client, Some(&mut check_interval));
+            // Explicitly clear boot trap on timeout/failure to allow booting with warnings
+            if let Some(ref tx) = self.system_tx {
+                let _ = tx.try_send(SystemCommand::BatteryAction(
+                    BatteryUpdateAction::ClearBootTrap,
+                ));
+            }
         }
 
         if boot_config_failed {
