@@ -71,6 +71,10 @@ pub struct Cli {
     /// Trace collection duration in seconds. Required when --trace is specified.
     #[arg(long, value_name = "SECONDS")]
     pub duration: Option<u64>,
+
+    /// Probe protocol speed in kHz
+    #[arg(long)]
+    pub speed: Option<u32>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -123,6 +127,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    // Resolve speed from CLI arg, environment variable, or default to 10000 kHz (10 MHz)
+    let speed = cli.speed.unwrap_or_else(|| {
+        std::env::var("PROBE_RS_SPEED")
+            .ok()
+            .and_then(|val| val.parse().ok())
+            .unwrap_or(1000)
+    });
+
     // 3. Run RTT connection runner
     rtt::run_rtt(rtt::RttOptions {
         chip: &chip,
@@ -138,6 +150,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         channel_mode: cli.channel,
         trace: cli.trace.is_some(),
         duration: cli.duration,
+        speed,
     })?;
 
     // Drop the tracing guard to ensure the trace file is written and flushed
