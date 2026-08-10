@@ -562,6 +562,7 @@ where
         &mut self,
         command_rx: embassy_sync::channel::Receiver<'static, M, SensorCommand, 4>,
     ) -> ! {
+        let mut last_read = embassy_time::Instant::now();
         loop {
             let timeout_dur = match self.state_manager.periodic_interval() {
                 PeriodicInterval::None => crate::OVERFLOW_SAFE_MAX_DURATION,
@@ -574,17 +575,28 @@ where
             );
 
             let res = if is_periodic {
+                let next_read_time = last_read + timeout_dur;
+                let now = embassy_time::Instant::now();
+                let remaining = if next_read_time > now {
+                    next_read_time - now
+                } else {
+                    embassy_time::Duration::from_millis(0)
+                };
+
                 // When actively polling periodically, ignore interrupt pin transitions to prevent unthrottled read storms
-                match platform::with_timeout!(command_rx.receive(), timeout_dur).await {
+                match platform::with_timeout!(command_rx.receive(), remaining).await {
                     Some(cmd) => {
                         self.handle_command(cmd);
                         Some(())
                     }
-                    None => None,
+                    None => {
+                        last_read = embassy_time::Instant::now();
+                        None
+                    }
                 }
             } else {
                 // When deep sleeping (no periodic interval), wait for either a command or the interrupt pin to wake us up
-                select_branch_with_timeout!(
+                let res = select_branch_with_timeout!(
                     timeout_dur,
                     command_rx.receive() => |cmd| {
                         self.handle_command(cmd);
@@ -593,14 +605,16 @@ where
                     self.wait_for_data_ready() => || {
                         None
                     },
-                )
+                );
+                if res.is_none() {
+                    last_read = embassy_time::Instant::now();
+                }
+                res
             };
 
             if res.is_none() && self.update().is_err() {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::warn!("SensorController: Periodic read failed; disabling periodic updates.");
-                self.state_manager
-                    .set_periodic_interval(PeriodicInterval::None);
+                defmt::warn!("SensorController: Periodic read failed.");
             }
         }
     }
@@ -1325,19 +1339,7 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
 
         let distance_mm = match reading {
             SensorReading::Proximity(d) => d,
-            SensorReading::Invalid => {
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::warn!(
-                    "VL53L0X sensor {:?} reported INVALID reading!",
-                    defmt::Debug2Format(&direction)
-                );
-                #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-                {
-                    extern crate std;
-                    std::println!("VL53L0X sensor {:?} reported INVALID reading!", direction);
-                }
-                8190
-            }
+            SensorReading::Invalid => u16::MAX,
         };
 
         self.telemetry_client
