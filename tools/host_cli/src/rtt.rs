@@ -280,6 +280,8 @@ pub struct RttOptions<'a> {
     pub trace: bool,
     /// Trace collection duration in seconds
     pub duration: Option<u64>,
+    /// Probe protocol speed in kHz
+    pub speed: u32,
 }
 
 pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
@@ -301,6 +303,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         channel_mode,
         trace,
         duration,
+        speed,
     } = opts;
     // Locate Symbol Address first
     let rtt_symbol_addr = match tool_common::find_symbol_address(elf_path, "_SEGGER_RTT") {
@@ -379,32 +382,36 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                 .ok_or_else(|| "No debug probes connected".to_string())
                 .and_then(|info| info.open().map_err(|e| format!("{:?}", e)))
             {
-                Ok(probe) => match probe.attach(chip, probe_rs::Permissions::default()) {
-                    Ok(mut session) => {
-                        {
-                            let mut core = session.core(0)?;
-                            if reset && !is_reconnecting {
-                                spinner.set_message("Resetting target CPU...");
-                                let _ = core.reset();
-                                std::thread::sleep(Duration::from_millis(100));
-                                let _ = core.run();
-                                std::thread::sleep(Duration::from_millis(100));
-                            } else {
-                                let status = core.status()?;
-                                spinner.set_message(format!("Core status: {:?}", status));
-                                if status.is_halted() {
-                                    spinner.set_message("Core is halted. Resuming execution...");
+                Ok(mut probe) => {
+                    let _ = probe.set_speed(speed);
+                    match probe.attach(chip, probe_rs::Permissions::default()) {
+                        Ok(mut session) => {
+                            {
+                                let mut core = session.core(0)?;
+                                if reset && !is_reconnecting {
+                                    spinner.set_message("Resetting target CPU...");
+                                    let _ = core.reset();
+                                    std::thread::sleep(Duration::from_millis(100));
                                     let _ = core.run();
                                     std::thread::sleep(Duration::from_millis(100));
+                                } else {
+                                    let status = core.status()?;
+                                    spinner.set_message(format!("Core status: {:?}", status));
+                                    if status.is_halted() {
+                                        spinner
+                                            .set_message("Core is halted. Resuming execution...");
+                                        let _ = core.run();
+                                        std::thread::sleep(Duration::from_millis(100));
+                                    }
                                 }
+                                is_reconnecting = true;
                             }
-                            is_reconnecting = true;
+                            probe_rs_session_store = Some(session);
+                            Ok(())
                         }
-                        probe_rs_session_store = Some(session);
-                        Ok(())
+                        Err(e) => Err(format!("{:?}", e)),
                     }
-                    Err(e) => Err(format!("{:?}", e)),
-                },
+                }
                 Err(e) => Err(e),
             }
         };

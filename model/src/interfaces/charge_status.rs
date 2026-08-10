@@ -8,5 +8,5 @@ pub trait ChargeStatus {
     type Error;
 
     /// Returns the current charge state.
-    fn get_charge_state(&mut self) -> Result<crate::types::ChargeState, Self::Error>;
+    async fn get_charge_state(&mut self) -> Result<crate::types::ChargeState, Self::Error>;
 }

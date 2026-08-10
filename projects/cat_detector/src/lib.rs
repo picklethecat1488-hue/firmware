@@ -76,6 +76,9 @@ pub const DEFAULT_WAKE_THRESHOLD_MM: u16 = 300;
 /// The default press threshold in millimeters under which gesture button presses are detected.
 pub const DEFAULT_PRESS_THRESHOLD_MM: u16 = 20;
 
+/// The default near threshold in millimeters for intermediate proximity alerts.
+pub const DEFAULT_NEAR_THRESHOLD_MM: u16 = 100;
+
 /// Start address of the filesystem storage partition in flash (offset from start of flash).
 pub const STORAGE_PARTITION_START: u32 = 0x1C_0000; // 1.75 MB
 /// End address of the filesystem storage partition in flash (2.00 MB limit).
@@ -124,12 +127,10 @@ pub const FLASH_ERASE_SIZE: usize = 4096;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Thread-safe Mutex wrapping the active I2C peripheral for shared access between tasks.
-pub static SHARED_I2C: embassy_sync::blocking_mutex::Mutex<
+pub static SHARED_I2C: embassy_sync::mutex::Mutex<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    core::cell::RefCell<platform::i2c::SafeI2c>,
-> = embassy_sync::blocking_mutex::Mutex::new(core::cell::RefCell::new(platform::i2c::SafeI2c(
-    None,
-)));
+    platform::i2c::SafeI2c,
+> = embassy_sync::mutex::Mutex::new(platform::i2c::SafeI2c::new(12, 13, 400_000));
 
 /// RawMutex type used by controllers.
 pub type MutexRaw = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -242,7 +243,6 @@ pub static mut PANIC_FLASH: Option<FlashDevice> = None;
 pub async fn init_controllers(board: Board<'static>) {
     let Board {
         flash,
-        i2c,
         temp_sensor,
         fuel_gauge_alert_pin,
         led_driver,
@@ -256,10 +256,6 @@ pub async fn init_controllers(board: Board<'static>) {
         current_sensor,
         ..
     } = board;
-
-    SHARED_I2C.lock(|cell| {
-        cell.borrow_mut().0 = Some(i2c);
-    });
 
     {
         let mut sensor = SHARED_TEMP_SENSOR.lock().await;
@@ -591,6 +587,7 @@ pub fn create_default_feature_set(
                     SENSOR_WEST_CHANNEL.sender(),
                 ],
                 DEFAULT_PRESS_THRESHOLD_MM,
+                DEFAULT_NEAR_THRESHOLD_MM,
                 DEFAULT_WAKE_THRESHOLD_MM,
                 controller::GestureAction::TogglePower,
                 Some(TELEMETRY_CHANNEL.sender()),

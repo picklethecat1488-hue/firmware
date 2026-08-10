@@ -29,6 +29,7 @@ platform = { path = "../../platform", features = ["dual-core", "rp2040"] }
 peripherals = { path = "../../peripherals", features = ["mock"] }
 controller = { path = "../../controller" }
 embedded-hal = "1.0.0"
+embedded-hal-async = "1.0.0"
 embassy-sync = "0.6.2"
 embassy-futures = "0.1.0"
 embedded-cli = "0.2.1"

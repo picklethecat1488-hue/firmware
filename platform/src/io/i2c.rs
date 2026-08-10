@@ -1,104 +1,215 @@
 //! Shared I2C blocking access wrapper structures.
 
 use core::fmt::Write as _;
-use embedded_hal::i2c::I2c as _;
+use embedded_hal_async::i2c::I2c;
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-use core::cell::RefCell;
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-use embassy_sync::blocking_mutex::Mutex;
+use embassy_sync::mutex::Mutex;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+embassy_rp::bind_interrupts!(struct Irqs {
+    I2C0_IRQ => embassy_rp::i2c::InterruptHandler<embassy_rp::peripherals::I2C0>;
+});
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// A wrapper structure containing the initialized I2C0 peripheral on target.
-pub struct SafeI2c(
-    pub  Option<
-        embassy_rp::i2c::I2c<'static, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Blocking>,
+pub struct SafeI2c {
+    /// Active I2C0 async driver instance
+    pub i2c: Option<
+        embassy_rp::i2c::I2c<'static, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Async>,
     >,
-);
+    /// The GPIO pin number used for I2C SDA
+    pub sda_pin: u8,
+    /// The GPIO pin number used for I2C SCL
+    pub scl_pin: u8,
+    /// The I2C clock frequency in Hz
+    pub frequency: u32,
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl SafeI2c {
+    /// Creates a new SafeI2c with target pins and frequency cached.
+    pub const fn new(sda_pin: u8, scl_pin: u8, frequency: u32) -> Self {
+        Self {
+            i2c: None,
+            sda_pin,
+            scl_pin,
+            frequency,
+        }
+    }
+
+    /// Performs bus recovery and initializes the blocking I2C0 driver.
+    pub fn initialize(&mut self) {
+        // Run bus recovery sequence first to unstuck any locked device
+        let recovery = crate::rp2040::Rp2040I2cRecovery {
+            sda_pin: self.sda_pin,
+            scl_pin: self.scl_pin,
+        };
+        unsafe {
+            use crate::rp2040::PlatformI2cRecovery as _;
+            let _ = recovery.recover_i2c_bus();
+        }
+
+        // Steal control of the I2C0 peripheral and pins
+        let i2c0 = unsafe { embassy_rp::peripherals::I2C0::steal() };
+        let pin_scl = unsafe { embassy_rp::peripherals::PIN_13::steal() };
+        let pin_sda = unsafe { embassy_rp::peripherals::PIN_12::steal() };
+
+        let mut config = embassy_rp::i2c::Config::default();
+        config.frequency = self.frequency;
+
+        self.i2c = Some(embassy_rp::i2c::I2c::new_async(
+            i2c0, pin_scl, pin_sda, Irqs, config,
+        ));
+    }
+}
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+/// Mock SafeI2c for host compilation.
+pub struct SafeI2c {
+    /// Cached configuration parameters
+    pub sda_pin: u8,
+    /// Cached configuration parameters
+    pub scl_pin: u8,
+    /// Cached configuration parameters
+    pub frequency: u32,
+}
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+impl SafeI2c {
+    /// Creates a new SafeI2c mock.
+    pub const fn new(sda_pin: u8, scl_pin: u8, frequency: u32) -> Self {
+        Self {
+            sda_pin,
+            scl_pin,
+            frequency,
+        }
+    }
+
+    /// Mock initialize method.
+    pub fn initialize(&mut self) {}
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// The default timeout for I2C transactions to detect a stuck bus.
+pub const I2C_TIMEOUT: ::embassy_time::Duration = ::embassy_time::Duration::from_millis(50);
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[derive(Clone, Copy)]
-/// A unit struct wrapper that implements `embedded_hal::i2c::I2c` by dynamically locking a Shared I2C Mutex.
+/// A unit struct wrapper that implements `embedded_hal_async::i2c::I2c` by dynamically locking a Shared I2C Mutex.
 pub struct SharedI2cWrapper<'a> {
-    mutex: &'a Mutex<CriticalSectionRawMutex, RefCell<SafeI2c>>,
+    mutex: &'a Mutex<CriticalSectionRawMutex, SafeI2c>,
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 impl<'a> SharedI2cWrapper<'a> {
     /// Creates a new SharedI2cWrapper wrapping a Mutex.
-    pub const fn new(mutex: &'a Mutex<CriticalSectionRawMutex, RefCell<SafeI2c>>) -> Self {
+    pub const fn new(mutex: &'a Mutex<CriticalSectionRawMutex, SafeI2c>) -> Self {
         Self { mutex }
     }
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-impl<'a> embedded_hal::i2c::ErrorType for SharedI2cWrapper<'a> {
+impl<'a> embedded_hal_async::i2c::ErrorType for SharedI2cWrapper<'a> {
     type Error = embassy_rp::i2c::Error;
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-impl<'a> embedded_hal::i2c::I2c for SharedI2cWrapper<'a> {
-    fn read(&mut self, address: u8, read: &mut [u8]) -> Result<(), Self::Error> {
-        self.mutex.lock(|cell| {
-            let mut guard = cell.borrow_mut();
-            if let Some(ref mut i2c) = guard.0 {
-                i2c.read(address, read)
-            } else {
-                Err(embassy_rp::i2c::Error::Abort(
-                    embassy_rp::i2c::AbortReason::Other(0),
-                ))
+impl<'a> embedded_hal_async::i2c::I2c for SharedI2cWrapper<'a> {
+    async fn read(&mut self, address: u8, read: &mut [u8]) -> Result<(), Self::Error> {
+        let mut guard = self.mutex.lock().await;
+        if let Some(ref mut i2c) = guard.i2c {
+            let fut = i2c.read(address, read);
+            match ::embassy_time::with_timeout(I2C_TIMEOUT, fut).await {
+                Ok(res) => res,
+                Err(_) => {
+                    // Timeout! Bus is stuck. Free the instance, recover, and re-initialize.
+                    guard.i2c = None;
+                    guard.initialize();
+                    Err(embassy_rp::i2c::Error::Abort(
+                        embassy_rp::i2c::AbortReason::Other(0),
+                    ))
+                }
             }
-        })
+        } else {
+            Err(embassy_rp::i2c::Error::Abort(
+                embassy_rp::i2c::AbortReason::Other(0),
+            ))
+        }
     }
 
-    fn write(&mut self, address: u8, write: &[u8]) -> Result<(), Self::Error> {
-        self.mutex.lock(|cell| {
-            let mut guard = cell.borrow_mut();
-            if let Some(ref mut i2c) = guard.0 {
-                i2c.write(address, write)
-            } else {
-                Err(embassy_rp::i2c::Error::Abort(
-                    embassy_rp::i2c::AbortReason::Other(0),
-                ))
+    async fn write(&mut self, address: u8, write: &[u8]) -> Result<(), Self::Error> {
+        let mut guard = self.mutex.lock().await;
+        if let Some(ref mut i2c) = guard.i2c {
+            let fut = i2c.write(address, write);
+            match ::embassy_time::with_timeout(I2C_TIMEOUT, fut).await {
+                Ok(res) => res,
+                Err(_) => {
+                    guard.i2c = None;
+                    guard.initialize();
+                    Err(embassy_rp::i2c::Error::Abort(
+                        embassy_rp::i2c::AbortReason::Other(0),
+                    ))
+                }
             }
-        })
+        } else {
+            Err(embassy_rp::i2c::Error::Abort(
+                embassy_rp::i2c::AbortReason::Other(0),
+            ))
+        }
     }
 
-    fn write_read(
+    async fn write_read(
         &mut self,
         address: u8,
         write: &[u8],
         read: &mut [u8],
     ) -> Result<(), Self::Error> {
-        self.mutex.lock(|cell| {
-            let mut guard = cell.borrow_mut();
-            if let Some(ref mut i2c) = guard.0 {
-                i2c.write_read(address, write, read)
-            } else {
-                Err(embassy_rp::i2c::Error::Abort(
-                    embassy_rp::i2c::AbortReason::Other(0),
-                ))
+        let mut guard = self.mutex.lock().await;
+        if let Some(ref mut i2c) = guard.i2c {
+            let fut = i2c.write_read(address, write, read);
+            match ::embassy_time::with_timeout(I2C_TIMEOUT, fut).await {
+                Ok(res) => res,
+                Err(_) => {
+                    guard.i2c = None;
+                    guard.initialize();
+                    Err(embassy_rp::i2c::Error::Abort(
+                        embassy_rp::i2c::AbortReason::Other(0),
+                    ))
+                }
             }
-        })
+        } else {
+            Err(embassy_rp::i2c::Error::Abort(
+                embassy_rp::i2c::AbortReason::Other(0),
+            ))
+        }
     }
 
-    fn transaction(
+    async fn transaction(
         &mut self,
         address: u8,
-        operations: &mut [embedded_hal::i2c::Operation<'_>],
+        operations: &mut [embedded_hal_async::i2c::Operation<'_>],
     ) -> Result<(), Self::Error> {
-        self.mutex.lock(|cell| {
-            let mut guard = cell.borrow_mut();
-            if let Some(ref mut i2c) = guard.0 {
-                i2c.transaction(address, operations)
-            } else {
-                Err(embassy_rp::i2c::Error::Abort(
-                    embassy_rp::i2c::AbortReason::Other(0),
-                ))
+        let mut guard = self.mutex.lock().await;
+        if let Some(ref mut i2c) = guard.i2c {
+            let fut = i2c.transaction(address, operations);
+            match ::embassy_time::with_timeout(I2C_TIMEOUT, fut).await {
+                Ok(res) => res,
+                Err(_) => {
+                    guard.i2c = None;
+                    guard.initialize();
+                    Err(embassy_rp::i2c::Error::Abort(
+                        embassy_rp::i2c::AbortReason::Other(0),
+                    ))
+                }
             }
-        })
+        } else {
+            Err(embassy_rp::i2c::Error::Abort(
+                embassy_rp::i2c::AbortReason::Other(0),
+            ))
+        }
     }
 }
 
@@ -114,7 +225,7 @@ crate::subcommand_enum! {
 /// Trait to resolve I2C buses for platform CLI handlers.
 pub trait I2cResolver {
     /// Associated type for the I2C peripheral.
-    type I2c: embedded_hal::i2c::I2c;
+    type I2c: embedded_hal_async::i2c::I2c;
 
     /// Resolves a named I2C bus.
     #[allow(clippy::mut_from_ref)]
@@ -147,7 +258,8 @@ pub fn handle_i2c_cli<W: embedded_io::Write<Error = E>, E: embedded_io::Error, R
                     } else {
                         // Attempt a single byte read to check for ACK using 7-bit address
                         let mut buf = [0];
-                        match i2c.read(addr_7bit, &mut buf) {
+                        let read_fut = i2c.read(addr_7bit, &mut buf);
+                        match embassy_futures::block_on(read_fut) {
                             Ok(_) => {
                                 let _ = write!(line, " {:02x}", addr_7bit);
                             }

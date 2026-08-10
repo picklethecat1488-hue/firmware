@@ -4,7 +4,7 @@
 
 use crate::tracing;
 use crate::I2cToPeripheralError;
-use embedded_hal::i2c::I2c;
+use embedded_hal_async::i2c::I2c;
 use model::{
     interfaces::{PowerMeasurementMode, PowerSensor, Probeable, WaitableMeasurement},
     types::PeripheralError,
@@ -38,22 +38,12 @@ impl<I: I2c> Ina219<I> {
     }
 
     /// Initializes the INA219 by writing the default calibration (e.g. 4096).
-    pub fn init(&mut self) -> Result<(), PeripheralError> {
-        let res = (|| {
-            // Write configuration word (0x399F default settings)
-            self.write_register(Register::CONFIG, 0x399F)?;
-            // Write calibration word (4096 LSB matches typical mA ranges)
-            self.write_register(Register::CALIBRATION, 4096)?;
-            Ok(())
-        })();
-        if let Err(ref _e) = res {
-            log_warn!(
-                "{}: Failed to locate or initialize current/power monitor at address 0x{:02x}: {:?}",
-                self.address,
-                defmt::Debug2Format(_e)
-            );
-        }
-        res
+    pub async fn init(&mut self) -> Result<(), PeripheralError> {
+        // Write configuration word (0x399F default settings)
+        self.write_register(Register::CONFIG, 0x399F).await?;
+        // Write calibration word (4096 LSB matches typical mA ranges)
+        self.write_register(Register::CALIBRATION, 4096).await?;
+        Ok(())
     }
 
     /// Read a 16-bit register value from the device.
@@ -61,10 +51,11 @@ impl<I: I2c> Ina219<I> {
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.core1_func"
     )]
-    fn read_register(&mut self, reg: u8) -> Result<u16, PeripheralError> {
+    async fn read_register(&mut self, reg: u8) -> Result<u16, PeripheralError> {
         let mut buf = [0u8; 2];
         self.i2c
             .write_read(self.address, &[reg], &mut buf)
+            .await
             .map_err(|e| e.to_i2c_error(self.address as u16, reg as u16))?;
         Ok(u16::from_be_bytes(buf))
     }
@@ -74,10 +65,11 @@ impl<I: I2c> Ina219<I> {
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.core1_func"
     )]
-    fn write_register(&mut self, reg: u8, val: u16) -> Result<(), PeripheralError> {
+    async fn write_register(&mut self, reg: u8, val: u16) -> Result<(), PeripheralError> {
         let bytes = val.to_be_bytes();
         self.i2c
             .write(self.address, &[reg, bytes[0], bytes[1]])
+            .await
             .map_err(|e| e.to_i2c_error(self.address as u16, reg as u16))?;
         Ok(())
     }
@@ -88,15 +80,15 @@ impl<I: I2c> WaitableMeasurement for Ina219<I> {
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.core1_func"
     )]
-    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+    async fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
         // Poll CNVR bit (bit 1) in the Bus Voltage Register (0x02)
         // Set a timeout of 100ms (100 * 1ms)
         for _ in 0..100 {
-            let bus_voltage = self.read_register(Register::BUS_VOLTAGE)?;
+            let bus_voltage = self.read_register(Register::BUS_VOLTAGE).await?;
             if (bus_voltage & 0x0002) != 0 {
                 return Ok(());
             }
-            ::embassy_time::block_for(::embassy_time::Duration::from_millis(1));
+            ::embassy_time::Timer::after_millis(1).await;
         }
         Err(PeripheralError::DeviceNotAvailable)
     }
@@ -110,9 +102,9 @@ impl<I: I2c> PowerSensor for Ina219<I> {
         link_section = ".data.core1_func"
     )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
-    fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
-        self.wait_for_measurement()?;
-        let res = self.read_register(Register::CURRENT);
+    async fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
+        self.wait_for_measurement().await?;
+        let res = self.read_register(Register::CURRENT).await;
         if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to read current register at address 0x{:02x}: {:?}",
@@ -129,9 +121,9 @@ impl<I: I2c> PowerSensor for Ina219<I> {
         link_section = ".data.core1_func"
     )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
-    fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
-        self.wait_for_measurement()?;
-        let res = self.read_register(Register::BUS_VOLTAGE);
+    async fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
+        self.wait_for_measurement().await?;
+        let res = self.read_register(Register::BUS_VOLTAGE).await;
         if let Err(ref _e) = res {
             log_warn!(
                 "{}: Failed to read voltage register at address 0x{:02x}: {:?}",
@@ -149,36 +141,29 @@ impl<I: I2c> PowerSensor for Ina219<I> {
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.core1_func"
     )]
-    fn set_measurement_mode(&mut self, mode: PowerMeasurementMode) -> Result<(), Self::Error> {
-        let res = (|| {
-            let config = self.read_register(Register::CONFIG)?;
-            let mode_val = match mode {
-                PowerMeasurementMode::PowerDown => 0,
-                PowerMeasurementMode::OneShot(voltage, current) => match (voltage, current) {
-                    (false, true) => 1,
-                    (true, false) => 2,
-                    (true, true) => 3,
-                    (false, false) => 4,
-                },
-                PowerMeasurementMode::Continuous(voltage, current) => match (voltage, current) {
-                    (false, true) => 5,
-                    (true, false) => 6,
-                    (true, true) => 7,
-                    (false, false) => 4,
-                },
-            };
-            let new_config = (config & 0xFFF8) | mode_val;
-            self.write_register(Register::CONFIG, new_config)?;
-            Ok(())
-        })();
-        if let Err(ref _e) = res {
-            log_warn!(
-                "{}: Failed to set measurement mode at address 0x{:02x}: {:?}",
-                self.address,
-                defmt::Debug2Format(_e)
-            );
-        }
-        res
+    async fn set_measurement_mode(
+        &mut self,
+        mode: PowerMeasurementMode,
+    ) -> Result<(), Self::Error> {
+        let config = self.read_register(Register::CONFIG).await?;
+        let mode_val = match mode {
+            PowerMeasurementMode::PowerDown => 0,
+            PowerMeasurementMode::OneShot(voltage, current) => match (voltage, current) {
+                (false, true) => 1,
+                (true, false) => 2,
+                (true, true) => 3,
+                (false, false) => 4,
+            },
+            PowerMeasurementMode::Continuous(voltage, current) => match (voltage, current) {
+                (false, true) => 5,
+                (true, false) => 6,
+                (true, true) => 7,
+                (false, false) => 4,
+            },
+        };
+        let new_config = (config & 0xFFF8) | mode_val;
+        self.write_register(Register::CONFIG, new_config).await?;
+        Ok(())
     }
 }
 
@@ -186,8 +171,8 @@ impl<I: I2c> Probeable for Ina219<I> {
     type Error = PeripheralError;
 
     #[tracing::instrument(level = "trace")]
-    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
-        let id = self.read_register(Register::CONFIG)?;
+    async fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+        let id = self.read_register(Register::CONFIG).await?;
         if (id & 0xFFF8) == 0x3998 {
             Ok(id)
         } else {
@@ -196,8 +181,8 @@ impl<I: I2c> Probeable for Ina219<I> {
     }
 
     #[tracing::instrument(level = "trace")]
-    fn reset(&mut self) -> Result<(), Self::Error> {
-        self.write_register(Register::CONFIG, 0x8000)
+    async fn reset(&mut self) -> Result<(), Self::Error> {
+        self.write_register(Register::CONFIG, 0x8000).await
     }
 }
 
@@ -210,20 +195,20 @@ macro_rules! init_ina219 {
             use ::model::interfaces::BootStatus;
             use ::model::interfaces::Probeable;
             use $crate::ToPeripheralError;
-            if let Err(ref e) = current_sensor.read_chip_id() {
+            if let Err(ref e) = current_sensor.read_chip_id().await {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::warn!("INA219: Probing failed: {:?}", defmt::Debug2Format(e));
                 let pe = e.to_peripheral_error();
                 $boot_status.record_error(pe);
             }
-            if let Err(ref e) = current_sensor.reset() {
+            if let Err(ref e) = current_sensor.reset().await {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::warn!("INA219: Reset failed: {:?}", defmt::Debug2Format(e));
                 let pe = e.to_peripheral_error();
                 $boot_status.record_error(pe);
             }
         }
-        if let Err(e) = current_sensor.init() {
+        if let Err(e) = current_sensor.init().await {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
             defmt::warn!("INA219: Init failed: {:?}", defmt::Debug2Format(&e));
             use ::model::interfaces::BootStatus;

@@ -45,8 +45,7 @@ controller::declare_shell_commands! {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-type I2cBus =
-    embassy_rp::i2c::I2c<'static, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Blocking>;
+type I2cBus = embassy_rp::i2c::I2c<'static, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Async>;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 type MotorDevice =
@@ -194,7 +193,7 @@ async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
     // Initialize board peripherals using the unified board configuration
-    let board = app::Board::init(p);
+    let board = app::Board::init(p).await;
 
     let writer = platform::rtt::RttTxWriter;
 
@@ -290,14 +289,14 @@ async fn main(spawner: Spawner) {
         }]
     };
 
-    let board_i2c_ptr = app::SHARED_I2C.lock(|cell| {
-        let mut borrow = cell.borrow_mut();
-        if let Some(ref mut i2c) = borrow.0 {
+    let board_i2c_ptr = {
+        let mut guard = app::SHARED_I2C.lock().await;
+        if let Some(ref mut i2c) = guard.i2c {
             i2c as *mut _ as *mut _
         } else {
             core::ptr::null_mut()
         }
-    });
+    };
 
     let raw_motor_ptr = *app::MOTOR_CTRL_CORE1.wait();
     let board_motor_ptr =

@@ -59,10 +59,10 @@ pub trait PlatformI2cRecovery {
 /// Trait for sharing I2C access safely across tasks and cores.
 pub trait PlatformI2cAccess {
     /// The error type associated with this I2C bus.
-    type Error: embedded_hal::i2c::Error;
+    type Error: embedded_hal_async::i2c::Error;
 
     /// The type of I2C bus implementation returned.
-    type I2c<'a>: embedded_hal::i2c::I2c<Error = Self::Error>
+    type I2c<'a>: embedded_hal_async::i2c::I2c<Error = Self::Error>
     where
         Self: 'a;
 
@@ -284,9 +284,9 @@ impl PlatformI2cRecovery for Rp2040I2cRecovery {
 /// Concrete RP2040 shared I2C Access wrapper implementation.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 impl PlatformI2cAccess
-    for &'static embassy_sync::blocking_mutex::Mutex<
+    for &'static embassy_sync::mutex::Mutex<
         embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        core::cell::RefCell<crate::i2c::SafeI2c>,
+        crate::i2c::SafeI2c,
     >
 {
     type Error = embassy_rp::i2c::Error;

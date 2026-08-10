@@ -93,7 +93,7 @@ pub trait SensorReader<S> {
     type Error;
 
     /// Reads data from the sensor using the provided context block.
-    fn read_data(sensor: &mut S, ctx: &Self::Context) -> Result<Self::Data, Self::Error>;
+    async fn read_data(sensor: &mut S, ctx: &Self::Context) -> Result<Self::Data, Self::Error>;
 }
 
 /// Context block for reading proximity sensors.
@@ -116,8 +116,8 @@ impl<S: ProximitySensor> SensorReader<S> for ProximityReader {
         all(target_arch = "arm", feature = "sensors-core"),
         link_section = ".data.core1_func"
     )]
-    fn read_data(sensor: &mut S, _ctx: &Self::Context) -> Result<Self::Data, Self::Error> {
-        sensor.read_distance_mm()
+    async fn read_data(sensor: &mut S, _ctx: &Self::Context) -> Result<Self::Data, Self::Error> {
+        sensor.read_distance_mm().await
     }
 }
 
@@ -480,8 +480,8 @@ where
         link_section = ".data.core1_func"
     )]
     #[tracing::instrument(core1 = "core1", name = "sensor_controller::update", level = "info")]
-    pub fn update(&mut self) -> Result<Reader::Data, Reader::Error> {
-        let raw_data = Reader::read_data(self.state_manager.sensor_mut(), &self.context)?;
+    pub async fn update(&mut self) -> Result<Reader::Data, Reader::Error> {
+        let raw_data = Reader::read_data(self.state_manager.sensor_mut(), &self.context).await?;
         let data = self
             .state_manager
             .sensor()
@@ -506,13 +506,14 @@ where
         level = "info",
         skip(cmd)
     )]
-    pub fn handle_command(&mut self, cmd: SensorCommand) {
+    pub async fn handle_command(&mut self, cmd: SensorCommand) {
         match cmd {
             SensorCommand::ReadSensors => {
-                let _ = self.update();
+                let _ = self.update().await;
             }
             SensorCommand::ReadSensorsWithSignal(signal_ptr) => {
                 let res = Reader::read_data(self.state_manager.sensor_mut(), &self.context)
+                    .await
                     .map(|raw_d| {
                         let d = self
                             .state_manager
@@ -530,6 +531,7 @@ where
             }
             SensorCommand::ReadRawSensorsWithSignal(signal_ptr) => {
                 let res = Reader::read_data(self.state_manager.sensor_mut(), &self.context)
+                    .await
                     .map_err(|_| PeripheralError::DeviceNotAvailable);
                 unsafe {
                     let lock = &*signal_ptr.0;
@@ -541,6 +543,7 @@ where
                     .state_manager
                     .sensor_mut()
                     .read_raw_distance_and_rate()
+                    .await
                     .map_err(|_| PeripheralError::DeviceNotAvailable);
                 unsafe {
                     let lock = &*signal_ptr.0;
@@ -562,6 +565,7 @@ where
         &mut self,
         command_rx: embassy_sync::channel::Receiver<'static, M, SensorCommand, 4>,
     ) -> ! {
+        let mut last_read = embassy_time::Instant::now();
         loop {
             let timeout_dur = match self.state_manager.periodic_interval() {
                 PeriodicInterval::None => crate::OVERFLOW_SAFE_MAX_DURATION,
@@ -574,33 +578,46 @@ where
             );
 
             let res = if is_periodic {
+                let next_read_time = last_read + timeout_dur;
+                let now = embassy_time::Instant::now();
+                let remaining = if next_read_time > now {
+                    next_read_time - now
+                } else {
+                    embassy_time::Duration::from_millis(0)
+                };
+
                 // When actively polling periodically, ignore interrupt pin transitions to prevent unthrottled read storms
-                match platform::with_timeout!(command_rx.receive(), timeout_dur).await {
+                match platform::with_timeout!(command_rx.receive(), remaining).await {
                     Some(cmd) => {
-                        self.handle_command(cmd);
+                        self.handle_command(cmd).await;
                         Some(())
                     }
-                    None => None,
+                    None => {
+                        last_read = embassy_time::Instant::now();
+                        None
+                    }
                 }
             } else {
                 // When deep sleeping (no periodic interval), wait for either a command or the interrupt pin to wake us up
-                select_branch_with_timeout!(
+                let res = select_branch_with_timeout!(
                     timeout_dur,
                     command_rx.receive() => |cmd| {
-                        self.handle_command(cmd);
+                        self.handle_command(cmd).await;
                         Some(())
                     },
                     self.wait_for_data_ready() => || {
                         None
                     },
-                )
+                );
+                if res.is_none() {
+                    last_read = embassy_time::Instant::now();
+                }
+                res
             };
 
-            if res.is_none() && self.update().is_err() {
+            if res.is_none() && self.update().await.is_err() {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::warn!("SensorController: Periodic read failed; disabling periodic updates.");
-                self.state_manager
-                    .set_periodic_interval(PeriodicInterval::None);
+                defmt::warn!("SensorController: Periodic read failed.");
             }
         }
     }
@@ -1280,6 +1297,7 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize> ProximityFeatureConfig<Mu
     pub fn new(
         sensor_senders: &[crate::SensorSender<MutexRaw>],
         press_threshold_mm: u16,
+        near_threshold_mm: u16,
         wake_threshold_mm: u16,
         dual_long_press_action: crate::GestureAction,
         telemetry_tx: Option<crate::TelemetrySender<MutexRaw>>,
@@ -1291,7 +1309,11 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize> ProximityFeatureConfig<Mu
         Self {
             sensor_txs,
             gesture_detector: core::cell::RefCell::new(
-                platform::gesture_detector::ProximityGestureDetector::new(press_threshold_mm),
+                platform::gesture_detector::ProximityGestureDetector::new(
+                    press_threshold_mm,
+                    near_threshold_mm,
+                    wake_threshold_mm,
+                ),
             ),
             telemetry_client: core::cell::RefCell::new(
                 crate::telemetry_controller::SensorTelemetryClient::new(
@@ -1325,19 +1347,7 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
 
         let distance_mm = match reading {
             SensorReading::Proximity(d) => d,
-            SensorReading::Invalid => {
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::warn!(
-                    "VL53L0X sensor {:?} reported INVALID reading!",
-                    defmt::Debug2Format(&direction)
-                );
-                #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-                {
-                    extern crate std;
-                    std::println!("VL53L0X sensor {:?} reported INVALID reading!", direction);
-                }
-                8190
-            }
+            SensorReading::Invalid => u16::MAX,
         };
 
         self.telemetry_client

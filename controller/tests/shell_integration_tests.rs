@@ -64,19 +64,19 @@ impl embedded_io::Write for DummyWriter {
 
 struct DummyI2c;
 
-impl embedded_hal::i2c::ErrorType for DummyI2c {
+impl embedded_hal_async::i2c::ErrorType for DummyI2c {
     type Error = core::convert::Infallible;
 }
 
-impl embedded_hal::i2c::I2c for DummyI2c {
-    fn read(&mut self, _address: u8, read: &mut [u8]) -> Result<(), Self::Error> {
+impl embedded_hal_async::i2c::I2c for DummyI2c {
+    async fn read(&mut self, _address: u8, read: &mut [u8]) -> Result<(), Self::Error> {
         read.fill(0);
         Ok(())
     }
-    fn write(&mut self, _address: u8, _write: &[u8]) -> Result<(), Self::Error> {
+    async fn write(&mut self, _address: u8, _write: &[u8]) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn write_read(
+    async fn write_read(
         &mut self,
         _address: u8,
         _write: &[u8],
@@ -85,10 +85,10 @@ impl embedded_hal::i2c::I2c for DummyI2c {
         read.fill(0);
         Ok(())
     }
-    fn transaction(
+    async fn transaction(
         &mut self,
         _address: u8,
-        _operations: &mut [embedded_hal::i2c::Operation<'_>],
+        _operations: &mut [embedded_hal_async::i2c::Operation<'_>],
     ) -> Result<(), Self::Error> {
         Ok(())
     }

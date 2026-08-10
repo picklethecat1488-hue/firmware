@@ -2,6 +2,7 @@
 
 #![cfg_attr(not(test), no_std)]
 #![deny(missing_docs)]
+#![allow(async_fn_in_trait)]
 
 /// Calibration types.
 pub mod calibration;

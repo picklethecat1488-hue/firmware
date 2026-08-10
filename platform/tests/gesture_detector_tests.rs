@@ -15,7 +15,7 @@ fn update_detector(
 
 #[test]
 fn test_gesture_detector_debounce() {
-    let mut detector = ProximityGestureDetector::new(20);
+    let mut detector = ProximityGestureDetector::new(20, 100, 300);
 
     // 1. All out of range -> no change, returns None
     assert_eq!(
@@ -72,4 +72,41 @@ fn test_gesture_detector_debounce() {
         Some(Gesture::DualLongPress)
     );
     assert_eq!(detector.press_time_ms(), 5000);
+}
+
+#[test]
+fn test_gesture_detector_proximity_states() {
+    use model::types::Direction;
+    use platform::gesture_detector::ProximityState;
+
+    let mut detector = ProximityGestureDetector::new(20, 100, 300);
+
+    // Initial state: OutOfRange
+    for tracker in &detector.trackers {
+        assert_eq!(tracker.state, ProximityState::OutOfRange);
+    }
+
+    // 1. Enter InRange (< 300)
+    detector.register_distance(Direction::East, 250);
+    assert_eq!(detector.trackers[1].state, ProximityState::InRange);
+
+    // 2. Enter Near (< 100)
+    detector.register_distance(Direction::East, 80);
+    assert_eq!(detector.trackers[1].state, ProximityState::Near);
+
+    // 3. Enter Down (<= 20)
+    detector.register_distance(Direction::East, 15);
+    assert_eq!(detector.trackers[1].state, ProximityState::Down);
+
+    // 4. Back to Near
+    detector.register_distance(Direction::East, 50);
+    assert_eq!(detector.trackers[1].state, ProximityState::Near);
+
+    // 5. Back to InRange
+    detector.register_distance(Direction::East, 120);
+    assert_eq!(detector.trackers[1].state, ProximityState::InRange);
+
+    // 6. Back to OutOfRange
+    detector.register_distance(Direction::East, 400);
+    assert_eq!(detector.trackers[1].state, ProximityState::OutOfRange);
 }
