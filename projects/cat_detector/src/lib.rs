@@ -127,12 +127,10 @@ pub const FLASH_ERASE_SIZE: usize = 4096;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Thread-safe Mutex wrapping the active I2C peripheral for shared access between tasks.
-pub static SHARED_I2C: embassy_sync::blocking_mutex::Mutex<
+pub static SHARED_I2C: embassy_sync::mutex::Mutex<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    core::cell::RefCell<platform::i2c::SafeI2c>,
-> = embassy_sync::blocking_mutex::Mutex::new(core::cell::RefCell::new(
-    platform::i2c::SafeI2c::new(12, 13, 400_000),
-));
+    platform::i2c::SafeI2c,
+> = embassy_sync::mutex::Mutex::new(platform::i2c::SafeI2c::new(12, 13, 400_000));
 
 /// RawMutex type used by controllers.
 pub type MutexRaw = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;

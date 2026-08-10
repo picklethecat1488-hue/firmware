@@ -264,7 +264,7 @@ fn test_system_integration_flow() {
         // 2. Simulate object detection: North sensor reads 150mm
         println!("--- RUNNING STEP 2 ---");
         sensor_ctrl_north.sensor_mut().distance_mm = 150;
-        sensor_ctrl_north.update().unwrap();
+        sensor_ctrl_north.update().await.unwrap();
         let cmd = SYSTEM_CHANNEL.receive().await;
         process_system(&mut system_ctrl, cmd);
         drain_telemetry();
@@ -274,9 +274,11 @@ fn test_system_integration_flow() {
             MOTOR_CHANNEL.try_receive(),
             Ok(MotorCommand::SetSpeed(MotorSpeed::MAX))
         );
-        motor_ctrl.handle_command(MotorCommand::SetSpeed(MotorSpeed::MAX), None);
+        motor_ctrl
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::MAX), None)
+            .await;
         for _ in 0..100 {
-            motor_ctrl.tick_motor().unwrap();
+            motor_ctrl.tick_motor().await.unwrap();
         }
         assert_eq!(motor_ctrl.motor.speed, 100);
 
@@ -305,7 +307,7 @@ fn test_system_integration_flow() {
             Ok(SystemLedState::BlinksRedOncePerThirtySeconds)
         );
 
-        motor_ctrl.handle_command(MotorCommand::Stop, None);
+        motor_ctrl.handle_command(MotorCommand::Stop, None).await;
         assert_eq!(motor_ctrl.motor.speed, 0);
 
         // 4. Simulate battery hysteresis recovery: SoC rising to 11% (not charging)
@@ -405,9 +407,11 @@ fn test_system_integration_flow() {
             MOTOR_CHANNEL.try_receive(),
             Ok(MotorCommand::SetSpeed(MotorSpeed::MAX))
         );
-        motor_ctrl.handle_command(MotorCommand::SetSpeed(MotorSpeed::MAX), None);
+        motor_ctrl
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::MAX), None)
+            .await;
         for _ in 0..100 {
-            motor_ctrl.tick_motor().unwrap();
+            motor_ctrl.tick_motor().await.unwrap();
         }
         assert_eq!(motor_ctrl.motor.speed, 100);
 
@@ -580,7 +584,7 @@ fn test_system_integration_flow() {
         }
 
         sensor_ctrl_north.sensor_mut().distance_mm = 1000;
-        sensor_ctrl_north.update().unwrap();
+        sensor_ctrl_north.update().await.unwrap();
         let cmd = SYSTEM_CHANNEL.receive().await;
         process_system(&mut system_ctrl, cmd);
         drain_telemetry();

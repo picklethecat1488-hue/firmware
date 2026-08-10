@@ -145,10 +145,11 @@ where
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.core1_func"
     )]
-    pub fn read_torque_ma(&mut self) -> Result<i32, PeripheralError> {
+    pub async fn read_torque_ma(&mut self) -> Result<i32, PeripheralError> {
         let current = self
             .current_sensor
             .read_current_ma()
+            .await
             .map_err(|e| e.to_peripheral_error())?;
         self.last_current_ma = current;
         Ok(current)
@@ -165,7 +166,7 @@ where
         level = "info",
         skip(telemetry_client)
     )]
-    pub fn update(
+    pub async fn update(
         &mut self,
         mut telemetry_client: Option<&mut MotorTelemetryClient<CriticalSectionRawMutex>>,
     ) -> Result<(), PeripheralError> {
@@ -173,7 +174,7 @@ where
 
         let current = if is_running {
             // Read current sensor (torque proxy)
-            self.read_torque_ma()?
+            self.read_torque_ma().await?
         } else {
             0
         };
@@ -183,7 +184,8 @@ where
             let rpm = self.current_rpm();
             match self.limits.check_limits(rpm, current) {
                 MotorSafetyStatus::RpmExceeded(_rpm_val) => {
-                    self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut());
+                    self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut())
+                        .await;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::error!(
                         "Motor Controller: RPM safety limit exceeded ({} RPM). Stopped motor.",
@@ -191,7 +193,8 @@ where
                     );
                 }
                 MotorSafetyStatus::DryRun(_current_val) => {
-                    self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut());
+                    self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut())
+                        .await;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::warn!(
                         "Motor Controller: Low load / dry detected (current: {} mA). Stopped motor.",
@@ -199,7 +202,8 @@ where
                     );
                 }
                 MotorSafetyStatus::Stall(_current_val) => {
-                    self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut());
+                    self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut())
+                        .await;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::error!(
                         "Motor Controller: Motor stall detected (current: {} mA). Stopped motor.",
@@ -227,7 +231,7 @@ where
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.core1_func"
     )]
-    fn set_running_state(&mut self, running: bool) -> Result<(), PeripheralError> {
+    async fn set_running_state(&mut self, running: bool) -> Result<(), PeripheralError> {
         if running {
             self.startup_ticks = 0;
             if self.state == MotorState::Off {
@@ -236,6 +240,7 @@ where
                 self.state = MotorState::On;
                 self.current_sensor
                     .set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
+                    .await
                     .map_err(|e| e.to_peripheral_error())?;
             }
         } else {
@@ -249,7 +254,8 @@ where
             self.motor.stop().map_err(|e| e.to_peripheral_error())?;
             let _ = self
                 .current_sensor
-                .set_measurement_mode(PowerMeasurementMode::PowerDown);
+                .set_measurement_mode(PowerMeasurementMode::PowerDown)
+                .await;
         }
         Ok(())
     }
@@ -265,10 +271,10 @@ where
         level = "info",
         skip(cmd, telemetry_client)
     )]
-    pub fn handle_command(
+    pub async fn handle_command(
         &mut self,
         cmd: MotorCommand,
-        mut telemetry_client: Option<&mut MotorTelemetryClient<CriticalSectionRawMutex>>,
+        telemetry_client: Option<&mut MotorTelemetryClient<CriticalSectionRawMutex>>,
     ) {
         match cmd {
             MotorCommand::SetSpeed(speed) => {
@@ -282,7 +288,7 @@ where
                             self.speed = speed;
                         }
                     } else {
-                        if let Err(e) = self.set_running_state(true) {
+                        if let Err(e) = self.set_running_state(true).await {
                             if let Some(ref client) = telemetry_client {
                                 client.report_error(e);
                             }
@@ -306,13 +312,29 @@ where
                     val.clamp(-100, 100)
                 };
                 let speed = MotorSpeed::new(speed_val as i8).unwrap_or(MotorSpeed::ZERO);
-                self.handle_command(
-                    MotorCommand::SetSpeed(speed),
-                    telemetry_client.as_deref_mut(),
-                );
+                if speed != MotorSpeed::ZERO {
+                    if !self.calibration_present {
+                        if self.speed != speed {
+                            #[cfg(all(target_arch = "arm", target_os = "none"))]
+                            defmt::error!(
+                                "Motor Controller: Cannot start motor, calibration is not present!"
+                            );
+                            self.speed = speed;
+                        }
+                    } else {
+                        if let Err(e) = self.set_running_state(true).await {
+                            if let Some(ref client) = telemetry_client {
+                                client.report_error(e);
+                            }
+                        }
+                        self.speed = speed;
+                    }
+                } else {
+                    self.speed = MotorSpeed::ZERO;
+                }
             }
             MotorCommand::Stop => {
-                if let Err(e) = self.set_running_state(false) {
+                if let Err(e) = self.set_running_state(false).await {
                     if let Some(ref client) = telemetry_client {
                         client.report_error(e);
                     }
@@ -338,7 +360,7 @@ where
         link_section = ".data.core1_func"
     )]
     #[tracing::instrument(core1 = "core1", name = "motor_controller::tick_motor", level = "info")]
-    pub fn tick_motor(&mut self) -> Result<(), PeripheralError> {
+    pub async fn tick_motor(&mut self) -> Result<(), PeripheralError> {
         // 1. Ramping logic
         if self.state == MotorState::On {
             self.startup_ticks = self.startup_ticks.saturating_add(1);
@@ -351,7 +373,8 @@ where
                     self.motor.stop().map_err(|e| e.to_peripheral_error())?;
                     let _ = self
                         .current_sensor
-                        .set_measurement_mode(PowerMeasurementMode::PowerDown);
+                        .set_measurement_mode(PowerMeasurementMode::PowerDown)
+                        .await;
                 } else {
                     self.motor
                         .set_speed(self.active_speed)
@@ -366,7 +389,8 @@ where
                     self.motor.stop().map_err(|e| e.to_peripheral_error())?;
                     let _ = self
                         .current_sensor
-                        .set_measurement_mode(PowerMeasurementMode::PowerDown);
+                        .set_measurement_mode(PowerMeasurementMode::PowerDown)
+                        .await;
                 } else {
                     self.motor
                         .set_speed(self.active_speed)
@@ -393,7 +417,10 @@ where
 
         // 2. Call motor driver's tick() for software PWM toggling only when active
         if self.active_speed.get() != 0 {
-            self.motor.tick().map_err(|e| e.to_peripheral_error())?;
+            self.motor
+                .tick()
+                .await
+                .map_err(|e| e.to_peripheral_error())?;
         }
         Ok(())
     }
@@ -416,6 +443,7 @@ where
         if let Err(e) = self
             .current_sensor
             .set_measurement_mode(PowerMeasurementMode::PowerDown)
+            .await
         {
             telemetry_client.report_error(e.to_peripheral_error());
         }
@@ -435,11 +463,11 @@ where
 
                 // Process any available commands non-blockingly
                 while let Ok(cmd) = command_rx.try_receive() {
-                    self.handle_command(cmd, Some(&mut telemetry_client));
+                    self.handle_command(cmd, Some(&mut telemetry_client)).await;
                 }
 
                 // Tick ramping and duty cycle
-                if let Err(e) = self.tick_motor() {
+                if let Err(e) = self.tick_motor().await {
                     telemetry_client.report_error(e);
                 }
 
@@ -447,7 +475,7 @@ where
                 let now = embassy_time::Instant::now();
                 if now.duration_since(last_telemetry) >= MOTOR_INACTIVE_TICK_INTERVAL {
                     last_telemetry = now;
-                    if let Err(e) = self.update(Some(&mut telemetry_client)) {
+                    if let Err(e) = self.update(Some(&mut telemetry_client)).await {
                         telemetry_client.report_error(e);
                     }
                 }
@@ -460,16 +488,17 @@ where
                 let elapsed = now.duration_since(last_telemetry);
                 if elapsed >= MOTOR_INACTIVE_TICK_INTERVAL {
                     last_telemetry = now;
-                    if let Err(e) = self.update(Some(&mut telemetry_client)) {
+                    if let Err(e) = self.update(Some(&mut telemetry_client)).await {
                         telemetry_client.report_error(e);
                     }
                 } else {
                     let timeout = MOTOR_INACTIVE_TICK_INTERVAL - elapsed;
                     if let Some(cmd) = platform::with_timeout!(command_rx.receive(), timeout).await
                     {
-                        self.handle_command(cmd, Some(&mut telemetry_client));
+                        self.handle_command(cmd, Some(&mut telemetry_client)).await;
                         while let Ok(next_cmd) = command_rx.try_receive() {
-                            self.handle_command(next_cmd, Some(&mut telemetry_client));
+                            self.handle_command(next_cmd, Some(&mut telemetry_client))
+                                .await;
                         }
                     }
                 }
@@ -530,7 +559,7 @@ where
     <M as Tickable>::Error: ToPeripheralError,
 {
     fn read_current_ma_blocking(&mut self) -> Result<i32, PeripheralError> {
-        self.read_torque_ma()
+        embassy_futures::block_on(self.read_torque_ma())
     }
 }
 
@@ -543,14 +572,14 @@ where
     fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
         let motor_speed = MotorSpeed::new(speed).ok_or(PeripheralError::InvalidConfiguration)?;
         if motor_speed != MotorSpeed::ZERO {
-            self.set_running_state(true)?;
+            embassy_futures::block_on(self.set_running_state(true))?;
             self.speed = motor_speed;
             self.active_speed = motor_speed;
             self.motor
                 .set_speed(motor_speed)
                 .map_err(|e| e.to_peripheral_error())?;
         } else {
-            self.set_running_state(false)?;
+            embassy_futures::block_on(self.set_running_state(false))?;
         }
         Ok(())
     }
@@ -566,7 +595,7 @@ where
     }
 
     fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError> {
-        self.set_running_state(false)
+        embassy_futures::block_on(self.set_running_state(false))
     }
 
     fn update_calibration(

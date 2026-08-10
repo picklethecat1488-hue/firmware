@@ -8,8 +8,8 @@ pub trait Probeable {
     type Error;
 
     /// Reads the device's chip ID.
-    fn read_chip_id(&mut self) -> Result<u16, Self::Error>;
+    async fn read_chip_id(&mut self) -> Result<u16, Self::Error>;
 
     /// Performs a software reset to restore the device to its default state.
-    fn reset(&mut self) -> Result<(), Self::Error>;
+    async fn reset(&mut self) -> Result<(), Self::Error>;
 }

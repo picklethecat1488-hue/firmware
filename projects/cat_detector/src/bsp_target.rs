@@ -56,14 +56,15 @@ impl<'d> Board<'d> {
     /// # Arguments
     /// * `p` - The RP2040 peripheral set.
     #[tracing::instrument(level = "trace", skip(p))]
-    pub fn init(p: Peripherals) -> Self {
+    pub async fn init(p: Peripherals) -> Self {
         // Configure hardware stack guard using Cortex-M MPU
         platform::core_monitor::configure_mpu_stack_guard(crate::CORE0_STACK_BOTTOM);
 
         // Initialize the I2C0 peripheral inside SHARED_I2C static Mutex
-        crate::SHARED_I2C.lock(|cell| {
-            cell.borrow_mut().initialize();
-        });
+        {
+            let mut guard = crate::SHARED_I2C.lock().await;
+            guard.initialize();
+        }
         let mut i2c = platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C);
         let mut gpio_pins: [Option<Flex<'d>>; 30] = [
             None, // 0 - UART TX

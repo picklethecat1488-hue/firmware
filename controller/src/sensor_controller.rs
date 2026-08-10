@@ -93,7 +93,7 @@ pub trait SensorReader<S> {
     type Error;
 
     /// Reads data from the sensor using the provided context block.
-    fn read_data(sensor: &mut S, ctx: &Self::Context) -> Result<Self::Data, Self::Error>;
+    async fn read_data(sensor: &mut S, ctx: &Self::Context) -> Result<Self::Data, Self::Error>;
 }
 
 /// Context block for reading proximity sensors.
@@ -116,8 +116,8 @@ impl<S: ProximitySensor> SensorReader<S> for ProximityReader {
         all(target_arch = "arm", feature = "sensors-core"),
         link_section = ".data.core1_func"
     )]
-    fn read_data(sensor: &mut S, _ctx: &Self::Context) -> Result<Self::Data, Self::Error> {
-        sensor.read_distance_mm()
+    async fn read_data(sensor: &mut S, _ctx: &Self::Context) -> Result<Self::Data, Self::Error> {
+        sensor.read_distance_mm().await
     }
 }
 
@@ -480,8 +480,8 @@ where
         link_section = ".data.core1_func"
     )]
     #[tracing::instrument(core1 = "core1", name = "sensor_controller::update", level = "info")]
-    pub fn update(&mut self) -> Result<Reader::Data, Reader::Error> {
-        let raw_data = Reader::read_data(self.state_manager.sensor_mut(), &self.context)?;
+    pub async fn update(&mut self) -> Result<Reader::Data, Reader::Error> {
+        let raw_data = Reader::read_data(self.state_manager.sensor_mut(), &self.context).await?;
         let data = self
             .state_manager
             .sensor()
@@ -506,13 +506,14 @@ where
         level = "info",
         skip(cmd)
     )]
-    pub fn handle_command(&mut self, cmd: SensorCommand) {
+    pub async fn handle_command(&mut self, cmd: SensorCommand) {
         match cmd {
             SensorCommand::ReadSensors => {
-                let _ = self.update();
+                let _ = self.update().await;
             }
             SensorCommand::ReadSensorsWithSignal(signal_ptr) => {
                 let res = Reader::read_data(self.state_manager.sensor_mut(), &self.context)
+                    .await
                     .map(|raw_d| {
                         let d = self
                             .state_manager
@@ -530,6 +531,7 @@ where
             }
             SensorCommand::ReadRawSensorsWithSignal(signal_ptr) => {
                 let res = Reader::read_data(self.state_manager.sensor_mut(), &self.context)
+                    .await
                     .map_err(|_| PeripheralError::DeviceNotAvailable);
                 unsafe {
                     let lock = &*signal_ptr.0;
@@ -541,6 +543,7 @@ where
                     .state_manager
                     .sensor_mut()
                     .read_raw_distance_and_rate()
+                    .await
                     .map_err(|_| PeripheralError::DeviceNotAvailable);
                 unsafe {
                     let lock = &*signal_ptr.0;
@@ -586,7 +589,7 @@ where
                 // When actively polling periodically, ignore interrupt pin transitions to prevent unthrottled read storms
                 match platform::with_timeout!(command_rx.receive(), remaining).await {
                     Some(cmd) => {
-                        self.handle_command(cmd);
+                        self.handle_command(cmd).await;
                         Some(())
                     }
                     None => {
@@ -599,7 +602,7 @@ where
                 let res = select_branch_with_timeout!(
                     timeout_dur,
                     command_rx.receive() => |cmd| {
-                        self.handle_command(cmd);
+                        self.handle_command(cmd).await;
                         Some(())
                     },
                     self.wait_for_data_ready() => || {
@@ -612,7 +615,7 @@ where
                 res
             };
 
-            if res.is_none() && self.update().is_err() {
+            if res.is_none() && self.update().await.is_err() {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::warn!("SensorController: Periodic read failed.");
             }
