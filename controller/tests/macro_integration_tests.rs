@@ -242,6 +242,7 @@ fn test_spawn_all_controllers_configuration() {
                     SENSOR_WEST_CHANNEL.sender(),
                 ],
                 20,
+                100,
                 300,
                 controller::GestureAction::TogglePower,
                 Some(TELEMETRY_CHANNEL.sender()),

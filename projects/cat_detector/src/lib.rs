@@ -76,6 +76,9 @@ pub const DEFAULT_WAKE_THRESHOLD_MM: u16 = 300;
 /// The default press threshold in millimeters under which gesture button presses are detected.
 pub const DEFAULT_PRESS_THRESHOLD_MM: u16 = 20;
 
+/// The default near threshold in millimeters for intermediate proximity alerts.
+pub const DEFAULT_NEAR_THRESHOLD_MM: u16 = 100;
+
 /// Start address of the filesystem storage partition in flash (offset from start of flash).
 pub const STORAGE_PARTITION_START: u32 = 0x1C_0000; // 1.75 MB
 /// End address of the filesystem storage partition in flash (2.00 MB limit).
@@ -591,6 +594,7 @@ pub fn create_default_feature_set(
                     SENSOR_WEST_CHANNEL.sender(),
                 ],
                 DEFAULT_PRESS_THRESHOLD_MM,
+                DEFAULT_NEAR_THRESHOLD_MM,
                 DEFAULT_WAKE_THRESHOLD_MM,
                 controller::GestureAction::TogglePower,
                 Some(TELEMETRY_CHANNEL.sender()),

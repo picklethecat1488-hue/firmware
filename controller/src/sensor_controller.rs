@@ -1294,6 +1294,7 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize> ProximityFeatureConfig<Mu
     pub fn new(
         sensor_senders: &[crate::SensorSender<MutexRaw>],
         press_threshold_mm: u16,
+        near_threshold_mm: u16,
         wake_threshold_mm: u16,
         dual_long_press_action: crate::GestureAction,
         telemetry_tx: Option<crate::TelemetrySender<MutexRaw>>,
@@ -1305,7 +1306,11 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize> ProximityFeatureConfig<Mu
         Self {
             sensor_txs,
             gesture_detector: core::cell::RefCell::new(
-                platform::gesture_detector::ProximityGestureDetector::new(press_threshold_mm),
+                platform::gesture_detector::ProximityGestureDetector::new(
+                    press_threshold_mm,
+                    near_threshold_mm,
+                    wake_threshold_mm,
+                ),
             ),
             telemetry_client: core::cell::RefCell::new(
                 crate::telemetry_controller::SensorTelemetryClient::new(
