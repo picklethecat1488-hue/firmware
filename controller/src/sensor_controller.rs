@@ -861,7 +861,7 @@ pub fn handle_sensor_cli<
             let _ = core::writeln!(writer);
             // Print headers
             for named in resolver.sensors() {
-                let _ = core::write!(writer, "{:<25}", named.name);
+                let _ = core::write!(writer, "{:<40}", named.name);
             }
             let _ = core::writeln!(writer);
 
@@ -893,7 +893,7 @@ pub fn handle_sensor_cli<
                         _ => None,
                     };
 
-                    let mut val_buf = [0u8; 32];
+                    let mut val_buf = [0u8; 64];
                     let mut val_writer = WriteBuffer::new(&mut val_buf);
                     match dist {
                         Ok(reading) => match reading {
@@ -939,7 +939,7 @@ pub fn handle_sensor_cli<
                             let _ = core::write!(&mut val_writer, "FAILED");
                         }
                     }
-                    let _ = core::write!(writer, "{:<25}", val_writer.as_str());
+                    let _ = core::write!(writer, "{:<40}", val_writer.as_str());
                 }
                 let _ = core::writeln!(writer);
             }
@@ -1186,7 +1186,13 @@ pub fn handle_sensor_cli<
             };
 
             if d_val >= cal_distance {
-                return Err("Measured distance must be less than calibration distance (crosstalk pulls reading closer)");
+                let _ = core::writeln!(
+                    writer,
+                    "Error: Measured distance ({} mm) must be less than calibration distance ({} mm) to calculate crosstalk.",
+                    d_val,
+                    cal_distance
+                );
+                return Err("Measured distance must be less than calibration distance");
             }
 
             // Calculate crosstalk rate in milli-MCPS:
