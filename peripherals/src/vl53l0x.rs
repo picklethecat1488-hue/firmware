@@ -311,10 +311,10 @@ impl<I: I2c> Vl53l0x<I> {
     }
 
     /// Sets the crosstalk compensation peak rate in milli-MCPS (Mega Counts Per Second * 1000).
-    /// Converts the value to 3.13 fixed-point format and writes to register `0x20`.
+    /// Converts the value to Q9.7 fixed-point format and writes to register `0x20`.
     /// A value of 0 disables crosstalk compensation.
     pub fn set_crosstalk_compensation(&mut self, rate_m_mcps: u16) -> Result<(), PeripheralError> {
-        let val = ((rate_m_mcps as u32 * 8192) / 1000) as u16;
+        let val = ((rate_m_mcps as u32 * 128) / 1000) as u16;
         let bytes = val.to_be_bytes();
         self.i2c
             .write(self.address, &[0x20, bytes[0], bytes[1]])
