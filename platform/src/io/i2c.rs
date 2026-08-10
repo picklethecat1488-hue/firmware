@@ -12,11 +12,56 @@ use embassy_sync::blocking_mutex::Mutex;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// A wrapper structure containing the initialized I2C0 peripheral on target.
-pub struct SafeI2c(
-    pub  Option<
+pub struct SafeI2c {
+    /// Active I2C0 blocking driver instance
+    pub i2c: Option<
         embassy_rp::i2c::I2c<'static, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Blocking>,
     >,
-);
+    /// The GPIO pin number used for I2C SDA
+    pub sda_pin: u8,
+    /// The GPIO pin number used for I2C SCL
+    pub scl_pin: u8,
+    /// The I2C clock frequency in Hz
+    pub frequency: u32,
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl SafeI2c {
+    /// Creates a new SafeI2c with target pins and frequency cached.
+    pub const fn new(sda_pin: u8, scl_pin: u8, frequency: u32) -> Self {
+        Self {
+            i2c: None,
+            sda_pin,
+            scl_pin,
+            frequency,
+        }
+    }
+
+    /// Performs bus recovery and initializes the blocking I2C0 driver.
+    pub fn initialize(&mut self) {
+        // Run bus recovery sequence first to unstuck any locked device
+        let recovery = crate::rp2040::Rp2040I2cRecovery {
+            sda_pin: self.sda_pin,
+            scl_pin: self.scl_pin,
+        };
+        unsafe {
+            use crate::rp2040::PlatformI2cRecovery as _;
+            let _ = recovery.recover_i2c_bus();
+        }
+
+        // Steal control of the I2C0 peripheral and the SCL/SDA pins
+        let i2c0 = unsafe { embassy_rp::peripherals::I2C0::steal() };
+        let pin_scl = unsafe { embassy_rp::peripherals::PIN_13::steal() };
+        let pin_sda = unsafe { embassy_rp::peripherals::PIN_12::steal() };
+
+        let mut config = embassy_rp::i2c::Config::default();
+        config.frequency = self.frequency;
+
+        self.i2c = Some(embassy_rp::i2c::I2c::new_blocking(
+            i2c0, pin_scl, pin_sda, config,
+        ));
+    }
+}
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[derive(Clone, Copy)]
@@ -31,6 +76,41 @@ impl<'a> SharedI2cWrapper<'a> {
     pub const fn new(mutex: &'a Mutex<CriticalSectionRawMutex, RefCell<SafeI2c>>) -> Self {
         Self { mutex }
     }
+
+    /// Checks SCL and SDA line states. If either is stuck low (bus lockup),
+    /// performs a bus recovery sequence and re-initializes the I2C0 peripheral.
+    fn check_and_recover_i2c(&self) {
+        use embassy_rp::gpio::Flex;
+
+        let (sda_pin, scl_pin) = self.mutex.lock(|cell| {
+            let guard = cell.borrow();
+            (guard.sda_pin, guard.scl_pin)
+        });
+
+        let sda_low = unsafe {
+            let pin = Flex::new(embassy_rp::gpio::AnyPin::steal(sda_pin));
+            !pin.is_high()
+        };
+        let scl_low = unsafe {
+            let pin = Flex::new(embassy_rp::gpio::AnyPin::steal(scl_pin));
+            !pin.is_high()
+        };
+
+        if sda_low || scl_low {
+            self.mutex.lock(|cell| {
+                let mut guard = cell.borrow_mut();
+                // Drop the old I2C instance to free pins/peripheral
+                guard.i2c = None;
+                // Re-initialize using cached configuration
+                guard.initialize();
+            });
+            defmt::warn!(
+                "SharedI2cWrapper: stuck bus detected (SDA: {}, SCL: {}). Recovering...",
+                !sda_low,
+                !scl_low
+            );
+        }
+    }
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -41,9 +121,10 @@ impl<'a> embedded_hal::i2c::ErrorType for SharedI2cWrapper<'a> {
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 impl<'a> embedded_hal::i2c::I2c for SharedI2cWrapper<'a> {
     fn read(&mut self, address: u8, read: &mut [u8]) -> Result<(), Self::Error> {
+        self.check_and_recover_i2c();
         self.mutex.lock(|cell| {
             let mut guard = cell.borrow_mut();
-            if let Some(ref mut i2c) = guard.0 {
+            if let Some(ref mut i2c) = guard.i2c {
                 i2c.read(address, read)
             } else {
                 Err(embassy_rp::i2c::Error::Abort(
@@ -54,9 +135,10 @@ impl<'a> embedded_hal::i2c::I2c for SharedI2cWrapper<'a> {
     }
 
     fn write(&mut self, address: u8, write: &[u8]) -> Result<(), Self::Error> {
+        self.check_and_recover_i2c();
         self.mutex.lock(|cell| {
             let mut guard = cell.borrow_mut();
-            if let Some(ref mut i2c) = guard.0 {
+            if let Some(ref mut i2c) = guard.i2c {
                 i2c.write(address, write)
             } else {
                 Err(embassy_rp::i2c::Error::Abort(
@@ -72,9 +154,10 @@ impl<'a> embedded_hal::i2c::I2c for SharedI2cWrapper<'a> {
         write: &[u8],
         read: &mut [u8],
     ) -> Result<(), Self::Error> {
+        self.check_and_recover_i2c();
         self.mutex.lock(|cell| {
             let mut guard = cell.borrow_mut();
-            if let Some(ref mut i2c) = guard.0 {
+            if let Some(ref mut i2c) = guard.i2c {
                 i2c.write_read(address, write, read)
             } else {
                 Err(embassy_rp::i2c::Error::Abort(
@@ -89,9 +172,10 @@ impl<'a> embedded_hal::i2c::I2c for SharedI2cWrapper<'a> {
         address: u8,
         operations: &mut [embedded_hal::i2c::Operation<'_>],
     ) -> Result<(), Self::Error> {
+        self.check_and_recover_i2c();
         self.mutex.lock(|cell| {
             let mut guard = cell.borrow_mut();
-            if let Some(ref mut i2c) = guard.0 {
+            if let Some(ref mut i2c) = guard.i2c {
                 i2c.transaction(address, operations)
             } else {
                 Err(embassy_rp::i2c::Error::Abort(

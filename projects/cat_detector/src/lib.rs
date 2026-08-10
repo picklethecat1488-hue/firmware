@@ -130,9 +130,9 @@ pub const FLASH_ERASE_SIZE: usize = 4096;
 pub static SHARED_I2C: embassy_sync::blocking_mutex::Mutex<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     core::cell::RefCell<platform::i2c::SafeI2c>,
-> = embassy_sync::blocking_mutex::Mutex::new(core::cell::RefCell::new(platform::i2c::SafeI2c(
-    None,
-)));
+> = embassy_sync::blocking_mutex::Mutex::new(core::cell::RefCell::new(
+    platform::i2c::SafeI2c::new(12, 13, 400_000),
+));
 
 /// RawMutex type used by controllers.
 pub type MutexRaw = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -245,7 +245,6 @@ pub static mut PANIC_FLASH: Option<FlashDevice> = None;
 pub async fn init_controllers(board: Board<'static>) {
     let Board {
         flash,
-        i2c,
         temp_sensor,
         fuel_gauge_alert_pin,
         led_driver,
@@ -259,10 +258,6 @@ pub async fn init_controllers(board: Board<'static>) {
         current_sensor,
         ..
     } = board;
-
-    SHARED_I2C.lock(|cell| {
-        cell.borrow_mut().0 = Some(i2c);
-    });
 
     {
         let mut sensor = SHARED_TEMP_SENSOR.lock().await;

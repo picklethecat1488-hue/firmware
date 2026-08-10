@@ -231,12 +231,18 @@ where
         if running {
             self.startup_ticks = 0;
             if self.state == MotorState::Off {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::info!("Motor Controller: Starting motor...");
                 self.state = MotorState::On;
                 self.current_sensor
                     .set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
                     .map_err(|e| e.to_peripheral_error())?;
             }
         } else {
+            if self.state != MotorState::Off {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::info!("Motor Controller: Stopping motor...");
+            }
             self.state = MotorState::Off;
             self.active_speed = MotorSpeed::ZERO;
             self.speed = MotorSpeed::ZERO;

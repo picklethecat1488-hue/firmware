@@ -292,7 +292,7 @@ async fn main(spawner: Spawner) {
 
     let board_i2c_ptr = app::SHARED_I2C.lock(|cell| {
         let mut borrow = cell.borrow_mut();
-        if let Some(ref mut i2c) = borrow.0 {
+        if let Some(ref mut i2c) = borrow.i2c {
             i2c as *mut _ as *mut _
         } else {
             core::ptr::null_mut()
