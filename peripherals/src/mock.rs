@@ -3,7 +3,7 @@ use model::interfaces::{
     ChargeStatus, FuelGauge, LedDriver, Motor, PowerMeasurementMode, PowerSensor, Probeable,
     ProximitySensor, TemperatureSensor, Tickable, WaitableMeasurement,
 };
-use model::types::{MotorSpeed, PeripheralError};
+use model::types::{MotorSpeed, PeripheralError, SensorReading};
 
 /// A mock implementation of a Motor for unit testing on the host.
 pub struct MockMotor {
@@ -298,6 +298,24 @@ impl MockProximitySensor {
     }
 }
 
+impl model::calibration::Calibration for MockProximitySensor {
+    const CALIBRATION_FILE_NAME: &'static str = "dummy_cal.cbor";
+    type Store = model::calibration::Vl53l0xCalibration;
+}
+
+impl model::calibration::ApplyCalibration for MockProximitySensor {
+    type Input = SensorReading;
+    type Output = SensorReading;
+    type Error = &'static str;
+
+    fn apply_calibration(&self, reading: Self::Input) -> Result<Self::Output, Self::Error> {
+        match reading {
+            SensorReading::Proximity(_) => Ok(reading),
+            _ => Err("Non-proximity reading cannot be calibrated"),
+        }
+    }
+}
+
 impl WaitableMeasurement for MockProximitySensor {
     fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
         if self.should_fail {
@@ -311,16 +329,19 @@ impl WaitableMeasurement for MockProximitySensor {
 impl ProximitySensor for MockProximitySensor {
     type Error = ();
 
-    fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
+    fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
         if self.should_fail {
             Err(())
+        } else if self.distance_mm == 0 || self.distance_mm == 8190 {
+            Ok(SensorReading::Invalid)
         } else {
-            Ok(self.distance_mm)
+            Ok(SensorReading::Proximity(self.distance_mm))
         }
     }
 
-    fn read_distance_raw(&mut self) -> Result<u16, Self::Error> {
-        self.read_distance_mm()
+    fn read_raw_distance_and_rate(&mut self) -> Result<(SensorReading, u16), Self::Error> {
+        let reading = self.read_distance_mm()?;
+        Ok((reading, 2500)) // Return a dummy peak rate of 2500 (19.5 Mcps)
     }
 }
 
@@ -369,12 +390,17 @@ impl WaitableMeasurement for DummyProximitySensor {
 impl ProximitySensor for DummyProximitySensor {
     type Error = core::convert::Infallible;
 
-    fn read_distance_mm(&mut self) -> Result<u16, Self::Error> {
-        Ok(self.distance_mm)
+    fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
+        if self.distance_mm == 0 || self.distance_mm == 8190 {
+            Ok(SensorReading::Invalid)
+        } else {
+            Ok(SensorReading::Proximity(self.distance_mm))
+        }
     }
 
-    fn read_distance_raw(&mut self) -> Result<u16, Self::Error> {
-        self.read_distance_mm()
+    fn read_raw_distance_and_rate(&mut self) -> Result<(SensorReading, u16), Self::Error> {
+        let reading = self.read_distance_mm()?;
+        Ok((reading, 2500)) // Return a dummy peak rate of 2500 (19.5 Mcps)
     }
 }
 
@@ -388,7 +414,23 @@ impl Probeable for DummyProximitySensor {
     }
 }
 
-impl model::calibration::Calibration for DummyProximitySensor {}
+impl model::calibration::Calibration for DummyProximitySensor {
+    const CALIBRATION_FILE_NAME: &'static str = "dummy_cal.cbor";
+    type Store = model::calibration::Vl53l0xCalibration;
+}
+
+impl model::calibration::ApplyCalibration for DummyProximitySensor {
+    type Input = SensorReading;
+    type Output = SensorReading;
+    type Error = &'static str;
+
+    fn apply_calibration(&self, reading: Self::Input) -> Result<Self::Output, Self::Error> {
+        match reading {
+            SensorReading::Proximity(_) => Ok(reading),
+            _ => Err("Non-proximity reading cannot be calibrated"),
+        }
+    }
+}
 
 /// A mock implementation of a ChargeStatus for unit testing.
 pub struct MockCharger {

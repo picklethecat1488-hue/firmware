@@ -163,18 +163,26 @@ pub trait BlockingThermalReader {
 }
 
 /// Trait for reading proximity distance blocking-ly.
-pub trait BlockingProximityReader {
+pub trait BlockingProximityReader:
+    model::calibration::ApplyCalibration<
+    Input = model::types::SensorReading,
+    Output = model::types::SensorReading,
+    Error = &'static str,
+>
+{
     /// Read distance in millimeters.
-    fn read_distance_blocking(&mut self) -> Result<u16, PeripheralError>;
+    fn read_distance_blocking(&mut self) -> Result<model::types::SensorReading, PeripheralError>;
 
     /// Read raw distance in millimeters (ignoring calibration mapping).
-    fn read_raw_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
+    fn read_raw_distance_blocking(
+        &mut self,
+    ) -> Result<model::types::SensorReading, PeripheralError> {
         self.read_distance_blocking()
     }
 
     /// Get the latest cached proximity distance in millimeters.
-    fn latest_distance(&self) -> u16 {
-        1000
+    fn latest_distance(&self) -> model::types::SensorReading {
+        model::types::SensorReading::Invalid
     }
 
     /// Send a command to the sensor controller background task.
@@ -183,6 +191,14 @@ pub trait BlockingProximityReader {
         _cmd: crate::sensor_controller::SensorCommand,
     ) -> Result<(), PeripheralError> {
         Err(PeripheralError::NotImplemented)
+    }
+
+    /// Update the reader's internal calibration parameters.
+    fn update_calibration(
+        &mut self,
+        _cal: &model::calibration::Vl53l0xCalibration,
+    ) -> Result<(), PeripheralError> {
+        Ok(())
     }
 }
 
@@ -199,7 +215,7 @@ impl BlockingThermalReader for () {
 }
 
 impl BlockingProximityReader for () {
-    fn read_distance_blocking(&mut self) -> Result<u16, PeripheralError> {
+    fn read_distance_blocking(&mut self) -> Result<model::types::SensorReading, PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
 }
@@ -227,7 +243,7 @@ pub trait BlockingMotorWriter {
     /// Update the writer's internal calibration parameters.
     fn update_calibration(
         &mut self,
-        _cal: model::calibration::CalibrationType,
+        _cal: &model::calibration::MotorCalibration,
     ) -> Result<(), PeripheralError> {
         Ok(())
     }

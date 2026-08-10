@@ -7,32 +7,28 @@ use model::types::Direction;
 fn test_two_point_calibration_map() {
     // Standard mapping: low < high
     let cal = TwoPointCalibration::new(20, 120);
-    assert_eq!(cal.map(20, 100), 0);
-    assert_eq!(cal.map(120, 100), 100);
-    assert_eq!(cal.map(70, 100), 50);
-    assert_eq!(cal.map(10, 100), 0);
-    assert_eq!(cal.map(170, 100), 150);
+    assert_eq!(cal.map(20), 0);
+    assert_eq!(cal.map(120), 100);
+    assert_eq!(cal.map(70), 50);
+    assert_eq!(cal.map(10), 0);
+    assert_eq!(cal.map(170), 150);
 
     // Inverse mapping: low > high
     let cal_inv = TwoPointCalibration::new(100, 20);
-    assert_eq!(cal_inv.map(100, 100), 0);
-    assert_eq!(cal_inv.map(20, 100), 100);
-    assert_eq!(cal_inv.map(60, 100), 50);
-    assert_eq!(cal_inv.map(110, 100), 0);
-    assert_eq!(cal_inv.map(10, 100), 100);
+    assert_eq!(cal_inv.map(100), 0);
+    assert_eq!(cal_inv.map(20), 100);
+    assert_eq!(cal_inv.map(60), 50);
+    assert_eq!(cal_inv.map(110), 0);
+    assert_eq!(cal_inv.map(10), 100);
 }
 
 #[test]
 fn test_two_point_calibration_edge_cases() {
     // Equal low and high: low == high
     let cal_equal = TwoPointCalibration::new(50, 50);
-    assert_eq!(cal_equal.map(0, 100), 0);
-    assert_eq!(cal_equal.map(50, 100), 50);
-    assert_eq!(cal_equal.map(100, 100), 100);
-
-    // Scale is 0
-    let cal = TwoPointCalibration::new(10, 110);
-    assert_eq!(cal.map(60, 0), 0);
+    assert_eq!(cal_equal.map(0), 0);
+    assert_eq!(cal_equal.map(50), 50);
+    assert_eq!(cal_equal.map(100), 100);
 }
 
 #[test]
@@ -64,14 +60,46 @@ fn test_vl53l0x_calibration() {
     // Default values should be (0, 0) for all sensors
     assert_eq!(cal[Direction::North].low, 0);
     assert_eq!(cal[Direction::North].high, 0);
+    assert_eq!(cal.xtalk_m_mcps[Direction::North as usize], 0);
 
     let sensor_cal = TwoPointCalibration::new(10, 100);
     cal[Direction::North] = sensor_cal;
     cal[Direction::East] = TwoPointCalibration::new(20, 120);
     cal[Direction::West] = TwoPointCalibration::new(30, 130);
+    cal.xtalk_m_mcps[Direction::North as usize] = 50;
+    cal.xtalk_m_mcps[Direction::East as usize] = 100;
+    cal.xtalk_m_mcps[Direction::West as usize] = 150;
 
     assert_eq!(cal[Direction::North].low, 10);
     assert_eq!(cal[Direction::North].high, 100);
     assert_eq!(cal[Direction::East].low, 20);
     assert_eq!(cal[Direction::West].low, 30);
+    assert_eq!(cal.xtalk_m_mcps[Direction::North as usize], 50);
+    assert_eq!(cal.xtalk_m_mcps[Direction::East as usize], 100);
+    assert_eq!(cal.xtalk_m_mcps[Direction::West as usize], 150);
+}
+
+#[test]
+fn test_cbor_serialization_structure() {
+    let mut cal = Vl53l0xCalibration::default();
+    cal[Direction::North] = TwoPointCalibration::new(38, 20);
+    cal[Direction::East] = TwoPointCalibration::new(42, 20);
+    cal[Direction::West] = TwoPointCalibration::new(48, 20);
+    cal.xtalk_m_mcps = [12, 34, 56, 0];
+
+    let mut buf = [0u8; 128];
+    let cursor = minicbor::encode::write::Cursor::new(&mut buf[..]);
+    let mut encoder = minicbor::Encoder::new(cursor);
+    encoder.encode(cal).unwrap();
+    let len = encoder.into_writer().position();
+
+    // Now let's decode it back
+    let decoded = minicbor::decode::<Vl53l0xCalibration>(&buf[..len]).unwrap();
+    assert_eq!(decoded[Direction::North].low, 38);
+    assert_eq!(decoded[Direction::North].high, 20);
+    assert_eq!(decoded[Direction::East].low, 42);
+    assert_eq!(decoded[Direction::East].high, 20);
+    assert_eq!(decoded[Direction::West].low, 48);
+    assert_eq!(decoded[Direction::West].high, 20);
+    assert_eq!(decoded.xtalk_m_mcps, [12, 34, 56, 0]);
 }

@@ -1,5 +1,5 @@
 use model::interfaces::NoTick;
-use model::types::{Direction, MotorSpeed};
+use model::types::{Direction, MotorSpeed, SensorReading};
 use peripherals::mock::{DummyCurrentSensor, MockMotor, MockProximitySensor};
 
 #[test]
@@ -30,10 +30,10 @@ fn test_core_gating_sensor_compiles() {
         300,
     );
 
-    assert_eq!(sensor_ctrl.latest_data(), 1000);
+    assert_eq!(sensor_ctrl.latest_data(), SensorReading::Invalid);
     let update_res = sensor_ctrl.update();
     assert!(update_res.is_ok());
-    assert_eq!(sensor_ctrl.latest_data(), 500);
+    assert_eq!(sensor_ctrl.latest_data(), SensorReading::Proximity(500));
 }
 
 #[test]

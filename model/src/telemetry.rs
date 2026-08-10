@@ -21,7 +21,7 @@ pub enum TelemetryRecord {
     FuelGauge(#[n(0)] FuelGaugeTelemetry),
     /// Proximity telemetry.
     #[n(5)]
-    Proximity(#[n(0)] ProximityTelemetry),
+    Proximity(#[n(0)] SensorTelemetry),
     /// Indicator LED state.
     #[n(6)]
     Led(#[n(0)] SystemLedState),
@@ -200,7 +200,7 @@ impl_into_telemetry! {
     ThermalStatus => Thermal,
     SystemStatus => System,
     FuelGaugeTelemetry => FuelGauge,
-    ProximityTelemetry => Proximity,
+    SensorTelemetry => Proximity,
     SystemLedState => Led,
     Gesture => Gesture,
     FlashEraseTelemetry => FlashTelemetry,

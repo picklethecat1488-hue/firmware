@@ -42,11 +42,27 @@ impl controller::BlockingThermalReader for MockThermalCtrl {
 
 pub struct MockSensorCtrl;
 impl controller::BlockingProximityReader for MockSensorCtrl {
-    fn read_distance_blocking(&mut self) -> Result<u16, model::types::PeripheralError> {
-        Ok(100)
+    fn read_distance_blocking(&mut self) -> Result<model::types::SensorReading, model::types::PeripheralError> {
+        Ok(model::types::SensorReading::Proximity(100))
     }
-    fn latest_distance(&self) -> u16 {
-        100
+    fn latest_distance(&self) -> model::types::SensorReading {
+        model::types::SensorReading::Proximity(100)
+    }
+}
+impl model::calibration::Calibration for MockSensorCtrl {
+    const CALIBRATION_FILE_NAME: &'static str = "vl53l0x_cal.cbor";
+    type Store = model::calibration::Vl53l0xCalibration;
+}
+impl model::calibration::ApplyCalibration for MockSensorCtrl {
+    type Input = model::types::SensorReading;
+    type Output = model::types::SensorReading;
+    type Error = &'static str;
+
+    fn apply_calibration(&self, reading: Self::Input) -> Result<Self::Output, Self::Error> {
+        match reading {
+            model::types::SensorReading::Proximity(_) => Ok(reading),
+            _ => Err("Non-proximity reading cannot be calibrated"),
+        }
     }
 }
 
@@ -66,6 +82,10 @@ impl controller::BlockingMotorWriter for MockMotorCtrl {
     fn stop_motor_blocking(&mut self) -> Result<(), model::types::PeripheralError> {
         Ok(())
     }
+}
+impl model::calibration::Calibration for MockMotorCtrl {
+    const CALIBRATION_FILE_NAME: &'static str = "motor_cal.cbor";
+    type Store = model::calibration::MotorCalibration;
 }
 
 pub struct SampleShellConfig;

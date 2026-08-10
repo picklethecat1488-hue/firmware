@@ -40,8 +40,8 @@ pub enum SystemCommand {
     ProximityUpdate {
         /// The direction of the sensor that updated.
         direction: Direction,
-        /// The distance in mm measured by the sensor.
-        distance_mm: u16,
+        /// The typesafe reading.
+        reading: SensorReading,
     },
     /// High-level gesture detected.
     Gesture(Gesture),
@@ -69,13 +69,10 @@ impl core::fmt::Debug for SystemCommand {
                 .field("state_of_charge", state_of_charge)
                 .field("charger_state", charger_state)
                 .finish(),
-            Self::ProximityUpdate {
-                direction,
-                distance_mm,
-            } => f
+            Self::ProximityUpdate { direction, reading } => f
                 .debug_struct("ProximityUpdate")
                 .field("direction", direction)
-                .field("distance_mm", distance_mm)
+                .field("reading", reading)
                 .finish(),
             Self::Gesture(g) => f.debug_tuple("Gesture").field(g).finish(),
             Self::StateChanged { from, to } => f
@@ -109,15 +106,20 @@ impl crate::battery_controller::FromBatteryUpdate for SystemCommand {
 }
 
 impl crate::sensor_controller::FromProximityUpdate for SystemCommand {
-    fn from_proximity_update(metadata: crate::types::SensorMetadata, distance_mm: u16) -> Self {
+    fn from_proximity_update(
+        metadata: crate::types::SensorMetadata,
+        reading: SensorReading,
+    ) -> Self {
         SystemCommand::ProximityUpdate {
             direction: metadata.direction,
-            distance_mm,
+            reading,
         }
     }
 }
 
-use model::types::{BootReason, ChargeState, Direction, Gesture, SystemStatus, TelemetryRecord};
+use model::types::{
+    BootReason, ChargeState, Direction, Gesture, SensorReading, SystemStatus, TelemetryRecord,
+};
 
 /// A set of features and event hooks for customizing the system controller's behavior.
 pub trait SystemFeatureSet<MutexRaw: RawMutex + 'static, const N: usize> {
@@ -340,14 +342,11 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
             } => {
                 self.update_battery_status(state_of_charge, charger_state)?;
             }
-            SystemCommand::ProximityUpdate {
-                direction,
-                distance_mm,
-            } => {
+            SystemCommand::ProximityUpdate { direction, reading } => {
                 let current_status = self.power_manager.status();
                 let (gesture, action) = self.feature_set.features().on_proximity_update(
                     direction,
-                    distance_mm,
+                    reading,
                     current_status,
                 );
 

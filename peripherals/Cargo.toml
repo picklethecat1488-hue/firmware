@@ -11,6 +11,7 @@ tracing = ["platform/tracing", "dep:tracing-defmt", "dep:defmt"]
 core1 = []
 motor-core = ["core1"]
 sensors-core = ["core1"]
+verbose-sensor-logging = []
 
 [dependencies]
 embedded-hal = "1.0.0"

@@ -67,31 +67,37 @@ fn test_l9110s_functional() {
 
 #[test]
 fn test_vl53l0x_threshold_validation() {
-    use model::calibration::{Calibration, CalibrationType};
+    use model::calibration::Calibration;
     use peripherals::vl53l0x::Vl53l0x;
 
-    let mut sensor = Vl53l0x::new(DummyI2c, 0x30);
+    let mut sensor = Vl53l0x::new(DummyI2c, 0x30, model::types::Direction::North);
     // Default threshold is 300, cal_near is 0.
 
     // 1. Setting threshold to > cal_near + THRESHOLD_ERROR_MM should succeed.
     assert!(sensor.set_threshold_mm(250).is_ok());
 
     // 2. Setting threshold to <= cal_near + THRESHOLD_ERROR_MM should return an error.
-    let mut s = Vl53l0x::new(DummyI2c, 0x30);
+    let mut s = Vl53l0x::new(DummyI2c, 0x30, model::types::Direction::North);
     assert!(s.set_threshold_mm(10).is_err());
 
     // 3. Setting calibration with threshold_mm > near + THRESHOLD_ERROR_MM should succeed.
-    sensor.set_calibration(CalibrationType::ProximityCal(
-        model::calibration::TwoPointCalibration::new(50, 150),
-    ));
+    let mut cal = model::calibration::Vl53l0xCalibration::default();
+    cal.sensors[model::types::Direction::North as usize] =
+        model::calibration::TwoPointCalibration::new(50, 150);
+    sensor.set_calibration(&cal);
+    assert_eq!(
+        sensor.calibration(),
+        Some(model::calibration::TwoPointCalibration::new(50, 150))
+    );
 
     // 4. Setting calibration with threshold_mm <= near + THRESHOLD_ERROR_MM should be ignored.
-    let mut s = Vl53l0x::new(DummyI2c, 0x30);
+    let mut s = Vl53l0x::new(DummyI2c, 0x30, model::types::Direction::North);
     let _ = s.set_threshold_mm(100);
-    s.set_calibration(CalibrationType::ProximityCal(
-        model::calibration::TwoPointCalibration::new(90, 150),
-    ));
-    assert_eq!(s.calibration().low, 0);
+    let mut cal2 = model::calibration::Vl53l0xCalibration::default();
+    cal2.sensors[model::types::Direction::North as usize] =
+        model::calibration::TwoPointCalibration::new(90, 150);
+    s.set_calibration(&cal2);
+    assert!(s.calibration().is_none());
 }
 
 #[test]
@@ -176,7 +182,7 @@ fn test_vl53l0x_init() {
 
     let writes = std::cell::RefCell::new(Vec::new());
     let i2c = SpyI2c { writes: &writes };
-    let mut sensor = Vl53l0x::new(i2c, 0x29);
+    let mut sensor = Vl53l0x::new(i2c, 0x29, model::types::Direction::North);
 
     // Call init to change address to 0x30, threshold to 250, and interrupt to LowLevel
     let res = sensor.init(0x30, 250, InterruptMode::LowLevel);
@@ -187,7 +193,7 @@ fn test_vl53l0x_init() {
 
     // Verify written values
     let w = writes.borrow();
-    assert_eq!(w.len(), 5);
+    assert_eq!(w.len(), 8);
 
     // 1. Address change (write to 0x29): register 0x8A -> 0x30
     assert_eq!(w[0], (0x29, vec![0x8A, 0x30]));
@@ -203,6 +209,15 @@ fn test_vl53l0x_init() {
 
     // 5. Interrupt clear (write to 0x30): register 0x0B -> 0x01
     assert_eq!(w[4], (0x30, vec![0x0B, 0x01]));
+
+    // 6. Sequence steps configuration (write to 0x30): register 0x01 -> 0xFF
+    assert_eq!(w[5], (0x30, vec![0x01, 0xFF]));
+
+    // 7. Timing budget configuration (write to 0x30): register 0x71 -> 0x54, 0x36
+    assert_eq!(w[6], (0x30, vec![0x71, 0x54, 0x36]));
+
+    // 8. Signal rate limit check (write to 0x30): register 0x44 -> 0x00, 0x06
+    assert_eq!(w[7], (0x30, vec![0x44, 0x00, 0x06]));
 }
 
 struct FailingI2c {
@@ -263,7 +278,7 @@ fn test_vl53l0x_i2c_error_propagation() {
         error_after_writes: 0,
         write_count: 0,
     };
-    let mut sensor = Vl53l0x::new(i2c, 0x29);
+    let mut sensor = Vl53l0x::new(i2c, 0x29, model::types::Direction::North);
     let res = sensor.init(0x30, 250, InterruptMode::LowLevel);
     assert!(res.is_err());
 
@@ -272,7 +287,7 @@ fn test_vl53l0x_i2c_error_propagation() {
         error_after_writes: 2,
         write_count: 0,
     };
-    let mut sensor = Vl53l0x::new(i2c, 0x29);
+    let mut sensor = Vl53l0x::new(i2c, 0x29, model::types::Direction::North);
     let res = sensor.init(0x30, 250, InterruptMode::LowLevel);
     assert!(res.is_err());
 }
@@ -510,7 +525,7 @@ fn test_probeable_vl53l0x() {
         reads,
         writes: writes.clone(),
     };
-    let mut dev = Vl53l0x::new(&mut i2c, 0x29);
+    let mut dev = Vl53l0x::new(&mut i2c, 0x29, model::types::Direction::North);
 
     let id = dev.read_chip_id().unwrap();
     assert_eq!(id, 0xEE);
@@ -526,7 +541,7 @@ fn test_probeable_vl53l0x() {
         reads,
         writes: writes.clone(),
     };
-    let mut dev = Vl53l0x::new(&mut i2c, 0x29);
+    let mut dev = Vl53l0x::new(&mut i2c, 0x29, model::types::Direction::North);
     assert_eq!(
         dev.read_chip_id().unwrap_err(),
         PeripheralError::DeviceNotFound(0x99)
@@ -666,4 +681,128 @@ fn test_macro_init_ws2812() {
     let mut errors = TestBootStatus { errors: vec![] };
     let _dev = peripherals::init_ws2812!((), (), &mut errors);
     assert!(errors.errors.is_empty());
+}
+
+struct Vl53l0xTestI2c {
+    interrupt_status: u8,
+    range_status: u8,
+    distance: u16,
+}
+
+impl embedded_hal::i2c::ErrorType for Vl53l0xTestI2c {
+    type Error = core::convert::Infallible;
+}
+
+impl embedded_hal::i2c::I2c for Vl53l0xTestI2c {
+    fn read(&mut self, _address: u8, _read: &mut [u8]) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn write(&mut self, _address: u8, _write: &[u8]) -> Result<(), Self::Error> {
+        Ok(())
+    }
+    fn write_read(
+        &mut self,
+        _address: u8,
+        write: &[u8],
+        read: &mut [u8],
+    ) -> Result<(), Self::Error> {
+        if write[0] == 0x13 {
+            read[0] = self.interrupt_status;
+        } else if write[0] == 0x14 {
+            read[0] = self.range_status;
+        } else if write[0] == 0x1E {
+            let bytes = self.distance.to_be_bytes();
+            read[0] = bytes[0];
+            read[1] = bytes[1];
+        }
+        Ok(())
+    }
+    fn transaction(
+        &mut self,
+        _address: u8,
+        _operations: &mut [embedded_hal::i2c::Operation<'_>],
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+
+#[test]
+fn test_vl53l0x_measurement_timeout() {
+    use model::interfaces::ProximitySensor;
+    use peripherals::vl53l0x::Vl53l0x;
+
+    let i2c = Vl53l0xTestI2c {
+        interrupt_status: 0, // Never ready
+        range_status: 1,
+        distance: 100,
+    };
+    let mut sensor = Vl53l0x::new(i2c, 0x30, model::types::Direction::North);
+    let res = sensor.read_distance_mm();
+    assert!(matches!(
+        res,
+        Err(model::types::PeripheralError::DeviceNotAvailable)
+    ));
+}
+
+#[test]
+fn test_vl53l0x_measurement_success() {
+    use model::interfaces::ProximitySensor;
+    use peripherals::vl53l0x::Vl53l0x;
+
+    let i2c = Vl53l0xTestI2c {
+        interrupt_status: 4, // Ready
+        range_status: 1,     // Valid
+        distance: 120,
+    };
+    let mut sensor = Vl53l0x::new(i2c, 0x30, model::types::Direction::North);
+    let res = sensor.read_distance_mm();
+    assert_eq!(res.unwrap(), model::types::SensorReading::Proximity(120));
+}
+
+#[test]
+fn test_vl53l0x_measurement_invalid_range() {
+    use model::interfaces::ProximitySensor;
+    use peripherals::vl53l0x::Vl53l0x;
+
+    let i2c = Vl53l0xTestI2c {
+        interrupt_status: 4, // Ready
+        range_status: 0,     // Invalid (valid bit is 0)
+        distance: 120,
+    };
+    let mut sensor = Vl53l0x::new(i2c, 0x30, model::types::Direction::North);
+    let res = sensor.read_distance_mm();
+    assert_eq!(res.unwrap(), model::types::SensorReading::Invalid);
+}
+
+#[test]
+fn test_vl53l0x_measurement_max_range() {
+    use model::interfaces::ProximitySensor;
+    use peripherals::vl53l0x::Vl53l0x;
+
+    let i2c = Vl53l0xTestI2c {
+        interrupt_status: 4,        // Ready
+        range_status: (8 << 3) | 1, // Valid, max range (8)
+        distance: 120,
+    };
+    let mut sensor = Vl53l0x::new(i2c, 0x30, model::types::Direction::North);
+    let res = sensor.read_distance_mm();
+    assert_eq!(res.unwrap(), model::types::SensorReading::Invalid);
+}
+
+#[test]
+fn test_vl53l0x_measurement_min_range() {
+    use model::interfaces::ProximitySensor;
+    use peripherals::vl53l0x::Vl53l0x;
+
+    let i2c = Vl53l0xTestI2c {
+        interrupt_status: 4,        // Ready
+        range_status: (3 << 3) | 1, // Valid, min range (3)
+        distance: 120,
+    };
+    let mut sensor = Vl53l0x::new(i2c, 0x30, model::types::Direction::North);
+    let res = sensor.read_distance_mm();
+    assert_eq!(
+        res.unwrap(),
+        model::types::SensorReading::Proximity(Vl53l0x::<Vl53l0xTestI2c>::MIN_RANGE_MM)
+    );
 }

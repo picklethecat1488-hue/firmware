@@ -15,6 +15,7 @@ use {
     controller::telemetry_controller::TelemetryController,
     embassy_executor::Spawner,
     platform::core_monitor,
+    platform::flash,
     platform::types::{MapFilesystem, QueueFilesystem},
 };
 
@@ -71,14 +72,35 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
         embassy_rp::flash::Blocking,
         { app::FLASH_SIZE },
     >::new_blocking(fs_flash);
-    let async_flash = platform::BlockingAsyncFlash(raw_flash);
+    let mut async_flash = platform::BlockingAsyncFlash(raw_flash);
+
+    use model::calibration::{Calibration, MotorCalibration, Vl53l0xCalibration};
+
+    let mut cal_buf = [0u8; 128];
+    let proximity_cal = flash::read_calibration_direct_blocking::<_, Vl53l0xCalibration>(
+        &mut async_flash,
+        MapFilesystem(app::FS_PARTITION_START..app::FS_PARTITION_END),
+        unsafe { &mut *core::ptr::addr_of_mut!(app::FS_BUF) },
+        Vl53l0xCalibration::CALIBRATION_FILE_NAME,
+        &mut cal_buf,
+    )
+    .unwrap_or_default();
+
+    let mut motor_cal_buf = [0u8; 128];
+    let motor_cal = flash::read_calibration_direct_blocking::<_, MotorCalibration>(
+        &mut async_flash,
+        MapFilesystem(app::FS_PARTITION_START..app::FS_PARTITION_END),
+        unsafe { &mut *core::ptr::addr_of_mut!(app::FS_BUF) },
+        MotorCalibration::CALIBRATION_FILE_NAME,
+        &mut motor_cal_buf,
+    );
 
     let flash_mutex = unsafe {
         FLASH_MUTEX = Some(embassy_sync::mutex::Mutex::new(async_flash));
         FLASH_MUTEX.as_ref().unwrap()
     };
 
-    let fs_flash_mutex_ref = platform::flash::SharedFlashMutex::new(flash_mutex);
+    let fs_flash_mutex_ref = flash::SharedFlashMutex::new(flash_mutex);
     let profiling_flash =
         controller::filesystem_controller::ProfilingFlash::new(fs_flash_mutex_ref);
     let mut fs_controller = controller::filesystem_controller::FilesystemController::new(
@@ -91,30 +113,8 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
     // Verify and repair/reformat the filesystem if it is corrupted
     let _ = fs_controller.verify_and_repair().await;
 
-    // Read calibration file from flash
-    let mut cal_buf = [0u8; 128];
-    let proximity_cal = match fs_controller
-        .read_file_raw("vl53l0x_cal.cbor", &mut cal_buf)
-        .await
-    {
-        Ok(Some(bytes)) => {
-            defmt::error!("vl53l0x calibration: {=[u8]:cbor}", bytes);
-            minicbor::decode::<model::calibration::Vl53l0xCalibration>(bytes).unwrap_or_default()
-        }
-        _ => model::calibration::Vl53l0xCalibration::default(),
-    };
-
-    let mut motor_cal_buf = [0u8; 128];
-    let motor_cal = match fs_controller
-        .read_file_raw("motor_cal.cbor", &mut motor_cal_buf)
-        .await
-    {
-        Ok(Some(bytes)) => {
-            defmt::error!("motor calibration: {=[u8]:cbor}", bytes);
-            minicbor::decode::<model::calibration::MotorCalibration>(bytes).ok()
-        }
-        _ => None,
-    };
+    let client =
+        controller::filesystem_controller::FilesystemClient::new(app::FILESYSTEM_CHANNEL.sender());
 
     let thermal_ctrl = unsafe { app::THERMAL_CTRL.take().unwrap() };
     let power_ctrl = unsafe { app::BATTERY_CTRL.take().unwrap() };
@@ -124,44 +124,25 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
     let mut sensor_ctrl_east = unsafe { app::SENSOR_CTRL_EAST_CORE0.take().unwrap() };
     let mut sensor_ctrl_west = unsafe { app::SENSOR_CTRL_WEST_CORE0.take().unwrap() };
 
-    use model::calibration::Calibration;
-    use model::calibration::CalibrationType;
     if let Some(cal) = motor_cal {
-        controller.set_calibration(CalibrationType::MotorCal {
-            current_limits: model::calibration::TwoPointCalibration {
-                low: cal.dry_run_limit(),
-                high: cal.stall_limit(),
-            },
-            max_rpm: cal.max_rpm.unwrap_or(0),
-            rpm_limit: cal.rpm_limit.unwrap_or(0),
-        });
+        controller.set_calibration(&cal);
     }
 
-    sensor_ctrl_north.set_calibration(CalibrationType::ProximityCal(
-        proximity_cal[model::types::Direction::North],
-    ));
-    sensor_ctrl_east.set_calibration(CalibrationType::ProximityCal(
-        proximity_cal[model::types::Direction::East],
-    ));
-    sensor_ctrl_west.set_calibration(CalibrationType::ProximityCal(
-        proximity_cal[model::types::Direction::West],
-    ));
+    sensor_ctrl_north.set_calibration(&proximity_cal);
+    sensor_ctrl_east.set_calibration(&proximity_cal);
+    sensor_ctrl_west.set_calibration(&proximity_cal);
 
     let system_ctrl = unsafe { app::SYSTEM_CTRL.take().unwrap() };
 
-    // Declare telemetry controller statically to avoid stack overflow on the main thread MSP stack
     static mut TELEMETRY_CTRL: Option<
         TelemetryController<
             { app::MAX_RECORDS },
             { model::telemetry::BUFFER_SIZE },
-            platform::flash::SharedFlashMutex<platform::BlockingAsyncFlash<app::FlashDevice>>,
+            flash::SharedFlashMutex<platform::BlockingAsyncFlash<app::FlashDevice>>,
         >,
     > = None;
 
-    let client =
-        controller::filesystem_controller::FilesystemClient::new(app::FILESYSTEM_CHANNEL.sender());
-
-    let telemetry_flash_mutex_ref = platform::flash::SharedFlashMutex::new(flash_mutex);
+    let telemetry_flash_mutex_ref = flash::SharedFlashMutex::new(flash_mutex);
     let telemetry_ctrl = unsafe {
         TELEMETRY_CTRL = Some(TelemetryController::new(
             telemetry_flash_mutex_ref,

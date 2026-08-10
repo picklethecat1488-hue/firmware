@@ -7,6 +7,7 @@ use crate::{BlockingMotorReader, BlockingMotorWriter, MotorReceiver, TelemetrySe
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::RawMutex;
+use model::calibration::Calibration;
 use model::interfaces::{Motor, PowerMeasurementMode, PowerSensor, Tickable};
 use model::telemetry::TelemetryClient;
 use model::types::{MotorSpeed, PeripheralError, SystemStatus};
@@ -491,18 +492,27 @@ pub enum MotorCommand {
 impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
     for MotorController<M, C>
 {
-    fn set_calibration(&mut self, calibration: model::calibration::CalibrationType) {
-        if let model::calibration::CalibrationType::MotorCal {
-            current_limits,
-            max_rpm,
-            rpm_limit,
-        } = calibration
-        {
-            self.calibration_present = true;
-            self.limits.min_current_ma = current_limits.low;
-            self.limits.max_current_ma = current_limits.high;
-            self.limits.max_rpm = max_rpm;
-            self.limits.rpm_limit = rpm_limit;
+    const CALIBRATION_FILE_NAME: &'static str = "motor_cal.cbor";
+    type Store = model::calibration::MotorCalibration;
+
+    fn set_calibration(&mut self, store: &Self::Store) {
+        self.calibration_present = true;
+        self.limits.min_current_ma = store.current_ma.low;
+        self.limits.max_current_ma = store.current_ma.overload;
+        self.limits.max_rpm = store.max_rpm.unwrap_or(0);
+        self.limits.rpm_limit = store.rpm_limit.unwrap_or(0);
+    }
+
+    fn get_calibration(&self) -> Self::Store {
+        model::calibration::MotorCalibration {
+            current_ma: model::calibration::FourPointCalibration::new(
+                self.limits.min_current_ma,
+                0,
+                0,
+                self.limits.max_current_ma,
+            ),
+            max_rpm: Some(self.limits.max_rpm),
+            rpm_limit: Some(self.limits.rpm_limit),
         }
     }
 }
@@ -555,7 +565,7 @@ where
 
     fn update_calibration(
         &mut self,
-        cal: model::calibration::CalibrationType,
+        cal: &model::calibration::MotorCalibration,
     ) -> Result<(), PeripheralError> {
         use model::calibration::Calibration as _;
         self.set_calibration(cal);
@@ -707,18 +717,16 @@ pub fn handle_motor_cli<
             let mut async_flash = platform::BlockingAsyncFlash(flash_ref);
 
             let mut buf = [0u8; 128];
-            let cal = embassy_futures::block_on(platform::flash::read_file_direct(
+            let cal = platform::flash::read_calibration_direct_blocking::<
+                _,
+                model::calibration::MotorCalibration,
+            >(
                 &mut async_flash,
                 map_fs.clone(),
                 fs_buf_static,
-                "motor_cal.cbor",
+                C::MotorCtrl::CALIBRATION_FILE_NAME,
                 &mut buf,
-            ))
-            .ok()
-            .flatten()
-            .and_then(|len| {
-                minicbor::decode::<model::calibration::MotorCalibration>(&buf[..len]).ok()
-            })
+            )
             .unwrap_or_default();
 
             let mut cal = cal;
@@ -742,29 +750,16 @@ pub fn handle_motor_cli<
             }
 
             let mut write_buf = [0u8; 128];
-            let cursor = minicbor::encode::write::Cursor::new(&mut write_buf[..]);
-            let mut encoder = minicbor::Encoder::new(cursor);
-            encoder.encode(cal).unwrap();
-            let len = encoder.into_writer().position();
-
-            embassy_futures::block_on(platform::flash::write_file_direct(
+            platform::flash::write_calibration_direct_blocking(
                 &mut async_flash,
                 map_fs,
                 fs_buf_static,
-                "motor_cal.cbor",
-                &write_buf[..len],
-            ))
+                C::MotorCtrl::CALIBRATION_FILE_NAME,
+                &cal,
+                &mut write_buf,
+            )
             .map(|_| {
-                let current_limits = model::calibration::TwoPointCalibration {
-                    low: cal.dry_run_limit(),
-                    high: cal.stall_limit(),
-                };
-                let _ =
-                    motor_ctrl.update_calibration(model::calibration::CalibrationType::MotorCal {
-                        current_limits,
-                        max_rpm: cal.max_rpm.unwrap_or(0),
-                        rpm_limit: cal.rpm_limit.unwrap_or(0),
-                    });
+                let _ = motor_ctrl.update_calibration(&cal);
                 let _ = core::writeln!(writer, "Saved motor {} calibration to flash.", name);
             })
             .map_err(|_| "Error saving calibration to flash")

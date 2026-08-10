@@ -125,11 +125,11 @@ fn test_system_integration_flow() {
 
         // Controllers
         let mut motor_ctrl = MotorController::new(NoTick::new(mock_motor), DummyCurrentSensor);
-        use model::calibration::{Calibration, CalibrationType};
-        motor_ctrl.set_calibration(CalibrationType::MotorCal {
-            current_limits: model::calibration::TwoPointCalibration::new(80, 800),
-            max_rpm: 3000,
-            rpm_limit: 0,
+        use model::calibration::Calibration;
+        motor_ctrl.set_calibration(&model::calibration::MotorCalibration {
+            current_ma: model::calibration::FourPointCalibration::new(80, 0, 0, 800),
+            max_rpm: Some(3000),
+            rpm_limit: Some(0),
         });
         let mut led_ctrl = LedController::new(mock_led);
         let feature_set = cat_detector::CatDetectorFeatureSet::<CriticalSectionRawMutex, 16> {
