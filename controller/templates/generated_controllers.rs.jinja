@@ -40,7 +40,8 @@ macro_rules! run_{{ ctrl.name|lower }}_task {
                 name = stringify!($task_module),
                 level = "info",
                 skip(
-                    c
+                    c,
+                    register
                     {% for p in ctrl.extra_params_inferred() %}
                         , {{ p.name }}
                     {% endfor %}
@@ -99,7 +100,8 @@ macro_rules! run_{{ ctrl.name|lower }}_task {
                 name = stringify!($task_module),
                 level = "info",
                 skip(
-                    c
+                    c,
+                    register
                     {% for p in ctrl.extra_params_inferred() %}
                         , {{ p.name }}
                     {% endfor %}
