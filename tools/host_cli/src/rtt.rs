@@ -27,6 +27,7 @@ pub struct RttChannel {
     size: usize,
     write_offset_ptr: u64,
     read_offset_ptr: u64,
+    flags_offset_ptr: u64,
 }
 
 impl RttChannel {
@@ -167,6 +168,7 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
         let size = u32::from_le_bytes(chunk[8..12].try_into().unwrap()) as usize;
         let write_offset_ptr = rtt_symbol_addr + offset as u64 + 12;
         let read_offset_ptr = rtt_symbol_addr + offset as u64 + 16;
+        let flags_offset_ptr = rtt_symbol_addr + offset as u64 + 20;
         offset += 24;
 
         let mut name = String::new();
@@ -196,6 +198,7 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
             size,
             write_offset_ptr,
             read_offset_ptr,
+            flags_offset_ptr,
         });
     }
 
@@ -206,6 +209,7 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
         let size = u32::from_le_bytes(chunk[8..12].try_into().unwrap()) as usize;
         let write_offset_ptr = rtt_symbol_addr + offset as u64 + 12;
         let read_offset_ptr = rtt_symbol_addr + offset as u64 + 16;
+        let flags_offset_ptr = rtt_symbol_addr + offset as u64 + 20;
         offset += 24;
 
         let mut name = String::new();
@@ -235,6 +239,7 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
             size,
             write_offset_ptr,
             read_offset_ptr,
+            flags_offset_ptr,
         });
     }
 
@@ -502,6 +507,14 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
+        // Configure active UP channels to use MODE_BLOCK_IF_FULL (2) on the target
+        if let Some(chan) = defmt_channel {
+            target.write_mem(chan.flags_offset_ptr, &u32::to_le_bytes(2))?;
+        }
+        if let Some(chan) = cli_up_channel {
+            target.write_mem(chan.flags_offset_ptr, &u32::to_le_bytes(2))?;
+        }
+
         spinner.finish_and_clear();
 
         println!("RTT connected. Active channels:");
@@ -581,6 +594,9 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         let mut rtt_buf = [0u8; 1024];
         let mut sent_buffer = Vec::<u8>::new();
         let mut run_error = None;
+        let mut last_snr_report = std::time::Instant::now();
+        let mut valid_frames = 0;
+        let mut malformed_frames = 0;
         loop {
             let mut did_work = false;
 
@@ -594,6 +610,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                             loop {
                                 match dec.decode() {
                                     Ok(frame) => {
+                                        valid_frames += 1;
                                         let plain_line = frame.display(false).to_string();
                                         let display = frame.display(true);
                                         let line_str = display.to_string();
@@ -701,8 +718,8 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                     Err(defmt_decoder::DecodeError::UnexpectedEof) => break,
                                     Err(defmt_decoder::DecodeError::Malformed) => {
-                                        eprintln!("Error: malformed defmt frame");
-                                        continue;
+                                        malformed_frames += 1;
+                                        break;
                                     }
                                 }
                             }
@@ -795,6 +812,21 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
             if run_error.is_some() {
                 break;
+            }
+
+            if last_snr_report.elapsed() >= std::time::Duration::from_secs(1) {
+                if malformed_frames > 1 {
+                    let total = valid_frames + malformed_frames;
+                    let valid_pct = (valid_frames as f64 / total as f64) * 100.0;
+                    let invalid_pct = (malformed_frames as f64 / total as f64) * 100.0;
+                    eprintln!(
+                        "defmt: Valid: {} ({:.1}%), Malformed: {} ({:.1}%)",
+                        valid_frames, valid_pct, malformed_frames, invalid_pct
+                    );
+                }
+                valid_frames = 0;
+                malformed_frames = 0;
+                last_snr_report = std::time::Instant::now();
             }
 
             if !did_work {

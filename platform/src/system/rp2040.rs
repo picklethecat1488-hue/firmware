@@ -342,6 +342,8 @@ macro_rules! boot_multicore {
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         fn core1_entry_point() -> ! {
             unsafe {
+                $crate::core_monitor::init_vector_table($crate::types::CpuId::Core1);
+
                 <$board>::run_executor($crate::types::CpuId::Core1);
             }
         }
