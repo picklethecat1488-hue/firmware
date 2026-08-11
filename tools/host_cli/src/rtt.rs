@@ -27,6 +27,7 @@ pub struct RttChannel {
     size: usize,
     write_offset_ptr: u64,
     read_offset_ptr: u64,
+    flags_offset_ptr: u64,
 }
 
 impl RttChannel {
@@ -167,6 +168,7 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
         let size = u32::from_le_bytes(chunk[8..12].try_into().unwrap()) as usize;
         let write_offset_ptr = rtt_symbol_addr + offset as u64 + 12;
         let read_offset_ptr = rtt_symbol_addr + offset as u64 + 16;
+        let flags_offset_ptr = rtt_symbol_addr + offset as u64 + 20;
         offset += 24;
 
         let mut name = String::new();
@@ -196,6 +198,7 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
             size,
             write_offset_ptr,
             read_offset_ptr,
+            flags_offset_ptr,
         });
     }
 
@@ -206,6 +209,7 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
         let size = u32::from_le_bytes(chunk[8..12].try_into().unwrap()) as usize;
         let write_offset_ptr = rtt_symbol_addr + offset as u64 + 12;
         let read_offset_ptr = rtt_symbol_addr + offset as u64 + 16;
+        let flags_offset_ptr = rtt_symbol_addr + offset as u64 + 20;
         offset += 24;
 
         let mut name = String::new();
@@ -235,6 +239,7 @@ pub fn parse_rtt_channels<T: TargetAccess + ?Sized>(
             size,
             write_offset_ptr,
             read_offset_ptr,
+            flags_offset_ptr,
         });
     }
 
@@ -500,6 +505,14 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             if cli_down_channel.is_none() && !down_channels.is_empty() && stream_cli {
                 cli_down_channel = Some(&down_channels[0]);
             }
+        }
+
+        // Configure active UP channels to use MODE_BLOCK_IF_FULL (2) on the target
+        if let Some(chan) = defmt_channel {
+            target.write_mem(chan.flags_offset_ptr, &u32::to_le_bytes(2))?;
+        }
+        if let Some(chan) = cli_up_channel {
+            target.write_mem(chan.flags_offset_ptr, &u32::to_le_bytes(2))?;
         }
 
         spinner.finish_and_clear();
