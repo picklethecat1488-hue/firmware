@@ -306,12 +306,12 @@ def validate_call_graph(funcs_list, roots, feature, root_files=None):
                 path_str = " -> ".join(path)
 
                 print(
-                    f"{Fore.YELLOW}WARNING:{Style.RESET_ALL} Driver function '{d['name']}' in {d['filepath']}:{d['line']} is reached in RAM call chain but missing RAM attribute for '{feature}'!"
+                    f"{Fore.RED}ERROR:{Style.RESET_ALL} Driver function '{d['name']}' in {d['filepath']}:{d['line']} is reached in RAM call chain but missing RAM attribute for '{feature}'!"
                 )
                 print(f"  Path: {path_str}")
                 print(f'  Expected: #[cfg_attr(target_arch = "arm", link_section = ".data.core1_func")]')
                 print()
-                warnings += 1
+                errors += 1
 
             if "forbidden_calls" in d:
                 for forbidden_name, line_num in d["forbidden_calls"]:
