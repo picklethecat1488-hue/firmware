@@ -701,7 +701,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                     Err(defmt_decoder::DecodeError::UnexpectedEof) => break,
                                     Err(defmt_decoder::DecodeError::Malformed) => {
-                                        eprintln!("Error: malformed defmt frame");
+                                        eprintln!("Error: malformed defmt frame. Raw bytes received: {:02x?}", &rtt_buf[..n]);
                                         continue;
                                     }
                                 }

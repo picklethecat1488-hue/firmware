@@ -226,6 +226,9 @@ pub trait RttWriter {
     fn flush(&self);
 }
 
+/// Maximum buffer size for a single serialized defmt log frame.
+pub const FRAME_BUF_SIZE: usize = 512;
+
 /// A generic RTT protocol handler that manages frame encoding, reentrancy guards,
 /// and dual-logging to both the writer and the circular crash log buffer.
 pub struct RttProtocol<W: RttWriter> {
@@ -238,7 +241,7 @@ pub struct RttProtocol<W: RttWriter> {
     /// Underlying defmt frame encoder.
     pub encoder: core::cell::UnsafeCell<defmt::Encoder>,
     /// Buffer for accumulating the current frame bytes.
-    pub frame_buf: core::cell::UnsafeCell<[u8; 256]>,
+    pub frame_buf: core::cell::UnsafeCell<[u8; FRAME_BUF_SIZE]>,
     /// Length of currently buffered frame bytes.
     pub frame_len: core::cell::Cell<usize>,
 }
@@ -253,7 +256,7 @@ impl<W: RttWriter> RttProtocol<W> {
             taken: core::sync::atomic::AtomicBool::new(false),
             cs_restore: core::cell::UnsafeCell::new(critical_section::RestoreState::invalid()),
             encoder: core::cell::UnsafeCell::new(defmt::Encoder::new()),
-            frame_buf: core::cell::UnsafeCell::new([0u8; 256]),
+            frame_buf: core::cell::UnsafeCell::new([0u8; FRAME_BUF_SIZE]),
             frame_len: core::cell::Cell::new(0),
         }
     }
@@ -311,14 +314,18 @@ impl<W: RttWriter> RttProtocol<W> {
             self.write_encoded(b);
         });
 
+        let f_len = self.frame_len.get();
+        let f_ptr = self.frame_buf.get() as *const u8;
+        let f_slice = core::slice::from_raw_parts(f_ptr, f_len);
+
+        // Write the completed contiguous frame to RTT now!
+        self.writer.write_all(f_slice);
+
         // Write the completed contiguous frame to CRASH_LOG_BUFFER
         let cs = critical_section::CriticalSection::new();
         let mut buffer = crate::panic_handler::CRASH_LOG_BUFFER
             .borrow(cs)
             .borrow_mut();
-        let f_len = self.frame_len.get();
-        let f_ptr = self.frame_buf.get() as *const u8;
-        let f_slice = core::slice::from_raw_parts(f_ptr, f_len);
         buffer.write_frame(f_slice);
 
         let restore = self.cs_restore.get().read();
@@ -328,12 +335,9 @@ impl<W: RttWriter> RttProtocol<W> {
     }
 
     fn write_encoded(&self, bytes: &[u8]) {
-        // Write to RTT immediately
-        self.writer.write_all(bytes);
-
         // Accumulate in frame_buf for circular log writing
         let len = self.frame_len.get();
-        let remaining = 256 - len;
+        let remaining = FRAME_BUF_SIZE - len;
         let to_copy = bytes.len().min(remaining);
         if to_copy > 0 {
             unsafe {
