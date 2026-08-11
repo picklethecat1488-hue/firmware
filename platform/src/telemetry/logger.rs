@@ -42,7 +42,9 @@ pub struct Channel {
 impl Channel {
     /// Writes all the bytes to the RTT channel.
     pub fn write_all(&self, mut bytes: &[u8]) {
+        #[cfg(not(feature = "tracing"))]
         let start = embassy_time::Instant::now();
+        #[cfg(not(feature = "tracing"))]
         let mut timed_out = false;
         while !bytes.is_empty() {
             let consumed = if self.host_is_connected() {
@@ -63,6 +65,7 @@ impl Channel {
             }
         }
 
+        #[cfg(not(feature = "tracing"))]
         if timed_out {
             let consecutive = CONSECUTIVE_TIMEOUTS.load(Ordering::Relaxed) + 1;
             CONSECUTIVE_TIMEOUTS.store(consecutive, Ordering::Relaxed);
@@ -143,7 +146,9 @@ impl Channel {
         }
         let read = || self.read.load(Ordering::Relaxed);
         let write = || self.write.load(Ordering::Relaxed);
+        #[cfg(not(feature = "tracing"))]
         let start = embassy_time::Instant::now();
+        #[cfg(not(feature = "tracing"))]
         let mut timed_out = false;
         while read() != write() {
             #[cfg(not(feature = "tracing"))]
@@ -155,6 +160,7 @@ impl Channel {
             }
         }
 
+        #[cfg(not(feature = "tracing"))]
         if timed_out {
             let consecutive = CONSECUTIVE_TIMEOUTS.load(Ordering::Relaxed) + 1;
             CONSECUTIVE_TIMEOUTS.store(consecutive, Ordering::Relaxed);
