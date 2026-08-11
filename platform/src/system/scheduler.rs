@@ -199,9 +199,18 @@ impl CpuScheduler for embassy_executor::raw::Executor {
         };
         loop {
             self.poll();
-            defmt::trace!("ctx={} parent=0 span_enter: {}", ctx, name);
+
+            let enter_time = embassy_time::Instant::now();
             cortex_m::asm::wfe();
-            defmt::trace!("{} span_exit: {}", ctx, name);
+            let exit_time = embassy_time::Instant::now();
+
+            let idle_duration = exit_time - enter_time;
+            if idle_duration >= embassy_time::Duration::from_millis(10) {
+                let enter_us = enter_time.as_micros();
+                let exit_us = exit_time.as_micros();
+                defmt::trace!("ctx={} parent=0 span_enter: {} ts={}", ctx, name, enter_us);
+                defmt::trace!("{} span_exit: {} ts={}", ctx, name, exit_us);
+            }
         }
     }
 }
