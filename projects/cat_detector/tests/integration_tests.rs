@@ -368,7 +368,7 @@ fn test_system_integration_flow() {
             .2
             .gesture_detector
             .borrow_mut()
-            .update((Direction::West, 15), 2_000_000);
+            .update((Direction::West, 15), 1_000_000);
         if let Some(g) = g {
             process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
@@ -378,7 +378,7 @@ fn test_system_integration_flow() {
             .2
             .gesture_detector
             .borrow_mut()
-            .update((Direction::West, 15), 5_000_000);
+            .update((Direction::West, 15), 2_000_000);
         if let Some(g) = g {
             process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
@@ -490,7 +490,7 @@ fn test_system_integration_flow() {
             .2
             .gesture_detector
             .borrow_mut()
-            .update((Direction::West, 15), 2_000_000);
+            .update((Direction::West, 15), 1_000_000);
         if let Some(g) = g {
             process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
@@ -500,7 +500,7 @@ fn test_system_integration_flow() {
             .2
             .gesture_detector
             .borrow_mut()
-            .update((Direction::West, 15), 5_000_000);
+            .update((Direction::West, 15), 2_000_000);
         if let Some(g) = g {
             process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
@@ -558,7 +558,7 @@ fn test_system_integration_flow() {
             .2
             .gesture_detector
             .borrow_mut()
-            .update((Direction::West, 15), 8_000_000);
+            .update((Direction::West, 15), 7_000_000);
         if let Some(g) = g {
             process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
@@ -568,7 +568,7 @@ fn test_system_integration_flow() {
             .2
             .gesture_detector
             .borrow_mut()
-            .update((Direction::West, 15), 11_000_000);
+            .update((Direction::West, 15), 8_000_000);
         if let Some(g) = g {
             process_system(&mut system_ctrl, SystemCommand::Gesture(g));
         }
