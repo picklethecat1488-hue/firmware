@@ -1552,6 +1552,9 @@ impl<'a> ParsedTracingLine<'a> {
         if let Some(keyword_pos) = clean_line.find(keyword) {
             let raw_name = &clean_line[keyword_pos + keyword.len()..];
             let mut span_name = raw_name.trim();
+            if let Some(ts_pos) = span_name.find(" ts=") {
+                span_name = span_name[..ts_pos].trim();
+            }
             if span_name.starts_with('"') && span_name.ends_with('"') && span_name.len() >= 2 {
                 span_name = &span_name[1..span_name.len() - 1];
             }
@@ -1563,6 +1566,17 @@ impl<'a> ParsedTracingLine<'a> {
 
     pub fn device_ts(&self) -> Option<f64> {
         let clean_line = strip_ansi_codes(self.line);
+        if let Some(pos) = clean_line.find(" ts=") {
+            let after_ts = &clean_line[pos + 4..];
+            let ts_str = after_ts
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_matches('"');
+            if let Ok(ts_val) = ts_str.parse::<f64>() {
+                return Some(ts_val);
+            }
+        }
         let cat = self.category();
         let keyword = cat.keyword();
         let keyword_pos = clean_line.find(keyword)?;
@@ -1593,12 +1607,26 @@ impl<'a> ParsedTracingLine<'a> {
         let mut idx = 0;
         let mut device_ts = None;
 
+        if let Some(pos) = clean_line.find(" ts=") {
+            let after_ts = &clean_line[pos + 4..];
+            let ts_str = after_ts
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .trim_matches('"');
+            if let Ok(ts_val) = ts_str.parse::<f64>() {
+                device_ts = Some(ts_val);
+            }
+        }
+
         // 1. Check for timestamp at the very beginning
-        if idx < words.len() {
+        if device_ts.is_none() && idx < words.len() {
             if let Ok(ts_sec) = words[idx].parse::<f64>() {
                 device_ts = Some(ts_sec * 1_000_000.0);
-                idx += 1;
             }
+        }
+        if idx < words.len() && words[idx].parse::<f64>().is_ok() {
+            idx += 1;
         }
 
         // 2. Check for optional Log Level
