@@ -73,8 +73,8 @@ impl ProximityTracker {
     }
 }
 
-/// The duration in microseconds required to trigger a dual long press gesture (5 seconds).
-pub const DUAL_LONG_PRESS_DURATION_US: u64 = 5_000_000;
+/// The duration in microseconds required to trigger a dual long press gesture (2 seconds).
+pub const DUAL_LONG_PRESS_DURATION_US: u64 = 2_000_000;
 
 /// The maximum number of proximity trackers (one for each sensor direction).
 pub const MAX_PROXIMITY_TRACKERS: usize = 3;
