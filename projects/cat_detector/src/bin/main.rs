@@ -35,9 +35,10 @@ static mut FLASH_MUTEX: Option<
 > = None;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[platform::tracing::instrument(name = "boot", level = "info", skip(spawner, board))]
+#[platform::tracing::instrument(name = "boot", level = "info", skip(spawner, p))]
 #[embassy_executor::task]
-async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
+async fn bootstrap_task(spawner: Spawner, p: embassy_rp::Peripherals) {
+    let board = app::Board::init(p).await;
     app::init_controllers(board).await;
 
     // Route defmt logs to RTT
@@ -184,12 +185,12 @@ async fn bootstrap_task(spawner: Spawner, board: app::Board<'static>) {
 fn main() -> ! {
     let p = embassy_rp::init(Default::default());
 
-    // Initialize board peripherals and subcontrollers
-    let board = app::Board::init(p);
+    let spawner_c0 = unsafe {
+        use platform::rp2040::PlatformMulticore as _;
+        platform::rp2040::Rp2040Multicore.spawner(platform::types::CpuId::Core0)
+    };
 
-    let spawner_c0 = board.spawner.unwrap();
-
-    spawner_c0.spawn(bootstrap_task(spawner_c0, board)).unwrap();
+    spawner_c0.spawn(bootstrap_task(spawner_c0, p)).unwrap();
     unsafe {
         app::Board::run_executor(platform::types::CpuId::Core0);
     }

@@ -62,16 +62,16 @@ struct MockI2c {
     active_address: u8,
 }
 
-impl embedded_hal::i2c::ErrorType for MockI2c {
+impl embedded_hal_async::i2c::ErrorType for MockI2c {
     type Error = embedded_hal::i2c::ErrorKind;
 }
 
-impl embedded_hal::i2c::I2c for MockI2c {
-    fn read(&mut self, _address: u8, _read: &mut [u8]) -> Result<(), Self::Error> {
+impl embedded_hal_async::i2c::I2c for MockI2c {
+    async fn read(&mut self, _address: u8, _read: &mut [u8]) -> Result<(), Self::Error> {
         Ok(())
     }
 
-    fn write(&mut self, address: u8, _write: &[u8]) -> Result<(), Self::Error> {
+    async fn write(&mut self, address: u8, _write: &[u8]) -> Result<(), Self::Error> {
         if address == self.active_address {
             Ok(())
         } else {
@@ -81,7 +81,7 @@ impl embedded_hal::i2c::I2c for MockI2c {
         }
     }
 
-    fn write_read(
+    async fn write_read(
         &mut self,
         _address: u8,
         _write: &[u8],
@@ -90,10 +90,10 @@ impl embedded_hal::i2c::I2c for MockI2c {
         Ok(())
     }
 
-    fn transaction(
+    async fn transaction(
         &mut self,
         _address: u8,
-        _operations: &mut [embedded_hal::i2c::Operation<'_>],
+        _operations: &mut [embedded_hal_async::i2c::Operation<'_>],
     ) -> Result<(), Self::Error> {
         Ok(())
     }

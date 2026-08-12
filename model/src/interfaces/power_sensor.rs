@@ -22,11 +22,12 @@ pub trait PowerSensor: WaitableMeasurement {
     type Error;
 
     /// Reads the current draw in milliamperes (mA).
-    fn read_current_ma(&mut self) -> Result<i32, Self::Error>;
+    async fn read_current_ma(&mut self) -> Result<i32, Self::Error>;
 
     /// Reads the bus voltage in millivolts (mV).
-    fn read_voltage_mv(&mut self) -> Result<u32, Self::Error>;
+    async fn read_voltage_mv(&mut self) -> Result<u32, Self::Error>;
 
     /// Sets the operating mode of the sensor.
-    fn set_measurement_mode(&mut self, mode: PowerMeasurementMode) -> Result<(), Self::Error>;
+    async fn set_measurement_mode(&mut self, mode: PowerMeasurementMode)
+        -> Result<(), Self::Error>;
 }

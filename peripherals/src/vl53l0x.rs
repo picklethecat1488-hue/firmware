@@ -4,7 +4,7 @@
 
 use crate::tracing;
 use crate::I2cToPeripheralError;
-use embedded_hal::i2c::I2c;
+use embedded_hal_async::i2c::I2c;
 use model::calibration::{ApplyCalibration, Calibration, TwoPointCalibration};
 use model::interfaces::{Probeable, ProximitySensor, WaitableMeasurement};
 use model::types::{Direction, PeripheralError, SensorReading};
@@ -70,6 +70,8 @@ pub struct Vl53l0x<I> {
     interrupt_mode: InterruptMode,
     /// Active crosstalk compensation peak rate in milli-MCPS.
     xtalk_m_mcps: u16,
+    /// Pending crosstalk compensation to be applied asynchronously.
+    xtalk_pending: Option<u16>,
     /// Sensor direction.
     pub direction: Direction,
 }
@@ -91,6 +93,7 @@ impl<I: I2c> Vl53l0x<I> {
             calibration: None,
             interrupt_mode: InterruptMode::Disabled,
             xtalk_m_mcps: 0,
+            xtalk_pending: None,
         }
     }
 
@@ -98,31 +101,32 @@ impl<I: I2c> Vl53l0x<I> {
     ///
     /// Changes the sensor's address if different from the target `new_address`,
     /// then configures the wake threshold and GPIO interrupt mode.
-    pub fn init(
+    pub async fn init(
         &mut self,
         new_address: u8,
         threshold_mm: u16,
         interrupt_mode: InterruptMode,
     ) -> Result<(), PeripheralError> {
         if self.address != new_address {
-            self.set_address(new_address)?;
+            self.set_address(new_address).await?;
         }
         self.set_threshold_mm(threshold_mm)?;
-        self.configure_interrupt(interrupt_mode)?;
+        self.configure_interrupt(interrupt_mode).await?;
 
-        self.set_enable_ranging_sequence()?;
+        self.set_enable_ranging_sequence().await?;
 
         // Configure High Sensitivity mode for dark/matte targets (like black/grey cat fur)
-        self.set_timing_budget_200ms()?;
-        self.set_signal_rate_limit(6)?; // 0.05 MCPS limit (default is 0.25 MCPS)
+        self.set_timing_budget_200ms().await?;
+        self.set_signal_rate_limit(6).await?; // 0.05 MCPS limit (default is 0.25 MCPS)
 
         Ok(())
     }
 
     /// Enables the ranging sequence steps (MSRC, DSS, Pre-Range, Final Range).
-    fn set_enable_ranging_sequence(&mut self) -> Result<(), PeripheralError> {
+    async fn set_enable_ranging_sequence(&mut self) -> Result<(), PeripheralError> {
         self.i2c
             .write(self.address, &[Register::SYSTEM_SEQUENCE_CONFIG, 0xFF])
+            .await
             .map_err(|e| {
                 e.to_i2c_error(self.address as u16, Register::SYSTEM_SEQUENCE_CONFIG as u16)
             })
@@ -130,13 +134,14 @@ impl<I: I2c> Vl53l0x<I> {
 
     /// Sets a new I2C address for the sensor, enabling dynamic re-addressing on shared buses.
     /// This writes register `0x8A` with the new I2C address.
-    pub fn set_address(&mut self, new_address: u8) -> Result<(), PeripheralError> {
+    pub async fn set_address(&mut self, new_address: u8) -> Result<(), PeripheralError> {
         let res = self
             .i2c
             .write(
                 self.address,
                 &[Register::I2C_SLAVE_DEVICE_ADDRESS, new_address & 0x7F],
             )
+            .await
             .map_err(|e| {
                 e.to_i2c_error(
                     self.address as u16,
@@ -189,59 +194,53 @@ impl<I: I2c> Vl53l0x<I> {
     /// Configures the GPIO interrupt mode and threshold registers.
     /// Writes low threshold to `SYSTEM_THRESH_LOW` (0x0E), high threshold (low + hysteresis)
     /// to `SYSTEM_THRESH_HIGH` (0x0C), and the mode to `SYSTEM_INTERRUPT_GPIO_CONFIG` (0x0A).
-    pub fn configure_interrupt(&mut self, mode: InterruptMode) -> Result<(), PeripheralError> {
-        let res = (|| {
-            // Write SYSTEM_THRESH_LOW (0x0E) - 16-bit value (MSB first)
-            let low_bytes = self.threshold_mm.to_be_bytes();
-            self.i2c
-                .write(
-                    self.address,
-                    &[Register::SYSTEM_THRESH_LOW, low_bytes[0], low_bytes[1]],
-                )
-                .map_err(|e| {
-                    e.to_i2c_error(self.address as u16, Register::SYSTEM_THRESH_LOW as u16)
-                })?;
-
-            // Write SYSTEM_THRESH_HIGH (0x0C) - 16-bit value (MSB first)
-            let high_val = self.threshold_mm + self.hysteresis_mm;
-            let high_bytes = high_val.to_be_bytes();
-            self.i2c
-                .write(
-                    self.address,
-                    &[Register::SYSTEM_THRESH_HIGH, high_bytes[0], high_bytes[1]],
-                )
-                .map_err(|e| {
-                    e.to_i2c_error(self.address as u16, Register::SYSTEM_THRESH_HIGH as u16)
-                })?;
-
-            // Write SYSTEM_INTERRUPT_GPIO_CONFIG (0x0A) - 8-bit value
-            self.i2c
-                .write(
-                    self.address,
-                    &[Register::SYSTEM_INTERRUPT_GPIO_CONFIG, mode as u8],
-                )
-                .map_err(|e| {
-                    e.to_i2c_error(
-                        self.address as u16,
-                        Register::SYSTEM_INTERRUPT_GPIO_CONFIG as u16,
-                    )
-                })?;
-
-            // Clear any pending interrupt to start fresh
-            self.clear_interrupt()?;
-
-            self.interrupt_mode = mode;
-
-            Ok(())
-        })();
-        if let Err(ref _e) = res {
-            log_warn!(
-                "{}: Failed to configure interrupt at address 0x{:02x}: {:?}",
+    pub async fn configure_interrupt(
+        &mut self,
+        mode: InterruptMode,
+    ) -> Result<(), PeripheralError> {
+        // Write SYSTEM_THRESH_LOW (0x0E) - 16-bit value (MSB first)
+        let low_bytes = self.threshold_mm.to_be_bytes();
+        self.i2c
+            .write(
                 self.address,
-                defmt::Debug2Format(_e)
-            );
-        }
-        res
+                &[Register::SYSTEM_THRESH_LOW, low_bytes[0], low_bytes[1]],
+            )
+            .await
+            .map_err(|e| e.to_i2c_error(self.address as u16, Register::SYSTEM_THRESH_LOW as u16))?;
+
+        // Write SYSTEM_THRESH_HIGH (0x0C) - 16-bit value (MSB first)
+        let high_val = self.threshold_mm + self.hysteresis_mm;
+        let high_bytes = high_val.to_be_bytes();
+        self.i2c
+            .write(
+                self.address,
+                &[Register::SYSTEM_THRESH_HIGH, high_bytes[0], high_bytes[1]],
+            )
+            .await
+            .map_err(|e| {
+                e.to_i2c_error(self.address as u16, Register::SYSTEM_THRESH_HIGH as u16)
+            })?;
+
+        // Write SYSTEM_INTERRUPT_GPIO_CONFIG (0x0A) - 8-bit value
+        self.i2c
+            .write(
+                self.address,
+                &[Register::SYSTEM_INTERRUPT_GPIO_CONFIG, mode as u8],
+            )
+            .await
+            .map_err(|e| {
+                e.to_i2c_error(
+                    self.address as u16,
+                    Register::SYSTEM_INTERRUPT_GPIO_CONFIG as u16,
+                )
+            })?;
+
+        // Clear any pending interrupt to start fresh
+        self.clear_interrupt().await?;
+
+        self.interrupt_mode = mode;
+
+        Ok(())
     }
 
     /// Clears the interrupt status register `SYSTEM_INTERRUPT_CLEAR` (0x0B).
@@ -249,10 +248,11 @@ impl<I: I2c> Vl53l0x<I> {
         all(target_arch = "arm", feature = "sensors-core"),
         link_section = ".data.core1_func"
     )]
-    pub fn clear_interrupt(&mut self) -> Result<(), PeripheralError> {
+    pub async fn clear_interrupt(&mut self) -> Result<(), PeripheralError> {
         let res = self
             .i2c
             .write(self.address, &[Register::SYSTEM_INTERRUPT_CLEAR, 0x01])
+            .await
             .map_err(|e| {
                 e.to_i2c_error(self.address as u16, Register::SYSTEM_INTERRUPT_CLEAR as u16)
             });
@@ -268,13 +268,14 @@ impl<I: I2c> Vl53l0x<I> {
 
     /// Sets the measurement timing budget to 200ms (High Accuracy mode).
     /// This writes the calculated timeout value to register `FINAL_RANGE_CONFIG_TIMEOUT_MACROP_HI` (0x71).
-    pub fn set_timing_budget_200ms(&mut self) -> Result<(), PeripheralError> {
+    pub async fn set_timing_budget_200ms(&mut self) -> Result<(), PeripheralError> {
         let res = self
             .i2c
             .write(
                 self.address,
                 &[Register::FINAL_RANGE_CONFIG_TIMEOUT_MACROP_HI, 0x54, 0x36],
             )
+            .await
             .map_err(|e| {
                 e.to_i2c_error(
                     self.address as u16,
@@ -293,11 +294,12 @@ impl<I: I2c> Vl53l0x<I> {
 
     /// Sets the return signal rate limit check threshold (in fixed-point Q9.7 MCPS format).
     /// Standard is 0.25 MCPS (32). Lowering it (e.g. to 0.05 MCPS (6)) allows detecting dark/matte targets.
-    pub fn set_signal_rate_limit(&mut self, limit_mcps: u16) -> Result<(), PeripheralError> {
+    pub async fn set_signal_rate_limit(&mut self, limit_mcps: u16) -> Result<(), PeripheralError> {
         let bytes = limit_mcps.to_be_bytes();
         let res = self
             .i2c
             .write(self.address, &[0x44, bytes[0], bytes[1]])
+            .await
             .map_err(|e| e.to_i2c_error(self.address as u16, 0x44));
         if let Err(ref _e) = res {
             log_warn!(
@@ -313,11 +315,15 @@ impl<I: I2c> Vl53l0x<I> {
     /// Sets the crosstalk compensation peak rate in milli-MCPS (Mega Counts Per Second * 1000).
     /// Converts the value to Q9.7 fixed-point format and writes to register `0x20`.
     /// A value of 0 disables crosstalk compensation.
-    pub fn set_crosstalk_compensation(&mut self, rate_m_mcps: u16) -> Result<(), PeripheralError> {
+    pub async fn set_crosstalk_compensation(
+        &mut self,
+        rate_m_mcps: u16,
+    ) -> Result<(), PeripheralError> {
         let val = ((rate_m_mcps as u32 * 128) / 1000) as u16;
         let bytes = val.to_be_bytes();
         self.i2c
             .write(self.address, &[0x20, bytes[0], bytes[1]])
+            .await
             .map_err(|e| e.to_i2c_error(self.address as u16, 0x20))?;
         self.xtalk_m_mcps = rate_m_mcps;
         Ok(())
@@ -329,7 +335,7 @@ impl<I: I2c> WaitableMeasurement for Vl53l0x<I> {
         all(target_arch = "arm", feature = "sensors-core"),
         link_section = ".data.core1_func"
     )]
-    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+    async fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
         // Poll for measurement completion
         // Set a timeout of 240ms (24 * 10ms)
         for _ in 0..24 {
@@ -340,6 +346,7 @@ impl<I: I2c> WaitableMeasurement for Vl53l0x<I> {
                     &[Register::RESULT_INTERRUPT_STATUS],
                     &mut status,
                 )
+                .await
                 .map_err(|e| {
                     e.to_i2c_error(
                         self.address as u16,
@@ -362,7 +369,7 @@ impl<I: I2c> WaitableMeasurement for Vl53l0x<I> {
             if (status[0] & 0x07) == 4 {
                 return Ok(());
             }
-            ::embassy_time::block_for(::embassy_time::Duration::from_millis(10));
+            ::embassy_time::Timer::after_millis(10).await;
         }
         Err(PeripheralError::DeviceNotAvailable)
     }
@@ -374,10 +381,11 @@ impl<I: I2c> Vl53l0x<I> {
         link_section = ".data.core1_func"
     )]
     /// Read range status register 0x14
-    fn read_range_status(&mut self) -> Result<RangeStatus, PeripheralError> {
+    async fn read_range_status(&mut self) -> Result<RangeStatus, PeripheralError> {
         let mut status = [0u8; 1];
         self.i2c
             .write_read(self.address, &[Register::RESULT_RANGE_STATUS], &mut status)
+            .await
             .map_err(|e| {
                 e.to_i2c_error(self.address as u16, Register::RESULT_RANGE_STATUS as u16)
             })?;
@@ -406,109 +414,114 @@ impl<I: I2c> Vl53l0x<I> {
         link_section = ".data.core1_func"
     )]
     /// Reads the raw measured distance and the peak return rate (in Q9.7 register format).
-    pub fn read_raw_distance_and_rate_internal(
+    pub async fn read_raw_distance_and_rate_internal(
         &mut self,
     ) -> Result<(SensorReading, u16), PeripheralError> {
-        let res = (|| {
-            // Temporarily configure interrupt mode to NewSampleReady (4)
-            self.i2c
-                .write(
-                    self.address,
-                    &[
-                        Register::SYSTEM_INTERRUPT_GPIO_CONFIG,
-                        InterruptMode::NewSampleReady as u8,
-                    ],
-                )
-                .map_err(|e| {
-                    e.to_i2c_error(
-                        self.address as u16,
-                        Register::SYSTEM_INTERRUPT_GPIO_CONFIG as u16,
-                    )
-                })?;
-
-            // Trigger a measurement (write 0x01 to register 0x00 for System Start)
-            self.i2c
-                .write(self.address, &[Register::SYSTEM_START, 0x01])
-                .map_err(|e| e.to_i2c_error(self.address as u16, Register::SYSTEM_START as u16))?;
-
-            let wait_res = self.wait_for_measurement();
-
-            // Restore the configured interrupt mode
-            let restore_res = self
-                .i2c
-                .write(
-                    self.address,
-                    &[
-                        Register::SYSTEM_INTERRUPT_GPIO_CONFIG,
-                        self.interrupt_mode as u8,
-                    ],
-                )
-                .map_err(|e| {
-                    e.to_i2c_error(
-                        self.address as u16,
-                        Register::SYSTEM_INTERRUPT_GPIO_CONFIG as u16,
-                    )
-                });
-
-            wait_res?;
-            restore_res?;
-
-            let range_status = self.read_range_status()?;
-
-            // Read 16-bit range result from register 0x1E (High Byte) and 0x1F (Low Byte)
-            let mut buf = [0u8; 2];
-            self.i2c
-                .write_read(self.address, &[Register::RESULT_RANGE_VAL], &mut buf)
-                .map_err(|e| {
-                    e.to_i2c_error(self.address as u16, Register::RESULT_RANGE_VAL as u16)
-                })?;
-            let distance = u16::from_be_bytes(buf);
-
-            // Read peak signal rate (registers 0x1A and 0x1B)
-            let mut buf_rate = [0u8; 2];
-            let _ = self.i2c.write_read(self.address, &[0x1A], &mut buf_rate);
-            let peak_rate = u16::from_be_bytes(buf_rate);
-
-            // Clear interrupt status so the pin can trigger again (write 0x01 to register 0x0B)
-            self.clear_interrupt()?;
-
-            #[cfg(all(
-                target_arch = "arm",
-                target_os = "none",
-                feature = "verbose-sensor-logging"
-            ))]
-            {
-                // Read ambient rate (registers 0x1C and 0x1D)
-                let mut buf_ambient = [0u8; 2];
-                let _ = self.i2c.write_read(self.address, &[0x1C], &mut buf_ambient);
-                let ambient_rate = u16::from_be_bytes(buf_ambient);
-
-                defmt::debug!(
-                        "VL53L0X [0x{:02x}] mm-read: Raw Dist = {} mm, Peak Rate = {} Mcps, Ambient Rate = {} Mcps",
-                        self.address,
-                        distance,
-                        peak_rate,
-                        ambient_rate
-                    );
-            }
-
-            let reading = if !range_status.valid || range_status.max_range {
-                SensorReading::Invalid
-            } else if range_status.min_range {
-                SensorReading::Proximity(Self::MIN_RANGE_MM)
-            } else {
-                SensorReading::Proximity(distance)
-            };
-            Ok((reading, peak_rate))
-        })();
-        if let Err(ref _e) = res {
-            log_warn!(
-                "{}: Failed raw/rate distance read at address 0x{:02x}: {:?}",
-                self.address,
-                defmt::Debug2Format(_e)
-            );
+        if let Some(xtalk) = self.xtalk_pending.take() {
+            let _ = self.set_crosstalk_compensation(xtalk).await;
         }
-        res
+
+        // Temporarily configure interrupt mode to NewSampleReady (4)
+        self.i2c
+            .write(
+                self.address,
+                &[
+                    Register::SYSTEM_INTERRUPT_GPIO_CONFIG,
+                    InterruptMode::NewSampleReady as u8,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                e.to_i2c_error(
+                    self.address as u16,
+                    Register::SYSTEM_INTERRUPT_GPIO_CONFIG as u16,
+                )
+            })?;
+
+        // Trigger a measurement (write 0x01 to register 0x00 for System Start)
+        self.i2c
+            .write(self.address, &[Register::SYSTEM_START, 0x01])
+            .await
+            .map_err(|e| e.to_i2c_error(self.address as u16, Register::SYSTEM_START as u16))?;
+
+        let wait_res = self.wait_for_measurement().await;
+
+        // Restore the configured interrupt mode
+        let restore_res = self
+            .i2c
+            .write(
+                self.address,
+                &[
+                    Register::SYSTEM_INTERRUPT_GPIO_CONFIG,
+                    self.interrupt_mode as u8,
+                ],
+            )
+            .await
+            .map_err(|e| {
+                e.to_i2c_error(
+                    self.address as u16,
+                    Register::SYSTEM_INTERRUPT_GPIO_CONFIG as u16,
+                )
+            });
+
+        wait_res?;
+        restore_res?;
+
+        let range_status = self.read_range_status().await?;
+
+        // Read 16-bit range result from register 0x1E (High Byte) and 0x1F (Low Byte)
+        let mut buf = [0u8; 2];
+        self.i2c
+            .write_read(self.address, &[Register::RESULT_RANGE_VAL], &mut buf)
+            .await
+            .map_err(|e| e.to_i2c_error(self.address as u16, Register::RESULT_RANGE_VAL as u16))?;
+        let distance = u16::from_be_bytes(buf);
+
+        // Read peak signal rate (registers 0x1A and 0x1B)
+        let mut buf_rate = [0u8; 2];
+        let _ = self
+            .i2c
+            .write_read(self.address, &[0x1A], &mut buf_rate)
+            .await;
+        let peak_rate = u16::from_be_bytes(buf_rate);
+
+        // Clear interrupt status so the pin can trigger again (write 0x01 to register 0x0B)
+        self.clear_interrupt().await?;
+
+        #[cfg(all(
+            target_arch = "arm",
+            target_os = "none",
+            feature = "verbose-sensor-logging"
+        ))]
+        {
+            // Read ambient rate (registers 0x1C and 0x1D)
+            let mut buf_ambient = [0u8; 2];
+            let _ = self
+                .i2c
+                .write_read(self.address, &[0x1C], &mut buf_ambient)
+                .await;
+            let ambient_rate = u16::from_be_bytes(buf_ambient);
+
+            defmt::debug!(
+                    "VL53L0X [0x{:02x}] mm-read: Raw Dist = {} mm, Peak Rate = {} Mcps, Ambient Rate = {} Mcps, Range Valid = {}, Min = {}, Max = {}",
+                    self.address,
+                    distance,
+                    peak_rate,
+                    ambient_rate,
+                    range_status.valid,
+                    range_status.min_range,
+                    range_status.max_range,
+                );
+        }
+
+        let reading = if !range_status.valid || range_status.max_range {
+            SensorReading::Invalid
+        } else if range_status.min_range {
+            SensorReading::Proximity(Self::MIN_RANGE_MM)
+        } else {
+            SensorReading::Proximity(distance)
+        };
+        Ok((reading, peak_rate))
     }
 }
 
@@ -520,8 +533,8 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
         link_section = ".data.core1_func"
     )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
-    fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
-        let (raw_reading, _) = self.read_raw_distance_and_rate_internal()?;
+    async fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
+        let (raw_reading, _) = self.read_raw_distance_and_rate_internal().await?;
         Ok(raw_reading)
     }
 
@@ -529,8 +542,8 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
         all(target_arch = "arm", feature = "sensors-core"),
         link_section = ".data.core1_func"
     )]
-    fn read_raw_distance_and_rate(&mut self) -> Result<(SensorReading, u16), Self::Error> {
-        self.read_raw_distance_and_rate_internal()
+    async fn read_raw_distance_and_rate(&mut self) -> Result<(SensorReading, u16), Self::Error> {
+        self.read_raw_distance_and_rate_internal().await
     }
 }
 
@@ -546,7 +559,8 @@ impl<I: I2c> Calibration for Vl53l0x<I> {
         let xtalk = store.xtalk_m_mcps[dir as usize];
         if self.threshold_mm > cal.low + THRESHOLD_ERROR_MM {
             self.calibration = Some(cal);
-            let _ = self.set_crosstalk_compensation(xtalk);
+            // Defer crosstalk compensation setup to async write path
+            self.xtalk_pending = Some(xtalk);
         } else {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
             defmt::error!(
@@ -595,10 +609,11 @@ impl<I: I2c> Probeable for Vl53l0x<I> {
     type Error = PeripheralError;
 
     #[tracing::instrument(level = "trace")]
-    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+    async fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         let mut buf = [0u8; 1];
         self.i2c
             .write_read(self.address, &[Register::IDENTIFICATION_MODEL_ID], &mut buf)
+            .await
             .map_err(|e| {
                 e.to_i2c_error(
                     self.address as u16,
@@ -614,7 +629,7 @@ impl<I: I2c> Probeable for Vl53l0x<I> {
     }
 
     #[tracing::instrument(level = "trace")]
-    fn reset(&mut self) -> Result<(), Self::Error> {
+    async fn reset(&mut self) -> Result<(), Self::Error> {
         // No software-initiated reset register on the VL53L0X.
         // It relies on the hardware XSHUT pin for reset, so this is a no-op.
         Ok(())
@@ -628,26 +643,29 @@ macro_rules! init_vl53l0x {
         if let Some(ref mut pin) = $gpio_pins[$xshut_pin as usize] {
             pin.set_high();
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            ::embassy_time::block_for(::embassy_time::Duration::from_millis(2)); // Wait for sensor to boot (min 1.2ms)
-            let mut sensor = $crate::vl53l0x::Vl53l0x::new($i2c, 0x29, ::model::types::Direction::North);
+            ::embassy_time::Timer::after_millis(2).await; // Wait for sensor to boot (min 1.2ms)
+            let mut sensor =
+                $crate::vl53l0x::Vl53l0x::new($i2c, 0x29, ::model::types::Direction::North);
             {
                 use ::model::interfaces::BootStatus;
                 use ::model::interfaces::Probeable;
                 use $crate::ToPeripheralError;
-                if let Err(ref e) = sensor.read_chip_id() {
+                if let Err(ref e) = sensor.read_chip_id().await {
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::warn!("{}: Probing failed: {:?}", $name, defmt::Debug2Format(e));
                     let pe = e.to_peripheral_error();
                     $boot_status.record_error(pe);
                 }
-                if let Err(ref e) = sensor.reset() {
+                if let Err(ref e) = sensor.reset().await {
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::warn!("{}: Reset failed: {:?}", $name, defmt::Debug2Format(e));
                     let pe = e.to_peripheral_error();
                     $boot_status.record_error(pe);
                 }
             }
-            if let Err(e) = sensor.init($addr, $threshold, $crate::vl53l0x::InterruptMode::LowLevel)
+            if let Err(e) = sensor
+                .init($addr, $threshold, $crate::vl53l0x::InterruptMode::LowLevel)
+                .await
             {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::warn!("{}: Init failed: {:?}", $name, defmt::Debug2Format(&e));
