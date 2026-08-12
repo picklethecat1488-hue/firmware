@@ -12,7 +12,9 @@ use model::calibration::{ApplyCalibration, Calibration};
 use model::interfaces::ProximitySensor;
 use model::types::{Direction, PeriodicInterval, PeripheralError, SensorReading};
 use peripherals::ToPeripheralError;
-use platform::{select_branch_with_timeout, subcommand_enum, BlockingAsyncFlash};
+use platform::{
+    select_branch_with_timeout, subcommand_enum, BlockingAsyncFlash, CliSignal, OnceLock,
+};
 
 /// Trait for waiting on a data-ready interrupt pin.
 #[allow(async_fn_in_trait)]
@@ -31,38 +33,8 @@ impl DataReadyPin for DummyDataReadyPin {
     }
 }
 
-/// Wrapper for the proximity CLI signal pointer to implement Send and Sync.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct ProximitySignalPtr(
-    pub *const ::platform::OnceLock<Result<SensorReading, PeripheralError>>,
-);
-
-unsafe impl Send for ProximitySignalPtr {}
-unsafe impl Sync for ProximitySignalPtr {}
-
-/// Wrapper for the crosstalk CLI signal pointer to implement Send and Sync.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub struct XTalkSignalPtr(
-    pub *const ::platform::OnceLock<Result<(SensorReading, u16), PeripheralError>>,
-);
-
-unsafe impl Send for XTalkSignalPtr {}
-unsafe impl Sync for XTalkSignalPtr {}
-
 /// Maximum raw distance value in mm allowed during proximity sensor calibration.
 const MAX_CALIBRATION_RAW_MM: u16 = 900;
-
-impl core::fmt::Debug for ProximitySignalPtr {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "ProximitySignalPtr({:p})", self.0)
-    }
-}
-
-impl core::fmt::Debug for XTalkSignalPtr {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "XTalkSignalPtr({:p})", self.0)
-    }
-}
 
 /// Type alias for the sensor command sender.
 pub type SensorSender<M> = embassy_sync::channel::Sender<'static, M, SensorCommand, 4>;
@@ -73,14 +45,117 @@ pub type SensorSender<M> = embassy_sync::channel::Sender<'static, M, SensorComma
 pub enum SensorCommand {
     /// Force proximity sensor check and print telemetry logs
     ReadSensors,
-    /// Force proximity sensor check and signal completion via OnceLock
-    ReadSensorsWithSignal(ProximitySignalPtr),
-    /// Force raw proximity sensor check and signal completion via OnceLock
-    ReadRawSensorsWithSignal(ProximitySignalPtr),
-    /// Force raw proximity sensor check with return rate and signal completion via OnceLock
-    ReadXTalkRawWithSignal(XTalkSignalPtr),
+    /// Force proximity sensor check and signal completion via CliSignal
+    ReadSensorsWithSignal(CliSignal<Result<SensorReading, PeripheralError>>),
+    /// Force raw proximity sensor check and signal completion via CliSignal
+    ReadRawSensorsWithSignal(CliSignal<Result<SensorReading, PeripheralError>>),
+    /// Force raw proximity sensor check with return rate and signal completion via CliSignal
+    ReadXTalkRawWithSignal(CliSignal<Result<(SensorReading, u16), PeripheralError>>),
     /// Set periodic automatic reading interval
     SetInterval(PeriodicInterval),
+}
+
+/// Represents an async CLI command to be executed outside the synchronous CLI loop.
+#[derive(Clone)]
+pub enum PendingCommand {
+    /// Sensor status command with optional number of readings.
+    Status(usize),
+    /// Calibrate near proximity.
+    CalNear {
+        /// Sensor direction
+        direction: crate::types::SensorDirection,
+        /// Calibration partition
+        partition: heapless::String<16>,
+    },
+    /// Calibrate far proximity.
+    CalFar {
+        /// Sensor direction
+        direction: crate::types::SensorDirection,
+        /// Calibration partition
+        partition: heapless::String<16>,
+    },
+    /// Calibrate crosstalk.
+    CalXTalk {
+        /// Sensor direction
+        direction: crate::types::SensorDirection,
+        /// Distance or partition parameter
+        distance_or_partition: heapless::String<16>,
+    },
+}
+
+impl PendingCommand {
+    /// Parses a PendingCommand from raw CLI strings.
+    pub fn parse(
+        subcommand: SensorSubcommand,
+        arg1: Option<&str>,
+        partition: Option<&str>,
+    ) -> Result<Self, &'static str> {
+        use crate::types::SensorDirection;
+        use heapless::String;
+
+        let cmd = match subcommand {
+            SensorSubcommand::Status => {
+                let num_readings = if let Some(s) = arg1 {
+                    s.parse::<usize>()
+                        .map_err(|_| "Invalid number of readings")?
+                } else {
+                    1
+                };
+                PendingCommand::Status(num_readings)
+            }
+            SensorSubcommand::CalNear => {
+                let dir_str = arg1.ok_or("Missing direction parameter")?;
+                let direction = match dir_str {
+                    "north" => SensorDirection::North,
+                    "east" => SensorDirection::East,
+                    "west" => SensorDirection::West,
+                    _ => return Err("Invalid direction. Expected: north, east, west"),
+                };
+                let part_str = partition.unwrap_or("telemetry");
+                let mut s = String::new();
+                s.push_str(part_str)
+                    .map_err(|_| "Partition name too long")?;
+                PendingCommand::CalNear {
+                    direction,
+                    partition: s,
+                }
+            }
+            SensorSubcommand::CalFar => {
+                let dir_str = arg1.ok_or("Missing direction parameter")?;
+                let direction = match dir_str {
+                    "north" => SensorDirection::North,
+                    "east" => SensorDirection::East,
+                    "west" => SensorDirection::West,
+                    _ => return Err("Invalid direction. Expected: north, east, west"),
+                };
+                let part_str = partition.unwrap_or("telemetry");
+                let mut s = String::new();
+                s.push_str(part_str)
+                    .map_err(|_| "Partition name too long")?;
+                PendingCommand::CalFar {
+                    direction,
+                    partition: s,
+                }
+            }
+            SensorSubcommand::CalXTalk => {
+                let dir_str = arg1.ok_or("Missing direction parameter")?;
+                let direction = match dir_str {
+                    "north" => SensorDirection::North,
+                    "east" => SensorDirection::East,
+                    "west" => SensorDirection::West,
+                    _ => return Err("Invalid direction. Expected: north, east, west"),
+                };
+                let part_str = partition.unwrap_or("100");
+                let mut s = String::new();
+                s.push_str(part_str).map_err(|_| "Parameter too long")?;
+                PendingCommand::CalXTalk {
+                    direction,
+                    distance_or_partition: s,
+                }
+            }
+        };
+        Ok(cmd)
+    }
 }
 
 /// Trait for reading data from a generic sensor type.
@@ -524,19 +599,13 @@ where
                         d
                     })
                     .map_err(|_| PeripheralError::DeviceNotAvailable);
-                unsafe {
-                    let lock = &*signal_ptr.0;
-                    let _ = lock.set(res);
-                }
+                let _ = unsafe { signal_ptr.set(res) };
             }
             SensorCommand::ReadRawSensorsWithSignal(signal_ptr) => {
                 let res = Reader::read_data(self.state_manager.sensor_mut(), &self.context)
                     .await
                     .map_err(|_| PeripheralError::DeviceNotAvailable);
-                unsafe {
-                    let lock = &*signal_ptr.0;
-                    let _ = lock.set(res);
-                }
+                let _ = unsafe { signal_ptr.set(res) };
             }
             SensorCommand::ReadXTalkRawWithSignal(signal_ptr) => {
                 let res = self
@@ -545,10 +614,7 @@ where
                     .read_raw_distance_and_rate()
                     .await
                     .map_err(|_| PeripheralError::DeviceNotAvailable);
-                unsafe {
-                    let lock = &*signal_ptr.0;
-                    let _ = lock.set(res);
-                }
+                let _ = unsafe { signal_ptr.set(res) };
             }
             SensorCommand::SetInterval(interval) => {
                 self.set_periodic_interval(interval);
@@ -676,18 +742,11 @@ impl<
 where
     <S as ProximitySensor>::Error: ToPeripheralError,
 {
-    fn read_distance_blocking(&mut self) -> Result<SensorReading, PeripheralError> {
-        let lock = ::platform::OnceLock::new();
-        let lock_ptr = ProximitySignalPtr(&lock as *const _);
+    async fn read_distance_blocking(&mut self) -> Result<SensorReading, PeripheralError> {
+        let lock = OnceLock::new();
+        let lock_ptr = CliSignal::new(&lock);
         self.send_command(SensorCommand::ReadSensorsWithSignal(lock_ptr))?;
-        *lock.wait()
-    }
-
-    fn read_raw_distance_blocking(&mut self) -> Result<SensorReading, PeripheralError> {
-        let lock = ::platform::OnceLock::new();
-        let lock_ptr = ProximitySignalPtr(&lock as *const _);
-        self.send_command(SensorCommand::ReadRawSensorsWithSignal(lock_ptr))?;
-        *lock.wait()
+        *lock.wait().await
     }
 
     fn latest_distance(&self) -> SensorReading {
@@ -802,24 +861,20 @@ subcommand_enum! {
 }
 
 /// Processes sensor-specific CLI subcommands by validating and delegating.
-pub fn handle_sensor_cli<
+pub async fn handle_sensor_cli<
     W: embedded_io::Write<Error = E>,
     E: embedded_io::Error,
     C: crate::ShellConfig,
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
-    subcommand: Option<SensorSubcommand>,
-    arg1: Option<&str>,
-    partition_name: Option<&str>,
+    command: PendingCommand,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     let mut fs_buf = resolver.lock_fs_buffer()?;
     let fs_buf_static = unsafe { fs_buf.as_static_mut() };
 
-    let cmd = subcommand.ok_or("Missing sensor subcommand")?;
-
-    match cmd {
-        SensorSubcommand::Status => {
+    match command {
+        PendingCommand::Status(num_readings) => {
             struct WriteBuffer<'a> {
                 buf: &'a mut [u8],
                 len: usize,
@@ -846,15 +901,8 @@ pub fn handle_sensor_cli<
                 }
             }
 
-            let num_readings = if let Some(s) = arg1 {
-                s.parse::<usize>()
-                    .map_err(|_| "Invalid number of readings")?
-            } else {
-                1
-            };
-
             let proximity_cal = (|| {
-                let resolved = resolver.resolve_partition(partition_name).ok()?;
+                let resolved = resolver.resolve_partition(None).ok()?;
                 let (map_fs, flash_ptr) = match resolved {
                     crate::ResolvedPartition::Map(fs, ptr) => (fs, ptr),
                     _ => return None,
@@ -889,13 +937,13 @@ pub fn handle_sensor_cli<
 
                 for (i, named) in sensors.iter().take(count).enumerate() {
                     let sensor = unsafe { &mut *named.device };
-                    let lock = ::platform::OnceLock::new();
-                    let lock_ptr = ProximitySignalPtr(&lock as *const _);
+                    let lock = OnceLock::new();
+                    let lock_ptr = CliSignal::new(&lock);
                     readings[i] = if sensor
                         .send_command(SensorCommand::ReadSensorsWithSignal(lock_ptr))
                         .is_ok()
                     {
-                        *lock.wait()
+                        *lock.wait().await
                     } else {
                         Err(PeripheralError::DeviceNotAvailable)
                     };
@@ -962,13 +1010,14 @@ pub fn handle_sensor_cli<
             }
             Ok(())
         }
-        SensorSubcommand::CalNear => {
-            let dir_str = arg1.ok_or("Missing direction parameter")?;
-            let direction = match dir_str {
-                "north" => SensorDirection::North,
-                "east" => SensorDirection::East,
-                "west" => SensorDirection::West,
-                _ => return Err("Invalid direction. Expected: north, east, west"),
+        PendingCommand::CalNear {
+            direction,
+            partition,
+        } => {
+            let dir_str = match direction {
+                SensorDirection::North => "north",
+                SensorDirection::East => "east",
+                SensorDirection::West => "west",
             };
 
             let name = match direction {
@@ -980,13 +1029,13 @@ pub fn handle_sensor_cli<
             let sensor_ctrl = resolver.resolve_sensor(Some(dir_str))?;
             let mut d_raw = SensorReading::Invalid;
             for _ in 0..10 {
-                let lock = ::platform::OnceLock::new();
-                let lock_ptr = ProximitySignalPtr(&lock as *const _);
+                let lock = OnceLock::new();
+                let lock_ptr = CliSignal::new(&lock);
                 if sensor_ctrl
                     .send_command(SensorCommand::ReadRawSensorsWithSignal(lock_ptr))
                     .is_ok()
                 {
-                    if let Ok(reading) = *lock.wait() {
+                    if let Ok(reading) = *lock.wait().await {
                         d_raw = reading;
                         if let SensorReading::Proximity(d) = reading {
                             if d < MAX_CALIBRATION_RAW_MM {
@@ -1019,7 +1068,7 @@ pub fn handle_sensor_cli<
                 d_val
             );
 
-            let (map_fs, flash_ptr) = match resolver.resolve_partition(partition_name)? {
+            let (map_fs, flash_ptr) = match resolver.resolve_partition(Some(partition.as_str()))? {
                 crate::ResolvedPartition::Map(fs, ptr) => (fs, ptr),
                 _ => return Err("Requested partition is not a map filesystem"),
             };
@@ -1057,13 +1106,14 @@ pub fn handle_sensor_cli<
             })
             .map_err(|_| "Error saving calibration to flash")
         }
-        SensorSubcommand::CalFar => {
-            let dir_str = arg1.ok_or("Missing direction parameter")?;
-            let direction = match dir_str {
-                "north" => SensorDirection::North,
-                "east" => SensorDirection::East,
-                "west" => SensorDirection::West,
-                _ => return Err("Invalid direction. Expected: north, east, west"),
+        PendingCommand::CalFar {
+            direction,
+            partition,
+        } => {
+            let dir_str = match direction {
+                SensorDirection::North => "north",
+                SensorDirection::East => "east",
+                SensorDirection::West => "west",
             };
 
             let name = match direction {
@@ -1075,13 +1125,13 @@ pub fn handle_sensor_cli<
             let sensor_ctrl = resolver.resolve_sensor(Some(dir_str))?;
             let mut d_raw = SensorReading::Invalid;
             for _ in 0..10 {
-                let lock = ::platform::OnceLock::new();
-                let lock_ptr = ProximitySignalPtr(&lock as *const _);
+                let lock = OnceLock::new();
+                let lock_ptr = CliSignal::new(&lock);
                 if sensor_ctrl
                     .send_command(SensorCommand::ReadRawSensorsWithSignal(lock_ptr))
                     .is_ok()
                 {
-                    if let Ok(reading) = *lock.wait() {
+                    if let Ok(reading) = *lock.wait().await {
                         d_raw = reading;
                         if let SensorReading::Proximity(d) = reading {
                             if d < MAX_CALIBRATION_RAW_MM {
@@ -1114,7 +1164,7 @@ pub fn handle_sensor_cli<
                 d_val
             );
 
-            let (map_fs, flash_ptr) = match resolver.resolve_partition(partition_name)? {
+            let (map_fs, flash_ptr) = match resolver.resolve_partition(Some(partition.as_str()))? {
                 crate::ResolvedPartition::Map(fs, ptr) => (fs, ptr),
                 _ => return Err("Requested partition is not a map filesystem"),
             };
@@ -1152,13 +1202,14 @@ pub fn handle_sensor_cli<
             })
             .map_err(|_| "Error saving calibration to flash")
         }
-        SensorSubcommand::CalXTalk => {
-            let dir_str = arg1.ok_or("Missing direction parameter")?;
-            let direction = match dir_str {
-                "north" => SensorDirection::North,
-                "east" => SensorDirection::East,
-                "west" => SensorDirection::West,
-                _ => return Err("Invalid direction. Expected: north, east, west"),
+        PendingCommand::CalXTalk {
+            direction,
+            distance_or_partition,
+        } => {
+            let dir_str = match direction {
+                SensorDirection::North => "north",
+                SensorDirection::East => "east",
+                SensorDirection::West => "west",
             };
 
             let name = match direction {
@@ -1167,25 +1218,20 @@ pub fn handle_sensor_cli<
                 SensorDirection::West => "West",
             };
 
-            let cal_distance = if let Some(s) = partition_name {
-                s.parse::<u16>()
-                    .map_err(|_| "Invalid calibration distance")?
-            } else {
-                100 // Default to 100mm
-            };
+            let cal_distance = distance_or_partition.parse::<u16>().unwrap_or(100);
 
             let sensor_ctrl = resolver.resolve_sensor(Some(dir_str))?;
             let mut d_raw = SensorReading::Invalid;
             let mut peak_rate_raw = 0u16;
 
             for _ in 0..10 {
-                let lock = ::platform::OnceLock::new();
-                let lock_ptr = XTalkSignalPtr(&lock as *const _);
+                let lock = OnceLock::new();
+                let lock_ptr = CliSignal::new(&lock);
                 if sensor_ctrl
                     .send_command(SensorCommand::ReadXTalkRawWithSignal(lock_ptr))
                     .is_ok()
                 {
-                    if let Ok((reading, rate)) = *lock.wait() {
+                    if let Ok((reading, rate)) = *lock.wait().await {
                         d_raw = reading;
                         peak_rate_raw = rate;
                         if let SensorReading::Proximity(_) = reading {
@@ -1227,7 +1273,10 @@ pub fn handle_sensor_cli<
                 xtalk_m_mcps
             );
 
-            let (map_fs, flash_ptr) = match resolver.resolve_partition(None)? {
+            let (map_fs, flash_ptr) = match resolver
+                .resolve_partition(Some(distance_or_partition.as_str()))
+                .or_else(|_| resolver.resolve_partition(None))?
+            {
                 crate::ResolvedPartition::Map(fs, ptr) => (fs, ptr),
                 _ => return Err("Requested partition is not a map filesystem"),
             };

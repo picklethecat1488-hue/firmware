@@ -539,3 +539,129 @@ fn test_post_process_cpu_usage_step_chart() {
         Some(100)
     );
 }
+
+#[test]
+fn test_post_process_implicit_closure_on_data_loss() {
+    use std::io::Write;
+    let temp_dir = std::env::temp_dir();
+    let file_path = temp_dir.join("test_implicit_closure.json");
+    let path = file_path.to_str().unwrap();
+
+    // Mock trace with missing exit event for span_id "1" before span_id "2" enters with the same name.
+    let mock_trace = r#"[
+        {"cat": "device_span_enter", "ts": 100, "pid": 42, "tid": 1, "args": {"span_id": "1", "span_name": "sensor_task"}},
+        {"cat": "device_span_enter", "ts": 105, "pid": 42, "tid": 1, "args": {"span_id": "2", "span_name": "sensor_task"}},
+        {"cat": "device_span_exit", "ts": 120, "pid": 42, "tid": 1, "args": {"span_id": "2"}}
+    ]"#;
+
+    {
+        let mut file = std::fs::File::create(path).unwrap();
+        file.write_all(mock_trace.as_bytes()).unwrap();
+    }
+
+    // Run post processor
+    host_cli::tracing::post_process_trace(path, None).unwrap();
+
+    // Read and parse output
+    let content = std::fs::read_to_string(path).unwrap();
+    let events: Vec<serde_json::Value> = serde_json::from_str(&content).unwrap();
+
+    // Clean up temp file
+    let _ = std::fs::remove_file(path);
+
+    // We expect:
+    // 4 metadata events (process_name, thread_name Core 0, thread_name Core 1, thread_name Device Logs)
+    // + 1 enter event for span "1" (ts=100)
+    // + 1 implicit exit event for span "1" (ts=105)
+    // + 1 enter event for span "2" (ts=105)
+    // + 1 exit event for span "2" (ts=120)
+    // Total: 8 events
+    assert_eq!(events.len(), 8);
+
+    // Let's filter for device span events
+    let device_events: Vec<&serde_json::Value> = events
+        .iter()
+        .filter(|e| e.get("cat").and_then(|c| c.as_str()) == Some("device"))
+        .collect();
+
+    assert_eq!(device_events.len(), 4);
+
+    // 1. Enter span "1"
+    assert_eq!(
+        device_events[0].get("name").and_then(|n| n.as_str()),
+        Some("sensor_task")
+    );
+    assert_eq!(
+        device_events[0].get("ph").and_then(|p| p.as_str()),
+        Some("B")
+    );
+    assert_eq!(
+        device_events[0].get("ts").and_then(|t| t.as_f64()),
+        Some(100.0)
+    );
+    assert_eq!(
+        device_events[0].get("span_id").and_then(|s| s.as_str()),
+        Some("1")
+    );
+
+    // 2. Implicit exit of span "1" at ts=105
+    assert_eq!(
+        device_events[1].get("name").and_then(|n| n.as_str()),
+        Some("sensor_task")
+    );
+    assert_eq!(
+        device_events[1].get("ph").and_then(|p| p.as_str()),
+        Some("E")
+    );
+    assert_eq!(
+        device_events[1].get("ts").and_then(|t| t.as_f64()),
+        Some(105.0)
+    );
+    assert_eq!(
+        device_events[1].get("span_id").and_then(|s| s.as_str()),
+        Some("1")
+    );
+    assert_eq!(
+        device_events[1]
+            .get("args")
+            .and_then(|a| a.get("implicit"))
+            .and_then(|i| i.as_bool()),
+        Some(true)
+    );
+
+    // 3. Enter span "2" at ts=105
+    assert_eq!(
+        device_events[2].get("name").and_then(|n| n.as_str()),
+        Some("sensor_task")
+    );
+    assert_eq!(
+        device_events[2].get("ph").and_then(|p| p.as_str()),
+        Some("B")
+    );
+    assert_eq!(
+        device_events[2].get("ts").and_then(|t| t.as_f64()),
+        Some(105.0)
+    );
+    assert_eq!(
+        device_events[2].get("span_id").and_then(|s| s.as_str()),
+        Some("2")
+    );
+
+    // 4. Exit span "2" at ts=120
+    assert_eq!(
+        device_events[3].get("name").and_then(|n| n.as_str()),
+        Some("sensor_task")
+    );
+    assert_eq!(
+        device_events[3].get("ph").and_then(|p| p.as_str()),
+        Some("E")
+    );
+    assert_eq!(
+        device_events[3].get("ts").and_then(|t| t.as_f64()),
+        Some(120.0)
+    );
+    assert_eq!(
+        device_events[3].get("span_id").and_then(|s| s.as_str()),
+        Some("2")
+    );
+}

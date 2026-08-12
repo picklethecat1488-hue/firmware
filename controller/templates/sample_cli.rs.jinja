@@ -42,7 +42,7 @@ impl controller::BlockingThermalReader for MockThermalCtrl {
 
 pub struct MockSensorCtrl;
 impl controller::BlockingProximityReader for MockSensorCtrl {
-    fn read_distance_blocking(&mut self) -> Result<model::types::SensorReading, model::types::PeripheralError> {
+    async fn read_distance_blocking(&mut self) -> Result<model::types::SensorReading, model::types::PeripheralError> {
         Ok(model::types::SensorReading::Proximity(100))
     }
     fn latest_distance(&self) -> model::types::SensorReading {

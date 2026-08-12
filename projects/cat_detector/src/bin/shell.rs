@@ -298,7 +298,7 @@ async fn main(spawner: Spawner) {
         }
     };
 
-    let raw_motor_ptr = *app::MOTOR_CTRL_CORE1.wait();
+    let raw_motor_ptr = *app::MOTOR_CTRL_CORE1.wait().await;
     let board_motor_ptr =
         unsafe { &mut (*(raw_motor_ptr as *mut MotorControllerType)).motor as *mut _ };
 
@@ -343,21 +343,21 @@ async fn main(spawner: Spawner) {
     let sensors = &[
         controller::NamedDevice {
             name: "north",
-            device: *app::SENSOR_CTRL_NORTH_CORE1.wait() as *mut _,
+            device: *app::SENSOR_CTRL_NORTH_CORE1.wait().await as *mut _,
         },
         controller::NamedDevice {
             name: "east",
-            device: *app::SENSOR_CTRL_EAST_CORE1.wait() as *mut _,
+            device: *app::SENSOR_CTRL_EAST_CORE1.wait().await as *mut _,
         },
         controller::NamedDevice {
             name: "west",
-            device: *app::SENSOR_CTRL_WEST_CORE1.wait() as *mut _,
+            device: *app::SENSOR_CTRL_WEST_CORE1.wait().await as *mut _,
         },
     ];
 
     let motor_ctrls = &[controller::NamedDevice {
         name: "default",
-        device: *app::MOTOR_CTRL_CORE1.wait() as *mut _,
+        device: *app::MOTOR_CTRL_CORE1.wait().await as *mut _,
     }];
 
     let feature_set = app::create_default_feature_set();
@@ -396,7 +396,8 @@ async fn main(spawner: Spawner) {
     let mut processor = ShellController::<AppConfig>::new(pointers);
 
     let mut local_proc = CatDetectorCliProcessor::new(&mut processor);
-    platform::rtt::run_rtt_shell_loop::<CatDetectorCli, _, _, _>(&mut cli, &mut local_proc).await;
+
+    platform::run_rtt_shell_loop!(&mut cli, &mut local_proc, CatDetectorCli);
 }
 
 /// Dummy host entry point to satisfy Cargo compilation requirements.

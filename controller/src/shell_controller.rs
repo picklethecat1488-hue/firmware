@@ -68,6 +68,8 @@ macro_rules! define_shell_resolver_and_controller {
             flash_partitions: &'a [$crate::NamedPartition<C::Flash>],
             fs_buffer: *mut [u8],
             fs_buffer_locked: core::cell::Cell<bool>,
+            /// Deferred pending async command
+            pub pending_command: Option<$crate::sensor_controller::PendingCommand>,
         }
 
         // Implement Send and Sync manually since ShellController contains raw pointers
@@ -82,6 +84,7 @@ macro_rules! define_shell_resolver_and_controller {
                     flash_partitions: pointers.flash_partitions,
                     fs_buffer: pointers.fs_buffer as *mut [u8],
                     fs_buffer_locked: core::cell::Cell::new(false),
+                    pending_command: None,
                 }
             }
 
@@ -123,6 +126,33 @@ macro_rules! define_shell_resolver_and_controller {
                         p.partition.flash_ptr,
                     )),
                 }
+            }
+
+            /// Parses and registers a pending async sensor command.
+            pub fn set_pending_sensor(
+                &mut self,
+                subcommand: $crate::sensor_controller::SensorSubcommand,
+                arg1: Option<&str>,
+                partition: Option<&str>,
+            ) -> Result<(), &'static str> {
+                let cmd = $crate::sensor_controller::PendingCommand::parse(subcommand, arg1, partition)?;
+                self.pending_command = Some(cmd);
+                Ok(())
+            }
+
+            /// Executes any pending async commands.
+            pub async fn execute_pending<W, E>(
+                &mut self,
+                writer: &mut $crate::embedded_cli::writer::Writer<'_, W, E>,
+            ) -> Result<(), &'static str>
+            where
+                W: $crate::embedded_io::Write<Error = E>,
+                E: $crate::embedded_io::Error,
+            {
+                if let Some(pending) = self.pending_command.take() {
+                    $crate::sensor_controller::handle_sensor_cli(self, pending, writer).await?;
+                }
+                Ok(())
             }
         }
 
@@ -298,7 +328,8 @@ macro_rules! emit_wrapper_commands {
 
         /// Generated wrapper processor.
         pub struct $proc_name<'a, 'b, C: $crate::shell_controller::ShellConfig> {
-            controller: &'b mut $crate::shell_controller::ShellController<'a, C>,
+            /// Reference to the underlying shell controller.
+            pub controller: &'b mut $crate::shell_controller::ShellController<'a, C>,
         }
 
         impl<'a, 'b, C: $crate::shell_controller::ShellConfig> $proc_name<'a, 'b, C> {
