@@ -27,6 +27,5 @@ cargo build --manifest-path "$REPO_ROOT/Cargo.toml" -p host_cli --release
 CHIP=$("$REPO_ROOT/target/release/host_cli" --elf "$ELF_PATH" --print-chip)
 
 probe-rs download --chip "$CHIP" --speed "$SPEED" "$ELF_PATH"
-probe-rs reset --chip "$CHIP" --speed "$SPEED"
 # Unset cargo env vars so cargo run for the host doesn't inherit ARM configurations
-exec env -u CARGO_ENCODED_RUSTFLAGS -u CARGO_BUILD_TARGET "$REPO_ROOT/target/release/host_cli" --elf "$ELF_PATH" "${@:2}"
+exec env -u CARGO_ENCODED_RUSTFLAGS -u CARGO_BUILD_TARGET "$REPO_ROOT/target/release/host_cli" --elf "$ELF_PATH" --reset "${@:2}"
