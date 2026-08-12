@@ -340,6 +340,22 @@ fn test_handle_tracing_line_parsing() {
     assert_eq!(parsed.span_name(), "sensor_task");
     assert_eq!(parsed.is_enter(), true);
     assert_eq!(parsed.device_ts(), Some(33.986126 * 1_000_000.0));
+
+    // Test custom ts= override parsing in ParsedTracingLine
+    let ts_override_line = "33.986126 TRACE [module] ctx=000102030405060708090a0b0c0d0e0f parent=0000000000000000 span_enter: sensor_task ts=12345.678";
+    let parsed = host_cli::tracing::ParsedTracingLine::parse(ts_override_line).unwrap();
+    assert_eq!(parsed.span_name(), "sensor_task");
+    assert_eq!(parsed.device_ts(), Some(12345.678));
+    let (span_id, parent_id) = parsed.parse_ids();
+    assert_eq!(span_id, "000102030405060708090a0b0c0d0e0f");
+    assert_eq!(parent_id, "0000000000000000");
+
+    let ts_override_exit = "33.986126 TRACE [module] 000102030405060708090a0b0c0d0e0f span_exit: sensor_task ts=12345.999";
+    let parsed_exit = host_cli::tracing::ParsedTracingLine::parse(ts_override_exit).unwrap();
+    assert_eq!(parsed_exit.span_name(), "sensor_task");
+    assert_eq!(parsed_exit.device_ts(), Some(12345.999));
+    let (span_id_exit, _) = parsed_exit.parse_ids();
+    assert_eq!(span_id_exit, "000102030405060708090a0b0c0d0e0f");
 }
 
 #[test]

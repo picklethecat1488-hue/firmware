@@ -54,14 +54,9 @@ impl Channel {
             };
             if consumed != 0 {
                 bytes = &bytes[consumed..];
-            } else {
-                #[cfg(not(feature = "tracing"))]
-                {
-                    if start.elapsed().as_micros() > MAX_WRITE_TIMEOUT_US {
-                        timed_out = true;
-                        break;
-                    }
-                }
+            } else if start.elapsed().as_micros() > MAX_WRITE_TIMEOUT_US {
+                timed_out = true;
+                break;
             }
         }
 
@@ -151,12 +146,9 @@ impl Channel {
         #[cfg(not(feature = "tracing"))]
         let mut timed_out = false;
         while read() != write() {
-            #[cfg(not(feature = "tracing"))]
-            {
-                if start.elapsed().as_micros() > MAX_WRITE_TIMEOUT_US {
-                    timed_out = true;
-                    break;
-                }
+            if start.elapsed().as_micros() > MAX_WRITE_TIMEOUT_US {
+                timed_out = true;
+                break;
             }
         }
 
