@@ -1,12 +1,25 @@
 //! Target-agnostic OnceLock primitive for inter-core pointer and state synchronization.
 
-use core::cell::UnsafeCell;
+use core::cell::{RefCell, UnsafeCell};
 use core::sync::atomic::{AtomicBool, Ordering};
+use core::task::{RawWaker, RawWakerVTable, Waker};
+use critical_section::Mutex;
+
+const NOOP_VTABLE: RawWakerVTable = RawWakerVTable::new(
+    |data| RawWaker::new(data, &NOOP_VTABLE),
+    |_| {},
+    |_| {},
+    |_| {},
+);
+
+const DUMMY_WAKER: Waker =
+    unsafe { Waker::from_raw(RawWaker::new(core::ptr::null(), &NOOP_VTABLE)) };
 
 /// A synchronization primitive which can be written to once and can be shared between cores.
 pub struct OnceLock<T> {
     cell: UnsafeCell<Option<T>>,
     initialized: AtomicBool,
+    waker: Mutex<RefCell<Waker>>,
 }
 
 unsafe impl<T> Sync for OnceLock<T> {}
@@ -18,6 +31,7 @@ impl<T> OnceLock<T> {
         Self {
             cell: UnsafeCell::new(None),
             initialized: AtomicBool::new(false),
+            waker: Mutex::new(RefCell::new(DUMMY_WAKER)),
         }
     }
 }
@@ -42,13 +56,64 @@ impl<T> OnceLock<T> {
             *slot = Some(value);
         }
         self.initialized.store(true, Ordering::Release);
+
+        // Wake the pending waker and replace it with DUMMY_WAKER to drop it.
+        critical_section::with(|cs| {
+            let waker = self.waker.borrow(cs).replace(DUMMY_WAKER);
+            waker.wake();
+        });
+
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         cortex_m::asm::sev();
         Ok(())
     }
 
+    /// Gets the reference to the underlying value asynchronously, yielding if not initialized.
+    pub async fn wait(&self) -> &T {
+        // Fast path: if already initialized, return immediately without locking
+        if self.initialized.load(Ordering::Acquire) {
+            return unsafe { (*self.cell.get()).as_ref().unwrap() };
+        }
+
+        struct WaitFuture<'a, T> {
+            once_lock: &'a OnceLock<T>,
+        }
+
+        impl<'a, T> core::future::Future for WaitFuture<'a, T> {
+            type Output = &'a T;
+
+            fn poll(
+                self: core::pin::Pin<&mut Self>,
+                cx: &mut core::task::Context<'_>,
+            ) -> core::task::Poll<Self::Output> {
+                if self.once_lock.initialized.load(Ordering::Acquire) {
+                    return core::task::Poll::Ready(unsafe {
+                        (*self.once_lock.cell.get()).as_ref().unwrap()
+                    });
+                }
+
+                critical_section::with(|cs| {
+                    if self.once_lock.initialized.load(Ordering::Acquire) {
+                        core::task::Poll::Ready(unsafe {
+                            (*self.once_lock.cell.get()).as_ref().unwrap()
+                        })
+                    } else {
+                        let mut waker_slot = self.once_lock.waker.borrow(cs).borrow_mut();
+                        let current_waker = cx.waker();
+                        if !waker_slot.will_wake(current_waker) {
+                            *waker_slot = current_waker.clone();
+                        }
+                        core::task::Poll::Pending
+                    }
+                })
+            }
+        }
+
+        WaitFuture { once_lock: self }.await
+    }
+
     /// Gets the reference to the underlying value, blocking/spinning if it is not initialized yet.
-    pub fn wait(&self) -> &T {
+    pub fn wait_blocking(&self) -> &T {
         while !self.initialized.load(Ordering::Acquire) {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
             cortex_m::asm::wfe();
@@ -88,7 +153,7 @@ mod tests {
         let mut val = 42u32;
         let ptr = SendPtr(&mut val as *mut u32 as *mut ());
         assert!(lock.set(ptr).is_ok());
-        assert_eq!(*lock.wait(), ptr);
+        assert_eq!(*lock.wait_blocking(), ptr);
         assert_eq!(lock.get(), Some(&ptr));
 
         let mut val2 = 100u32;
@@ -109,7 +174,26 @@ mod tests {
             assert!(lock_clone.set(ptr).is_ok());
         });
 
-        assert_eq!(*lock.wait(), ptr);
+        assert_eq!(*lock.wait_blocking(), ptr);
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn test_once_lock_async_wait() {
+        use std::sync::Arc;
+        let lock = Arc::new(OnceLock::<SendPtr>::new());
+        let lock_clone = Arc::clone(&lock);
+
+        let mut val = 456u32;
+        let ptr = SendPtr(&mut val as *mut u32 as *mut ());
+
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(15));
+            assert!(lock_clone.set(ptr).is_ok());
+        });
+
+        let result = futures::executor::block_on(lock.wait());
+        assert_eq!(*result, ptr);
         handle.join().unwrap();
     }
 }

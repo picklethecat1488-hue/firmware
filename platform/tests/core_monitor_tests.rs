@@ -98,7 +98,7 @@ fn test_once_lock_flow() {
     assert_eq!(lock.get(), None);
 
     assert!(lock.set(42).is_ok());
-    assert_eq!(*lock.wait(), 42);
+    assert_eq!(*lock.wait_blocking(), 42);
     assert_eq!(lock.get(), Some(&42));
 
     assert!(lock.set(100).is_err());
@@ -115,7 +115,7 @@ fn test_once_lock_blocking_wait() {
         assert!(lock_clone.set(99).is_ok());
     });
 
-    assert_eq!(*lock.wait(), 99);
+    assert_eq!(*lock.wait_blocking(), 99);
     handle.join().unwrap();
 }
 
@@ -133,7 +133,7 @@ fn test_once_lock_integration_pointer_flow() {
     let mut val = 42u32;
     let ptr = SendPtr(&mut val as *mut u32 as *mut ());
     assert!(lock.set(ptr).is_ok());
-    assert_eq!(*lock.wait(), ptr);
+    assert_eq!(*lock.wait_blocking(), ptr);
     assert_eq!(lock.get(), Some(&ptr));
 
     let mut val2 = 100u32;
@@ -154,6 +154,6 @@ fn test_once_lock_integration_pointer_blocking() {
         assert!(lock_clone.set(ptr).is_ok());
     });
 
-    assert_eq!(*lock.wait(), ptr);
+    assert_eq!(*lock.wait_blocking(), ptr);
     handle.join().unwrap();
 }

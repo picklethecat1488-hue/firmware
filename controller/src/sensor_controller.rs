@@ -680,14 +680,14 @@ where
         let lock = ::platform::OnceLock::new();
         let lock_ptr = ProximitySignalPtr(&lock as *const _);
         self.send_command(SensorCommand::ReadSensorsWithSignal(lock_ptr))?;
-        *lock.wait()
+        *lock.wait_blocking()
     }
 
     fn read_raw_distance_blocking(&mut self) -> Result<SensorReading, PeripheralError> {
         let lock = ::platform::OnceLock::new();
         let lock_ptr = ProximitySignalPtr(&lock as *const _);
         self.send_command(SensorCommand::ReadRawSensorsWithSignal(lock_ptr))?;
-        *lock.wait()
+        *lock.wait_blocking()
     }
 
     fn latest_distance(&self) -> SensorReading {
@@ -895,7 +895,7 @@ pub fn handle_sensor_cli<
                         .send_command(SensorCommand::ReadSensorsWithSignal(lock_ptr))
                         .is_ok()
                     {
-                        *lock.wait()
+                        *lock.wait_blocking()
                     } else {
                         Err(PeripheralError::DeviceNotAvailable)
                     };
@@ -986,7 +986,7 @@ pub fn handle_sensor_cli<
                     .send_command(SensorCommand::ReadRawSensorsWithSignal(lock_ptr))
                     .is_ok()
                 {
-                    if let Ok(reading) = *lock.wait() {
+                    if let Ok(reading) = *lock.wait_blocking() {
                         d_raw = reading;
                         if let SensorReading::Proximity(d) = reading {
                             if d < MAX_CALIBRATION_RAW_MM {
@@ -1081,7 +1081,7 @@ pub fn handle_sensor_cli<
                     .send_command(SensorCommand::ReadRawSensorsWithSignal(lock_ptr))
                     .is_ok()
                 {
-                    if let Ok(reading) = *lock.wait() {
+                    if let Ok(reading) = *lock.wait_blocking() {
                         d_raw = reading;
                         if let SensorReading::Proximity(d) = reading {
                             if d < MAX_CALIBRATION_RAW_MM {
@@ -1185,7 +1185,7 @@ pub fn handle_sensor_cli<
                     .send_command(SensorCommand::ReadXTalkRawWithSignal(lock_ptr))
                     .is_ok()
                 {
-                    if let Ok((reading, rate)) = *lock.wait() {
+                    if let Ok((reading, rate)) = *lock.wait_blocking() {
                         d_raw = reading;
                         peak_rate_raw = rate;
                         if let SensorReading::Proximity(_) = reading {

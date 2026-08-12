@@ -587,30 +587,81 @@ fn test_post_process_implicit_closure_on_data_loss() {
     assert_eq!(device_events.len(), 4);
 
     // 1. Enter span "1"
-    assert_eq!(device_events[0].get("name").and_then(|n| n.as_str()), Some("sensor_task"));
-    assert_eq!(device_events[0].get("ph").and_then(|p| p.as_str()), Some("B"));
-    assert_eq!(device_events[0].get("ts").and_then(|t| t.as_f64()), Some(100.0));
-    assert_eq!(device_events[0].get("span_id").and_then(|s| s.as_str()), Some("1"));
+    assert_eq!(
+        device_events[0].get("name").and_then(|n| n.as_str()),
+        Some("sensor_task")
+    );
+    assert_eq!(
+        device_events[0].get("ph").and_then(|p| p.as_str()),
+        Some("B")
+    );
+    assert_eq!(
+        device_events[0].get("ts").and_then(|t| t.as_f64()),
+        Some(100.0)
+    );
+    assert_eq!(
+        device_events[0].get("span_id").and_then(|s| s.as_str()),
+        Some("1")
+    );
 
     // 2. Implicit exit of span "1" at ts=105
-    assert_eq!(device_events[1].get("name").and_then(|n| n.as_str()), Some("sensor_task"));
-    assert_eq!(device_events[1].get("ph").and_then(|p| p.as_str()), Some("E"));
-    assert_eq!(device_events[1].get("ts").and_then(|t| t.as_f64()), Some(105.0));
-    assert_eq!(device_events[1].get("span_id").and_then(|s| s.as_str()), Some("1"));
     assert_eq!(
-        device_events[1].get("args").and_then(|a| a.get("implicit")).and_then(|i| i.as_bool()),
+        device_events[1].get("name").and_then(|n| n.as_str()),
+        Some("sensor_task")
+    );
+    assert_eq!(
+        device_events[1].get("ph").and_then(|p| p.as_str()),
+        Some("E")
+    );
+    assert_eq!(
+        device_events[1].get("ts").and_then(|t| t.as_f64()),
+        Some(105.0)
+    );
+    assert_eq!(
+        device_events[1].get("span_id").and_then(|s| s.as_str()),
+        Some("1")
+    );
+    assert_eq!(
+        device_events[1]
+            .get("args")
+            .and_then(|a| a.get("implicit"))
+            .and_then(|i| i.as_bool()),
         Some(true)
     );
 
     // 3. Enter span "2" at ts=105
-    assert_eq!(device_events[2].get("name").and_then(|n| n.as_str()), Some("sensor_task"));
-    assert_eq!(device_events[2].get("ph").and_then(|p| p.as_str()), Some("B"));
-    assert_eq!(device_events[2].get("ts").and_then(|t| t.as_f64()), Some(105.0));
-    assert_eq!(device_events[2].get("span_id").and_then(|s| s.as_str()), Some("2"));
+    assert_eq!(
+        device_events[2].get("name").and_then(|n| n.as_str()),
+        Some("sensor_task")
+    );
+    assert_eq!(
+        device_events[2].get("ph").and_then(|p| p.as_str()),
+        Some("B")
+    );
+    assert_eq!(
+        device_events[2].get("ts").and_then(|t| t.as_f64()),
+        Some(105.0)
+    );
+    assert_eq!(
+        device_events[2].get("span_id").and_then(|s| s.as_str()),
+        Some("2")
+    );
 
     // 4. Exit span "2" at ts=120
-    assert_eq!(device_events[3].get("name").and_then(|n| n.as_str()), Some("sensor_task"));
-    assert_eq!(device_events[3].get("ph").and_then(|p| p.as_str()), Some("E"));
-    assert_eq!(device_events[3].get("ts").and_then(|t| t.as_f64()), Some(120.0));
-    assert_eq!(device_events[3].get("span_id").and_then(|s| s.as_str()), Some("2"));
+    assert_eq!(
+        device_events[3].get("name").and_then(|n| n.as_str()),
+        Some("sensor_task")
+    );
+    assert_eq!(
+        device_events[3].get("ph").and_then(|p| p.as_str()),
+        Some("E")
+    );
+    assert_eq!(
+        device_events[3].get("ts").and_then(|t| t.as_f64()),
+        Some(120.0)
+    );
+    assert_eq!(
+        device_events[3].get("span_id").and_then(|s| s.as_str()),
+        Some("2")
+    );
 }
