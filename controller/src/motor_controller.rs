@@ -359,7 +359,11 @@ where
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.core1_func"
     )]
-    #[tracing::instrument(core1 = "core1", name = "motor_controller::tick_motor", level = "info")]
+    #[tracing::instrument(
+        core1 = "core1",
+        name = "motor_controller::tick_motor",
+        level = "trace"
+    )]
     pub async fn tick_motor(&mut self) -> Result<(), PeripheralError> {
         // 1. Ramping logic
         if self.state == MotorState::On {

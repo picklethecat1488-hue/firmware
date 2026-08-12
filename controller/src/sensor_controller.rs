@@ -479,7 +479,7 @@ where
         all(target_arch = "arm", feature = "sensors-core"),
         link_section = ".data.core1_func"
     )]
-    #[tracing::instrument(core1 = "core1", name = "sensor_controller::update", level = "info")]
+    #[tracing::instrument(core1 = "core1", name = "sensor_controller::update", level = "trace")]
     pub async fn update(&mut self) -> Result<Reader::Data, Reader::Error> {
         let raw_data = Reader::read_data(self.state_manager.sensor_mut(), &self.context).await?;
         let data = self

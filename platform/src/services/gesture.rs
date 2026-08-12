@@ -87,6 +87,7 @@ pub struct ProximityGestureDetector {
     press_threshold_mm: u16,
     near_threshold_mm: u16,
     wake_threshold_mm: u16,
+    gesture_triggered: bool,
     /// Active proximity trackers for each sensor direction.
     pub trackers: [ProximityTracker; MAX_PROXIMITY_TRACKERS],
 }
@@ -104,6 +105,7 @@ impl ProximityGestureDetector {
             press_threshold_mm,
             near_threshold_mm,
             wake_threshold_mm,
+            gesture_triggered: false,
             trackers: [
                 ProximityTracker::new(Direction::North),
                 ProximityTracker::new(Direction::East),
@@ -201,12 +203,14 @@ impl ProximityGestureDetector {
             };
             let duration = current_time_us.saturating_sub(start);
             self.last_press_duration_us = duration;
-            if duration >= DUAL_LONG_PRESS_DURATION_US {
+            if duration >= DUAL_LONG_PRESS_DURATION_US && !self.gesture_triggered {
+                self.gesture_triggered = true;
                 return Some(Gesture::DualLongPress);
             }
         } else {
             self.press_start_time_us = None;
             self.last_press_duration_us = 0;
+            self.gesture_triggered = false;
         }
         None
     }
@@ -223,6 +227,7 @@ impl GestureDetector<(Direction, u16)> for ProximityGestureDetector {
     fn reset(&mut self) {
         self.press_start_time_us = None;
         self.last_press_duration_us = 0;
+        self.gesture_triggered = false;
         for tracker in &mut self.trackers {
             tracker.reset();
         }
