@@ -1100,6 +1100,38 @@ impl SpanEnterProcessor {
                 });
                 processed_events.push(implicit_exit);
             }
+        } else {
+            // Check for recursive span enter due to lost exit events
+            if let Some(pos) = active.iter().position(|id| {
+                if let Some(n) = context.get_name(id) {
+                    n == span_name || is_span_name_match(&n, &span_name)
+                } else {
+                    false
+                }
+            }) {
+                while active.len() > pos {
+                    if let Some(exited_id) = active.pop() {
+                        let name = context
+                            .get_name(&exited_id)
+                            .unwrap_or_else(|| "unknown".to_string());
+                        let exit_pid = context.get_pid(&exited_id).unwrap_or(event_pid);
+                        let exit_tid = context.get_tid(&exited_id).unwrap_or(event_tid);
+                        let implicit_exit = serde_json::json!({
+                            "cat": "device",
+                            "ph": "E",
+                            "name": name,
+                            "ts": ts.clone(),
+                            "pid": exit_pid,
+                            "tid": exit_tid,
+                            "span_id": exited_id,
+                            "args": {
+                                "implicit": true
+                            }
+                        });
+                        processed_events.push(implicit_exit);
+                    }
+                }
+            }
         }
 
         active.push(span_id.to_string());
