@@ -594,6 +594,9 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         let mut rtt_buf = [0u8; 1024];
         let mut sent_buffer = Vec::<u8>::new();
         let mut run_error = None;
+        let mut last_snr_report = std::time::Instant::now();
+        let mut valid_frames = 0;
+        let mut malformed_frames = 0;
         loop {
             let mut did_work = false;
 
@@ -607,6 +610,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                             loop {
                                 match dec.decode() {
                                     Ok(frame) => {
+                                        valid_frames += 1;
                                         let plain_line = frame.display(false).to_string();
                                         let display = frame.display(true);
                                         let line_str = display.to_string();
@@ -714,8 +718,8 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                     Err(defmt_decoder::DecodeError::UnexpectedEof) => break,
                                     Err(defmt_decoder::DecodeError::Malformed) => {
-                                        eprintln!("Error: malformed defmt frame. Raw bytes received: {:02x?}", &rtt_buf[..n]);
-                                        continue;
+                                        malformed_frames += 1;
+                                        break;
                                     }
                                 }
                             }
@@ -808,6 +812,21 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
             if run_error.is_some() {
                 break;
+            }
+
+            if last_snr_report.elapsed() >= std::time::Duration::from_secs(1) {
+                if malformed_frames > 1 {
+                    let total = valid_frames + malformed_frames;
+                    let valid_pct = (valid_frames as f64 / total as f64) * 100.0;
+                    let invalid_pct = (malformed_frames as f64 / total as f64) * 100.0;
+                    eprintln!(
+                        "defmt: Valid: {} ({:.1}%), Malformed: {} ({:.1}%)",
+                        valid_frames, valid_pct, malformed_frames, invalid_pct
+                    );
+                }
+                valid_frames = 0;
+                malformed_frames = 0;
+                last_snr_report = std::time::Instant::now();
             }
 
             if !did_work {
