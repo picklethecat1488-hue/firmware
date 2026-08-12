@@ -248,7 +248,7 @@ macro_rules! run_rtt_shell_loop {
             let mut rx_byte = [0u8; 1];
             while $crate::rtt::read_rtt(&mut rx_byte) > 0 {
                 let _ = $cli.process_byte::<$cmd_type, _>(rx_byte[0], $proc);
-                if $proc.controller.pending_command.is_some() {
+                if $proc.controller.has_pending_command() {
                     let mut raw_writer = $crate::rtt::RttTxWriter;
                     let mut writer = ::embedded_cli::writer::Writer::new(&mut raw_writer);
                     if let Err(err) = $proc.controller.execute_pending(&mut writer).await {

@@ -96,6 +96,7 @@ group = "Sensor"
 cmd_name = "sensor"
 variant = "Sensor"
 subcommand_type = "sensor_controller::SensorSubcommand"
+async_cli = true
 handler = "sensor_controller::handle_sensor_cli"
 help = "Sensor commands (sensor status, sensor cal_near <dir>, sensor cal_far <dir>, sensor cal_xtalk <dir> <dist_mm> [--partition <partition>])"
 args = [

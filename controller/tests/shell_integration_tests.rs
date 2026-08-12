@@ -40,7 +40,7 @@ macro_rules! run_command {
         for b in $bytes {
             let _ = $cli.process_byte::<CliCommand, _>(*b, $proc);
         }
-        if $proc.controller.pending_command.is_some() {
+        if $proc.controller.has_pending_command() {
             let _ = $cli.write(|writer| {
                 use core::fmt::Write as _;
                 if let Err(err) =
@@ -404,6 +404,7 @@ fn test_shell_controller_integration_each_command() {
 
     // 5. Proximity command
     run_command!(&mut cli, b"sensor status\n", &mut shell_proc);
+    run_command!(&mut cli, b"sensor status 3\n", &mut shell_proc);
 
     // 8. Activity command
     for b in b"system activity\n" {

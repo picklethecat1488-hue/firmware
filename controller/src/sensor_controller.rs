@@ -867,9 +867,17 @@ pub async fn handle_sensor_cli<
     C: crate::ShellConfig,
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
-    command: PendingCommand,
+    subcommand: Option<SensorSubcommand>,
+    arg1: Option<&str>,
+    partition: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
+    let command = PendingCommand::parse(
+        subcommand.ok_or("Missing sensor subcommand")?,
+        arg1,
+        partition,
+    )?;
+
     let mut fs_buf = resolver.lock_fs_buffer()?;
     let fs_buf_static = unsafe { fs_buf.as_static_mut() };
 
