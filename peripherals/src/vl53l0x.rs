@@ -315,6 +315,10 @@ impl<I: I2c> Vl53l0x<I> {
     /// Sets the crosstalk compensation peak rate in milli-MCPS (Mega Counts Per Second * 1000).
     /// Converts the value to Q9.7 fixed-point format and writes to register `0x20`.
     /// A value of 0 disables crosstalk compensation.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
     pub async fn set_crosstalk_compensation(
         &mut self,
         rate_m_mcps: u16,

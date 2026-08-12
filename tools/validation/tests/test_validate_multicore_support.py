@@ -49,8 +49,8 @@ def test_missing_attribute_in_call_chain():
     warnings_missing, errors_missing = validate_multicore_support.validate_call_graph(
         funcs_list=list(funcs_missing.values()), roots=["start"], feature="motor-core"
     )
-    assert warnings_missing == 1
-    assert errors_missing == 0
+    assert warnings_missing == 0
+    assert errors_missing == 1
 
 
 def test_forbidden_calls_in_multicore_chain():
