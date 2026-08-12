@@ -106,7 +106,8 @@ impl CliResolverField {
 #[derive(Deserialize, Clone)]
 struct CliArg {
     name: String,
-    r#type: String,
+    #[serde(rename = "type")]
+    arg_type: String,
     help: String,
     attributes: Option<Vec<String>>,
 }
@@ -127,7 +128,7 @@ impl CliArg {
     }
 
     fn rust_type(&self) -> String {
-        match self.r#type.as_str() {
+        match self.arg_type.as_str() {
             "string" => "Option<&'a str>".to_string(),
             "int" => "Option<i32>".to_string(),
             "float" => "Option<f32>".to_string(),
@@ -164,6 +165,8 @@ struct CliCommand {
     cmd_name: String,
     variant: String,
     subcommand_type: String,
+    #[serde(default)]
+    async_cli: bool,
     handler: String,
     help: String,
     args: Option<Vec<CliArg>>,
@@ -203,6 +206,7 @@ struct ShellConfigToml {
 #[derive(Template)]
 #[template(path = "generated_controllers.rs.jinja", escape = "none")]
 struct GeneratedControllersTemplate {
+    has_async_cli: bool,
     controllers: Vec<Controller>,
     cli_resolver_fields: Vec<CliResolverField>,
     cli_commands: Vec<CliCommand>,
@@ -269,7 +273,9 @@ fn main() {
         toml::from_str(&shell_content).expect("Failed to parse shell.toml");
 
     // Render the controllers template using Rinja
+    let has_async_cli = shell_config.cli_commands.iter().any(|c| c.async_cli);
     let template = GeneratedControllersTemplate {
+        has_async_cli,
         controllers: config.controllers.clone(),
         cli_resolver_fields: shell_config.cli_resolver_fields.clone(),
         cli_commands: shell_config.cli_commands.clone(),
