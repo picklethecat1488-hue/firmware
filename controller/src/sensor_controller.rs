@@ -1431,7 +1431,7 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
                 self.set_interval(PeriodicInterval::UpdateMs(1000));
             }
             model::types::SystemStatus::PowerDown => {
-                self.set_interval(PeriodicInterval::None);
+                self.set_interval(PeriodicInterval::UpdateMs(1000));
             }
         }
     }
