@@ -72,6 +72,26 @@ fn test_gesture_detector_debounce() {
         Some(Gesture::DualLongPress)
     );
     assert_eq!(detector.press_time_ms(), 2000);
+
+    // 6. Keep holding down -> should not trigger again
+    assert_eq!(
+        update_detector(&mut detector, 1000, 15, 15, 10_000_000),
+        None
+    );
+
+    // 7. Release one and repress -> triggers again after 2 more seconds
+    assert_eq!(
+        update_detector(&mut detector, 1000, 15, 25, 11_000_000),
+        None
+    );
+    assert_eq!(
+        update_detector(&mut detector, 1000, 15, 15, 12_000_000),
+        None
+    );
+    assert_eq!(
+        update_detector(&mut detector, 1000, 15, 15, 14_000_000),
+        Some(Gesture::DualLongPress)
+    );
 }
 
 #[test]
