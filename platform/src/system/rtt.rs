@@ -234,27 +234,34 @@ pub fn rtt_has_input() -> bool {
     false
 }
 
-/// Helper function to execute the non-blocking RTT character receive loop,
-/// routing bytes into the embedded-cli processor.
-pub async fn run_rtt_shell_loop<
-    C: embedded_cli::service::Autocomplete + embedded_cli::service::Help,
-    P: embedded_cli::service::CommandProcessor<RttTxWriter, core::convert::Infallible>,
-    B1: embedded_cli::buffer::Buffer,
-    B2: embedded_cli::buffer::Buffer,
->(
-    _cli: &mut embedded_cli::cli::Cli<RttTxWriter, core::convert::Infallible, B1, B2>,
-    _processor: &mut P,
-) -> ! {
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
-    loop {
-        RTT_SIGNAL.wait().await;
-        RTT_SIGNAL.reset();
+/// Helper macro to execute the RTT character receive loop,
+/// routing bytes into the embedded-cli processor, and automatically executing any
+/// pending async commands.
+#[macro_export]
+macro_rules! run_rtt_shell_loop {
+    ($cli:expr, $proc:expr, $cmd_type:ty) => {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        loop {
+            $crate::rtt::RTT_SIGNAL.wait().await;
+            $crate::rtt::RTT_SIGNAL.reset();
 
-        let mut rx_byte = [0u8; 1];
-        while read_rtt(&mut rx_byte) > 0 {
-            let _ = _cli.process_byte::<C, _>(rx_byte[0], _processor);
+            let mut rx_byte = [0u8; 1];
+            while $crate::rtt::read_rtt(&mut rx_byte) > 0 {
+                let _ = $cli.process_byte::<$cmd_type, _>(rx_byte[0], $proc);
+                if $proc.controller.pending_command.is_some() {
+                    let mut raw_writer = $crate::rtt::RttTxWriter;
+                    let mut writer = ::embedded_cli::writer::Writer::new(&mut raw_writer);
+                    if let Err(err) = $proc.controller.execute_pending(&mut writer).await {
+                        let _ = $cli.write(|cli_writer| {
+                            use core::fmt::Write as _;
+                            let _ = core::writeln!(cli_writer, "Command failed: {}", err);
+                            Ok::<(), core::convert::Infallible>(())
+                        });
+                    }
+                }
+            }
         }
-    }
-    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-    panic!("run_rtt_shell_loop is not supported on host");
+        #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+        panic!("run_rtt_shell_loop is not supported on host");
+    };
 }

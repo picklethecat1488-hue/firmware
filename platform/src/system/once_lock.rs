@@ -112,18 +112,6 @@ impl<T> OnceLock<T> {
         WaitFuture { once_lock: self }.await
     }
 
-    /// Gets the reference to the underlying value, blocking/spinning if it is not initialized yet.
-    pub fn wait_blocking(&self) -> &T {
-        while !self.initialized.load(Ordering::Acquire) {
-            #[cfg(all(target_arch = "arm", target_os = "none"))]
-            cortex_m::asm::wfe();
-            #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-            std::thread::yield_now();
-        }
-        // SAFETY: The value is initialized and will never be modified again.
-        unsafe { (*self.cell.get()).as_ref().unwrap() }
-    }
-
     /// Tries to get the reference to the underlying value if it is initialized.
     pub fn get(&self) -> Option<&T> {
         if self.initialized.load(Ordering::Acquire) {
@@ -132,6 +120,46 @@ impl<T> OnceLock<T> {
         } else {
             None
         }
+    }
+}
+
+/// A convenience wrapper for CLI completion signals sent across task boundaries.
+///
+/// Implements Send and Sync by wrapping a raw pointer to a OnceLock.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct CliSignal<T>(pub *const OnceLock<T>);
+
+unsafe impl<T> Send for CliSignal<T> {}
+unsafe impl<T> Sync for CliSignal<T> {}
+
+impl<T> CliSignal<T> {
+    /// Creates a new CliSignal from a OnceLock reference.
+    pub fn new(lock: &OnceLock<T>) -> Self {
+        Self(lock as *const _)
+    }
+
+    /// Sets the value of the OnceLock.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the underlying OnceLock has not been dropped.
+    pub unsafe fn set(&self, value: T) -> Result<(), T> {
+        (&*self.0).set(value)
+    }
+
+    /// Waits for the OnceLock to be initialized asynchronously.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that the underlying OnceLock has not been dropped.
+    pub async unsafe fn wait(&self) -> &T {
+        (&*self.0).wait().await
+    }
+}
+
+impl<T> core::fmt::Debug for CliSignal<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "CliSignal({:p})", self.0)
     }
 }
 
@@ -153,7 +181,7 @@ mod tests {
         let mut val = 42u32;
         let ptr = SendPtr(&mut val as *mut u32 as *mut ());
         assert!(lock.set(ptr).is_ok());
-        assert_eq!(*lock.wait_blocking(), ptr);
+        assert_eq!(*futures::executor::block_on(lock.wait()), ptr);
         assert_eq!(lock.get(), Some(&ptr));
 
         let mut val2 = 100u32;
@@ -174,7 +202,7 @@ mod tests {
             assert!(lock_clone.set(ptr).is_ok());
         });
 
-        assert_eq!(*lock.wait_blocking(), ptr);
+        assert_eq!(*futures::executor::block_on(lock.wait()), ptr);
         handle.join().unwrap();
     }
 

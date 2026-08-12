@@ -172,14 +172,9 @@ pub trait BlockingProximityReader:
 >
 {
     /// Read distance in millimeters.
-    fn read_distance_blocking(&mut self) -> Result<model::types::SensorReading, PeripheralError>;
-
-    /// Read raw distance in millimeters (ignoring calibration mapping).
-    fn read_raw_distance_blocking(
+    async fn read_distance_blocking(
         &mut self,
-    ) -> Result<model::types::SensorReading, PeripheralError> {
-        self.read_distance_blocking()
-    }
+    ) -> Result<model::types::SensorReading, PeripheralError>;
 
     /// Get the latest cached proximity distance in millimeters.
     fn latest_distance(&self) -> model::types::SensorReading {
@@ -216,7 +211,9 @@ impl BlockingThermalReader for () {
 }
 
 impl BlockingProximityReader for () {
-    fn read_distance_blocking(&mut self) -> Result<model::types::SensorReading, PeripheralError> {
+    async fn read_distance_blocking(
+        &mut self,
+    ) -> Result<model::types::SensorReading, PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
 }

@@ -255,7 +255,17 @@ macro_rules! append_group_arm {
             },
         ] [
             $($matches)*
-            $name::{{ cmd.variant }} { subcommand {%- for arg in cmd.args_slice() %}, {{ arg.name }}{% endfor %} } => {% if cmd.handler.contains("::") && !cmd.handler.contains("C::") && !cmd.handler.contains("platform::") %}$crate::{% endif %}{{ cmd.handler|safe }}($ctrl, subcommand {%- for arg in cmd.args_slice() %}, {{ arg.name }}{% endfor %}, $writer),
+            $name::{{ cmd.variant }} { subcommand {%- for arg in cmd.args_slice() %}, {{ arg.name }}{% endfor %} } => {
+                {%- if cmd.handler == "sensor_controller::handle_sensor_cli" %}
+                if let Some(sub) = subcommand {
+                    $ctrl.set_pending_sensor(sub {%- for arg in cmd.args_slice() %}, {{ arg.name }}{% endfor %})
+                } else {
+                    Err("Missing subcommand")
+                }
+                {%- else %}
+                {% if cmd.handler.contains("::") && !cmd.handler.contains("C::") && !cmd.handler.contains("platform::") %}$crate::{% endif %}{{ cmd.handler|safe }}($ctrl, subcommand {%- for arg in cmd.args_slice() %}, {{ arg.name }}{% endfor %}, $writer)
+                {%- endif %}
+            },
         ] -> $mode, $proc_name);
     };
     {%- endfor %}
