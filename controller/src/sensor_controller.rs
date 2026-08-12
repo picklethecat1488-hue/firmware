@@ -1354,13 +1354,16 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
             .borrow_mut()
             .report((direction, reading));
 
+        let now_us = embassy_time::Instant::now().as_micros();
+        let detector_gesture = self
+            .gesture_detector
+            .borrow_mut()
+            .update((direction, distance_mm), now_us);
+
         let gesture = if let SensorReading::Invalid = reading {
             None
         } else {
-            let now_us = embassy_time::Instant::now().as_micros();
-            self.gesture_detector
-                .borrow_mut()
-                .update((direction, distance_mm), now_us)
+            detector_gesture
         };
 
         // Register distance locally in the feature using direction map index
@@ -1380,13 +1383,19 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
         if in_range != self.proximity_active.get() {
             self.proximity_active.set(in_range);
             if in_range {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::debug!("SensorController: Object in range (proximity active)");
                 if status == model::types::SystemStatus::Active {
                     action = crate::ProximityAction::AcquireWakeLock;
                 } else if status == model::types::SystemStatus::Sleep {
                     action = crate::ProximityAction::WakeSystem;
                 }
-            } else if status == model::types::SystemStatus::Active {
-                action = crate::ProximityAction::ReleaseWakeLock;
+            } else {
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                defmt::debug!("SensorController: Object went out of range (proximity inactive)");
+                if status == model::types::SystemStatus::Active {
+                    action = crate::ProximityAction::ReleaseWakeLock;
+                }
             }
         }
 

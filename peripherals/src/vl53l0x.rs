@@ -364,7 +364,7 @@ impl<I: I2c> WaitableMeasurement for Vl53l0x<I> {
                 feature = "verbose-sensor-logging"
             ))]
             {
-                defmt::debug!(
+                defmt::trace!(
                     "VL53L0X [0x{:02x}] interrupt-status: {:02x}",
                     self.address,
                     status[0]
@@ -399,7 +399,7 @@ impl<I: I2c> Vl53l0x<I> {
             feature = "verbose-sensor-logging"
         ))]
         {
-            defmt::debug!(
+            defmt::trace!(
                 "VL53L0X [0x{:02x}] range-status: {:02x}",
                 self.address,
                 status[0]
@@ -409,7 +409,7 @@ impl<I: I2c> Vl53l0x<I> {
         Ok(RangeStatus {
             valid: (status[0] & 0x01) != 0,
             min_range: range_status_code == 3,
-            max_range: range_status_code == 8,
+            max_range: range_status_code == 4 || range_status_code == 8,
         })
     }
 

@@ -836,7 +836,24 @@ fn test_vl53l0x_measurement_max_range() {
 
         let i2c = Vl53l0xTestI2c {
             interrupt_status: 4,        // Ready
-            range_status: (8 << 3) | 1, // Valid, max range (8)
+            range_status: (4 << 3) | 1, // Valid, max range (4)
+            distance: 120,
+        };
+        let mut sensor = Vl53l0x::new(i2c, 0x30, model::types::Direction::North);
+        let res = sensor.read_distance_mm().await;
+        assert_eq!(res.unwrap(), model::types::SensorReading::Invalid);
+    });
+}
+
+#[test]
+fn test_vl53l0x_measurement_tcc_fail_as_invalid() {
+    run_test!(async {
+        use model::interfaces::ProximitySensor;
+        use peripherals::vl53l0x::Vl53l0x;
+
+        let i2c = Vl53l0xTestI2c {
+            interrupt_status: 4,        // Ready
+            range_status: (8 << 3) | 1, // Valid, TCC fail (8)
             distance: 120,
         };
         let mut sensor = Vl53l0x::new(i2c, 0x30, model::types::Direction::North);
