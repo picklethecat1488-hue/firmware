@@ -35,6 +35,24 @@ controller::impl_shell_config! {
         SystemCtrl = embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, SystemCommand, 16>,
     }
 }
+macro_rules! run_command {
+    ($cli:expr, $bytes:expr, $proc:expr) => {
+        for b in $bytes {
+            let _ = $cli.process_byte::<CliCommand, _>(*b, $proc);
+        }
+        if $proc.controller.has_pending_command() {
+            let _ = $cli.write(|writer| {
+                use core::fmt::Write as _;
+                if let Err(err) =
+                    futures::executor::block_on($proc.controller.execute_pending(writer))
+                {
+                    let _ = core::writeln!(writer, "Command failed: {}", err);
+                }
+                Ok::<(), core::convert::Infallible>(())
+            });
+        }
+    };
+}
 
 struct DummyWriter {
     output: std::vec::Vec<u8>,
@@ -64,19 +82,19 @@ impl embedded_io::Write for DummyWriter {
 
 struct DummyI2c;
 
-impl embedded_hal::i2c::ErrorType for DummyI2c {
+impl embedded_hal_async::i2c::ErrorType for DummyI2c {
     type Error = core::convert::Infallible;
 }
 
-impl embedded_hal::i2c::I2c for DummyI2c {
-    fn read(&mut self, _address: u8, read: &mut [u8]) -> Result<(), Self::Error> {
+impl embedded_hal_async::i2c::I2c for DummyI2c {
+    async fn read(&mut self, _address: u8, read: &mut [u8]) -> Result<(), Self::Error> {
         read.fill(0);
         Ok(())
     }
-    fn write(&mut self, _address: u8, _write: &[u8]) -> Result<(), Self::Error> {
+    async fn write(&mut self, _address: u8, _write: &[u8]) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn write_read(
+    async fn write_read(
         &mut self,
         _address: u8,
         _write: &[u8],
@@ -85,10 +103,10 @@ impl embedded_hal::i2c::I2c for DummyI2c {
         read.fill(0);
         Ok(())
     }
-    fn transaction(
+    async fn transaction(
         &mut self,
         _address: u8,
-        _operations: &mut [embedded_hal::i2c::Operation<'_>],
+        _operations: &mut [embedded_hal_async::i2c::Operation<'_>],
     ) -> Result<(), Self::Error> {
         Ok(())
     }
@@ -168,7 +186,9 @@ struct MockSensorCtrl {
     distance: u16,
 }
 impl BlockingProximityReader for MockSensorCtrl {
-    fn read_distance_blocking(&mut self) -> Result<model::types::SensorReading, PeripheralError> {
+    async fn read_distance_blocking(
+        &mut self,
+    ) -> Result<model::types::SensorReading, PeripheralError> {
         if self.distance == u16::MAX || self.distance >= 8190 {
             Ok(model::types::SensorReading::Invalid)
         } else {
@@ -189,15 +209,14 @@ impl BlockingProximityReader for MockSensorCtrl {
         cmd: controller::sensor_controller::SensorCommand,
     ) -> Result<(), PeripheralError> {
         match cmd {
-            controller::sensor_controller::SensorCommand::ReadRawSensorsWithSignal(sig_ptr)
-            | controller::sensor_controller::SensorCommand::ReadSensorsWithSignal(sig_ptr) => {
-                let sig = unsafe { &*sig_ptr.0 };
+            controller::sensor_controller::SensorCommand::ReadRawSensorsWithSignal(sig)
+            | controller::sensor_controller::SensorCommand::ReadSensorsWithSignal(sig) => {
                 let reading = if self.distance == u16::MAX || self.distance >= 8190 {
                     model::types::SensorReading::Invalid
                 } else {
                     model::types::SensorReading::Proximity(self.distance)
                 };
-                let _ = sig.set(Ok(reading));
+                let _ = unsafe { sig.set(Ok(reading)) };
                 Ok(())
             }
             _ => Ok(()),
@@ -384,9 +403,8 @@ fn test_shell_controller_integration_each_command() {
     }
 
     // 5. Proximity command
-    for b in b"sensor status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"sensor status\n", &mut shell_proc);
+    run_command!(&mut cli, b"sensor status 3\n", &mut shell_proc);
 
     // 8. Activity command
     for b in b"system activity\n" {
@@ -403,14 +421,10 @@ fn test_shell_controller_integration_each_command() {
     }
 
     // 10. CalNear command
-    for b in b"sensor cal_near east\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"sensor cal_near east\n", &mut shell_proc);
 
     // 11. CalFar command
-    for b in b"sensor cal_far west\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"sensor cal_far west\n", &mut shell_proc);
 
     // 12. CalMotor command
     for b in b"motor calibrate water_100ml\n" {
@@ -464,9 +478,7 @@ fn test_shell_controller_with_missing_controllers() {
         let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
     }
 
-    for b in b"sensor status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"sensor status\n", &mut shell_proc);
 }
 
 controller::declare_shell_commands! {
@@ -738,9 +750,7 @@ fn test_sensor_calibration_bounds_checking() {
         .build()
         .unwrap();
 
-    for b in b"sensor cal_near north\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"sensor cal_near north\n", &mut shell_proc);
 
     let output_bytes = shared_writer.output.lock().unwrap();
     let output_str = String::from_utf8_lossy(&output_bytes);
@@ -757,9 +767,7 @@ fn test_sensor_calibration_bounds_checking() {
         .build()
         .unwrap();
 
-    for b in b"sensor cal_far north\n" {
-        let _ = cli_far.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli_far, b"sensor cal_far north\n", &mut shell_proc);
 
     let output_bytes_far = shared_writer_far.output.lock().unwrap();
     let output_str_far = String::from_utf8_lossy(&output_bytes_far);

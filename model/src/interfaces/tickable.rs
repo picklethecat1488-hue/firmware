@@ -8,7 +8,7 @@ pub trait Tickable {
     type Error;
 
     /// Updates the state of the peripheral (called periodically).
-    fn tick(&mut self) -> Result<(), Self::Error>;
+    async fn tick(&mut self) -> Result<(), Self::Error>;
 }
 
 /// Wrapper for peripherals that do not need periodic updates.
@@ -27,7 +27,7 @@ impl<T> Tickable for NoTick<T> {
     type Error = core::convert::Infallible;
 
     /// No-op implementation of tick.
-    fn tick(&mut self) -> Result<(), Self::Error> {
+    async fn tick(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
 }

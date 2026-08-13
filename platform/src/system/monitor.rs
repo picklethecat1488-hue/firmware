@@ -2,7 +2,7 @@
 
 #![deny(missing_docs)]
 
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use cortex_m;
@@ -41,6 +41,9 @@ pub static CORE_MONITORS: [CoreStatus; NUM_CORES] = [
 /// Controls whether the heartbeat loop actually updates progress.
 pub static HEARTBEAT_ACTIVE: AtomicBool = AtomicBool::new(true);
 
+/// Global atomic storing Core 0's vector table address during boot.
+pub static CORE0_VTOR: AtomicU32 = AtomicU32::new(0);
+
 /// The heartbeat task that periodically updates the executor progress timestamp.
 #[embassy_executor::task(pool_size = NUM_CORES)]
 pub async fn heartbeat_task(cpu_id: CpuId, interval_ms: u32) -> ! {
@@ -72,6 +75,11 @@ pub fn init_core(
             "Core ID mismatch during initialization"
         );
         let now_ms = embassy_time::Instant::now().as_millis() as u32;
+        if cpu_id == CpuId::Core0 {
+            unsafe {
+                init_vector_table(CpuId::Core0);
+            }
+        }
         monitor
             .last_executor_progress
             .store(now_ms, Ordering::Release);
@@ -180,8 +188,12 @@ macro_rules! define_systick_handler {
 
 #[cfg(all(target_arch = "arm", target_os = "none", feature = "dual-core"))]
 unsafe fn init_multicore_monitor(cpu_id: CpuId) {
-    let current_vtor = (*cortex_m::peripheral::SCB::PTR).vtor.read();
-    let src = current_vtor as *const u32;
+    let current_vtor = CORE0_VTOR.load(Ordering::Acquire);
+    let src = if current_vtor != 0 {
+        current_vtor as *const u32
+    } else {
+        (*cortex_m::peripheral::SCB::PTR).vtor.read() as *const u32
+    };
     let dest = match cpu_id {
         CpuId::Core1 => core::ptr::addr_of_mut!(CORE1_VECTOR_TABLE) as *mut u32,
         _ => return,
@@ -197,6 +209,41 @@ unsafe fn init_multicore_monitor(cpu_id: CpuId) {
     core::ptr::write_volatile(dest.add(SYSTICK_IRQ), handler);
     (*cortex_m::peripheral::SCB::PTR).vtor.write(dest as u32);
 }
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Initialize the vector table and configure interrupts for the specified core.
+///
+/// # Safety
+///
+/// This function must be called only once per core during early initialization.
+pub unsafe fn init_vector_table(cpu_id: CpuId) {
+    match cpu_id {
+        CpuId::Core0 => {
+            let vtor = (*cortex_m::peripheral::SCB::PTR).vtor.read();
+            CORE0_VTOR.store(vtor, Ordering::Release);
+        }
+        CpuId::Core1 => {
+            let current_vtor = CORE0_VTOR.load(Ordering::Acquire);
+            if current_vtor == 0 {
+                panic!("Core 0 VTOR must be initialized before Core 1");
+            }
+            #[cfg(feature = "dual-core")]
+            {
+                init_multicore_monitor(CpuId::Core1);
+                use embassy_rp::interrupt::InterruptExt as _;
+                embassy_rp::interrupt::SIO_IRQ_PROC1.enable();
+            }
+        }
+    }
+}
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+/// Fallback stub for init_vector_table on non-ARM/non-bare-metal targets.
+///
+/// # Safety
+///
+/// This is a stub and is always safe to call.
+pub unsafe fn init_vector_table(_cpu_id: CpuId) {}
 
 /// Periodic SysTick exception handler for Core 0.
 #[cfg(all(target_arch = "arm", target_os = "none"))]

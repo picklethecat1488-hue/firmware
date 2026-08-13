@@ -139,6 +139,10 @@ impl<'a, M: RawMutex, B: TemperatureSensor, const SYS_CAP: usize>
         match temp {
             Err(e) => Err(e),
             Ok(temp) => {
+                if let Some(tx) = &self.thermal_tx {
+                    let _ =
+                        tx.try_send(crate::types::ThermalUpdateAction::TemperatureUpdated(temp));
+                }
                 match self.state {
                     ThermalState::Normal => {
                         if temp > self.overheating_temp_milli_c {
@@ -198,6 +202,13 @@ impl<'a, M: RawMutex, B: TemperatureSensor, const SYS_CAP: usize>
         let mut telemetry_client =
             crate::telemetry_controller::ThermalTelemetryClient::new(Some(telemetry_tx));
         let mut check_interval = embassy_time::Duration::from_millis(1500);
+
+        // Run initial status check on boot to clear the boot trap immediately.
+        if self.update(Some(&mut telemetry_client)).await.is_err() {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::warn!("ThermalController: Boot read failed/timed out!");
+        }
+
         loop {
             match embassy_time::with_timeout(check_interval, command_rx.receive()).await {
                 Ok(cmd) => match cmd {

@@ -84,7 +84,7 @@ where
         link_section = ".data.core1_func"
     )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
-    fn tick(&mut self) -> Result<(), Self::Error> {
+    async fn tick(&mut self) -> Result<(), Self::Error> {
         let abs_speed = self.speed.abs();
         if abs_speed == 0 || abs_speed >= 100 {
             Ok(())

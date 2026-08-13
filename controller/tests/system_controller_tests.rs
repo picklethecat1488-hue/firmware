@@ -39,6 +39,7 @@ macro_rules! create_test_feature_set {
                 controller::ProximityFeatureConfig::new(
                     &$sensors,
                     20,
+                    100,
                     300,
                     controller::GestureAction::TogglePower,
                     None,
@@ -500,6 +501,7 @@ fn test_configurable_motor_speed() {
             controller::ProximityFeatureConfig::new(
                 &[],
                 20,
+                100,
                 300,
                 controller::GestureAction::TogglePower,
                 None,

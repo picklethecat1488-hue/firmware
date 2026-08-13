@@ -15,7 +15,7 @@ fn update_detector(
 
 #[test]
 fn test_gesture_detector_debounce() {
-    let mut detector = ProximityGestureDetector::new(20);
+    let mut detector = ProximityGestureDetector::new(20, 100, 300);
 
     // 1. All out of range -> no change, returns None
     assert_eq!(
@@ -38,38 +38,95 @@ fn test_gesture_detector_debounce() {
     );
     assert_eq!(detector.press_time_ms(), 0);
 
-    // Accumulates 2 seconds -> returns None
+    // Accumulates 1 second -> returns None
     assert_eq!(
-        update_detector(&mut detector, 1000, 15, 15, 6_000_000),
+        update_detector(&mut detector, 1000, 15, 15, 5_000_000),
         None
     );
-    assert_eq!(detector.press_time_ms(), 2000);
+    assert_eq!(detector.press_time_ms(), 1000);
 
     // 4. One drops out of press range -> reset to 0 (returns None)
     assert_eq!(
-        update_detector(&mut detector, 1000, 15, 25, 7_000_000),
+        update_detector(&mut detector, 1000, 15, 25, 6_000_000),
         None
     );
     assert_eq!(detector.press_time_ms(), 0);
 
     // 5. Both back in press range -> starts accumulating again (returns None)
     assert_eq!(
-        update_detector(&mut detector, 1000, 15, 15, 10_000_000),
+        update_detector(&mut detector, 1000, 15, 15, 7_000_000),
         None
     );
     assert_eq!(detector.press_time_ms(), 0);
 
-    // Accumulates 3 seconds -> returns None
+    // Accumulates 1.5 seconds -> returns None
     assert_eq!(
-        update_detector(&mut detector, 1000, 15, 15, 13_000_000),
+        update_detector(&mut detector, 1000, 15, 15, 8_500_000),
         None
     );
-    assert_eq!(detector.press_time_ms(), 3000);
+    assert_eq!(detector.press_time_ms(), 1500);
 
-    // Reaches 5 seconds -> triggers Some(DualLongPress)
+    // Reaches 2 seconds -> triggers Some(DualLongPress)
     assert_eq!(
-        update_detector(&mut detector, 1000, 15, 15, 15_000_000),
+        update_detector(&mut detector, 1000, 15, 15, 9_000_000),
         Some(Gesture::DualLongPress)
     );
-    assert_eq!(detector.press_time_ms(), 5000);
+    assert_eq!(detector.press_time_ms(), 2000);
+
+    // 6. Keep holding down -> should not trigger again
+    assert_eq!(
+        update_detector(&mut detector, 1000, 15, 15, 10_000_000),
+        None
+    );
+
+    // 7. Release one and repress -> triggers again after 2 more seconds
+    assert_eq!(
+        update_detector(&mut detector, 1000, 15, 25, 11_000_000),
+        None
+    );
+    assert_eq!(
+        update_detector(&mut detector, 1000, 15, 15, 12_000_000),
+        None
+    );
+    assert_eq!(
+        update_detector(&mut detector, 1000, 15, 15, 14_000_000),
+        Some(Gesture::DualLongPress)
+    );
+}
+
+#[test]
+fn test_gesture_detector_proximity_states() {
+    use model::types::Direction;
+    use platform::gesture_detector::ProximityState;
+
+    let mut detector = ProximityGestureDetector::new(20, 100, 300);
+
+    // Initial state: OutOfRange
+    for tracker in &detector.trackers {
+        assert_eq!(tracker.state, ProximityState::OutOfRange);
+    }
+
+    // 1. Enter InRange (< 300)
+    detector.register_distance(Direction::East, 250);
+    assert_eq!(detector.trackers[1].state, ProximityState::InRange);
+
+    // 2. Enter Near (< 100)
+    detector.register_distance(Direction::East, 80);
+    assert_eq!(detector.trackers[1].state, ProximityState::Near);
+
+    // 3. Enter Down (<= 20)
+    detector.register_distance(Direction::East, 15);
+    assert_eq!(detector.trackers[1].state, ProximityState::Down);
+
+    // 4. Back to Near
+    detector.register_distance(Direction::East, 50);
+    assert_eq!(detector.trackers[1].state, ProximityState::Near);
+
+    // 5. Back to InRange
+    detector.register_distance(Direction::East, 120);
+    assert_eq!(detector.trackers[1].state, ProximityState::InRange);
+
+    // 6. Back to OutOfRange
+    detector.register_distance(Direction::East, 400);
+    assert_eq!(detector.trackers[1].state, ProximityState::OutOfRange);
 }

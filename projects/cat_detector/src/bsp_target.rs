@@ -8,7 +8,6 @@
 
 use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{Flex, Pin, Pull};
-use embassy_rp::i2c::{Config as I2cConfig, I2c};
 use embassy_rp::pio::InterruptHandler;
 use embassy_rp::Peripherals;
 use platform::tracing;
@@ -20,8 +19,6 @@ bind_interrupts!(struct Irqs {
 
 /// Helper structure containing all pre-initialized board interfaces.
 pub struct Board<'d> {
-    /// Blocking I2C0 instance for sensor communications
-    pub i2c: I2c<'d, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Blocking>,
     /// The onboard flash peripheral
     pub flash: embassy_rp::peripherals::FLASH,
     /// Lookup array containing Flex instances for dynamic GPIO diagnostics
@@ -59,23 +56,16 @@ impl<'d> Board<'d> {
     /// # Arguments
     /// * `p` - The RP2040 peripheral set.
     #[tracing::instrument(level = "trace", skip(p))]
-    pub fn init(p: Peripherals) -> Self {
+    pub async fn init(p: Peripherals) -> Self {
         // Configure hardware stack guard using Cortex-M MPU
         platform::core_monitor::configure_mpu_stack_guard(crate::CORE0_STACK_BOTTOM);
 
-        // 1. Perform I2C bus unstuck on I2C0 (GP12 SDA, GP13 SCL) using the platform support recovery tool.
-        unsafe {
-            use platform::rp2040::PlatformI2cRecovery as _;
-            let recovery = platform::rp2040::Rp2040I2cRecovery {
-                sda_pin: 12,
-                scl_pin: 13,
-            };
-            let _ = recovery.recover_i2c_bus();
+        // Initialize the I2C0 peripheral inside SHARED_I2C static Mutex
+        {
+            let mut guard = crate::SHARED_I2C.lock().await;
+            guard.initialize();
         }
-
-        let mut i2c_config = I2cConfig::default();
-        i2c_config.frequency = 400_000;
-        let mut i2c = I2c::new_blocking(p.I2C0, p.PIN_13, p.PIN_12, i2c_config);
+        let mut i2c = platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C);
         let mut gpio_pins: [Option<Flex<'d>>; 30] = [
             None, // 0 - UART TX
             None, // 1 - UART RX
@@ -236,7 +226,6 @@ impl<'d> Board<'d> {
         };
 
         Self {
-            i2c,
             flash: p.FLASH,
             gpio_pins,
             temp_sensor,

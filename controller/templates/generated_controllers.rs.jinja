@@ -40,7 +40,8 @@ macro_rules! run_{{ ctrl.name|lower }}_task {
                 name = stringify!($task_module),
                 level = "info",
                 skip(
-                    c
+                    c,
+                    register
                     {% for p in ctrl.extra_params_inferred() %}
                         , {{ p.name }}
                     {% endfor %}
@@ -99,7 +100,8 @@ macro_rules! run_{{ ctrl.name|lower }}_task {
                 name = stringify!($task_module),
                 level = "info",
                 skip(
-                    c
+                    c,
+                    register
                     {% for p in ctrl.extra_params_inferred() %}
                         , {{ p.name }}
                     {% endfor %}
@@ -253,7 +255,20 @@ macro_rules! append_group_arm {
             },
         ] [
             $($matches)*
-            $name::{{ cmd.variant }} { subcommand {%- for arg in cmd.args_slice() %}, {{ arg.name }}{% endfor %} } => {% if cmd.handler.contains("::") && !cmd.handler.contains("C::") && !cmd.handler.contains("platform::") %}$crate::{% endif %}{{ cmd.handler|safe }}($ctrl, subcommand {%- for arg in cmd.args_slice() %}, {{ arg.name }}{% endfor %}, $writer),
+            $name::{{ cmd.variant }} { subcommand {%- for arg in cmd.args_slice() %}, {{ arg.name }}{% endfor %} } => {
+                {%- if cmd.async_cli %}
+                let pending = $crate::PendingCommand::{{ cmd.variant }} {
+                    subcommand,
+                    {%- for arg in cmd.args_slice() %}
+                    {{ arg.name }}: {% if arg.arg_type == "string" %}{{ arg.name }}.map(|s| ::heapless::String::try_from(s).unwrap_or_default()){% else %}{{ arg.name }}{% endif %},
+                    {%- endfor %}
+                };
+                $ctrl.pending_command = Some(pending);
+                Ok(())
+                {%- else %}
+                {% if cmd.handler.contains("::") && !cmd.handler.contains("C::") && !cmd.handler.contains("platform::") %}$crate::{% endif %}{{ cmd.handler|safe }}($ctrl, subcommand {%- for arg in cmd.args_slice() %}, {{ arg.name }}{% endfor %}, $writer)
+                {%- endif %}
+            },
         ] -> $mode, $proc_name);
     };
     {%- endfor %}
@@ -315,3 +330,80 @@ pub trait ShellConfig {
         }
     }
 }
+
+{% if has_async_cli %}
+/// Auto-generated enum representing any pending async CLI command.
+#[derive(Clone)]
+pub enum PendingCommand {
+    {%- for cmd in cli_commands %}
+    {%- if cmd.async_cli %}
+    /// Deferred variant for {{ cmd.variant }} command.
+    {{ cmd.variant }} {
+        /// Deferred subcommand.
+        subcommand: Option<{% if cmd.subcommand_type.contains("::") && !cmd.subcommand_type.contains("platform::") %}crate::{% endif %}{{ cmd.subcommand_type|safe }}>,
+        {%- for arg in cmd.args_slice() %}
+        /// Deferred argument {{ arg.name }}.
+        {{ arg.name }}: {% if arg.arg_type == "string" %}Option<::heapless::String<32>>{% else %}{{ arg.rust_type() }}{% endif %},
+        {%- endfor %}
+    },
+    {%- endif %}
+    {%- endfor %}
+}
+
+impl<'a, C: crate::shell_controller::ShellConfig> crate::shell_controller::ShellController<'a, C> {
+    /// Checks if there are any pending async commands.
+    pub fn has_pending_command(&self) -> bool {
+        self.pending_command.is_some()
+    }
+
+    /// Executes the currently pending deferred async command.
+    pub async fn execute_pending<W, E>(
+        &mut self,
+        writer: &mut crate::embedded_cli::writer::Writer<'_, W, E>,
+    ) -> Result<(), &'static str>
+    where
+        W: crate::embedded_io::Write<Error = E>,
+        E: crate::embedded_io::Error,
+    {
+        if let Some(pending) = self.pending_command.take() {
+            match pending {
+                {%- for cmd in cli_commands %}
+                {%- if cmd.async_cli %}
+                crate::PendingCommand::{{ cmd.variant }} { subcommand, {%- for arg in cmd.args_slice() %}{{ arg.name }}, {% endfor %} } => {
+                    {%- if cmd.handler.contains("::") && !cmd.handler.starts_with("platform::") %}
+                    crate::{{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_ref().map(|s| s.as_str()){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
+                    {%- else %}
+                    {{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_ref().map(|s| s.as_str()){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
+                    {%- endif %}
+                }
+                {%- endif %}
+                {%- endfor %}
+            }
+        }
+        Ok(())
+    }
+}
+{% else %}
+/// Dummy enum representing pending async commands when none are configured.
+#[derive(Clone)]
+pub enum PendingCommand {}
+
+impl<'a, C: crate::shell_controller::ShellConfig> crate::shell_controller::ShellController<'a, C> {
+    /// Checks if there are any pending async commands.
+    pub fn has_pending_command(&self) -> bool {
+        false
+    }
+
+    /// Dummy implementation of execute_pending when async CLI is disabled.
+    pub async fn execute_pending<W, E>(
+        &mut self,
+        _writer: &mut crate::embedded_cli::writer::Writer<'_, W, E>,
+    ) -> Result<(), &'static str>
+    where
+        W: crate::embedded_io::Write<Error = E>,
+        E: crate::embedded_io::Error,
+    {
+        Ok(())
+    }
+}
+{% endif %}

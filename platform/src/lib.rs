@@ -108,4 +108,4 @@ pub mod rp2040;
 /// OnceLock synchronization primitive.
 #[path = "system/once_lock.rs"]
 pub mod once_lock;
-pub use once_lock::OnceLock;
+pub use once_lock::{CliSignal, OnceLock};

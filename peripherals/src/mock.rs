@@ -79,7 +79,7 @@ impl MockCurrentSensor {
 }
 
 impl WaitableMeasurement for MockCurrentSensor {
-    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+    async fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
         if self.should_fail {
             Err(PeripheralError::DeviceNotAvailable)
         } else {
@@ -91,7 +91,7 @@ impl WaitableMeasurement for MockCurrentSensor {
 impl PowerSensor for MockCurrentSensor {
     type Error = ();
 
-    fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
+    async fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
         if self.should_fail {
             Err(())
         } else {
@@ -99,7 +99,7 @@ impl PowerSensor for MockCurrentSensor {
         }
     }
 
-    fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
+    async fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
         if self.should_fail {
             Err(())
         } else {
@@ -107,7 +107,10 @@ impl PowerSensor for MockCurrentSensor {
         }
     }
 
-    fn set_measurement_mode(&mut self, _mode: PowerMeasurementMode) -> Result<(), Self::Error> {
+    async fn set_measurement_mode(
+        &mut self,
+        _mode: PowerMeasurementMode,
+    ) -> Result<(), Self::Error> {
         if self.should_fail {
             Err(())
         } else {
@@ -118,14 +121,14 @@ impl PowerSensor for MockCurrentSensor {
 
 impl Probeable for MockCurrentSensor {
     type Error = ();
-    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+    async fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         if self.should_fail {
             Err(())
         } else {
             Ok(0x399F)
         }
     }
-    fn reset(&mut self) -> Result<(), Self::Error> {
+    async fn reset(&mut self) -> Result<(), Self::Error> {
         if self.should_fail {
             Err(())
         } else {
@@ -173,7 +176,7 @@ impl TemperatureSensor for MockBattery {
 impl Tickable for MockBattery {
     type Error = ();
 
-    fn tick(&mut self) -> Result<(), Self::Error> {
+    async fn tick(&mut self) -> Result<(), Self::Error> {
         if self.should_fail {
             Err(())
         } else {
@@ -185,7 +188,7 @@ impl Tickable for MockBattery {
 impl FuelGauge for MockBattery {
     type Error = ();
 
-    fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
+    async fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
         if self.should_fail {
             Err(())
         } else {
@@ -193,7 +196,7 @@ impl FuelGauge for MockBattery {
         }
     }
 
-    fn read_state_of_charge(&mut self) -> Result<u8, Self::Error> {
+    async fn read_state_of_charge(&mut self) -> Result<u8, Self::Error> {
         if self.should_fail {
             Err(())
         } else {
@@ -201,7 +204,7 @@ impl FuelGauge for MockBattery {
         }
     }
 
-    fn configure_alerts(
+    async fn configure_alerts(
         &mut self,
         _voltage_min_mv: u32,
         _voltage_max_mv: u32,
@@ -215,7 +218,7 @@ impl FuelGauge for MockBattery {
         }
     }
 
-    fn check_and_clear_alerts(&mut self) -> Result<(bool, bool), Self::Error> {
+    async fn check_and_clear_alerts(&mut self) -> Result<(bool, bool), Self::Error> {
         if self.should_fail {
             Err(())
         } else {
@@ -226,14 +229,14 @@ impl FuelGauge for MockBattery {
 
 impl Probeable for MockBattery {
     type Error = ();
-    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+    async fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         if self.should_fail {
             Err(())
         } else {
             Ok(0x0010)
         }
     }
-    fn reset(&mut self) -> Result<(), Self::Error> {
+    async fn reset(&mut self) -> Result<(), Self::Error> {
         if self.should_fail {
             Err(())
         } else {
@@ -246,7 +249,7 @@ impl Probeable for MockBattery {
 pub struct DummyCurrentSensor;
 
 impl WaitableMeasurement for DummyCurrentSensor {
-    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+    async fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
         Ok(())
     }
 }
@@ -254,25 +257,28 @@ impl WaitableMeasurement for DummyCurrentSensor {
 impl PowerSensor for DummyCurrentSensor {
     type Error = core::convert::Infallible;
 
-    fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
+    async fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
         Ok(150) // Simulate a healthy current draw of 150mA
     }
 
-    fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
+    async fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
         Ok(3700)
     }
 
-    fn set_measurement_mode(&mut self, _mode: PowerMeasurementMode) -> Result<(), Self::Error> {
+    async fn set_measurement_mode(
+        &mut self,
+        _mode: PowerMeasurementMode,
+    ) -> Result<(), Self::Error> {
         Ok(())
     }
 }
 
 impl Probeable for DummyCurrentSensor {
     type Error = core::convert::Infallible;
-    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+    async fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         Ok(0x399F)
     }
-    fn reset(&mut self) -> Result<(), Self::Error> {
+    async fn reset(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -317,7 +323,7 @@ impl model::calibration::ApplyCalibration for MockProximitySensor {
 }
 
 impl WaitableMeasurement for MockProximitySensor {
-    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+    async fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
         if self.should_fail {
             Err(PeripheralError::DeviceNotAvailable)
         } else {
@@ -329,7 +335,7 @@ impl WaitableMeasurement for MockProximitySensor {
 impl ProximitySensor for MockProximitySensor {
     type Error = ();
 
-    fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
+    async fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
         if self.should_fail {
             Err(())
         } else if self.distance_mm == 0 || self.distance_mm == 8190 {
@@ -339,22 +345,22 @@ impl ProximitySensor for MockProximitySensor {
         }
     }
 
-    fn read_raw_distance_and_rate(&mut self) -> Result<(SensorReading, u16), Self::Error> {
-        let reading = self.read_distance_mm()?;
+    async fn read_raw_distance_and_rate(&mut self) -> Result<(SensorReading, u16), Self::Error> {
+        let reading = self.read_distance_mm().await?;
         Ok((reading, 2500)) // Return a dummy peak rate of 2500 (19.5 Mcps)
     }
 }
 
 impl Probeable for MockProximitySensor {
     type Error = ();
-    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+    async fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         if self.should_fail {
             Err(())
         } else {
             Ok(0xEE)
         }
     }
-    fn reset(&mut self) -> Result<(), Self::Error> {
+    async fn reset(&mut self) -> Result<(), Self::Error> {
         if self.should_fail {
             Err(())
         } else {
@@ -382,7 +388,7 @@ impl DummyProximitySensor {
 }
 
 impl WaitableMeasurement for DummyProximitySensor {
-    fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+    async fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
         Ok(())
     }
 }
@@ -390,7 +396,7 @@ impl WaitableMeasurement for DummyProximitySensor {
 impl ProximitySensor for DummyProximitySensor {
     type Error = core::convert::Infallible;
 
-    fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
+    async fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
         if self.distance_mm == 0 || self.distance_mm == 8190 {
             Ok(SensorReading::Invalid)
         } else {
@@ -398,18 +404,18 @@ impl ProximitySensor for DummyProximitySensor {
         }
     }
 
-    fn read_raw_distance_and_rate(&mut self) -> Result<(SensorReading, u16), Self::Error> {
-        let reading = self.read_distance_mm()?;
+    async fn read_raw_distance_and_rate(&mut self) -> Result<(SensorReading, u16), Self::Error> {
+        let reading = self.read_distance_mm().await?;
         Ok((reading, 2500)) // Return a dummy peak rate of 2500 (19.5 Mcps)
     }
 }
 
 impl Probeable for DummyProximitySensor {
     type Error = core::convert::Infallible;
-    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+    async fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         Ok(0xEE)
     }
-    fn reset(&mut self) -> Result<(), Self::Error> {
+    async fn reset(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -448,17 +454,17 @@ impl MockCharger {
 impl ChargeStatus for MockCharger {
     type Error = ();
 
-    fn get_charge_state(&mut self) -> Result<model::types::ChargeState, Self::Error> {
+    async fn get_charge_state(&mut self) -> Result<model::types::ChargeState, Self::Error> {
         Ok(self.state)
     }
 }
 
 impl Probeable for MockCharger {
     type Error = ();
-    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+    async fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         Ok(0x0010)
     }
-    fn reset(&mut self) -> Result<(), Self::Error> {
+    async fn reset(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
 }
@@ -502,14 +508,14 @@ impl LedDriver for MockLed {
 
 impl Probeable for MockLed {
     type Error = ();
-    fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
+    async fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         if self.should_fail {
             Err(())
         } else {
             Ok(0x86)
         }
     }
-    fn reset(&mut self) -> Result<(), Self::Error> {
+    async fn reset(&mut self) -> Result<(), Self::Error> {
         if self.should_fail {
             Err(())
         } else {
@@ -523,18 +529,18 @@ impl Probeable for MockLed {
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct DummyI2c;
 
-impl embedded_hal::i2c::ErrorType for DummyI2c {
+impl embedded_hal_async::i2c::ErrorType for DummyI2c {
     type Error = core::convert::Infallible;
 }
 
-impl embedded_hal::i2c::I2c for DummyI2c {
-    fn read(&mut self, _address: u8, _read: &mut [u8]) -> Result<(), Self::Error> {
+impl embedded_hal_async::i2c::I2c for DummyI2c {
+    async fn read(&mut self, _address: u8, _read: &mut [u8]) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn write(&mut self, _address: u8, _write: &[u8]) -> Result<(), Self::Error> {
+    async fn write(&mut self, _address: u8, _write: &[u8]) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn write_read(
+    async fn write_read(
         &mut self,
         _address: u8,
         _write: &[u8],
@@ -542,10 +548,10 @@ impl embedded_hal::i2c::I2c for DummyI2c {
     ) -> Result<(), Self::Error> {
         Ok(())
     }
-    fn transaction(
+    async fn transaction(
         &mut self,
         _address: u8,
-        _operations: &mut [embedded_hal::i2c::Operation<'_>],
+        _operations: &mut [embedded_hal_async::i2c::Operation<'_>],
     ) -> Result<(), Self::Error> {
         Ok(())
     }

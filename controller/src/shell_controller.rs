@@ -68,6 +68,8 @@ macro_rules! define_shell_resolver_and_controller {
             flash_partitions: &'a [$crate::NamedPartition<C::Flash>],
             fs_buffer: *mut [u8],
             fs_buffer_locked: core::cell::Cell<bool>,
+            /// Deferred pending async command
+            pub pending_command: Option<$crate::PendingCommand>,
         }
 
         // Implement Send and Sync manually since ShellController contains raw pointers
@@ -82,6 +84,7 @@ macro_rules! define_shell_resolver_and_controller {
                     flash_partitions: pointers.flash_partitions,
                     fs_buffer: pointers.fs_buffer as *mut [u8],
                     fs_buffer_locked: core::cell::Cell::new(false),
+                    pending_command: None,
                 }
             }
 
@@ -124,6 +127,8 @@ macro_rules! define_shell_resolver_and_controller {
                     )),
                 }
             }
+
+
         }
 
         impl<'a, C: ShellConfig> platform::i2c::I2cResolver for ShellController<'a, C> {
@@ -298,7 +303,8 @@ macro_rules! emit_wrapper_commands {
 
         /// Generated wrapper processor.
         pub struct $proc_name<'a, 'b, C: $crate::shell_controller::ShellConfig> {
-            controller: &'b mut $crate::shell_controller::ShellController<'a, C>,
+            /// Reference to the underlying shell controller.
+            pub controller: &'b mut $crate::shell_controller::ShellController<'a, C>,
         }
 
         impl<'a, 'b, C: $crate::shell_controller::ShellConfig> $proc_name<'a, 'b, C> {

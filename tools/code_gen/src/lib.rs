@@ -137,7 +137,8 @@ impl CliResolverField {
 #[derive(Deserialize, Clone)]
 pub struct CliArg {
     pub name: String,
-    pub r#type: String,
+    #[serde(rename = "type")]
+    pub arg_type: String,
     pub help: String,
     pub attributes: Option<Vec<String>>,
 }
@@ -158,7 +159,7 @@ impl CliArg {
     }
 
     pub fn rust_type(&self) -> String {
-        match self.r#type.as_str() {
+        match self.arg_type.as_str() {
             "string" => "Option<&'a str>".to_string(),
             "int" => "Option<i32>".to_string(),
             "float" => "Option<f32>".to_string(),
@@ -195,6 +196,8 @@ pub struct CliCommand {
     pub cmd_name: String,
     pub variant: String,
     pub subcommand_type: String,
+    #[serde(default)]
+    pub async_cli: bool,
     pub handler: String,
     pub help: String,
     pub args: Option<Vec<CliArg>>,
@@ -237,6 +240,7 @@ pub struct ShellConfigToml {
 #[derive(Template)]
 #[template(path = "generated_controllers.rs.jinja", escape = "none")]
 pub struct GeneratedControllersTemplate {
+    pub has_async_cli: bool,
     /// The list of controllers to render.
     pub controllers: Vec<Controller>,
     pub cli_resolver_fields: Vec<CliResolverField>,

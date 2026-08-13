@@ -120,6 +120,7 @@ pub struct BatteryController<
     last_reported_voltage: Option<u32>,
     last_reported_state: Option<BatteryState>,
     active_wake_locks: u32,
+    latest_temp_milli_c: Option<i32>,
 }
 
 impl<
@@ -143,6 +144,7 @@ where
             last_reported_voltage: None,
             last_reported_state: None,
             active_wake_locks: 0,
+            latest_temp_milli_c: None,
         }
     }
 
@@ -161,6 +163,7 @@ where
             last_reported_voltage: None,
             last_reported_state: None,
             active_wake_locks: 0,
+            latest_temp_milli_c: None,
         }
     }
 }
@@ -192,6 +195,7 @@ where
             last_reported_voltage: None,
             last_reported_state: None,
             active_wake_locks: 0,
+            latest_temp_milli_c: None,
         }
     }
 
@@ -214,8 +218,17 @@ where
         let mut error_val = None;
         let (voltage, soc) = {
             let mut bat = self.battery.lock().await;
-            let _ = bat.tick();
-            match (bat.read_voltage_mv(), bat.read_state_of_charge()) {
+
+            // Compensate fuel gauge based on temperature if available
+            if let Some(temp_milli_c) = self.latest_temp_milli_c {
+                let _ = bat.set_battery_temperature(temp_milli_c).await;
+            }
+
+            let _ = bat.tick().await;
+            match (
+                bat.read_voltage_mv().await,
+                bat.read_state_of_charge().await,
+            ) {
                 (Ok(v), Ok(s)) => (v, s),
                 (Err(e), _) | (_, Err(e)) => {
                     read_failed = true;
@@ -227,6 +240,7 @@ where
         let charger_state = {
             let mut chg = self.charger.lock().await;
             chg.get_charge_state()
+                .await
                 .unwrap_or(model::types::ChargeState::DoneOrStandbyOrUnplugged)
         };
 
@@ -354,7 +368,7 @@ where
         // Configure alerts on boot (3.0V low threshold, 4.2V high threshold, 10% SOC empty alert, enable 1% SOC change alert)
         {
             let mut bat = self.battery.lock().await;
-            if let Err(e) = bat.configure_alerts(3000, 4200, 10, true) {
+            if let Err(e) = bat.configure_alerts(3000, 4200, 10, true).await {
                 let err = e.to_peripheral_error();
                 telemetry_client.report_error(err);
                 boot_config_failed = true;
@@ -363,7 +377,15 @@ where
 
         // Run initial status check on boot.
         if let Err(e) = self.update(Some(&mut telemetry_client)).await {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::warn!("BatteryController: Boot read failed/timed out!");
             self.handle_update_error(e, &mut telemetry_client, Some(&mut check_interval));
+            // Explicitly clear boot trap on timeout/failure to allow booting with warnings
+            if let Some(ref tx) = self.system_tx {
+                let _ = tx.try_send(SystemCommand::BatteryAction(
+                    BatteryUpdateAction::ClearBootTrap,
+                ));
+            }
         }
 
         if boot_config_failed {
@@ -393,6 +415,9 @@ where
                             };
                             telemetry_client.report_interval(model::types::Device::Battery, interval);
                         }
+                        BatteryCommand::UpdateTemperature(temp) => {
+                            self.latest_temp_milli_c = Some(temp);
+                        }
                     }
                     Some(())
                 },
@@ -406,7 +431,7 @@ where
                 let mut is_soc_alert = false;
                 {
                     let mut bat = self.battery.lock().await;
-                    match bat.check_and_clear_alerts() {
+                    match bat.check_and_clear_alerts().await {
                         Ok((v_alert, soc_alert)) => {
                             is_voltage_alert = v_alert;
                             is_soc_alert = soc_alert;
@@ -469,17 +494,24 @@ impl<
 {
     fn read_battery_blocking(&self) -> Result<(u32, u8), PeripheralError> {
         if let Ok(mut bat) = self.battery.try_lock() {
-            if let (Ok(v), Ok(soc)) = (bat.read_voltage_mv(), bat.read_state_of_charge()) {
-                return Ok((v, soc));
-            }
+            let fut = async {
+                match (
+                    bat.read_voltage_mv().await,
+                    bat.read_state_of_charge().await,
+                ) {
+                    (Ok(v), Ok(soc)) => Ok((v, soc)),
+                    _ => Err(PeripheralError::DeviceNotAvailable),
+                }
+            };
+            return embassy_futures::block_on(fut);
         }
         Err(PeripheralError::DeviceNotAvailable)
     }
 
     fn configure_alerts(&self, v_min_mv: u32, v_max_mv: u32) -> Result<(), PeripheralError> {
         if let Ok(mut bat) = self.battery.try_lock() {
-            bat.configure_alerts(v_min_mv, v_max_mv, 1, true)
-                .map_err(|_| PeripheralError::DeviceNotAvailable)?;
+            let fut = bat.configure_alerts(v_min_mv, v_max_mv, 1, true);
+            embassy_futures::block_on(fut).map_err(|_| PeripheralError::DeviceNotAvailable)?;
             return Ok(());
         }
         Err(PeripheralError::DeviceNotAvailable)
@@ -487,9 +519,8 @@ impl<
 
     fn check_and_clear_alerts(&self) -> Result<(bool, bool), PeripheralError> {
         if let Ok(mut bat) = self.battery.try_lock() {
-            return bat
-                .check_and_clear_alerts()
-                .map_err(|_| PeripheralError::DeviceNotAvailable);
+            let fut = bat.check_and_clear_alerts();
+            return embassy_futures::block_on(fut).map_err(|_| PeripheralError::DeviceNotAvailable);
         }
         Err(PeripheralError::DeviceNotAvailable)
     }
@@ -513,6 +544,8 @@ pub enum BatteryCommand {
     UpdateWakeLocks(u32),
     /// Set periodic automatic checking interval
     SetInterval(PeriodicInterval),
+    /// Update the latest battery temperature in milli-Celsius for compensation
+    UpdateTemperature(i32),
 }
 
 subcommand_enum! {
@@ -704,6 +737,12 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
                 .expect("Failed to signal wake locks update to battery controller");
             #[cfg(not(all(target_arch = "arm", target_os = "none")))]
             let _ = res;
+        }
+    }
+
+    fn on_thermal_update(&self, temp_milli_c: i32) {
+        if let Some(ref battery_tx) = self.battery_tx {
+            let _ = battery_tx.try_send(crate::BatteryCommand::UpdateTemperature(temp_milli_c));
         }
     }
 }

@@ -94,6 +94,56 @@
       ],
       "runToEntryPoint": "main",
       "serverPort": 3333
+    },
+    {
+      "type": "cortex-debug",
+      "request": "launch",
+      "name": "Debug Tracing Core 0 (J-Link)",
+      "servertype": "jlink",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/release/cat_detector_app",
+      "device": "RP2040_M0_0",
+      "interface": "swd",
+      "runToEntryPoint": "main"
+    },
+    {
+      "type": "cortex-debug",
+      "request": "attach",
+      "name": "Attach Tracing Core 1 (J-Link)",
+      "servertype": "jlink",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/release/cat_detector_app",
+      "device": "RP2040_M0_1",
+      "interface": "swd"
+    },
+    {
+      "type": "cortex-debug",
+      "request": "launch",
+      "name": "Debug Tracing Core 0 (Pico Probe)",
+      "servertype": "openocd",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/release/cat_detector_app",
+      "device": "RP2040",
+      "configFiles": [
+        "interface/cmsis-dap.cfg",
+        "target/rp2040.cfg",
+        ".vscode/openocd_custom.cfg"
+      ],
+      "openOCDLaunchCommands": [
+        "adapter speed 5000"
+      ],
+      "runToEntryPoint": "main",
+      "serverPort": 3333
+    },
+    {
+      "type": "cortex-debug",
+      "request": "attach",
+      "name": "Attach Tracing Core 1 (Pico Probe)",
+      "servertype": "external",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/release/cat_detector_app",
+      "gdbTarget": "localhost:3334",
+      "device": "RP2040"
     }
   ]
 }

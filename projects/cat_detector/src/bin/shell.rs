@@ -45,8 +45,7 @@ controller::declare_shell_commands! {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-type I2cBus =
-    embassy_rp::i2c::I2c<'static, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Blocking>;
+type I2cBus = embassy_rp::i2c::I2c<'static, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Async>;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 type MotorDevice =
@@ -194,7 +193,7 @@ async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
     // Initialize board peripherals using the unified board configuration
-    let board = app::Board::init(p);
+    let board = app::Board::init(p).await;
 
     let writer = platform::rtt::RttTxWriter;
 
@@ -290,16 +289,16 @@ async fn main(spawner: Spawner) {
         }]
     };
 
-    let board_i2c_ptr = app::SHARED_I2C.lock(|cell| {
-        let mut borrow = cell.borrow_mut();
-        if let Some(ref mut i2c) = borrow.0 {
+    let board_i2c_ptr = {
+        let mut guard = app::SHARED_I2C.lock().await;
+        if let Some(ref mut i2c) = guard.i2c {
             i2c as *mut _ as *mut _
         } else {
             core::ptr::null_mut()
         }
-    });
+    };
 
-    let raw_motor_ptr = *app::MOTOR_CTRL_CORE1.wait();
+    let raw_motor_ptr = *app::MOTOR_CTRL_CORE1.wait().await;
     let board_motor_ptr =
         unsafe { &mut (*(raw_motor_ptr as *mut MotorControllerType)).motor as *mut _ };
 
@@ -344,21 +343,21 @@ async fn main(spawner: Spawner) {
     let sensors = &[
         controller::NamedDevice {
             name: "north",
-            device: *app::SENSOR_CTRL_NORTH_CORE1.wait() as *mut _,
+            device: *app::SENSOR_CTRL_NORTH_CORE1.wait().await as *mut _,
         },
         controller::NamedDevice {
             name: "east",
-            device: *app::SENSOR_CTRL_EAST_CORE1.wait() as *mut _,
+            device: *app::SENSOR_CTRL_EAST_CORE1.wait().await as *mut _,
         },
         controller::NamedDevice {
             name: "west",
-            device: *app::SENSOR_CTRL_WEST_CORE1.wait() as *mut _,
+            device: *app::SENSOR_CTRL_WEST_CORE1.wait().await as *mut _,
         },
     ];
 
     let motor_ctrls = &[controller::NamedDevice {
         name: "default",
-        device: *app::MOTOR_CTRL_CORE1.wait() as *mut _,
+        device: *app::MOTOR_CTRL_CORE1.wait().await as *mut _,
     }];
 
     let feature_set = app::create_default_feature_set();
@@ -397,7 +396,8 @@ async fn main(spawner: Spawner) {
     let mut processor = ShellController::<AppConfig>::new(pointers);
 
     let mut local_proc = CatDetectorCliProcessor::new(&mut processor);
-    platform::rtt::run_rtt_shell_loop::<CatDetectorCli, _, _, _>(&mut cli, &mut local_proc).await;
+
+    platform::run_rtt_shell_loop!(&mut cli, &mut local_proc, CatDetectorCli);
 }
 
 /// Dummy host entry point to satisfy Cargo compilation requirements.
