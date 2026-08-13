@@ -300,6 +300,29 @@ impl PlatformI2cAccess
     }
 }
 
+/// PIO setup support for RP2040.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub mod pio {
+    use embassy_rp::pio::Instance;
+
+    /// Resources required to initialize a PIO peripheral.
+    pub struct PioInitConfig<PIO: Instance, PIN, IRQ> {
+        /// The PIO hardware instance.
+        pub pio: PIO,
+        /// The GPIO pin to associate with the PIO block.
+        pub pin: PIN,
+        /// The interrupt binding for the PIO block.
+        pub irq: IRQ,
+    }
+}
+
+/// Mock PIO setup support for host testing.
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+pub mod pio {
+    /// Mock PIO initialization config.
+    pub struct PioInitConfig;
+}
+
 /// Helper macro to generate multicore booting boilerplate for the RP2040 platform.
 ///
 /// This macro defines the Core 1 stack, the atomic `CORE1_STACK_TOP` pointer,

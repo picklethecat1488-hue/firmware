@@ -71,3 +71,76 @@ fn test_runloop_template_rendering() {
     assert!(output.contains("let cmd = r.receive().await;"));
     assert!(output.contains("match cmd"));
 }
+
+#[test]
+fn test_peripheral_initializers_syntax_and_compiles() {
+    let toml_path = code_gen::find_peripherals_toml();
+    let content = fs::read_to_string(&toml_path).unwrap();
+    let generated = code_gen::generate_peripheral_initializers(&content);
+    assert!(!generated.is_empty());
+
+    // Parse the generated macro definitions as Rust syntax to verify they compile
+    let parsed = syn::parse_str::<syn::File>(&generated);
+    assert!(
+        parsed.is_ok(),
+        "Failed to parse generated peripheral initializers: {:?}",
+        parsed.err()
+    );
+}
+
+#[test]
+fn test_peripheral_sample_syntax_and_compiles() {
+    use code_gen::PeripheralSampleTemplate;
+
+    // Test with probeable (like Max17048)
+    let template_probeable = PeripheralSampleTemplate {
+        name: "MyProbeableSensor".to_string(),
+        has_probeable: true,
+        has_led_driver: false,
+        has_fuel_gauge: false,
+        has_tickable: false,
+        has_charge_status: false,
+        has_proximity_sensor: false,
+    };
+    let rendered_probeable = template_probeable.render().unwrap();
+    assert!(rendered_probeable
+        .contains("impl<I: I2c> model::interfaces::Probeable for MyProbeableSensor<I>"));
+    let parsed_probeable = syn::parse_str::<syn::File>(&rendered_probeable);
+    assert!(
+        parsed_probeable.is_ok(),
+        "Failed to parse MyProbeableSensor: {:?}",
+        parsed_probeable.err()
+    );
+
+    // Test without probeable and check all other traits
+    let template_other = PeripheralSampleTemplate {
+        name: "MyOtherSensor".to_string(),
+        has_probeable: false,
+        has_led_driver: true,
+        has_fuel_gauge: true,
+        has_tickable: true,
+        has_charge_status: true,
+        has_proximity_sensor: true,
+    };
+    let rendered_other = template_other.render().unwrap();
+    assert!(!rendered_other.contains("Probeable"));
+    assert!(
+        rendered_other.contains("impl<I: I2c> model::interfaces::LedDriver for MyOtherSensor<I>")
+    );
+    assert!(
+        rendered_other.contains("impl<I: I2c> model::interfaces::FuelGauge for MyOtherSensor<I>")
+    );
+    assert!(
+        rendered_other.contains("impl<I: I2c> model::interfaces::Tickable for MyOtherSensor<I>")
+    );
+    assert!(rendered_other
+        .contains("impl<I: I2c> model::interfaces::ChargeStatus for MyOtherSensor<I>"));
+    assert!(rendered_other
+        .contains("impl<I: I2c> model::interfaces::ProximitySensor for MyOtherSensor<I>"));
+    let parsed_other = syn::parse_str::<syn::File>(&rendered_other);
+    assert!(
+        parsed_other.is_ok(),
+        "Failed to parse MyOtherSensor: {:?}",
+        parsed_other.err()
+    );
+}

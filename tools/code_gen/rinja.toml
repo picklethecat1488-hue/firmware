@@ -1,2 +1,2 @@
 [general]
-dirs = ["../../controller/templates"]
+dirs = ["../../controller/templates", "../../peripherals/templates"]

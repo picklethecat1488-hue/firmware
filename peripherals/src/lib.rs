@@ -100,9 +100,21 @@ impl<E1: core::fmt::Debug, E2: core::fmt::Debug> ToPeripheralError
         PeripheralError::PinError
     }
 }
+/// Trait implemented by peripherals to allow standard boot-time initialization.
+#[allow(async_fn_in_trait)]
+pub trait BootInit {
+    /// Error type returned by the peripheral during boot initialization.
+    type Error;
+
+    /// Runs the boot-time probing, reset, and initialization sequence.
+    async fn boot_init(&mut self) -> Result<(), Self::Error>;
+}
 
 /// Mock implementations of peripherals for host-based testing.
 pub mod mock;
 
 /// Consolidated tracing facade module from platform.
 pub use platform::tracing;
+
+// Include the generated initializers macros
+include!(concat!(env!("OUT_DIR"), "/generated_initializers.rs"));

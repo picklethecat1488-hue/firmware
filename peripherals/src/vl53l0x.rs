@@ -61,8 +61,8 @@ struct RangeStatus {
 /// Driver for the VL53L0X Time-of-Flight sensor communicating over I2C.
 pub struct Vl53l0x<I> {
     i2c: I,
-    address: u8,
-    threshold_mm: u16,
+    pub(crate) address: u8,
+    pub(crate) threshold_mm: u16,
     hysteresis_mm: u16,
     /// Two-point calibration values mapping raw sensor readings.
     calibration: Option<TwoPointCalibration<u16>>,
@@ -99,19 +99,34 @@ impl<I: I2c> Vl53l0x<I> {
 
     /// Initializes and configures the sensor.
     ///
-    /// Changes the sensor's address if different from the target `new_address`,
+    /// Changes the sensor's address from the default (0x29) to the configured address if needed,
     /// then configures the wake threshold and GPIO interrupt mode.
-    pub async fn init(
-        &mut self,
-        new_address: u8,
-        threshold_mm: u16,
-        interrupt_mode: InterruptMode,
-    ) -> Result<(), PeripheralError> {
-        if self.address != new_address {
-            self.set_address(new_address).await?;
+    pub async fn init(&mut self) -> Result<(), PeripheralError> {
+        let target_address = self.address;
+        // Check if the sensor is responsive at the target address.
+        // If not, it is likely still at the default address (0x29) and needs to be re-addressed.
+        let mut temp_buf = [0u8; 1];
+        if self
+            .i2c
+            .write_read(
+                self.address,
+                &[Register::IDENTIFICATION_MODEL_ID],
+                &mut temp_buf,
+            )
+            .await
+            .is_err()
+        {
+            self.address = 0x29;
+            if let Err(e) = self.set_address(target_address).await {
+                self.address = target_address;
+                return Err(e);
+            }
+            self.address = target_address;
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            ::embassy_time::Timer::after_millis(2).await;
         }
-        self.set_threshold_mm(threshold_mm)?;
-        self.configure_interrupt(interrupt_mode).await?;
+
+        self.configure_interrupt(self.interrupt_mode).await?;
 
         self.set_enable_ranging_sequence().await?;
 
@@ -189,6 +204,11 @@ impl<I: I2c> Vl53l0x<I> {
     /// Sets the hysteresis value in millimeters.
     pub fn set_hysteresis_mm(&mut self, hysteresis_mm: u16) {
         self.hysteresis_mm = hysteresis_mm;
+    }
+
+    /// Sets the GPIO interrupt mode.
+    pub fn set_interrupt_mode(&mut self, mode: InterruptMode) {
+        self.interrupt_mode = mode;
     }
 
     /// Configures the GPIO interrupt mode and threshold registers.
@@ -638,46 +658,4 @@ impl<I: I2c> Probeable for Vl53l0x<I> {
         // It relies on the hardware XSHUT pin for reset, so this is a no-op.
         Ok(())
     }
-}
-
-/// Macro to initialize a VL53L0X proximity sensor during boot.
-#[macro_export]
-macro_rules! init_vl53l0x {
-    ($i2c:expr, $gpio_pins:expr, $name:expr, $xshut_pin:expr, $addr:expr, $threshold:expr, $boot_status:expr) => {
-        if let Some(ref mut pin) = $gpio_pins[$xshut_pin as usize] {
-            pin.set_high();
-            #[cfg(all(target_arch = "arm", target_os = "none"))]
-            ::embassy_time::Timer::after_millis(2).await; // Wait for sensor to boot (min 1.2ms)
-            let mut sensor =
-                $crate::vl53l0x::Vl53l0x::new($i2c, 0x29, ::model::types::Direction::North);
-            {
-                use ::model::interfaces::BootStatus;
-                use ::model::interfaces::Probeable;
-                use $crate::ToPeripheralError;
-                if let Err(ref e) = sensor.read_chip_id().await {
-                    #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    defmt::warn!("{}: Probing failed: {:?}", $name, defmt::Debug2Format(e));
-                    let pe = e.to_peripheral_error();
-                    $boot_status.record_error(pe);
-                }
-                if let Err(ref e) = sensor.reset().await {
-                    #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    defmt::warn!("{}: Reset failed: {:?}", $name, defmt::Debug2Format(e));
-                    let pe = e.to_peripheral_error();
-                    $boot_status.record_error(pe);
-                }
-            }
-            if let Err(e) = sensor
-                .init($addr, $threshold, $crate::vl53l0x::InterruptMode::LowLevel)
-                .await
-            {
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::warn!("{}: Init failed: {:?}", $name, defmt::Debug2Format(&e));
-                use ::model::interfaces::BootStatus;
-                use $crate::ToPeripheralError;
-                let pe = e.to_peripheral_error();
-                $boot_status.record_error(pe);
-            }
-        }
-    };
 }

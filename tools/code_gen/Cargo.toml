@@ -11,3 +11,6 @@ rinja = "0.2"
 indicatif = "0.17"
 clap = { version = "4.4", features = ["derive"] }
 
+[dev-dependencies]
+syn = { version = "2.0", features = ["full"] }
+
