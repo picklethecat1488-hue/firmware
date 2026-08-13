@@ -71,6 +71,10 @@ pub use model::gesture as gesture_detector;
 #[path = "system/select.rs"]
 pub mod select;
 
+/// System feature trait and tuples dispatcher.
+#[path = "system/system_feature.rs"]
+pub mod system_feature;
+
 pub use battery_manager::BatteryManager;
 pub use flash::BlockingAsyncFlash;
 pub use gesture_detector::{GestureDetector, ProximityEvent, ProximityGestureDetector};
@@ -79,8 +83,9 @@ pub use power_manager::PowerManager;
 pub use system::{transition_thermal_update, BatteryUpdateAction, TransitionError};
 pub use thermal_manager::ThermalManager;
 pub use types::{
-    BootTrapMask, BootTrapReason, FsBufferGuard, InvalidBootTrapMask, MulticoreStack,
-    ThermalTransitionResult, ThermalUpdateAction,
+    BatteryStatus, BootTrapMask, BootTrapReason, DeviceSupport, FsBufferGuard, GestureAction,
+    InvalidBootTrapMask, MulticoreStack, ProximityAction, ThermalTransitionResult,
+    ThermalUpdateAction,
 };
 
 /// Compile-time CBOR serialization helpers.

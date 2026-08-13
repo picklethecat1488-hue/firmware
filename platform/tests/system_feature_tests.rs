@@ -1,5 +1,5 @@
-use controller::system_feature::{FeatureList, SystemFeature};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use platform::system_feature::{FeatureList, SystemFeature};
 
 struct MockFeatureA;
 impl SystemFeature<CriticalSectionRawMutex, 4> for MockFeatureA {

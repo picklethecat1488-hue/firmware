@@ -5,11 +5,11 @@
 use crate::tracing::{self, controller_context};
 pub use platform::gesture_detector::ProximityEvent;
 
-use crate::system_feature::FeatureList;
 use crate::types::{
     BatteryStatus, Device, DeviceSupport, GestureAction, ProximityAction, ThermalUpdateAction,
 };
 use crate::{BlockingSystemWriter, PeripheralError};
+use platform::system_feature::FeatureList;
 
 /// Receiver type for thermal update action communication.
 pub type ThermalUpdateReceiver<MutexRaw, const N: usize = 4> =
