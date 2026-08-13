@@ -3,7 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::tracing::{self, controller_context};
-pub use platform::gesture_detector::{GestureReceiver, ProximityEvent};
+pub use platform::gesture_detector::ProximityEvent;
 
 use crate::system_feature::FeatureList;
 use crate::types::{
@@ -561,7 +561,6 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
     pub async fn run(
         mut self,
         command_rx: crate::SystemReceiver<MutexRaw>,
-        gesture_rx: GestureReceiver<MutexRaw>,
         thermal_rx: ThermalUpdateReceiver<MutexRaw>,
     ) -> ! {
         self.feature_set.features().on_init();
@@ -581,10 +580,6 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
                 embassy_time::Duration::from_millis(remaining_ms as u64),
                 command_rx.receive() => |cmd| {
                     let _ = self.handle_command(cmd);
-                    Some(())
-                },
-                gesture_rx.receive() => |gesture| {
-                    let _ = self.handle_command(SystemCommand::Gesture(gesture));
                     Some(())
                 },
                 thermal_rx.receive() => |action| {

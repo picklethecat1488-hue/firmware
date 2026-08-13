@@ -498,9 +498,6 @@ pub static MOTOR_CHANNEL: controller::MotorChannel<MutexRaw, 4> = controller::Mo
 /// Shared command channel for the System Controller.
 pub static SYSTEM_CHANNEL: controller::SystemChannel<MutexRaw, 16> =
     controller::SystemChannel::new();
-/// Shared channel for local gesture events.
-pub static GESTURE_CHANNEL: platform::gesture_detector::GestureChannel<MutexRaw, 4> =
-    platform::gesture_detector::GestureChannel::new();
 /// Shared command channel for the North Sensor Controller.
 pub static SENSOR_NORTH_CHANNEL: controller::SensorChannel<MutexRaw, 4> =
     controller::SensorChannel::new();

@@ -65,8 +65,7 @@ pub mod types;
 pub mod core_monitor;
 
 /// Gesture detection library.
-#[path = "services/gesture.rs"]
-pub mod gesture_detector;
+pub use model::gesture as gesture_detector;
 
 /// Async future demultiplexing helper utilities.
 #[path = "system/select.rs"]
@@ -74,10 +73,7 @@ pub mod select;
 
 pub use battery_manager::BatteryManager;
 pub use flash::BlockingAsyncFlash;
-pub use gesture_detector::{
-    GestureChannel, GestureDetector, GestureReceiver, GestureSender, ProximityEvent,
-    ProximityGestureDetector,
-};
+pub use gesture_detector::{GestureDetector, ProximityEvent, ProximityGestureDetector};
 pub use periodic_timer::PeriodicTimer;
 pub use power_manager::PowerManager;
 pub use system::{transition_thermal_update, BatteryUpdateAction, TransitionError};
