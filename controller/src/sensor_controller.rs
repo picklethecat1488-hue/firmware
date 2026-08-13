@@ -1411,11 +1411,63 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
             .borrow_mut()
             .report((direction, reading));
 
+        let idx = match direction {
+            model::types::Direction::North => 0,
+            model::types::Direction::East => 1,
+            model::types::Direction::West => 2,
+        };
+
+        let prev_state = self.gesture_detector.borrow().trackers[idx].state;
+
         let now_us = embassy_time::Instant::now().as_micros();
         let detector_gesture = self
             .gesture_detector
             .borrow_mut()
             .update((direction, distance_mm), now_us);
+
+        let new_state = self.gesture_detector.borrow().trackers[idx].state;
+
+        if prev_state != new_state {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            {
+                let dir_str = match direction {
+                    model::types::Direction::North => "North",
+                    model::types::Direction::East => "East",
+                    model::types::Direction::West => "West",
+                };
+                use platform::gesture_detector::ProximityState;
+                match new_state {
+                    ProximityState::OutOfRange => {
+                        defmt::info!(
+                            "GestureDetector {} sensor: OUT OF RANGE ({} mm)",
+                            dir_str,
+                            distance_mm
+                        );
+                    }
+                    ProximityState::InRange => {
+                        defmt::info!(
+                            "GestureDetector {} sensor: IN RANGE ({} mm)",
+                            dir_str,
+                            distance_mm
+                        );
+                    }
+                    ProximityState::Near => {
+                        defmt::info!(
+                            "GestureDetector {} sensor: NEAR ({} mm)",
+                            dir_str,
+                            distance_mm
+                        );
+                    }
+                    ProximityState::Down => {
+                        defmt::info!(
+                            "GestureDetector {} sensor: DOWN ({} mm)",
+                            dir_str,
+                            distance_mm
+                        );
+                    }
+                }
+            }
+        }
 
         let gesture = if let SensorReading::Invalid = reading {
             None
@@ -1423,12 +1475,6 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
             detector_gesture
         };
 
-        // Register distance locally in the feature using direction map index
-        let idx = match direction {
-            model::types::Direction::North => 0,
-            model::types::Direction::East => 1,
-            model::types::Direction::West => 2,
-        };
         self.distances[idx].set(distance_mm);
 
         let in_range = self

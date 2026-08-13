@@ -6,6 +6,8 @@
 
 /// Calibration types.
 pub mod calibration;
+/// Gesture detection models.
+pub mod gesture;
 /// Hardware peripheral interfaces.
 pub mod interfaces;
 /// Telemetry types and serialization.

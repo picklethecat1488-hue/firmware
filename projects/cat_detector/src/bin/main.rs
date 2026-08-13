@@ -8,8 +8,8 @@
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
     app::{
-        BATTERY_CHANNEL, FILESYSTEM_CHANNEL, GESTURE_CHANNEL, LED_CHANNEL, SYSTEM_CHANNEL,
-        TELEMETRY_CHANNEL, THERMAL_ACTION_CHANNEL, THERMAL_CHANNEL,
+        BATTERY_CHANNEL, FILESYSTEM_CHANNEL, LED_CHANNEL, SYSTEM_CHANNEL, TELEMETRY_CHANNEL,
+        THERMAL_ACTION_CHANNEL, THERMAL_CHANNEL,
     },
     cat_detector as app,
     controller::telemetry_controller::TelemetryController,
@@ -173,7 +173,7 @@ async fn bootstrap_task(spawner: Spawner, p: embassy_rp::Peripherals) {
             Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (app::TempSensorDevice),
             Battery(power_ctrl, BATTERY_CHANNEL), generics: (app::BatteryDevice, app::ChargerDevice, app::AlertPinType),
             Led(led_ctrl, LED_CHANNEL), generics: (app::LedDevice),
-            System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (app::SystemControllerType),
+            System(system_ctrl, SYSTEM_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (app::SystemControllerType),
             Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (app::FlashDeviceType),
             Telemetry(telemetry_ctrl, TELEMETRY_CHANNEL), generics: ({ app::MAX_RECORDS }, { controller::telemetry_controller::CHANNEL_CAPACITY }, platform::flash::SharedFlashMutex<platform::BlockingAsyncFlash<app::FlashDevice>>),
         }

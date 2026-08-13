@@ -2,7 +2,7 @@
 
 #![deny(missing_docs)]
 
-use model::types::{Direction, Gesture};
+use crate::types::{Direction, Gesture};
 
 /// Trait for extensible gesture detection.
 pub trait GestureDetector<Input> {
@@ -32,7 +32,6 @@ pub enum ProximityEvent {
 /// Proximity state of a sensor tracked by the gesture detector.
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
-#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
 pub enum ProximityState {
     /// Distance is greater than press_threshold_mm
     OutOfRange,
@@ -131,45 +130,6 @@ impl ProximityGestureDetector {
                 tracker.distance_mm = distance_mm;
                 if tracker.state != new_state {
                     tracker.state = new_state;
-
-                    #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    {
-                        let dir_str = match direction {
-                            Direction::North => "North",
-                            Direction::East => "East",
-                            Direction::West => "West",
-                        };
-                        match new_state {
-                            ProximityState::OutOfRange => {
-                                defmt::info!(
-                                    "GestureDetector {} sensor: OUT OF RANGE ({} mm)",
-                                    dir_str,
-                                    distance_mm
-                                );
-                            }
-                            ProximityState::InRange => {
-                                defmt::info!(
-                                    "GestureDetector {} sensor: IN RANGE ({} mm)",
-                                    dir_str,
-                                    distance_mm
-                                );
-                            }
-                            ProximityState::Near => {
-                                defmt::info!(
-                                    "GestureDetector {} sensor: NEAR ({} mm)",
-                                    dir_str,
-                                    distance_mm
-                                );
-                            }
-                            ProximityState::Down => {
-                                defmt::info!(
-                                    "GestureDetector {} sensor: DOWN ({} mm)",
-                                    dir_str,
-                                    distance_mm
-                                );
-                            }
-                        }
-                    }
                 }
                 break;
             }
@@ -233,13 +193,3 @@ impl GestureDetector<(Direction, u16)> for ProximityGestureDetector {
         }
     }
 }
-
-/// Channel type for gesture communication.
-pub type GestureChannel<MutexRaw, const N: usize = 4> =
-    embassy_sync::channel::Channel<MutexRaw, Gesture, N>;
-/// Sender type for gesture communication.
-pub type GestureSender<MutexRaw, const N: usize = 4> =
-    embassy_sync::channel::Sender<'static, MutexRaw, Gesture, N>;
-/// Receiver type for gesture communication.
-pub type GestureReceiver<MutexRaw, const N: usize = 4> =
-    embassy_sync::channel::Receiver<'static, MutexRaw, Gesture, N>;

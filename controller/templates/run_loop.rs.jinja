@@ -12,8 +12,7 @@ impl{{ impl_generics|safe }} {{ impl_type|safe }} {
         mut self,
         r: {{ name }}Receiver<MutexRaw, SIZE>,
         {% if is_system -%}
-        r2: platform::gesture_detector::GestureReceiver<MutexRaw, SIZE>,
-        r3: embassy_sync::channel::Receiver<'static, MutexRaw, crate::ThermalUpdateAction, SIZE>,
+        r2: embassy_sync::channel::Receiver<'static, MutexRaw, crate::ThermalUpdateAction, SIZE>,
         {%- endif -%}
         {% if has_telemetry -%}
         t: TelemetrySender<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, { crate::telemetry_controller::CHANNEL_CAPACITY }>,

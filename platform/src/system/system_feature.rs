@@ -3,8 +3,8 @@
 #![deny(missing_docs)]
 
 use crate::types::{BatteryStatus, DeviceSupport, GestureAction, ProximityAction};
+use crate::BatteryUpdateAction;
 use embassy_sync::blocking_mutex::raw::RawMutex;
-use platform::BatteryUpdateAction;
 
 /// A single system feature that can react to system events and ticks.
 pub trait SystemFeature<MutexRaw: RawMutex + 'static, const N: usize> {
@@ -270,8 +270,6 @@ macro_rules! impl_feature_list_for_tuple {
                 )*
                 GestureAction::None
             }
-
-
 
             #[inline(always)]
             fn on_alert_triggered(&self, _status: model::types::SystemStatus) {
