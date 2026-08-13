@@ -120,6 +120,7 @@ pub struct BatteryController<
     last_reported_voltage: Option<u32>,
     last_reported_state: Option<BatteryState>,
     active_wake_locks: u32,
+    latest_temp_milli_c: Option<i32>,
 }
 
 impl<
@@ -143,6 +144,7 @@ where
             last_reported_voltage: None,
             last_reported_state: None,
             active_wake_locks: 0,
+            latest_temp_milli_c: None,
         }
     }
 
@@ -161,6 +163,7 @@ where
             last_reported_voltage: None,
             last_reported_state: None,
             active_wake_locks: 0,
+            latest_temp_milli_c: None,
         }
     }
 }
@@ -192,6 +195,7 @@ where
             last_reported_voltage: None,
             last_reported_state: None,
             active_wake_locks: 0,
+            latest_temp_milli_c: None,
         }
     }
 
@@ -214,6 +218,12 @@ where
         let mut error_val = None;
         let (voltage, soc) = {
             let mut bat = self.battery.lock().await;
+
+            // Compensate fuel gauge based on temperature if available
+            if let Some(temp_milli_c) = self.latest_temp_milli_c {
+                let _ = bat.set_battery_temperature(temp_milli_c).await;
+            }
+
             let _ = bat.tick().await;
             match (
                 bat.read_voltage_mv().await,
@@ -405,6 +415,9 @@ where
                             };
                             telemetry_client.report_interval(model::types::Device::Battery, interval);
                         }
+                        BatteryCommand::UpdateTemperature(temp) => {
+                            self.latest_temp_milli_c = Some(temp);
+                        }
                     }
                     Some(())
                 },
@@ -531,6 +544,8 @@ pub enum BatteryCommand {
     UpdateWakeLocks(u32),
     /// Set periodic automatic checking interval
     SetInterval(PeriodicInterval),
+    /// Update the latest battery temperature in milli-Celsius for compensation
+    UpdateTemperature(i32),
 }
 
 subcommand_enum! {
@@ -722,6 +737,12 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
                 .expect("Failed to signal wake locks update to battery controller");
             #[cfg(not(all(target_arch = "arm", target_os = "none")))]
             let _ = res;
+        }
+    }
+
+    fn on_thermal_update(&self, temp_milli_c: i32) {
+        if let Some(ref battery_tx) = self.battery_tx {
+            let _ = battery_tx.try_send(crate::BatteryCommand::UpdateTemperature(temp_milli_c));
         }
     }
 }

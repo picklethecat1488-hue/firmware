@@ -610,6 +610,8 @@ pub enum ThermalUpdateAction {
     ClearBootTrap,
     /// Alert triggered due to critical temperature.
     AlertTriggered,
+    /// Temperature reading update in milli-Celsius.
+    TemperatureUpdated(i32),
 }
 
 /// Result of a thermal update transition.

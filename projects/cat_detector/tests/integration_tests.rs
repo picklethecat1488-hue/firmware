@@ -430,6 +430,9 @@ fn test_system_integration_flow() {
             .unwrap();
         let action = THERMAL_ACTION_CHANNEL.receive().await;
         let _ = system_ctrl.handle_thermal_action(action);
+        while let Ok(action) = THERMAL_ACTION_CHANNEL.try_receive() {
+            let _ = system_ctrl.handle_thermal_action(action);
+        }
         while BATTERY_CHANNEL.try_receive().is_ok() {}
         while THERMAL_CHANNEL.try_receive().is_ok() {}
         drain_telemetry();

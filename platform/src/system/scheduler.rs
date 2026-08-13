@@ -158,6 +158,7 @@ pub fn transition_thermal_update(
                 next_status = Some(SystemStatus::Sleep);
             }
         }
+        ThermalUpdateAction::TemperatureUpdated(_) => {}
     }
     ThermalTransitionResult {
         next_status,

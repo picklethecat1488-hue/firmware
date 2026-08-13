@@ -29,4 +29,9 @@ pub trait FuelGauge {
     async fn check_and_clear_alerts(&mut self) -> Result<(bool, bool), Self::Error> {
         Ok((false, false))
     }
+
+    /// Set the battery temperature in milli-Celsius for compensation.
+    async fn set_battery_temperature(&mut self, _temp_milli_c: i32) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }

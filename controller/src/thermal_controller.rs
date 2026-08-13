@@ -139,6 +139,10 @@ impl<'a, M: RawMutex, B: TemperatureSensor, const SYS_CAP: usize>
         match temp {
             Err(e) => Err(e),
             Ok(temp) => {
+                if let Some(tx) = &self.thermal_tx {
+                    let _ =
+                        tx.try_send(crate::types::ThermalUpdateAction::TemperatureUpdated(temp));
+                }
                 match self.state {
                     ThermalState::Normal => {
                         if temp > self.overheating_temp_milli_c {
