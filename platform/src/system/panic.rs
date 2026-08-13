@@ -668,10 +668,10 @@ fn log_crash_and_reset_impl<
 
     // A single static scratch buffer used for log extraction and CBOR serialization.
     // Partitioned as:
-    //   - scratch[0..1500]: Used for log extraction (1500 bytes).
-    //   - scratch[1500..2700]: Used for CBOR serialization buffer (1200 bytes).
-    static mut SCRATCH_BUF: [u8; 2700] = [0u8; 2700];
-    let (log_buf, cbor_buf) = unsafe { SCRATCH_BUF.split_at_mut(1500) };
+    //   - scratch[0..1024]: Used for log extraction (1024 bytes, matching CRASH_LOG_BUFFER_SIZE).
+    //   - scratch[1024..4096]: Used for CBOR serialization buffer (3072 bytes).
+    static mut SCRATCH_BUF: [u8; 4096] = [0u8; 4096];
+    let (log_buf, cbor_buf) = unsafe { SCRATCH_BUF.split_at_mut(1024) };
 
     // Extract logs from CRASH_LOG_BUFFER into a contiguous slice
     let logs_len = critical_section::with(|cs| extract_system_logs(&cs, log_buf));
@@ -686,8 +686,13 @@ fn log_crash_and_reset_impl<
 
     // Serialize CrashDump into a buffer
     let mut encoded_len = 0;
-    if let Ok(len) = serialize_crash_dump(&dump, cbor_buf) {
-        encoded_len = len;
+    match serialize_crash_dump(&dump, cbor_buf) {
+        Ok(len) => {
+            encoded_len = len;
+        }
+        Err(_) => {
+            defmt::error!("Failed to serialize crash dump: CBOR serialization buffer too small");
+        }
     }
     let encoded_bytes = &cbor_buf[..encoded_len];
     defmt::error!("Crash Dump: {=[u8]:cbor}", encoded_bytes);
