@@ -53,6 +53,10 @@ pub struct Max17048<I> {
     last_vcell: Option<u32>,
     last_soc: Option<u8>,
     charge_detect_counter: i32,
+    rcomp0: f32,
+    tempco_up: f32,
+    tempco_down: f32,
+    last_rcomp: Option<u8>,
 }
 
 impl<I: I2c> Max17048<I> {
@@ -64,6 +68,10 @@ impl<I: I2c> Max17048<I> {
             last_vcell: None,
             last_soc: None,
             charge_detect_counter: 0,
+            rcomp0: 151.0,
+            tempco_up: -0.5,
+            tempco_down: -5.0,
+            last_rcomp: None,
         }
     }
 
@@ -106,6 +114,13 @@ impl<I: I2c> Max17048<I> {
             .await
             .map_err(|e| e.to_i2c_error(self.address as u16, reg as u16))?;
         Ok(())
+    }
+
+    /// Write a custom RCOMP (resistance compensation) value to calibrate/compensate the fuel gauge.
+    async fn write_rcomp(&mut self, rcomp: u8) -> Result<(), PeripheralError> {
+        let config = self.read_register(Register::CONFIG).await?;
+        let new_config = (config & 0x00FF) | ((rcomp as u16) << 8);
+        self.write_register(Register::CONFIG, new_config).await
     }
 }
 
@@ -208,6 +223,28 @@ impl<I: I2c> FuelGauge for Max17048<I> {
         }
 
         Ok((has_voltage_alert, has_soc_alert))
+    }
+
+    #[tracing::instrument(level = "trace")]
+    async fn set_battery_temperature(&mut self, temp_milli_c: i32) -> Result<(), Self::Error> {
+        let temp_c = temp_milli_c as f32 / 1000.0;
+        let rcomp_val = if temp_c > 20.0 {
+            self.rcomp0 + (temp_c - 20.0) * self.tempco_up
+        } else {
+            self.rcomp0 + (temp_c - 20.0) * self.tempco_down
+        };
+        let rcomp = rcomp_val.clamp(0.0, 255.0) as u8;
+        if self.last_rcomp != Some(rcomp) {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            defmt::debug!(
+                "MAX17048: Temperature is {} mC, compensating RCOMP to 0x{:02x}",
+                temp_milli_c,
+                rcomp
+            );
+            self.write_rcomp(rcomp).await?;
+            self.last_rcomp = Some(rcomp);
+        }
+        Ok(())
     }
 }
 

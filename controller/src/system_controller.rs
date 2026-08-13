@@ -483,6 +483,9 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
                     .features()
                     .on_alert_triggered(current_status);
             }
+            ThermalUpdateAction::TemperatureUpdated(temp) => {
+                self.feature_set.features().on_thermal_update(temp);
+            }
         }
 
         let is_boot_trapped = self.power_manager.is_boot_trapped();

@@ -512,6 +512,44 @@ fn test_probeable_max17048() {
 }
 
 #[test]
+fn test_max17048_temperature_compensation() {
+    run_test!(async {
+        use model::interfaces::FuelGauge;
+        use peripherals::max17048::Max17048;
+
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut reads = std::collections::VecDeque::new();
+        // Return 0x971C as current CONFIG register value
+        reads.push_back(vec![0x97, 0x1C]);
+        // Return 0x971C as current CONFIG register value
+        reads.push_back(vec![0x97, 0x1C]);
+
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+
+        let mut gauge = Max17048::new(&mut i2c);
+
+        // Test 1: T > 20°C (e.g. 30°C / 30000 mC)
+        // RCOMP = 151 + (30 - 20) * -0.5 = 151 - 5 = 146 = 0x92
+        // It should read CONFIG, modify it to 0x921C, and write it back.
+        gauge.set_battery_temperature(30000).await.unwrap();
+
+        // Test 2: T <= 20°C (e.g. 10°C / 10000 mC)
+        // RCOMP = 151 + (10 - 20) * -5.0 = 151 + 50 = 201 = 0xC9
+        // It should read CONFIG, modify it to 0xC91C, and write it back.
+        gauge.set_battery_temperature(10000).await.unwrap();
+
+        let w = writes.lock().unwrap();
+        assert_eq!(w[0], vec![0x0C]);
+        assert_eq!(w[1], vec![0x0C, 0x92, 0x1C]);
+        assert_eq!(w[2], vec![0x0C]);
+        assert_eq!(w[3], vec![0x0C, 0xC9, 0x1C]);
+    });
+}
+
+#[test]
 fn test_probeable_ina219() {
     run_test!(async {
         use model::interfaces::Probeable;

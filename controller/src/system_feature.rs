@@ -93,6 +93,9 @@ pub trait SystemFeature<MutexRaw: RawMutex + 'static, const N: usize> {
 
     /// Hook called when a thermal or motor safety alert is triggered.
     fn on_alert_triggered(&self, _status: model::types::SystemStatus) {}
+
+    /// Hook called when system temperature is updated.
+    fn on_thermal_update(&self, _temp_milli_c: i32) {}
 }
 
 pub use model::interfaces::Periodic;
@@ -158,6 +161,9 @@ pub trait FeatureList<MutexRaw: RawMutex + 'static, const N: usize> {
     fn thermal_overheating_temp_threshold(&self) -> i32;
     /// Combine thermal critical thresholds from all features.
     fn thermal_critical_temp_threshold(&self) -> i32;
+
+    /// Dispatch on_thermal_update hook to all features.
+    fn on_thermal_update(&self, temp_milli_c: i32);
 }
 
 macro_rules! impl_feature_list_for_tuple {
@@ -272,6 +278,14 @@ macro_rules! impl_feature_list_for_tuple {
                 #[allow(non_snake_case)]
                 let ($($T,)*) = self;
                 $($T.on_alert_triggered(_status);)*
+            }
+
+            #[inline(always)]
+            fn on_thermal_update(&self, temp_milli_c: i32) {
+                let _ = temp_milli_c;
+                #[allow(non_snake_case)]
+                let ($($T,)*) = self;
+                $($T.on_thermal_update(temp_milli_c);)*
             }
 
             #[inline(always)]
