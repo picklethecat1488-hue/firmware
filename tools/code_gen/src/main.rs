@@ -9,30 +9,44 @@ mod list_clis;
 mod list_controllers;
 mod runloop_sample;
 
-use code_gen::{
-    find_controllers_toml, find_shell_toml, print_help, ControllerConfig, ShellConfigToml,
-};
+use clap::{Parser, Subcommand};
+use code_gen::{find_controllers_toml, find_shell_toml, ControllerConfig, ShellConfigToml};
 use std::fs;
 use std::path::PathBuf;
 
+#[derive(Parser)]
+#[command(name = "code_gen")]
+#[command(about = "Code Generator host tool", long_about = None)]
+struct Cli {
+    /// Output directory for files.
+    #[arg(long, default_value = "target/out")]
+    out_dir: PathBuf,
+
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand, Clone)]
+enum Commands {
+    /// List all defined controllers.
+    ListControllers,
+    /// List all defined CLI commands/groups.
+    ListClis,
+    /// Output compiling sample CLI implementation.
+    CliSample {
+        /// Optional specific command/group targets.
+        targets: Vec<String>,
+    },
+    /// Output boilerplate runloop implementations.
+    RunloopSample {
+        /// Optional specific controller targets.
+        targets: Vec<String>,
+    },
+}
+
 /// Entry point of the `code_gen` host tool.
 fn main() {
-    let mut args: Vec<String> = std::env::args().collect();
-
-    // Default output directory is target/out
-    let mut out_dir = PathBuf::from("target/out");
-
-    // Parse and remove --out-dir argument if present
-    if let Some(pos) = args.iter().position(|x| x == "--out-dir") {
-        if pos + 1 < args.len() {
-            out_dir = PathBuf::from(&args[pos + 1]);
-            args.remove(pos + 1);
-            args.remove(pos);
-        } else {
-            eprintln!("Error: Missing value for --out-dir");
-            std::process::exit(1);
-        }
-    }
+    let cli = Cli::parse();
 
     let toml_path = find_controllers_toml();
     let config_content = fs::read_to_string(&toml_path).expect("Failed to read controllers.toml");
@@ -44,44 +58,18 @@ fn main() {
     let shell_config: ShellConfigToml =
         toml::from_str(&shell_content).expect("Failed to parse shell.toml");
 
-    if args.len() > 1 {
-        let arg = &args[1];
-        if arg == "-h" || arg == "--help" {
-            print_help();
-            return;
+    match cli.command {
+        Commands::ListControllers => {
+            list_controllers::handle(&config);
         }
-
-        match arg.as_str() {
-            "list-controllers" | "--list-controllers" => {
-                list_controllers::handle(&config);
-            }
-            "list-clis" | "--list-clis" => {
-                list_clis::handle(&shell_config);
-            }
-            "cli-sample" | "--cli-sample" => {
-                let targets = if args.len() > 2 {
-                    args[2..].to_vec()
-                } else {
-                    Vec::new()
-                };
-                cli_sample::handle(&targets, &out_dir, &shell_config);
-            }
-            "runloop-sample" | "--runloop-sample" => {
-                let targets = if args.len() > 2 {
-                    args[2..].to_vec()
-                } else {
-                    Vec::new()
-                };
-                runloop_sample::handle(&targets, &out_dir, &config);
-            }
-            unknown => {
-                eprintln!("Error: Unknown subcommand '{}'", unknown);
-                eprintln!();
-                print_help();
-                std::process::exit(1);
-            }
+        Commands::ListClis => {
+            list_clis::handle(&shell_config);
         }
-    } else {
-        print_help();
+        Commands::CliSample { targets } => {
+            cli_sample::handle(&targets, &cli.out_dir, &shell_config);
+        }
+        Commands::RunloopSample { targets } => {
+            runloop_sample::handle(&targets, &cli.out_dir, &config);
+        }
     }
 }
