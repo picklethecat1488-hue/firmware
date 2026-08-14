@@ -106,6 +106,16 @@ pub mod tracing;
 #[path = "system/rp2040.rs"]
 pub mod rp2040;
 
+#[cfg(not(feature = "rp2040"))]
+/// Mock RP2040 platform support for host compilation.
+pub mod rp2040 {
+    /// Mock PIO module.
+    pub mod pio {
+        /// Mock PIO initialization config.
+        pub struct PioInitConfig;
+    }
+}
+
 /// OnceLock synchronization primitive.
 #[path = "system/once_lock.rs"]
 pub mod once_lock;

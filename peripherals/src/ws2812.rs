@@ -7,7 +7,7 @@ use model::types::PeripheralError;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
-    embassy_rp::pio::{Common, Instance, PioPin, StateMachine},
+    embassy_rp::pio::{Common, Instance, InterruptHandler, Pio, PioPin, StateMachine},
     embassy_rp::pio_programs::ws2812::PioWs2812Program,
     fixed::types::U24F8,
 };
@@ -72,6 +72,39 @@ impl<'d, PIO: Instance, const SM: usize> Ws2812<'d, PIO, SM> {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
+impl<'d> Ws2812<'d, embassy_rp::peripherals::PIO0, 0> {
+    /// Creates and configures the Ws2812 driver using PIO0 and state machine 0.
+    #[allow(static_mut_refs, clippy::missing_transmute_annotations)]
+    pub fn new_pio<PIN, IRQ>(
+        config: platform::rp2040::pio::PioInitConfig<embassy_rp::peripherals::PIO0, PIN, IRQ>,
+    ) -> Self
+    where
+        PIN: PioPin + 'd,
+        IRQ: embassy_rp::interrupt::typelevel::Binding<
+                <embassy_rp::peripherals::PIO0 as Instance>::Interrupt,
+                InterruptHandler<embassy_rp::peripherals::PIO0>,
+            > + 'd,
+    {
+        static mut PIO_COMMON: Option<Common<'static, embassy_rp::peripherals::PIO0>> = None;
+        static mut PIO_PROGRAM: Option<PioWs2812Program<'static, embassy_rp::peripherals::PIO0>> =
+            None;
+
+        let Pio { common, sm0, .. } = Pio::new(config.pio, config.irq);
+
+        unsafe {
+            PIO_COMMON = Some(core::mem::transmute(common));
+            let common_ref: &mut Common<'d, embassy_rp::peripherals::PIO0> =
+                core::mem::transmute(PIO_COMMON.as_mut().unwrap());
+            let program = PioWs2812Program::new(common_ref);
+            PIO_PROGRAM = Some(core::mem::transmute(program));
+            let program_ref: &PioWs2812Program<'d, embassy_rp::peripherals::PIO0> =
+                core::mem::transmute(PIO_PROGRAM.as_ref().unwrap());
+            Self::new(common_ref, sm0, config.pin, program_ref)
+        }
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
 impl<'d, PIO: Instance, const SM: usize> LedDriver for Ws2812<'d, PIO, SM> {
     type Error = PeripheralError;
 
@@ -103,6 +136,11 @@ impl Ws2812 {
     pub const fn new() -> Self {
         Self { _dummy: () }
     }
+
+    /// Creates a dummy Ws2812 instance.
+    pub const fn new_pio(_config: platform::rp2040::pio::PioInitConfig) -> Self {
+        Self { _dummy: () }
+    }
 }
 
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
@@ -119,42 +157,4 @@ impl LedDriver for Ws2812 {
     fn set_color(&mut self, _r: u8, _g: u8, _b: u8) -> Result<(), Self::Error> {
         Ok(())
     }
-}
-
-/// Macro to initialize a WS2812 LED driver during boot.
-#[macro_export]
-macro_rules! init_ws2812 {
-    ($pio:expr, $pin:expr, $boot_status:expr) => {{
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        {
-            use embassy_rp::pio::Pio;
-            use embassy_rp::pio_programs::ws2812::PioWs2812Program;
-
-            static mut PIO_COMMON: Option<
-                embassy_rp::pio::Common<'static, embassy_rp::peripherals::PIO0>,
-            > = None;
-            static mut PIO_PROGRAM: Option<
-                embassy_rp::pio_programs::ws2812::PioWs2812Program<
-                    'static,
-                    embassy_rp::peripherals::PIO0,
-                >,
-            > = None;
-
-            let Pio { common, sm0, .. } = Pio::new($pio, Irqs);
-
-            unsafe {
-                PIO_COMMON = Some(core::mem::transmute(common));
-                let common_ref = PIO_COMMON.as_mut().unwrap();
-                let program = PioWs2812Program::new(common_ref);
-                PIO_PROGRAM = Some(core::mem::transmute(program));
-                let program_ref = PIO_PROGRAM.as_ref().unwrap();
-                $crate::ws2812::Ws2812::new(common_ref, sm0, $pin, program_ref)
-            }
-        }
-        #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-        {
-            let _ = $boot_status;
-            $crate::ws2812::Ws2812::new()
-        }
-    }};
 }

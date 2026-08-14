@@ -352,31 +352,3 @@ impl<I: I2c> Probeable for Max17048<I> {
         }
     }
 }
-
-/// Macro to initialize a MAX17048 fuel gauge during boot.
-#[macro_export]
-macro_rules! init_max17048 {
-    ($i2c:expr, $boot_status:expr) => {{
-        let mut fuel_gauge = $crate::max17048::Max17048::new($i2c);
-        {
-            use ::model::interfaces::BootStatus;
-            use ::model::interfaces::Probeable;
-            use $crate::ToPeripheralError;
-            if let Err(ref e) = fuel_gauge.read_chip_id().await {
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::warn!("MAX17048: Probing failed: {:?}", defmt::Debug2Format(e));
-                let pe = e.to_peripheral_error();
-                $boot_status.record_error(pe);
-            }
-            if let Err(ref e) = fuel_gauge.init().await {
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::warn!(
-                    "MAX17048: Initialization failed: {:?}",
-                    defmt::Debug2Format(e)
-                );
-                let pe = e.to_peripheral_error();
-                $boot_status.record_error(pe);
-            }
-        }
-    }};
-}

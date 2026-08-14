@@ -158,23 +158,35 @@ impl<'d> Board<'d> {
                 crate::TOF_WEST_I2C_ADDR,
             ),
         ];
-        for &(name, xshut_pin, addr) in &sensors {
-            peripherals::init_vl53l0x!(
-                &mut i2c,
-                gpio_pins,
-                name,
-                xshut_pin,
-                addr,
-                crate::DEFAULT_WAKE_THRESHOLD_MM,
-                &mut boot_status
-            );
+        for &(_name, xshut_pin, addr) in &sensors {
+            if let Some(ref mut pin) = gpio_pins[xshut_pin as usize] {
+                pin.set_high();
+                #[cfg(all(target_arch = "arm", target_os = "none"))]
+                ::embassy_time::Timer::after_millis(2).await;
+
+                let mut sensor = peripherals::vl53l0x::Vl53l0x::new(
+                    &mut i2c,
+                    addr,
+                    model::types::Direction::North,
+                );
+                let _ = sensor.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
+                sensor.set_interrupt_mode(peripherals::vl53l0x::InterruptMode::LowLevel);
+
+                peripherals::init_i2c!(&mut sensor, &mut boot_status);
+            }
         }
 
         let temp_sensor = Some(Rp2040TempSensor::new(p.ADC, p.ADC_TEMP_SENSOR));
 
         // Configure remaining drivers using local i2c before returning
-        peripherals::init_max17048!(&mut i2c, &mut boot_status);
-        peripherals::init_ina219!(&mut i2c, &mut boot_status);
+        {
+            let mut sensor = peripherals::max17048::Max17048::new(&mut i2c);
+            peripherals::init_i2c!(&mut sensor, &mut boot_status);
+        }
+        {
+            let mut sensor = peripherals::ina219::Ina219::new(&mut i2c);
+            peripherals::init_i2c!(&mut sensor, &mut boot_status);
+        }
 
         // Extract pins needed for drivers/controllers
         let mut motor_pin_ia = gpio_pins[crate::PUMP_PIN_IA as usize]
@@ -218,7 +230,16 @@ impl<'d> Board<'d> {
         let tof_east = make_tof(crate::TOF_EAST_I2C_ADDR, model::types::Direction::East);
         let tof_west = make_tof(crate::TOF_WEST_I2C_ADDR, model::types::Direction::West);
 
-        let led_driver = peripherals::init_ws2812!(p.PIO0, p.PIN_11, &mut boot_status);
+        let pio_config = platform::rp2040::pio::PioInitConfig {
+            pio: p.PIO0,
+            pin: p.PIN_11,
+            irq: Irqs,
+        };
+        let led_driver = peripherals::init_pio!(
+            peripherals::ws2812::Ws2812<embassy_rp::peripherals::PIO0, 0>,
+            pio_config,
+            &mut boot_status
+        );
 
         let spawner = unsafe {
             use platform::rp2040::PlatformMulticore as _;

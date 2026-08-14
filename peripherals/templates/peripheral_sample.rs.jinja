@@ -1,0 +1,103 @@
+//! Driver implementation for the {{ name }} peripheral.
+
+#![deny(missing_docs)]
+
+use embedded_hal_async::i2c::I2c;
+use model::types::PeripheralError;
+
+/// Driver for the {{ name }} peripheral.
+pub struct {{ name }}<I> {
+    i2c: I,
+}
+
+impl<I: I2c> {{ name }}<I> {
+    /// Creates a new {{ name }} instance.
+    pub fn new(i2c: I) -> Self {
+        Self { i2c }
+    }
+
+    /// Initializes the peripheral.
+    pub async fn init(&mut self) -> Result<(), PeripheralError> {
+        Ok(())
+    }
+
+    /// Resets the peripheral.
+    pub async fn reset(&mut self) -> Result<(), PeripheralError> {
+        Ok(())
+    }
+}
+
+{% if has_probeable %}
+impl<I: I2c> model::interfaces::Probeable for {{ name }}<I> {
+    type Error = PeripheralError;
+
+    async fn read_chip_id(&mut self) -> Result<u32, Self::Error> {
+        Ok(0)
+    }
+}
+{% endif %}
+
+{% if has_led_driver %}
+impl<I: I2c> model::interfaces::LedDriver for {{ name }}<I> {
+    type Error = PeripheralError;
+
+    fn set_color(&mut self, r: u8, g: u8, b: u8) -> Result<(), Self::Error> {
+        let _ = (r, g, b);
+        Ok(())
+    }
+}
+{% endif %}
+
+{% if has_fuel_gauge %}
+impl<I: I2c> model::interfaces::FuelGauge for {{ name }}<I> {
+    type Error = PeripheralError;
+
+    async fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
+        Ok(0)
+    }
+
+    async fn read_state_of_charge(&mut self) -> Result<u8, Self::Error> {
+        Ok(0)
+    }
+}
+{% endif %}
+
+{% if has_tickable %}
+impl<I: I2c> model::interfaces::Tickable for {{ name }}<I> {
+    type Error = PeripheralError;
+
+    async fn tick(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+}
+{% endif %}
+
+{% if has_charge_status %}
+impl<I: I2c> model::interfaces::ChargeStatus for {{ name }}<I> {
+    type Error = PeripheralError;
+
+    async fn get_charge_state(&mut self) -> Result<model::types::ChargeState, Self::Error> {
+        Ok(model::types::ChargeState::Discharging)
+    }
+}
+{% endif %}
+
+{% if has_proximity_sensor %}
+impl<I: I2c> model::interfaces::WaitableMeasurement for {{ name }}<I> {
+    async fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
+        Ok(())
+    }
+}
+
+impl<I: I2c> model::interfaces::ProximitySensor for {{ name }}<I> {
+    type Error = PeripheralError;
+
+    async fn read_distance_mm(&mut self) -> Result<model::types::SensorReading, Self::Error> {
+        Ok(model::types::SensorReading::new(0))
+    }
+
+    async fn read_raw_distance_and_rate(&mut self) -> Result<(model::types::SensorReading, u16), Self::Error> {
+        Ok((model::types::SensorReading::new(0), 0))
+    }
+}
+{% endif %}

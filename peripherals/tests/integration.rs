@@ -175,7 +175,7 @@ struct SpyI2c<'a> {
 }
 
 impl<'a> embedded_hal_async::i2c::ErrorType for SpyI2c<'a> {
-    type Error = core::convert::Infallible;
+    type Error = DummyError;
 }
 
 impl<'a> embedded_hal_async::i2c::I2c for SpyI2c<'a> {
@@ -188,10 +188,22 @@ impl<'a> embedded_hal_async::i2c::I2c for SpyI2c<'a> {
     }
     async fn write_read(
         &mut self,
-        _address: u8,
-        _write: &[u8],
-        _read: &mut [u8],
+        address: u8,
+        write: &[u8],
+        read: &mut [u8],
     ) -> Result<(), Self::Error> {
+        if address == 0x30 {
+            let w = self.writes.lock().unwrap();
+            let has_readdressed = w.iter().any(|(addr, bytes)| {
+                *addr == 0x29 && bytes.len() >= 2 && bytes[0] == 0x8A && bytes[1] == 0x30
+            });
+            if !has_readdressed {
+                return Err(DummyError::I2cFailure);
+            }
+        }
+        if write.len() == 1 && write[0] == 0xC0 && !read.is_empty() {
+            read[0] = 0xEE;
+        }
         Ok(())
     }
     async fn transaction(
@@ -210,10 +222,12 @@ fn test_vl53l0x_init() {
 
         let writes = std::sync::Mutex::new(Vec::new());
         let i2c = SpyI2c { writes: &writes };
-        let mut sensor = Vl53l0x::new(i2c, 0x29, model::types::Direction::North);
+        let mut sensor = Vl53l0x::new(i2c, 0x30, model::types::Direction::North);
+        let _ = sensor.set_threshold_mm(250);
+        sensor.set_interrupt_mode(InterruptMode::LowLevel);
 
-        // Call init to change address to 0x30, threshold to 250, and interrupt to LowLevel
-        let res = sensor.init(0x30, 250, InterruptMode::LowLevel).await;
+        // Call init to configure the sensor
+        let res = sensor.init().await;
         assert!(res.is_ok());
 
         // Verify properties are updated
@@ -308,8 +322,10 @@ fn test_vl53l0x_i2c_error_propagation() {
             error_after_writes: 0,
             write_count: 0,
         };
-        let mut sensor = Vl53l0x::new(i2c, 0x29, model::types::Direction::North);
-        let res = sensor.init(0x30, 250, InterruptMode::LowLevel).await;
+        let mut sensor = Vl53l0x::new(i2c, 0x30, model::types::Direction::North);
+        let _ = sensor.set_threshold_mm(250);
+        sensor.set_interrupt_mode(InterruptMode::LowLevel);
+        let res = sensor.init().await;
         assert!(res.is_err());
 
         // 2. Middle write fails
@@ -317,8 +333,10 @@ fn test_vl53l0x_i2c_error_propagation() {
             error_after_writes: 2,
             write_count: 0,
         };
-        let mut sensor = Vl53l0x::new(i2c, 0x29, model::types::Direction::North);
-        let res = sensor.init(0x30, 250, InterruptMode::LowLevel).await;
+        let mut sensor = Vl53l0x::new(i2c, 0x30, model::types::Direction::North);
+        let _ = sensor.set_threshold_mm(250);
+        sensor.set_interrupt_mode(InterruptMode::LowLevel);
+        let res = sensor.init().await;
         assert!(res.is_err());
     });
 }
@@ -654,15 +672,14 @@ fn test_macro_init_vl53l0x() {
         });
 
         let mut errors = TestBootStatus { errors: vec![] };
-        peripherals::init_vl53l0x!(
-            &mut i2c,
-            &mut gpio_pins,
-            "ToF Test",
-            2,
-            0x30,
-            100,
-            &mut errors
-        );
+        if let Some(ref mut pin) = gpio_pins[2] {
+            pin.set_high();
+        }
+        let mut sensor =
+            peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x30, model::types::Direction::North);
+        let _ = sensor.set_threshold_mm(100);
+        sensor.set_interrupt_mode(peripherals::vl53l0x::InterruptMode::LowLevel);
+        peripherals::init_i2c!(&mut sensor, &mut errors);
 
         assert!(errors.errors.is_empty());
         assert!(pin_state.load(std::sync::atomic::Ordering::SeqCst));
@@ -680,15 +697,14 @@ fn test_macro_init_vl53l0x() {
         });
 
         let mut errors = TestBootStatus { errors: vec![] };
-        peripherals::init_vl53l0x!(
-            &mut i2c,
-            &mut gpio_pins2,
-            "ToF Test",
-            2,
-            0x30,
-            100,
-            &mut errors
-        );
+        if let Some(ref mut pin) = gpio_pins2[2] {
+            pin.set_high();
+        }
+        let mut sensor =
+            peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x30, model::types::Direction::North);
+        let _ = sensor.set_threshold_mm(100);
+        sensor.set_interrupt_mode(peripherals::vl53l0x::InterruptMode::LowLevel);
+        peripherals::init_i2c!(&mut sensor, &mut errors);
 
         assert_eq!(errors.errors.len(), 1);
         assert_eq!(
@@ -709,7 +725,8 @@ fn test_macro_init_max17048() {
         let mut i2c = ProbeableMockI2c { reads, writes };
 
         let mut errors = TestBootStatus { errors: vec![] };
-        peripherals::init_max17048!(&mut i2c, &mut errors);
+        let mut sensor = peripherals::max17048::Max17048::new(&mut i2c);
+        peripherals::init_i2c!(&mut sensor, &mut errors);
 
         assert!(errors.errors.is_empty());
 
@@ -720,7 +737,8 @@ fn test_macro_init_max17048() {
         let mut i2c = ProbeableMockI2c { reads, writes };
 
         let mut errors = TestBootStatus { errors: vec![] };
-        peripherals::init_max17048!(&mut i2c, &mut errors);
+        let mut sensor = peripherals::max17048::Max17048::new(&mut i2c);
+        peripherals::init_i2c!(&mut sensor, &mut errors);
 
         assert_eq!(errors.errors.len(), 1);
         assert_eq!(
@@ -740,7 +758,8 @@ fn test_macro_init_ina219() {
         let mut i2c = ProbeableMockI2c { reads, writes };
 
         let mut errors = TestBootStatus { errors: vec![] };
-        peripherals::init_ina219!(&mut i2c, &mut errors);
+        let mut sensor = peripherals::ina219::Ina219::new(&mut i2c);
+        peripherals::init_i2c!(&mut sensor, &mut errors);
 
         assert!(errors.errors.is_empty());
 
@@ -751,7 +770,8 @@ fn test_macro_init_ina219() {
         let mut i2c = ProbeableMockI2c { reads, writes };
 
         let mut errors = TestBootStatus { errors: vec![] };
-        peripherals::init_ina219!(&mut i2c, &mut errors);
+        let mut sensor = peripherals::ina219::Ina219::new(&mut i2c);
+        peripherals::init_i2c!(&mut sensor, &mut errors);
 
         assert_eq!(errors.errors.len(), 1);
         assert_eq!(
@@ -765,8 +785,18 @@ fn test_macro_init_ina219() {
 #[allow(unused_mut)]
 fn test_macro_init_ws2812() {
     let mut errors = TestBootStatus { errors: vec![] };
-    let _dev = peripherals::init_ws2812!((), (), &mut errors);
+    let _dev = peripherals::init_pio!(
+        peripherals::ws2812::Ws2812,
+        platform::rp2040::pio::PioInitConfig,
+        &mut errors
+    );
     assert!(errors.errors.is_empty());
+}
+
+#[test]
+fn test_ws2812_new_pio_direct() {
+    let config = platform::rp2040::pio::PioInitConfig;
+    let _dev = peripherals::ws2812::Ws2812::new_pio(config);
 }
 
 struct Vl53l0xTestI2c {

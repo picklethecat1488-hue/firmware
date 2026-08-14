@@ -36,3 +36,9 @@ embassy-rp = { version = "0.3.0", features = ["rp2040", "defmt"] }
 [target.'cfg(not(all(target_arch = "arm", target_os = "none")))'.dev-dependencies]
 embassy-executor = { version = "0.7.0", features = ["arch-std", "executor-thread", "task-arena-size-1048576"] }
 
+[build-dependencies]
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+code_gen = { path = "../tools/code_gen" }
+
+
