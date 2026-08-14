@@ -425,12 +425,8 @@ mod target {
 
     /// Helper structure containing all pre-initialized board interfaces.
     pub struct Board<'d> {
-        /// The onboard flash peripheral
-        pub flash: embassy_rp::peripherals::FLASH,
         /// Lookup array containing Flex instances for dynamic GPIO diagnostics
         pub gpio_pins: [Option<Flex<'d>>; 30],
-        /// Internal RP2040 temperature sensor
-        pub temp_sensor: Option<Rp2040TempSensor>,
 
         /// Motor driver
         pub motor: peripheral::l9110s::L9110s<Flex<'d>, Flex<'d>>,
@@ -583,7 +579,11 @@ mod target {
                 }
             }
 
-            let temp_sensor = Some(Rp2040TempSensor::new(p.ADC, p.ADC_TEMP_SENSOR));
+            let temp_sensor = Rp2040TempSensor::new(p.ADC, p.ADC_TEMP_SENSOR);
+            {
+                let mut guard = crate::SHARED_TEMP_SENSOR.lock().await;
+                guard.0 = Some(temp_sensor);
+            }
 
             // Configure remaining drivers using local i2c before returning
             {
@@ -653,10 +653,12 @@ mod target {
                 Some(rp2040::Rp2040Multicore.spawner(platform::types::CpuId::Core0))
             };
 
+            unsafe {
+                crate::PANIC_FLASH = Some(embassy_rp::flash::Flash::new_blocking(p.FLASH));
+            }
+
             Self {
-                flash: p.FLASH,
                 gpio_pins,
-                temp_sensor,
 
                 motor,
                 current_sensor,

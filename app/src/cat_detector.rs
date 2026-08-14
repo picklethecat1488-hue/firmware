@@ -111,8 +111,6 @@ pub static mut SYSTEM_CTRL: Option<SystemControllerType> = None;
 /// Synchronously initializes all application subcontrollers from board hardware.
 pub async fn init_controllers(board: Board<'static>) {
     let Board {
-        flash,
-        temp_sensor,
         fuel_gauge_alert_pin,
         led_driver,
         tof_north,
@@ -126,14 +124,7 @@ pub async fn init_controllers(board: Board<'static>) {
         ..
     } = board;
 
-    {
-        let mut sensor = SHARED_TEMP_SENSOR.lock().await;
-        sensor.0 = temp_sensor;
-    }
-
     unsafe {
-        PANIC_FLASH = Some(embassy_rp::flash::Flash::new_blocking(flash));
-
         THERMAL_CTRL = Some(
             controller::thermal_controller::ThermalController::new_with_shutdown_and_trap(
                 &SHARED_TEMP_SENSOR,
