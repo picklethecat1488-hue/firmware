@@ -7,27 +7,27 @@ publish = false
 
 [lib]
 name = "cat_detector"
-path = "src/lib.rs"
-
-
+path = "src/cat_detector.rs"
 
 [[bin]]
 name = "cat_detector_app"
-path = "src/bin/main.rs"
+path = "src/cat_detector_app.rs"
 test = false
 bench = false
 
 [[bin]]
 name = "cat_detector_shell"
-path = "src/bin/shell.rs"
+path = "src/cat_detector_shell.rs"
 test = true
 bench = false
 
 [dependencies]
-model = { path = "../../model" }
-platform = { path = "../../platform", features = ["dual-core", "rp2040"] }
-peripherals = { path = "../../peripherals", features = ["mock"] }
-controller = { path = "../../controller" }
+model = { path = "../model" }
+platform = { path = "../platform", features = ["dual-core"] }
+rp2040 = { path = "../platform/src/rp2040" }
+peripheral = { path = "../peripheral", features = ["mock"] }
+controller = { path = "../controller" }
+board = { path = "../board" }
 embedded-hal = "1.0.0"
 embedded-hal-async = "1.0.0"
 embassy-sync = "0.6.2"
@@ -65,10 +65,10 @@ default = []
 tracing = ["controller/tracing", "dep:tracing-defmt", "core1"]
 core1 = [
     "controller/core1",
-    "peripherals/core1",
+    "peripheral/core1",
     "motor-core",
     "sensors-core",
 ]
-motor-core = ["controller/motor-core", "peripherals/motor-core"]
-sensors-core = ["controller/sensors-core", "peripherals/sensors-core"]
-verbose-sensor-logging = ["peripherals/verbose-sensor-logging"]
+motor-core = ["controller/motor-core", "peripheral/motor-core"]
+sensors-core = ["controller/sensors-core", "peripheral/sensors-core"]
+verbose-sensor-logging = ["peripheral/verbose-sensor-logging"]

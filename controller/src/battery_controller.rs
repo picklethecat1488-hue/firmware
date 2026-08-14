@@ -12,7 +12,7 @@ use embassy_sync::mutex::Mutex;
 use model::interfaces::{FuelGauge, Tickable};
 use model::telemetry::TelemetryClient;
 use model::types::{PeriodicInterval, PeripheralError};
-use peripherals::ToPeripheralError;
+use peripheral::ToPeripheralError;
 use platform::{select_branch_with_timeout, subcommand_enum, BatteryUpdateAction};
 
 /// Default minimum voltage alert threshold (mV).

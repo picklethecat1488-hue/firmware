@@ -19,7 +19,7 @@ At start, the Embassy executor initializes the board and spawns the controller t
 
 ```mermaid
 sequenceDiagram
-    Participant Main as projects/cat_detector/src/bin/main.rs
+    Participant Main as projects/app/src/bin/main.rs
     Participant SC as SystemController
     Participant MC as MotorController
     Participant SN as SensorController (North)

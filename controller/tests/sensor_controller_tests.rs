@@ -1,7 +1,7 @@
 use controller::sensor_controller::{SensorCommand, SensorController};
 use controller::types::SensorMetadata;
 use model::types::Direction;
-use peripherals::mock::MockProximitySensor;
+use peripheral::mock::MockProximitySensor;
 
 #[test]
 fn test_sensor_controller_flow() {

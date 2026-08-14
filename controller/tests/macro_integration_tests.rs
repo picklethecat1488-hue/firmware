@@ -10,7 +10,7 @@ use embassy_sync::mutex::Mutex;
 use model::interfaces::NoTick;
 
 use model::types::{BootReason, ChargeState, Direction, SystemLedState, SystemStatus};
-use peripherals::mock::{
+use peripheral::mock::{
     DummyCurrentSensor, MockBattery, MockCharger, MockLed, MockMotor, MockProximitySensor,
 };
 use platform::flash::SharedFlashMutex;
@@ -283,8 +283,8 @@ fn test_spawn_all_controllers_configuration() {
             spawner,
             telemetry: TELEMETRY_CHANNEL,
             controllers: {
-                Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (peripherals::mock::MockBattery),
-                Battery(battery_ctrl, BATTERY_CHANNEL), generics: (peripherals::mock::MockBattery, peripherals::mock::MockCharger, MockPin),
+                Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (peripheral::mock::MockBattery),
+                Battery(battery_ctrl, BATTERY_CHANNEL), generics: (peripheral::mock::MockBattery, peripheral::mock::MockCharger, MockPin),
                 Motor(motor_ctrl, MOTOR_CHANNEL), generics: (model::interfaces::NoTick<MockMotor>, DummyCurrentSensor),
                 Sensor(sensor_ctrl_north, SENSOR_NORTH_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_east, SENSOR_EAST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),

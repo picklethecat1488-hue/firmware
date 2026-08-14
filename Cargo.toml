@@ -2,11 +2,13 @@
 resolver = "2"
 members = [
     "model",
-    "peripherals",
+    "peripheral",
     "controller",
     "platform",
     "platform/tracing-macros",
-    "projects/cat_detector",
+    "platform/src/rp2040",
+    "board",
+    "app",
     "tools/host_fs",
     "tools/host_cli",
     "platform/host",
@@ -14,10 +16,10 @@ members = [
 ]
 default-members = [
     "model",
-    "peripherals",
+    "peripheral",
     "controller",
     "platform",
-    "projects/cat_detector",
+    "app",
 ]
 
 [workspace.package]

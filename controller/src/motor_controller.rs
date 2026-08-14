@@ -11,7 +11,7 @@ use model::calibration::Calibration;
 use model::interfaces::{Motor, PowerMeasurementMode, PowerSensor, Tickable};
 use model::telemetry::TelemetryClient;
 use model::types::{MotorSpeed, PeripheralError, SystemStatus};
-use peripherals::ToPeripheralError;
+use peripheral::ToPeripheralError;
 
 use crate::tracing::{self, controller_context};
 use crate::types::{MotorCalState, MotorSafetyStatus, MotorState};

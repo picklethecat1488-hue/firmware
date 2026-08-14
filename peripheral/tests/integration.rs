@@ -1,6 +1,6 @@
 use embedded_hal::digital::{ErrorType, InputPin, OutputPin};
-use peripherals::mock::DummyI2c;
-use peripherals::{Motor, MotorSpeed, Tickable};
+use peripheral::mock::DummyI2c;
+use peripheral::{Motor, MotorSpeed, Tickable};
 
 macro_rules! run_test {
     ($body:expr) => {{
@@ -62,7 +62,7 @@ fn test_l9110s_functional() {
         let pin_ib = MockPin {
             is_high: &pin_ib_state,
         };
-        let mut motor = peripherals::l9110s::L9110s::new(pin_ia, pin_ib);
+        let mut motor = peripheral::l9110s::L9110s::new(pin_ia, pin_ib);
 
         // 1. Initially both low
         assert!(!pin_ia_state.load(std::sync::atomic::Ordering::SeqCst));
@@ -92,7 +92,7 @@ fn test_l9110s_functional() {
 fn test_vl53l0x_threshold_validation() {
     run_test!(async {
         use model::calibration::Calibration;
-        use peripherals::vl53l0x::Vl53l0x;
+        use peripheral::vl53l0x::Vl53l0x;
 
         let mut sensor = Vl53l0x::new(DummyI2c, 0x30, model::types::Direction::North);
         // Default threshold is 300, cal_near is 0.
@@ -136,7 +136,7 @@ fn test_motor_duty_cycling_ticks() {
         let pin_ib = MockPin {
             is_high: &pin_ib_state,
         };
-        let mut motor = peripherals::l9110s::L9110s::new(pin_ia, pin_ib);
+        let mut motor = peripheral::l9110s::L9110s::new(pin_ia, pin_ib);
 
         // Set speed to 30 (30% duty cycle)
         assert!(motor.set_speed(MotorSpeed::new(30).unwrap()).is_ok());
@@ -218,7 +218,7 @@ impl<'a> embedded_hal_async::i2c::I2c for SpyI2c<'a> {
 #[test]
 fn test_vl53l0x_init() {
     run_test!(async {
-        use peripherals::vl53l0x::{InterruptMode, Vl53l0x};
+        use peripheral::vl53l0x::{InterruptMode, Vl53l0x};
 
         let writes = std::sync::Mutex::new(Vec::new());
         let i2c = SpyI2c { writes: &writes };
@@ -315,7 +315,7 @@ impl embedded_hal_async::i2c::I2c for FailingI2c {
 #[test]
 fn test_vl53l0x_i2c_error_propagation() {
     run_test!(async {
-        use peripherals::vl53l0x::{InterruptMode, Vl53l0x};
+        use peripheral::vl53l0x::{InterruptMode, Vl53l0x};
 
         // 1. Initial write fails
         let i2c = FailingI2c {
@@ -390,7 +390,7 @@ fn test_max17048_charge_state() {
     run_test!(async {
         use model::interfaces::ChargeStatus;
         use model::types::ChargeState;
-        use peripherals::max17048::Max17048;
+        use peripheral::max17048::Max17048;
 
         // 1. CRATE > 0, no faults -> Charging
         let mut i2c = Max17048MockI2c {
@@ -494,7 +494,7 @@ fn test_probeable_max17048() {
     run_test!(async {
         use model::interfaces::Probeable;
         use model::types::PeripheralError;
-        use peripherals::max17048::Max17048;
+        use peripheral::max17048::Max17048;
 
         // 1. Success case
         let mut reads = std::collections::VecDeque::new();
@@ -533,7 +533,7 @@ fn test_probeable_max17048() {
 fn test_max17048_temperature_compensation() {
     run_test!(async {
         use model::interfaces::FuelGauge;
-        use peripherals::max17048::Max17048;
+        use peripheral::max17048::Max17048;
 
         let writes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut reads = std::collections::VecDeque::new();
@@ -572,7 +572,7 @@ fn test_probeable_ina219() {
     run_test!(async {
         use model::interfaces::Probeable;
         use model::types::PeripheralError;
-        use peripherals::ina219::Ina219;
+        use peripheral::ina219::Ina219;
 
         // 1. Success case
         let mut reads = std::collections::VecDeque::new();
@@ -612,7 +612,7 @@ fn test_probeable_vl53l0x() {
     run_test!(async {
         use model::interfaces::Probeable;
         use model::types::PeripheralError;
-        use peripherals::vl53l0x::Vl53l0x;
+        use peripheral::vl53l0x::Vl53l0x;
 
         // 1. Success case
         let mut reads = std::collections::VecDeque::new();
@@ -676,10 +676,10 @@ fn test_macro_init_vl53l0x() {
             pin.set_high();
         }
         let mut sensor =
-            peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x30, model::types::Direction::North);
+            peripheral::vl53l0x::Vl53l0x::new(&mut i2c, 0x30, model::types::Direction::North);
         let _ = sensor.set_threshold_mm(100);
-        sensor.set_interrupt_mode(peripherals::vl53l0x::InterruptMode::LowLevel);
-        peripherals::init_i2c!(&mut sensor, &mut errors);
+        sensor.set_interrupt_mode(peripheral::vl53l0x::InterruptMode::LowLevel);
+        peripheral::init_i2c!(&mut sensor, &mut errors);
 
         assert!(errors.errors.is_empty());
         assert!(pin_state.load(std::sync::atomic::Ordering::SeqCst));
@@ -701,10 +701,10 @@ fn test_macro_init_vl53l0x() {
             pin.set_high();
         }
         let mut sensor =
-            peripherals::vl53l0x::Vl53l0x::new(&mut i2c, 0x30, model::types::Direction::North);
+            peripheral::vl53l0x::Vl53l0x::new(&mut i2c, 0x30, model::types::Direction::North);
         let _ = sensor.set_threshold_mm(100);
-        sensor.set_interrupt_mode(peripherals::vl53l0x::InterruptMode::LowLevel);
-        peripherals::init_i2c!(&mut sensor, &mut errors);
+        sensor.set_interrupt_mode(peripheral::vl53l0x::InterruptMode::LowLevel);
+        peripheral::init_i2c!(&mut sensor, &mut errors);
 
         assert_eq!(errors.errors.len(), 1);
         assert_eq!(
@@ -725,8 +725,8 @@ fn test_macro_init_max17048() {
         let mut i2c = ProbeableMockI2c { reads, writes };
 
         let mut errors = TestBootStatus { errors: vec![] };
-        let mut sensor = peripherals::max17048::Max17048::new(&mut i2c);
-        peripherals::init_i2c!(&mut sensor, &mut errors);
+        let mut sensor = peripheral::max17048::Max17048::new(&mut i2c);
+        peripheral::init_i2c!(&mut sensor, &mut errors);
 
         assert!(errors.errors.is_empty());
 
@@ -737,8 +737,8 @@ fn test_macro_init_max17048() {
         let mut i2c = ProbeableMockI2c { reads, writes };
 
         let mut errors = TestBootStatus { errors: vec![] };
-        let mut sensor = peripherals::max17048::Max17048::new(&mut i2c);
-        peripherals::init_i2c!(&mut sensor, &mut errors);
+        let mut sensor = peripheral::max17048::Max17048::new(&mut i2c);
+        peripheral::init_i2c!(&mut sensor, &mut errors);
 
         assert_eq!(errors.errors.len(), 1);
         assert_eq!(
@@ -758,8 +758,8 @@ fn test_macro_init_ina219() {
         let mut i2c = ProbeableMockI2c { reads, writes };
 
         let mut errors = TestBootStatus { errors: vec![] };
-        let mut sensor = peripherals::ina219::Ina219::new(&mut i2c);
-        peripherals::init_i2c!(&mut sensor, &mut errors);
+        let mut sensor = peripheral::ina219::Ina219::new(&mut i2c);
+        peripheral::init_i2c!(&mut sensor, &mut errors);
 
         assert!(errors.errors.is_empty());
 
@@ -770,8 +770,8 @@ fn test_macro_init_ina219() {
         let mut i2c = ProbeableMockI2c { reads, writes };
 
         let mut errors = TestBootStatus { errors: vec![] };
-        let mut sensor = peripherals::ina219::Ina219::new(&mut i2c);
-        peripherals::init_i2c!(&mut sensor, &mut errors);
+        let mut sensor = peripheral::ina219::Ina219::new(&mut i2c);
+        peripheral::init_i2c!(&mut sensor, &mut errors);
 
         assert_eq!(errors.errors.len(), 1);
         assert_eq!(
@@ -785,9 +785,9 @@ fn test_macro_init_ina219() {
 #[allow(unused_mut)]
 fn test_macro_init_ws2812() {
     let mut errors = TestBootStatus { errors: vec![] };
-    let _dev = peripherals::init_pio!(
-        peripherals::ws2812::Ws2812,
-        platform::rp2040::pio::PioInitConfig,
+    let _dev = peripheral::init_pio!(
+        peripheral::ws2812::Ws2812,
+        rp2040::pio::PioInitConfig,
         &mut errors
     );
     assert!(errors.errors.is_empty());
@@ -795,8 +795,8 @@ fn test_macro_init_ws2812() {
 
 #[test]
 fn test_ws2812_new_pio_direct() {
-    let config = platform::rp2040::pio::PioInitConfig;
-    let _dev = peripherals::ws2812::Ws2812::new_pio(config);
+    let config = rp2040::pio::PioInitConfig;
+    let _dev = peripheral::ws2812::Ws2812::new_pio(config);
 }
 
 struct Vl53l0xTestI2c {
@@ -846,7 +846,7 @@ impl embedded_hal_async::i2c::I2c for Vl53l0xTestI2c {
 fn test_vl53l0x_measurement_timeout() {
     run_test!(async {
         use model::interfaces::ProximitySensor;
-        use peripherals::vl53l0x::Vl53l0x;
+        use peripheral::vl53l0x::Vl53l0x;
 
         let i2c = Vl53l0xTestI2c {
             interrupt_status: 0, // Never ready
@@ -866,7 +866,7 @@ fn test_vl53l0x_measurement_timeout() {
 fn test_vl53l0x_measurement_success() {
     run_test!(async {
         use model::interfaces::ProximitySensor;
-        use peripherals::vl53l0x::Vl53l0x;
+        use peripheral::vl53l0x::Vl53l0x;
 
         let i2c = Vl53l0xTestI2c {
             interrupt_status: 4, // Ready
@@ -883,7 +883,7 @@ fn test_vl53l0x_measurement_success() {
 fn test_vl53l0x_measurement_invalid_range() {
     run_test!(async {
         use model::interfaces::ProximitySensor;
-        use peripherals::vl53l0x::Vl53l0x;
+        use peripheral::vl53l0x::Vl53l0x;
 
         let i2c = Vl53l0xTestI2c {
             interrupt_status: 4, // Ready
@@ -900,7 +900,7 @@ fn test_vl53l0x_measurement_invalid_range() {
 fn test_vl53l0x_measurement_max_range() {
     run_test!(async {
         use model::interfaces::ProximitySensor;
-        use peripherals::vl53l0x::Vl53l0x;
+        use peripheral::vl53l0x::Vl53l0x;
 
         let i2c = Vl53l0xTestI2c {
             interrupt_status: 4,        // Ready
@@ -917,7 +917,7 @@ fn test_vl53l0x_measurement_max_range() {
 fn test_vl53l0x_measurement_tcc_fail_as_invalid() {
     run_test!(async {
         use model::interfaces::ProximitySensor;
-        use peripherals::vl53l0x::Vl53l0x;
+        use peripheral::vl53l0x::Vl53l0x;
 
         let i2c = Vl53l0xTestI2c {
             interrupt_status: 4,        // Ready
@@ -934,7 +934,7 @@ fn test_vl53l0x_measurement_tcc_fail_as_invalid() {
 fn test_vl53l0x_measurement_min_range() {
     run_test!(async {
         use model::interfaces::ProximitySensor;
-        use peripherals::vl53l0x::Vl53l0x;
+        use peripheral::vl53l0x::Vl53l0x;
 
         let i2c = Vl53l0xTestI2c {
             interrupt_status: 4,        // Ready

@@ -1,20 +1,20 @@
 # Peripherals Configuration to generate initializers.
 
-[[peripherals]]
+[[peripheral]]
 name = "Max17048"
 bus = "i2c"
 init = { init = true, probe = true }
 
-[[peripherals]]
+[[peripheral]]
 name = "Ina219"
 bus = "i2c"
 init = { reset = true, init = true, probe = true }
 
-[[peripherals]]
+[[peripheral]]
 name = "Vl53l0x"
 bus = "i2c"
 init = { reset = true, init = true, probe = true }
 
-[[peripherals]]
+[[peripheral]]
 name = "Ws2812"
 has_pio = true

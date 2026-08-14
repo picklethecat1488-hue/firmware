@@ -36,6 +36,10 @@ impl Motor for MockMotor {
     type Error = ();
 
     /// Sets mock speed and updates run status.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
     #[tracing::instrument(core1 = "core1", level = "trace", skip(speed))]
     fn set_speed(&mut self, speed: MotorSpeed) -> Result<(), Self::Error> {
         if self.should_fail {
@@ -48,6 +52,10 @@ impl Motor for MockMotor {
         }
     }
 
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
     fn stop(&mut self) -> Result<(), Self::Error> {
         if self.should_fail {

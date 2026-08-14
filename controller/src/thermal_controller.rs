@@ -10,7 +10,7 @@ use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use model::interfaces::TemperatureSensor;
 use model::types::{PeriodicInterval, PeripheralError};
-use peripherals::ToPeripheralError;
+use peripheral::ToPeripheralError;
 use platform::subcommand_enum;
 
 /// A controller that periodically monitors system temperature from temperature sensors.

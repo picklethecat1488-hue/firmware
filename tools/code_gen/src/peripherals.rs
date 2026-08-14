@@ -97,10 +97,11 @@ impl Peripheral {
     }
 }
 
-/// The outer configuration structure for peripherals.toml.
+/// The outer configuration structure for peripheral.toml.
 #[derive(Deserialize, Clone)]
 pub struct PeripheralConfig {
     /// List of configured peripherals.
+    #[serde(alias = "peripheral")]
     pub peripherals: Vec<Peripheral>,
 }
 

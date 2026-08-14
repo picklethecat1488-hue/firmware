@@ -9,7 +9,7 @@ use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use model::interfaces::NoTick;
 use model::types::{BootReason, ChargeState, Direction, MotorSpeed, SystemLedState, SystemStatus};
-use peripherals::mock::{
+use peripheral::mock::{
     DummyCurrentSensor, MockBattery, MockCharger, MockLed, MockMotor, MockProximitySensor,
 };
 use platform::types::{MapFilesystem, QueueFilesystem};
@@ -820,8 +820,8 @@ fn test_spawn_controllers_embassy_routing() {
             spawner,
             telemetry: RUN_TELEMETRY_CHANNEL,
             controllers: {
-                Thermal(thermal_ctrl, RUN_THERMAL_CHANNEL), generics: (peripherals::mock::MockBattery),
-                Battery(battery_ctrl, RUN_BATTERY_CHANNEL), generics: (peripherals::mock::MockBattery, peripherals::mock::MockCharger, MockPin),
+                Thermal(thermal_ctrl, RUN_THERMAL_CHANNEL), generics: (peripheral::mock::MockBattery),
+                Battery(battery_ctrl, RUN_BATTERY_CHANNEL), generics: (peripheral::mock::MockBattery, peripheral::mock::MockCharger, MockPin),
                 Motor(motor_ctrl, RUN_MOTOR_CHANNEL), generics: (model::interfaces::NoTick<MockMotor>, DummyCurrentSensor),
                 Sensor(sensor_ctrl_north, RUN_SENSOR_NORTH_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_east, RUN_SENSOR_EAST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
