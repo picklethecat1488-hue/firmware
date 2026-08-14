@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "model",
-    "peripherals",
+    "peripheral",
     "controller",
     "platform",
     "platform/tracing-macros",
@@ -16,7 +16,7 @@ members = [
 ]
 default-members = [
     "model",
-    "peripherals",
+    "peripheral",
     "controller",
     "platform",
     "app",

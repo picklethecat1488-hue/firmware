@@ -341,7 +341,7 @@ def validate_call_graph(funcs_list, roots, feature, root_files=None):
 
 
 def validate_multicore_support():
-    scan_dirs = ["controller/src", "peripherals/src", "app/src", "board/src"]
+    scan_dirs = ["controller/src", "peripheral/src", "app/src", "board/src"]
 
     all_functions = []
     all_controller_structs = []

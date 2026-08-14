@@ -3,7 +3,7 @@ use controller::MotorState;
 use model::calibration::Calibration;
 use model::interfaces::{Motor, NoTick, Tickable};
 use model::types::MotorSpeed;
-use peripherals::mock::{MockCurrentSensor, MockMotor};
+use peripheral::mock::{MockCurrentSensor, MockMotor};
 
 #[test]
 fn test_motor_controller_flow() {
@@ -70,7 +70,7 @@ fn test_motor_controller_flow() {
 #[test]
 fn test_led_controller_flow() {
     futures::executor::block_on(async {
-        let mock_led = peripherals::mock::MockLed::new();
+        let mock_led = peripheral::mock::MockLed::new();
         let mut controller = controller::led_controller::LedController::new(mock_led);
 
         assert_eq!(
@@ -158,7 +158,7 @@ fn test_motor_controller_sad_cases() {
 #[test]
 fn test_led_controller_sad_cases() {
     futures::executor::block_on(async {
-        let mut mock_led = peripherals::mock::MockLed::new();
+        let mut mock_led = peripheral::mock::MockLed::new();
         mock_led.should_fail = true; // Make LED driver fail
         let mut controller = controller::led_controller::LedController::new(mock_led);
 
@@ -225,7 +225,7 @@ fn test_battery_controller_sad_cases() {
         use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
         use embassy_sync::mutex::Mutex;
         use model::types::ChargeState;
-        use peripherals::mock::{MockBattery, MockCharger};
+        use peripheral::mock::{MockBattery, MockCharger};
 
         let mut battery = MockBattery::new(3700, 25000);
         battery.should_fail = true; // Make battery fail

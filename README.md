@@ -85,10 +85,11 @@ pytest tools/validation/tests
 The workspace is organized into target-agnostic crates for logic/simulation, target-independent platform libraries, and target-specific project deployments:
 
 *   **[model/](model)**: Core platform-independent system models, state machines, protocols, and calculations (zero-dependency `#![no_std]`).
-*   **[peripherals/](peripherals)**: Abstractions (traits) for peripheral wrappers and concrete implementations based on `embedded-hal` (e.g. `VL53L0X`, `ATtiny816`, `L9110s`, `INA219`, `MAX17048`), alongside mock implementations for host testing.
+*   **[peripheral/](peripheral)**: Abstractions (traits) for peripheral wrappers and concrete implementations based on `embedded-hal` (e.g. `VL53L0X`, `ATtiny816`, `L9110s`, `INA219`, `MAX17048`), alongside mock implementations for host testing.
 *   **[controller/](controller)**: Project-agnostic domain controllers and state machine orchestrators. Houses domain-specific CLI handlers that resolve dependencies via a generic `ShellDeviceResolver` trait.
 *   **[platform/](platform)**: Target-independent firmware platform support and diagnostic utility libraries (e.g., panic handlers, stack scanning, RTT loggers, circular log buffers).
-*   **[projects/](projects)**: Bare-metal microcontroller application projects (such as `cat_detector`). Deploys unified **Board Support Packages (BSPs)** that encapsulate all target/host driver and pin initialization.
+*   **[board/](board)**: Board-specific configurations and board support packages.
+*   **[app/](app)**: Microcontroller application binary and shell executables.
 
 ### Architecture Diagram
 
@@ -110,7 +111,7 @@ graph TD
         TS["Telemetry Types (Battery/Motor/Thermal/Proximity/LED Status)"]
     end
 
-    subgraph Peripherals Crate [peripherals]
+    subgraph Peripheral Crate [peripheral]
         PT["Motor / CurrentSensor / ProximitySensor / LedDriver Traits"]
         BT["Battery Trait"]
         GM["GpioMotor / VL53L0X / ATtiny816"]
@@ -173,7 +174,7 @@ The `model` crate contains pure, target-agnostic domain models, status telemetry
 
 ---
 
-### Peripherals Crate (`peripherals`)
+### Peripheral Crate (`peripheral`)
 The `peripherals` crate implements the concrete, platform-independent drivers and wrappers using `embedded-hal` primitives. This abstraction allows easy mocking of peripherals for host-based testing.
 
 *   **`GpioMotor`**: A concrete wrapper that implements `Motor` by toggling a digital output pin (`OutputPin`) high/low.

@@ -93,9 +93,9 @@ pub struct SampleShellConfig;
 controller::impl_shell_config! {
     SampleShellConfig {
         Flash = MockFlash,
-        Motor = peripherals::mock::MockMotor,
-        I2c = peripherals::mock::DummyI2c,
-        TempSensor = peripherals::mock::DummyTempSensor,
+        Motor = peripheral::mock::MockMotor,
+        I2c = peripheral::mock::DummyI2c,
+        TempSensor = peripheral::mock::DummyTempSensor,
         BatteryCtrl = MockBatteryCtrl,
         ThermalCtrl = MockThermalCtrl,
         SensorCtrl = MockSensorCtrl,

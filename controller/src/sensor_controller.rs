@@ -11,7 +11,7 @@ use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::calibration::{ApplyCalibration, Calibration};
 use model::interfaces::ProximitySensor;
 use model::types::{Direction, PeriodicInterval, PeripheralError, SensorReading};
-use peripherals::ToPeripheralError;
+use peripheral::ToPeripheralError;
 use platform::{
     select_branch_with_timeout, subcommand_enum, BlockingAsyncFlash, CliSignal, OnceLock,
 };

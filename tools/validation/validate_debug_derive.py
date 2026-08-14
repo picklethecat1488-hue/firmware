@@ -20,7 +20,7 @@ RUST_LANGUAGE = Language(tsrust.language())
 
 TARGET_DIRS = [
     "controller/src",
-    "peripherals/src",
+    "peripheral/src",
     "platform/src",
     "model/src",
     "app/src",

@@ -9,7 +9,7 @@ model = { path = "../model" }
 platform = { path = "../platform" }
 tracing-defmt = { version = "0.1.2", optional = true }
 defmt = { version = "0.3", optional = true }
-peripherals = { path = "../peripherals" }
+peripheral = { path = "../peripheral" }
 embassy-sync = "0.6.2"
 sequential-storage = "3.0.0"
 embedded-storage-async = "0.4.1"
@@ -32,7 +32,7 @@ cortex-m = { version = "0.7" }
 embassy-time = { version = "0.4.0", features = ["std"] }
 
 [dev-dependencies]
-peripherals = { path = "../peripherals", features = ["mock"] }
+peripheral = { path = "../peripheral", features = ["mock"] }
 futures = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
@@ -46,12 +46,12 @@ toml = "0.8"
 rinja = "0.2"
 
 [features]
-core1 = ["peripherals/core1"]
-motor-core = ["core1", "peripherals/motor-core"]
-sensors-core = ["core1", "peripherals/sensors-core"]
+core1 = ["peripheral/core1"]
+motor-core = ["core1", "peripheral/motor-core"]
+sensors-core = ["core1", "peripheral/sensors-core"]
 tracing = [
     "platform/tracing",
-    "peripherals/tracing",
+    "peripheral/tracing",
     "dep:tracing-defmt",
     "dep:defmt",
 ]

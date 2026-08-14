@@ -49,7 +49,7 @@ type I2cBus = embassy_rp::i2c::I2c<'static, embassy_rp::peripherals::I2C0, embas
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 type MotorDevice =
-    peripherals::l9110s::L9110s<embassy_rp::gpio::Flex<'static>, embassy_rp::gpio::Flex<'static>>;
+    peripheral::l9110s::L9110s<embassy_rp::gpio::Flex<'static>, embassy_rp::gpio::Flex<'static>>;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 type FlashDevice = embassy_rp::flash::Flash<

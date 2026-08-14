@@ -38,21 +38,21 @@ pub fn find_shell_toml() -> PathBuf {
     }
 }
 
-/// Searches upward from the current directory to locate the path of `peripherals.toml`.
+/// Searches upward from the current directory to locate the path of `peripheral.toml`.
 pub fn find_peripherals_toml() -> PathBuf {
     let mut path = std::env::current_dir().unwrap();
     loop {
-        let toml_path = path.join("peripherals/peripherals.toml");
+        let toml_path = path.join("peripheral/peripheral.toml");
         if toml_path.exists() {
             return toml_path;
         }
-        let direct_toml_path = path.join("peripherals.toml");
+        let direct_toml_path = path.join("peripheral.toml");
         if direct_toml_path.exists() {
             return direct_toml_path;
         }
         if !path.pop() {
             panic!(
-                "Could not locate peripherals.toml in current directory or any parent directories!"
+                "Could not locate peripheral.toml in current directory or any parent directories!"
             );
         }
     }

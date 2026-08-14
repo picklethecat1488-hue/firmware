@@ -10,7 +10,7 @@ use model::interfaces::LedDriver;
 use model::telemetry::TelemetryClient;
 use model::types::PeripheralError;
 use model::types::SystemLedState;
-use peripherals::ToPeripheralError;
+use peripheral::ToPeripheralError;
 use platform::subcommand_enum;
 
 /// Trait to abstract delays for LED patterns (blocking vs async).

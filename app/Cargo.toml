@@ -25,7 +25,7 @@ bench = false
 model = { path = "../model" }
 platform = { path = "../platform", features = ["dual-core"] }
 rp2040 = { path = "../platform/src/rp2040" }
-peripherals = { path = "../peripherals", features = ["mock"] }
+peripheral = { path = "../peripheral", features = ["mock"] }
 controller = { path = "../controller" }
 board = { path = "../board" }
 embedded-hal = "1.0.0"
@@ -65,10 +65,10 @@ default = []
 tracing = ["controller/tracing", "dep:tracing-defmt", "core1"]
 core1 = [
     "controller/core1",
-    "peripherals/core1",
+    "peripheral/core1",
     "motor-core",
     "sensors-core",
 ]
-motor-core = ["controller/motor-core", "peripherals/motor-core"]
-sensors-core = ["controller/sensors-core", "peripherals/sensors-core"]
-verbose-sensor-logging = ["peripherals/verbose-sensor-logging"]
+motor-core = ["controller/motor-core", "peripheral/motor-core"]
+sensors-core = ["controller/sensors-core", "peripheral/sensors-core"]
+verbose-sensor-logging = ["peripheral/verbose-sensor-logging"]

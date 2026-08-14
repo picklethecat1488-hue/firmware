@@ -236,21 +236,21 @@ mod host {
         /// Mock temperature sensor
         pub temp_sensor: Option<Rp2040TempSensor>,
         /// Mock charger driver instance
-        pub charger: Option<peripherals::mock::MockCharger>,
+        pub charger: Option<peripheral::mock::MockCharger>,
         /// Mock battery controller
-        pub battery: peripherals::mock::MockBattery,
+        pub battery: peripheral::mock::MockBattery,
         /// Mock motor
-        pub motor: peripherals::mock::MockMotor,
+        pub motor: peripheral::mock::MockMotor,
         /// Mock current sensor
-        pub current_sensor: peripherals::mock::DummyCurrentSensor,
+        pub current_sensor: peripheral::mock::DummyCurrentSensor,
         /// Mock North proximity sensor
-        pub tof_north: peripherals::mock::DummyProximitySensor,
+        pub tof_north: peripheral::mock::DummyProximitySensor,
         /// Mock East proximity sensor
-        pub tof_east: peripherals::mock::DummyProximitySensor,
+        pub tof_east: peripheral::mock::DummyProximitySensor,
         /// Mock West proximity sensor
-        pub tof_west: peripherals::mock::DummyProximitySensor,
+        pub tof_west: peripheral::mock::DummyProximitySensor,
         /// Mock LED driver
-        pub led_driver: peripherals::mock::MockLed,
+        pub led_driver: peripheral::mock::MockLed,
         /// Mock fuel gauge alert pin
         pub fuel_gauge_alert_pin: MockFlex,
         /// Mock North proximity interrupt pin
@@ -281,19 +281,19 @@ mod host {
                 pin.set_low();
             }
             let temp_sensor = Some(Rp2040TempSensor);
-            let charger = Some(peripherals::mock::MockCharger::new(
+            let charger = Some(peripheral::mock::MockCharger::new(
                 model::types::ChargeState::DoneOrStandbyOrUnplugged,
             ));
 
-            let battery = peripherals::mock::MockBattery::new(3700, 25000);
-            let motor = peripherals::mock::MockMotor::new();
-            let current_sensor = peripherals::mock::DummyCurrentSensor;
+            let battery = peripheral::mock::MockBattery::new(3700, 25000);
+            let motor = peripheral::mock::MockMotor::new();
+            let current_sensor = peripheral::mock::DummyCurrentSensor;
 
-            let tof_north = peripherals::mock::DummyProximitySensor::new(100);
-            let tof_east = peripherals::mock::DummyProximitySensor::new(150);
-            let tof_west = peripherals::mock::DummyProximitySensor::new(200);
+            let tof_north = peripheral::mock::DummyProximitySensor::new(100);
+            let tof_east = peripheral::mock::DummyProximitySensor::new(150);
+            let tof_west = peripheral::mock::DummyProximitySensor::new(200);
 
-            let led_driver = peripherals::mock::MockLed::new();
+            let led_driver = peripheral::mock::MockLed::new();
 
             let fuel_gauge_alert_pin = MockFlex::new();
             let pin_north = MockFlex::new();
@@ -380,21 +380,21 @@ mod host {
     }
 
     /// The battery fuel gauge type.
-    pub type BatteryDevice = peripherals::mock::MockBattery;
+    pub type BatteryDevice = peripheral::mock::MockBattery;
     /// The battery charger type.
-    pub type ChargerDevice = peripherals::mock::MockCharger;
+    pub type ChargerDevice = peripheral::mock::MockCharger;
     /// The battery alert pin type.
     pub type AlertPinType = MockFlex;
     /// The motor driver type.
-    pub type MotorDevice = peripherals::mock::MockMotor;
+    pub type MotorDevice = peripheral::mock::MockMotor;
     /// The motor current sensor type.
-    pub type CurrentSensorDevice = peripherals::mock::DummyCurrentSensor;
+    pub type CurrentSensorDevice = peripheral::mock::DummyCurrentSensor;
     /// The proximity sensor type.
-    pub type ProximitySensorDevice = peripherals::mock::DummyProximitySensor;
+    pub type ProximitySensorDevice = peripheral::mock::DummyProximitySensor;
     /// The proximity sensor interrupt pin type.
     pub type DataReadyPinType = MockFlex;
     /// The LED driver type.
-    pub type LedDevice = peripherals::mock::MockLed;
+    pub type LedDevice = peripheral::mock::MockLed;
     /// The temperature sensor type.
     pub type TempSensorDevice = Rp2040TempSensor;
 }
@@ -433,17 +433,17 @@ mod target {
         pub temp_sensor: Option<Rp2040TempSensor>,
 
         /// Motor driver
-        pub motor: peripherals::l9110s::L9110s<Flex<'d>, Flex<'d>>,
+        pub motor: peripheral::l9110s::L9110s<Flex<'d>, Flex<'d>>,
         /// Motor current sensor
-        pub current_sensor: peripherals::ina219::Ina219<platform::i2c::SharedI2cWrapper<'static>>,
+        pub current_sensor: peripheral::ina219::Ina219<platform::i2c::SharedI2cWrapper<'static>>,
         /// North proximity sensor
-        pub tof_north: peripherals::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>,
+        pub tof_north: peripheral::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>,
         /// East proximity sensor
-        pub tof_east: peripherals::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>,
+        pub tof_east: peripheral::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>,
         /// West proximity sensor
-        pub tof_west: peripherals::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>,
+        pub tof_west: peripheral::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>,
         /// Status LED driver
-        pub led_driver: peripherals::ws2812::Ws2812<'d, embassy_rp::peripherals::PIO0, 0>,
+        pub led_driver: peripheral::ws2812::Ws2812<'d, embassy_rp::peripherals::PIO0, 0>,
         /// Fuel gauge alert/interrupt pin
         pub fuel_gauge_alert_pin: Flex<'d>,
         /// North proximity interrupt pin
@@ -571,15 +571,15 @@ mod target {
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     ::embassy_time::Timer::after_millis(2).await;
 
-                    let mut sensor = peripherals::vl53l0x::Vl53l0x::new(
+                    let mut sensor = peripheral::vl53l0x::Vl53l0x::new(
                         &mut i2c,
                         addr,
                         model::types::Direction::North,
                     );
                     let _ = sensor.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
-                    sensor.set_interrupt_mode(peripherals::vl53l0x::InterruptMode::LowLevel);
+                    sensor.set_interrupt_mode(peripheral::vl53l0x::InterruptMode::LowLevel);
 
-                    peripherals::init_i2c!(&mut sensor, &mut boot_status);
+                    peripheral::init_i2c!(&mut sensor, &mut boot_status);
                 }
             }
 
@@ -587,12 +587,12 @@ mod target {
 
             // Configure remaining drivers using local i2c before returning
             {
-                let mut sensor = peripherals::max17048::Max17048::new(&mut i2c);
-                peripherals::init_i2c!(&mut sensor, &mut boot_status);
+                let mut sensor = peripheral::max17048::Max17048::new(&mut i2c);
+                peripheral::init_i2c!(&mut sensor, &mut boot_status);
             }
             {
-                let mut sensor = peripherals::ina219::Ina219::new(&mut i2c);
-                peripherals::init_i2c!(&mut sensor, &mut boot_status);
+                let mut sensor = peripheral::ina219::Ina219::new(&mut i2c);
+                peripheral::init_i2c!(&mut sensor, &mut boot_status);
             }
 
             // Extract pins needed for drivers/controllers
@@ -604,7 +604,7 @@ mod target {
                 .expect("Motor pin IB must be available");
             motor_pin_ia.set_as_output();
             motor_pin_ib.set_as_output();
-            let motor = peripherals::l9110s::L9110s::new(motor_pin_ia, motor_pin_ib);
+            let motor = peripheral::l9110s::L9110s::new(motor_pin_ia, motor_pin_ib);
 
             let fuel_gauge_alert_pin = gpio_pins[crate::FUEL_GAUGE_INT_PIN as usize]
                 .take()
@@ -620,11 +620,11 @@ mod target {
                 .expect("West ToF interrupt pin must be available");
 
             // Construct final drivers wrapping SHARED_I2C static cell
-            let current_sensor = peripherals::ina219::Ina219::new(
+            let current_sensor = peripheral::ina219::Ina219::new(
                 platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
             );
             let make_tof = |addr, direction| {
-                let mut sensor = peripherals::vl53l0x::Vl53l0x::new(
+                let mut sensor = peripheral::vl53l0x::Vl53l0x::new(
                     platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
                     addr,
                     direction,
@@ -642,8 +642,8 @@ mod target {
                 pin: p.PIN_11,
                 irq: Irqs,
             };
-            let led_driver = peripherals::init_pio!(
-                peripherals::ws2812::Ws2812<embassy_rp::peripherals::PIO0, 0>,
+            let led_driver = peripheral::init_pio!(
+                peripheral::ws2812::Ws2812<embassy_rp::peripherals::PIO0, 0>,
                 pio_config,
                 &mut boot_status
             );
@@ -784,24 +784,24 @@ mod target {
 
     /// The battery fuel gauge type.
     pub type BatteryDevice =
-        peripherals::max17048::Max17048<platform::i2c::SharedI2cWrapper<'static>>;
+        peripheral::max17048::Max17048<platform::i2c::SharedI2cWrapper<'static>>;
     /// The battery charger type.
     pub type ChargerDevice =
-        peripherals::max17048::Max17048<platform::i2c::SharedI2cWrapper<'static>>;
+        peripheral::max17048::Max17048<platform::i2c::SharedI2cWrapper<'static>>;
     /// The battery alert pin type.
     pub type AlertPinType = AlertPinWrapper;
     /// The motor driver type.
-    pub type MotorDevice = peripherals::l9110s::L9110s<Flex<'static>, Flex<'static>>;
+    pub type MotorDevice = peripheral::l9110s::L9110s<Flex<'static>, Flex<'static>>;
     /// The motor current sensor type.
     pub type CurrentSensorDevice =
-        peripherals::ina219::Ina219<platform::i2c::SharedI2cWrapper<'static>>;
+        peripheral::ina219::Ina219<platform::i2c::SharedI2cWrapper<'static>>;
     /// The proximity sensor type.
     pub type ProximitySensorDevice =
-        peripherals::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>;
+        peripheral::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>;
     /// The proximity sensor interrupt pin type.
     pub type DataReadyPinType = ProximityPinWrapper;
     /// The LED driver type.
-    pub type LedDevice = peripherals::ws2812::Ws2812<'static, embassy_rp::peripherals::PIO0, 0>;
+    pub type LedDevice = peripheral::ws2812::Ws2812<'static, embassy_rp::peripherals::PIO0, 0>;
     /// The temperature sensor type.
     pub type TempSensorDevice = SafeRp2040TempSensor;
 
