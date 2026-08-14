@@ -76,7 +76,7 @@ impl<'d> Ws2812<'d, embassy_rp::peripherals::PIO0, 0> {
     /// Creates and configures the Ws2812 driver using PIO0 and state machine 0.
     #[allow(static_mut_refs, clippy::missing_transmute_annotations)]
     pub fn new_pio<PIN, IRQ>(
-        config: platform::rp2040::pio::PioInitConfig<embassy_rp::peripherals::PIO0, PIN, IRQ>,
+        config: rp2040::pio::PioInitConfig<embassy_rp::peripherals::PIO0, PIN, IRQ>,
     ) -> Self
     where
         PIN: PioPin + 'd,
@@ -138,7 +138,7 @@ impl Ws2812 {
     }
 
     /// Creates a dummy Ws2812 instance.
-    pub const fn new_pio(_config: platform::rp2040::pio::PioInitConfig) -> Self {
+    pub const fn new_pio(_config: rp2040::pio::PioInitConfig) -> Self {
         Self { _dummy: () }
     }
 }

@@ -7,27 +7,27 @@ publish = false
 
 [lib]
 name = "cat_detector"
-path = "src/lib.rs"
-
-
+path = "src/cat_detector.rs"
 
 [[bin]]
 name = "cat_detector_app"
-path = "src/bin/main.rs"
+path = "src/cat_detector_app.rs"
 test = false
 bench = false
 
 [[bin]]
 name = "cat_detector_shell"
-path = "src/bin/shell.rs"
+path = "src/cat_detector_shell.rs"
 test = true
 bench = false
 
 [dependencies]
-model = { path = "../../model" }
-platform = { path = "../../platform", features = ["dual-core", "rp2040"] }
-peripherals = { path = "../../peripherals", features = ["mock"] }
-controller = { path = "../../controller" }
+model = { path = "../model" }
+platform = { path = "../platform", features = ["dual-core"] }
+rp2040 = { path = "../platform/src/rp2040" }
+peripherals = { path = "../peripherals", features = ["mock"] }
+controller = { path = "../controller" }
+board = { path = "../board" }
 embedded-hal = "1.0.0"
 embedded-hal-async = "1.0.0"
 embassy-sync = "0.6.2"

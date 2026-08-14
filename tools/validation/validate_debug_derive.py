@@ -23,7 +23,8 @@ TARGET_DIRS = [
     "peripherals/src",
     "platform/src",
     "model/src",
-    "projects/cat_detector/src",
+    "app/src",
+    "board/src",
 ]
 
 

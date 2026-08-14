@@ -1,6 +1,9 @@
 //! RP2040 platform support traits and concrete implementations.
 
-use crate::types::{CpuId, MulticoreStack};
+#![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
+#![deny(missing_docs)]
+
+use platform::types::{CpuId, MulticoreStack};
 
 /// Trait to manage platform multicore initialization and execution.
 pub trait PlatformMulticore {
@@ -101,18 +104,18 @@ impl PlatformMulticore for Rp2040Multicore {
     unsafe fn spawn_core<const SIZE: usize>(
         &self,
         core_id: CpuId,
-        stack: &'static mut MulticoreStack<SIZE>,
-        entry: fn() -> !,
+        _stack: &'static mut MulticoreStack<SIZE>,
+        _entry: fn() -> !,
     ) -> Result<(), &'static str> {
         match core_id {
             #[cfg(feature = "dual-core")]
             CpuId::Core1 => {
                 let core1 = embassy_rp::peripherals::CORE1::steal();
                 let embassy_stack = unsafe {
-                    &mut *(core::ptr::addr_of_mut!(stack.mem)
+                    &mut *(core::ptr::addr_of_mut!(_stack.mem)
                         as *mut embassy_rp::multicore::Stack<SIZE>)
                 };
-                embassy_rp::multicore::spawn_core1(core1, embassy_stack, entry);
+                embassy_rp::multicore::spawn_core1(core1, embassy_stack, _entry);
                 Ok(())
             }
             _ => Err("Invalid target core for spawn"),
@@ -139,7 +142,7 @@ impl PlatformMulticore for Rp2040Multicore {
     }
 
     unsafe fn run_executor(&self, cpu_id: CpuId) -> ! {
-        use crate::system::CpuScheduler as _;
+        use platform::system::CpuScheduler as _;
         match cpu_id {
             CpuId::Core0 => {
                 let ptr = core::ptr::addr_of_mut!(EXECUTOR_CORE0);
@@ -219,7 +222,7 @@ impl<
                     cortex_m::asm::nop();
                 },
             };
-            crate::panic_handler::handle_panic_with_sizes::<
+            platform::panic_handler::handle_panic_with_sizes::<
                 FLASH_SIZE,
                 FLASH_START,
                 FLASH_END,
@@ -286,17 +289,17 @@ impl PlatformI2cRecovery for Rp2040I2cRecovery {
 impl PlatformI2cAccess
     for &'static embassy_sync::mutex::Mutex<
         embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        crate::i2c::SafeI2c,
+        platform::i2c::SafeI2c,
     >
 {
     type Error = embassy_rp::i2c::Error;
     type I2c<'a>
-        = crate::i2c::SharedI2cWrapper<'a>
+        = platform::i2c::SharedI2cWrapper<'a>
     where
         Self: 'a;
 
     fn get_i2c(&self) -> Self::I2c<'_> {
-        crate::i2c::SharedI2cWrapper::new(self)
+        platform::i2c::SharedI2cWrapper::new(self)
     }
 }
 
@@ -335,8 +338,8 @@ macro_rules! boot_multicore {
         pub const CORE1_DEFAULT_STACK_TOP: u32 = 0x2004_0000;
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
-        static mut CORE1_STACK: $crate::types::MulticoreStack<$stack_size> =
-            $crate::types::MulticoreStack::new();
+        static mut CORE1_STACK: ::platform::types::MulticoreStack<$stack_size> =
+            ::platform::types::MulticoreStack::new();
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         /// Core 1 stack top address.
@@ -365,16 +368,16 @@ macro_rules! boot_multicore {
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         fn core1_entry_point() -> ! {
             unsafe {
-                $crate::core_monitor::init_vector_table($crate::types::CpuId::Core1);
+                ::platform::core_monitor::init_vector_table(::platform::types::CpuId::Core1);
 
-                <$board>::run_executor($crate::types::CpuId::Core1);
+                <$board>::run_executor(::platform::types::CpuId::Core1);
             }
         }
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         /// Boots Core 1 and starts the RAM executor.
         pub fn boot_core1(_core1: embassy_rp::peripherals::CORE1) {
-            use $crate::rp2040::PlatformMulticore as _;
+            use ::rp2040::PlatformMulticore as _;
             let stack_ptr = core::ptr::addr_of_mut!(CORE1_STACK);
             let stack_top = unsafe { (*stack_ptr).stack_top() };
             let stack_bottom = unsafe { (*stack_ptr).stack_bottom() };
@@ -383,8 +386,8 @@ macro_rules! boot_multicore {
 
             unsafe {
                 <$board>::init_executor_core1();
-                let _ = $crate::rp2040::Rp2040Multicore.spawn_core(
-                    $crate::types::CpuId::Core1,
+                let _ = ::rp2040::Rp2040Multicore.spawn_core(
+                    ::platform::types::CpuId::Core1,
                     &mut *stack_ptr,
                     core1_entry,
                 );
@@ -399,13 +402,13 @@ macro_rules! define_panic_handler {
     ($stack_top:expr, $flash_size:expr, $flash_start:expr, $flash_end:expr, $flash_write_size:expr, $flash_erase_size:expr) => {
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         /// Global panic handler instance implementing PlatformPanic.
-        pub static PANIC_HANDLER: $crate::rp2040::Rp2040Panic<
+        pub static PANIC_HANDLER: ::rp2040::Rp2040Panic<
             $flash_size,
             $flash_start,
             $flash_end,
             $flash_write_size,
             $flash_erase_size,
-        > = $crate::rp2040::Rp2040Panic {
+        > = ::rp2040::Rp2040Panic {
             core0_stack_top: $stack_top,
             core1_stack_top: &CORE1_STACK_TOP,
         };
@@ -413,7 +416,7 @@ macro_rules! define_panic_handler {
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         /// Handle a panic, performing multicore checks, resets, and delegating to flash writer.
         pub fn handle_panic(info: &core::panic::PanicInfo) -> ! {
-            use $crate::rp2040::PlatformPanic as _;
+            use ::rp2040::PlatformPanic as _;
             PANIC_HANDLER.handle_panic(info);
         }
     };

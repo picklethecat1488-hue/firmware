@@ -13,7 +13,7 @@ pub async fn run(
 ) -> io::Result<()> {
     spinner.set_message("Fetching telemetry from filesystem...");
 
-    let max_records = cat_detector::MAX_RECORDS;
+    let max_records = board::MAX_RECORDS;
     let parser = tool_common::FlashTelemetryParser::new(999);
     let records = match parser
         .read_records(flash, flash_range, cache, buf, max_records)

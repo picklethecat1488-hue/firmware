@@ -1,4 +1,4 @@
-use cat_detector::{Board, MockFlex, PUMP_PIN_IA, PUMP_PIN_IB};
+use board::{Board, MockFlex, PUMP_PIN_IA, PUMP_PIN_IB};
 use embedded_hal::digital::OutputPin;
 
 #[test]

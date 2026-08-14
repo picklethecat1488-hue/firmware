@@ -1,7 +1,6 @@
-#![cfg(feature = "rp2040")]
-
-use platform::rp2040::{PlatformI2cRecovery, PlatformMulticore, Rp2040I2cRecovery, Rp2040Panic};
+use platform::i2c::{PlatformI2cRecovery, Rp2040I2cRecovery};
 use platform::types::{CpuId, MulticoreStack};
+use rp2040::{PlatformMulticore, PlatformPanic, Rp2040Panic};
 use std::sync::atomic::AtomicU32;
 
 #[test]

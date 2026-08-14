@@ -1,23 +1,31 @@
-//! Board configuration library for the Cat Detector project.
+//! Application library for the Cat Detector project.
 //!
-//! Defines the single source of truth for pin assignments and helper
-//! initialization functions for sharing hardware setup between the main
-//! controller and bringup shell binaries.
+//! Exposes control loop structures, channels, and task orchestration.
 
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
 #![deny(missing_docs)]
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-mod bsp_target;
+pub use board::cat_detector::{
+    get_boot_reason, AlertPinType, BatteryDevice, Board, ChargerDevice, CurrentSensorDevice,
+    DataReadyPinType, LedDevice, MotorDevice, MutexRaw, ProximitySensorDevice, Rp2040TempSensor,
+    TempSensorDevice, CORE0_STACK_BOTTOM, CORE_MONITOR_TIMEOUT_MS, CORE_MONITOR_WARN_PCT,
+    DEFAULT_NEAR_THRESHOLD_MM, DEFAULT_PRESS_THRESHOLD_MM, DEFAULT_WAKE_THRESHOLD_MM, FLASH_END,
+    FLASH_ERASE_SIZE, FLASH_SIZE, FLASH_START, FLASH_WRITE_SIZE, FS_BUF, FS_PARTITION_END,
+    FS_PARTITION_START, FUEL_GAUGE_INT_PIN, I2C_SCL_PIN, I2C_SDA_PIN, MAX_CRASH_LOGS, MAX_RECORDS,
+    NUM_CHUNKS, PUMP_PIN_IA, PUMP_PIN_IB, STACK_TOP, STORAGE_PARTITION_END,
+    STORAGE_PARTITION_START, TELEMETRY_PARTITION_END, TELEMETRY_PARTITION_START, TOF_EAST_I2C_ADDR,
+    TOF_EAST_INT_PIN, TOF_EAST_XSHUT_PIN, TOF_NORTH_I2C_ADDR, TOF_NORTH_INT_PIN,
+    TOF_NORTH_XSHUT_PIN, TOF_WEST_I2C_ADDR, TOF_WEST_INT_PIN, TOF_WEST_XSHUT_PIN, UART_RX_PIN,
+    UART_TX_PIN,
+};
+
+pub use platform::panic_handler::init as init_panic_handler;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-pub use bsp_target::*;
-
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
-mod bsp_host;
-
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
-pub use bsp_host::*;
+pub use board::cat_detector::{
+    boot_core1, handle_panic, FlashDevice, CORE1_STACK_SIZE, PANIC_FLASH, SHARED_BATTERY,
+    SHARED_CHARGER, SHARED_I2C, SHARED_TEMP_SENSOR,
+};
 
 pub use controller::{
     run_filesystem_task, run_telemetry_task, shell_controller, telemetry_controller as telemetry,
@@ -27,132 +35,6 @@ pub use controller::{
 };
 pub use model::types::SystemStatus;
 pub use platform::BatteryUpdateAction;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-pub use platform::panic_handler::handle_panic_with_sizes;
-
-pub use platform::panic_handler::init as init_panic_handler;
-
-/// Pump IA pin (GPIO 19)
-pub const PUMP_PIN_IA: u32 = 19;
-/// Pump IB pin (GPIO 20)
-pub const PUMP_PIN_IB: u32 = 20;
-/// I2C SDA pin (GPIO 12)
-pub const I2C_SDA_PIN: u32 = 12;
-/// I2C SCL pin (GPIO 13)
-pub const I2C_SCL_PIN: u32 = 13;
-/// UART TX pin (GPIO 0)
-pub const UART_TX_PIN: u32 = 0;
-/// UART RX pin (GPIO 1)
-pub const UART_RX_PIN: u32 = 1;
-
-/// ToF Sensor 1 (North) XSHUT pin (GPIO 4)
-pub const TOF_NORTH_XSHUT_PIN: u32 = 4;
-/// ToF Sensor 2 (East) XSHUT pin (GPIO 5)
-pub const TOF_EAST_XSHUT_PIN: u32 = 5;
-/// ToF Sensor 3 (West) XSHUT pin (GPIO 6)
-pub const TOF_WEST_XSHUT_PIN: u32 = 6;
-
-/// ToF Sensor 1 (North) Interrupt pin (GPIO 7)
-pub const TOF_NORTH_INT_PIN: u32 = 7;
-/// ToF Sensor 2 (East) Interrupt pin (GPIO 9)
-pub const TOF_EAST_INT_PIN: u32 = 9;
-/// ToF Sensor 3 (West) Interrupt pin (GPIO 10)
-pub const TOF_WEST_INT_PIN: u32 = 10;
-
-/// ToF Sensor 1 (North) I2C Address (0x30)
-pub const TOF_NORTH_I2C_ADDR: u8 = 0x30;
-/// ToF Sensor 2 (East) I2C Address (0x31)
-pub const TOF_EAST_I2C_ADDR: u8 = 0x31;
-/// ToF Sensor 3 (West) I2C Address (0x32)
-pub const TOF_WEST_I2C_ADDR: u8 = 0x32;
-
-/// Fuel Gauge Interrupt/Alert pin (GPIO 14)
-pub const FUEL_GAUGE_INT_PIN: u32 = 14;
-
-/// The default wake threshold in millimeters under which target presence is detected.
-pub const DEFAULT_WAKE_THRESHOLD_MM: u16 = 300;
-
-/// The default press threshold in millimeters under which gesture button presses are detected.
-pub const DEFAULT_PRESS_THRESHOLD_MM: u16 = 20;
-
-/// The default near threshold in millimeters for intermediate proximity alerts.
-pub const DEFAULT_NEAR_THRESHOLD_MM: u16 = 100;
-
-/// Start address of the filesystem storage partition in flash (offset from start of flash).
-pub const STORAGE_PARTITION_START: u32 = 0x1C_0000; // 1.75 MB
-/// End address of the filesystem storage partition in flash (2.00 MB limit).
-pub const STORAGE_PARTITION_END: u32 = 0x20_0000; // 2.00 MB
-
-/// Start address of the map filesystem partition.
-pub const FS_PARTITION_START: u32 = 0x1C_0000;
-/// End address of the map filesystem partition.
-pub const FS_PARTITION_END: u32 = 0x1D_0000; // 64 KB
-
-/// Start address of the telemetry queue partition.
-pub const TELEMETRY_PARTITION_START: u32 = 0x1D_0000;
-/// End address of the telemetry queue partition.
-pub const TELEMETRY_PARTITION_END: u32 = 0x20_0000; // 192 KB
-
-// Statically verify that filesystem and telemetry partitions are within STORAGE bounds and do not overlap.
-platform::assert_partitions! {
-    storage_range: (STORAGE_PARTITION_START, STORAGE_PARTITION_END),
-    partition_ranges: [
-        (FS_PARTITION_START, FS_PARTITION_END),
-        (TELEMETRY_PARTITION_START, TELEMETRY_PARTITION_END)
-    ]
-}
-
-/// Total number of telemetry chunks
-pub const NUM_CHUNKS: usize = 77;
-/// Total maximum number of records stored
-pub const MAX_RECORDS: usize = NUM_CHUNKS * model::telemetry::CHUNK_SIZE;
-/// Maximum number of rolling crash logs (modulo limit)
-pub const MAX_CRASH_LOGS: u32 = 10;
-/// Static working buffer for filesystem and panic handler operations.
-/// Shared across the app and shell binaries to avoid duplicate stack/static allocations.
-pub static mut FS_BUF: [u8; 8192] = [0u8; 8192];
-/// Total QSPI flash memory capacity on the board (2.00 MB).
-pub const FLASH_SIZE: usize = 2 * 1024 * 1024;
-/// Top address of the stack/SRAM (RP2040 has 264 KB SRAM, ending at 0x2004_0000).
-pub const STACK_TOP: u32 = 0x2004_2000;
-/// Start address of flash memory mapping (XIP address space).
-pub const FLASH_START: u32 = 0x1000_0000;
-/// End address of flash memory mapping (FLASH_START + FLASH_SIZE).
-pub const FLASH_END: u32 = 0x1020_0000;
-/// Flash page write size in bytes.
-pub const FLASH_WRITE_SIZE: usize = 1;
-/// Flash erase block size in bytes.
-pub const FLASH_ERASE_SIZE: usize = 4096;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Thread-safe Mutex wrapping the active I2C peripheral for shared access between tasks.
-pub static SHARED_I2C: embassy_sync::mutex::Mutex<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    platform::i2c::SafeI2c,
-> = embassy_sync::mutex::Mutex::new(platform::i2c::SafeI2c::new(12, 13, 400_000));
-
-/// RawMutex type used by controllers.
-pub type MutexRaw = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Global temperature sensor mutex.
-pub static SHARED_TEMP_SENSOR: embassy_sync::mutex::Mutex<MutexRaw, TempSensorDevice> =
-    embassy_sync::mutex::Mutex::new(SafeRp2040TempSensor(None));
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Global battery/fuel gauge mutex.
-pub static SHARED_BATTERY: embassy_sync::mutex::Mutex<MutexRaw, BatteryDevice> =
-    embassy_sync::mutex::Mutex::new(BatteryDevice::new(platform::i2c::SharedI2cWrapper::new(
-        &SHARED_I2C,
-    )));
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Global battery charger mutex.
-pub static SHARED_CHARGER: embassy_sync::mutex::Mutex<MutexRaw, ChargerDevice> =
-    embassy_sync::mutex::Mutex::new(ChargerDevice::new(platform::i2c::SharedI2cWrapper::new(
-        &SHARED_I2C,
-    )));
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global instance of the ThermalController.
@@ -226,19 +108,6 @@ pub static mut MOTOR_CTRL_CORE0: Option<
 pub static mut SYSTEM_CTRL: Option<SystemControllerType> = None;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Type alias for the blocking flash device.
-pub type FlashDevice = embassy_rp::flash::Flash<
-    'static,
-    embassy_rp::peripherals::FLASH,
-    embassy_rp::flash::Blocking,
-    { crate::FLASH_SIZE },
->;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Global panic flash peripheral reference.
-pub static mut PANIC_FLASH: Option<FlashDevice> = None;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Synchronously initializes all application subcontrollers from board hardware.
 pub async fn init_controllers(board: Board<'static>) {
     let Board {
@@ -272,7 +141,7 @@ pub async fn init_controllers(board: Board<'static>) {
             ),
         );
 
-        let alert_wrapper = AlertPinWrapper(fuel_gauge_alert_pin);
+        let alert_wrapper = board::cat_detector::AlertPinWrapper(fuel_gauge_alert_pin);
         BATTERY_CTRL = Some(
             controller::battery_controller::BatteryController::new_with_system_and_alert(
                 &SHARED_BATTERY,
@@ -291,7 +160,7 @@ pub async fn init_controllers(board: Board<'static>) {
                 },
                 tof_north,
                 SYSTEM_CHANNEL.sender(),
-                ProximityPinWrapper(pin_north),
+                board::cat_detector::ProximityPinWrapper(pin_north),
                 DEFAULT_WAKE_THRESHOLD_MM,
             );
         north.bind_command_tx(SENSOR_NORTH_CHANNEL.sender());
@@ -304,7 +173,7 @@ pub async fn init_controllers(board: Board<'static>) {
                 },
                 tof_east,
                 SYSTEM_CHANNEL.sender(),
-                ProximityPinWrapper(pin_east),
+                board::cat_detector::ProximityPinWrapper(pin_east),
                 DEFAULT_WAKE_THRESHOLD_MM,
             );
         east.bind_command_tx(SENSOR_EAST_CHANNEL.sender());
@@ -317,7 +186,7 @@ pub async fn init_controllers(board: Board<'static>) {
                 },
                 tof_west,
                 SYSTEM_CHANNEL.sender(),
-                ProximityPinWrapper(pin_west),
+                board::cat_detector::ProximityPinWrapper(pin_west),
                 DEFAULT_WAKE_THRESHOLD_MM,
             );
         west.bind_command_tx(SENSOR_WEST_CHANNEL.sender());
@@ -335,21 +204,6 @@ pub async fn init_controllers(board: Board<'static>) {
         ));
     }
 }
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Core 1 stack size in bytes.
-pub const CORE1_STACK_SIZE: usize = 16384;
-
-platform::boot_multicore!(crate::Board, CORE1_STACK_SIZE);
-
-platform::define_panic_handler!(
-    crate::STACK_TOP,
-    { crate::FLASH_SIZE },
-    { crate::FLASH_START },
-    { crate::FLASH_END },
-    { crate::FLASH_WRITE_SIZE },
-    { crate::FLASH_ERASE_SIZE }
-);
 
 /// Global pointer to the active MotorController on Core 1 (populated during startup).
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -397,7 +251,8 @@ pub async fn bootstrap_core1_task(
     sensors: (SensorType, SensorType, SensorType),
 ) {
     // Configure MPU Stack Guard for Core 1
-    let guard_addr = CORE1_STACK_BOTTOM.load(core::sync::atomic::Ordering::Acquire);
+    let guard_addr =
+        board::cat_detector::CORE1_STACK_BOTTOM.load(core::sync::atomic::Ordering::Acquire);
     if guard_addr != 0 {
         platform::core_monitor::configure_mpu_stack_guard(guard_addr);
     }
@@ -537,26 +392,6 @@ pub type SystemControllerType =
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// The concrete flash type used for the filesystem partition in production.
 pub type FlashDeviceType = platform::flash::TargetFlash<{ FLASH_SIZE }>;
-
-/// Default core monitor timeout in milliseconds.
-pub const CORE_MONITOR_TIMEOUT_MS: u32 = 10_000;
-
-/// Default core monitor warning threshold percentage.
-pub const CORE_MONITOR_WARN_PCT: u32 = 80;
-
-/// The hardware stack guard address for Core 0 (the bottom of Core 0's stack).
-pub const CORE0_STACK_BOTTOM: u32 = 0x2003_C000;
-
-platform::define_project_metadata! {
-    chip: "rp2040",
-    flash_base: 0x10000000,
-    flash_write_size: FLASH_WRITE_SIZE,
-    flash_erase_size: FLASH_ERASE_SIZE,
-    fs_start: FS_PARTITION_START,
-    fs_end: FS_PARTITION_END,
-    telemetry_start: TELEMETRY_PARTITION_START,
-    telemetry_end: TELEMETRY_PARTITION_END
-}
 
 /// Creates the standard CatDetectorFeatureSet configured with the application's actual channels.
 pub fn create_default_feature_set(

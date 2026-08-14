@@ -26,31 +26,32 @@ pub struct SafeI2c {
     pub scl_pin: u8,
     /// The I2C clock frequency in Hz
     pub frequency: u32,
+    /// Recovery function pointer
+    pub recovery_fn: fn(sda_pin: u8, scl_pin: u8),
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 impl SafeI2c {
     /// Creates a new SafeI2c with target pins and frequency cached.
-    pub const fn new(sda_pin: u8, scl_pin: u8, frequency: u32) -> Self {
+    pub const fn new(
+        sda_pin: u8,
+        scl_pin: u8,
+        frequency: u32,
+        recovery_fn: fn(sda_pin: u8, scl_pin: u8),
+    ) -> Self {
         Self {
             i2c: None,
             sda_pin,
             scl_pin,
             frequency,
+            recovery_fn,
         }
     }
 
     /// Performs bus recovery and initializes the blocking I2C0 driver.
     pub fn initialize(&mut self) {
         // Run bus recovery sequence first to unstuck any locked device
-        let recovery = crate::rp2040::Rp2040I2cRecovery {
-            sda_pin: self.sda_pin,
-            scl_pin: self.scl_pin,
-        };
-        unsafe {
-            use crate::rp2040::PlatformI2cRecovery as _;
-            let _ = recovery.recover_i2c_bus();
-        }
+        (self.recovery_fn)(self.sda_pin, self.scl_pin);
 
         // Steal control of the I2C0 peripheral and pins
         let i2c0 = unsafe { embassy_rp::peripherals::I2C0::steal() };
@@ -273,5 +274,46 @@ pub fn handle_i2c_cli<W: embedded_io::Write<Error = E>, E: embedded_io::Error, R
             }
             Ok(())
         }
+    }
+}
+
+/// Trait for platform I2C bus recovery.
+pub trait PlatformI2cRecovery {
+    /// Perform a bus recovery sequence to free stuck devices on the bus.
+    ///
+    /// # Safety
+    /// This function steals the pins and therefore must only be called when the I2C peripheral is disabled.
+    unsafe fn recover_i2c_bus(&self) -> Result<(), &'static str>;
+}
+
+/// Trait for sharing I2C access safely across tasks and cores.
+pub trait PlatformI2cAccess {
+    /// The error type associated with this I2C bus.
+    type Error: embedded_hal_async::i2c::Error;
+
+    /// The type of I2C bus implementation returned.
+    type I2c<'a>: embedded_hal_async::i2c::I2c<Error = Self::Error>
+    where
+        Self: 'a;
+
+    /// Get a shared reference to the I2C bus.
+    fn get_i2c(&self) -> Self::I2c<'_>;
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl PlatformI2cAccess
+    for &'static embassy_sync::mutex::Mutex<
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        SafeI2c,
+    >
+{
+    type Error = embassy_rp::i2c::Error;
+    type I2c<'a>
+        = SharedI2cWrapper<'a>
+    where
+        Self: 'a;
+
+    fn get_i2c(&self) -> Self::I2c<'_> {
+        SharedI2cWrapper::new(self)
     }
 }

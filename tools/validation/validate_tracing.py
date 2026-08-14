@@ -191,7 +191,7 @@ def get_called_function_name(call_node):
 
 def validate_tracing():
     # Directories to scan
-    scan_dirs = ["controller/src", "projects/cat_detector/src", "peripherals/src"]
+    scan_dirs = ["controller/src", "app/src", "board/src", "peripherals/src"]
 
     # 1. Discover all functions
     all_functions = []

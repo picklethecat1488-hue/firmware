@@ -787,7 +787,7 @@ fn test_macro_init_ws2812() {
     let mut errors = TestBootStatus { errors: vec![] };
     let _dev = peripherals::init_pio!(
         peripherals::ws2812::Ws2812,
-        platform::rp2040::pio::PioInitConfig,
+        rp2040::pio::PioInitConfig,
         &mut errors
     );
     assert!(errors.errors.is_empty());
@@ -795,7 +795,7 @@ fn test_macro_init_ws2812() {
 
 #[test]
 fn test_ws2812_new_pio_direct() {
-    let config = platform::rp2040::pio::PioInitConfig;
+    let config = rp2040::pio::PioInitConfig;
     let _dev = peripherals::ws2812::Ws2812::new_pio(config);
 }
 

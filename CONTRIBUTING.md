@@ -34,7 +34,7 @@ To keep peripheral logic target-independent and clean, we decouple hardware impl
 
 ### 4. Platform-Specific Naming Conventions & CLI Routing
 *   **Peripherals & Controllers**: Do **not** prefix files or structs with MCU model numbers (e.g. do not name them `rp2040_sensor.rs`). Since they interact with generic drivers, they compile on any target.
-*   **Target Projects**: MCU-specific setup code and drivers (e.g. `Rp2040TempSensor`) live in the project directory (e.g. `projects/cat_detector/src/bsp_target.rs`).
+*   **Target Projects**: MCU-specific setup code and drivers (e.g. `Rp2040TempSensor`) live in the project directory (e.g. `projects/board/src/bsp_target.rs`).
 *   **CLI Router Forwarding**: Avoid writing wrapper forwarding methods in `ShellController` for domain-level command execution. Instead, define match actions inside the CLI macro blocks to call domain handlers (e.g. `crate::motor_controller::handle_motor_cli`) directly.
 
 ---

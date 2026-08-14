@@ -19,6 +19,7 @@ embedded-hal-async = "1.0.0"
 model = { path = "../model" }
 embedded-storage = "0.3"
 platform = { path = "../platform" }
+rp2040 = { path = "../platform/src/rp2040" }
 embassy-time = "0.4.0"
 smart-leds-trait = "0.2.1"
 fixed = "1.31.0"

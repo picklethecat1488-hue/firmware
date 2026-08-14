@@ -186,8 +186,8 @@ fn main() -> ! {
     let p = embassy_rp::init(Default::default());
 
     let spawner_c0 = unsafe {
-        use platform::rp2040::PlatformMulticore as _;
-        platform::rp2040::Rp2040Multicore.spawner(platform::types::CpuId::Core0)
+        use rp2040::PlatformMulticore as _;
+        rp2040::Rp2040Multicore.spawner(platform::types::CpuId::Core0)
     };
 
     spawner_c0.spawn(bootstrap_task(spawner_c0, p)).unwrap();

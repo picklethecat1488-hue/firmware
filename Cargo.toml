@@ -6,7 +6,9 @@ members = [
     "controller",
     "platform",
     "platform/tracing-macros",
-    "projects/cat_detector",
+    "platform/src/rp2040",
+    "board",
+    "app",
     "tools/host_fs",
     "tools/host_cli",
     "platform/host",
@@ -17,7 +19,7 @@ default-members = [
     "peripherals",
     "controller",
     "platform",
-    "projects/cat_detector",
+    "app",
 ]
 
 [workspace.package]

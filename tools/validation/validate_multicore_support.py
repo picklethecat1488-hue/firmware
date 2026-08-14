@@ -341,9 +341,7 @@ def validate_call_graph(funcs_list, roots, feature, root_files=None):
 
 
 def validate_multicore_support():
-    scan_dirs = ["controller/src", "peripherals/src"]
-    for p in glob.glob("projects/*/src"):
-        scan_dirs.append(p)
+    scan_dirs = ["controller/src", "peripherals/src", "app/src", "board/src"]
 
     all_functions = []
     all_controller_structs = []
@@ -418,7 +416,7 @@ def validate_multicore_support():
         filepath = func["filepath"]
         func_name = func["name"]
         # Check if this function runs on Core 0
-        is_core0 = ("projects/" in filepath and "/src/bin/" in filepath) or (
+        is_core0 = (filepath.startswith("app/src/") and ("_app.rs" in filepath or "_shell.rs" in filepath)) or (
             filepath.startswith("controller/src/") and func_name.startswith("handle_") and func_name.endswith("_cli")
         )
         if is_core0:

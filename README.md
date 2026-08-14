@@ -116,10 +116,13 @@ graph TD
         GM["GpioMotor / VL53L0X / ATtiny816"]
     end
 
-    subgraph BSP / Target [projects/cat_detector]
+    subgraph Board Crate [board]
         Board["Board (UART / I2C / Pins)"]
-        Main["main.rs (App Binary)"]
-        Shell["shell.rs (Shell Binary)"]
+    end
+
+    subgraph Application Crate [app]
+        Main["cat_detector_app.rs (App Binary)"]
+        Shell["cat_detector_shell.rs (Shell Binary)"]
     end
 
     Main -->|Spawns tasks for| MC & BC & TC & SC & LC & FSC & TMC & SysC
@@ -204,7 +207,7 @@ The `controller` crate houses the active orchestrators and asynchronous loop run
 
 ---
 
-### Application & BSP Crate (`projects/cat_detector`)
+### Application & Board Crates (`projects/app` & `projects/board`)
 The top-level application and Board Support Package (BSP) defines pin configurations, manages driver instantiation, spawns the controller tasks, and hosts the application-specific orchestrator:
 
 *   **`Board Support Package` (`bsp_target.rs` / `bsp_host.rs`)**: Encapsulates all platform-specific initialization. In target mode, it unsticks the I2C bus, boots and dynamically re-addresses the VL53L0X proximity sensors to unique addresses (`0x30`, `0x31`, `0x32`), configures interrupt parameters, initializes the INA219 current sensor and ATtiny816 LED driver, and exposes a unified `Board` struct containing fully pre-configured driver handles. In host mode, it exposes identical mock drivers to run tests on the host.
