@@ -110,20 +110,6 @@ pub static mut SYSTEM_CTRL: Option<SystemControllerType> = None;
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Synchronously initializes all application subcontrollers from board hardware.
 pub async fn init_controllers(board: Board<'static>) {
-    let Board {
-        fuel_gauge_alert_pin,
-        led_driver,
-        tof_north,
-        pin_north,
-        tof_east,
-        pin_east,
-        tof_west,
-        pin_west,
-        motor,
-        current_sensor,
-        ..
-    } = board;
-
     unsafe {
         THERMAL_CTRL = Some(
             controller::thermal_controller::ThermalController::new_with_shutdown_and_trap(
@@ -132,7 +118,7 @@ pub async fn init_controllers(board: Board<'static>) {
             ),
         );
 
-        let alert_wrapper = board::cat_detector::AlertPinWrapper(fuel_gauge_alert_pin);
+        let alert_wrapper = board::cat_detector::AlertPinWrapper(board.fuel_gauge_alert_pin);
         BATTERY_CTRL = Some(
             controller::battery_controller::BatteryController::new_with_system_and_alert(
                 &SHARED_BATTERY,
@@ -142,16 +128,18 @@ pub async fn init_controllers(board: Board<'static>) {
             ),
         );
 
-        LED_CTRL = Some(controller::led_controller::LedController::new(led_driver));
+        LED_CTRL = Some(controller::led_controller::LedController::new(
+            board.led_driver,
+        ));
 
         let mut north =
             controller::sensor_controller::SensorController::new_with_fusion_and_interrupt(
                 controller::types::SensorMetadata {
                     direction: model::types::Direction::North,
                 },
-                tof_north,
+                board.tof_north,
                 SYSTEM_CHANNEL.sender(),
-                board::cat_detector::ProximityPinWrapper(pin_north),
+                board::cat_detector::ProximityPinWrapper(board.pin_north),
                 DEFAULT_WAKE_THRESHOLD_MM,
             );
         north.bind_command_tx(SENSOR_NORTH_CHANNEL.sender());
@@ -162,9 +150,9 @@ pub async fn init_controllers(board: Board<'static>) {
                 controller::types::SensorMetadata {
                     direction: model::types::Direction::East,
                 },
-                tof_east,
+                board.tof_east,
                 SYSTEM_CHANNEL.sender(),
-                board::cat_detector::ProximityPinWrapper(pin_east),
+                board::cat_detector::ProximityPinWrapper(board.pin_east),
                 DEFAULT_WAKE_THRESHOLD_MM,
             );
         east.bind_command_tx(SENSOR_EAST_CHANNEL.sender());
@@ -175,17 +163,17 @@ pub async fn init_controllers(board: Board<'static>) {
                 controller::types::SensorMetadata {
                     direction: model::types::Direction::West,
                 },
-                tof_west,
+                board.tof_west,
                 SYSTEM_CHANNEL.sender(),
-                board::cat_detector::ProximityPinWrapper(pin_west),
+                board::cat_detector::ProximityPinWrapper(board.pin_west),
                 DEFAULT_WAKE_THRESHOLD_MM,
             );
         west.bind_command_tx(SENSOR_WEST_CHANNEL.sender());
         SENSOR_CTRL_WEST_CORE0 = Some(west);
 
         MOTOR_CTRL_CORE0 = Some(controller::motor_controller::MotorController::new(
-            motor,
-            current_sensor,
+            board.motor,
+            board.current_sensor,
         ));
 
         SYSTEM_CTRL = Some(controller::SystemController::new(
