@@ -9,22 +9,18 @@ pub use board::cat_detector::{
     get_boot_reason, AlertPinType, BatteryDevice, Board, ChargerDevice, CurrentSensorDevice,
     DataReadyPinType, LedDevice, MotorDevice, MutexRaw, ProximitySensorDevice, Rp2040TempSensor,
     TempSensorDevice, CORE0_STACK_BOTTOM, CORE_MONITOR_TIMEOUT_MS, CORE_MONITOR_WARN_PCT,
-    DEFAULT_NEAR_THRESHOLD_MM, DEFAULT_PRESS_THRESHOLD_MM, DEFAULT_WAKE_THRESHOLD_MM, FLASH_END,
-    FLASH_ERASE_SIZE, FLASH_SIZE, FLASH_START, FLASH_WRITE_SIZE, FS_BUF, FS_PARTITION_END,
-    FS_PARTITION_START, FUEL_GAUGE_INT_PIN, I2C_SCL_PIN, I2C_SDA_PIN, MAX_CRASH_LOGS, MAX_RECORDS,
-    NUM_CHUNKS, PUMP_PIN_IA, PUMP_PIN_IB, STACK_TOP, STORAGE_PARTITION_END,
-    STORAGE_PARTITION_START, TELEMETRY_PARTITION_END, TELEMETRY_PARTITION_START, TOF_EAST_I2C_ADDR,
-    TOF_EAST_INT_PIN, TOF_EAST_XSHUT_PIN, TOF_NORTH_I2C_ADDR, TOF_NORTH_INT_PIN,
-    TOF_NORTH_XSHUT_PIN, TOF_WEST_I2C_ADDR, TOF_WEST_INT_PIN, TOF_WEST_XSHUT_PIN, UART_RX_PIN,
-    UART_TX_PIN,
+    DEFAULT_NEAR_THRESHOLD_MM, DEFAULT_PRESS_THRESHOLD_MM, DEFAULT_WAKE_THRESHOLD_MM, FS_BUF,
+    FS_PARTITION_END, FS_PARTITION_START, FUEL_GAUGE_INT_PIN, I2C_SCL_PIN, I2C_SDA_PIN,
+    MAX_CRASH_LOGS, MAX_RECORDS, NUM_CHUNKS, PUMP_PIN_IA, PUMP_PIN_IB, STACK_TOP,
+    STORAGE_PARTITION_END, STORAGE_PARTITION_START, TELEMETRY_PARTITION_END,
+    TELEMETRY_PARTITION_START, TOF_EAST_I2C_ADDR, TOF_EAST_INT_PIN, TOF_EAST_XSHUT_PIN,
+    TOF_NORTH_I2C_ADDR, TOF_NORTH_INT_PIN, TOF_NORTH_XSHUT_PIN, TOF_WEST_I2C_ADDR,
+    TOF_WEST_INT_PIN, TOF_WEST_XSHUT_PIN, UART_RX_PIN, UART_TX_PIN,
 };
-
-pub use platform::panic_handler::init as init_panic_handler;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 pub use board::cat_detector::{
-    handle_panic, CORE1_STACK_SIZE, PANIC_FLASH, SHARED_BATTERY, SHARED_CHARGER, SHARED_I2C,
-    SHARED_TEMP_SENSOR,
+    handle_panic, CORE1_STACK_SIZE, SHARED_BATTERY, SHARED_CHARGER, SHARED_I2C, SHARED_TEMP_SENSOR,
 };
 
 pub use controller::{
@@ -395,7 +391,7 @@ pub type SystemControllerType =
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// The concrete flash type used for the filesystem partition in production.
-pub type FlashDeviceType = platform::flash::TargetFlash<{ FLASH_SIZE }>;
+pub type FlashDeviceType = platform::flash::TargetFlash<{ ::rp2040::FLASH_SIZE }>;
 
 /// Creates the standard CatDetectorFeatureSet configured with the application's actual channels.
 pub fn create_default_feature_set(
@@ -658,24 +654,22 @@ pub async fn get_shell_pointers(
     #[cfg(all(target_arch = "arm", target_os = "none"))]
     {
         // 1. Resolve temp sensor pointer
-        let temp_sensor_ptr = {
-            let mut guard = SHARED_TEMP_SENSOR.lock().await;
-            if let Some(ref mut sensor) = guard.0 {
-                sensor as *mut Rp2040TempSensor
-            } else {
-                core::ptr::null_mut()
-            }
-        };
+        let temp_sensor_ptr = SHARED_TEMP_SENSOR
+            .lock()
+            .await
+            .0
+            .as_mut()
+            .map(|sensor| sensor as *mut Rp2040TempSensor)
+            .unwrap_or(core::ptr::null_mut());
 
         // 2. Resolve I2C
-        let board_i2c_ptr = {
-            let mut guard = SHARED_I2C.lock().await;
-            if let Some(ref mut i2c) = guard.i2c {
-                i2c as *mut _ as *mut _
-            } else {
-                core::ptr::null_mut()
-            }
-        };
+        let board_i2c_ptr = SHARED_I2C
+            .lock()
+            .await
+            .i2c
+            .as_mut()
+            .map(|i2c| i2c as *mut _ as *mut _)
+            .unwrap_or(core::ptr::null_mut());
 
         // 3. Resolve Core 1 Motor & Sensors
         let core1_motor_ctrl = get_motor_ctrl_core1().await;
@@ -686,9 +680,7 @@ pub async fn get_shell_pointers(
         let motor_c1 = get_motor_ctrl_core1().await as *mut _;
 
         // 4. Resolve Flash
-        let panic_flash_ptr = unsafe { &mut *core::ptr::addr_of_mut!(PANIC_FLASH) }
-            .as_mut()
-            .unwrap() as *mut _;
+        let panic_flash_ptr = unsafe { ::rp2040::get_panic_flash_ptr() as *mut _ };
 
         // Static mut arrays for device registration
         static mut THERMALS: [controller::NamedDevice<ThermalControllerType>; 1] =
@@ -836,8 +828,6 @@ pub async fn get_shell_pointers(
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Configured layout and resources for filesystem partition storage and crash logs.
 pub struct FilesystemStorageConfig {
-    /// Flash device reference.
-    pub flash: &'static mut FlashDevice,
     /// Partition range mapped for filesystem.
     pub partition: controller::MapFilesystem,
     /// Static mutable buffer for file operations.
@@ -853,26 +843,9 @@ impl FilesystemStorageConfig {
         let raw_flash = embassy_rp::flash::Flash::<
             _,
             embassy_rp::flash::Blocking,
-            { FLASH_SIZE },
+            { ::rp2040::FLASH_SIZE },
         >::new_blocking(fs_flash);
         platform::BlockingAsyncFlash(raw_flash)
-    }
-
-    /// Initialize the panic handler using this filesystem storage layout.
-    pub fn init_panic_handler(&self) {
-        // Safe alias of the static buffer, flash, and partition for the panic handler.
-        // This is safe because the panic handler only runs after the application halts/panics.
-        unsafe {
-            let panic_flash = &mut *core::ptr::addr_of_mut!(PANIC_FLASH);
-            let fs_buf_panic = &mut *core::ptr::addr_of_mut!(FS_BUF);
-            let partition = controller::MapFilesystem(FS_PARTITION_START..FS_PARTITION_END);
-            init_panic_handler(
-                panic_flash.as_mut().unwrap(),
-                partition,
-                fs_buf_panic,
-                MAX_CRASH_LOGS,
-            );
-        }
     }
 
     /// Safely set the shared FLASH mutex.
@@ -889,9 +862,6 @@ impl FilesystemStorageConfig {
 /// Get the unified filesystem storage configuration.
 pub fn get_filesystem_config() -> FilesystemStorageConfig {
     FilesystemStorageConfig {
-        flash: unsafe { &mut *core::ptr::addr_of_mut!(PANIC_FLASH) }
-            .as_mut()
-            .unwrap(),
         partition: controller::MapFilesystem(FS_PARTITION_START..FS_PARTITION_END),
         buffer: unsafe { &mut *core::ptr::addr_of_mut!(FS_BUF) },
     }

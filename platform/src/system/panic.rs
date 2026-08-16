@@ -161,13 +161,7 @@ pub static mut PANIC_STATE: [crate::types::CorePanicState; core_monitor::NUM_COR
     [INIT_STATE; core_monitor::NUM_CORES];
 
 /// Initialize the panic handler with flash access, target partition settings, and filesystem buffer.
-pub fn init(
-    #[cfg(all(target_arch = "arm", target_os = "none"))]
-    flash: &'static mut dyn crate::types::PanicFlash,
-    #[cfg(all(target_arch = "arm", target_os = "none"))] range: MapFilesystem,
-    #[cfg(all(target_arch = "arm", target_os = "none"))] fs_buf: &'static mut [u8],
-    #[cfg(all(target_arch = "arm", target_os = "none"))] max_crash_logs: u32,
-) {
+pub fn init(#[cfg(all(target_arch = "arm", target_os = "none"))] config: PanicConfig) {
     #[cfg(all(target_arch = "arm", target_os = "none"))]
     {
         // Reference the project metadata anchor symbol to statically verify macro invocation at link time.
@@ -179,12 +173,7 @@ pub fn init(
         }
 
         critical_section::with(|cs| {
-            PANIC_CONFIG.borrow(cs).replace(Some(PanicConfig {
-                flash,
-                range,
-                fs_buf,
-                max_crash_logs,
-            }));
+            PANIC_CONFIG.borrow(cs).replace(Some(config));
         });
     }
 }

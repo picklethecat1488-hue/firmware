@@ -35,5 +35,9 @@ embassy-time = "0.4.0"
 defmt = "0.3"
 
 [features]
-default = ["dual-core"]
+default = ["dual-core", "rp2040_flash_2mb"]
 dual-core = []
+rp2040_flash_2mb = []
+rp2040_flash_4mb = []
+rp2040_flash_8mb = []
+rp2040_flash_16mb = []

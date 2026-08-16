@@ -24,12 +24,14 @@ Before finalizing any task, committing changes, or proposing modifications to th
 * Encapsulate all initialization, pin configuration, and dynamic address setup inside the `Board::init` constructor in the Board Support Package (BSP) target/host implementations (e.g., `bsp_target.rs` / `bsp_host.rs`).
 * Do NOT prefix files or structs with MCU model numbers (e.g., do not write `rp2040_sensor.rs`). Keep driver wrappers target-independent.
 * Vendor-specific code should only go in the board or app crate. It may go into the platform crate if placed inside a vendor's platform support module (e.g., [platform/src/rp2040/lib.rs](file:///Users/daparker/gh/firmware/platform/src/rp2040/lib.rs)).
+* Do NOT use fixed CPU cycle delays (e.g. `cortex_m::asm::delay`) in code. Instead, use frequency-independent time-based delays (e.g., `embassy_time::Timer` or `embassy_time::Delay`).
 
 ### 3. Peripheral Sharing
 * To share a peripheral driver between multiple controllers:
   * **System Integration**: Use the Actor/Message-Passing pattern. Run the peripheral inside its own isolated task and communicate via async channels (e.g., `embassy_sync::channel::Channel`).
   * **Bringup/Shell**: Use Interior Mutability & Shared References (`Rc` + `RefCell` or `Mutex`/`Arc`).
   * **Forbidden**: Never pass raw mutable references across tasks.
+* Static mutable variables (statics) MUST NOT be used outside of core monitor tasks, interrupt callbacks, and panic handling.
 
 ### 4. Controller Design & Constraints
 * Decorate every domain controller context struct inside the `controller` crate with `#[crate::tracing::controller_context]`.
