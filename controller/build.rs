@@ -1,3 +1,7 @@
+use code_gen::{
+    find_workspace_root, parse_subcommand_enums, CliCommand, CliResolverField, ShellConfigToml,
+    SubcommandInfo, SUBCOMMAND_CRATES,
+};
 use rinja::Template;
 use serde::Deserialize;
 use std::env;
@@ -87,120 +91,8 @@ impl Controller {
 }
 
 #[derive(Deserialize, Clone)]
-struct CliResolverField {
-    associated_type: String,
-    field: String,
-    resolve_fn: String,
-    doc: String,
-    bounds: String,
-    type_lifetime: Option<String>,
-}
-
-impl CliResolverField {
-    fn bounds(&self) -> String {
-        let lifetime = self.type_lifetime.as_deref().unwrap_or("'static");
-        format!("{} + {}", self.bounds, lifetime)
-    }
-}
-
-#[derive(Deserialize, Clone)]
-struct CliArg {
-    name: String,
-    #[serde(rename = "type")]
-    arg_type: String,
-    help: String,
-    attributes: Option<Vec<String>>,
-}
-
-impl CliArg {
-    fn attributes_slice(&self) -> Vec<String> {
-        if let Some(ref attrs) = self.attributes {
-            attrs.clone()
-        } else if self.name != "arg1"
-            && self.name != "arg2"
-            && self.name != "arg3"
-            && self.name != "target"
-        {
-            vec![format!("#[arg(long = \"{}\")]", self.name)]
-        } else {
-            vec![]
-        }
-    }
-
-    fn rust_type(&self) -> String {
-        match self.arg_type.as_str() {
-            "string" => "Option<&'a str>".to_string(),
-            "int" => "Option<i32>".to_string(),
-            "float" => "Option<f32>".to_string(),
-            "bool" => "Option<bool>".to_string(),
-            custom => resolve_crate_path(custom),
-        }
-    }
-
-    fn rust_type_sample(&self) -> String {
-        self.rust_type()
-            .replace("$crate::", "controller::")
-            .replace("&'a str", "&str")
-    }
-}
-
-fn resolve_crate_path(custom: &str) -> String {
-    let mut result = custom.to_string();
-    if let Some(idx) = result.find("_controller::") {
-        let bytes = result.as_bytes();
-        let mut start = idx;
-        while start > 0 && (bytes[start - 1].is_ascii_alphanumeric() || bytes[start - 1] == b'_') {
-            start -= 1;
-        }
-        if !(start >= 8 && &result[start - 8..start] == "$crate::") {
-            result.insert_str(start, "$crate::");
-        }
-    }
-    result
-}
-
-#[derive(Deserialize, Clone)]
-struct CliCommand {
-    group: String,
-    cmd_name: String,
-    variant: String,
-    subcommand_type: String,
-    #[serde(default)]
-    async_cli: bool,
-    handler: String,
-    help: String,
-    args: Option<Vec<CliArg>>,
-}
-
-impl CliCommand {
-    fn args_slice(&self) -> &[CliArg] {
-        self.args.as_deref().unwrap_or(&[])
-    }
-
-    fn handler_short_name(&self) -> &str {
-        self.handler.split("::").last().unwrap()
-    }
-
-    fn subcommand_type_path(&self) -> String {
-        if self.subcommand_type.contains("::") && !self.subcommand_type.starts_with("platform::") {
-            format!("controller::{}", self.subcommand_type)
-        } else {
-            self.subcommand_type.clone()
-        }
-    }
-}
-
-#[derive(Deserialize, Clone)]
 struct ControllerConfig {
     controllers: Vec<Controller>,
-}
-
-#[derive(Deserialize, Clone)]
-struct ShellConfigToml {
-    #[serde(default)]
-    cli_resolver_fields: Vec<CliResolverField>,
-    #[serde(default)]
-    cli_commands: Vec<CliCommand>,
 }
 
 #[derive(Template)]
@@ -210,6 +102,7 @@ struct GeneratedControllersTemplate {
     controllers: Vec<Controller>,
     cli_resolver_fields: Vec<CliResolverField>,
     cli_commands: Vec<CliCommand>,
+    subcommands_map: std::collections::HashMap<String, Vec<SubcommandInfo>>,
 }
 
 #[derive(Template)]
@@ -273,12 +166,22 @@ fn main() {
         toml::from_str(&shell_content).expect("Failed to parse shell.toml");
 
     // Render the controllers template using Rinja
+    let root = find_workspace_root();
+    let mut subcommands_map = std::collections::HashMap::new();
+    for crate_name in SUBCOMMAND_CRATES {
+        parse_subcommand_enums(
+            &root.join(format!("{}/src", crate_name)),
+            &mut subcommands_map,
+        );
+    }
+
     let has_async_cli = shell_config.cli_commands.iter().any(|c| c.async_cli);
     let template = GeneratedControllersTemplate {
         has_async_cli,
         controllers: config.controllers.clone(),
         cli_resolver_fields: shell_config.cli_resolver_fields.clone(),
         cli_commands: shell_config.cli_commands.clone(),
+        subcommands_map,
     };
     let output = template.render().expect("Failed to render Rinja template");
     f.write_all(output.as_bytes()).unwrap();

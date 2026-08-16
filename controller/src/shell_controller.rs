@@ -221,6 +221,32 @@ invoke_define_shell_resolver_and_controller!();
 /// This design keeps the controllers completely decoupled from the specific applications while allowing
 /// infinite CLI customizability and code reuse.
 /// Macro to emit shell commands processor directly on ShellController.
+/// Helper macro to parse command and automatically generate/output usage if invalid.
+#[macro_export]
+macro_rules! parse_command {
+    ($name:ident, $raw:ident, $writer:ident, $W:ident, $E:ident, $ctrl:ident) => {
+        match <$name<'_> as $crate::embedded_cli::service::FromRaw<'_>>::parse($raw.clone()) {
+            Ok(c) => c,
+            Err(_) => {
+                let mut parent =
+                    |_writer: &mut $crate::embedded_cli::writer::Writer<'_, $W, $E>| Ok(());
+                let help_res = <$name<'_> as $crate::embedded_cli::service::Help>::command_help(
+                    &mut parent,
+                    $raw.clone(),
+                    $writer,
+                );
+                if help_res.is_err() {
+                    let _ = core::writeln!($writer, "Unknown command: '{}'", $raw.name());
+                } else {
+                    $ctrl.print_subcommands_help($raw.name(), $writer);
+                }
+                return Ok(());
+            }
+        }
+    };
+}
+
+/// Macro to emit shell commands processor directly on ShellController.
 #[macro_export]
 macro_rules! emit_direct_commands {
     ($name:ident, $proc_name:ident, $ctrl:ident, $writer:ident, [$($variants:tt)*], [$($matches:tt)*]) => {
@@ -253,18 +279,20 @@ macro_rules! emit_direct_commands {
                             if let Err($crate::embedded_cli::service::HelpError::UnknownCommand) =
                                 <$name<'_> as $crate::embedded_cli::service::Help>::command_help(
                                     &mut parent,
-                                    subcommand,
+                                    subcommand.clone(),
                                     $writer,
                                 )
                             {
-                                  let _ = core::writeln!($writer, "\r\nUnknown command");
+                                let _ = core::writeln!($writer, "\r\nUnknown command");
+                            } else {
+                                $ctrl.print_subcommands_help(subcommand.name(), $writer);
                             }
                         }
                     }
                     return Ok(());
                 }
 
-                let cmd = <$name<'c> as $crate::embedded_cli::service::FromRaw<'c>>::parse(raw)?;
+                let cmd = $crate::parse_command!($name, raw, $writer, W, E, $ctrl);
 
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::info!(
@@ -339,18 +367,20 @@ macro_rules! emit_wrapper_commands {
                             if let Err($crate::embedded_cli::service::HelpError::UnknownCommand) =
                                 <$name<'_> as $crate::embedded_cli::service::Help>::command_help(
                                     &mut parent,
-                                    subcommand,
+                                    subcommand.clone(),
                                     $writer,
                                 )
                             {
-                                  let _ = core::writeln!($writer, "\r\nUnknown command");
+                                let _ = core::writeln!($writer, "\r\nUnknown command");
+                            } else {
+                                $ctrl.print_subcommands_help(subcommand.name(), $writer);
                             }
                         }
                     }
                     return Ok(());
                 }
 
-                let cmd = <$name<'d> as $crate::embedded_cli::service::FromRaw<'d>>::parse(raw)?;
+                let cmd = $crate::parse_command!($name, raw, $writer, W, E, $ctrl);
 
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::info!(
