@@ -157,4 +157,15 @@ subcommand_type = "led_controller::LedSubcommand"
 handler = "led_controller::handle_led_cli"
 help = "LED commands (led off, led green, led blue, led yellow, led orange, led blink-four, led blink-slow)"
 
+[[cli_commands]]
+group = "Core"
+cmd_name = "core"
+variant = "Core"
+subcommand_type = "platform::core_monitor::CoreMonitorSubcommand"
+handler = "platform::core_monitor::handle_core_monitor_cli"
+help = "Core monitor commands (core status, core crash [core])"
+args = [
+    { name = "core", type = "string", help = "Optional target core (core0 or core1)" }
+]
+
 

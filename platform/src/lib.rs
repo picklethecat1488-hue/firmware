@@ -106,3 +106,7 @@ pub mod tracing;
 #[path = "system/once_lock.rs"]
 pub mod once_lock;
 pub use once_lock::{CliSignal, OnceLock};
+
+/// Mock utility structures for testing.
+#[cfg(any(test, not(all(target_arch = "arm", target_os = "none"))))]
+pub mod mock;
