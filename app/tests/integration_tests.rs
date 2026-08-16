@@ -802,13 +802,11 @@ fn test_spawn_controllers_embassy_routing() {
     let client =
         controller::filesystem_controller::FilesystemClient::new(RUN_FILESYSTEM_CHANNEL.sender());
     let telemetry_flash = platform::flash::SharedFlashMutex::new(&FLASH_MUTEX);
-    let telemetry_ctrl = Box::leak(Box::new(
-        controller::telemetry_controller::TelemetryController::new(
-            telemetry_flash,
-            QueueFilesystem(32 * 1024..64 * 1024),
-            client,
-        ),
-    ));
+    let telemetry_ctrl = controller::telemetry_controller::TelemetryController::new(
+        telemetry_flash,
+        QueueFilesystem(32 * 1024..64 * 1024),
+        client,
+    );
 
     // 3. Run Embassy Executor
     use embassy_executor::Executor;

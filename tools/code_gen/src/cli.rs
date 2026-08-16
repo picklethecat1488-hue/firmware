@@ -1,6 +1,9 @@
 use rinja::Template;
 use serde::Deserialize;
 
+#[allow(dead_code)]
+pub const SUBCOMMAND_CRATES: &[&str] = &["controller", "platform"];
+
 #[derive(Deserialize, Clone)]
 pub struct CliResolverField {
     pub associated_type: String,
@@ -74,6 +77,137 @@ fn resolve_crate_path(custom: &str) -> String {
     result
 }
 
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct SubcommandInfo {
+    pub name: String,
+    pub doc: String,
+}
+
+fn scan_items(
+    items: &[syn::Item],
+    enums: &mut std::collections::HashMap<String, Vec<SubcommandInfo>>,
+) {
+    for item in items {
+        match item {
+            syn::Item::Macro(item_macro) => {
+                let is_subcommand_enum = item_macro.mac.path.is_ident("subcommand_enum")
+                    || item_macro
+                        .mac
+                        .path
+                        .segments
+                        .last()
+                        .is_some_and(|s| s.ident == "subcommand_enum");
+                if is_subcommand_enum {
+                    let enum_parser = |input: syn::parse::ParseStream| {
+                        let item_enum = input.parse::<syn::ItemEnum>()?;
+                        let _ = input.parse::<proc_macro2::TokenStream>();
+                        Ok(item_enum)
+                    };
+                    use syn::parse::Parser as _;
+                    if let Ok(item_enum) = enum_parser.parse2(item_macro.mac.tokens.clone()) {
+                        let enum_name = item_enum.ident.to_string();
+                        let mut variants = Vec::new();
+                        for variant in item_enum.variants {
+                            let var_ident = variant.ident.to_string();
+                            let mut var_name = String::new();
+                            let mut has_explicit = false;
+                            if let Some((
+                                _,
+                                syn::Expr::Lit(syn::ExprLit {
+                                    lit: syn::Lit::Str(lit_str),
+                                    ..
+                                }),
+                            )) = &variant.discriminant
+                            {
+                                var_name = lit_str.value();
+                                has_explicit = true;
+                            }
+                            if !has_explicit {
+                                for (i, c) in var_ident.char_indices() {
+                                    if c.is_uppercase() {
+                                        if i > 0 {
+                                            var_name.push('_');
+                                        }
+                                        var_name.push(c.to_ascii_lowercase());
+                                    } else {
+                                        var_name.push(c);
+                                    }
+                                }
+                            }
+
+                            // Extract doc comments
+                            let mut doc = String::new();
+                            for attr in &variant.attrs {
+                                if attr.path().is_ident("doc") {
+                                    if let syn::Meta::NameValue(syn::MetaNameValue {
+                                        value:
+                                            syn::Expr::Lit(syn::ExprLit {
+                                                lit: syn::Lit::Str(lit_str),
+                                                ..
+                                            }),
+                                        ..
+                                    }) = &attr.meta
+                                    {
+                                        doc = lit_str.value().trim().to_string();
+                                    }
+                                }
+                            }
+                            variants.push(SubcommandInfo {
+                                name: var_name,
+                                doc,
+                            });
+                        }
+                        enums.insert(enum_name, variants);
+                    }
+                }
+            }
+            syn::Item::Mod(item_mod) => {
+                if let Some((_, content)) = &item_mod.content {
+                    scan_items(content, enums);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+pub fn parse_subcommand_enums(
+    dir: &std::path::Path,
+    enums: &mut std::collections::HashMap<String, Vec<SubcommandInfo>>,
+) {
+    if !dir.exists() {
+        return;
+    }
+    if dir.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    parse_subcommand_enums(&path, enums);
+                } else if path.extension().is_some_and(|ext| ext == "rs") {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        if let Ok(file) = syn::parse_str::<syn::File>(&content) {
+                            scan_items(&file.items, enums);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn find_workspace_root() -> std::path::PathBuf {
+    let mut path = std::env::current_dir().unwrap();
+    loop {
+        if path.join("pyproject.toml").exists() {
+            return path;
+        }
+        if !path.pop() {
+            panic!("Could not locate workspace root (looking for pyproject.toml)!");
+        }
+    }
+}
+
 #[derive(Deserialize, Clone)]
 pub struct CliCommand {
     pub group: String,
@@ -102,6 +236,40 @@ impl CliCommand {
         } else {
             self.subcommand_type.clone()
         }
+    }
+
+    pub fn help_string(
+        &self,
+        subcommands_map: &std::collections::HashMap<String, Vec<SubcommandInfo>>,
+    ) -> String {
+        let enum_name = self
+            .subcommand_type
+            .split("::")
+            .last()
+            .unwrap_or(&self.subcommand_type);
+        if let Some(subs) = subcommands_map.get(enum_name) {
+            if !subs.is_empty() {
+                let sub_list = subs
+                    .iter()
+                    .map(|sub| format!("{} {}", self.cmd_name, sub.name))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                return format!("{} ({})", self.help, sub_list);
+            }
+        }
+        self.help.clone()
+    }
+
+    pub fn get_subcommands(
+        &self,
+        subcommands_map: &std::collections::HashMap<String, Vec<SubcommandInfo>>,
+    ) -> Vec<SubcommandInfo> {
+        let enum_name = self
+            .subcommand_type
+            .split("::")
+            .last()
+            .unwrap_or(&self.subcommand_type);
+        subcommands_map.get(enum_name).cloned().unwrap_or_default()
     }
 }
 

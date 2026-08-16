@@ -44,6 +44,7 @@ embassy-executor = { version = "0.7.0", features = ["arch-std", "executor-thread
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 rinja = "0.2"
+code_gen = { path = "../tools/code_gen" }
 
 [features]
 core1 = ["peripheral/core1"]

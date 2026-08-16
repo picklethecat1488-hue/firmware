@@ -267,13 +267,11 @@ fn test_spawn_all_controllers_configuration() {
     let client =
         controller::filesystem_controller::FilesystemClient::new(FILESYSTEM_CHANNEL.sender());
     let telemetry_flash = SharedFlashMutex::new(&FLASH_MUTEX);
-    let telemetry_ctrl = Box::leak(Box::new(
-        controller::telemetry_controller::TelemetryController::new(
-            telemetry_flash,
-            QueueFilesystem(32 * 1024..64 * 1024),
-            client,
-        ),
-    ));
+    let telemetry_ctrl = controller::telemetry_controller::TelemetryController::new(
+        telemetry_flash,
+        QueueFilesystem(32 * 1024..64 * 1024),
+        client,
+    );
 
     use embassy_executor::Executor;
     let executor = Box::leak(Box::new(Executor::new()));

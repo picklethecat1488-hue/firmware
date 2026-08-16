@@ -66,7 +66,7 @@ async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
     // Initialize board peripherals using the unified board configuration
-    let board = app::Board::init(p).await;
+    let mut board = app::Board::init(p).await;
 
     let writer = platform::rtt::RttTxWriter;
 
@@ -95,8 +95,15 @@ async fn main(spawner: Spawner) {
         Ok(())
     });
 
+    // Retrieve peripherals and store board in global OnceLock static
+    let peripherals = board.take_peripherals();
+    if app::BOARD.set(board).is_err() {
+        panic!("Failed to set BOARD static");
+    }
+    let board_ref = app::BOARD.get().unwrap();
+
     // Initialize board peripherals and subcontrollers
-    app::init_controllers(board).await;
+    let mut controllers = app::init_controllers(board_ref, peripherals).await;
 
     // Initialize panic diagnostics and filesystem storage
     let fs_cfg = app::get_filesystem_config();
@@ -109,17 +116,13 @@ async fn main(spawner: Spawner) {
         false,
     );
 
-    let app::Core0Controllers {
-        motor,
-        sensor_north,
-        sensor_east,
-        sensor_west,
-        ..
-    } = app::take_core0_controllers();
-
     let core1 = app::steal_core1_peripheral();
-    let sensors = (sensor_north, sensor_east, sensor_west);
-    let spawner_c1 = app::bootstrap_core1(core1, motor, sensors);
+    let sensors = (
+        controllers.core1.sensor_north,
+        controllers.core1.sensor_east,
+        controllers.core1.sensor_west,
+    );
+    let spawner_c1 = app::bootstrap_core1(core1, controllers.core1.motor, sensors);
 
     spawner_c1
         .spawn(app::core1_command_task(
@@ -128,7 +131,7 @@ async fn main(spawner: Spawner) {
         .unwrap();
 
     // Retrieve pointers using the platformitized helper
-    let pointers = app::get_shell_pointers(fs_cfg.buffer).await;
+    let pointers = app::get_shell_pointers(fs_cfg.buffer, &mut controllers.core0, board_ref).await;
 
     let mut processor = ShellController::<app::CatDetectorShellConfig>::new(pointers);
 

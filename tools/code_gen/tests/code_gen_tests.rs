@@ -144,3 +144,27 @@ fn test_peripheral_sample_syntax_and_compiles() {
         parsed_other.err()
     );
 }
+
+#[test]
+fn test_find_workspace_root() {
+    let root = code_gen::find_workspace_root();
+    assert!(root.exists());
+    assert!(root.join("pyproject.toml").exists());
+}
+
+#[test]
+fn test_parse_subcommand_enums() {
+    let root = code_gen::find_workspace_root();
+    let mut enums = std::collections::HashMap::new();
+    code_gen::parse_subcommand_enums(&root.join("controller/src"), &mut enums);
+    assert!(!enums.is_empty(), "Parsed enums map should not be empty");
+
+    let sensor_sub = enums.get("SensorSubcommand");
+    assert!(sensor_sub.is_some(), "Should find SensorSubcommand");
+    let subcommands = sensor_sub.unwrap();
+    assert_eq!(subcommands.len(), 4);
+    assert_eq!(subcommands[0].name, "status");
+    assert_eq!(subcommands[0].doc, "Read sensor values");
+    assert_eq!(subcommands[1].name, "cal_near");
+    assert_eq!(subcommands[1].doc, "Calibrate near proximity");
+}

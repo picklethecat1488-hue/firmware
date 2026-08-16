@@ -31,7 +31,8 @@ Before finalizing any task, committing changes, or proposing modifications to th
   * **System Integration**: Use the Actor/Message-Passing pattern. Run the peripheral inside its own isolated task and communicate via async channels (e.g., `embassy_sync::channel::Channel`).
   * **Bringup/Shell**: Use Interior Mutability & Shared References (`Rc` + `RefCell` or `Mutex`/`Arc`).
   * **Forbidden**: Never pass raw mutable references across tasks.
-* Static mutable variables (statics) MUST NOT be used outside of core monitor tasks, interrupt callbacks, and panic handling.
+* Static mutable variables (statics) MUST NOT be used outside of core monitor tasks, interrupt callbacks, panic handling, and hardware/communication buffers requiring static lifetimes.
+* When initializing global statics (such as `OnceLock` instances), always verify the result of `.set(...)` (e.g., via `.expect(...)` or `.unwrap()`) to catch double-initialization bugs immediately. Do NOT discard the result with `let _ =`.
 
 ### 4. Controller Design & Constraints
 * Decorate every domain controller context struct inside the `controller` crate with `#[crate::tracing::controller_context]`.

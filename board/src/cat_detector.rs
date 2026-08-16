@@ -96,25 +96,6 @@ pub static SHARED_I2C: embassy_sync::mutex::Mutex<
 pub type MutexRaw = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Global temperature sensor mutex.
-pub static SHARED_TEMP_SENSOR: embassy_sync::mutex::Mutex<MutexRaw, TempSensorDevice> =
-    embassy_sync::mutex::Mutex::new(SafeRp2040TempSensor(None));
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Global battery/fuel gauge mutex.
-pub static SHARED_BATTERY: embassy_sync::mutex::Mutex<MutexRaw, BatteryDevice> =
-    embassy_sync::mutex::Mutex::new(BatteryDevice::new(platform::i2c::SharedI2cWrapper::new(
-        &SHARED_I2C,
-    )));
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Global battery charger mutex.
-pub static SHARED_CHARGER: embassy_sync::mutex::Mutex<MutexRaw, ChargerDevice> =
-    embassy_sync::mutex::Mutex::new(ChargerDevice::new(platform::i2c::SharedI2cWrapper::new(
-        &SHARED_I2C,
-    )));
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Core 1 stack size in bytes.
 pub const CORE1_STACK_SIZE: usize = 16384;
 
@@ -225,6 +206,12 @@ mod host {
         pub charger: Option<peripheral::mock::MockCharger>,
         /// Mock battery controller
         pub battery: peripheral::mock::MockBattery,
+        /// Mock peripherals that can be taken once by the caller
+        pub peripherals: Option<BoardPeripherals>,
+    }
+
+    /// Mock BoardPeripherals for host compilation.
+    pub struct BoardPeripherals {
         /// Mock motor
         pub motor: peripheral::mock::MockMotor,
         /// Mock current sensor
@@ -245,11 +232,17 @@ mod host {
         pub pin_east: MockFlex,
         /// Mock West proximity interrupt pin
         pub pin_west: MockFlex,
-        /// Core 0 executor spawner
-        pub spawner: Option<embassy_executor::Spawner>,
     }
 
     impl Board {
+        /// Take the mock move-by-value peripherals owned by the board.
+        ///
+        /// # Panics
+        /// Panics if the peripherals have already been taken.
+        pub fn take_peripherals(&mut self) -> BoardPeripherals {
+            self.peripherals.take().expect("Peripherals already taken")
+        }
+
         /// Initialize mock board.
         pub fn init() -> Self {
             let mut gpio_pins: [Option<MockFlex>; 30] = Default::default();
@@ -291,17 +284,18 @@ mod host {
                 temp_sensor,
                 charger,
                 battery,
-                motor,
-                current_sensor,
-                tof_north,
-                tof_east,
-                tof_west,
-                led_driver,
-                fuel_gauge_alert_pin,
-                pin_north,
-                pin_east,
-                pin_west,
-                spawner: None,
+                peripherals: Some(BoardPeripherals {
+                    motor,
+                    current_sensor,
+                    tof_north,
+                    tof_east,
+                    tof_west,
+                    led_driver,
+                    fuel_gauge_alert_pin,
+                    pin_north,
+                    pin_east,
+                    pin_west,
+                }),
             }
         }
 
@@ -415,6 +409,18 @@ mod target {
         /// Lookup array containing Flex instances for dynamic GPIO diagnostics
         pub gpio_pins: [Option<Flex<'d>>; 30],
 
+        /// Temperature sensor
+        pub temp_sensor: embassy_sync::mutex::Mutex<crate::MutexRaw, TempSensorDevice>,
+        /// Battery gauge
+        pub battery: embassy_sync::mutex::Mutex<crate::MutexRaw, BatteryDevice>,
+        /// Charger
+        pub charger: embassy_sync::mutex::Mutex<crate::MutexRaw, ChargerDevice>,
+        /// Peripherals that can be taken once by the caller
+        pub peripherals: Option<BoardPeripherals<'d>>,
+    }
+
+    /// Move-by-value drivers and pins returned during board initialization.
+    pub struct BoardPeripherals<'d> {
         /// Motor driver
         pub motor: peripheral::l9110s::L9110s<Flex<'d>, Flex<'d>>,
         /// Motor current sensor
@@ -435,11 +441,17 @@ mod target {
         pub pin_east: Flex<'d>,
         /// West proximity interrupt pin
         pub pin_west: Flex<'d>,
-        /// Core 0 executor spawner
-        pub spawner: Option<embassy_executor::Spawner>,
     }
 
     impl<'d> Board<'d> {
+        /// Take the move-by-value peripherals owned by the board.
+        ///
+        /// # Panics
+        /// Panics if the peripherals have already been taken.
+        pub fn take_peripherals(&mut self) -> BoardPeripherals<'d> {
+            self.peripherals.take().expect("Peripherals already taken")
+        }
+
         /// Initialize all hardware components and return the Board interface.
         ///
         /// # Arguments
@@ -542,12 +554,19 @@ mod target {
                 }
             }
 
-            let temp_sensor = Rp2040TempSensor::new(p.ADC, p.ADC_TEMP_SENSOR);
-            crate::SHARED_TEMP_SENSOR.lock().await.0 = Some(temp_sensor);
+            let temp_sensor =
+                SafeRp2040TempSensor(Some(Rp2040TempSensor::new(p.ADC, p.ADC_TEMP_SENSOR)));
 
             // Configure remaining drivers using local i2c before returning
-            let mut fuel_gauge = peripheral::max17048::Max17048::new(&mut i2c);
-            peripheral::init_i2c!(&mut fuel_gauge, &mut boot_status);
+            let mut battery_device = BatteryDevice::new(i2c);
+            peripheral::init_i2c!(&mut battery_device, &mut boot_status);
+
+            let mut charger_device = ChargerDevice::new(i2c);
+            peripheral::init_i2c!(&mut charger_device, &mut boot_status);
+
+            let temp_sensor = embassy_sync::mutex::Mutex::new(temp_sensor);
+            let battery = embassy_sync::mutex::Mutex::new(battery_device);
+            let charger = embassy_sync::mutex::Mutex::new(charger_device);
 
             let mut current_sensor = peripheral::ina219::Ina219::new(i2c);
             peripheral::init_i2c!(&mut current_sensor, &mut boot_status);
@@ -577,13 +596,11 @@ mod target {
                 .expect("West ToF interrupt pin must be available");
 
             // Construct final drivers wrapping SHARED_I2C static cell
-
             let make_tof = |addr, direction| {
                 let mut sensor = peripheral::vl53l0x::Vl53l0x::new(i2c, addr, direction);
                 let _ = sensor.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
                 sensor
             };
-
             let tof_north = make_tof(crate::TOF_NORTH_I2C_ADDR, model::types::Direction::North);
             let tof_east = make_tof(crate::TOF_EAST_I2C_ADDR, model::types::Direction::East);
             let tof_west = make_tof(crate::TOF_WEST_I2C_ADDR, model::types::Direction::West);
@@ -599,10 +616,6 @@ mod target {
                 &mut boot_status
             );
 
-            let spawner = unsafe {
-                use rp2040::PlatformMulticore as _;
-                Some(rp2040::Rp2040Multicore.spawner(platform::types::CpuId::Core0))
-            };
             // Initialize the platform panic handler with layout/flash details
             unsafe {
                 let fs_buf_panic = &mut *core::ptr::addr_of_mut!(crate::FS_BUF);
@@ -613,18 +626,21 @@ mod target {
             }
             Self {
                 gpio_pins,
-
-                motor,
-                current_sensor,
-                tof_north,
-                tof_east,
-                tof_west,
-                led_driver,
-                fuel_gauge_alert_pin,
-                pin_north,
-                pin_east,
-                pin_west,
-                spawner,
+                temp_sensor,
+                battery,
+                charger,
+                peripherals: Some(BoardPeripherals {
+                    motor,
+                    current_sensor,
+                    tof_north,
+                    tof_east,
+                    tof_west,
+                    led_driver,
+                    fuel_gauge_alert_pin,
+                    pin_north,
+                    pin_east,
+                    pin_west,
+                }),
             }
         }
 

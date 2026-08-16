@@ -67,7 +67,7 @@ cmd_name = "battery"
 variant = "Battery"
 subcommand_type = "battery_controller::BatterySubcommand"
 handler = "battery_controller::handle_battery_cli"
-help = "Battery commands (battery status, battery test-alert)"
+help = "Battery commands"
 
 [[cli_commands]]
 group = "Thermal"
@@ -75,7 +75,7 @@ cmd_name = "thermal"
 variant = "Thermal"
 subcommand_type = "thermal_controller::ThermalSubcommand"
 handler = "thermal_controller::handle_thermal_cli"
-help = "Thermal commands (thermal status, thermal mcu)"
+help = "Thermal commands"
 
 [[cli_commands]]
 group = "Motor"
@@ -83,7 +83,7 @@ cmd_name = "motor"
 variant = "Motor"
 subcommand_type = "motor_controller::MotorSubcommand"
 handler = "motor_controller::handle_motor_cli"
-help = "Motor commands (motor speed <speed>, motor rpm-speed <rpm>, motor stop, motor current, motor calibrate <state> [max_rpm] [rpm_limit] [--partition <partition>])"
+help = "Motor commands"
 args = [
     { name = "arg1", type = "string", help = "First argument (speed or calibration state)" },
     { name = "arg2", type = "string", help = "Second argument (max_rpm)" },
@@ -98,7 +98,7 @@ variant = "Sensor"
 subcommand_type = "sensor_controller::SensorSubcommand"
 async_cli = true
 handler = "sensor_controller::handle_sensor_cli"
-help = "Sensor commands (sensor status, sensor cal_near <dir>, sensor cal_far <dir>, sensor cal_xtalk <dir> <dist_mm> [--partition <partition>])"
+help = "Sensor commands"
 args = [
     { name = "arg1", type = "string", help = "First argument (direction: north, east, west)" },
     { name = "partition", type = "string", help = "Optional partition name or calibration distance" }
@@ -110,7 +110,7 @@ cmd_name = "fs"
 variant = "Fs"
 subcommand_type = "filesystem_controller::FilesystemSubcommand"
 handler = "filesystem_controller::handle_fs_cli"
-help = "Filesystem commands (fs format, fs ls [--partition <partition>])"
+help = "Filesystem commands"
 args = [
     { name = "target", type = "Option<filesystem_controller::FormatTarget>", help = "Optional target to format (fs, telemetry, all)" },
     { name = "partition", type = "string", help = "Optional partition name" }
@@ -122,7 +122,7 @@ cmd_name = "system"
 variant = "System"
 subcommand_type = "system_controller::SystemSubcommand"
 handler = "system_controller::handle_system_cli"
-help = "System commands (system activity, system crash [core])"
+help = "System commands"
 args = [
     { name = "arg1", type = "Option<system_controller::CpuTarget>", help = "Optional target core (core0, core1)" }
 ]
@@ -133,7 +133,7 @@ cmd_name = "i2c"
 variant = "I2c"
 subcommand_type = "platform::i2c::I2cSubcommand"
 handler = "platform::i2c::handle_i2c_cli"
-help = "I2C commands (i2c scan)"
+help = "I2C commands"
 args = [
     { name = "bus", type = "string", help = "Target bus name" }
 ]
@@ -144,7 +144,7 @@ cmd_name = "gpio"
 variant = "Gpio"
 subcommand_type = "platform::gpio::GpioSubcommand"
 handler = "platform::gpio::handle_gpio_cli"
-help = "GPIO commands (gpio status, gpio read <pin>)"
+help = "GPIO commands"
 args = [
     { name = "pin", type = "Option<u32>", help = "Pin number to read" }
 ]
@@ -155,7 +155,7 @@ cmd_name = "led"
 variant = "Led"
 subcommand_type = "led_controller::LedSubcommand"
 handler = "led_controller::handle_led_cli"
-help = "LED commands (led off, led green, led blue, led yellow, led orange, led blink-four, led blink-slow)"
+help = "LED commands"
 
 [[cli_commands]]
 group = "Core"
@@ -163,7 +163,7 @@ cmd_name = "core"
 variant = "Core"
 subcommand_type = "platform::core_monitor::CoreMonitorSubcommand"
 handler = "platform::core_monitor::handle_core_monitor_cli"
-help = "Core monitor commands (core status, core crash [core])"
+help = "Core monitor commands"
 args = [
     { name = "core", type = "string", help = "Optional target core (core0 or core1)" }
 ]
