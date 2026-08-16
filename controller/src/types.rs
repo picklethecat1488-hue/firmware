@@ -50,6 +50,21 @@ pub struct NamedDevice<D> {
     pub device: *mut D,
 }
 
+impl<D> NamedDevice<D> {
+    /// Creates a new NamedDevice with a given name and pointer.
+    pub fn new(name: &'static str, device: *mut D) -> Self {
+        Self { name, device }
+    }
+
+    /// Creates a one-element array containing a NamedDevice named "default".
+    pub fn default(device: *mut D) -> [Self; 1] {
+        [Self {
+            name: "default",
+            device,
+        }]
+    }
+}
+
 impl<D> Clone for NamedDevice<D> {
     fn clone(&self) -> Self {
         *self

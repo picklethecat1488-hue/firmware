@@ -983,3 +983,51 @@ dummy_debug!(GestureAction);
 dummy_debug!(ProximityAction);
 dummy_debug!(BatteryStatus);
 dummy_debug!(DeviceSupport);
+
+/// Safely get a mutable reference to a static Option variable.
+#[macro_export]
+macro_rules! get_static_mut {
+    ($static_name:ident) => {
+        unsafe { &mut *core::ptr::addr_of_mut!($static_name) }
+            .as_mut()
+            .unwrap()
+    };
+}
+
+/// Safely take the value out of a static Option variable.
+#[macro_export]
+macro_rules! take_static_mut {
+    ($static_name:ident) => {
+        unsafe { &mut *core::ptr::addr_of_mut!($static_name) }
+            .take()
+            .unwrap()
+    };
+}
+
+/// Helper macro to define safe global getters for static mutable variables.
+#[macro_export]
+macro_rules! define_static_mut_getters {
+    ($($fn_name:ident, $static_name:ident, $type:ty;)*) => {
+        $(
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            /// Safely get a reference to the active controller.
+            pub fn $fn_name() -> &'static mut $type {
+                $crate::get_static_mut!($static_name)
+            }
+        )*
+    };
+}
+
+/// Helper macro to define safe global getters for Core 1 once-lock variables.
+#[macro_export]
+macro_rules! define_core1_getters {
+    ($($fn_name:ident, $lock_name:ident, $type:ty;)*) => {
+        $(
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            /// Safely get a reference to the active Core 1 controller.
+            pub async fn $fn_name() -> &'static mut $type {
+                unsafe { &mut *(*$lock_name.wait().await as *mut $type) }
+            }
+        )*
+    };
+}

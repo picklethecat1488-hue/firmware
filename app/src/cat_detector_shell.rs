@@ -12,13 +12,10 @@
 use cat_detector as app;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-use {
-    embassy_executor::Spawner, embedded_cli::cli::CliBuilder, platform::core_monitor,
-    platform::types::MapFilesystem,
-};
+use {embassy_executor::Spawner, embedded_cli::cli::CliBuilder, platform::core_monitor};
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-use controller::shell_controller::{ShellController, ShellControllerPointers};
+use controller::shell_controller::ShellController;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[panic_handler]
@@ -41,139 +38,15 @@ controller::declare_shell_commands! {
         I2c,
         Gpio,
         Led,
+        Core,
     }
 }
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-type I2cBus = embassy_rp::i2c::I2c<'static, embassy_rp::peripherals::I2C0, embassy_rp::i2c::Async>;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-type MotorDevice =
-    peripheral::l9110s::L9110s<embassy_rp::gpio::Flex<'static>, embassy_rp::gpio::Flex<'static>>;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-type FlashDevice = embassy_rp::flash::Flash<
-    'static,
-    embassy_rp::peripherals::FLASH,
-    embassy_rp::flash::Blocking,
-    { app::FLASH_SIZE },
->;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-type ThermalControllerType = controller::thermal_controller::ThermalController<
-    'static,
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    app::TempSensorDevice,
->;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-type BatteryControllerType = controller::battery_controller::BatteryController<
-    'static,
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    app::BatteryDevice,
-    app::ChargerDevice,
-    app::AlertPinType,
->;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-type SensorControllerType = controller::sensor_controller::SensorController<
-    'static,
-    app::ProximitySensorDevice,
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    app::DataReadyPinType,
-    app::SystemCommand,
-    controller::sensor_controller::ProximityReader,
->;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-type MotorControllerType =
-    controller::motor_controller::MotorController<MotorDevice, app::CurrentSensorDevice>;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-type SystemControllerType = controller::SystemController<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    cat_detector::CatDetectorFeatureSet<
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        16,
-    >,
-    16,
->;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-struct AppConfig;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-controller::impl_shell_config! {
-    AppConfig {
-        I2c = I2cBus,
-        Motor = MotorDevice,
-        Flash = FlashDevice,
-        TempSensor = cat_detector::Rp2040TempSensor,
-        ThermalCtrl = ThermalControllerType,
-        BatteryCtrl = BatteryControllerType,
-        SensorCtrl = SensorControllerType,
-        MotorCtrl = MotorControllerType,
-        SystemCtrl = SystemControllerType,
-        LedCtrl = controller::led_controller::LedController<app::LedDevice>,
-    }
-
-    fn trigger_core_panic(
-        _resolver: &controller::shell_controller::ShellController<'_, Self>,
-        core_id: u32,
-    ) -> Result<(), &'static str> {
-        if core_id == 1 {
-            CORE1_COMMAND_CHANNEL
-                .sender()
-                .try_send(Core1Command::Panic)
-                .map_err(|_| "Failed to send command to Core 1")?;
-            Ok(())
-        } else {
-            panic!("Simulated Core 0 panic");
-        }
-    }
-}
-/// Core 1 command enum.
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
-pub enum Core1Command {
-    /// Panic command.
-    Panic,
-}
-
-/// Core 1 command channel.
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-pub static CORE1_COMMAND_CHANNEL: embassy_sync::channel::Channel<
-    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-    Core1Command,
-    4,
-> = embassy_sync::channel::Channel::new();
 
 /// Static holder for LED Sender to resolve lifetimes.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 pub static mut LED_SENDER: Option<
     controller::LedSender<embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex, 4>,
 > = None;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-#[embassy_executor::task]
-#[allow(clippy::never_loop)]
-async fn core1_command_task(
-    rx: embassy_sync::channel::Receiver<
-        'static,
-        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-        Core1Command,
-        4,
-    >,
-) {
-    loop {
-        let cmd = rx.receive().await;
-        match cmd {
-            Core1Command::Panic => {
-                panic!("Simulated Core 1 panic");
-            }
-        }
-    }
-}
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[embassy_executor::task]
@@ -225,16 +98,9 @@ async fn main(spawner: Spawner) {
     // Initialize board peripherals and subcontrollers
     app::init_controllers(board).await;
 
-    // Initialize the modular panic handler
-    let panic_flash = unsafe { app::PANIC_FLASH.as_mut().unwrap() };
-    let fs_buf = unsafe { &mut app::FS_BUF };
-
-    app::init_panic_handler(
-        panic_flash,
-        MapFilesystem(app::FS_PARTITION_START..app::FS_PARTITION_END),
-        fs_buf,
-        app::MAX_CRASH_LOGS,
-    );
+    // Initialize panic diagnostics and filesystem storage
+    let fs_cfg = app::get_filesystem_config();
+    fs_cfg.init_panic_handler();
 
     core_monitor::init_core(
         Some(spawner),
@@ -244,156 +110,28 @@ async fn main(spawner: Spawner) {
         false,
     );
 
-    let core1 = unsafe { embassy_rp::peripherals::CORE1::steal() };
-    app::boot_core1(core1);
+    let app::Core0Controllers {
+        motor,
+        sensor_north,
+        sensor_east,
+        sensor_west,
+        ..
+    } = app::take_core0_controllers();
 
-    let spawner_c1 = unsafe { app::Board::spawner_core1() };
+    let core1 = app::steal_core1_peripheral();
+    let sensors = (sensor_north, sensor_east, sensor_west);
+    let spawner_c1 = app::bootstrap_core1(core1, motor, sensors);
+
     spawner_c1
-        .spawn(app::bootstrap_core1_task(
-            spawner_c1,
-            unsafe { app::MOTOR_CTRL_CORE0.take().unwrap() },
-            unsafe {
-                (
-                    app::SENSOR_CTRL_NORTH_CORE0.take().unwrap(),
-                    app::SENSOR_CTRL_EAST_CORE0.take().unwrap(),
-                    app::SENSOR_CTRL_WEST_CORE0.take().unwrap(),
-                )
-            },
+        .spawn(app::core1_command_task(
+            app::CORE1_COMMAND_CHANNEL.receiver(),
         ))
         .unwrap();
 
-    spawner_c1
-        .spawn(core1_command_task(CORE1_COMMAND_CHANNEL.receiver()))
-        .unwrap();
+    // Retrieve pointers using the platformitized helper
+    let pointers = app::get_shell_pointers(fs_cfg.buffer).await;
 
-    let temp_sensor_ptr = {
-        let mut guard = app::SHARED_TEMP_SENSOR.lock().await;
-        if let Some(ref mut sensor) = guard.0 {
-            sensor as *mut cat_detector::Rp2040TempSensor
-        } else {
-            core::ptr::null_mut()
-        }
-    };
-
-    let thermals = unsafe {
-        &[controller::NamedDevice {
-            name: "default",
-            device: app::THERMAL_CTRL.as_mut().unwrap() as *mut _,
-        }]
-    };
-
-    let batteries = unsafe {
-        &[controller::NamedDevice {
-            name: "default",
-            device: app::BATTERY_CTRL.as_mut().unwrap() as *mut _,
-        }]
-    };
-
-    let board_i2c_ptr = {
-        let mut guard = app::SHARED_I2C.lock().await;
-        if let Some(ref mut i2c) = guard.i2c {
-            i2c as *mut _ as *mut _
-        } else {
-            core::ptr::null_mut()
-        }
-    };
-
-    let raw_motor_ptr = *app::MOTOR_CTRL_CORE1.wait().await;
-    let board_motor_ptr =
-        unsafe { &mut (*(raw_motor_ptr as *mut MotorControllerType)).motor as *mut _ };
-
-    let i2c_buses = &[controller::NamedDevice {
-        name: "default",
-        device: board_i2c_ptr,
-    }];
-    let motors = &[controller::NamedDevice {
-        name: "default",
-        device: board_motor_ptr,
-    }];
-    let flash_partitions = unsafe {
-        &[
-            controller::NamedPartition {
-                name: "default",
-                partition: controller::FlashPartition {
-                    flash_ptr: app::PANIC_FLASH.as_mut().unwrap() as *mut _,
-                    start_address: app::FS_PARTITION_START,
-                    end_address: app::FS_PARTITION_END,
-                },
-                kind: controller::PartitionKind::Map,
-            },
-            controller::NamedPartition {
-                name: "telemetry",
-                partition: controller::FlashPartition {
-                    flash_ptr: app::PANIC_FLASH.as_mut().unwrap() as *mut _,
-                    start_address: app::TELEMETRY_PARTITION_START,
-                    end_address: app::TELEMETRY_PARTITION_END,
-                },
-                kind: controller::PartitionKind::Queue,
-            },
-        ]
-    };
-    let temp_sensors: &[controller::NamedDevice<_>] = if !temp_sensor_ptr.is_null() {
-        &[controller::NamedDevice {
-            name: "default",
-            device: temp_sensor_ptr,
-        }]
-    } else {
-        &[]
-    };
-    let sensors = &[
-        controller::NamedDevice {
-            name: "north",
-            device: *app::SENSOR_CTRL_NORTH_CORE1.wait().await as *mut _,
-        },
-        controller::NamedDevice {
-            name: "east",
-            device: *app::SENSOR_CTRL_EAST_CORE1.wait().await as *mut _,
-        },
-        controller::NamedDevice {
-            name: "west",
-            device: *app::SENSOR_CTRL_WEST_CORE1.wait().await as *mut _,
-        },
-    ];
-
-    let motor_ctrls = &[controller::NamedDevice {
-        name: "default",
-        device: *app::MOTOR_CTRL_CORE1.wait().await as *mut _,
-    }];
-
-    let feature_set = app::create_default_feature_set();
-    let mut system_ctrl = controller::SystemController::new(
-        feature_set,
-        app::TELEMETRY_CHANNEL.sender(),
-        model::types::BootReason::Unknown,
-    );
-
-    let system_ctrls = &[controller::NamedDevice {
-        name: "default",
-        device: &mut system_ctrl as *mut _,
-    }];
-
-    let leds = unsafe {
-        &[controller::NamedDevice {
-            name: "default",
-            device: app::LED_CTRL.as_mut().unwrap() as *mut _,
-        }]
-    };
-
-    let pointers = ShellControllerPointers::<AppConfig> {
-        i2c_buses,
-        motors,
-        flash_partitions,
-        temp_sensors,
-        sensors,
-        motor_ctrls,
-        thermals,
-        batteries,
-        system_ctrls,
-        leds,
-        fs_buffer: unsafe { &mut app::FS_BUF },
-    };
-
-    let mut processor = ShellController::<AppConfig>::new(pointers);
+    let mut processor = ShellController::<app::CatDetectorShellConfig>::new(pointers);
 
     let mut local_proc = CatDetectorCliProcessor::new(&mut processor);
 

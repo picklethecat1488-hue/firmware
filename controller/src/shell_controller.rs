@@ -139,6 +139,8 @@ macro_rules! define_shell_resolver_and_controller {
             }
         }
 
+
+
         impl<'a, C: ShellConfig> ShellDeviceResolver<C> for ShellController<'a, C> {
             $(
                 fn $resolve_fn(&self, name: Option<&str>) -> Result<&mut C::$associated_type, &'static str> {

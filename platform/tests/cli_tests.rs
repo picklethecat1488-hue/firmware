@@ -1,4 +1,5 @@
 use embedded_cli::arguments::FromArgument;
+use platform::mock::{MockI2c, MockI2cResolver, MockWriter};
 use platform::subcommand_enum;
 
 subcommand_enum! {
@@ -56,77 +57,6 @@ fn test_subcommand_enum_parsing() {
         err.expected,
         "Invalid test subcommand. Expected: first, custom_second, third"
     );
-}
-
-struct MockI2c {
-    active_address: u8,
-}
-
-impl embedded_hal_async::i2c::ErrorType for MockI2c {
-    type Error = embedded_hal::i2c::ErrorKind;
-}
-
-impl embedded_hal_async::i2c::I2c for MockI2c {
-    async fn read(&mut self, _address: u8, _read: &mut [u8]) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn write(&mut self, address: u8, _write: &[u8]) -> Result<(), Self::Error> {
-        if address == self.active_address {
-            Ok(())
-        } else {
-            Err(embedded_hal::i2c::ErrorKind::NoAcknowledge(
-                embedded_hal::i2c::NoAcknowledgeSource::Address,
-            ))
-        }
-    }
-
-    async fn write_read(
-        &mut self,
-        _address: u8,
-        _write: &[u8],
-        _read: &mut [u8],
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    async fn transaction(
-        &mut self,
-        _address: u8,
-        _operations: &mut [embedded_hal_async::i2c::Operation<'_>],
-    ) -> Result<(), Self::Error> {
-        Ok(())
-    }
-}
-
-struct MockI2cResolver {
-    i2c: core::cell::RefCell<MockI2c>,
-}
-
-impl platform::i2c::I2cResolver for MockI2cResolver {
-    type I2c = MockI2c;
-    fn resolve_i2c(&self, _name: Option<&str>) -> Result<&mut Self::I2c, &'static str> {
-        Ok(unsafe { &mut *self.i2c.as_ptr() })
-    }
-}
-
-struct MockWriter {
-    buf: heapless::Vec<u8, 2048>,
-}
-
-impl embedded_io::ErrorType for MockWriter {
-    type Error = core::convert::Infallible;
-}
-
-impl embedded_io::Write for MockWriter {
-    fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-        let _ = self.buf.extend_from_slice(buf);
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
 }
 
 #[test]
@@ -208,4 +138,102 @@ fn test_gpio_cli() {
     }
     let output_str = core::str::from_utf8(&mock_write.buf).unwrap();
     assert!(output_str.contains("GP0") && output_str.contains("GP29"));
+}
+
+#[test]
+fn test_core_monitor_cli() {
+    let resolver = ();
+
+    let mut mock_write = MockWriter {
+        buf: heapless::Vec::new(),
+    };
+
+    // 1. Test status subcommand (happy path)
+    {
+        let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
+        let res = platform::core_monitor::handle_core_monitor_cli(
+            &resolver,
+            Some(platform::core_monitor::CoreMonitorSubcommand::Status),
+            None,
+            &mut writer,
+        );
+        assert!(res.is_ok());
+    }
+    let output_str = core::str::from_utf8(&mock_write.buf).unwrap();
+    assert!(output_str.contains("Core Monitor Status:"));
+    assert!(output_str.contains("Core0"));
+
+    // 2. Test crash core0 subcommand (happy path)
+    mock_write.buf.clear();
+    platform::core_monitor::LAST_PANICKED_CORE.with(|cell| cell.set(None));
+    {
+        let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
+        let res = platform::core_monitor::handle_core_monitor_cli(
+            &resolver,
+            Some(platform::core_monitor::CoreMonitorSubcommand::Crash),
+            Some("core0"),
+            &mut writer,
+        );
+        assert!(res.is_ok());
+        assert_eq!(
+            platform::core_monitor::LAST_PANICKED_CORE.with(|cell| cell.get()),
+            Some(0)
+        );
+    }
+
+    // 3. Test crash core1 subcommand (happy path)
+    platform::core_monitor::LAST_PANICKED_CORE.with(|cell| cell.set(None));
+    {
+        let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
+        let res = platform::core_monitor::handle_core_monitor_cli(
+            &resolver,
+            Some(platform::core_monitor::CoreMonitorSubcommand::Crash),
+            Some("core1"),
+            &mut writer,
+        );
+        assert!(res.is_ok());
+        assert_eq!(
+            platform::core_monitor::LAST_PANICKED_CORE.with(|cell| cell.get()),
+            Some(1)
+        );
+    }
+
+    // 4. Test sad paths
+    // Sad Path A: Missing subcommand
+    {
+        let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
+        let res =
+            platform::core_monitor::handle_core_monitor_cli(&resolver, None, None, &mut writer);
+        assert_eq!(
+            res,
+            Err("Missing core monitor subcommand (expected: status, crash)")
+        );
+    }
+
+    // Sad Path B: Missing core target for crash
+    {
+        let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
+        let res = platform::core_monitor::handle_core_monitor_cli(
+            &resolver,
+            Some(platform::core_monitor::CoreMonitorSubcommand::Crash),
+            None,
+            &mut writer,
+        );
+        assert_eq!(
+            res,
+            Err("Missing target core for crash (expected: core0, core1)")
+        );
+    }
+
+    // Sad Path C: Invalid core name
+    {
+        let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
+        let res = platform::core_monitor::handle_core_monitor_cli(
+            &resolver,
+            Some(platform::core_monitor::CoreMonitorSubcommand::Crash),
+            Some("invalid_core"),
+            &mut writer,
+        );
+        assert_eq!(res, Err("Invalid core name (must be core0 or core1)"));
+    }
 }
