@@ -1,0 +1,41 @@
+# Workspace Rules: Pre-Commit Validation
+
+Before finalizing any task, committing changes, or proposing modifications to the codebase, you MUST run the unified pre-commit verification script to ensure the codebase remains healthy:
+
+```bash
+./tools/verify.sh
+```
+
+## Validation Guidelines
+1. **Execution**: Always run `./tools/verify.sh` from the repository root.
+2. **Outcome Verification**: Confirm the script exits successfully and outputs `Verification PASSED`.
+3. **Resolution**: If any component fails (such as Cargo tests, Python tests, formatting, or firmware builds), you must address the failure and re-run `./tools/verify.sh` until it passes before concluding your work.
+
+## Software Architecture & Code Guidelines
+
+### 1. Test Isolation
+* Unit tests MUST be completely isolated from implementation code. Do NOT mix unit tests inside implementation files. 
+* Place all unit tests in a `tests/` subdirectory at the crate root level (e.g., `model/tests/state_machine_tests.rs`).
+
+### 2. Microcontroller Decoupling & BSPs
+* Do NOT perform conditional driver setup or extract GPIO pins inside main application files (`main.rs`, `shell.rs`).
+* Encapsulate all initialization, pin configuration, and dynamic address setup inside the `Board::init` constructor in the Board Support Package (BSP) target/host implementations (e.g., `bsp_target.rs` / `bsp_host.rs`).
+* Do NOT prefix files or structs with MCU model numbers (e.g., do not write `rp2040_sensor.rs`). Keep driver wrappers target-independent.
+* Vendor-specific code should only go in the board or app crate. It may go into the platform crate if placed inside a vendor's platform support module (e.g., [platform/src/rp2040/lib.rs](file:///Users/daparker/gh/firmware/platform/src/rp2040/lib.rs)).
+
+### 3. Peripheral Sharing
+* To share a peripheral driver between multiple controllers:
+  * **System Integration**: Use the Actor/Message-Passing pattern. Run the peripheral inside its own isolated task and communicate via async channels (e.g., `embassy_sync::channel::Channel`).
+  * **Bringup/Shell**: Use Interior Mutability & Shared References (`Rc` + `RefCell` or `Mutex`/`Arc`).
+  * **Forbidden**: Never pass raw mutable references across tasks.
+
+### 4. Controller Design & Constraints
+* Decorate every domain controller context struct inside the `controller` crate with `#[crate::tracing::controller_context]`.
+* Controllers MUST NOT instantiate other controllers (e.g. do not call `FilesystemController::new()` inside `MotorController`).
+* CLI shell commands must use platform-level direct operations (e.g., `platform::flash::read_file_direct`) instead of instantiating controller tasks directly.
+* Boilerplate controller setups, task runners, and CLI command groups are automatically generated using Rinja. When modifying controllers or CLI handlers, edit `controllers.toml`, `shell.toml`, or the template files in `controller/templates/` instead of writing boilerplate directly.
+
+### 5. Logging & Tracing Standards
+* Instrument all async tasks, controller loops, and main entry points by default using `defmt` logging macros for startup, tick, and command changes.
+* Use the consolidated tracing facade module `use crate::tracing;` (which re-exports `platform::tracing`). Do NOT import the standard `tracing` crate directly, as it requires `alloc` and is incompatible with the target `no_std` environment.
+* When using `#[tracing::instrument]`, do NOT list `self` in the `skip(...)` attribute.
