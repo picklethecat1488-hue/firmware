@@ -8,14 +8,14 @@
 pub use board::cat_detector::{
     get_boot_reason, AlertPinType, BatteryDevice, Board, BoardPeripherals, ChargerDevice,
     CurrentSensorDevice, DataReadyPinType, LedDevice, MotorDevice, MutexRaw, ProximitySensorDevice,
-    Rp2040TempSensor, TempSensorDevice, CORE0_STACK_BOTTOM, CORE_MONITOR_TIMEOUT_MS,
+    Rp2040TempSensor, TempSensorDevice, CORE0_STACK_TOP, CORE_MONITOR_TIMEOUT_MS,
     CORE_MONITOR_WARN_PCT, DEFAULT_NEAR_THRESHOLD_MM, DEFAULT_PRESS_THRESHOLD_MM,
     DEFAULT_WAKE_THRESHOLD_MM, FS_BUF, FS_PARTITION_END, FS_PARTITION_START, FUEL_GAUGE_INT_PIN,
-    I2C_SCL_PIN, I2C_SDA_PIN, MAX_CRASH_LOGS, MAX_RECORDS, NUM_CHUNKS, PUMP_PIN_IA, PUMP_PIN_IB,
-    STACK_TOP, STORAGE_PARTITION_END, STORAGE_PARTITION_START, TELEMETRY_PARTITION_END,
-    TELEMETRY_PARTITION_START, TOF_EAST_I2C_ADDR, TOF_EAST_INT_PIN, TOF_EAST_XSHUT_PIN,
-    TOF_NORTH_I2C_ADDR, TOF_NORTH_INT_PIN, TOF_NORTH_XSHUT_PIN, TOF_WEST_I2C_ADDR,
-    TOF_WEST_INT_PIN, TOF_WEST_XSHUT_PIN, UART_RX_PIN, UART_TX_PIN,
+    I2C_SCL_PIN, I2C_SDA_PIN, MAX_CRASH_LOGS, PUMP_PIN_IA, PUMP_PIN_IB, STORAGE_PARTITION_END,
+    STORAGE_PARTITION_START, TELEMETRY_PARTITION_END, TELEMETRY_PARTITION_START, TOF_EAST_I2C_ADDR,
+    TOF_EAST_INT_PIN, TOF_EAST_XSHUT_PIN, TOF_NORTH_I2C_ADDR, TOF_NORTH_INT_PIN,
+    TOF_NORTH_XSHUT_PIN, TOF_WEST_I2C_ADDR, TOF_WEST_INT_PIN, TOF_WEST_XSHUT_PIN, UART_RX_PIN,
+    UART_TX_PIN,
 };
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -187,10 +187,12 @@ pub async fn bootstrap_core1_task(
     sensors: (SensorType, SensorType, SensorType),
 ) {
     // Configure MPU Stack Guard for Core 1
-    let guard_addr =
-        board::cat_detector::CORE1_STACK_BOTTOM.load(core::sync::atomic::Ordering::Acquire);
-    if guard_addr != 0 {
-        platform::core_monitor::configure_mpu_stack_guard(guard_addr);
+    let top = board::cat_detector::CORE1_STACK_TOP.load(core::sync::atomic::Ordering::Acquire);
+    if top != board::cat_detector::CORE1_DEFAULT_STACK_TOP {
+        platform::core_monitor::configure_mpu_stack_guard(
+            top,
+            board::cat_detector::CORE1_STACK_SIZE,
+        );
     }
 
     // Initialize the core monitor for Core 1
@@ -492,8 +494,6 @@ pub type SensorControllerType = MockSensorController;
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Concrete type for the telemetry controller.
 pub type TelemetryControllerType = controller::telemetry_controller::TelemetryController<
-    { MAX_RECORDS },
-    { model::telemetry::BUFFER_SIZE },
     platform::flash::SharedFlashMutex<platform::BlockingAsyncFlash<FlashDevice>>,
 >;
 

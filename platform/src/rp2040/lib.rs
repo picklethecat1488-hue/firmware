@@ -346,10 +346,7 @@ macro_rules! boot_multicore {
         pub static CORE1_STACK_TOP: core::sync::atomic::AtomicU32 =
             core::sync::atomic::AtomicU32::new(CORE1_DEFAULT_STACK_TOP);
 
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        /// Core 1 stack bottom address.
-        pub static CORE1_STACK_BOTTOM: core::sync::atomic::AtomicU32 =
-            core::sync::atomic::AtomicU32::new(0);
+
 
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         fn core1_entry() -> ! {
@@ -380,9 +377,7 @@ macro_rules! boot_multicore {
             use ::rp2040::PlatformMulticore as _;
             let stack_ptr = core::ptr::addr_of_mut!(CORE1_STACK);
             let stack_top = unsafe { (*stack_ptr).stack_top() };
-            let stack_bottom = unsafe { (*stack_ptr).stack_bottom() };
             CORE1_STACK_TOP.store(stack_top, core::sync::atomic::Ordering::Release);
-            CORE1_STACK_BOTTOM.store(stack_bottom, core::sync::atomic::Ordering::Release);
 
             unsafe {
                 <$board>::init_executor_core1();

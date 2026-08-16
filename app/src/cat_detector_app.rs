@@ -135,7 +135,7 @@ async fn bootstrap_task(spawner: Spawner, p: embassy_rp::Peripherals) {
             Led(controllers.core0.led, LED_CHANNEL), generics: (app::LedDevice),
             System(controllers.core0.system, SYSTEM_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (app::SystemControllerType),
             Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (app::FlashDeviceType),
-            Telemetry(telemetry_ctrl, TELEMETRY_CHANNEL), generics: ({ app::MAX_RECORDS }, { controller::telemetry_controller::CHANNEL_CAPACITY }, platform::flash::SharedFlashMutex<platform::BlockingAsyncFlash<app::FlashDevice>>),
+            Telemetry(telemetry_ctrl, TELEMETRY_CHANNEL), generics: ({ controller::telemetry_controller::CHANNEL_CAPACITY }, platform::flash::SharedFlashMutex<platform::BlockingAsyncFlash<app::FlashDevice>>),
         }
     }
 }

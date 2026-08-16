@@ -1,0 +1,26 @@
+// Generated from board.toml. Do not edit.
+
+{% for const in constants %}
+/// {{ const.doc }}
+pub const {{ const.name }}: {{ const.const_type }} = {{ const.val_str }};
+{% endfor %}
+
+// Statically verify partition layouts
+platform::assert_partitions! {
+    storage_range: (STORAGE_PARTITION_START, STORAGE_PARTITION_END),
+    partition_ranges: [
+        (FS_PARTITION_START, FS_PARTITION_END),
+        (TELEMETRY_PARTITION_START, TELEMETRY_PARTITION_END)
+    ]
+}
+
+platform::define_project_metadata! {
+    chip: "{{ chip }}",
+    flash_base: {{ flash_base_hex() }},
+    flash_write_size: rp2040::FLASH_WRITE_SIZE,
+    flash_erase_size: rp2040::FLASH_ERASE_SIZE,
+    fs_start: FS_PARTITION_START,
+    fs_end: FS_PARTITION_END,
+    telemetry_start: TELEMETRY_PARTITION_START,
+    telemetry_end: TELEMETRY_PARTITION_END
+}

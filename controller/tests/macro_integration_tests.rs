@@ -290,7 +290,7 @@ fn test_spawn_all_controllers_configuration() {
                 Led(led_ctrl, LED_CHANNEL), generics: (MockLed),
                 System(system_ctrl, SYSTEM_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, DummyFeatureSet<CriticalSectionRawMutex, 16>, 16>),
                 Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (controller::filesystem_controller::ProfilingFlash<SharedFlashMutex<TestFlash>>),
-                Telemetry(telemetry_ctrl, TELEMETRY_CONSUMER_CHANNEL), generics: (1024, { controller::telemetry_controller::CHANNEL_CAPACITY }, SharedFlashMutex<TestFlash>),
+                Telemetry(telemetry_ctrl, TELEMETRY_CONSUMER_CHANNEL), generics: ({ controller::telemetry_controller::CHANNEL_CAPACITY }, SharedFlashMutex<TestFlash>),
             }
         }
 

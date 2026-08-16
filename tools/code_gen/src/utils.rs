@@ -57,3 +57,21 @@ pub fn find_peripherals_toml() -> PathBuf {
         }
     }
 }
+
+/// Searches upward from the current directory to locate the path of `board.toml`.
+pub fn find_board_toml() -> PathBuf {
+    let mut path = std::env::current_dir().unwrap();
+    loop {
+        let toml_path = path.join("board/board.toml");
+        if toml_path.exists() {
+            return toml_path;
+        }
+        let direct_toml_path = path.join("board.toml");
+        if direct_toml_path.exists() {
+            return direct_toml_path;
+        }
+        if !path.pop() {
+            panic!("Could not locate board.toml in current directory or any parent directories!");
+        }
+    }
+}
