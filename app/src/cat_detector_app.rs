@@ -37,7 +37,6 @@ async fn bootstrap_task(spawner: Spawner, p: embassy_rp::Peripherals) {
     defmt::info!("Booting Cat Detector App...");
 
     let fs_cfg = app::get_filesystem_config();
-    fs_cfg.init_panic_handler();
 
     core_monitor::init_core(
         Some(spawner),

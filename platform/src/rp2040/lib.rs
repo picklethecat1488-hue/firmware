@@ -421,3 +421,111 @@ macro_rules! define_panic_handler {
         }
     };
 }
+
+/// Helper macro to initialize a 30-element GPIO Option array with specific active pins.
+/// Only the active pins specified in the list will be degraded and placed in the array.
+/// All other pins are left as `None` (uninitialized and not moved).
+#[macro_export]
+macro_rules! init_gpio_pins_with_reserved {
+    ($p:expr, { $($index:expr => $pin:ident),* $(,)? }) => {{
+        let mut pins: [Option<::embassy_rp::gpio::Flex<'_>>; 30] = [
+            None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None,
+            None, None, None, None, None, None, None, None, None, None,
+        ];
+        $(
+            pins[$index as usize] = {
+                use ::embassy_rp::gpio::Pin as _;
+                Some(::embassy_rp::gpio::Flex::new($p.$pin.degrade()))
+            };
+        )*
+        pins
+    }};
+}
+
+const MB: usize = 1024 * 1024;
+
+#[cfg(feature = "rp2040_flash_2mb")]
+/// Total flash memory capacity.
+pub const FLASH_SIZE: usize = 2 * MB;
+
+#[cfg(feature = "rp2040_flash_4mb")]
+/// Total flash memory capacity.
+pub const FLASH_SIZE: usize = 4 * MB;
+
+#[cfg(feature = "rp2040_flash_8mb")]
+/// Total flash memory capacity.
+pub const FLASH_SIZE: usize = 8 * MB;
+
+#[cfg(feature = "rp2040_flash_16mb")]
+/// Total flash memory capacity.
+pub const FLASH_SIZE: usize = 16 * MB;
+
+#[cfg(not(any(
+    feature = "rp2040_flash_2mb",
+    feature = "rp2040_flash_4mb",
+    feature = "rp2040_flash_8mb",
+    feature = "rp2040_flash_16mb"
+)))]
+/// Total flash memory capacity.
+pub const FLASH_SIZE: usize = 2 * MB;
+
+/// Start address of flash memory mapping (XIP address space).
+pub const FLASH_START: u32 = 0x1000_0000;
+
+/// End address of flash memory mapping.
+pub const FLASH_END: u32 = FLASH_START + FLASH_SIZE as u32;
+
+/// Flash page write size in bytes.
+pub const FLASH_WRITE_SIZE: usize = 1;
+
+/// Flash erase block size in bytes.
+pub const FLASH_ERASE_SIZE: usize = 4096;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global panic flash peripheral reference.
+static mut PANIC_FLASH: Option<
+    ::embassy_rp::flash::Flash<
+        'static,
+        ::embassy_rp::peripherals::FLASH,
+        ::embassy_rp::flash::Blocking,
+        FLASH_SIZE,
+    >,
+> = None;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Construct a platform PanicConfig by stealing the FLASH peripheral.
+///
+/// # Safety
+/// This is unsafe because it steals the FLASH peripheral.
+pub unsafe fn make_panic_config(
+    range: ::platform::types::MapFilesystem,
+    fs_buf: &'static mut [u8],
+    max_crash_logs: u32,
+) -> ::platform::types::PanicConfig {
+    let panic_flash = &mut *core::ptr::addr_of_mut!(PANIC_FLASH);
+    if panic_flash.is_none() {
+        let fs_flash = ::embassy_rp::peripherals::FLASH::steal();
+        *panic_flash = Some(::embassy_rp::flash::Flash::new_blocking(fs_flash));
+    }
+    ::platform::types::PanicConfig {
+        flash: panic_flash.as_mut().unwrap(),
+        range,
+        fs_buf,
+        max_crash_logs,
+    }
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Get raw mutable pointer to the panic flash device.
+///
+/// # Safety
+/// This is unsafe because it returns a raw mutable pointer to static mut storage.
+pub unsafe fn get_panic_flash_ptr() -> *mut () {
+    let panic_flash = &mut *core::ptr::addr_of_mut!(PANIC_FLASH);
+    if panic_flash.is_none() {
+        let fs_flash = ::embassy_rp::peripherals::FLASH::steal();
+        *panic_flash = Some(::embassy_rp::flash::Flash::new_blocking(fs_flash));
+    }
+    panic_flash.as_mut().unwrap() as *mut _ as *mut _
+}

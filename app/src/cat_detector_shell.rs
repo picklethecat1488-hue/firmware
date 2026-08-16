@@ -100,7 +100,6 @@ async fn main(spawner: Spawner) {
 
     // Initialize panic diagnostics and filesystem storage
     let fs_cfg = app::get_filesystem_config();
-    fs_cfg.init_panic_handler();
 
     core_monitor::init_core(
         Some(spawner),

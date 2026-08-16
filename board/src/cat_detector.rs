@@ -77,18 +77,8 @@ pub const MAX_CRASH_LOGS: u32 = 10;
 /// Static working buffer for filesystem and panic handler operations.
 /// Shared across the app and shell binaries to avoid duplicate stack/static allocations.
 pub static mut FS_BUF: [u8; 8192] = [0u8; 8192];
-/// Total QSPI flash memory capacity on the board (2.00 MB).
-pub const FLASH_SIZE: usize = 2 * 1024 * 1024;
 /// Top address of the stack/SRAM (RP2040 has 264 KB SRAM, ending at 0x2004_0000).
 pub const STACK_TOP: u32 = 0x2004_2000;
-/// Start address of flash memory mapping (XIP address space).
-pub const FLASH_START: u32 = 0x1000_0000;
-/// End address of flash memory mapping (FLASH_START + FLASH_SIZE).
-pub const FLASH_END: u32 = 0x1020_0000;
-/// Flash page write size in bytes.
-pub const FLASH_WRITE_SIZE: usize = 1;
-/// Flash erase block size in bytes.
-pub const FLASH_ERASE_SIZE: usize = 4096;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Thread-safe Mutex wrapping the active I2C peripheral for shared access between tasks.
@@ -125,10 +115,6 @@ pub static SHARED_CHARGER: embassy_sync::mutex::Mutex<MutexRaw, ChargerDevice> =
     )));
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-/// Global panic flash peripheral reference.
-pub static mut PANIC_FLASH: Option<FlashDevice> = None;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Core 1 stack size in bytes.
 pub const CORE1_STACK_SIZE: usize = 16384;
 
@@ -138,18 +124,18 @@ pub type FlashDevice = embassy_rp::flash::Flash<
     'static,
     embassy_rp::peripherals::FLASH,
     embassy_rp::flash::Blocking,
-    { crate::FLASH_SIZE },
+    { rp2040::FLASH_SIZE },
 >;
 
 rp2040::boot_multicore!(crate::Board, CORE1_STACK_SIZE);
 
 rp2040::define_panic_handler!(
     crate::STACK_TOP,
-    { crate::FLASH_SIZE },
-    { crate::FLASH_START },
-    { crate::FLASH_END },
-    { crate::FLASH_WRITE_SIZE },
-    { crate::FLASH_ERASE_SIZE }
+    { rp2040::FLASH_SIZE },
+    { rp2040::FLASH_START },
+    { rp2040::FLASH_END },
+    { rp2040::FLASH_WRITE_SIZE },
+    { rp2040::FLASH_ERASE_SIZE }
 );
 
 /// Default core monitor timeout in milliseconds.
@@ -164,8 +150,8 @@ pub const CORE0_STACK_BOTTOM: u32 = 0x2003_C000;
 platform::define_project_metadata! {
     chip: "rp2040",
     flash_base: 0x10000000,
-    flash_write_size: FLASH_WRITE_SIZE,
-    flash_erase_size: FLASH_ERASE_SIZE,
+    flash_write_size: rp2040::FLASH_WRITE_SIZE,
+    flash_erase_size: rp2040::FLASH_ERASE_SIZE,
     fs_start: FS_PARTITION_START,
     fs_end: FS_PARTITION_END,
     telemetry_start: TELEMETRY_PARTITION_START,
@@ -413,11 +399,12 @@ mod target {
     #![deny(missing_docs)]
 
     use embassy_rp::bind_interrupts;
-    use embassy_rp::gpio::{Flex, Pin, Pull};
+    use embassy_rp::gpio::{Flex, Pull};
     use embassy_rp::pio::InterruptHandler;
     use embassy_rp::Peripherals;
+    use platform::panic_handler;
     use platform::tracing;
-    use platform::types::QueueFilesystem;
+    use platform::types::{MapFilesystem, QueueFilesystem};
 
     bind_interrupts!(struct Irqs {
         PIO0_IRQ_0 => InterruptHandler<embassy_rp::peripherals::PIO0>;
@@ -463,43 +450,19 @@ mod target {
             platform::core_monitor::configure_mpu_stack_guard(crate::CORE0_STACK_BOTTOM);
 
             // Initialize the I2C0 peripheral inside SHARED_I2C static Mutex
-            {
-                let mut guard = crate::SHARED_I2C.lock().await;
-                guard.initialize();
-            }
+            crate::SHARED_I2C.lock().await.initialize();
             let mut i2c = platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C);
-            let mut gpio_pins: [Option<Flex<'d>>; 30] = [
-                None, // 0 - UART TX
-                None, // 1 - UART RX
-                Some(Flex::new(p.PIN_2.degrade())),
-                Some(Flex::new(p.PIN_3.degrade())),
-                Some(Flex::new(p.PIN_4.degrade())),
-                Some(Flex::new(p.PIN_5.degrade())),
-                Some(Flex::new(p.PIN_6.degrade())),
-                Some(Flex::new(p.PIN_7.degrade())),
-                Some(Flex::new(p.PIN_8.degrade())),
-                Some(Flex::new(p.PIN_9.degrade())),
-                Some(Flex::new(p.PIN_10.degrade())),
-                None, // 11 - WS2812 LED (driven via PIO0)
-                None, // 12 - I2C SDA
-                None, // 13 - I2C SCL
-                Some(Flex::new(p.PIN_14.degrade())),
-                Some(Flex::new(p.PIN_15.degrade())),
-                Some(Flex::new(p.PIN_16.degrade())),
-                Some(Flex::new(p.PIN_17.degrade())),
-                Some(Flex::new(p.PIN_18.degrade())),
-                Some(Flex::new(p.PIN_19.degrade())),
-                Some(Flex::new(p.PIN_20.degrade())),
-                Some(Flex::new(p.PIN_21.degrade())),
-                Some(Flex::new(p.PIN_22.degrade())),
-                Some(Flex::new(p.PIN_23.degrade())),
-                Some(Flex::new(p.PIN_24.degrade())),
-                Some(Flex::new(p.PIN_25.degrade())), // Onboard LED / Pump pin
-                Some(Flex::new(p.PIN_26.degrade())),
-                Some(Flex::new(p.PIN_27.degrade())),
-                Some(Flex::new(p.PIN_28.degrade())),
-                Some(Flex::new(p.PIN_29.degrade())),
-            ];
+            let mut gpio_pins: [Option<Flex<'d>>; 30] = ::rp2040::init_gpio_pins_with_reserved!(p, {
+                crate::TOF_NORTH_XSHUT_PIN => PIN_4,
+                crate::TOF_EAST_XSHUT_PIN => PIN_5,
+                crate::TOF_WEST_XSHUT_PIN => PIN_6,
+                crate::TOF_NORTH_INT_PIN => PIN_7,
+                crate::TOF_EAST_INT_PIN => PIN_9,
+                crate::TOF_WEST_INT_PIN => PIN_10,
+                crate::FUEL_GAUGE_INT_PIN => PIN_14,
+                crate::PUMP_PIN_IA => PIN_19,
+                crate::PUMP_PIN_IB => PIN_20,
+            });
 
             // 2. Assert XSHUT (active low) on all ToF sensors (GP2, GP3, GP6)
             let xshut_pins = [
@@ -534,7 +497,7 @@ mod target {
             }
 
             // Wait for sensors to register reset state
-            cortex_m::asm::delay(20_000);
+            ::embassy_time::Timer::after_micros(200).await;
 
             let temp_flash = unsafe { core::ptr::read(&p.FLASH) };
             let mut raw_flash: crate::FlashDevice =
@@ -580,20 +543,14 @@ mod target {
             }
 
             let temp_sensor = Rp2040TempSensor::new(p.ADC, p.ADC_TEMP_SENSOR);
-            {
-                let mut guard = crate::SHARED_TEMP_SENSOR.lock().await;
-                guard.0 = Some(temp_sensor);
-            }
+            crate::SHARED_TEMP_SENSOR.lock().await.0 = Some(temp_sensor);
 
             // Configure remaining drivers using local i2c before returning
-            {
-                let mut sensor = peripheral::max17048::Max17048::new(&mut i2c);
-                peripheral::init_i2c!(&mut sensor, &mut boot_status);
-            }
-            {
-                let mut sensor = peripheral::ina219::Ina219::new(&mut i2c);
-                peripheral::init_i2c!(&mut sensor, &mut boot_status);
-            }
+            let mut fuel_gauge = peripheral::max17048::Max17048::new(&mut i2c);
+            peripheral::init_i2c!(&mut fuel_gauge, &mut boot_status);
+
+            let mut current_sensor = peripheral::ina219::Ina219::new(i2c);
+            peripheral::init_i2c!(&mut current_sensor, &mut boot_status);
 
             // Extract pins needed for drivers/controllers
             let mut motor_pin_ia = gpio_pins[crate::PUMP_PIN_IA as usize]
@@ -620,15 +577,9 @@ mod target {
                 .expect("West ToF interrupt pin must be available");
 
             // Construct final drivers wrapping SHARED_I2C static cell
-            let current_sensor = peripheral::ina219::Ina219::new(
-                platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
-            );
+
             let make_tof = |addr, direction| {
-                let mut sensor = peripheral::vl53l0x::Vl53l0x::new(
-                    platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C),
-                    addr,
-                    direction,
-                );
+                let mut sensor = peripheral::vl53l0x::Vl53l0x::new(i2c, addr, direction);
                 let _ = sensor.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
                 sensor
             };
@@ -652,11 +603,14 @@ mod target {
                 use rp2040::PlatformMulticore as _;
                 Some(rp2040::Rp2040Multicore.spawner(platform::types::CpuId::Core0))
             };
-
+            // Initialize the platform panic handler with layout/flash details
             unsafe {
-                crate::PANIC_FLASH = Some(embassy_rp::flash::Flash::new_blocking(p.FLASH));
+                let fs_buf_panic = &mut *core::ptr::addr_of_mut!(crate::FS_BUF);
+                let partition = MapFilesystem(crate::FS_PARTITION_START..crate::FS_PARTITION_END);
+                let config =
+                    ::rp2040::make_panic_config(partition, fs_buf_panic, crate::MAX_CRASH_LOGS);
+                panic_handler::init(config);
             }
-
             Self {
                 gpio_pins,
 
