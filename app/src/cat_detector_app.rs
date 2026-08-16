@@ -29,8 +29,13 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 #[platform::tracing::instrument(name = "boot", level = "info", skip(spawner, p))]
 #[embassy_executor::task]
 async fn bootstrap_task(spawner: Spawner, p: embassy_rp::Peripherals) {
-    let board = app::Board::init(p).await;
-    app::init_controllers(board).await;
+    let mut board = app::Board::init(p).await;
+    let peripherals = board.take_peripherals();
+    if app::BOARD.set(board).is_err() {
+        panic!("Failed to set BOARD static");
+    }
+    let board_ref = app::BOARD.get().unwrap();
+    let mut controllers = app::init_controllers(board_ref, peripherals).await;
 
     // Route defmt logs to RTT
     platform::defmt_logger::DefmtLogger::set_writer(&platform::defmt_logger::DEFAULT_RTT_WRITER);
@@ -88,45 +93,47 @@ async fn bootstrap_task(spawner: Spawner, p: embassy_rp::Peripherals) {
     let client =
         controller::filesystem_controller::FilesystemClient::new(app::FILESYSTEM_CHANNEL.sender());
 
-    let app::Core0Controllers {
-        thermal: thermal_ctrl,
-        battery: power_ctrl,
-        led: led_ctrl,
-        mut motor,
-        sensor_north: mut sensor_ctrl_north,
-        sensor_east: mut sensor_ctrl_east,
-        sensor_west: mut sensor_ctrl_west,
-        system: system_ctrl,
-    } = app::take_core0_controllers();
-
     if let Some(cal) = motor_cal {
-        motor.set_calibration(&cal);
+        controllers.core1.motor.set_calibration(&cal);
     }
 
-    sensor_ctrl_north.set_calibration(&proximity_cal);
-    sensor_ctrl_east.set_calibration(&proximity_cal);
-    sensor_ctrl_west.set_calibration(&proximity_cal);
+    controllers
+        .core1
+        .sensor_north
+        .set_calibration(&proximity_cal);
+    controllers
+        .core1
+        .sensor_east
+        .set_calibration(&proximity_cal);
+    controllers
+        .core1
+        .sensor_west
+        .set_calibration(&proximity_cal);
 
     let telemetry_flash_mutex_ref = flash::SharedFlashMutex::new(flash_mutex);
-    let telemetry_ctrl = app::set_telemetry_ctrl(TelemetryController::new(
+    let telemetry_ctrl = TelemetryController::new(
         telemetry_flash_mutex_ref,
         QueueFilesystem(app::TELEMETRY_PARTITION_START..app::TELEMETRY_PARTITION_END),
         client,
-    ));
+    );
 
     let core1 = app::steal_core1_peripheral();
-    let sensors = (sensor_ctrl_north, sensor_ctrl_east, sensor_ctrl_west);
-    app::bootstrap_core1(core1, motor, sensors);
+    let sensors = (
+        controllers.core1.sensor_north,
+        controllers.core1.sensor_east,
+        controllers.core1.sensor_west,
+    );
+    app::bootstrap_core1(core1, controllers.core1.motor, sensors);
 
     // Spawn tasks on Core 0
     controller::spawn_controllers! {
         spawner,
         telemetry: TELEMETRY_CHANNEL,
         controllers: {
-            Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (app::TempSensorDevice),
-            Battery(power_ctrl, BATTERY_CHANNEL), generics: (app::BatteryDevice, app::ChargerDevice, app::AlertPinType),
-            Led(led_ctrl, LED_CHANNEL), generics: (app::LedDevice),
-            System(system_ctrl, SYSTEM_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (app::SystemControllerType),
+            Thermal(controllers.core0.thermal, THERMAL_CHANNEL), generics: (app::TempSensorDevice),
+            Battery(controllers.core0.battery, BATTERY_CHANNEL), generics: (app::BatteryDevice, app::ChargerDevice, app::AlertPinType),
+            Led(controllers.core0.led, LED_CHANNEL), generics: (app::LedDevice),
+            System(controllers.core0.system, SYSTEM_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (app::SystemControllerType),
             Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (app::FlashDeviceType),
             Telemetry(telemetry_ctrl, TELEMETRY_CHANNEL), generics: ({ app::MAX_RECORDS }, { controller::telemetry_controller::CHANNEL_CAPACITY }, platform::flash::SharedFlashMutex<platform::BlockingAsyncFlash<app::FlashDevice>>),
         }
