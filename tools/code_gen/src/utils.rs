@@ -172,6 +172,8 @@ pub struct AppFeatures {
 pub struct AppTopology {
     /// Associated target CLI shell configuration struct name.
     pub shell_config: String,
+    /// Optional flag indicating if Core 1 is enabled for the application.
+    pub core1_enabled: Option<bool>,
     /// Configured messaging channels.
     pub channels: std::collections::BTreeMap<String, AppChannel>,
     /// Configured topology controller devices.

@@ -4,6 +4,7 @@
 
 [apps.cat_detector]
 shell_config = "CatDetectorShellConfig"
+core1_enabled = true
 cli_handlers = ["Battery", "Thermal", "Motor", "Sensor", "Fs", "System", "I2c", "Gpio", "Led", "Core"]
 
 # Define static channels

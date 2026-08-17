@@ -363,6 +363,71 @@ pub fn generate_board_definitions(toml_content: &str, board_name: &str) -> Strin
         doc: "Core 1 stack size in bytes.".to_string(),
     });
 
+    // Core 1 enablement constant
+    let core1_enabled = board_config.core1_stack_size > 0;
+    constants.push(BoardConstant {
+        name: "CORE1_ENABLED".to_string(),
+        const_type: "bool".to_string(),
+        val_str: core1_enabled.to_string(),
+        doc: "Whether Core 1 (multicore) is enabled.".to_string(),
+    });
+
+    // Default target-independent flash geometry constants
+    constants.push(BoardConstant {
+        name: "FLASH_SIZE".to_string(),
+        const_type: "usize".to_string(),
+        val_str: board_config.flash_size.to_string(),
+        doc: "Total size of target flash memory in bytes.".to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "FLASH_START".to_string(),
+        const_type: "u32".to_string(),
+        val_str: format!("0x{:08X}", board_config.flash_base),
+        doc: "Starting address of target flash memory.".to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "FLASH_END".to_string(),
+        const_type: "u32".to_string(),
+        val_str: format!(
+            "0x{:08X}",
+            board_config.flash_base + board_config.flash_size
+        ),
+        doc: "Ending address of target flash memory.".to_string(),
+    });
+
+    let (write_size, erase_size) = match board_config.chip.as_str() {
+        "rp2040" => (256, 4096),
+        _ => (256, 4096),
+    };
+    constants.push(BoardConstant {
+        name: "FLASH_WRITE_SIZE".to_string(),
+        const_type: "usize".to_string(),
+        val_str: write_size.to_string(),
+        doc: "Minimum flash write block size in bytes.".to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "FLASH_ERASE_SIZE".to_string(),
+        const_type: "usize".to_string(),
+        val_str: erase_size.to_string(),
+        doc: "Minimum flash erase sector size in bytes.".to_string(),
+    });
+
+    // Default FS_BUF_SIZE constant if not defined in hardware_resources
+    let fs_buf_size = board_config
+        .hardware_resources
+        .get("FS_BUF_SIZE")
+        .and_then(|r| match &r.value {
+            toml::Value::Integer(i) => Some(*i as usize),
+            _ => None,
+        })
+        .unwrap_or(8192);
+    constants.push(BoardConstant {
+        name: "FS_BUF_SIZE".to_string(),
+        const_type: "usize".to_string(),
+        val_str: fs_buf_size.to_string(),
+        doc: "Size of the static working filesystem buffer in bytes.".to_string(),
+    });
+
     // Board parameters
     constants.push(BoardConstant {
         name: "CORE_MONITOR_TIMEOUT_MS".to_string(),
@@ -387,4 +452,75 @@ pub fn generate_board_definitions(toml_content: &str, board_name: &str) -> Strin
     };
 
     template.render().expect("Failed to render board template")
+}
+
+/// Rinja template for rendering a compilable Board Support Package (BSP) skeleton.
+#[derive(Template)]
+#[template(path = "bsp.rs.jinja", escape = "none")]
+pub struct BspSkeletonTemplate {
+    /// The PascalCase name of the board.
+    pub name_pascal: String,
+    /// The target microcontroller chip type (e.g. `"rp2040"`).
+    pub chip: String,
+    /// Whether Core 1 (multicore) is enabled.
+    pub core1_enabled: bool,
+    /// I2C SDA pin name/identifier.
+    pub i2c_sda_pin: String,
+    /// I2C SCL pin name/identifier.
+    pub i2c_scl_pin: String,
+    /// I2C speed/frequency in Hz.
+    pub i2c_frequency: u32,
+    /// Filesystem buffer size in bytes.
+    pub fs_buf_size: usize,
+}
+
+/// Renders a compilable Board Support Package (BSP) skeleton.
+pub fn render_board_skeleton(name_pascal: &str) -> String {
+    let board_toml_path = crate::find_board_toml();
+    let content = std::fs::read_to_string(&board_toml_path).expect("Failed to read board.toml");
+    let boards_config: BoardsConfig = toml::from_str(&content).expect("Failed to parse board.toml");
+
+    let matched_board = boards_config
+        .boards
+        .iter()
+        .find(|(k, _)| {
+            k.eq_ignore_ascii_case(name_pascal)
+                || name_pascal.to_lowercase().contains(&k.to_lowercase())
+        })
+        .map(|(_, v)| v)
+        .or_else(|| boards_config.boards.values().next())
+        .expect("No boards found in board.toml");
+
+    let core1_enabled = matched_board.core1_stack_size > 0;
+
+    let mut i2c_sda_pin = "12".to_string();
+    let mut i2c_scl_pin = "13".to_string();
+    let mut i2c_frequency = 400000;
+    if let Some(i2c_bus) = matched_board.buses.get("i2c") {
+        i2c_sda_pin = i2c_bus.sda.clone();
+        i2c_scl_pin = i2c_bus.scl.clone();
+        i2c_frequency = i2c_bus.frequency;
+    }
+
+    let fs_buf_size = matched_board
+        .hardware_resources
+        .get("FS_BUF_SIZE")
+        .and_then(|r| match &r.value {
+            toml::Value::Integer(i) => Some(*i as usize),
+            _ => None,
+        })
+        .unwrap_or(8192);
+
+    let template = BspSkeletonTemplate {
+        name_pascal: name_pascal.to_string(),
+        chip: matched_board.chip.clone(),
+        core1_enabled,
+        i2c_sda_pin,
+        i2c_scl_pin,
+        i2c_frequency,
+        fs_buf_size,
+    };
+    template
+        .render()
+        .expect("Failed to render board skeleton template")
 }

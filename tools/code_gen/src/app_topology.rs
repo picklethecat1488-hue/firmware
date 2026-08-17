@@ -532,3 +532,106 @@ pub fn generate_app_topology(app_toml_content: &str, app_name: &str) -> String {
         .render()
         .expect("Failed to render GeneratedAppTemplate")
 }
+
+/// Rinja template for rendering a minimal application library logic skeleton.
+#[derive(Template)]
+#[template(path = "lib.rs.jinja", escape = "none")]
+pub struct AppSkeletonTemplate {
+    /// PascalCase name of the application.
+    pub name_pascal: String,
+    /// Whether Core 1 is enabled.
+    pub core1_enabled: bool,
+}
+
+/// Renders a minimal application library logic skeleton.
+pub fn render_app_skeleton(name_pascal: &str) -> String {
+    let core1_enabled = is_core1_enabled_for_app(name_pascal);
+    let template = AppSkeletonTemplate {
+        name_pascal: name_pascal.to_string(),
+        core1_enabled,
+    };
+    template
+        .render()
+        .expect("Failed to render app skeleton template")
+}
+
+/// Rinja template for rendering a production firmware binary main entry skeleton.
+#[derive(Template)]
+#[template(path = "app.rs.jinja", escape = "none")]
+pub struct AppRunnerSkeletonTemplate {
+    /// SnakeCase name of the application module/crate.
+    pub name_snake: String,
+    /// PascalCase name of the application.
+    pub name_pascal: String,
+    /// Whether Core 1 is enabled.
+    pub core1_enabled: bool,
+}
+
+/// Renders a production firmware binary main entry skeleton.
+pub fn render_app_runner_skeleton(name_snake: &str, name_pascal: &str) -> String {
+    let core1_enabled = is_core1_enabled_for_app(name_pascal);
+    let template = AppRunnerSkeletonTemplate {
+        name_snake: name_snake.to_string(),
+        name_pascal: name_pascal.to_string(),
+        core1_enabled,
+    };
+    template
+        .render()
+        .expect("Failed to render app runner skeleton template")
+}
+
+/// Rinja template for rendering an interactive CLI console shell runner skeleton.
+#[derive(Template)]
+#[template(path = "shell.rs.jinja", escape = "none")]
+pub struct AppShellSkeletonTemplate {
+    /// SnakeCase name of the application module/crate.
+    pub name_snake: String,
+    /// PascalCase name of the application.
+    pub name_pascal: String,
+    /// Name of the shell configuration struct.
+    pub shell_config: String,
+    /// Whether Core 1 is enabled.
+    pub core1_enabled: bool,
+}
+
+/// Renders an interactive CLI console shell runner skeleton.
+pub fn render_app_shell_skeleton(
+    name_snake: &str,
+    name_pascal: &str,
+    shell_config: &str,
+) -> String {
+    let core1_enabled = is_core1_enabled_for_app(name_pascal);
+    let template = AppShellSkeletonTemplate {
+        name_snake: name_snake.to_string(),
+        name_pascal: name_pascal.to_string(),
+        shell_config: shell_config.to_string(),
+        core1_enabled,
+    };
+    template
+        .render()
+        .expect("Failed to render app shell skeleton template")
+}
+
+fn is_core1_enabled_for_app(app_name_pascal: &str) -> bool {
+    let app_toml_path = crate::find_app_toml();
+    let content = std::fs::read_to_string(&app_toml_path).expect("Failed to read app.toml");
+    let app_config: crate::MultiAppConfig =
+        toml::from_str(&content).expect("Failed to parse app.toml");
+
+    let matched_app = app_config
+        .apps
+        .iter()
+        .find(|(k, _)| {
+            k.eq_ignore_ascii_case(app_name_pascal)
+                || app_name_pascal.to_lowercase().contains(&k.to_lowercase())
+        })
+        .map(|(_, v)| v);
+
+    if let Some(app_topology) = matched_app {
+        app_topology
+            .core1_enabled
+            .unwrap_or_else(|| app_topology.controllers.iter().any(|c| c.core == Some(1)))
+    } else {
+        false
+    }
+}

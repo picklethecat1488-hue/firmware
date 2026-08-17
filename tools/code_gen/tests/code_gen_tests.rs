@@ -358,3 +358,83 @@ fn test_validate_app_toml_parsing_and_generation() {
     assert!(rendered.contains("pub struct CatDetectorFeatureSet"));
     assert!(rendered.contains("pub fn create_default_feature_set"));
 }
+
+#[test]
+fn test_list_boards_apps_peripherals() {
+    // 1. Boards
+    let board_toml_path = code_gen::find_board_toml();
+    let content = fs::read_to_string(&board_toml_path).unwrap();
+    let boards_config: code_gen::BoardsConfig = toml::from_str(&content).unwrap();
+    assert!(!boards_config.boards.is_empty());
+    assert!(boards_config.boards.contains_key("cat_detector"));
+
+    // 2. Apps
+    let app_toml_path = code_gen::find_app_toml();
+    let app_content = fs::read_to_string(&app_toml_path).unwrap();
+    let app_config: code_gen::MultiAppConfig = toml::from_str(&app_content).unwrap();
+    assert!(!app_config.apps.is_empty());
+    assert!(app_config.apps.contains_key("cat_detector"));
+
+    // 3. Peripherals
+    let peripherals_toml_path = code_gen::find_peripherals_toml();
+    let peripherals_content = fs::read_to_string(&peripherals_toml_path).unwrap();
+    let peripheral_config: code_gen::PeripheralConfig =
+        toml::from_str(&peripherals_content).unwrap();
+    assert!(!peripheral_config.peripherals.is_empty());
+    assert!(peripheral_config
+        .peripherals
+        .iter()
+        .any(|p| p.name == "Max17048"));
+}
+
+#[test]
+fn test_board_sample_generation() {
+    let board_toml_path = code_gen::find_board_toml();
+    let content = fs::read_to_string(&board_toml_path).unwrap();
+    let generated = code_gen::generate_board_definitions(&content, "cat_detector");
+    assert!(!generated.is_empty());
+    assert!(generated.contains("pub const CORE0_STACK_SIZE: usize = 24576;"));
+    assert!(generated.contains("pub const DUAL_CORE_ENABLED: bool = true;"));
+}
+
+#[test]
+fn test_board_skeleton_syntax_and_compiles() {
+    let content = code_gen::render_board_skeleton("TestBoard");
+    let parsed = syn::parse_str::<syn::File>(&content);
+    assert!(
+        parsed.is_ok(),
+        "Failed to parse rendered board skeleton: {:?}",
+        parsed.err()
+    );
+}
+
+#[test]
+fn test_app_skeleton_syntax_and_compiles() {
+    // 1. Lib skeleton
+    let lib_content = code_gen::render_app_skeleton("TestApp");
+    let parsed_lib = syn::parse_str::<syn::File>(&lib_content);
+    assert!(
+        parsed_lib.is_ok(),
+        "Failed to parse rendered app lib skeleton: {:?}",
+        parsed_lib.err()
+    );
+
+    // 2. App runner skeleton
+    let runner_content = code_gen::render_app_runner_skeleton("test_app", "TestApp");
+    let parsed_runner = syn::parse_str::<syn::File>(&runner_content);
+    assert!(
+        parsed_runner.is_ok(),
+        "Failed to parse rendered app runner skeleton: {:?}",
+        parsed_runner.err()
+    );
+
+    // 3. App shell skeleton
+    let shell_content =
+        code_gen::render_app_shell_skeleton("test_app", "TestApp", "TestShellConfig");
+    let parsed_shell = syn::parse_str::<syn::File>(&shell_content);
+    assert!(
+        parsed_shell.is_ok(),
+        "Failed to parse rendered app shell skeleton: {:?}",
+        parsed_shell.err()
+    );
+}

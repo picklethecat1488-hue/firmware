@@ -1,0 +1,26 @@
+//! Production firmware binary entry point for the {{ name_pascal }} application.
+
+#![no_std]
+#![no_main]
+
+use {{ name_snake }}::*;
+
+#[embassy_executor::main]
+async fn main(spawner: embassy_executor::Spawner) {
+    // Initialize board Support Package
+    let (_board, board_peripherals) = BoardType::init();
+
+    // Allocate static memory for controllers
+    static mut CONTROLLERS: core::mem::MaybeUninit<Controllers> = core::mem::MaybeUninit::uninit();
+    let controllers = unsafe {
+        CONTROLLERS.write(Controllers::default())
+    };
+
+    static mut PERIPHERALS: core::mem::MaybeUninit<BoardPeripheralsType> = core::mem::MaybeUninit::uninit();
+    let peripherals = unsafe {
+        PERIPHERALS.write(board_peripherals)
+    };
+
+    // Run core0 task
+    run_core0_task(spawner, controllers, peripherals).await;
+}

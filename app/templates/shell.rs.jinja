@@ -1,0 +1,33 @@
+//! Interactive shell CLI binary for the {{ name_pascal }} application.
+
+#![no_std]
+#![no_main]
+
+use {{ name_snake }}::*;
+
+#[embassy_executor::main]
+async fn main(spawner: embassy_executor::Spawner) {
+    let (_board, board_peripherals) = BoardType::init();
+
+    static mut CONTROLLERS: core::mem::MaybeUninit<Controllers> = core::mem::MaybeUninit::uninit();
+    let controllers = unsafe {
+        CONTROLLERS.write(Controllers::default())
+    };
+
+    static mut PERIPHERALS: core::mem::MaybeUninit<BoardPeripheralsType> = core::mem::MaybeUninit::uninit();
+    let peripherals = unsafe {
+        PERIPHERALS.write(board_peripherals)
+    };
+
+    // Spawn normal application tasks
+    run_core0_task(spawner, controllers, peripherals).await;
+
+    // Allocate stack pointers and start shell console
+    declare_shell_pointers!(unsafe { &mut board::FS_BUF }, controllers, peripherals, pointers);
+    spawner.spawn(run_shell_task(pointers)).unwrap();
+}
+
+#[embassy_executor::task]
+async fn run_shell_task(pointers: controller::shell_controller::ShellControllerPointers<{{ shell_config }}>) {
+    // Console runloop
+}
