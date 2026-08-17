@@ -9,6 +9,8 @@ pub mod cli;
 
 #[doc(hidden)]
 pub use embedded_cli;
+#[doc(hidden)]
+pub use embedded_io;
 
 /// RP2040 panic handler module.
 #[path = "system/panic.rs"]

@@ -309,6 +309,9 @@ macro_rules! emit_direct_commands {
                         let _ = core::writeln!($writer, "Command failed: {}", err);
                     }
                 }
+                if $ctrl.has_pending_command() {
+                    cli.set_prompt("");
+                }
                 Ok(())
             }
         }
@@ -390,6 +393,9 @@ macro_rules! emit_wrapper_commands {
                         $crate::shell_controller::log_failure(err);
                         let _ = core::writeln!($writer, "Command failed: {}", err);
                     }
+                }
+                if $ctrl.has_pending_command() {
+                    cli.set_prompt("");
                 }
                 Ok(())
             }
