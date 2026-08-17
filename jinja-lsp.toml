@@ -1,0 +1,3 @@
+templates = "./"
+backend = ["./tools/code_gen/src", "./app/src", "./board/src"]
+lang = "rust"
