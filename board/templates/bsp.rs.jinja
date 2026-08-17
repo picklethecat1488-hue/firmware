@@ -3,7 +3,7 @@
 include!(concat!(env!("OUT_DIR"), "/generated_board.rs"));
 
 /// Static working buffer for filesystem and panic handler operations.
-pub static mut FS_BUF: [u8; FS_BUF_SIZE] = [0u8; FS_BUF_SIZE];
+static mut FS_BUF: [u8; Board::FS_BUF_SIZE] = [0u8; Board::FS_BUF_SIZE];
 
 /// RawMutex type used by controllers.
 pub type MutexRaw = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -15,20 +15,20 @@ pub type FlashDevice = embassy_rp::flash::Flash<
     'static,
     embassy_rp::peripherals::FLASH,
     embassy_rp::flash::Blocking,
-    { FLASH_SIZE },
+    { Board::FLASH_SIZE },
 >;
 
 {% if core1_enabled %}
-rp2040::boot_multicore!(crate::Board, CORE1_STACK_SIZE);
+rp2040::boot_multicore!(crate::Board, { Board::CORE1_STACK_SIZE });
 {% endif %}
 
 rp2040::define_panic_handler!(
-    crate::CORE0_STACK_TOP,
-    { FLASH_SIZE },
-    { FLASH_START },
-    { FLASH_END },
-    { FLASH_WRITE_SIZE },
-    { FLASH_ERASE_SIZE }
+    crate::Board::CORE0_STACK_TOP,
+    { Board::FLASH_SIZE },
+    { Board::FLASH_START },
+    { Board::FLASH_END },
+    { Board::FLASH_WRITE_SIZE },
+    { Board::FLASH_ERASE_SIZE }
 );
 {% endif %}
 
@@ -127,8 +127,8 @@ mod target {
             let watchdog = embassy_rp::watchdog::Watchdog::new(p.WATCHDOG);
 
             let i2c = embassy_sync::mutex::Mutex::new(platform::i2c::SafeI2c::new(
-                {{ i2c_sda_pin }} as u8,
-                {{ i2c_scl_pin }} as u8,
+                Board::{{ i2c_sda_pin }} as u8,
+                Board::{{ i2c_scl_pin }} as u8,
                 {{ i2c_frequency }},
                 |_| {},
             ));

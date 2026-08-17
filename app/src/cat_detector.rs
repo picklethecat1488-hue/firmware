@@ -8,18 +8,11 @@
 pub use board::cat_detector::{
     get_boot_reason, AlertPinType, BatteryDevice, Board, BoardPeripherals, ChargerDevice,
     CurrentSensorDevice, DataReadyPinType, LedDevice, MotorDevice, MutexRaw, ProximitySensorDevice,
-    Rp2040TempSensor, TempSensorDevice, CORE0_STACK_TOP, CORE_MONITOR_TIMEOUT_MS,
-    CORE_MONITOR_WARN_PCT, DEFAULT_NEAR_THRESHOLD_MM, DEFAULT_PRESS_THRESHOLD_MM,
-    DEFAULT_WAKE_THRESHOLD_MM, FS_BUF, FS_PARTITION_END, FS_PARTITION_START, FUEL_GAUGE_INT_PIN,
-    I2C_SCL_PIN, I2C_SDA_PIN, MAX_CRASH_LOGS, PUMP_PIN_IA, PUMP_PIN_IB, STORAGE_PARTITION_END,
-    STORAGE_PARTITION_START, TELEMETRY_PARTITION_END, TELEMETRY_PARTITION_START, TOF_EAST_I2C_ADDR,
-    TOF_EAST_INT_PIN, TOF_EAST_XSHUT_PIN, TOF_NORTH_I2C_ADDR, TOF_NORTH_INT_PIN,
-    TOF_NORTH_XSHUT_PIN, TOF_WEST_I2C_ADDR, TOF_WEST_INT_PIN, TOF_WEST_XSHUT_PIN, UART_RX_PIN,
-    UART_TX_PIN,
+    Rp2040TempSensor, TempSensorDevice,
 };
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-pub use board::cat_detector::{handle_panic, CORE1_STACK_SIZE, SHARED_I2C};
+pub use board::cat_detector::{handle_panic, SHARED_I2C};
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Global OnceLock static for Board.
@@ -69,7 +62,7 @@ pub async fn init_controllers(
             peripherals.tof_north,
             SYSTEM_CHANNEL.sender(),
             board::cat_detector::ProximityPinWrapper(peripherals.pin_north),
-            DEFAULT_WAKE_THRESHOLD_MM,
+            Board::DEFAULT_WAKE_THRESHOLD_MM,
         );
     sensor_north.bind_command_tx(SENSOR_NORTH_CHANNEL.sender());
 
@@ -81,7 +74,7 @@ pub async fn init_controllers(
             peripherals.tof_east,
             SYSTEM_CHANNEL.sender(),
             board::cat_detector::ProximityPinWrapper(peripherals.pin_east),
-            DEFAULT_WAKE_THRESHOLD_MM,
+            Board::DEFAULT_WAKE_THRESHOLD_MM,
         );
     sensor_east.bind_command_tx(SENSOR_EAST_CHANNEL.sender());
 
@@ -93,7 +86,7 @@ pub async fn init_controllers(
             peripherals.tof_west,
             SYSTEM_CHANNEL.sender(),
             board::cat_detector::ProximityPinWrapper(peripherals.pin_west),
-            DEFAULT_WAKE_THRESHOLD_MM,
+            Board::DEFAULT_WAKE_THRESHOLD_MM,
         );
     sensor_west.bind_command_tx(SENSOR_WEST_CHANNEL.sender());
 
@@ -169,18 +162,15 @@ pub async fn bootstrap_core1_task(
     // Configure MPU Stack Guard for Core 1
     let top = board::cat_detector::CORE1_STACK_TOP.load(core::sync::atomic::Ordering::Acquire);
     if top != board::cat_detector::CORE1_DEFAULT_STACK_TOP {
-        platform::core_monitor::configure_mpu_stack_guard(
-            top,
-            board::cat_detector::CORE1_STACK_SIZE,
-        );
+        platform::core_monitor::configure_mpu_stack_guard(top, Board::CORE1_STACK_SIZE);
     }
 
     // Initialize the core monitor for Core 1
     platform::core_monitor::init_core(
         Some(spawner),
         platform::core_monitor::CpuId::Core1,
-        crate::CORE_MONITOR_TIMEOUT_MS,
-        crate::CORE_MONITOR_WARN_PCT,
+        Board::CORE_MONITOR_TIMEOUT_MS,
+        Board::CORE_MONITOR_WARN_PCT,
         true,
     );
 
@@ -191,41 +181,9 @@ pub async fn bootstrap_core1_task(
     spawn_core1_controllers!(spawner, controllers);
 }
 
-/// The critical state of charge threshold under which battery is considered critical.
-pub const CRITICAL_BATTERY_SOC_THRESHOLD: u8 = 10;
-/// The state of charge threshold under which battery is considered low.
-pub const LOW_BATTERY_SOC_THRESHOLD: u8 = 20;
-/// The state of charge threshold under which battery is considered medium.
-pub const MID_BATTERY_SOC_THRESHOLD: u8 = 21;
-/// The state of charge threshold under which battery is considered high.
-pub const HIGH_BATTERY_SOC_THRESHOLD: u8 = 80;
-/// The state of charge hysteresis to prevent rapid toggling around thresholds.
-pub const BATTERY_SOC_HYSTERESIS: u8 = 2;
-
-/// Temperature threshold in milli-Celsius where the system starts warning/throttling.
-pub const OVERHEATING_TEMP_THRESHOLD_MC: i32 = 45000;
-/// Temperature threshold in milli-Celsius where the system goes to PowerDown.
-pub const CRITICAL_TEMP_THRESHOLD_MC: i32 = 60000;
-
-const _: () = {
-    assert!(
-        CRITICAL_BATTERY_SOC_THRESHOLD > 0,
-        "Critical battery threshold must be nonzero"
-    );
-};
-
-platform::assert_ascending!(
-    CRITICAL_BATTERY_SOC_THRESHOLD,
-    LOW_BATTERY_SOC_THRESHOLD,
-    MID_BATTERY_SOC_THRESHOLD,
-    HIGH_BATTERY_SOC_THRESHOLD,
-);
-
-platform::assert_ascending!(OVERHEATING_TEMP_THRESHOLD_MC, CRITICAL_TEMP_THRESHOLD_MC,);
-
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// The concrete flash type used for the filesystem partition in production.
-pub type FlashDeviceType = platform::flash::TargetFlash<{ ::rp2040::FLASH_SIZE }>;
+pub type FlashDeviceType = platform::flash::TargetFlash<{ Board::FLASH_SIZE }>;
 // Type aliases for controllers
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Concrete type for the thermal controller.
@@ -447,7 +405,7 @@ impl FilesystemStorageConfig {
         let raw_flash = embassy_rp::flash::Flash::<
             _,
             embassy_rp::flash::Blocking,
-            { ::rp2040::FLASH_SIZE },
+            { Board::FLASH_SIZE },
         >::new_blocking(fs_flash);
         platform::BlockingAsyncFlash(raw_flash)
     }
@@ -465,8 +423,8 @@ impl FilesystemStorageConfig {
 /// Get the unified filesystem storage configuration.
 pub fn get_filesystem_config() -> FilesystemStorageConfig {
     FilesystemStorageConfig {
-        partition: controller::MapFilesystem(FS_PARTITION_START..FS_PARTITION_END),
-        buffer: unsafe { &mut *core::ptr::addr_of_mut!(FS_BUF) },
+        partition: controller::MapFilesystem(Board::FS_PARTITION_START..Board::FS_PARTITION_END),
+        buffer: Board::fs_buf(),
     }
 }
 

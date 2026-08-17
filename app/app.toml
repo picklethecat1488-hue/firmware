@@ -96,29 +96,29 @@ kind = "Queue"
 inactivity_timeout_seconds = 30
 
 [apps.cat_detector.features.motor]
-channel = "MOTOR_CHANNEL"
+channel = "motor"
 max_speed = "model::types::MotorSpeed::MAX"
 
 [apps.cat_detector.features.battery]
-channel = "BATTERY_CHANNEL"
-critical_soc = "CRITICAL_BATTERY_SOC_THRESHOLD"
-hysteresis = "BATTERY_SOC_HYSTERESIS"
-low_soc = "LOW_BATTERY_SOC_THRESHOLD"
-mid_soc = "MID_BATTERY_SOC_THRESHOLD"
-high_soc = "HIGH_BATTERY_SOC_THRESHOLD"
+channel = "battery"
+critical_soc = 10
+hysteresis = 5
+low_soc = 20
+mid_soc = 50
+high_soc = 80
 
 [apps.cat_detector.features.proximity]
-channels = ["SENSOR_NORTH_CHANNEL", "SENSOR_EAST_CHANNEL", "SENSOR_WEST_CHANNEL"]
-press_threshold = "DEFAULT_PRESS_THRESHOLD_MM"
-near_threshold = "DEFAULT_NEAR_THRESHOLD_MM"
-wake_threshold = "DEFAULT_WAKE_THRESHOLD_MM"
+channels = ["sensor_north", "sensor_east", "sensor_west"]
+press_threshold = 20
+near_threshold = 100
+wake_threshold = 300
 gesture_action = "controller::GestureAction::TogglePower"
-telemetry = "TELEMETRY_CHANNEL"
+telemetry = "telemetry"
 
 [apps.cat_detector.features.led]
-channel = "LED_CHANNEL"
+channel = "led"
 
 [apps.cat_detector.features.thermal]
-channel = "THERMAL_CHANNEL"
-overheating_threshold = "OVERHEATING_TEMP_THRESHOLD_MC"
-critical_threshold = "CRITICAL_TEMP_THRESHOLD_MC"
+channel = "thermal"
+overheating_threshold = 70000
+critical_threshold = 85000

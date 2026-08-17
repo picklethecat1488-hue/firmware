@@ -347,10 +347,11 @@ pub fn generate_app_topology(app_toml_content: &str, app_name: &str) -> String {
                 name: "motor",
                 type_generator: |_| "controller::MotorFeatureConfig<MutexRaw>".to_string(),
                 init_generator: |params| {
-                    let channel = params
+                    let channel_raw = params
                         .get("channel")
                         .and_then(|v| v.as_str())
                         .expect("Missing channel for motor feature");
+                    let channel = format!("{}_CHANNEL", channel_raw.to_uppercase());
                     let max_speed = params
                         .get("max_speed")
                         .and_then(|v| v.as_str())
@@ -365,29 +366,20 @@ pub fn generate_app_topology(app_toml_content: &str, app_name: &str) -> String {
                 name: "battery",
                 type_generator: |_| "controller::BatteryFeatureConfig<MutexRaw>".to_string(),
                 init_generator: |params| {
-                    let channel = params
+                    let channel_raw = params
                         .get("channel")
                         .and_then(|v| v.as_str())
                         .expect("Missing channel for battery feature");
-                    let critical_soc = params
-                        .get("critical_soc")
-                        .and_then(|v| v.as_str())
+                    let channel = format!("{}_CHANNEL", channel_raw.to_uppercase());
+                    let critical_soc = get_param_str(params, "critical_soc")
                         .expect("Missing critical_soc for battery feature");
-                    let hysteresis = params
-                        .get("hysteresis")
-                        .and_then(|v| v.as_str())
+                    let hysteresis = get_param_str(params, "hysteresis")
                         .expect("Missing hysteresis for battery feature");
-                    let low_soc = params
-                        .get("low_soc")
-                        .and_then(|v| v.as_str())
+                    let low_soc = get_param_str(params, "low_soc")
                         .expect("Missing low_soc for battery feature");
-                    let mid_soc = params
-                        .get("mid_soc")
-                        .and_then(|v| v.as_str())
+                    let mid_soc = get_param_str(params, "mid_soc")
                         .expect("Missing mid_soc for battery feature");
-                    let high_soc = params
-                        .get("high_soc")
-                        .and_then(|v| v.as_str())
+                    let high_soc = get_param_str(params, "high_soc")
                         .expect("Missing high_soc for battery feature");
                     format!(
                         "controller::BatteryFeatureConfig::new(Some({}.sender()), platform::BatteryManager::new({}, {}, {}, {}, {}))",
@@ -416,35 +408,26 @@ pub fn generate_app_topology(app_toml_content: &str, app_name: &str) -> String {
                         .expect("proximity channels must be an array")
                         .iter()
                         .map(|v| {
-                            v.as_str()
-                                .expect("proximity channel must be a string")
-                                .to_string()
+                            let ch = v.as_str().expect("proximity channel must be a string");
+                            format!("{}_CHANNEL", ch.to_uppercase())
                         })
                         .collect();
-                    let press_threshold = params
-                        .get("press_threshold")
-                        .and_then(|v| v.as_str())
+                    let press_threshold = get_param_str(params, "press_threshold")
                         .expect("Missing press_threshold for proximity feature");
-                    let near_threshold = params
-                        .get("near_threshold")
-                        .and_then(|v| v.as_str())
+                    let near_threshold = get_param_str(params, "near_threshold")
                         .expect("Missing near_threshold for proximity feature");
-                    let wake_threshold = params
-                        .get("wake_threshold")
-                        .and_then(|v| v.as_str())
+                    let wake_threshold = get_param_str(params, "wake_threshold")
                         .expect("Missing wake_threshold for proximity feature");
-                    let gesture_action = params
-                        .get("gesture_action")
-                        .and_then(|v| v.as_str())
+                    let gesture_action = get_param_str(params, "gesture_action")
                         .expect("Missing gesture_action for proximity feature");
-                    let telemetry = params.get("telemetry").and_then(|v| v.as_str());
+                    let telemetry_raw = get_param_str(params, "telemetry");
 
                     let channel_senders: Vec<String> = channels
                         .iter()
                         .map(|ch| format!("{}.sender()", ch))
                         .collect();
-                    let telemetry_sender = match telemetry {
-                        Some(tel) => format!("Some({}.sender())", tel),
+                    let telemetry_sender = match telemetry_raw {
+                        Some(ref tel) => format!("Some({}_CHANNEL.sender())", tel.to_uppercase()),
                         None => "None".to_string(),
                     };
                     format!(
@@ -462,10 +445,11 @@ pub fn generate_app_topology(app_toml_content: &str, app_name: &str) -> String {
                 name: "led",
                 type_generator: |_| "controller::LedFeatureConfig<MutexRaw>".to_string(),
                 init_generator: |params| {
-                    let channel = params
+                    let channel_raw = params
                         .get("channel")
                         .and_then(|v| v.as_str())
                         .expect("Missing channel for led feature");
+                    let channel = format!("{}_CHANNEL", channel_raw.to_uppercase());
                     format!(
                         "controller::LedFeatureConfig::new(Some({}.sender()))",
                         channel
@@ -476,17 +460,14 @@ pub fn generate_app_topology(app_toml_content: &str, app_name: &str) -> String {
                 name: "thermal",
                 type_generator: |_| "controller::ThermalFeatureConfig<MutexRaw>".to_string(),
                 init_generator: |params| {
-                    let channel = params
+                    let channel_raw = params
                         .get("channel")
                         .and_then(|v| v.as_str())
                         .expect("Missing channel for thermal feature");
-                    let overheating_threshold = params
-                        .get("overheating_threshold")
-                        .and_then(|v| v.as_str())
+                    let channel = format!("{}_CHANNEL", channel_raw.to_uppercase());
+                    let overheating_threshold = get_param_str(params, "overheating_threshold")
                         .expect("Missing overheating_threshold for thermal feature");
-                    let critical_threshold = params
-                        .get("critical_threshold")
-                        .and_then(|v| v.as_str())
+                    let critical_threshold = get_param_str(params, "critical_threshold")
                         .expect("Missing critical_threshold for thermal feature");
                     format!(
                         "controller::ThermalFeatureConfig::new_with_thresholds(Some({}.sender()), {}, {})",
@@ -634,4 +615,17 @@ fn is_core1_enabled_for_app(app_name_pascal: &str) -> bool {
     } else {
         false
     }
+}
+
+fn get_param_str(
+    params: &std::collections::BTreeMap<String, toml::Value>,
+    key: &str,
+) -> Option<String> {
+    params.get(key).map(|v| match v {
+        toml::Value::String(s) => s.clone(),
+        toml::Value::Integer(i) => i.to_string(),
+        toml::Value::Float(f) => f.to_string(),
+        toml::Value::Boolean(b) => b.to_string(),
+        _ => panic!("Unsupported TOML value type for feature parameter {}", key),
+    })
 }

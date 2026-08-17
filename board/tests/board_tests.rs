@@ -1,10 +1,10 @@
-use board::{Board, MockFlex, PUMP_PIN_IA, PUMP_PIN_IB};
+use board::{Board, MockFlex};
 use embedded_hal::digital::OutputPin;
 
 #[test]
 fn test_board_pin_constants() {
-    assert_eq!(PUMP_PIN_IA, 19);
-    assert_eq!(PUMP_PIN_IB, 20);
+    assert_eq!(Board::PUMP_PIN_IA, 19);
+    assert_eq!(Board::PUMP_PIN_IB, 20);
 }
 
 #[test]
@@ -36,10 +36,10 @@ fn test_embedded_hal_output_trait_compatibility() {
 fn test_mock_board_initialization() {
     let mut board = Board::init();
 
-    assert!(board.gpio_pins[PUMP_PIN_IA as usize].is_some());
-    assert!(board.gpio_pins[PUMP_PIN_IB as usize].is_some());
+    assert!(board.gpio_pins[Board::PUMP_PIN_IA as usize].is_some());
+    assert!(board.gpio_pins[Board::PUMP_PIN_IB as usize].is_some());
 
-    let mut pump_ia = board.gpio_pins[PUMP_PIN_IA as usize].take().unwrap();
+    let mut pump_ia = board.gpio_pins[Board::PUMP_PIN_IA as usize].take().unwrap();
     assert!(!pump_ia.is_high());
 
     pump_ia.set_high();

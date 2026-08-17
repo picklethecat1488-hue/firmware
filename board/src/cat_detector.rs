@@ -4,7 +4,7 @@ include!(concat!(env!("OUT_DIR"), "/generated_board.rs"));
 
 /// Static working buffer for filesystem and panic handler operations.
 /// Shared across the app and shell binaries to avoid duplicate stack/static allocations.
-pub static mut FS_BUF: [u8; 8192] = [0u8; 8192];
+static mut FS_BUF: [u8; Board::FS_BUF_SIZE] = [0u8; Board::FS_BUF_SIZE];
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Thread-safe Mutex wrapping the active I2C peripheral for shared access between tasks.
@@ -12,8 +12,8 @@ pub static SHARED_I2C: embassy_sync::mutex::Mutex<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     platform::i2c::SafeI2c,
 > = embassy_sync::mutex::Mutex::new(platform::i2c::SafeI2c::new(
-    I2C_SDA_PIN as u8,
-    I2C_SCL_PIN as u8,
+    Board::I2C_SDA_PIN as u8,
+    Board::I2C_SCL_PIN as u8,
     400_000,
     i2c_recovery_fn,
 ));
@@ -27,18 +27,18 @@ pub type FlashDevice = embassy_rp::flash::Flash<
     'static,
     embassy_rp::peripherals::FLASH,
     embassy_rp::flash::Blocking,
-    { rp2040::FLASH_SIZE },
+    { Board::FLASH_SIZE },
 >;
 
-rp2040::boot_multicore!(crate::Board, CORE1_STACK_SIZE);
+rp2040::boot_multicore!(crate::Board, { Board::CORE1_STACK_SIZE });
 
 rp2040::define_panic_handler!(
-    crate::CORE0_STACK_TOP,
-    { rp2040::FLASH_SIZE },
-    { rp2040::FLASH_START },
-    { rp2040::FLASH_END },
-    { rp2040::FLASH_WRITE_SIZE },
-    { rp2040::FLASH_ERASE_SIZE }
+    Board::CORE0_STACK_TOP,
+    { Board::FLASH_SIZE },
+    { Board::FLASH_START },
+    { Board::FLASH_END },
+    { Board::FLASH_WRITE_SIZE },
+    { Board::FLASH_ERASE_SIZE }
 );
 
 // Host implementation
@@ -385,30 +385,30 @@ mod target {
         pub async fn init(p: Peripherals) -> Self {
             // Configure hardware stack guard using Cortex-M MPU
             platform::core_monitor::configure_mpu_stack_guard(
-                crate::CORE0_STACK_TOP,
-                crate::CORE0_STACK_SIZE,
+                Board::CORE0_STACK_TOP,
+                Board::CORE0_STACK_SIZE,
             );
 
             // Initialize the I2C0 peripheral inside SHARED_I2C static Mutex
             crate::SHARED_I2C.lock().await.initialize();
             let mut i2c = platform::i2c::SharedI2cWrapper::new(&crate::SHARED_I2C);
             let mut gpio_pins: [Option<Flex<'d>>; 30] = ::rp2040::init_gpio_pins_with_reserved!(p, {
-                crate::TOF_NORTH_XSHUT_PIN => PIN_4,
-                crate::TOF_EAST_XSHUT_PIN => PIN_5,
-                crate::TOF_WEST_XSHUT_PIN => PIN_6,
-                crate::TOF_NORTH_INT_PIN => PIN_7,
-                crate::TOF_EAST_INT_PIN => PIN_9,
-                crate::TOF_WEST_INT_PIN => PIN_10,
-                crate::FUEL_GAUGE_INT_PIN => PIN_14,
-                crate::PUMP_PIN_IA => PIN_19,
-                crate::PUMP_PIN_IB => PIN_20,
+                Board::TOF_NORTH_XSHUT_PIN => PIN_4,
+                Board::TOF_EAST_XSHUT_PIN => PIN_5,
+                Board::TOF_WEST_XSHUT_PIN => PIN_6,
+                Board::TOF_NORTH_INT_PIN => PIN_7,
+                Board::TOF_EAST_INT_PIN => PIN_9,
+                Board::TOF_WEST_INT_PIN => PIN_10,
+                Board::FUEL_GAUGE_INT_PIN => PIN_14,
+                Board::PUMP_PIN_IA => PIN_19,
+                Board::PUMP_PIN_IB => PIN_20,
             });
 
             // 2. Assert XSHUT (active low) on all ToF sensors (GP2, GP3, GP6)
             let xshut_pins = [
-                crate::TOF_NORTH_XSHUT_PIN,
-                crate::TOF_EAST_XSHUT_PIN,
-                crate::TOF_WEST_XSHUT_PIN,
+                Board::TOF_NORTH_XSHUT_PIN,
+                Board::TOF_EAST_XSHUT_PIN,
+                Board::TOF_WEST_XSHUT_PIN,
             ];
             for &pin_idx in &xshut_pins {
                 if let Some(ref mut pin) = gpio_pins[pin_idx as usize] {
@@ -418,16 +418,16 @@ mod target {
             }
 
             // 3. Configure Fuel Gauge Alert pin (GP10) as input with pull-up (active-low, open-drain)
-            if let Some(ref mut pin) = gpio_pins[crate::FUEL_GAUGE_INT_PIN as usize] {
+            if let Some(ref mut pin) = gpio_pins[Board::FUEL_GAUGE_INT_PIN as usize] {
                 pin.set_as_input();
                 pin.set_pull(Pull::Up);
             }
 
             // 4. Configure ToF Sensor Interrupt pins (GP7, GP8, GP9) as inputs with pull-ups (active-low, open-drain)
             let int_pins = [
-                crate::TOF_NORTH_INT_PIN,
-                crate::TOF_EAST_INT_PIN,
-                crate::TOF_WEST_INT_PIN,
+                Board::TOF_NORTH_INT_PIN,
+                Board::TOF_EAST_INT_PIN,
+                Board::TOF_WEST_INT_PIN,
             ];
             for &pin_idx in &int_pins {
                 if let Some(ref mut pin) = gpio_pins[pin_idx as usize] {
@@ -444,24 +444,24 @@ mod target {
                 embassy_rp::flash::Flash::new_blocking(temp_flash);
             let mut boot_status = platform::flash::DirectFlashBootStatus::new(
                 &mut raw_flash,
-                QueueFilesystem(crate::TELEMETRY_PARTITION_START..crate::TELEMETRY_PARTITION_END),
+                QueueFilesystem(Board::TELEMETRY_PARTITION_START..Board::TELEMETRY_PARTITION_END),
             );
 
             let sensors = [
                 (
                     "North ToF",
-                    crate::TOF_NORTH_XSHUT_PIN,
-                    crate::TOF_NORTH_I2C_ADDR,
+                    Board::TOF_NORTH_XSHUT_PIN,
+                    Board::TOF_NORTH_I2C_ADDR,
                 ),
                 (
                     "East ToF",
-                    crate::TOF_EAST_XSHUT_PIN,
-                    crate::TOF_EAST_I2C_ADDR,
+                    Board::TOF_EAST_XSHUT_PIN,
+                    Board::TOF_EAST_I2C_ADDR,
                 ),
                 (
                     "West ToF",
-                    crate::TOF_WEST_XSHUT_PIN,
-                    crate::TOF_WEST_I2C_ADDR,
+                    Board::TOF_WEST_XSHUT_PIN,
+                    Board::TOF_WEST_I2C_ADDR,
                 ),
             ];
             for &(_name, xshut_pin, addr) in &sensors {
@@ -475,7 +475,7 @@ mod target {
                         addr,
                         model::types::Direction::North,
                     );
-                    let _ = sensor.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
+                    let _ = sensor.set_threshold_mm(Board::DEFAULT_WAKE_THRESHOLD_MM);
                     sensor.set_interrupt_mode(peripheral::vl53l0x::InterruptMode::LowLevel);
 
                     peripheral::init_i2c!(&mut sensor, &mut boot_status);
@@ -500,38 +500,38 @@ mod target {
             peripheral::init_i2c!(&mut current_sensor, &mut boot_status);
 
             // Extract pins needed for drivers/controllers
-            let mut motor_pin_ia = gpio_pins[crate::PUMP_PIN_IA as usize]
+            let mut motor_pin_ia = gpio_pins[Board::PUMP_PIN_IA as usize]
                 .take()
                 .expect("Motor pin IA must be available");
-            let mut motor_pin_ib = gpio_pins[crate::PUMP_PIN_IB as usize]
+            let mut motor_pin_ib = gpio_pins[Board::PUMP_PIN_IB as usize]
                 .take()
                 .expect("Motor pin IB must be available");
             motor_pin_ia.set_as_output();
             motor_pin_ib.set_as_output();
             let motor = peripheral::l9110s::L9110s::new(motor_pin_ia, motor_pin_ib);
 
-            let fuel_gauge_alert_pin = gpio_pins[crate::FUEL_GAUGE_INT_PIN as usize]
+            let fuel_gauge_alert_pin = gpio_pins[Board::FUEL_GAUGE_INT_PIN as usize]
                 .take()
                 .expect("Fuel gauge alert pin must be available");
-            let pin_north = gpio_pins[crate::TOF_NORTH_INT_PIN as usize]
+            let pin_north = gpio_pins[Board::TOF_NORTH_INT_PIN as usize]
                 .take()
                 .expect("North ToF interrupt pin must be available");
-            let pin_east = gpio_pins[crate::TOF_EAST_INT_PIN as usize]
+            let pin_east = gpio_pins[Board::TOF_EAST_INT_PIN as usize]
                 .take()
                 .expect("East ToF interrupt pin must be available");
-            let pin_west = gpio_pins[crate::TOF_WEST_INT_PIN as usize]
+            let pin_west = gpio_pins[Board::TOF_WEST_INT_PIN as usize]
                 .take()
                 .expect("West ToF interrupt pin must be available");
 
             // Construct final drivers wrapping SHARED_I2C static cell
             let make_tof = |addr, direction| {
                 let mut sensor = peripheral::vl53l0x::Vl53l0x::new(i2c, addr, direction);
-                let _ = sensor.set_threshold_mm(crate::DEFAULT_WAKE_THRESHOLD_MM);
+                let _ = sensor.set_threshold_mm(Board::DEFAULT_WAKE_THRESHOLD_MM);
                 sensor
             };
-            let tof_north = make_tof(crate::TOF_NORTH_I2C_ADDR, model::types::Direction::North);
-            let tof_east = make_tof(crate::TOF_EAST_I2C_ADDR, model::types::Direction::East);
-            let tof_west = make_tof(crate::TOF_WEST_I2C_ADDR, model::types::Direction::West);
+            let tof_north = make_tof(Board::TOF_NORTH_I2C_ADDR, model::types::Direction::North);
+            let tof_east = make_tof(Board::TOF_EAST_I2C_ADDR, model::types::Direction::East);
+            let tof_west = make_tof(Board::TOF_WEST_I2C_ADDR, model::types::Direction::West);
 
             let pio_config = rp2040::pio::PioInitConfig {
                 pio: p.PIO0,
@@ -546,10 +546,10 @@ mod target {
 
             // Initialize the platform panic handler with layout/flash details
             unsafe {
-                let fs_buf_panic = &mut *core::ptr::addr_of_mut!(crate::FS_BUF);
-                let partition = MapFilesystem(crate::FS_PARTITION_START..crate::FS_PARTITION_END);
+                let fs_buf_panic = Board::fs_buf();
+                let partition = MapFilesystem(Board::FS_PARTITION_START..Board::FS_PARTITION_END);
                 let config =
-                    ::rp2040::make_panic_config(partition, fs_buf_panic, crate::MAX_CRASH_LOGS);
+                    ::rp2040::make_panic_config(partition, fs_buf_panic, Board::MAX_CRASH_LOGS);
                 panic_handler::init(config);
             }
             Self {

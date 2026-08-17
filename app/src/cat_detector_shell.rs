@@ -100,8 +100,8 @@ async fn main(spawner: Spawner) {
     core_monitor::init_core(
         Some(spawner),
         core_monitor::CpuId::Core0,
-        app::CORE_MONITOR_TIMEOUT_MS,
-        app::CORE_MONITOR_WARN_PCT,
+        app::Board::CORE_MONITOR_TIMEOUT_MS,
+        app::Board::CORE_MONITOR_WARN_PCT,
         false,
     );
 

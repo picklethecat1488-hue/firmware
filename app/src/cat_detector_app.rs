@@ -46,8 +46,8 @@ async fn bootstrap_task(spawner: Spawner, p: embassy_rp::Peripherals) {
     core_monitor::init_core(
         Some(spawner),
         core_monitor::CpuId::Core0,
-        app::CORE_MONITOR_TIMEOUT_MS,
-        app::CORE_MONITOR_WARN_PCT,
+        app::Board::CORE_MONITOR_TIMEOUT_MS,
+        app::Board::CORE_MONITOR_WARN_PCT,
         true,
     );
 
@@ -113,7 +113,7 @@ async fn bootstrap_task(spawner: Spawner, p: embassy_rp::Peripherals) {
     let telemetry_flash_mutex_ref = flash::SharedFlashMutex::new(flash_mutex);
     let telemetry_ctrl = TelemetryController::new(
         telemetry_flash_mutex_ref,
-        QueueFilesystem(app::TELEMETRY_PARTITION_START..app::TELEMETRY_PARTITION_END),
+        QueueFilesystem(app::Board::TELEMETRY_PARTITION_START..app::Board::TELEMETRY_PARTITION_END),
         client,
     );
 
