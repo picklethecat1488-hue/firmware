@@ -136,7 +136,17 @@ mod host {
         pub pin_west: MockFlex,
     }
 
+    /// Mock BoardBuses for host compilation.
+    pub struct BoardBuses {
+        // Mock bus if needed, empty for now.
+    }
+
     impl Board {
+        /// Take the mock buses owned/initialized by the board.
+        pub fn take_buses(&self) -> BoardBuses {
+            BoardBuses {}
+        }
+
         /// Take the mock move-by-value peripherals owned by the board.
         ///
         /// # Panics
@@ -345,7 +355,20 @@ mod target {
         pub pin_west: Flex<'d>,
     }
 
+    /// Shared communication buses initialized by the board.
+    pub struct BoardBuses<'d> {
+        /// The shared I2C bus mutex.
+        pub i2c: &'d embassy_sync::mutex::Mutex<crate::MutexRaw, platform::i2c::SafeI2c>,
+    }
+
     impl<'d> Board<'d> {
+        /// Take the shared communication buses owned/initialized by the board.
+        pub fn take_buses(&self) -> BoardBuses<'d> {
+            BoardBuses {
+                i2c: &crate::SHARED_I2C,
+            }
+        }
+
         /// Take the move-by-value peripherals owned by the board.
         ///
         /// # Panics

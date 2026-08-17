@@ -72,3 +72,6 @@ core1 = [
 motor-core = ["controller/motor-core", "peripheral/motor-core"]
 sensors-core = ["controller/sensors-core", "peripheral/sensors-core"]
 verbose-sensor-logging = ["peripheral/verbose-sensor-logging"]
+
+[build-dependencies]
+code_gen = { path = "../tools/code_gen" }

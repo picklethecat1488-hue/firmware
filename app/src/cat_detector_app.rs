@@ -118,26 +118,10 @@ async fn bootstrap_task(spawner: Spawner, p: embassy_rp::Peripherals) {
     );
 
     let core1 = app::steal_core1_peripheral();
-    let sensors = (
-        controllers.core1.sensor_north,
-        controllers.core1.sensor_east,
-        controllers.core1.sensor_west,
-    );
-    app::bootstrap_core1(core1, controllers.core1.motor, sensors);
+    app::bootstrap_core1(core1, controllers.core1);
 
     // Spawn tasks on Core 0
-    controller::spawn_controllers! {
-        spawner,
-        telemetry: TELEMETRY_CHANNEL,
-        controllers: {
-            Thermal(controllers.core0.thermal, THERMAL_CHANNEL), generics: (app::TempSensorDevice),
-            Battery(controllers.core0.battery, BATTERY_CHANNEL), generics: (app::BatteryDevice, app::ChargerDevice, app::AlertPinType),
-            Led(controllers.core0.led, LED_CHANNEL), generics: (app::LedDevice),
-            System(controllers.core0.system, SYSTEM_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (app::SystemControllerType),
-            Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (app::FlashDeviceType),
-            Telemetry(telemetry_ctrl, TELEMETRY_CHANNEL), generics: ({ controller::telemetry_controller::CHANNEL_CAPACITY }, platform::flash::SharedFlashMutex<platform::BlockingAsyncFlash<app::FlashDevice>>),
-        }
-    }
+    app::spawn_core0_controllers!(spawner, controllers, fs_controller, telemetry_ctrl);
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]

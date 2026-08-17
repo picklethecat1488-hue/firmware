@@ -342,3 +342,19 @@ fn test_board_codegen_invalid_16bit_i2c_addr() {
     "#;
     code_gen::generate_board_definitions(bad_toml, "bad_board");
 }
+
+#[test]
+fn test_validate_app_toml_parsing_and_generation() {
+    let app_toml_path = code_gen::find_app_toml();
+    let content = fs::read_to_string(&app_toml_path).unwrap();
+
+    // Validate parsing MultiAppConfig
+    let multi_config: code_gen::MultiAppConfig = toml::from_str(&content).unwrap();
+    assert!(multi_config.apps.contains_key("cat_detector"));
+
+    // Validate rendering active topology
+    let rendered = code_gen::generate_app_topology(&content, "cat_detector");
+    assert!(!rendered.is_empty());
+    assert!(rendered.contains("pub struct CatDetectorFeatureSet"));
+    assert!(rendered.contains("pub fn create_default_feature_set"));
+}

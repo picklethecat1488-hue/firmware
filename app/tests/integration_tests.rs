@@ -3,7 +3,7 @@ use controller::led_controller::LedController;
 use controller::motor_controller::{MotorCommand, MotorController};
 use controller::sensor_controller::{SensorCommand, SensorController};
 use controller::thermal_controller::{ThermalCommand, ThermalController};
-use controller::{BlockingSystemWriter, SystemCommand, SystemController};
+use controller::{BlockingSystemWriter, SystemCommand, SystemController, SystemFeatureSet};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
@@ -132,7 +132,7 @@ fn test_system_integration_flow() {
             rpm_limit: Some(0),
         });
         let mut led_ctrl = LedController::new(mock_led);
-        let feature_set = cat_detector::CatDetectorFeatureSet::<CriticalSectionRawMutex, 16> {
+        let feature_set = cat_detector::CatDetectorFeatureSet::<CriticalSectionRawMutex> {
             features: (
                 controller::MotorFeatureConfig::new(
                     Some(MOTOR_CHANNEL.sender()),
@@ -596,7 +596,7 @@ fn test_system_integration_flow() {
         while MOTOR_CHANNEL.try_receive().is_ok() {}
 
         // Inactivity for timeout triggers Sleep
-        for _ in 0..cat_detector::INACTIVITY_TIMEOUT_SECONDS {
+        for _ in 0..system_ctrl.feature_set.inactivity_timeout_seconds() {
             tick_system(&mut system_ctrl, 1000);
             drain_telemetry();
         }
@@ -825,7 +825,7 @@ fn test_spawn_controllers_embassy_routing() {
                 Sensor(sensor_ctrl_east, RUN_SENSOR_EAST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_west, RUN_SENSOR_WEST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Led(led_ctrl, RUN_LED_CHANNEL), generics: (MockLed),
-                System(system_ctrl, RUN_SYSTEM_CHANNEL, RUN_THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, cat_detector::CatDetectorFeatureSet<CriticalSectionRawMutex, 16>, 16>),
+                System(system_ctrl, RUN_SYSTEM_CHANNEL, RUN_THERMAL_ACTION_CHANNEL), generics: (cat_detector::SystemControllerType),
                 Filesystem(fs_controller, RUN_FILESYSTEM_CHANNEL), generics: (controller::filesystem_controller::ProfilingFlash<platform::flash::SharedFlashMutex<TestFlash>>),
                 Telemetry(telemetry_ctrl, RUN_TELEMETRY_CONSUMER_CHANNEL), generics: ({ controller::telemetry_controller::CHANNEL_CAPACITY }, platform::flash::SharedFlashMutex<TestFlash>),
             }

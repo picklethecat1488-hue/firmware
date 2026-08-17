@@ -432,3 +432,74 @@ impl<'a, C: crate::shell_controller::ShellConfig> crate::shell_controller::Shell
         }
     }
 }
+
+/// Declares shell commands matching only the enabled CLI handlers from app.toml.
+#[macro_export]
+macro_rules! declare_active_shell_commands {
+    ($name:ident ($proc:ident)) => {
+        $crate::declare_shell_commands! {
+            $name ($proc) {
+                {%- for cmd in cli_commands %}
+                {%- if app_config.cli_handlers.get(&cmd.group.to_lowercase()).copied().unwrap_or(false) %}
+                {{ cmd.group }},
+                {%- endif %}
+                {%- endfor %}
+            }
+        }
+    };
+}
+
+/// Spawns only the controllers that are enabled in app.toml.
+#[macro_export]
+macro_rules! spawn_active_controllers {
+    // With explicit telemetry channel
+    (
+        $spawner:expr,
+        telemetry: $telemetry:expr,
+        controllers: {
+            $( $cname:ident ( $ctrl:expr, $rx:ident $(, $extra_rx:expr)* ) , generics: ($($gen:tt)*) ),* $(,)?
+        }
+    ) => {
+        $(
+            $crate::spawn_active_single_controller!(
+                $spawner,
+                $cname,
+                $ctrl,
+                $rx,
+                $telemetry,
+                ($( $extra_rx ),*),
+                ($($gen)*)
+            );
+        )*
+    };
+
+    // Without explicit telemetry channel (defaults to DUMMY_TELEMETRY_CHANNEL)
+    (
+        $spawner:expr,
+        controllers: {
+            $( $cname:ident ( $ctrl:expr, $rx:ident $(, $extra_rx:expr)* ) , generics: ($($gen:tt)*) ),* $(,)?
+        }
+    ) => {
+        $crate::spawn_active_controllers!(
+            $spawner,
+            telemetry: $crate::DUMMY_TELEMETRY_CHANNEL,
+            controllers: {
+                $( $cname ( $ctrl, $rx $(, $extra_rx)* ) , generics: ($($gen)*) ),*
+            }
+        );
+    };
+}
+
+/// Helper macro to spawn a single controller if it is enabled.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! spawn_active_single_controller {
+    {%- for ctrl in controllers %}
+    {%- if app_config.features.get(&ctrl.name.to_lowercase()).copied().unwrap_or(false) %}
+    ($spawner:expr, {{ ctrl.name }}, $ctrl:expr, $rx:ident, $telemetry:expr, ($($extra:expr),*), ($($gen:tt)*)) => {
+        $crate::spawn_single_controller!($spawner, {{ ctrl.name }}, $ctrl, $rx, $telemetry, ($($extra),*), ($($gen)*));
+    };
+    {%- endif %}
+    {%- endfor %}
+    ($spawner:expr, $cname:ident, $ctrl:expr, $rx:ident, $telemetry:expr, ($($extra:expr),*), ($($gen:tt)*)) => {};
+}
