@@ -18,7 +18,7 @@ crate::subcommand_enum! {
 
 /// Processes GPIO diagnostic CLI subcommands.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-pub fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::Error, R>(
+pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::Error, R>(
     _resolver: &R,
     subcommand: Option<GpioSubcommand>,
     pin: Option<u32>,
@@ -76,7 +76,7 @@ pub fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::Error, 
 
 /// Processes GPIO diagnostic CLI subcommands (Mock version for host).
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-pub fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::Error, R>(
+pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::Error, R>(
     _resolver: &R,
     subcommand: Option<GpioSubcommand>,
     pin: Option<u32>,

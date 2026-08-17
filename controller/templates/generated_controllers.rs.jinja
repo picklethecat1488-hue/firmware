@@ -260,7 +260,7 @@ macro_rules! append_group_arm {
                 let pending = $crate::PendingCommand::{{ cmd.variant }} {
                     subcommand,
                     {%- for arg in cmd.args_slice() %}
-                    {{ arg.name }}: {% if arg.arg_type == "string" %}{{ arg.name }}.map(|s| ::heapless::String::try_from(s).unwrap_or_default()){% else %}{{ arg.name }}{% endif %},
+                    {{ arg.name }}: {% if arg.arg_type == "string" %}{{ arg.name }}.map(|s| ::heapless::String::<{{ arg.string_capacity() }}>::try_from(s).unwrap_or_default()){% else %}{{ arg.name }}{% endif %},
                     {%- endfor %}
                 };
                 $ctrl.pending_command = Some(pending);
@@ -334,6 +334,7 @@ pub trait ShellConfig {
 {% if has_async_cli %}
 /// Auto-generated enum representing any pending async CLI command.
 #[derive(Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum PendingCommand {
     {%- for cmd in cli_commands %}
     {%- if cmd.async_cli %}
@@ -343,7 +344,7 @@ pub enum PendingCommand {
         subcommand: Option<{% if cmd.subcommand_type.contains("::") && !cmd.subcommand_type.contains("platform::") %}crate::{% endif %}{{ cmd.subcommand_type|safe }}>,
         {%- for arg in cmd.args_slice() %}
         /// Deferred argument {{ arg.name }}.
-        {{ arg.name }}: {% if arg.arg_type == "string" %}Option<::heapless::String<32>>{% else %}{{ arg.rust_type() }}{% endif %},
+        {{ arg.name }}: {% if arg.arg_type == "string" %}Option<::heapless::String<{{ arg.string_capacity() }}>>{% else %}{{ arg.rust_type_no_crate() }}{% endif %},
         {%- endfor %}
     },
     {%- endif %}
@@ -371,9 +372,9 @@ impl<'a, C: crate::shell_controller::ShellConfig> crate::shell_controller::Shell
                 {%- if cmd.async_cli %}
                 crate::PendingCommand::{{ cmd.variant }} { subcommand, {%- for arg in cmd.args_slice() %}{{ arg.name }}, {% endfor %} } => {
                     {%- if cmd.handler.contains("::") && !cmd.handler.starts_with("platform::") %}
-                    crate::{{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_ref().map(|s| s.as_str()){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
+                    crate::{{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_deref(){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
                     {%- else %}
-                    {{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_ref().map(|s| s.as_str()){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
+                    {{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_deref(){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
                     {%- endif %}
                 }
                 {%- endif %}

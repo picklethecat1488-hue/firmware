@@ -396,8 +396,8 @@ pub fn generate_board_definitions(toml_content: &str, board_name: &str) -> Strin
     });
 
     let (write_size, erase_size) = match board_config.chip.as_str() {
-        "rp2040" => (256, 4096),
-        _ => (256, 4096),
+        "rp2040" => (1, 4096),
+        _ => (1, 4096),
     };
     constants.push(BoardConstant {
         name: "FLASH_WRITE_SIZE".to_string(),

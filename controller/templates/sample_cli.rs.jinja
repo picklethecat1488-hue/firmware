@@ -27,22 +27,22 @@ impl embedded_storage::nor_flash::NorFlash for MockFlash {
 }
 
 pub struct MockBatteryCtrl;
-impl controller::BlockingBatteryReader for MockBatteryCtrl {
-    fn read_battery_blocking(&self) -> Result<(u32, u8), model::types::PeripheralError> {
+impl controller::BatteryReader for MockBatteryCtrl {
+    async fn read_battery(&self) -> Result<(u32, u8), model::types::PeripheralError> {
         Ok((3700, 80))
     }
 }
 
 pub struct MockThermalCtrl;
-impl controller::BlockingThermalReader for MockThermalCtrl {
-    fn read_temperature_blocking(&self) -> Result<i32, model::types::PeripheralError> {
+impl controller::ThermalReader for MockThermalCtrl {
+    fn read_temperature(&self) -> Result<i32, model::types::PeripheralError> {
         Ok(25000)
     }
 }
 
 pub struct MockSensorCtrl;
-impl controller::BlockingProximityReader for MockSensorCtrl {
-    async fn read_distance_blocking(&mut self) -> Result<model::types::SensorReading, model::types::PeripheralError> {
+impl controller::ProximityReader for MockSensorCtrl {
+    async fn read_distance(&mut self) -> Result<model::types::SensorReading, model::types::PeripheralError> {
         Ok(model::types::SensorReading::Proximity(100))
     }
     fn latest_distance(&self) -> model::types::SensorReading {
@@ -67,19 +67,19 @@ impl model::calibration::ApplyCalibration for MockSensorCtrl {
 }
 
 pub struct MockMotorCtrl;
-impl controller::BlockingMotorReader for MockMotorCtrl {
-    fn read_current_ma_blocking(&mut self) -> Result<i32, model::types::PeripheralError> {
+impl controller::MotorReader for MockMotorCtrl {
+    async fn read_motor_current_ma(&mut self) -> Result<i32, model::types::PeripheralError> {
         Ok(150)
     }
 }
-impl controller::BlockingMotorWriter for MockMotorCtrl {
-    fn set_motor_speed(&mut self, _speed: i8) -> Result<(), model::types::PeripheralError> {
+impl controller::MotorWriter for MockMotorCtrl {
+    async fn set_motor_speed(&mut self, _speed: i8) -> Result<(), model::types::PeripheralError> {
         Ok(())
     }
-    fn set_motor_speed_rpm(&mut self, _rpm: i32) -> Result<(), model::types::PeripheralError> {
+    async fn set_motor_speed_rpm(&mut self, _rpm: i32) -> Result<(), model::types::PeripheralError> {
         Ok(())
     }
-    fn stop_motor_blocking(&mut self) -> Result<(), model::types::PeripheralError> {
+    async fn stop_motor(&mut self) -> Result<(), model::types::PeripheralError> {
         Ok(())
     }
 }

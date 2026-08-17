@@ -73,12 +73,12 @@ fn test_i2c_scan() {
 
     {
         let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
-        let res = platform::i2c::handle_i2c_cli(
+        let res = futures::executor::block_on(platform::i2c::handle_i2c_cli(
             &resolver,
             Some(platform::i2c::I2cSubcommand::Scan),
             None,
             &mut writer,
-        );
+        ));
         assert!(res.is_ok());
     }
 
@@ -98,12 +98,12 @@ fn test_gpio_cli() {
     // Test Gpio status
     {
         let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
-        let res = platform::gpio::handle_gpio_cli(
+        let res = futures::executor::block_on(platform::gpio::handle_gpio_cli(
             &mock_resolver,
             Some(platform::gpio::GpioSubcommand::Status),
             None,
             &mut writer,
-        );
+        ));
         assert!(res.is_ok());
     }
     let output_str = core::str::from_utf8(&mock_write.buf).unwrap();
@@ -113,12 +113,12 @@ fn test_gpio_cli() {
     mock_write.buf.clear();
     {
         let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
-        let res = platform::gpio::handle_gpio_cli(
+        let res = futures::executor::block_on(platform::gpio::handle_gpio_cli(
             &mock_resolver,
             Some(platform::gpio::GpioSubcommand::Read),
             Some(5),
             &mut writer,
-        );
+        ));
         assert!(res.is_ok());
     }
     let output_str = core::str::from_utf8(&mock_write.buf).unwrap();
@@ -128,12 +128,12 @@ fn test_gpio_cli() {
     mock_write.buf.clear();
     {
         let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
-        let res = platform::gpio::handle_gpio_cli(
+        let res = futures::executor::block_on(platform::gpio::handle_gpio_cli(
             &mock_resolver,
             Some(platform::gpio::GpioSubcommand::Read),
             None,
             &mut writer,
-        );
+        ));
         assert!(res.is_ok());
     }
     let output_str = core::str::from_utf8(&mock_write.buf).unwrap();

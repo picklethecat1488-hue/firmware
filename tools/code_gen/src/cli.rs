@@ -28,9 +28,43 @@ pub struct CliArg {
     pub arg_type: String,
     pub help: String,
     pub attributes: Option<Vec<String>>,
+    #[serde(default)]
+    pub max_len: Option<usize>,
 }
 
 impl CliArg {
+    pub fn string_capacity(&self) -> usize {
+        let base_len = self.parse_capacity_from_help().unwrap_or_else(|| {
+            if self.name.contains("partition") {
+                32
+            } else {
+                64
+            }
+        });
+        self.max_len.unwrap_or(base_len).min(128)
+    }
+
+    fn parse_capacity_from_help(&self) -> Option<usize> {
+        let start = self.help.find('(')?;
+        let end = self.help[start..].find(')')?;
+        let content = &self.help[start + 1..start + end];
+        let mut max_opt_len = 0;
+        for part in content.split(|c: char| c == ',' || c == ':' || c.is_whitespace() || c == '/') {
+            let trimmed = part.trim();
+            if !trimmed.is_empty()
+                && trimmed != "or"
+                && trimmed != "default"
+                && trimmed != "optional"
+            {
+                max_opt_len = max_opt_len.max(trimmed.len());
+            }
+        }
+        if max_opt_len > 0 {
+            Some((max_opt_len + 8).next_power_of_two().max(16))
+        } else {
+            None
+        }
+    }
     pub fn attributes_slice(&self) -> Vec<String> {
         if let Some(ref attrs) = self.attributes {
             attrs.clone()
@@ -59,6 +93,10 @@ impl CliArg {
         self.rust_type()
             .replace("$crate::", "controller::")
             .replace("&'a str", "&str")
+    }
+
+    pub fn rust_type_no_crate(&self) -> String {
+        self.rust_type().replace("$crate::", "crate::")
     }
 }
 

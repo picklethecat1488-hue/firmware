@@ -294,11 +294,7 @@ macro_rules! emit_direct_commands {
 
                 let cmd = $crate::parse_command!($name, raw, $writer, W, E, $ctrl);
 
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::info!(
-                    "received command {:?}",
-                    defmt::Debug2Format(&cmd)
-                );
+                $crate::shell_controller::log_command(&cmd);
 
                 let res = match cmd {
                     $($matches)*
@@ -306,12 +302,10 @@ macro_rules! emit_direct_commands {
 
                 match res {
                     Ok(()) => {
-                        #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        defmt::info!("command execution succeeded");
+                        $crate::shell_controller::log_success();
                     }
                     Err(err) => {
-                        #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        defmt::error!("command execution failed: {}", err);
+                        $crate::shell_controller::log_failure(err);
                         let _ = core::writeln!($writer, "Command failed: {}", err);
                     }
                 }
@@ -382,11 +376,7 @@ macro_rules! emit_wrapper_commands {
 
                 let cmd = $crate::parse_command!($name, raw, $writer, W, E, $ctrl);
 
-                #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::info!(
-                    "received command {:?}",
-                    defmt::Debug2Format(&cmd)
-                );
+                $crate::shell_controller::log_command(&cmd);
 
                 let res = match cmd {
                     $($matches)*
@@ -394,12 +384,10 @@ macro_rules! emit_wrapper_commands {
 
                 match res {
                     Ok(()) => {
-                        #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        defmt::info!("command execution succeeded");
+                        $crate::shell_controller::log_success();
                     }
                     Err(err) => {
-                        #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        defmt::error!("command execution failed: {}", err);
+                        $crate::shell_controller::log_failure(err);
                         let _ = core::writeln!($writer, "Command failed: {}", err);
                     }
                 }
@@ -444,3 +432,33 @@ macro_rules! declare_shell_commands {
         $crate::emit_wrapper_commands!($name, $proc_name, $ctrl, $writer, [$($variants)*], [$($matches)*]);
     };
 }
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Log a CLI command.
+pub fn log_command<T: core::fmt::Debug>(cmd: &T) {
+    defmt::info!("received command {:?}", defmt::Debug2Format(cmd));
+}
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+/// Mock log a CLI command on host.
+pub fn log_command<T>(_cmd: &T) {}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Log a successful command execution.
+pub fn log_success() {
+    defmt::info!("command execution succeeded");
+}
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+/// Mock log a successful command execution on host.
+pub fn log_success() {}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Log a failed command execution.
+pub fn log_failure(err: &str) {
+    defmt::error!("command execution failed: {}", err);
+}
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+/// Mock log a failed command execution on host.
+pub fn log_failure(_err: &str) {}

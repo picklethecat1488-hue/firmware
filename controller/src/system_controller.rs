@@ -8,7 +8,7 @@ pub use platform::gesture_detector::ProximityEvent;
 use crate::types::{
     BatteryStatus, Device, DeviceSupport, GestureAction, ProximityAction, ThermalUpdateAction,
 };
-use crate::{BlockingSystemWriter, PeripheralError};
+use crate::{PeripheralError, SystemWriter};
 use platform::system_feature::FeatureList;
 
 /// Receiver type for thermal update action communication.
@@ -654,7 +654,7 @@ subcommand_enum! {
 }
 
 /// Processes system-specific CLI subcommands.
-pub fn handle_system_cli<
+pub async fn handle_system_cli<
     W: embedded_io::Write<Error = E>,
     E: embedded_io::Error,
     C: crate::ShellConfig,
@@ -691,7 +691,7 @@ pub fn handle_system_cli<
 }
 
 impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: usize>
-    crate::BlockingSystemWriter for SystemController<MutexRaw, F, N>
+    crate::SystemWriter for SystemController<MutexRaw, F, N>
 {
     fn record_activity(&mut self) -> Result<(), PeripheralError> {
         let _ = self.handle_command(SystemCommand::ActivityDetected);
