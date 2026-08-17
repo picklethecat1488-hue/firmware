@@ -32,6 +32,12 @@ enum Commands {
     ListControllers,
     /// List all defined CLI commands/groups.
     ListClis,
+    /// List all defined boards.
+    ListBoards,
+    /// List all defined apps.
+    ListApps,
+    /// List all defined peripherals.
+    ListPeripherals,
     /// Output compiling sample CLI implementation.
     CliSample {
         /// Optional specific command/group targets.
@@ -47,6 +53,16 @@ enum Commands {
     /// Output a sample peripheral definition.
     PeripheralSample {
         /// Name of the peripheral to show a sample for.
+        name: Option<String>,
+    },
+    /// Generate and output board configuration definitions.
+    BoardSample {
+        /// Name of the board to generate (default is first board found).
+        name: Option<String>,
+    },
+    /// Generate and output application topology definitions.
+    AppSample {
+        /// Name of the app to generate (default is first app found).
         name: Option<String>,
     },
 }
@@ -71,6 +87,34 @@ fn main() {
         }
         Commands::ListClis => {
             list_clis::handle(&shell_config);
+        }
+        Commands::ListBoards => {
+            let board_toml_path = code_gen::find_board_toml();
+            let content = fs::read_to_string(&board_toml_path).expect("Failed to read board.toml");
+            let boards_config: code_gen::BoardsConfig =
+                toml::from_str(&content).expect("Failed to parse board.toml");
+            for board_name in boards_config.boards.keys() {
+                println!("{}", board_name);
+            }
+        }
+        Commands::ListApps => {
+            let app_toml_path = code_gen::find_app_toml();
+            let content = fs::read_to_string(&app_toml_path).expect("Failed to read app.toml");
+            let app_config: code_gen::MultiAppConfig =
+                toml::from_str(&content).expect("Failed to parse app.toml");
+            for app_name in app_config.apps.keys() {
+                println!("{}", app_name);
+            }
+        }
+        Commands::ListPeripherals => {
+            let peripherals_toml_path = code_gen::find_peripherals_toml();
+            let content = fs::read_to_string(&peripherals_toml_path)
+                .expect("Failed to read peripherals.toml");
+            let peripheral_config: code_gen::PeripheralConfig =
+                toml::from_str(&content).expect("Failed to parse peripherals.toml");
+            for p in &peripheral_config.peripherals {
+                println!("{}", p.name);
+            }
         }
         Commands::CliSample { targets } => {
             cli_sample::handle(&targets, &cli.out_dir, &shell_config);
@@ -149,6 +193,125 @@ fn main() {
                 .render()
                 .expect("Failed to render peripheral sample template");
             println!("{}", output);
+        }
+        Commands::BoardSample { name } => {
+            let board_toml_path = code_gen::find_board_toml();
+            let content = fs::read_to_string(&board_toml_path).expect("Failed to read board.toml");
+            let boards_config: code_gen::BoardsConfig =
+                toml::from_str(&content).expect("Failed to parse board.toml");
+            let target_name = name.unwrap_or_else(|| {
+                boards_config
+                    .boards
+                    .keys()
+                    .next()
+                    .expect("No boards found in board.toml")
+                    .clone()
+            });
+            if !boards_config.boards.contains_key(&target_name) {
+                eprintln!("Error: Board '{}' not found in board.toml", target_name);
+                std::process::exit(1);
+            }
+
+            // Write the generated definitions file
+            let generated_defs = code_gen::generate_board_definitions(&content, &target_name);
+            let target_dir = cli.out_dir.join(format!("board_{}", target_name));
+            fs::create_dir_all(&target_dir).expect("Failed to create board directory");
+
+            let defs_path = target_dir.join("generated_board.rs");
+            fs::write(&defs_path, &generated_defs).expect("Failed to write board definitions");
+
+            // Derive names
+            let name_pascal = target_name
+                .split('_')
+                .map(|s| {
+                    let mut chars = s.chars();
+                    match chars.next() {
+                        None => String::new(),
+                        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+                    }
+                })
+                .collect::<String>();
+
+            // Write bsp.rs skeleton
+            let bsp_content = code_gen::render_board_skeleton(&name_pascal);
+            let bsp_path = target_dir.join("bsp.rs");
+            fs::write(&bsp_path, &bsp_content).expect("Failed to write bsp.rs");
+
+            println!(
+                "Generated board skeleton project under {}",
+                target_dir.display()
+            );
+            println!("  - generated_board.rs (declarative constant definitions)");
+            println!("  - bsp.rs (minimal Board Support Package implementation skeleton)");
+        }
+        Commands::AppSample { name } => {
+            let app_toml_path = code_gen::find_app_toml();
+            let content = fs::read_to_string(&app_toml_path).expect("Failed to read app.toml");
+            let app_config: code_gen::MultiAppConfig =
+                toml::from_str(&content).expect("Failed to parse app.toml");
+            let target_name = name.unwrap_or_else(|| {
+                app_config
+                    .apps
+                    .keys()
+                    .next()
+                    .expect("No apps found in app.toml")
+                    .clone()
+            });
+            if !app_config.apps.contains_key(&target_name) {
+                eprintln!("Error: App '{}' not found in app.toml", target_name);
+                std::process::exit(1);
+            }
+
+            let app_topology = app_config.apps.get(&target_name).unwrap();
+
+            // Write the generated app topology definitions file
+            let generated_defs = code_gen::generate_app_topology(&content, &target_name);
+            let target_dir = cli.out_dir.join(format!("app_{}", target_name));
+            fs::create_dir_all(&target_dir).expect("Failed to create app directory");
+
+            let defs_path = target_dir.join("generated_app.rs");
+            fs::write(&defs_path, &generated_defs).expect("Failed to write app definitions");
+
+            // Derive names
+            let name_pascal = target_name
+                .split('_')
+                .map(|s| {
+                    let mut chars = s.chars();
+                    match chars.next() {
+                        None => String::new(),
+                        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+                    }
+                })
+                .collect::<String>();
+
+            // Write lib.rs skeleton
+            let lib_content = code_gen::render_app_skeleton(&name_pascal);
+            let lib_path = target_dir.join("lib.rs");
+            fs::write(&lib_path, &lib_content).expect("Failed to write lib.rs");
+
+            // Write app.rs skeleton
+            let app_runner_content =
+                code_gen::render_app_runner_skeleton(&target_name, &name_pascal);
+            let app_runner_path = target_dir.join("app.rs");
+            fs::write(&app_runner_path, &app_runner_content).expect("Failed to write app.rs");
+
+            // Write shell.rs skeleton
+            let shell_content = code_gen::render_app_shell_skeleton(
+                &target_name,
+                &name_pascal,
+                &app_topology.shell_config,
+            );
+            let shell_path = target_dir.join("shell.rs");
+            fs::write(&shell_path, &shell_content).expect("Failed to write shell.rs");
+
+            println!(
+                "Generated app skeleton project under {}",
+                target_dir.display()
+            );
+            println!("  - generated_app.rs (declarative feature sets & spawning macros)");
+            println!("  - lib.rs (minimal application logic skeleton)");
+            println!("  - app.rs (firmware binary main entry skeleton)");
+            println!("  - shell.rs (interactive CLI shell entry skeleton)");
         }
     }
 }

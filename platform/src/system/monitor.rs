@@ -377,7 +377,8 @@ impl CoreMonitor for CoreStatus {
 /// Uses Region 0 to protect a 256-byte area at `guard_addr`. If the stack pointer
 /// exceeds this boundary, it immediately triggers a HardFault rather than silently
 /// corrupting memory.
-pub fn configure_mpu_stack_guard(guard_addr: u32) {
+pub fn configure_mpu_stack_guard(stack_top: u32, stack_size: usize) {
+    let guard_addr = stack_top - stack_size as u32;
     let cp = unsafe { cortex_m::peripheral::Peripherals::steal() };
     let mpu = cp.MPU;
 

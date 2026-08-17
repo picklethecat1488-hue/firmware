@@ -290,7 +290,7 @@ fn test_spawn_all_controllers_configuration() {
                 Led(led_ctrl, LED_CHANNEL), generics: (MockLed),
                 System(system_ctrl, SYSTEM_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, DummyFeatureSet<CriticalSectionRawMutex, 16>, 16>),
                 Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (controller::filesystem_controller::ProfilingFlash<SharedFlashMutex<TestFlash>>),
-                Telemetry(telemetry_ctrl, TELEMETRY_CONSUMER_CHANNEL), generics: (1024, { controller::telemetry_controller::CHANNEL_CAPACITY }, SharedFlashMutex<TestFlash>),
+                Telemetry(telemetry_ctrl, TELEMETRY_CONSUMER_CHANNEL), generics: ({ controller::telemetry_controller::CHANNEL_CAPACITY }, SharedFlashMutex<TestFlash>),
             }
         }
 
@@ -317,6 +317,27 @@ fn test_spawn_single_controller_configuration() {
     executor.run(|spawner: embassy_executor::Spawner| {
         // Test spawning only a single controller without explicit telemetry channel (it defaults to DUMMY_TELEMETRY_CHANNEL)
         controller::spawn_controllers! {
+            spawner,
+            controllers: {
+                Led(led_ctrl, LED_CHANNEL), generics: (MockLed),
+            }
+        }
+
+        spawner.spawn(test_control_task_single()).unwrap();
+    });
+}
+
+#[test]
+fn test_spawn_active_controllers_configuration() {
+    let mock_led = MockLed::new();
+    let led_ctrl = LedController::new(mock_led);
+
+    use embassy_executor::Executor;
+    let executor = Box::leak(Box::new(Executor::new()));
+
+    executor.run(|spawner: embassy_executor::Spawner| {
+        // Test spawning active controllers matching the app.toml configuration
+        controller::spawn_active_controllers! {
             spawner,
             controllers: {
                 Led(led_ctrl, LED_CHANNEL), generics: (MockLed),

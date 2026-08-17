@@ -27,19 +27,8 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
 use core::fmt::Write as FmtWrite;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-controller::declare_shell_commands! {
-    CatDetectorCli (CatDetectorCliProcessor) {
-        Battery,
-        Thermal,
-        Motor,
-        Sensor,
-        Fs,
-        System,
-        I2c,
-        Gpio,
-        Led,
-        Core,
-    }
+controller::declare_active_shell_commands! {
+    CatDetectorCli (CatDetectorCliProcessor)
 }
 
 /// Static holder for LED Sender to resolve lifetimes.
@@ -111,27 +100,13 @@ async fn main(spawner: Spawner) {
     core_monitor::init_core(
         Some(spawner),
         core_monitor::CpuId::Core0,
-        app::CORE_MONITOR_TIMEOUT_MS,
-        app::CORE_MONITOR_WARN_PCT,
+        app::Board::CORE_MONITOR_TIMEOUT_MS,
+        app::Board::CORE_MONITOR_WARN_PCT,
         false,
     );
 
-    let core1 = app::steal_core1_peripheral();
-    let sensors = (
-        controllers.core1.sensor_north,
-        controllers.core1.sensor_east,
-        controllers.core1.sensor_west,
-    );
-    let spawner_c1 = app::bootstrap_core1(core1, controllers.core1.motor, sensors);
-
-    spawner_c1
-        .spawn(app::core1_command_task(
-            app::CORE1_COMMAND_CHANNEL.receiver(),
-        ))
-        .unwrap();
-
     // Retrieve pointers using the platformitized helper
-    let pointers = app::get_shell_pointers(fs_cfg.buffer, &mut controllers.core0, board_ref).await;
+    app::declare_shell_pointers!(fs_cfg.buffer, controllers, board_ref, pointers);
 
     let mut processor = ShellController::<app::CatDetectorShellConfig>::new(pointers);
 

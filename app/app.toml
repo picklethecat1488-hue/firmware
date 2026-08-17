@@ -1,0 +1,124 @@
+# app/app.toml
+# Application device and controller topology configuration for Cat Detector
+# Documented in CONTRIBUTING.md
+
+[apps.cat_detector]
+shell_config = "CatDetectorShellConfig"
+core1_enabled = true
+cli_handlers = ["Battery", "Thermal", "Motor", "Sensor", "Fs", "System", "I2c", "Gpio", "Led", "Core"]
+
+# Define static channels
+[apps.cat_detector.channels]
+motor = { type = "controller::MotorChannel", capacity = 4 }
+system = { type = "controller::SystemChannel", capacity = 16 }
+sensor_north = { type = "controller::SensorChannel", capacity = 4 }
+sensor_east = { type = "controller::SensorChannel", capacity = 4 }
+sensor_west = { type = "controller::SensorChannel", capacity = 4 }
+thermal = { type = "controller::ThermalChannel", capacity = 4 }
+thermal_action = { type = "embassy_sync::channel::Channel<MutexRaw, controller::types::ThermalUpdateAction, 4>", val = "embassy_sync::channel::Channel::new()" }
+battery = { type = "controller::BatteryChannel", capacity = 4 }
+led = { type = "controller::LedChannel", capacity = 4 }
+telemetry = { type = "controller::TelemetryChannel", capacity = "{ controller::telemetry_controller::CHANNEL_CAPACITY }" }
+filesystem = { type = "controller::FilesystemChannel", capacity = 16 }
+
+# Define the controller topology
+[[apps.cat_detector.controllers]]
+name = "Thermal"
+instance = "controllers.core0.thermal"
+generics = "app::TempSensorDevice"
+
+[[apps.cat_detector.controllers]]
+name = "Battery"
+instance = "controllers.core0.battery"
+generics = "app::BatteryDevice, app::ChargerDevice, app::AlertPinType"
+
+[[apps.cat_detector.controllers]]
+name = "Led"
+instance = "controllers.core0.led"
+generics = "app::LedDevice"
+
+[[apps.cat_detector.controllers]]
+name = "System"
+instance = "controllers.core0.system"
+channel = "SYSTEM_CHANNEL, THERMAL_ACTION_CHANNEL"
+generics = "app::SystemControllerType"
+
+[[apps.cat_detector.controllers]]
+name = "Filesystem"
+instance = "fs_controller"
+generics = "app::FlashDeviceType"
+
+[[apps.cat_detector.controllers]]
+name = "Telemetry"
+instance = "telemetry_ctrl"
+generics = "{ controller::telemetry_controller::CHANNEL_CAPACITY }, platform::flash::SharedFlashMutex<platform::BlockingAsyncFlash<app::FlashDevice>>"
+
+[[apps.cat_detector.controllers]]
+name = "Motor"
+core = 1
+instance = "controllers.core1.motor"
+generics = "crate::MotorDevice, crate::CurrentSensorDevice"
+# Motor also registers the raw motor device into motors shell field
+device_shell_type = "MotorDevice"
+
+[[apps.cat_detector.controllers]]
+name = "Sensor"
+core = 1
+instance = "controllers.core1.sensor_north"
+generics = "crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand"
+shell_name = "north"
+
+[[apps.cat_detector.controllers]]
+name = "Sensor"
+core = 1
+instance = "controllers.core1.sensor_east"
+generics = "crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand"
+shell_name = "east"
+
+[[apps.cat_detector.controllers]]
+name = "Sensor"
+core = 1
+instance = "controllers.core1.sensor_west"
+generics = "crate::ProximitySensorDevice, crate::DataReadyPinType, crate::SystemCommand"
+shell_name = "west"
+
+[[apps.cat_detector.partitions]]
+name = "panic"
+board_partition = "fs"
+kind = "Map"
+
+[[apps.cat_detector.partitions]]
+name = "telemetry"
+board_partition = "telemetry"
+kind = "Queue"
+
+[apps.cat_detector.features]
+inactivity_timeout_seconds = 30
+
+[apps.cat_detector.features.motor]
+channel = "motor"
+max_speed = "model::types::MotorSpeed::MAX"
+
+[apps.cat_detector.features.battery]
+channel = "battery"
+critical_soc = 10
+hysteresis = 5
+low_soc = 20
+mid_soc = 50
+high_soc = 80
+
+[apps.cat_detector.features.proximity]
+channels = ["sensor_north", "sensor_east", "sensor_west"]
+press_threshold = 20
+near_threshold = 100
+wake_threshold = 300
+gesture_action = "controller::GestureAction::TogglePower"
+telemetry = "telemetry"
+
+[apps.cat_detector.features.led]
+channel = "led"
+
+[apps.cat_detector.features.thermal]
+channel = "thermal"
+overheating_threshold = 70000
+critical_threshold = 85000

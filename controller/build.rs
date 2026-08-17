@@ -1,6 +1,6 @@
 use code_gen::{
-    find_workspace_root, parse_subcommand_enums, CliCommand, CliResolverField, ShellConfigToml,
-    SubcommandInfo, SUBCOMMAND_CRATES,
+    find_app_toml, find_workspace_root, parse_subcommand_enums, AppConfig, CliCommand,
+    CliResolverField, ShellConfigToml, SubcommandInfo, SUBCOMMAND_CRATES,
 };
 use rinja::Template;
 use serde::Deserialize;
@@ -103,6 +103,7 @@ struct GeneratedControllersTemplate {
     cli_resolver_fields: Vec<CliResolverField>,
     cli_commands: Vec<CliCommand>,
     subcommands_map: std::collections::HashMap<String, Vec<SubcommandInfo>>,
+    app_config: AppConfig,
 }
 
 #[derive(Template)]
@@ -143,6 +144,8 @@ fn main() {
     // Tell Cargo to rerun this build script if config or template changes
     println!("cargo:rerun-if-changed=controllers.toml");
     println!("cargo:rerun-if-changed=shell.toml");
+    let app_toml_path = find_app_toml();
+    println!("cargo:rerun-if-changed={}", app_toml_path.display());
     println!("cargo:rerun-if-changed=templates/generated_controllers.rs.jinja");
     println!("cargo:rerun-if-changed=templates/run_loop.rs.jinja");
     println!("cargo:rerun-if-changed=templates/test_mocks.rs.jinja");
@@ -175,6 +178,30 @@ fn main() {
         );
     }
 
+    // Read and parse app.toml config file
+    let app_content = std::fs::read_to_string(&app_toml_path).expect("Failed to read app.toml");
+    let multi_config: code_gen::utils::MultiAppConfig =
+        toml::from_str(&app_content).expect("Failed to parse app.toml");
+    let app_topology = multi_config
+        .apps
+        .get("cat_detector")
+        .expect("Could not find configuration for app 'cat_detector' in app.toml");
+
+    let mut features = std::collections::HashMap::new();
+    for ctrl in &app_topology.controllers {
+        features.insert(ctrl.name.to_lowercase(), ctrl.enabled.unwrap_or(true));
+    }
+
+    let mut cli_handlers = std::collections::HashMap::new();
+    for handler in &app_topology.cli_handlers {
+        cli_handlers.insert(handler.to_lowercase(), true);
+    }
+
+    let app_config = code_gen::utils::AppConfig {
+        features,
+        cli_handlers,
+    };
+
     let has_async_cli = shell_config.cli_commands.iter().any(|c| c.async_cli);
     let template = GeneratedControllersTemplate {
         has_async_cli,
@@ -182,6 +209,7 @@ fn main() {
         cli_resolver_fields: shell_config.cli_resolver_fields.clone(),
         cli_commands: shell_config.cli_commands.clone(),
         subcommands_map,
+        app_config,
     };
     let output = template.render().expect("Failed to render Rinja template");
     f.write_all(output.as_bytes()).unwrap();

@@ -49,3 +49,13 @@ Before finalizing any task, committing changes, or proposing modifications to th
 ### 6. Host Diagnostic & Debugging Tools
 * Host-based filesystem debugging must be performed using the host utility in `tools/host_fs`.
 * Host-based CLI interface interaction, RTT log streaming, and tracing must be performed using the host utility in `tools/host_cli`.
+
+### 7. Documentation Standards
+* Code documentation MUST be comprehensive. Always write clear docstrings (using `///` in Rust) for all newly defined or modified structs, enums, public methods, public variables, and struct fields.
+* Docstrings should concisely describe:
+  * The purpose of the item.
+  * Safety invariants or error conditions.
+
+### 8. Include Directives Placement
+* The `include!` macro directives loading generated topology or code structures (e.g. `include!(concat!(env!("OUT_DIR"), "/generated_app.rs"));` or `include!(concat!(env!("OUT_DIR"), "/generated_board.rs"));`) MUST be placed at the very beginning of the source file listing (i.e. the first line of code in a listing, after module-level doc comments), if they are used.
+

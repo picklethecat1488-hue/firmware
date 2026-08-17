@@ -1,9 +1,19 @@
+const CRITICAL_BATTERY_SOC_THRESHOLD: u8 = 10;
+const BATTERY_SOC_HYSTERESIS: u8 = 5;
+const LOW_BATTERY_SOC_THRESHOLD: u8 = 20;
+const MID_BATTERY_SOC_THRESHOLD: u8 = 50;
+const HIGH_BATTERY_SOC_THRESHOLD: u8 = 80;
+
+const DEFAULT_PRESS_THRESHOLD_MM: u16 = 20;
+const DEFAULT_NEAR_THRESHOLD_MM: u16 = 100;
+const DEFAULT_WAKE_THRESHOLD_MM: u16 = 300;
+
 use controller::battery_controller::{BatteryCommand, BatteryController};
 use controller::led_controller::LedController;
 use controller::motor_controller::{MotorCommand, MotorController};
 use controller::sensor_controller::{SensorCommand, SensorController};
 use controller::thermal_controller::{ThermalCommand, ThermalController};
-use controller::{BlockingSystemWriter, SystemCommand, SystemController};
+use controller::{BlockingSystemWriter, SystemCommand, SystemController, SystemFeatureSet};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
@@ -132,7 +142,7 @@ fn test_system_integration_flow() {
             rpm_limit: Some(0),
         });
         let mut led_ctrl = LedController::new(mock_led);
-        let feature_set = cat_detector::CatDetectorFeatureSet::<CriticalSectionRawMutex, 16> {
+        let feature_set = cat_detector::CatDetectorFeatureSet::<CriticalSectionRawMutex> {
             features: (
                 controller::MotorFeatureConfig::new(
                     Some(MOTOR_CHANNEL.sender()),
@@ -141,11 +151,11 @@ fn test_system_integration_flow() {
                 controller::BatteryFeatureConfig::new(
                     Some(BATTERY_CHANNEL.sender()),
                     platform::BatteryManager::new(
-                        cat_detector::CRITICAL_BATTERY_SOC_THRESHOLD,
-                        cat_detector::BATTERY_SOC_HYSTERESIS,
-                        cat_detector::LOW_BATTERY_SOC_THRESHOLD,
-                        cat_detector::MID_BATTERY_SOC_THRESHOLD,
-                        cat_detector::HIGH_BATTERY_SOC_THRESHOLD,
+                        CRITICAL_BATTERY_SOC_THRESHOLD,
+                        BATTERY_SOC_HYSTERESIS,
+                        LOW_BATTERY_SOC_THRESHOLD,
+                        MID_BATTERY_SOC_THRESHOLD,
+                        HIGH_BATTERY_SOC_THRESHOLD,
                     ),
                 ),
                 controller::ProximityFeatureConfig::new(
@@ -154,9 +164,9 @@ fn test_system_integration_flow() {
                         SENSOR_EAST_CHANNEL.sender(),
                         SENSOR_WEST_CHANNEL.sender(),
                     ],
-                    cat_detector::DEFAULT_PRESS_THRESHOLD_MM,
-                    cat_detector::DEFAULT_NEAR_THRESHOLD_MM,
-                    cat_detector::DEFAULT_WAKE_THRESHOLD_MM,
+                    DEFAULT_PRESS_THRESHOLD_MM,
+                    DEFAULT_NEAR_THRESHOLD_MM,
+                    DEFAULT_WAKE_THRESHOLD_MM,
                     controller::GestureAction::TogglePower,
                     Some(TELEMETRY_CHANNEL.sender()),
                 ),
@@ -174,14 +184,14 @@ fn test_system_integration_flow() {
             .1
             .battery_manager
             .borrow_mut()
-            .set_critical_soc_threshold(cat_detector::CRITICAL_BATTERY_SOC_THRESHOLD);
+            .set_critical_soc_threshold(CRITICAL_BATTERY_SOC_THRESHOLD);
         system_ctrl
             .feature_set
             .features
             .1
             .battery_manager
             .borrow_mut()
-            .set_soc_hysteresis(cat_detector::BATTERY_SOC_HYSTERESIS);
+            .set_soc_hysteresis(BATTERY_SOC_HYSTERESIS);
 
         let mut battery_ctrl = BatteryController::new_with_system_and_alert(
             &mock_battery,
@@ -596,7 +606,7 @@ fn test_system_integration_flow() {
         while MOTOR_CHANNEL.try_receive().is_ok() {}
 
         // Inactivity for timeout triggers Sleep
-        for _ in 0..cat_detector::INACTIVITY_TIMEOUT_SECONDS {
+        for _ in 0..system_ctrl.feature_set.inactivity_timeout_seconds() {
             tick_system(&mut system_ctrl, 1000);
             drain_telemetry();
         }
@@ -759,11 +769,11 @@ fn test_spawn_controllers_embassy_routing() {
             controller::BatteryFeatureConfig::new(
                 Some(RUN_BATTERY_CHANNEL.sender()),
                 platform::BatteryManager::new(
-                    cat_detector::CRITICAL_BATTERY_SOC_THRESHOLD,
-                    cat_detector::BATTERY_SOC_HYSTERESIS,
-                    cat_detector::LOW_BATTERY_SOC_THRESHOLD,
-                    cat_detector::MID_BATTERY_SOC_THRESHOLD,
-                    cat_detector::HIGH_BATTERY_SOC_THRESHOLD,
+                    CRITICAL_BATTERY_SOC_THRESHOLD,
+                    BATTERY_SOC_HYSTERESIS,
+                    LOW_BATTERY_SOC_THRESHOLD,
+                    MID_BATTERY_SOC_THRESHOLD,
+                    HIGH_BATTERY_SOC_THRESHOLD,
                 ),
             ),
             controller::ProximityFeatureConfig::new(
@@ -772,9 +782,9 @@ fn test_spawn_controllers_embassy_routing() {
                     RUN_SENSOR_EAST_CHANNEL.sender(),
                     RUN_SENSOR_WEST_CHANNEL.sender(),
                 ],
-                cat_detector::DEFAULT_PRESS_THRESHOLD_MM,
-                cat_detector::DEFAULT_NEAR_THRESHOLD_MM,
-                cat_detector::DEFAULT_WAKE_THRESHOLD_MM,
+                DEFAULT_PRESS_THRESHOLD_MM,
+                DEFAULT_NEAR_THRESHOLD_MM,
+                DEFAULT_WAKE_THRESHOLD_MM,
                 controller::GestureAction::TogglePower,
                 Some(RUN_TELEMETRY_CHANNEL.sender()),
             ),
@@ -825,9 +835,9 @@ fn test_spawn_controllers_embassy_routing() {
                 Sensor(sensor_ctrl_east, RUN_SENSOR_EAST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_west, RUN_SENSOR_WEST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Led(led_ctrl, RUN_LED_CHANNEL), generics: (MockLed),
-                System(system_ctrl, RUN_SYSTEM_CHANNEL, RUN_THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, cat_detector::CatDetectorFeatureSet<CriticalSectionRawMutex, 16>, 16>),
+                System(system_ctrl, RUN_SYSTEM_CHANNEL, RUN_THERMAL_ACTION_CHANNEL), generics: (cat_detector::SystemControllerType),
                 Filesystem(fs_controller, RUN_FILESYSTEM_CHANNEL), generics: (controller::filesystem_controller::ProfilingFlash<platform::flash::SharedFlashMutex<TestFlash>>),
-                Telemetry(telemetry_ctrl, RUN_TELEMETRY_CONSUMER_CHANNEL), generics: ({ cat_detector::MAX_RECORDS }, { controller::telemetry_controller::CHANNEL_CAPACITY }, platform::flash::SharedFlashMutex<TestFlash>),
+                Telemetry(telemetry_ctrl, RUN_TELEMETRY_CONSUMER_CHANNEL), generics: ({ controller::telemetry_controller::CHANNEL_CAPACITY }, platform::flash::SharedFlashMutex<TestFlash>),
             }
         }
 
@@ -840,14 +850,14 @@ fn test_spawn_controllers_embassy_routing() {
 fn test_filesystem_utilization_limit() {
     // 1. Filesystem partition size (64 KB)
     let fs_partition_size =
-        (cat_detector::FS_PARTITION_END - cat_detector::FS_PARTITION_START) as usize;
+        (board::Board::FS_PARTITION_END - board::Board::FS_PARTITION_START) as usize;
     assert_eq!(fs_partition_size, 64 * 1024);
 
     // Active filesystem files budget
     let vl53l0x_cal_size = 168;
     let motor_cal_size = 168;
     let crash_idx_size = 44;
-    let crash_logs_size = cat_detector::MAX_CRASH_LOGS as usize * 1240; // 1240 bytes per crash log
+    let crash_logs_size = board::Board::MAX_CRASH_LOGS as usize * 1240; // 1240 bytes per crash log
     let dir_file_size = 2088; // estimated maximum .dir size
     let fs_active_space =
         vl53l0x_cal_size + motor_cal_size + crash_idx_size + crash_logs_size + dir_file_size;
@@ -865,6 +875,6 @@ fn test_filesystem_utilization_limit() {
 
     // 2. Telemetry partition size (192 KB)
     let telemetry_partition_size =
-        (cat_detector::TELEMETRY_PARTITION_END - cat_detector::TELEMETRY_PARTITION_START) as usize;
+        (board::Board::TELEMETRY_PARTITION_END - board::Board::TELEMETRY_PARTITION_START) as usize;
     assert_eq!(telemetry_partition_size, 192 * 1024);
 }

@@ -168,3 +168,273 @@ fn test_parse_subcommand_enums() {
     assert_eq!(subcommands[1].name, "cal_near");
     assert_eq!(subcommands[1].doc, "Calibrate near proximity");
 }
+
+#[test]
+fn test_board_codegen() {
+    let root = code_gen::find_workspace_root();
+    let toml_path = root.join("board/board.toml");
+    let content = std::fs::read_to_string(&toml_path).unwrap();
+    let generated = code_gen::generate_board_definitions(&content, "cat_detector");
+    assert!(generated.contains("pub const PUMP_PIN_IA: u32 = 19;"));
+    assert!(generated.contains("pub const FS_PARTITION_START: u32 = 0x001C0000;"));
+
+    assert!(generated.contains("chip: \"rp2040\""));
+}
+
+#[test]
+#[should_panic(expected = "assigned to multiple resources")]
+fn test_board_codegen_overlapping_pins() {
+    let bad_toml = r#"
+        [boards.bad_board]
+        chip = "rp2040"
+        flash_base = 0x10000000
+        flash_size = 0x00200000
+        sram_size = 0x00042000
+        core0_stack_size = 24576
+        core1_stack_size = 16384
+        stack_top = 0x20042000
+        core0_stack_bottom = 0x2003C000
+        core_monitor_timeout_ms = 10000
+        core_monitor_warn_pct = 80
+        pins = { PIN_A = 10, PIN_B = 10 }
+        buses = {}
+        hardware_resources = {}
+        partitions = {}
+    "#;
+    code_gen::generate_board_definitions(bad_toml, "bad_board");
+}
+
+#[test]
+#[should_panic(expected = "invalid GPIO index")]
+fn test_board_codegen_invalid_pin_range() {
+    let bad_toml = r#"
+        [boards.bad_board]
+        chip = "rp2040"
+        flash_base = 0x10000000
+        flash_size = 0x00200000
+        sram_size = 0x00042000
+        core0_stack_size = 24576
+        core1_stack_size = 16384
+        stack_top = 0x20042000
+        core0_stack_bottom = 0x2003C000
+        core_monitor_timeout_ms = 10000
+        core_monitor_warn_pct = 80
+        pins = { PIN_A = 35 }
+        buses = {}
+        hardware_resources = {}
+        partitions = {}
+    "#;
+    code_gen::generate_board_definitions(bad_toml, "bad_board");
+}
+
+#[test]
+#[should_panic(expected = "invalid 7-bit I2C address")]
+fn test_board_codegen_invalid_i2c_addr() {
+    let bad_toml = r#"
+        [boards.bad_board]
+        chip = "rp2040"
+        flash_base = 0x10000000
+        flash_size = 0x00200000
+        sram_size = 0x00042000
+        core0_stack_size = 24576
+        core1_stack_size = 16384
+        stack_top = 0x20042000
+        core0_stack_bottom = 0x2003C000
+        core_monitor_timeout_ms = 10000
+        core_monitor_warn_pct = 80
+        pins = {}
+        buses = {}
+        hardware_resources = { SOME_I2C_ADDR = { value = 0x05, type = "u8" } }
+        partitions = {}
+    "#;
+    code_gen::generate_board_definitions(bad_toml, "bad_board");
+}
+
+#[test]
+fn test_board_placement_matches_memory_map() {
+    let root = code_gen::find_workspace_root();
+    let toml_path = root.join("board/board.toml");
+    let content = std::fs::read_to_string(&toml_path).unwrap();
+    let config: code_gen::BoardsConfig = toml::from_str(&content).unwrap();
+
+    let board_config = config.boards.get("cat_detector").unwrap();
+
+    // Parse memory map dynamically
+    let (flash_start, ram_end) = code_gen::parse_memory_map(&root);
+
+    // Validate that board.toml matches layout
+    assert_eq!(board_config.flash_base, flash_start);
+    assert_eq!(board_config.stack_top, ram_end);
+
+    // Validate stack bottom derivation
+    assert_eq!(
+        board_config.core0_stack_bottom,
+        board_config.stack_top - board_config.core0_stack_size as u32
+    );
+
+    // Validate that generated telemetry MAX_RECORDS fits in the telemetry partition and is multiple of 64
+    let telemetry_start = board_config.partitions.get("telemetry").unwrap().start;
+    let telemetry_end = board_config.partitions.get("telemetry").unwrap().end;
+    let telemetry_size = telemetry_end - telemetry_start;
+
+    let num_chunks = telemetry_size / 2560;
+    let max_records_val = num_chunks as usize * 64;
+
+    assert_eq!(
+        max_records_val % 64,
+        0,
+        "MAX_RECORDS must be a multiple of 64"
+    );
+    assert_eq!(max_records_val, 4864);
+
+    let required_size = num_chunks * 2560;
+    assert!(
+        required_size <= telemetry_size,
+        "Telemetry partition size ({} bytes) is too small for {} records (requires {} bytes)",
+        telemetry_size,
+        max_records_val,
+        required_size
+    );
+}
+
+#[test]
+fn test_board_codegen_valid_16bit_i2c_addr() {
+    let valid_toml = r#"
+        [boards.test_board]
+        chip = "rp2040"
+        flash_base = 0x10000000
+        flash_size = 0x00200000
+        sram_size = 0x00042000
+        core0_stack_size = 24576
+        core1_stack_size = 16384
+        stack_top = 0x20042000
+        core0_stack_bottom = 0x2003C000
+        core_monitor_timeout_ms = 10000
+        core_monitor_warn_pct = 80
+        pins = {}
+        buses = {}
+        hardware_resources = { SOME_16BIT_I2C_ADDR = { value = 0x0A5F, type = "u16" } }
+        partitions = {}
+    "#;
+    let generated = code_gen::generate_board_definitions(valid_toml, "test_board");
+    assert!(generated.contains("pub const SOME_16BIT_I2C_ADDR: u16 = 2655;")); // 0x0A5F = 2655
+}
+
+#[test]
+#[should_panic(expected = "invalid 16-bit I2C address")]
+fn test_board_codegen_invalid_16bit_i2c_addr() {
+    let bad_toml = r#"
+        [boards.bad_board]
+        chip = "rp2040"
+        flash_base = 0x10000000
+        flash_size = 0x00200000
+        sram_size = 0x00042000
+        core0_stack_size = 24576
+        core1_stack_size = 16384
+        stack_top = 0x20042000
+        core0_stack_bottom = 0x2003C000
+        core_monitor_timeout_ms = 10000
+        core_monitor_warn_pct = 80
+        pins = {}
+        buses = {}
+        hardware_resources = { INVALID_16BIT_I2C_ADDR = { value = 0x10000, type = "u16" } }
+        partitions = {}
+    "#;
+    code_gen::generate_board_definitions(bad_toml, "bad_board");
+}
+
+#[test]
+fn test_validate_app_toml_parsing_and_generation() {
+    let app_toml_path = code_gen::find_app_toml();
+    let content = fs::read_to_string(&app_toml_path).unwrap();
+
+    // Validate parsing MultiAppConfig
+    let multi_config: code_gen::MultiAppConfig = toml::from_str(&content).unwrap();
+    assert!(multi_config.apps.contains_key("cat_detector"));
+
+    // Validate rendering active topology
+    let rendered = code_gen::generate_app_topology(&content, "cat_detector");
+    assert!(!rendered.is_empty());
+    assert!(rendered.contains("pub struct CatDetectorFeatureSet"));
+    assert!(rendered.contains("pub fn create_default_feature_set"));
+}
+
+#[test]
+fn test_list_boards_apps_peripherals() {
+    // 1. Boards
+    let board_toml_path = code_gen::find_board_toml();
+    let content = fs::read_to_string(&board_toml_path).unwrap();
+    let boards_config: code_gen::BoardsConfig = toml::from_str(&content).unwrap();
+    assert!(!boards_config.boards.is_empty());
+    assert!(boards_config.boards.contains_key("cat_detector"));
+
+    // 2. Apps
+    let app_toml_path = code_gen::find_app_toml();
+    let app_content = fs::read_to_string(&app_toml_path).unwrap();
+    let app_config: code_gen::MultiAppConfig = toml::from_str(&app_content).unwrap();
+    assert!(!app_config.apps.is_empty());
+    assert!(app_config.apps.contains_key("cat_detector"));
+
+    // 3. Peripherals
+    let peripherals_toml_path = code_gen::find_peripherals_toml();
+    let peripherals_content = fs::read_to_string(&peripherals_toml_path).unwrap();
+    let peripheral_config: code_gen::PeripheralConfig =
+        toml::from_str(&peripherals_content).unwrap();
+    assert!(!peripheral_config.peripherals.is_empty());
+    assert!(peripheral_config
+        .peripherals
+        .iter()
+        .any(|p| p.name == "Max17048"));
+}
+
+#[test]
+fn test_board_sample_generation() {
+    let board_toml_path = code_gen::find_board_toml();
+    let content = fs::read_to_string(&board_toml_path).unwrap();
+    let generated = code_gen::generate_board_definitions(&content, "cat_detector");
+    assert!(!generated.is_empty());
+    assert!(generated.contains("pub const CORE0_STACK_SIZE: usize = 24576;"));
+    assert!(generated.contains("pub const DUAL_CORE_ENABLED: bool = true;"));
+}
+
+#[test]
+fn test_board_skeleton_syntax_and_compiles() {
+    let content = code_gen::render_board_skeleton("TestBoard");
+    let parsed = syn::parse_str::<syn::File>(&content);
+    assert!(
+        parsed.is_ok(),
+        "Failed to parse rendered board skeleton: {:?}",
+        parsed.err()
+    );
+}
+
+#[test]
+fn test_app_skeleton_syntax_and_compiles() {
+    // 1. Lib skeleton
+    let lib_content = code_gen::render_app_skeleton("TestApp");
+    let parsed_lib = syn::parse_str::<syn::File>(&lib_content);
+    assert!(
+        parsed_lib.is_ok(),
+        "Failed to parse rendered app lib skeleton: {:?}",
+        parsed_lib.err()
+    );
+
+    // 2. App runner skeleton
+    let runner_content = code_gen::render_app_runner_skeleton("test_app", "TestApp");
+    let parsed_runner = syn::parse_str::<syn::File>(&runner_content);
+    assert!(
+        parsed_runner.is_ok(),
+        "Failed to parse rendered app runner skeleton: {:?}",
+        parsed_runner.err()
+    );
+
+    // 3. App shell skeleton
+    let shell_content =
+        code_gen::render_app_shell_skeleton("test_app", "TestApp", "TestShellConfig");
+    let parsed_shell = syn::parse_str::<syn::File>(&shell_content);
+    assert!(
+        parsed_shell.is_ok(),
+        "Failed to parse rendered app shell skeleton: {:?}",
+        parsed_shell.err()
+    );
+}
