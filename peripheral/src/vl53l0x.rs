@@ -635,15 +635,19 @@ impl<I: I2c> Probeable for Vl53l0x<I> {
     #[tracing::instrument(level = "trace")]
     async fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         let mut buf = [0u8; 1];
-        self.i2c
+        if self
+            .i2c
             .write_read(self.address, &[Register::IDENTIFICATION_MODEL_ID], &mut buf)
             .await
-            .map_err(|e| {
-                e.to_i2c_error(
-                    self.address as u16,
-                    Register::IDENTIFICATION_MODEL_ID as u16,
-                )
-            })?;
+            .is_err()
+        {
+            // If the probe failed at the current address, the sensor might still be at its default
+            // boot address of 0x29. Attempt to probe it there.
+            self.i2c
+                .write_read(0x29, &[Register::IDENTIFICATION_MODEL_ID], &mut buf)
+                .await
+                .map_err(|e| e.to_i2c_error(0x29, Register::IDENTIFICATION_MODEL_ID as u16))?;
+        }
         let id = buf[0] as u16;
         if id == 0xEE {
             Ok(id)

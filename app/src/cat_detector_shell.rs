@@ -108,11 +108,15 @@ async fn main(spawner: Spawner) {
     // Retrieve pointers using the platformitized helper
     app::declare_shell_pointers!(fs_cfg.buffer, controllers, board_ref, pointers);
 
+    // Boot Core 1 to run motor and sensor controllers, and configure Core 1 stack guard
+    let core1 = app::steal_core1_peripheral();
+    app::bootstrap_core1(core1, controllers.core1);
+
     let mut processor = ShellController::<app::CatDetectorShellConfig>::new(pointers);
 
     let mut local_proc = CatDetectorCliProcessor::new(&mut processor);
 
-    platform::run_rtt_shell_loop!(&mut cli, &mut local_proc, CatDetectorCli);
+    platform::run_rtt_shell_loop!(&mut cli, &mut local_proc, CatDetectorCli, "\r\nshell> ");
 }
 
 /// Dummy host entry point to satisfy Cargo compilation requirements.

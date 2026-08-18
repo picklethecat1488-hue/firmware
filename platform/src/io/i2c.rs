@@ -234,7 +234,11 @@ pub trait I2cResolver {
 }
 
 /// Processes I2C diagnostic CLI subcommands.
-pub fn handle_i2c_cli<W: embedded_io::Write<Error = E>, E: embedded_io::Error, R: I2cResolver>(
+pub async fn handle_i2c_cli<
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    R: I2cResolver,
+>(
     resolver: &R,
     subcommand: Option<I2cSubcommand>,
     bus: Option<&str>,
@@ -259,8 +263,7 @@ pub fn handle_i2c_cli<W: embedded_io::Write<Error = E>, E: embedded_io::Error, R
                     } else {
                         // Attempt a single byte read to check for ACK using 7-bit address
                         let mut buf = [0];
-                        let read_fut = i2c.read(addr_7bit, &mut buf);
-                        match embassy_futures::block_on(read_fut) {
+                        match i2c.read(addr_7bit, &mut buf).await {
                             Ok(_) => {
                                 let _ = write!(line, " {:02x}", addr_7bit);
                             }

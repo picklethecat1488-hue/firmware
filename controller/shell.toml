@@ -17,28 +17,28 @@ associated_type = "BatteryCtrl"
 field = "batteries"
 resolve_fn = "resolve_battery"
 doc = "Named battery gauges."
-bounds = "crate::BlockingBatteryReader"
+bounds = "crate::BatteryReader"
 
 [[cli_resolver_fields]]
 associated_type = "ThermalCtrl"
 field = "thermals"
 resolve_fn = "resolve_thermal"
 doc = "Named thermal sensors."
-bounds = "crate::BlockingThermalReader"
+bounds = "crate::ThermalReader"
 
 [[cli_resolver_fields]]
 associated_type = "SensorCtrl"
 field = "sensors"
 resolve_fn = "resolve_sensor"
 doc = "Named sensor controllers."
-bounds = "crate::BlockingProximityReader + model::calibration::Calibration<Store = model::calibration::Vl53l0xCalibration>"
+bounds = "crate::ProximityReader + model::calibration::Calibration<Store = model::calibration::Vl53l0xCalibration>"
 
 [[cli_resolver_fields]]
 associated_type = "MotorCtrl"
 field = "motor_ctrls"
 resolve_fn = "resolve_motor_ctrl"
 doc = "Named motor current controllers."
-bounds = "crate::BlockingMotorReader + crate::BlockingMotorWriter + model::calibration::Calibration<Store = model::calibration::MotorCalibration>"
+bounds = "crate::MotorReader + crate::MotorWriter + model::calibration::Calibration<Store = model::calibration::MotorCalibration>"
 
 [[cli_resolver_fields]]
 associated_type = "TempSensor"
@@ -52,20 +52,21 @@ associated_type = "SystemCtrl"
 field = "system_ctrls"
 resolve_fn = "resolve_system_ctrl"
 doc = "Named system controllers."
-bounds = "crate::BlockingSystemWriter"
+bounds = "crate::SystemWriter"
 
 [[cli_resolver_fields]]
 associated_type = "LedCtrl"
 field = "leds"
 resolve_fn = "resolve_led"
 doc = "Named RGB/Indicator LED controls."
-bounds = "crate::BlockingLedWriter"
+bounds = "crate::LedWriter"
 
 [[cli_commands]]
 group = "Battery"
 cmd_name = "battery"
 variant = "Battery"
 subcommand_type = "battery_controller::BatterySubcommand"
+async_cli = true
 handler = "battery_controller::handle_battery_cli"
 help = "Battery commands"
 
@@ -74,6 +75,7 @@ group = "Thermal"
 cmd_name = "thermal"
 variant = "Thermal"
 subcommand_type = "thermal_controller::ThermalSubcommand"
+async_cli = true
 handler = "thermal_controller::handle_thermal_cli"
 help = "Thermal commands"
 
@@ -82,6 +84,7 @@ group = "Motor"
 cmd_name = "motor"
 variant = "Motor"
 subcommand_type = "motor_controller::MotorSubcommand"
+async_cli = true
 handler = "motor_controller::handle_motor_cli"
 help = "Motor commands"
 args = [
@@ -109,6 +112,7 @@ group = "Fs"
 cmd_name = "fs"
 variant = "Fs"
 subcommand_type = "filesystem_controller::FilesystemSubcommand"
+async_cli = true
 handler = "filesystem_controller::handle_fs_cli"
 help = "Filesystem commands"
 args = [
@@ -121,6 +125,7 @@ group = "System"
 cmd_name = "system"
 variant = "System"
 subcommand_type = "system_controller::SystemSubcommand"
+async_cli = true
 handler = "system_controller::handle_system_cli"
 help = "System commands"
 args = [
@@ -132,6 +137,7 @@ group = "I2c"
 cmd_name = "i2c"
 variant = "I2c"
 subcommand_type = "platform::i2c::I2cSubcommand"
+async_cli = true
 handler = "platform::i2c::handle_i2c_cli"
 help = "I2C commands"
 args = [
@@ -143,6 +149,7 @@ group = "Gpio"
 cmd_name = "gpio"
 variant = "Gpio"
 subcommand_type = "platform::gpio::GpioSubcommand"
+async_cli = true
 handler = "platform::gpio::handle_gpio_cli"
 help = "GPIO commands"
 args = [
@@ -154,6 +161,7 @@ group = "Led"
 cmd_name = "led"
 variant = "Led"
 subcommand_type = "led_controller::LedSubcommand"
+async_cli = true
 handler = "led_controller::handle_led_cli"
 help = "LED commands"
 

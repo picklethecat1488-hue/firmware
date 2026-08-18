@@ -13,7 +13,7 @@ use controller::led_controller::LedController;
 use controller::motor_controller::{MotorCommand, MotorController};
 use controller::sensor_controller::{SensorCommand, SensorController};
 use controller::thermal_controller::{ThermalCommand, ThermalController};
-use controller::{BlockingSystemWriter, SystemCommand, SystemController, SystemFeatureSet};
+use controller::{SystemCommand, SystemController, SystemFeatureSet, SystemWriter};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;

@@ -239,7 +239,7 @@ pub fn rtt_has_input() -> bool {
 /// pending async commands.
 #[macro_export]
 macro_rules! run_rtt_shell_loop {
-    ($cli:expr, $proc:expr, $cmd_type:ty) => {
+    ($cli:expr, $proc:expr, $cmd_type:ty, $prompt:expr) => {
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         loop {
             $crate::rtt::RTT_SIGNAL.wait().await;
@@ -252,11 +252,14 @@ macro_rules! run_rtt_shell_loop {
                     let mut raw_writer = $crate::rtt::RttTxWriter;
                     let mut writer = ::embedded_cli::writer::Writer::new(&mut raw_writer);
                     if let Err(err) = $proc.controller.execute_pending(&mut writer).await {
+                        let _ = $cli.set_prompt($prompt);
                         let _ = $cli.write(|cli_writer| {
                             use core::fmt::Write as _;
                             let _ = core::writeln!(cli_writer, "Command failed: {}", err);
                             Ok::<(), core::convert::Infallible>(())
                         });
+                    } else {
+                        let _ = $cli.set_prompt($prompt);
                     }
                 }
             }

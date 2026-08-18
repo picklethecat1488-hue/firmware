@@ -137,18 +137,22 @@ pub static DUMMY_TELEMETRY_CHANNEL: TelemetryChannel<
 
 use model::types::PeripheralError;
 
-/// Trait for reading battery status blocking-ly.
-pub trait BlockingBatteryReader {
+/// Trait for reading battery status asynchronously.
+pub trait BatteryReader {
     /// Read voltage (mV) and state of charge (%).
-    fn read_battery_blocking(&self) -> Result<(u32, u8), PeripheralError>;
+    async fn read_battery(&self) -> Result<(u32, u8), PeripheralError>;
 
     /// Configure alerts on the battery.
-    fn configure_alerts(&self, _v_min_mv: u32, _v_max_mv: u32) -> Result<(), PeripheralError> {
+    async fn configure_alerts(
+        &self,
+        _v_min_mv: u32,
+        _v_max_mv: u32,
+    ) -> Result<(), PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
 
     /// Check and clear alerts on the battery.
-    fn check_and_clear_alerts(&self) -> Result<(bool, bool), PeripheralError> {
+    async fn check_and_clear_alerts(&self) -> Result<(bool, bool), PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
 
@@ -158,14 +162,14 @@ pub trait BlockingBatteryReader {
     }
 }
 
-/// Trait for reading temperature blocking-ly.
-pub trait BlockingThermalReader {
+/// Trait for reading temperature.
+pub trait ThermalReader {
     /// Read temperature in milli-Celsius.
-    fn read_temperature_blocking(&self) -> Result<i32, PeripheralError>;
+    fn read_temperature(&self) -> Result<i32, PeripheralError>;
 }
 
-/// Trait for reading proximity distance blocking-ly.
-pub trait BlockingProximityReader:
+/// Trait for reading proximity distance.
+pub trait ProximityReader:
     model::calibration::ApplyCalibration<
     Input = model::types::SensorReading,
     Output = model::types::SensorReading,
@@ -173,9 +177,7 @@ pub trait BlockingProximityReader:
 >
 {
     /// Read distance in millimeters.
-    async fn read_distance_blocking(
-        &mut self,
-    ) -> Result<model::types::SensorReading, PeripheralError>;
+    async fn read_distance(&mut self) -> Result<model::types::SensorReading, PeripheralError>;
 
     /// Get the latest cached proximity distance in millimeters.
     fn latest_distance(&self) -> model::types::SensorReading {
@@ -199,46 +201,44 @@ pub trait BlockingProximityReader:
     }
 }
 
-impl BlockingBatteryReader for () {
-    fn read_battery_blocking(&self) -> Result<(u32, u8), PeripheralError> {
+impl BatteryReader for () {
+    async fn read_battery(&self) -> Result<(u32, u8), PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
 }
 
-impl BlockingThermalReader for () {
-    fn read_temperature_blocking(&self) -> Result<i32, PeripheralError> {
+impl ThermalReader for () {
+    fn read_temperature(&self) -> Result<i32, PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
 }
 
-impl BlockingProximityReader for () {
-    async fn read_distance_blocking(
-        &mut self,
-    ) -> Result<model::types::SensorReading, PeripheralError> {
+impl ProximityReader for () {
+    async fn read_distance(&mut self) -> Result<model::types::SensorReading, PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
 }
 
-/// Trait for reading motor current/torque blocking-ly.
-pub trait BlockingMotorReader {
+/// Trait for reading motor current/torque asynchronously.
+pub trait MotorReader {
     /// Read motor current in mA.
-    fn read_current_ma_blocking(&mut self) -> Result<i32, PeripheralError>;
+    async fn read_motor_current_ma(&mut self) -> Result<i32, PeripheralError>;
 }
 
-impl BlockingMotorReader for () {
-    fn read_current_ma_blocking(&mut self) -> Result<i32, PeripheralError> {
+impl MotorReader for () {
+    async fn read_motor_current_ma(&mut self) -> Result<i32, PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
 }
 
-/// Trait for controlling motor speed.
-pub trait BlockingMotorWriter {
+/// Trait for controlling motor speed asynchronously.
+pub trait MotorWriter {
     /// Set motor speed.
-    fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError>;
+    async fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError>;
     /// Set motor speed using target RPM.
-    fn set_motor_speed_rpm(&mut self, rpm: i32) -> Result<(), PeripheralError>;
+    async fn set_motor_speed_rpm(&mut self, rpm: i32) -> Result<(), PeripheralError>;
     /// Stop the motor.
-    fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError>;
+    async fn stop_motor(&mut self) -> Result<(), PeripheralError>;
     /// Update the writer's internal calibration parameters.
     fn update_calibration(
         &mut self,
@@ -248,21 +248,21 @@ pub trait BlockingMotorWriter {
     }
 }
 
-impl BlockingMotorWriter for () {
-    fn set_motor_speed(&mut self, _: i8) -> Result<(), PeripheralError> {
+impl MotorWriter for () {
+    async fn set_motor_speed(&mut self, _: i8) -> Result<(), PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
-    fn set_motor_speed_rpm(&mut self, _: i32) -> Result<(), PeripheralError> {
+    async fn set_motor_speed_rpm(&mut self, _: i32) -> Result<(), PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
-    fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError> {
+    async fn stop_motor(&mut self) -> Result<(), PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
 }
 
 /// Trait for system orchestrator writer operations.
 #[allow(async_fn_in_trait)]
-pub trait BlockingSystemWriter {
+pub trait SystemWriter {
     /// Resets the inactivity timeout.
     fn record_activity(&mut self) -> Result<(), PeripheralError>;
 
@@ -280,7 +280,7 @@ pub trait BlockingSystemWriter {
     }
 }
 
-impl BlockingSystemWriter for () {
+impl SystemWriter for () {
     fn record_activity(&mut self) -> Result<(), PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
@@ -291,27 +291,27 @@ pub use embassy_sync::channel::Channel;
 pub use embassy_sync::channel::Receiver;
 pub use embassy_sync::channel::Sender;
 
-impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: usize>
-    BlockingMotorWriter for MotorSender<MutexRaw, N>
+impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: usize> MotorWriter
+    for MotorSender<MutexRaw, N>
 {
-    fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
+    async fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
         let motor_speed =
             model::types::MotorSpeed::new(speed).ok_or(PeripheralError::InvalidConfiguration)?;
         self.try_send(MotorCommand::SetSpeed(motor_speed))
             .map_err(|_| PeripheralError::DeviceNotAvailable)
     }
-    fn set_motor_speed_rpm(&mut self, rpm: i32) -> Result<(), PeripheralError> {
+    async fn set_motor_speed_rpm(&mut self, rpm: i32) -> Result<(), PeripheralError> {
         self.try_send(MotorCommand::SetSpeedRpm(rpm))
             .map_err(|_| PeripheralError::DeviceNotAvailable)
     }
-    fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError> {
+    async fn stop_motor(&mut self) -> Result<(), PeripheralError> {
         self.try_send(MotorCommand::Stop)
             .map_err(|_| PeripheralError::DeviceNotAvailable)
     }
 }
 
-impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: usize>
-    BlockingSystemWriter for SystemSender<MutexRaw, N>
+impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: usize> SystemWriter
+    for SystemSender<MutexRaw, N>
 {
     fn record_activity(&mut self) -> Result<(), PeripheralError> {
         self.try_send(SystemCommand::ActivityDetected)
@@ -319,17 +319,17 @@ impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: u
     }
 }
 
-/// Trait for controlling LED color state pattern.
-pub trait BlockingLedWriter {
+/// Trait for controlling LED color state pattern asynchronously.
+pub trait LedWriter {
     /// Set the current LED state pattern.
-    fn set_pattern_blocking(
+    async fn set_pattern(
         &mut self,
         pattern: model::types::SystemLedState,
     ) -> Result<(), PeripheralError>;
 }
 
-impl BlockingLedWriter for () {
-    fn set_pattern_blocking(
+impl LedWriter for () {
+    async fn set_pattern(
         &mut self,
         _pattern: model::types::SystemLedState,
     ) -> Result<(), PeripheralError> {
@@ -337,10 +337,10 @@ impl BlockingLedWriter for () {
     }
 }
 
-impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: usize>
-    BlockingLedWriter for LedSender<MutexRaw, N>
+impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: usize> LedWriter
+    for LedSender<MutexRaw, N>
 {
-    fn set_pattern_blocking(
+    async fn set_pattern(
         &mut self,
         pattern: model::types::SystemLedState,
     ) -> Result<(), PeripheralError> {

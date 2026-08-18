@@ -5,7 +5,7 @@ use controller::motor_controller::MotorCommand;
 use controller::sensor_controller::SensorCommand;
 use controller::system_controller::{SystemCommand, SystemController};
 use controller::thermal_controller::ThermalCommand;
-use controller::BlockingSystemWriter;
+use controller::SystemWriter;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::channel::Channel;
 

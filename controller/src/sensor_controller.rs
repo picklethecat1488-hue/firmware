@@ -4,7 +4,6 @@
 
 use crate::tracing::{self, controller_context};
 use crate::types::{SensorDirection, SensorMetadata};
-use crate::BlockingProximityReader;
 use crate::Sender;
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
@@ -738,11 +737,11 @@ impl<
         M: embassy_sync::blocking_mutex::raw::RawMutex + 'static,
         Pin,
         Cmd,
-    > crate::BlockingProximityReader for SensorController<'a, S, M, Pin, Cmd, ProximityReader>
+    > crate::ProximityReader for SensorController<'a, S, M, Pin, Cmd, ProximityReader>
 where
     <S as ProximitySensor>::Error: ToPeripheralError,
 {
-    async fn read_distance_blocking(&mut self) -> Result<SensorReading, PeripheralError> {
+    async fn read_distance(&mut self) -> Result<SensorReading, PeripheralError> {
         let lock = OnceLock::new();
         let lock_ptr = CliSignal::new(&lock);
         self.send_command(SensorCommand::ReadSensorsWithSignal(lock_ptr))?;
@@ -872,6 +871,7 @@ pub async fn handle_sensor_cli<
     partition: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
+    use crate::ProximityReader as _;
     let command = PendingCommand::parse(
         subcommand.ok_or("Missing sensor subcommand")?,
         arg1,

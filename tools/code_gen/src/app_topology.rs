@@ -146,8 +146,8 @@ pub fn generate_app_topology(app_toml_content: &str, app_name: &str) -> String {
                     p.board_partition, p.name
                 )
             });
-        let start = board_config.flash_base + bp.start;
-        let end = board_config.flash_base + bp.end;
+        let start = bp.start;
+        let end = bp.end;
         resolved_partitions.push(ResolvedPartition {
             name: p.name.clone(),
             start_address: format!("0x{:08X}", start),

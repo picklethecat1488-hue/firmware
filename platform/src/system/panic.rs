@@ -684,7 +684,6 @@ fn log_crash_and_reset_impl<
         }
     }
     let encoded_bytes = &cbor_buf[..encoded_len];
-    defmt::error!("Crash Dump: {=[u8]:cbor}", encoded_bytes);
 
     // Write crash log to storage partition using rolling index
     critical_section::with(|cs| {

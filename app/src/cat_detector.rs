@@ -226,21 +226,24 @@ pub type MotorControllerType =
 pub struct MockMotorController;
 
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-impl controller::BlockingMotorReader for MockMotorController {
-    fn read_current_ma_blocking(&mut self) -> Result<i32, model::types::PeripheralError> {
+impl controller::MotorReader for MockMotorController {
+    async fn read_motor_current_ma(&mut self) -> Result<i32, model::types::PeripheralError> {
         Ok(150)
     }
 }
 
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-impl controller::BlockingMotorWriter for MockMotorController {
-    fn set_motor_speed(&mut self, _speed: i8) -> Result<(), model::types::PeripheralError> {
+impl controller::MotorWriter for MockMotorController {
+    async fn set_motor_speed(&mut self, _speed: i8) -> Result<(), model::types::PeripheralError> {
         Ok(())
     }
-    fn set_motor_speed_rpm(&mut self, _rpm: i32) -> Result<(), model::types::PeripheralError> {
+    async fn set_motor_speed_rpm(
+        &mut self,
+        _rpm: i32,
+    ) -> Result<(), model::types::PeripheralError> {
         Ok(())
     }
-    fn stop_motor_blocking(&mut self) -> Result<(), model::types::PeripheralError> {
+    async fn stop_motor(&mut self) -> Result<(), model::types::PeripheralError> {
         Ok(())
     }
 }
@@ -271,8 +274,8 @@ pub type SensorControllerType = controller::sensor_controller::SensorController<
 pub struct MockSensorController;
 
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-impl controller::BlockingProximityReader for MockSensorController {
-    async fn read_distance_blocking(
+impl controller::ProximityReader for MockSensorController {
+    async fn read_distance(
         &mut self,
     ) -> Result<model::types::SensorReading, model::types::PeripheralError> {
         Ok(model::types::SensorReading::Proximity(100))
