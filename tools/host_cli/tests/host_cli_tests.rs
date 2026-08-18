@@ -432,7 +432,7 @@ fn test_post_process_trace_telemetry() {
     use model::types::{MotorSpeed, MotorStatus};
     use std::io::Write;
 
-    let rec = TelemetryRecord::Motor(MotorStatus::Running(MotorSpeed::new(75).unwrap()));
+    let rec = TelemetryRecord::Motor(MotorStatus::Running(MotorSpeed::new(75).unwrap(), 150));
     let serialized = rec.serialize(1000);
     let len = serialized[0] as usize;
     let payload = &serialized[1..1 + len];

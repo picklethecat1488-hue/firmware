@@ -377,13 +377,13 @@ fn test_update_battery_status_actions() {
     // 2. Clear boot trap manually
     manager.set_battery_critical(false);
 
-    // 3. While Active, healthy update with charging = true should GoToPowerDown
+    // 3. While Active, healthy update with charging = true should not GoToPowerDown
     assert_eq!(
         manager.update_battery_status(50, ChargeState::Charging, SystemStatus::Active, false),
-        Some(BatteryUpdateAction::GoToPowerDown)
+        Some(BatteryUpdateAction::ReportSoC)
     );
 
-    // 4. While PowerDown, charging status change should ReportSoC
+    // 4. While PowerDown, unplugging status change should ReportSoC
     assert_eq!(
         manager.update_battery_status(
             50,

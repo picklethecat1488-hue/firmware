@@ -55,7 +55,7 @@ fn test_telemetry_records_size_bounds() {
             BatteryState::Critical,
             u32::MAX,
         )),
-        TelemetryRecord::Motor(MotorStatus::Running(MotorSpeed::MAX)),
+        TelemetryRecord::Motor(MotorStatus::Running(MotorSpeed::MAX, i32::MAX)),
         TelemetryRecord::Motor(MotorStatus::Brake),
         TelemetryRecord::Thermal(ThermalStatus::TempOverheating(i32::MAX, true)),
         TelemetryRecord::System(SystemStatus::Active),
