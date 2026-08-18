@@ -174,6 +174,13 @@ pub async fn bootstrap_core1_task(
         true,
     );
 
+    // Spawn the Core 1 command task to process inter-core command messages (e.g. panic)
+    spawner
+        .spawn(platform::core_monitor::core1_command_task(
+            platform::core_monitor::CORE1_COMMAND_CHANNEL.receiver(),
+        ))
+        .unwrap();
+
     let controllers = Core1Wrapper {
         core1: core1_controllers,
     };

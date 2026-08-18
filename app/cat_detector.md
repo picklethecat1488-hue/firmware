@@ -133,7 +133,7 @@ The checklist starts by flashing the diagnostic shell to run low-level hardware 
     *   *Expected Output*: Measures and records average current draw under various load conditions, saving calibration limits to `motor_cal.cbor` in flash.
 *   **Step 11: Verify Panic and Crash Log Capture**
     *   *Type*: Target Shell Command
-    *   *Command*: `system crash`
+    *   *Command*: `core crash <core0|core1>`
     *   *Expected Output*: Forces a CPU panic handler execution, dumps panic backtrace, writes a crash log to flash, and reboots target back into the shell.
 
 #### Phase 2: Production Application (`app` binary)

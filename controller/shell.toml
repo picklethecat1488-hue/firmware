@@ -128,9 +128,6 @@ subcommand_type = "system_controller::SystemSubcommand"
 async_cli = true
 handler = "system_controller::handle_system_cli"
 help = "System commands"
-args = [
-    { name = "arg1", type = "Option<system_controller::CpuTarget>", help = "Optional target core (core0, core1)" }
-]
 
 [[cli_commands]]
 group = "I2c"
@@ -173,7 +170,7 @@ subcommand_type = "platform::core_monitor::CoreMonitorSubcommand"
 handler = "platform::core_monitor::handle_core_monitor_cli"
 help = "Core monitor commands"
 args = [
-    { name = "core", type = "string", help = "Optional target core (core0 or core1)" }
+    { name = "arg1", type = "string", help = "Optional target core (core0 or core1)" }
 ]
 
 

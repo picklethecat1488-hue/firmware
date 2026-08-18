@@ -85,12 +85,7 @@ pub(crate) unsafe fn flush_rtt_cli() {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "tracing")]
 const BUF_SIZE: usize = 32768;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(not(feature = "tracing"))]
-const BUF_SIZE: usize = 4096;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 const CLI_BUF_SIZE: usize = 1024;
