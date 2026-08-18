@@ -110,7 +110,7 @@ impl PendingCommand {
                     "west" => SensorDirection::West,
                     _ => return Err("Invalid direction. Expected: north, east, west"),
                 };
-                let part_str = partition.unwrap_or("telemetry");
+                let part_str = partition.unwrap_or("panic");
                 let mut s = String::new();
                 s.push_str(part_str)
                     .map_err(|_| "Partition name too long")?;
@@ -127,7 +127,7 @@ impl PendingCommand {
                     "west" => SensorDirection::West,
                     _ => return Err("Invalid direction. Expected: north, east, west"),
                 };
-                let part_str = partition.unwrap_or("telemetry");
+                let part_str = partition.unwrap_or("panic");
                 let mut s = String::new();
                 s.push_str(part_str)
                     .map_err(|_| "Partition name too long")?;
@@ -144,7 +144,7 @@ impl PendingCommand {
                     "west" => SensorDirection::West,
                     _ => return Err("Invalid direction. Expected: north, east, west"),
                 };
-                let part_str = partition.unwrap_or("100");
+                let part_str = partition.unwrap_or("panic");
                 let mut s = String::new();
                 s.push_str(part_str).map_err(|_| "Parameter too long")?;
                 PendingCommand::CalXTalk {

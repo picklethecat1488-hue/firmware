@@ -171,7 +171,7 @@ steps:
     name: Verify Panic and Crash Log Capture (Core 0)
     type: shell_command
     flash_before: shell
-    command: system crash core0
+    command: core crash core0
     reboot: true
     expected_regex: "Type 'help' to print usage."
     description: Force a CPU panic handler test execution on Core 0 to verify logging.
@@ -179,7 +179,7 @@ steps:
   - id: "9b"
     name: Verify Core 1 Panic Capture
     type: shell_command
-    command: system crash core1
+    command: core crash core1
     reboot: true
     expected_regex: "Type 'help' to print usage."
     description: Trigger a simulated panic on Core 1 executor and verify crash log generation.
