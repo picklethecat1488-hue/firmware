@@ -450,9 +450,13 @@ pub fn generate_app_topology(app_toml_content: &str, app_name: &str) -> String {
                         .and_then(|v| v.as_str())
                         .expect("Missing channel for led feature");
                     let channel = format!("{}_CHANNEL", channel_raw.to_uppercase());
+                    let brightness = params
+                        .get("brightness")
+                        .and_then(|v| v.as_integer())
+                        .unwrap_or(100);
                     format!(
-                        "controller::LedFeatureConfig::new(Some({}.sender()))",
-                        channel
+                        "controller::LedFeatureConfig::new(Some({}.sender()), {})",
+                        channel, brightness
                     )
                 },
             },

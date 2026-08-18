@@ -47,12 +47,48 @@ impl LedDelay for BlockingDelay {
 const FADE_STEPS: i32 = 10;
 const FADE_DELAY_MS: u32 = 20;
 
+/// Commands sent to the Led Controller.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum LedCommand {
+    /// Update the led state pattern
+    State(SystemLedState),
+    /// Set the led brightness (0..100)
+    SetBrightness(u8),
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+impl defmt::Format for LedCommand {
+    fn format(&self, fmt: defmt::Formatter) {
+        match self {
+            LedCommand::State(state) => {
+                let state_str = match state {
+                    SystemLedState::Off => "Off",
+                    SystemLedState::SolidGreen => "SolidGreen",
+                    SystemLedState::SolidBlue => "SolidBlue",
+                    SystemLedState::SolidYellow => "SolidYellow",
+                    SystemLedState::SolidOrange => "SolidOrange",
+                    SystemLedState::BlinksRedFourTimes => "BlinksRedFourTimes",
+                    SystemLedState::BlinksRedOncePerThirtySeconds => {
+                        "BlinksRedOncePerThirtySeconds"
+                    }
+                };
+                defmt::write!(fmt, "State({})", state_str);
+            }
+            LedCommand::SetBrightness(brightness) => {
+                defmt::write!(fmt, "SetBrightness({})", brightness);
+            }
+        }
+    }
+}
+
 /// A controller that manages status indicator LEDs.
 #[controller_context]
 pub struct LedController<D> {
     driver: D,
     current_state: SystemLedState,
     current_color: (u8, u8, u8),
+    brightness: u8,
 }
 
 impl<D: LedDriver> LedController<D>
@@ -65,6 +101,7 @@ where
             driver,
             current_state: SystemLedState::Off,
             current_color: (0, 0, 0),
+            brightness: 100,
         }
     }
 
@@ -111,7 +148,7 @@ where
         delay: &mut DL,
     ) -> Result<(), PeripheralError> {
         let from = self.current_color;
-        let to = match pattern {
+        let base_to = match pattern {
             SystemLedState::Off => (0, 0, 0),
             SystemLedState::SolidGreen => (0, 128, 0),
             SystemLedState::SolidBlue => (0, 0, 64),
@@ -120,6 +157,11 @@ where
             SystemLedState::BlinksRedFourTimes => (255, 0, 0),
             SystemLedState::BlinksRedOncePerThirtySeconds => (255, 0, 0),
         };
+        let to = (
+            ((base_to.0 as u16 * self.brightness as u16) / 100) as u8,
+            ((base_to.1 as u16 * self.brightness as u16) / 100) as u8,
+            ((base_to.2 as u16 * self.brightness as u16) / 100) as u8,
+        );
 
         if from != to {
             if use_fade && (from == (0, 0, 0) || to == (0, 0, 0)) {
@@ -293,10 +335,25 @@ where
                     };
 
                     match embassy_time::with_timeout(delay_dur, command_rx.receive()).await {
-                        Ok(new_cmd) => {
+                        Ok(LedCommand::State(new_cmd)) => {
                             state = new_cmd;
                             led_on = false;
                             self.current_state = state;
+                        }
+                        Ok(LedCommand::SetBrightness(brightness)) => {
+                            self.brightness = brightness;
+                            if led_on {
+                                if let Err(e) = self
+                                    .update_color_with_delay(
+                                        SystemLedState::BlinksRedOncePerThirtySeconds,
+                                        false,
+                                        &mut delay,
+                                    )
+                                    .await
+                                {
+                                    telemetry_client.report_error(e);
+                                }
+                            }
                         }
                         Err(_timeout) => {
                             led_on = !led_on;
@@ -367,8 +424,22 @@ where
                     {
                         telemetry_client.report_error(e);
                     }
-                    let new_cmd = command_rx.receive().await;
-                    state = new_cmd;
+                    loop {
+                        match command_rx.receive().await {
+                            LedCommand::State(new_cmd) => {
+                                state = new_cmd;
+                                break;
+                            }
+                            LedCommand::SetBrightness(brightness) => {
+                                self.brightness = brightness;
+                                if let Err(e) =
+                                    self.update_color_with_delay(state, false, &mut delay).await
+                                {
+                                    telemetry_client.report_error(e);
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -381,12 +452,14 @@ where
 pub struct LedFeatureConfig<MutexRaw: RawMutex + 'static> {
     /// LED channel sender
     pub led_tx: Option<crate::LedSender<MutexRaw>>,
+    /// LED brightness (0..100)
+    pub brightness: u8,
 }
 
 impl<MutexRaw: RawMutex + 'static> LedFeatureConfig<MutexRaw> {
     /// Creates a new `LedFeatureConfig`.
-    pub fn new(led_tx: Option<crate::LedSender<MutexRaw>>) -> Self {
-        Self { led_tx }
+    pub fn new(led_tx: Option<crate::LedSender<MutexRaw>>, brightness: u8) -> Self {
+        Self { led_tx, brightness }
     }
 }
 
@@ -395,7 +468,8 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
 {
     fn on_init(&self) {
         if let Some(ref led_tx) = self.led_tx {
-            let _ = led_tx.try_send(SystemLedState::Off);
+            let _ = led_tx.try_send(LedCommand::SetBrightness(self.brightness));
+            let _ = led_tx.try_send(LedCommand::State(SystemLedState::Off));
         }
     }
 
@@ -427,7 +501,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
             } else {
                 SystemLedState::Off
             };
-            let _ = led_tx.try_send(led);
+            let _ = led_tx.try_send(LedCommand::State(led));
         }
     }
 
@@ -440,7 +514,9 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
         if action == platform::BatteryUpdateAction::ReportSoC {
             if let Some(ref led_tx) = self.led_tx {
                 if battery_status.map(|s| s.battery_critical).unwrap_or(false) {
-                    let _ = led_tx.try_send(SystemLedState::BlinksRedOncePerThirtySeconds);
+                    let _ = led_tx.try_send(LedCommand::State(
+                        SystemLedState::BlinksRedOncePerThirtySeconds,
+                    ));
                 } else if status == model::types::SystemStatus::PowerDown {
                     let led = if battery_status.map(|s| s.charger_connected).unwrap_or(false) {
                         battery_status
@@ -449,10 +525,10 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
                     } else {
                         SystemLedState::Off
                     };
-                    let _ = led_tx.try_send(led);
+                    let _ = led_tx.try_send(LedCommand::State(led));
                 } else if status == model::types::SystemStatus::Active {
                     if let Some(s) = battery_status {
-                        let _ = led_tx.try_send(s.soc_led_state);
+                        let _ = led_tx.try_send(LedCommand::State(s.soc_led_state));
                     }
                 }
             }
@@ -462,7 +538,7 @@ impl<MutexRaw: RawMutex + 'static, const N: usize> crate::SystemFeature<MutexRaw
     fn on_alert_triggered(&self, status: model::types::SystemStatus) {
         if status == model::types::SystemStatus::Sleep {
             if let Some(ref led_tx) = self.led_tx {
-                let _ = led_tx.try_send(SystemLedState::BlinksRedFourTimes);
+                let _ = led_tx.try_send(LedCommand::State(SystemLedState::BlinksRedFourTimes));
             }
         }
     }
@@ -485,8 +561,10 @@ subcommand_enum! {
         BlinkFour = "blink-four",
         /// Blink red once every 30 seconds
         BlinkSlow = "blink-slow",
+        /// Set LED brightness (0..100)
+        Brightness = "brightness",
     }
-    "off, green, blue, yellow, orange, blink-four, blink-slow"
+    "off, green, blue, yellow, orange, blink-four, blink-slow, brightness"
 }
 
 /// Processes LED-specific CLI subcommands.
@@ -497,14 +575,44 @@ pub async fn handle_led_cli<
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
     subcommand: Option<LedSubcommand>,
+    arg1: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     use crate::LedWriter as _;
     use core::fmt::Write as _;
     let led_ctrl = resolver.resolve_led(None)?;
     let cmd = subcommand.ok_or(
-        "Missing LED subcommand. Expected: off, green, blue, yellow, orange, blink-four, blink-slow",
+        "Missing LED subcommand. Expected: off, green, blue, yellow, orange, blink-four, blink-slow, brightness",
     )?;
+
+    if cmd == LedSubcommand::Brightness {
+        let brightness_str = arg1.ok_or("Missing brightness value (expected 0..100)")?;
+        let brightness = brightness_str
+            .parse::<u8>()
+            .map_err(|_| "Invalid brightness format (expected 0..100)")?;
+        if brightness > 100 {
+            return Err("Brightness must be between 0 and 100");
+        }
+        led_ctrl
+            .set_brightness(brightness)
+            .await
+            .map_err(|_| "Failed to set LED brightness")?;
+        let _ = core::writeln!(writer, "\r\nLED brightness set to {}%", brightness);
+        return Ok(());
+    }
+
+    if let Some(brightness_str) = arg1 {
+        let brightness = brightness_str
+            .parse::<u8>()
+            .map_err(|_| "Invalid brightness format (expected 0..100)")?;
+        if brightness > 100 {
+            return Err("Brightness must be between 0 and 100");
+        }
+        led_ctrl
+            .set_brightness(brightness)
+            .await
+            .map_err(|_| "Failed to set LED brightness")?;
+    }
 
     // Correct pattern mapping matching subcommand type
     let pattern = match cmd {
@@ -515,6 +623,7 @@ pub async fn handle_led_cli<
         LedSubcommand::Orange => SystemLedState::SolidOrange,
         LedSubcommand::BlinkFour => SystemLedState::BlinksRedFourTimes,
         LedSubcommand::BlinkSlow => SystemLedState::BlinksRedOncePerThirtySeconds,
+        LedSubcommand::Brightness => unreachable!(),
     };
 
     led_ctrl
@@ -532,5 +641,13 @@ where
 {
     async fn set_pattern(&mut self, pattern: SystemLedState) -> Result<(), PeripheralError> {
         self.set_pattern(pattern).await
+    }
+
+    async fn set_brightness(&mut self, brightness: u8) -> Result<(), PeripheralError> {
+        self.brightness = brightness;
+        let current_state = self.current_state;
+        let mut delay = AsyncDelay;
+        self.update_color_with_delay(current_state, false, &mut delay)
+            .await
     }
 }
