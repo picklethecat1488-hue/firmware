@@ -243,19 +243,19 @@ macro_rules! run_rtt_shell_loop {
             let mut rx_byte = [0u8; 1];
             while $crate::rtt::read_rtt(&mut rx_byte) > 0 {
                 let _ = $cli.process_byte::<$cmd_type, _>(rx_byte[0], $proc);
-                if $proc.controller.has_pending_command() {
-                    let mut raw_writer = $crate::rtt::RttTxWriter;
-                    let mut writer = ::embedded_cli::writer::Writer::new(&mut raw_writer);
-                    if let Err(err) = $proc.controller.execute_pending(&mut writer).await {
-                        let _ = $cli.set_prompt($prompt);
-                        let _ = $cli.write(|cli_writer| {
-                            use core::fmt::Write as _;
-                            let _ = core::writeln!(cli_writer, "Command failed: {}", err);
-                            Ok::<(), core::convert::Infallible>(())
-                        });
-                    } else {
-                        let _ = $cli.set_prompt($prompt);
-                    }
+            }
+            if $proc.controller.has_pending_command() {
+                let mut raw_writer = $crate::rtt::RttTxWriter;
+                let mut writer = ::embedded_cli::writer::Writer::new(&mut raw_writer);
+                if let Err(err) = $proc.controller.execute_pending(&mut writer).await {
+                    let _ = $cli.set_prompt($prompt);
+                    let _ = $cli.write(|cli_writer| {
+                        use core::fmt::Write as _;
+                        let _ = core::writeln!(cli_writer, "Command failed: {}", err);
+                        Ok::<(), core::convert::Infallible>(())
+                    });
+                } else {
+                    let _ = $cli.set_prompt($prompt);
                 }
             }
         }
