@@ -150,7 +150,7 @@ where
             calibration_present: false,
             limits: MotorLimits {
                 min_current_ma: 15,
-                max_current_ma: 800,
+                max_current_ma: 2500,
                 max_rpm: 0,
                 rpm_limit: 0,
             },
