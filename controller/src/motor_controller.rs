@@ -75,6 +75,63 @@ pub struct MotorController<M, C> {
     startup_ticks: u32,
 }
 
+/// The filename of the motor calibration file.
+pub const MOTOR_CALIBRATION_FILE_NAME: &str = "motor_cal.cbor";
+
+/// Thread-safe cross-core proxy implementing MotorWriter and MotorReader
+/// by sending commands over the message-passing channel and reading telemetry/current
+/// using the request-response pattern.
+pub struct MotorChannelSender {
+    sender: crate::MotorSender<CriticalSectionRawMutex>,
+}
+
+impl MotorChannelSender {
+    /// Creates a new MotorChannelSender proxy.
+    pub fn new(sender: crate::MotorSender<CriticalSectionRawMutex>) -> Self {
+        Self { sender }
+    }
+}
+
+impl crate::MotorWriter for MotorChannelSender {
+    async fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
+        let motor_speed = MotorSpeed::new(speed).ok_or(PeripheralError::InvalidConfiguration)?;
+        self.sender.send(MotorCommand::SetSpeed(motor_speed)).await;
+        Ok(())
+    }
+
+    async fn set_motor_speed_rpm(&mut self, rpm: i32) -> Result<(), PeripheralError> {
+        self.sender.send(MotorCommand::SetSpeedRpm(rpm)).await;
+        Ok(())
+    }
+
+    async fn stop_motor(&mut self) -> Result<(), PeripheralError> {
+        self.sender.send(MotorCommand::Stop).await;
+        Ok(())
+    }
+
+    fn update_calibration(
+        &mut self,
+        cal: &model::calibration::MotorCalibration,
+    ) -> Result<(), PeripheralError> {
+        let _ = self.sender.try_send(MotorCommand::UpdateCalibration(*cal));
+        Ok(())
+    }
+}
+
+impl crate::MotorReader for MotorChannelSender {
+    async fn read_motor_current_ma(&mut self) -> Result<i32, PeripheralError> {
+        let signal = embassy_sync::signal::Signal::new();
+        let cmd = MotorCommand::ReadCurrent(SendSignalPtr(&signal as *const _));
+        self.sender.send(cmd).await;
+        signal.wait().await
+    }
+}
+
+impl model::calibration::Calibration for MotorChannelSender {
+    const CALIBRATION_FILE_NAME: &'static str = MOTOR_CALIBRATION_FILE_NAME;
+    type Store = model::calibration::MotorCalibration;
+}
+
 impl<M: Motor + Tickable, C: PowerSensor> MotorController<M, C>
 where
     <M as Motor>::Error: ToPeripheralError,
@@ -348,22 +405,18 @@ where
         match cmd {
             MotorCommand::SetSpeed(speed) => {
                 if speed != MotorSpeed::ZERO {
-                    if !self.calibration_present {
-                        if self.get_speed() != speed {
-                            #[cfg(all(target_arch = "arm", target_os = "none"))]
-                            defmt::error!(
-                                "Motor Controller: Cannot start motor, calibration is not present!"
-                            );
-                            self.set_speed_val(speed);
-                        }
-                    } else {
-                        if let Err(e) = self.set_running_state(true).await {
-                            if let Some(ref client) = telemetry_client {
-                                client.report_error(e);
-                            }
-                        }
-                        self.set_speed_val(speed);
+                    if !self.calibration_present && self.get_speed() != speed {
+                        #[cfg(all(target_arch = "arm", target_os = "none"))]
+                        defmt::warn!(
+                            "Motor Controller: Warning, calibration is not present! Running with fallback limits."
+                        );
                     }
+                    if let Err(e) = self.set_running_state(true).await {
+                        if let Some(ref client) = telemetry_client {
+                            client.report_error(e);
+                        }
+                    }
+                    self.set_speed_val(speed);
                 } else {
                     // Set target speed to 0 and let it ramp down
                     self.set_speed_val(MotorSpeed::ZERO);
@@ -407,6 +460,15 @@ where
                     if let Some(ref client) = telemetry_client {
                         client.report_error(e);
                     }
+                }
+            }
+            MotorCommand::UpdateCalibration(cal) => {
+                let _ = self.update_calibration_ram(&cal);
+            }
+            MotorCommand::ReadCurrent(signal_ptr) => {
+                let current = self.read_torque_ma().await;
+                unsafe {
+                    (*signal_ptr.0).signal(current);
                 }
             }
         }
@@ -590,6 +652,47 @@ where
     pub fn bypass_startup_blanking(&mut self) {
         self.startup_ticks = MOTOR_STARTUP_BLANKING_TICKS + 1;
     }
+
+    /// Update the calibration parameters in RAM (Core 1).
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    pub fn update_calibration_ram(
+        &mut self,
+        cal: &model::calibration::MotorCalibration,
+    ) -> Result<(), PeripheralError> {
+        self.set_calibration_ram(cal);
+        Ok(())
+    }
+
+    /// Set the calibration parameters in RAM (Core 1).
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    pub fn set_calibration_ram(&mut self, store: &model::calibration::MotorCalibration) {
+        self.calibration_present = true;
+        self.limits.min_current_ma = store.current_ma.low;
+        self.limits.max_current_ma = store.current_ma.overload;
+        self.limits.max_rpm = store.max_rpm.unwrap_or(0);
+        self.limits.rpm_limit = store.rpm_limit.unwrap_or(0);
+    }
+}
+
+/// Thread-safe wrapper around a raw pointer to an embassy_sync::signal::Signal.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct SendSignalPtr(
+    pub *const embassy_sync::signal::Signal<CriticalSectionRawMutex, Result<i32, PeripheralError>>,
+);
+
+unsafe impl Send for SendSignalPtr {}
+unsafe impl Sync for SendSignalPtr {}
+
+impl core::fmt::Debug for SendSignalPtr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "SendSignalPtr({:p})", self.0)
+    }
 }
 
 /// One-way commands sent to the Motor Controller from the shell or app.
@@ -602,20 +705,23 @@ pub enum MotorCommand {
     SetSpeedRpm(i32),
     /// Stop the motor
     Stop,
+    /// Update the controller's active calibration in memory
+    UpdateCalibration(model::calibration::MotorCalibration),
+    /// Read the motor current draw in mA
+    ReadCurrent(SendSignalPtr),
 }
 
-impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
-    for MotorController<M, C>
+impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration for MotorController<M, C>
+where
+    <M as Motor>::Error: ToPeripheralError,
+    <M as Tickable>::Error: ToPeripheralError,
+    <C as PowerSensor>::Error: ToPeripheralError,
 {
-    const CALIBRATION_FILE_NAME: &'static str = "motor_cal.cbor";
+    const CALIBRATION_FILE_NAME: &'static str = MOTOR_CALIBRATION_FILE_NAME;
     type Store = model::calibration::MotorCalibration;
 
     fn set_calibration(&mut self, store: &Self::Store) {
-        self.calibration_present = true;
-        self.limits.min_current_ma = store.current_ma.low;
-        self.limits.max_current_ma = store.current_ma.overload;
-        self.limits.max_rpm = store.max_rpm.unwrap_or(0);
-        self.limits.rpm_limit = store.rpm_limit.unwrap_or(0);
+        self.set_calibration_ram(store);
     }
 
     fn get_calibration(&self) -> Self::Store {
@@ -676,15 +782,6 @@ where
 
     async fn stop_motor(&mut self) -> Result<(), PeripheralError> {
         self.set_running_state(false).await
-    }
-
-    fn update_calibration(
-        &mut self,
-        cal: &model::calibration::MotorCalibration,
-    ) -> Result<(), PeripheralError> {
-        use model::calibration::Calibration as _;
-        self.set_calibration(cal);
-        Ok(())
     }
 }
 
