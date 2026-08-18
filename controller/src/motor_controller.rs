@@ -290,7 +290,7 @@ where
         if let Some(client) = telemetry_client {
             let running = self.state == MotorState::On;
             let status = if running {
-                model::types::MotorStatus::Running(self.speed)
+                model::types::MotorStatus::Running(self.speed, self.last_current_ma)
             } else {
                 model::types::MotorStatus::Brake
             };
@@ -426,7 +426,7 @@ where
         if let Some(client) = telemetry_client {
             let running = self.state == MotorState::On;
             let status = if running {
-                model::types::MotorStatus::Running(self.speed)
+                model::types::MotorStatus::Running(self.speed, self.last_current_ma)
             } else {
                 model::types::MotorStatus::Brake
             };

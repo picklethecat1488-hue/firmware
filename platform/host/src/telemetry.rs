@@ -68,11 +68,16 @@ fn telemetry_record_to_perfetto_json(rec: &TelemetryRecord, ts: f64) -> Vec<serd
                     serde_json::json!({ "value": 0 }),
                 ));
             }
-            model::types::MotorStatus::Running(speed) => {
+            model::types::MotorStatus::Running(speed, current) => {
                 events.push(make_telemetry_event(
                     "Motor Speed",
                     ts,
                     serde_json::json!({ "value": speed.get() }),
+                ));
+                events.push(make_telemetry_event(
+                    "Motor Current (mA)",
+                    ts,
+                    serde_json::json!({ "value": current }),
                 ));
             }
         },

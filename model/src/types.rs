@@ -149,9 +149,9 @@ pub enum MotorStatus {
     #[default]
     #[n(0)]
     Brake,
-    /// Motor is running at the specified speed (0-100).
+    /// Motor is running at the specified speed (0-100) and current (mA).
     #[n(1)]
-    Running(#[n(0)] MotorSpeed),
+    Running(#[n(0)] MotorSpeed, #[n(1)] i32),
 }
 
 /// Telemetry status of the thermal monitoring system.
