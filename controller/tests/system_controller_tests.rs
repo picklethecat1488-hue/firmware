@@ -44,7 +44,7 @@ macro_rules! create_test_feature_set {
                     controller::GestureAction::TogglePower,
                     None,
                 ),
-                controller::LedFeatureConfig::new($led_tx),
+                controller::LedFeatureConfig::new($led_tx, 100),
                 controller::ThermalFeatureConfig::new($thermal_tx),
             ),
         }
@@ -99,7 +99,11 @@ fn test_system_controller_flow() {
     static SENSOR_WEST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
     static BATTERY_CHANNEL: Channel<CriticalSectionRawMutex, BatteryCommand, 4> = Channel::new();
     static THERMAL_CHANNEL: Channel<CriticalSectionRawMutex, ThermalCommand, 4> = Channel::new();
-    static LED_CHANNEL: Channel<CriticalSectionRawMutex, SystemLedState, 4> = Channel::new();
+    static LED_CHANNEL: Channel<
+        CriticalSectionRawMutex,
+        controller::led_controller::LedCommand,
+        4,
+    > = Channel::new();
 
     macro_rules! process {
         ($ctrl:expr) => {
@@ -108,6 +112,15 @@ fn test_system_controller_flow() {
             }
             while BATTERY_CHANNEL.try_receive().is_ok() {}
             while THERMAL_CHANNEL.try_receive().is_ok() {}
+        };
+    }
+
+    macro_rules! receive_led {
+        () => {
+            match LED_CHANNEL.try_receive().unwrap() {
+                controller::led_controller::LedCommand::State(s) => s,
+                cmd => panic!("Expected State, found {:?}", cmd),
+            }
         };
     }
 
@@ -140,7 +153,7 @@ fn test_system_controller_flow() {
     });
     process!(controller);
     assert_eq!(controller.power_manager.status(), SystemStatus::Active);
-    let _ = LED_CHANNEL.try_receive().unwrap(); // Consume initial SolidGreen
+    let _ = receive_led!(); // Consume initial SolidGreen
     let _ = MOTOR_CHANNEL.try_receive().unwrap(); // Consume initial SetSpeed(100)
 
     // Tick it 29 times, should remain Active
@@ -165,7 +178,7 @@ fn test_system_controller_flow() {
     assert_eq!(controller.power_manager.status(), SystemStatus::Sleep);
 
     // Verify LED was updated to Sleep blue
-    let led_state = LED_CHANNEL.try_receive().unwrap();
+    let led_state = receive_led!();
     assert_eq!(led_state, SystemLedState::SolidBlue);
 
     // Verify motor stop command was dispatched
@@ -178,7 +191,7 @@ fn test_system_controller_flow() {
     assert_eq!(controller.power_manager.status(), SystemStatus::Active);
 
     // Verify LED was updated to Active green
-    let led_state = LED_CHANNEL.try_receive().unwrap();
+    let led_state = receive_led!();
     assert_eq!(led_state, SystemLedState::SolidGreen);
     assert_eq!(
         MOTOR_CHANNEL.try_receive().unwrap(),
@@ -188,7 +201,7 @@ fn test_system_controller_flow() {
     // Trigger an alert (thermal critical)
     controller.handle_command(SystemCommand::AlertTriggered);
     process!(controller);
-    let led_state = LED_CHANNEL.try_receive().unwrap();
+    let led_state = receive_led!();
     assert_eq!(led_state, SystemLedState::BlinksRedFourTimes);
 
     assert_eq!(controller.power_manager.status(), SystemStatus::Sleep);
@@ -227,7 +240,7 @@ fn test_system_controller_flow() {
     });
     process!(controller);
     assert_eq!(controller.power_manager.status(), SystemStatus::Active);
-    let _ = LED_CHANNEL.try_receive().unwrap(); // Consume initial SolidGreen
+    let _ = receive_led!(); // Consume initial SolidGreen
     let _ = MOTOR_CHANNEL.try_receive().unwrap(); // Consume initial SetSpeed(100)
 
     // Tick to INACTIVITY_TIMEOUT_SECONDS to let the fresh controller sleep
@@ -236,14 +249,14 @@ fn test_system_controller_flow() {
         process!(controller);
     }
     assert_eq!(controller.power_manager.status(), SystemStatus::Sleep);
-    let _ = LED_CHANNEL.try_receive().unwrap(); // consume Sleep LED command (SolidBlue)
+    let _ = receive_led!(); // consume Sleep LED command (SolidBlue)
     let _ = MOTOR_CHANNEL.try_receive().unwrap(); // consume stop motor command
 
     // Wake up via Activity
     controller.handle_command(SystemCommand::ActivityDetected);
     process!(controller);
     assert_eq!(controller.power_manager.status(), SystemStatus::Active);
-    let led_state = LED_CHANNEL.try_receive().unwrap();
+    let led_state = receive_led!();
     assert_eq!(led_state, SystemLedState::SolidGreen); // consume Active green LED command
     let _ = MOTOR_CHANNEL.try_receive().unwrap(); // consume SetSpeed(100)
 
@@ -254,7 +267,7 @@ fn test_system_controller_flow() {
     }
     // Now it should be allowed to sleep, and does so automatically after 30s inactivity
     assert_eq!(controller.power_manager.status(), SystemStatus::Sleep);
-    let led_state = LED_CHANNEL.try_receive().unwrap();
+    let led_state = receive_led!();
     assert_eq!(led_state, SystemLedState::SolidBlue);
 
     // Clear channels
@@ -268,7 +281,7 @@ fn test_system_controller_flow() {
     process!(controller);
 
     assert_eq!(controller.power_manager.status(), SystemStatus::Active);
-    let led_state = LED_CHANNEL.try_receive().unwrap();
+    let led_state = receive_led!();
     assert_eq!(led_state, SystemLedState::SolidGreen);
 
     let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
@@ -283,7 +296,7 @@ fn test_system_controller_flow() {
     // System enters PowerDown state because battery became critical
     assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
     // LED should blink once per 30 seconds
-    let led_state = LED_CHANNEL.try_receive().unwrap();
+    let led_state = receive_led!();
     assert_eq!(led_state, SystemLedState::BlinksRedOncePerThirtySeconds);
     // Motor stop should be sent to disable the pump
     let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
@@ -309,7 +322,11 @@ fn test_power_down_and_gesture_detection() {
     static SENSOR_WEST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
     static BATTERY_CHANNEL: Channel<CriticalSectionRawMutex, BatteryCommand, 4> = Channel::new();
     static THERMAL_CHANNEL: Channel<CriticalSectionRawMutex, ThermalCommand, 4> = Channel::new();
-    static LED_CHANNEL: Channel<CriticalSectionRawMutex, SystemLedState, 4> = Channel::new();
+    static LED_CHANNEL: Channel<
+        CriticalSectionRawMutex,
+        controller::led_controller::LedCommand,
+        4,
+    > = Channel::new();
 
     macro_rules! process {
         ($ctrl:expr) => {
@@ -318,6 +335,15 @@ fn test_power_down_and_gesture_detection() {
             }
             while BATTERY_CHANNEL.try_receive().is_ok() {}
             while THERMAL_CHANNEL.try_receive().is_ok() {}
+        };
+    }
+
+    macro_rules! receive_led {
+        () => {
+            match LED_CHANNEL.try_receive().unwrap() {
+                controller::led_controller::LedCommand::State(s) => s,
+                cmd => panic!("Expected State, found {:?}", cmd),
+            }
         };
     }
 
@@ -348,7 +374,7 @@ fn test_power_down_and_gesture_detection() {
     });
     process!(controller);
     assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
-    let led_state = LED_CHANNEL.try_receive().unwrap();
+    let led_state = receive_led!();
     assert_eq!(led_state, SystemLedState::BlinksRedOncePerThirtySeconds);
 
     // 3. Transition to Active when battery level is no longer critical
@@ -361,7 +387,7 @@ fn test_power_down_and_gesture_detection() {
     });
     process!(controller);
     assert_eq!(controller.power_manager.status(), SystemStatus::Active);
-    let led_state = LED_CHANNEL.try_receive().unwrap();
+    let led_state = receive_led!();
     assert_eq!(led_state, SystemLedState::SolidGreen);
     let _ = MOTOR_CHANNEL.try_receive().unwrap(); // consume SetSpeed(100)
 
@@ -375,7 +401,7 @@ fn test_power_down_and_gesture_detection() {
     assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
 
     // Verify LED is turned Off and motor is stopped/locked
-    let led_state = LED_CHANNEL.try_receive().unwrap();
+    let led_state = receive_led!();
     assert_eq!(led_state, SystemLedState::Off);
     let motor_cmd = MOTOR_CHANNEL.try_receive().unwrap();
     assert_eq!(motor_cmd, MotorCommand::Stop);
@@ -387,7 +413,7 @@ fn test_power_down_and_gesture_detection() {
     });
     process!(controller);
     assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
-    assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
+    assert_eq!(receive_led!(), SystemLedState::Off);
 
     // 6. Connecting the charger (charging = true) must trigger transition/remain in PowerDown (and show SoC LED)
     controller.handle_command(SystemCommand::BatteryUpdate {
@@ -396,7 +422,7 @@ fn test_power_down_and_gesture_detection() {
     });
     process!(controller);
     assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
-    assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
+    assert_eq!(receive_led!(), SystemLedState::SolidYellow);
 
     // 7. Trying to unlock with 2F long press while charger is connected should be ignored
     controller.handle_command(SystemCommand::Gesture(Gesture::DualLongPress));
@@ -410,7 +436,7 @@ fn test_power_down_and_gesture_detection() {
     });
     process!(controller);
     assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
-    assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
+    assert_eq!(receive_led!(), SystemLedState::Off);
 
     // 9. Unlock with 2F long press gesture after charger is disconnected
     controller.handle_command(SystemCommand::Gesture(Gesture::DualLongPress));
@@ -418,7 +444,7 @@ fn test_power_down_and_gesture_detection() {
     assert_eq!(controller.power_manager.status(), SystemStatus::Active);
 
     // Verify LED is SolidYellow (SoC = 50% is between 21% and 79%)
-    let led_state = LED_CHANNEL.try_receive().unwrap();
+    let led_state = receive_led!();
     assert_eq!(led_state, SystemLedState::SolidYellow);
 }
 
@@ -506,7 +532,7 @@ fn test_configurable_motor_speed() {
                 controller::GestureAction::TogglePower,
                 None,
             ),
-            controller::LedFeatureConfig::new(None),
+            controller::LedFeatureConfig::new(None, 100),
             controller::ThermalFeatureConfig::new(None),
         ),
     };

@@ -95,6 +95,8 @@ pub async fn init_controllers(
         peripherals.current_sensor,
     );
 
+    let motor_proxy = controller::motor_controller::MotorChannelSender::new(MOTOR_CHANNEL.sender());
+
     let system = controller::SystemController::new(
         create_default_feature_set(),
         TELEMETRY_CHANNEL.sender(),
@@ -107,6 +109,7 @@ pub async fn init_controllers(
             battery,
             led,
             system,
+            motor_proxy,
         },
         core1: Core1Controllers {
             motor,
@@ -384,7 +387,7 @@ controller::impl_shell_config! {
         ThermalCtrl = ThermalControllerType,
         BatteryCtrl = BatteryControllerType,
         SensorCtrl = SensorControllerType,
-        MotorCtrl = MotorControllerType,
+        MotorCtrl = controller::motor_controller::MotorChannelSender,
         SystemCtrl = SystemControllerType,
         LedCtrl = controller::led_controller::LedController<LedDevice>,
     }
@@ -479,6 +482,8 @@ pub struct Core0Controllers {
     pub led: LedControllerType,
     /// The system controller.
     pub system: SystemControllerType,
+    /// Motor CLI channel proxy.
+    pub motor_proxy: controller::motor_controller::MotorChannelSender,
 }
 
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
@@ -490,7 +495,10 @@ pub struct Controllers {
 
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 /// Dummy Core0Controllers on host.
-pub struct Core0Controllers {}
+pub struct Core0Controllers {
+    /// Motor CLI channel proxy.
+    pub motor_proxy: controller::motor_controller::MotorChannelSender,
+}
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Collection of all Core 1 controllers.

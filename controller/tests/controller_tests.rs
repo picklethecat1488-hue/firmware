@@ -171,7 +171,7 @@ fn test_led_controller_sad_cases() {
         // Test the task loop error reporting
         let command_channel = Box::leak(Box::new(embassy_sync::channel::Channel::<
             embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
-            model::types::SystemLedState,
+            controller::led_controller::LedCommand,
             4,
         >::new()));
         let command_tx = command_channel.sender();
@@ -187,7 +187,9 @@ fn test_led_controller_sad_cases() {
 
         // Run the controller's main loop and push a command
         command_tx
-            .try_send(model::types::SystemLedState::SolidGreen)
+            .try_send(controller::led_controller::LedCommand::State(
+                model::types::SystemLedState::SolidGreen,
+            ))
             .unwrap();
 
         let run_fut = controller.run(command_rx, telemetry_tx);

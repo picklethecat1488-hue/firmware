@@ -117,6 +117,7 @@ telemetry = "telemetry"
 
 [apps.cat_detector.features.led]
 channel = "led"
+brightness = 50
 
 [apps.cat_detector.features.thermal]
 channel = "thermal"

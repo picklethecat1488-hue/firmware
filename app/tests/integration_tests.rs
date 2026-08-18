@@ -88,6 +88,15 @@ impl embedded_storage_async::nor_flash::NorFlash for TestFlash {
 
 impl embedded_storage_async::nor_flash::MultiwriteNorFlash for TestFlash {}
 
+macro_rules! receive_led {
+    ($channel:expr) => {
+        match $channel.try_receive().unwrap() {
+            controller::led_controller::LedCommand::State(s) => s,
+            cmd => panic!("Expected State, found {:?}", cmd),
+        }
+    };
+}
+
 #[test]
 fn test_system_integration_flow() {
     futures::executor::block_on(async {
@@ -109,7 +118,11 @@ fn test_system_integration_flow() {
             controller::types::ThermalUpdateAction,
             4,
         > = Channel::new();
-        static LED_CHANNEL: Channel<CriticalSectionRawMutex, SystemLedState, 4> = Channel::new();
+        static LED_CHANNEL: Channel<
+            CriticalSectionRawMutex,
+            controller::led_controller::LedCommand,
+            4,
+        > = Channel::new();
         static TELEMETRY_CHANNEL: Channel<
             CriticalSectionRawMutex,
             model::telemetry::TelemetryRecord,
@@ -170,7 +183,7 @@ fn test_system_integration_flow() {
                     controller::GestureAction::TogglePower,
                     Some(TELEMETRY_CHANNEL.sender()),
                 ),
-                controller::LedFeatureConfig::new(Some(LED_CHANNEL.sender())),
+                controller::LedFeatureConfig::new(Some(LED_CHANNEL.sender()), 100),
                 controller::ThermalFeatureConfig::new(Some(THERMAL_CHANNEL.sender())),
             ),
         };
@@ -262,7 +275,7 @@ fn test_system_integration_flow() {
         assert_eq!(system_ctrl.power_manager.status(), SystemStatus::Active);
 
         // Check that commands were sent to LED channel
-        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidGreen));
+        assert_eq!(receive_led!(LED_CHANNEL), SystemLedState::SolidGreen);
 
         // Let's run led_ctrl and motor_ctrl update logic manually to verify state transition
         led_ctrl
@@ -313,8 +326,8 @@ fn test_system_integration_flow() {
         assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
         assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::Stop));
         assert_eq!(
-            LED_CHANNEL.try_receive(),
-            Ok(SystemLedState::BlinksRedOncePerThirtySeconds)
+            receive_led!(LED_CHANNEL),
+            SystemLedState::BlinksRedOncePerThirtySeconds
         );
 
         motor_ctrl.handle_command(MotorCommand::Stop, None).await;
@@ -343,7 +356,7 @@ fn test_system_integration_flow() {
         process_system(&mut system_ctrl, cmd);
         drain_telemetry();
         assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
-        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidOrange));
+        assert_eq!(receive_led!(LED_CHANNEL), SystemLedState::SolidOrange);
 
         // Disconnect charger and set SoC to 50% (should remain in PowerDown and set LED Off)
         println!("--- RUNNING STEP 4C ---");
@@ -354,7 +367,7 @@ fn test_system_integration_flow() {
         process_system(&mut system_ctrl, cmd);
         drain_telemetry();
         assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
-        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
+        assert_eq!(receive_led!(LED_CHANNEL), SystemLedState::Off);
 
         {
             let gd = &system_ctrl.feature_set.features.2.gesture_detector;
@@ -394,7 +407,7 @@ fn test_system_integration_flow() {
         }
         drain_telemetry();
         assert_eq!(system_ctrl.power_manager.status(), SystemStatus::Active);
-        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
+        assert_eq!(receive_led!(LED_CHANNEL), SystemLedState::SolidYellow);
 
         {
             let gd = &system_ctrl.feature_set.features.2.gesture_detector;
@@ -450,8 +463,8 @@ fn test_system_integration_flow() {
         // Critical temperature triggers safety shutdown -> Sleep state
         assert_eq!(system_ctrl.power_manager.status(), SystemStatus::Sleep);
         assert_eq!(
-            LED_CHANNEL.try_receive(),
-            Ok(SystemLedState::BlinksRedFourTimes)
+            receive_led!(LED_CHANNEL),
+            SystemLedState::BlinksRedFourTimes
         );
         assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::Stop));
         system_ctrl
@@ -477,7 +490,7 @@ fn test_system_integration_flow() {
         process_system(&mut system_ctrl, SystemCommand::ActivityDetected);
         drain_telemetry();
         assert_eq!(system_ctrl.power_manager.status(), SystemStatus::Active);
-        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
+        assert_eq!(receive_led!(LED_CHANNEL), SystemLedState::SolidYellow);
 
         // Drain motor channel for a clean state before simulated long press
         while MOTOR_CHANNEL.try_receive().is_ok() {}
@@ -519,7 +532,7 @@ fn test_system_integration_flow() {
         }
         drain_telemetry();
         assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
-        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
+        assert_eq!(receive_led!(LED_CHANNEL), SystemLedState::Off);
         assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::Stop));
         system_ctrl
             .feature_set
@@ -537,7 +550,7 @@ fn test_system_integration_flow() {
         process_system(&mut system_ctrl, cmd);
         drain_telemetry();
         assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
-        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
+        assert_eq!(receive_led!(LED_CHANNEL), SystemLedState::SolidYellow);
 
         // Disconnect charger (should still remain in PowerDown and LED off)
         let cmd = SystemCommand::BatteryUpdate {
@@ -547,7 +560,7 @@ fn test_system_integration_flow() {
         process_system(&mut system_ctrl, cmd);
         drain_telemetry();
         assert_eq!(system_ctrl.power_manager.status(), SystemStatus::PowerDown);
-        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::Off));
+        assert_eq!(receive_led!(LED_CHANNEL), SystemLedState::Off);
 
         // Unlock with 2F long press gesture after charger is disconnected
         {
@@ -587,7 +600,7 @@ fn test_system_integration_flow() {
         }
         drain_telemetry();
         assert_eq!(system_ctrl.power_manager.status(), SystemStatus::Active);
-        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidYellow));
+        assert_eq!(receive_led!(LED_CHANNEL), SystemLedState::SolidYellow);
 
         // Release buttons and simulate cat walking away
         {
@@ -611,7 +624,7 @@ fn test_system_integration_flow() {
             drain_telemetry();
         }
         assert_eq!(system_ctrl.power_manager.status(), SystemStatus::Sleep);
-        assert_eq!(LED_CHANNEL.try_receive(), Ok(SystemLedState::SolidBlue));
+        assert_eq!(receive_led!(LED_CHANNEL), SystemLedState::SolidBlue);
         assert_eq!(MOTOR_CHANNEL.try_receive(), Ok(MotorCommand::Stop));
 
         // Verify that no telemetry writes were dropped and all expected events are captured
@@ -653,7 +666,11 @@ static RUN_SENSOR_EAST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 
 static RUN_SENSOR_WEST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
 static RUN_BATTERY_CHANNEL: Channel<CriticalSectionRawMutex, BatteryCommand, 4> = Channel::new();
 static RUN_THERMAL_CHANNEL: Channel<CriticalSectionRawMutex, ThermalCommand, 4> = Channel::new();
-static RUN_LED_CHANNEL: Channel<CriticalSectionRawMutex, SystemLedState, 4> = Channel::new();
+static RUN_LED_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    controller::led_controller::LedCommand,
+    4,
+> = Channel::new();
 static RUN_TELEMETRY_CHANNEL: Channel<
     CriticalSectionRawMutex,
     model::telemetry::TelemetryRecord,
@@ -788,7 +805,7 @@ fn test_spawn_controllers_embassy_routing() {
                 controller::GestureAction::TogglePower,
                 Some(RUN_TELEMETRY_CHANNEL.sender()),
             ),
-            controller::LedFeatureConfig::new(Some(RUN_LED_CHANNEL.sender())),
+            controller::LedFeatureConfig::new(Some(RUN_LED_CHANNEL.sender()), 100),
             controller::ThermalFeatureConfig::new(Some(RUN_THERMAL_CHANNEL.sender())),
         ),
     };

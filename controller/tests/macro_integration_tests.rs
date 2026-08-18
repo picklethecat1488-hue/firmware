@@ -120,7 +120,8 @@ static SENSOR_EAST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> =
 static SENSOR_WEST_CHANNEL: Channel<CriticalSectionRawMutex, SensorCommand, 4> = Channel::new();
 static BATTERY_CHANNEL: Channel<CriticalSectionRawMutex, BatteryCommand, 4> = Channel::new();
 static THERMAL_CHANNEL: Channel<CriticalSectionRawMutex, ThermalCommand, 4> = Channel::new();
-static LED_CHANNEL: Channel<CriticalSectionRawMutex, SystemLedState, 4> = Channel::new();
+static LED_CHANNEL: Channel<CriticalSectionRawMutex, controller::led_controller::LedCommand, 4> =
+    Channel::new();
 static TELEMETRY_CHANNEL: Channel<
     CriticalSectionRawMutex,
     model::telemetry::TelemetryRecord,
@@ -246,7 +247,7 @@ fn test_spawn_all_controllers_configuration() {
                 controller::GestureAction::TogglePower,
                 Some(TELEMETRY_CHANNEL.sender()),
             ),
-            controller::LedFeatureConfig::new(Some(LED_CHANNEL.sender())),
+            controller::LedFeatureConfig::new(Some(LED_CHANNEL.sender()), 100),
             controller::ThermalFeatureConfig::new(Some(THERMAL_CHANNEL.sender())),
         ),
     };
@@ -301,7 +302,11 @@ fn test_spawn_all_controllers_configuration() {
 #[embassy_executor::task]
 async fn test_control_task_single() {
     embassy_time::Timer::after_millis(10).await;
-    LED_CHANNEL.send(SystemLedState::SolidGreen).await;
+    LED_CHANNEL
+        .send(controller::led_controller::LedCommand::State(
+            SystemLedState::SolidGreen,
+        ))
+        .await;
     embassy_time::Timer::after_millis(10).await;
     std::process::exit(0);
 }

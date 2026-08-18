@@ -95,14 +95,17 @@ fn test_parse_telemetry_record_log_all_variants() {
 
     // 3. Motor Running
     let log = make_rtt_log(
-        TelemetryRecord::Motor(MotorStatus::Running(MotorSpeed::new(75).unwrap())),
+        TelemetryRecord::Motor(MotorStatus::Running(MotorSpeed::new(75).unwrap(), 150)),
         1002,
     );
     let events = parser.parse_log(&log, 1002.0).unwrap();
-    assert_eq!(events.len(), 1);
+    assert_eq!(events.len(), 2);
     assert_eq!(events[0]["name"].as_str().unwrap(), "Motor Speed");
     assert_eq!(events[0]["args"]["value"].as_i64().unwrap(), 75);
     assert_eq!(events[0]["tid"].as_i64().unwrap(), 3);
+    assert_eq!(events[1]["name"].as_str().unwrap(), "Motor Current (mA)");
+    assert_eq!(events[1]["args"]["value"].as_i64().unwrap(), 150);
+    assert_eq!(events[1]["tid"].as_i64().unwrap(), 3);
 
     // 4. Thermal
     let log = make_rtt_log(
@@ -257,7 +260,7 @@ fn test_read_telemetry_records_integration() {
         // 1. Prepare 2 serialized telemetry records
         let rec1 =
             TelemetryRecord::Battery(BatteryStatus::VolTempState(3600, 24, BatteryState::Ok, 1));
-        let rec2 = TelemetryRecord::Motor(MotorStatus::Running(MotorSpeed::new(50).unwrap()));
+        let rec2 = TelemetryRecord::Motor(MotorStatus::Running(MotorSpeed::new(50).unwrap(), 150));
 
         let slot1 = rec1.serialize(500);
         let slot2 = rec2.serialize(600);

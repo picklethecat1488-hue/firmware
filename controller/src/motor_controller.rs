@@ -73,6 +73,71 @@ pub struct MotorController<M, C> {
     calibration_present: bool,
     limits: MotorLimits,
     startup_ticks: u32,
+    safety_bypass: bool,
+}
+
+/// The filename of the motor calibration file.
+pub const MOTOR_CALIBRATION_FILE_NAME: &str = "motor_cal.cbor";
+
+/// Thread-safe cross-core proxy implementing MotorWriter and MotorReader
+/// by sending commands over the message-passing channel and reading telemetry/current
+/// using the request-response pattern.
+pub struct MotorChannelSender {
+    sender: crate::MotorSender<CriticalSectionRawMutex>,
+}
+
+impl MotorChannelSender {
+    /// Creates a new MotorChannelSender proxy.
+    pub fn new(sender: crate::MotorSender<CriticalSectionRawMutex>) -> Self {
+        Self { sender }
+    }
+}
+
+impl crate::MotorWriter for MotorChannelSender {
+    async fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
+        let motor_speed = MotorSpeed::new(speed).ok_or(PeripheralError::InvalidConfiguration)?;
+        self.sender.send(MotorCommand::SetSpeed(motor_speed)).await;
+        Ok(())
+    }
+
+    async fn set_motor_speed_rpm(&mut self, rpm: i32) -> Result<(), PeripheralError> {
+        self.sender.send(MotorCommand::SetSpeedRpm(rpm)).await;
+        Ok(())
+    }
+
+    async fn stop_motor(&mut self) -> Result<(), PeripheralError> {
+        self.sender.send(MotorCommand::Stop).await;
+        Ok(())
+    }
+
+    fn update_calibration(
+        &mut self,
+        cal: &model::calibration::MotorCalibration,
+    ) -> Result<(), PeripheralError> {
+        let _ = self.sender.try_send(MotorCommand::UpdateCalibration(*cal));
+        Ok(())
+    }
+
+    async fn set_safety_bypass(&mut self, bypass: bool) -> Result<(), PeripheralError> {
+        self.sender
+            .send(MotorCommand::SetSafetyBypass(bypass))
+            .await;
+        Ok(())
+    }
+}
+
+impl crate::MotorReader for MotorChannelSender {
+    async fn read_motor_current_ma(&mut self) -> Result<i32, PeripheralError> {
+        let signal = embassy_sync::signal::Signal::new();
+        let cmd = MotorCommand::ReadCurrent(SendSignalPtr(&signal as *const _));
+        self.sender.send(cmd).await;
+        signal.wait().await
+    }
+}
+
+impl model::calibration::Calibration for MotorChannelSender {
+    const CALIBRATION_FILE_NAME: &'static str = MOTOR_CALIBRATION_FILE_NAME;
+    type Store = model::calibration::MotorCalibration;
 }
 
 impl<M: Motor + Tickable, C: PowerSensor> MotorController<M, C>
@@ -93,11 +158,12 @@ where
             calibration_present: false,
             limits: MotorLimits {
                 min_current_ma: 15,
-                max_current_ma: 800,
+                max_current_ma: 2500,
                 max_rpm: 0,
                 rpm_limit: 0,
             },
             startup_ticks: 0,
+            safety_bypass: false,
         }
     }
 
@@ -146,6 +212,10 @@ where
         link_section = ".data.core1_func"
     )]
     pub async fn read_torque_ma(&mut self) -> Result<i32, PeripheralError> {
+        if self.state == MotorState::Off {
+            self.last_current_ma = 0;
+            return Ok(0);
+        }
         let current = self
             .current_sensor
             .read_current_ma()
@@ -180,7 +250,10 @@ where
         };
 
         // If the motor is running, verify safety limits (RPM and load torque)
-        if self.state == MotorState::On && self.startup_ticks > MOTOR_STARTUP_BLANKING_TICKS {
+        if !self.safety_bypass
+            && self.state == MotorState::On
+            && self.startup_ticks > MOTOR_STARTUP_BLANKING_TICKS
+        {
             let rpm = self.current_rpm();
             match self.limits.check_limits(rpm, current) {
                 MotorSafetyStatus::RpmExceeded(_rpm_val) => {
@@ -217,7 +290,7 @@ where
         if let Some(client) = telemetry_client {
             let running = self.state == MotorState::On;
             let status = if running {
-                model::types::MotorStatus::Running(self.speed)
+                model::types::MotorStatus::Running(self.speed, self.last_current_ma)
             } else {
                 model::types::MotorStatus::Brake
             };
@@ -279,22 +352,18 @@ where
         match cmd {
             MotorCommand::SetSpeed(speed) => {
                 if speed != MotorSpeed::ZERO {
-                    if !self.calibration_present {
-                        if self.speed != speed {
-                            #[cfg(all(target_arch = "arm", target_os = "none"))]
-                            defmt::error!(
-                                "Motor Controller: Cannot start motor, calibration is not present!"
-                            );
-                            self.speed = speed;
-                        }
-                    } else {
-                        if let Err(e) = self.set_running_state(true).await {
-                            if let Some(ref client) = telemetry_client {
-                                client.report_error(e);
-                            }
-                        }
-                        self.speed = speed;
+                    if !self.calibration_present && self.speed != speed {
+                        #[cfg(all(target_arch = "arm", target_os = "none"))]
+                        defmt::warn!(
+                            "Motor Controller: Warning, calibration is not present! Running with fallback limits."
+                        );
                     }
+                    if let Err(e) = self.set_running_state(true).await {
+                        if let Some(ref client) = telemetry_client {
+                            client.report_error(e);
+                        }
+                    }
+                    self.speed = speed;
                 } else {
                     // Set target speed to 0 and let it ramp down
                     self.speed = MotorSpeed::ZERO;
@@ -340,12 +409,24 @@ where
                     }
                 }
             }
+            MotorCommand::UpdateCalibration(cal) => {
+                let _ = self.update_calibration_ram(&cal);
+            }
+            MotorCommand::ReadCurrent(signal_ptr) => {
+                let current = self.read_torque_ma().await;
+                unsafe {
+                    (*signal_ptr.0).signal(current);
+                }
+            }
+            MotorCommand::SetSafetyBypass(bypass) => {
+                self.safety_bypass = bypass;
+            }
         }
 
         if let Some(client) = telemetry_client {
             let running = self.state == MotorState::On;
             let status = if running {
-                model::types::MotorStatus::Running(self.speed)
+                model::types::MotorStatus::Running(self.speed, self.last_current_ma)
             } else {
                 model::types::MotorStatus::Brake
             };
@@ -365,14 +446,19 @@ where
         level = "trace"
     )]
     pub async fn tick_motor(&mut self) -> Result<(), PeripheralError> {
+        let state = self.state;
+        let speed = self.speed;
+        let mut active_speed = self.active_speed;
+
         // 1. Ramping logic
-        if self.state == MotorState::On {
+        if state == MotorState::On {
             self.startup_ticks = self.startup_ticks.saturating_add(1);
-            if self.active_speed < self.speed {
+            if active_speed < speed {
                 // Ramp up
-                let next = (self.active_speed.get() + 1).min(self.speed.get());
-                self.active_speed = MotorSpeed::new(next).unwrap();
-                if self.active_speed == MotorSpeed::ZERO && self.speed == MotorSpeed::ZERO {
+                let next = (active_speed.get() + 1).min(speed.get());
+                active_speed = MotorSpeed::new(next).unwrap();
+                self.active_speed = active_speed;
+                if active_speed == MotorSpeed::ZERO && speed == MotorSpeed::ZERO {
                     self.state = MotorState::Off;
                     self.motor.stop().map_err(|e| e.to_peripheral_error())?;
                     let _ = self
@@ -381,14 +467,15 @@ where
                         .await;
                 } else {
                     self.motor
-                        .set_speed(self.active_speed)
+                        .set_speed(active_speed)
                         .map_err(|e| e.to_peripheral_error())?;
                 }
-            } else if self.active_speed > self.speed {
+            } else if active_speed > speed {
                 // Ramp down
-                let next = (self.active_speed.get() - 1).max(self.speed.get());
-                self.active_speed = MotorSpeed::new(next).unwrap();
-                if self.active_speed == MotorSpeed::ZERO && self.speed == MotorSpeed::ZERO {
+                let next = (active_speed.get() - 1).max(speed.get());
+                active_speed = MotorSpeed::new(next).unwrap();
+                self.active_speed = active_speed;
+                if active_speed == MotorSpeed::ZERO && speed == MotorSpeed::ZERO {
                     self.state = MotorState::Off;
                     self.motor.stop().map_err(|e| e.to_peripheral_error())?;
                     let _ = self
@@ -397,24 +484,25 @@ where
                         .await;
                 } else {
                     self.motor
-                        .set_speed(self.active_speed)
+                        .set_speed(active_speed)
                         .map_err(|e| e.to_peripheral_error())?;
                 }
             }
-        } else if self.active_speed.get() != 0 {
+        } else if active_speed.get() != 0 {
             // Ramping down/up to 0 even if state is Off
-            let current_raw = self.active_speed.get();
+            let current_raw = active_speed.get();
             let next = if current_raw > 0 {
                 current_raw - 1
             } else {
                 current_raw + 1
             };
-            self.active_speed = MotorSpeed::new(next).unwrap();
-            if self.active_speed == MotorSpeed::ZERO {
+            active_speed = MotorSpeed::new(next).unwrap();
+            self.active_speed = active_speed;
+            if active_speed == MotorSpeed::ZERO {
                 self.motor.stop().map_err(|e| e.to_peripheral_error())?;
             } else {
                 self.motor
-                    .set_speed(self.active_speed)
+                    .set_speed(active_speed)
                     .map_err(|e| e.to_peripheral_error())?;
             }
         }
@@ -514,6 +602,47 @@ where
     pub fn bypass_startup_blanking(&mut self) {
         self.startup_ticks = MOTOR_STARTUP_BLANKING_TICKS + 1;
     }
+
+    /// Update the calibration parameters in RAM (Core 1).
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    pub fn update_calibration_ram(
+        &mut self,
+        cal: &model::calibration::MotorCalibration,
+    ) -> Result<(), PeripheralError> {
+        self.set_calibration_ram(cal);
+        Ok(())
+    }
+
+    /// Set the calibration parameters in RAM (Core 1).
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    pub fn set_calibration_ram(&mut self, store: &model::calibration::MotorCalibration) {
+        self.calibration_present = true;
+        self.limits.min_current_ma = store.current_ma.low;
+        self.limits.max_current_ma = store.current_ma.overload;
+        self.limits.max_rpm = store.max_rpm.unwrap_or(0);
+        self.limits.rpm_limit = store.rpm_limit.unwrap_or(0);
+    }
+}
+
+/// Thread-safe wrapper around a raw pointer to an embassy_sync::signal::Signal.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct SendSignalPtr(
+    pub *const embassy_sync::signal::Signal<CriticalSectionRawMutex, Result<i32, PeripheralError>>,
+);
+
+unsafe impl Send for SendSignalPtr {}
+unsafe impl Sync for SendSignalPtr {}
+
+impl core::fmt::Debug for SendSignalPtr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "SendSignalPtr({:p})", self.0)
+    }
 }
 
 /// One-way commands sent to the Motor Controller from the shell or app.
@@ -526,20 +655,25 @@ pub enum MotorCommand {
     SetSpeedRpm(i32),
     /// Stop the motor
     Stop,
+    /// Update the controller's active calibration in memory
+    UpdateCalibration(model::calibration::MotorCalibration),
+    /// Read the motor current draw in mA
+    ReadCurrent(SendSignalPtr),
+    /// Enable or disable safety bypass
+    SetSafetyBypass(bool),
 }
 
-impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
-    for MotorController<M, C>
+impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration for MotorController<M, C>
+where
+    <M as Motor>::Error: ToPeripheralError,
+    <M as Tickable>::Error: ToPeripheralError,
+    <C as PowerSensor>::Error: ToPeripheralError,
 {
-    const CALIBRATION_FILE_NAME: &'static str = "motor_cal.cbor";
+    const CALIBRATION_FILE_NAME: &'static str = MOTOR_CALIBRATION_FILE_NAME;
     type Store = model::calibration::MotorCalibration;
 
     fn set_calibration(&mut self, store: &Self::Store) {
-        self.calibration_present = true;
-        self.limits.min_current_ma = store.current_ma.low;
-        self.limits.max_current_ma = store.current_ma.overload;
-        self.limits.max_rpm = store.max_rpm.unwrap_or(0);
-        self.limits.rpm_limit = store.rpm_limit.unwrap_or(0);
+        self.set_calibration_ram(store);
     }
 
     fn get_calibration(&self) -> Self::Store {
@@ -601,15 +735,6 @@ where
     async fn stop_motor(&mut self) -> Result<(), PeripheralError> {
         self.set_running_state(false).await
     }
-
-    fn update_calibration(
-        &mut self,
-        cal: &model::calibration::MotorCalibration,
-    ) -> Result<(), PeripheralError> {
-        use model::calibration::Calibration as _;
-        self.set_calibration(cal);
-        Ok(())
-    }
 }
 
 impl<'a> embedded_cli::arguments::FromArgument<'a> for MotorCalState {
@@ -642,8 +767,10 @@ subcommand_enum! {
         Current,
         /// Calibrate motor
         Calibrate,
+        /// Control safety bypass
+        SafetyBypass = "safety-bypass",
     }
-    "Invalid motor subcommand. Expected: speed, rpm-speed, stop, current, calibrate"
+    "Invalid motor subcommand. Expected: speed, rpm-speed, stop, current, calibrate, safety-bypass"
 }
 
 /// Processes motor-specific CLI subcommands.
@@ -808,6 +935,16 @@ pub async fn handle_motor_cli<
                 let _ = core::writeln!(writer, "Saved motor {} calibration to flash.", name);
             })
             .map_err(|_| "Error saving calibration to flash")
+        }
+        MotorSubcommand::SafetyBypass => {
+            let bypass_str = arg1.ok_or("Missing safety bypass parameter (on/off)")?;
+            let bypass = platform::cli::parse_bool_arg(bypass_str)?;
+            motor_ctrl
+                .set_safety_bypass(bypass)
+                .await
+                .map_err(|_| "Failed to set safety bypass")?;
+            let _ = core::writeln!(writer, "\r\nSafety bypass set to {}.", bypass);
+            Ok(())
         }
     }
 }

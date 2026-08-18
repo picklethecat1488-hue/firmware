@@ -1,6 +1,6 @@
 [[controllers]]
 name = "Led"
-msg_type = "model::types::SystemLedState"
+msg_type = "crate::led_controller::LedCommand"
 macro_params = ["$rx:expr", "$telemetry_tx:expr", "$driver_type:ty"]
 task_call_args = ["$rx", "$telemetry_tx"]
 controller_type = "$crate::led_controller::LedController<$driver_type>"

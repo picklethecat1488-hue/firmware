@@ -7,6 +7,7 @@ controller::declare_shell_commands! {
         Fs,
         System,
         Core,
+        Led,
     }
 }
 use controller::motor_controller::MotorSubcommand;
@@ -213,6 +214,42 @@ fn test_system_crash_core1_command_parsing() {
         Some(CliCommand::Core {
             subcommand: Some(CoreMonitorSubcommand::Crash),
             arg1: Some("core1")
+        })
+    ));
+}
+
+#[test]
+fn test_led_brightness_command_parsing() {
+    let mut cli = CliBuilder::default().writer(DummyWriter).build().unwrap();
+
+    let mut processor = TestProcessor { cmd: None };
+    for byte in b"led brightness 75\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*byte, &mut processor);
+    }
+
+    assert!(matches!(
+        processor.cmd,
+        Some(CliCommand::Led {
+            subcommand: Some(controller::led_controller::LedSubcommand::Brightness),
+            arg1: Some("75")
+        })
+    ));
+}
+
+#[test]
+fn test_led_pattern_brightness_command_parsing() {
+    let mut cli = CliBuilder::default().writer(DummyWriter).build().unwrap();
+
+    let mut processor = TestProcessor { cmd: None };
+    for byte in b"led green 25\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*byte, &mut processor);
+    }
+
+    assert!(matches!(
+        processor.cmd,
+        Some(CliCommand::Led {
+            subcommand: Some(controller::led_controller::LedSubcommand::Green),
+            arg1: Some("25")
         })
     ));
 }

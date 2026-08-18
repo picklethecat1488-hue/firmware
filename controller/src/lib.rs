@@ -246,6 +246,10 @@ pub trait MotorWriter {
     ) -> Result<(), PeripheralError> {
         Ok(())
     }
+    /// Enable or disable safety bypass.
+    async fn set_safety_bypass(&mut self, _bypass: bool) -> Result<(), PeripheralError> {
+        Ok(())
+    }
 }
 
 impl MotorWriter for () {
@@ -326,6 +330,9 @@ pub trait LedWriter {
         &mut self,
         pattern: model::types::SystemLedState,
     ) -> Result<(), PeripheralError>;
+
+    /// Set the LED brightness (0..100).
+    async fn set_brightness(&mut self, brightness: u8) -> Result<(), PeripheralError>;
 }
 
 impl LedWriter for () {
@@ -333,6 +340,10 @@ impl LedWriter for () {
         &mut self,
         _pattern: model::types::SystemLedState,
     ) -> Result<(), PeripheralError> {
+        Err(PeripheralError::NotImplemented)
+    }
+
+    async fn set_brightness(&mut self, _brightness: u8) -> Result<(), PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
 }
@@ -344,7 +355,12 @@ impl<MutexRaw: embassy_sync::blocking_mutex::raw::RawMutex + 'static, const N: u
         &mut self,
         pattern: model::types::SystemLedState,
     ) -> Result<(), PeripheralError> {
-        self.try_send(pattern)
+        self.try_send(crate::led_controller::LedCommand::State(pattern))
+            .map_err(|_| PeripheralError::DeviceNotAvailable)
+    }
+
+    async fn set_brightness(&mut self, brightness: u8) -> Result<(), PeripheralError> {
+        self.try_send(crate::led_controller::LedCommand::SetBrightness(brightness))
             .map_err(|_| PeripheralError::DeviceNotAvailable)
     }
 }

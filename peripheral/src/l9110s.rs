@@ -85,14 +85,15 @@ where
     )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
     async fn tick(&mut self) -> Result<(), Self::Error> {
-        let abs_speed = self.speed.abs();
+        let speed = self.speed;
+        let abs_speed = speed.abs();
         if abs_speed == 0 || abs_speed >= 100 {
             Ok(())
         } else {
             self.tick_counter = (self.tick_counter + 1) % 10;
             let threshold = (abs_speed / 10) as u8;
             if self.tick_counter < threshold {
-                if self.speed > 0 {
+                if speed > 0 {
                     self.pin_ib.set_low().map_err(L9110sError::PinIb)?;
                     self.pin_ia.set_high().map_err(L9110sError::PinIa)?;
                 } else {

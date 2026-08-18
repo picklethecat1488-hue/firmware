@@ -41,3 +41,19 @@ macro_rules! subcommand_enum {
         $val.eq_ignore_ascii_case(stringify!($var))
     };
 }
+
+/// Parses a boolean parameter from a string argument.
+///
+/// Supports "on", "off", "true", "false", "1", "0" (case-insensitive).
+///
+/// # Errors
+/// Returns an error message string if the input string cannot be parsed as a boolean.
+pub fn parse_bool_arg(arg: &str) -> Result<bool, &'static str> {
+    if arg.eq_ignore_ascii_case("on") || arg.eq_ignore_ascii_case("true") || arg == "1" {
+        Ok(true)
+    } else if arg.eq_ignore_ascii_case("off") || arg.eq_ignore_ascii_case("false") || arg == "0" {
+        Ok(false)
+    } else {
+        Err("Expected 'on', 'off', 'true', 'false', '1', or '0'")
+    }
+}

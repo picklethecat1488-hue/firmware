@@ -120,14 +120,9 @@ pub fn transition_battery_update(
             next_status = Some(SystemStatus::PowerDown);
         }
     } else {
-        let should_exit_power_down =
-            current_status == SystemStatus::PowerDown && is_boot_trapped && !info.charging;
+        let should_exit_power_down = current_status == SystemStatus::PowerDown && is_boot_trapped;
         if should_exit_power_down {
             next_status = Some(SystemStatus::Active);
-        } else if current_status == SystemStatus::PowerDown {
-            // If charging and already in PowerDown, we don't change state but stay in PowerDown
-        } else if info.charging {
-            next_status = Some(SystemStatus::PowerDown);
         }
     }
 
