@@ -11,6 +11,7 @@ use embassy_sync::blocking_mutex::raw::RawMutex;
 // Re-export controller submodules so crate:: paths resolve
 pub use controller::battery_controller;
 pub use controller::filesystem_controller;
+pub use controller::led_controller;
 pub use controller::motor_controller;
 pub use controller::sensor_controller;
 pub use controller::system_controller;

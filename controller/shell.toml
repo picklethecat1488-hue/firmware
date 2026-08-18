@@ -161,6 +161,9 @@ subcommand_type = "led_controller::LedSubcommand"
 async_cli = true
 handler = "led_controller::handle_led_cli"
 help = "LED commands"
+args = [
+    { name = "arg1", type = "string", help = "Optional target brightness level (0..100)" }
+]
 
 [[cli_commands]]
 group = "Core"

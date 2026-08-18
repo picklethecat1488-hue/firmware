@@ -263,10 +263,13 @@ pub fn generate_app_topology(app_toml_content: &str, app_name: &str) -> String {
                 .clone()
                 .unwrap_or_else(|| "default".to_string());
             let ty = shell_type.expect("Missing shell_type");
-            let mut ptr = ctrl
-                .ptr
-                .clone()
-                .unwrap_or_else(|| format!("&mut {}", ctrl.instance));
+            let mut ptr = ctrl.ptr.clone().unwrap_or_else(|| {
+                if ctrl.core.unwrap_or(0) != 0 && ctrl.name == "Motor" {
+                    format!("&mut controllers.core0.{}_proxy", name_lower)
+                } else {
+                    format!("&mut {}", ctrl.instance)
+                }
+            });
             if ptr.contains("controllers.") {
                 ptr = ptr.replacen("controllers.", "$controllers.", 1);
             }
@@ -298,8 +301,12 @@ pub fn generate_app_topology(app_toml_content: &str, app_name: &str) -> String {
                 .clone()
                 .expect("Missing device_shell_type for controller mapped to shell");
             let mut ptr = ctrl.device_ptr.clone().unwrap_or_else(|| {
-                let dev_name = ty.replace("Device", "").to_lowercase();
-                format!("&mut {}.{}", ctrl.instance, dev_name)
+                if ctrl.core.unwrap_or(0) != 0 {
+                    "core::ptr::null_mut()".to_string()
+                } else {
+                    let dev_name = ty.replace("Device", "").to_lowercase();
+                    format!("&mut {}.{}", ctrl.instance, dev_name)
+                }
             });
             if ptr.contains("controllers.") {
                 ptr = ptr.replacen("controllers.", "$controllers.", 1);
@@ -450,9 +457,13 @@ pub fn generate_app_topology(app_toml_content: &str, app_name: &str) -> String {
                         .and_then(|v| v.as_str())
                         .expect("Missing channel for led feature");
                     let channel = format!("{}_CHANNEL", channel_raw.to_uppercase());
+                    let brightness = params
+                        .get("brightness")
+                        .and_then(|v| v.as_integer())
+                        .unwrap_or(100);
                     format!(
-                        "controller::LedFeatureConfig::new(Some({}.sender()))",
-                        channel
+                        "controller::LedFeatureConfig::new(Some({}.sender()), {})",
+                        channel, brightness
                     )
                 },
             },

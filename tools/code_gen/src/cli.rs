@@ -223,6 +223,7 @@ pub fn parse_subcommand_enums(
                 if path.is_dir() {
                     parse_subcommand_enums(&path, enums);
                 } else if path.extension().is_some_and(|ext| ext == "rs") {
+                    println!("cargo:rerun-if-changed={}", path.display());
                     if let Ok(content) = std::fs::read_to_string(&path) {
                         if let Ok(file) = syn::parse_str::<syn::File>(&content) {
                             scan_items(&file.items, enums);
