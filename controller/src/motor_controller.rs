@@ -61,15 +61,15 @@ impl MotorLimits {
 /// A generalized motor controller that orchestrates motor driver outputs and current sensor monitoring.
 #[controller_context(core1_feature = "motor-core")]
 pub struct MotorController<M, C> {
-    state: MotorState,
+    state: core::sync::atomic::AtomicBool,
     /// The physical or mock motor peripheral.
     pub motor: M,
     /// The physical or mock current sensor peripheral.
     pub current_sensor: C,
     /// Telemetry: last measured current in mA.
     last_current_ma: i32,
-    speed: MotorSpeed,
-    active_speed: MotorSpeed,
+    speed: core::sync::atomic::AtomicI8,
+    active_speed: core::sync::atomic::AtomicI8,
     calibration_present: bool,
     limits: MotorLimits,
     startup_ticks: u32,
@@ -84,12 +84,12 @@ where
     /// Creates a new motor controller managing the specified motor and current sensor.
     pub const fn new(motor: M, current_sensor: C) -> Self {
         Self {
-            state: MotorState::Off,
+            state: core::sync::atomic::AtomicBool::new(false),
             motor,
             current_sensor,
             last_current_ma: 0,
-            speed: MotorSpeed::ZERO,
-            active_speed: MotorSpeed::ZERO,
+            speed: core::sync::atomic::AtomicI8::new(0),
+            active_speed: core::sync::atomic::AtomicI8::new(0),
             calibration_present: false,
             limits: MotorLimits {
                 min_current_ma: 15,
@@ -101,9 +101,74 @@ where
         }
     }
 
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    #[inline(always)]
+    fn get_state(&self) -> MotorState {
+        if self.state.load(core::sync::atomic::Ordering::SeqCst) {
+            MotorState::On
+        } else {
+            MotorState::Off
+        }
+    }
+
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    #[inline(always)]
+    fn set_state(&mut self, state: MotorState) {
+        self.state.store(
+            matches!(state, MotorState::On),
+            core::sync::atomic::Ordering::SeqCst,
+        );
+    }
+
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    #[inline(always)]
+    fn get_speed(&self) -> MotorSpeed {
+        let val = self.speed.load(core::sync::atomic::Ordering::SeqCst);
+        MotorSpeed::new(val).unwrap_or(MotorSpeed::ZERO)
+    }
+
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    #[inline(always)]
+    fn set_speed_val(&mut self, speed: MotorSpeed) {
+        self.speed
+            .store(speed.get(), core::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    #[inline(always)]
+    fn get_active_speed(&self) -> MotorSpeed {
+        let val = self.active_speed.load(core::sync::atomic::Ordering::SeqCst);
+        MotorSpeed::new(val).unwrap_or(MotorSpeed::ZERO)
+    }
+
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    #[inline(always)]
+    fn set_active_speed_val(&mut self, speed: MotorSpeed) {
+        self.active_speed
+            .store(speed.get(), core::sync::atomic::Ordering::SeqCst);
+    }
+
     /// Gets the current operating state of the motor.
     pub fn state(&self) -> MotorState {
-        self.state
+        self.get_state()
     }
 
     /// Gets the minimum current limit in mA.
@@ -131,7 +196,7 @@ where
         if self.limits.max_rpm == 0 {
             0
         } else {
-            (self.active_speed.get() as u32) * self.limits.max_rpm / 100
+            (self.get_active_speed().get() as u32) * self.limits.max_rpm / 100
         }
     }
 
@@ -170,7 +235,7 @@ where
         &mut self,
         mut telemetry_client: Option<&mut MotorTelemetryClient<CriticalSectionRawMutex>>,
     ) -> Result<(), PeripheralError> {
-        let is_running = self.state == MotorState::On;
+        let is_running = self.get_state() == MotorState::On;
 
         let current = if is_running {
             // Read current sensor (torque proxy)
@@ -180,7 +245,7 @@ where
         };
 
         // If the motor is running, verify safety limits (RPM and load torque)
-        if self.state == MotorState::On && self.startup_ticks > MOTOR_STARTUP_BLANKING_TICKS {
+        if self.get_state() == MotorState::On && self.startup_ticks > MOTOR_STARTUP_BLANKING_TICKS {
             let rpm = self.current_rpm();
             match self.limits.check_limits(rpm, current) {
                 MotorSafetyStatus::RpmExceeded(_rpm_val) => {
@@ -215,9 +280,9 @@ where
         }
 
         if let Some(client) = telemetry_client {
-            let running = self.state == MotorState::On;
+            let running = self.get_state() == MotorState::On;
             let status = if running {
-                model::types::MotorStatus::Running(self.speed)
+                model::types::MotorStatus::Running(self.get_speed())
             } else {
                 model::types::MotorStatus::Brake
             };
@@ -234,23 +299,23 @@ where
     async fn set_running_state(&mut self, running: bool) -> Result<(), PeripheralError> {
         if running {
             self.startup_ticks = 0;
-            if self.state == MotorState::Off {
+            if self.get_state() == MotorState::Off {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::info!("Motor Controller: Starting motor...");
-                self.state = MotorState::On;
+                self.set_state(MotorState::On);
                 self.current_sensor
                     .set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
                     .await
                     .map_err(|e| e.to_peripheral_error())?;
             }
         } else {
-            if self.state != MotorState::Off {
+            if self.get_state() != MotorState::Off {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::info!("Motor Controller: Stopping motor...");
             }
-            self.state = MotorState::Off;
-            self.active_speed = MotorSpeed::ZERO;
-            self.speed = MotorSpeed::ZERO;
+            self.set_state(MotorState::Off);
+            self.set_active_speed_val(MotorSpeed::ZERO);
+            self.set_speed_val(MotorSpeed::ZERO);
             self.motor.stop().map_err(|e| e.to_peripheral_error())?;
             let _ = self
                 .current_sensor
@@ -280,12 +345,12 @@ where
             MotorCommand::SetSpeed(speed) => {
                 if speed != MotorSpeed::ZERO {
                     if !self.calibration_present {
-                        if self.speed != speed {
+                        if self.get_speed() != speed {
                             #[cfg(all(target_arch = "arm", target_os = "none"))]
                             defmt::error!(
                                 "Motor Controller: Cannot start motor, calibration is not present!"
                             );
-                            self.speed = speed;
+                            self.set_speed_val(speed);
                         }
                     } else {
                         if let Err(e) = self.set_running_state(true).await {
@@ -293,11 +358,11 @@ where
                                 client.report_error(e);
                             }
                         }
-                        self.speed = speed;
+                        self.set_speed_val(speed);
                     }
                 } else {
                     // Set target speed to 0 and let it ramp down
-                    self.speed = MotorSpeed::ZERO;
+                    self.set_speed_val(MotorSpeed::ZERO);
                 }
             }
             MotorCommand::SetSpeedRpm(rpm) => {
@@ -314,12 +379,12 @@ where
                 let speed = MotorSpeed::new(speed_val as i8).unwrap_or(MotorSpeed::ZERO);
                 if speed != MotorSpeed::ZERO {
                     if !self.calibration_present {
-                        if self.speed != speed {
+                        if self.get_speed() != speed {
                             #[cfg(all(target_arch = "arm", target_os = "none"))]
                             defmt::error!(
                                 "Motor Controller: Cannot start motor, calibration is not present!"
                             );
-                            self.speed = speed;
+                            self.set_speed_val(speed);
                         }
                     } else {
                         if let Err(e) = self.set_running_state(true).await {
@@ -327,10 +392,10 @@ where
                                 client.report_error(e);
                             }
                         }
-                        self.speed = speed;
+                        self.set_speed_val(speed);
                     }
                 } else {
-                    self.speed = MotorSpeed::ZERO;
+                    self.set_speed_val(MotorSpeed::ZERO);
                 }
             }
             MotorCommand::Stop => {
@@ -343,9 +408,9 @@ where
         }
 
         if let Some(client) = telemetry_client {
-            let running = self.state == MotorState::On;
+            let running = self.get_state() == MotorState::On;
             let status = if running {
-                model::types::MotorStatus::Running(self.speed)
+                model::types::MotorStatus::Running(self.get_speed())
             } else {
                 model::types::MotorStatus::Brake
             };
@@ -365,15 +430,20 @@ where
         level = "trace"
     )]
     pub async fn tick_motor(&mut self) -> Result<(), PeripheralError> {
+        let state = self.get_state();
+        let speed = self.get_speed();
+        let mut active_speed = self.get_active_speed();
+
         // 1. Ramping logic
-        if self.state == MotorState::On {
+        if state == MotorState::On {
             self.startup_ticks = self.startup_ticks.saturating_add(1);
-            if self.active_speed < self.speed {
+            if active_speed < speed {
                 // Ramp up
-                let next = (self.active_speed.get() + 1).min(self.speed.get());
-                self.active_speed = MotorSpeed::new(next).unwrap();
-                if self.active_speed == MotorSpeed::ZERO && self.speed == MotorSpeed::ZERO {
-                    self.state = MotorState::Off;
+                let next = (active_speed.get() + 1).min(speed.get());
+                active_speed = MotorSpeed::new(next).unwrap();
+                self.set_active_speed_val(active_speed);
+                if active_speed == MotorSpeed::ZERO && speed == MotorSpeed::ZERO {
+                    self.set_state(MotorState::Off);
                     self.motor.stop().map_err(|e| e.to_peripheral_error())?;
                     let _ = self
                         .current_sensor
@@ -381,15 +451,16 @@ where
                         .await;
                 } else {
                     self.motor
-                        .set_speed(self.active_speed)
+                        .set_speed(active_speed)
                         .map_err(|e| e.to_peripheral_error())?;
                 }
-            } else if self.active_speed > self.speed {
+            } else if active_speed > speed {
                 // Ramp down
-                let next = (self.active_speed.get() - 1).max(self.speed.get());
-                self.active_speed = MotorSpeed::new(next).unwrap();
-                if self.active_speed == MotorSpeed::ZERO && self.speed == MotorSpeed::ZERO {
-                    self.state = MotorState::Off;
+                let next = (active_speed.get() - 1).max(speed.get());
+                active_speed = MotorSpeed::new(next).unwrap();
+                self.set_active_speed_val(active_speed);
+                if active_speed == MotorSpeed::ZERO && speed == MotorSpeed::ZERO {
+                    self.set_state(MotorState::Off);
                     self.motor.stop().map_err(|e| e.to_peripheral_error())?;
                     let _ = self
                         .current_sensor
@@ -397,30 +468,31 @@ where
                         .await;
                 } else {
                     self.motor
-                        .set_speed(self.active_speed)
+                        .set_speed(active_speed)
                         .map_err(|e| e.to_peripheral_error())?;
                 }
             }
-        } else if self.active_speed.get() != 0 {
+        } else if active_speed.get() != 0 {
             // Ramping down/up to 0 even if state is Off
-            let current_raw = self.active_speed.get();
+            let current_raw = active_speed.get();
             let next = if current_raw > 0 {
                 current_raw - 1
             } else {
                 current_raw + 1
             };
-            self.active_speed = MotorSpeed::new(next).unwrap();
-            if self.active_speed == MotorSpeed::ZERO {
+            active_speed = MotorSpeed::new(next).unwrap();
+            self.set_active_speed_val(active_speed);
+            if active_speed == MotorSpeed::ZERO {
                 self.motor.stop().map_err(|e| e.to_peripheral_error())?;
             } else {
                 self.motor
-                    .set_speed(self.active_speed)
+                    .set_speed(active_speed)
                     .map_err(|e| e.to_peripheral_error())?;
             }
         }
 
         // 2. Call motor driver's tick() for software PWM toggling only when active
-        if self.active_speed.get() != 0 {
+        if self.get_active_speed().get() != 0 {
             self.motor
                 .tick()
                 .await
@@ -457,7 +529,7 @@ where
         let mut was_active = false;
 
         loop {
-            let active = self.state == MotorState::On || self.active_speed.get() != 0;
+            let active = self.get_state() == MotorState::On || self.get_active_speed().get() != 0;
 
             if active {
                 if !was_active {
@@ -577,8 +649,8 @@ where
         let motor_speed = MotorSpeed::new(speed).ok_or(PeripheralError::InvalidConfiguration)?;
         if motor_speed != MotorSpeed::ZERO {
             self.set_running_state(true).await?;
-            self.speed = motor_speed;
-            self.active_speed = motor_speed;
+            self.set_speed_val(motor_speed);
+            self.set_active_speed_val(motor_speed);
             self.motor
                 .set_speed(motor_speed)
                 .map_err(|e| e.to_peripheral_error())?;

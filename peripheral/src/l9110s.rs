@@ -11,7 +11,7 @@ use model::types::MotorSpeed;
 pub struct L9110s<P1, P2> {
     pin_ia: P1,
     pin_ib: P2,
-    speed: i8,
+    speed: core::sync::atomic::AtomicI8,
     tick_counter: u8,
 }
 
@@ -21,7 +21,7 @@ impl<P1: OutputPin, P2: OutputPin> L9110s<P1, P2> {
         Self {
             pin_ia,
             pin_ib,
-            speed: 0,
+            speed: core::sync::atomic::AtomicI8::new(0),
             tick_counter: 0,
         }
     }
@@ -42,7 +42,8 @@ where
     #[tracing::instrument(core1 = "core1", level = "trace", skip(speed))]
     fn set_speed(&mut self, speed: MotorSpeed) -> Result<(), Self::Error> {
         let speed_raw = speed.get();
-        self.speed = speed_raw;
+        self.speed
+            .store(speed_raw, core::sync::atomic::Ordering::SeqCst);
         self.tick_counter = 0;
         if speed_raw > 0 {
             self.pin_ib.set_low().map_err(L9110sError::PinIb)?;
@@ -64,7 +65,7 @@ where
     )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
     fn stop(&mut self) -> Result<(), Self::Error> {
-        self.speed = 0;
+        self.speed.store(0, core::sync::atomic::Ordering::SeqCst);
         self.tick_counter = 0;
         self.pin_ia.set_low().map_err(L9110sError::PinIa)?;
         self.pin_ib.set_low().map_err(L9110sError::PinIb)?;
@@ -85,14 +86,15 @@ where
     )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
     async fn tick(&mut self) -> Result<(), Self::Error> {
-        let abs_speed = self.speed.abs();
+        let speed = self.speed.load(core::sync::atomic::Ordering::SeqCst);
+        let abs_speed = speed.abs();
         if abs_speed == 0 || abs_speed >= 100 {
             Ok(())
         } else {
             self.tick_counter = (self.tick_counter + 1) % 10;
             let threshold = (abs_speed / 10) as u8;
             if self.tick_counter < threshold {
-                if self.speed > 0 {
+                if speed > 0 {
                     self.pin_ib.set_low().map_err(L9110sError::PinIb)?;
                     self.pin_ia.set_high().map_err(L9110sError::PinIa)?;
                 } else {
