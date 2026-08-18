@@ -73,6 +73,7 @@ pub struct MotorController<M, C> {
     calibration_present: bool,
     limits: MotorLimits,
     startup_ticks: u32,
+    safety_bypass: bool,
 }
 
 /// The filename of the motor calibration file.
@@ -116,6 +117,13 @@ impl crate::MotorWriter for MotorChannelSender {
         let _ = self.sender.try_send(MotorCommand::UpdateCalibration(*cal));
         Ok(())
     }
+
+    async fn set_safety_bypass(&mut self, bypass: bool) -> Result<(), PeripheralError> {
+        self.sender
+            .send(MotorCommand::SetSafetyBypass(bypass))
+            .await;
+        Ok(())
+    }
 }
 
 impl crate::MotorReader for MotorChannelSender {
@@ -155,6 +163,7 @@ where
                 rpm_limit: 0,
             },
             startup_ticks: 0,
+            safety_bypass: false,
         }
     }
 
@@ -306,7 +315,10 @@ where
         };
 
         // If the motor is running, verify safety limits (RPM and load torque)
-        if self.get_state() == MotorState::On && self.startup_ticks > MOTOR_STARTUP_BLANKING_TICKS {
+        if !self.safety_bypass
+            && self.get_state() == MotorState::On
+            && self.startup_ticks > MOTOR_STARTUP_BLANKING_TICKS
+        {
             let rpm = self.current_rpm();
             match self.limits.check_limits(rpm, current) {
                 MotorSafetyStatus::RpmExceeded(_rpm_val) => {
@@ -470,6 +482,9 @@ where
                 unsafe {
                     (*signal_ptr.0).signal(current);
                 }
+            }
+            MotorCommand::SetSafetyBypass(bypass) => {
+                self.safety_bypass = bypass;
             }
         }
 
@@ -709,6 +724,8 @@ pub enum MotorCommand {
     UpdateCalibration(model::calibration::MotorCalibration),
     /// Read the motor current draw in mA
     ReadCurrent(SendSignalPtr),
+    /// Enable or disable safety bypass
+    SetSafetyBypass(bool),
 }
 
 impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration for MotorController<M, C>
@@ -815,8 +832,10 @@ subcommand_enum! {
         Current,
         /// Calibrate motor
         Calibrate,
+        /// Control safety bypass
+        SafetyBypass = "safety-bypass",
     }
-    "Invalid motor subcommand. Expected: speed, rpm-speed, stop, current, calibrate"
+    "Invalid motor subcommand. Expected: speed, rpm-speed, stop, current, calibrate, safety-bypass"
 }
 
 /// Processes motor-specific CLI subcommands.
@@ -981,6 +1000,16 @@ pub async fn handle_motor_cli<
                 let _ = core::writeln!(writer, "Saved motor {} calibration to flash.", name);
             })
             .map_err(|_| "Error saving calibration to flash")
+        }
+        MotorSubcommand::SafetyBypass => {
+            let bypass_str = arg1.ok_or("Missing safety bypass parameter (on/off)")?;
+            let bypass = platform::cli::parse_bool_arg(bypass_str)?;
+            motor_ctrl
+                .set_safety_bypass(bypass)
+                .await
+                .map_err(|_| "Failed to set safety bypass")?;
+            let _ = core::writeln!(writer, "\r\nSafety bypass set to {}.", bypass);
+            Ok(())
         }
     }
 }

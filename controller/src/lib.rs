@@ -246,6 +246,10 @@ pub trait MotorWriter {
     ) -> Result<(), PeripheralError> {
         Ok(())
     }
+    /// Enable or disable safety bypass.
+    async fn set_safety_bypass(&mut self, _bypass: bool) -> Result<(), PeripheralError> {
+        Ok(())
+    }
 }
 
 impl MotorWriter for () {
