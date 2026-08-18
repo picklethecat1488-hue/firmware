@@ -1,0 +1,54 @@
+{% for p in peripherals %}
+{% if p.has_bus("i2c") %}
+impl<I: ::embedded_hal_async::i2c::I2c> crate::BootInit for crate::{{ p.module_name() }}::{{ p.struct_name_resolved() }}<I> {
+    type Error = ::model::types::PeripheralError;
+
+    async fn boot_init(&mut self) -> Result<(), Self::Error> {
+        #[allow(unused_imports)]
+        use ::model::interfaces::Probeable;
+
+        {% if p.init.probe %}
+        self.read_chip_id().await?;
+        {% endif %}
+        {% if p.init.reset %}
+        self.reset().await?;
+        {% endif %}
+        {% if p.init.init %}
+        self.init().await?;
+        {% endif %}
+        Ok(())
+    }
+}
+{% endif %}
+{% endfor %}
+
+/// Macro to initialize any I2C peripheral during boot.
+#[macro_export]
+macro_rules! init_i2c {{ "{" }}
+    ($sensor:expr, $boot_status:expr) => {{ "{" }}{{ "{" }}
+        use $crate::BootInit;
+        use $crate::ToPeripheralError;
+        use ::model::interfaces::BootStatus;
+
+        if let Err(e) = $sensor.boot_init().await {{ "{" }}
+            let pe = e.to_peripheral_error();
+            $boot_status.record_error(pe);
+        {{ "}" }}
+    {{ "}" }}{{ "}" }};
+{{ "}" }}
+
+/// Macro to initialize a PIO peripheral (like WS2812) during boot.
+#[macro_export]
+macro_rules! init_pio {{ "{" }}
+    ($device_type:ty, $config:expr, $boot_status:expr) => {{ "{" }}{{ "{" }}
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        {{ "{" }}
+            <$device_type>::new_pio($config)
+        {{ "}" }}
+        #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+        {{ "{" }}
+            let _ = $boot_status;
+            <$device_type>::new_pio($config)
+        {{ "}" }}
+    {{ "}" }}{{ "}" }};
+{{ "}" }}

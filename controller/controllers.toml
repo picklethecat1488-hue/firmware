@@ -106,11 +106,11 @@ run_params = [
 [[controllers]]
 name = "System"
 msg_type = "crate::system_controller::SystemCommand"
-macro_params = ["$rx:expr", "$gesture_rx:expr", "$thermal_rx:expr", "$controller_type:ty"]
-task_call_args = ["$rx", "$gesture_rx", "$thermal_rx"]
+macro_params = ["$rx:expr", "$thermal_rx:expr", "$controller_type:ty"]
+task_call_args = ["$rx", "$thermal_rx"]
 controller_type = "$controller_type"
-spawn_call_args = ["$rx.receiver()", "$gesture_rx.receiver()", "$thermal_action_rx.receiver()"]
-spawn_extra_rxs = ["$gesture_rx", "$thermal_action_rx"]
+spawn_call_args = ["$rx.receiver()", "$thermal_action_rx.receiver()"]
+spawn_extra_rxs = ["$thermal_action_rx"]
 macro_generics = ["$controller_type:ty"]
 spawn_generics = ["$controller_type"]
 is_system = true
@@ -120,23 +120,22 @@ impl_generics = ""
 impl_type = "SystemController"
 run_params = [
     { param = "r", type = "$crate::SystemReceiver<$crate::CriticalSectionRawMutex>" },
-    { param = "r2", type = "platform::gesture_detector::GestureReceiver<$crate::CriticalSectionRawMutex>" },
-    { param = "r3", type = "$crate::system_controller::ThermalUpdateReceiver<$crate::CriticalSectionRawMutex>" }
+    { param = "r2", type = "$crate::system_controller::ThermalUpdateReceiver<$crate::CriticalSectionRawMutex>" }
 ]
 
 [[controllers]]
 name = "Telemetry"
 msg_type = "model::telemetry::TelemetryRecord"
-macro_params = ["$rx:expr", "$max_records:expr", "$channel_size:expr", "$flash_ty:ty"]
+macro_params = ["$rx:expr", "$channel_size:expr", "$flash_ty:ty"]
 task_call_args = ["$rx"]
-controller_type = "&'static mut $crate::telemetry_controller::TelemetryController<$max_records, { model::telemetry::BUFFER_SIZE }, $flash_ty>"
+controller_type = "$crate::telemetry_controller::TelemetryController<$flash_ty>"
 spawn_call_args = ["$rx.receiver()"]
-macro_generics = ["$max_records:expr", "$channel_size:expr", "$flash_ty:ty"]
-spawn_generics = ["$max_records", "$channel_size", "$flash_ty"]
+macro_generics = ["$channel_size:expr", "$flash_ty:ty"]
+spawn_generics = ["$channel_size", "$flash_ty"]
 receiver_capacity = "$channel_size"
 has_telemetry = false
-impl_generics = "<const MAX_RECORDS: usize, const BUFFER_SIZE: usize, F>"
-impl_type = "TelemetryController<MAX_RECORDS, BUFFER_SIZE, F>"
+impl_generics = "<F>"
+impl_type = "TelemetryController<F>"
 impl_phantom = "F"
 run_params = [
     { param = "r", type = "$crate::TelemetryReceiver<$crate::CriticalSectionRawMutex>" }

@@ -1,6 +1,6 @@
 use model::interfaces::NoTick;
 use model::types::{Direction, MotorSpeed, SensorReading};
-use peripherals::mock::{DummyCurrentSensor, MockMotor, MockProximitySensor};
+use peripheral::mock::{DummyCurrentSensor, MockMotor, MockProximitySensor};
 
 #[test]
 fn test_core_gating_motor_compiles() {

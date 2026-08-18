@@ -10,7 +10,7 @@ use embassy_sync::mutex::Mutex;
 use model::interfaces::NoTick;
 
 use model::types::{BootReason, ChargeState, Direction, SystemLedState, SystemStatus};
-use peripherals::mock::{
+use peripheral::mock::{
     DummyCurrentSensor, MockBattery, MockCharger, MockLed, MockMotor, MockProximitySensor,
 };
 use platform::flash::SharedFlashMutex;
@@ -136,7 +136,6 @@ static FILESYSTEM_CHANNEL: Channel<
     controller::filesystem_controller::FsRequest,
     16,
 > = Channel::new();
-static GESTURE_CHANNEL: Channel<CriticalSectionRawMutex, model::types::Gesture, 4> = Channel::new();
 static THERMAL_ACTION_CHANNEL: Channel<
     CriticalSectionRawMutex,
     controller::types::ThermalUpdateAction,
@@ -268,13 +267,11 @@ fn test_spawn_all_controllers_configuration() {
     let client =
         controller::filesystem_controller::FilesystemClient::new(FILESYSTEM_CHANNEL.sender());
     let telemetry_flash = SharedFlashMutex::new(&FLASH_MUTEX);
-    let telemetry_ctrl = Box::leak(Box::new(
-        controller::telemetry_controller::TelemetryController::new(
-            telemetry_flash,
-            QueueFilesystem(32 * 1024..64 * 1024),
-            client,
-        ),
-    ));
+    let telemetry_ctrl = controller::telemetry_controller::TelemetryController::new(
+        telemetry_flash,
+        QueueFilesystem(32 * 1024..64 * 1024),
+        client,
+    );
 
     use embassy_executor::Executor;
     let executor = Box::leak(Box::new(Executor::new()));
@@ -284,16 +281,16 @@ fn test_spawn_all_controllers_configuration() {
             spawner,
             telemetry: TELEMETRY_CHANNEL,
             controllers: {
-                Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (peripherals::mock::MockBattery),
-                Battery(battery_ctrl, BATTERY_CHANNEL), generics: (peripherals::mock::MockBattery, peripherals::mock::MockCharger, MockPin),
+                Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (peripheral::mock::MockBattery),
+                Battery(battery_ctrl, BATTERY_CHANNEL), generics: (peripheral::mock::MockBattery, peripheral::mock::MockCharger, MockPin),
                 Motor(motor_ctrl, MOTOR_CHANNEL), generics: (model::interfaces::NoTick<MockMotor>, DummyCurrentSensor),
                 Sensor(sensor_ctrl_north, SENSOR_NORTH_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_east, SENSOR_EAST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_west, SENSOR_WEST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Led(led_ctrl, LED_CHANNEL), generics: (MockLed),
-                System(system_ctrl, SYSTEM_CHANNEL, GESTURE_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, DummyFeatureSet<CriticalSectionRawMutex, 16>, 16>),
+                System(system_ctrl, SYSTEM_CHANNEL, THERMAL_ACTION_CHANNEL), generics: (controller::SystemController<CriticalSectionRawMutex, DummyFeatureSet<CriticalSectionRawMutex, 16>, 16>),
                 Filesystem(fs_controller, FILESYSTEM_CHANNEL), generics: (controller::filesystem_controller::ProfilingFlash<SharedFlashMutex<TestFlash>>),
-                Telemetry(telemetry_ctrl, TELEMETRY_CONSUMER_CHANNEL), generics: (1024, { controller::telemetry_controller::CHANNEL_CAPACITY }, SharedFlashMutex<TestFlash>),
+                Telemetry(telemetry_ctrl, TELEMETRY_CONSUMER_CHANNEL), generics: ({ controller::telemetry_controller::CHANNEL_CAPACITY }, SharedFlashMutex<TestFlash>),
             }
         }
 
@@ -320,6 +317,27 @@ fn test_spawn_single_controller_configuration() {
     executor.run(|spawner: embassy_executor::Spawner| {
         // Test spawning only a single controller without explicit telemetry channel (it defaults to DUMMY_TELEMETRY_CHANNEL)
         controller::spawn_controllers! {
+            spawner,
+            controllers: {
+                Led(led_ctrl, LED_CHANNEL), generics: (MockLed),
+            }
+        }
+
+        spawner.spawn(test_control_task_single()).unwrap();
+    });
+}
+
+#[test]
+fn test_spawn_active_controllers_configuration() {
+    let mock_led = MockLed::new();
+    let led_ctrl = LedController::new(mock_led);
+
+    use embassy_executor::Executor;
+    let executor = Box::leak(Box::new(Executor::new()));
+
+    executor.run(|spawner: embassy_executor::Spawner| {
+        // Test spawning active controllers matching the app.toml configuration
+        controller::spawn_active_controllers! {
             spawner,
             controllers: {
                 Led(led_ctrl, LED_CHANNEL), generics: (MockLed),

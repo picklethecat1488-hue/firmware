@@ -4,13 +4,13 @@
 
 use crate::tracing::{self, controller_context};
 use crate::types::ThermalState;
-use crate::{BlockingThermalReader, Sender, TelemetrySender, ThermalReceiver};
+use crate::{Sender, TelemetrySender, ThermalReader, ThermalReceiver};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use model::interfaces::TemperatureSensor;
 use model::types::{PeriodicInterval, PeripheralError};
-use peripherals::ToPeripheralError;
+use peripheral::ToPeripheralError;
 use platform::subcommand_enum;
 
 /// A controller that periodically monitors system temperature from temperature sensors.
@@ -241,12 +241,12 @@ impl<'a, M: RawMutex, B: TemperatureSensor, const SYS_CAP: usize>
     }
 }
 
-impl<'a, M: RawMutex, B: TemperatureSensor, const SYS_CAP: usize> crate::BlockingThermalReader
+impl<'a, M: RawMutex, B: TemperatureSensor, const SYS_CAP: usize> crate::ThermalReader
     for ThermalController<'a, M, B, SYS_CAP>
 where
     B::Error: ToPeripheralError,
 {
-    fn read_temperature_blocking(&self) -> Result<i32, PeripheralError> {
+    fn read_temperature(&self) -> Result<i32, PeripheralError> {
         if let Ok(mut guard) = self.temp.try_lock() {
             guard
                 .read_temperature_milli_c()
@@ -279,7 +279,7 @@ subcommand_enum! {
 }
 
 /// Processes thermal-specific CLI subcommands.
-pub fn handle_thermal_cli<
+pub async fn handle_thermal_cli<
     W: embedded_io::Write<Error = E>,
     E: embedded_io::Error,
     C: crate::ShellConfig,
@@ -294,7 +294,7 @@ pub fn handle_thermal_cli<
         ThermalSubcommand::Status => {
             let thermal_ctrl = resolver.resolve_thermal(None)?;
             let temp = thermal_ctrl
-                .read_temperature_blocking()
+                .read_temperature()
                 .map_err(|_| "Direct thermal reading failed")?;
             let _ = core::writeln!(
                 writer,

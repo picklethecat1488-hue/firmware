@@ -12,10 +12,7 @@ controller::declare_shell_commands! {
 }
 use controller::shell_controller::{ShellController, ShellControllerPointers};
 use controller::system_controller::SystemCommand;
-use controller::{
-    BlockingBatteryReader, BlockingMotorReader, BlockingMotorWriter, BlockingProximityReader,
-    BlockingThermalReader,
-};
+use controller::{BatteryReader, MotorReader, MotorWriter, ProximityReader, ThermalReader};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embedded_cli::cli::CliBuilder;
@@ -36,9 +33,9 @@ controller::impl_shell_config! {
     }
 }
 macro_rules! run_command {
-    ($cli:expr, $bytes:expr, $proc:expr) => {
+    ($cli:expr, $bytes:expr, $proc:expr, $cmd_type:ty) => {
         for b in $bytes {
-            let _ = $cli.process_byte::<CliCommand, _>(*b, $proc);
+            let _ = $cli.process_byte::<$cmd_type, _>(*b, $proc);
         }
         if $proc.controller.has_pending_command() {
             let _ = $cli.write(|writer| {
@@ -51,6 +48,9 @@ macro_rules! run_command {
                 Ok::<(), core::convert::Infallible>(())
             });
         }
+    };
+    ($cli:expr, $bytes:expr, $proc:expr) => {
+        run_command!($cli, $bytes, $proc, CliCommand)
     };
 }
 
@@ -169,15 +169,15 @@ impl embedded_storage::nor_flash::NorFlash for MockFlash {
 }
 
 struct MockBatteryCtrl;
-impl BlockingBatteryReader for MockBatteryCtrl {
-    fn read_battery_blocking(&self) -> Result<(u32, u8), PeripheralError> {
+impl BatteryReader for MockBatteryCtrl {
+    async fn read_battery(&self) -> Result<(u32, u8), PeripheralError> {
         Ok((3800, 80))
     }
 }
 
 struct MockThermalCtrl;
-impl BlockingThermalReader for MockThermalCtrl {
-    fn read_temperature_blocking(&self) -> Result<i32, PeripheralError> {
+impl ThermalReader for MockThermalCtrl {
+    fn read_temperature(&self) -> Result<i32, PeripheralError> {
         Ok(25000)
     }
 }
@@ -185,10 +185,8 @@ impl BlockingThermalReader for MockThermalCtrl {
 struct MockSensorCtrl {
     distance: u16,
 }
-impl BlockingProximityReader for MockSensorCtrl {
-    async fn read_distance_blocking(
-        &mut self,
-    ) -> Result<model::types::SensorReading, PeripheralError> {
+impl ProximityReader for MockSensorCtrl {
+    async fn read_distance(&mut self) -> Result<model::types::SensorReading, PeripheralError> {
         if self.distance == u16::MAX || self.distance >= 8190 {
             Ok(model::types::SensorReading::Invalid)
         } else {
@@ -245,21 +243,21 @@ impl model::calibration::ApplyCalibration for MockSensorCtrl {
 struct MockMotorCtrl {
     speed: core::cell::Cell<i8>,
 }
-impl BlockingMotorReader for MockMotorCtrl {
-    fn read_current_ma_blocking(&mut self) -> Result<i32, PeripheralError> {
+impl MotorReader for MockMotorCtrl {
+    async fn read_motor_current_ma(&mut self) -> Result<i32, PeripheralError> {
         Ok(120)
     }
 }
-impl BlockingMotorWriter for MockMotorCtrl {
-    fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
+impl MotorWriter for MockMotorCtrl {
+    async fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
         self.speed.set(speed);
         Ok(())
     }
-    fn set_motor_speed_rpm(&mut self, rpm: i32) -> Result<(), PeripheralError> {
+    async fn set_motor_speed_rpm(&mut self, rpm: i32) -> Result<(), PeripheralError> {
         let speed_val = (rpm * 100) / 3000;
-        self.set_motor_speed(speed_val.clamp(-100, 100) as i8)
+        self.set_motor_speed(speed_val.clamp(-100, 100) as i8).await
     }
-    fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError> {
+    async fn stop_motor(&mut self) -> Result<(), PeripheralError> {
         self.speed.set(0);
         let _ = MOTOR_CHANNEL.try_send(MotorCommand::Stop);
         Ok(())
@@ -373,52 +371,38 @@ fn test_shell_controller_integration_each_command() {
     let mut cli = CliBuilder::default().writer(writer).build().unwrap();
 
     // Help command first
-    for b in b"help\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"help\n", &mut shell_proc);
 
     // 1. Motor command
-    for b in b"motor speed 42\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"motor speed 42\n", &mut shell_proc);
     assert_eq!(motor_ctrl.speed.get(), 42);
 
     // 2. Stop command
-    for b in b"motor stop\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"motor stop\n", &mut shell_proc);
     assert!(matches!(
         MOTOR_CHANNEL.try_receive(),
         Ok(MotorCommand::Stop)
     ));
 
     // 3. Battery command
-    for b in b"battery status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"battery status\n", &mut shell_proc);
 
     // 4. Thermal command
-    for b in b"thermal status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"thermal status\n", &mut shell_proc);
 
     // 5. Proximity command
     run_command!(&mut cli, b"sensor status\n", &mut shell_proc);
     run_command!(&mut cli, b"sensor status 3\n", &mut shell_proc);
 
     // 8. Activity command
-    for b in b"system activity\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"system activity\n", &mut shell_proc);
     assert!(matches!(
         system_chan_check(),
         Ok(SystemCommand::ActivityDetected)
     ));
 
     // 9. McuTemp command
-    for b in b"thermal mcu\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"thermal mcu\n", &mut shell_proc);
 
     // 10. CalNear command
     run_command!(&mut cli, b"sensor cal_near east\n", &mut shell_proc);
@@ -427,26 +411,16 @@ fn test_shell_controller_integration_each_command() {
     run_command!(&mut cli, b"sensor cal_far west\n", &mut shell_proc);
 
     // 12. CalMotor command
-    for b in b"motor calibrate water_100ml\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"motor calibrate water_100ml\n", &mut shell_proc);
 
-    for b in b"fs format\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"fs format\n", &mut shell_proc);
 
-    for b in b"fs ls\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"fs ls\n", &mut shell_proc);
 
-    for b in b"uart\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"uart\n", &mut shell_proc);
 
     // 13. Help command
-    for b in b"help\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"help\n", &mut shell_proc);
 }
 
 fn system_chan_check() -> Result<SystemCommand, embassy_sync::channel::TryReceiveError> {
@@ -466,17 +440,11 @@ fn test_shell_controller_with_missing_controllers() {
     let mut cli = CliBuilder::default().writer(writer).build().unwrap();
 
     // Verify commands fail gracefully when pointers/controllers are missing
-    for b in b"motor speed 42\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"motor speed 42\n", &mut shell_proc);
 
-    for b in b"battery status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"battery status\n", &mut shell_proc);
 
-    for b in b"thermal status\n" {
-        let _ = cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
-    }
+    run_command!(&mut cli, b"thermal status\n", &mut shell_proc);
 
     run_command!(&mut cli, b"sensor status\n", &mut shell_proc);
 }
@@ -575,9 +543,12 @@ fn test_wrapper_processor_integration() {
     let mut cli = CliBuilder::default().writer(writer).build().unwrap();
 
     // Send a motor command via the wrapper processor
-    for b in b"motor speed 77\n" {
-        let _ = cli.process_byte::<TestWrapperCli, _>(*b, &mut wrapper_proc);
-    }
+    run_command!(
+        &mut cli,
+        b"motor speed 77\n",
+        &mut wrapper_proc,
+        TestWrapperCli
+    );
     assert_eq!(motor_ctrl.speed.get(), 77);
 }
 

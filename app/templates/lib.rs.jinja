@@ -1,0 +1,37 @@
+//! Application task logic for the {{ name_pascal }} project.
+
+#![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
+#![deny(missing_docs)]
+
+use board::MutexRaw;
+
+// Include the generated app topology macros, channels, and features.
+include!(concat!(env!("OUT_DIR"), "/generated_app.rs"));
+
+/// Concrete type alias for the active Board type.
+pub type BoardType = board::Board;
+
+/// Concrete type alias for the Board's peripherals.
+pub type BoardPeripheralsType = board::BoardPeripherals;
+
+/// Runs the main application thread on Core 0.
+pub async fn run_core0_task(
+    spawner: embassy_executor::Spawner,
+    controllers: &'static mut Controllers,
+    board_peripherals: &'static mut BoardPeripheralsType,
+) {
+    // Spawns Core 0 controllers dynamically using the generated spawn macro
+    spawn_core0_controllers!(spawner, controllers, board_peripherals);
+}
+
+{% if core1_enabled %}
+/// Runs the secondary application thread on Core 1.
+pub async fn run_core1_task(
+    spawner: embassy_executor::Spawner,
+    controllers: &'static mut Controllers,
+    board_peripherals: &'static mut BoardPeripheralsType,
+) {
+    // Spawns Core 1 controllers dynamically using the generated spawn macro
+    spawn_core1_controllers!(spawner, controllers, board_peripherals);
+}
+{% endif %}

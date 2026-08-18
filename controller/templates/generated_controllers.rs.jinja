@@ -240,7 +240,7 @@ macro_rules! append_group_arm {
     ({{ cmd.group }}, $name:ident, $ctrl:ident, $writer:ident, [$($tail:ident),*], [$($variants:tt)*], [$($matches:tt)*] -> $mode:tt, $proc_name:ident) => {
         $crate::declare_shell_commands!(@accum $name, $ctrl, $writer, [$($tail),*] -> [
             $($variants)*
-            /// {{ cmd.help }}
+            /// {{ cmd.help_string(subcommands_map) }}
             #[command(name = "{{ cmd.cmd_name }}")]
             {{ cmd.variant }} {
                 /// Subcommand
@@ -260,7 +260,7 @@ macro_rules! append_group_arm {
                 let pending = $crate::PendingCommand::{{ cmd.variant }} {
                     subcommand,
                     {%- for arg in cmd.args_slice() %}
-                    {{ arg.name }}: {% if arg.arg_type == "string" %}{{ arg.name }}.map(|s| ::heapless::String::try_from(s).unwrap_or_default()){% else %}{{ arg.name }}{% endif %},
+                    {{ arg.name }}: {% if arg.arg_type == "string" %}{{ arg.name }}.map(|s| ::heapless::String::<{{ arg.string_capacity() }}>::try_from(s).unwrap_or_default()){% else %}{{ arg.name }}{% endif %},
                     {%- endfor %}
                 };
                 $ctrl.pending_command = Some(pending);
@@ -334,6 +334,7 @@ pub trait ShellConfig {
 {% if has_async_cli %}
 /// Auto-generated enum representing any pending async CLI command.
 #[derive(Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum PendingCommand {
     {%- for cmd in cli_commands %}
     {%- if cmd.async_cli %}
@@ -343,7 +344,7 @@ pub enum PendingCommand {
         subcommand: Option<{% if cmd.subcommand_type.contains("::") && !cmd.subcommand_type.contains("platform::") %}crate::{% endif %}{{ cmd.subcommand_type|safe }}>,
         {%- for arg in cmd.args_slice() %}
         /// Deferred argument {{ arg.name }}.
-        {{ arg.name }}: {% if arg.arg_type == "string" %}Option<::heapless::String<32>>{% else %}{{ arg.rust_type() }}{% endif %},
+        {{ arg.name }}: {% if arg.arg_type == "string" %}Option<::heapless::String<{{ arg.string_capacity() }}>>{% else %}{{ arg.rust_type_no_crate() }}{% endif %},
         {%- endfor %}
     },
     {%- endif %}
@@ -371,9 +372,9 @@ impl<'a, C: crate::shell_controller::ShellConfig> crate::shell_controller::Shell
                 {%- if cmd.async_cli %}
                 crate::PendingCommand::{{ cmd.variant }} { subcommand, {%- for arg in cmd.args_slice() %}{{ arg.name }}, {% endfor %} } => {
                     {%- if cmd.handler.contains("::") && !cmd.handler.starts_with("platform::") %}
-                    crate::{{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_ref().map(|s| s.as_str()){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
+                    crate::{{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_deref(){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
                     {%- else %}
-                    {{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_ref().map(|s| s.as_str()){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
+                    {{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_deref(){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
                     {%- endif %}
                 }
                 {%- endif %}
@@ -407,3 +408,99 @@ impl<'a, C: crate::shell_controller::ShellConfig> crate::shell_controller::Shell
     }
 }
 {% endif %}
+
+impl<'a, C: crate::shell_controller::ShellConfig> crate::shell_controller::ShellController<'a, C> {
+    /// Prints the subcommands help menu for a given command.
+    pub fn print_subcommands_help<W, E>(&self, command: &str, writer: &mut crate::embedded_cli::writer::Writer<'_, W, E>)
+    where
+        W: crate::embedded_io::Write<Error = E>,
+        E: crate::embedded_io::Error,
+    {
+        use core::fmt::Write as _;
+        match command {
+            {%- for cmd in cli_commands %}
+            "{{ cmd.cmd_name }}" => {
+                {%- if !cmd.get_subcommands(subcommands_map).is_empty() %}
+                let _ = core::writeln!(writer, "\r\nSubcommands:");
+                {%- for sub in cmd.get_subcommands(subcommands_map) %}
+                let doc = "{{ sub.doc }}";
+                let _ = core::writeln!(writer, "  {:<15} {}", "{{ sub.name }}", doc);
+                {%- endfor %}
+                {%- endif %}
+            }
+            {%- endfor %}
+            _ => {}
+        }
+    }
+}
+
+/// Declares shell commands matching only the enabled CLI handlers from app.toml.
+#[macro_export]
+macro_rules! declare_active_shell_commands {
+    ($name:ident ($proc:ident)) => {
+        $crate::declare_shell_commands! {
+            $name ($proc) {
+                {%- for cmd in cli_commands %}
+                {%- if app_config.cli_handlers.get(&cmd.group.to_lowercase()).copied().unwrap_or(false) %}
+                {{ cmd.group }},
+                {%- endif %}
+                {%- endfor %}
+            }
+        }
+    };
+}
+
+/// Spawns only the controllers that are enabled in app.toml.
+#[macro_export]
+macro_rules! spawn_active_controllers {
+    // With explicit telemetry channel
+    (
+        $spawner:expr,
+        telemetry: $telemetry:expr,
+        controllers: {
+            $( $cname:ident ( $ctrl:expr, $rx:ident $(, $extra_rx:expr)* ) , generics: ($($gen:tt)*) ),* $(,)?
+        }
+    ) => {
+        $(
+            $crate::spawn_active_single_controller!(
+                $spawner,
+                $cname,
+                $ctrl,
+                $rx,
+                $telemetry,
+                ($( $extra_rx ),*),
+                ($($gen)*)
+            );
+        )*
+    };
+
+    // Without explicit telemetry channel (defaults to DUMMY_TELEMETRY_CHANNEL)
+    (
+        $spawner:expr,
+        controllers: {
+            $( $cname:ident ( $ctrl:expr, $rx:ident $(, $extra_rx:expr)* ) , generics: ($($gen:tt)*) ),* $(,)?
+        }
+    ) => {
+        $crate::spawn_active_controllers!(
+            $spawner,
+            telemetry: $crate::DUMMY_TELEMETRY_CHANNEL,
+            controllers: {
+                $( $cname ( $ctrl, $rx $(, $extra_rx)* ) , generics: ($($gen)*) ),*
+            }
+        );
+    };
+}
+
+/// Helper macro to spawn a single controller if it is enabled.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! spawn_active_single_controller {
+    {%- for ctrl in controllers %}
+    {%- if app_config.features.get(&ctrl.name.to_lowercase()).copied().unwrap_or(false) %}
+    ($spawner:expr, {{ ctrl.name }}, $ctrl:expr, $rx:ident, $telemetry:expr, ($($extra:expr),*), ($($gen:tt)*)) => {
+        $crate::spawn_single_controller!($spawner, {{ ctrl.name }}, $ctrl, $rx, $telemetry, ($($extra),*), ($($gen)*));
+    };
+    {%- endif %}
+    {%- endfor %}
+    ($spawner:expr, $cname:ident, $ctrl:expr, $rx:ident, $telemetry:expr, ($($extra:expr),*), ($($gen:tt)*)) => {};
+}

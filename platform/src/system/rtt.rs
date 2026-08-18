@@ -85,12 +85,7 @@ pub(crate) unsafe fn flush_rtt_cli() {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(feature = "tracing")]
 const BUF_SIZE: usize = 32768;
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-#[cfg(not(feature = "tracing"))]
-const BUF_SIZE: usize = 4096;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 const CLI_BUF_SIZE: usize = 1024;
@@ -239,7 +234,7 @@ pub fn rtt_has_input() -> bool {
 /// pending async commands.
 #[macro_export]
 macro_rules! run_rtt_shell_loop {
-    ($cli:expr, $proc:expr, $cmd_type:ty) => {
+    ($cli:expr, $proc:expr, $cmd_type:ty, $prompt:expr) => {
         #[cfg(all(target_arch = "arm", target_os = "none"))]
         loop {
             $crate::rtt::RTT_SIGNAL.wait().await;
@@ -248,16 +243,19 @@ macro_rules! run_rtt_shell_loop {
             let mut rx_byte = [0u8; 1];
             while $crate::rtt::read_rtt(&mut rx_byte) > 0 {
                 let _ = $cli.process_byte::<$cmd_type, _>(rx_byte[0], $proc);
-                if $proc.controller.has_pending_command() {
-                    let mut raw_writer = $crate::rtt::RttTxWriter;
-                    let mut writer = ::embedded_cli::writer::Writer::new(&mut raw_writer);
-                    if let Err(err) = $proc.controller.execute_pending(&mut writer).await {
-                        let _ = $cli.write(|cli_writer| {
-                            use core::fmt::Write as _;
-                            let _ = core::writeln!(cli_writer, "Command failed: {}", err);
-                            Ok::<(), core::convert::Infallible>(())
-                        });
-                    }
+            }
+            if $proc.controller.has_pending_command() {
+                let mut raw_writer = $crate::rtt::RttTxWriter;
+                let mut writer = ::embedded_cli::writer::Writer::new(&mut raw_writer);
+                if let Err(err) = $proc.controller.execute_pending(&mut writer).await {
+                    let _ = $cli.set_prompt($prompt);
+                    let _ = $cli.write(|cli_writer| {
+                        use core::fmt::Write as _;
+                        let _ = core::writeln!(cli_writer, "Command failed: {}", err);
+                        Ok::<(), core::convert::Infallible>(())
+                    });
+                } else {
+                    let _ = $cli.set_prompt($prompt);
                 }
             }
         }

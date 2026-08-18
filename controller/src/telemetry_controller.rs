@@ -36,28 +36,17 @@ fn get_timestamp_us() -> u64 {
 
 /// Struct that maintains all of the telemetry state, RRD buffer, and filesystem client reference.
 #[controller_context]
-pub struct TelemetryController<
-    const MAX_RECORDS: usize = 45,
-    const BUFFER_SIZE: usize = { model::telemetry::BUFFER_SIZE },
-    F = (),
-> {
+pub struct TelemetryController<F = ()> {
     flash: F,
     flash_range: QueueFilesystem,
     #[allow(dead_code)]
     fs: FilesystemClient,
 }
 
-/// Type alias for compatibility with the old Telemetry struct name.
-pub type Telemetry<
-    const MAX_RECORDS: usize = 45,
-    const BUFFER_SIZE: usize = { model::telemetry::BUFFER_SIZE },
-    F = (),
-> = TelemetryController<MAX_RECORDS, BUFFER_SIZE, F>;
-
 /// Capacity of the telemetry channel queue.
 pub const CHANNEL_CAPACITY: usize = 64;
 
-impl Default for TelemetryController<45, { model::telemetry::BUFFER_SIZE }, ()> {
+impl Default for TelemetryController<()> {
     fn default() -> Self {
         static DUMMY_CHANNEL: crate::FilesystemChannel<
             embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
@@ -71,9 +60,7 @@ impl Default for TelemetryController<45, { model::telemetry::BUFFER_SIZE }, ()> 
     }
 }
 
-impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize, F>
-    TelemetryController<MAX_RECORDS, BUFFER_SIZE, F>
-{
+impl<F> TelemetryController<F> {
     /// Creates a new `TelemetryController` instance.
     pub const fn new(flash: F, flash_range: QueueFilesystem, fs: FilesystemClient) -> Self {
         Self {
@@ -84,12 +71,7 @@ impl<const MAX_RECORDS: usize, const BUFFER_SIZE: usize, F>
     }
 }
 
-impl<
-        const MAX_RECORDS: usize,
-        const BUFFER_SIZE: usize,
-        F: embedded_storage_async::nor_flash::NorFlash,
-    > TelemetryController<MAX_RECORDS, BUFFER_SIZE, F>
-{
+impl<F: embedded_storage_async::nor_flash::NorFlash> TelemetryController<F> {
     /// Interval at which telemetry stats are logged.
     pub const STATS_LOG_INTERVAL: embassy_time::Duration = embassy_time::Duration::from_secs(60);
 

@@ -6,14 +6,15 @@ controller::declare_shell_commands! {
         Sensor,
         Fs,
         System,
+        Core,
     }
 }
 use controller::motor_controller::MotorSubcommand;
 use controller::sensor_controller::SensorSubcommand;
-use controller::system_controller::{CpuTarget, SystemSubcommand};
 use embedded_cli::cli::CliBuilder;
 use embedded_cli::command::RawCommand;
 use embedded_cli::service::{CommandProcessor, FromRaw, ProcessError};
+use platform::core_monitor::CoreMonitorSubcommand;
 
 struct DummyWriter;
 impl embedded_io::ErrorType for DummyWriter {
@@ -57,14 +58,14 @@ fn test_crash_command_parsing() {
     let mut cli = CliBuilder::default().writer(DummyWriter).build().unwrap();
 
     let mut processor = TestProcessor { cmd: None };
-    for byte in b"system crash\n" {
+    for byte in b"core crash\n" {
         let _ = cli.process_byte::<CliCommand, _>(*byte, &mut processor);
     }
 
     assert!(matches!(
         processor.cmd,
-        Some(CliCommand::System {
-            subcommand: Some(SystemSubcommand::Crash),
+        Some(CliCommand::Core {
+            subcommand: Some(CoreMonitorSubcommand::Crash),
             arg1: None
         })
     ));
@@ -203,15 +204,15 @@ fn test_system_crash_core1_command_parsing() {
     let mut cli = CliBuilder::default().writer(DummyWriter).build().unwrap();
 
     let mut processor = TestProcessor { cmd: None };
-    for byte in b"system crash core1\n" {
+    for byte in b"core crash core1\n" {
         let _ = cli.process_byte::<CliCommand, _>(*byte, &mut processor);
     }
 
     assert!(matches!(
         processor.cmd,
-        Some(CliCommand::System {
-            subcommand: Some(SystemSubcommand::Crash),
-            arg1: Some(CpuTarget::Core1)
+        Some(CliCommand::Core {
+            subcommand: Some(CoreMonitorSubcommand::Crash),
+            arg1: Some("core1")
         })
     ));
 }

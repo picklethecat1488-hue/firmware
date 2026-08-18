@@ -227,7 +227,7 @@ pub trait RttWriter {
 }
 
 /// Maximum buffer size for a single serialized defmt log frame.
-pub const FRAME_BUF_SIZE: usize = 512;
+pub const FRAME_BUF_SIZE: usize = 4096;
 
 /// A generic RTT protocol handler that manages frame encoding, reentrancy guards,
 /// and dual-logging to both the writer and the circular crash log buffer.

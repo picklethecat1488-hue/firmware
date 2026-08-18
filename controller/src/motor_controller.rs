@@ -3,7 +3,7 @@
 #![deny(missing_docs)]
 
 use crate::telemetry_controller::MotorTelemetryClient;
-use crate::{BlockingMotorReader, BlockingMotorWriter, MotorReceiver, TelemetrySender};
+use crate::{MotorReader, MotorReceiver, MotorWriter, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::RawMutex;
@@ -11,7 +11,7 @@ use model::calibration::Calibration;
 use model::interfaces::{Motor, PowerMeasurementMode, PowerSensor, Tickable};
 use model::telemetry::TelemetryClient;
 use model::types::{MotorSpeed, PeripheralError, SystemStatus};
-use peripherals::ToPeripheralError;
+use peripheral::ToPeripheralError;
 
 use crate::tracing::{self, controller_context};
 use crate::types::{MotorCalState, MotorSafetyStatus, MotorState};
@@ -556,50 +556,50 @@ impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration
     }
 }
 
-impl<M: Motor + Tickable, C: PowerSensor> crate::BlockingMotorReader for MotorController<M, C>
+impl<M: Motor + Tickable, C: PowerSensor> crate::MotorReader for MotorController<M, C>
 where
     <C as PowerSensor>::Error: ToPeripheralError,
     <M as Motor>::Error: ToPeripheralError,
     <M as Tickable>::Error: ToPeripheralError,
 {
-    fn read_current_ma_blocking(&mut self) -> Result<i32, PeripheralError> {
-        embassy_futures::block_on(self.read_torque_ma())
+    async fn read_motor_current_ma(&mut self) -> Result<i32, PeripheralError> {
+        self.read_torque_ma().await
     }
 }
 
-impl<M: Motor + Tickable, C: PowerSensor> crate::BlockingMotorWriter for MotorController<M, C>
+impl<M: Motor + Tickable, C: PowerSensor> crate::MotorWriter for MotorController<M, C>
 where
     <C as PowerSensor>::Error: ToPeripheralError,
     <M as Motor>::Error: ToPeripheralError,
     <M as Tickable>::Error: ToPeripheralError,
 {
-    fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
+    async fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
         let motor_speed = MotorSpeed::new(speed).ok_or(PeripheralError::InvalidConfiguration)?;
         if motor_speed != MotorSpeed::ZERO {
-            embassy_futures::block_on(self.set_running_state(true))?;
+            self.set_running_state(true).await?;
             self.speed = motor_speed;
             self.active_speed = motor_speed;
             self.motor
                 .set_speed(motor_speed)
                 .map_err(|e| e.to_peripheral_error())?;
         } else {
-            embassy_futures::block_on(self.set_running_state(false))?;
+            self.set_running_state(false).await?;
         }
         Ok(())
     }
 
-    fn set_motor_speed_rpm(&mut self, rpm: i32) -> Result<(), PeripheralError> {
+    async fn set_motor_speed_rpm(&mut self, rpm: i32) -> Result<(), PeripheralError> {
         let max_rpm = self.limits.max_rpm;
         if max_rpm == 0 {
             return Err(PeripheralError::InvalidConfiguration);
         }
         let speed_val = (rpm * 100) / (max_rpm as i32);
         let speed_val_clamped = speed_val.clamp(-100, 100) as i8;
-        self.set_motor_speed(speed_val_clamped)
+        self.set_motor_speed(speed_val_clamped).await
     }
 
-    fn stop_motor_blocking(&mut self) -> Result<(), PeripheralError> {
-        embassy_futures::block_on(self.set_running_state(false))
+    async fn stop_motor(&mut self) -> Result<(), PeripheralError> {
+        self.set_running_state(false).await
     }
 
     fn update_calibration(
@@ -647,7 +647,7 @@ subcommand_enum! {
 }
 
 /// Processes motor-specific CLI subcommands.
-pub fn handle_motor_cli<
+pub async fn handle_motor_cli<
     W: embedded_io::Write<Error = E>,
     E: embedded_io::Error,
     C: crate::ShellConfig,
@@ -674,9 +674,11 @@ pub fn handle_motor_cli<
                 .map_err(|_| "Invalid speed parameter")?;
             motor_ctrl
                 .set_motor_speed(speed)
+                .await
                 .map_err(|_| "Failed to set motor speed")?;
             let current = motor_ctrl
-                .read_current_ma_blocking()
+                .read_motor_current_ma()
+                .await
                 .map_err(|_| "Failed to read motor current")?;
             let _ = core::writeln!(writer, "\r\nMotor current: {} mA", current);
             Ok(())
@@ -686,21 +688,24 @@ pub fn handle_motor_cli<
             let rpm = rpm_str
                 .parse::<i32>()
                 .map_err(|_| "Invalid RPM parameter")?;
-            motor_ctrl.set_motor_speed_rpm(rpm).map_err(|_| {
+            motor_ctrl.set_motor_speed_rpm(rpm).await.map_err(|_| {
                 "Failed to set motor speed by RPM (ensure motor is calibrated first)"
             })?;
             let current = motor_ctrl
-                .read_current_ma_blocking()
+                .read_motor_current_ma()
+                .await
                 .map_err(|_| "Failed to read motor current")?;
             let _ = core::writeln!(writer, "\r\nMotor current: {} mA", current);
             Ok(())
         }
         MotorSubcommand::Stop => motor_ctrl
-            .stop_motor_blocking()
+            .stop_motor()
+            .await
             .map_err(|_| "Failed to stop motor"),
         MotorSubcommand::Current => {
             let current = motor_ctrl
-                .read_current_ma_blocking()
+                .read_motor_current_ma()
+                .await
                 .map_err(|_| "Failed to read motor current")?;
             let _ = core::writeln!(writer, "\r\nMotor current: {} mA", current);
             Ok(())
@@ -718,18 +723,19 @@ pub fn handle_motor_cli<
             let rpm_limit = arg3.and_then(|s| s.parse::<u32>().ok());
 
             let _ = core::writeln!(writer, "\r\nStarting motor for calibration...");
-            let _ = motor_ctrl.set_motor_speed(100);
+            let _ = motor_ctrl.set_motor_speed(100).await;
 
             let _ = core::writeln!(writer, "Waiting 1 second for motor to ramp up...");
-            embassy_time::block_for(embassy_time::Duration::from_millis(1000));
+            embassy_time::Timer::after_millis(1000).await;
 
             let mut sum = 0;
             for _ in 0..5 {
                 let current_val = motor_ctrl
-                    .read_current_ma_blocking()
+                    .read_motor_current_ma()
+                    .await
                     .map_err(|_| "Failed to read current from motor controller")?;
                 sum += current_val;
-                embassy_time::block_for(embassy_time::Duration::from_millis(100));
+                embassy_time::Timer::after_millis(100).await;
             }
             let current = sum / 5;
 
@@ -746,7 +752,7 @@ pub fn handle_motor_cli<
                 name,
                 current
             );
-            let _ = motor_ctrl.stop_motor_blocking();
+            let _ = motor_ctrl.stop_motor().await;
 
             let (map_fs, flash_ptr) = match resolver.resolve_partition(partition_name)? {
                 crate::ResolvedPartition::Map(fs, ptr) => (fs, ptr),

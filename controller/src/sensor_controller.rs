@@ -4,14 +4,13 @@
 
 use crate::tracing::{self, controller_context};
 use crate::types::{SensorDirection, SensorMetadata};
-use crate::BlockingProximityReader;
 use crate::Sender;
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::calibration::{ApplyCalibration, Calibration};
 use model::interfaces::ProximitySensor;
 use model::types::{Direction, PeriodicInterval, PeripheralError, SensorReading};
-use peripherals::ToPeripheralError;
+use peripheral::ToPeripheralError;
 use platform::{
     select_branch_with_timeout, subcommand_enum, BlockingAsyncFlash, CliSignal, OnceLock,
 };
@@ -111,7 +110,7 @@ impl PendingCommand {
                     "west" => SensorDirection::West,
                     _ => return Err("Invalid direction. Expected: north, east, west"),
                 };
-                let part_str = partition.unwrap_or("telemetry");
+                let part_str = partition.unwrap_or("panic");
                 let mut s = String::new();
                 s.push_str(part_str)
                     .map_err(|_| "Partition name too long")?;
@@ -128,7 +127,7 @@ impl PendingCommand {
                     "west" => SensorDirection::West,
                     _ => return Err("Invalid direction. Expected: north, east, west"),
                 };
-                let part_str = partition.unwrap_or("telemetry");
+                let part_str = partition.unwrap_or("panic");
                 let mut s = String::new();
                 s.push_str(part_str)
                     .map_err(|_| "Partition name too long")?;
@@ -145,7 +144,7 @@ impl PendingCommand {
                     "west" => SensorDirection::West,
                     _ => return Err("Invalid direction. Expected: north, east, west"),
                 };
-                let part_str = partition.unwrap_or("100");
+                let part_str = partition.unwrap_or("panic");
                 let mut s = String::new();
                 s.push_str(part_str).map_err(|_| "Parameter too long")?;
                 PendingCommand::CalXTalk {
@@ -738,11 +737,11 @@ impl<
         M: embassy_sync::blocking_mutex::raw::RawMutex + 'static,
         Pin,
         Cmd,
-    > crate::BlockingProximityReader for SensorController<'a, S, M, Pin, Cmd, ProximityReader>
+    > crate::ProximityReader for SensorController<'a, S, M, Pin, Cmd, ProximityReader>
 where
     <S as ProximitySensor>::Error: ToPeripheralError,
 {
-    async fn read_distance_blocking(&mut self) -> Result<SensorReading, PeripheralError> {
+    async fn read_distance(&mut self) -> Result<SensorReading, PeripheralError> {
         let lock = OnceLock::new();
         let lock_ptr = CliSignal::new(&lock);
         self.send_command(SensorCommand::ReadSensorsWithSignal(lock_ptr))?;
@@ -872,6 +871,7 @@ pub async fn handle_sensor_cli<
     partition: Option<&str>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
+    use crate::ProximityReader as _;
     let command = PendingCommand::parse(
         subcommand.ok_or("Missing sensor subcommand")?,
         arg1,
@@ -1411,11 +1411,63 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
             .borrow_mut()
             .report((direction, reading));
 
+        let idx = match direction {
+            model::types::Direction::North => 0,
+            model::types::Direction::East => 1,
+            model::types::Direction::West => 2,
+        };
+
+        let prev_state = self.gesture_detector.borrow().trackers[idx].state;
+
         let now_us = embassy_time::Instant::now().as_micros();
         let detector_gesture = self
             .gesture_detector
             .borrow_mut()
             .update((direction, distance_mm), now_us);
+
+        let new_state = self.gesture_detector.borrow().trackers[idx].state;
+
+        if prev_state != new_state {
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            {
+                let dir_str = match direction {
+                    model::types::Direction::North => "North",
+                    model::types::Direction::East => "East",
+                    model::types::Direction::West => "West",
+                };
+                use platform::gesture_detector::ProximityState;
+                match new_state {
+                    ProximityState::OutOfRange => {
+                        defmt::info!(
+                            "GestureDetector {} sensor: OUT OF RANGE ({} mm)",
+                            dir_str,
+                            distance_mm
+                        );
+                    }
+                    ProximityState::InRange => {
+                        defmt::info!(
+                            "GestureDetector {} sensor: IN RANGE ({} mm)",
+                            dir_str,
+                            distance_mm
+                        );
+                    }
+                    ProximityState::Near => {
+                        defmt::info!(
+                            "GestureDetector {} sensor: NEAR ({} mm)",
+                            dir_str,
+                            distance_mm
+                        );
+                    }
+                    ProximityState::Down => {
+                        defmt::info!(
+                            "GestureDetector {} sensor: DOWN ({} mm)",
+                            dir_str,
+                            distance_mm
+                        );
+                    }
+                }
+            }
+        }
 
         let gesture = if let SensorReading::Invalid = reading {
             None
@@ -1423,12 +1475,6 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
             detector_gesture
         };
 
-        // Register distance locally in the feature using direction map index
-        let idx = match direction {
-            model::types::Direction::North => 0,
-            model::types::Direction::East => 1,
-            model::types::Direction::West => 2,
-        };
         self.distances[idx].set(distance_mm);
 
         let in_range = self

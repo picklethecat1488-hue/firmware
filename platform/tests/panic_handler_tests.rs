@@ -438,3 +438,91 @@ fn test_multicore_panic_serialization() {
     assert_eq!(decoded.cores[1].backtrace[0], 0x10003000);
     assert_eq!(decoded.cores[1].backtrace_len, 2);
 }
+
+#[test]
+fn test_cbor_serialization_buffer_size_resolution() {
+    use platform::panic_handler::serialize_crash_dump;
+    use platform::types::{CoreDump, CrashDump};
+
+    let mut core0_backtrace = [0u32; 32];
+    core0_backtrace[0] = 0x10001000;
+    core0_backtrace[1] = 0x10002000;
+
+    let mut core1_backtrace = [0u32; 32];
+    core1_backtrace[0] = 0x10003000;
+    core1_backtrace[1] = 0x10004000;
+
+    let core0_dump = CoreDump {
+        r0: 0x10,
+        r1: 0x11,
+        r2: 0x12,
+        r3: 0x13,
+        sp: 0x20041000,
+        lr: 0x10005000,
+        pc: 0x10006000,
+        backtrace: core0_backtrace,
+        backtrace_len: 2,
+        panicked: true,
+    };
+
+    let core1_dump = CoreDump {
+        r0: 0x20,
+        r1: 0x21,
+        r2: 0x22,
+        r3: 0x23,
+        sp: 0x2003f000,
+        lr: 0x10007000,
+        pc: 0x10008000,
+        backtrace: core1_backtrace,
+        backtrace_len: 2,
+        panicked: true,
+    };
+
+    // Simulate maximum size system log buffer (1024 bytes)
+    let max_logs = [b'a'; 1024];
+
+    let dump = CrashDump {
+        revision_hash: "mock_git_hash_long_hash_value_1234567890",
+        system_logs: &max_logs,
+        uuid: [7u8; 16],
+        cores: [core0_dump, core1_dump],
+    };
+
+    // 1. Verify that the old 1200 bytes buffer size would fail
+    let mut old_cbor_buf = [0u8; 1200];
+    let old_res = serialize_crash_dump(&dump, &mut old_cbor_buf);
+    assert!(
+        old_res.is_err(),
+        "Old buffer of 1200 bytes should have failed to serialize maximum size logs"
+    );
+
+    // 2. Verify that our new 3072 bytes buffer size succeeds
+    let mut new_cbor_buf = [0u8; 3072];
+    let new_len = serialize_crash_dump(&dump, &mut new_cbor_buf)
+        .expect("New buffer of 3072 bytes should succeed");
+    assert!(new_len > 0);
+
+    // 3. Decode and verify the results
+    let decoded: CrashDump = minicbor::decode(&new_cbor_buf[..new_len]).unwrap();
+    assert_eq!(
+        decoded.revision_hash,
+        "mock_git_hash_long_hash_value_1234567890"
+    );
+    assert_eq!(decoded.system_logs, &max_logs[..]);
+    assert_eq!(decoded.cores[0].r0, 0x10);
+    assert_eq!(decoded.cores[1].r0, 0x20);
+}
+
+#[test]
+fn test_panic_handler_cbor_log_not_elided() {
+    let source_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/system/panic.rs");
+    let content =
+        std::fs::read_to_string(source_path).expect("Failed to read platform/src/system/panic.rs");
+
+    assert!(
+        content.contains("defmt::error!(\"Crash Dump: {=[u8]:cbor}\", encoded_bytes);"),
+        "The critical crash dump defmt logging line was modified or elided! \
+         This line must be preserved so that the host CLI can intercept and decode \
+         the crash dump and symbolicate the stack trace."
+    );
+}

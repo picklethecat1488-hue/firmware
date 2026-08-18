@@ -5,14 +5,14 @@
 use crate::system_controller::SystemCommand;
 use crate::telemetry_controller::BatteryTelemetryClient;
 use crate::tracing::{self, controller_context};
-use crate::{BatteryReceiver, BlockingBatteryReader, TelemetrySender};
+use crate::{BatteryReader, BatteryReceiver, TelemetrySender};
 use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
 use embassy_sync::mutex::Mutex;
 use model::interfaces::{FuelGauge, Tickable};
 use model::telemetry::TelemetryClient;
 use model::types::{PeriodicInterval, PeripheralError};
-use peripherals::ToPeripheralError;
+use peripheral::ToPeripheralError;
 use platform::{select_branch_with_timeout, subcommand_enum, BatteryUpdateAction};
 
 /// Default minimum voltage alert threshold (mV).
@@ -490,37 +490,38 @@ impl<
         C: model::interfaces::ChargeStatus,
         Pin: BatteryAlertPin,
         const SYS_CAP: usize,
-    > crate::BlockingBatteryReader for BatteryController<'a, M, B, C, Pin, SYS_CAP>
+    > crate::BatteryReader for BatteryController<'a, M, B, C, Pin, SYS_CAP>
 {
-    fn read_battery_blocking(&self) -> Result<(u32, u8), PeripheralError> {
+    async fn read_battery(&self) -> Result<(u32, u8), PeripheralError> {
         if let Ok(mut bat) = self.battery.try_lock() {
-            let fut = async {
-                match (
-                    bat.read_voltage_mv().await,
-                    bat.read_state_of_charge().await,
-                ) {
-                    (Ok(v), Ok(soc)) => Ok((v, soc)),
-                    _ => Err(PeripheralError::DeviceNotAvailable),
-                }
-            };
-            return embassy_futures::block_on(fut);
+            match (
+                bat.read_voltage_mv().await,
+                bat.read_state_of_charge().await,
+            ) {
+                (Ok(v), Ok(soc)) => Ok((v, soc)),
+                _ => Err(PeripheralError::DeviceNotAvailable),
+            }
+        } else {
+            Err(PeripheralError::DeviceNotAvailable)
         }
-        Err(PeripheralError::DeviceNotAvailable)
     }
 
-    fn configure_alerts(&self, v_min_mv: u32, v_max_mv: u32) -> Result<(), PeripheralError> {
+    async fn configure_alerts(&self, v_min_mv: u32, v_max_mv: u32) -> Result<(), PeripheralError> {
         if let Ok(mut bat) = self.battery.try_lock() {
-            let fut = bat.configure_alerts(v_min_mv, v_max_mv, 1, true);
-            embassy_futures::block_on(fut).map_err(|_| PeripheralError::DeviceNotAvailable)?;
+            bat.configure_alerts(v_min_mv, v_max_mv, 1, true)
+                .await
+                .map_err(|_| PeripheralError::DeviceNotAvailable)?;
             return Ok(());
         }
         Err(PeripheralError::DeviceNotAvailable)
     }
 
-    fn check_and_clear_alerts(&self) -> Result<(bool, bool), PeripheralError> {
+    async fn check_and_clear_alerts(&self) -> Result<(bool, bool), PeripheralError> {
         if let Ok(mut bat) = self.battery.try_lock() {
-            let fut = bat.check_and_clear_alerts();
-            return embassy_futures::block_on(fut).map_err(|_| PeripheralError::DeviceNotAvailable);
+            return bat
+                .check_and_clear_alerts()
+                .await
+                .map_err(|_| PeripheralError::DeviceNotAvailable);
         }
         Err(PeripheralError::DeviceNotAvailable)
     }
@@ -560,22 +561,24 @@ subcommand_enum! {
 }
 
 /// Processes battery-specific CLI subcommands.
-pub fn handle_battery_cli<
-    W: embedded_io::Write<Error = E>,
-    E: embedded_io::Error,
-    C: crate::ShellConfig,
->(
+pub async fn handle_battery_cli<W, E, C>(
     resolver: &impl crate::ShellDeviceResolver<C>,
     subcommand: Option<BatterySubcommand>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
-) -> Result<(), &'static str> {
+) -> Result<(), &'static str>
+where
+    W: embedded_io::Write<Error = E>,
+    E: embedded_io::Error,
+    C: crate::ShellConfig,
+{
     let battery_ctrl = resolver.resolve_battery(None)?;
     let cmd = subcommand.ok_or("Missing battery subcommand")?;
 
     match cmd {
         BatterySubcommand::Status => {
             let (v, soc) = battery_ctrl
-                .read_battery_blocking()
+                .read_battery()
+                .await
                 .map_err(|_| "Failed to read battery")?;
             let _ = core::writeln!(
                 writer,
@@ -589,6 +592,7 @@ pub fn handle_battery_cli<
             // 1. Force the alert by setting thresholds above the current voltage
             battery_ctrl
                 .configure_alerts(TEST_ALERT_V_MIN_MV, TEST_ALERT_V_MAX_MV)
+                .await
                 .map_err(|_| "Failed to configure test alert thresholds")?;
 
             // 2. Poll the alert pin status directly to verify it asserts low (active-low)
@@ -601,7 +605,7 @@ pub fn handle_battery_cli<
                 }
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 {
-                    cortex_m::asm::delay(125_000 * 10);
+                    embassy_time::Timer::after_millis(10).await;
                 }
                 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
                 {
@@ -612,11 +616,13 @@ pub fn handle_battery_cli<
             // 3. Restore normal thresholds
             battery_ctrl
                 .configure_alerts(DEFAULT_ALERT_V_MIN_MV, DEFAULT_ALERT_V_MAX_MV)
+                .await
                 .map_err(|_| "Failed to restore alert thresholds")?;
 
             // 4. Clear the active status registers so the alert pin deasserts high
             let (has_v, has_soc) = battery_ctrl
                 .check_and_clear_alerts()
+                .await
                 .map_err(|_| "Failed to clear alerts")?;
 
             // 5. Poll to verify the alert pin returns high (deasserted)
@@ -628,7 +634,7 @@ pub fn handle_battery_cli<
                 }
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 {
-                    cortex_m::asm::delay(125_000 * 10);
+                    embassy_time::Timer::after_millis(10).await;
                 }
                 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
                 {

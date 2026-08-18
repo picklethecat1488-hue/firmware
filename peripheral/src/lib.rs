@@ -1,0 +1,120 @@
+//! Peripherals crate containing platform-agnostic generic driver wrappers.
+
+#![cfg_attr(not(test), no_std)]
+#![deny(missing_docs)]
+
+pub use model::interfaces::{Motor, Tickable};
+pub use model::types::MotorSpeed;
+
+/// Concrete driver implementation for the WS2812 NeoPixel driver.
+pub mod ws2812;
+
+/// Concrete driver implementation for the INA219 current monitor.
+pub mod ina219;
+/// Concrete driver implementation for the L9110S motor driver.
+pub mod l9110s;
+/// Concrete driver implementation for the MAX17048 fuel gauge.
+pub mod max17048;
+/// Concrete driver implementation for the VL53L0X proximity sensor.
+pub mod vl53l0x;
+
+/// Implement bus error telemetry forwarding.
+use model::types::PeripheralError;
+
+/// Implement the trait to convert HAL errors into telemetry.
+pub trait ToPeripheralError {
+    /// Convert the bus error to a Peripheral error.
+    fn to_peripheral_error(&self) -> PeripheralError;
+}
+
+/// Extension trait to convert I2C bus errors into telemetry.
+pub trait I2cToPeripheralError {
+    /// Convert the I2C bus error to a Peripheral error with context.
+    fn to_i2c_error(&self, address: u16, register: u16) -> PeripheralError;
+}
+
+/// Convert I2C bus errors into bus telemetry.
+impl<E> I2cToPeripheralError for E
+where
+    E: embedded_hal::i2c::Error,
+{
+    #[inline]
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "core1"),
+        link_section = ".data.core1_func"
+    )]
+    fn to_i2c_error(&self, address: u16, register: u16) -> PeripheralError {
+        use embedded_hal::i2c::{ErrorKind, NoAcknowledgeSource};
+        match self.kind() {
+            ErrorKind::Bus => PeripheralError::I2CBusError(address, register),
+            ErrorKind::ArbitrationLoss => PeripheralError::I2CArbitrationLoss(address, register),
+            ErrorKind::Overrun => PeripheralError::I2COverrun(address, register),
+
+            // NoAcknowledge contains extra nested context we can decode
+            ErrorKind::NoAcknowledge(source) => match source {
+                NoAcknowledgeSource::Address => PeripheralError::I2CNackAddress(address, register),
+                NoAcknowledgeSource::Data => PeripheralError::I2CNackData(address, register),
+                _ => PeripheralError::I2CNackUnknown(address, register),
+            },
+
+            ErrorKind::Other => PeripheralError::I2COther(address, register),
+            _ => PeripheralError::I2CUnknown(address, register),
+        }
+    }
+}
+
+/// Implement ToPeripheralError for PeripheralError (no-op conversion).
+impl ToPeripheralError for PeripheralError {
+    #[inline]
+    fn to_peripheral_error(&self) -> PeripheralError {
+        *self
+    }
+}
+
+/// Implement ToPeripheralError for core::convert::Infallible.
+impl ToPeripheralError for core::convert::Infallible {
+    #[inline]
+    fn to_peripheral_error(&self) -> PeripheralError {
+        match *self {}
+    }
+}
+
+/// Implement ToPeripheralError for ().
+impl ToPeripheralError for () {
+    #[inline]
+    fn to_peripheral_error(&self) -> PeripheralError {
+        PeripheralError::Unknown
+    }
+}
+
+/// Implement ToPeripheralError for L9110sError.
+impl<E1: core::fmt::Debug, E2: core::fmt::Debug> ToPeripheralError
+    for crate::l9110s::L9110sError<E1, E2>
+{
+    #[inline]
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    fn to_peripheral_error(&self) -> PeripheralError {
+        PeripheralError::PinError
+    }
+}
+/// Trait implemented by peripherals to allow standard boot-time initialization.
+#[allow(async_fn_in_trait)]
+pub trait BootInit {
+    /// Error type returned by the peripheral during boot initialization.
+    type Error;
+
+    /// Runs the boot-time probing, reset, and initialization sequence.
+    async fn boot_init(&mut self) -> Result<(), Self::Error>;
+}
+
+/// Mock implementations of peripherals for host-based testing.
+pub mod mock;
+
+/// Consolidated tracing facade module from platform.
+pub use platform::tracing;
+
+// Include the generated initializers macros
+include!(concat!(env!("OUT_DIR"), "/generated_initializers.rs"));

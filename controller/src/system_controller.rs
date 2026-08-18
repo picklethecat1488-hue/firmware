@@ -3,13 +3,13 @@
 #![deny(missing_docs)]
 
 use crate::tracing::{self, controller_context};
-pub use platform::gesture_detector::{GestureReceiver, ProximityEvent};
+pub use platform::gesture_detector::ProximityEvent;
 
-use crate::system_feature::FeatureList;
 use crate::types::{
     BatteryStatus, Device, DeviceSupport, GestureAction, ProximityAction, ThermalUpdateAction,
 };
-use crate::{BlockingSystemWriter, PeripheralError};
+use crate::{PeripheralError, SystemWriter};
+use platform::system_feature::FeatureList;
 
 /// Receiver type for thermal update action communication.
 pub type ThermalUpdateReceiver<MutexRaw, const N: usize = 4> =
@@ -561,7 +561,6 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
     pub async fn run(
         mut self,
         command_rx: crate::SystemReceiver<MutexRaw>,
-        gesture_rx: GestureReceiver<MutexRaw>,
         thermal_rx: ThermalUpdateReceiver<MutexRaw>,
     ) -> ! {
         self.feature_set.features().on_init();
@@ -581,10 +580,6 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
                 embassy_time::Duration::from_millis(remaining_ms as u64),
                 command_rx.receive() => |cmd| {
                     let _ = self.handle_command(cmd);
-                    Some(())
-                },
-                gesture_rx.receive() => |gesture| {
-                    let _ = self.handle_command(SystemCommand::Gesture(gesture));
                     Some(())
                 },
                 thermal_rx.receive() => |action| {
@@ -641,32 +636,18 @@ subcommand_enum! {
     pub enum SystemSubcommand {
         /// Record activity to wake/extend system active time
         Activity,
-        /// Trigger simulated crash/panic
-        Crash,
     }
-    "Invalid system subcommand. Expected: activity, crash"
-}
-
-subcommand_enum! {
-    /// Target CPU Core for system diagnostic operations (such as crash).
-    pub enum CpuTarget {
-        /// Core 0 (Primary)
-        Core0 = "core0",
-        /// Core 1 (Secondary)
-        Core1 = "core1",
-    }
-    "Invalid core target. Expected: core0, core1"
+    "Invalid system subcommand. Expected: activity"
 }
 
 /// Processes system-specific CLI subcommands.
-pub fn handle_system_cli<
+pub async fn handle_system_cli<
     W: embedded_io::Write<Error = E>,
     E: embedded_io::Error,
     C: crate::ShellConfig,
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
     subcommand: Option<SystemSubcommand>,
-    arg1: Option<CpuTarget>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     let cmd = subcommand.ok_or("Missing system subcommand")?;
@@ -685,18 +666,11 @@ pub fn handle_system_cli<
                 Ok(())
             }
         }
-        SystemSubcommand::Crash => {
-            let core_id = match arg1.unwrap_or(CpuTarget::Core0) {
-                CpuTarget::Core0 => 0,
-                CpuTarget::Core1 => 1,
-            };
-            resolver.trigger_core_panic(core_id)
-        }
     }
 }
 
 impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: usize>
-    crate::BlockingSystemWriter for SystemController<MutexRaw, F, N>
+    crate::SystemWriter for SystemController<MutexRaw, F, N>
 {
     fn record_activity(&mut self) -> Result<(), PeripheralError> {
         let _ = self.handle_command(SystemCommand::ActivityDetected);

@@ -1,5 +1,6 @@
 use core::fmt::Write;
 use minicbor::{Decode, Encode};
+use model::types::SystemLedState;
 
 /// Stack scan limit in words (8 KB stack coverage)
 pub const STACK_SCAN_LIMIT: u32 = 2048;
@@ -910,4 +911,123 @@ impl<'a> FsBufferGuard<'a> {
     pub unsafe fn as_static_mut(&mut self) -> &'static mut [u8] {
         &mut *self.buffer
     }
+}
+
+/// Actions that can be mapped from gestures.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum GestureAction {
+    /// No action.
+    None,
+    /// Toggle system power state (Active <-> PowerDown).
+    TogglePower,
+}
+
+/// Action returned by the proximity feature update.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum ProximityAction {
+    /// No action.
+    None,
+    /// Acquire system wake lock.
+    AcquireWakeLock,
+    /// Release system wake lock.
+    ReleaseWakeLock,
+    /// Wake system if asleep.
+    WakeSystem,
+}
+
+/// Battery status summary passed to features and stored on the system controller.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub struct BatteryStatus {
+    /// True if the battery level is critically low.
+    pub battery_critical: bool,
+    /// True if the charger is connected and charging.
+    pub charger_connected: bool,
+    /// The mapped LED state for the current state of charge.
+    pub soc_led_state: SystemLedState,
+}
+
+/// Device activity support status in the current system state.
+#[derive(Clone, Copy)]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub struct DeviceSupport {
+    /// True if motor is supported.
+    pub motor: bool,
+    /// True if battery monitoring is supported.
+    pub battery: bool,
+    /// True if proximity sensors are supported.
+    pub proximity: bool,
+    /// True if led is supported.
+    pub led: bool,
+    /// True if thermal monitoring is supported.
+    pub thermal: bool,
+}
+
+macro_rules! dummy_debug {
+    ($ty:ident) => {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        impl core::fmt::Debug for $ty {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.write_str(stringify!($ty))
+            }
+        }
+    };
+}
+
+dummy_debug!(GestureAction);
+dummy_debug!(ProximityAction);
+dummy_debug!(BatteryStatus);
+dummy_debug!(DeviceSupport);
+
+/// Safely get a mutable reference to a static Option variable.
+#[macro_export]
+macro_rules! get_static_mut {
+    ($static_name:ident) => {
+        unsafe { &mut *core::ptr::addr_of_mut!($static_name) }
+            .as_mut()
+            .unwrap()
+    };
+}
+
+/// Safely take the value out of a static Option variable.
+#[macro_export]
+macro_rules! take_static_mut {
+    ($static_name:ident) => {
+        unsafe { &mut *core::ptr::addr_of_mut!($static_name) }
+            .take()
+            .unwrap()
+    };
+}
+
+/// Helper macro to define safe global getters for static mutable variables.
+#[macro_export]
+macro_rules! define_static_mut_getters {
+    ($($fn_name:ident, $static_name:ident, $type:ty;)*) => {
+        $(
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            /// Safely get a reference to the active controller.
+            pub fn $fn_name() -> &'static mut $type {
+                $crate::get_static_mut!($static_name)
+            }
+        )*
+    };
+}
+
+/// Helper macro to define safe global getters for Core 1 once-lock variables.
+#[macro_export]
+macro_rules! define_core1_getters {
+    ($($fn_name:ident, $lock_name:ident, $type:ty;)*) => {
+        $(
+            #[cfg(all(target_arch = "arm", target_os = "none"))]
+            /// Safely get a reference to the active Core 1 controller.
+            pub async fn $fn_name() -> &'static mut $type {
+                unsafe { &mut *(*$lock_name.wait().await as *mut $type) }
+            }
+        )*
+    };
 }

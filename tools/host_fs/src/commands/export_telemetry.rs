@@ -13,7 +13,9 @@ pub async fn run(
 ) -> io::Result<()> {
     spinner.set_message("Fetching telemetry from filesystem...");
 
-    let max_records = cat_detector::MAX_RECORDS;
+    let partition_size = (flash_range.end - flash_range.start) as usize;
+    let max_records =
+        (partition_size / model::telemetry::CHUNK_FILE_SIZE) * model::telemetry::CHUNK_SIZE;
     let parser = tool_common::FlashTelemetryParser::new(999);
     let records = match parser
         .read_records(flash, flash_range, cache, buf, max_records)

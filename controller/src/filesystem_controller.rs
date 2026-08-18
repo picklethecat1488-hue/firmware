@@ -438,7 +438,7 @@ subcommand_enum! {
 }
 
 /// Processes filesystem-specific CLI subcommands.
-pub fn handle_fs_cli<
+pub async fn handle_fs_cli<
     W: embedded_io::Write<Error = E>,
     E: embedded_io::Error,
     C: crate::ShellConfig,
@@ -496,8 +496,7 @@ pub fn handle_fs_cli<
             match target {
                 FormatTarget::Fs => {
                     let _ = core::writeln!(writer, "\r\nFormatting filesystem partition...");
-                    let res =
-                        embassy_futures::block_on(async_flash.erase(start_address, end_address));
+                    let res = async_flash.erase(start_address, end_address).await;
                     match res {
                         Ok(()) => {
                             let _ = core::writeln!(
@@ -506,7 +505,7 @@ pub fn handle_fs_cli<
                             );
                             #[cfg(all(target_arch = "arm", target_os = "none"))]
                             {
-                                embassy_time::block_for(embassy_time::Duration::from_secs(2));
+                                embassy_time::Timer::after_secs(2).await;
                                 cortex_m::peripheral::SCB::sys_reset();
                             }
                             #[allow(unreachable_code)]
@@ -517,8 +516,7 @@ pub fn handle_fs_cli<
                 }
                 FormatTarget::Telemetry => {
                     let _ = core::writeln!(writer, "\r\nFormatting telemetry partition...");
-                    let res =
-                        embassy_futures::block_on(async_flash.erase(start_address, end_address));
+                    let res = async_flash.erase(start_address, end_address).await;
                     match res {
                         Ok(()) => {
                             let _ =
@@ -530,8 +528,7 @@ pub fn handle_fs_cli<
                 }
                 FormatTarget::All => {
                     let _ = core::writeln!(writer, "\r\nFormatting all partitions...");
-                    let res =
-                        embassy_futures::block_on(async_flash.erase(start_address, end_address));
+                    let res = async_flash.erase(start_address, end_address).await;
                     match res {
                         Ok(()) => {
                             let _ = core::writeln!(
@@ -540,7 +537,7 @@ pub fn handle_fs_cli<
                             );
                             #[cfg(all(target_arch = "arm", target_os = "none"))]
                             {
-                                embassy_time::block_for(embassy_time::Duration::from_secs(2));
+                                embassy_time::Timer::after_secs(2).await;
                                 cortex_m::peripheral::SCB::sys_reset();
                             }
                             #[allow(unreachable_code)]
@@ -566,7 +563,7 @@ pub fn handle_fs_cli<
 
             let _ = core::writeln!(writer, "\r\nListing directory...");
             let mut dir_buf = [0u8; DIR_BUF_SIZE];
-            let res = embassy_futures::block_on(fs.read_file(".dir", &mut dir_buf));
+            let res = fs.read_file(".dir", &mut dir_buf).await;
             match res {
                 Ok(Some(list)) => {
                     if let Ok(s) = core::str::from_utf8(list) {

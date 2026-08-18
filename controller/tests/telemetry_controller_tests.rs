@@ -70,7 +70,7 @@ fn test_telemetry_controller_ring_buffer() {
 
         let client = FilesystemClient::new(FS_CHANNEL.sender());
         let telemetry_flash = SharedFlashMutex::new(&FLASH_MUTEX);
-        let mut telemetry = TelemetryController::<45, { model::telemetry::BUFFER_SIZE }, _>::new(
+        let mut telemetry = TelemetryController::new(
             telemetry_flash,
             QueueFilesystem(32 * 1024..64 * 1024),
             client,
@@ -146,7 +146,7 @@ fn test_telemetry_controller_wrap() {
         let client = FilesystemClient::new(FS_CHANNEL.sender());
         // Use a very small telemetry range (2 pages = 8 KB) to force wrap-around page erasure
         let telemetry_flash = SharedFlashMutex::new(&FLASH_MUTEX);
-        let mut telemetry = TelemetryController::<200, { model::telemetry::BUFFER_SIZE }, _>::new(
+        let mut telemetry = TelemetryController::new(
             telemetry_flash,
             QueueFilesystem(32 * 1024..40 * 1024),
             client,

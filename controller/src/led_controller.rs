@@ -10,7 +10,7 @@ use model::interfaces::LedDriver;
 use model::telemetry::TelemetryClient;
 use model::types::PeripheralError;
 use model::types::SystemLedState;
-use peripherals::ToPeripheralError;
+use peripheral::ToPeripheralError;
 use platform::subcommand_enum;
 
 /// Trait to abstract delays for LED patterns (blocking vs async).
@@ -490,7 +490,7 @@ subcommand_enum! {
 }
 
 /// Processes LED-specific CLI subcommands.
-pub fn handle_led_cli<
+pub async fn handle_led_cli<
     W: embedded_io::Write<Error = E>,
     E: embedded_io::Error,
     C: crate::ShellConfig,
@@ -499,13 +499,14 @@ pub fn handle_led_cli<
     subcommand: Option<LedSubcommand>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    use crate::BlockingLedWriter as _;
+    use crate::LedWriter as _;
     use core::fmt::Write as _;
     let led_ctrl = resolver.resolve_led(None)?;
     let cmd = subcommand.ok_or(
         "Missing LED subcommand. Expected: off, green, blue, yellow, orange, blink-four, blink-slow",
     )?;
 
+    // Correct pattern mapping matching subcommand type
     let pattern = match cmd {
         LedSubcommand::Off => SystemLedState::Off,
         LedSubcommand::Green => SystemLedState::SolidGreen,
@@ -517,19 +518,19 @@ pub fn handle_led_cli<
     };
 
     led_ctrl
-        .set_pattern_blocking(pattern)
+        .set_pattern(pattern)
+        .await
         .map_err(|_| "Failed to set LED pattern")?;
 
     let _ = core::writeln!(writer, "\r\nLED pattern set successfully");
     Ok(())
 }
 
-impl<D: LedDriver> crate::BlockingLedWriter for LedController<D>
+impl<D: LedDriver> crate::LedWriter for LedController<D>
 where
     <D as LedDriver>::Error: ToPeripheralError,
 {
-    fn set_pattern_blocking(&mut self, pattern: SystemLedState) -> Result<(), PeripheralError> {
-        let mut delay = BlockingDelay;
-        embassy_futures::block_on(self.set_pattern_with_delay(pattern, &mut delay))
+    async fn set_pattern(&mut self, pattern: SystemLedState) -> Result<(), PeripheralError> {
+        self.set_pattern(pattern).await
     }
 }

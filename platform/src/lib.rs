@@ -9,6 +9,8 @@ pub mod cli;
 
 #[doc(hidden)]
 pub use embedded_cli;
+#[doc(hidden)]
+pub use embedded_io;
 
 /// RP2040 panic handler module.
 #[path = "system/panic.rs"]
@@ -65,26 +67,27 @@ pub mod types;
 pub mod core_monitor;
 
 /// Gesture detection library.
-#[path = "services/gesture.rs"]
-pub mod gesture_detector;
+pub use model::gesture as gesture_detector;
 
 /// Async future demultiplexing helper utilities.
 #[path = "system/select.rs"]
 pub mod select;
 
+/// System feature trait and tuples dispatcher.
+#[path = "system/system_feature.rs"]
+pub mod system_feature;
+
 pub use battery_manager::BatteryManager;
 pub use flash::BlockingAsyncFlash;
-pub use gesture_detector::{
-    GestureChannel, GestureDetector, GestureReceiver, GestureSender, ProximityEvent,
-    ProximityGestureDetector,
-};
+pub use gesture_detector::{GestureDetector, ProximityEvent, ProximityGestureDetector};
 pub use periodic_timer::PeriodicTimer;
 pub use power_manager::PowerManager;
 pub use system::{transition_thermal_update, BatteryUpdateAction, TransitionError};
 pub use thermal_manager::ThermalManager;
 pub use types::{
-    BootTrapMask, BootTrapReason, FsBufferGuard, InvalidBootTrapMask, MulticoreStack,
-    ThermalTransitionResult, ThermalUpdateAction,
+    BatteryStatus, BootTrapMask, BootTrapReason, DeviceSupport, FsBufferGuard, GestureAction,
+    InvalidBootTrapMask, MulticoreStack, ProximityAction, ThermalTransitionResult,
+    ThermalUpdateAction,
 };
 
 /// Compile-time CBOR serialization helpers.
@@ -101,11 +104,11 @@ pub use directory::MAX_FILE_NAME_LEN;
 #[path = "telemetry/tracing.rs"]
 pub mod tracing;
 
-#[cfg(feature = "rp2040")]
-#[path = "system/rp2040.rs"]
-pub mod rp2040;
-
 /// OnceLock synchronization primitive.
 #[path = "system/once_lock.rs"]
 pub mod once_lock;
 pub use once_lock::{CliSignal, OnceLock};
+
+/// Mock utility structures for testing.
+#[cfg(any(test, not(all(target_arch = "arm", target_os = "none"))))]
+pub mod mock;

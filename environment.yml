@@ -18,4 +18,5 @@ dependencies:
       - typecode-libmagic
       - tree-sitter
       - tree-sitter-rust
+      - jinja-lsp
 

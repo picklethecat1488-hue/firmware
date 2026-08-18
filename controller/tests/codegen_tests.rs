@@ -86,5 +86,5 @@ fn test_controllers_toml_deserialization() {
 
     // Verify spawn_extra_rxs empty default check
     assert_eq!(led.spawn_extra_rxs_slice().len(), 0);
-    assert_eq!(system.spawn_extra_rxs_slice().len(), 2);
+    assert_eq!(system.spawn_extra_rxs_slice().len(), 1);
 }

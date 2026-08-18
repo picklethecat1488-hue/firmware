@@ -1,0 +1,155 @@
+//! Board Support Package (BSP) for the {{ name_pascal }} project.
+
+include!(concat!(env!("OUT_DIR"), "/generated_board.rs"));
+
+/// Static working buffer for filesystem and panic handler operations.
+static mut FS_BUF: [u8; Board::FS_BUF_SIZE] = [0u8; Board::FS_BUF_SIZE];
+
+/// RawMutex type used by controllers.
+pub type MutexRaw = embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+
+{% if chip == "rp2040" %}
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Type alias for the blocking flash device.
+pub type FlashDevice = embassy_rp::flash::Flash<
+    'static,
+    embassy_rp::peripherals::FLASH,
+    embassy_rp::flash::Blocking,
+    { Board::FLASH_SIZE },
+>;
+
+{% if core1_enabled %}
+rp2040::boot_multicore!(crate::Board, { Board::CORE1_STACK_SIZE });
+{% endif %}
+
+rp2040::define_panic_handler!(
+    crate::Board::CORE0_STACK_TOP,
+    { Board::FLASH_SIZE },
+    { Board::FLASH_START },
+    { Board::FLASH_END },
+    { Board::FLASH_WRITE_SIZE },
+    { Board::FLASH_ERASE_SIZE }
+);
+{% endif %}
+
+// Host implementation
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+pub use host::*;
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+mod host {
+    use super::*;
+
+    /// A placeholder temperature sensor device.
+    pub struct TempSensorDevice;
+
+    impl model::interfaces::TemperatureSensor for TempSensorDevice {
+        type Error = core::convert::Infallible;
+        async fn read_temperature(&mut self) -> Result<fixed::types::I16F16, Self::Error> {
+            Ok(fixed::types::I16F16::from_num(25.0))
+        }
+    }
+
+    /// The board context structure.
+    pub struct Board {
+        /// Temporary placeholder
+        pub _temp: (),
+    }
+
+    /// Board-specific peripheral set.
+    pub struct BoardPeripherals {
+        /// I2C mock bus
+        pub i2c: embassy_sync::mutex::Mutex<MutexRaw, platform::i2c::SafeI2c>,
+        /// Flash mock device
+        pub flash: platform::flash::SharedFlashMutex<platform::flash::MapFlashDevice>,
+        /// Internal CPU temp sensor
+        pub temp_sensor: embassy_sync::mutex::Mutex<MutexRaw, (Option<TempSensorDevice>,)>,
+    }
+
+    impl Board {
+        /// Initializes the mock host board context.
+        pub fn init() -> (Self, BoardPeripherals) {
+            let i2c = embassy_sync::mutex::Mutex::new(platform::i2c::SafeI2c::new_mock());
+            let flash = platform::flash::SharedFlashMutex::new(platform::flash::MapFlashDevice::new());
+            let temp_sensor = embassy_sync::mutex::Mutex::new((None,));
+            (
+                Self { _temp: () },
+                BoardPeripherals { i2c, flash, temp_sensor },
+            )
+        }
+    }
+}
+
+// Target implementation
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub use target::*;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+mod target {
+    use super::*;
+
+    /// A placeholder temperature sensor device.
+    pub struct TempSensorDevice;
+
+    impl model::interfaces::TemperatureSensor for TempSensorDevice {
+        type Error = core::convert::Infallible;
+        async fn read_temperature(&mut self) -> Result<fixed::types::I16F16, Self::Error> {
+            Ok(fixed::types::I16F16::from_num(25.0))
+        }
+    }
+
+    /// The board context structure.
+    pub struct Board {
+        {% if chip == "rp2040" %}
+        /// Watchdog instance
+        pub watchdog: embassy_rp::watchdog::Watchdog,
+        {% else %}
+        /// Temporary placeholder
+        pub _temp: (),
+        {% endif %}
+    }
+
+    /// Board-specific peripheral set.
+    pub struct BoardPeripherals {
+        /// Shared I2C peripheral
+        pub i2c: embassy_sync::mutex::Mutex<MutexRaw, platform::i2c::SafeI2c>,
+        /// Shared Flash device reference
+        pub flash: platform::flash::SharedFlashMutex<{% if chip == "rp2040" %}FlashDevice{% else %}platform::flash::MapFlashDevice{% endif %}>,
+        /// Temp sensor device
+        pub temp_sensor: embassy_sync::mutex::Mutex<MutexRaw, (Option<TempSensorDevice>,)>,
+    }
+
+    impl Board {
+        /// Initializes board hardware resources.
+        pub fn init() -> (Self, BoardPeripherals) {
+            {% if chip == "rp2040" %}
+            let p = embassy_rp::init(Default::default());
+            let watchdog = embassy_rp::watchdog::Watchdog::new(p.WATCHDOG);
+
+            let i2c = embassy_sync::mutex::Mutex::new(platform::i2c::SafeI2c::new(
+                Board::{{ i2c_sda_pin }} as u8,
+                Board::{{ i2c_scl_pin }} as u8,
+                {{ i2c_frequency }},
+                |_| {},
+            ));
+            let flash = platform::flash::SharedFlashMutex::new(embassy_rp::flash::Flash::new_blocking(
+                p.FLASH, p.DMA_CH0,
+            ));
+            let temp_sensor = embassy_sync::mutex::Mutex::new((None,));
+
+            (
+                Self { watchdog },
+                BoardPeripherals { i2c, flash, temp_sensor },
+            )
+            {% else %}
+            let i2c = embassy_sync::mutex::Mutex::new(platform::i2c::SafeI2c::new_mock());
+            let flash = platform::flash::SharedFlashMutex::new(platform::flash::MapFlashDevice::new());
+            let temp_sensor = embassy_sync::mutex::Mutex::new((None,));
+            (
+                Self { _temp: () },
+                BoardPeripherals { i2c, flash, temp_sensor },
+            )
+            {% endif %}
+        }
+    }
+}

@@ -377,7 +377,8 @@ impl CoreMonitor for CoreStatus {
 /// Uses Region 0 to protect a 256-byte area at `guard_addr`. If the stack pointer
 /// exceeds this boundary, it immediately triggers a HardFault rather than silently
 /// corrupting memory.
-pub fn configure_mpu_stack_guard(guard_addr: u32) {
+pub fn configure_mpu_stack_guard(stack_top: u32, stack_size: usize) {
+    let guard_addr = stack_top - stack_size as u32;
     let cp = unsafe { cortex_m::peripheral::Peripherals::steal() };
     let mpu = cp.MPU;
 
@@ -402,4 +403,133 @@ pub fn configure_mpu_stack_guard(guard_addr: u32) {
         mpu.ctrl.write(1 | (1 << 2));
     }
     defmt::info!("MPU stack guard configured at 0x{:08x}", guard_addr);
+}
+
+/// Core 1 command enum.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum Core1Command {
+    /// Panic command.
+    Panic,
+}
+
+/// Core 1 command channel.
+pub static CORE1_COMMAND_CHANNEL: embassy_sync::channel::Channel<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    Core1Command,
+    4,
+> = embassy_sync::channel::Channel::new();
+
+/// Core 1 command task loop.
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[embassy_executor::task]
+#[allow(clippy::never_loop)]
+pub async fn core1_command_task(
+    rx: embassy_sync::channel::Receiver<
+        'static,
+        embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+        Core1Command,
+        4,
+    >,
+) {
+    loop {
+        let cmd = rx.receive().await;
+        match cmd {
+            Core1Command::Panic => {
+                panic!("Simulated Core 1 panic");
+            }
+        }
+    }
+}
+
+#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+thread_local! {
+    /// Thread-local storage to track last triggered test panic core for testing.
+    pub static LAST_PANICKED_CORE: core::cell::Cell<Option<u32>> = const { core::cell::Cell::new(None) };
+}
+
+/// Trigger a panic/crash on a specific core.
+pub fn trigger_core_panic(core_id: u32) -> Result<(), &'static str> {
+    #[cfg(all(target_arch = "arm", target_os = "none"))]
+    {
+        if core_id == 1 {
+            CORE1_COMMAND_CHANNEL
+                .sender()
+                .try_send(Core1Command::Panic)
+                .map_err(|_| "Failed to send command to Core 1")?;
+            Ok(())
+        } else {
+            panic!("Simulated Core 0 panic");
+        }
+    }
+    #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+    {
+        LAST_PANICKED_CORE.with(|cell| cell.set(Some(core_id)));
+        Ok(())
+    }
+}
+
+crate::subcommand_enum! {
+    /// Subcommands for Core Monitor diagnostics.
+    pub enum CoreMonitorSubcommand {
+        /// Show status of all cores.
+        Status,
+        /// Trigger a crash/panic on a core.
+        Crash,
+    }
+    "status, crash"
+}
+
+/// Processes Core Monitor diagnostic CLI subcommands.
+pub fn handle_core_monitor_cli<W: embedded_io::Write<Error = E>, E: embedded_io::Error, R>(
+    _resolver: &R,
+    subcommand: Option<CoreMonitorSubcommand>,
+    core: Option<&str>,
+    writer: &mut embedded_cli::writer::Writer<'_, W, E>,
+) -> Result<(), &'static str> {
+    use core::fmt::Write as _;
+    let cmd = subcommand.ok_or("Missing core monitor subcommand (expected: status, crash)")?;
+
+    match cmd {
+        CoreMonitorSubcommand::Status => {
+            let _ = writeln!(writer, "Core Monitor Status:");
+            let _ = writeln!(
+                writer,
+                "Core  Status       Last Progress  Stuck  Panicked  Timeout"
+            );
+            let _ = writeln!(
+                writer,
+                "----------------------------------------------------------"
+            );
+            for status in CORE_MONITORS.iter().take(NUM_CORES) {
+                let cpuid = status.cpu_id as usize;
+                let status_str = if status.is_panicked() {
+                    "Panicked"
+                } else if status.is_stuck() {
+                    "Stuck"
+                } else {
+                    "Running"
+                };
+                let last_prog = status.last_progress();
+                let is_stuck = status.is_stuck();
+                let is_panic = status.is_panicked();
+                let timeout = status.timeout_ms.load(Ordering::Acquire);
+                let _ = writeln!(
+                    writer,
+                    "Core{:<1} {:<12} {:<14} {:<6} {:<9} {}ms",
+                    cpuid, status_str, last_prog, is_stuck, is_panic, timeout
+                );
+            }
+        }
+        CoreMonitorSubcommand::Crash => {
+            let core_str = core.ok_or("Missing target core for crash (expected: core0, core1)")?;
+            let core_id = match core_str {
+                "core0" => 0,
+                "core1" => 1,
+                _ => return Err("Invalid core name (must be core0 or core1)"),
+            };
+            trigger_core_panic(core_id)?;
+        }
+    }
+    Ok(())
 }

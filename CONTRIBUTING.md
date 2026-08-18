@@ -34,7 +34,7 @@ To keep peripheral logic target-independent and clean, we decouple hardware impl
 
 ### 4. Platform-Specific Naming Conventions & CLI Routing
 *   **Peripherals & Controllers**: Do **not** prefix files or structs with MCU model numbers (e.g. do not name them `rp2040_sensor.rs`). Since they interact with generic drivers, they compile on any target.
-*   **Target Projects**: MCU-specific setup code and drivers (e.g. `Rp2040TempSensor`) live in the project directory (e.g. `projects/cat_detector/src/bsp_target.rs`).
+*   **Target Projects**: MCU-specific setup code and drivers (e.g. `Rp2040TempSensor`) live in the project directory (e.g. `projects/board/src/bsp_target.rs`).
 *   **CLI Router Forwarding**: Avoid writing wrapper forwarding methods in `ShellController` for domain-level command execution. Instead, define match actions inside the CLI macro blocks to call domain handlers (e.g. `crate::motor_controller::handle_motor_cli`) directly.
 
 ---
@@ -470,3 +470,81 @@ When introducing or modifying telemetry records, filesystem files, or crash logs
      ```bash
      rerun telemetry.csv
      ```
+
+---
+
+## Configuration Schemas
+
+The firmware uses two configuration files (`board.toml` and `app.toml`) to declaratively describe the hardware environment and the software controller task layout.
+
+### 1. Board Configuration (`board/board.toml`)
+
+Defines low-level chip parameters, stack sizes, pin configurations, serial buses, and memory partitions.
+
+```toml
+[boards.cat_detector]
+chip = "rp2040"
+flash_base = 0x10000000
+flash_size = 0x00200000         # 2 MB
+sram_size = 0x00042000          # 264 KB
+core0_stack_size = 24576        # 24 KB
+core1_stack_size = 16384        # 16 KB
+stack_top = 0x20042000
+core0_stack_bottom = 0x2003C000
+core_monitor_timeout_ms = 10000
+core_monitor_warn_pct = 80
+
+[boards.cat_detector.pins]
+I2C_SDA_PIN = 12
+I2C_SCL_PIN = 13
+
+[boards.cat_detector.buses.i2c]
+sda = "I2C_SDA_PIN"
+scl = "I2C_SCL_PIN"
+frequency = 400000
+
+[boards.cat_detector.hardware_resources]
+TOF_NORTH_I2C_ADDR = { value = 0x30, type = "u8" }
+
+[boards.cat_detector.partitions.fs]
+start = 0x001C0000
+end = 0x001D0000
+```
+
+---
+
+### 2. Application Topology (`app/app.toml`)
+
+Defines messaging channels, software controllers mapping to execution cores, and flash layout storage strategies.
+
+```toml
+[apps.cat_detector]
+shell_config = "CatDetectorShellConfig"
+cli_handlers = ["Battery", "Thermal", "Motor", "Sensor", "Fs", "System", "I2c", "Gpio", "Led", "Core"]
+
+[apps.cat_detector.channels]
+thermal = { type = "controller::ThermalChannel", capacity = 4 }
+thermal_action = { type = "embassy_sync::channel::Channel<MutexRaw, controller::types::ThermalUpdateAction, 4>", val = "embassy_sync::channel::Channel::new()" }
+
+[[apps.cat_detector.controllers]]
+name = "Thermal"
+instance = "controllers.core0.thermal"
+generics = "app::TempSensorDevice"
+# Optional overrides for shell pointers generation
+# shell_field = "thermals"
+# shell_type = "ThermalControllerType"
+# shell_name = "default"
+# ptr = "&mut controllers.core0.thermal"
+
+[[apps.cat_detector.controllers]]
+name = "Motor"
+core = 1
+instance = "controllers.core1.motor"
+generics = "crate::MotorDevice, crate::CurrentSensorDevice"
+device_shell_type = "MotorDevice"
+
+[[apps.cat_detector.partitions]]
+name = "panic"
+board_partition = "fs"
+kind = "Map"
+```

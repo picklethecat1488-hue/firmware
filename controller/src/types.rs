@@ -1,6 +1,6 @@
 //! Common types used across the controllers.
 
-use model::types::{Direction, SystemLedState};
+use model::types::Direction;
 pub use platform::types::{MapFilesystem, QueueFilesystem};
 
 macro_rules! dummy_debug {
@@ -14,63 +14,8 @@ macro_rules! dummy_debug {
     };
 }
 
-/// Actions that can be mapped from gestures.
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
-#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
-pub enum GestureAction {
-    /// No action.
-    None,
-    /// Toggle system power state (Active <-> PowerDown).
-    TogglePower,
-}
-
-/// Action returned by the proximity feature update.
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
-#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
-pub enum ProximityAction {
-    /// No action.
-    None,
-    /// Acquire system wake lock.
-    AcquireWakeLock,
-    /// Release system wake lock.
-    ReleaseWakeLock,
-    /// Wake system if asleep.
-    WakeSystem,
-}
-
-/// Battery status summary passed to features and stored on the system controller.
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
-pub struct BatteryStatus {
-    /// True if the battery level is critically low.
-    pub battery_critical: bool,
-    /// True if the charger is connected and charging.
-    pub charger_connected: bool,
-    /// The mapped LED state for the current state of charge.
-    pub soc_led_state: SystemLedState,
-}
-
-/// Re-export Device from model crate.
 pub use model::types::Device;
-
-/// Device activity support status in the current system state.
-#[derive(Clone, Copy)]
-#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
-#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
-pub struct DeviceSupport {
-    /// True if motor is supported.
-    pub motor: bool,
-    /// True if battery monitoring is supported.
-    pub battery: bool,
-    /// True if proximity sensors are supported.
-    pub proximity: bool,
-    /// True if led is supported.
-    pub led: bool,
-    /// True if thermal monitoring is supported.
-    pub thermal: bool,
-}
+pub use platform::types::{BatteryStatus, DeviceSupport, GestureAction, ProximityAction};
 
 /// Represents a partition on a flash peripheral.
 #[derive(PartialEq, Eq)]
@@ -103,6 +48,21 @@ pub struct NamedDevice<D> {
     pub name: &'static str,
     /// Raw pointer to the peripheral driver.
     pub device: *mut D,
+}
+
+impl<D> NamedDevice<D> {
+    /// Creates a new NamedDevice with a given name and pointer.
+    pub fn new(name: &'static str, device: *mut D) -> Self {
+        Self { name, device }
+    }
+
+    /// Creates a one-element array containing a NamedDevice named "default".
+    pub fn default(device: *mut D) -> [Self; 1] {
+        [Self {
+            name: "default",
+            device,
+        }]
+    }
 }
 
 impl<D> Clone for NamedDevice<D> {
@@ -278,10 +238,6 @@ impl From<MotorCalState> for model::calibration::FourPointRef {
     }
 }
 
-dummy_debug!(GestureAction);
-dummy_debug!(ProximityAction);
-dummy_debug!(BatteryStatus);
-dummy_debug!(DeviceSupport);
 dummy_debug!(SensorMetadata);
 dummy_debug!(SensorDirection);
 dummy_debug!(MotorState);
