@@ -512,3 +512,17 @@ fn test_cbor_serialization_buffer_size_resolution() {
     assert_eq!(decoded.cores[0].r0, 0x10);
     assert_eq!(decoded.cores[1].r0, 0x20);
 }
+
+#[test]
+fn test_panic_handler_cbor_log_not_elided() {
+    let source_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/system/panic.rs");
+    let content =
+        std::fs::read_to_string(source_path).expect("Failed to read platform/src/system/panic.rs");
+
+    assert!(
+        content.contains("defmt::error!(\"Crash Dump: {=[u8]:cbor}\", encoded_bytes);"),
+        "The critical crash dump defmt logging line was modified or elided! \
+         This line must be preserved so that the host CLI can intercept and decode \
+         the crash dump and symbolicate the stack trace."
+    );
+}

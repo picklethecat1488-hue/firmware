@@ -636,21 +636,8 @@ subcommand_enum! {
     pub enum SystemSubcommand {
         /// Record activity to wake/extend system active time
         Activity,
-        /// Trigger simulated crash/panic
-        Crash,
     }
-    "Invalid system subcommand. Expected: activity, crash"
-}
-
-subcommand_enum! {
-    /// Target CPU Core for system diagnostic operations (such as crash).
-    pub enum CpuTarget {
-        /// Core 0 (Primary)
-        Core0 = "core0",
-        /// Core 1 (Secondary)
-        Core1 = "core1",
-    }
-    "Invalid core target. Expected: core0, core1"
+    "Invalid system subcommand. Expected: activity"
 }
 
 /// Processes system-specific CLI subcommands.
@@ -661,7 +648,6 @@ pub async fn handle_system_cli<
 >(
     resolver: &impl crate::ShellDeviceResolver<C>,
     subcommand: Option<SystemSubcommand>,
-    arg1: Option<CpuTarget>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
     let cmd = subcommand.ok_or("Missing system subcommand")?;
@@ -679,13 +665,6 @@ pub async fn handle_system_cli<
                 );
                 Ok(())
             }
-        }
-        SystemSubcommand::Crash => {
-            let core_id = match arg1.unwrap_or(CpuTarget::Core0) {
-                CpuTarget::Core0 => 0,
-                CpuTarget::Core1 => 1,
-            };
-            resolver.trigger_core_panic(core_id)
         }
     }
 }
