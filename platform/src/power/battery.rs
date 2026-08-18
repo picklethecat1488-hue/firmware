@@ -158,15 +158,13 @@ impl BatteryManager {
                 None
             }
         } else if system_status == SystemStatus::PowerDown {
-            if is_boot_trapped && !self.charger_connected {
+            if is_boot_trapped {
                 Some(BatteryUpdateAction::ClearBootTrap)
             } else if changed {
                 Some(BatteryUpdateAction::ReportSoC)
             } else {
                 None
             }
-        } else if self.charger_connected {
-            Some(BatteryUpdateAction::GoToPowerDown)
         } else if system_status == SystemStatus::Active && changed {
             Some(BatteryUpdateAction::ReportSoC)
         } else {
