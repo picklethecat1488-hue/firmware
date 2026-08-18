@@ -211,6 +211,10 @@ where
         link_section = ".data.core1_func"
     )]
     pub async fn read_torque_ma(&mut self) -> Result<i32, PeripheralError> {
+        if self.get_state() == MotorState::Off {
+            self.last_current_ma = 0;
+            return Ok(0);
+        }
         let current = self
             .current_sensor
             .read_current_ma()
