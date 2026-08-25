@@ -148,6 +148,7 @@ impl<F: embedded_storage::nor_flash::NorFlash> embedded_storage_async::nor_flash
 }
 
 /// Fetches a file's content directly from flash using sequential-storage without a running controller task.
+#[allow(clippy::result_unit_err)]
 pub async fn read_file_direct<F: NorFlash + MultiwriteNorFlash>(
     flash: &mut F,
     range: MapFilesystem,
@@ -176,6 +177,7 @@ pub async fn read_file_direct<F: NorFlash + MultiwriteNorFlash>(
 }
 
 /// Stores/overwrites a file directly in flash using sequential-storage, updating the directory listing.
+#[allow(clippy::result_unit_err)]
 pub async fn write_file_direct<F: NorFlash + MultiwriteNorFlash>(
     flash: &mut F,
     range: MapFilesystem,
@@ -225,6 +227,7 @@ pub async fn write_file_direct<F: NorFlash + MultiwriteNorFlash>(
 }
 
 /// Writes a telemetry record directly to flash queue storage.
+#[allow(clippy::result_unit_err)]
 pub async fn write_telemetry_record_direct<F: NorFlash + MultiwriteNorFlash>(
     flash: &mut F,
     telemetry_range: QueueFilesystem,

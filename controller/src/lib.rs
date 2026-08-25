@@ -3,6 +3,7 @@
 #![cfg_attr(not(test), no_std)]
 #![deny(missing_docs)]
 #![allow(async_fn_in_trait)]
+#![allow(clippy::result_unit_err)]
 
 /// Target-safe maximum duration (1 year) to prevent time-queue addition overflows in embassy-time.
 pub const OVERFLOW_SAFE_MAX_DURATION: embassy_time::Duration =
