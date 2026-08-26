@@ -30,6 +30,7 @@ pub struct FilesystemController<F: NorFlash + MultiwriteNorFlash> {
     buf: &'static mut [u8],
 }
 
+#[allow(clippy::result_unit_err)]
 impl<F: NorFlash + MultiwriteNorFlash> FilesystemController<F> {
     /// Creates a new FilesystemController.
     pub fn new(flash: F, range: MapFilesystem, buf: &'static mut [u8]) -> Self {
@@ -310,6 +311,7 @@ pub struct FilesystemClient {
     sender: crate::FilesystemSender<CriticalSectionRawMutex>,
 }
 
+#[allow(clippy::result_unit_err)]
 impl FilesystemClient {
     /// Create a new FilesystemClient.
     pub fn new(sender: crate::FilesystemSender<CriticalSectionRawMutex>) -> Self {
