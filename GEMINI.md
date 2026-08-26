@@ -59,3 +59,7 @@ Before finalizing any task, committing changes, or proposing modifications to th
 ### 8. Include Directives Placement
 * The `include!` macro directives loading generated topology or code structures (e.g. `include!(concat!(env!("OUT_DIR"), "/generated_app.rs"));` or `include!(concat!(env!("OUT_DIR"), "/generated_board.rs"));`) MUST be placed at the very beginning of the source file listing (i.e. the first line of code in a listing, after module-level doc comments), if they are used.
 
+### 9. Task & Work Tracking
+* Maintain and track planned work in a `TODO.md` file at the repository root for non-trivial or multi-step tasks.
+* Keep `TODO.md` updated as tasks progress, marking completed items and noting any new sub-tasks discovered during implementation.
+
