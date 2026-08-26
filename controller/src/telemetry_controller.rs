@@ -71,6 +71,7 @@ impl<F> TelemetryController<F> {
     }
 }
 
+#[allow(clippy::result_unit_err)]
 impl<F: embedded_storage_async::nor_flash::NorFlash> TelemetryController<F> {
     /// Interval at which telemetry stats are logged.
     pub const STATS_LOG_INTERVAL: embassy_time::Duration = embassy_time::Duration::from_secs(60);
