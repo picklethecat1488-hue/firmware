@@ -1013,7 +1013,7 @@
 
       <!-- Inter-Tool Links -->
       <button class="quake-btn quake-btn-default" onclick="onOpenInCodeReview()" title="Open System Shock 2 Code Review">
-        <span>👁️ Xerxes Review</span>
+        <span>🔧 Xerxes Review</span>
       </button>
       <button class="quake-btn quake-btn-default" onclick="openWormTracker()" title="Open Worm Defect Matrix">
         <span>🪱 Worms</span>
@@ -1030,7 +1030,7 @@
         <span>Smartlog Tree (sl)</span>
         <div style="display:flex;gap:4px;align-items:center;">
           <button id="btnOpenCR" class="quake-btn quake-btn-gold quake-btn-icon" onclick="onOpenInCodeReview()" title="Review selected commit(s) in Code Review">
-            <span>🔍 <span id="selectedCount">0</span></span>
+            <span>🔧 <span id="selectedCount">0</span></span>
           </button>
           <button id="btnCreatePR" class="quake-btn quake-btn-purple quake-btn-sm" onclick="onCreatePR()" title="Create Pull Request for selected commit(s)">
             <span>🚀 Create PR</span>
@@ -1183,7 +1183,7 @@
               <button class="quake-btn quake-btn-default quake-btn-icon jump-cr-btn {% if node.cr_reviewed %}cr-reviewed{% endif %}"
                       onclick="event.stopPropagation(); jumpToCR('{{ node.commit_hash }}')"
                       title="Jump to Code Review for this commit ({% if node.cr_open_count is defined %}{{ node.cr_open_count }} open / {{ node.cr_resolved_count }} resolved{% else %}0 open / 0 resolved{% endif %})">
-                <span>🔍 CR</span>
+                <span>🔧 CR</span>
                 {% if node.cr_total_count and node.cr_total_count > 0 %}
                   <span class="cr-badge {% if node.cr_open_count > 0 %}cr-open{% else %}cr-resolved{% endif %}">
                     {{ node.cr_open_count }}/{{ node.cr_total_count }}
@@ -1924,7 +1924,7 @@
               <button class="quake-btn quake-btn-default quake-btn-icon jump-cr-btn ${crReviewedClass}"
                       onclick="event.stopPropagation(); jumpToCR('${node.commit_hash}')"
                       title="Jump to Code Review for this commit">
-                <span>🔍 CR</span>
+                <span>🔧 CR</span>
                 ${crCountBadge}
               </button>
               <button class="quake-btn quake-btn-default quake-btn-icon"
