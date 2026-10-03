@@ -2864,3 +2864,58 @@ def test_regression_bug_270_dashboard_server_handles_broken_pipe_gracefully(caps
     handler.close_connection = False
     handler._send_html("<html><body>test</body></html>")
     assert handler.close_connection is True
+
+
+def test_regression_quake_diff_engine_defined_and_js_syntax() -> None:
+    """Verify QuakeDiffEngine is defined and all diff workstation scripts have valid JS syntax."""
+    template_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
+    comp_path = template_dir / "diff_component.html.j2"
+    view_path = template_dir / "diff_view.html.j2"
+
+    assert comp_path.exists()
+    assert view_path.exists()
+
+    comp_text = comp_path.read_text(encoding="utf-8")
+    assert "const QuakeDiffEngine = {" in comp_text
+    assert "window.QuakeDiffEngine = QuakeDiffEngine;" in comp_text
+    assert "window.QuakeDiffRenderer = QuakeDiffEngine;" in comp_text
+    assert "detectLanguage(" in comp_text
+    assert "copySnippet(" in comp_text
+
+    view_text = view_path.read_text(encoding="utf-8")
+    assert '{% include "diff_component.html.j2" %}' in view_text
+    assert "function escapeHtml(str)" in view_text
+    assert "QuakeDiffEngine.renderDiff" in view_text
+
+    # Verify Jinja2 template rendering produces valid JS syntax without syntax errors
+    import jinja2
+    import re
+    from model.vcs import DiffViewSessionModel
+
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(template_dir)))
+    tpl = env.get_template("diff_view.html.j2")
+    session = DiffViewSessionModel(repo_name="firmware", repo_root="/tmp/firmware", branches=[])
+    rendered = tpl.render(session=session)
+
+    # Check that QuakeDiffEngine declaration appears before its usage in renderDiff
+    engine_idx = rendered.find("const QuakeDiffEngine = {")
+    render_diff_idx = rendered.find("QuakeDiffEngine.renderDiff(")
+    assert engine_idx != -1, "QuakeDiffEngine definition missing from rendered HTML"
+    assert render_diff_idx != -1, "QuakeDiffEngine.renderDiff missing from rendered HTML"
+    assert engine_idx < render_diff_idx, "QuakeDiffEngine must be defined before renderDiff caller"
+
+    # Validate JavaScript syntax with node if node is installed
+    import subprocess
+    import shutil
+
+    node_bin = shutil.which("node")
+    if node_bin:
+        scripts = re.findall(r"<script>(.*?)</script>", rendered, re.DOTALL)
+        for idx, script in enumerate(scripts):
+            res = subprocess.run(
+                [node_bin, "--check"],
+                input=script,
+                capture_output=True,
+                text=True,
+            )
+            assert res.returncode == 0, f"Script {idx} in diff_view.html.j2 has JS syntax error: {res.stderr}"
