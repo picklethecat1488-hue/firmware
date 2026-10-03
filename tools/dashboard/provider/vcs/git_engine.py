@@ -805,7 +805,11 @@ class GitEngine:
                         cur = conn.cursor()
                         for wid in worm_ids:
                             norm_id = wid.replace("_", "-").upper()
-                            alt_id = norm_id.replace("BUG-", "WORM-") if norm_id.startswith("BUG-") else norm_id.replace("WORM-", "BUG-")
+                            alt_id = (
+                                norm_id.replace("BUG-", "WORM-")
+                                if norm_id.startswith("BUG-")
+                                else norm_id.replace("WORM-", "BUG-")
+                            )
                             cur.execute(
                                 f"SELECT id, title, status, severity FROM {table_name} WHERE id = ? OR id = ? OR id = ?",
                                 (norm_id, wid, alt_id),

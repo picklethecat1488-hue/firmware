@@ -315,8 +315,12 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
         b64_content = data.get("content_base64", "")
         text_content = data.get("content_text", "")
 
-        raw_worm_id = str(data.get("worm_id") or data.get("wormId") or data.get("bug_id") or data.get("bugId") or "").strip()
-        if not raw_worm_id and (str(data.get("id", "")).startswith("WORM-") or str(data.get("id", "")).startswith("BUG-")):
+        raw_worm_id = str(
+            data.get("worm_id") or data.get("wormId") or data.get("bug_id") or data.get("bugId") or ""
+        ).strip()
+        if not raw_worm_id and (
+            str(data.get("id", "")).startswith("WORM-") or str(data.get("id", "")).startswith("BUG-")
+        ):
             raw_worm_id = str(data.get("id")).strip()
         worm_id = Path(raw_worm_id).name if raw_worm_id else ""
         filename = Path(filename).name

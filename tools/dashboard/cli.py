@@ -279,7 +279,9 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         default=None,
         help="Filter by category.",
     )
-    p_worms.add_argument("--all-users", "--all", dest="all_users", action="store_true", help="Show worms from all users.")
+    p_worms.add_argument(
+        "--all-users", "--all", dest="all_users", action="store_true", help="Show worms from all users."
+    )
     p_worms.add_argument("--user", type=str, default="", help="Filter worms to specific author.")
 
     # list-commits
@@ -852,7 +854,9 @@ def main(cli_args: Optional[List[str]] = None) -> None:
         print(f"Resolved worm [{worm.id}]: {worm.title}")
         return
 
-    if getattr(args, "worms", False) or (getattr(args, "list", False) and args.db_file and ("worm" in str(args.db_file) or "bug" in str(args.db_file))):
+    if getattr(args, "worms", False) or (
+        getattr(args, "list", False) and args.db_file and ("worm" in str(args.db_file) or "bug" in str(args.db_file))
+    ):
         print_cli_worms(
             server,
             open_only=getattr(args, "open", False),

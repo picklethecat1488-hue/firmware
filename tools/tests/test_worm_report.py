@@ -968,4 +968,3 @@ def test_regression_bug_002_update_bug_to_worm(tmp_path: Path) -> None:
     worm_tpl = worm_tpl_path.read_text(encoding="utf-8")
     assert "WORM" in worm_tpl
     assert "🪱" in worm_tpl or "Worm" in worm_tpl
-
