@@ -10,7 +10,9 @@ dependencies:
   - pyserial
   - ruff
   - pyyaml
+  - jinja2
   - pip:
+      - pydantic
       - rerun-sdk
       - halo
       - colorama
