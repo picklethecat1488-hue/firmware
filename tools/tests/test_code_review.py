@@ -1335,6 +1335,7 @@ def test_code_review_ignores_bugs_md(tmp_path: Path) -> None:
     assert is_file_ignored("BUGS.md")
     assert is_file_ignored("./BUGS.md")
     assert is_file_ignored("build/BUGS.md")
+    assert is_file_ignored("target/BUGS.md")
     assert is_file_ignored("BUGS.txt")
     assert not is_file_ignored("tools/dashboard/cli.py")
     assert not is_file_ignored("pyproject.toml")
@@ -1703,4 +1704,54 @@ def test_regression_bug_258_cr_feedback_timestamp_not_modified(tmp_path: Path) -
     after_sync_mtime = out_file.stat().st_mtime_ns
     assert initial_content == after_sync_content
     assert initial_mtime == after_sync_mtime
+
+
+def test_review_server_target_defaults_and_build_migration(tmp_path: Path) -> None:
+    """Verify ReviewServer defaults temporary storage to target/ and migrates existing build/ store."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    build_dir = repo / "build"
+    build_dir.mkdir()
+    target_dir = repo / "target"
+
+    # Seed build/code_review.sqlite
+    build_store = SQLiteReviewStore(build_dir / "code_review.sqlite")
+    c1 = CommentModel(
+        id="c1",
+        file_path="src/main.rs",
+        start_line=10,
+        end_line=15,
+        body="Initial comment in build store",
+        commit="working",
+        created_at="2026-10-01T01:00:00Z",
+    )
+    session = ReviewSessionModel(
+        title="Test Migration Session",
+        repo_name="firmware",
+        comments=[c1],
+    )
+    build_store.save_session(session)
+
+    # Instantiate server without explicit paths
+    server = ReviewServer(
+        host="127.0.0.1",
+        port=0,
+        repo_root=repo,
+        bind_and_activate=False,
+    )
+
+    # Assert paths default to target/
+    assert server.markdown_output == target_dir / "CR.md"
+    assert server.state_file == target_dir / "cr_feedback.json"
+    assert server.sqlite_file == target_dir / "code_review.sqlite"
+    assert (target_dir / "code_review.sqlite").exists()
+
+    # Verify review comment was migrated and accessible
+    target_store = SQLiteReviewStore(server.sqlite_file)
+    migrated_session = target_store.load_session()
+    assert migrated_session is not None
+    assert len(migrated_session.comments) == 1
+    assert migrated_session.comments[0].body == "Initial comment in build store"
+
+
 

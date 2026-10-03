@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 import json
 import mimetypes
 from pathlib import Path
+import shutil
 import threading
 import time
 import urllib.parse
@@ -408,20 +409,28 @@ class ReviewServer(ThreadingHTTPServer):
         self.git_engine = GitEngine(repo_root=self.repo_root)
         self.exporter = MarkdownReviewExporter(repo_root=self.repo_root)
 
-        self.markdown_output = markdown_output or (self.repo_root / "build" / "CR.md")
+        self.markdown_output = markdown_output or (self.repo_root / "target" / "CR.md")
         if feedback_dir is not None:
             self.feedback_dir = feedback_dir
-        elif markdown_output is not None and markdown_output.parent.name != "build":
+        elif markdown_output is not None and markdown_output.parent.name not in ("build", "target"):
             self.feedback_dir = markdown_output.parent
         else:
             self.feedback_dir = self.repo_root / "feedback"
-        self.state_file = state_file or (self.repo_root / "build" / "cr_feedback.json")
+        self.state_file = state_file or (self.repo_root / "target" / "cr_feedback.json")
         if sqlite_file is not None:
             self.sqlite_file = sqlite_file
         elif state_file is not None:
             self.sqlite_file = state_file.with_suffix(".sqlite")
         else:
-            self.sqlite_file = self.repo_root / "build" / "code_review.sqlite"
+            target_sqlite = self.repo_root / "target" / "code_review.sqlite"
+            build_sqlite = self.repo_root / "build" / "code_review.sqlite"
+            if not target_sqlite.exists() and build_sqlite.exists():
+                try:
+                    target_sqlite.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(str(build_sqlite), str(target_sqlite))
+                except Exception:
+                    pass
+            self.sqlite_file = target_sqlite
         self.sqlite_store = SQLiteReviewStore(self.sqlite_file)
         self.is_serving = False
         self.bind_and_activate = bind_and_activate
@@ -593,7 +602,7 @@ class ReviewServer(ThreadingHTTPServer):
                     except OSError:
                         pass
 
-                cr_md = self.repo_root / "build" / "CR.md"
+                cr_md = self.repo_root / "target" / "CR.md"
                 if cr_md.parent.exists() and self.markdown_output.resolve() != cr_md.resolve():
                     if self.session.comments:
                         try:

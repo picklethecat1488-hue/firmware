@@ -1410,10 +1410,10 @@
       <button id="btnSyncFeedback" class="quake-btn quake-btn-default" onclick="syncFeedback()" title="Synchronize review feedback with feedback/ directory and merge commit feedback">
         🔄 Sync Feedback
       </button>
-      <button id="btnVerdictApprove" class="quake-btn quake-btn-green" onclick="setVerdict('APPROVED')" title="Conclude review with Approval (LGTM), export build/CR.md, and return to Dashboard">
+      <button id="btnVerdictApprove" class="quake-btn quake-btn-green" onclick="setVerdict('APPROVED')" title="Conclude review with Approval (LGTM), export target/CR.md, and return to Dashboard">
         ✓ Approve
       </button>
-      <button id="btnVerdictChanges" class="quake-btn quake-btn-red" onclick="setVerdict('CHANGES_REQUESTED')" title="Conclude review with Changes Requested, export build/CR.md, and return to Dashboard">
+      <button id="btnVerdictChanges" class="quake-btn quake-btn-red" onclick="setVerdict('CHANGES_REQUESTED')" title="Conclude review with Changes Requested, export target/CR.md, and return to Dashboard">
         ✗ Request Changes
       </button>
     </div>
@@ -1559,7 +1559,7 @@
       </p>
       <p style="color: var(--quake-text-muted); font-size: 13px; line-height: 1.6; margin-bottom: 12px;">
         All findings and review summary have been exported to:
-        <br><strong id="termOverlayFile" style="color: var(--quake-gold); font-family: var(--font-mono);">build/CR.md</strong>
+        <br><strong id="termOverlayFile" style="color: var(--quake-gold); font-family: var(--font-mono);">target/CR.md</strong>
       </p>
       <div class="termination-status-box">
         ✓ Markdown report automatically exported<br>
@@ -2117,6 +2117,7 @@
         const isLfs = Boolean(
           f.is_lfs ||
           f.path.startsWith('attachments/') ||
+          f.path.startsWith('target/attachments/') ||
           f.path.startsWith('build/attachments/') ||
           f.path.startsWith('feedback/attachments/')
         );
@@ -2313,9 +2314,9 @@
 
         const activeFileObj = (state.files || []).find(f => f.path === state.selectedFile);
         const isLfsActive = Boolean(
-          activeFileObj && (activeFileObj.is_lfs || activeFileObj.path.startsWith('attachments/') || activeFileObj.path.startsWith('build/attachments/') || activeFileObj.path.startsWith('feedback/attachments/'))
+          activeFileObj && (activeFileObj.is_lfs || activeFileObj.path.startsWith('attachments/') || activeFileObj.path.startsWith('target/attachments/') || activeFileObj.path.startsWith('build/attachments/') || activeFileObj.path.startsWith('feedback/attachments/'))
           || (state.currentDiff && state.currentDiff.is_lfs)
-          || (state.selectedFile && (state.selectedFile.startsWith('attachments/') || state.selectedFile.startsWith('build/attachments/') || state.selectedFile.startsWith('feedback/attachments/')))
+          || (state.selectedFile && (state.selectedFile.startsWith('attachments/') || state.selectedFile.startsWith('target/attachments/') || state.selectedFile.startsWith('build/attachments/') || state.selectedFile.startsWith('feedback/attachments/')))
         );
         const lfsBadge = document.getElementById("activeFileLfs");
         if (lfsBadge) {
@@ -2338,9 +2339,9 @@
 
       const activeFileObj = (state.files || []).find(f => f.path === state.selectedFile);
       const isLfsActive = Boolean(
-        activeFileObj && (activeFileObj.is_lfs || activeFileObj.path.startsWith('attachments/') || activeFileObj.path.startsWith('build/attachments/') || activeFileObj.path.startsWith('feedback/attachments/'))
+        activeFileObj && (activeFileObj.is_lfs || activeFileObj.path.startsWith('attachments/') || activeFileObj.path.startsWith('target/attachments/') || activeFileObj.path.startsWith('build/attachments/') || activeFileObj.path.startsWith('feedback/attachments/'))
         || (state.currentDiff && state.currentDiff.is_lfs)
-        || (state.selectedFile && (state.selectedFile.startsWith('attachments/') || state.selectedFile.startsWith('build/attachments/') || state.selectedFile.startsWith('feedback/attachments/')))
+        || (state.selectedFile && (state.selectedFile.startsWith('attachments/') || state.selectedFile.startsWith('target/attachments/') || state.selectedFile.startsWith('build/attachments/') || state.selectedFile.startsWith('feedback/attachments/')))
       );
 
       if (state.currentDiff.is_binary) {

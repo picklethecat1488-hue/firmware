@@ -341,8 +341,8 @@ def test_code_review_no_feedback_leaves_no_markdown_files(tmp_path: Path) -> Non
     assert not (feedback_dir / f"CR_{server.session.commit_hash}.md").exists()
 
 
-def test_baseline_reports_default_to_build_and_preserve_feedback_granularity(tmp_path: Path) -> None:
-    """Verify baseline BUGS.md and CR.md default to build/ and are excluded from feedback/.
+def test_baseline_reports_default_to_target_and_preserve_feedback_granularity(tmp_path: Path) -> None:
+    """Verify baseline BUGS.md and CR.md default to target/ and are excluded from feedback/.
 
     Only granular BUG_<id>.md and CR_<commit>.md files are stored in feedback/.
     """
@@ -351,27 +351,27 @@ def test_baseline_reports_default_to_build_and_preserve_feedback_granularity(tmp
 
     mock_repo = tmp_path / "repo"
     mock_repo.mkdir()
-    (mock_repo / "build").mkdir()
+    (mock_repo / "target").mkdir()
     (mock_repo / "feedback").mkdir()
 
-    # Verify ReviewServer defaults to build/CR.md and feedback/
+    # Verify ReviewServer defaults to target/CR.md and feedback/
     cr_server = ReviewServer(
         host="127.0.0.1",
         port=0,
         repo_root=mock_repo,
         bind_and_activate=False,
     )
-    assert cr_server.markdown_output == mock_repo / "build" / "CR.md"
+    assert cr_server.markdown_output == mock_repo / "target" / "CR.md"
     assert cr_server.feedback_dir == mock_repo / "feedback"
 
-    # Verify BugReportServer defaults to build/BUGS.md and feedback/
+    # Verify BugReportServer defaults to target/BUGS.md and feedback/
     bug_server = BugReportServer(
         host="127.0.0.1",
         port=0,
         repo_root=mock_repo,
         bind_and_activate=False,
     )
-    assert bug_server.markdown_output == mock_repo / "build" / "BUGS.md"
+    assert bug_server.markdown_output == mock_repo / "target" / "BUGS.md"
     assert bug_server.feedback_dir == mock_repo / "feedback"
 
     # Add a bug and sync
@@ -386,7 +386,8 @@ def test_baseline_reports_default_to_build_and_preserve_feedback_granularity(tmp
     bug_server.database.bugs.append(test_bug)
     bug_server.save_and_sync()
 
-    # Main BUGS.md is written to build/, individual bug is written to feedback/
-    assert (mock_repo / "build" / "BUGS.md").is_file()
+    # Main BUGS.md is written to target/, individual bug is written to feedback/
+    assert (mock_repo / "target" / "BUGS.md").is_file()
     assert (mock_repo / "feedback" / "BUG_999.md").is_file()
     assert not (mock_repo / "feedback" / "BUGS.md").exists()
+

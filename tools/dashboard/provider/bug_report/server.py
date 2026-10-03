@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import shutil
 import sys
 import threading
 from typing import Any, Dict, List, Optional
@@ -50,7 +51,11 @@ class BugReportRequestHandler(BaseHTTPRequestHandler):
             self._handle_serve_static(path)
             return
 
-        if path.startswith("/attachments/") or path.startswith("/build/attachments/"):
+        if (
+            path.startswith("/attachments/")
+            or path.startswith("/target/attachments/")
+            or path.startswith("/build/attachments/")
+        ):
             self._handle_serve_attachment(path)
             return
 
@@ -148,7 +153,9 @@ class BugReportRequestHandler(BaseHTTPRequestHandler):
     def _handle_serve_attachment(self, path: str) -> None:
         """Serve uploaded file attachments from attachments directory."""
         clean_path = path.lstrip("/")
-        if clean_path.startswith("build/attachments/"):
+        if clean_path.startswith("target/attachments/"):
+            rel_name = clean_path[len("target/attachments/") :]
+        elif clean_path.startswith("build/attachments/"):
             rel_name = clean_path[len("build/attachments/") :]
         elif clean_path.startswith("attachments/"):
             rel_name = clean_path[len("attachments/") :]
@@ -156,9 +163,12 @@ class BugReportRequestHandler(BaseHTTPRequestHandler):
             rel_name = clean_path
         file_path = self.server.attachments_dir / rel_name
         if not file_path.exists() or not file_path.is_file():
-            fallback = self.server.repo_root / "build" / "attachments" / rel_name
-            if fallback.exists() and fallback.is_file():
-                file_path = fallback
+            fallback_target = self.server.repo_root / "target" / "attachments" / rel_name
+            fallback_build = self.server.repo_root / "build" / "attachments" / rel_name
+            if fallback_target.exists() and fallback_target.is_file():
+                file_path = fallback_target
+            elif fallback_build.exists() and fallback_build.is_file():
+                file_path = fallback_build
             elif (self.server.repo_root / clean_path).is_file():
                 file_path = self.server.repo_root / clean_path
             else:
@@ -337,13 +347,13 @@ class BugReportRequestHandler(BaseHTTPRequestHandler):
     def _list_reference_files(self) -> List[Dict[str, str]]:
         """List relevant preview screenshots, logs, and artifacts in workspace."""
         results: List[Dict[str, str]] = []
-        # Scan build/ directory for images and markdown
-        build_dir = self.server.repo_root / "build"
-        if build_dir.exists():
-            for p in build_dir.glob("*.png"):
-                results.append(
-                    {"name": p.name, "path": str(p.relative_to(self.server.repo_root)), "type": "screenshot"}
-                )
+        # Scan target/ and build/ directories for images and markdown
+        for b_dir in [self.server.repo_root / "target", self.server.repo_root / "build"]:
+            if b_dir.exists():
+                for p in b_dir.glob("*.png"):
+                    results.append(
+                        {"name": p.name, "path": str(p.relative_to(self.server.repo_root)), "type": "screenshot"}
+                    )
         # Scan recordings/previews
         rec_dir = self.server.repo_root / "recordings" / "previews"
         if rec_dir.exists():
@@ -463,15 +473,26 @@ class BugReportServer(ThreadingHTTPServer):
         self.host = host
         self.port = port
         self.repo_root = repo_root or Path.cwd()
-        self.markdown_output = markdown_output or (self.repo_root / "build" / "BUGS.md")
+        self.markdown_output = markdown_output or (self.repo_root / "target" / "BUGS.md")
         if feedback_dir is not None:
             self.feedback_dir = feedback_dir
-        elif markdown_output is not None and markdown_output.parent.name != "build":
+        elif markdown_output is not None and markdown_output.parent.name not in ("build", "target"):
             self.feedback_dir = markdown_output.parent
         else:
             self.feedback_dir = self.repo_root / "feedback"
-        self.state_file = state_file or (self.repo_root / "build" / "bugs_state.json")
-        self.sqlite_file = sqlite_file or (self.repo_root / "build" / "bugs.sqlite")
+        self.state_file = state_file or (self.repo_root / "target" / "bugs_state.json")
+        if sqlite_file:
+            self.sqlite_file = sqlite_file
+        else:
+            target_sqlite = self.repo_root / "target" / "bugs.sqlite"
+            build_sqlite = self.repo_root / "build" / "bugs.sqlite"
+            if not target_sqlite.exists() and build_sqlite.exists():
+                try:
+                    target_sqlite.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(str(build_sqlite), str(target_sqlite))
+                except Exception:
+                    pass
+            self.sqlite_file = target_sqlite
         self.attachments_dir = attachments_dir or (self.repo_root / "attachments")
         self.fresh = fresh
         self.bind_and_activate = bind_and_activate
@@ -585,11 +606,14 @@ class BugReportServer(ThreadingHTTPServer):
                 summary="Firmware engineering defects, driver issues, and reproduction tracking.",
             )
 
-        if not self.fresh and self.markdown_output.exists():
-            md_db = self.exporter.parse_markdown(self.markdown_output)
-            if md_db and md_db.bugs:
-                db = self.exporter.merge_databases(db, md_db)
-            self.markdown_mtime = self.markdown_output.stat().st_mtime
+        if not self.fresh:
+            fallback_md = self.repo_root / "build" / "BUGS.md"
+            md_to_read = self.markdown_output if self.markdown_output.exists() else (fallback_md if fallback_md.exists() else None)
+            if md_to_read and md_to_read.exists():
+                md_db = self.exporter.parse_markdown(md_to_read)
+                if md_db and md_db.bugs:
+                    db = self.exporter.merge_databases(db, md_db)
+                self.markdown_mtime = md_to_read.stat().st_mtime
 
         if not self.fresh and self.feedback_dir.exists():
             self.exporter.scan_and_sync_feedback_dir(self.feedback_dir, db, self.sqlite_store)

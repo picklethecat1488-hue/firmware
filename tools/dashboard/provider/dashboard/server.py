@@ -89,7 +89,11 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self._handle_serve_static("/static/favicon.svg")
             return
 
-        if path.startswith("/attachments/") or path.startswith("/build/attachments/"):
+        if (
+            path.startswith("/attachments/")
+            or path.startswith("/target/attachments/")
+            or path.startswith("/build/attachments/")
+        ):
             self._handle_serve_attachment(path)
             return
 
@@ -550,7 +554,9 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
     def _handle_serve_attachment(self, path: str) -> None:
         """Serve uploaded file attachments from attachments directory."""
         clean_path = path.lstrip("/")
-        if clean_path.startswith("build/attachments/"):
+        if clean_path.startswith("target/attachments/"):
+            rel_name = clean_path[len("target/attachments/") :]
+        elif clean_path.startswith("build/attachments/"):
             rel_name = clean_path[len("build/attachments/") :]
         elif clean_path.startswith("attachments/"):
             rel_name = clean_path[len("attachments/") :]
@@ -560,9 +566,12 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         att_dir = getattr(self.server.bug_server, "attachments_dir", None) or (self.server.repo_root / "attachments")
         file_path = att_dir / rel_name
         if not file_path.exists() or not file_path.is_file():
-            fallback = self.server.repo_root / "build" / "attachments" / rel_name
-            if fallback.exists() and fallback.is_file():
-                file_path = fallback
+            fallback_target = self.server.repo_root / "target" / "attachments" / rel_name
+            fallback_build = self.server.repo_root / "build" / "attachments" / rel_name
+            if fallback_target.exists() and fallback_target.is_file():
+                file_path = fallback_target
+            elif fallback_build.exists() and fallback_build.is_file():
+                file_path = fallback_build
             elif (self.server.repo_root / clean_path).is_file():
                 file_path = self.server.repo_root / clean_path
             else:
@@ -944,11 +953,11 @@ class DashboardServer(ThreadingHTTPServer):
         self.initial_sync_done: bool = False
 
         md_review = markdown_review_path
-        if md_review is None and sqlite_review_file and sqlite_review_file.parent.name != "build":
+        if md_review is None and sqlite_review_file and sqlite_review_file.parent.name not in ("build", "target"):
             md_review = sqlite_review_file.parent / "CR.md"
 
         md_bugs = markdown_bugs_path
-        if md_bugs is None and sqlite_bug_file and sqlite_bug_file.parent.name != "build":
+        if md_bugs is None and sqlite_bug_file and sqlite_bug_file.parent.name not in ("build", "target"):
             md_bugs = sqlite_bug_file.parent / "BUGS.md"
 
         review_state = sqlite_review_file.with_suffix(".json") if sqlite_review_file else None
@@ -1028,7 +1037,9 @@ class DashboardServer(ThreadingHTTPServer):
 
         # Load Code Review stats for commits (BUG-199)
         cr_stats: dict[str, dict[str, Any]] = {}
-        cr_db_path = self.repo_root / "build" / "code_review.sqlite"
+        cr_db_path = self.repo_root / "target" / "code_review.sqlite"
+        if not cr_db_path.exists() and (self.repo_root / "build" / "code_review.sqlite").exists():
+            cr_db_path = self.repo_root / "build" / "code_review.sqlite"
         if cr_db_path.exists():
             import sqlite3
 
@@ -1067,12 +1078,13 @@ class DashboardServer(ThreadingHTTPServer):
                 pass
 
         # Load Code Review stats for commits (BUG-199)
-        cr_stats: dict[str, dict[str, Any]] = {}
         cr_db_path = (
             self.review_server.sqlite_file
             if hasattr(self, "review_server") and self.review_server
-            else (self.repo_root / "build" / "code_review.sqlite")
+            else (self.repo_root / "target" / "code_review.sqlite")
         )
+        if not cr_db_path.exists() and (self.repo_root / "build" / "code_review.sqlite").exists():
+            cr_db_path = self.repo_root / "build" / "code_review.sqlite"
         if cr_db_path.exists():
             import sqlite3
 

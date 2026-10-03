@@ -71,9 +71,7 @@ class MarkdownBugExporter:
         output_path.write_text(md_text, encoding="utf-8")
 
         # Export individual BUG_<id>.md files into feedback/ (or custom feedback_dir)
-        target_feedback_dir = feedback_dir or (
-            output_path.parent if output_path.parent.name != "build" else (self.repo_root / "feedback")
-        )
+        target_feedback_dir = feedback_dir or (self.repo_root / "feedback")
         self.export_all_individual_bugs(database, target_feedback_dir)
 
         return output_path

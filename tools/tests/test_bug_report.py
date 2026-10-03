@@ -832,3 +832,60 @@ def test_regression_bug_270_bug_report_server_handles_broken_pipe_gracefully(
     handler._send_html("<html><body>test</body></html>")
     assert handler.close_connection is True
 
+
+def test_bug_report_server_target_defaults_and_build_migration(tmp_path: Path) -> None:
+    """Verify BugReportServer defaults temporary storage to target/ and migrates existing build/ store."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    build_dir = repo / "build"
+    build_dir.mkdir()
+    target_dir = repo / "target"
+
+    # Seed build/bugs.sqlite
+    build_store = SQLiteBugStore(build_dir / "bugs.sqlite")
+    build_store.save_bug(
+        BugReportModel(
+            id="BUG-123",
+            title="Migrated Bug",
+            status=BugStatus.OPEN,
+            severity=BugSeverity.HIGH,
+            category=BugCategory.INFRASTRUCTURE,
+        )
+    )
+
+    # Instantiate server without explicit paths
+    server = BugReportServer(
+        host="127.0.0.1",
+        port=0,
+        repo_root=repo,
+        bind_and_activate=False,
+    )
+
+    # Assert paths default to target/
+    assert server.markdown_output == target_dir / "BUGS.md"
+    assert server.state_file == target_dir / "bugs_state.json"
+    assert server.sqlite_file == target_dir / "bugs.sqlite"
+    assert (target_dir / "bugs.sqlite").exists()
+
+    # Verify bug was migrated and accessible
+    target_store = SQLiteBugStore(server.sqlite_file)
+    db = target_store.load_database()
+    assert any(b.id == "BUG-123" and b.title == "Migrated Bug" for b in db.bugs)
+
+
+def test_bug_report_template_saves_and_updates_view_when_no_active_bug(tmp_path: Path) -> None:
+    """Verify bug_report.html.j2 creates bug model, unshifts to db, and calls loadActiveBug() on save."""
+    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "bug_report.html.j2"
+    assert template_path.is_file()
+    content = template_path.read_text(encoding="utf-8")
+
+    # Verify saveActiveBug handles when bug is null / activeBugId not found
+    assert "let bug = db.bugs.find(b => b.id === activeBugId);" in content
+    assert "if (!bug) {" in content
+    assert "generateNextBugId()" in content
+    assert "db.bugs.unshift(bug);" in content
+    assert "activeBugId = newId;" in content
+    # Verify loadActiveBug() is called after saving to update header and active selection view
+    assert "loadActiveBug();" in content
+
+

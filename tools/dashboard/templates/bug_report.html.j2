@@ -828,6 +828,26 @@
       } else if (db.bugs && db.bugs.length > 0) {
         activeBugId = db.bugs[0].id;
       }
+
+      if (window.location.hash) {
+        const hash = window.location.hash.substring(1);
+        if (hash.startsWith("new")) {
+          const matchCommit = hash.match(/commit=([a-f0-9]+)/i);
+          newBug().then(() => {
+            if (matchCommit && document.getElementById("bug-description")) {
+              const commitSha = matchCommit[1];
+              document.getElementById("bug-description").value = `Affects commit: ${commitSha}\n\n`;
+              saveActiveBug();
+            }
+          });
+        } else {
+          const targetId = hash.startsWith("BUG-") ? hash : ("BUG-" + hash);
+          if (db.bugs && db.bugs.some(b => b.id === targetId)) {
+            activeBugId = targetId;
+          }
+        }
+      }
+
       updateMetrics();
       setBugFilter(currentFilter);
       loadActiveBug();
@@ -1142,20 +1162,61 @@
     }
 
     async function saveActiveBug() {
-      const bug = db.bugs.find(b => b.id === activeBugId);
-      if (!bug) return;
+      let bug = db.bugs.find(b => b.id === activeBugId);
+      const title = (document.getElementById("bug-title").value || "").trim();
+      const severity = document.getElementById("bug-severity").value;
+      const status = document.getElementById("bug-status").value;
+      const category = document.getElementById("bug-category").value;
+      const component = (document.getElementById("bug-component").value || "").trim();
+      const description = document.getElementById("bug-description").value;
+      const steps = document.getElementById("bug-steps").value.split("\n").filter(s => s.trim());
+      const expected = document.getElementById("bug-expected").value;
+      const actual = document.getElementById("bug-actual").value;
+      const logs = document.getElementById("bug-logs").value;
+      const resolution = document.getElementById("bug-resolution").value;
 
-      bug.title = document.getElementById("bug-title").value;
-      bug.severity = document.getElementById("bug-severity").value;
-      bug.status = document.getElementById("bug-status").value;
-      bug.category = document.getElementById("bug-category").value;
-      bug.component = document.getElementById("bug-component").value;
-      bug.description = document.getElementById("bug-description").value;
-      bug.reproduction_steps = document.getElementById("bug-steps").value.split("\n").filter(s => s.trim());
-      bug.expected_behavior = document.getElementById("bug-expected").value;
-      bug.actual_behavior = document.getElementById("bug-actual").value;
-      bug.logs = document.getElementById("bug-logs").value;
-      bug.resolution_notes = document.getElementById("bug-resolution").value;
+      if (!bug) {
+        let newId = generateNextBugId();
+        try {
+          const res = await fetch("/api/next_bug_id");
+          if (res.ok) {
+            const data = await res.json();
+            if (data.next_id && !db.bugs.some(b => b.id === data.next_id)) {
+              newId = data.next_id;
+            }
+          }
+        } catch (e) {}
+
+        bug = {
+          id: newId,
+          title: title || "New Bug Report",
+          status: status || "OPEN",
+          severity: severity || "MEDIUM",
+          category: category || "PCB",
+          component: component,
+          description: description,
+          reproduction_steps: steps,
+          expected_behavior: expected,
+          actual_behavior: actual,
+          logs: logs,
+          attachments: [],
+          resolution_notes: resolution
+        };
+        db.bugs.unshift(bug);
+        activeBugId = newId;
+      } else {
+        bug.title = title || "Untitled Bug";
+        bug.severity = severity;
+        bug.status = status;
+        bug.category = category;
+        bug.component = component;
+        bug.description = description;
+        bug.reproduction_steps = steps;
+        bug.expected_behavior = expected;
+        bug.actual_behavior = actual;
+        bug.logs = logs;
+        bug.resolution_notes = resolution;
+      }
 
       const res = await fetch("/api/bugs", {
         method: "POST",
@@ -1163,9 +1224,14 @@
         body: JSON.stringify(bug)
       });
       const saved = await res.json();
+      if (saved && saved.id) {
+        Object.assign(bug, saved);
+        activeBugId = saved.id;
+      }
       updateMetrics();
       renderBugList();
-      showToast("Saved bug " + saved.id + " & synced BUGS.md");
+      loadActiveBug();
+      showToast("Saved bug " + (saved.id || bug.id) + " & synced BUGS.md");
       return saved;
     }
 

@@ -793,7 +793,9 @@ class GitEngine:
 
         tags: List[CommitBugTagModel] = []
         db_map: Dict[str, Dict[str, str]] = {}
-        sqlite_path = self.repo_root / "build" / "bugs.sqlite"
+        sqlite_path = self.repo_root / "target" / "bugs.sqlite"
+        if not sqlite_path.exists() and (self.repo_root / "build" / "bugs.sqlite").exists():
+            sqlite_path = self.repo_root / "build" / "bugs.sqlite"
         if sqlite_path.exists():
             try:
                 conn = sqlite3.connect(str(sqlite_path))
@@ -1074,7 +1076,12 @@ class GitEngine:
                 file_path = cols[2].strip()
                 file_count += 1
                 clean = file_path.replace("\\", "/").strip().lstrip("./")
-                if not (clean.startswith("feedback/") or clean.startswith("build/bugs") or clean == "TODO.md"):
+                if not (
+                    clean.startswith("feedback/")
+                    or clean.startswith("target/bugs")
+                    or clean.startswith("build/bugs")
+                    or clean == "TODO.md"
+                ):
                     non_feedback_count += 1
                 if cols[0].isdigit():
                     additions += int(cols[0])
@@ -1572,6 +1579,7 @@ class GitEngine:
             file_path in lfs_set
             or clean_path in lfs_set
             or clean_path.startswith("attachments/")
+            or clean_path.startswith("target/attachments/")
             or clean_path.startswith("build/attachments/")
             or clean_path.startswith("feedback/attachments/")
         )
