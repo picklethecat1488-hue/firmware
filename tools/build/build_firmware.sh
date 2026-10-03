@@ -128,11 +128,17 @@ if [ -n "$ORGANIZE_DIR" ]; then
         mkdir -p "$ORGANIZE_DIR/debug/embedded"
         # Copy target MCU debug binaries
         cp -R target/thumbv6m-none-eabi/debug/cat_detector "$ORGANIZE_DIR/debug/embedded/"
+        if [ -d target/thumbv6m-none-eabi/debug/carrier_board ]; then
+            cp -R target/thumbv6m-none-eabi/debug/carrier_board "$ORGANIZE_DIR/debug/embedded/"
+        fi
     fi
 
     if [ "$BUILD_MODE" = "release" ] || [ "$BUILD_MODE" = "both" ]; then
         mkdir -p "$ORGANIZE_DIR/release/embedded"
         # Copy target MCU release binaries
         cp -R target/thumbv6m-none-eabi/release/cat_detector "$ORGANIZE_DIR/release/embedded/"
+        if [ -d target/thumbv6m-none-eabi/release/carrier_board ]; then
+            cp -R target/thumbv6m-none-eabi/release/carrier_board "$ORGANIZE_DIR/release/embedded/"
+        fi
     fi
 fi

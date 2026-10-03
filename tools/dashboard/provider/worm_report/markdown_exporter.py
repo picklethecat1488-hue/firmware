@@ -1,7 +1,7 @@
 """Markdown export engine for repository bug tracking.
 
-Converts bug report database states, severities, attachments, and resolution notes
-into a clean GitHub-flavored Markdown document (build/BUGS.md) with overview metrics,
+Converts worm report database states, severities, attachments, and resolution notes
+into a clean GitHub-flavored Markdown document (build/WORMS.md) with overview metrics,
 action checklists, and embedded references.
 """
 
@@ -12,18 +12,18 @@ import re
 from typing import Any, Dict, List, Optional
 import uuid as uuid_pkg
 
-from model.bug_report import (
-    BugAttachmentModel,
-    BugCategory,
-    BugDatabaseModel,
-    BugReportModel,
-    BugSeverity,
-    BugStatus,
+from model.worm_report import (
+    WormAttachmentModel,
+    WormCategory,
+    WormDatabaseModel,
+    WormReportModel,
+    WormSeverity,
+    WormStatus,
 )
 
 
-class MarkdownBugExporter:
-    """Serializes bug tracker databases to GitHub-flavored Markdown and JSON."""
+class MarkdownWormExporter:
+    """Serializes worm tracker databases to GitHub-flavored Markdown and JSON."""
 
     def __init__(self, repo_root: Path) -> None:
         """Initialize exporter with repository base path.
@@ -35,18 +35,18 @@ class MarkdownBugExporter:
 
     def export_markdown(
         self,
-        database: BugDatabaseModel,
+        database: WormDatabaseModel,
         output_path: Path,
         store: Optional[Any] = None,
         feedback_dir: Optional[Path] = None,
     ) -> Path:
-        """Generate and save BUGS.md markdown document and individual BUG_<id>.md files.
+        """Generate and save WORMS.md markdown document and individual WORM_<id>.md files.
 
         Args:
-            database: Active bug database model.
-            output_path: Destination path for BUGS.md file.
-            store: Optional SQLiteBugStore to synchronize duplicate ID updates.
-            feedback_dir: Optional destination directory for individual BUG_<id>.md files.
+            database: Active worm database model.
+            output_path: Destination path for WORMS.md file.
+            store: Optional SQLiteWormStore to synchronize duplicate ID updates.
+            feedback_dir: Optional destination directory for individual WORM_<id>.md files.
 
         Returns:
             Resolved Path where markdown was saved.
@@ -55,12 +55,12 @@ class MarkdownBugExporter:
 
         # Detect and resolve duplicate IDs for different bugs (different UUIDs)
         seen_ids: Dict[str, str] = {}
-        for bug in database.bugs:
+        for bug in database.worms:
             if bug.id in seen_ids and seen_ids[bug.id] != bug.uuid:
                 old_id = bug.id
-                bug.id = database.generate_bug_id()
-                if store and hasattr(store, "update_bug_id"):
-                    store.update_bug_id(bug.uuid, bug.id)
+                bug.id = database.generate_worm_id()
+                if store and hasattr(store, "update_worm_id"):
+                    store.update_worm_id(bug.uuid, bug.id)
             else:
                 seen_ids[bug.id] = bug.uuid
 
@@ -70,14 +70,14 @@ class MarkdownBugExporter:
         md_text = self.render_markdown(database)
         output_path.write_text(md_text, encoding="utf-8")
 
-        # Export individual BUG_<id>.md files into feedback/ (or custom feedback_dir)
+        # Export individual WORM_<id>.md files into feedback/ (or custom feedback_dir)
         target_feedback_dir = feedback_dir or (self.repo_root / "feedback")
-        self.export_all_individual_bugs(database, target_feedback_dir)
+        self.export_all_individual_worms(database, target_feedback_dir)
 
         return output_path
 
-    def render_markdown(self, database: BugDatabaseModel) -> str:
-        """Render bug database to structured GitHub-flavored Markdown.
+    def render_markdown(self, database: WormDatabaseModel) -> str:
+        """Render worm database to structured GitHub-flavored Markdown.
 
         Args:
             database: Bug database model.
@@ -90,13 +90,13 @@ class MarkdownBugExporter:
         severity_counts = database.count_by_severity()
         category_counts = database.count_by_category()
 
-        total_bugs = len(database.bugs)
-        open_bugs = sum(1 for b in database.bugs if b.status in (BugStatus.OPEN, BugStatus.IN_PROGRESS))
-        resolved_bugs = sum(1 for b in database.bugs if b.status in (BugStatus.RESOLVED, BugStatus.CLOSED))
-        resolved_pct = int((resolved_bugs / total_bugs) * 100) if total_bugs > 0 else 100
+        total_worms = len(database.worms)
+        open_worms = sum(1 for b in database.worms if b.status in (WormStatus.OPEN, WormStatus.IN_PROGRESS))
+        resolved_worms = sum(1 for b in database.worms if b.status in (WormStatus.RESOLVED, WormStatus.CLOSED))
+        resolved_pct = int((resolved_worms / total_worms) * 100) if total_worms > 0 else 100
 
         lines: List[str] = [
-            f"# Bug Report Tracker: {database.title}",
+            f"# Worm Report Tracker: {database.title}",
             "",
             "> Automated bug tracking, triage, and issue registry generated via Firmware Bug Report Engine.",
             "",
@@ -105,9 +105,9 @@ class MarkdownBugExporter:
             "| Metric | Details |",
             "| :--- | :--- |",
             f"| **Report Date** | `{now_str}` |",
-            f"| **Total Issues** | `{total_bugs}` |",
-            f"| **Open Issues** | `{open_bugs}` |",
-            f"| **Resolved / Closed** | `{resolved_bugs} ({resolved_pct}%)` |",
+            f"| **Total Issues** | `{total_worms}` |",
+            f"| **Open Issues** | `{open_worms}` |",
+            f"| **Resolved / Closed** | `{resolved_worms} ({resolved_pct}%)` |",
             "",
         ]
 
@@ -128,10 +128,10 @@ class MarkdownBugExporter:
                 "",
                 "| Severity | Count | Meaning |",
                 "| :--- | :---: | :--- |",
-                f"| **`[CRITICAL]`** | {severity_counts.get(BugSeverity.CRITICAL.value, 0)} | System crashes, build failures, blockages, or electrical shorts. |",
-                f"| **`[HIGH]`** | {severity_counts.get(BugSeverity.HIGH.value, 0)} | Major functional defects, broken routing, DRC violations, or unphysical behavior. |",
-                f"| **`[MEDIUM]`** | {severity_counts.get(BugSeverity.MEDIUM.value, 0)} | Silkscreen collisions, layout sub-optimality, or visual clipping. |",
-                f"| **`[LOW]`** | {severity_counts.get(BugSeverity.LOW.value, 0)} | Minor aesthetic imperfections or documentation notes. |",
+                f"| **`[CRITICAL]`** | {severity_counts.get(WormSeverity.CRITICAL.value, 0)} | System crashes, build failures, blockages, or electrical shorts. |",
+                f"| **`[HIGH]`** | {severity_counts.get(WormSeverity.HIGH.value, 0)} | Major functional defects, broken routing, DRC violations, or unphysical behavior. |",
+                f"| **`[MEDIUM]`** | {severity_counts.get(WormSeverity.MEDIUM.value, 0)} | Silkscreen collisions, layout sub-optimality, or visual clipping. |",
+                f"| **`[LOW]`** | {severity_counts.get(WormSeverity.LOW.value, 0)} | Minor aesthetic imperfections or documentation notes. |",
                 "",
             ]
         )
@@ -143,14 +143,24 @@ class MarkdownBugExporter:
                 "",
                 "| Category | Count | Description |",
                 "| :--- | :---: | :--- |",
-                f"| **`PCB`** | {category_counts.get(BugCategory.PCB.value, 0)} | Schematics, routing, footprints, nets, DRC, silkscreen. |",
-                f"| **`CAD`** | {category_counts.get(BugCategory.CAD.value, 0)} | 3D geometry, step models, enclosures, mechanical assembly. |",
-                f"| **`SIMULATION`** | {category_counts.get(BugCategory.SIMULATION.value, 0)} | JAX SPH fluid dynamics, PyBullet kinematics, physics. |",
-                f"| **`INFRASTRUCTURE`** | {category_counts.get(BugCategory.INFRASTRUCTURE.value, 0)} | Build tooling, compilers, test runners, headless tools. |",
-                f"| **`UI`** | {category_counts.get(BugCategory.UI.value, 0)} | Web dashboards, CLI viewers, review interfaces. |",
-                "",
             ]
         )
+        category_descriptions = {
+            WormCategory.FIRMWARE.value: "Core firmware logic, state machines, async tasks.",
+            WormCategory.CONTROLLER.value: "Domain controllers, PID loops, event dispatch.",
+            WormCategory.DRIVER.value: "Hardware peripheral drivers, embedded-hal.",
+            WormCategory.PLATFORM.value: "Chip support, PAC, HAL, clock/power management.",
+            WormCategory.BOARD.value: "Board support packages (BSP), pinmux, boards.",
+            WormCategory.MODEL.value: "Domain data models, configurations, state definitions.",
+            WormCategory.SHELL.value: "CLI interface, shell commands, debug console.",
+            WormCategory.INFRASTRUCTURE.value: "Build tooling, compilers, test runners, headless tools.",
+            WormCategory.UI.value: "Web dashboards, CLI viewers, review interfaces.",
+            WormCategory.GENERAL.value: "Unclassified or cross-cutting firmware issues.",
+        }
+        for cat in WormCategory:
+            desc = category_descriptions.get(cat.value, "Subsystem issues.")
+            lines.append(f"| **`{cat.value}`** | {category_counts.get(cat.value, 0)} | {desc} |")
+        lines.append("")
 
         # Issue checklist
         lines.extend(
@@ -159,11 +169,11 @@ class MarkdownBugExporter:
                 "",
             ]
         )
-        if not database.bugs:
+        if not database.worms:
             lines.append("_No bugs registered in tracker._\n")
         else:
-            for b in database.bugs:
-                chk = "x" if b.status in (BugStatus.RESOLVED, BugStatus.CLOSED) else " "
+            for b in database.worms:
+                chk = "x" if b.status in (WormStatus.RESOLVED, WormStatus.CLOSED) else " "
                 comp_tag = f" `[{b.component}]`" if b.component else ""
                 lines.append(
                     f"- [{chk}] **`[{b.severity.value}]`** [#{b.id}](#{b.id.lower()}): {b.title}{comp_tag} (`{b.status.value}`)"
@@ -178,11 +188,11 @@ class MarkdownBugExporter:
             ]
         )
 
-        for b in database.bugs:
+        for b in database.worms:
             status_icon = (
                 "🟢"
-                if b.status in (BugStatus.RESOLVED, BugStatus.CLOSED)
-                else ("🟡" if b.status == BugStatus.IN_PROGRESS else "🔴")
+                if b.status in (WormStatus.RESOLVED, WormStatus.CLOSED)
+                else ("🟡" if b.status == WormStatus.IN_PROGRESS else "🔴")
             )
             lines.extend(
                 [
@@ -275,8 +285,8 @@ class MarkdownBugExporter:
 
         return "\n".join(lines).strip() + "\n"
 
-    def export_state_json(self, database: BugDatabaseModel, state_path: Path) -> Path:
-        """Persist bug database to JSON file.
+    def export_state_json(self, database: WormDatabaseModel, state_path: Path) -> Path:
+        """Persist worm database to JSON file.
 
         Args:
             database: Bug database model.
@@ -290,31 +300,31 @@ class MarkdownBugExporter:
         state_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
         return state_path
 
-    def load_state_json(self, state_path: Path) -> Optional[BugDatabaseModel]:
-        """Load bug database from JSON file if it exists.
+    def load_state_json(self, state_path: Path) -> Optional[WormDatabaseModel]:
+        """Load worm database from JSON file if it exists.
 
         Args:
             state_path: Path to JSON state file.
 
         Returns:
-            BugDatabaseModel if file exists and is valid, else None.
+            WormDatabaseModel if file exists and is valid, else None.
         """
         if not state_path.exists():
             return None
         try:
             data = json.loads(state_path.read_text(encoding="utf-8"))
-            return BugDatabaseModel.model_validate(data)
+            return WormDatabaseModel.model_validate(data)
         except Exception:
             return None
 
-    def parse_markdown(self, markdown_path: Path) -> Optional[BugDatabaseModel]:
-        """Parse an existing BUGS.md file into a BugDatabaseModel.
+    def parse_markdown(self, markdown_path: Path) -> Optional[WormDatabaseModel]:
+        """Parse an existing WORMS.md file into a WormDatabaseModel.
 
         Args:
-            markdown_path: Path to BUGS.md file.
+            markdown_path: Path to WORMS.md file.
 
         Returns:
-            BugDatabaseModel if file exists and was parsed, else None.
+            WormDatabaseModel if file exists and was parsed, else None.
         """
         if not markdown_path.exists():
             return None
@@ -324,28 +334,28 @@ class MarkdownBugExporter:
         except Exception:
             return None
 
-    def parse_markdown_text(self, content: str) -> BugDatabaseModel:
-        """Parse raw BUGS.md text content into a BugDatabaseModel.
+    def parse_markdown_text(self, content: str) -> WormDatabaseModel:
+        """Parse raw WORMS.md text content into a WormDatabaseModel.
 
         Args:
             content: Raw Markdown string.
 
         Returns:
-            BugDatabaseModel populated with parsed issues.
+            WormDatabaseModel populated with parsed issues.
         """
-        title_match = re.search(r"^#\s+Bug Report Tracker:\s*(.*?)$", content, re.MULTILINE)
+        title_match = re.search(r"^#\s+Worm Report Tracker:\s*(.*?)$", content, re.MULTILINE)
         title = title_match.group(1).strip() if title_match else "Firmware Bug Tracker"
 
         # Check list items for quick-action statuses: - [x] or - [ ]
-        checklist_status: Dict[str, BugStatus] = {}
+        checklist_status: Dict[str, WormStatus] = {}
         for line in content.splitlines():
-            chk_m = re.match(r"^-\s+\[([ xX])\]\s+.*?\b(BUG-\d+)\b", line)
+            chk_m = re.match(r"^-\s+\[([ xX])\]\s+.*?\b(WORM-\d+)\b", line)
             if chk_m:
                 is_checked = chk_m.group(1).lower() == "x"
                 chk_id = chk_m.group(2)
-                checklist_status[chk_id] = BugStatus.RESOLVED if is_checked else BugStatus.OPEN
+                checklist_status[chk_id] = WormStatus.RESOLVED if is_checked else WormStatus.OPEN
 
-        db = BugDatabaseModel(title=title)
+        db = WormDatabaseModel(title=title)
 
         # Split into bug sections by ### headers
         sections = re.split(r"\n(?=###\s+)", content)
@@ -355,7 +365,7 @@ class MarkdownBugExporter:
                 continue
 
             header_match = re.search(
-                r'###\s+(?:<a id=".*?></a>\s*)?(?:[^\n\[]*?)?`\[(BUG-\d+)\]`\s*(.*?)$', sec_clean, re.MULTILINE
+                r'###\s+(?:<a id=".*?></a>\s*)?(?:[^\n\[]*?)?`\[(WORM-\d+)\]`\s*(.*?)$', sec_clean, re.MULTILINE
             )
             if not header_match:
                 continue
@@ -369,35 +379,35 @@ class MarkdownBugExporter:
             if m_uuid:
                 uuid_val = m_uuid.group(1).strip()
 
-            status_val = BugStatus.OPEN
+            status_val = WormStatus.OPEN
             m_status = re.search(r"-\s+\*\*Status\*\*:\s*`?([A-Za-z_]+)`?", sec_clean)
             if m_status:
                 try:
-                    status_val = BugStatus(m_status.group(1).strip().upper())
+                    status_val = WormStatus(m_status.group(1).strip().upper())
                 except ValueError:
-                    status_val = BugStatus.OPEN
+                    status_val = WormStatus.OPEN
             elif bug_id in checklist_status:
                 status_val = checklist_status[bug_id]
 
             # If checklist explicitly checked [x], prefer RESOLVED unless CLOSED
-            if checklist_status.get(bug_id) == BugStatus.RESOLVED and status_val == BugStatus.OPEN:
-                status_val = BugStatus.RESOLVED
+            if checklist_status.get(bug_id) == WormStatus.RESOLVED and status_val == WormStatus.OPEN:
+                status_val = WormStatus.RESOLVED
 
-            severity_val = BugSeverity.MEDIUM
+            severity_val = WormSeverity.MEDIUM
             m_sev = re.search(r"-\s+\*\*Severity\*\*:\s*`?([A-Za-z_]+)`?", sec_clean)
             if m_sev:
                 try:
-                    severity_val = BugSeverity(m_sev.group(1).strip().upper())
+                    severity_val = WormSeverity(m_sev.group(1).strip().upper())
                 except ValueError:
-                    severity_val = BugSeverity.MEDIUM
+                    severity_val = WormSeverity.MEDIUM
 
-            category_val = BugCategory.GENERAL
+            category_val = WormCategory.GENERAL
             m_cat = re.search(r"-\s+\*\*Category\*\*:\s*`?([A-Za-z_]+)`?", sec_clean)
             if m_cat:
                 try:
-                    category_val = BugCategory(m_cat.group(1).strip().upper())
+                    category_val = WormCategory(m_cat.group(1).strip().upper())
                 except ValueError:
-                    category_val = BugCategory.GENERAL
+                    category_val = WormCategory.GENERAL
 
             component_val = ""
             m_comp = re.search(r"-\s+\*\*Component\*\*:\s*`?([^\n`*]+)`?", sec_clean)
@@ -422,7 +432,7 @@ class MarkdownBugExporter:
             actual = ""
             logs = ""
             res_notes = ""
-            attachments: List[BugAttachmentModel] = []
+            attachments: List[WormAttachmentModel] = []
 
             for sub in subsections:
                 sub_clean = sub.strip()
@@ -474,7 +484,7 @@ class MarkdownBugExporter:
                                 if fdesc in ("_None_", "None"):
                                     fdesc = ""
                                 attachments.append(
-                                    BugAttachmentModel(
+                                    WormAttachmentModel(
                                         id=f"att-{len(attachments) + 1}",
                                         filename=fname,
                                         file_type=ftype,
@@ -483,7 +493,7 @@ class MarkdownBugExporter:
                                     )
                                 )
 
-            bug = BugReportModel(
+            bug = WormReportModel(
                 id=bug_id,
                 uuid=uuid_val or str(uuid_pkg.uuid4()),
                 title=bug_title,
@@ -505,35 +515,35 @@ class MarkdownBugExporter:
 
         return db
 
-    def merge_databases(self, base_db: BugDatabaseModel, md_db: BugDatabaseModel) -> BugDatabaseModel:
+    def merge_databases(self, base_db: WormDatabaseModel, md_db: WormDatabaseModel) -> WormDatabaseModel:
         """Merge markdown database changes into base database using Read-Modify-Write rules.
 
         Args:
             base_db: Current base database model (e.g. from SQLite).
-            md_db: Database model parsed from BUGS.md.
+            md_db: Database model parsed from WORMS.md.
 
         Returns:
             Updated base_db with all merged changes.
         """
-        existing_map = {b.id: b for b in base_db.bugs}
+        existing_map = {b.id: b for b in base_db.worms}
 
-        for md_bug in md_db.bugs:
+        for md_bug in md_db.worms:
             if md_bug.id not in existing_map:
-                # Newly added bug in BUGS.md
-                base_db.bugs.append(md_bug)
+                # Newly added bug in WORMS.md
+                base_db.worms.append(md_bug)
                 existing_map[md_bug.id] = md_bug
             else:
                 existing = existing_map[md_bug.id]
                 # Status update: protect resolved/closed bugs from being regressed to OPEN by stale markdown without notes
                 if (
-                    existing.status in (BugStatus.RESOLVED, BugStatus.CLOSED)
-                    and md_bug.status == BugStatus.OPEN
+                    existing.status in (WormStatus.RESOLVED, WormStatus.CLOSED)
+                    and md_bug.status == WormStatus.OPEN
                     and not md_bug.resolution_notes.strip()
                 ):
                     pass
                 elif md_bug.status != existing.status:
                     existing.status = md_bug.status
-                    if md_bug.status in (BugStatus.RESOLVED, BugStatus.CLOSED):
+                    if md_bug.status in (WormStatus.RESOLVED, WormStatus.CLOSED):
                         if not existing.resolved_at:
                             existing.resolved_at = md_bug.resolved_at or datetime.now(timezone.utc).strftime(
                                 "%Y-%m-%d %H:%M:%S UTC"
@@ -587,8 +597,8 @@ class MarkdownBugExporter:
 
         return base_db
 
-    def render_bug_markdown(self, bug: BugReportModel) -> str:
-        """Render a single bug report to Markdown.
+    def render_worm_markdown(self, bug: WormReportModel) -> str:
+        """Render a single worm report to Markdown.
 
         Args:
             bug: Bug report model to render.
@@ -598,8 +608,8 @@ class MarkdownBugExporter:
         """
         status_icon = (
             "🟢"
-            if bug.status in (BugStatus.RESOLVED, BugStatus.CLOSED)
-            else ("🟡" if bug.status == BugStatus.IN_PROGRESS else "🔴")
+            if bug.status in (WormStatus.RESOLVED, WormStatus.CLOSED)
+            else ("🟡" if bug.status == WormStatus.IN_PROGRESS else "🔴")
         )
         lines: List[str] = [
             f"# {status_icon} `[{bug.id}]` {bug.title}",
@@ -661,20 +671,20 @@ class MarkdownBugExporter:
 
         return "\n".join(lines).strip() + "\n"
 
-    def export_individual_bug(self, bug: BugReportModel, feedback_dir: Path) -> Path:
-        """Export a single bug to feedback/BUG_<id>.md.
+    def export_individual_worm(self, bug: WormReportModel, feedback_dir: Path) -> Path:
+        """Export a single bug to feedback/WORM_<id>.md.
 
         Args:
-            bug: BugReportModel to export.
-            feedback_dir: Directory where BUG_<id>.md is saved.
+            bug: WormReportModel to export.
+            feedback_dir: Directory where WORM_<id>.md is saved.
 
         Returns:
             Path to written markdown file.
         """
         feedback_dir.mkdir(parents=True, exist_ok=True)
-        clean_id = bug.id.removeprefix("BUG-").removeprefix("BUG_")
-        target_file = feedback_dir / f"BUG_{clean_id}.md"
-        content = self.render_bug_markdown(bug)
+        clean_id = bug.id.removeprefix("WORM-").removeprefix("WORM_")
+        target_file = feedback_dir / f"WORM_{clean_id}.md"
+        content = self.render_worm_markdown(bug)
         if target_file.exists():
             try:
                 disk_content = target_file.read_text(encoding="utf-8")
@@ -682,7 +692,7 @@ class MarkdownBugExporter:
                     return target_file
                 # Protect resolved bug file on disk from being overwritten by un-noted OPEN bug
                 if (
-                    bug.status == BugStatus.OPEN
+                    bug.status == WormStatus.OPEN
                     and not bug.resolution_notes.strip()
                     and "- **Status**: `RESOLVED`" in disk_content
                 ):
@@ -692,11 +702,11 @@ class MarkdownBugExporter:
         target_file.write_text(content, encoding="utf-8")
         return target_file
 
-    def export_all_individual_bugs(self, database: BugDatabaseModel, feedback_dir: Path) -> List[Path]:
-        """Export all bugs in database to individual BUG_<id>.md files.
+    def export_all_individual_worms(self, database: WormDatabaseModel, feedback_dir: Path) -> List[Path]:
+        """Export all bugs in database to individual WORM_<id>.md files.
 
         Args:
-            database: BugDatabaseModel with bugs to export.
+            database: WormDatabaseModel with bugs to export.
             feedback_dir: Directory where files will be saved.
 
         Returns:
@@ -704,34 +714,34 @@ class MarkdownBugExporter:
         """
         feedback_dir.mkdir(parents=True, exist_ok=True)
         paths: List[Path] = []
-        for bug in database.bugs:
-            paths.append(self.export_individual_bug(bug, feedback_dir))
+        for bug in database.worms:
+            paths.append(self.export_individual_worm(bug, feedback_dir))
         return paths
 
-    def parse_individual_bug_file(self, file_path: Path) -> Optional[BugReportModel]:
-        """Parse an individual BUG_<id>.md file into a BugReportModel.
+    def parse_individual_worm_file(self, file_path: Path) -> Optional[WormReportModel]:
+        """Parse an individual WORM_<id>.md file into a WormReportModel.
 
         Args:
             file_path: Path to the bug markdown file.
 
         Returns:
-            BugReportModel if valid, else None.
+            WormReportModel if valid, else None.
         """
         if not file_path.exists() or not file_path.is_file():
             return None
         try:
             content = file_path.read_text(encoding="utf-8")
-            m_header = re.search(r"^#\s+(?:[^\n\[]*?)?`\[(BUG-[^\]]+|[^\]]+)\]`\s*(.*?)$", content, re.MULTILINE)
+            m_header = re.search(r"^#\s+(?:[^\n\[]*?)?`\[(WORM-[^\]]+|[^\]]+)\]`\s*(.*?)$", content, re.MULTILINE)
             m_fn = re.match(r"^BUG[_-](.+)\.md$", file_path.name, re.IGNORECASE)
             fn_id = ""
             if m_fn:
                 fn_part = m_fn.group(1)
                 if fn_part.isdigit():
-                    fn_id = f"BUG-{int(fn_part):03d}"
-                elif fn_part.startswith("BUG-"):
+                    fn_id = f"WORM-{int(fn_part):03d}"
+                elif fn_part.startswith("WORM-"):
                     fn_id = fn_part
                 else:
-                    fn_id = f"BUG-{fn_part}"
+                    fn_id = f"WORM-{fn_part}"
 
             bug_id = fn_id
             bug_title = ""
@@ -739,7 +749,7 @@ class MarkdownBugExporter:
                 bug_id = m_header.group(1).strip()
                 bug_title = m_header.group(2).strip()
 
-            if fn_id and (not bug_id or not bug_id.startswith("BUG-")):
+            if fn_id and (not bug_id or not bug_id.startswith("WORM-")):
                 bug_id = fn_id
 
             m_id = re.search(r"-\s+\*\*ID\*\*:\s*`?([^\n`*]+)`?", content)
@@ -747,34 +757,34 @@ class MarkdownBugExporter:
                 bug_id = m_id.group(1).strip()
 
             if not bug_id:
-                bug_id = "BUG-000"
+                bug_id = "WORM-000"
 
             m_uuid = re.search(r"-\s+\*\*UUID\*\*:\s*`?([0-9a-fA-F-]+)`?", content)
             uuid_val = m_uuid.group(1).strip() if m_uuid else str(uuid_pkg.uuid4())
 
-            status_val = BugStatus.OPEN
+            status_val = WormStatus.OPEN
             m_status = re.search(r"-\s+\*\*Status\*\*:\s*`?([A-Za-z_]+)`?", content)
             if m_status:
                 try:
-                    status_val = BugStatus(m_status.group(1).strip().upper())
+                    status_val = WormStatus(m_status.group(1).strip().upper())
                 except ValueError:
-                    status_val = BugStatus.OPEN
+                    status_val = WormStatus.OPEN
 
-            severity_val = BugSeverity.MEDIUM
+            severity_val = WormSeverity.MEDIUM
             m_sev = re.search(r"-\s+\*\*Severity\*\*:\s*`?([A-Za-z_]+)`?", content)
             if m_sev:
                 try:
-                    severity_val = BugSeverity(m_sev.group(1).strip().upper())
+                    severity_val = WormSeverity(m_sev.group(1).strip().upper())
                 except ValueError:
-                    severity_val = BugSeverity.MEDIUM
+                    severity_val = WormSeverity.MEDIUM
 
-            category_val = BugCategory.GENERAL
+            category_val = WormCategory.GENERAL
             m_cat = re.search(r"-\s+\*\*Category\*\*:\s*`?([A-Za-z_]+)`?", content)
             if m_cat:
                 try:
-                    category_val = BugCategory(m_cat.group(1).strip().upper())
+                    category_val = WormCategory(m_cat.group(1).strip().upper())
                 except ValueError:
-                    category_val = BugCategory.GENERAL
+                    category_val = WormCategory.GENERAL
 
             component_val = ""
             m_comp = re.search(r"-\s+\*\*Component\*\*:\s*`?([^\n`*]+)`?", content)
@@ -798,7 +808,7 @@ class MarkdownBugExporter:
             actual = ""
             logs = ""
             res_notes = ""
-            attachments: List[BugAttachmentModel] = []
+            attachments: List[WormAttachmentModel] = []
 
             for sub in subsections:
                 sub_clean = sub.strip()
@@ -847,7 +857,7 @@ class MarkdownBugExporter:
                             )
                             if att_m:
                                 attachments.append(
-                                    BugAttachmentModel(
+                                    WormAttachmentModel(
                                         id=f"att-{len(attachments) + 1}",
                                         filename=att_m.group(2).strip(),
                                         file_type=att_m.group(1).strip(),
@@ -858,7 +868,7 @@ class MarkdownBugExporter:
                                     )
                                 )
 
-            return BugReportModel(
+            return WormReportModel(
                 id=bug_id,
                 uuid=uuid_val,
                 title=bug_title or f"Bug {bug_id}",
@@ -882,15 +892,15 @@ class MarkdownBugExporter:
     def scan_and_sync_feedback_dir(
         self,
         feedback_dir: Path,
-        database: BugDatabaseModel,
+        database: WormDatabaseModel,
         store: Optional[Any] = None,
     ) -> Dict[str, Any]:
-        """Scan feedback/ directory for individual BUG_*.md files, detect renames, and merge into database/SQLite.
+        """Scan feedback/ directory for individual WORM_*.md files, detect renames, and merge into database/SQLite.
 
         Args:
             feedback_dir: Path to feedback directory.
-            database: Active bug database model.
-            store: Optional SQLiteBugStore for atomic ID updates.
+            database: Active worm database model.
+            store: Optional SQLiteWormStore for atomic ID updates.
 
         Returns:
             Dictionary with sync summary stats.
@@ -902,37 +912,37 @@ class MarkdownBugExporter:
         renamed = 0
         merged = 0
 
-        for bug_file in sorted(feedback_dir.glob("BUG_*.md")):
+        for bug_file in sorted(list(feedback_dir.glob("WORM_*.md")) + list(feedback_dir.glob("BUG_*.md"))):
             scanned += 1
-            md_bug = self.parse_individual_bug_file(bug_file)
+            md_bug = self.parse_individual_worm_file(bug_file)
             if not md_bug:
                 continue
 
             # Determine ID implied by filename
-            m_fn = re.match(r"^BUG[_-](.+)\.md$", bug_file.name, re.IGNORECASE)
+            m_fn = re.match(r"^(?:WORM|BUG)[_-](.+)\.md$", bug_file.name, re.IGNORECASE)
             expected_id_from_fn = ""
             if m_fn:
                 raw_part = m_fn.group(1)
                 if raw_part.isdigit():
-                    expected_id_from_fn = f"BUG-{int(raw_part):03d}"
-                elif raw_part.startswith("BUG-"):
+                    expected_id_from_fn = f"WORM-{int(raw_part):03d}"
+                elif raw_part.startswith("WORM-"):
                     expected_id_from_fn = raw_part
                 else:
-                    expected_id_from_fn = f"BUG-{raw_part}"
+                    expected_id_from_fn = f"WORM-{raw_part}"
 
             # Check if this bug already exists by UUID
-            existing_by_uuid = database.get_bug_by_uuid(md_bug.uuid)
+            existing_by_uuid = database.get_worm_by_uuid(md_bug.uuid)
             if existing_by_uuid:
                 # File name rename detection!
                 if expected_id_from_fn and existing_by_uuid.id != expected_id_from_fn:
                     existing_by_uuid.id = expected_id_from_fn
                     md_bug.id = expected_id_from_fn
-                    if store and hasattr(store, "update_bug_id"):
-                        store.update_bug_id(existing_by_uuid.uuid, expected_id_from_fn)
+                    if store and hasattr(store, "update_worm_id"):
+                        store.update_worm_id(existing_by_uuid.uuid, expected_id_from_fn)
                     renamed += 1
                 if (
-                    existing_by_uuid.status in (BugStatus.RESOLVED, BugStatus.CLOSED)
-                    and md_bug.status == BugStatus.OPEN
+                    existing_by_uuid.status in (WormStatus.RESOLVED, WormStatus.CLOSED)
+                    and md_bug.status == WormStatus.OPEN
                     and not md_bug.resolution_notes.strip()
                 ):
                     pass

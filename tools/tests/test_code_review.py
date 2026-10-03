@@ -1752,6 +1752,3 @@ def test_review_server_target_defaults_and_build_migration(tmp_path: Path) -> No
     assert migrated_session is not None
     assert len(migrated_session.comments) == 1
     assert migrated_session.comments[0].body == "Initial comment in build store"
-
-
-

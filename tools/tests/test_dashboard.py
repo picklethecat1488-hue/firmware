@@ -390,8 +390,8 @@ def test_merge_conflict_detection_and_resolution(tmp_path: Path) -> None:
         server.server_close()
 
 
-def test_cross_tool_endpoints_code_review_and_bug_viewer(tmp_path: Path) -> None:
-    """Verify POST /api/open_code_review and /api/open_bug format target URLs."""
+def test_cross_tool_endpoints_code_review_and_worm_viewer(tmp_path: Path) -> None:
+    """Verify POST /api/open_code_review and /api/open_worm format target URLs."""
     repo_dir, shas = create_isolated_git_repo(tmp_path)
     server = DashboardServer(
         host="127.0.0.1",
@@ -419,21 +419,21 @@ def test_cross_tool_endpoints_code_review_and_bug_viewer(tmp_path: Path) -> None
             assert "/review" in res["url"]
             assert f"revisions={shas[1]},{shas[2]}" in res["url"]
 
-        # 2. Bug Viewer navigation for existing bug
+        # 2. Worm Viewer navigation for existing worm
         req = urllib.request.Request(
-            f"{base_url}/api/open_bug",
-            data=json.dumps({"bug_id": "171"}).encode("utf-8"),
+            f"{base_url}/api/open_worm",
+            data=json.dumps({"worm_id": "171"}).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
         )
         with urllib.request.urlopen(req) as resp:
             res = json.loads(resp.read().decode("utf-8"))
             assert res["status"] == "ok"
-            assert "/bugs#BUG-171" in res["url"]
+            assert "/worms#WORM-171" in res["url"]
 
-        # 3. Bug Viewer creation prefilling commit
+        # 3. Worm Viewer creation prefilling commit
         req = urllib.request.Request(
-            f"{base_url}/api/open_bug",
+            f"{base_url}/api/open_worm",
             data=json.dumps({"commit": shas[2]}).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -441,19 +441,19 @@ def test_cross_tool_endpoints_code_review_and_bug_viewer(tmp_path: Path) -> None
         with urllib.request.urlopen(req) as resp:
             res = json.loads(resp.read().decode("utf-8"))
             assert res["status"] == "ok"
-            assert "/bugs" in res["url"]
+            assert "/worms" in res["url"]
             assert f"commit={shas[2]}" in res["url"]
 
-        # 4. Direct GET /review and /bugs UI serving
+        # 4. Direct GET /review and /worms UI serving
         with urllib.request.urlopen(f"{base_url}/review") as resp:
             assert resp.status == 200
             html = resp.read().decode("utf-8")
             assert "Code Review" in html or "quake" in html.lower()
 
-        with urllib.request.urlopen(f"{base_url}/bugs") as resp:
+        with urllib.request.urlopen(f"{base_url}/worms") as resp:
             assert resp.status == 200
             html = resp.read().decode("utf-8")
-            assert "BUG REPORT" in html or "quake" in html.lower()
+            assert "WORM REPORT" in html or "worm" in html.lower() or "quake" in html.lower()
 
     finally:
         server.shutdown()
@@ -511,8 +511,8 @@ def test_regression_bug_178_unified_dashboard_and_no_standalone_tools(tmp_path: 
             assert resp.status == 200
             assert "text/html" in resp.headers.get("Content-Type", "")
 
-        # Check bug report UI
-        with urllib.request.urlopen(f"{base_url}/bugs") as resp:
+        # Check worm report UI
+        with urllib.request.urlopen(f"{base_url}/worms") as resp:
             assert resp.status == 200
             assert "text/html" in resp.headers.get("Content-Type", "")
 
@@ -902,7 +902,7 @@ def test_regression_bug_188_initial_sqlite_sync_loading_modal(tmp_path: Path) ->
             assert res["status"] == "ok"
             assert res["initial_sync_done"] is True
             assert "review" in res
-            assert "bugs" in res
+            assert "worms" in res
 
         # 6. Verify server state is now synced
         assert server.initial_sync_done is True
@@ -1107,7 +1107,7 @@ def test_regression_bug_198_save_bug_reproduction_steps_no_traceback(tmp_path: P
         host="127.0.0.1",
         port=0,
         repo_root=repo_dir,
-        sqlite_bug_file=tmp_path / "bugs.sqlite",
+        sqlite_worm_file=tmp_path / "worms.sqlite",
         sqlite_review_file=tmp_path / "review.sqlite",
         bind_and_activate=True,
     )
@@ -1118,7 +1118,7 @@ def test_regression_bug_198_save_bug_reproduction_steps_no_traceback(tmp_path: P
     try:
         base_url = f"http://127.0.0.1:{server.actual_port}"
 
-        # 1. Create bug with steps_to_reproduce and commit in payload (Save and Exit action)
+        # 1. Create worm with steps_to_reproduce and commit in payload (Save and Exit action)
         payload = {
             "title": "Bug with steps",
             "status": "OPEN",
@@ -1130,7 +1130,7 @@ def test_regression_bug_198_save_bug_reproduction_steps_no_traceback(tmp_path: P
             "commit": "947e55f5",
         }
         req = urllib.request.Request(
-            f"{base_url}/api/bug/save",
+            f"{base_url}/api/worm/save",
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -1142,14 +1142,14 @@ def test_regression_bug_198_save_bug_reproduction_steps_no_traceback(tmp_path: P
             assert data["reproduction_steps"] == ["Click Save and Exit", "Verify no traceback"]
             bug_id = data["id"]
 
-        # 2. Update existing bug with steps_to_reproduce
+        # 2. Update existing worm with steps_to_reproduce
         update_payload = {
             "id": bug_id,
             "title": "Updated Bug",
             "steps_to_reproduce": ["Step A", "Step B"],
         }
         req2 = urllib.request.Request(
-            f"{base_url}/api/bug/save",
+            f"{base_url}/api/worm/save",
             data=json.dumps(update_payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -1172,7 +1172,7 @@ def test_regression_bug_191_and_205_code_review_revisions_and_multi_commit(tmp_p
         host="127.0.0.1",
         port=0,
         repo_root=repo_dir,
-        sqlite_bug_file=tmp_path / "bugs.sqlite",
+        sqlite_worm_file=tmp_path / "worms.sqlite",
         sqlite_review_file=tmp_path / "review.sqlite",
         bind_and_activate=True,
     )
@@ -1299,16 +1299,16 @@ def test_regression_bug_201_single_diff_viewer_and_bug_tabs_reuse() -> None:
     diff_view_tpl = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
     diff_text = diff_view_tpl.read_text(encoding="utf-8")
 
-    # Diff View uses named window targets for code review and bug tracker
+    # Diff View uses named window targets for code review and worm tracker
     assert 'window.open(res.url, "firmware_code_review");' in diff_text
-    assert 'window.open(res.url, "firmware_bug_tracker");' in diff_text
+    assert 'window.open(res.url, "firmware_worm_tracker");' in diff_text
 
-    # Bug report workstation reuses diff viewer window target or closes to focus opener
-    bug_report_tpl = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "bug_report.html.j2"
-    bug_text = bug_report_tpl.read_text(encoding="utf-8")
-    assert 'target="firmware_vcs_diff_viewer"' in bug_text
-    assert "returnToDashboard" in bug_text
-    assert "window.opener.focus()" in bug_text
+    # Worm report workstation reuses diff viewer window target or closes to focus opener
+    worm_report_tpl = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "worm_report.html.j2"
+    worm_text = worm_report_tpl.read_text(encoding="utf-8")
+    assert 'target="firmware_vcs_diff_viewer"' in worm_text
+    assert "returnToDashboard" in worm_text
+    assert "window.opener.focus()" in worm_text
 
     # Code review workstation reuses diff viewer window target or closes to focus opener
     cr_tpl = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "code_review.html.j2"
@@ -1635,11 +1635,11 @@ def test_regression_bug_216_save_and_exit_preserves_resolved_bugs(tmp_path: Path
     base_url = f"http://127.0.0.1:{server.actual_port}"
 
     try:
-        # 1. Verify /api/next_bug_id has "next_id"
-        with urllib.request.urlopen(f"{base_url}/api/next_bug_id") as resp:
+        # 1. Verify /api/next_worm_id has "next_id"
+        with urllib.request.urlopen(f"{base_url}/api/next_worm_id") as resp:
             data = json.loads(resp.read().decode("utf-8"))
             assert "next_id" in data
-            assert data["next_id"].startswith("BUG-")
+            assert data["next_id"].startswith("WORM-")
 
         # 2. Verify /api/version returns integer version
         with urllib.request.urlopen(f"{base_url}/api/version") as resp:
@@ -1647,37 +1647,37 @@ def test_regression_bug_216_save_and_exit_preserves_resolved_bugs(tmp_path: Path
             assert "version" in data
             assert isinstance(data["version"], int)
 
-        # 3. Create BUG-001 on disk as RESOLVED with notes
-        bug_file = fb_dir / "BUG_001.md"
-        bug_file.write_text(
-            "# 🟢 `[BUG-001]` Power Rail Ripple\n\n"
+        # 3. Create WORM-001 on disk as RESOLVED with notes
+        worm_file = fb_dir / "WORM_001.md"
+        worm_file.write_text(
+            "# 🟢 `[WORM-001]` Power Rail Ripple\n\n"
             "- **UUID**: `11111111-2222-3333-4444-555555555555`\n"
-            "- **ID**: `BUG-001`\n"
+            "- **ID**: `WORM-001`\n"
             "- **Status**: `RESOLVED`\n"
             "- **Severity**: `HIGH`\n"
-            "- **Category**: `PCB`\n\n"
+            "- **Category**: `DRIVER`\n\n"
             "#### Description\n\nRipple on 3V3 rail.\n\n"
             "#### Resolution Notes\n\nAdded decoupling capacitor C12.\n",
             encoding="utf-8",
         )
 
         # 4. Trigger file watch check / sync
-        assert server.bug_server.check_file_watch() is True
-        bug_in_db = server.bug_server.database.get_bug("BUG-001")
-        assert bug_in_db is not None
-        assert bug_in_db.status.value == "RESOLVED"
-        assert bug_in_db.resolution_notes == "Added decoupling capacitor C12."
+        assert server.worm_server.check_file_watch() is True
+        worm_in_db = server.worm_server.database.get_worm("WORM-001")
+        assert worm_in_db is not None
+        assert worm_in_db.status.value == "RESOLVED"
+        assert worm_in_db.resolution_notes == "Added decoupling capacitor C12."
 
-        # 5. POST to /api/bugs with stale OPEN status and no resolution notes (simulating unrefreshed UI form submission)
+        # 5. POST to /api/worms with stale OPEN status and no resolution notes (simulating unrefreshed UI form submission)
         req_stale = urllib.request.Request(
-            f"{base_url}/api/bugs",
+            f"{base_url}/api/worms",
             data=json.dumps(
                 {
-                    "id": "BUG-001",
+                    "id": "WORM-001",
                     "title": "Power Rail Ripple",
                     "status": "OPEN",
                     "severity": "HIGH",
-                    "category": "PCB",
+                    "category": "DRIVER",
                     "description": "Ripple on 3V3 rail.",
                     "resolution_notes": "",
                 }
@@ -1700,8 +1700,8 @@ def test_regression_bug_216_save_and_exit_preserves_resolved_bugs(tmp_path: Path
             exit_data = json.loads(resp.read().decode("utf-8"))
             assert exit_data["status"] == "saved_and_exited"
 
-        # 7. Verify BUG_001.md on disk remained RESOLVED
-        disk_content = bug_file.read_text(encoding="utf-8")
+        # 7. Verify WORM_001.md on disk remained RESOLVED
+        disk_content = worm_file.read_text(encoding="utf-8")
         assert "- **Status**: `RESOLVED`" in disk_content
         assert "Added decoupling capacitor C12." in disk_content
 
@@ -1720,7 +1720,7 @@ def test_regression_bug_217_textarea_bidirectional_and_autoresize() -> None:
     4. Input event listener actively triggers autoResizeTextarea on textarea input.
     5. loadActiveBug and init trigger autoResizeAllTextareas.
     """
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "bug_report.html.j2"
+    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "worm_report.html.j2"
     assert template_path.exists()
     content = template_path.read_text(encoding="utf-8")
 
@@ -1834,6 +1834,7 @@ def test_regression_bug_221_branches_missing_from_branch_viewer(tmp_path: Path) 
     # Verify checkout of 'main' succeeds
     assert engine.checkout_branch("main") is True
     assert engine.get_current_branch() == "main"
+
 
 def test_regression_bug_223_dashboard_comment_response_and_error_handling(tmp_path: Path) -> None:
     """Verify BUG-223: DashboardServer /api/comment returns status ok and id to prevent undefined errors."""
@@ -2055,8 +2056,8 @@ def test_regression_bug_227_toolbar_buttons_no_wrap_and_horizontal_scroll() -> N
     assert "overflow-x: auto;" in comp_text
     assert "flex-wrap: nowrap;" in comp_text
 
-    # 4. bug_report.html.j2
-    br_text = (templates_dir / "bug_report.html.j2").read_text(encoding="utf-8")
+    # 4. worm_report.html.j2
+    br_text = (templates_dir / "worm_report.html.j2").read_text(encoding="utf-8")
     assert "white-space: nowrap !important;" in br_text
     assert "header.quake-header {" in br_text
     assert "overflow-x: auto;" in br_text
@@ -2160,7 +2161,7 @@ def test_regression_bug_230_execution_logs_and_tracebacks_preserved(tmp_path: Pa
         # 1. Create bug with execution logs
         payload = {
             "title": "Test Bug Logs",
-            "category": "PCB",
+            "category": "DRIVER",
             "severity": "HIGH",
             "status": "OPEN",
             "description": "Failure during flying probe testing",
@@ -2169,7 +2170,7 @@ def test_regression_bug_230_execution_logs_and_tracebacks_preserved(tmp_path: Pa
             "actual_behavior": "Fails with division by zero",
         }
         req = urllib.request.Request(
-            f"{base_url}/api/bugs",
+            f"{base_url}/api/worms",
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -2191,7 +2192,7 @@ def test_regression_bug_230_execution_logs_and_tracebacks_preserved(tmp_path: Pa
             "logs": updated_logs,
         }
         req_update = urllib.request.Request(
-            f"{base_url}/api/bugs",
+            f"{base_url}/api/worms",
             data=json.dumps(payload_update).encode("utf-8"),
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -2202,7 +2203,7 @@ def test_regression_bug_230_execution_logs_and_tracebacks_preserved(tmp_path: Pa
             assert res_update["logs"] == updated_logs
 
         # 3. Verify server database persists logs
-        db_bug = server.bug_server.database.get_bug(bug_id)
+        db_bug = server.worm_server.database.get_worm(bug_id)
         assert db_bug is not None
         assert db_bug.logs == updated_logs
     finally:
@@ -2266,7 +2267,7 @@ def test_regression_bug_233_visible_high_contrast_scrollbars():
         template_dir / "diff_view.html.j2",
         template_dir / "diff_component.html.j2",
         template_dir / "code_review.html.j2",
-        template_dir / "bug_report.html.j2",
+        template_dir / "worm_report.html.j2",
     ]
 
     for tmpl_path in templates:
@@ -2296,7 +2297,9 @@ def test_regression_bug_234_pr_submit_no_git_sl_error(tmp_path: Path):
 
 def test_regression_bug_235_favicon_web_icon(tmp_path: Path):
     """Verify BUG-235: High-contrast Quake-themed favicon is created and served across dashboards."""
-    static_favicon = Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "favicon.svg"
+    static_favicon = (
+        Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "favicon.svg"
+    )
     assert static_favicon.exists(), "static/favicon.svg must exist"
     svg_content = static_favicon.read_text(encoding="utf-8")
     assert "<svg" in svg_content
@@ -2305,7 +2308,7 @@ def test_regression_bug_235_favicon_web_icon(tmp_path: Path):
 
     # Check templates include the favicon link
     template_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    for tmpl in ["diff_view.html.j2", "code_review.html.j2", "bug_report.html.j2"]:
+    for tmpl in ["diff_view.html.j2", "code_review.html.j2", "worm_report.html.j2"]:
         content = (template_dir / tmpl).read_text(encoding="utf-8")
         assert '<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">' in content, (
             f"Missing favicon link in {tmpl}"
@@ -2463,35 +2466,35 @@ def test_regression_bug_239_per_user_filtering(tmp_path: Path) -> None:
     # Arguments parse per-user flags
     parsed_reviews = parse_arguments(["list-reviews", "--all-users"])
     assert parsed_reviews.all_users is True
-    parsed_bugs = parse_arguments(["list-bugs", "--user", "Alice"])
-    assert parsed_bugs.user == "Alice"
+    parsed_worms = parse_arguments(["list-worms", "--user", "Alice"])
+    assert parsed_worms.user == "Alice"
 
 
 def test_regression_bug_240_action_topic_subcommands() -> None:
-    """Verify BUG-240: CLI supports action-topic subcommands with backward compatibility for flags."""
+    """Verify BUG-240: CLI supports action-topic subcommands with flags."""
     # Subcommands
     args_rev = parse_arguments(["list-reviews", "--open"])
     assert args_rev.subcommand == "list-reviews"
     assert args_rev.open is True
 
-    args_bugs = parse_arguments(["list-bugs", "--open", "--severity", "HIGH"])
-    assert args_bugs.subcommand == "list-bugs"
-    assert args_bugs.open is True
-    assert args_bugs.severity == "HIGH"
+    args_worms = parse_arguments(["list-worms", "--open", "--severity", "HIGH"])
+    assert args_worms.subcommand == "list-worms"
+    assert args_worms.open is True
+    assert args_worms.severity == "HIGH"
 
     args_res_c = parse_arguments(["resolve-comment", "c_12345"])
     assert args_res_c.subcommand == "resolve-comment"
     assert args_res_c.id == "c_12345"
 
-    args_res_b = parse_arguments(["resolve-bug", "BUG-999", "--notes", "Fixed properly"])
-    assert args_res_b.subcommand == "resolve-bug"
-    assert args_res_b.id == "BUG-999"
-    assert args_res_b.notes == "Fixed properly"
+    args_res_w = parse_arguments(["resolve-worm", "WORM-999", "--notes", "Fixed properly"])
+    assert args_res_w.subcommand == "resolve-worm"
+    assert args_res_w.id == "WORM-999"
+    assert args_res_w.notes == "Fixed properly"
 
-    # Backward compatibility flags
-    args_flag_b = parse_arguments(["--bugs", "--open"])
-    assert args_flag_b.bugs is True
-    assert args_flag_b.open is True
+    # Flags
+    args_flag_w = parse_arguments(["--worms", "--open"])
+    assert args_flag_w.worms is True
+    assert args_flag_w.open is True
 
     args_flag_r = parse_arguments(["--reviews", "--all"])
     assert args_flag_r.reviews is True
@@ -2671,23 +2674,23 @@ def test_regression_bug_247_server_api_sync_unification(tmp_path: Path) -> None:
 
 
 def test_regression_bug_248_bug_report_sort_and_filter_menus() -> None:
-    """Verify BUG-248: Bug Report field contains sort and filter menus with session persistence."""
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "bug_report.html.j2"
+    """Verify BUG-248: Worm Report field contains sort and filter menus with session persistence."""
+    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "worm_report.html.j2"
     tpl_text = template_path.read_text(encoding="utf-8")
 
-    # 1. Sort and filter UI menus present in bug list sidebar
-    assert 'id="select-bug-sort"' in tpl_text
+    # 1. Sort and filter UI menus present in worm list sidebar
+    assert 'id="select-worm-sort"' in tpl_text
     assert 'id="select-filter-category"' in tpl_text
     assert 'id="select-filter-severity"' in tpl_text
 
     # 2. Event handlers and sorting/filtering logic
-    assert "onBugSortChanged" in tpl_text
+    assert "onWormSortChanged" in tpl_text
     assert "onFilterCategoryChanged" in tpl_text
     assert "onFilterSeverityChanged" in tpl_text
 
     # 3. Session persistence for filter and sorting options
     assert "sessionStorage" in tpl_text
-    assert "bug_sort" in tpl_text
+    assert "worm_sort" in tpl_text
 
 
 def test_regression_bug_252_unified_diff_word_wrap_and_tag_balancing() -> None:
@@ -2720,7 +2723,7 @@ def test_regression_bug_257_copy_icons_in_dashboard() -> None:
     """Verify BUG-257: Copy icon buttons next to commit hashes, branch names, and bug IDs in dashboard."""
     templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
     diff_view_text = (templates_dir / "diff_view.html.j2").read_text(encoding="utf-8")
-    bug_report_text = (templates_dir / "bug_report.html.j2").read_text(encoding="utf-8")
+    worm_report_text = (templates_dir / "worm_report.html.j2").read_text(encoding="utf-8")
     cr_text = (templates_dir / "code_review.html.j2").read_text(encoding="utf-8")
 
     # 1. diff_view.html.j2 copy buttons:
@@ -2733,14 +2736,14 @@ def test_regression_bug_257_copy_icons_in_dashboard() -> None:
     # Bug ID copy button on smartlog nodes
     assert "copy-badge-btn" in diff_view_text
 
-    # 2. bug_report.html.j2 copy buttons:
-    # Bug ID in sidebar list and active issue header
-    assert "btn-copy-active-bug" in bug_report_text
-    assert "active-bug-id-display" in bug_report_text
-    assert "copy-icon-btn" in bug_report_text
-    assert "copy-badge-btn" in bug_report_text
-    assert "copyActiveBugId" in bug_report_text
-    assert "copyText" in bug_report_text
+    # 2. worm_report.html.j2 copy buttons:
+    # Worm ID in sidebar list and active issue header
+    assert "btn-copy-active-worm" in worm_report_text
+    assert "active-worm-id-display" in worm_report_text
+    assert "copy-icon-btn" in worm_report_text
+    assert "copy-badge-btn" in worm_report_text
+    assert "copyActiveWormId" in worm_report_text
+    assert "copyText" in worm_report_text
 
     # 3. code_review.html.j2 copy buttons:
     # Commit SHA copy button in commit drawer
@@ -2764,10 +2767,10 @@ def test_regression_bug_269_dashboard_scoped_attachments(tmp_path: Path) -> None
     try:
         base_url = server.get_url()
 
-        # 1. Upload daemon.log for BUG-268
+        # 1. Upload daemon.log for WORM-268
         p1 = json.dumps(
             {
-                "bug_id": "BUG-268",
+                "worm_id": "WORM-268",
                 "filename": "daemon.log",
                 "content_text": "log for 268 in dashboard",
                 "description": "268 log",
@@ -2782,12 +2785,12 @@ def test_regression_bug_269_dashboard_scoped_attachments(tmp_path: Path) -> None
             assert resp.status == 200
             res1 = json.loads(resp.read().decode("utf-8"))
             assert res1["filename"] == "daemon.log"
-            assert res1["file_path"] == "attachments/BUG-268/daemon.log"
+            assert res1["file_path"] == "attachments/WORM-268/daemon.log"
 
-        # 2. Upload daemon.log for BUG-269
+        # 2. Upload daemon.log for WORM-269
         p2 = json.dumps(
             {
-                "bug_id": "BUG-269",
+                "worm_id": "WORM-269",
                 "filename": "daemon.log",
                 "content_text": "log for 269 in dashboard",
                 "description": "269 log",
@@ -2802,21 +2805,21 @@ def test_regression_bug_269_dashboard_scoped_attachments(tmp_path: Path) -> None
             assert resp.status == 200
             res2 = json.loads(resp.read().decode("utf-8"))
             assert res2["filename"] == "daemon.log"
-            assert res2["file_path"] == "attachments/BUG-269/daemon.log"
+            assert res2["file_path"] == "attachments/WORM-269/daemon.log"
 
         # 3. Verify neither file overwrote the other and both are independently served
-        f268 = repo_dir / "attachments" / "BUG-268" / "daemon.log"
-        f269 = repo_dir / "attachments" / "BUG-269" / "daemon.log"
+        f268 = repo_dir / "attachments" / "WORM-268" / "daemon.log"
+        f269 = repo_dir / "attachments" / "WORM-269" / "daemon.log"
         assert f268.exists()
         assert f269.exists()
         assert f268.read_text(encoding="utf-8") == "log for 268 in dashboard"
         assert f269.read_text(encoding="utf-8") == "log for 269 in dashboard"
 
-        with urllib.request.urlopen(f"{base_url}/attachments/BUG-268/daemon.log") as resp:
+        with urllib.request.urlopen(f"{base_url}/attachments/WORM-268/daemon.log") as resp:
             assert resp.status == 200
             assert resp.read() == b"log for 268 in dashboard"
 
-        with urllib.request.urlopen(f"{base_url}/attachments/BUG-269/daemon.log") as resp:
+        with urllib.request.urlopen(f"{base_url}/attachments/WORM-269/daemon.log") as resp:
             assert resp.status == 200
             assert resp.read() == b"log for 269 in dashboard"
     finally:
@@ -3108,4 +3111,3 @@ def test_regression_side_by_side_diff_row_property_mapping() -> None:
     assert "old line code" in html_fb
     assert "new line code" in html_fb
     assert "undefined" not in html_fb
-

@@ -18,9 +18,9 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 from model.vcs import (
     BranchInfoModel,
-    CommitBugTagModel,
     CommitInfoModel,
     CommitNodeModel,
+    CommitWormTagModel,
     DiffHunk,
     DiffLine,
     DiffLineType,
@@ -31,7 +31,7 @@ from model.vcs import (
 )
 
 MAX_DIFF_LINE_LENGTH: int = 1000
-IGNORED_REVIEW_FILES: frozenset[str] = frozenset({"BUGS.md", "BUGS.txt", "CR.md"})
+IGNORED_REVIEW_FILES: frozenset[str] = frozenset({"BUGS.md", "BUGS.txt", "WORMS.md", "WORMS.txt", "CR.md"})
 
 
 def extract_time_str(date_str: str) -> str:
@@ -740,8 +740,8 @@ class GitEngine:
             while columns and columns[-1] is None:
                 columns.pop()
 
-            # Inspect bug tags from subject, body, and feedback files
-            bug_tags = self._extract_bug_tags(f"{commit['subject']}\n{commit['body']}")
+            # Inspect worm tags from subject, body, and feedback files
+            worm_tags = self._extract_worm_tags(f"{commit['subject']}\n{commit['body']}")
 
             # Inspect PR info
             pr_status, pr_number, pr_url = self._extract_pr_info(
@@ -772,7 +772,7 @@ class GitEngine:
                     ancestor_name=commit.get("ancestor_name"),
                     graph_symbol=symbol,
                     graph_art=graph_art,
-                    bug_tags=bug_tags,
+                    worm_tags=worm_tags,
                     pr_status=pr_status,
                     pr_number=pr_number,
                     pr_url=pr_url,
@@ -785,44 +785,52 @@ class GitEngine:
 
         return nodes
 
-    def _extract_bug_tags(self, text: str) -> List[CommitBugTagModel]:
-        """Extract bug IDs from commit text and resolve current status via SQLite/Markdown."""
-        bug_ids = sorted(list(set(re.findall(r"\b(BUG[_-]\d+)\b", text, re.IGNORECASE))))
-        if not bug_ids:
+    def _extract_worm_tags(self, text: str) -> List[CommitWormTagModel]:
+        """Extract worm/bug IDs from commit text and resolve current status via SQLite/Markdown."""
+        worm_ids = sorted(list(set(re.findall(r"\b((?:WORM|BUG)[_-]\d+)\b", text, re.IGNORECASE))))
+        if not worm_ids:
             return []
 
-        tags: List[CommitBugTagModel] = []
+        tags: List[CommitWormTagModel] = []
         db_map: Dict[str, Dict[str, str]] = {}
-        sqlite_path = self.repo_root / "target" / "bugs.sqlite"
-        if not sqlite_path.exists() and (self.repo_root / "build" / "bugs.sqlite").exists():
-            sqlite_path = self.repo_root / "build" / "bugs.sqlite"
-        if sqlite_path.exists():
-            try:
-                conn = sqlite3.connect(str(sqlite_path))
+        for db_name in ["worms.sqlite", "bugs.sqlite"]:
+            sqlite_path = self.repo_root / "target" / db_name
+            if not sqlite_path.exists() and (self.repo_root / "build" / db_name).exists():
+                sqlite_path = self.repo_root / "build" / db_name
+            if sqlite_path.exists():
+                table_name = "worms" if "worm" in db_name else "bugs"
                 try:
-                    cur = conn.cursor()
-                    for bid in bug_ids:
-                        norm_id = bid.replace("_", "-").upper()
-                        cur.execute(
-                            "SELECT id, title, status, severity FROM bugs WHERE id = ? OR id = ?", (norm_id, bid)
-                        )
-                        row = cur.fetchone()
-                        if row:
-                            db_map[norm_id] = {
-                                "title": str(row[1]),
-                                "status": str(row[2]),
-                                "severity": str(row[3]),
-                            }
-                finally:
-                    conn.close()
-            except Exception:
-                pass
+                    conn = sqlite3.connect(str(sqlite_path))
+                    try:
+                        cur = conn.cursor()
+                        for wid in worm_ids:
+                            norm_id = wid.replace("_", "-").upper()
+                            alt_id = (
+                                norm_id.replace("BUG-", "WORM-")
+                                if norm_id.startswith("BUG-")
+                                else norm_id.replace("WORM-", "BUG-")
+                            )
+                            cur.execute(
+                                f"SELECT id, title, status, severity FROM {table_name} WHERE id = ? OR id = ? OR id = ?",
+                                (norm_id, wid, alt_id),
+                            )
+                            row = cur.fetchone()
+                            if row:
+                                db_map[norm_id] = {
+                                    "title": str(row[1]),
+                                    "status": str(row[2]),
+                                    "severity": str(row[3]),
+                                }
+                    finally:
+                        conn.close()
+                except Exception:
+                    pass
 
-        for bid in bug_ids:
-            norm_id = bid.replace("_", "-").upper()
+        for wid in worm_ids:
+            norm_id = wid.replace("_", "-").upper()
             if norm_id in db_map:
                 tags.append(
-                    CommitBugTagModel(
+                    CommitWormTagModel(
                         id=norm_id,
                         title=db_map[norm_id]["title"],
                         status=db_map[norm_id]["status"],
@@ -830,15 +838,17 @@ class GitEngine:
                     )
                 )
             else:
-                num = norm_id.replace("BUG-", "").replace("BUG_", "")
-                md_path = self.repo_root / "feedback" / f"BUG_{num}.md"
+                num = norm_id.replace("WORM-", "").replace("WORM_", "").replace("BUG-", "").replace("BUG_", "")
+                md_path = self.repo_root / "feedback" / f"WORM_{num}.md"
+                if not md_path.exists():
+                    md_path = self.repo_root / "feedback" / f"BUG_{num}.md"
                 status = "OPEN"
                 title = ""
                 if md_path.exists():
                     try:
                         content = md_path.read_text(encoding="utf-8", errors="replace")
                         for line in content.splitlines():
-                            if line.startswith("# ") and "BUG-" in line:
+                            if line.startswith("# ") and ("WORM-" in line or "BUG-" in line):
                                 title = line.split("]", 1)[-1].strip()
                             if line.startswith("- **Status**:"):
                                 parts = line.split("`")
@@ -847,7 +857,7 @@ class GitEngine:
                     except Exception:
                         pass
                 tags.append(
-                    CommitBugTagModel(
+                    CommitWormTagModel(
                         id=norm_id,
                         title=title,
                         status=status,
@@ -1078,7 +1088,9 @@ class GitEngine:
                 clean = file_path.replace("\\", "/").strip().lstrip("./")
                 if not (
                     clean.startswith("feedback/")
+                    or clean.startswith("target/worms")
                     or clean.startswith("target/bugs")
+                    or clean.startswith("build/worms")
                     or clean.startswith("build/bugs")
                     or clean == "TODO.md"
                 ):

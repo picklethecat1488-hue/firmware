@@ -9,13 +9,6 @@ from pathlib import Path
 import jinja2
 import pytest
 
-from model.bug_report import (
-    BugCategory,
-    BugDatabaseModel,
-    BugReportModel,
-    BugSeverity,
-    BugStatus,
-)
 from model.code_review import (
     CommentModel,
     FileReviewStatus,
@@ -36,7 +29,14 @@ from model.vcs import (
     FileDiffModel,
     WorkingTreeFileModel,
 )
-from dashboard.cli import print_cli_bugs, print_cli_reviews, print_cli_smartlog
+from model.worm_report import (
+    WormCategory,
+    WormDatabaseModel,
+    WormReportModel,
+    WormSeverity,
+    WormStatus,
+)
+from dashboard.cli import print_cli_reviews, print_cli_smartlog, print_cli_worms
 
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
@@ -47,7 +47,7 @@ def test_xerxes_css_variables_and_palette() -> None:
     main_templates = [
         "diff_view.html.j2",
         "code_review.html.j2",
-        "bug_report.html.j2",
+        "worm_report.html.j2",
     ]
     required_root_tokens = [
         "--xerxes-bg: #04090c",
@@ -76,9 +76,9 @@ def test_xerxes_crt_scanlines_and_cybernetic_hud() -> None:
     """Verify scanline overlays, cybernetic fonts, and neon cyan glow shadows in templates."""
     diff_view = (TEMPLATES_DIR / "diff_view.html.j2").read_text(encoding="utf-8")
     cr_view = (TEMPLATES_DIR / "code_review.html.j2").read_text(encoding="utf-8")
-    bug_view = (TEMPLATES_DIR / "bug_report.html.j2").read_text(encoding="utf-8")
+    worm_view = (TEMPLATES_DIR / "worm_report.html.j2").read_text(encoding="utf-8")
 
-    for content, name in [(diff_view, "diff_view"), (cr_view, "code_review"), (bug_view, "bug_report")]:
+    for content, name in [(diff_view, "diff_view"), (cr_view, "code_review"), (worm_view, "worm_report")]:
         # CRT scanline pattern on background
         assert "repeating-linear-gradient" in content, f"{name} must use repeating-linear-gradient for CRT scanlines"
         assert "radial-gradient" in content, f"{name} must use radial-gradient for cybernetic terminal backdrop"
@@ -177,31 +177,32 @@ def test_render_code_review_template() -> None:
     assert "IN_REVIEW" in rendered
 
 
-def test_render_bug_report_template() -> None:
-    """Verify bug_report.html.j2 renders cleanly with mock BugDatabaseModel."""
+def test_render_worm_report_template() -> None:
+    """Verify worm_report.html.j2 renders cleanly with mock WormDatabaseModel."""
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(TEMPLATES_DIR)))
-    tpl = env.get_template("bug_report.html.j2")
+    tpl = env.get_template("worm_report.html.j2")
 
-    bug = BugReportModel(
-        id="BUG-042",
+    worm = WormReportModel(
+        id="WORM-042",
         title="Fuel Gauge I2C Bus Hang Under Low Voltage",
-        status=BugStatus.OPEN,
-        severity=BugSeverity.HIGH,
-        category=BugCategory.PCB,
+        status=WormStatus.OPEN,
+        severity=WormSeverity.HIGH,
+        category=WormCategory.DRIVER,
         component="platform/max17048",
         description="I2C lines remain pulled low when cell drops below 3.0V.",
     )
 
-    db = BugDatabaseModel(
+    db = WormDatabaseModel(
         title="Firmware Telemetry & Anomaly Tracker",
-        summary="UNN Von Braun Core Bug Management",
-        bugs=[bug],
+        summary="UNN Von Braun Core Worm Management",
+        worms=[worm],
     )
 
-    rendered = tpl.render(db=db, database_json=db.model_dump_json())
+    rendered = tpl.render(database=db, database_json=db.model_dump_json())
     assert "<!DOCTYPE html>" in rendered
-    assert "SYSTEM SHOCK 2 // XERXES DEFECT MATRIX" in rendered
-    assert "BUG-042" in rendered
+    assert "SYSTEM SHOCK 2 // XERXES WORM MATRIX" in rendered
+    assert "WORM-042" in rendered
+    assert "🪱" in rendered
 
 
 def test_render_diff_component_template() -> None:
@@ -284,10 +285,10 @@ def test_cli_xerxes_terminal_branding(capsys: pytest.CaptureFixture[str], tmp_pa
     class DummyServer:
         review_server = DummyReviewServer()
 
-        class DummyBugServer:
+        class DummyWormServer:
             class DummyDatabase:
                 title = "UNN Primary Core"
-                bugs: list = []
+                worms: list = []
 
                 def count_by_status(self) -> dict:
                     return {}
@@ -297,12 +298,13 @@ def test_cli_xerxes_terminal_branding(capsys: pytest.CaptureFixture[str], tmp_pa
 
             database = DummyDatabase()
 
-        bug_server = DummyBugServer()
+        worm_server = DummyWormServer()
 
     print_cli_reviews(DummyServer())  # type: ignore[arg-type]
     out_rev = capsys.readouterr().out
     assert "SYSTEM SHOCK 2 // XERXES CODE REVIEW AUDIT" in out_rev
 
-    print_cli_bugs(DummyServer())  # type: ignore[arg-type]
-    out_bug = capsys.readouterr().out
-    assert "SYSTEM SHOCK 2 // XERXES DEFECT MATRIX" in out_bug
+    print_cli_worms(DummyServer())  # type: ignore[arg-type]
+    out_worm = capsys.readouterr().out
+    assert "SYSTEM SHOCK 2 // XERXES WORM MATRIX" in out_worm
+    assert "🪱" in out_worm

@@ -1,9 +1,9 @@
-"""Interactive System Shock 2 - Xerxes VCS Dashboard, Code Review, and Bug Report Workstation CLI.
+"""Interactive System Shock 2 - Xerxes VCS Dashboard, Code Review, and Worm Report Workstation CLI.
 
 Launches a unified local browser-based workstation with a System Shock 2 - Xerxes sci-fi HUD theme,
 providing Smartlog ancestor DAG tree navigation, staged/unstaged/untracked file management,
 commit split/combine, merge conflict resolution, interactive line-by-line Code Review,
-and integrated Bug Tracker, all served under a single endpoint.
+and integrated Worm Tracker, all served under a single endpoint.
 
 Usage:
     python tools/dashboard.py
@@ -11,9 +11,9 @@ Usage:
     python tools/dashboard.py --list
     python tools/dashboard.py --branch main
     python tools/dashboard.py --goto 75d5f92
-    python tools/dashboard.py --bugs
-    python tools/dashboard.py --add-bug "Motor overrun in tick loop" --severity HIGH --category CONTROLLER
-    python tools/dashboard.py --resolve-bug BUG-001 --notes "Adjusted PID timing constants"
+    python tools/dashboard.py --worms
+    python tools/dashboard.py --add-worm "Motor overrun in tick loop" --severity HIGH --category CONTROLLER
+    python tools/dashboard.py --resolve-worm WORM-001 --notes "Adjusted PID timing constants"
     python tools/dashboard.py --reviews
     python tools/dashboard.py --add-comment "Verify DMA buffer alignment" --file app/src/main.rs --line 42
     python tools/dashboard.py --resolve-comment abc123
@@ -38,8 +38,8 @@ if str(_dashboard_dir) not in sys.path:
 if str(_tools_dir) not in sys.path:
     sys.path.insert(0, str(_tools_dir))
 
-from model.bug_report import BugCategory, BugReportModel, BugSeverity, BugStatus
 from model.code_review import CommentModel, ReviewSeverity, ReviewStatus
+from model.worm_report import WormCategory, WormReportModel, WormSeverity, WormStatus
 from provider.dashboard.server import DashboardServer
 from provider.vcs.git_engine import GitEngine, extract_line_snippet, get_git_root
 
@@ -49,11 +49,14 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     raw_args = sys.argv[1:] if args is None else args
     subcommand_names = {
         "list-reviews",
+        "list-worms",
         "list-bugs",
         "list-commits",
         "sync",
         "commit",
+        "add-worm",
         "add-bug",
+        "resolve-worm",
         "resolve-bug",
         "add-comment",
         "resolve-comment",
@@ -61,7 +64,7 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     }
     has_subcommand = any(a in subcommand_names for a in raw_args)
     parser = argparse.ArgumentParser(
-        description="Unified System Shock 2 - Xerxes VCS Dashboard, Code Review & Bug Tracker Workstation",
+        description="Unified System Shock 2 - Xerxes VCS Dashboard, Code Review & Worm Tracker Workstation",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     # Server / Interface configuration
@@ -125,7 +128,7 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         dest="db_file",
         type=Path,
         default=None,
-        help="Custom SQLite database file for review or bugs.",
+        help="Custom SQLite database file for review or worms.",
     )
     parser.add_argument(
         "--fresh",
@@ -133,62 +136,63 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Start a fresh tracking or review session.",
     )
 
-    # Bug Tracker CLI Commands
+    # Worm Tracker CLI Commands
     parser.add_argument(
-        "--bugs",
-        "--list-bugs",
+        "--worms",
+        "--list-worms",
         action="store_true",
-        help="List all active bugs directly in the terminal and exit.",
+        dest="worms",
+        help="List all active worms directly in the terminal and exit.",
     )
     parser.add_argument(
         "--open",
         action="store_true",
-        help="When listing bugs or reviews, only show open / unresolved issues.",
+        help="When listing worms or reviews, only show open / unresolved issues.",
     )
     parser.add_argument(
-        "--add-bug",
+        "--add-worm",
         "--add",
-        dest="add_bug",
+        dest="add_worm",
         type=str,
-        help="Quickly register a new bug with the specified title.",
+        help="Quickly register a new worm with the specified title.",
     )
-    severity_choices = [s.value for s in BugSeverity] + [s.value for s in ReviewSeverity]
+    severity_choices = [s.value for s in WormSeverity] + [s.value for s in ReviewSeverity]
     parser.add_argument(
         "--severity",
         choices=severity_choices,
-        default=BugSeverity.MEDIUM.value,
-        help="Severity level when registering a new bug or review comment.",
+        default=WormSeverity.MEDIUM.value,
+        help="Severity level when registering a new worm or review comment.",
     )
     parser.add_argument(
         "--category",
-        choices=[c.value for c in BugCategory],
-        default=BugCategory.FIRMWARE.value,
-        help="Subsystem category when registering a new bug.",
+        choices=[c.value for c in WormCategory],
+        default=WormCategory.FIRMWARE.value,
+        help="Subsystem category when registering a new worm.",
     )
     parser.add_argument(
         "--component",
         type=str,
         default="",
-        help="Component or file name affected by the bug.",
+        help="Component or file name affected by the worm.",
     )
     parser.add_argument(
         "--description",
         type=str,
         default="",
-        help="Detailed description for quick-added bug.",
+        help="Detailed description for quick-added worm.",
     )
     parser.add_argument(
-        "--resolve-bug",
+        "--resolve-worm",
         "--resolve",
-        dest="resolve_bug",
+        dest="resolve_worm",
         type=str,
-        help="Mark a bug ID as RESOLVED (e.g. --resolve-bug BUG-001).",
+        help="Mark a worm ID as RESOLVED (e.g. --resolve-worm WORM-001).",
     )
     parser.add_argument(
         "--notes",
         type=str,
         default="",
-        help="Resolution notes when resolving a bug.",
+        help="Resolution notes when resolving a worm.",
     )
 
     # Code Review CLI Commands
@@ -260,23 +264,25 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     p_reviews.add_argument("--user", type=str, default="", help="Filter comments to specific author.")
     p_reviews.add_argument("commits", nargs="*", help="Optional commits or revision ranges to inspect.")
 
-    # list-bugs
-    p_bugs = subparsers.add_parser("list-bugs", help="List all active bugs directly in terminal and exit.")
-    p_bugs.add_argument("--open", action="store_true", help="Only show open / unresolved issues.")
-    p_bugs.add_argument(
+    # list-worms
+    p_worms = subparsers.add_parser("list-worms", help="List all active worms directly in terminal and exit.")
+    p_worms.add_argument("--open", action="store_true", help="Only show open / unresolved issues.")
+    p_worms.add_argument(
         "--severity",
-        choices=[s.value for s in BugSeverity],
+        choices=[s.value for s in WormSeverity],
         default=None,
         help="Filter by severity.",
     )
-    p_bugs.add_argument(
+    p_worms.add_argument(
         "--category",
-        choices=[c.value for c in BugCategory],
+        choices=[c.value for c in WormCategory],
         default=None,
         help="Filter by category.",
     )
-    p_bugs.add_argument("--all-users", "--all", dest="all_users", action="store_true", help="Show bugs from all users.")
-    p_bugs.add_argument("--user", type=str, default="", help="Filter bugs to specific author.")
+    p_worms.add_argument(
+        "--all-users", "--all", dest="all_users", action="store_true", help="Show worms from all users."
+    )
+    p_worms.add_argument("--user", type=str, default="", help="Filter worms to specific author.")
 
     # list-commits
     subparsers.add_parser("list-commits", help="Print smartlog DAG tree and working tree summary to console.")
@@ -300,20 +306,20 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     )
     p_commit.add_argument("--amend", action="store_true", help="Amend HEAD commit.")
 
-    # add-bug
-    p_add_b = subparsers.add_parser("add-bug", help="Quickly register a new bug report.")
-    p_add_b.add_argument("title", nargs="?", default="", help="Bug title.")
-    p_add_b.add_argument("--title", dest="bug_title", default="", help="Bug title.")
-    p_add_b.add_argument("--severity", choices=[s.value for s in BugSeverity], default=BugSeverity.MEDIUM.value)
-    p_add_b.add_argument("--category", choices=[c.value for c in BugCategory], default=BugCategory.FIRMWARE.value)
-    p_add_b.add_argument("--component", default="")
-    p_add_b.add_argument("--description", default="")
+    # add-worm
+    p_add_w = subparsers.add_parser("add-worm", help="Quickly register a new worm report.")
+    p_add_w.add_argument("title", nargs="?", default="", help="Worm title.")
+    p_add_w.add_argument("--title", dest="worm_title", default="", help="Worm title.")
+    p_add_w.add_argument("--severity", choices=[s.value for s in WormSeverity], default=WormSeverity.MEDIUM.value)
+    p_add_w.add_argument("--category", choices=[c.value for c in WormCategory], default=WormCategory.FIRMWARE.value)
+    p_add_w.add_argument("--component", default="")
+    p_add_w.add_argument("--description", default="")
 
-    # resolve-bug
-    p_res_b = subparsers.add_parser("resolve-bug", help="Mark a bug ID as RESOLVED.")
-    p_res_b.add_argument("id", nargs="?", default="", help="Bug ID (e.g. BUG-001).")
-    p_res_b.add_argument("--id", dest="bug_id", default="", help="Bug ID.")
-    p_res_b.add_argument("--notes", default="", help="Resolution notes.")
+    # resolve-worm
+    p_res_w = subparsers.add_parser("resolve-worm", help="Mark a worm ID as RESOLVED.")
+    p_res_w.add_argument("id", nargs="?", default="", help="Worm ID (e.g. WORM-001).")
+    p_res_w.add_argument("--id", dest="worm_id", default="", help="Worm ID.")
+    p_res_w.add_argument("--notes", default="", help="Resolution notes.")
 
     # add-comment
     p_add_c = subparsers.add_parser("add-comment", help="Quickly add a review comment.")
@@ -401,12 +407,12 @@ def print_cli_smartlog(engine: GitEngine) -> None:
         print(
             f"  {marker}  {node.short_hash}{head_mark}{branch_str}{pr_str} - {node.subject} ({node.relative_date or node.date}) <{node.author}>"
         )
-        for bug in node.bug_tags:
-            print(f"     [BUG] {bug.id}: [{bug.status}] {bug.title}")
+        for worm in node.worm_tags:
+            print(f"     [🪱 WORM] {worm.id}: [{worm.status}] {worm.title}")
     print("=" * 70 + "\n")
 
 
-def print_cli_bugs(
+def print_cli_worms(
     server: DashboardServer,
     open_only: bool = False,
     all_users: bool = False,
@@ -415,48 +421,48 @@ def print_cli_bugs(
     severity: Optional[str] = None,
     category: Optional[str] = None,
 ) -> None:
-    """Print bug tracker status to terminal console with optional filtering."""
-    bugs = server.bug_server.database.bugs
+    """Print worm tracker status to terminal console with optional filtering."""
+    worms = server.worm_server.database.worms
     print("\n" + "=" * 70)
-    print("  SYSTEM SHOCK 2 // XERXES DEFECT MATRIX")
+    print("  🪱 SYSTEM SHOCK 2 // XERXES WORM MATRIX")
     print("=" * 70)
-    if not bugs:
-        print("No bugs registered.\n")
+    if not worms:
+        print("No worms registered.\n")
         return
 
     curr_user = engine.get_current_user() if engine else {"name": "", "email": ""}
     filtered = []
-    for b in bugs:
-        if open_only and b.status in (BugStatus.RESOLVED, BugStatus.CLOSED):
+    for w in worms:
+        if open_only and w.status in (WormStatus.RESOLVED, WormStatus.CLOSED):
             continue
-        if severity and b.severity.value != severity:
+        if severity and w.severity.value != severity:
             continue
-        if category and b.category.value != category:
+        if category and w.category.value != category:
             continue
 
-        # Per-user filtering (BUG-239)
+        # Per-user filtering
         if not all_users and engine:
-            bug_file = server.repo_root / "feedback" / f"{b.id}.md"
-            b_author = engine.get_file_author(bug_file)
+            worm_file = server.repo_root / "feedback" / f"{w.id}.md"
+            w_author = engine.get_file_author(worm_file)
             if filter_user:
                 if (
-                    filter_user.lower() not in b_author["name"].lower()
-                    and filter_user.lower() not in b_author["email"].lower()
+                    filter_user.lower() not in w_author["name"].lower()
+                    and filter_user.lower() not in w_author["email"].lower()
                 ):
                     continue
             elif curr_user["name"]:
-                if b_author["name"] != curr_user["name"] and b_author["email"] != curr_user["email"]:
+                if w_author["name"] != curr_user["name"] and w_author["email"] != curr_user["email"]:
                     continue
-        filtered.append(b)
+        filtered.append(w)
 
-    for b in filtered:
-        chk = "[X]" if b.status in (BugStatus.RESOLVED, BugStatus.CLOSED) else "[ ]"
-        comp = f" ({b.component})" if b.component else ""
-        print(f"  {chk} [{b.id}] [{b.severity.value}] [{b.category.value}] {b.title}{comp} -> {b.status.value}")
+    for w in filtered:
+        chk = "[X]" if w.status in (WormStatus.RESOLVED, WormStatus.CLOSED) else "[ ]"
+        comp = f" ({w.component})" if w.component else ""
+        print(f"  {chk} 🪱 [{w.id}] [{w.severity.value}] [{w.category.value}] {w.title}{comp} -> {w.status.value}")
 
-    total_open = sum(1 for b in filtered if b.status not in (BugStatus.RESOLVED, BugStatus.CLOSED))
+    total_open = sum(1 for w in filtered if w.status not in (WormStatus.RESOLVED, WormStatus.CLOSED))
     total_all = len(filtered)
-    print(f"\nShowing {len(filtered)} issues ({total_open} open, {total_all} total).\n")
+    print(f"\nShowing {len(filtered)} worms ({total_open} open, {total_all} total).\n")
 
 
 def print_cli_reviews(
@@ -573,9 +579,9 @@ def main(cli_args: Optional[List[str]] = None) -> None:
         subcmd
         or getattr(args, "commit", None) is not None
         or getattr(args, "sync", False)
-        or getattr(args, "bugs", False)
-        or getattr(args, "add_bug", None)
-        or getattr(args, "resolve_bug", None)
+        or getattr(args, "worms", False)
+        or getattr(args, "add_worm", None)
+        or getattr(args, "resolve_worm", None)
         or getattr(args, "reviews", False)
         or getattr(args, "add_comment", None)
         or getattr(args, "resolve_comment", None)
@@ -592,14 +598,14 @@ def main(cli_args: Optional[List[str]] = None) -> None:
         or getattr(args, "verdict", None)
         or commits_arg
     )
-    is_bug_cmd = bool(
-        subcmd in ("list-bugs", "add-bug", "resolve-bug")
-        or getattr(args, "bugs", False)
-        or getattr(args, "add_bug", None)
-        or getattr(args, "resolve_bug", None)
+    is_worm_cmd = bool(
+        subcmd in ("list-worms", "list-bugs", "add-worm", "add-bug", "resolve-worm", "resolve-bug")
+        or getattr(args, "worms", False)
+        or getattr(args, "add_worm", None)
+        or getattr(args, "resolve_worm", None)
     )
-    review_db = args.db_file if (args.db_file and not is_bug_cmd) else None
-    bug_db = args.db_file if (args.db_file and not is_review_cmd) else None
+    review_db = args.db_file if (args.db_file and not is_worm_cmd) else None
+    worm_db = args.db_file if (args.db_file and not is_review_cmd) else None
 
     server = DashboardServer(
         host=args.host,
@@ -607,7 +613,7 @@ def main(cli_args: Optional[List[str]] = None) -> None:
         repo_root=repo_root,
         initial_branch=args.branch,
         initial_commit=args.goto,
-        sqlite_bug_file=bug_db,
+        sqlite_worm_file=worm_db,
         sqlite_review_file=review_db,
         revisions=commits_arg if commits_arg else None,
         fresh=args.fresh,
@@ -628,8 +634,8 @@ def main(cli_args: Optional[List[str]] = None) -> None:
                 engine=engine,
             )
             return
-        case "list-bugs":
-            print_cli_bugs(
+        case "list-worms" | "list-bugs":
+            print_cli_worms(
                 server,
                 open_only=getattr(args, "open", False),
                 all_users=all_users,
@@ -674,40 +680,40 @@ def main(cli_args: Optional[List[str]] = None) -> None:
                 amend=amend,
             )
             return
-        case "add-bug":
-            title = getattr(args, "bug_title", "") or getattr(args, "title", "")
+        case "add-worm" | "add-bug":
+            title = getattr(args, "worm_title", "") or getattr(args, "bug_title", "") or getattr(args, "title", "")
             if not title:
-                print("Error: Bug title is required.", file=sys.stderr)
+                print("Error: Worm title is required.", file=sys.stderr)
                 sys.exit(1)
-            bug_id = server.bug_server.database.generate_bug_id()
-            bug = BugReportModel(
-                id=bug_id,
+            worm_id = server.worm_server.database.generate_worm_id()
+            worm = WormReportModel(
+                id=worm_id,
                 title=title,
-                status=BugStatus.OPEN,
-                severity=BugSeverity(args.severity),
-                category=BugCategory(args.category),
+                status=WormStatus.OPEN,
+                severity=WormSeverity(args.severity),
+                category=WormCategory(args.category),
                 component=args.component,
                 description=args.description,
             )
-            server.bug_server.database.add_or_update(bug)
-            server.bug_server.save_and_sync()
-            print(f"Registered bug [{bug.id}]: {bug.title} ({bug.severity.value})")
+            server.worm_server.database.add_or_update(worm)
+            server.worm_server.save_and_sync()
+            print(f"Registered worm [{worm.id}]: {worm.title} ({worm.severity.value})")
             return
-        case "resolve-bug":
-            bug_id = getattr(args, "bug_id", "") or getattr(args, "id", "")
-            if not bug_id:
-                print("Error: Bug ID is required.", file=sys.stderr)
+        case "resolve-worm" | "resolve-bug":
+            worm_id = getattr(args, "worm_id", "") or getattr(args, "bug_id", "") or getattr(args, "id", "")
+            if not worm_id:
+                print("Error: Worm ID is required.", file=sys.stderr)
                 sys.exit(1)
-            bug = server.bug_server.database.get_bug(bug_id)
-            if not bug:
-                print(f"Bug '{bug_id}' not found in database.", file=sys.stderr)
+            worm = server.worm_server.database.get_worm(worm_id)
+            if not worm:
+                print(f"Worm '{worm_id}' not found in database.", file=sys.stderr)
                 sys.exit(1)
-            bug.status = BugStatus.RESOLVED
-            bug.resolved_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            worm.status = WormStatus.RESOLVED
+            worm.resolved_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             if getattr(args, "notes", ""):
-                bug.resolution_notes = args.notes
-            server.bug_server.save_and_sync()
-            print(f"Resolved bug [{bug.id}]: {bug.title}")
+                worm.resolution_notes = args.notes
+            server.worm_server.save_and_sync()
+            print(f"Resolved worm [{worm.id}]: {worm.title}")
             return
         case "add-comment":
             body = getattr(args, "comment_body", "") or getattr(args, "body", "")
@@ -784,8 +790,8 @@ def main(cli_args: Optional[List[str]] = None) -> None:
                 engine=engine,
             )
             return
-        if server.bug_server.database.bugs or is_bug_cmd:
-            print_cli_bugs(
+        if server.worm_server.database.worms or is_worm_cmd:
+            print_cli_worms(
                 server,
                 open_only=getattr(args, "open", False),
                 all_users=all_users,
@@ -818,38 +824,40 @@ def main(cli_args: Optional[List[str]] = None) -> None:
         )
         return
 
-    # Handle Bug Tracker CLI
-    if getattr(args, "add_bug", None):
-        bug_id = server.bug_server.database.generate_bug_id()
-        bug = BugReportModel(
-            id=bug_id,
-            title=args.add_bug,
-            status=BugStatus.OPEN,
-            severity=BugSeverity(args.severity),
-            category=BugCategory(args.category),
+    # Handle Worm Tracker CLI
+    if getattr(args, "add_worm", None):
+        worm_id = server.worm_server.database.generate_worm_id()
+        worm = WormReportModel(
+            id=worm_id,
+            title=args.add_worm,
+            status=WormStatus.OPEN,
+            severity=WormSeverity(args.severity),
+            category=WormCategory(args.category),
             component=args.component,
             description=args.description,
         )
-        server.bug_server.database.add_or_update(bug)
-        server.bug_server.save_and_sync()
-        print(f"Registered bug [{bug.id}]: {bug.title} ({bug.severity.value})")
+        server.worm_server.database.add_or_update(worm)
+        server.worm_server.save_and_sync()
+        print(f"Registered worm [{worm.id}]: {worm.title} ({worm.severity.value})")
         return
 
-    if getattr(args, "resolve_bug", None):
-        bug = server.bug_server.database.get_bug(args.resolve_bug)
-        if not bug:
-            print(f"Bug '{args.resolve_bug}' not found in database.", file=sys.stderr)
+    if getattr(args, "resolve_worm", None):
+        worm = server.worm_server.database.get_worm(args.resolve_worm)
+        if not worm:
+            print(f"Worm '{args.resolve_worm}' not found in database.", file=sys.stderr)
             sys.exit(1)
-        bug.status = BugStatus.RESOLVED
-        bug.resolved_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        worm.status = WormStatus.RESOLVED
+        worm.resolved_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         if args.notes:
-            bug.resolution_notes = args.notes
-        server.bug_server.save_and_sync()
-        print(f"Resolved bug [{bug.id}]: {bug.title}")
+            worm.resolution_notes = args.notes
+        server.worm_server.save_and_sync()
+        print(f"Resolved worm [{worm.id}]: {worm.title}")
         return
 
-    if getattr(args, "bugs", False) or (getattr(args, "list", False) and args.db_file and "bug" in str(args.db_file)):
-        print_cli_bugs(
+    if getattr(args, "worms", False) or (
+        getattr(args, "list", False) and args.db_file and ("worm" in str(args.db_file) or "bug" in str(args.db_file))
+    ):
+        print_cli_worms(
             server,
             open_only=getattr(args, "open", False),
             all_users=all_users,
@@ -939,7 +947,7 @@ def main(cli_args: Optional[List[str]] = None) -> None:
   * Neural Decks   :
       - Deck A: VCS Diff Analysis  : {url}/
       - Deck B: Code Review Engine : {url}/review
-      - Deck C: Tactical Bug Log   : {url}/bugs
+      - Deck C: Tactical Worm Log  : {url}/worms
   * Visual Display : {args.browser.upper()}
   * Press [Ctrl+C] to terminate workstation link.
 ======================================================================

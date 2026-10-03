@@ -1,8 +1,8 @@
-"""HTTP server and REST API for unified System Shock 2 - Xerxes VCS Dashboard, Code Review, and Bug Report.
+"""HTTP server and REST API for unified System Shock 2 - Xerxes VCS Dashboard, Code Review, and Worm Report.
 
 Serves the primary engineering diff workstation UI, DAG ancestor tree visualization,
 working tree stage/unstage/discard/commit operations, commit split/combine,
-merge conflict resolution, interactive line-by-line Code Review, and Bug Tracker.
+merge conflict resolution, interactive line-by-line Code Review, and Worm Tracker.
 """
 
 import base64
@@ -20,29 +20,31 @@ import uuid
 
 import jinja2
 
-from model.bug_report import (
-    BugAttachmentModel,
-    BugCategory,
-    BugReportModel,
-    BugSeverity,
-    BugStatus,
-)
 from model.code_review import CommentModel, ReviewSessionModel, ReviewSeverity, ReviewStatus
 from model.vcs import (
     BranchInfoModel,
     CommitNodeModel,
+    CommitWormTagModel,
     DiffViewSessionModel,
     FileDiffModel,
     MergeConflictFileModel,
     WorkingTreeFileModel,
 )
-from provider.bug_report.server import BugReportServer
+from model.worm_report import (
+    WormAttachmentModel,
+    WormCategory,
+    WormDatabaseModel,
+    WormReportModel,
+    WormSeverity,
+    WormStatus,
+)
 from provider.code_review.server import ReviewServer
 from provider.vcs.git_engine import GitEngine, extract_line_snippet, get_git_root
+from provider.worm_report.server import WormReportServer
 
 
 class DashboardRequestHandler(BaseHTTPRequestHandler):
-    """HTTP request handler dispatching unified VCS dashboard, code review, and bug report APIs."""
+    """HTTP request handler dispatching unified VCS dashboard, code review, and worm report APIs."""
 
     server: "DashboardServer"
 
@@ -71,9 +73,9 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 self.server.review_server.check_file_watch()
             except Exception:
                 pass
-        if hasattr(self.server, "bug_server") and self.server.bug_server:
+        if hasattr(self.server, "worm_server") and self.server.worm_server:
             try:
-                self.server.bug_server.check_file_watch()
+                self.server.worm_server.check_file_watch()
             except Exception:
                 pass
 
@@ -102,8 +104,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 self._handle_serve_diff_ui()
             case "/review" | "/review/":
                 self._handle_serve_review_ui(query)
-            case "/bugs" | "/bugs/":
-                self._handle_serve_bug_ui()
+            case "/worms" | "/worms/":
+                self._handle_serve_worm_ui()
             case "/api/session":
                 referer = self.headers.get("Referer", "")
                 rev_param = query.get("revisions", [""])[0] or query.get("commit", [""])[0]
@@ -201,17 +203,20 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                     self.wfile.write(raw_bytes)
                 except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                     self.close_connection = True
-            case "/api/database":
-                self._send_json(self.server.bug_server.database.model_dump(mode="json"))
-            case "/api/next_bug_id":
-                next_id = self.server.bug_server.database.generate_bug_id()
+            case "/api/database" | "/api/worms":
+                worm_db = self.server.worm_server.database
+                self._send_json(worm_db.model_dump(mode="json"))
+            case "/api/next_worm_id":
+                worm_server = self.server.worm_server
+                next_id = worm_server.database.generate_worm_id()
                 self._send_json({"next_id": next_id, "id": next_id})
             case "/api/version":
+                worm_server = self.server.worm_server
                 self._send_json(
                     {
-                        "version": self.server.bug_server.db_version,
-                        "bugs_count": len(self.server.bug_server.database.bugs),
-                        "mtime": self.server.bug_server.feedback_mtime,
+                        "version": worm_server.db_version,
+                        "worms_count": len(worm_server.database.worms),
+                        "mtime": worm_server.feedback_mtime,
                     }
                 )
             case "/api/sync_status":
@@ -231,7 +236,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         """Route POST requests for mutating actions."""
         try:
-            self.server.bug_server.check_file_watch()
+            self.server.worm_server.check_file_watch()
         except Exception:
             pass
         parsed = urllib.parse.urlparse(self.path)
@@ -394,15 +399,16 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                     self.server.get_review_session(commits)
                 target_url = f"/review?revisions={rev_str}" if rev_str else "/review"
                 self._send_json({"status": "ok", "url": target_url})
-            case "/api/open_bug":
-                bug_id = data.get("bug_id", "").strip()
+            case "/api/open_worm":
+                worm_id = data.get("worm_id", "").strip() or data.get("id", "").strip()
                 commit = data.get("commit", "").strip()
-                if bug_id:
-                    target_url = f"/bugs#BUG-{bug_id}"
+                clean_id = worm_id.replace("WORM-", "")
+                if worm_id:
+                    target_url = f"/worms#WORM-{clean_id}"
                 elif commit:
-                    target_url = f"/bugs#new?commit={commit}"
+                    target_url = f"/worms#new?commit={commit}"
                 else:
-                    target_url = "/bugs"
+                    target_url = "/worms"
                 self._send_json({"status": "ok", "url": target_url})
             case "/api/comment":
                 if "id" in data and "body" in data and not data.get("file_path"):
@@ -429,18 +435,19 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 self._send_json({"status": "ok", "commit": commit})
             case "/api/commit_update":
                 self._handle_commit_update(data)
-            case "/api/bugs" | "/api/bug/save":
-                self._handle_save_bug(data)
-            case "/api/bugs/delete":
-                self._handle_delete_bug(data)
+            case "/api/worms" | "/api/worm/save":
+                self._handle_save_worm(data)
+            case "/api/worms/delete":
+                self._handle_delete_worm(data)
             case "/api/upload":
                 self._handle_file_upload(data)
             case "/api/exit":
+                worm_srv = self.server.worm_server
                 try:
-                    self.server.bug_server.check_file_watch()
+                    worm_srv.check_file_watch()
                 except Exception:
                     pass
-                out_path = self.server.bug_server.save_and_sync()
+                out_path = worm_srv.save_and_sync()
                 self._send_json({"status": "saved_and_exited", "path": str(out_path), "redirect_to": "/"})
 
             case _:
@@ -502,8 +509,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         html_out = template.render(session=session)
         self._send_html(html_out)
 
-    def _handle_serve_bug_ui(self) -> None:
-        """Render and return Jinja2 bug report dashboard template."""
+    def _handle_serve_worm_ui(self) -> None:
+        """Render and return Jinja2 worm report dashboard template."""
         templates_dir = Path(__file__).resolve().parents[2] / "templates"
         env = jinja2.Environment(
             loader=jinja2.FileSystemLoader(str(templates_dir)),
@@ -511,14 +518,15 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             trim_blocks=True,
             lstrip_blocks=True,
         )
-        template = env.get_template("bug_report.html.j2")
-        db_dump = self.server.bug_server.database.model_dump(mode="json")
+        template = env.get_template("worm_report.html.j2")
+        worm_server = self.server.worm_server
+        db_dump = worm_server.database.model_dump(mode="json")
         html_content = template.render(
-            database=self.server.bug_server.database,
+            database=worm_server.database,
             database_json=json.dumps(db_dump),
-            statuses=[s.value for s in BugStatus],
-            severities=[s.value for s in BugSeverity],
-            categories=[c.value for c in BugCategory],
+            statuses=[s.value for s in WormStatus],
+            severities=[s.value for s in WormSeverity],
+            categories=[c.value for c in WormCategory],
             server_port=self.server.actual_port,
         )
         self._send_html(html_content)
@@ -563,7 +571,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         else:
             rel_name = clean_path
 
-        att_dir = getattr(self.server.bug_server, "attachments_dir", None) or (self.server.repo_root / "attachments")
+        att_dir = getattr(self.server.worm_server, "attachments_dir", None) or (self.server.repo_root / "attachments")
         file_path = att_dir / rel_name
         if not file_path.exists() or not file_path.is_file():
             fallback_target = self.server.repo_root / "target" / "attachments" / rel_name
@@ -732,23 +740,28 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         else:
             self._send_json({"error": "Missing commit hashes"}, status=400)
 
-    def _handle_save_bug(self, data: Dict[str, Any]) -> None:
-        """Save or update a bug report."""
-        bug_id = data.get("id")
+    def _handle_save_worm(self, data: Dict[str, Any]) -> None:
+        """Save or update a worm report."""
+        worm_id = data.get("id")
         title = data.get("title", "")
-        if not bug_id:
-            bug_id = self.server.bug_server.database.generate_bug_id()
-        bug = self.server.bug_server.database.get_bug(bug_id)
+        if not worm_id:
+            worm_id = self.server.worm_server.database.generate_worm_id()
+        worm = self.server.worm_server.database.get_worm(worm_id)
         now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-        if not bug:
+        if not worm:
             repro_steps = data.get("reproduction_steps") or data.get("steps_to_reproduce") or []
-            bug = BugReportModel(
-                id=bug_id,
+            cat_raw = data.get("category", WormCategory.FIRMWARE.value)
+            try:
+                cat_val = WormCategory(cat_raw)
+            except ValueError:
+                cat_val = WormCategory.GENERAL
+            worm = WormReportModel(
+                id=worm_id,
                 title=title or "Untitled Defect",
-                status=BugStatus(data.get("status", BugStatus.OPEN.value)),
-                severity=BugSeverity(data.get("severity", BugSeverity.MEDIUM.value)),
-                category=BugCategory(data.get("category", BugCategory.PCB.value)),
+                status=WormStatus(data.get("status", WormStatus.OPEN.value)),
+                severity=WormSeverity(data.get("severity", WormSeverity.MEDIUM.value)),
+                category=cat_val,
                 component=data.get("component", ""),
                 description=data.get("description", ""),
                 reproduction_steps=repro_steps if isinstance(repro_steps, list) else [str(repro_steps)],
@@ -756,69 +769,69 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 actual_behavior=data.get("actual_behavior", ""),
                 logs=data.get("logs", ""),
                 resolution_notes=data.get("resolution_notes", ""),
-                attachments=[BugAttachmentModel(**a) for a in data.get("attachments", [])],
+                attachments=[WormAttachmentModel(**a) for a in data.get("attachments", [])],
                 created_at=now_str,
                 updated_at=now_str,
             )
-            self.server.bug_server.database.add_or_update(bug)
+            self.server.worm_server.database.add_or_update(worm)
         else:
             if title:
-                bug.title = title
-            if "status" in data and data["status"] in [s.value for s in BugStatus]:
-                new_status = BugStatus(data["status"])
+                worm.title = title
+            if "status" in data and data["status"] in [s.value for s in WormStatus]:
+                new_status = WormStatus(data["status"])
                 if (
-                    bug.status in (BugStatus.RESOLVED, BugStatus.CLOSED)
-                    and bug.resolution_notes.strip()
-                    and new_status == BugStatus.OPEN
+                    worm.status in (WormStatus.RESOLVED, WormStatus.CLOSED)
+                    and worm.resolution_notes.strip()
+                    and new_status == WormStatus.OPEN
                     and not data.get("resolution_notes", "").strip()
                 ):
                     pass
                 else:
-                    bug.status = new_status
-                    if bug.status in (BugStatus.RESOLVED, BugStatus.CLOSED):
-                        bug.resolved_at = now_str
+                    worm.status = new_status
+                    if worm.status in (WormStatus.RESOLVED, WormStatus.CLOSED):
+                        worm.resolved_at = now_str
                     else:
-                        bug.resolved_at = None
+                        worm.resolved_at = None
 
-            if "severity" in data and data["severity"] in [s.value for s in BugSeverity]:
-                bug.severity = BugSeverity(data["severity"])
-            if "category" in data and data["category"] in [c.value for c in BugCategory]:
-                bug.category = BugCategory(data["category"])
+            if "severity" in data and data["severity"] in [s.value for s in WormSeverity]:
+                worm.severity = WormSeverity(data["severity"])
+            if "category" in data and data["category"] in [c.value for c in WormCategory]:
+                worm.category = WormCategory(data["category"])
             if "component" in data:
-                bug.component = data["component"]
+                worm.component = data["component"]
             if "description" in data:
-                bug.description = data["description"]
+                worm.description = data["description"]
             if "expected_behavior" in data:
-                bug.expected_behavior = data["expected_behavior"]
+                worm.expected_behavior = data["expected_behavior"]
             if "actual_behavior" in data:
-                bug.actual_behavior = data["actual_behavior"]
+                worm.actual_behavior = data["actual_behavior"]
             if "logs" in data:
-                bug.logs = data["logs"]
+                worm.logs = data["logs"]
             if "resolution_notes" in data:
                 incoming_notes = data["resolution_notes"].strip()
                 if incoming_notes:
-                    bug.resolution_notes = incoming_notes
-                elif bug.status not in (BugStatus.RESOLVED, BugStatus.CLOSED):
-                    bug.resolution_notes = ""
+                    worm.resolution_notes = incoming_notes
+                elif worm.status not in (WormStatus.RESOLVED, WormStatus.CLOSED):
+                    worm.resolution_notes = ""
             if "reproduction_steps" in data:
                 repro_steps = data["reproduction_steps"]
-                bug.reproduction_steps = repro_steps if isinstance(repro_steps, list) else [str(repro_steps)]
+                worm.reproduction_steps = repro_steps if isinstance(repro_steps, list) else [str(repro_steps)]
             elif "steps_to_reproduce" in data:
                 repro_steps = data["steps_to_reproduce"]
-                bug.reproduction_steps = repro_steps if isinstance(repro_steps, list) else [str(repro_steps)]
+                worm.reproduction_steps = repro_steps if isinstance(repro_steps, list) else [str(repro_steps)]
             if "attachments" in data:
-                bug.attachments = [BugAttachmentModel(**a) for a in data["attachments"]]
-            bug.updated_at = now_str
+                worm.attachments = [WormAttachmentModel(**a) for a in data["attachments"]]
+            worm.updated_at = now_str
 
-        self.server.bug_server.save_and_sync()
-        self._send_json(bug.model_dump(mode="json"))
+        self.server.worm_server.save_and_sync()
+        self._send_json(worm.model_dump(mode="json"))
 
-    def _handle_delete_bug(self, data: Dict[str, Any]) -> None:
-        """Delete a bug report by ID."""
-        bug_id = data.get("id")
-        self.server.bug_server.database.bugs = [b for b in self.server.bug_server.database.bugs if b.id != bug_id]
-        self.server.bug_server.save_and_sync()
-        self._send_json({"status": "deleted", "id": bug_id})
+    def _handle_delete_worm(self, data: Dict[str, Any]) -> None:
+        """Delete a worm report by ID."""
+        worm_id = data.get("id")
+        self.server.worm_server.database.worms = [w for w in self.server.worm_server.database.worms if w.id != worm_id]
+        self.server.worm_server.save_and_sync()
+        self._send_json({"status": "deleted", "id": worm_id})
 
     def _handle_file_upload(self, data: Dict[str, Any]) -> None:
         """Save base64 encoded file upload to attachments directory."""
@@ -828,14 +841,14 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         b64_content = data.get("content_base64", "")
         text_content = data.get("content_text", "")
 
-        raw_bug_id = str(data.get("bug_id") or data.get("bugId") or "").strip()
-        if not raw_bug_id and str(data.get("id", "")).startswith("BUG-"):
-            raw_bug_id = str(data.get("id")).strip()
-        bug_id = Path(raw_bug_id).name if raw_bug_id else ""
+        raw_worm_id = str(data.get("worm_id") or data.get("wormId") or "").strip()
+        if not raw_worm_id and str(data.get("id", "")).startswith("WORM-"):
+            raw_worm_id = str(data.get("id")).strip()
+        worm_id = Path(raw_worm_id).name if raw_worm_id else ""
         filename = Path(filename).name
 
-        att_dir = getattr(self.server.bug_server, "attachments_dir", None) or (self.server.repo_root / "attachments")
-        dest_dir = (att_dir / bug_id) if bug_id else att_dir
+        att_dir = getattr(self.server.worm_server, "attachments_dir", None) or (self.server.repo_root / "attachments")
+        dest_dir = (att_dir / worm_id) if worm_id else att_dir
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / filename
 
@@ -855,7 +868,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             else dest_path
         )
         now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        att = BugAttachmentModel(
+        att = WormAttachmentModel(
             id=uuid.uuid4().hex[:8],
             filename=filename,
             file_type=file_type,
@@ -900,7 +913,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
 
 class DashboardServer(ThreadingHTTPServer):
-    """Unified HTTP server for VCS Smartlog diff workstation, code review, and bug tracking."""
+    """Unified HTTP server for VCS Smartlog diff workstation, code review, and worm tracking."""
 
     allow_reuse_address = True
     daemon_threads = True
@@ -935,9 +948,9 @@ class DashboardServer(ThreadingHTTPServer):
         repo_root: Optional[Path] = None,
         initial_branch: Optional[str] = None,
         initial_commit: Optional[str] = None,
-        sqlite_bug_file: Optional[Path] = None,
+        sqlite_worm_file: Optional[Path] = None,
         sqlite_review_file: Optional[Path] = None,
-        markdown_bugs_path: Optional[Path] = None,
+        markdown_worms_path: Optional[Path] = None,
         markdown_review_path: Optional[Path] = None,
         revisions: Optional[List[str]] = None,
         fresh: bool = False,
@@ -956,14 +969,14 @@ class DashboardServer(ThreadingHTTPServer):
         if md_review is None and sqlite_review_file and sqlite_review_file.parent.name not in ("build", "target"):
             md_review = sqlite_review_file.parent / "CR.md"
 
-        md_bugs = markdown_bugs_path
-        if md_bugs is None and sqlite_bug_file and sqlite_bug_file.parent.name not in ("build", "target"):
-            md_bugs = sqlite_bug_file.parent / "BUGS.md"
+        md_worms = markdown_worms_path
+        if md_worms is None and sqlite_worm_file and sqlite_worm_file.parent.name not in ("build", "target"):
+            md_worms = sqlite_worm_file.parent / "WORMS.md"
 
         review_state = sqlite_review_file.with_suffix(".json") if sqlite_review_file else None
-        bug_state = sqlite_bug_file.with_suffix(".json") if sqlite_bug_file else None
+        worm_state = sqlite_worm_file.with_suffix(".json") if sqlite_worm_file else None
 
-        # Embedded review and bug servers without duplicate socket binding
+        # Embedded review and worm servers without duplicate socket binding
         self.review_server = ReviewServer(
             host=host,
             port=port,
@@ -975,13 +988,13 @@ class DashboardServer(ThreadingHTTPServer):
             fresh=fresh,
             bind_and_activate=False,
         )
-        self.bug_server = BugReportServer(
+        self.worm_server = WormReportServer(
             host=host,
             port=port,
             repo_root=self.repo_root,
-            markdown_output=md_bugs,
-            state_file=bug_state,
-            sqlite_file=sqlite_bug_file,
+            markdown_output=md_worms,
+            state_file=worm_state,
+            sqlite_file=sqlite_worm_file,
             fresh=fresh,
             bind_and_activate=False,
         )
@@ -1015,25 +1028,40 @@ class DashboardServer(ThreadingHTTPServer):
         conflicts = self.git_engine.get_merge_conflicts()
         agent_feedback = [f for f in working_files if f.is_feedback]
 
-        # Match bug reports with commits
-        bug_dict = {b.id: b for b in self.bug_server.database.bugs}
+        # Match worm reports with commits
+        worm_dict = {w.id: w for w in self.worm_server.database.worms}
         for node in smartlog_nodes:
-            bug_ids = re.findall(r"\bBUG-\d+\b", node.subject)
-            tags = []
-            for bid in bug_ids:
-                if bid in bug_dict:
-                    tags.append(bug_dict[bid])
-                else:
-                    tags.append(
-                        BugReportModel(
-                            id=bid,
-                            title=bid,
-                            status=BugStatus.OPEN,
-                            severity=BugSeverity.MEDIUM,
-                            category=BugCategory.PCB,
+            worm_ids = re.findall(r"\b((?:WORM|BUG)[_-]\d+)\b", node.subject, re.IGNORECASE)
+            existing_ids = {t.id for t in node.worm_tags}
+            for wid in worm_ids:
+                norm_id = wid.upper().replace("_", "-")
+                if norm_id not in existing_ids:
+                    if norm_id in worm_dict:
+                        w = worm_dict[norm_id]
+                        node.worm_tags.append(
+                            CommitWormTagModel(
+                                id=norm_id,
+                                title=w.title,
+                                status=w.status.value,
+                                severity=w.severity.value,
+                            )
                         )
-                    )
-            node.bug_tags = tags
+                    else:
+                        node.worm_tags.append(
+                            CommitWormTagModel(
+                                id=norm_id,
+                                title=norm_id,
+                                status="OPEN",
+                                severity="LOW",
+                            )
+                        )
+                    existing_ids.add(norm_id)
+            for tag in node.worm_tags:
+                if tag.id in worm_dict:
+                    w = worm_dict[tag.id]
+                    tag.title = w.title
+                    tag.status = w.status.value
+                    tag.severity = w.severity.value
 
         # Load Code Review stats for commits (BUG-199)
         cr_stats: dict[str, dict[str, Any]] = {}
@@ -1225,16 +1253,16 @@ class DashboardServer(ThreadingHTTPServer):
         return session
 
     def sync_feedback(self) -> Dict[str, Any]:
-        """Synchronize review and bug report feedback from workspace feedback/ directory."""
+        """Synchronize review and worm report feedback from workspace feedback/ directory."""
         review_res = self.review_server.sync_feedback()
-        bug_res = self.bug_server.sync_with_feedback_dir()
+        worm_res = self.worm_server.sync_with_feedback_dir()
         self.initial_sync_done = True
-        return {"status": "ok", "initial_sync_done": True, "review": review_res, "bugs": bug_res}
+        return {"status": "ok", "initial_sync_done": True, "review": review_res, "worms": worm_res}
 
     def server_close(self) -> None:
         """Close server sockets and cleanup sub-servers."""
         self.review_server.server_close()
-        self.bug_server.server_close()
+        self.worm_server.server_close()
         if hasattr(self, "socket") and self.socket:
             try:
                 super().server_close()
