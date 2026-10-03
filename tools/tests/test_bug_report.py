@@ -30,7 +30,7 @@ def test_bug_report_model_lifecycle() -> None:
         title="Test Bug",
         status=BugStatus.OPEN,
         severity=BugSeverity.HIGH,
-        category=BugCategory.PCB,
+        category=BugCategory.DRIVER,
         component="test_component",
         description="Detailed failure description",
         reproduction_steps=["step 1", "step 2"],
@@ -60,7 +60,7 @@ def test_bug_report_model_lifecycle() -> None:
 
     restored = BugReportModel.model_validate(data)
     assert restored.id == bug.id
-    assert restored.category == BugCategory.PCB
+    assert restored.category == BugCategory.DRIVER
 
 
 def test_bug_database_metrics_and_management(tmp_path: Path) -> None:
@@ -73,14 +73,14 @@ def test_bug_database_metrics_and_management(tmp_path: Path) -> None:
         title="First defect",
         status=BugStatus.OPEN,
         severity=BugSeverity.CRITICAL,
-        category=BugCategory.CAD,
+        category=BugCategory.CONTROLLER,
     )
     b2 = BugReportModel(
         id="BUG-002",
         title="Second defect",
         status=BugStatus.RESOLVED,
         severity=BugSeverity.LOW,
-        category=BugCategory.PCB,
+        category=BugCategory.DRIVER,
     )
     db.add_or_update(b1)
     db.add_or_update(b2)
@@ -89,8 +89,8 @@ def test_bug_database_metrics_and_management(tmp_path: Path) -> None:
     assert db.count_by_status()[BugStatus.OPEN.value] == 1
     assert db.count_by_status()[BugStatus.RESOLVED.value] == 1
     assert db.count_by_severity()[BugSeverity.CRITICAL.value] == 1
-    assert db.count_by_category()[BugCategory.CAD.value] == 1
-    assert db.count_by_category()[BugCategory.PCB.value] == 1
+    assert db.count_by_category()[BugCategory.CONTROLLER.value] == 1
+    assert db.count_by_category()[BugCategory.DRIVER.value] == 1
 
     # Export to markdown and JSON
     exporter = MarkdownBugExporter(repo_root=tmp_path)
@@ -241,7 +241,7 @@ def test_sqlite_bug_store_lifecycle(tmp_path: Path) -> None:
         title="Sample Defect",
         status=BugStatus.OPEN,
         severity=BugSeverity.HIGH,
-        category=BugCategory.PCB,
+        category=BugCategory.BOARD,
         component="carrier_board",
         description="Trace clearance violation",
         reproduction_steps=["Open schematic", "Run DRC"],
@@ -373,13 +373,13 @@ def test_regression_bug_079_no_duplicate_bug_ids_and_generator():
     db = BugDatabaseModel(title="Non-contiguous test")
     db.bugs = [
         BugReportModel(
-            id="BUG-001", title="B1", status=BugStatus.OPEN, severity=BugSeverity.LOW, category=BugCategory.PCB
+            id="BUG-001", title="B1", status=BugStatus.OPEN, severity=BugSeverity.LOW, category=BugCategory.DRIVER
         ),
         BugReportModel(
-            id="BUG-002", title="B2", status=BugStatus.OPEN, severity=BugSeverity.LOW, category=BugCategory.PCB
+            id="BUG-002", title="B2", status=BugStatus.OPEN, severity=BugSeverity.LOW, category=BugCategory.DRIVER
         ),
         BugReportModel(
-            id="BUG-078", title="B78", status=BugStatus.OPEN, severity=BugSeverity.LOW, category=BugCategory.PCB
+            id="BUG-078", title="B78", status=BugStatus.OPEN, severity=BugSeverity.LOW, category=BugCategory.DRIVER
         ),
     ]
     # Length is 3, but max is 78. Next ID MUST be BUG-079, NOT BUG-004
@@ -406,7 +406,7 @@ def test_regression_bug_114_rmw_markdown_sync_and_file_watch(tmp_path: Path) -> 
         title="Initial Bug",
         status=BugStatus.OPEN,
         severity=BugSeverity.LOW,
-        category=BugCategory.PCB,
+        category=BugCategory.DRIVER,
     )
     server.database.add_or_update(b1)
     server.save_and_sync()
@@ -471,7 +471,7 @@ def test_regression_bug_170_feedback_dir_watch_and_resolution_preservation(tmp_p
         title="Silkscreen text is mirrored",
         status=BugStatus.OPEN,
         severity=BugSeverity.HIGH,
-        category=BugCategory.PCB,
+        category=BugCategory.UI,
         description="F.SilkS text is vertically flipped",
     )
     server.database.add_or_update(b166)
@@ -889,3 +889,59 @@ def test_bug_report_template_saves_and_updates_view_when_no_active_bug(tmp_path:
     assert "loadActiveBug();" in content
 
 
+def test_regression_bug_001_remove_hardware_categories(tmp_path: Path) -> None:
+    """Verify hardware-specific categories (PCB, CAD, SIMULATION) are removed from BugCategory and dashboard."""
+    from model.bug_report import BugCategory, BugDatabaseModel, BugReportModel, BugSeverity, BugStatus
+    from provider.bug_report.markdown_exporter import MarkdownBugExporter
+    from provider.bug_report.server import BugReportServer
+
+    # 1. Assert hardware categories are NOT in BugCategory
+    assert not hasattr(BugCategory, "PCB"), "PCB should be removed from BugCategory"
+    assert not hasattr(BugCategory, "CAD"), "CAD should be removed from BugCategory"
+    assert not hasattr(BugCategory, "SIMULATION"), "SIMULATION should be removed from BugCategory"
+
+    # 2. Assert firmware categories ARE present
+    expected_categories = {
+        "FIRMWARE",
+        "CONTROLLER",
+        "DRIVER",
+        "PLATFORM",
+        "BOARD",
+        "MODEL",
+        "SHELL",
+        "INFRASTRUCTURE",
+        "UI",
+        "GENERAL",
+    }
+    actual_categories = {c.value for c in BugCategory}
+    assert expected_categories.issubset(actual_categories)
+
+    # 3. Verify server initializes with firmware category defaults and categories list has no hardware categories
+    server = BugReportServer(
+        repo_root=tmp_path,
+        sqlite_file=tmp_path / "bugs.sqlite",
+        markdown_output=tmp_path / "BUGS.md",
+        bind_and_activate=False,
+    )
+    categories = [c.value for c in BugCategory]
+    assert "PCB" not in categories
+    assert "CAD" not in categories
+    assert "SIMULATION" not in categories
+
+    # 4. Verify markdown export does not hardcode hardware categories
+    db = BugDatabaseModel(title="Firmware Bug Tracker")
+    db.bugs.append(
+        BugReportModel(
+            id="BUG-001",
+            title="Firmware Test",
+            severity=BugSeverity.MEDIUM,
+            status=BugStatus.OPEN,
+            category=BugCategory.DRIVER,
+        )
+    )
+    exporter = MarkdownBugExporter(repo_root=tmp_path)
+    md_text = exporter.render_markdown(db)
+    assert "**`PCB`**" not in md_text
+    assert "**`CAD`**" not in md_text
+    assert "**`SIMULATION`**" not in md_text
+    assert "**`DRIVER`**" in md_text

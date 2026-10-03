@@ -182,13 +182,17 @@ class SQLiteBugStore:
                     steps = []
 
                 b_uuid = row["uuid"] if ("uuid" in row.keys() and row["uuid"]) else str(uuid_pkg.uuid4())
+                try:
+                    category_val = BugCategory(row["category"])
+                except ValueError:
+                    category_val = BugCategory.GENERAL
                 bug = BugReportModel(
                     id=row["id"],
                     uuid=b_uuid,
                     title=row["title"],
                     status=BugStatus(row["status"]),
                     severity=BugSeverity(row["severity"]),
-                    category=BugCategory(row["category"]),
+                    category=category_val,
                     component=row["component"] or "",
                     description=row["description"] or "",
                     reproduction_steps=steps,
@@ -410,13 +414,17 @@ class SQLiteBugStore:
                 steps = json.loads(steps_raw) if steps_raw else []
             except (json.JSONDecodeError, TypeError):
                 steps = []
+            try:
+                category_val = BugCategory(row["category"])
+            except ValueError:
+                category_val = BugCategory.GENERAL
             return BugReportModel(
                 id=row["id"],
                 uuid=row["uuid"] or bug_uuid,
                 title=row["title"],
                 status=BugStatus(row["status"]),
                 severity=BugSeverity(row["severity"]),
-                category=BugCategory(row["category"]),
+                category=category_val,
                 component=row["component"] or "",
                 description=row["description"] or "",
                 reproduction_steps=steps,

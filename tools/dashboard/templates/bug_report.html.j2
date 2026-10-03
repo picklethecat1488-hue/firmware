@@ -1052,7 +1052,7 @@
       document.getElementById("bug-title").value = bug.title || "";
       document.getElementById("bug-severity").value = bug.severity || "MEDIUM";
       document.getElementById("bug-status").value = bug.status || "OPEN";
-      document.getElementById("bug-category").value = bug.category || "PCB";
+      document.getElementById("bug-category").value = bug.category || "FIRMWARE";
       document.getElementById("bug-component").value = bug.component || "";
       document.getElementById("bug-description").value = bug.description || "";
       document.getElementById("bug-steps").value = (bug.reproduction_steps || []).join("\n");
@@ -1143,7 +1143,7 @@
         title: "New Bug Report",
         status: "OPEN",
         severity: "MEDIUM",
-        category: "PCB",
+        category: "FIRMWARE",
         component: "",
         description: "",
         reproduction_steps: [],
@@ -1192,7 +1192,7 @@
           title: title || "New Bug Report",
           status: status || "OPEN",
           severity: severity || "MEDIUM",
-          category: category || "PCB",
+          category: category || "FIRMWARE",
           component: component,
           description: description,
           reproduction_steps: steps,

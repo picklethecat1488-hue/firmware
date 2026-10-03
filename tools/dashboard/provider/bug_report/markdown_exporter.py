@@ -143,14 +143,24 @@ class MarkdownBugExporter:
                 "",
                 "| Category | Count | Description |",
                 "| :--- | :---: | :--- |",
-                f"| **`PCB`** | {category_counts.get(BugCategory.PCB.value, 0)} | Schematics, routing, footprints, nets, DRC, silkscreen. |",
-                f"| **`CAD`** | {category_counts.get(BugCategory.CAD.value, 0)} | 3D geometry, step models, enclosures, mechanical assembly. |",
-                f"| **`SIMULATION`** | {category_counts.get(BugCategory.SIMULATION.value, 0)} | JAX SPH fluid dynamics, PyBullet kinematics, physics. |",
-                f"| **`INFRASTRUCTURE`** | {category_counts.get(BugCategory.INFRASTRUCTURE.value, 0)} | Build tooling, compilers, test runners, headless tools. |",
-                f"| **`UI`** | {category_counts.get(BugCategory.UI.value, 0)} | Web dashboards, CLI viewers, review interfaces. |",
-                "",
             ]
         )
+        category_descriptions = {
+            BugCategory.FIRMWARE.value: "Core firmware logic, state machines, async tasks.",
+            BugCategory.CONTROLLER.value: "Domain controllers, PID loops, event dispatch.",
+            BugCategory.DRIVER.value: "Hardware peripheral drivers, embedded-hal.",
+            BugCategory.PLATFORM.value: "Chip support, PAC, HAL, clock/power management.",
+            BugCategory.BOARD.value: "Board support packages (BSP), pinmux, boards.",
+            BugCategory.MODEL.value: "Domain data models, configurations, state definitions.",
+            BugCategory.SHELL.value: "CLI interface, shell commands, debug console.",
+            BugCategory.INFRASTRUCTURE.value: "Build tooling, compilers, test runners, headless tools.",
+            BugCategory.UI.value: "Web dashboards, CLI viewers, review interfaces.",
+            BugCategory.GENERAL.value: "Unclassified or cross-cutting firmware issues.",
+        }
+        for cat in BugCategory:
+            desc = category_descriptions.get(cat.value, "Subsystem issues.")
+            lines.append(f"| **`{cat.value}`** | {category_counts.get(cat.value, 0)} | {desc} |")
+        lines.append("")
 
         # Issue checklist
         lines.extend(

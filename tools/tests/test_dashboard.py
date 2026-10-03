@@ -1677,7 +1677,7 @@ def test_regression_bug_216_save_and_exit_preserves_resolved_bugs(tmp_path: Path
                     "title": "Power Rail Ripple",
                     "status": "OPEN",
                     "severity": "HIGH",
-                    "category": "PCB",
+                    "category": "DRIVER",
                     "description": "Ripple on 3V3 rail.",
                     "resolution_notes": "",
                 }
@@ -1834,6 +1834,7 @@ def test_regression_bug_221_branches_missing_from_branch_viewer(tmp_path: Path) 
     # Verify checkout of 'main' succeeds
     assert engine.checkout_branch("main") is True
     assert engine.get_current_branch() == "main"
+
 
 def test_regression_bug_223_dashboard_comment_response_and_error_handling(tmp_path: Path) -> None:
     """Verify BUG-223: DashboardServer /api/comment returns status ok and id to prevent undefined errors."""
@@ -2160,7 +2161,7 @@ def test_regression_bug_230_execution_logs_and_tracebacks_preserved(tmp_path: Pa
         # 1. Create bug with execution logs
         payload = {
             "title": "Test Bug Logs",
-            "category": "PCB",
+            "category": "DRIVER",
             "severity": "HIGH",
             "status": "OPEN",
             "description": "Failure during flying probe testing",
@@ -2296,7 +2297,9 @@ def test_regression_bug_234_pr_submit_no_git_sl_error(tmp_path: Path):
 
 def test_regression_bug_235_favicon_web_icon(tmp_path: Path):
     """Verify BUG-235: High-contrast Quake-themed favicon is created and served across dashboards."""
-    static_favicon = Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "favicon.svg"
+    static_favicon = (
+        Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "favicon.svg"
+    )
     assert static_favicon.exists(), "static/favicon.svg must exist"
     svg_content = static_favicon.read_text(encoding="utf-8")
     assert "<svg" in svg_content
@@ -3108,4 +3111,3 @@ def test_regression_side_by_side_diff_row_property_mapping() -> None:
     assert "old line code" in html_fb
     assert "new line code" in html_fb
     assert "undefined" not in html_fb
-

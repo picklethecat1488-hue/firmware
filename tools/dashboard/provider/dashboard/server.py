@@ -743,12 +743,17 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
         if not bug:
             repro_steps = data.get("reproduction_steps") or data.get("steps_to_reproduce") or []
+            cat_raw = data.get("category", BugCategory.FIRMWARE.value)
+            try:
+                cat_val = BugCategory(cat_raw)
+            except ValueError:
+                cat_val = BugCategory.GENERAL
             bug = BugReportModel(
                 id=bug_id,
                 title=title or "Untitled Defect",
                 status=BugStatus(data.get("status", BugStatus.OPEN.value)),
                 severity=BugSeverity(data.get("severity", BugSeverity.MEDIUM.value)),
-                category=BugCategory(data.get("category", BugCategory.PCB.value)),
+                category=cat_val,
                 component=data.get("component", ""),
                 description=data.get("description", ""),
                 reproduction_steps=repro_steps if isinstance(repro_steps, list) else [str(repro_steps)],
@@ -1030,7 +1035,7 @@ class DashboardServer(ThreadingHTTPServer):
                             title=bid,
                             status=BugStatus.OPEN,
                             severity=BugSeverity.MEDIUM,
-                            category=BugCategory.PCB,
+                            category=BugCategory.FIRMWARE,
                         )
                     )
             node.bug_tags = tags

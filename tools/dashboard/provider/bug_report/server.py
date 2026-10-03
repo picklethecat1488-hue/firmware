@@ -242,12 +242,17 @@ class BugReportRequestHandler(BaseHTTPRequestHandler):
         elif status in (BugStatus.OPEN, BugStatus.IN_PROGRESS):
             resolved_at = None
 
+        cat_raw = data.get("category", BugCategory.FIRMWARE.value)
+        try:
+            cat_val = BugCategory(cat_raw)
+        except ValueError:
+            cat_val = BugCategory.GENERAL
         bug = BugReportModel(
             id=bug_id,
             title=data.get("title", "Untitled Bug"),
             status=status,
             severity=BugSeverity(data.get("severity", BugSeverity.MEDIUM.value)),
-            category=BugCategory(data.get("category", BugCategory.PCB.value)),
+            category=cat_val,
             component=data.get("component", ""),
             description=data.get("description", ""),
             reproduction_steps=steps,
@@ -608,7 +613,11 @@ class BugReportServer(ThreadingHTTPServer):
 
         if not self.fresh:
             fallback_md = self.repo_root / "build" / "BUGS.md"
-            md_to_read = self.markdown_output if self.markdown_output.exists() else (fallback_md if fallback_md.exists() else None)
+            md_to_read = (
+                self.markdown_output
+                if self.markdown_output.exists()
+                else (fallback_md if fallback_md.exists() else None)
+            )
             if md_to_read and md_to_read.exists():
                 md_db = self.exporter.parse_markdown(md_to_read)
                 if md_db and md_db.bugs:

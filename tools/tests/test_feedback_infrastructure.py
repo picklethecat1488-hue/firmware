@@ -38,7 +38,7 @@ def test_bug_uuid_persistence_in_sqlite(tmp_path: Path) -> None:
         title="Test Bug for UUID Persistence",
         status=BugStatus.OPEN,
         severity=BugSeverity.HIGH,
-        category=BugCategory.PCB,
+        category=BugCategory.DRIVER,
     )
     db = BugDatabaseModel(bugs=[bug])
     store.save_database(db)
@@ -71,7 +71,7 @@ def test_bug_granular_export_and_rename_detection(tmp_path: Path) -> None:
         title="Carrier Board Battery Holder Clearance",
         status=BugStatus.OPEN,
         severity=BugSeverity.MEDIUM,
-        category=BugCategory.CAD,
+        category=BugCategory.CONTROLLER,
         description="Battery holder clearance issue",
     )
     db = BugDatabaseModel(bugs=[bug])
@@ -118,7 +118,7 @@ def test_bug_duplicate_id_auto_resolution(tmp_path: Path) -> None:
         title="First duplicate bug",
         status=BugStatus.OPEN,
         severity=BugSeverity.LOW,
-        category=BugCategory.PCB,
+        category=BugCategory.DRIVER,
     )
     bug2 = BugReportModel(
         id="BUG-050",  # Duplicate ID
@@ -126,7 +126,7 @@ def test_bug_duplicate_id_auto_resolution(tmp_path: Path) -> None:
         title="Second duplicate bug",
         status=BugStatus.OPEN,
         severity=BugSeverity.HIGH,
-        category=BugCategory.SIMULATION,
+        category=BugCategory.PLATFORM,
     )
 
     db = BugDatabaseModel(bugs=[bug1, bug2])
@@ -390,4 +390,3 @@ def test_baseline_reports_default_to_target_and_preserve_feedback_granularity(tm
     assert (mock_repo / "target" / "BUGS.md").is_file()
     assert (mock_repo / "feedback" / "BUG_999.md").is_file()
     assert not (mock_repo / "feedback" / "BUGS.md").exists()
-

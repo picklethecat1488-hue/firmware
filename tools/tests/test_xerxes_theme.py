@@ -187,7 +187,7 @@ def test_render_bug_report_template() -> None:
         title="Fuel Gauge I2C Bus Hang Under Low Voltage",
         status=BugStatus.OPEN,
         severity=BugSeverity.HIGH,
-        category=BugCategory.PCB,
+        category=BugCategory.DRIVER,
         component="platform/max17048",
         description="I2C lines remain pulled low when cell drops below 3.0V.",
     )
