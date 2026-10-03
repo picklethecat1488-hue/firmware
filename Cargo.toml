@@ -9,6 +9,7 @@ members = [
     "platform/src/rp2040",
     "board",
     "app",
+    "carrier_board",
     "tools/host_fs",
     "tools/host_cli",
     "platform/host",
@@ -20,6 +21,7 @@ default-members = [
     "controller",
     "platform",
     "app",
+    "carrier_board",
 ]
 
 [workspace.package]
