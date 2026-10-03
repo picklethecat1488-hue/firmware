@@ -47,3 +47,11 @@ ENV/
 conda-bld/
 
 TODO.md
+
+# Dashboard Databases, Builds, and State
+build/*
+!build/attachments/
+!build/attachments/**
+feedback/BUGS.md
+feedback/CR.md
+feedback/CR_working.md
