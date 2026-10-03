@@ -1,6 +1,6 @@
-//! Integration tests for Carrier Board 2.0 shell crate.
+//! Integration tests for Carrier Board 2.0 definitions in the app crate.
 
-use carrier_board::{
+use cat_detector::carrier_board::{
     hello_world, run_bringup_self_test, BOARD_NAME, BOARD_REVISION, CANONICAL_COMPONENTS,
     EXT_NAND_SIZE_BYTES, FLASH_SIZE_BYTES, I2C0_ADDR_FUEL_GAUGE, I2C0_ADDR_LP5009,
     I2C1_ADDR_IQS7222A, MCU_ARCH, SRAM_SIZE_BYTES,

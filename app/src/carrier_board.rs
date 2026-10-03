@@ -4,7 +4,6 @@
 //! and initial bringup shell diagnostic routines for the Carrier Board 2.0
 //! architecture powered by the NXP MCX N947 dual-core microcontroller.
 
-#![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
 #![deny(missing_docs)]
 
 /// Canonical name of the carrier board hardware platform.
@@ -79,7 +78,8 @@ pub mod pins {
 }
 
 /// Static description container for carrier board hardware components.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct BoardComponent {
     /// Reference designator (e.g. "U1", "U8").
     pub designator: &'static str,
@@ -149,6 +149,28 @@ pub const CANONICAL_COMPONENTS: &[BoardComponent] = &[
     },
 ];
 
+/// Canonical Carrier Board 2.0 ASCII logo banner defined in the hardware project.
+pub const CARRIER_BOARD_BANNER: &str = r#"
++------------------------------------------------------------------+
+|                                                                  |
+|                             /\                                   |
+|                | \         /  \         / |                      |
+|                |  \       / /\ \       /  |                      |
+|                |   \     / /  \ \     /   |                      |
+|                |    \   /_/ /\ \_\   /    |                      |
+|                 \    \    / /\ \    /    /                       |
+|                  \    \  /_/  \_\  /    /                        |
+|                   \    \          /    /                         |
+|                    \    \   /\   /    /                          |
+|                     \    \_/  \_/    /                           |
+|                      \              /                            |
+|                       \____________/                             |
+|                                                                  |
+|                ANTIGRAVITY // CARRIER BOARD 2.0                  |
+|                 NXP MCX N947 DUAL CORTEX-M33                     |
++------------------------------------------------------------------+
+"#;
+
 /// Returns the canonical Hello World bringup greeting for Carrier Board 2.0.
 pub fn hello_world() -> &'static str {
     "Hello, World! Carrier Board 2.0 bringup shell initialized."
@@ -156,12 +178,7 @@ pub fn hello_world() -> &'static str {
 
 /// Formats and returns an overview banner string for host diagnostics.
 pub fn get_bringup_banner() -> &'static str {
-    r#"
-======================================================================
-  CARRIER BOARD 2.0 // HARDWARE BRINGUP & DIAGNOSTIC SHELL
-  NXP MCX N947 Dual-Core Arm Cortex-M33 (no_std, Embassy)
-======================================================================
-"#
+    CARRIER_BOARD_BANNER
 }
 
 /// Performs a diagnostic self-check verifying that all hardware configuration parameters are consistent.
