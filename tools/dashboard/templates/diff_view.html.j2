@@ -1880,14 +1880,15 @@
           `;
         }
         (node.worm_tags || node.bug_tags || []).forEach(worm => {
+          const canonicalId = (worm.id || "").replace(/^BUG[-_]/i, "WORM-");
           tagsHtml += `
             <span style="display:inline-flex;align-items:center;">
               <span class="node-badge node-badge-worm ${worm.status === 'RESOLVED' ? 'resolved' : ''}"
-                    onclick="event.stopPropagation(); openWorm('${escapeHtml(worm.id)}');"
+                    onclick="event.stopPropagation(); openWorm('${escapeHtml(canonicalId)}');"
                     title="${escapeHtml(worm.title)}">
-                🪱 ${escapeHtml(worm.id)}: ${escapeHtml(worm.status)}
+                🪱 ${escapeHtml(canonicalId)}: ${escapeHtml(worm.status)}
               </span>
-              <button class="copy-icon-btn copy-badge-btn" onclick="event.stopPropagation(); copyText('${escapeHtml(worm.id)}');" title="Copy ${escapeHtml(worm.id)}">📋</button>
+              <button class="copy-icon-btn copy-badge-btn" onclick="event.stopPropagation(); copyText('${escapeHtml(canonicalId)}');" title="Copy ${escapeHtml(canonicalId)}">📋</button>
             </span>
           `;
         });

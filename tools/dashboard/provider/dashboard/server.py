@@ -1029,18 +1029,35 @@ class DashboardServer(ThreadingHTTPServer):
         agent_feedback = [f for f in working_files if f.is_feedback]
 
         # Match worm reports with commits
-        worm_dict = {w.id: w for w in self.worm_server.database.worms}
+        worm_dict: Dict[str, Any] = {}
+        for w in self.worm_server.database.worms:
+            num = re.sub(r"^(?:WORM|BUG)[-_]", "", w.id, flags=re.IGNORECASE)
+            worm_dict[f"WORM-{num}"] = w
+            worm_dict[f"BUG-{num}"] = w
+            worm_dict[w.id] = w
+
         for node in smartlog_nodes:
+            # Canonicalize existing tag IDs
+            for tag in node.worm_tags:
+                num = re.sub(r"^(?:WORM|BUG)[-_]", "", tag.id, flags=re.IGNORECASE)
+                tag.id = f"WORM-{num}"
+                if tag.id in worm_dict:
+                    w = worm_dict[tag.id]
+                    tag.title = w.title
+                    tag.status = w.status.value
+                    tag.severity = w.severity.value
+
             worm_ids = re.findall(r"\b((?:WORM|BUG)[_-]\d+)\b", node.subject, re.IGNORECASE)
             existing_ids = {t.id for t in node.worm_tags}
             for wid in worm_ids:
-                norm_id = wid.upper().replace("_", "-")
-                if norm_id not in existing_ids:
-                    if norm_id in worm_dict:
-                        w = worm_dict[norm_id]
+                num = re.sub(r"^(?:WORM|BUG)[-_]", "", wid, flags=re.IGNORECASE)
+                canonical_id = f"WORM-{num}"
+                if canonical_id not in existing_ids:
+                    if canonical_id in worm_dict:
+                        w = worm_dict[canonical_id]
                         node.worm_tags.append(
                             CommitWormTagModel(
-                                id=norm_id,
+                                id=canonical_id,
                                 title=w.title,
                                 status=w.status.value,
                                 severity=w.severity.value,
@@ -1049,19 +1066,13 @@ class DashboardServer(ThreadingHTTPServer):
                     else:
                         node.worm_tags.append(
                             CommitWormTagModel(
-                                id=norm_id,
-                                title=norm_id,
+                                id=canonical_id,
+                                title=canonical_id,
                                 status="OPEN",
                                 severity="LOW",
                             )
                         )
-                    existing_ids.add(norm_id)
-            for tag in node.worm_tags:
-                if tag.id in worm_dict:
-                    w = worm_dict[tag.id]
-                    tag.title = w.title
-                    tag.status = w.status.value
-                    tag.severity = w.severity.value
+                    existing_ids.add(canonical_id)
 
         # Load Code Review stats for commits (BUG-199)
         cr_stats: dict[str, dict[str, Any]] = {}
