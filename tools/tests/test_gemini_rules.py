@@ -74,3 +74,23 @@ def test_modular_subsystem_guides_exist_and_linked_in_gemini() -> None:
         assert guide_rel in content or guide_path.name in content, (
             f"GEMINI.md must reference subsystem guide {guide_rel}"
         )
+
+
+def test_gemini_documentation_style_uses_rust_syntax() -> None:
+    """Verify Section 4 of GEMINI.md uses canonical Rust syntax examples for coding style."""
+    repo_root = get_repo_root()
+    gemini_path = repo_root / "GEMINI.md"
+    assert gemini_path.exists()
+    content = gemini_path.read_text(encoding="utf-8")
+
+    # Enums & Newtypes with Rust derive
+    assert "Strongly Typed Enums & Newtypes" in content
+    assert "defmt::Format" in content
+
+    # Constants with pub const
+    assert "pub const" in content or "ALL_CAPS named constants" in content
+
+    # Pattern matching with match
+    assert "match" in content
+    assert "if let Some" in content
+

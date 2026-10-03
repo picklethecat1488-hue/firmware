@@ -35,9 +35,9 @@ Before finalizing any task, committing changes, or proposing modifications to th
 
 ### 4. Documentation & Lint Style
 * Code documentation MUST be comprehensive. Always write clear docstrings (using `///` in Rust and PEP-257 docstrings in Python) for all newly defined or modified structs, enums, public methods, public functions, and struct fields.
-* **String Enums for Keys**: Prefer defining structured string enums (subclassing `str` and `Enum` in Python) over passing raw string literals directly for dictionary keys, lifecycle statuses, or category modes.
-* **Named Constant Formatting**: Constant values in production code must be assigned to module-level or class-level `ALL_CAPS` named constant variables rather than being embedded as inline magic literals.
-* **Idiomatic Iteration & Pattern Matching**: Prefer looping over sequences directly or using `enumerate(...)` rather than indexing by integer range bounds. Prefer Python `match / case` pattern matching syntax when comparing against multiple variants or enum branches.
+* **Strongly Typed Enums & Newtypes**: Prefer defining strongly typed Rust enums (`#[derive(Copy, Clone, Eq, PartialEq, defmt::Format)] enum State { ... }`) or newtypes over passing raw primitive literals directly for state identifiers, command opcodes, lifecycle statuses, or category modes. In host Python utilities, subclass `str` and `Enum`.
+* **Named Constant Formatting**: Constant values in production code must be assigned to module-level or associated `ALL_CAPS` named constants (e.g., `pub const MAX_BUFFER_SIZE: usize = 256;`) rather than being embedded as inline magic literals.
+* **Idiomatic Iteration & Pattern Matching**: Prefer looping over iterators directly (`for item in items.iter()`, `.enumerate()`) or iterator adapters (`.map()`, `.filter()`) rather than manual integer indexing by range bounds. Prefer exhaustive Rust `match` expression pattern matching (or `if let Some(...) = ...`) over chained `if/else` ladders when comparing against variants or enum branches.
 * **Markdown Preview Asset Location**: All markdown preview galleries, rendered frame previews, inspection figures, and simulation snapshots intended for visual evaluation MUST be placed inside the workspace under `recordings/previews/` using relative image paths to ensure compatibility with VS Code Markdown Preview security sandbox restrictions.
 
 ---
