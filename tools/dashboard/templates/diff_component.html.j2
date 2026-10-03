@@ -535,6 +535,23 @@
       }
     },
 
+    highlightFullDocument(code, lang) {
+      if (!code) return [];
+      const lines = code.split(/\r?\n/).map(l => this.truncateLine(l));
+      if (typeof hljs === "undefined") {
+        return lines.map(l => this.escapeHtml(l));
+      }
+      try {
+        const truncatedCode = lines.join("\n");
+        const highlighted = (lang && hljs.getLanguage(lang))
+          ? hljs.highlight(truncatedCode, { language: lang, ignoreIllegals: true }).value
+          : hljs.highlightAuto(truncatedCode).value;
+        return this.balanceLines(highlighted.split(/\r?\n/));
+      } catch (e) {
+        return lines.map(l => this.escapeHtml(l));
+      }
+    },
+
     renderDiff(container, diffData, options = {}) {
       if (!container) return;
       if (!diffData) {
@@ -549,8 +566,11 @@
         return;
       }
 
-      const oldHighlighted = options.oldLines ? this.highlightAllLines(options.oldLines, lang) : null;
-      const newHighlighted = options.newLines ? this.highlightAllLines(options.newLines, lang) : null;
+      const oldContent = (options && options.oldLines) ? options.oldLines.join("\n") : (diffData.old_content || "");
+      const newContent = (options && options.newLines) ? options.newLines.join("\n") : (diffData.new_content || diffData.full_content || "");
+
+      const oldHighlighted = this.highlightFullDocument(oldContent, lang);
+      const newHighlighted = this.highlightFullDocument(newContent, lang);
 
       switch (mode) {
         case "unified":
@@ -591,30 +611,41 @@
       `;
 
       rows.forEach(r => {
+        const rawType = r.row_type !== undefined ? r.row_type : (r.type || "equal");
+        const rowClass = rawType === "equal" ? "row-equal" : ("row-" + rawType);
+        const oldLineNo = (r.old_no !== undefined && r.old_no !== null) ? r.old_no : ((r.old_line_no !== undefined && r.old_line_no !== null) ? r.old_line_no : "");
+        const newLineNo = (r.new_no !== undefined && r.new_no !== null) ? r.new_no : ((r.new_line_no !== undefined && r.new_line_no !== null) ? r.new_line_no : "");
+        const oldText = r.old_text !== undefined ? r.old_text : (r.old_content !== undefined ? r.old_content : "");
+        const newText = r.new_text !== undefined ? r.new_text : (r.new_content !== undefined ? r.new_content : "");
+
         let oldHtml = "";
+        if (oldLineNo && oldHighlighted && oldHighlighted[oldLineNo - 1] !== undefined) {
+          oldHtml = oldHighlighted[oldLineNo - 1];
+        } else if (oldText) {
+          oldHtml = this.highlightLine(oldText, lang);
+        }
+
         let newHtml = "";
-
-        if (r.old_line_no && oldHighlighted && oldHighlighted[r.old_line_no - 1] !== undefined) {
-          oldHtml = oldHighlighted[r.old_line_no - 1];
-        } else if (r.old_content) {
-          oldHtml = this.highlightLine(r.old_content, lang);
+        if (newLineNo && newHighlighted && newHighlighted[newLineNo - 1] !== undefined) {
+          newHtml = newHighlighted[newLineNo - 1];
+        } else if (newText) {
+          newHtml = this.highlightLine(newText, lang);
         }
 
-        if (r.new_line_no && newHighlighted && newHighlighted[r.new_line_no - 1] !== undefined) {
-          newHtml = newHighlighted[r.new_line_no - 1];
-        } else if (r.new_content) {
-          newHtml = this.highlightLine(r.new_content, lang);
-        }
+        let oldMarker = " ";
+        if (rawType === "delete" || rawType === "replace" || rawType === "del") oldMarker = "-";
+        let newMarker = " ";
+        if (rawType === "insert" || rawType === "replace" || rawType === "add") newMarker = "+";
 
-        const oldMarker = r.type === "delete" || r.type === "replace" ? "-" : "";
-        const newMarker = r.type === "insert" || r.type === "replace" ? "+" : "";
+        const oldClickAttr = oldLineNo ? ` onclick="window.onLineClick && window.onLineClick('old', ${oldLineNo})"` : "";
+        const newClickAttr = newLineNo ? ` onclick="window.onLineClick && window.onLineClick('new', ${newLineNo})"` : "";
 
         html += `
-          <tr class="diff-sbs-row row-${r.type}" data-old-line="${r.old_line_no || ''}" data-new-line="${r.new_line_no || ''}">
-            <td class="diff-lineno old-lineno" onclick="window.onLineClick && window.onLineClick('old', ${r.old_line_no})">${r.old_line_no || ''}</td>
+          <tr class="diff-sbs-row ${rowClass}" data-old-line="${oldLineNo}" data-new-line="${newLineNo}">
+            <td class="diff-lineno old-lineno"${oldClickAttr}>${oldLineNo}</td>
             <td class="diff-marker-cell old-marker">${oldMarker}</td>
             <td class="diff-code-cell old-code hljs">${oldHtml}</td>
-            <td class="diff-lineno new-lineno" onclick="window.onLineClick && window.onLineClick('new', ${r.new_line_no})">${r.new_line_no || ''}</td>
+            <td class="diff-lineno new-lineno"${newClickAttr}>${newLineNo}</td>
             <td class="diff-marker-cell new-marker">${newMarker}</td>
             <td class="diff-code-cell new-code hljs">${newHtml}</td>
           </tr>
@@ -632,11 +663,15 @@
 
       hunks.forEach(h => {
         html += `<div class="diff-unified-hunk-bar">${this.escapeHtml(h.header)}</div>`;
-        h.lines.forEach(l => {
+        (h.lines || []).forEach(l => {
+          const isAdd = (l.type === "insert" || l.type === "add");
+          const isDel = (l.type === "delete" || l.type === "del");
+          const rowType = isDel ? "del delete" : (isAdd ? "add insert" : l.type);
+
           let lineHtml = "";
-          if (l.type === "insert" && l.new_line_no && newHighlighted && newHighlighted[l.new_line_no - 1] !== undefined) {
+          if (isAdd && l.new_line_no && newHighlighted && newHighlighted[l.new_line_no - 1] !== undefined) {
             lineHtml = newHighlighted[l.new_line_no - 1];
-          } else if (l.type === "delete" && l.old_line_no && oldHighlighted && oldHighlighted[l.old_line_no - 1] !== undefined) {
+          } else if (isDel && l.old_line_no && oldHighlighted && oldHighlighted[l.old_line_no - 1] !== undefined) {
             lineHtml = oldHighlighted[l.old_line_no - 1];
           } else if (l.new_line_no && newHighlighted && newHighlighted[l.new_line_no - 1] !== undefined) {
             lineHtml = newHighlighted[l.new_line_no - 1];
@@ -646,9 +681,9 @@
             lineHtml = this.highlightLine(l.content, lang);
           }
 
-          const markerChar = l.type === "insert" ? "+" : (l.type === "delete" ? "-" : " ");
+          const markerChar = isAdd ? "+" : (isDel ? "-" : " ");
           html += `
-            <div class="diff-unified-row row-${l.type}" data-old-line="${l.old_line_no || ''}" data-new-line="${l.new_line_no || ''}">
+            <div class="diff-unified-row row-${l.type} ${rowType}" data-old-line="${l.old_line_no || ''}" data-new-line="${l.new_line_no || ''}">
               <span class="diff-unified-num-old">${l.old_line_no || ''}</span>
               <span class="diff-unified-num-new">${l.new_line_no || ''}</span>
               <span class="diff-unified-marker">${markerChar}</span>
@@ -663,7 +698,7 @@
     },
 
     renderFull(container, diffData, lang, newHighlighted) {
-      const lines = diffData.new_full_lines || [];
+      const lines = diffData.new_full_lines || (diffData.new_content ? diffData.new_content.split(/\r?\n/) : (diffData.full_content ? diffData.full_content.split(/\r?\n/) : []));
       if (!lines || lines.length === 0) {
         container.innerHTML = `<div class="diff-empty-box">No file content available to preview in full.</div>`;
         return;

@@ -2919,3 +2919,193 @@ def test_regression_quake_diff_engine_defined_and_js_syntax() -> None:
                 text=True,
             )
             assert res.returncode == 0, f"Script {idx} in diff_view.html.j2 has JS syntax error: {res.stderr}"
+
+
+def test_regression_side_by_side_diff_row_property_mapping() -> None:
+    """Verify side-by-side diff renderer handles DiffSideBySideRow properties without blanks or undefined errors.
+
+    Regression test ensuring:
+    1. QuakeDiffEngine.renderSideBySide binds old_no, new_no, old_text, new_text, and row_type.
+    2. Fallback to old_line_no, new_line_no, old_content, new_content, and type is supported.
+    3. Output HTML contains line numbers, code cells, markers (+/-), and valid row styling classes.
+    4. No undefined strings or missing content occur in side-by-side table rows.
+    """
+    import json
+    import re
+    import shutil
+    import subprocess
+
+    template_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
+    comp_path = template_dir / "diff_component.html.j2"
+    assert comp_path.exists()
+    comp_text = comp_path.read_text(encoding="utf-8")
+
+    # Invariants in JS source:
+    assert "r.old_no" in comp_text
+    assert "r.new_no" in comp_text
+    assert "r.old_text" in comp_text
+    assert "r.new_text" in comp_text
+    assert "r.row_type" in comp_text
+    assert "highlightFullDocument(" in comp_text
+
+    # Extract JS script block
+    scripts = re.findall(r"<script>(.*?)</script>", comp_text, re.DOTALL)
+    assert len(scripts) >= 1, "diff_component.html.j2 must contain a script block"
+    engine_script = scripts[0]
+
+    node_bin = shutil.which("node")
+    if not node_bin:
+        return
+
+    # Test 1: DiffSideBySideRow data structure as emitted by GitEngine / vcs model
+    mock_diff_canonical = {
+        "file_path": "firmware/src/main.rs",
+        "old_content": "const FIRST: u32 = 1;\nconst REMOVED: u32 = 2;\nconst MODIFIED: u32 = 3;\nconst LAST: u32 = 4;",
+        "new_content": "const FIRST: u32 = 1;\nconst MODIFIED: u32 = 99;\nconst INSERTED: u32 = 5;\nconst LAST: u32 = 4;",
+        "side_by_side": [
+            {
+                "old_no": 1,
+                "old_text": "const FIRST: u32 = 1;",
+                "new_no": 1,
+                "new_text": "const FIRST: u32 = 1;",
+                "row_type": "equal",
+            },
+            {
+                "old_no": 2,
+                "old_text": "const REMOVED: u32 = 2;",
+                "new_no": None,
+                "new_text": "",
+                "row_type": "delete",
+            },
+            {
+                "old_no": 3,
+                "old_text": "const MODIFIED: u32 = 3;",
+                "new_no": 2,
+                "new_text": "const MODIFIED: u32 = 99;",
+                "row_type": "replace",
+            },
+            {
+                "old_no": None,
+                "old_text": "",
+                "new_no": 3,
+                "new_text": "const INSERTED: u32 = 5;",
+                "row_type": "insert",
+            },
+            {
+                "old_no": 4,
+                "old_text": "const LAST: u32 = 4;",
+                "new_no": 4,
+                "new_text": "const LAST: u32 = 4;",
+                "row_type": "equal",
+            },
+        ],
+    }
+
+    test_harness_canonical = f"""
+    const window = {{
+      localStorage: {{ getItem: () => null, setItem: () => null }}
+    }};
+    {engine_script}
+
+    const container = {{
+      innerHTML: "",
+      querySelector: () => null,
+      querySelectorAll: () => []
+    }};
+
+    const diffData = {json.dumps(mock_diff_canonical)};
+    QuakeDiffEngine.renderDiff(container, diffData, "side_by_side");
+
+    console.log(JSON.stringify({{
+      html: container.innerHTML
+    }}));
+    """
+
+    res = subprocess.run(
+        [node_bin, "-e", test_harness_canonical],
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 0, f"Node harness failed: {res.stderr}"
+
+    output_data = json.loads(res.stdout.strip())
+    html = output_data["html"]
+
+    # Invariant assertions:
+    # 1. Row classes are populated correctly
+    assert 'class="diff-sbs-row row-equal"' in html
+    assert 'class="diff-sbs-row row-delete"' in html
+    assert 'class="diff-sbs-row row-replace"' in html
+    assert 'class="diff-sbs-row row-insert"' in html
+
+    # 2. Markers are present
+    assert '<td class="diff-marker-cell old-marker">-' in html
+    assert '<td class="diff-marker-cell new-marker">+' in html
+
+    # 3. Line numbers and code contents are populated
+    assert "const FIRST: u32 = 1;" in html
+    assert "const REMOVED: u32 = 2;" in html
+    assert "const MODIFIED: u32 = 3;" in html
+    assert "const MODIFIED: u32 = 99;" in html
+    assert "const INSERTED: u32 = 5;" in html
+    assert "const LAST: u32 = 4;" in html
+
+    # 4. Line numbers appear in lineno cells
+    assert ">1</td>" in html
+    assert ">2</td>" in html
+    assert ">3</td>" in html
+    assert ">4</td>" in html
+
+    # 5. No undefined or NaN appears in html
+    assert "undefined" not in html
+    assert "NaN" not in html
+
+    # Test 2: Verify fallback properties (old_line_no, new_line_no, old_content, new_content, type) also render
+    mock_diff_fallback = {
+        "file_path": "tests/test.py",
+        "side_by_side": [
+            {
+                "old_line_no": 10,
+                "old_content": "old line code",
+                "new_line_no": 12,
+                "new_content": "new line code",
+                "type": "replace",
+            }
+        ],
+    }
+
+    test_harness_fallback = f"""
+    const window = {{
+      localStorage: {{ getItem: () => null, setItem: () => null }}
+    }};
+    {engine_script}
+
+    const container = {{
+      innerHTML: "",
+      querySelector: () => null,
+      querySelectorAll: () => []
+    }};
+
+    const diffData = {json.dumps(mock_diff_fallback)};
+    QuakeDiffEngine.renderDiff(container, diffData, "side_by_side");
+
+    console.log(JSON.stringify({{
+      html: container.innerHTML
+    }}));
+    """
+
+    res_fb = subprocess.run(
+        [node_bin, "-e", test_harness_fallback],
+        capture_output=True,
+        text=True,
+    )
+    assert res_fb.returncode == 0, f"Node harness fallback failed: {res_fb.stderr}"
+    html_fb = json.loads(res_fb.stdout.strip())["html"]
+
+    assert 'class="diff-sbs-row row-replace"' in html_fb
+    assert ">10</td>" in html_fb
+    assert ">12</td>" in html_fb
+    assert "old line code" in html_fb
+    assert "new line code" in html_fb
+    assert "undefined" not in html_fb
+
