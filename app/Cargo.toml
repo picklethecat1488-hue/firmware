@@ -21,6 +21,12 @@ path = "src/cat_detector_shell.rs"
 test = true
 bench = false
 
+[[bin]]
+name = "carrier_board_shell"
+path = "src/carrier_board_shell.rs"
+test = true
+bench = false
+
 [dependencies]
 model = { path = "../model" }
 platform = { path = "../platform", features = ["dual-core"] }

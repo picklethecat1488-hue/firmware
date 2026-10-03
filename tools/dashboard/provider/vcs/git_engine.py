@@ -787,63 +787,72 @@ class GitEngine:
 
     def _extract_worm_tags(self, text: str) -> List[CommitWormTagModel]:
         """Extract worm/bug IDs from commit text and resolve current status via SQLite/Markdown."""
-        worm_ids = sorted(list(set(re.findall(r"\b((?:WORM|BUG)[_-]\d+)\b", text, re.IGNORECASE))))
-        if not worm_ids:
+        raw_ids = sorted(list(set(re.findall(r"\b((?:WORM|BUG)[_-]\d+)\b", text, re.IGNORECASE))))
+        if not raw_ids:
             return []
 
         tags: List[CommitWormTagModel] = []
+        # Canonicalize all extracted IDs to WORM-xxx
+        canonical_ids: List[str] = []
+        for wid in raw_ids:
+            num = re.sub(r"^(?:WORM|BUG)[-_]", "", wid, flags=re.IGNORECASE)
+            cid = f"WORM-{num}"
+            if cid not in canonical_ids:
+                canonical_ids.append(cid)
+
         db_map: Dict[str, Dict[str, str]] = {}
         for db_name in ["worms.sqlite", "bugs.sqlite"]:
             sqlite_path = self.repo_root / "target" / db_name
             if not sqlite_path.exists() and (self.repo_root / "build" / db_name).exists():
                 sqlite_path = self.repo_root / "build" / db_name
             if sqlite_path.exists():
-                table_name = "worms" if "worm" in db_name else "bugs"
                 try:
                     conn = sqlite3.connect(str(sqlite_path))
                     try:
                         cur = conn.cursor()
-                        for wid in worm_ids:
-                            norm_id = wid.replace("_", "-").upper()
-                            alt_id = (
-                                norm_id.replace("BUG-", "WORM-")
-                                if norm_id.startswith("BUG-")
-                                else norm_id.replace("WORM-", "BUG-")
-                            )
-                            cur.execute(
-                                f"SELECT id, title, status, severity FROM {table_name} WHERE id = ? OR id = ? OR id = ?",
-                                (norm_id, wid, alt_id),
-                            )
-                            row = cur.fetchone()
-                            if row:
-                                db_map[norm_id] = {
-                                    "title": str(row[1]),
-                                    "status": str(row[2]),
-                                    "severity": str(row[3]),
-                                }
+                        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('worms', 'bugs')")
+                        existing_tables = [row[0] for row in cur.fetchall()]
+                        table_name = "worms" if "worms" in existing_tables else ("bugs" if "bugs" in existing_tables else None)
+                        if table_name:
+                            for cid in canonical_ids:
+                                if cid in db_map:
+                                    continue
+                                num = cid.replace("WORM-", "")
+                                bug_id = f"BUG-{num}"
+                                cur.execute(
+                                    f"SELECT id, title, status, severity FROM {table_name} WHERE id = ? OR id = ? OR id LIKE ?",
+                                    (cid, bug_id, f"%{num}"),
+                                )
+                                row = cur.fetchone()
+                                if row:
+                                    db_map[cid] = {
+                                        "title": str(row[1]),
+                                        "status": str(row[2]),
+                                        "severity": str(row[3]),
+                                    }
                     finally:
                         conn.close()
                 except Exception:
                     pass
 
-        for wid in worm_ids:
-            norm_id = wid.replace("_", "-").upper()
-            if norm_id in db_map:
+        for cid in canonical_ids:
+            num = cid.replace("WORM-", "")
+            if cid in db_map:
                 tags.append(
                     CommitWormTagModel(
-                        id=norm_id,
-                        title=db_map[norm_id]["title"],
-                        status=db_map[norm_id]["status"],
-                        severity=db_map[norm_id]["severity"],
+                        id=cid,
+                        title=db_map[cid]["title"],
+                        status=db_map[cid]["status"],
+                        severity=db_map[cid]["severity"],
                     )
                 )
             else:
-                num = norm_id.replace("WORM-", "").replace("WORM_", "").replace("BUG-", "").replace("BUG_", "")
                 md_path = self.repo_root / "feedback" / f"WORM_{num}.md"
                 if not md_path.exists():
                     md_path = self.repo_root / "feedback" / f"BUG_{num}.md"
                 status = "OPEN"
                 title = ""
+                severity = "LOW"
                 if md_path.exists():
                     try:
                         content = md_path.read_text(encoding="utf-8", errors="replace")
@@ -854,14 +863,18 @@ class GitEngine:
                                 parts = line.split("`")
                                 if len(parts) >= 2:
                                     status = parts[1].strip()
+                            if line.startswith("- **Severity**:"):
+                                parts = line.split("`")
+                                if len(parts) >= 2:
+                                    severity = parts[1].strip()
                     except Exception:
                         pass
                 tags.append(
                     CommitWormTagModel(
-                        id=norm_id,
+                        id=cid,
                         title=title,
                         status=status,
-                        severity="LOW",
+                        severity=severity,
                     )
                 )
         return tags

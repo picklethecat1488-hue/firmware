@@ -227,11 +227,17 @@
     max-width: 900px;
   }
 
-  /* Word Wrap in Diff Views (BUG-245, BUG-252) */
+  /* Word Wrap in Diff Views (BUG-245, BUG-252, WORM-007) */
+  .diff-word-wrap .diff-sbs-table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
   .diff-word-wrap .diff-sbs-row td.diff-code-cell,
   .diff-word-wrap .diff-sbs-row td.old-code,
   .diff-word-wrap .diff-sbs-row td.new-code,
-  .diff-word-wrap .diff-unified-text {
+  .diff-word-wrap .diff-unified-text,
+  .diff-word-wrap .diff-full-text {
     white-space: pre-wrap !important;
     word-break: break-word !important;
     overflow-wrap: anywhere !important;
@@ -239,10 +245,18 @@
     min-width: 0 !important;
   }
 
-  .diff-word-wrap .diff-unified-wrap {
+  .diff-word-wrap .diff-unified-wrap,
+  .diff-word-wrap .diff-full-wrap {
     width: 100% !important;
-    min-width: 100% !important;
+    min-width: 0 !important;
     max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .diff-word-wrap .diff-unified-row {
+    grid-template-columns: 44px 44px 22px minmax(0, 1fr) !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
   }
 
   .diff-sbs-row.row-delete td.old-code,
