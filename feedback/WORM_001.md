@@ -1,7 +1,7 @@
-# 🟢 `[BUG-001]` Remove hardware-specific categories from the dashboard
+# 🟢 `[WORM-001]` Remove hardware-specific categories from the dashboard
 
 - **UUID**: `0afd22f6-361f-424d-a361-21ec90d4c818`
-- **ID**: `BUG-001`
+- **ID**: `WORM-001`
 - **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
@@ -15,4 +15,4 @@ Remove hardware-specific categories from the dashboard. We will use the hardware
 
 #### Resolution Notes
 
-Removed hardware categories (PCB, CAD, SIMULATION) and replaced with firmware categories in BugCategory, models, exporters, and UI templates
+Removed hardware categories (PCB, CAD, SIMULATION) and replaced with firmware categories in WormCategory, models, exporters, and UI templates

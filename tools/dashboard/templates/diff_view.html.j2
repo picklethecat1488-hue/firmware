@@ -583,13 +583,13 @@
       border: 1px solid var(--quake-green);
       color: var(--quake-green);
     }
-    .node-badge-bug {
+    .node-badge-worm, .node-badge-bug {
       background: rgba(239, 68, 68, 0.15);
       border: 1px solid var(--quake-red);
       color: var(--quake-red);
       cursor: pointer;
     }
-    .node-badge-bug.resolved {
+    .node-badge-worm.resolved, .node-badge-bug.resolved {
       background: rgba(34, 197, 94, 0.15);
       border-color: var(--quake-green);
       color: var(--quake-green);
@@ -1015,8 +1015,8 @@
       <button class="quake-btn quake-btn-default" onclick="onOpenInCodeReview()" title="Open System Shock 2 Code Review">
         <span>👁️ Xerxes Review</span>
       </button>
-      <button class="quake-btn quake-btn-default" onclick="openBugTracker()" title="Open Defect Matrix">
-        <span>▲ Defect Matrix</span>
+      <button class="quake-btn quake-btn-default" onclick="openWormTracker()" title="Open Worm Defect Matrix">
+        <span>🪱 Worms</span>
       </button>
     </div>
   </header>
@@ -1166,14 +1166,14 @@
                   ⎇ {{ node.pr_status }}
                 </span>
               {% endif %}
-              {% for bug in node.bug_tags %}
+              {% for worm in node.worm_tags %}
                 <span style="display:inline-flex;align-items:center;">
-                  <span class="node-badge node-badge-bug {% if bug.status == 'RESOLVED' %}resolved{% endif %}"
-                        onclick="event.stopPropagation(); openBug('{{ bug.id }}');"
-                        title="{{ bug.title }} (Click to open in Bug Viewer)">
-                    {{ bug.id }}: {{ bug.status }}
+                  <span class="node-badge node-badge-worm {% if worm.status == 'RESOLVED' %}resolved{% endif %}"
+                        onclick="event.stopPropagation(); openWorm('{{ worm.id }}');"
+                        title="{{ worm.title }} (Click to open in Worm Viewer)">
+                    🪱 {{ worm.id }}: {{ worm.status }}
                   </span>
-                  <button class="copy-icon-btn copy-badge-btn" onclick="event.stopPropagation(); copyText('{{ bug.id }}');" title="Copy {{ bug.id }}">📋</button>
+                  <button class="copy-icon-btn copy-badge-btn" onclick="event.stopPropagation(); copyText('{{ worm.id }}');" title="Copy {{ worm.id }}">📋</button>
                 </span>
               {% endfor %}
             </div>
@@ -1191,9 +1191,9 @@
                 {% endif %}
               </button>
               <button class="quake-btn quake-btn-default quake-btn-icon"
-                      onclick="event.stopPropagation(); createBugForCommit('{{ node.commit_hash }}')"
-                      title="Create bug referencing this commit">
-                <span>🐞+</span>
+                      onclick="event.stopPropagation(); createWormForCommit('{{ node.commit_hash }}')"
+                      title="Create worm referencing this commit">
+                <span>🪱+</span>
               </button>
             </div>
           </div>
@@ -1294,7 +1294,7 @@
         <div id="syncProgressPercent" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: bold; color: #fff; text-shadow: 0 1px 2px #000;">20%</div>
       </div>
       <div id="syncStatusText" style="font-size: 11px; color: var(--quake-text-dim); font-family: monospace; min-height: 16px;">
-        Scanning feedback/ directory for bug reports and review comments...
+        Scanning feedback/ directory for worm reports and review comments...
       </div>
     </div>
   </div>
@@ -1459,9 +1459,9 @@
 
         if (progressBar) progressBar.style.width = "100%";
         if (progressPercent) progressPercent.textContent = "100%";
-        const bugCount = data.bugs?.total_bugs ?? data.bugs?.bugs_count ?? 0;
+        const wormCount = data.worms?.total_worms ?? data.worms?.total ?? data.bugs?.total_bugs ?? data.bugs?.bugs_count ?? 0;
         const crCount = data.review?.total_comments ?? 0;
-        if (statusText) statusText.textContent = `✓ Synchronized ${bugCount} bugs and ${crCount} review comments.`;
+        if (statusText) statusText.textContent = `✓ Synchronized ${wormCount} worms and ${crCount} review comments.`;
 
         setTimeout(() => {
           if (modal) modal.style.display = "none";
@@ -1879,15 +1879,15 @@
             </span>
           `;
         }
-        (node.bug_tags || []).forEach(bug => {
+        (node.worm_tags || node.bug_tags || []).forEach(worm => {
           tagsHtml += `
             <span style="display:inline-flex;align-items:center;">
-              <span class="node-badge node-badge-bug ${bug.status === 'RESOLVED' ? 'resolved' : ''}"
-                    onclick="event.stopPropagation(); openBug('${escapeHtml(bug.id)}');"
-                    title="${escapeHtml(bug.title)}">
-                ${escapeHtml(bug.id)}: ${escapeHtml(bug.status)}
+              <span class="node-badge node-badge-worm ${worm.status === 'RESOLVED' ? 'resolved' : ''}"
+                    onclick="event.stopPropagation(); openWorm('${escapeHtml(worm.id)}');"
+                    title="${escapeHtml(worm.title)}">
+                🪱 ${escapeHtml(worm.id)}: ${escapeHtml(worm.status)}
               </span>
-              <button class="copy-icon-btn copy-badge-btn" onclick="event.stopPropagation(); copyText('${escapeHtml(bug.id)}');" title="Copy ${escapeHtml(bug.id)}">📋</button>
+              <button class="copy-icon-btn copy-badge-btn" onclick="event.stopPropagation(); copyText('${escapeHtml(worm.id)}');" title="Copy ${escapeHtml(worm.id)}">📋</button>
             </span>
           `;
         });
@@ -1928,9 +1928,9 @@
                 ${crCountBadge}
               </button>
               <button class="quake-btn quake-btn-default quake-btn-icon"
-                      onclick="event.stopPropagation(); createBugForCommit('${node.commit_hash}')"
-                      title="File Bug against this commit">
-                <span>🐛 Bug</span>
+                      onclick="event.stopPropagation(); createWormForCommit('${node.commit_hash}')"
+                      title="File Worm against this commit">
+                <span>🪱 Worm</span>
               </button>
             </div>
           </div>
@@ -2910,47 +2910,50 @@
       }
     }
 
-    async function openBug(bugId) {
+    async function openWorm(wormId) {
       try {
-        const resp = await fetch("/api/open_bug", {
+        const resp = await fetch("/api/open_worm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ bug_id: bugId })
+          body: JSON.stringify({ worm_id: wormId })
         });
         const res = await resp.json();
-        window.open(res.url, "firmware_bug_tracker");
+        window.open(res.url, "firmware_worm_tracker");
       } catch (err) {
-        window.open(`/bugs#BUG-${bugId}`, "firmware_bug_tracker");
+        window.open(`/worms#WORM-${wormId}`, "firmware_worm_tracker");
       }
     }
+    const openBug = openWorm;
 
-    async function openBugTracker() {
+    async function openWormTracker() {
       try {
-        const resp = await fetch("/api/open_bug", {
+        const resp = await fetch("/api/open_worm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({})
         });
         const res = await resp.json();
-        window.open(res.url, "firmware_bug_tracker");
+        window.open(res.url, "firmware_worm_tracker");
       } catch (err) {
-        window.open("/bugs", "firmware_bug_tracker");
+        window.open("/worms", "firmware_worm_tracker");
       }
     }
+    const openBugTracker = openWormTracker;
 
-    async function createBugForCommit(commitHash) {
+    async function createWormForCommit(commitHash) {
       try {
-        const resp = await fetch("/api/open_bug", {
+        const resp = await fetch("/api/open_worm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ commit: commitHash })
         });
         const res = await resp.json();
-        window.open(res.url, "firmware_bug_tracker");
+        window.open(res.url, "firmware_worm_tracker");
       } catch (err) {
-        window.open(`/bugs#new?commit=${encodeURIComponent(commitHash)}`, "firmware_bug_tracker");
+        window.open(`/worms#new?commit=${encodeURIComponent(commitHash)}`, "firmware_worm_tracker");
       }
     }
+    const createBugForCommit = createWormForCommit;
 
     // Commit Split and Combine
     async function onSplitCommit() {

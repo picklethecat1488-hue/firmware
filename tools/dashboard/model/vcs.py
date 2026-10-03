@@ -129,8 +129,8 @@ class BranchInfoModel(BaseModel):
         )
 
 
-class CommitBugTagModel(BaseModel):
-    """Bug status badge associated with a commit."""
+class CommitWormTagModel(BaseModel):
+    """Worm status badge associated with a commit."""
 
     id: str
     title: str = ""
@@ -162,7 +162,7 @@ class CommitNodeModel(BaseModel):
 
     graph_symbol: str = "o"  # '@' for HEAD, 'o' for commit, 'x' for conflict/error
     graph_art: str = ""  # ASCII / Unicode tree column prefix (e.g. '@', '| o', '| /')
-    bug_tags: List[CommitBugTagModel] = Field(default_factory=list)
+    worm_tags: List[CommitWormTagModel] = Field(default_factory=list)
     pr_status: Optional[str] = None
     pr_number: Optional[int] = None
     pr_url: Optional[str] = None

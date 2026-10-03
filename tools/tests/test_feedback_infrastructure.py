@@ -1,6 +1,6 @@
 """Unit and regression tests for feedback directory infrastructure.
 
-Verifies UUID tracking in SQLite, granular BUG_<id>.md and CR_<commit>.md exports,
+Verifies UUID tracking in SQLite, granular WORM_<id>.md and CR_<commit>.md exports,
 rename detection, duplicate ID resolution, commit update tracking, auto-merging,
 and UI synchronization states.
 """
@@ -10,7 +10,6 @@ import uuid
 
 import pytest
 
-from model.bug_report import BugCategory, BugDatabaseModel, BugReportModel, BugSeverity, BugStatus
 from model.code_review import (
     CommentModel,
     CommitUpdateModel,
@@ -20,76 +19,77 @@ from model.code_review import (
     ReviewSeverity,
     ReviewStatus,
 )
-from provider.bug_report.markdown_exporter import MarkdownBugExporter
-from provider.bug_report.sqlite_store import SQLiteBugStore
+from model.worm_report import WormCategory, WormDatabaseModel, WormReportModel, WormSeverity, WormStatus
 from provider.code_review.markdown_exporter import MarkdownReviewExporter
 from provider.code_review.sqlite_store import SQLiteReviewStore
+from provider.worm_report.markdown_exporter import MarkdownWormExporter
+from provider.worm_report.sqlite_store import SQLiteWormStore
 
 
-def test_bug_uuid_persistence_in_sqlite(tmp_path: Path) -> None:
-    """Verify bug UUID is persisted to and loaded from SQLite, with UUID querying."""
-    db_file = tmp_path / "bugs.sqlite"
-    store = SQLiteBugStore(db_file)
+def test_worm_uuid_persistence_in_sqlite(tmp_path: Path) -> None:
+    """Verify worm UUID is persisted to and loaded from SQLite, with UUID querying."""
+    db_file = tmp_path / "worms.sqlite"
+    store = SQLiteWormStore(db_file)
 
     test_uuid = str(uuid.uuid4())
-    bug = BugReportModel(
-        id="BUG-001",
+    worm = WormReportModel(
+        id="WORM-001",
         uuid=test_uuid,
-        title="Test Bug for UUID Persistence",
-        status=BugStatus.OPEN,
-        severity=BugSeverity.HIGH,
-        category=BugCategory.DRIVER,
+        title="Test Worm for UUID Persistence",
+        status=WormStatus.OPEN,
+        severity=WormSeverity.HIGH,
+        category=WormCategory.DRIVER,
     )
-    db = BugDatabaseModel(bugs=[bug])
+    db = WormDatabaseModel(worms=[worm])
     store.save_database(db)
 
     # Reload from SQLite
     loaded_db = store.load_database()
-    assert len(loaded_db.bugs) == 1
-    loaded_bug = loaded_db.bugs[0]
-    assert loaded_bug.uuid == test_uuid
-    assert loaded_bug.id == "BUG-001"
+    assert len(loaded_db.worms) == 1
+    loaded_worm = loaded_db.worms[0]
+    assert loaded_worm.uuid == test_uuid
+    assert loaded_worm.id == "WORM-001"
 
     # Query directly by UUID
-    retrieved = store.get_bug_by_uuid(test_uuid)
+    retrieved = store.get_worm_by_uuid(test_uuid)
     assert retrieved is not None
-    assert retrieved.id == "BUG-001"
-    assert retrieved.title == "Test Bug for UUID Persistence"
+    assert retrieved.id == "WORM-001"
+    assert retrieved.title == "Test Worm for UUID Persistence"
 
 
-def test_bug_granular_export_and_rename_detection(tmp_path: Path) -> None:
-    """Verify BUG_<id>.md exports and detection of file renames via UUID."""
+def test_worm_granular_export_and_rename_detection(tmp_path: Path) -> None:
+    """Verify WORM_<id>.md exports and detection of file renames via UUID."""
     feedback_dir = tmp_path / "feedback"
     feedback_dir.mkdir(parents=True, exist_ok=True)
-    db_file = tmp_path / "bugs.sqlite"
-    store = SQLiteBugStore(db_file)
+    db_file = tmp_path / "worms.sqlite"
+    store = SQLiteWormStore(db_file)
 
-    bug_uuid = str(uuid.uuid4())
-    bug = BugReportModel(
-        id="BUG-100",
-        uuid=bug_uuid,
+    worm_uuid = str(uuid.uuid4())
+    worm = WormReportModel(
+        id="WORM-100",
+        uuid=worm_uuid,
         title="Carrier Board Battery Holder Clearance",
-        status=BugStatus.OPEN,
-        severity=BugSeverity.MEDIUM,
-        category=BugCategory.CONTROLLER,
+        status=WormStatus.OPEN,
+        severity=WormSeverity.MEDIUM,
+        category=WormCategory.CONTROLLER,
         description="Battery holder clearance issue",
     )
-    db = BugDatabaseModel(bugs=[bug])
+    db = WormDatabaseModel(worms=[worm])
     store.save_database(db)
 
-    exporter = MarkdownBugExporter(repo_root=tmp_path)
-    main_bugs_md = feedback_dir / "BUGS.md"
-    exporter.export_markdown(db, main_bugs_md, store=store)
+    exporter = MarkdownWormExporter(repo_root=tmp_path)
+    main_worms_md = feedback_dir / "WORMS.md"
+    exporter.export_markdown(db, main_worms_md, store=store)
 
     # Verify individual file created
-    individual_file = feedback_dir / "BUG_100.md"
+    individual_file = feedback_dir / "WORM_100.md"
     assert individual_file.exists()
     content = individual_file.read_text(encoding="utf-8")
-    assert f"- **UUID**: `{bug_uuid}`" in content
+    assert f"- **UUID**: `{worm_uuid}`" in content
     assert "Carrier Board Battery Holder Clearance" in content
 
-    # Simulate renaming the file to BUG_200.md
-    renamed_file = feedback_dir / "BUG_200.md"
+    # Simulate renaming the file to WORM_200.md
+    renamed_file = feedback_dir / "WORM_200.md"
     individual_file.rename(renamed_file)
     assert not individual_file.exists()
     assert renamed_file.exists()
@@ -97,55 +97,55 @@ def test_bug_granular_export_and_rename_detection(tmp_path: Path) -> None:
     # Scan and sync feedback dir
     stats = exporter.scan_and_sync_feedback_dir(feedback_dir, db, store)
     assert stats["renamed"] == 1
-    assert db.bugs[0].id == "BUG-200"
+    assert db.worms[0].id == "WORM-200"
 
     # Verify SQLite was updated
-    from_store = store.get_bug_by_uuid(bug_uuid)
+    from_store = store.get_worm_by_uuid(worm_uuid)
     assert from_store is not None
-    assert from_store.id == "BUG-200"
+    assert from_store.id == "WORM-200"
 
 
-def test_bug_duplicate_id_auto_resolution(tmp_path: Path) -> None:
-    """Verify duplicate bug IDs with distinct UUIDs are disambiguated on export."""
+def test_worm_duplicate_id_auto_resolution(tmp_path: Path) -> None:
+    """Verify duplicate worm IDs with distinct UUIDs are disambiguated on export."""
     feedback_dir = tmp_path / "feedback"
     feedback_dir.mkdir(parents=True, exist_ok=True)
-    db_file = tmp_path / "bugs.sqlite"
-    store = SQLiteBugStore(db_file)
+    db_file = tmp_path / "worms.sqlite"
+    store = SQLiteWormStore(db_file)
 
-    bug1 = BugReportModel(
-        id="BUG-050",
+    worm1 = WormReportModel(
+        id="WORM-050",
         uuid=str(uuid.uuid4()),
-        title="First duplicate bug",
-        status=BugStatus.OPEN,
-        severity=BugSeverity.LOW,
-        category=BugCategory.DRIVER,
+        title="First duplicate worm",
+        status=WormStatus.OPEN,
+        severity=WormSeverity.LOW,
+        category=WormCategory.DRIVER,
     )
-    bug2 = BugReportModel(
-        id="BUG-050",  # Duplicate ID
+    worm2 = WormReportModel(
+        id="WORM-050",  # Duplicate ID
         uuid=str(uuid.uuid4()),
-        title="Second duplicate bug",
-        status=BugStatus.OPEN,
-        severity=BugSeverity.HIGH,
-        category=BugCategory.PLATFORM,
+        title="Second duplicate worm",
+        status=WormStatus.OPEN,
+        severity=WormSeverity.HIGH,
+        category=WormCategory.PLATFORM,
     )
 
-    db = BugDatabaseModel(bugs=[bug1, bug2])
-    exporter = MarkdownBugExporter(repo_root=tmp_path)
-    main_bugs_md = feedback_dir / "BUGS.md"
+    db = WormDatabaseModel(worms=[worm1, worm2])
+    exporter = MarkdownWormExporter(repo_root=tmp_path)
+    main_worms_md = feedback_dir / "WORMS.md"
 
     # Export with duplicate resolution
-    exporter.export_markdown(db, main_bugs_md, store=store)
+    exporter.export_markdown(db, main_worms_md, store=store)
 
     # Assert IDs were disambiguated
-    ids = [b.id for b in db.bugs]
-    assert len(ids) == len(set(ids)), "All bug IDs must be unique after duplicate resolution"
-    assert "BUG-050" in ids
+    ids = [w.id for w in db.worms]
+    assert len(ids) == len(set(ids)), "All worm IDs must be unique after duplicate resolution"
+    assert "WORM-050" in ids
     assert len(ids) == 2
 
     # Verify individual files exist for both
-    for b in db.bugs:
-        clean_id = b.id.removeprefix("BUG-").removeprefix("BUG_")
-        assert (feedback_dir / f"BUG_{clean_id}.md").exists()
+    for w in db.worms:
+        clean_id = w.id.removeprefix("WORM-").removeprefix("WORM_")
+        assert (feedback_dir / f"WORM_{clean_id}.md").exists()
 
 
 def test_code_review_uuid_and_commit_updates_in_sqlite(tmp_path: Path) -> None:
@@ -263,10 +263,10 @@ def test_feedback_ui_elements_in_templates() -> None:
     """Verify UI loading overlays and sync feedback buttons in Jinja2 templates."""
     templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
 
-    bug_template = (templates_dir / "bug_report.html.j2").read_text(encoding="utf-8")
-    assert "feedback-loading-modal" in bug_template
-    assert "syncFeedback()" in bug_template
-    assert "/api/sync_feedback" in bug_template
+    worm_template = (templates_dir / "worm_report.html.j2").read_text(encoding="utf-8")
+    assert "feedback-loading-modal" in worm_template
+    assert "syncFeedback()" in worm_template
+    assert "/api/sync_feedback" in worm_template
 
     cr_template = (templates_dir / "code_review.html.j2").read_text(encoding="utf-8")
     assert "feedbackLoadingModal" in cr_template
@@ -342,12 +342,12 @@ def test_code_review_no_feedback_leaves_no_markdown_files(tmp_path: Path) -> Non
 
 
 def test_baseline_reports_default_to_target_and_preserve_feedback_granularity(tmp_path: Path) -> None:
-    """Verify baseline BUGS.md and CR.md default to target/ and are excluded from feedback/.
+    """Verify baseline WORMS.md and CR.md default to target/ and are excluded from feedback/.
 
-    Only granular BUG_<id>.md and CR_<commit>.md files are stored in feedback/.
+    Only granular WORM_<id>.md and CR_<commit>.md files are stored in feedback/.
     """
-    from provider.bug_report.server import BugReportServer
     from provider.code_review.server import ReviewServer
+    from provider.worm_report.server import WormReportServer
 
     mock_repo = tmp_path / "repo"
     mock_repo.mkdir()
@@ -364,29 +364,29 @@ def test_baseline_reports_default_to_target_and_preserve_feedback_granularity(tm
     assert cr_server.markdown_output == mock_repo / "target" / "CR.md"
     assert cr_server.feedback_dir == mock_repo / "feedback"
 
-    # Verify BugReportServer defaults to target/BUGS.md and feedback/
-    bug_server = BugReportServer(
+    # Verify WormReportServer defaults to target/WORMS.md and feedback/
+    worm_server = WormReportServer(
         host="127.0.0.1",
         port=0,
         repo_root=mock_repo,
         bind_and_activate=False,
     )
-    assert bug_server.markdown_output == mock_repo / "target" / "BUGS.md"
-    assert bug_server.feedback_dir == mock_repo / "feedback"
+    assert worm_server.markdown_output == mock_repo / "target" / "WORMS.md"
+    assert worm_server.feedback_dir == mock_repo / "feedback"
 
-    # Add a bug and sync
-    test_bug = BugReportModel(
-        id="BUG-999",
+    # Add a worm and sync
+    test_worm = WormReportModel(
+        id="WORM-999",
         uuid=str(uuid.uuid4()),
         title="Test Granular Report",
-        status=BugStatus.OPEN,
-        severity=BugSeverity.MEDIUM,
-        category=BugCategory.INFRASTRUCTURE,
+        status=WormStatus.OPEN,
+        severity=WormSeverity.MEDIUM,
+        category=WormCategory.INFRASTRUCTURE,
     )
-    bug_server.database.bugs.append(test_bug)
-    bug_server.save_and_sync()
+    worm_server.database.worms.append(test_worm)
+    worm_server.save_and_sync()
 
-    # Main BUGS.md is written to target/, individual bug is written to feedback/
-    assert (mock_repo / "target" / "BUGS.md").is_file()
-    assert (mock_repo / "feedback" / "BUG_999.md").is_file()
-    assert not (mock_repo / "feedback" / "BUGS.md").exists()
+    # Main WORMS.md is written to target/, individual worm is written to feedback/
+    assert (mock_repo / "target" / "WORMS.md").is_file()
+    assert (mock_repo / "feedback" / "WORM_999.md").is_file()
+    assert not (mock_repo / "feedback" / "WORMS.md").exists()

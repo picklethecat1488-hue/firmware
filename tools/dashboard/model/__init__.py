@@ -1,12 +1,12 @@
-"""Domain data models for VCS, Code Review, and Bug Reporting."""
+"""Domain data models for VCS, Code Review, and Worm Reporting."""
 
-from model.bug_report import (
-    BugAttachmentModel,
-    BugCategory,
-    BugDatabaseModel,
-    BugReportModel,
-    BugSeverity,
-    BugStatus,
+from model.worm_report import (
+    WormAttachmentModel,
+    WormCategory,
+    WormDatabaseModel,
+    WormReportModel,
+    WormSeverity,
+    WormStatus,
 )
 from model.code_review import (
     CommentModel,
@@ -19,9 +19,9 @@ from model.code_review import (
 )
 from model.vcs import (
     BranchInfoModel,
-    CommitBugTagModel,
-    CommitInfoModel,
     CommitNodeModel,
+    CommitWormTagModel,
+    CommitInfoModel,
     DiffHunk,
     DiffLine,
     DiffLineType,
@@ -35,17 +35,11 @@ from model.vcs import (
 
 __all__ = [
     "BranchInfoModel",
-    "BugAttachmentModel",
-    "BugCategory",
-    "BugDatabaseModel",
-    "BugReportModel",
-    "BugSeverity",
-    "BugStatus",
     "CommentModel",
-    "CommitBugTagModel",
     "CommitInfoModel",
     "CommitNodeModel",
     "CommitUpdateModel",
+    "CommitWormTagModel",
     "DiffHunk",
     "DiffLine",
     "DiffLineType",
@@ -60,4 +54,10 @@ __all__ = [
     "ReviewSeverity",
     "ReviewStatus",
     "WorkingTreeFileModel",
+    "WormAttachmentModel",
+    "WormCategory",
+    "WormDatabaseModel",
+    "WormReportModel",
+    "WormSeverity",
+    "WormStatus",
 ]
