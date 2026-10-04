@@ -8,7 +8,7 @@ and integrated Worm Tracker, all served under a single endpoint.
 
 Usage:
     python tools/dashboard.py
-    python tools/dashboard.py --port 8777
+    python tools/dashboard.py --port 8877
     python tools/dashboard.py --list
     python tools/dashboard.py --branch main
     python tools/dashboard.py --goto 75d5f92

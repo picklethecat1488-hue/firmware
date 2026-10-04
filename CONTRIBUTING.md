@@ -473,6 +473,125 @@ When introducing or modifying telemetry records, filesystem files, or crash logs
 
 ---
 
+## Unified VCS Dashboard, Code Review & Worm Workstation
+
+The repository features an integrated web workstation and CLI suite (`tools/dashboard.py`) styled after the System Shock 2 - Xerxes terminal HUD aesthetic. It unifies commit diff inspection, code review audits, and defect (worm) tracking into a centralized local workflow.
+
+### 1. Launching the Web Workstation
+
+Launch the local workstation server in your browser:
+
+```bash
+# Launch interactive dashboard (default port 8877)
+python tools/dashboard.py
+
+# Specify custom port, host, or browser mode
+python tools/dashboard.py --port 8877 --browser vscode
+python tools/dashboard.py --no-browser
+```
+
+#### Core Workstation View Modes
+1. **Diff View (`/diff`)**:
+   - Side-by-side and unified git diff visualization.
+   - Interactive syntax highlighting and line wrapping toggle (`WRAP: ON` / `WRAP: OFF`).
+   - Smartlog DAG commit graph navigation and unstaged working-tree delta inspection.
+2. **Code Review Audit (`/review`)**:
+   - Granular, inline code commenting anchored to specific file paths, line ranges, and commit revisions.
+   - Severity categorization: `MUST_FIX` (blockers), `PROPOSAL` (architecture design suggestions), and `NIT` (minor cosmetic cleanups).
+   - Review progress tracking, resolution checklist verification, and overall verdict assignment (`IN_REVIEW`, `CHANGES_REQUESTED`, `APPROVED`).
+3. **Worm Matrix (`/bugs`)**:
+   - Defect tracking and bug lifecycle management with Xerxes terminal HUD styling.
+   - Severity filtering (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`) and component classification (`FIRMWARE`, `CONTROLLER`, `DRIVER`, `PLATFORM`, `BOARD`, `MODEL`, `SHELL`, `INFRASTRUCTURE`, `UI`, `GENERAL`).
+   - File attachment support: diagnostic logs, screenshots, and core dumps stored in `feedback/attachments/` and tracked via Git LFS.
+   - Resolution tracking with formal engineering root cause and resolution notes.
+
+---
+
+### 2. Command-Line Interface (CLI Parity)
+
+All workstation capabilities are accessible headless via CLI subcommands for automation, scripts, and terminal-centric workflows:
+
+#### Code Review Management
+```bash
+# List all active code review comments
+python tools/dashboard.py list-reviews
+
+# List only open/unresolved review comments
+python tools/dashboard.py list-reviews --open
+
+# Add an inline review comment
+python tools/dashboard.py add-comment --file app/carrier_board.md --line 42 --body "Use 1 Mb/s UART" --severity MUST_FIX
+
+# Mark a review comment as resolved
+python tools/dashboard.py resolve-comment <comment-uuid>
+
+# Set the overall review verdict
+python tools/dashboard.py set-verdict APPROVED
+python tools/dashboard.py set-verdict CHANGES_REQUESTED
+```
+
+#### Worm (Defect) Tracking
+```bash
+# List all active worms
+python tools/dashboard.py list-worms
+
+# List only open worms
+python tools/dashboard.py list-worms --open
+
+# Quickly register a new defect
+python tools/dashboard.py add-worm "Update Contributing.md with dashboard docs" \
+  --severity MEDIUM \
+  --category FIRMWARE \
+  --component "CONTRIBUTING.md" \
+  --description "Document dashboard CLI and workstation features"
+
+# Mark a worm as resolved with resolution notes
+python tools/dashboard.py resolve-worm WORM-008 --notes "Added comprehensive dashboard docs to CONTRIBUTING.md"
+```
+
+#### VCS & Smartlog Operations
+```bash
+# View smartlog DAG commit tree
+python tools/dashboard.py list-commits
+
+# Synchronize with upstream remote
+python tools/dashboard.py sync
+
+# Commit staged or untracked changes
+python tools/dashboard.py commit -m "docs: update contributing guide"
+```
+
+---
+
+### 3. Dual-Layer Persistence & Synchronization Protocol
+
+The workstation employs a dual-layer storage architecture combining ACID transactional speed with human-readable markdown version control:
+
+1. **SQLite Backing Stores (Single Source of Truth)**:
+   - `target/code_review.sqlite`: Review comments, line mappings, file statuses, and review verdicts.
+   - `target/worms.sqlite`: Defect records, severity classifications, and resolution logs.
+2. **Bidirectional Markdown Synchronization (`feedback/`)**:
+   - The server continuously monitors and synchronizes state with markdown reports in `feedback/`:
+     - `feedback/CR.md`: Primary aggregated code review report.
+     - `feedback/CR_<commit>.md`: Revision-specific review findings with action item checkboxes (`- [ ]` / `- [x]`).
+     - `feedback/WORMS.md`: Primary aggregated defect matrix index.
+     - `feedback/WORM_<id>.md`: Granular defect tickets.
+   - External edits to markdown checkboxes or headers are automatically detected via modification timestamps and merged safely into the SQLite database without losing resolution history.
+3. **Git LFS Non-Confidential Attachments**:
+   - All diagnostic attachments (screenshots, crash logs, traces) must reside in `feedback/attachments/`.
+   - Tracked in **Git LFS** and considered public/non-confidential; never attach API tokens, keys, or private credentials.
+
+---
+
+### 4. Contribution Invariants & Pre-Commit Rules
+
+When contributing changes, developers must adhere to the following workflow invariants:
+- **Single-Bug Focus**: Investigate, reproduce, and resolve ONE worm at a time. Write a minimal failing test before editing code, apply the targeted fix, verify regression tests pass, and resolve the worm atomically.
+- **Pre-Commit Script Execution**: Always execute `./tools/verify.sh` from the repository root before committing. All tests, linters, and MCU target builds must pass with `Verification PASSED`.
+- **User-Managed Pull Requests**: Autonomous PR creation (`gh pr create`) and merging (`gh pr merge`) are strictly prohibited; peer review and PR operations are executed manually by project maintainers.
+
+---
+
 ## Configuration Schemas
 
 The firmware uses two configuration files (`board.toml` and `app.toml`) to declaratively describe the hardware environment and the software controller task layout.
