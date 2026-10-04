@@ -26,6 +26,7 @@ The source of truth for bringup verification steps is [`app/carrier_board_bringu
     - [3. Flash I/O Invariants & Guarantees](#3-flash-io-invariants--guarantees)
     - [4. Host Flash Tool (`tools/host_fs`) Storage Descriptor URI Model](#4-host-flash-tool-toolshost_fs-storage-descriptor-uri-model)
   - [Application Software Framework for DSP & NPU (Rust ML Ecosystem)](#application-software-framework-for-dsp--npu-rust-ml-ecosystem)
+    - [Framework Validation: Integration with Touch Sensor Gesture Processor](#framework-validation-integration-with-touch-sensor-gesture-processor)
   - [Design Hardening & Memory Protection (ARMv8-M MPU & Storage Security)](#design-hardening--memory-protection-armv8-m-mpu--storage-security)
   - [Secure Boot & Firmware Update Architecture](#secure-boot--firmware-update-architecture)
   - [Internal SRAM Allocation Budget (Including RTT & CLI Buffers)](#internal-sram-allocation-budget-including-rtt--cli-buffers)
@@ -180,7 +181,7 @@ expansion-cellular = []
 During Stage 2 bringup, Core 0 queries the expansion $\text{I}^2\text{C}$ bus (`FC4`) at standard EEPROM address range (`0x50`–`0x57`):
 - Each expansion card carries a 2 KB serial EEPROM containing a signed CBOR board descriptor (UUID, card type, hardware revision, GPIO interrupt assignments, voltage requirements).
 - **Non-Blocking Telemetry & Developer Experience**: Card auto-detection is strictly non-blocking and intended for telemetry, developer experience, and runtime diagnostic logging; **it does NOT gate, delay, or block system boot**. If an expansion EEPROM is unpopulated, unreadable, or missing, the system proceeds with standard boot without delay using default compile-time Cargo features.
-- If a card is detected whose feature is disabled in the active firmware build, the system logs a diagnostic warning via `defmt` and leaves load switch `Q1` unasserted to prevent wasted battery draw.
+- If a card is detected whose feature is disabled in the active firmware build, the system logs diagnostic telemetry via `defmt`; card auto-detection is strictly advisory and diagnostic, and **it does NOT alter, delay, or change system boot behavior or execution flow**.
 
 ---
 
@@ -300,6 +301,28 @@ To drive the eIQ Neutron NPU and PowerQuad DSP accelerator from Rust without rel
        - FFTs, Biquad IIR/FIR Filters, Trigonometric & Coordinate Transformations $\to$ **PowerQuad DSP Accelerator**.
        - Element-wise operations and tensor reshapes $\to$ Zero-copy slice operations in internal SRAM.
 
+#### Framework Validation: Integration with Touch Sensor Gesture Processor
+
+To validate the Rust machine learning and tensor processing software framework on physical hardware, the framework integrates directly with the gesture processor for the on-board Azoteq IQS7222A capacitive touch sensor:
+
+1. **High-Rate Touch Telemetry Ingestion**:
+   - Core 1 samples raw capacitive delta values and tracking coordinates from the Azoteq IQS7222A touch controller over $\text{I}^2\text{C}$ (`FC2`) via asynchronous eDMA at a sustained 100 Hz rate.
+   - Sensor frames are staged directly into lock-free ring buffers within the Core 1 Sensor Fusion Arena (`0x2002_8000`).
+
+2. **Feature Extraction via PowerQuad DSP**:
+   - The temporal coordinate sequence passes through biquad smoothing filters and baseline tracking routines accelerated by the MCX N947 PowerQuad DSP coprocessor.
+   - A sliding 32-sample temporal window is assembled into a zero-copy $32 \times 3$ normalized feature matrix (X-coordinate, Y-coordinate, touch delta intensity).
+
+3. **Inference Execution via Framework (`tract` / `Burn`)**:
+   - A compact 1D temporal convolutional gesture classification model (trained offline in PyTorch/JAX and lowered via `burn-import` or `tract` into `no_std` Rust structs) executes inference on Core 1.
+   - Quantized INT8 weights execute with zero heap allocation, utilizing the eIQ Neutron NPU and PowerQuad matrix primitives.
+   - The model accurately distinguishes user gestures: Single Tap, Double Tap, Drag/Swipe (Up/Down/Left/Right), Long Press Hold, and Proximity Hover.
+
+4. **Event Dispatch & Inter-Core Routing**:
+   - Upon gesture recognition with confidence $\ge 0.85$, Core 1 emits a typed `GestureEvent` struct across the `embassy-ipc-channel` to Core 0.
+   - Core 0 routes the event to `BleController` for GATT client notification and triggers acoustic confirmation on the audio amplifier.
+   - This physical loop provides complete end-to-end hardware validation of the software development framework, graph lowering pipeline, and embedded inference dispatch.
+
 ### Design Hardening & Memory Protection (ARMv8-M MPU & Storage Security)
 
 Security and execution integrity are enforced across both hardware and firmware layers:
@@ -362,20 +385,28 @@ Firmware updates are governed by a cryptographic Root of Trust (RoT):
 
 ### Internal SRAM Allocation Budget (Including RTT & CLI Buffers)
 
-The MCX N947 features **512 KB of total internal SRAM** with ECC protection:
+The MCX N947 features **512 KB of total internal SRAM** with ECC protection. To clearly evaluate committed baseline usage against headroom available for future modular expansion cards and dynamic feature expansion, the SRAM budget is partitioned into three functional tiers:
 
-| SRAM Domain | Base Address | Size | Primary Function / Memory Consumer |
-| :--- | :--- | :---: | :--- |
-| **Core 0 System Heapless Arena** | `0x2000_0000` | 128 KB | Embassy executor task arena, networking buffers, BLE packet queues. |
-| **Segger RTT & defmt Logging Buffers**| `0x2002_0000` | 24 KB | RTT control block (`_SEGGER_RTT`), Up/Down channel ring buffers, defmt queue. |
-| **CLI & Interactive Console Buffers** | `0x2002_6000` | 8 KB | Command history ring buffer, tokenizer scratchpad, VT100 terminal escape line buffers. |
-| **Core 1 Sensor Fusion Arena** | `0x2002_8000` | 80 KB | ProxFusion high-rate sample buffers, touch filter states. |
-| **Neutron NPU Tensor Arena** | `0x2003_C000` | 128 KB | Intermediate neural activation maps, feature tensor scratchpad. Model weights executed within this arena can be updated dynamically over BLE without a system OTA reboot or re-flashing Slot A. |
-| **DSP & Audio Circular Buffers** | `0x2005_C000` | 48 KB | PDM audio double-buffers, 512-point FFT scratchpad. |
-| **Inter-Core Shared IPC (SRAMX)**| `0x2006_8000` | 32 KB | Lock-free SPSC circular ring buffers and hardware mailbox registers. |
-| **Stacks & Hardware Guard Pages** | `0x2007_0000` | 48 KB | Core 0 stack (24 KB), Core 1 stack (16 KB), MPU guard pages (8 KB). |
-| **Reserved / DMA Bounce Buffers** | `0x2007_C000` | 16 KB | Transient eDMA scatter-gather descriptors, USB packet staging, and SRAM-relocated OTA flash loader kernel (`flash_loader_ram`). |
-| **Total SRAM Allocation** | | **512 KB** | **100% mapped, zero uncontrolled heap allocation.** |
+| SRAM Domain / Functional Tier | Base Address | Size | Memory Classification | Primary Function / Scope |
+| :--- | :--- | :---: | :---: | :--- |
+| **Core 0 System Heapless Arena** | `0x2000_0000` | 96 KB | Base System | Embassy executor task arena, networking buffers, BLE packet queues. |
+| **Segger RTT & defmt Logging Buffers**| `0x2001_8000` | 24 KB | Base System | RTT control block (`_SEGGER_RTT`), Up/Down channel ring buffers, defmt queue. |
+| **CLI & Interactive Console Buffers** | `0x2001_E000` | 8 KB | Base System | Command history ring buffer, tokenizer scratchpad, VT100 terminal escape line buffers. |
+| **Core 1 Sensor Fusion Arena** | `0x2002_0000` | 64 KB | Base System | ProxFusion high-rate sample buffers, Azoteq IQS7222A touch filter states. |
+| **Inter-Core Shared IPC (SRAMX)**| `0x2003_0000` | 32 KB | Base System | Lock-free SPSC circular ring buffers and hardware mailbox registers. |
+| **Stacks & Hardware Guard Pages** | `0x2003_8000` | 48 KB | Base System | Core 0 stack (24 KB), Core 1 stack (16 KB), MPU guard pages (8 KB). |
+| **Reserved / DMA Bounce Buffers** | `0x2004_4000` | 16 KB | Base System | Transient eDMA scatter-gather descriptors, USB packet staging, and `flash_loader_ram`. |
+| **Expansion: Audio Streaming & DSP**| `0x2004_8000` | 32 KB | Active Expansion | PDM Class-D double-buffers, 512-point FFT scratchpad (`expansion-audio`). |
+| **Expansion: Neutron NPU Tensor Arena**| `0x2005_0000` | 128 KB | Active Expansion | Activation maps and scratchpad (`expansion-camera`). Model weights hot-reloadable from NAND. |
+| **Expansion Headroom & Future Growth** | `0x2007_0000` | 64 KB | **Available Headroom** | **Uncommitted SRAM reserved for future modular expansion cards and dynamic growth.** |
+| **Total Physical SRAM** | | **512 KB** | **100% Accounted** | **Zero uncontrolled heap allocation.** |
+
+#### SRAM Usage vs. Expansion Headroom Analysis
+
+- **Base System Committed SRAM**: **288 KB (56.25%)**
+- **Active Expansion Modules (`audio` + `camera/NPU`)**: **160 KB (31.25%)**
+- **Total Committed SRAM Usage**: **448 KB (87.50% of 512 KB)**
+- **Available SRAM for Future Expansions**: **64 KB (12.50% headroom remaining)**
 
 ### Dual-Core Rust Architecture: Embassy Multi-Executor AMP (Option 3)
 
@@ -477,12 +508,12 @@ pub struct ServiceError {
     #[n(2)] pub error_code: u16,                // Subsystem-specific failure enumeration
     #[n(3)] pub core_id: u8,                    // Core where error originated (0 = System, 1 = Coprocessor)
     #[n(4)] pub fault_address: Option<u32>,     // Memory or flash address involved in error (if applicable)
-    #[n(5)] pub register_snapshot: [u32; 4],    // Diagnostic peripheral / CPU fault registers (e.g. CFSR, MMFAR, I2C ERR)
+    #[n(5)] pub context: [u32; 4],              // Diagnostic context / CPU fault registers (e.g. CFSR, MMFAR, I2C ERR)
     #[n(6)] pub message: heapless::String<64>,  // Human-readable diagnostic context string
 }
 ```
 
-Whenever a command fails, the firmware responds with a framed `ServiceError` payload. `host_cli` decodes and pretty-prints this record, displaying the failed core ID, register snapshot, fault address, and ASCII context to enable instant triage without attaching a hardware probe.
+Whenever a command fails, the firmware responds with a framed `ServiceError` payload. `host_cli` decodes and pretty-prints this record, displaying the failed core ID, context registers, fault address, and ASCII message to enable instant triage without attaching a hardware probe.
 
 #### 3. Field Servicing & Diagnostic Health Monitoring
 For deployed units in the field or in RMA diagnostic centers:
@@ -654,12 +685,15 @@ The TI LP5009 9-channel $\text{I}^2\text{C}$ RGB LED driver provides high-resolu
 | System & Feature State | LED Pattern / Color | Frequency / Cadence | Subsystem / Driver Responsible | Meaning & Visual Indication |
 | :--- | :--- | :---: | :--- | :--- |
 | **`BOOTING`** | Cyan Pulsing | 1.0 Hz (Breathing) | SSBL / Early HAL | Device undergoing cold boot and hardware integrity checks. |
-| **`BOOT_FAILED`** | Rapid Red Strobe | 4.0 Hz (50% Duty) | SSBL / ROM Trap | SSBL signature check failure, corrupt image, or boot fault. |
-| **`ACTIVE_RUNNING`** | Solid Green | Continuous | System Controller | Normal operational state; sensors and audio subsystems ready. |
+| **`BOOT_FAILED`** | Solid Red | Continuous | SSBL / ROM Trap | SSBL signature check failure, corrupt image, or boot fault. |
+| **`ACTIVE_RUNNING`** | Solid Cyan | Continuous | System Controller | Normal operational state; sensors and audio subsystems ready. |
 | **`BLE_PAIRING`** | Fast Blue Blink | 2.0 Hz (50% Duty) | BLE Controller / NINA-B312 | BLE advertising active; awaiting host client connection. |
 | **`BLE_CONNECTED`** | Solid Cyan Pulse | Single 500 ms pulse | BLE Controller / NINA-B312 | Secure BLE connection successfully negotiated. |
-| **`CAMERA_ACTIVE`** | Amber Steady | Continuous | Core 1 Vision Pipeline | Camera sensor streaming; gesture preprocessing running. |
-| **`GESTURE_DETECTED`** | Bright White Flash | 200 ms One-Shot | Core 1 / ML Classifier | Valid proximity gesture recognized and confirmed. |
+| **`CAMERA_ACTIVE`** | Blinking Amber | 1.0 Hz (50% Duty) | Core 1 Vision Pipeline | Camera sensor streaming; gesture preprocessing running. |
+| **`BATTERY_CHARGING`** | Solid Amber | 1.0 Hz (Breathing) | BatteryController / BQ24074 | External USB power detected and battery actively charging. |
+| **`BATTERY_FULL`** | Solid Green | Continuous | BatteryController / BQ24074 | External power connected and battery fully charged (100% SOC). |
+| **`BATTERY_LOW`** | Solid Yellow | Continuous | BatteryController | Battery SOC drops below 15% threshold; recharge prompt. |
+| **`BATTERY_CRITICAL`** | Blinking Red | 1.0 Hz (50% Duty) | BatteryController | Battery SOC drops below 5% threshold; imminent safe shutdown. |
 | **`OVERTEMP_ALERT`** | Alternating Red/Amber Pulsing | 2.0 Hz (Breathing) | ThermalController | Critical thermal threshold exceeded (> 75°C junction); coprocessor throttled. |
 | **`OTA_PROGRAMMING`** | Magenta Breathing | 2.0 Hz (Breathing) | `flash_loader_ram` | Internal Flash Slot A being programmed from NAND in SRAM. |
 | **`RECOVERY_MODE`** | Yellow Strobe | 2.0 Hz (50% Duty) | SSBL Fallback Handler | Restoring factory golden recovery image into Slot A. |
