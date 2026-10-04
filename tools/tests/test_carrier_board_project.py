@@ -200,6 +200,8 @@ def test_carrier_board_firmware_document() -> None:
 
     # Structured error handling & model updates in host_cli
     assert "ServiceError" in content
+    assert "pub context: [u32; 4]" in content
+    assert "register_snapshot" not in content
     assert "model-update" in content
 
     # UI and Audio state invariants
@@ -208,6 +210,15 @@ def test_carrier_board_firmware_document() -> None:
     assert "SSBL Failure Alert" not in content
     assert "OTA Success Fanfare" not in content
     assert "PMIC" not in content
+    assert "GESTURE_DETECTED" not in content
+    assert "BATTERY_CHARGING" in content
+    assert "BATTERY_LOW" in content
+    assert "BATTERY_CRITICAL" in content
+
+    # Card detection boot behavior and SRAM headroom computation
+    assert "does NOT alter, delay, or change system boot behavior" in content
+    assert "SRAM Usage vs. Expansion Headroom" in content
+    assert "Framework Validation: Integration with Touch Sensor Gesture Processor" in content
 
 
 def test_carrier_board_bringup_yaml() -> None:
