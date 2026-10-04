@@ -736,6 +736,7 @@
   <div id="toast" class="toast"></div>
 
   <script>
+    window.name = "firmware_worm_tracker";
     let db = {{ database_json | safe if database_json is defined else '{"title":"Firmware Engineering Worm Tracker","worms":[]}' }};
     if (!db.worms && db.bugs) {
       db.worms = db.bugs;
@@ -1206,13 +1207,36 @@
     const deleteActiveBug = deleteActiveWorm;
 
     function returnToDashboard(e) {
-      if (e) e.preventDefault();
+      if (e && e.preventDefault) e.preventDefault();
       if (window.opener && !window.opener.closed) {
-        window.opener.focus();
+        try {
+          window.opener.focus();
+          if (typeof window.opener.loadSmartlog === "function") {
+            window.opener.loadSmartlog();
+          }
+        } catch (err) {}
         window.close();
-      } else {
-        window.open("/", "firmware_vcs_diff_viewer");
+        setTimeout(() => {
+          if (!window.closed) {
+            window.location.href = "/";
+          }
+        }, 300);
+        return;
       }
+      try {
+        const existingDiff = window.open("", "firmware_vcs_diff_viewer");
+        if (existingDiff && !existingDiff.closed && existingDiff.location.href && existingDiff.location.href !== "about:blank") {
+          existingDiff.focus();
+          window.close();
+          setTimeout(() => {
+            if (!window.closed) {
+              window.location.href = "/";
+            }
+          }, 300);
+          return;
+        }
+      } catch (err) {}
+      window.location.href = "/";
     }
 
     async function saveAndExit() {
@@ -1229,12 +1253,7 @@
       }
 
       setTimeout(() => {
-        if (window.opener && !window.opener.closed) {
-          window.opener.focus();
-          window.close();
-        } else {
-          window.location.href = "/";
-        }
+        returnToDashboard();
       }, 500);
     }
 
