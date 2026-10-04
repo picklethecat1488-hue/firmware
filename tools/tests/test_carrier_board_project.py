@@ -222,23 +222,33 @@ def test_carrier_board_firmware_document() -> None:
     assert "BATTERY_LOW" in content
     assert "BATTERY_CRITICAL" in content
 
-    # Card detection boot behavior and SRAM headroom computation
-    assert "does NOT alter, delay, or change system boot behavior" in content
+    # Expansion board error handling and fault isolation (CR-e45b9423)
+    assert "eliminates on-card identification EEPROMs" in content
+    assert "Modular Expansion Board Verification & Error Handling" in content
+    assert "ERR_EXPANSION_NOT_FOUND" in content or "ServiceError" in content
     assert "SRAM Usage vs. Expansion Headroom" in content
     assert "Framework Validation: Integration with Touch Sensor Gesture Processor" in content
+    assert "dev:eeprom" not in content
 
-    # WORM-013: Feedbacks about carrier_board.md
-    # 1. host_fs EEPROM programming support
-    assert "dev:eeprom" in content
-    assert "host_fs" in content and "--device dev:eeprom" in content
+    # Internal flash partitions renaming to 'app' and 'metadata' (CR-e45b9423)
+    assert "`app`" in content
+    assert "`metadata`" in content
+    assert "slot_a" not in content
 
-    # 2. Sequential-storage USB-descriptor-style format for EEPROM
-    assert "USB-descriptor" in content or "USB descriptor" in content
-    assert "DeviceDescriptor" in content or "TLV" in content
-
-    # 3. ProgramMetadata section with target partition & descriptor info
+    # Strongly typed integer enums for ProgramMetadata (CR-e45b9423)
+    assert "pub enum StorageDeviceId" in content
+    assert "pub enum PartitionId" in content
+    assert "device_id: StorageDeviceId" in content
+    assert "partition_id: PartitionId" in content
     assert "ProgramMetadata" in content
     assert ".program_metadata" in content or "program_metadata" in content.lower()
+
+    # Architecture risk matrix, bringup milestones, and final delivery objective (CR-e45b9423)
+    assert "Architecture Risk Identification & Mitigation Matrix" in content
+    assert "Bringup & Verification Milestones & Deliverables Roadmap" in content
+    assert "Final Delivery Objective" in content
+    assert "AR-1" in content and "AR-6" in content
+    assert "Milestone 1 (M1)" in content and "Milestone 5 (M5)" in content
 
     # 4. Hardware FIFO buffering, on-chip high-resolution timer, and sensor fusion
     assert "FIFO" in content
