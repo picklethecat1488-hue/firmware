@@ -9,14 +9,14 @@
 | **Review Date** | `2026-10-03 23:23:37 UTC` |
 | **Revisions** | `working` |
 | **Overall Verdict** | **`CHANGES_REQUESTED`** |
-| **Review Progress** | `0/8 files reviewed (0%)` |
-| **Total Comments** | `1 findings` |
+| **Review Progress** | `0/2 files reviewed (0%)` |
+| **Total Comments** | `2 findings` |
 
 ## Findings by Severity
 
 | Severity | Count | Meaning |
 | :--- | :---: | :--- |
-| **[MUST FIX]** | 1 | Must be resolved before merge; bugs, defects, or safety regressions. |
+| **[MUST FIX]** | 2 | Must be resolved before merge; bugs, defects, or safety regressions. |
 | **[PROPOSAL]** | 0 | Architecture ideas, design proposals, or optional enhancements. |
 | **[NIT]** | 0 | Minor formatting, naming, or cosmetic cleanups. |
 
@@ -35,6 +35,17 @@
 
 > **Reviewer (Reviewer)**: can we customize the boot loader at all? to support our OTA scenario, we need something that will either run out of an SRAM region when the OTA is kicked off, or out of XIP flash prior to loading the Slot A application
 
+#### **[MUST FIX]** [app/carrier_board.md:L19](file:///Users/daparker/gh/firmware/app/carrier_board.md#L19)
+<!-- comment-uuid: 52e7e756-b22f-4b40-845b-12a07ffbd1d1 -->
+<!-- comment-commit: working -->
+
+```markdown
+|  - Inter-Core Async IPC (embassy-ipc-channel over SRAMX + MU interrupts / CBOR)   |
+```
+
+> **Reviewer (Reviewer)**: can you include a section on expansion card support. we will be using features to add support for various expansion cards. also, please list the controllers used for the app.
+
 ## Action Items Checklist
 
 - [x] **[MUST FIX]** [`app/carrier_board.md:L102-L103`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L102-L103): can we customize the boot loader at all? to support our OTA scenario, we need something that will either run out of an SRAM region when the OTA is kicked off, or out of XIP flash prior to loading the Slot A application <!-- uuid:5889fa0b-8dc2-4898-8c0b-56f5a7fd3c95 -->
+- [ ] **[MUST FIX]** [`app/carrier_board.md:L19`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L19): can you include a section on expansion card support. we will be using features to add support for various expansion cards. also, please list the controllers used for the app. <!-- uuid:52e7e756-b22f-4b40-845b-12a07ffbd1d1 -->

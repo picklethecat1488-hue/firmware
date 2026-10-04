@@ -142,6 +142,29 @@ def test_carrier_board_firmware_document() -> None:
     assert "XIP" in content
     assert "flash_loader_ram" in content or ("SRAM" in content and "relocat" in content)
 
+    # Inter-core IPC framework & cost breakdown
+    assert "IPC" in content
+    assert "minicbor" in content or "CBOR" in content
+
+    # Embassy framework invariant for SSBL and all executable code
+    assert "Embassy Framework Invariant" in content or ("Embassy" in content and "executable code" in content.lower())
+
+    # Host CLI and Host FS tooling support
+    assert "host_cli" in content
+    assert "host_fs" in content
+    assert "field servicing" in content.lower() or "production" in content.lower()
+
+    # Resolution of RP2040 Core 1 SRAM execution limitation
+    assert "RP2040" in content
+    assert "XIP" in content
+
+    # UI states, speaker chimes, boot times, and Standby power state
+    assert "Standby" in content
+    assert "chime" in content.lower()
+    assert "BOOT_FAILED" in content or "boot failure" in content.lower()
+    assert "OTA_PROGRAMMING" in content or "Magenta" in content
+    assert "Boot Timing" in content or "boot time" in content.lower()
+
 
 def test_carrier_board_bringup_yaml() -> None:
     """Verify app/carrier_board_bringup.yaml exists as source of truth for bringup verification."""
