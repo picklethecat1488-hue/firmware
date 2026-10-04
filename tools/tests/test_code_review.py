@@ -1752,3 +1752,14 @@ def test_review_server_target_defaults_and_build_migration(tmp_path: Path) -> No
     assert migrated_session is not None
     assert len(migrated_session.comments) == 1
     assert migrated_session.comments[0].body == "Initial comment in build store"
+
+
+def test_code_review_detect_language_rust() -> None:
+    """Verify code_review.html.j2 properly maps .rs files to rust for syntax highlighting."""
+    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "code_review.html.j2"
+    assert template_path.exists()
+    content = template_path.read_text(encoding="utf-8")
+
+    assert 'case "rs":' in content, "code_review.html.j2 must contain case 'rs':"
+    assert 'return "rust";' in content, "code_review.html.j2 must return 'rust' for .rs files"
+

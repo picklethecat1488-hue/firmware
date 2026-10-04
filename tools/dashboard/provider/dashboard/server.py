@@ -944,7 +944,7 @@ class DashboardServer(ThreadingHTTPServer):
     def __init__(
         self,
         host: str = "127.0.0.1",
-        port: int = 8777,
+        port: int = 8877,
         repo_root: Optional[Path] = None,
         initial_branch: Optional[str] = None,
         initial_commit: Optional[str] = None,

@@ -394,7 +394,7 @@ class ReviewServer(ThreadingHTTPServer):
     def __init__(
         self,
         host: str = "127.0.0.1",
-        port: int = 8775,
+        port: int = 8875,
         repo_root: Optional[Path] = None,
         markdown_output: Optional[Path] = None,
         feedback_dir: Optional[Path] = None,
