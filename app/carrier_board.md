@@ -16,6 +16,7 @@ The Carrier Board 2.0 is a modular hardware evaluation, sensor fusion, and telem
 +-----------------------------------------------------------------------------------+
 |  Core 0 (150 MHz Cortex-M33): System Orchestration, Storage, Network & Services   |
 |  - Embassy Async Executor (Cooperative Multitasking)                              |
+|  - Inter-Core Async IPC (embassy-ipc-channel over SRAMX + MU interrupts / CBOR)   |
 |  - FlexSPI NAND Flash Storage Controller (Winbond W25N01GV 1Gb NAND Filesystem)   |
 |  - Bidirectional Wireless BLE Service Stack (u-blox NINA-B312 UART @ 1 Mb/s)       |
 |    * Telemetry Egress Streaming                                                   |
@@ -27,6 +28,7 @@ The Carrier Board 2.0 is a modular hardware evaluation, sensor fusion, and telem
 +-----------------------------------------------------------------------------------+
 |  Core 1 (150 MHz Cortex-M33): Dedicated Real-Time Peripheral Coprocessor          |
 |  - Deterministic Real-Time Task Runner                                            |
+|  - Inter-Core Async IPC (embassy-ipc-channel over SRAMX + MU interrupts / CBOR)   |
 |  - High-Speed ProxFusion Capacitive Touch & Proximity Engine (Azoteq IQS7222A)    |
 |  - PDM Class-D Audio Stream & Frequency Synthesis (MAX98357A & Piezo Sounder)     |
 |  - Camera Gesture Pipeline & Image Preprocessing Interface                        |
@@ -49,6 +51,76 @@ The Carrier Board 2.0 is a modular hardware evaluation, sensor fusion, and telem
 | **`U4`** | **ADI MAX98357A** | 3.2W Class-D Mono Audio Amplifier | `PDM0` Audio (`B14`/`A14`)| Chime audio feedback, filterless Class-D drive on Core 1. |
 | **`U11`**| **u-blox NINA-B312**| Bluetooth Low Energy 5.0 Module | UART1 (1 Mb/s) | Bidirectional BLE: Telemetry streaming & GATT service endpoint. |
 | **`Q2`–`Q4`**| **TI TPS22918**| 5.5V, 2A Load Switches | GPIO (`L4`, `L5`, `M4`)| Power-gating Audio (`Q2`), Sensors (`Q3`), and Debug Bridge (`Q4`). |
+
+### Application Controller Architecture
+
+Carrier Board 2.0 adopts the project's decoupled domain controller design pattern (`controller` crate), utilizing Embassy async channels to coordinate system events across tasks and cores. The application initializes and runs the following controllers:
+
+1. **`SystemController` (`controller::system_controller`)**:
+   - Master orchestrator governing top-level operating states (`Active`, `Sleep`, `Standby`, `PowerDown`).
+   - Coordinates inactivity timeouts, wake-up interrupts from touch or BLE, and inter-core task sequencing.
+2. **`BatteryController` (`controller::battery_controller`)**:
+   - Interfaces with the ADI MAX17048 fuel gauge (`I2C0` @ `0x36`) and TI BQ24074 PMIC status pins (`/CHG`, `/PGOOD`).
+   - Computes state of charge (SoC), cell voltage, charging status, and publishes periodic battery telemetry frames.
+3. **`LedController` (`controller::led_controller`)**:
+   - Drives the TI LP5009 9-channel logarithmic $\text{I}^2\text{C}$ RGB LED driver (`I2C0` @ `0x14`).
+   - Renders visual patterns for boot (`BOOTING`, `BOOT_FAILED`), wireless status (`BLE_PAIRING`, `BLE_CONNECTED`), runtime modes (`ACTIVE_RUNNING`, `CAMERA_ACTIVE`), and OTA updates (`OTA_PROGRAMMING`).
+4. **`SensorController` (`controller::sensor_controller`)**:
+   - Manages the Azoteq IQS7222A capacitive touch and proximity sensor (`I2C1` @ `0x44` on Core 1).
+   - Handles multi-channel touch detection, continuous tracking, gesture recognition, and proximity event emission over IPC.
+5. **`FilesystemController` (`controller::filesystem_controller`)**:
+   - Manages persistent storage on the Winbond W25N01GV 128 MB SLC NAND flash via FlexSPI DMA and `sequential-storage`.
+   - Mounts and manages `telemetry` (queue), `crash_logs` (map), `ota_staging` (queue), `recovery` (read-only), and `models` (map) partitions.
+6. **`TelemetryController` (`controller::telemetry_controller`)**:
+   - High-throughput telemetry pipeline aggregating binary `defmt` structured logs and CBOR telemetry records.
+   - Buffers records in shared SRAMX memory and schedules DMA transmissions over 1 Mb/s UART or BLE.
+7. **`ShellController` (`controller::shell_controller`)**:
+   - Implements the non-blocking interactive command-line interface over FTDI USB UART (`FC1`).
+   - Processes diagnostic shell commands, bringup verification triggers, and binary service RPC frames for production testing.
+8. **`ThermalController` (`controller::thermal_controller`)**:
+   - Samples MCX N947 internal junction temperature sensors and external thermistor rails.
+   - Enforces thermal safety throttling and generates thermal alert commands if temperature thresholds are breached.
+
+### Modular Expansion Card Architecture & Cargo Features
+
+To support diverse hardware configurations without bloating firmware binaries, Carrier Board 2.0 implements a modular expansion card system configured through **Cargo feature flags**:
+
+#### 1. Hardware Expansion Headers & Bus Interfaces
+The carrier board provides dedicated expansion headers routing isolated serial, bus, and power signals:
+- **`J6` Header**: External $\text{I}^2\text{C}$ expansion clock (`I2C2_SCL` on `P1_9` / `FC4_P1`) and data (`I2C2_SDA` on `P1_8` / `FC4_P0`).
+- **`J9` Header**: High-speed SPI peripheral expansion (`SPI0_SCK`, `SPI0_MOSI`, `SPI0_MISO`, `SPI0_CS_N` on `P4_12`–`P4_17` / `FC2`).
+- **`J10` Header**: Peripheral expansion high-speed UART (`UART1_RXD` on `P1_4` / `FC5_P0`, `UART1_TXD` on `P1_5` / `FC5_P1`).
+- **`Q1` MOSFET Load Switch**: Controlled by `PWR_EN` to power-gate expansion card peripherals during `Sleep` and `Standby`.
+
+#### 2. Cargo Feature Flags (`Cargo.toml`)
+Firmware targets select expansion card drivers and runtime controllers using conditional compilation:
+```toml
+[features]
+default = ["expansion-audio", "expansion-camera"]
+
+# Expansion Card 1: PDM Class-D Audio Streaming & Sound Synthesis
+expansion-audio = []
+
+# Expansion Card 2: 2D Optical Flow & Camera Gesture Vision Pipeline
+expansion-camera = []
+
+# Expansion Card 3: GNSS / Location Services Engine (NMEA/UBX over UART1)
+expansion-location = []
+
+# Expansion Card 4: Cellular / Satellite IoT Modem Controller
+expansion-cellular = []
+```
+
+#### 3. Conditional Controller & Pipeline Compilation
+- **`expansion-audio`**: Enables Core 1 PDM audio streaming task, WAV/ADPCM decompression engine, and speaker chime synthesis (+45 KB flash).
+- **`expansion-camera`**: Compiles Core 1 camera DMA capture pipeline, 2D optical flow filter, image patch normalization, and eIQ Neutron NPU inference dispatch (+140 KB flash).
+- **`expansion-location`**: Instantiates GNSS sentence parser task on `UART1` (`FC5`), Kalman dead-reckoning filter, and geodesic solver (+55 KB flash).
+- **`expansion-cellular`**: Enables cellular modem AT command handler, PPP network adapter, and power-saving mode (eDRX / PSM) scheduler (+65 KB flash).
+
+#### 4. Hardware Card Identification & Auto-Detection
+During Stage 2 bringup, Core 0 queries the expansion $\text{I}^2\text{C}$ bus (`FC4`) at standard EEPROM address range (`0x50`–`0x57`):
+- Each expansion card carries a 2 KB serial EEPROM containing a signed CBOR board descriptor (UUID, card type, hardware revision, GPIO interrupt assignments, voltage requirements).
+- If a card is detected whose feature is disabled in the active firmware build, the system logs a diagnostic warning via `defmt` and leaves load switch `Q1` unasserted to prevent wasted battery draw.
 
 ---
 
@@ -81,6 +153,7 @@ To prove conclusively that the application fits comfortably within the internal 
 | **Core 0 Application & Embassy Executor** | 210 KB | 40 KB | **250 KB** | Cooperative async task runner, system state machine, timer scheduler, channel routing. |
 | **Core 1 Coprocessor Runtime** | 150 KB | 30 KB | **180 KB** | Coprocessor bootstrap, real-time sensor loop, Azoteq IQS7222A touch sampling engine. |
 | **DSP & PowerQuad Math Kernels** | 75 KB | 15 KB | **90 KB** | CMSIS-DSP FFT, biquad IIR/FIR filter cascades, frequency synthesis algorithms. |
+| **Inter-Core Async IPC (SRAMX + MU + minicbor)** | 18 KB | 4 KB | **22 KB** | Lock-free SPSC channel queues in shared SRAMX, MU doorbell interrupt driver, minicbor zero-copy serialization. |
 | **eIQ Neutron NPU Runtime & Driver** | 100 KB | 20 KB | **120 KB** | NPU command stream builder, operator graph dispatcher, weight decompression loader. |
 | **eIQ Quantized Model Weights (Internal)** | 0 KB | 280 KB | **280 KB** | 8-bit quantized gesture classification & keyword spotting weights in `.rodata`. |
 | **Built-in Peripherals & Bus Drivers** | 75 KB | 15 KB | **90 KB** | FlexSPI NAND (Core 0), LPI2C0/1, I3C, LPUART0/1, PDM audio, WUU/SPC drivers. |
@@ -89,7 +162,7 @@ To prove conclusively that the application fits comfortably within the internal 
 | **Expansion: Camera Gesture Pipeline** | 115 KB | 25 KB | **140 KB** | 2D optical flow filter, image patch normalization, edge trigger detection. |
 | **Expansion: Location Services Engine** | 45 KB | 10 KB | **55 KB** | NMEA-0183 / UBX sentence parsing, Kalman dead-reckoning filter, geodesic solver. |
 | **Diagnostic Shell, RTT & Formatting** | 30 KB | 10 KB | **40 KB** | Command parser, bringup test routines, ASCII banner, RTT formatting. |
-| **Total Estimated Footprint** | **893 KB** | **467 KB** | **1,360 KB** | **70.8% of 1,920 KB partition (560 KB headroom remaining).** |
+| **Total Estimated Footprint** | **911 KB** | **471 KB** | **1,382 KB** | **72.0% of 1,920 KB partition (538 KB headroom remaining).** |
 
 ### Firmware Partitioning & Flash Filesystems (`sequential-storage`)
 
@@ -120,6 +193,28 @@ A strict architectural invariant of the Carrier Board 2.0 firmware is that **eve
 - **Time-Series Telemetry**: High-rate telemetry events are appended via `sequential_storage::queue::push` and drained during BLE / USB upload bursts using `sequential_storage::queue::iter` and `pop`.
 - **Power-Loss Atomicity**: Incomplete or torn writes occurring during battery disconnect or brownout are cleanly discarded during the subsequent boot traversal without corrupting existing records.
 - **Wear Leveling**: Flash write operations are distributed evenly across SLC NAND erase blocks, preventing premature block degradation.
+
+#### 4. Host Flash Tool (`tools/host_fs`) Direct NAND Programming Support
+
+The repository's host filesystem utility (`tools/host_fs`) will be extended to provide direct host-side Winbond W25N01GV SLC NAND image flashing, partition provisioning, and diagnostic extraction:
+
+- **Full Image Provisioning**:
+  ```bash
+  cargo run -p host_fs -- nand-flash --image target/nand_factory_image.bin
+  ```
+  Programs factory golden partitions (`recovery`, initial `models`, baseline `fs`) directly into SLC NAND via the FTDI high-speed bridge or external programmer.
+- **Partition-Level Staging & Model Updates**:
+  ```bash
+  cargo run -p host_fs -- nand-program --partition models --file models/gesture_v2.bin
+  cargo run -p host_fs -- nand-program --partition recovery --file target/out/carrier_board_golden.bin
+  ```
+- **Diagnostic Telemetry & Crash Dump Extraction**:
+  ```bash
+  cargo run -p host_fs -- nand-dump --partition telemetry --output telemetry_run.bin
+  cargo run -p host_fs -- nand-dump --partition crash_logs --output crash_dump.bin
+  ```
+- **Host-Side `sequential-storage` Emulation**:
+  `host_fs` incorporates a host-native driver for `sequential-storage` queues and maps, allowing developers to inspect, unpack, validate CRC32 checksums, and export records directly from raw NAND dumps while accounting for SLC NAND 128 KB erase blocks and bad block lookup tables.
 
 ### Application Software Framework for DSP & NPU (Rust ML Ecosystem)
 
@@ -169,10 +264,17 @@ Firmware updates are governed by a cryptographic Root of Trust (RoT):
    - A monotonic anti-rollback counter is tracked in eFuse. The bootloader rejects any signed update payload bearing a security version lower than the current hardware counter.
 4. **Custom Second-Stage Bootloader (SSBL) & Dual-Mode OTA Execution**:
    - The firmware architecture incorporates a **customizable Second-Stage Bootloader (SSBL)** residing in the dedicated 64 KB partition (`0x0000_0000`–`0x0001_0000`), authenticated by the ROM RoT.
+   - **SSBL Implementation & Embassy Integration**: The SSBL is compiled as a specialized, compact asynchronous Embassy application (`embassy-executor`) integrating:
+     - The `embassy-mcx` FlexSPI NAND driver communicating with the external Winbond W25N01GV flash chip over DMA.
+     - The `sequential-storage` crate drivers (`queue` iterator for `ota_staging` chunk assembly and `map` for `keystore`/`fs` configuration).
+     - Cryptographic verification kernels (Ed25519 digital signature validation and SHA-256 hash checks).
+   - > [!IMPORTANT]
+     > **Embassy Framework Invariant**: All executable firmware code in the repository—including the Second-Stage Bootloader (SSBL), hardware bringup diagnostic runners, real-time coprocessor loops, and the primary application—MUST be implemented using the Embassy asynchronous framework. Bare-metal while-loops, raw busy-spins, or blocking C runtime constructs are strictly prohibited.
    - To support flexible OTA update workflows, the SSBL provides two distinct operational execution modes:
-     - **Pre-Application XIP Execution**: Prior to launching the primary application, the SSBL boots directly from internal flash in Execute-in-Place (XIP) mode. It inspects boot flags in `keystore`/`fs`, checks the integrity of the external Winbond W25N01GV NAND `ota_staging` partition, and verifies whether a valid staged update image or rollback request is pending. If no update is requested, it directly hands off control to the Slot A application vector table (`0x0001_0000`).
+     - **Pre-Application XIP Execution**: Prior to launching the primary application, the SSBL boots directly from internal flash in Execute-in-Place (XIP) mode. It inspects boot flags in `keystore`/`fs`, checks the integrity of the external Winbond W25N01GV NAND `ota_staging` partition, and verifies whether a valid staged update image or rollback request is pending. If no update is requested, it directly hands off control to the Slot A application vector table (`0x0001_0000`). If boot validation fails, the SSBL sets the user RGB LED to **SSBL Boot Failure State (`BOOT_FAILED`: Rapid Red strobe @ 4 Hz)** and triggers a low-dissonance speaker alert before falling back to the golden recovery image.
      - **SRAM-Resident Flashing Kernel (`flash_loader_ram`)**: When an OTA commit is initiated (either detected by the SSBL at boot or kicked off by the active application upon completing chunk download over BLE/USB), internal flash Slot A cannot be safely erased and rewritten while actively executing code from the same physical flash controller. The SSBL or application relocates a self-contained, position-independent flash programming kernel (`flash_loader_ram`, ~8 KB) into the Reserved SRAM buffer (`0x2007_C000`).
      - *MPU Reconfiguration*: The privileged supervisor temporarily updates the MPU configuration for the `0x2007_C000` region from `Execute-Never (XN)` to `Privileged Execution (RX)` with interrupts disabled (`CPSID I`).
+     - *Visual State Signaling*: While programming is underway in SRAM, the kernel configures the LP5009 user RGB LED to the dedicated **OTA Programming UI State (`OTA_PROGRAMMING`: Magenta breathing @ 2 Hz)**.
      - *NAND-to-Flash Streaming*: Running entirely out of SRAM, `flash_loader_ram` streams the verified binary blocks from the NAND `ota_staging` partition over FlexSPI DMA, erases Slot A sectors, programs the internal flash, calculates the hardware CRC32 to guarantee image integrity, updates the monotonic anti-rollback counter, and executes an atomic system reset (`NVIC_SystemReset()`).
 5. **Single-Slot NAND Staging Workflow**:
    ```mermaid
@@ -180,15 +282,16 @@ Firmware updates are governed by a cryptographic Root of Trust (RoT):
        A["Incoming OTA Payload via BLE/USB"] --> B["Stage in 32MB NAND Partition (0x0400_0000)"]
        B --> C["Validate Ed25519 Signature & SHA-256 Hash"]
        C --> D{"Signature Valid & Version >= Rollback Counter?"}
-       D -- No --> E["Reject Update & Erase Staging Partition"]
+       D -- No --> E["Set User LED to BOOT_FAILED (Rapid Red Strobe @ 4Hz) & Erase Staging Partition"]
        D -- Yes --> F["Reboot or Enter OTA Mode"]
        F --> G{"Execution Mode Selection"}
        G -- XIP Boot --> H["Custom SSBL Evaluates Pending OTA in XIP Flash"]
        G -- In-App Trigger --> I["Relocate flash_loader_ram Kernel into SRAM (0x2007_C000)"]
        H --> I
-       I --> J["Program Slot A from NAND via FlexSPI DMA while Running in SRAM"]
-       J --> K["Verify Slot A Flash CRC32 & Update Monotonic Counter"]
-       K --> L["Trigger NVIC_SystemReset() -> Boot Verified Slot A"]
+       I --> J["Set User LED to OTA_PROGRAMMING (Magenta Breathing @ 2Hz)"]
+       J --> K["Program Slot A from NAND via FlexSPI DMA while Running in SRAM"]
+       K --> L["Verify Slot A Flash CRC32 & Update Monotonic Counter"]
+       L --> M["Trigger NVIC_SystemReset() -> Boot Verified Slot A"]
    ```
 
 ### Internal SRAM Allocation Budget (Including RTT & CLI Buffers)
@@ -214,9 +317,33 @@ The architecture establishes **Embassy Multi-Executor Asymmetric Multiprocessing
 
 - **Core 0**: Runs the primary Embassy asynchronous executor. Handles system timers, power rail scheduling, FlexSPI NAND filesystem access, battery fuel gauge monitoring, and bidirectional BLE communication.
 - **Core 1**: Dedicated real-time peripheral coprocessor running a deterministic Embassy executor. Drives Azoteq IQS7222A touch capture, PDM Class-D audio streaming, and camera gesture preprocessing.
-- **Inter-Core IPC Mechanism**:
-  - Zero-copy lock-free Single-Producer Single-Consumer (SPSC) ring buffers reside in shared SRAMX (`0x2006_8000`).
-  - Signaling is mediated by the MCX N947 hardware **Messaging Unit (MU)**. When Core 0 enqueues an audio playback request or ML command, it triggers an MU interrupt to wake Core 1 instantly without polling.
+
+#### Inter-Core Asynchronous IPC Protocol (`embassy-ipc-channel` & `minicbor`)
+
+Inter-core communication is mediated by a specialized, zero-allocation asynchronous IPC framework (`embassy-ipc-channel` / `controller::ipc`):
+
+- **Shared Memory SPSC Queues**:
+  Lock-free `heapless::spsc::Queue` circular ring buffers are allocated in shared ECC SRAMX (`0x2006_8000`, 32 KB). Separate uni-directional channels are maintained for Core 0 &rarr; Core 1 (audio commands, ML inference triggers) and Core 1 &rarr; Core 0 (touch coordinates, gesture events, inference results).
+- **Hardware Messaging Unit (MU) Signaling**:
+  Doorbell interrupts utilize the NXP MCX N947 hardware Messaging Unit (`MU0_MUA` / `MU0_MUB`). When Core 0 pushes a request into the ring buffer, it sets the MU flag register, instantly triggering an interrupt on Core 1 that wakes the Embassy task awaiting `signal.wait()`. No polling or busy-spins occur.
+- **CBOR Serialization (`minicbor`)**:
+  All command and telemetry payloads crossing the core boundary are serialized into strongly-typed binary CBOR using `minicbor`. This directly wraps standard `embassy_sync::channel::Channel` abstractions and aligns seamlessly with the controller architecture across `model` and `controller` crates.
+- **Architectural Rationale**:
+  Building a dedicated Embassy channel wrapper rather than importing heavyweight third-party runtimes ensures zero runtime heap allocation, deterministic timing, minimal flash overhead (22 KB total), and full interoperability with Embassy async futures.
+
+#### Resolution of RP2040 Core 1 SRAM Execution Limitation on MCX N947
+
+A critical limitation in prior RP2040-based architectures was the requirement that **Core 1 executable code had to be copied entirely into SRAM (`ram_text`)**:
+
+- **Root Cause on RP2040**:
+  The RP2040 features a single external QSPI flash controller shared across both cores. When Core 0 and Core 1 accessed flash concurrently, bus arbitration delays and cache eviction caused unacceptable latency spikes. Furthermore, our implementation of multi-megabyte Perfetto timeline tracing required cycle-accurate logging on Core 1; any flash access stall distorted trace timestamps and caused event buffer overruns. Consequently, RP2040 forced Core 1 `.text` into SRAM, consuming 48–64 KB of RAM.
+- **Architectural Resolution on NXP MCX N947**:
+  The Carrier Board 2.0 silicon architecture resolves this limitation natively, allowing **Core 1 to execute in-place directly from internal Flash Slot A (XIP)** with zero performance degradation:
+  1. *Dual Independent 64-Bit Flash Read Ports*: The MCX N947 integrates 2 MB of dual-bank internal flash with dual independent 64-bit read ports. Core 0 and Core 1 fetch instructions independently through separate bus ports with zero cross-core flash read contention.
+  2. *Dedicated Instruction Caches (ICache)*: Each Cortex-M33 core possesses its own dedicated instruction cache and prefetch line buffers, preventing cache thrashing between coprocessor algorithms and system tasks.
+  3. *Multi-Layer AHB Crossbar*: Instructions are fetched across dedicated C-AHB (Code AHB) buses, completely isolated from peripheral and DMA transfers occurring on S-AHB (System AHB).
+  4. *Zero-Flash Perfetto Tracing*: On MCX N947, Perfetto trace events from both cores write directly into the dedicated 24 KB ECC SRAM logging arena (`0x2002_0000`). Tracing never issues flash reads or writes, eliminating any risk of tracing-induced flash bus stalls.
+  5. *SRAM Conservation*: Executing Core 1 natively via XIP preserves 100% of the 512 KB internal SRAM budget for neural network activation tensors (128 KB Neutron arena), audio circular buffers (48 KB), and sensor fusion filters.
 
 ---
 
@@ -250,6 +377,49 @@ Carrier Board 2.0 maintains a dual-channel strategy tailored for development vs.
 | **CLI / Shell** | **Interactive CLI Shell** for low-level developer commands. | Structured **Service RPC Protocol** (framed CBOR commands/responses). |
 | **Field Telemetry** | Not possible in standalone/enclosed devices. | **Fully Supported** wirelessly via BLE and over external USB-C port. |
 | **Enclosure Access** | None (requires open enclosure). | Accessible via external connectors and RF window. |
+
+### Host CLI (`tools/host_cli`) Production, Field Servicing & OTA Support
+
+The repository's host command-line utility (`tools/host_cli`) is extended to serve as the unified workstation interface for production manufacturing, field diagnostic servicing, and Over-the-Air (OTA) firmware deployment over USB UART or BLE:
+
+#### 1. Production Manufacturing & Factory Provisioning
+During factory assembly and end-of-line testing, `host_cli` automates silicon and peripheral qualification without requiring external JTAG/SWD debug probes:
+- **Comprehensive Hardware Qualification**:
+  ```bash
+  cargo run -p host_cli -- qualify --target /dev/tty.usbmodem101 --baud 1000000
+  ```
+  Dispatches structured Stage 2+ diagnostic commands over the high-speed UART service model. Queries I2C bus device ACKs (LP5009, MAX17048, IQS7222A), exercises I3C DAA enumeration, performs Winbond W25N01GV NAND block-read qualification, tests NINA-B312 AT communication, and verifies PMIC voltage rails against ADC tolerance windows.
+- **Factory Device Provisioning**:
+  ```bash
+  cargo run -p host_cli -- provision --serial "CB2-2026-00421" --hw-rev "rev2.0" --board-cert certs/device.crt
+  ```
+  Injects unique device serial numbers, cryptographic board identity certificates, and calibration baselines directly into the secure `keystore` and `fs` partitions via CBOR RPC frames.
+
+#### 2. Field Servicing & Diagnostic Health Monitoring
+For deployed units in the field or in RMA diagnostic centers:
+- **Live Binary Telemetry Streaming & Perfetto Decode**:
+  ```bash
+  cargo run -p host_cli -- telemetry --stream --target /dev/tty.usbmodem101
+  cargo run -p host_cli -- telemetry --ble --device "CB2-BLE-421" --output field_trace.pftrace
+  ```
+  Connects via USB-C or wireless BLE GATT service endpoint, captures high-rate `defmt` structured logs and CBOR telemetry frames, and pipes execution events directly into Chrome Perfetto timeline traces.
+- **Crash Log Extraction & Post-Mortem Analysis**:
+  ```bash
+  cargo run -p host_cli -- crash-dump --extract --output crash_log.json
+  ```
+  Drains the 32 MB SLC NAND `crash_logs` partition, decompresses ARMv8-M fault register states (CFSR, HFSR, MMFAR, BFAR), formats panics, and reconstructs active task callstacks across both Cortex-M33 cores.
+
+#### 3. Over-the-Air (OTA) Firmware Deployment
+`host_cli` serves as the primary deployment tool for authenticated firmware updates:
+- **Signed Firmware Package Upload**:
+  ```bash
+  cargo run -p host_cli -- ota push --image target/firmware_signed.bin --key release_ed25519.priv --transport usb
+  cargo run -p host_cli -- ota push --image target/firmware_signed.bin --transport ble --device "CB2-BLE-421"
+  ```
+- **Chunked Transfer Protocol & NAND Staging**:
+  Transfers firmware in 4 KB CBOR-framed chunks with sliding-window flow control. Firmware blocks are streamed directly into the 32 MB NAND `ota_staging` partition via `sequential_storage::queue`.
+- **Pre-Activation Validation & Trigger**:
+  Upon transfer completion, `host_cli` instructs the firmware to verify the SHA-256 digest and Ed25519 cryptographic signature. Once verified, `host_cli` signals the target to transition into `OTA_PROGRAMMING` mode, where SSBL / `flash_loader_ram` performs in-SRAM flash programming and atomic reboot.
 
 ---
 
@@ -350,6 +520,70 @@ flowchart LR
 
 ---
 
-## 6. Hardware Bringup & Verification Protocol
+## 6. User Interface, Audio Chimes, Boot Timings & System Controller Extensions
+
+### 1. System Controller Extensions: `Standby` Power State Architecture
+
+Carrier Board 2.0 adopts the proven, event-driven `SystemController` architecture from the cat fountain platform (`controller::system_controller`), extending it with a hardware-enforced **`Standby` power state** positioned directly between `Sleep` and `PowerDown`:
+
+| System State | Core 0 State | Core 1 State | Power Rails & Load Switches | Wake Latency | Target Current | Primary Use Case |
+| :--- | :--- | :--- | :--- | :---: | :---: | :--- |
+| **`Active`** | 150 MHz Active | 150 MHz Active | All rails ON (`SYS_3V3`, `SW_3V3_*`) | Immediate | 28.5 – 139.3 mA | User interaction, audio streaming, camera gesture processing. |
+| **`Sleep`** | 12 MHz Low-Freq | WFI Idle Sleep | Sensing rail ON (`SW_3V3_SENSORS`), Audio/Debug OFF | $\approx 250\,\mu\text{s}$ | 3.8 mA | Proximity detection active, ready for instant responsiveness. |
+| **`Standby`** | Deep Sleep (WFI) | Deep Sleep (WFI) | All switchable rails hard-gated via `Q2`, `Q3`, `Q4` | $\le \mathbf{2.5\text{ ms}}$ | $\mathbf{\le 185\,\mu\text{A}}$ | Long-term battery shelf mode; wakes on touch interrupt or BLE. |
+| **`PowerDown`** | Powered Off | Powered Off | PMIC shutdown; all rails OFF | $\approx 40\text{ ms}$ (Cold) | $< 1.0\,\mu\text{A}$ | Battery cutoff or physical power switch off. |
+
+- **State Transition Semantics**: Inactivity timeout ($T_{sleep} = 30\text{ s}$) transitions the device from `Active` to `Sleep`. If no touch or BLE activity occurs for an extended duration ($T_{standby} = 5\text{ min}$), the `SystemController` issues commands to power-gate all peripherals, disable high-frequency oscillators, configure Azoteq IQS7222A touch controller into low-power wake scan mode ($15\,\mu\text{A}$), and put both Cortex-M33 cores into Deep Sleep.
+- **Wake Triggers**: A capacitive touch tap on the enclosure or an incoming BLE connection assertion triggers an asynchronous hardware pin interrupt, transitioning the device from `Standby` back to `Active` in under $2.5\text{ ms}$.
+
+### 2. User LED Indicator Matrix (TI LP5009 RGB LED)
+
+The TI LP5009 9-channel $\text{I}^2\text{C}$ RGB LED driver provides high-resolution 12-bit PWM dimming across all device lifecycle phases and operational states:
+
+| System & Feature State | LED Pattern / Color | Frequency / Cadence | Subsystem / Driver Responsible | Meaning & Visual Indication |
+| :--- | :--- | :---: | :--- | :--- |
+| **`BOOTING`** | Cyan Pulsing | 1.0 Hz (Breathing) | SSBL / Early HAL | Device undergoing cold boot and hardware integrity checks. |
+| **`BOOT_FAILED`** | Rapid Red Strobe | 4.0 Hz (50% Duty) | SSBL / ROM Trap | SSBL signature check failure, corrupt image, or boot fault. |
+| **`ACTIVE_RUNNING`** | Solid Green | Continuous | System Controller | Normal operational state; sensors and audio subsystems ready. |
+| **`BLE_PAIRING`** | Fast Blue Blink | 2.0 Hz (50% Duty) | BLE Controller / NINA-B312 | BLE advertising active; awaiting host client connection. |
+| **`BLE_CONNECTED`** | Solid Cyan Pulse | Single 500 ms pulse | BLE Controller / NINA-B312 | Secure BLE connection successfully negotiated. |
+| **`CAMERA_ACTIVE`** | Amber Steady | Continuous | Core 1 Vision Pipeline | Camera sensor streaming; gesture preprocessing running. |
+| **`GESTURE_DETECTED`** | Bright White Flash | 200 ms One-Shot | Core 1 / ML Classifier | Valid proximity gesture recognized and confirmed. |
+| **`OTA_PROGRAMMING`** | Magenta Breathing | 2.0 Hz (Breathing) | `flash_loader_ram` | Internal Flash Slot A being programmed from NAND in SRAM. |
+| **`RECOVERY_MODE`** | Yellow Strobe | 2.0 Hz (50% Duty) | SSBL Fallback Handler | Restoring factory golden recovery image into Slot A. |
+| **`STANDBY`** | Off (Dark) | 0 Hz | System Controller | LED driver disabled (`EN` pin low) for $\le 185\,\mu\text{A}$ target. |
+
+### 3. Speaker Audio Chimes
+
+Audio feedback is synthesized or streamed by Core 1 via PDM to the on-board Class-D amplifier (`U4`), producing clear acoustic indications:
+
+| Audio Event | Acoustic Profile & Frequencies | Duration | Volume / Level | Functional Trigger |
+| :--- | :--- | :---: | :---: | :--- |
+| **Boot Up Sound** | Ascending two-tone chime ($523\text{ Hz} \to 659\text{ Hz}$) | 120 ms | Nominal (65 dBA) | Emitted when primary application vector table boots successfully. |
+| **SSBL Failure Alert** | Low-frequency dissonance buzz ($180\text{ Hz}$ harsh square) | 500 ms | Loud (75 dBA) | Emitted when SSBL signature check fails or rollback occurs. |
+| **BLE Connected Chime** | Crisp ascending chirp ($880\text{ Hz} \to 1046\text{ Hz}$) | 80 ms | Nominal (65 dBA) | BLE link encryption and GATT handshake complete. |
+| **BLE Disconnected Chime** | Falling soft chirp ($1046\text{ Hz} \to 587\text{ Hz}$) | 80 ms | Soft (55 dBA) | BLE link terminated or peer out of range. |
+| **Gesture Confirmed Tone** | Crisp harmonic tone ($784\text{ Hz}$, $G_5$) | 60 ms | Soft (60 dBA) | Touch proximity or vision gesture event recognized. |
+| **OTA Success Fanfare** | Ascending triad fanfare ($523\text{ Hz} \to 659\text{ Hz} \to 784\text{ Hz}$) | 240 ms | Nominal (70 dBA) | Firmware update successfully written and verified. |
+| **Low Battery Alert** | Repeating double beep ($440\text{ Hz} \times 2$) | 100 ms cadence | Audible (70 dBA) | Battery State of Charge drops below 10% threshold. |
+
+### 4. Boot Timing & Latency Budget
+
+To deliver instantaneous user responsiveness while guaranteeing cryptographic integrity, the boot sequence is strictly budgeted:
+
+| Boot Phase / Execution Stage | Execution Domain | Target Budget | Worst-Case Bound | Description & Verification Milestone |
+| :--- | :--- | :---: | :---: | :--- |
+| **1. ROM Boot & Clocks** | NXP ROM RoT | 8.5 ms | 12.0 ms | FRO-48M startup, ROM RoT integrity check, SSBL vector fetch. |
+| **2. SSBL Execution** | Custom SSBL (Flash XIP) | 18.0 ms | 22.0 ms | Hardware crypto engine init, Ed25519 signature check of Slot A. |
+| **3. Application Init** | Slot A App (Flash XIP) | 4.5 ms | 6.0 ms | Cortex-M33 vector table relocation, Embassy executor startup. |
+| **4. Peripheral Bringup** | Core 0 & Core 1 Drivers | 8.5 ms | 10.0 ms | $\text{I}^2\text{C}$ bus scan, LP5009 init, IQS7222A baseline calibration. |
+| **Total Cold Boot Time** | **Reset &rarr; Active Running** | **$\mathbf{39.5\text{ ms}}$** | **$\mathbf{50.0\text{ ms}}$** | **Cold boot ready for user input in under $50\text{ ms}$.** |
+| **Standby Wake Latency** | **Standby &rarr; Active** | **$\mathbf{1.8\text{ ms}}$** | **$\mathbf{2.5\text{ ms}}$** | **Instantaneous capacitive touch response from Standby mode.** |
+| **OTA Flash Cycle** | **In-SRAM NAND &rarr; Flash** | **$\mathbf{4.2\text{ s}}$** | **$\mathbf{6.0\text{ s}}$** | **Complete 512 KB internal flash erase, program & CRC32 check.** |
+
+---
+
+## 7. Hardware Bringup & Verification Protocol
 
 The authoritative source of truth for bringup verification is [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml). All hardware verification procedures must follow the step definitions established in that configuration.
+

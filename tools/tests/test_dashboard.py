@@ -1317,6 +1317,36 @@ def test_regression_bug_201_single_diff_viewer_and_bug_tabs_reuse() -> None:
     assert "returnToDashboard" in cr_text
 
 
+def test_regression_worm_009_prevent_duplicate_diff_viewer_windows() -> None:
+    """Verify WORM-009: Exiting Code Review and Bug Report does not spawn duplicate Diff Viewer windows."""
+    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
+    diff_text = (templates_dir / "diff_view.html.j2").read_text(encoding="utf-8")
+    cr_text = (templates_dir / "code_review.html.j2").read_text(encoding="utf-8")
+    worm_text = (templates_dir / "worm_report.html.j2").read_text(encoding="utf-8")
+
+    # 1. Diff view establishes window.name so cross-window references reuse it
+    assert 'window.name = "firmware_vcs_diff_viewer";' in diff_text
+
+    # 2. Code review sets window.name
+    assert 'window.name = "firmware_code_review";' in cr_text
+
+    # 3. Worm report sets window.name
+    assert 'window.name = "firmware_worm_tracker";' in worm_text
+
+    # 4. Code review header Dashboard button calls returnToDashboard
+    assert 'href="/" target="firmware_vcs_diff_viewer" onclick="returnToDashboard(event)"' in cr_text
+
+    # 5. setVerdict in code review calls returnToDashboard instead of direct location.href
+    assert "returnToDashboard()" in cr_text
+
+    # 6. saveAndExit in worm report delegates to returnToDashboard
+    assert "returnToDashboard()" in worm_text
+
+    # 7. Neither code review nor worm report uses window.open("/", "firmware_vcs_diff_viewer") in returnToDashboard
+    assert 'window.open("/", "firmware_vcs_diff_viewer");' not in cr_text
+    assert 'window.open("/", "firmware_vcs_diff_viewer");' not in worm_text
+
+
 def test_regression_bug_202_smartlog_and_files_vertical_scrollbars_visible() -> None:
     """Verify BUG-202: Smartlog and file view columns have permanently visible Quake scrollbars."""
     template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"

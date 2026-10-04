@@ -1426,7 +1426,7 @@
     </div>
 
     <div class="header-actions">
-      <a href="/" class="quake-btn quake-btn-default" style="text-decoration:none;display:inline-flex;align-items:center;" title="Return to VCS Dashboard">← Dashboard</a>
+      <a href="/" target="firmware_vcs_diff_viewer" onclick="returnToDashboard(event)" class="quake-btn quake-btn-default" style="text-decoration:none;display:inline-flex;align-items:center;" title="Return to VCS Dashboard">← Dashboard</a>
       <button id="btnSyncFeedback" class="quake-btn quake-btn-default" onclick="syncFeedback()" title="Synchronize review feedback with feedback/ directory and merge commit feedback">
         🔄 Sync Feedback
       </button>
@@ -1601,14 +1601,39 @@
   </div>
 
   <script>
+    window.name = "firmware_code_review";
+
     function returnToDashboard(e) {
-      if (e) e.preventDefault();
+      if (e && e.preventDefault) e.preventDefault();
       if (window.opener && !window.opener.closed) {
-        window.opener.focus();
+        try {
+          window.opener.focus();
+          if (typeof window.opener.loadSmartlog === "function") {
+            window.opener.loadSmartlog();
+          }
+        } catch (err) {}
         window.close();
-      } else {
-        window.open("/", "firmware_vcs_diff_viewer");
+        setTimeout(() => {
+          if (!window.closed) {
+            window.location.href = "/";
+          }
+        }, 300);
+        return;
       }
+      try {
+        const existingDiff = window.open("", "firmware_vcs_diff_viewer");
+        if (existingDiff && !existingDiff.closed && existingDiff.location.href && existingDiff.location.href !== "about:blank") {
+          existingDiff.focus();
+          window.close();
+          setTimeout(() => {
+            if (!window.closed) {
+              window.location.href = "/";
+            }
+          }, 300);
+          return;
+        }
+      } catch (err) {}
+      window.location.href = "/";
     }
 
     // State management
@@ -3428,7 +3453,7 @@
           if (verdict === "APPROVED" || verdict === "CHANGES_REQUESTED") {
             showToast(`Review verdict: [${verdict}]. Returning to Dashboard...`);
             setTimeout(() => {
-              window.location.href = "/";
+              returnToDashboard();
             }, 800);
           } else {
             showToast(`Review verdict: ${verdict}`);

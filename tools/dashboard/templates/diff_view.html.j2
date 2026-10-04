@@ -1420,6 +1420,8 @@
   {% include "diff_component.html.j2" %}
 
   <script>
+    window.name = "firmware_vcs_diff_viewer";
+
     // State Model
     const state = {
       activeCommit: "{{ session.active_commit or 'working' }}",
