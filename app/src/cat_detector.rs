@@ -5,6 +5,9 @@
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
 #![deny(missing_docs)]
 
+/// Carrier Board 2.0 hardware support and bringup module.
+pub mod carrier_board;
+
 pub use board::cat_detector::{
     get_boot_reason, AlertPinType, BatteryDevice, Board, BoardPeripherals, ChargerDevice,
     CurrentSensorDevice, DataReadyPinType, LedDevice, MotorDevice, MutexRaw, ProximitySensorDevice,

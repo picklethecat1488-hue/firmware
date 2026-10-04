@@ -1,0 +1,835 @@
+{# Reusable System Shock 2 - Xerxes Diff Rendering Component & Styling #}
+<style>
+  /* Diff Viewer Styles */
+  .diff-workstation-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    background: var(--xerxes-panel, #08161d);
+    border: 1px solid var(--xerxes-border-mid, #0b5966);
+    border-radius: 3px;
+    box-shadow: inset 1px 1px 0px rgba(0, 240, 255, 0.3), inset -1px -1px 0px var(--xerxes-border-dark, #021217);
+  }
+
+  .diff-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--xerxes-header-bg, #0a1c24);
+    border-bottom: 1px solid var(--xerxes-border-mid, #0b5966);
+    gap: 10px;
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    scrollbar-width: thin;
+  }
+
+  .diff-file-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--xerxes-cyan, #00f0ff);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .diff-stats-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 2px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid var(--xerxes-border-mid, #0b5966);
+  }
+
+  .diff-stats-add { color: var(--xerxes-teal, #14d9c4); }
+  .diff-stats-del { color: var(--xerxes-red, #ff2a4b); }
+
+  .diff-mode-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .diff-scroll-body {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: auto;
+    background: #04090c;
+    position: relative;
+    scrollbar-width: thin;
+    scrollbar-color: var(--quake-copper, #c87a32) #1e130b;
+  }
+
+  .diff-scroll-body::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .diff-scroll-body::-webkit-scrollbar-track {
+    background: #1e130b;
+    border: 1px solid #3d2311;
+  }
+
+  .diff-scroll-body::-webkit-scrollbar-thumb {
+    background: #965a25;
+    border-radius: 4px;
+    border: 1px solid #c87a32;
+  }
+
+  .diff-scroll-body::-webkit-scrollbar-thumb:hover {
+    background: var(--quake-gold, #ffb800);
+    border-color: #ffd700;
+    box-shadow: 0 0 6px rgba(255, 184, 0, 0.4);
+  }
+
+  /* Side-by-side Table */
+  .diff-sbs-table {
+    border-collapse: collapse;
+    width: 100% !important;
+    min-width: 100% !important;
+    table-layout: fixed !important;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .diff-sbs-table thead th {
+    background: #0a1c24;
+    color: var(--xerxes-cyan, #00f0ff);
+    font-size: 10px;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--xerxes-border-mid, #0b5966);
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    text-align: left;
+  }
+
+  .diff-sbs-table thead th.th-old {
+    position: relative;
+    border-right: 2px solid var(--xerxes-border-mid, #0b5966);
+  }
+
+  .sbs-split-resizer {
+    position: absolute;
+    top: 0;
+    right: -6px;
+    width: 12px;
+    height: 100%;
+    cursor: col-resize;
+    z-index: 25;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .sbs-split-resizer::before {
+    content: "⋮";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 13px;
+    line-height: 1;
+    color: var(--xerxes-cyan, #00f0ff);
+    z-index: 26;
+    pointer-events: none;
+    text-shadow: 0 0 4px rgba(0, 240, 255, 0.8);
+    font-weight: bold;
+  }
+
+  .sbs-split-resizer::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 5px;
+    width: 2px;
+    background: var(--xerxes-border-mid, #0b5966);
+    transition: background 0.15s, width 0.15s, left 0.15s;
+  }
+
+  .sbs-split-resizer:hover::after,
+  .sbs-split-resizer.resizing::after {
+    background: var(--xerxes-cyan, #00f0ff);
+    width: 4px;
+    left: 4px;
+    box-shadow: 0 0 6px rgba(0, 240, 255, 0.8);
+  }
+
+  .sbs-split-resizer:hover::before,
+  .sbs-split-resizer.resizing::before {
+    color: #fff;
+  }
+
+  .diff-sbs-row td.old-code {
+    border-right: 2px solid var(--xerxes-border-mid, #0b5966);
+    position: relative;
+  }
+
+  .diff-sbs-row td.old-code:hover {
+    border-right-color: var(--xerxes-cyan, #00f0ff);
+  }
+
+  .diff-sbs-row td {
+    padding: 1px 4px;
+    vertical-align: top;
+    white-space: pre;
+    font-family: inherit;
+  }
+
+  .diff-lineno {
+    width: 44px;
+    user-select: none;
+    text-align: right;
+    color: var(--xerxes-text-dim, #3a626c);
+    padding-right: 8px !important;
+    border-right: 1px solid rgba(11, 89, 102, 0.4);
+    background: rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  .diff-lineno:hover {
+    color: var(--xerxes-cyan, #00f0ff);
+    background: rgba(0, 240, 255, 0.15);
+  }
+
+  .diff-marker-cell {
+    width: 20px;
+    user-select: none;
+    text-align: center;
+    font-weight: 700;
+    color: var(--xerxes-text-dim, #3a626c);
+    background: rgba(0, 0, 0, 0.3);
+    border-right: 1px solid rgba(11, 89, 102, 0.3);
+    padding: 1px 2px !important;
+    cursor: pointer;
+  }
+
+  .diff-code-cell {
+    overflow-x: hidden;
+    font-family: inherit;
+    white-space: pre;
+    max-width: 900px;
+  }
+
+  /* Word Wrap in Diff Views (BUG-245, BUG-252, WORM-007) */
+  .diff-word-wrap .diff-sbs-table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .diff-word-wrap .diff-sbs-row td.diff-code-cell,
+  .diff-word-wrap .diff-sbs-row td.old-code,
+  .diff-word-wrap .diff-sbs-row td.new-code,
+  .diff-word-wrap .diff-unified-text,
+  .diff-word-wrap .diff-full-text {
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+    overflow-wrap: anywhere !important;
+    max-width: none !important;
+    min-width: 0 !important;
+  }
+
+  .diff-word-wrap .diff-unified-wrap,
+  .diff-word-wrap .diff-full-wrap {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .diff-word-wrap .diff-unified-row {
+    grid-template-columns: 44px 44px 22px minmax(0, 1fr) !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .diff-sbs-row.row-delete td.old-code,
+  .diff-sbs-row.row-delete td.old-lineno,
+  .diff-sbs-row.row-delete td.old-marker {
+    background: rgba(255, 42, 75, 0.22);
+    color: #fca5a5;
+  }
+
+  .diff-sbs-row.row-insert td.new-code,
+  .diff-sbs-row.row-insert td.new-lineno,
+  .diff-sbs-row.row-insert td.new-marker {
+    background: rgba(20, 217, 196, 0.22);
+    color: #86efac;
+  }
+
+  .diff-sbs-row.row-replace td.old-code,
+  .diff-sbs-row.row-replace td.old-marker {
+    background: rgba(255, 42, 75, 0.22);
+    color: #fca5a5;
+  }
+
+  .diff-sbs-row.row-replace td.new-code,
+  .diff-sbs-row.row-replace td.new-marker {
+    background: rgba(20, 217, 196, 0.22);
+    color: #86efac;
+  }
+
+  /* Unified View */
+  .diff-unified-wrap {
+    padding: 10px 14px;
+    min-width: 100%;
+    width: max-content;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .diff-unified-hunk-bar {
+    background: #081a22;
+    border-left: 3px solid var(--xerxes-cyan, #00f0ff);
+    color: var(--xerxes-cyan, #00f0ff);
+    padding: 4px 8px;
+    margin: 8px 0 4px 0;
+    font-size: 11px;
+    font-weight: 700;
+  }
+
+  .diff-unified-row {
+    display: grid;
+    grid-template-columns: 44px 44px 22px 1fr;
+    cursor: pointer;
+    padding: 1px 0;
+    border-radius: 2px;
+  }
+
+  .diff-unified-row:hover {
+    background: rgba(0, 240, 255, 0.1);
+  }
+
+  .diff-unified-num-old,
+  .diff-unified-num-new {
+    user-select: none;
+    text-align: right;
+    color: var(--xerxes-text-dim, #3a626c);
+    padding-right: 6px;
+    font-size: 10.5px;
+  }
+
+  .diff-unified-marker {
+    user-select: none;
+    text-align: center;
+    font-weight: 700;
+    color: var(--xerxes-text-dim, #3a626c);
+    font-size: 11px;
+  }
+
+  .diff-unified-text {
+    grid-column: 4;
+    min-width: 0;
+    white-space: pre;
+    word-break: normal;
+    padding-left: 8px;
+  }
+
+  .diff-unified-row.row-delete {
+    background: rgba(255, 42, 75, 0.22);
+    color: #fca5a5;
+  }
+
+  .diff-unified-row.row-insert {
+    background: rgba(20, 217, 196, 0.22);
+    color: #86efac;
+  }
+
+  .diff-unified-row.row-delete .diff-unified-marker { color: #fca5a5; }
+  .diff-unified-row.row-insert .diff-unified-marker { color: #86efac; }
+
+  /* Binary / Empty states */
+  .diff-binary-box, .diff-empty-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    color: var(--xerxes-text-muted, #7aa5b0);
+    text-align: center;
+    font-size: 12px;
+    gap: 8px;
+  }
+
+  .diff-binary-icon {
+    font-size: 32px;
+    color: var(--xerxes-cyan, #00f0ff);
+  }
+
+  /* Full File View */
+  .diff-full-wrap {
+    padding: 10px 14px;
+    min-width: 100%;
+    font-family: var(--font-mono, monospace);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .diff-full-row {
+    display: flex;
+    padding: 1px 0;
+  }
+
+  .diff-full-row:hover {
+    background: rgba(0, 240, 255, 0.08);
+  }
+
+  .diff-full-num {
+    width: 48px;
+    user-select: none;
+    text-align: right;
+    color: var(--xerxes-text-dim, #3a626c);
+    padding-right: 12px;
+    border-right: 1px solid rgba(11, 89, 102, 0.4);
+    flex-shrink: 0;
+  }
+
+  .diff-full-text {
+    padding-left: 10px;
+    white-space: pre;
+    overflow-x: hidden;
+  }
+</style>
+
+<script>
+  const QuakeDiffEngine = {
+    MAX_LINE_LENGTH: 1000,
+
+    escapeHtml(text) {
+      if (!text) return "";
+      return text
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    },
+
+    truncateLine(text, maxLen) {
+      if (!text) return "";
+      const limit = maxLen || this.MAX_LINE_LENGTH;
+      if (text.length > limit) {
+        return text.slice(0, limit) + "… [line truncated]";
+      }
+      return text;
+    },
+
+    getLanguageFromPath(filePath) {
+      if (!filePath) return null;
+      const lower = filePath.toLowerCase();
+      if (lower.endsWith(".py")) return "python";
+      if (lower.endsWith(".rs")) return "rust";
+      if (lower.endsWith(".c") || lower.endsWith(".h")) return "c";
+      if (lower.endsWith(".cpp") || lower.endsWith(".hpp")) return "cpp";
+      if (lower.endsWith(".js") || lower.endsWith(".mjs")) return "javascript";
+      if (lower.endsWith(".ts")) return "typescript";
+      if (lower.endsWith(".html") || lower.endsWith(".j2")) return "html";
+      if (lower.endsWith(".css")) return "css";
+      if (lower.endsWith(".json")) return "json";
+      if (lower.endsWith(".yaml") || lower.endsWith(".yml")) return "yaml";
+      if (lower.endsWith(".toml")) return "toml";
+      if (lower.endsWith(".md")) return "markdown";
+      if (lower.endsWith(".sh")) return "bash";
+      if (lower.endsWith(".kicad_sch") || lower.endsWith(".kicad_pcb")) return "lisp";
+      return null;
+    },
+
+    detectLanguage(filePath) {
+      return this.getLanguageFromPath(filePath) || "plaintext";
+    },
+
+    copySnippet(text) {
+      if (!text) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+    },
+
+    balanceLines(rawLines) {
+      if (!rawLines || rawLines.length === 0) return [];
+      const resultLines = [];
+      let openTags = [];
+
+      for (const line of rawLines) {
+        let prefix = "";
+        for (const tag of openTags) {
+          prefix += tag;
+        }
+
+        let processedLine = "";
+        let lastIndex = 0;
+        const tagRegex = /<(\/?)span([^>]*)>/g;
+        let match;
+
+        while ((match = tagRegex.exec(line)) !== null) {
+          const isClosing = match[1] === "/";
+          const fullTag = match[0];
+          if (isClosing) {
+            if (openTags.length > 0) {
+              openTags.pop();
+              processedLine += line.substring(lastIndex, match.index) + fullTag;
+            } else {
+              // Strip orphan closing tag to prevent prematurely closing line container (BUG-252)
+              processedLine += line.substring(lastIndex, match.index);
+            }
+          } else {
+            openTags.push(fullTag);
+            processedLine += line.substring(lastIndex, match.index) + fullTag;
+          }
+          lastIndex = tagRegex.lastIndex;
+        }
+        processedLine += line.substring(lastIndex);
+
+        let suffix = "";
+        for (let i = openTags.length - 1; i >= 0; i--) {
+          suffix += "</span>";
+        }
+
+        resultLines.push(prefix + processedLine + suffix);
+      }
+      return resultLines;
+    },
+
+    highlightLine(text, lang) {
+      if (!text) return "";
+      text = this.truncateLine(text);
+      if (typeof hljs === "undefined") {
+        return this.escapeHtml(text);
+      }
+      try {
+        let highlighted = "";
+        if (lang && hljs.getLanguage(lang)) {
+          highlighted = hljs.highlight(text, { language: lang, ignoreIllegals: true }).value;
+        } else {
+          highlighted = hljs.highlightAuto(text).value;
+        }
+        return this.balanceLines([highlighted])[0] || "";
+      } catch (e) {
+        return this.escapeHtml(text);
+      }
+    },
+
+    highlightAllLines(lines, lang) {
+      if (!lines || lines.length === 0) return [];
+      if (typeof hljs === "undefined") {
+        return lines.map(l => this.escapeHtml(l));
+      }
+      try {
+        const truncatedCode = lines.map(l => this.truncateLine(l)).join("\n");
+        const highlighted = (lang && hljs.getLanguage(lang))
+          ? hljs.highlight(truncatedCode, { language: lang, ignoreIllegals: true }).value
+          : hljs.highlightAuto(truncatedCode).value;
+        return this.balanceLines(highlighted.split(/\r?\n/));
+      } catch (e) {
+        return lines.map(l => this.escapeHtml(l));
+      }
+    },
+
+    highlightFullDocument(code, lang) {
+      if (!code) return [];
+      const lines = code.split(/\r?\n/).map(l => this.truncateLine(l));
+      if (typeof hljs === "undefined") {
+        return lines.map(l => this.escapeHtml(l));
+      }
+      try {
+        const truncatedCode = lines.join("\n");
+        const highlighted = (lang && hljs.getLanguage(lang))
+          ? hljs.highlight(truncatedCode, { language: lang, ignoreIllegals: true }).value
+          : hljs.highlightAuto(truncatedCode).value;
+        return this.balanceLines(highlighted.split(/\r?\n/));
+      } catch (e) {
+        return lines.map(l => this.escapeHtml(l));
+      }
+    },
+
+    renderDiff(container, diffData, options = {}) {
+      if (!container) return;
+      if (!diffData) {
+        container.innerHTML = `<div class="diff-empty-state"><span>No diff content loaded.</span></div>`;
+        return;
+      }
+      const mode = (typeof options === "string" ? options : (options && options.mode)) || "side_by_side";
+      const lang = this.detectLanguage(diffData.file_path);
+
+      if (diffData.is_binary) {
+        this.renderBinary(container, diffData);
+        return;
+      }
+
+      const oldContent = (options && options.oldLines) ? options.oldLines.join("\n") : (diffData.old_content || "");
+      const newContent = (options && options.newLines) ? options.newLines.join("\n") : (diffData.new_content || diffData.full_content || "");
+
+      const oldHighlighted = this.highlightFullDocument(oldContent, lang);
+      const newHighlighted = this.highlightFullDocument(newContent, lang);
+
+      switch (mode) {
+        case "unified":
+          this.renderUnified(container, diffData, lang, oldHighlighted, newHighlighted);
+          break;
+        case "full_file":
+          this.renderFull(container, diffData, lang, newHighlighted);
+          break;
+        case "side_by_side":
+        default:
+          this.renderSideBySide(container, diffData, lang, oldHighlighted, newHighlighted);
+          break;
+      }
+    },
+
+    renderSideBySide(container, diffData, lang, oldHighlighted, newHighlighted) {
+      const rows = diffData.side_by_side || [];
+      let html = `
+        <table class="diff-sbs-table">
+          <colgroup>
+            <col class="col-lineno" style="width: 44px; min-width: 44px;">
+            <col class="col-marker" style="width: 20px; min-width: 20px;">
+            <col class="col-code col-old-code" style="width: 50%;">
+            <col class="col-lineno" style="width: 44px; min-width: 44px;">
+            <col class="col-marker" style="width: 20px; min-width: 20px;">
+            <col class="col-code col-new-code" style="width: 50%;">
+          </colgroup>
+          <thead>
+            <tr>
+              <th colspan="3" class="th-old" style="position: relative;">
+                Previous Revision
+                <div class="sbs-split-resizer" title="Drag horizontally to resize split panes"></div>
+              </th>
+              <th colspan="3" class="th-new">Active Revision</th>
+            </tr>
+          </thead>
+          <tbody>
+      `;
+
+      rows.forEach(r => {
+        const rawType = r.row_type !== undefined ? r.row_type : (r.type || "equal");
+        const rowClass = rawType === "equal" ? "row-equal" : ("row-" + rawType);
+        const oldLineNo = (r.old_no !== undefined && r.old_no !== null) ? r.old_no : ((r.old_line_no !== undefined && r.old_line_no !== null) ? r.old_line_no : "");
+        const newLineNo = (r.new_no !== undefined && r.new_no !== null) ? r.new_no : ((r.new_line_no !== undefined && r.new_line_no !== null) ? r.new_line_no : "");
+        const oldText = r.old_text !== undefined ? r.old_text : (r.old_content !== undefined ? r.old_content : "");
+        const newText = r.new_text !== undefined ? r.new_text : (r.new_content !== undefined ? r.new_content : "");
+
+        let oldHtml = "";
+        if (oldLineNo && oldHighlighted && oldHighlighted[oldLineNo - 1] !== undefined) {
+          oldHtml = oldHighlighted[oldLineNo - 1];
+        } else if (oldText) {
+          oldHtml = this.highlightLine(oldText, lang);
+        }
+
+        let newHtml = "";
+        if (newLineNo && newHighlighted && newHighlighted[newLineNo - 1] !== undefined) {
+          newHtml = newHighlighted[newLineNo - 1];
+        } else if (newText) {
+          newHtml = this.highlightLine(newText, lang);
+        }
+
+        let oldMarker = " ";
+        if (rawType === "delete" || rawType === "replace" || rawType === "del") oldMarker = "-";
+        let newMarker = " ";
+        if (rawType === "insert" || rawType === "replace" || rawType === "add") newMarker = "+";
+
+        const oldClickAttr = oldLineNo ? ` onclick="window.onLineClick && window.onLineClick('old', ${oldLineNo})"` : "";
+        const newClickAttr = newLineNo ? ` onclick="window.onLineClick && window.onLineClick('new', ${newLineNo})"` : "";
+
+        html += `
+          <tr class="diff-sbs-row ${rowClass}" data-old-line="${oldLineNo}" data-new-line="${newLineNo}">
+            <td class="diff-lineno old-lineno"${oldClickAttr}>${oldLineNo}</td>
+            <td class="diff-marker-cell old-marker">${oldMarker}</td>
+            <td class="diff-code-cell old-code hljs">${oldHtml}</td>
+            <td class="diff-lineno new-lineno"${newClickAttr}>${newLineNo}</td>
+            <td class="diff-marker-cell new-marker">${newMarker}</td>
+            <td class="diff-code-cell new-code hljs">${newHtml}</td>
+          </tr>
+        `;
+      });
+
+      html += `</tbody></table>`;
+      container.innerHTML = html;
+      this.setupSbsResizer(container.querySelector(".diff-sbs-table"), "vcs_sbs_split_ratio");
+    },
+
+    renderUnified(container, diffData, lang, oldHighlighted, newHighlighted) {
+      let html = `<div class="diff-unified-wrap">`;
+      const hunks = diffData.hunks || [];
+
+      hunks.forEach(h => {
+        html += `<div class="diff-unified-hunk-bar">${this.escapeHtml(h.header)}</div>`;
+        (h.lines || []).forEach(l => {
+          const isAdd = (l.type === "insert" || l.type === "add");
+          const isDel = (l.type === "delete" || l.type === "del");
+          const rowType = isDel ? "del delete" : (isAdd ? "add insert" : l.type);
+
+          let lineHtml = "";
+          if (isAdd && l.new_line_no && newHighlighted && newHighlighted[l.new_line_no - 1] !== undefined) {
+            lineHtml = newHighlighted[l.new_line_no - 1];
+          } else if (isDel && l.old_line_no && oldHighlighted && oldHighlighted[l.old_line_no - 1] !== undefined) {
+            lineHtml = oldHighlighted[l.old_line_no - 1];
+          } else if (l.new_line_no && newHighlighted && newHighlighted[l.new_line_no - 1] !== undefined) {
+            lineHtml = newHighlighted[l.new_line_no - 1];
+          } else if (l.old_line_no && oldHighlighted && oldHighlighted[l.old_line_no - 1] !== undefined) {
+            lineHtml = oldHighlighted[l.old_line_no - 1];
+          } else {
+            lineHtml = this.highlightLine(l.content, lang);
+          }
+
+          const markerChar = isAdd ? "+" : (isDel ? "-" : " ");
+          html += `
+            <div class="diff-unified-row row-${l.type} ${rowType}" data-old-line="${l.old_line_no || ''}" data-new-line="${l.new_line_no || ''}">
+              <span class="diff-unified-num-old">${l.old_line_no || ''}</span>
+              <span class="diff-unified-num-new">${l.new_line_no || ''}</span>
+              <span class="diff-unified-marker">${markerChar}</span>
+              <div class="diff-unified-text hljs">${lineHtml}</div>
+            </div>
+          `;
+        });
+      });
+
+      html += `</div>`;
+      container.innerHTML = html;
+    },
+
+    renderFull(container, diffData, lang, newHighlighted) {
+      const lines = diffData.new_full_lines || (diffData.new_content ? diffData.new_content.split(/\r?\n/) : (diffData.full_content ? diffData.full_content.split(/\r?\n/) : []));
+      if (!lines || lines.length === 0) {
+        container.innerHTML = `<div class="diff-empty-box">No file content available to preview in full.</div>`;
+        return;
+      }
+
+      let html = `<div class="diff-full-wrap">`;
+      lines.forEach((line, idx) => {
+        const lineNo = idx + 1;
+        const lineHtml = (newHighlighted && newHighlighted[idx] !== undefined)
+          ? newHighlighted[idx]
+          : this.highlightLine(line, lang);
+
+        html += `
+          <div class="diff-full-row" data-line="${lineNo}">
+            <span class="diff-full-num">${lineNo}</span>
+            <span class="diff-full-text hljs">${lineHtml}</span>
+          </div>
+        `;
+      });
+      html += `</div>`;
+      container.innerHTML = html;
+    },
+
+    renderBinary(container, diffData) {
+      const isImg = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(diffData.file_path);
+      let previewHtml = "";
+      if (isImg) {
+        previewHtml = `
+          <div style="margin-top: 16px; border: 1px solid var(--xerxes-border-mid, #0b5966); padding: 8px; background: rgba(0,0,0,0.6); border-radius: 4px;">
+            <img src="/api/raw?file=${encodeURIComponent(diffData.file_path)}&side=new" style="max-width: 100%; max-height: 400px; display: block; margin: auto;" alt="${this.escapeHtml(diffData.file_path)}">
+          </div>
+        `;
+      }
+      container.innerHTML = `
+        <div class="diff-binary-box">
+          <span class="diff-binary-icon">📦</span>
+          <span style="font-weight: 700; color: var(--xerxes-cyan, #00f0ff); font-size: 13px;">BINARY / LFS ARTIFACT</span>
+          <span>Binary differences cannot be rendered inline in plain text.</span>
+          <span>${diffData.additions > 0 ? `+${diffData.additions} bytes ` : ''}${diffData.deletions > 0 ? `-${diffData.deletions} bytes` : ''}</span>
+          ${previewHtml}
+        </div>
+      `;
+    },
+
+    setupSbsResizer(table, storageKey = "vcs_sbs_split_ratio") {
+      if (!table) return;
+      const resizer = table.querySelector(".sbs-split-resizer");
+      if (!resizer) return;
+      const applyRatio = (ratio) => {
+        const pctOld = (ratio * 100).toFixed(1);
+        const pctNew = ((1 - ratio) * 100).toFixed(1);
+        const oldCol = table.querySelector("col.col-old-code");
+        const newCol = table.querySelector("col.col-new-code");
+        if (oldCol && newCol) {
+          oldCol.style.width = pctOld + "%";
+          newCol.style.width = pctNew + "%";
+        }
+        const oldTh = table.querySelector(".th-old");
+        const newTh = table.querySelector(".th-new");
+        if (oldTh && newTh) {
+          oldTh.style.width = pctOld + "%";
+          newTh.style.width = pctNew + "%";
+        }
+      };
+
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = parseFloat(saved);
+        if (!isNaN(parsed) && parsed >= 0.15 && parsed <= 0.85) {
+          applyRatio(parsed);
+        }
+      }
+
+      const startDrag = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (resizer) resizer.classList.add("resizing");
+        table.classList.add("resizing-sbs");
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+        const container = table.closest(".diff-scroll-body, .diff-container") || table.parentElement || table;
+        const containerRect = container.getBoundingClientRect();
+
+        const onMouseMove = (moveEvent) => {
+          const x = moveEvent.clientX - containerRect.left;
+          const ratio = Math.max(0.15, Math.min(0.85, x / containerRect.width));
+          applyRatio(ratio);
+          localStorage.setItem(storageKey, ratio.toFixed(4));
+        };
+
+        const onMouseUp = () => {
+          if (resizer) resizer.classList.remove("resizing");
+          table.classList.remove("resizing-sbs");
+          document.body.style.cursor = "";
+          document.body.style.userSelect = "";
+          window.removeEventListener("mousemove", onMouseMove);
+          window.removeEventListener("mouseup", onMouseUp);
+        };
+
+        window.addEventListener("mousemove", onMouseMove);
+        window.addEventListener("mouseup", onMouseUp);
+      };
+
+      if (resizer) {
+        resizer.addEventListener("mousedown", startDrag);
+      }
+      table.addEventListener("mousedown", (e) => {
+        const td = e.target.closest("td.old-code, th.th-old");
+        if (td) {
+          const rect = td.getBoundingClientRect();
+          if (rect.right - e.clientX <= 8 && rect.right - e.clientX >= -4) {
+            startDrag(e);
+          }
+        }
+      });
+    }
+  };
+  window.QuakeDiffEngine = QuakeDiffEngine;
+  window.QuakeDiffRenderer = QuakeDiffEngine;
+</script>

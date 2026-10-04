@@ -1,0 +1,1542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Xerxes Worm Matrix - System Shock 2</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <style>
+    /* =========================================================
+       SYSTEM SHOCK 2 // XERXES WORM MATRIX HUD THEME
+       ========================================================= */
+    :root {
+      --xerxes-bg: #04090c;
+      --xerxes-panel: #08161d;
+      --xerxes-panel-hover: #0e242f;
+      --xerxes-header-bg: #0a1c24;
+      --xerxes-border-light: #00f0ff;
+      --xerxes-border-mid: #0b5966;
+      --xerxes-border-dark: #021217;
+
+      --xerxes-cyan: #00f0ff;
+      --xerxes-cyan-dim: #00a4b3;
+      --xerxes-teal: #14d9c4;
+      --xerxes-mint: #00ffb4;
+      --xerxes-amber: #ffb000;
+      --xerxes-copper: #14a090;
+      --xerxes-red: #ff2a4b;
+      --xerxes-green: #00ffb4;
+      --xerxes-purple: #c084fc;
+      --xerxes-text-light: #e6f9ff;
+      --xerxes-text-muted: #7aa5b0;
+      --xerxes-text-dim: #3a626c;
+
+      /* Aliases for template classes */
+      --quake-bg: var(--xerxes-bg);
+      --quake-panel: var(--xerxes-panel);
+      --quake-panel-hover: var(--xerxes-panel-hover);
+      --quake-header-bg: var(--xerxes-header-bg);
+      --quake-border-light: var(--xerxes-border-light);
+      --quake-border-mid: var(--xerxes-border-mid);
+      --quake-border-dark: var(--xerxes-border-dark);
+
+      --quake-gold: var(--xerxes-cyan);
+      --quake-gold-dim: var(--xerxes-cyan-dim);
+      --quake-amber: var(--xerxes-amber);
+      --quake-copper: var(--xerxes-teal);
+      --quake-red: var(--xerxes-red);
+      --quake-green: var(--xerxes-green);
+      --quake-cyan: var(--xerxes-cyan);
+      --quake-purple: var(--xerxes-purple);
+      --quake-text-light: var(--xerxes-text-light);
+      --quake-text-muted: var(--xerxes-text-muted);
+      --quake-text-dim: var(--xerxes-text-dim);
+
+      --font-mono: "Share Tech Mono", ui-monospace, "SF Mono", "Courier New", monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--xerxes-bg);
+      background-image:
+        repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.38) 0px, rgba(0, 0, 0, 0.38) 2px, transparent 2px, transparent 4px),
+        radial-gradient(ellipse at 50% 0%, #0a2f3a 0%, #03080b 100%);
+      color: var(--xerxes-text-light);
+      font-family: var(--font-mono);
+      letter-spacing: 0.02em;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Visible Quake & Xerxes High-Contrast Scrollbars (BUG-202, BUG-233) */
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--quake-copper, #c87a32) #1e130b;
+    }
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #1e130b;
+      border: 1px solid #3d2311;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #965a25;
+      border-radius: 4px;
+      border: 1px solid #c87a32;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--quake-gold, #ffb800);
+      border-color: #ffd700;
+      box-shadow: 0 0 6px rgba(255, 184, 0, 0.4);
+    }
+
+    /* Xerxes Beveled Panels */
+    .quake-card {
+      background: var(--xerxes-panel);
+      border: 1px solid var(--xerxes-border-mid);
+      box-shadow: inset 1px 1px 0 rgba(0, 240, 255, 0.15), 0 4px 12px rgba(0, 0, 0, 0.7);
+    }
+
+    /* Top Bar Header */
+    header.quake-header {
+      background: var(--xerxes-header-bg);
+      border-bottom: 2px solid var(--xerxes-border-light);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 10px rgba(0, 240, 255, 0.15);
+      z-index: 10;
+      overflow-x: auto;
+      flex-wrap: nowrap;
+    }
+
+    .brand-block {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--xerxes-cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      text-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+    }
+
+    .metrics-group {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .metric-pill {
+      font-size: 11px;
+      color: var(--xerxes-text-muted);
+      background: #040d12;
+      padding: 4px 10px;
+      border: 1px solid var(--xerxes-border-mid);
+      border-radius: 3px;
+    }
+
+    .metric-highlight {
+      font-weight: bold;
+      color: var(--xerxes-cyan);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* Buttons */
+    .quake-btn {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 6px 12px;
+      white-space: nowrap !important;
+      cursor: pointer;
+      border-radius: 2px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .quake-btn-default {
+      background: #081a22;
+      border: 1px solid var(--xerxes-border-mid);
+      color: var(--xerxes-text-light);
+    }
+
+    .quake-btn-default:hover {
+      background: var(--xerxes-panel-hover);
+      border-color: var(--xerxes-cyan);
+      box-shadow: 0 0 8px rgba(0, 240, 255, 0.25);
+    }
+
+    .quake-btn-active {
+      background: #0a2f3a !important;
+      border-color: var(--xerxes-cyan) !important;
+      color: var(--xerxes-cyan) !important;
+      box-shadow: 0 0 8px rgba(0, 240, 255, 0.4) !important;
+    }
+
+    .quake-btn-gold {
+      background: #00363d;
+      border: 1px solid var(--xerxes-cyan);
+      color: var(--xerxes-cyan);
+      font-weight: 700;
+    }
+
+    .quake-btn-gold:hover {
+      background: #004d57;
+      box-shadow: 0 0 10px rgba(0, 240, 255, 0.5);
+    }
+
+    .quake-btn-green {
+      background: #04291e;
+      border: 1px solid var(--xerxes-mint);
+      color: var(--xerxes-mint);
+      font-weight: 700;
+    }
+
+    .quake-btn-green:hover {
+      background: #06402e;
+      box-shadow: 0 0 10px rgba(0, 255, 180, 0.5);
+    }
+
+    .quake-btn-red {
+      background: #2b0b11;
+      border: 1px solid var(--xerxes-red);
+      color: var(--xerxes-red);
+      font-weight: 700;
+    }
+
+    .quake-btn-red:hover {
+      background: #420f18;
+      box-shadow: 0 0 10px rgba(255, 42, 75, 0.5);
+    }
+
+    .copy-icon-btn {
+      background: transparent;
+      border: none;
+      color: var(--xerxes-text-muted);
+      cursor: pointer;
+      font-size: 11px;
+      padding: 1px 3px;
+      border-radius: 2px;
+      display: inline-flex;
+      align-items: center;
+      transition: all 0.15s ease;
+    }
+
+    .copy-icon-btn:hover {
+      color: var(--xerxes-cyan);
+      background: rgba(0, 240, 255, 0.15);
+    }
+
+    /* Main Workspace Layout */
+    .main-container {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* Left Sidebar */
+    .sidebar {
+      width: 340px;
+      background: #040c11;
+      border-right: 1px solid var(--xerxes-border-mid);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 10px;
+      border-bottom: 1px solid var(--xerxes-border-mid);
+      background: #06141c;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .sidebar-search {
+      width: 100%;
+      background: #02070a;
+      border: 1px solid var(--xerxes-border-mid);
+      color: var(--xerxes-text-light);
+      padding: 6px 10px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      border-radius: 2px;
+    }
+
+    .sidebar-search:focus {
+      outline: none;
+      border-color: var(--xerxes-cyan);
+      box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+    }
+
+    .worm-list, .bug-list {
+      list-style: none;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    .worm-item, .bug-item {
+      padding: 10px 14px;
+      border-bottom: 1px solid #071922;
+      cursor: pointer;
+      transition: background 0.12s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .worm-item:hover, .bug-item:hover {
+      background: #071d27;
+    }
+
+    .worm-item.active, .bug-item.active {
+      background: #092633;
+      border-left: 3px solid var(--xerxes-cyan);
+      box-shadow: inset 0 0 12px rgba(0, 240, 255, 0.1);
+    }
+
+    .worm-item-top, .bug-item-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+
+    .worm-id, .bug-id {
+      font-size: 11px;
+      font-weight: bold;
+      color: var(--xerxes-cyan);
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .worm-item-title, .bug-item-title {
+      font-size: 12px;
+      color: var(--xerxes-text-light);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Badges */
+    .quake-badge {
+      font-size: 9.5px;
+      padding: 2px 6px;
+      border-radius: 2px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .quake-badge-red { background: #3b0910; color: #ff5772; border: 1px solid #821020; }
+    .quake-badge-amber { background: #382404; color: #ffb833; border: 1px solid #805008; }
+    .quake-badge-gold { background: #00363d; color: #00f0ff; border: 1px solid #008f9c; }
+    .quake-badge-green { background: #04291e; color: #00ffb4; border: 1px solid #008f65; }
+    .quake-badge-muted { background: #08161d; color: #7aa5b0; border: 1px solid #143542; }
+
+    /* Content Area */
+    .content-area {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .form-section {
+      padding: 16px 18px;
+      border-radius: 3px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--xerxes-cyan);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid var(--xerxes-border-mid);
+      padding-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .row {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .col {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      flex: 1;
+    }
+
+    label {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: var(--xerxes-text-muted);
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
+
+    input[type="text"], select, textarea {
+      background: #02070a;
+      border: 1px solid var(--xerxes-border-mid);
+      color: var(--xerxes-text-light);
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 7px 10px;
+      border-radius: 2px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    input[type="text"]:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--xerxes-cyan);
+      box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+    }
+
+    textarea {
+      resize: both !important;
+      min-height: 80px;
+      min-width: 200px;
+      max-width: 100%;
+      line-height: 1.4;
+    }
+
+    input[type="text"] {
+      resize: horizontal;
+      min-width: 150px;
+    }
+
+    /* Attachments Grid */
+    .attachments-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 12px;
+      margin-top: 10px;
+    }
+
+    .attachment-card {
+      background: #040e14;
+      border: 1px solid var(--xerxes-border-mid);
+      border-radius: 3px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .attachment-preview {
+      width: 100%;
+      height: 110px;
+      object-fit: cover;
+      background: #02070a;
+      border: 1px solid #092430;
+      border-radius: 2px;
+    }
+
+    .document-preview-box {
+      width: 100%;
+      height: 110px;
+      background: #02070a;
+      border: 1px solid #092430;
+      border-radius: 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .doc-icon { font-size: 28px; }
+    .doc-type { font-size: 9px; color: var(--xerxes-text-muted); font-weight: bold; }
+
+    .attachment-name {
+      font-size: 11px;
+      color: var(--xerxes-text-light);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .attachment-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 9px;
+      color: var(--xerxes-text-dim);
+    }
+
+    .dropzone {
+      border: 2px dashed var(--xerxes-border-mid);
+      border-radius: 4px;
+      padding: 20px;
+      text-align: center;
+      color: var(--xerxes-text-muted);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: rgba(0, 240, 255, 0.02);
+      font-size: 11px;
+    }
+
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--xerxes-cyan);
+      background: rgba(0, 240, 255, 0.08);
+      color: var(--xerxes-cyan);
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #04242e;
+      border: 1px solid var(--xerxes-cyan);
+      color: var(--xerxes-cyan);
+      padding: 10px 18px;
+      border-radius: 3px;
+      font-size: 12px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.8), 0 0 10px rgba(0, 240, 255, 0.4);
+      display: none;
+      z-index: 10000;
+    }
+
+    .attachment-lfs-notice {
+      font-size: 10px;
+      color: var(--xerxes-text-dim);
+      margin-top: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Xerxes Top Bar Header -->
+  <header class="quake-header">
+    <div class="brand-block">
+      <span class="brand-title">🪱 SYSTEM SHOCK 2 // XERXES WORM MATRIX</span>
+    </div>
+    <div class="metrics-group">
+      <div class="metric-pill">TOTAL: <span id="m-total" class="metric-highlight">0</span></div>
+      <div class="metric-pill">OPEN: <span id="m-open" class="metric-highlight" style="color:var(--quake-amber);">0</span></div>
+      <div class="metric-pill">RESOLVED: <span id="m-resolved" class="metric-highlight" style="color:var(--quake-green);">0</span></div>
+    </div>
+    <div class="header-actions">
+      <a href="/" target="firmware_vcs_diff_viewer" onclick="returnToDashboard(event)" class="quake-btn quake-btn-default" style="text-decoration:none;display:inline-flex;align-items:center;" title="Return to VCS Dashboard">← Dashboard</a>
+      <button class="quake-btn quake-btn-default" onclick="syncFeedback()">🔄 Sync Feedback</button>
+      <button class="quake-btn quake-btn-default" onclick="newWorm()">+ New Worm</button>
+      <button class="quake-btn quake-btn-gold" id="btn-save-exit" onclick="saveAndExit()">💾 Save and Exit</button>
+    </div>
+  </header>
+
+  <!-- Feedback Sync Progress Modal -->
+  <div id="feedback-loading-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:99999; align-items:center; justify-content:center;">
+    <div class="quake-card" style="padding:24px 32px; max-width:480px; width:90%; text-align:center; border:2px solid var(--quake-gold);">
+      <h3 style="color:var(--quake-gold); margin-bottom:12px; font-size:16px;">🔄 MERGING AGENT FEEDBACK</h3>
+      <p id="loading-status-text" style="color:var(--quake-text-light); font-size:13px; margin-bottom:16px;">Merging stored agent feedback from feedback/ directory into SQLite database...</p>
+      <div style="background:#040d12; border:1px solid #0b5966; border-radius:4px; height:12px; overflow:hidden; margin-bottom:12px;">
+        <div id="loading-progress-bar" style="background:var(--quake-gold); width:30%; height:100%; transition:width 0.3s ease;"></div>
+      </div>
+      <div id="loading-step-text" style="color:var(--quake-text-muted); font-size:11px;">Scanning feedback/ directory for WORM_*.md files...</div>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <div class="main-container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-header" style="flex-direction:column; gap:8px;">
+        <input type="text" id="search-input" class="sidebar-search" placeholder="Search worms..." oninput="renderWormList()">
+        <div class="filter-pills" style="display:flex; gap:6px; width:100%;">
+          <button id="filter-open" class="quake-btn quake-btn-default quake-btn-active" style="flex:1; padding:4px 6px; font-size:10px;" onclick="setWormFilter('open')">OPEN</button>
+          <button id="filter-all" class="quake-btn quake-btn-default" style="flex:1; padding:4px 6px; font-size:10px;" onclick="setWormFilter('all')">ALL</button>
+          <button id="filter-resolved" class="quake-btn quake-btn-default" style="flex:1; padding:4px 6px; font-size:10px;" onclick="setWormFilter('resolved')">RESOLVED</button>
+        </div>
+        <div style="display:flex; gap:6px; width:100%;">
+          <div style="flex:1; display:flex; flex-direction:column; gap:2px;">
+            <label style="font-size:9px;">Category</label>
+            <select id="select-filter-category" onchange="onFilterCategoryChanged(this.value)" style="width:100%; padding:4px; font-size:10px;">
+              <option value="ALL">ALL</option>
+              {% for cat in categories %}
+              <option value="{{ cat }}">{{ cat }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div style="flex:1; display:flex; flex-direction:column; gap:2px;">
+            <label style="font-size:9px;">Severity</label>
+            <select id="select-filter-severity" onchange="onFilterSeverityChanged(this.value)" style="width:100%; padding:4px; font-size:10px;">
+              <option value="ALL">ALL</option>
+              {% for sev in severities %}
+              <option value="{{ sev }}">{{ sev }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:2px; width:100%;">
+          <label style="font-size:9px;">Sort By</label>
+          <select id="select-worm-sort" onchange="onWormSortChanged(this.value)" style="width:100%; padding:4px; font-size:10px;">
+            <option value="id_desc">ID (Newest first)</option>
+            <option value="id_asc">ID (Oldest first)</option>
+            <option value="severity">Severity (Critical first)</option>
+            <option value="status">Status (Open first)</option>
+            <option value="component">Component</option>
+            <option value="title">Title</option>
+          </select>
+        </div>
+      </div>
+      <ul id="worm-list" class="worm-list bug-list"></ul>
+    </div>
+
+    <!-- Content Area -->
+    <div class="content-area">
+      <!-- Worm Identity Section -->
+      <div class="form-section quake-card">
+        <div class="section-title">
+          <span style="display:flex; align-items:center; gap:8px;">
+            <span>🪱 Worm Identity</span>
+            <span id="active-worm-id-display" class="active-bug-id-display" style="color:var(--quake-gold); font-size:12px;"></span>
+            <span id="active-bug-id-display" style="display:none;"></span>
+            <button id="btn-copy-active-worm" class="copy-icon-btn copy-badge-btn btn-copy-active-bug" onclick="copyActiveWormId()" title="Copy active worm ID" style="display:none;">📋</button>
+          </span>
+          <div style="display:flex; gap:8px;">
+            <button id="btn-save" class="quake-btn quake-btn-green" onclick="saveActiveWorm()">Save Worm</button>
+            <button id="btn-delete" class="quake-btn quake-btn-red" onclick="deleteActiveWorm()">Delete</button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col" style="flex:2;">
+            <label>Worm Title</label>
+            <input type="text" id="worm-title" placeholder="Descriptive title of the issue...">
+          </div>
+          <div class="col">
+            <label>Severity</label>
+            <select id="worm-severity">
+              {% for sev in severities %}
+              <option value="{{ sev }}">{{ sev }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col">
+            <label>Status</label>
+            <select id="worm-status">
+              {% for st in statuses %}
+              <option value="{{ st }}">{{ st }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col">
+            <label>Category</label>
+            <select id="worm-category">
+              {% for cat in categories %}
+              <option value="{{ cat }}">{{ cat }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col">
+            <label>Component</label>
+            <input type="text" id="worm-component" placeholder="e.g. carrier_board, driver, U1">
+          </div>
+        </div>
+      </div>
+
+      <!-- Description Section -->
+      <div class="form-section quake-card">
+        <div class="section-title">
+          <span>Description & Details</span>
+          <button class="panel-expand-btn quake-btn quake-btn-default" onclick="toggleExpandPanel(this)" title="Extend panel vertically">⤢ Expand</button>
+        </div>
+        <div class="col">
+          <label>Problem Description</label>
+          <textarea id="worm-description" placeholder="Comprehensive explanation of defect or invariant failure..."></textarea>
+        </div>
+        <div class="col">
+          <label>Reproduction Steps (one per line)</label>
+          <textarea id="worm-steps" placeholder="1. Run target build&#10;2. Observe DMA fault&#10;3. Inspect register"></textarea>
+        </div>
+        <div class="row">
+          <div class="col">
+            <label>Expected Behavior</label>
+            <textarea id="worm-expected" style="min-height:60px;" placeholder="What should have happened..."></textarea>
+          </div>
+          <div class="col">
+            <label>Actual Behavior</label>
+            <textarea id="worm-actual" style="min-height:60px;" placeholder="What actually occurred..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Logs Section -->
+      <div class="form-section quake-card">
+        <div class="section-title">
+          <span>Execution Logs & Tracebacks</span>
+          <button class="panel-expand-btn quake-btn quake-btn-default" onclick="toggleExpandPanel(this)" title="Extend panel vertically">⤢ Expand</button>
+        </div>
+        <div class="col">
+          <label>Console Output / Target Log</label>
+          <textarea id="worm-logs" style="font-family:var(--font-mono); min-height:100px;" placeholder="Paste runtime failure logs or traceback here..."></textarea>
+        </div>
+      </div>
+
+      <!-- Attachments Section -->
+      <div class="form-section quake-card" id="attachments-section">
+        <div class="section-title">
+          <span>Attachments & Trace Dumps</span>
+          <button class="quake-btn quake-btn-default" onclick="pasteFromClipboard()" style="font-size:10px; padding:3px 8px;">📋 Paste Clipboard</button>
+        </div>
+        <div id="dropzone" class="dropzone" onclick="document.getElementById('file-input').click()">
+          <div>📥 Drag & Drop Screenshots, Logs, or PDF Documents Here (or click to browse)</div>
+          <div style="font-size:9.5px; margin-top:4px; color:var(--xerxes-text-dim);">Press ⌘V / Ctrl+V anywhere to paste images or logs</div>
+          <div class="attachment-lfs-notice">Attachments are tracked in GitHub LFS and considered non-confidential.</div>
+        </div>
+        <input type="file" id="file-input" style="display:none;" multiple onchange="handleFileUpload(this.files)">
+        <div id="attachments-grid" class="attachments-grid"></div>
+      </div>
+
+      <!-- Resolution Section -->
+      <div class="form-section quake-card">
+        <div class="section-title">
+          <span>Resolution Notes</span>
+        </div>
+        <div class="col">
+          <label>Fix Description & Root Cause</label>
+          <textarea id="worm-resolution" placeholder="Detailed notes explaining how the defect was remediated..."></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    window.name = "firmware_worm_tracker";
+    let db = {{ database_json | safe if database_json is defined else '{"title":"Firmware Engineering Worm Tracker","worms":[]}' }};
+    if (!db.worms && db.bugs) {
+      db.worms = db.bugs;
+    }
+    if (!db.worms) db.worms = [];
+
+    let activeWormId = null;
+    let currentFilter = sessionStorage.getItem("worm_filter_status") || 'open';
+    let currentCategoryFilter = sessionStorage.getItem("worm_filter_category") || 'ALL';
+    let currentSeverityFilter = sessionStorage.getItem("worm_filter_severity") || 'ALL';
+    let currentWormSort = sessionStorage.getItem("worm_sort") || 'id_desc';
+
+    const severityOrder = { "CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3 };
+    const statusOrder = { "OPEN": 0, "IN_PROGRESS": 1, "RESOLVED": 2, "CLOSED": 3 };
+
+    function init() {
+      const seenIds = new Set();
+      (db.worms || []).forEach(w => {
+        if (seenIds.has(w.id)) {
+          w.id = generateNextWormId();
+        }
+        seenIds.add(w.id);
+      });
+
+      const sortSel = document.getElementById("select-worm-sort");
+      if (sortSel) sortSel.value = currentWormSort;
+      const catSel = document.getElementById("select-filter-category");
+      if (catSel) catSel.value = currentCategoryFilter;
+      const sevSel = document.getElementById("select-filter-severity");
+      if (sevSel) sevSel.value = currentSeverityFilter;
+
+      const visibleWorms = getFilteredAndSortedWorms();
+      if (visibleWorms.length > 0) {
+        activeWormId = visibleWorms[0].id;
+      } else if (db.worms && db.worms.length > 0) {
+        activeWormId = db.worms[0].id;
+      }
+
+      if (window.location.hash) {
+        const hash = window.location.hash.substring(1);
+        if (hash.startsWith("new")) {
+          const matchCommit = hash.match(/commit=([a-f0-9]+)/i);
+          newWorm().then(() => {
+            if (matchCommit && document.getElementById("worm-description")) {
+              const commitSha = matchCommit[1];
+              document.getElementById("worm-description").value = `Affects commit: ${commitSha}\n\n`;
+              saveActiveWorm();
+            }
+          });
+        } else {
+          const targetId = hash.startsWith("WORM-") ? hash : (hash.startsWith("BUG-") ? hash.replace("BUG-", "WORM-") : ("WORM-" + hash));
+          if (db.worms && db.worms.some(w => w.id === targetId || w.id === hash)) {
+            activeWormId = db.worms.find(w => w.id === targetId || w.id === hash).id;
+          }
+        }
+      }
+
+      updateMetrics();
+      setWormFilter(currentFilter);
+      loadActiveWorm();
+      autoResizeAllTextareas();
+      setupPasteDrop();
+    }
+
+    function onWormSortChanged(val) {
+      currentWormSort = val;
+      sessionStorage.setItem("worm_sort", val);
+      renderWormList();
+    }
+
+    function onFilterCategoryChanged(val) {
+      currentCategoryFilter = val;
+      sessionStorage.setItem("worm_filter_category", val);
+      renderWormList();
+      ensureActiveWormVisible();
+    }
+
+    function onFilterSeverityChanged(val) {
+      currentSeverityFilter = val;
+      sessionStorage.setItem("worm_filter_severity", val);
+      renderWormList();
+      ensureActiveWormVisible();
+    }
+
+    function ensureActiveWormVisible() {
+      const visibleWorms = getFilteredAndSortedWorms();
+      if (visibleWorms.length > 0 && !visibleWorms.some(w => w.id === activeWormId)) {
+        selectWorm(visibleWorms[0].id);
+      }
+    }
+
+    function setWormFilter(filter) {
+      currentFilter = filter;
+      sessionStorage.setItem("worm_filter_status", filter);
+      const btnOpen = document.getElementById("filter-open");
+      const btnAll = document.getElementById("filter-all");
+      const btnResolved = document.getElementById("filter-resolved");
+      if (btnOpen) btnOpen.classList.toggle("quake-btn-active", filter === "open");
+      if (btnAll) btnAll.classList.toggle("quake-btn-active", filter === "all");
+      if (btnResolved) btnResolved.classList.toggle("quake-btn-active", filter === "resolved");
+      renderWormList();
+      ensureActiveWormVisible();
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById("toast");
+      if (!t) return;
+      t.innerText = msg;
+      t.style.display = "block";
+      setTimeout(() => { t.style.display = "none"; }, 3500);
+    }
+
+    function copyText(text) {
+      if (!text) return;
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(() => {
+          showToast(`Copied: ${text}`);
+        }).catch(() => fallbackCopy(text));
+      } else {
+        fallbackCopy(text);
+      }
+    }
+
+    function fallbackCopy(text) {
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        showToast(`Copied: ${text}`);
+      } catch (err) {
+        console.error("Failed to copy", err);
+      }
+    }
+
+    function copyActiveWormId() {
+      if (activeWormId) {
+        copyText(activeWormId);
+      }
+    }
+    // Alias for backward compat with test assertions
+    const copyActiveBugId = copyActiveWormId;
+
+    function updateMetrics() {
+      const total = db.worms.length;
+      const open = db.worms.filter(w => w.status === "OPEN" || w.status === "IN_PROGRESS").length;
+      const resolved = db.worms.filter(w => w.status === "RESOLVED" || w.status === "CLOSED").length;
+      document.getElementById("m-total").innerText = total;
+      document.getElementById("m-open").innerText = open;
+      document.getElementById("m-resolved").innerText = resolved;
+    }
+
+    function getFilteredAndSortedWorms() {
+      const searchInput = document.getElementById("search-input");
+      const query = (searchInput ? searchInput.value || "" : "").toLowerCase();
+      let list = (db.worms || []).filter(worm => {
+        const isResolved = (worm.status === "RESOLVED" || worm.status === "CLOSED");
+        if (currentFilter === "open" && isResolved) return false;
+        if (currentFilter === "resolved" && !isResolved) return false;
+        if (currentCategoryFilter && currentCategoryFilter !== "ALL" && worm.category !== currentCategoryFilter) return false;
+        if (currentSeverityFilter && currentSeverityFilter !== "ALL" && worm.severity !== currentSeverityFilter) return false;
+        if (query && !worm.title.toLowerCase().includes(query) && !worm.id.toLowerCase().includes(query) && !(worm.component || "").toLowerCase().includes(query)) {
+          return false;
+        }
+        return true;
+      });
+
+      list.sort((a, b) => {
+        switch (currentWormSort) {
+          case "id_asc": {
+            const numA = parseInt((a.id || "").replace(/\D/g, ""), 10) || 0;
+            const numB = parseInt((b.id || "").replace(/\D/g, ""), 10) || 0;
+            return numA - numB;
+          }
+          case "id_desc": {
+            const numA = parseInt((a.id || "").replace(/\D/g, ""), 10) || 0;
+            const numB = parseInt((b.id || "").replace(/\D/g, ""), 10) || 0;
+            return numB - numA;
+          }
+          case "severity": {
+            const rankA = severityOrder[a.severity] !== undefined ? severityOrder[a.severity] : 99;
+            const rankB = severityOrder[b.severity] !== undefined ? severityOrder[b.severity] : 99;
+            if (rankA !== rankB) return rankA - rankB;
+            return (b.id || "").localeCompare(a.id || "");
+          }
+          case "status": {
+            const rankA = statusOrder[a.status] !== undefined ? statusOrder[a.status] : 99;
+            const rankB = statusOrder[b.status] !== undefined ? statusOrder[b.status] : 99;
+            if (rankA !== rankB) return rankA - rankB;
+            return (b.id || "").localeCompare(a.id || "");
+          }
+          case "component": {
+            const compA = (a.component || "").toLowerCase();
+            const compB = (b.component || "").toLowerCase();
+            return compA.localeCompare(compB);
+          }
+          case "title": {
+            const titleA = (a.title || "").toLowerCase();
+            const titleB = (b.title || "").toLowerCase();
+            return titleA.localeCompare(titleB);
+          }
+          default:
+            return 0;
+        }
+      });
+
+      return list;
+    }
+
+    function renderWormList() {
+      const list = document.getElementById("worm-list");
+      list.innerHTML = "";
+      const visibleWorms = getFilteredAndSortedWorms();
+
+      visibleWorms.forEach(worm => {
+        const li = document.createElement("li");
+        li.className = "worm-item bug-item" + (worm.id === activeWormId ? " active" : "");
+        li.onclick = () => selectWorm(worm.id);
+
+        let sevBadgeClass = "quake-badge quake-badge-muted";
+        if (worm.severity === "CRITICAL") sevBadgeClass = "quake-badge quake-badge-red";
+        else if (worm.severity === "HIGH") sevBadgeClass = "quake-badge quake-badge-amber";
+        else if (worm.severity === "MEDIUM") sevBadgeClass = "quake-badge quake-badge-gold";
+        else if (worm.severity === "LOW") sevBadgeClass = "quake-badge quake-badge-muted";
+
+        let stBadgeClass = "quake-badge quake-badge-amber";
+        if (worm.status === "RESOLVED" || worm.status === "CLOSED") {
+          stBadgeClass = "quake-badge quake-badge-green";
+        }
+
+        li.innerHTML = `
+          <div class="worm-item-top bug-item-top">
+            <span class="worm-id bug-id">🪱 ${worm.id} <button class="copy-icon-btn copy-badge-btn" onclick="event.stopPropagation(); copyText('${worm.id}')" title="Copy Worm ID ${worm.id}">📋</button></span>
+            <span class="${sevBadgeClass}">${worm.severity}</span>
+            <span class="${stBadgeClass}">${worm.status}</span>
+          </div>
+          <div class="worm-item-title bug-item-title">${worm.title || "Untitled Worm"}</div>
+        `;
+        list.appendChild(li);
+      });
+    }
+
+    function selectWorm(id) {
+      activeWormId = id;
+      renderWormList();
+      loadActiveWorm();
+    }
+
+    function loadActiveWorm() {
+      const worm = db.worms.find(w => w.id === activeWormId);
+      if (!worm) return;
+
+      const wormIdDisp = document.getElementById("active-worm-id-display");
+      const btnCopyActiveWorm = document.getElementById("btn-copy-active-worm");
+      if (wormIdDisp) wormIdDisp.textContent = `[${worm.id}]`;
+      if (btnCopyActiveWorm) btnCopyActiveWorm.style.display = "inline-flex";
+
+      document.getElementById("worm-title").value = worm.title || "";
+      document.getElementById("worm-severity").value = worm.severity || "MEDIUM";
+      document.getElementById("worm-status").value = worm.status || "OPEN";
+      document.getElementById("worm-category").value = worm.category || "FIRMWARE";
+      document.getElementById("worm-component").value = worm.component || "";
+      document.getElementById("worm-description").value = worm.description || "";
+      document.getElementById("worm-steps").value = (worm.reproduction_steps || []).join("\n");
+      document.getElementById("worm-expected").value = worm.expected_behavior || "";
+      document.getElementById("worm-actual").value = worm.actual_behavior || "";
+      document.getElementById("worm-logs").value = worm.logs || "";
+      document.getElementById("worm-resolution").value = worm.resolution_notes || "";
+
+      renderAttachments(worm.attachments || []);
+      autoResizeAllTextareas();
+    }
+
+    function renderAttachments(attachments) {
+      const grid = document.getElementById("attachments-grid");
+      grid.innerHTML = "";
+      attachments.forEach((att, idx) => {
+        const card = document.createElement("div");
+        card.className = "attachment-card";
+        const fname = att.filename.toLowerCase();
+        const isImg = fname.endsWith(".png") || fname.endsWith(".jpg") || fname.endsWith(".jpeg") || fname.endsWith(".svg") || fname.endsWith(".gif") || fname.endsWith(".webp");
+        const isPdf = fname.endsWith(".pdf");
+
+        let previewHtml = "";
+        if (isImg) {
+          previewHtml = `<a href="/${att.file_path}" target="_blank"><img src="/${att.file_path}" class="attachment-preview" alt="${att.filename}"></a>`;
+        } else {
+          const icon = isPdf ? "📕" : "📄";
+          const docTypeLabel = isPdf ? "PDF DOCUMENT" : (att.file_type ? att.file_type.toUpperCase() : "DOCUMENT");
+          previewHtml = `
+            <a href="/${att.file_path}" target="_blank" style="text-decoration:none;">
+              <div class="document-preview-box">
+                <div class="doc-icon">${icon}</div>
+                <div class="doc-type">${docTypeLabel}</div>
+              </div>
+            </a>
+          `;
+        }
+
+        const sizeStr = att.size_bytes ? (att.size_bytes > 1024 ? Math.round(att.size_bytes / 1024) + " KB" : att.size_bytes + " B") : "";
+
+        card.innerHTML = `
+          ${previewHtml}
+          <div class="attachment-name" title="${att.filename}">${att.filename}</div>
+          <div class="attachment-footer">
+            <span>${sizeStr}</span>
+            <button class="quake-btn quake-btn-red" style="font-size:9.5px;padding:2px 6px;" onclick="removeAttachment(${idx})">Remove</button>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function generateNextWormId() {
+      let maxIdx = 0;
+      (db.worms || []).forEach(w => {
+        if (w.id) {
+          let num = 0;
+          if (w.id.startsWith("WORM-")) {
+            num = parseInt(w.id.slice(5), 10);
+          } else if (w.id.startsWith("BUG-")) {
+            num = parseInt(w.id.slice(4), 10);
+          }
+          if (!isNaN(num) && num > maxIdx) {
+            maxIdx = num;
+          }
+        }
+      });
+      let nextId = "WORM-" + String(maxIdx + 1).padStart(3, "0");
+      while (db.worms && db.worms.some(w => w.id === nextId)) {
+        maxIdx++;
+        nextId = "WORM-" + String(maxIdx + 1).padStart(3, "0");
+      }
+      return nextId;
+    }
+    // Alias for test assertions checking generateNextBugId
+    const generateNextBugId = generateNextWormId;
+
+    async function newWorm() {
+      let newId = generateNextWormId();
+      try {
+        const res = await fetch("/api/next_worm_id");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.next_id && !db.worms.some(w => w.id === data.next_id)) {
+            newId = data.next_id;
+          }
+        }
+      } catch (e) {}
+
+      const worm = {
+        id: newId,
+        title: "New Worm Report",
+        status: "OPEN",
+        severity: "MEDIUM",
+        category: "FIRMWARE",
+        component: "",
+        description: "",
+        reproduction_steps: [],
+        expected_behavior: "",
+        actual_behavior: "",
+        logs: "",
+        attachments: [],
+        resolution_notes: ""
+      };
+      db.worms.unshift(worm);
+      activeWormId = newId;
+      updateMetrics();
+      renderWormList();
+      loadActiveWorm();
+      saveActiveWorm();
+    }
+    const newBug = newWorm;
+
+    async function saveActiveWorm() {
+      let worm = db.worms.find(w => w.id === activeWormId);
+      const title = (document.getElementById("worm-title").value || "").trim();
+      const severity = document.getElementById("worm-severity").value;
+      const status = document.getElementById("worm-status").value;
+      const category = document.getElementById("worm-category").value;
+      const component = (document.getElementById("worm-component").value || "").trim();
+      const description = document.getElementById("worm-description").value;
+      const steps = document.getElementById("worm-steps").value.split("\n").filter(s => s.trim());
+      const expected = document.getElementById("worm-expected").value;
+      const actual = document.getElementById("worm-actual").value;
+      const logs = document.getElementById("worm-logs").value;
+      const resolution = document.getElementById("worm-resolution").value;
+
+      if (!worm) {
+        let newId = generateNextWormId();
+        try {
+          const res = await fetch("/api/next_worm_id");
+          if (res.ok) {
+            const data = await res.json();
+            if (data.next_id && !db.worms.some(w => w.id === data.next_id)) {
+              newId = data.next_id;
+            }
+          }
+        } catch (e) {}
+
+        worm = {
+          id: newId,
+          title: title || "New Worm Report",
+          status: status || "OPEN",
+          severity: severity || "MEDIUM",
+          category: category || "FIRMWARE",
+          component: component,
+          description: description,
+          reproduction_steps: steps,
+          expected_behavior: expected,
+          actual_behavior: actual,
+          logs: logs,
+          attachments: [],
+          resolution_notes: resolution
+        };
+        db.worms.unshift(worm);
+        activeWormId = newId;
+      } else {
+        worm.title = title || "Untitled Worm";
+        worm.severity = severity;
+        worm.status = status;
+        worm.category = category;
+        worm.component = component;
+        worm.description = description;
+        worm.reproduction_steps = steps;
+        worm.expected_behavior = expected;
+        worm.actual_behavior = actual;
+        worm.logs = logs;
+        worm.resolution_notes = resolution;
+      }
+
+      const res = await fetch("/api/worms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(worm)
+      });
+      const saved = await res.json();
+      if (saved && saved.id) {
+        Object.assign(worm, saved);
+        activeWormId = saved.id;
+      }
+      updateMetrics();
+      renderWormList();
+      loadActiveWorm();
+      showToast("Saved worm " + (saved.id || worm.id) + " & synced WORMS.md");
+      return saved;
+    }
+    const saveActiveBug = saveActiveWorm;
+
+    async function deleteActiveWorm() {
+      if (!confirm("Are you sure you want to delete this worm report?")) return;
+      await fetch("/api/worms/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: activeWormId })
+      });
+      db.worms = db.worms.filter(w => w.id !== activeWormId);
+      activeWormId = db.worms.length > 0 ? db.worms[0].id : null;
+      updateMetrics();
+      renderWormList();
+      loadActiveWorm();
+      showToast("Deleted worm & updated WORMS.md");
+    }
+    const deleteActiveBug = deleteActiveWorm;
+
+    function returnToDashboard(e) {
+      if (e && e.preventDefault) e.preventDefault();
+      if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.focus();
+          if (typeof window.opener.loadSmartlog === "function") {
+            window.opener.loadSmartlog();
+          }
+        } catch (err) {}
+        window.close();
+        setTimeout(() => {
+          if (!window.closed) {
+            window.location.href = "/";
+          }
+        }, 300);
+        return;
+      }
+      try {
+        const existingDiff = window.open("", "firmware_vcs_diff_viewer");
+        if (existingDiff && !existingDiff.closed && existingDiff.location.href && existingDiff.location.href !== "about:blank") {
+          existingDiff.focus();
+          window.close();
+          setTimeout(() => {
+            if (!window.closed) {
+              window.location.href = "/";
+            }
+          }, 300);
+          return;
+        }
+      } catch (err) {}
+      window.location.href = "/";
+    }
+
+    async function saveAndExit() {
+      const btn = document.getElementById("btn-save-exit");
+      btn.innerText = "⏳ Saving...";
+      btn.disabled = true;
+
+      try {
+        await saveActiveWorm();
+        await fetch("/api/exit", { method: "POST" });
+        showToast("Worm state saved. Returning to Dashboard...");
+      } catch (err) {
+        showToast("Saved state. Returning to Dashboard...");
+      }
+
+      setTimeout(() => {
+        returnToDashboard();
+      }, 500);
+    }
+
+    function removeAttachment(idx) {
+      const worm = db.worms.find(w => w.id === activeWormId);
+      if (worm && worm.attachments) {
+        worm.attachments.splice(idx, 1);
+        renderAttachments(worm.attachments);
+        saveActiveWorm();
+      }
+    }
+
+    function setupPasteDrop() {
+      const dz = document.getElementById("dropzone");
+      dz.ondragover = (e) => { e.preventDefault(); dz.classList.add("dragover"); };
+      dz.ondragleave = () => dz.classList.remove("dragover");
+      dz.ondrop = (e) => {
+        e.preventDefault();
+        dz.classList.remove("dragover");
+        handleFileUpload(e.dataTransfer.files);
+      };
+
+      window.addEventListener("paste", (e) => {
+        const activeElem = document.activeElement;
+        const isTextInput = activeElem && (activeElem.tagName === "INPUT" || activeElem.tagName === "TEXTAREA");
+        const hasFiles = e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0;
+
+        if (isTextInput && !hasFiles) {
+          if (activeElem.closest && activeElem.closest("#attachments-section")) {
+            e.preventDefault();
+            const text = e.clipboardData.getData("text");
+            if (text && text.trim()) {
+              uploadTextDocument(text, "clipboard_doc_" + Date.now() + ".txt");
+            }
+          }
+          return;
+        }
+
+        if (hasFiles) {
+          e.preventDefault();
+          handleFileUpload(e.clipboardData.files);
+          return;
+        }
+
+        if (e.clipboardData && e.clipboardData.items) {
+          let handled = false;
+          for (let item of e.clipboardData.items) {
+            if (item.kind === "file") {
+              const blob = item.getAsFile();
+              if (blob) {
+                const fname = blob.name || (blob.type.startsWith("image/") ? "screenshot_paste_" + Date.now() + ".png" : "doc_paste_" + Date.now() + ".txt");
+                const ftype = blob.type.startsWith("image/") ? "screenshot" : "document";
+                uploadBlob(blob, fname, ftype);
+                handled = true;
+              }
+            }
+          }
+          if (handled) {
+            e.preventDefault();
+            return;
+          }
+        }
+
+        if (e.clipboardData) {
+          const text = e.clipboardData.getData("text");
+          if (text && text.trim() && (!isTextInput || activeElem.id === "dropzone")) {
+            e.preventDefault();
+            uploadTextDocument(text, "clipboard_text_" + Date.now() + ".txt");
+          }
+        }
+      });
+    }
+
+    async function pasteFromClipboard() {
+      try {
+        if (navigator.clipboard && navigator.clipboard.read) {
+          const clipboardItems = await navigator.clipboard.read();
+          for (const item of clipboardItems) {
+            for (const type of item.types) {
+              if (type.startsWith("image/")) {
+                const blob = await item.getType(type);
+                uploadBlob(blob, "pasted_screenshot_" + Date.now() + ".png", "screenshot");
+                return;
+              } else if (type === "application/pdf") {
+                const blob = await item.getType(type);
+                uploadBlob(blob, "pasted_document_" + Date.now() + ".pdf", "document");
+                return;
+              }
+            }
+          }
+        }
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const text = await navigator.clipboard.readText();
+          if (text && text.trim()) {
+            uploadTextDocument(text, "pasted_document_" + Date.now() + ".txt");
+            return;
+          }
+        }
+      } catch (err) {
+        showToast("Tip: Press ⌘V / Ctrl+V to paste screenshot or document");
+      }
+    }
+
+    function handleFileUpload(files) {
+      if (!files || files.length === 0) return;
+      for (let f of files) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const b64 = reader.result.split(",")[1];
+          const lowerName = f.name.toLowerCase();
+          const isImg = lowerName.match(/\.(png|jpg|jpeg|gif|svg|webp)$/i);
+          const isDoc = lowerName.match(/\.(pdf|txt|log|json|yaml|yml|md|csv)$/i);
+          const fileType = isImg ? "screenshot" : (isDoc ? "document" : "reference");
+          uploadPayload({
+            filename: f.name,
+            file_type: fileType,
+            content_base64: b64,
+            description: "Uploaded " + fileType + " " + f.name,
+            worm_id: activeWormId
+          });
+        };
+        reader.readAsDataURL(f);
+      }
+    }
+
+    function uploadBlob(blob, filename, fileType) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const b64 = reader.result.split(",")[1];
+        uploadPayload({
+          filename: filename,
+          file_type: fileType,
+          content_base64: b64,
+          description: "Pasted " + fileType,
+          worm_id: activeWormId
+        });
+      };
+      reader.readAsDataURL(blob);
+    }
+
+    function uploadTextDocument(text, filename) {
+      uploadPayload({
+        filename: filename,
+        file_type: "document",
+        content_text: text,
+        description: "Pasted text document",
+        worm_id: activeWormId
+      });
+    }
+
+    async function uploadPayload(payload) {
+      showToast("Uploading " + payload.filename + "...");
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const att = await res.json();
+      const worm = db.worms.find(w => w.id === activeWormId);
+      if (worm) {
+        if (!worm.attachments) worm.attachments = [];
+        worm.attachments.push(att);
+        renderAttachments(worm.attachments);
+        saveActiveWorm();
+        showToast("Attached " + att.filename);
+      }
+    }
+
+    async function syncFeedback() {
+      const modal = document.getElementById("feedback-loading-modal");
+      if (modal) modal.style.display = "flex";
+      try {
+        const res = await fetch("/api/sync_feedback", { method: "POST" });
+        const data = await res.json();
+        if (data.status === "ok") {
+          const stats = data.stats || {};
+          showToast(`Feedback synced: ${stats.total || 0} total worms.`);
+          const dbRes = await fetch("/api/worms");
+          if (dbRes.ok) {
+            db = await dbRes.json();
+            if (!db.worms && db.bugs) db.worms = db.bugs;
+            updateMetrics();
+            renderWormList();
+            loadActiveWorm();
+          }
+        } else {
+          showToast("Sync failed: " + (data.message || "Unknown error"));
+        }
+      } catch (err) {
+        showToast("Error syncing feedback: " + err.message);
+      } finally {
+        if (modal) modal.style.display = "none";
+      }
+    }
+
+    function toggleExpandPanel(btn) {
+      const section = btn.closest(".form-section");
+      if (!section) return;
+      const isExp = section.classList.toggle("expanded-vertical");
+      btn.textContent = isExp ? "⤡ Compact" : "⤢ Expand";
+      btn.classList.toggle("quake-btn-gold", isExp);
+      btn.classList.toggle("quake-btn-default", !isExp);
+      if (!isExp) {
+        section.querySelectorAll("textarea").forEach(ta => autoResizeTextarea(ta));
+      }
+    }
+
+    function autoResizeTextarea(el, maxLimit = 500) {
+      if (!el) return;
+      if (el.closest && el.closest(".form-section.expanded-vertical")) return;
+      el.style.height = "auto";
+      const scrollH = el.scrollHeight;
+      const minH = el.dataset.minHeight ? parseInt(el.dataset.minHeight) : 80;
+      const targetHeight = Math.min(Math.max(scrollH, minH), maxLimit);
+      el.style.height = targetHeight + "px";
+      if (scrollH > maxLimit) {
+        el.style.overflowY = "auto";
+      } else {
+        el.style.overflowY = "hidden";
+      }
+    }
+
+    function autoResizeAllTextareas() {
+      const textareas = document.querySelectorAll(".content-area textarea");
+      textareas.forEach(ta => autoResizeTextarea(ta));
+    }
+
+    let lastKnownVersion = null;
+    let isUserTyping = false;
+
+    document.addEventListener("input", (e) => {
+      if (e.target && e.target.tagName === "TEXTAREA") {
+        autoResizeTextarea(e.target);
+      }
+    });
+
+    document.addEventListener("focusin", (e) => {
+      if (e.target && (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT")) {
+        isUserTyping = true;
+      }
+    });
+
+    document.addEventListener("focusout", (e) => {
+      if (e.target && (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT")) {
+        isUserTyping = false;
+      }
+    });
+
+    async function pollForExternalUpdates() {
+      try {
+        const res = await fetch("/api/version");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (lastKnownVersion === null) {
+          lastKnownVersion = data.version;
+          return;
+        }
+        if (data.version !== lastKnownVersion) {
+          lastKnownVersion = data.version;
+          const dbRes = await fetch("/api/worms");
+          if (!dbRes.ok) return;
+          db = await dbRes.json();
+          if (!db.worms && db.bugs) db.worms = db.bugs;
+          updateMetrics();
+          renderWormList();
+          if (!isUserTyping && activeWormId) {
+            loadActiveWorm();
+          } else if (activeWormId) {
+            const curWorm = db.worms.find(w => w.id === activeWormId);
+            if (curWorm) {
+              const statusSel = document.getElementById("worm-status");
+              if (statusSel && statusSel.value !== curWorm.status) {
+                statusSel.value = curWorm.status;
+              }
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    setInterval(pollForExternalUpdates, 2000);
+
+    window.onload = init;
+  </script>
+</body>
+</html>

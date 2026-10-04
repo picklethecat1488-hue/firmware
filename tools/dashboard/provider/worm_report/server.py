@@ -1,0 +1,720 @@
+"""HTTP server and REST API for interactive Worm Report dashboard.
+
+Serves the engineering worm report workstation UI and handles JSON API endpoints
+for worm creation, triage, reproduction steps, log and screenshot attachments,
+and automated Markdown persistence (feedback/WORMS.md).
+"""
+
+import base64
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+from pathlib import Path
+import shutil
+import sys
+import threading
+from typing import Any, Dict, List, Optional
+import urllib.parse
+import uuid
+
+import jinja2
+
+from model.worm_report import (
+    WormAttachmentModel,
+    WormCategory,
+    WormDatabaseModel,
+    WormReportModel,
+    WormSeverity,
+    WormStatus,
+)
+from provider.worm_report.markdown_exporter import MarkdownWormExporter
+from provider.worm_report.sqlite_store import SQLiteWormStore
+
+TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
+
+
+class WormReportRequestHandler(BaseHTTPRequestHandler):
+    """HTTP request handler dispatching worm report UI and REST API endpoints."""
+
+    server: "WormReportServer"
+
+    def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+        """Suppress default HTTP server logging to preserve clean console output."""
+        return
+
+    def do_GET(self) -> None:  # noqa: N802
+        """Route GET requests for UI dashboard and data query endpoints."""
+        self.server.check_file_watch()
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+
+        if path.startswith("/static/"):
+            self._handle_serve_static(path)
+            return
+
+        if (
+            path.startswith("/attachments/")
+            or path.startswith("/target/attachments/")
+            or path.startswith("/build/attachments/")
+        ):
+            self._handle_serve_attachment(path)
+            return
+
+        match path:
+            case "/" | "/worms" | "/worms/":
+                self._handle_serve_ui()
+            case "/api/database":
+                self._send_json(self.server.database.model_dump(mode="json"))
+            case "/api/worms" | "/api/bugs":
+                worms_data = [w.model_dump(mode="json") for w in self.server.database.worms]
+                self._send_json(worms_data)
+            case "/api/metadata":
+                self._send_json(
+                    {
+                        "statuses": [s.value for s in WormStatus],
+                        "severities": [s.value for s in WormSeverity],
+                        "categories": [c.value for c in WormCategory],
+                        "counts_status": self.server.database.count_by_status(),
+                        "counts_severity": self.server.database.count_by_severity(),
+                        "counts_category": self.server.database.count_by_category(),
+                    }
+                )
+            case "/api/files":
+                files = self._list_reference_files()
+                self._send_json(files)
+            case "/api/next_worm_id" | "/api/next_bug_id":
+                self._send_json({"next_id": self.server.database.generate_worm_id()})
+            case "/api/version":
+                self._send_json(
+                    {
+                        "version": self.server.db_version,
+                        "worms_count": len(self.server.database.worms),
+                        "mtime": self.server.feedback_mtime,
+                    }
+                )
+            case _:
+                self.send_error(404, "Endpoint not found")
+
+    def do_POST(self) -> None:  # noqa: N802
+        """Route POST requests for worm creation, updates, uploads, and export."""
+        self.server.check_file_watch()
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+
+        length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError:
+            data = {}
+
+        match path:
+            case "/api/worms" | "/api/bugs":
+                self._handle_save_worm(data)
+            case "/api/worms/status" | "/api/bugs/status":
+                self._handle_update_status(data)
+            case "/api/worms/delete" | "/api/bugs/delete":
+                self._handle_delete_worm(data)
+            case "/api/upload":
+                self._handle_file_upload(data)
+            case "/api/export":
+                out_path = self.server.save_and_sync()
+                self._send_json({"status": "exported", "path": str(out_path)})
+            case "/api/sync_feedback":
+                stats = self.server.sync_with_feedback_dir()
+                self._send_json({"status": "ok", "stats": stats})
+            case "/api/exit":
+                out_path = self.server.save_and_sync()
+                self._send_json({"status": "saved_and_exited", "path": str(out_path)})
+                threading.Thread(target=self.server.shutdown, daemon=True).start()
+            case _:
+                self.send_error(404, "Endpoint not found")
+
+    def _handle_serve_ui(self) -> None:
+        """Render and serve the worm reporting HTML dashboard via Jinja2."""
+        env = jinja2.Environment(
+            loader=jinja2.FileSystemLoader(str(TEMPLATES_DIR)),
+            autoescape=jinja2.select_autoescape(["html", "xml"]),
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
+        template = env.get_template("worm_report.html.j2")
+        db_dump = self.server.database.model_dump(mode="json")
+        html_content = template.render(
+            database=self.server.database,
+            database_json=json.dumps(db_dump),
+            statuses=[s.value for s in WormStatus],
+            severities=[s.value for s in WormSeverity],
+            categories=[c.value for c in WormCategory],
+            server_port=self.server.actual_port,
+        )
+        self._send_html(html_content)
+
+    def _handle_serve_attachment(self, path: str) -> None:
+        """Serve uploaded file attachments from attachments directory."""
+        clean_path = path.lstrip("/")
+        if clean_path.startswith("target/attachments/"):
+            rel_name = clean_path[len("target/attachments/") :]
+        elif clean_path.startswith("build/attachments/"):
+            rel_name = clean_path[len("build/attachments/") :]
+        elif clean_path.startswith("attachments/"):
+            rel_name = clean_path[len("attachments/") :]
+        else:
+            rel_name = clean_path
+        file_path = self.server.attachments_dir / rel_name
+        if not file_path.exists() or not file_path.is_file():
+            fallback_target = self.server.repo_root / "target" / "attachments" / rel_name
+            fallback_build = self.server.repo_root / "build" / "attachments" / rel_name
+            if fallback_target.exists() and fallback_target.is_file():
+                file_path = fallback_target
+            elif fallback_build.exists() and fallback_build.is_file():
+                file_path = fallback_build
+            elif (self.server.repo_root / clean_path).is_file():
+                file_path = self.server.repo_root / clean_path
+            else:
+                self.send_error(404, f"Attachment '{rel_name}' not found")
+                return
+
+        content = file_path.read_bytes()
+        suffix = file_path.suffix.lower()
+        content_type = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".svg": "image/svg+xml",
+            ".webp": "image/webp",
+            ".pdf": "application/pdf",
+            ".txt": "text/plain",
+            ".log": "text/plain",
+            ".json": "application/json",
+            ".yaml": "text/yaml",
+            ".yml": "text/yaml",
+            ".md": "text/markdown",
+            ".csv": "text/csv",
+        }.get(suffix, "application/octet-stream")
+
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(content)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            self.close_connection = True
+        finally:
+            self.close_connection = True
+
+    def _handle_save_worm(self, data: Dict[str, Any]) -> None:
+        """Create or update a worm report and persist to storage."""
+        worm_id = data.get("id") or self.server.database.generate_worm_id()
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+        existing = self.server.database.get_worm(worm_id)
+        created_at = existing.created_at if existing else now_str
+
+        # Parse attachments
+        attachments: List[WormAttachmentModel] = []
+        for att_data in data.get("attachments", []):
+            attachments.append(WormAttachmentModel.model_validate(att_data))
+
+        # Parse reproduction steps
+        raw_steps = data.get("reproduction_steps") or data.get("steps") or []
+        if isinstance(raw_steps, str):
+            steps = [s.strip() for s in raw_steps.splitlines() if s.strip()]
+        else:
+            steps = [str(s).strip() for s in raw_steps if str(s).strip()]
+
+        status_val = data.get("status", WormStatus.OPEN.value)
+        status = WormStatus(status_val) if status_val in [s.value for s in WormStatus] else WormStatus.OPEN
+        incoming_notes = data.get("resolution_notes", "").strip()
+
+        resolved_at = existing.resolved_at if existing else None
+        if existing and existing.status in (WormStatus.RESOLVED, WormStatus.CLOSED):
+            if existing.resolution_notes.strip() and status == WormStatus.OPEN and not incoming_notes:
+                status = existing.status
+                resolved_at = existing.resolved_at
+                incoming_notes = existing.resolution_notes
+
+        if status in (WormStatus.RESOLVED, WormStatus.CLOSED) and not resolved_at:
+            resolved_at = now_str
+        elif status in (WormStatus.OPEN, WormStatus.IN_PROGRESS):
+            resolved_at = None
+
+        cat_raw = data.get("category", WormCategory.FIRMWARE.value)
+        try:
+            cat_val = WormCategory(cat_raw)
+        except ValueError:
+            cat_val = WormCategory.GENERAL
+
+        worm = WormReportModel(
+            id=worm_id,
+            uuid=data.get("uuid") or (existing.uuid if existing else str(uuid.uuid4())),
+            title=data.get("title", "Untitled Worm"),
+            status=status,
+            severity=WormSeverity(data.get("severity", WormSeverity.MEDIUM.value)),
+            category=cat_val,
+            component=data.get("component", ""),
+            description=data.get("description", ""),
+            reproduction_steps=steps,
+            expected_behavior=data.get("expected_behavior", ""),
+            actual_behavior=data.get("actual_behavior", ""),
+            logs=data.get("logs", ""),
+            attachments=attachments,
+            created_at=created_at,
+            updated_at=now_str,
+            resolved_at=resolved_at,
+            resolution_notes=incoming_notes,
+        )
+
+        self.server.database.add_or_update(worm)
+        self.server.save_and_sync()
+        self._send_json(worm.model_dump(mode="json"))
+
+    def _handle_update_status(self, data: Dict[str, Any]) -> None:
+        """Update lifecycle status and resolution notes for a worm."""
+        worm_id = data.get("id") or data.get("worm_id") or data.get("bug_id")
+        new_status_str = data.get("status")
+        notes = data.get("resolution_notes")
+
+        worm = self.server.database.get_worm(worm_id)
+        if not worm:
+            self._send_json({"error": f"Worm {worm_id} not found"}, status=404)
+            return
+
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        if new_status_str and new_status_str in [s.value for s in WormStatus]:
+            worm.status = WormStatus(new_status_str)
+            if worm.status in (WormStatus.RESOLVED, WormStatus.CLOSED):
+                worm.resolved_at = now_str
+            else:
+                worm.resolved_at = None
+
+        if notes is not None:
+            worm.resolution_notes = notes
+
+        worm.updated_at = now_str
+        self.server.save_and_sync()
+        self._send_json(worm.model_dump(mode="json"))
+
+    def _handle_delete_worm(self, data: Dict[str, Any]) -> None:
+        """Delete a worm report by ID."""
+        worm_id = data.get("id") or data.get("worm_id") or data.get("bug_id")
+        if worm_id:
+            self.server.delete_worm(worm_id)
+            self._send_json({"status": "deleted", "id": worm_id})
+        else:
+            self._send_json({"error": "Missing worm ID"}, status=400)
+
+    def _handle_file_upload(self, data: Dict[str, Any]) -> None:
+        """Save base64 encoded file upload or log string to attachments directory."""
+        filename = data.get("filename", f"attachment_{uuid.uuid4().hex[:8]}.txt")
+        file_type = data.get("file_type", "reference")
+        desc = data.get("description", "")
+        b64_content = data.get("content_base64", "")
+        text_content = data.get("content_text", "")
+
+        raw_worm_id = str(
+            data.get("worm_id") or data.get("wormId") or data.get("bug_id") or data.get("bugId") or ""
+        ).strip()
+        if not raw_worm_id and (
+            str(data.get("id", "")).startswith("WORM-") or str(data.get("id", "")).startswith("BUG-")
+        ):
+            raw_worm_id = str(data.get("id")).strip()
+        worm_id = Path(raw_worm_id).name if raw_worm_id else ""
+        filename = Path(filename).name
+
+        dest_dir = (self.server.attachments_dir / worm_id) if worm_id else self.server.attachments_dir
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest_path = dest_dir / filename
+
+        if b64_content:
+            file_bytes = base64.b64decode(b64_content)
+            dest_path.write_bytes(file_bytes)
+        elif text_content:
+            file_bytes = text_content.encode("utf-8")
+            dest_path.write_bytes(file_bytes)
+        else:
+            file_bytes = b""
+            dest_path.write_bytes(file_bytes)
+
+        rel_path = (
+            dest_path.relative_to(self.server.repo_root)
+            if dest_path.is_relative_to(self.server.repo_root)
+            else dest_path
+        )
+
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        att = WormAttachmentModel(
+            id=uuid.uuid4().hex[:8],
+            filename=filename,
+            file_type=file_type,
+            file_path=str(rel_path),
+            size_bytes=len(file_bytes),
+            description=desc,
+            created_at=now_str,
+        )
+        self._send_json(att.model_dump(mode="json"))
+
+    def _list_reference_files(self) -> List[Dict[str, str]]:
+        """List relevant preview screenshots, logs, and artifacts in workspace."""
+        results: List[Dict[str, str]] = []
+        for b_dir in [self.server.repo_root / "target", self.server.repo_root / "build"]:
+            if b_dir.exists():
+                for p in b_dir.glob("*.png"):
+                    results.append(
+                        {"name": p.name, "path": str(p.relative_to(self.server.repo_root)), "type": "screenshot"}
+                    )
+        rec_dir = self.server.repo_root / "recordings" / "previews"
+        if rec_dir.exists():
+            for p in rec_dir.glob("*.png"):
+                results.append(
+                    {"name": p.name, "path": str(p.relative_to(self.server.repo_root)), "type": "screenshot"}
+                )
+        return results
+
+    def _handle_serve_static(self, path: str) -> None:
+        """Serve static assets such as favicon and vendor bundles."""
+        static_dir = Path(__file__).resolve().parent.parent / "code_review" / "static"
+        filename = path.removeprefix("/static/").strip("/")
+        file_target = (static_dir / filename).resolve()
+        if not str(file_target).startswith(str(static_dir)) or not file_target.is_file():
+            self.send_error(404, "Static asset not found")
+            return
+        content_type = (
+            "image/svg+xml"
+            if file_target.suffix == ".svg"
+            else ("application/javascript" if file_target.suffix == ".js" else "text/plain")
+        )
+        data = file_target.read_bytes()
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            self.close_connection = True
+        finally:
+            self.close_connection = True
+
+    def _send_html(self, html: str) -> None:
+        """Send UTF-8 encoded HTML HTTP response payload."""
+        encoded = html.encode("utf-8")
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(encoded)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            self.close_connection = True
+        finally:
+            self.close_connection = True
+
+    def _send_json(self, data: Any, status: int = 200) -> None:
+        """Send JSON HTTP response payload."""
+        encoded = json.dumps(data, indent=2).encode("utf-8")
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(encoded)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            self.close_connection = True
+        finally:
+            self.close_connection = True
+
+
+class WormReportServer(ThreadingHTTPServer):
+    """Local Threading HTTP web server hosting the interactive worm report dashboard."""
+
+    allow_reuse_address = True
+    daemon_threads = True
+
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        """Handle client connection errors gracefully without printing tracebacks on client disconnects."""
+        exc_type, _, _ = sys.exc_info()
+        if exc_type is not None and issubclass(
+            exc_type, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
+        ):
+            return
+        super().handle_error(request, client_address)
+
+    def server_bind(self) -> None:
+        """Override server_bind to avoid slow reverse DNS lookups via getfqdn."""
+        from socketserver import TCPServer
+
+        TCPServer.server_bind(self)
+        self.server_name = self.server_address[0]
+        self.server_port = self.server_address[1]
+
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 8876,
+        repo_root: Optional[Path] = None,
+        markdown_output: Optional[Path] = None,
+        feedback_dir: Optional[Path] = None,
+        state_file: Optional[Path] = None,
+        sqlite_file: Optional[Path] = None,
+        attachments_dir: Optional[Path] = None,
+        fresh: bool = False,
+        bind_and_activate: bool = True,
+    ) -> None:
+        """Initialize server with persistent storage paths."""
+        self.host = host
+        self.port = port
+        self.repo_root = repo_root or Path.cwd()
+        self.markdown_output = markdown_output or (self.repo_root / "target" / "WORMS.md")
+        if feedback_dir is not None:
+            self.feedback_dir = feedback_dir
+        elif markdown_output is not None and markdown_output.parent.name not in ("build", "target"):
+            self.feedback_dir = markdown_output.parent
+        else:
+            self.feedback_dir = self.repo_root / "feedback"
+        self.state_file = state_file or (self.repo_root / "target" / "worms_state.json")
+
+        if sqlite_file:
+            self.sqlite_file = sqlite_file
+        else:
+            target_sqlite = self.repo_root / "target" / "worms.sqlite"
+            build_sqlite = self.repo_root / "build" / "worms.sqlite"
+            old_bugs = self.repo_root / "target" / "bugs.sqlite"
+            if not target_sqlite.exists():
+                if build_sqlite.exists():
+                    try:
+                        target_sqlite.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(str(build_sqlite), str(target_sqlite))
+                    except Exception:
+                        pass
+                elif old_bugs.exists():
+                    try:
+                        target_sqlite.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(str(old_bugs), str(target_sqlite))
+                    except Exception:
+                        pass
+            self.sqlite_file = target_sqlite
+
+        self.attachments_dir = attachments_dir or (self.repo_root / "attachments")
+        self.fresh = fresh
+        self.bind_and_activate = bind_and_activate
+
+        self._lock = threading.RLock()
+        self._is_internal_saving = False
+
+        self.sqlite_store = SQLiteWormStore(self.sqlite_file)
+        self.exporter = MarkdownWormExporter(repo_root=self.repo_root)
+        self.markdown_mtime = self.markdown_output.stat().st_mtime if self.markdown_output.exists() else 0.0
+        self.feedback_mtime = self._get_feedback_dir_mtime()
+        self.db_version: int = 1
+        self.database = self._initialize_database()
+        self._watcher_stop = threading.Event()
+        self._start_file_watcher()
+
+        if bind_and_activate:
+            super().__init__((host, port), WormReportRequestHandler)
+            self.actual_port = self.server_address[1]
+        else:
+            self.actual_port = port
+
+    def get_request(self) -> Any:
+        """Accept incoming connection and set a socket timeout to prevent lingering sockets."""
+        sock, addr = super().get_request()
+        sock.settimeout(10.0)
+        return sock, addr
+
+    def _get_feedback_dir_mtime(self) -> float:
+        """Compute maximum mtime across feedback_dir and all WORM_*.md / BUG_*.md files within it."""
+        if not self.feedback_dir.exists():
+            return 0.0
+        try:
+            max_mtime = self.feedback_dir.stat().st_mtime
+            for p in sorted(self.feedback_dir.glob("WORM_*.md")) + sorted(self.feedback_dir.glob("BUG_*.md")):
+                try:
+                    m = p.stat().st_mtime
+                    if m > max_mtime:
+                        max_mtime = m
+                except OSError:
+                    pass
+            return max_mtime
+        except OSError:
+            return 0.0
+
+    def check_file_watch(self) -> bool:
+        """Check if feedback_dir or markdown_output was modified externally and reload state."""
+        with self._lock:
+            if self._is_internal_saving:
+                return False
+            changed = False
+            if self.markdown_output.exists():
+                try:
+                    curr_mtime = self.markdown_output.stat().st_mtime
+                    if curr_mtime > self.markdown_mtime + 0.001:
+                        changed = True
+                except OSError:
+                    pass
+
+            curr_fb_mtime = self._get_feedback_dir_mtime()
+            if curr_fb_mtime > self.feedback_mtime + 0.001:
+                changed = True
+
+            if changed:
+                self.sync_with_feedback_dir()
+                return True
+            return False
+
+    def _start_file_watcher(self) -> None:
+        """Start background polling thread to watch feedback_dir and WORMS.md for external changes."""
+
+        def watch_loop() -> None:
+            import time
+
+            while not self._watcher_stop.is_set():
+                time.sleep(1.0)
+                try:
+                    self.check_file_watch()
+                except Exception:
+                    pass
+
+        t = threading.Thread(target=watch_loop, daemon=True)
+        t.start()
+
+    def server_close(self) -> None:
+        """Stop background file watcher and close server."""
+        self._watcher_stop.set()
+        if hasattr(self, "socket"):
+            super().server_close()
+
+    def _ensure_unique_worm_ids(self, db: WormDatabaseModel) -> None:
+        """Ensure all worm IDs in database are unique."""
+        seen: set[str] = set()
+        for worm in db.worms:
+            if worm.id in seen:
+                worm.id = db.generate_worm_id()
+            seen.add(worm.id)
+
+    def _initialize_database(self) -> WormDatabaseModel:
+        """Load existing database state from SQLite/JSON and perform R+M+W sync with feedback/."""
+        db = None
+        if not self.fresh:
+            if self.sqlite_file.exists():
+                db = self.sqlite_store.load_database()
+            elif self.state_file.exists():
+                db = self.exporter.load_state_json(self.state_file)
+
+        if db is None:
+            db = WormDatabaseModel(
+                title="Firmware Worm Tracker",
+                summary="Firmware engineering defects, driver anomalies, and reproduction tracking.",
+            )
+
+        if not self.fresh:
+            fallback_md = self.repo_root / "build" / "WORMS.md"
+            md_to_read = (
+                self.markdown_output
+                if self.markdown_output.exists()
+                else (fallback_md if fallback_md.exists() else None)
+            )
+            if md_to_read and md_to_read.exists():
+                md_db = self.exporter.parse_markdown(md_to_read)
+                if md_db and md_db.worms:
+                    db = self.exporter.merge_databases(db, md_db)
+                self.markdown_mtime = md_to_read.stat().st_mtime
+
+        if not self.fresh and self.feedback_dir.exists():
+            self.exporter.scan_and_sync_feedback_dir(self.feedback_dir, db, self.sqlite_store)
+
+        self._ensure_unique_worm_ids(db)
+        if not self.fresh:
+            self.sqlite_store.save_database(db)
+        return db
+
+    def sync_with_markdown(self) -> Path:
+        """Perform Read-Modify-Write (R+M+W) sync with feedback/ and WORMS.md and persist to stores."""
+        with self._lock:
+            if self.feedback_dir.exists():
+                self.exporter.scan_and_sync_feedback_dir(self.feedback_dir, self.database, self.sqlite_store)
+            if self.markdown_output.exists():
+                md_db = self.exporter.parse_markdown(self.markdown_output)
+                if md_db and md_db.worms:
+                    self.database = self.exporter.merge_databases(self.database, md_db)
+                    self._ensure_unique_worm_ids(self.database)
+            self._is_internal_saving = True
+            try:
+                return self.save_and_sync()
+            finally:
+                self._is_internal_saving = False
+
+    def sync_with_feedback_dir(self) -> Dict[str, Any]:
+        """Scan feedback/ directory, detect file renames, merge into SQLite, and update markdown."""
+        with self._lock:
+            if self.markdown_output.exists():
+                md_db = self.exporter.parse_markdown(self.markdown_output)
+                if md_db and md_db.worms:
+                    self.database = self.exporter.merge_databases(self.database, md_db)
+            stats = self.exporter.scan_and_sync_feedback_dir(self.feedback_dir, self.database, self.sqlite_store)
+            self.save_and_sync()
+            return stats
+
+    def save_and_sync(self) -> Path:
+        """Persist worm database to SQLite, JSON, WORMS.md, and individual WORM_<id>.md files."""
+        with self._lock:
+            if not self._is_internal_saving and self.feedback_dir.exists():
+                curr_fb_mtime = self._get_feedback_dir_mtime()
+                if curr_fb_mtime > self.feedback_mtime + 0.001:
+                    self.exporter.scan_and_sync_feedback_dir(self.feedback_dir, self.database, self.sqlite_store)
+                    self.feedback_mtime = curr_fb_mtime
+            self._is_internal_saving = True
+            try:
+                self.database.updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+                self.sqlite_store.save_database(self.database)
+                self.exporter.export_state_json(self.database, self.state_file)
+                out = self.exporter.export_markdown(
+                    self.database,
+                    self.markdown_output,
+                    feedback_dir=self.feedback_dir,
+                    store=self.sqlite_store,
+                )
+                if self.markdown_output.exists():
+                    self.markdown_mtime = self.markdown_output.stat().st_mtime
+                self.feedback_mtime = self._get_feedback_dir_mtime()
+                self.db_version += 1
+                return out
+            finally:
+                self._is_internal_saving = False
+
+    def save_worm(self, worm: WormReportModel) -> None:
+        """Save a single worm and sync to stores."""
+        with self._lock:
+            self.database.add_or_update(worm)
+            self.save_and_sync()
+
+    def delete_worm(self, worm_id: str) -> bool:
+        """Delete a worm from all stores."""
+        with self._lock:
+            self._is_internal_saving = True
+            try:
+                deleted = self.sqlite_store.delete_worm(worm_id)
+                self.database.worms = [w for w in self.database.worms if w.id != worm_id]
+                self.exporter.export_state_json(self.database, self.state_file)
+                self.exporter.export_markdown(self.database, self.markdown_output, feedback_dir=self.feedback_dir)
+                md_path = self.feedback_dir / f"{worm_id.replace('-', '_')}.md"
+                if md_path.exists():
+                    try:
+                        md_path.unlink()
+                    except OSError:
+                        pass
+                return deleted
+            finally:
+                self._is_internal_saving = False
+
+    def get_url(self) -> str:
+        """Return reachable HTTP URL for browser."""
+        port = getattr(self, "actual_port", None) or self.port
+        return f"http://{self.host}:{port}"
