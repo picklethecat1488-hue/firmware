@@ -227,6 +227,31 @@ def test_carrier_board_firmware_document() -> None:
     assert "SRAM Usage vs. Expansion Headroom" in content
     assert "Framework Validation: Integration with Touch Sensor Gesture Processor" in content
 
+    # WORM-013: Feedbacks about carrier_board.md
+    # 1. host_fs EEPROM programming support
+    assert "dev:eeprom" in content
+    assert "host_fs" in content and "--device dev:eeprom" in content
+
+    # 2. Sequential-storage USB-descriptor-style format for EEPROM
+    assert "USB-descriptor" in content or "USB descriptor" in content
+    assert "DeviceDescriptor" in content or "TLV" in content
+
+    # 3. ProgramMetadata section with target partition & descriptor info
+    assert "ProgramMetadata" in content
+    assert ".program_metadata" in content or "program_metadata" in content.lower()
+
+    # 4. Hardware FIFO buffering, on-chip high-resolution timer, and sensor fusion
+    assert "FIFO" in content
+    assert "CTIMER" in content or "high-resolution timer" in content.lower()
+    assert "sensor fusion" in content.lower() and "FIFO" in content
+
+    # 5. Factory provisioning structured logging & status display
+    assert "status display" in content.lower() or "HUD" in content
+    assert "JUnit" in content or "MES" in content
+
+    # 6. PowerDown alignment with RP2040 SystemController / SystemStatus
+    assert "SystemStatus" in content or "Active, Sleep, PowerDown" in content
+
 
 def test_carrier_board_bringup_yaml() -> None:
     """Verify app/carrier_board_bringup.yaml exists as source of truth for bringup verification."""
