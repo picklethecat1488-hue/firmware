@@ -25,6 +25,7 @@ The source of truth for bringup verification steps is [`app/carrier_board_bringu
     - [2. External Serial SLC NAND Partitions (128 MB Winbond W25N01GV / `dev:ext-flash`)](#2-external-serial-slc-nand-partitions-128-mb-winbond-w25n01gv--devext-flash)
     - [3. Flash I/O Invariants & Guarantees](#3-flash-io-invariants--guarantees)
     - [4. Host Flash Tool (`tools/host_fs`) Storage Descriptor URI Model](#4-host-flash-tool-toolshost_fs-storage-descriptor-uri-model)
+    - [5. Target Partition Table & `ProgramMetadata` Descriptor Structure](#5-target-partition-table--programmetadata-descriptor-structure)
   - [Application Software Framework for DSP & NPU (Rust ML Ecosystem)](#application-software-framework-for-dsp--npu-rust-ml-ecosystem)
     - [Framework Validation: Integration with Touch Sensor Gesture Processor](#framework-validation-integration-with-touch-sensor-gesture-processor)
   - [Design Hardening & Memory Protection (ARMv8-M MPU & Storage Security)](#design-hardening--memory-protection-armv8-m-mpu--storage-security)
@@ -49,7 +50,7 @@ The source of truth for bringup verification steps is [`app/carrier_board_bringu
   - [On-Device Rust Test Frameworks & Post-Bringup UART Service Model](#on-device-rust-test-frameworks--post-bringup-uart-service-model)
   - [Validation Gate for `embassy-mcx`](#validation-gate-for-embassy-mcx)
 - [6. User Interface, Audio Chimes, Boot Timings & System Controller Extensions](#6-user-interface-audio-chimes-boot-timings--system-controller-extensions)
-  - [1. System Controller Extensions: `Standby` Power State Architecture](#1-system-controller-extensions-standby-power-state-architecture)
+  - [1. System Controller Architecture: Harmonized `Active`, `Sleep` & `PowerDown` States](#1-system-controller-architecture-harmonized-active-sleep--powerdown-states)
   - [2. User LED Indicator Matrix (TI LP5009 RGB LED)](#2-user-led-indicator-matrix-ti-lp5009-rgb-led)
   - [3. Speaker Audio Chimes](#3-speaker-audio-chimes)
   - [4. Boot Timing & Latency Budget](#4-boot-timing--latency-budget)
@@ -121,8 +122,20 @@ Carrier Board 2.0 adopts the project's decoupled domain controller design patter
 4. **`SensorController` (`controller::sensor_controller`)**:
    - Serves as the unified canonical controller for all current and future sensor peripherals (environmental, ambient light, IMU/inertial, optical/ToF, capacitive touch, proximity).
    - Manages the Azoteq IQS7222A capacitive touch and proximity sensor (`I2C1` @ `0x44` on Core 1).
+   - **Hardware FIFO Buffering & Low-Power Coprocessor Scheduling**:
+     - Azoteq IQS7222A capacitive touch sensing and motion sensor peripherals stream readings into internal on-chip hardware FIFOs (up to 32 samples deep).
+     - Hardware pin interrupts (`CAP_INT` on `C4`) fire only when the hardware FIFO reaches a configurable watermark threshold (e.g. 75% full) or an inactivity flush timeout expires.
+     - This permits Core 1 to remain in deep low-power sleep (WFI / power-down) during sampling intervals, waking only when a burst batch of samples is ready, drastically reducing active processor energy.
+   - **On-Chip High-Resolution Timer (`CTIMER`) Microsecond Timestamp Integration**:
+     - To ensure cycle-accurate sensor fusion without CPU polling, Core 1 integrates the MCX N947 on-chip 32-bit Standard Counter/Timer (`CTIMER0`..`CTIMER4`).
+     - Upon waking from a FIFO watermark interrupt, Core 1 reads the running `CTIMER` microsecond timestamp counter. The inter-sample time step ($\Delta t$) is integrated backward across each sample in the FIFO batch using the known hardware sample clock rate and hardware timer delta:
+       $$\Delta t_{batch} = t_{interrupt} - t_{previous\_batch}, \quad \Delta t_{sample} = \frac{\Delta t_{batch}}{N_{samples}}$$
+   - **FIFO Buffering in the Sensor Fusion Pipeline**:
+     - Batched, timestamped samples are staged directly into the **Core 1 Sensor Fusion Arena** (`0x2002_0000`, 64 KB).
+     - The sensor fusion algorithms (Kalman filter state estimation, complementary attitude filters, and temporal trajectory smoothing) operate over contiguous vector slices of batched samples rather than sample-by-sample loops.
+     - Integration equations use exact microsecond $\Delta t$ from `CTIMER`, eliminating phase jitter caused by variable interrupt latency, context switches, or inter-core IPC delivery delays.
    - Handles single-finger touch position detection, continuous tracking, gesture recognition, and proximity event emission over IPC.
-5. **`AudioController` (`controller::audio_controller`)**:
+5. **`SpeakerController` (`controller::speaker_controller`)**:
    - Drives the on-board piezo buzzer and ADI MAX98357A I2S Class-D audio amplifier (`U4` on Core 1).
    - Synthesizes acoustic alerts, status chimes, and decodes I2S audio playback streams.
 6. **`BleController` (`controller::ble_controller`)**:
@@ -179,7 +192,13 @@ expansion-cellular = []
 
 #### 4. Hardware Card Identification & Auto-Detection
 During Stage 2 bringup, Core 0 queries the expansion $\text{I}^2\text{C}$ bus (`FC4`) at standard EEPROM address range (`0x50`–`0x57`):
-- Each expansion card carries a 2 KB serial EEPROM containing a signed CBOR board descriptor (UUID, card type, hardware revision, GPIO interrupt assignments, voltage requirements).
+- Each expansion card carries a 2 KB serial EEPROM (`dev:eeprom`) formatted using `sequential-storage` with a sequential, self-describing TLV (Type-Length-Value) architecture modeled directly on **USB descriptors**:
+  - **`DeviceDescriptor`**: Identifies card vendor ID (VID), product ID (PID), hardware revision, card serial number, and descriptive ASCII string.
+  - **`ConfigurationDescriptor`**: Declares aggregate power budget (max current in mA), required operating voltages, bus interface modes (I2C, SPI, I3C, I2S), and required clock frequencies.
+  - **`InterfaceDescriptor`**: Declares specific peripheral interfaces exposed by the card (e.g., I2C endpoints, SPI chip selects, I2S channels, GPIO interrupt lines).
+  - **`DriverDescriptor`**: Specifies compatible firmware driver identifier, minimum HAL crate API version, and device-specific initialization register payloads.
+  - **`IntegrityDescriptor`**: Contains cryptographic Ed25519 signature and CRC-32 checksum ensuring descriptor authenticity and detecting EEPROM wear or bit flips.
+- **Forward & Backward Compatibility**: Because descriptors follow a `sequential-storage` TLV model, newly introduced descriptor types are gracefully skipped by older firmware releases without parsing errors, and updated descriptors are appended atomically using `sequential-storage` wear leveling.
 - **Non-Blocking Telemetry & Developer Experience**: Card auto-detection is strictly non-blocking and intended for telemetry, developer experience, and runtime diagnostic logging; **it does NOT gate, delay, or block system boot**. If an expansion EEPROM is unpopulated, unreadable, or missing, the system proceeds with standard boot without delay using default compile-time Cargo features.
 - If a card is detected whose feature is disabled in the active firmware build, the system logs diagnostic telemetry via `defmt`; card auto-detection is strictly advisory and diagnostic, and **it does NOT alter, delay, or change system boot behavior or execution flow**.
 
@@ -260,8 +279,9 @@ A strict architectural invariant of the Carrier Board 2.0 firmware is that **eve
 The repository's host filesystem utility (`tools/host_fs`) adopts a unified storage device descriptor URI model to reference physical storage targets:
 - **`dev:builtin-flash`**: Identifies on-chip internal NOR flash (2 MB MCX N947).
 - **`dev:ext-flash`**: Identifies off-chip external SLC NAND flash (128 MB Winbond W25N01GV over FlexSPI).
+- **`dev:eeprom`**: Identifies non-volatile I2C EEPROMs (e.g., 2 KB modular expansion card EEPROM at `0x50`–`0x57` on `FC4`).
 
-This descriptor model provides direct host-side Winbond W25N01GV SLC NAND image flashing, partition provisioning, and diagnostic extraction:
+This descriptor model provides direct host-side Winbond W25N01GV SLC NAND and expansion card EEPROM image flashing, partition provisioning, and diagnostic extraction:
 
 - **Full Image Provisioning**:
   ```bash
@@ -273,13 +293,67 @@ This descriptor model provides direct host-side Winbond W25N01GV SLC NAND image 
   cargo run -p host_fs -- program --device dev:ext-flash --partition models --file models/gesture_v2.bin
   cargo run -p host_fs -- program --device dev:ext-flash --partition recovery --file target/out/carrier_board_golden.bin
   ```
+- **Modular Expansion Card EEPROM Operations (`dev:eeprom`)**:
+  `host_fs` supports direct programming, dumping, and verification of expansion card EEPROMs using the exact same workflow as flash targets:
+  ```bash
+  # Program expansion card USB-descriptor TLV image into EEPROM
+  cargo run -p host_fs -- program --device dev:eeprom --file config/expansion_card_descriptor.bin
+
+  # Dump EEPROM contents for backup or inspection
+  cargo run -p host_fs -- dump --device dev:eeprom --file backups/card_eeprom_backup.bin
+
+  # Verify EEPROM contents against reference binary image
+  cargo run -p host_fs -- verify --device dev:eeprom --file config/expansion_card_descriptor.bin
+  ```
 - **Diagnostic Telemetry & Crash Dump Extraction**:
   ```bash
   cargo run -p host_fs -- dump --device dev:ext-flash --partition telemetry --output telemetry_run.bin
   cargo run -p host_fs -- dump --device dev:ext-flash --partition crash_logs --output crash_dump.bin
   ```
 - **Host-Side `sequential-storage` Emulation**:
-  `host_fs` incorporates a host-native driver for `sequential-storage` queues and maps, allowing developers to inspect, unpack, validate CRC32 checksums, and export records directly from raw NAND dumps while accounting for SLC NAND 128 KB erase blocks and bad block lookup tables.
+  `host_fs` incorporates a host-native driver for `sequential-storage` queues and maps, allowing developers to inspect, unpack, validate CRC32 checksums, and export records directly from raw NAND and EEPROM dumps while accounting for SLC NAND 128 KB erase blocks, EEPROM page sizes (typically 16–64 bytes), and bad block lookup tables.
+
+#### 5. Target Partition Table & `ProgramMetadata` Descriptor Structure
+
+To ensure that bootloaders, application runtimes, and host workstation tooling share a single authoritative source of truth for storage geometries without hardcoded addresses, every compiled firmware binary embeds an immutable `.program_metadata` ELF section containing the `ProgramMetadata` descriptor structure:
+
+```rust
+#[repr(C)]
+pub struct ProgramMetadata {
+    pub magic: [u8; 4],                        // b"PROG" (0x50, 0x52, 0x4F, 0x47)
+    pub schema_version: u16,                   // Metadata schema version (e.g. 1)
+    pub target_chip: [u8; 16],                 // Target silicon string (e.g. b"MCXN947\0...")
+    pub git_commit: [u8; 20],                  // Git SHA-1 commit hash
+    pub semver: [u8; 16],                      // Firmware semantic version string (e.g. b"2.0.0\0...")
+    pub build_timestamp: u64,                  // POSIX epoch build timestamp (seconds)
+    pub device_count: u8,                      // Number of registered storage devices
+    pub partition_count: u8,                   // Number of active partition entries
+    pub devices: [StorageDeviceDescriptor; 4], // Storage devices (dev:builtin-flash, dev:ext-flash, dev:eeprom)
+    pub partitions: [PartitionDescriptor; 16], // Partition table entries
+}
+
+#[repr(C)]
+pub struct StorageDeviceDescriptor {
+    pub device_uri: [u8; 24],                  // Canonical URI (b"dev:builtin-flash", b"dev:ext-flash", b"dev:eeprom")
+    pub bus_type: u8,                          // 0 = Internal Bus, 1 = FlexSPI, 2 = I2C/I3C
+    pub total_size_bytes: u64,                 // Total addressable physical capacity
+    pub erase_block_size: u32,                 // Block erase size (e.g. 8 KB NOR, 128 KB NAND, 64 B EEPROM)
+    pub write_page_size: u32,                  // Minimum atomic write page size (e.g. 128 B, 2048 B, 16 B)
+}
+
+#[repr(C)]
+pub struct PartitionDescriptor {
+    pub name: [u8; 24],                        // Partition identifier (b"bootloader", b"slot_a", b"fs", b"telemetry", etc.)
+    pub device_uri: [u8; 24],                  // Parent device URI string
+    pub start_offset: u64,                     // Byte offset from start of physical device
+    pub length_bytes: u64,                     // Partition capacity in bytes
+    pub driver_type: u8,                       // 0 = Raw XIP, 1 = sequential_storage::map, 2 = sequential_storage::queue
+    pub flags: u32,                            // Bitflags: 0x01=ReadOnly, 0x02=Executable, 0x04=WearLeveled, 0x08=Encrypted
+}
+```
+
+- **Bootloader (SSBL) Integration**: The custom Second-Stage Bootloader fetches the `.program_metadata` header from internal flash on boot to determine active Slot A boundaries, keystore location, and NAND `ota_staging` offsets dynamically without requiring hardcoded flash addresses in bootloader C/Rust code.
+- **Host Tooling Introspection (`host_fs` & `host_cli`)**: When connecting over USB UART or reading an ELF binary, host utilities parse `.program_metadata` directly. This enables host tools to discover the full partition layout across all storage media (`dev:builtin-flash`, `dev:ext-flash`, `dev:eeprom`) automatically, preventing flash configuration divergence between host and embedded targets.
 
 ### Application Software Framework for DSP & NPU (Rust ML Ecosystem)
 
@@ -487,14 +561,23 @@ The repository's host command-line utility (`tools/host_cli`) is extended to ser
 During factory assembly and end-of-line testing, `host_cli` automates silicon and peripheral qualification without requiring external JTAG/SWD debug probes:
 - **Comprehensive Hardware Qualification**:
   ```bash
-  cargo run -p host_cli -- qualify --target /dev/tty.usbmodem101 --baud 1000000
+  cargo run -p host_cli -- qualify --target /dev/tty.usbmodem101 --baud 1000000 --format json --junit-xml target/mfg_test_results.xml
   ```
   Dispatches structured Stage 2+ diagnostic commands over the high-speed UART service model. Queries I2C bus device ACKs (LP5009, MAX17048, IQS7222A), exercises I3C DAA enumeration, performs Winbond W25N01GV NAND block-read qualification, tests NINA-B312 AT communication, and verifies internal LDO voltage rails against ADC tolerance windows.
 - **Factory Device Provisioning**:
   ```bash
-  cargo run -p host_cli -- provision --serial "CB2-2026-00421" --hw-rev "rev2.0" --board-cert certs/device.crt
+  cargo run -p host_cli -- provision --serial "CB2-2026-00421" --hw-rev "rev2.0" --board-cert certs/device.crt --format jsonl
   ```
   Injects unique device serial numbers, cryptographic board identity certificates, and hardware configuration directly into the secure `keystore` and `fs` partitions via CBOR RPC frames, and seeds initial sensor baselines onto `dev:ext-flash`.
+- **Host-Side Structured Logging & MES Integration**:
+  To support enterprise Manufacturing Execution Systems (MES), automated test racks, and quality databases:
+  - **Structured Log Formats (`--format json`, `--format jsonl`)**: Emits timestamped, machine-readable JSON/JSONL records for every executed qualification step, capturing DUT UUID, measured analog values, upper/lower specification limits (USL/LSL), test durations, and step verdicts.
+  - **Automated Test Reporting (`--junit-xml <path>`)**: Emits standardized JUnit XML test results for CI/CD test runners and factory automation servers, integrating directly with automated pass/fail gating.
+- **Interactive Terminal Status Display / Station HUD**:
+  For factory floor operators and test engineers, `host_cli` features a rich interactive terminal status display / HUD built with `indicatif` progress spinners and ANSI tables:
+  - Real-time display showing Factory Station ID, DUT Serial Number, Silicon Hardware UUID, and NINA-B312 Bluetooth MAC.
+  - Active step progress indicator with measured vs. expected parametric values (e.g. `SYS_3V3 Rail: 3.308 V [3.150 V – 3.450 V] PASS`, `IQS7222A ProxFusion ACK [0x44] PASS`, `FlexSPI NAND JEDEC ID [0xEF, 0xAA21] PASS`).
+  - High-visibility colorized completion banner (`PROVISIONING_PASSED` / `PROVISIONING_FAILED`) with cycle time breakdown and operator prompts.
 
 #### 2. Structured Diagnostic Error Handling (`ServiceError`)
 
@@ -571,7 +654,7 @@ The table below delineates active hardware blocks, operational frequencies, and 
 
 | Operating State | Core 0 State | Core 1 State | NPU / DSP State | Peripherals Active | Target Current | Target Power | Primary Use Case |
 | :--- | :--- | :--- | :--- | :--- | :---: | :---: | :--- |
-| **State 0: Deep Standby** | Deep Sleep (WFI) | Deep Sleep (WFI) | Power-gated (OFF) | Fuel gauge, IQS7222A proximity scan | **$\le 185\,\mu\text{A}$** | $\le 0.61\text{ mW}$ | Long-term battery shelf life; wake on touch/RTC. |
+| **State 0: PowerDown / Deep Standby** | Deep Sleep (WFI) | Deep Sleep (WFI) | Power-gated (OFF) | Fuel gauge, IQS7222A proximity scan | **$\le 185\,\mu\text{A}$** | $\le 0.61\text{ mW}$ | Long-term battery shelf life; wake on touch/RTC. |
 | **State 1: Low-Power Sensing** | 12 MHz Low-Freq | WFI Idle Sleep | Power-gated (OFF) | IQS7222A active touch, LP5009 idle | **3.8 mA** | 12.5 mW | User proximity detected; awaiting interaction. |
 | **State 2: Normal Active** | 150 MHz Active | 150 MHz Active | Standby | FlexSPI read, BLE connected, RGB breathe | **28.5 mA** | 94.1 mW | Normal interactive sensing, UI display, telemetry. |
 | **State 3: Peak Burst** | 150 MHz Active | 150 MHz Active | NPU & DSP Active | Flash write, Class-D audio, BLE TX | **139.35 mA** | 459.8 mW | Gesture classification burst, audio chime, telemetry flush. |
@@ -664,19 +747,22 @@ flowchart LR
 
 ## 6. User Interface, Audio Chimes, Boot Timings & System Controller Extensions
 
-### 1. System Controller Extensions: `Standby` Power State Architecture
+### 1. System Controller Architecture: Harmonized `Active`, `Sleep` & `PowerDown` States
 
-Carrier Board 2.0 adopts the proven, event-driven `SystemController` architecture from the cat fountain platform (`controller::system_controller`), extending it with a hardware-enforced **`Standby` power state** positioned directly between `Sleep` and `PowerDown`:
+Carrier Board 2.0 adopts the proven, event-driven `SystemController` architecture from the RP2040 cat fountain platform (`controller::system_controller` / `platform::system::SystemManager`). To guarantee cross-target software portability and unified state machine semantics, Carrier Board 2.0 harmonizes its power state definitions with the canonical `model::types::SystemStatus` enumeration: **`Active`**, **`Sleep`**, and **`PowerDown`**.
 
-| System State | Core 0 State | Core 1 State | Power Rails & Load Switches | Wake Latency | Target Current | Primary Use Case |
+In earlier draft notes, the software low-power quiescent state was informally called `Standby`; this is now formally harmonized as the canonical `PowerDown` state. Physical battery disconnection or power switch cutoff is classified as the unpowered hardware condition (`Off`), rather than a software state:
+
+| System State (`SystemStatus`) | Core 0 State | Core 1 State | Power Rails & Load Switches | Wake Latency | Target Current | Primary Use Case |
 | :--- | :--- | :--- | :--- | :---: | :---: | :--- |
-| **`Active`** | 150 MHz Active | 150 MHz Active | All rails ON (`SYS_3V3`, `SW_3V3_*`) | Immediate | 28.5 – 139.3 mA | User interaction, audio streaming, camera gesture processing. |
-| **`Sleep`** | 12 MHz Low-Freq | WFI Idle Sleep | Sensing rail ON (`SW_3V3_SENSORS`), Audio/Debug OFF | $\approx 250\,\mu\text{s}$ | 3.8 mA | Proximity detection active, ready for instant responsiveness. |
-| **`Standby`** | Deep Sleep (WFI) | Deep Sleep (WFI) | All switchable rails hard-gated via `Q2`, `Q3`, `Q4` | $\le \mathbf{2.5\text{ ms}}$ | $\mathbf{\le 185\,\mu\text{A}}$ | Long-term battery shelf mode; wakes on touch interrupt or BLE. |
-| **`PowerDown`** | Powered Off | Powered Off | Battery cutoff / power switch off; internal LDOs shutdown; all rails OFF | $\approx 40\text{ ms}$ (Cold) | $< 1.0\,\mu\text{A}$ | Battery cutoff or physical power switch off. |
+| **`Active` (`SystemStatus::Active`)** | 150 MHz Active | 150 MHz Active | All rails ON (`SYS_3V3`, `SW_3V3_*`) | Immediate | 28.5 – 139.3 mA | User interaction, audio streaming, camera gesture processing. |
+| **`Sleep` (`SystemStatus::Sleep`)** | 12 MHz Low-Freq | WFI Idle Sleep | Sensing rail ON (`SW_3V3_SENSORS`), Audio/Debug OFF | $\approx 250\,\mu\text{s}$ | 3.8 mA | Proximity detection active, ready for instant responsiveness. |
+| **`PowerDown` (`SystemStatus::PowerDown`)** *(Standby)* | Deep Sleep (WFI) | Deep Sleep (WFI) | All switchable rails hard-gated via `Q2`, `Q3`, `Q4` | $\le \mathbf{2.5\text{ ms}}$ | $\mathbf{\le 185\,\mu\text{A}}$ | Canonical software low-power quiescent state for long-term battery shelf life; wakes on touch interrupt, BLE assertion, or charger attach. |
+| **`Off` (Physical Hardware State)** | Powered Off | Powered Off | Battery cutoff / power switch off; internal LDOs shutdown; all rails OFF | $\approx 40\text{ ms}$ (Cold) | $< 1.0\,\mu\text{A}$ | Physical battery disconnect or mechanical power switch open (hardware unpowered; not an active software state). |
 
-- **State Transition Semantics**: Inactivity timeout ($T_{sleep} = 30\text{ s}$) transitions the device from `Active` to `Sleep`. If no touch or BLE activity occurs for an extended duration ($T_{standby} = 5\text{ min}$), the `SystemController` issues commands to power-gate all peripherals, disable high-frequency oscillators, configure Azoteq IQS7222A touch controller into low-power wake scan mode ($15\,\mu\text{A}$), and put both Cortex-M33 cores into Deep Sleep.
-- **Wake Triggers**: A capacitive touch tap on the enclosure or an incoming BLE connection assertion triggers an asynchronous hardware pin interrupt, transitioning the device from `Standby` back to `Active` in under $2.5\text{ ms}$.
+- **State Transition Semantics**: Inactivity timeout ($T_{sleep} = 30\text{ s}$) transitions the device from `Active` to `Sleep`. If no touch or BLE activity occurs for an extended duration ($T_{powerdown} = 5\text{ min}$), the `SystemController` issues commands to transition into `PowerDown` (Standby): power-gating all non-essential peripherals via load switches `Q2`–`Q4`, disabling high-frequency oscillators, configuring the Azoteq IQS7222A touch controller into low-power wake scan mode ($15\,\mu\text{A}$), and putting both Cortex-M33 cores into Deep Sleep.
+- **Wake Triggers**: A capacitive touch tap on the enclosure, an incoming BLE connection assertion, or charger insertion triggers an asynchronous hardware pin interrupt, transitioning the device from `PowerDown` (Standby) back to `Active` in under $2.5\text{ ms}$.
+- **RP2040 Target Harmonization**: Both RP2040 and MCX N947 run the exact same `controller::system_controller` dispatch logic against `model::types::SystemStatus` (`Active, Sleep, PowerDown`), eliminating divergent target state behaviors and preserving identical telemetry and IPC state events across all firmware builds.
 
 ### 2. User LED Indicator Matrix (TI LP5009 RGB LED)
 
@@ -697,7 +783,7 @@ The TI LP5009 9-channel $\text{I}^2\text{C}$ RGB LED driver provides high-resolu
 | **`OVERTEMP_ALERT`** | Alternating Red/Amber Pulsing | 2.0 Hz (Breathing) | ThermalController | Critical thermal threshold exceeded (> 75°C junction); coprocessor throttled. |
 | **`OTA_PROGRAMMING`** | Magenta Breathing | 2.0 Hz (Breathing) | `flash_loader_ram` | Internal Flash Slot A being programmed from NAND in SRAM. |
 | **`RECOVERY_MODE`** | Yellow Strobe | 2.0 Hz (50% Duty) | SSBL Fallback Handler | Restoring factory golden recovery image into Slot A. |
-| **`STANDBY`** | Off (Dark) | 0 Hz | System Controller | LED driver disabled (`EN` pin low) for $\le 185\,\mu\text{A}$ target. |
+| **`POWER_DOWN` / `STANDBY`** | Off (Dark) | 0 Hz | System Controller | LED driver disabled (`EN` pin low) for $\le 185\,\mu\text{A}$ target. |
 
 ### 3. Speaker Audio Chimes
 
@@ -722,7 +808,7 @@ To deliver instantaneous user responsiveness while guaranteeing cryptographic in
 | **3. Application Init** | Slot A App (Flash XIP) | 4.5 ms | 6.0 ms | Cortex-M33 vector table relocation, Embassy executor startup. |
 | **4. Peripheral Bringup** | Core 0 & Core 1 Drivers | 8.5 ms | 10.0 ms | $\text{I}^2\text{C}$ bus scan, LP5009 init, IQS7222A baseline calibration. |
 | **Total Cold Boot Time** | **Reset &rarr; Active Running** | **$\mathbf{39.5\text{ ms}}$** | **$\mathbf{50.0\text{ ms}}$** | **Cold boot ready for user input in under $50\text{ ms}$.** |
-| **Standby Wake Latency** | **Standby &rarr; Active** | **$\mathbf{1.8\text{ ms}}$** | **$\mathbf{2.5\text{ ms}}$** | **Instantaneous capacitive touch response from Standby mode.** |
+| **PowerDown / Standby Wake Latency** | **PowerDown &rarr; Active** | **$\mathbf{1.8\text{ ms}}$** | **$\mathbf{2.5\text{ ms}}$** | **Instantaneous capacitive touch response from PowerDown (Standby) mode.** |
 | **OTA Flash Cycle** | **In-SRAM NAND &rarr; Flash** | **$\mathbf{4.2\text{ s}}$** | **$\mathbf{6.0\text{ s}}$** | **Complete 512 KB internal flash erase, program & CRC32 check.** |
 
 ---

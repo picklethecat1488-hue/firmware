@@ -8,8 +8,13 @@ Verifies that:
 """
 
 from pathlib import Path
-import tomllib
+import sys
 import yaml
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -171,12 +176,14 @@ def test_carrier_board_firmware_document() -> None:
     assert "features" in content.lower()
     assert "expansion-audio" in content or "expansion-camera" in content
 
-    # Application controllers list
+    # Application controllers list (CR-7c6e41f, WORM-012)
     assert "SystemController" in content
     assert "BatteryController" in content
     assert "LedController" in content
     assert "SensorController" in content
-    assert "AudioController" in content
+    assert "SpeakerController" in content
+    assert "controller::speaker_controller" in content
+    assert "AudioController" not in content
     assert "BleController" in content
     assert "FilesystemController" in content
     assert "TelemetryController" in content
@@ -219,6 +226,31 @@ def test_carrier_board_firmware_document() -> None:
     assert "does NOT alter, delay, or change system boot behavior" in content
     assert "SRAM Usage vs. Expansion Headroom" in content
     assert "Framework Validation: Integration with Touch Sensor Gesture Processor" in content
+
+    # WORM-013: Feedbacks about carrier_board.md
+    # 1. host_fs EEPROM programming support
+    assert "dev:eeprom" in content
+    assert "host_fs" in content and "--device dev:eeprom" in content
+
+    # 2. Sequential-storage USB-descriptor-style format for EEPROM
+    assert "USB-descriptor" in content or "USB descriptor" in content
+    assert "DeviceDescriptor" in content or "TLV" in content
+
+    # 3. ProgramMetadata section with target partition & descriptor info
+    assert "ProgramMetadata" in content
+    assert ".program_metadata" in content or "program_metadata" in content.lower()
+
+    # 4. Hardware FIFO buffering, on-chip high-resolution timer, and sensor fusion
+    assert "FIFO" in content
+    assert "CTIMER" in content or "high-resolution timer" in content.lower()
+    assert "sensor fusion" in content.lower() and "FIFO" in content
+
+    # 5. Factory provisioning structured logging & status display
+    assert "status display" in content.lower() or "HUD" in content
+    assert "JUnit" in content or "MES" in content
+
+    # 6. PowerDown alignment with RP2040 SystemController / SystemStatus
+    assert "SystemStatus" in content or "Active, Sleep, PowerDown" in content
 
 
 def test_carrier_board_bringup_yaml() -> None:

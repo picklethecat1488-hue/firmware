@@ -13,6 +13,7 @@ import mimetypes
 from pathlib import Path
 import re
 import socket
+import sqlite3
 import sys
 from typing import Any, Dict, List, Optional
 import urllib.parse
@@ -54,11 +55,18 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         """Suppress default HTTP server logging to preserve clean console output."""
         return
 
+    def send_error(self, code: int, message: Optional[str] = None, explain: Optional[str] = None) -> None:
+        """Send HTTP error response and immediately mark connection to close."""
+        self.close_connection = True
+        super().send_error(code, message, explain)
+
     def handle_one_request(self) -> None:
         """Handle a single HTTP request, catching client disconnects gracefully."""
         try:
             super().handle_one_request()
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            self.close_connection = True
+        finally:
             self.close_connection = True
 
     def handle(self) -> None:
@@ -66,6 +74,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         try:
             super().handle()
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            self.close_connection = True
+        finally:
             self.close_connection = True
 
     def do_GET(self) -> None:  # noqa: N802
@@ -1102,41 +1112,6 @@ class DashboardServer(ThreadingHTTPServer):
                         )
                     existing_ids.add(canonical_id)
 
-        # Load Code Review stats for commits (BUG-199)
-        cr_stats: dict[str, dict[str, Any]] = {}
-        cr_db_path = self.repo_root / "target" / "code_review.sqlite"
-        if not cr_db_path.exists() and (self.repo_root / "build" / "code_review.sqlite").exists():
-            cr_db_path = self.repo_root / "build" / "code_review.sqlite"
-        if cr_db_path.exists():
-            import sqlite3
-
-            try:
-                with sqlite3.connect(str(cr_db_path)) as conn:
-                    cursor = conn.cursor()
-                    cursor.execute(
-                        "SELECT commit_hash, COUNT(*), SUM(CASE WHEN resolved = 0 THEN 1 ELSE 0 END), SUM(CASE WHEN resolved = 1 THEN 1 ELSE 0 END) "
-                        "FROM comments GROUP BY commit_hash"
-                    )
-                    for row in cursor.fetchall():
-                        c_hash, total, open_c, res_c = row
-                        if c_hash:
-                            cr_stats[c_hash] = {
-                                "total": total or 0,
-                                "open": open_c or 0,
-                                "resolved": res_c or 0,
-                                "reviewed": True,
-                            }
-                    cursor.execute("SELECT key, value FROM metadata WHERE key IN ('revisions', 'commit_hash')")
-                    meta = dict(cursor.fetchall())
-                    revs = meta.get("revisions", "")
-                    for node in smartlog_nodes:
-                        if node.commit_hash in revs or node.short_hash in revs:
-                            cr_stats.setdefault(node.commit_hash, {"total": 0, "open": 0, "resolved": 0})[
-                                "reviewed"
-                            ] = True
-            except Exception:
-                pass
-
         # Ensure file watcher syncs any newly placed or edited CR feedback files (BUG-236)
         if hasattr(self, "review_server") and self.review_server:
             try:
@@ -1144,7 +1119,8 @@ class DashboardServer(ThreadingHTTPServer):
             except Exception:
                 pass
 
-        # Load Code Review stats for commits (BUG-199)
+        # Load Code Review stats for commits (BUG-199, WORM-011)
+        cr_stats: dict[str, dict[str, Any]] = {}
         cr_db_path = (
             self.review_server.sqlite_file
             if hasattr(self, "review_server") and self.review_server
@@ -1153,10 +1129,9 @@ class DashboardServer(ThreadingHTTPServer):
         if not cr_db_path.exists() and (self.repo_root / "build" / "code_review.sqlite").exists():
             cr_db_path = self.repo_root / "build" / "code_review.sqlite"
         if cr_db_path.exists():
-            import sqlite3
-
             try:
-                with sqlite3.connect(str(cr_db_path)) as conn:
+                conn = sqlite3.connect(str(cr_db_path))
+                try:
                     cursor = conn.cursor()
                     cursor.execute(
                         "SELECT commit_hash, COUNT(*), SUM(CASE WHEN resolved = 0 THEN 1 ELSE 0 END), SUM(CASE WHEN resolved = 1 THEN 1 ELSE 0 END) "
@@ -1179,6 +1154,8 @@ class DashboardServer(ThreadingHTTPServer):
                             cr_stats.setdefault(node.commit_hash, {"total": 0, "open": 0, "resolved": 0})[
                                 "reviewed"
                             ] = True
+                finally:
+                    conn.close()
             except Exception:
                 pass
 
