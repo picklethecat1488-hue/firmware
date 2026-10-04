@@ -48,4 +48,4 @@
 ## Action Items Checklist
 
 - [x] **[MUST FIX]** [`app/carrier_board.md:L102-L103`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L102-L103): can we customize the boot loader at all? to support our OTA scenario, we need something that will either run out of an SRAM region when the OTA is kicked off, or out of XIP flash prior to loading the Slot A application <!-- uuid:5889fa0b-8dc2-4898-8c0b-56f5a7fd3c95 -->
-- [ ] **[MUST FIX]** [`app/carrier_board.md:L19`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L19): can you include a section on expansion card support. we will be using features to add support for various expansion cards. also, please list the controllers used for the app. <!-- uuid:52e7e756-b22f-4b40-845b-12a07ffbd1d1 -->
+- [x] **[MUST FIX]** [`app/carrier_board.md:L19`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L19): can you include a section on expansion card support. we will be using features to add support for various expansion cards. also, please list the controllers used for the app. <!-- uuid:52e7e756-b22f-4b40-845b-12a07ffbd1d1 -->

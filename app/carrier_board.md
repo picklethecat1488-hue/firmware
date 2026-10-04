@@ -52,6 +52,76 @@ The Carrier Board 2.0 is a modular hardware evaluation, sensor fusion, and telem
 | **`U11`**| **u-blox NINA-B312**| Bluetooth Low Energy 5.0 Module | UART1 (1 Mb/s) | Bidirectional BLE: Telemetry streaming & GATT service endpoint. |
 | **`Q2`–`Q4`**| **TI TPS22918**| 5.5V, 2A Load Switches | GPIO (`L4`, `L5`, `M4`)| Power-gating Audio (`Q2`), Sensors (`Q3`), and Debug Bridge (`Q4`). |
 
+### Application Controller Architecture
+
+Carrier Board 2.0 adopts the project's decoupled domain controller design pattern (`controller` crate), utilizing Embassy async channels to coordinate system events across tasks and cores. The application initializes and runs the following controllers:
+
+1. **`SystemController` (`controller::system_controller`)**:
+   - Master orchestrator governing top-level operating states (`Active`, `Sleep`, `Standby`, `PowerDown`).
+   - Coordinates inactivity timeouts, wake-up interrupts from touch or BLE, and inter-core task sequencing.
+2. **`BatteryController` (`controller::battery_controller`)**:
+   - Interfaces with the ADI MAX17048 fuel gauge (`I2C0` @ `0x36`) and TI BQ24074 PMIC status pins (`/CHG`, `/PGOOD`).
+   - Computes state of charge (SoC), cell voltage, charging status, and publishes periodic battery telemetry frames.
+3. **`LedController` (`controller::led_controller`)**:
+   - Drives the TI LP5009 9-channel logarithmic $\text{I}^2\text{C}$ RGB LED driver (`I2C0` @ `0x14`).
+   - Renders visual patterns for boot (`BOOTING`, `BOOT_FAILED`), wireless status (`BLE_PAIRING`, `BLE_CONNECTED`), runtime modes (`ACTIVE_RUNNING`, `CAMERA_ACTIVE`), and OTA updates (`OTA_PROGRAMMING`).
+4. **`SensorController` (`controller::sensor_controller`)**:
+   - Manages the Azoteq IQS7222A capacitive touch and proximity sensor (`I2C1` @ `0x44` on Core 1).
+   - Handles multi-channel touch detection, continuous tracking, gesture recognition, and proximity event emission over IPC.
+5. **`FilesystemController` (`controller::filesystem_controller`)**:
+   - Manages persistent storage on the Winbond W25N01GV 128 MB SLC NAND flash via FlexSPI DMA and `sequential-storage`.
+   - Mounts and manages `telemetry` (queue), `crash_logs` (map), `ota_staging` (queue), `recovery` (read-only), and `models` (map) partitions.
+6. **`TelemetryController` (`controller::telemetry_controller`)**:
+   - High-throughput telemetry pipeline aggregating binary `defmt` structured logs and CBOR telemetry records.
+   - Buffers records in shared SRAMX memory and schedules DMA transmissions over 1 Mb/s UART or BLE.
+7. **`ShellController` (`controller::shell_controller`)**:
+   - Implements the non-blocking interactive command-line interface over FTDI USB UART (`FC1`).
+   - Processes diagnostic shell commands, bringup verification triggers, and binary service RPC frames for production testing.
+8. **`ThermalController` (`controller::thermal_controller`)**:
+   - Samples MCX N947 internal junction temperature sensors and external thermistor rails.
+   - Enforces thermal safety throttling and generates thermal alert commands if temperature thresholds are breached.
+
+### Modular Expansion Card Architecture & Cargo Features
+
+To support diverse hardware configurations without bloating firmware binaries, Carrier Board 2.0 implements a modular expansion card system configured through **Cargo feature flags**:
+
+#### 1. Hardware Expansion Headers & Bus Interfaces
+The carrier board provides dedicated expansion headers routing isolated serial, bus, and power signals:
+- **`J6` Header**: External $\text{I}^2\text{C}$ expansion clock (`I2C2_SCL` on `P1_9` / `FC4_P1`) and data (`I2C2_SDA` on `P1_8` / `FC4_P0`).
+- **`J9` Header**: High-speed SPI peripheral expansion (`SPI0_SCK`, `SPI0_MOSI`, `SPI0_MISO`, `SPI0_CS_N` on `P4_12`–`P4_17` / `FC2`).
+- **`J10` Header**: Peripheral expansion high-speed UART (`UART1_RXD` on `P1_4` / `FC5_P0`, `UART1_TXD` on `P1_5` / `FC5_P1`).
+- **`Q1` MOSFET Load Switch**: Controlled by `PWR_EN` to power-gate expansion card peripherals during `Sleep` and `Standby`.
+
+#### 2. Cargo Feature Flags (`Cargo.toml`)
+Firmware targets select expansion card drivers and runtime controllers using conditional compilation:
+```toml
+[features]
+default = ["expansion-audio", "expansion-camera"]
+
+# Expansion Card 1: PDM Class-D Audio Streaming & Sound Synthesis
+expansion-audio = []
+
+# Expansion Card 2: 2D Optical Flow & Camera Gesture Vision Pipeline
+expansion-camera = []
+
+# Expansion Card 3: GNSS / Location Services Engine (NMEA/UBX over UART1)
+expansion-location = []
+
+# Expansion Card 4: Cellular / Satellite IoT Modem Controller
+expansion-cellular = []
+```
+
+#### 3. Conditional Controller & Pipeline Compilation
+- **`expansion-audio`**: Enables Core 1 PDM audio streaming task, WAV/ADPCM decompression engine, and speaker chime synthesis (+45 KB flash).
+- **`expansion-camera`**: Compiles Core 1 camera DMA capture pipeline, 2D optical flow filter, image patch normalization, and eIQ Neutron NPU inference dispatch (+140 KB flash).
+- **`expansion-location`**: Instantiates GNSS sentence parser task on `UART1` (`FC5`), Kalman dead-reckoning filter, and geodesic solver (+55 KB flash).
+- **`expansion-cellular`**: Enables cellular modem AT command handler, PPP network adapter, and power-saving mode (eDRX / PSM) scheduler (+65 KB flash).
+
+#### 4. Hardware Card Identification & Auto-Detection
+During Stage 2 bringup, Core 0 queries the expansion $\text{I}^2\text{C}$ bus (`FC4`) at standard EEPROM address range (`0x50`–`0x57`):
+- Each expansion card carries a 2 KB serial EEPROM containing a signed CBOR board descriptor (UUID, card type, hardware revision, GPIO interrupt assignments, voltage requirements).
+- If a card is detected whose feature is disabled in the active firmware build, the system logs a diagnostic warning via `defmt` and leaves load switch `Q1` unasserted to prevent wasted battery draw.
+
 ---
 
 ## 2. Memory Map & Storage Layout

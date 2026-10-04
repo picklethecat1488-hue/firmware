@@ -165,6 +165,21 @@ def test_carrier_board_firmware_document() -> None:
     assert "OTA_PROGRAMMING" in content or "Magenta" in content
     assert "Boot Timing" in content or "boot time" in content.lower()
 
+    # Modular expansion card support and Cargo features
+    assert "expansion card" in content.lower()
+    assert "features" in content.lower()
+    assert "expansion-audio" in content or "expansion-camera" in content
+
+    # Application controllers list
+    assert "SystemController" in content
+    assert "BatteryController" in content
+    assert "LedController" in content
+    assert "SensorController" in content
+    assert "FilesystemController" in content
+    assert "TelemetryController" in content
+    assert "ShellController" in content
+    assert "ThermalController" in content
+
 
 def test_carrier_board_bringup_yaml() -> None:
     """Verify app/carrier_board_bringup.yaml exists as source of truth for bringup verification."""
