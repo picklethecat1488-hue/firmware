@@ -3964,7 +3964,21 @@
       copyActiveFilePath();
     }
 
-    function openInVsCode() {
+    async function openInVsCode(evtOrLine, lineNum) {
+      let line = 1;
+      let e = null;
+      if (typeof evtOrLine === "number") {
+        line = evtOrLine;
+      } else if (evtOrLine && typeof evtOrLine === "object" && evtOrLine.preventDefault) {
+        e = evtOrLine;
+      } else if (window.event && window.event.preventDefault) {
+        e = window.event;
+      }
+      if (typeof lineNum === "number") {
+        line = lineNum;
+      }
+      if (e) e.preventDefault();
+
       const filePath = state.selectedFile;
       if (!filePath) return;
       const repoRoot = (state.session && state.session.repo_root) || "{{ session.repo_root or '' }}";
@@ -3976,7 +3990,24 @@
       if (repoRoot && !filePath.startsWith("/")) {
         fullPath = repoRoot.replace(/\/+$/, "") + "/" + filePath.replace(/^\/+/, "");
       }
-      const vscodeUrl = `vscode://file${fullPath.startsWith('/') ? '' : '/'}${fullPath}`;
+      const vscodeUrl = `vscode://file${fullPath.startsWith('/') ? '' : '/'}${fullPath}${line > 1 ? ':' + line : ''}`;
+
+      try {
+        const res = await fetch("/api/open-vscode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ file: fullPath, line: line }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === "ok") {
+            showToast("Opened in VS Code: " + filePath);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn("Backend open-vscode failed, falling back to URL scheme", err);
+      }
       window.location.href = vscodeUrl;
     }
 

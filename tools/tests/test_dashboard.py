@@ -7,6 +7,7 @@ and inter-tool navigation to code_review and bug_report.
 
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import threading
 import time
@@ -3141,3 +3142,116 @@ def test_regression_side_by_side_diff_row_property_mapping() -> None:
     assert "old line code" in html_fb
     assert "new line code" in html_fb
     assert "undefined" not in html_fb
+
+
+def test_regression_worm_010_open_in_vscode_server_and_templates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify WORM-010: 'Open in VSCode' invokes server /api/open-vscode endpoint to launch editor."""
+    from dashboard.provider.vcs.editor import open_in_vscode
+
+    # 1. Test open_in_vscode logic with mock subprocess
+    executed_cmds = []
+
+    real_run = subprocess.run
+
+    def mock_run(cmd, *args, **kwargs):
+        if isinstance(cmd, list) and cmd and (cmd[0].endswith("code") or cmd[0] in ("open", "xdg-open")):
+            executed_cmds.append(cmd)
+            class DummyProc:
+                returncode = 0
+            return DummyProc()
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", mock_run)
+    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/local/bin/code" if cmd == "code" else None)
+
+    repo_dir, _ = create_isolated_git_repo(tmp_path)
+    test_file = repo_dir / "app" / "carrier_board.md"
+    test_file.parent.mkdir(parents=True, exist_ok=True)
+    test_file.write_text("# Carrier Board\n", encoding="utf-8")
+
+    res = open_in_vscode("app/carrier_board.md", line=42, repo_root=repo_dir)
+    assert res is True
+    assert len(executed_cmds) == 1
+    assert executed_cmds[0] == ["/usr/local/bin/code", "-g", f"{test_file.resolve()}:42"]
+
+    # 2. Test template integration: diff_view and code_review must call /api/open-vscode
+    template_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
+    diff_view_html = (template_dir / "diff_view.html.j2").read_text(encoding="utf-8")
+    code_review_html = (template_dir / "code_review.html.j2").read_text(encoding="utf-8")
+
+    assert "/api/open-vscode" in diff_view_html
+    assert 'onclick="openInVsCode()"' in diff_view_html
+    assert "vscode://file" in diff_view_html
+
+    assert "/api/open-vscode" in code_review_html
+    assert 'onclick="openInVsCode()"' in code_review_html
+    assert "vscode://file" in code_review_html
+
+    # 3. Test DashboardServer POST /api/open-vscode endpoint
+    executed_cmds.clear()
+    server = DashboardServer(
+        host="127.0.0.1",
+        port=0,
+        repo_root=repo_dir,
+        bind_and_activate=True,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    time.sleep(0.1)
+
+    try:
+        base_url = server.get_url()
+        req_data = json.dumps({"file": "app/carrier_board.md", "line": 42}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{base_url}/api/open-vscode",
+            data=req_data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 200
+            data = json.loads(resp.read().decode("utf-8"))
+            assert data["status"] == "ok"
+            assert data["file"] == "app/carrier_board.md"
+
+        assert len(executed_cmds) == 1
+        assert executed_cmds[0] == ["/usr/local/bin/code", "-g", f"{test_file.resolve()}:42"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    # 4. Test standalone ReviewServer POST /api/open-vscode endpoint
+    from dashboard.provider.code_review.server import ReviewServer
+
+    executed_cmds.clear()
+    review_server = ReviewServer(
+        host="127.0.0.1",
+        port=0,
+        repo_root=repo_dir,
+        bind_and_activate=True,
+    )
+    thread = threading.Thread(target=review_server.serve_forever, daemon=True)
+    thread.start()
+    time.sleep(0.1)
+
+    try:
+        base_url = review_server.get_url()
+        req_data = json.dumps({"file": "app/carrier_board.md", "line": 42}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{base_url}api/open-vscode",
+            data=req_data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            assert resp.status == 200
+            data = json.loads(resp.read().decode("utf-8"))
+            assert data["status"] == "ok"
+
+        assert len(executed_cmds) == 1
+        assert executed_cmds[0] == ["/usr/local/bin/code", "-g", f"{test_file.resolve()}:42"]
+    finally:
+        review_server.shutdown()
+        review_server.server_close()
+
+

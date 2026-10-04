@@ -39,8 +39,10 @@ from model.worm_report import (
     WormStatus,
 )
 from provider.code_review.server import ReviewServer
+from provider.vcs.editor import open_in_vscode
 from provider.vcs.git_engine import GitEngine, extract_line_snippet, get_git_root
 from provider.worm_report.server import WormReportServer
+
 
 
 class DashboardRequestHandler(BaseHTTPRequestHandler):
@@ -441,6 +443,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 self._handle_delete_worm(data)
             case "/api/upload":
                 self._handle_file_upload(data)
+            case "/api/open-vscode" | "/api/open_vscode":
+                self._handle_open_vscode(data)
             case "/api/exit":
                 worm_srv = self.server.worm_server
                 try:
@@ -729,6 +733,30 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 "redirect_to": "/",
             }
         )
+
+    def _handle_open_vscode(self, data: Dict[str, Any]) -> None:
+        """Handle opening a file in VS Code via CLI command or URL handler."""
+        file_path = data.get("file") or data.get("file_path") or data.get("path") or ""
+        line = data.get("line")
+        column = data.get("column")
+        if isinstance(line, str) and line.isdigit():
+            line = int(line)
+        if isinstance(column, str) and column.isdigit():
+            column = int(column)
+
+        success = open_in_vscode(
+            file_path,
+            line=line if isinstance(line, int) else None,
+            column=column if isinstance(column, int) else None,
+            repo_root=self.server.repo_root,
+        )
+        if success:
+            self._send_json({"status": "ok", "file": file_path})
+        else:
+            self._send_json(
+                {"status": "error", "message": f"Failed to open '{file_path}' in VS Code", "file": file_path},
+                status=500,
+            )
 
     def _handle_commit_update(self, data: Dict[str, Any]) -> None:
         """Handle commit update event (rebase, amend)."""
