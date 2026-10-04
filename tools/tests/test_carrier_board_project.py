@@ -252,6 +252,10 @@ def test_carrier_board_firmware_document() -> None:
     # 6. PowerDown alignment with RP2040 SystemController / SystemStatus
     assert "SystemStatus" in content or "Active, Sleep, PowerDown" in content
 
+    # CR-6979a20c: Factory provisioning Off / ship mode transition and USB wake without opening enclosure
+    assert "Ship Mode" in content or "ship-mode" in content or "ship mode" in content.lower()
+    assert "without opening the enclosure" in content.lower() or "without opening" in content.lower()
+
 
 def test_carrier_board_bringup_yaml() -> None:
     """Verify app/carrier_board_bringup.yaml exists as source of truth for bringup verification."""
