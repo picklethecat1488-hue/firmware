@@ -578,6 +578,11 @@ During factory assembly and end-of-line testing, `host_cli` automates silicon an
   - Real-time display showing Factory Station ID, DUT Serial Number, Silicon Hardware UUID, and NINA-B312 Bluetooth MAC.
   - Active step progress indicator with measured vs. expected parametric values (e.g. `SYS_3V3 Rail: 3.308 V [3.150 V – 3.450 V] PASS`, `IQS7222A ProxFusion ACK [0x44] PASS`, `FlexSPI NAND JEDEC ID [0xEF, 0xAA21] PASS`).
   - High-visibility colorized completion banner (`PROVISIONING_PASSED` / `PROVISIONING_FAILED`) with cycle time breakdown and operator prompts.
+- **Factory Shipping Mode Transition (`host_cli ship-mode`)**:
+  ```bash
+  cargo run -p host_cli -- ship-mode --target /dev/tty.usbmodem101
+  ```
+  Commands the target board into the unpowered `Off` state (TI BQ24074 battery power-path disconnect / ship mode), reducing quiescent current to $< 1.0\,\mu\text{A}$ for extended shelf storage. The device enclosure remains permanently sealed and ultrasonically welded; connecting an external USB-C cable asserts `/PGOOD` and wakes the unit into `Active` state without requiring enclosure disassembly.
 
 #### 2. Structured Diagnostic Error Handling (`ServiceError`)
 
@@ -751,17 +756,24 @@ flowchart LR
 
 Carrier Board 2.0 adopts the proven, event-driven `SystemController` architecture from the RP2040 cat fountain platform (`controller::system_controller` / `platform::system::SystemManager`). To guarantee cross-target software portability and unified state machine semantics, Carrier Board 2.0 harmonizes its power state definitions with the canonical `model::types::SystemStatus` enumeration: **`Active`**, **`Sleep`**, and **`PowerDown`**.
 
-In earlier draft notes, the software low-power quiescent state was informally called `Standby`; this is now formally harmonized as the canonical `PowerDown` state. Physical battery disconnection or power switch cutoff is classified as the unpowered hardware condition (`Off`), rather than a software state:
+In earlier draft notes, the software low-power quiescent state was informally called `Standby`; this is now formally harmonized as the canonical `PowerDown` state. In addition, the system architecture supports transitioning to the **`Off` (Ship Mode)** state for factory provisioning and long-term shelf storage, with the essential architectural guarantee that this state can be exited without opening the enclosure:
 
 | System State (`SystemStatus`) | Core 0 State | Core 1 State | Power Rails & Load Switches | Wake Latency | Target Current | Primary Use Case |
 | :--- | :--- | :--- | :--- | :---: | :---: | :--- |
 | **`Active` (`SystemStatus::Active`)** | 150 MHz Active | 150 MHz Active | All rails ON (`SYS_3V3`, `SW_3V3_*`) | Immediate | 28.5 – 139.3 mA | User interaction, audio streaming, camera gesture processing. |
 | **`Sleep` (`SystemStatus::Sleep`)** | 12 MHz Low-Freq | WFI Idle Sleep | Sensing rail ON (`SW_3V3_SENSORS`), Audio/Debug OFF | $\approx 250\,\mu\text{s}$ | 3.8 mA | Proximity detection active, ready for instant responsiveness. |
 | **`PowerDown` (`SystemStatus::PowerDown`)** *(Standby)* | Deep Sleep (WFI) | Deep Sleep (WFI) | All switchable rails hard-gated via `Q2`, `Q3`, `Q4` | $\le \mathbf{2.5\text{ ms}}$ | $\mathbf{\le 185\,\mu\text{A}}$ | Canonical software low-power quiescent state for long-term battery shelf life; wakes on touch interrupt, BLE assertion, or charger attach. |
-| **`Off` (Physical Hardware State)** | Powered Off | Powered Off | Battery cutoff / power switch off; internal LDOs shutdown; all rails OFF | $\approx 40\text{ ms}$ (Cold) | $< 1.0\,\mu\text{A}$ | Physical battery disconnect or mechanical power switch open (hardware unpowered; not an active software state). |
+| **`Off` (Ship Mode / Hardware State)** | Powered Off | Powered Off | Battery power-path cutoff / ship mode active; internal LDOs shutdown; all rails OFF | $\approx 40\text{ ms}$ (Cold) | $< 1.0\,\mu\text{A}$ | Factory provisioning ship mode or physical battery disconnect. Exited via USB connector insertion without opening enclosure. |
 
 - **State Transition Semantics**: Inactivity timeout ($T_{sleep} = 30\text{ s}$) transitions the device from `Active` to `Sleep`. If no touch or BLE activity occurs for an extended duration ($T_{powerdown} = 5\text{ min}$), the `SystemController` issues commands to transition into `PowerDown` (Standby): power-gating all non-essential peripherals via load switches `Q2`–`Q4`, disabling high-frequency oscillators, configuring the Azoteq IQS7222A touch controller into low-power wake scan mode ($15\,\mu\text{A}$), and putting both Cortex-M33 cores into Deep Sleep.
-- **Wake Triggers**: A capacitive touch tap on the enclosure, an incoming BLE connection assertion, or charger insertion triggers an asynchronous hardware pin interrupt, transitioning the device from `PowerDown` (Standby) back to `Active` in under $2.5\text{ ms}$.
+- **Factory Provisioning Transition to `Off` (Ship Mode)**:
+  - During factory provisioning at the end of the manufacturing line, the test fixture issues a final command (`ship-mode` / `power-off`) over the high-speed UART service endpoint.
+  - The `BatteryController` / `SystemController` commands the power management circuit (asserting electronic battery isolation on the TI BQ24074 or battery cutoff FET) to enter deep **Ship Mode** (`Off`), shutting down all internal LDOs and rail switches.
+  - In this state, quiescent leakage is suppressed to $< 1.0\,\mu\text{A}$, preventing battery drain during global container transit and warehouse storage for 12+ months.
+- **Enclosure-Preserving Wake via USB**:
+  - The carrier board and enclosure remain permanently sealed and ultrasonically welded; **no enclosure disassembly or internal jumper access is required** to wake the device from `Off`.
+  - Exiting the `Off` state is triggered simply by plugging in an external USB-C connector (`J3`).
+  - Connecting 5V VBUS prompts the TI BQ24074 dynamic power path controller to assert `/PGOOD` (`CHG_PGOOD_WAKE` pulling low on MCX N947 `VBAT_WAKEUP_b` / `M10`), immediately releasing the battery isolation FET, energizing `SYS_3V3`, and executing a clean cold boot ($\approx 40\text{ ms}$) directly into `Active` state.
 - **RP2040 Target Harmonization**: Both RP2040 and MCX N947 run the exact same `controller::system_controller` dispatch logic against `model::types::SystemStatus` (`Active, Sleep, PowerDown`), eliminating divergent target state behaviors and preserving identical telemetry and IPC state events across all firmware builds.
 
 ### 2. User LED Indicator Matrix (TI LP5009 RGB LED)
