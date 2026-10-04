@@ -42,10 +42,13 @@ pub const I2C0_ADDR_LP5009: u8 = 0x14;
 /// 7-bit I2C address for the Azoteq IQS7222A capacitive touch controller on Touch I2C1.
 pub const I2C1_ADDR_IQS7222A: u8 = 0x44;
 
-/// Default baud rate for FTDI USB-to-UART console port (FC1 UART0).
+/// Default bringup baud rate for FTDI USB-to-UART console port (FC1 UART0).
 pub const CONSOLE_BAUD_RATE: u32 = 115_200;
 
-/// High-speed baud rate for u-blox NINA-B312 BLE module interface.
+/// High-speed operational baud rate for FTDI USB-to-UART port (FC1 UART0) and telemetry streaming (1 Mb/s).
+pub const HIGH_SPEED_UART_BAUD_RATE: u32 = 1_000_000;
+
+/// High-speed baud rate for u-blox NINA-B312 BLE module interface (1 Mb/s).
 pub const BLE_UART_BAUD_RATE: u32 = 1_000_000;
 
 /// Pin configuration mapping for Carrier Board 2.0 (NXP MCX N947 VFBGA-184).
@@ -127,7 +130,7 @@ pub const CANONICAL_COMPONENTS: &[BoardComponent] = &[
         designator: "U9",
         part_number: "FTDI FT232RNQ-REEL",
         description: "High-Speed USB 2.0 to UART Serial Bridge",
-        interface: "FC1 UART0 (Console)",
+        interface: "FC1 UART0 (Console / 1Mb/s Telemetry)",
     },
     BoardComponent {
         designator: "U2",

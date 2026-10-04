@@ -1,9 +1,9 @@
-"""Reproduction and regression unit test for WORM-005 (BUG-005) and CR-2a0d53ac.
+"""Reproduction and regression unit test for WORM-005 (BUG-005) and CR-ccf64ca.
 
 Verifies that:
 1. The carrier board 2.0 app is integrated into the app crate alongside cat_detector.
 2. carrier_board is not a separate standalone workspace member in Cargo.toml.
-3. The carrier board firmware design doc resides under app/carrier_board.md with required design evaluations.
+3. The carrier board firmware design doc resides under app/carrier_board.md with all required design evaluations.
 4. app/carrier_board_bringup.yaml exists as the source of truth for bringup verification.
 """
 
@@ -66,6 +66,13 @@ def test_carrier_board_firmware_document() -> None:
     assert "IQS7222A" in content
     assert "NINA-B312" in content
 
+    # FlexSPI assigned to Core 0; Core 1 for peripherals
+    assert "FlexSPI Port A (Core 0)" in content or "FlexSPI NAND Flash Storage Controller" in content
+    assert "Core 1" in content
+
+    # 1 Mb/s UART support
+    assert "1 Mb/s" in content or "1Mb/s" in content
+
     # Cost breakdown for .text and .data
     assert ".text" in content
     assert ".data" in content
@@ -74,25 +81,66 @@ def test_carrier_board_firmware_document() -> None:
     assert "gesture" in content.lower() or "camera" in content.lower()
     assert "location" in content.lower()
 
-    # Single-slot vs dual-slot OTA evaluation (download to NAND)
-    assert "NAND" in content
-    assert "Slot B" in content or "single-slot" in content.lower() or "Single-Slot" in content
+    # Application software for DSP/NPU (Burn, Candle, tract, JAX)
+    assert "Burn" in content or "burn-rs" in content
+    assert "JAX" in content
+    assert "PyTorch" in content or "Candle" in content or "tract" in content
 
-    # SRAM constraints & dual-core Rust architecture
+    # Design Hardening & MPU
+    assert "ARMv8-M" in content or "MPU" in content
+    assert "Execute Never" in content or "XN" in content
+    assert "Block Lock" in content or "envelope encryption" in content or "Keystore" in content
+
+    # Secure Boot & Firmware Updating
+    assert "Secure Boot" in content or "Root of Trust" in content
+    assert "Ed25519" in content or "signature" in content.lower()
+    assert "anti-rollback" in content.lower() or "rollback" in content.lower()
+
+    # Bidirectional BLE UART & service endpoint
+    assert "service endpoint" in content.lower() or "Service Endpoint" in content
+    assert "telemetry" in content.lower()
+
+    # Option 3: Embassy Multi-Executor AMP
+    assert "Option 3" in content or "Embassy Multi-Executor" in content
+    assert "AMP" in content
+
+    # SRAM constraints including RTT defmt and CLI buffers
     assert "SRAM" in content
-    assert "AMP" in content or "dual-core" in content.lower() or "Dual-Core" in content
-
-    # UART vs RTT evaluation
-    assert "UART" in content
     assert "RTT" in content
+    assert "defmt" in content
 
-    # Power breakdown with all cores and accelerators
+    # Communication & Telemetry: RTT vs High-Speed UART Service Model
+    assert "UART" in content
+    assert "Perfetto" in content
+    assert "Service Model" in content or "service model" in content
+
+    # Operating Power State Matrix & Subsystem Measurements
+    assert "Operating Power State Matrix" in content
+    assert "Deep Standby" in content or "State 0" in content
+    assert "Peak Burst" in content or "State 3" in content
+    assert "#operating-power-state-matrix" in content or "Operating Power State Matrix" in content
     assert "PowerQuad" in content or "Neutron" in content
     assert "mA" in content
 
-    # Custom Embassy HAL & validation plan
-    assert "Embassy" in content
-    assert "Validation" in content or "validation" in content
+    # Custom Embassy HAL with I3C, High-Resolution Timer, Watchdog, RTC
+    assert "embassy-mcx" in content or "Embassy" in content
+    assert "I3C" in content
+    assert "Timer" in content or "timer" in content
+    assert "Watchdog" in content or "wwdt" in content.lower()
+    assert "RTC" in content
+
+    # On-Device Test Frameworks (defmt-test, post-bringup UART test runner)
+    assert "defmt-test" in content or "embedded-test" in content
+
+    # On-Chip Peripheral Core Hardware Verification
+    assert "On-Chip" in content or "on-chip" in content
+    assert "I2C" in content
+    assert "I3C" in content
+
+    # Customizable Bootloader (SSBL), XIP, and SRAM relocation for OTA
+    assert "SSBL" in content or "Second-Stage Bootloader" in content
+    assert "XIP" in content
+    assert "flash_loader_ram" in content or ("SRAM" in content and "relocat" in content)
 
 
 def test_carrier_board_bringup_yaml() -> None:
@@ -106,4 +154,8 @@ def test_carrier_board_bringup_yaml() -> None:
     assert "carrier_board_shell" in data["cargo_target"]
 
     steps = data.get("steps", [])
-    assert len(steps) >= 5, "carrier_board_bringup.yaml must define comprehensive bringup steps"
+    assert len(steps) >= 10, "carrier_board_bringup.yaml must define comprehensive bringup steps"
+
+    step_names = [s.get("name", "") for s in steps]
+    assert any("I3C" in name for name in step_names), "Must include I3C validation step"
+    assert any("Watchdog" in name or "Reset" in name for name in step_names), "Must include Watchdog/Reset validation step"
