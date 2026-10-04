@@ -4,6 +4,7 @@ Provides unified GitEngine for smartlog DAG trees, diff analysis, commit manipul
 and merge conflict resolution across review and diff viewer workstations.
 """
 
+from provider.vcs.editor import open_in_vscode
 from provider.vcs.git_engine import (
     IGNORED_REVIEW_FILES,
     GitEngine,
@@ -21,5 +22,7 @@ __all__ = [
     "extract_time_str",
     "get_git_root",
     "is_file_ignored",
+    "open_in_vscode",
     "run_git_command",
 ]
+

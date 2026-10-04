@@ -122,9 +122,10 @@ def test_carrier_board_firmware_document() -> None:
     assert "PowerQuad" in content or "Neutron" in content
     assert "mA" in content
 
-    # Custom Embassy HAL with I3C, High-Resolution Timer, Watchdog, RTC
+    # Custom Embassy HAL with I3C, I2S, High-Resolution Timer, Watchdog, RTC
     assert "embassy-mcx" in content or "Embassy" in content
     assert "I3C" in content
+    assert "I2S" in content or "I^2S" in content
     assert "Timer" in content or "timer" in content
     assert "Watchdog" in content or "wwdt" in content.lower()
     assert "RTC" in content
@@ -175,10 +176,38 @@ def test_carrier_board_firmware_document() -> None:
     assert "BatteryController" in content
     assert "LedController" in content
     assert "SensorController" in content
+    assert "AudioController" in content
+    assert "BleController" in content
     assert "FilesystemController" in content
     assert "TelemetryController" in content
     assert "ShellController" in content
     assert "ThermalController" in content
+
+    # Storage descriptor URI model & flash separation
+    assert "dev:builtin-flash" in content
+    assert "dev:ext-flash" in content
+
+    # ARMv8-M MPU hardening & stack limits
+    assert "Null Page Guard" in content
+    assert "MSPLIM" in content and "PSPLIM" in content
+
+    # Inter-core IPC: direct struct copying & CBOR
+    assert "Direct Plain Old Data (POD) Struct Copying" in content or "zerocopy" in content
+    assert "minicbor" in content
+
+    # Cache architecture (I-Cache & D-Cache)
+    assert "D-Cache" in content and "I-Cache" in content
+
+    # Structured error handling & model updates in host_cli
+    assert "ServiceError" in content
+    assert "model-update" in content
+
+    # UI and Audio state invariants
+    assert "OVERTEMP_ALERT" in content
+    assert "Low Battery / Overtemp Alert" in content
+    assert "SSBL Failure Alert" not in content
+    assert "OTA Success Fanfare" not in content
+    assert "PMIC" not in content
 
 
 def test_carrier_board_bringup_yaml() -> None:

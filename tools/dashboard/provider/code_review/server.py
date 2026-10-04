@@ -26,6 +26,7 @@ from model.code_review import (
     ReviewSeverity,
     ReviewStatus,
 )
+from provider.vcs.editor import open_in_vscode
 from provider.vcs.git_engine import (
     GitEngine,
     extract_line_snippet,
@@ -138,6 +139,8 @@ class ReviewRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(res)
             case "/api/commit_update":
                 self._handle_commit_update(data)
+            case "/api/open-vscode" | "/api/open_vscode":
+                self._handle_open_vscode(data)
             case "/api/commit_reviewed":
                 query = urllib.parse.parse_qs(parsed.query)
                 commit = query.get("commit", [""])[0] or (data.get("commit", "") if isinstance(data, dict) else "")
@@ -343,6 +346,30 @@ class ReviewRequestHandler(BaseHTTPRequestHandler):
         """Force Markdown file export and return path."""
         out_path = self.server.save_and_sync()
         self._send_json({"status": "ok", "path": str(out_path)})
+
+    def _handle_open_vscode(self, data: dict) -> None:
+        """Handle opening a file in VS Code via CLI command or URL handler."""
+        file_path = data.get("file") or data.get("file_path") or data.get("path") or ""
+        line = data.get("line")
+        column = data.get("column")
+        if isinstance(line, str) and line.isdigit():
+            line = int(line)
+        if isinstance(column, str) and column.isdigit():
+            column = int(column)
+
+        success = open_in_vscode(
+            file_path,
+            line=line if isinstance(line, int) else None,
+            column=column if isinstance(column, int) else None,
+            repo_root=self.server.repo_root,
+        )
+        if success:
+            self._send_json({"status": "ok", "file": file_path})
+        else:
+            self._send_json(
+                {"status": "error", "message": f"Failed to open '{file_path}' in VS Code", "file": file_path},
+                status=500,
+            )
 
     def _handle_commit_update(self, data: dict) -> None:
         """Handle commit update event (rebase, merge, amend, etc.)."""
