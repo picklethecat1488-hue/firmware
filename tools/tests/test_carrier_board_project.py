@@ -8,8 +8,13 @@ Verifies that:
 """
 
 from pathlib import Path
-import tomllib
+import sys
 import yaml
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -171,12 +176,14 @@ def test_carrier_board_firmware_document() -> None:
     assert "features" in content.lower()
     assert "expansion-audio" in content or "expansion-camera" in content
 
-    # Application controllers list
+    # Application controllers list (CR-7c6e41f, WORM-012)
     assert "SystemController" in content
     assert "BatteryController" in content
     assert "LedController" in content
     assert "SensorController" in content
-    assert "AudioController" in content
+    assert "SpeakerController" in content
+    assert "controller::speaker_controller" in content
+    assert "AudioController" not in content
     assert "BleController" in content
     assert "FilesystemController" in content
     assert "TelemetryController" in content

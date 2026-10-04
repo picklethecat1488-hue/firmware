@@ -122,7 +122,7 @@ Carrier Board 2.0 adopts the project's decoupled domain controller design patter
    - Serves as the unified canonical controller for all current and future sensor peripherals (environmental, ambient light, IMU/inertial, optical/ToF, capacitive touch, proximity).
    - Manages the Azoteq IQS7222A capacitive touch and proximity sensor (`I2C1` @ `0x44` on Core 1).
    - Handles single-finger touch position detection, continuous tracking, gesture recognition, and proximity event emission over IPC.
-5. **`AudioController` (`controller::audio_controller`)**:
+5. **`SpeakerController` (`controller::speaker_controller`)**:
    - Drives the on-board piezo buzzer and ADI MAX98357A I2S Class-D audio amplifier (`U4` on Core 1).
    - Synthesizes acoustic alerts, status chimes, and decodes I2S audio playback streams.
 6. **`BleController` (`controller::ble_controller`)**:
