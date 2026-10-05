@@ -243,12 +243,13 @@ def test_carrier_board_firmware_document() -> None:
     assert "ProgramMetadata" in content
     assert ".program_metadata" in content or "program_metadata" in content.lower()
 
-    # Architecture risk matrix, bringup milestones, and final delivery objective (CR-e45b9423)
+    # Architecture risk matrix, bringup milestones, and final delivery objective (CR-e45b9423, CR-7ddac53)
     assert "Architecture Risk Identification & Mitigation Matrix" in content
     assert "Bringup & Verification Milestones & Deliverables Roadmap" in content
     assert "Final Delivery Objective" in content
     assert "AR-1" in content and "AR-6" in content
-    assert "Milestone 1 (M1)" in content and "Milestone 5 (M5)" in content
+    assert "Milestone 1 (M1): Silicon Baseline, Embassy HAL Foundation" in content
+    assert "Milestone 5 (M5)" in content
 
     # 4. Hardware FIFO buffering, on-chip high-resolution timer, and sensor fusion
     assert "FIFO" in content
