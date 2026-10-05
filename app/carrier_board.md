@@ -863,21 +863,27 @@ Hardware bringup, driver integration, and platform qualification proceed in five
 
 ```mermaid
 flowchart LR
-    M1["Milestone 1:<br/>Silicon Baseline &<br/>Secure Boot"] --> M2["Milestone 2:<br/>Dual-Core AMP &<br/>IPC Fabric"]
+    M1["Milestone 1:<br/>Silicon Baseline, HAL &<br/>Secure Boot"] --> M2["Milestone 2:<br/>Dual-Core AMP &<br/>IPC Fabric"]
     M2 --> M3["Milestone 3:<br/>Storage Subsystem &<br/>Filesystems"]
     M3 --> M4["Milestone 4:<br/>Peripherals, UI &<br/>BLE Egress"]
     M4 --> M5["Milestone 5:<br/>System Integration &<br/>Full Carrier App"]
 ```
 
-#### Milestone 1 (M1): Silicon Baseline, Clocks & Secure Boot Bringup
+#### Milestone 1 (M1): Silicon Baseline, Embassy HAL Foundation & Secure Boot Bringup
 - **Core Deliverables**:
+  - Implementation of foundational Embassy Hardware Abstraction Layer crate (`embassy-mcx`):
+    - Peripheral Access Crate (PAC) bindings generated from NXP MCX N947 SVD.
+    - Embassy asynchronous time driver (`embassy-time-driver`) backed by on-chip CTIMER / SYSTICK.
+    - Low-level GPIO pin multiplexing and edge-triggered interrupt drivers (`embedded-hal` / `embedded-hal-async`).
+    - LPUART driver with high-speed 1 Mb/s DMA streaming support on UART0 (`FC0`).
   - ROM Root-of-Trust (RoT) key hash verification and boot configuration loading (CMPA eFuse).
-  - Custom Second-Stage Bootloader (`app` SSBL target) running bare-metal Embassy executor from `0x0000_0000`.
+  - Custom Second-Stage Bootloader (`app` SSBL target) running bare-metal Embassy executor on top of `embassy-mcx` from `0x0000_0000`.
   - Clock tree configuration: FRO-48M bootstrap to 150 MHz system PLL and 100 MHz FlexSPI clock.
   - Internal flash partitioning: `bootloader` (64 KB), `app` (1,856 KB), `metadata` (64 KB), and `keystore` (64 KB).
   - High-speed UART0 (1 Mb/s) diagnostic banner and Segger RTT logging output.
 - **Verification Gate**:
   - Executes steps 1–4 of [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml).
+  - `embassy-mcx` Stage 1 register smoke tests and foundational timer/UART async drivers pass on hardware.
   - Cold boot ready latency measured $\le 39.5\,\text{ms}$ (strict budget: $\le 50.0\,\text{ms}$).
   - Ed25519 signature verification and anti-rollback monotonic counter validation pass 100% on valid and invalid test images.
 
