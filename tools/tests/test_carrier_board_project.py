@@ -8,8 +8,13 @@ Verifies that:
 """
 
 from pathlib import Path
-import tomllib
+import sys
 import yaml
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -171,12 +176,14 @@ def test_carrier_board_firmware_document() -> None:
     assert "features" in content.lower()
     assert "expansion-audio" in content or "expansion-camera" in content
 
-    # Application controllers list
+    # Application controllers list (CR-7c6e41f, WORM-012)
     assert "SystemController" in content
     assert "BatteryController" in content
     assert "LedController" in content
     assert "SensorController" in content
-    assert "AudioController" in content
+    assert "SpeakerController" in content
+    assert "controller::speaker_controller" in content
+    assert "AudioController" not in content
     assert "BleController" in content
     assert "FilesystemController" in content
     assert "TelemetryController" in content
@@ -215,10 +222,50 @@ def test_carrier_board_firmware_document() -> None:
     assert "BATTERY_LOW" in content
     assert "BATTERY_CRITICAL" in content
 
-    # Card detection boot behavior and SRAM headroom computation
-    assert "does NOT alter, delay, or change system boot behavior" in content
+    # Expansion board error handling and fault isolation (CR-e45b9423)
+    assert "eliminates on-card identification EEPROMs" in content
+    assert "Modular Expansion Board Verification & Error Handling" in content
+    assert "ERR_EXPANSION_NOT_FOUND" in content or "ServiceError" in content
     assert "SRAM Usage vs. Expansion Headroom" in content
     assert "Framework Validation: Integration with Touch Sensor Gesture Processor" in content
+    assert "dev:eeprom" not in content
+
+    # Internal flash partitions renaming to 'app' and 'metadata' (CR-e45b9423)
+    assert "`app`" in content
+    assert "`metadata`" in content
+    assert "slot_a" not in content
+
+    # Strongly typed integer enums for ProgramMetadata (CR-e45b9423)
+    assert "pub enum StorageDeviceId" in content
+    assert "pub enum PartitionId" in content
+    assert "device_id: StorageDeviceId" in content
+    assert "partition_id: PartitionId" in content
+    assert "ProgramMetadata" in content
+    assert ".program_metadata" in content or "program_metadata" in content.lower()
+
+    # Architecture risk matrix, bringup milestones, and final delivery objective (CR-e45b9423, CR-7ddac53)
+    assert "Architecture Risk Identification & Mitigation Matrix" in content
+    assert "Bringup & Verification Milestones & Deliverables Roadmap" in content
+    assert "Final Delivery Objective" in content
+    assert "AR-1" in content and "AR-6" in content
+    assert "Milestone 1 (M1): Silicon Baseline, Embassy HAL Foundation" in content
+    assert "Milestone 5 (M5)" in content
+
+    # 4. Hardware FIFO buffering, on-chip high-resolution timer, and sensor fusion
+    assert "FIFO" in content
+    assert "CTIMER" in content or "high-resolution timer" in content.lower()
+    assert "sensor fusion" in content.lower() and "FIFO" in content
+
+    # 5. Factory provisioning structured logging & status display
+    assert "status display" in content.lower() or "HUD" in content
+    assert "JUnit" in content or "MES" in content
+
+    # 6. PowerDown alignment with RP2040 SystemController / SystemStatus
+    assert "SystemStatus" in content or "Active, Sleep, PowerDown" in content
+
+    # CR-6979a20c: Factory provisioning Off / ship mode transition and USB wake without opening enclosure
+    assert "Ship Mode" in content or "ship-mode" in content or "ship mode" in content.lower()
+    assert "without opening the enclosure" in content.lower() or "without opening" in content.lower()
 
 
 def test_carrier_board_bringup_yaml() -> None:
