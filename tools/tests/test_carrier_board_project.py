@@ -251,6 +251,23 @@ def test_carrier_board_firmware_document() -> None:
     assert "Milestone 1 (M1): Silicon Baseline, Embassy HAL Foundation" in content
     assert "Milestone 5 (M5)" in content
 
+    # 1-Finger (1F) Capacitive Touch Gestures and Interaction Model
+    assert "Capacitive Touch Gesture Recognition & Interaction Model (1F Gestures)" in content
+    assert "1F Tap (Single Tap)" in content
+    assert "1F Double Tap" in content
+    assert "1F Swipe Forward" in content
+    assert "1F Swipe Back" in content
+    assert "1F Long Press" in content
+    assert "1F Extra Long Press" in content
+    assert "pub enum GestureType" in content
+    assert "pub struct GestureEvent" in content
+    assert "SingleTap" in content
+    assert "DoubleTap" in content
+    assert "SwipeForward" in content
+    assert "SwipeBack" in content
+    assert "LongPress" in content
+    assert "ExtraLongPress" in content
+
     # 4. Hardware FIFO buffering, on-chip high-resolution timer, and sensor fusion
     assert "FIFO" in content
     assert "CTIMER" in content or "high-resolution timer" in content.lower()

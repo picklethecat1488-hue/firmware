@@ -53,7 +53,8 @@ The source of truth for bringup verification steps is [`app/carrier_board_bringu
   - [1. System Controller Architecture: Harmonized `Active`, `Sleep` & `PowerDown` States](#1-system-controller-architecture-harmonized-active-sleep--powerdown-states)
   - [2. User LED Indicator Matrix (TI LP5009 RGB LED)](#2-user-led-indicator-matrix-ti-lp5009-rgb-led)
   - [3. Speaker Audio Chimes](#3-speaker-audio-chimes)
-  - [4. Boot Timing & Latency Budget](#4-boot-timing--latency-budget)
+  - [4. Capacitive Touch Gesture Recognition & Interaction Model (1F Gestures)](#4-capacitive-touch-gesture-recognition--interaction-model-1f-gestures)
+  - [5. Boot Timing & Latency Budget](#5-boot-timing--latency-budget)
 - [7. Hardware Bringup, Verification & Architecture Risk Protocol](#7-hardware-bringup-verification--architecture-risk-protocol)
   - [Architecture Risk Identification & Mitigation Matrix](#architecture-risk-identification--mitigation-matrix)
   - [Bringup & Verification Milestones & Deliverables Roadmap](#bringup--verification-milestones--deliverables-roadmap)
@@ -824,7 +825,81 @@ Audio feedback is synthesized or streamed by Core 1 via PDM to the on-board Clas
 | **Gesture Confirmed Tone** | Crisp harmonic tone ($784\text{ Hz}$, $G_5$) | 60 ms | Soft (60 dBA) | Touch proximity or vision gesture event recognized. |
 | **Low Battery / Overtemp Alert** | Repeating double beep ($440\text{ Hz} \times 2$) | 100 ms cadence | Audible (70 dBA) | Battery State of Charge drops below 10% threshold or junction temperature exceeds safe thermal limit. |
 
-### 4. Boot Timing & Latency Budget
+### 4. Capacitive Touch Gesture Recognition & Interaction Model (1F Gestures)
+
+The Carrier Board 2.0 user interface incorporates an on-board Azoteq IQS7222A ProxFusion capacitive touch controller (`U2`), communicating over dedicated $\text{I}^2\text{C}$ (`FC2`) with a physical interrupt line (`CAP_INT`) assigned to Core 1 (`C4`). The capacitive surface supports continuous single-finger (1F) tracking and gesture classification to enable intuitive, physical device control without mechanical buttons.
+
+#### 1. Real-Time Processing Pipeline & Concurrency
+- **100 Hz Async eDMA Ingestion**: Core 1 runs an Embassy task polling the IQS7222A over $\text{I}^2\text{C}$ at 100 Hz upon `CAP_INT` assertion.
+- **PowerQuad DSP Smoothing**: Raw touch coordinates ($X, Y$) and capacitive deltas ($\Delta C$) pass through biquad low-pass smoothing filters accelerated by the MCX N947 PowerQuad DSP engine.
+- **Temporal Gesture Classifier**: Core 1 evaluates sliding touch windows to classify discrete 1-finger gestures with confidence $\ge 0.85$.
+- **Zero-Copy IPC Dispatch**: When a gesture is confirmed, Core 1 packages a typed `GestureEvent` struct into the lock-free shared SRAMX SPSC ring buffer (`0x2006_8000`), pulsing the hardware Messaging Unit (MU) doorbell to wake Core 0.
+- **Controller Action Routing**: Core 0's `SensorController` and `SystemController` map incoming gestures to system state changes, UI feedback (RGB LED patterns via `LedController`, acoustic chimes via `SpeakerController`), and wireless BLE notifications via `BleController`.
+
+#### 2. 1-Finger (1F) Gesture Action & Mapping Matrix
+
+The table below maps out every supported 1F gesture, its physical detection criteria, its action across operational states, and the corresponding user feedback:
+
+| Gesture Name | Physical Detection Criteria | Action in `Active` State | Action in `Sleep` / `PowerDown` | Audio & Visual Feedback | IPC & Telemetry Dispatch |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **1F Tap (Single Tap)** | Single contact: $50\,\text{ms} \le T < 300\,\text{ms}$, displacement $\Delta X < 3.0\,\text{mm}$. | **Toggle / Primary Action**: Toggles active feature state (e.g. telemetry sampling enable/pause); confirms active system prompt. | **Instant System Wake**: In `Sleep`, restores 150 MHz clocks ($\approx 250\,\mu\text{s}$). In `PowerDown`, triggers hardware WUU wake ($\le 1.8\,\text{ms}$). | `Gesture Confirmed Tone` ($784\text{ Hz}$, $60\text{ ms}$, $60\text{ dBA}$); momentary Cyan LED pulse ($150\text{ ms}$). | Emits `GestureType::SingleTap`; sends BLE GATT notification; appends CBOR record to NAND `telemetry` queue. |
+| **1F Double Tap** | Two sequential taps within $T_{interval} \le 350\,\text{ms}$; individual tap duration $< 250\,\text{ms}$; impact delta $\le 4.0\,\text{mm}$. | **Cycle Mode / Quick Action**: Cycles active sensor acquisition profiles; triggers immediate forced dirty-buffer flush over BLE. | Ignored in `PowerDown` (first tap awakens device to `Active`). | Ascending two-tone ping ($659\text{ Hz} \to 784\text{ Hz}$, $40\text{ ms}$ each); double Cyan LED flash ($100\text{ ms} \times 2$). | Emits `GestureType::DoubleTap`; Core 0 commands `TelemetryController` to initiate high-speed BLE flush. |
+| **1F Swipe Forward** | Contact swept forward along strip axis: $\Delta X \ge +12.0\,\text{mm}$ within $80\,\text{ms} \le T \le 500\,\text{ms}$ ($v \ge +40\,\text{mm/s}$). | **Navigate Forward / Increment**: Advances to next operational preset/profile; increases Class-D speaker output volume (+3 dB). | In `Sleep`, awakens system directly into next operational preset. | Ascending chirp sweep ($587\text{ Hz} \to 880\text{ Hz}$, $80\text{ ms}$); forward trailing Cyan chase animation on LP5009 RGB LED. | Emits `GestureType::SwipeForward { displacement_mm, velocity_mm_s }`; Core 0 updates active preset index. |
+| **1F Swipe Back** | Contact swept backward along strip axis: $\Delta X \le -12.0\,\text{mm}$ within $80\,\text{ms} \le T \le 500\,\text{ms}$ ($v \le -40\,\text{mm/s}$). | **Navigate Backward / Decrement**: Returns to previous operational preset/profile; decreases Class-D speaker output volume (-3 dB). | In `Sleep`, awakens system directly into previous operational preset. | Descending chirp sweep ($880\text{ Hz} \to 587\text{ Hz}$, $80\text{ ms}$); backward trailing Cyan chase animation on LP5009 RGB LED. | Emits `GestureType::SwipeBack { displacement_mm, velocity_mm_s }`; Core 0 updates active preset index. |
+| **1F Long Press** | Stationary contact held for $1.5\text{ s} \le T < 3.5\text{ s}$ with displacement drift $\Delta X < 2.5\,\text{mm}$. | **BLE Pairing Mode Trigger**: Enters BLE discoverable advertising mode for 60 seconds; if already connected, initiates graceful disconnect and re-advertising. | In `Sleep`, awakens system and initiates immediate BLE pairing sequence. | Rising dual-tone chime ($523\text{ Hz} \to 784\text{ Hz}$, $120\text{ ms}$); transition from Solid Cyan to Fast Blue Blink (`BLE_PAIRING` @ 2 Hz). | Emits `GestureType::LongPress { hold_duration_ms }`; Core 0 signals `BleController` to start fast advertising. |
+| **1F Extra Long Press** | Stationary contact held continuously for $T \ge 5.0\text{ s}$ with displacement drift $\Delta X < 2.5\,\text{mm}$. | **Graceful Sleep Transition (`PowerDown`)**: Initiates graceful shutdown: commits NVRAM dirty cache to `metadata`, flushes NAND telemetry, and enters `PowerDown` ($\le 185\,\mu\text{A}$). | If held $\ge 10.0\text{ s}$ during system panic/fault: triggers hardware watchdog hard reboot (`NVIC_SystemReset()`). | Triple descending warning chime ($880\text{ Hz} \to 659\text{ Hz} \to 440\text{ Hz}$, $250\text{ ms}$); Amber/Red pulse followed by LED dark (Off). | Emits `GestureType::ExtraLongPress { hold_duration_ms: 5000 }`; `SystemController` initiates `SystemStatus::PowerDown`. |
+
+#### 3. Strongly Typed Gesture Data Structures
+
+To guarantee zero format-string overhead and type-safe cross-core communication, gestures are represented using canonical Rust enums and plain-old-data (POD) structs compatible with `minicbor`:
+
+```rust
+#[repr(u8)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, minicbor::Encode, minicbor::Decode)]
+pub enum GestureType {
+    #[n(0)] SingleTap = 0,
+    #[n(1)] DoubleTap = 1,
+    #[n(2)] SwipeForward = 2,
+    #[n(3)] SwipeBack = 3,
+    #[n(4)] LongPress = 4,
+    #[n(5)] ExtraLongPress = 5,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, minicbor::Encode, minicbor::Decode)]
+pub struct GestureEvent {
+    #[n(0)] pub gesture: GestureType,
+    #[n(1)] pub timestamp_us: u64,
+    #[n(2)] pub duration_ms: u16,
+    #[n(3)] pub displacement_mm: i16,
+    #[n(4)] pub velocity_mm_s: i16,
+    #[n(5)] pub confidence_pct: u8,
+}
+```
+
+#### 4. Touch State Machine & Gesture Classification Logic
+
+```mermaid
+flowchart TD
+    IDLE["Touch Surface IDLE (No Contact)"] -->|"Touch Down (Delta > Threshold)"| TOUCH_DOWN["Touch Contact Initiated (Timer Started)"]
+    TOUCH_DOWN -->|"Released in 50-300 ms, Delta X < 3mm"| TAP_PENDING{"Inter-Tap Window (350 ms)"}
+    TAP_PENDING -->|"Second Tap within 350 ms"| DOUBLE_TAP["Emit GestureType::DoubleTap"]
+    TAP_PENDING -->|"Timeout without Second Tap"| SINGLE_TAP["Emit GestureType::SingleTap"]
+    TOUCH_DOWN -->|"Displacement Delta X >= +12mm"| SWIPE_FWD["Emit GestureType::SwipeForward"]
+    TOUCH_DOWN -->|"Displacement Delta X <= -12mm"| SWIPE_BACK["Emit GestureType::SwipeBack"]
+    TOUCH_DOWN -->|"Stationary Hold >= 1.5 s"| LONG_PRESS_EVAL{"Hold Duration"}
+    LONG_PRESS_EVAL -->|"Released before 3.5 s"| LONG_PRESS["Emit GestureType::LongPress (BLE Pairing)"]
+    LONG_PRESS_EVAL -->|"Sustained Hold >= 5.0 s"| EXTRA_LONG_PRESS["Emit GestureType::ExtraLongPress (Enter PowerDown)"]
+    LONG_PRESS_EVAL -->|"Sustained Hold >= 10.0 s"| HARD_RESET["Trigger Emergency Reboot (NVIC_SystemReset)"]
+    DOUBLE_TAP --> IDLE
+    SINGLE_TAP --> IDLE
+    SWIPE_FWD --> IDLE
+    SWIPE_BACK --> IDLE
+    LONG_PRESS --> IDLE
+    EXTRA_LONG_PRESS --> IDLE
+```
+
+### 5. Boot Timing & Latency Budget
 
 To deliver instantaneous user responsiveness while guaranteeing cryptographic integrity, the boot sequence is strictly budgeted:
 
