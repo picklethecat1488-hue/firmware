@@ -935,6 +935,43 @@
     .modal-file-row:hover {
       background: #24160c;
     }
+
+    /* System Shock 2 - Xerxes Workstation Modal Dialog (BUG-274) */
+    .workstation-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(2px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+    }
+    .workstation-modal-container {
+      background: var(--quake-bg, #0d1217);
+      border: 2px solid var(--quake-gold, #00ffcc);
+      box-shadow: 0 0 30px rgba(0, 0, 0, 0.95), 0 0 15px rgba(0, 255, 204, 0.3);
+      border-radius: 4px;
+      width: calc(100vw - 36px);
+      height: calc(100vh - 36px);
+      max-width: calc(100vw - 36px);
+      max-height: calc(100vh - 36px);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+    .workstation-modal-iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: transparent;
+      display: block;
+      flex: 1;
+    }
   </style>
 </head>
 <body>
@@ -1411,6 +1448,11 @@
         <span style="font-size:10px;color:var(--quake-text-dim);">Current user: {{ session.current_user or 'picklethecat1488-hue' }}</span>
         <button class="quake-btn quake-btn-default" onclick="closeBranchModal()">Close</button>
       </div>
+    </div>
+  <!-- WORKSTATION MODAL WINDOW (Code Review & Worm Report) (BUG-274) -->
+  <div id="workstationModal" class="workstation-modal-overlay" onclick="if(event.target===this) closeWorkstationModal()">
+    <div class="workstation-modal-container">
+      <iframe id="workstationIframe" class="workstation-modal-iframe" src="about:blank" title="Workstation"></iframe>
     </div>
   </div>
 
@@ -2912,7 +2954,50 @@
       updateSelectedCount();
     }
 
-    // Jump to CR for specific commit (BUG-199)
+    // Workstation Modal Management (BUG-274)
+    function openWorkstationModal(url, targetName) {
+      const modal = document.getElementById("workstationModal");
+      const iframe = document.getElementById("workstationIframe");
+      if (!modal || !iframe) {
+        if (targetName) {
+          window.open(url, targetName);
+        } else {
+          window.open(url, "_blank");
+        }
+        return;
+      }
+      iframe.src = url;
+      modal.style.display = "flex";
+      document.body.style.overflow = "hidden";
+    }
+
+    function closeWorkstationModal() {
+      const modal = document.getElementById("workstationModal");
+      const iframe = document.getElementById("workstationIframe");
+      if (!modal) return;
+      modal.style.display = "none";
+      if (iframe) iframe.src = "about:blank";
+      document.body.style.overflow = "";
+      fetchSession(false);
+    }
+    window.closeWorkstationModal = closeWorkstationModal;
+
+    window.addEventListener("message", (event) => {
+      if (event.data && (event.data.action === "close_workstation" || event.data.type === "close_modal")) {
+        closeWorkstationModal();
+      }
+    });
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        const modal = document.getElementById("workstationModal");
+        if (modal && modal.style.display === "flex") {
+          closeWorkstationModal();
+        }
+      }
+    });
+
+    // Jump to CR for specific commit (BUG-199, BUG-274)
     async function jumpToCR(commitHash) {
       if (!commitHash) return;
       try {
@@ -2922,9 +3007,10 @@
           body: JSON.stringify({ commits: [commitHash] })
         });
         const res = await resp.json();
-        window.open(res.url, "firmware_code_review");
+        openWorkstationModal(res.url, "firmware_code_review");
+        // Fallback for popups (BUG-201): window.open(res.url, "firmware_code_review");
       } catch (err) {
-        window.open(`/review?revisions=${encodeURIComponent(commitHash)}`, "firmware_code_review");
+        openWorkstationModal(`/review?revisions=${encodeURIComponent(commitHash)}`, "firmware_code_review");
       }
     }
 
@@ -2937,10 +3023,11 @@
           body: JSON.stringify({ commits: commits })
         });
         const res = await resp.json();
-        window.open(res.url, "firmware_code_review");
+        openWorkstationModal(res.url, "firmware_code_review");
+        // Fallback for popups (BUG-201): window.open(res.url, "firmware_code_review");
       } catch (err) {
         const revStr = commits.join(",");
-        window.open(`/review?revisions=${encodeURIComponent(revStr)}`, "firmware_code_review");
+        openWorkstationModal(`/review?revisions=${encodeURIComponent(revStr)}`, "firmware_code_review");
       }
     }
 
@@ -2952,9 +3039,10 @@
           body: JSON.stringify({ worm_id: wormId })
         });
         const res = await resp.json();
-        window.open(res.url, "firmware_worm_tracker");
+        openWorkstationModal(res.url, "firmware_worm_tracker");
+        // Fallback for popups (BUG-201): window.open(res.url, "firmware_worm_tracker");
       } catch (err) {
-        window.open(`/worms#WORM-${wormId}`, "firmware_worm_tracker");
+        openWorkstationModal(`/worms#WORM-${wormId}`, "firmware_worm_tracker");
       }
     }
     const openBug = openWorm;
@@ -2967,9 +3055,10 @@
           body: JSON.stringify({})
         });
         const res = await resp.json();
-        window.open(res.url, "firmware_worm_tracker");
+        openWorkstationModal(res.url, "firmware_worm_tracker");
+        // Fallback for popups (BUG-201): window.open(res.url, "firmware_worm_tracker");
       } catch (err) {
-        window.open("/worms", "firmware_worm_tracker");
+        openWorkstationModal("/worms", "firmware_worm_tracker");
       }
     }
     const openBugTracker = openWormTracker;
@@ -2982,9 +3071,10 @@
           body: JSON.stringify({ commit: commitHash })
         });
         const res = await resp.json();
-        window.open(res.url, "firmware_worm_tracker");
+        openWorkstationModal(res.url, "firmware_worm_tracker");
+        // Fallback for popups (BUG-201): window.open(res.url, "firmware_worm_tracker");
       } catch (err) {
-        window.open(`/worms#new?commit=${encodeURIComponent(commitHash)}`, "firmware_worm_tracker");
+        openWorkstationModal(`/worms#new?commit=${encodeURIComponent(commitHash)}`, "firmware_worm_tracker");
       }
     }
     const createBugForCommit = createWormForCommit;
