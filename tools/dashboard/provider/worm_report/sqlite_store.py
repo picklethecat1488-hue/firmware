@@ -20,6 +20,7 @@ from model.worm_report import (
     WormSeverity,
     WormStatus,
 )
+from provider.sanitizer import elide_personal_info
 
 
 class SQLiteWormStore:
@@ -251,7 +252,13 @@ class SQLiteWormStore:
 
     def _upsert_worm_in_conn(self, conn: sqlite3.Connection, bug: WormReportModel) -> None:
         """Upsert a single bug in an active database connection."""
-        steps_json = json.dumps(bug.reproduction_steps)
+        desc_clean = elide_personal_info(bug.description)
+        expected_clean = elide_personal_info(bug.expected_behavior)
+        actual_clean = elide_personal_info(bug.actual_behavior)
+        logs_clean = elide_personal_info(bug.logs)
+        notes_clean = elide_personal_info(bug.resolution_notes)
+        steps_clean = [elide_personal_info(s) for s in bug.reproduction_steps]
+        steps_json = json.dumps(steps_clean)
         b_uuid = bug.uuid or str(uuid_pkg.uuid4())
         conn.execute(
             """
@@ -285,15 +292,15 @@ class SQLiteWormStore:
                 bug.severity.value,
                 bug.category.value,
                 bug.component,
-                bug.description,
+                desc_clean,
                 steps_json,
-                bug.expected_behavior,
-                bug.actual_behavior,
-                bug.logs,
+                expected_clean,
+                actual_clean,
+                logs_clean,
                 bug.created_at,
                 bug.updated_at,
                 bug.resolved_at,
-                bug.resolution_notes,
+                notes_clean,
             ),
         )
 

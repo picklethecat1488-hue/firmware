@@ -22,9 +22,9 @@
 
 ## File-by-File Review Findings
 
-### [`app/carrier_board.md`](file:///Users/daparker/gh/firmware/app/carrier_board.md) — ⏳ `PENDING`
+### [`app/carrier_board.md`](file:///Users/<username>/gh/firmware/app/carrier_board.md) — ⏳ `PENDING`
 
-#### **[MUST FIX]** [app/carrier_board.md:L835](file:///Users/daparker/gh/firmware/app/carrier_board.md#L835)
+#### **[MUST FIX]** [app/carrier_board.md:L835](file:///Users/<username>/gh/firmware/app/carrier_board.md#L835)
 <!-- comment-uuid: acea940c-10e4-4fc0-b758-6e3a281bcfd8 -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
 
@@ -34,7 +34,7 @@
 
 > **Reviewer (Reviewer)**: I think we should shoot for >=95%
 
-#### **[MUST FIX]** [app/carrier_board.md:L836](file:///Users/daparker/gh/firmware/app/carrier_board.md#L836)
+#### **[MUST FIX]** [app/carrier_board.md:L836](file:///Users/<username>/gh/firmware/app/carrier_board.md#L836)
 <!-- comment-uuid: 2ee14223-c270-4375-aed5-d550368a84fb -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
 
@@ -44,7 +44,7 @@
 
 > **Reviewer (Reviewer)**: let's use the same type safe enum gesture type we use for rp2040
 
-#### **[MUST FIX]** [app/carrier_board.md:L833](file:///Users/daparker/gh/firmware/app/carrier_board.md#L833)
+#### **[MUST FIX]** [app/carrier_board.md:L833](file:///Users/<username>/gh/firmware/app/carrier_board.md#L833)
 <!-- comment-uuid: d678adc1-d8bb-4287-afa1-3bdff7e038d8 -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
 
@@ -54,7 +54,7 @@
 
 > **Reviewer (Reviewer)**: core 0's sensor controller should be doing this. we just need to specialize it for cap touch devices. I don't see a reason to create a separate polling task for this
 
-#### **[MUST FIX]** [app/carrier_board.md:L833](file:///Users/daparker/gh/firmware/app/carrier_board.md#L833)
+#### **[MUST FIX]** [app/carrier_board.md:L833](file:///Users/<username>/gh/firmware/app/carrier_board.md#L833)
 <!-- comment-uuid: f9d898b7-8ca9-4c68-9e2d-adb50e719a7e -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
 
@@ -64,7 +64,7 @@
 
 > **Reviewer (Reviewer)**: we have a FIFO on this chip. can we assume a 10-30Hz poll rate instead?
 
-#### **[MUST FIX]** [app/carrier_board.md:L837](file:///Users/daparker/gh/firmware/app/carrier_board.md#L837)
+#### **[MUST FIX]** [app/carrier_board.md:L837](file:///Users/<username>/gh/firmware/app/carrier_board.md#L837)
 <!-- comment-uuid: 77e5adf8-0009-46b2-9dfe-e13639e5fdc9 -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
 
@@ -74,7 +74,7 @@
 
 > **Reviewer (Reviewer)**: I'm confused about this statement bcuz I thought core 1 was the "lower power" CPU that would run the system controller, and after boot, core 0 would be running sensor controller and doing all the ML inference and DSP operations because it had the FPU?
 
-#### **[MUST FIX]** [app/carrier_board.md:L849-L850](file:///Users/daparker/gh/firmware/app/carrier_board.md#L849-L850)
+#### **[MUST FIX]** [app/carrier_board.md:L849-L850](file:///Users/<username>/gh/firmware/app/carrier_board.md#L849-L850)
 <!-- comment-uuid: 445a0d81-1f2a-4531-95b9-3d9ccc62337f -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
 
@@ -85,7 +85,7 @@
 
 > **Reviewer (Reviewer)**: let's swap these- 1F long extra long press initiates BLE pairing, and 1F long press initiates a power down
 
-#### **[MUST FIX]** [app/carrier_board.md:L845-L848](file:///Users/daparker/gh/firmware/app/carrier_board.md#L845-L848)
+#### **[MUST FIX]** [app/carrier_board.md:L845-L848](file:///Users/<username>/gh/firmware/app/carrier_board.md#L845-L848)
 <!-- comment-uuid: b0cbe13a-5c8c-450e-82f9-667279d9924e -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
 
@@ -98,7 +98,7 @@
 
 > **Reviewer (Reviewer)**: I think it's fine to have everything 1FLT and 1LLT do nothing but send BLE GATT notifications
 
-#### **[MUST FIX]** [app/carrier_board.md:L845-L850](file:///Users/daparker/gh/firmware/app/carrier_board.md#L845-L850)
+#### **[MUST FIX]** [app/carrier_board.md:L845-L850](file:///Users/<username>/gh/firmware/app/carrier_board.md#L845-L850)
 <!-- comment-uuid: db54a08e-e8fe-4789-9f50-e1cb6dc44785 -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
 
@@ -113,7 +113,7 @@
 
 > **Reviewer (Reviewer)**: in terms of gesture on/off tones, let's just have a finger down tone that plays for single, double tap, and long press notifications, and another tone for swiping forward or backward
 
-#### **[MUST FIX]** [app/carrier_board.md:L868-L877](file:///Users/daparker/gh/firmware/app/carrier_board.md#L868-L877)
+#### **[MUST FIX]** [app/carrier_board.md:L868-L877](file:///Users/<username>/gh/firmware/app/carrier_board.md#L868-L877)
 <!-- comment-uuid: 8ce91422-5ee7-4e84-b82b-65466e18233a -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
 
@@ -132,7 +132,7 @@ pub struct GestureEvent {
 
 > **Reviewer (Reviewer)**: let's change this into a telemetry event that is logged by the sensor controller when a gesture is detected and add a section on gesture telemetry and FP detection
 
-#### **[MUST FIX]** [app/carrier_board.md:L857-L866](file:///Users/daparker/gh/firmware/app/carrier_board.md#L857-L866)
+#### **[MUST FIX]** [app/carrier_board.md:L857-L866](file:///Users/<username>/gh/firmware/app/carrier_board.md#L857-L866)
 <!-- comment-uuid: 9ff99b58-fa14-46ff-8334-8b45463359bf -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
 
@@ -151,7 +151,7 @@ pub enum GestureType {
 
 > **Reviewer (Reviewer)**: let's reuse https://gitkraken.dev/link/dnNjb2RlOi8vZWFtb2Rpby5naXRsZW5zL2xpbmsvci81MDQyMWEwYWMxOGU5YjkwZTZhMjFlZmMxODVkMGEwOWZlNTY2MDJjL2YvbW9kZWwvc3JjL3R5cGVzLnJzP3VybD1odHRwcyUzQSUyRiUyRmdpdGh1Yi5jb20lMkZwaWNrbGV0aGVjYXQxNDg4LWh1ZSUyRmZpcm13YXJlJmxpbmVzPTI1Ny0yNjU%3D?origin=gitlens pls
 
-#### **[MUST FIX]** [app/carrier_board.md:L883-L899](file:///Users/daparker/gh/firmware/app/carrier_board.md#L883-L899)
+#### **[MUST FIX]** [app/carrier_board.md:L883-L899](file:///Users/<username>/gh/firmware/app/carrier_board.md#L883-L899)
 <!-- comment-uuid: f6606db9-fb26-4162-a2de-6c21fc4e1277 -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
 
@@ -177,7 +177,7 @@ flowchart TD
 
 > **Reviewer (Reviewer)**: instead of a single FSM, can we define FSMs for each gesture state we implement Gesture enum, and introduce state cancellation to prevent FP detections. also, we need to adapt gesture detector to implement each gesture state and support differing gesture sets for rp2040/n947 add support for cap touch to the gesture detector, and have a plan for lowering the gesture detector onto the NPU for the N947 processors. we can define these intermediate states for each gesture primitive: FINGER_DOWN, FINGER_MOVE, FINGER_UP
 
-#### **[MUST FIX]** [app/carrier_board.md:L901](file:///Users/daparker/gh/firmware/app/carrier_board.md#L901)
+#### **[MUST FIX]** [app/carrier_board.md:L901](file:///Users/<username>/gh/firmware/app/carrier_board.md#L901)
 <!-- comment-uuid: 8c479a32-b0c2-4083-9c8d-a64114ffb782 -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
 
@@ -185,15 +185,15 @@ flowchart TD
 
 ## Action Items Checklist
 
-- [x] **[MUST FIX]** [`app/carrier_board.md:L835`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L835): I think we should shoot for >=95% <!-- uuid:acea940c-10e4-4fc0-b758-6e3a281bcfd8 -->
-- [x] **[MUST FIX]** [`app/carrier_board.md:L836`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L836): let's use the same type safe enum gesture type we use for rp2040 <!-- uuid:2ee14223-c270-4375-aed5-d550368a84fb -->
-- [x] **[MUST FIX]** [`app/carrier_board.md:L833`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L833): core 0's sensor controller should be doing this. we just need to specialize it for cap touch devices. I don't see a reason to create a separate polling task for this <!-- uuid:d678adc1-d8bb-4287-afa1-3bdff7e038d8 -->
-- [x] **[MUST FIX]** [`app/carrier_board.md:L833`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L833): we have a FIFO on this chip. can we assume a 10-30Hz poll rate instead? <!-- uuid:f9d898b7-8ca9-4c68-9e2d-adb50e719a7e -->
-- [x] **[MUST FIX]** [`app/carrier_board.md:L837`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L837): I'm confused about this statement bcuz I thought core 1 was the "lower power" CPU that would run the system controller, and after boot, core 0 would be running sensor controller and doing all the ML inference and DSP operations because it had the FPU? <!-- uuid:77e5adf8-0009-46b2-9dfe-e13639e5fdc9 -->
-- [x] **[MUST FIX]** [`app/carrier_board.md:L849-L850`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L849-L850): let's swap these- 1F long extra long press initiates BLE pairing, and 1F long press initiates a power down <!-- uuid:445a0d81-1f2a-4531-95b9-3d9ccc62337f -->
-- [x] **[MUST FIX]** [`app/carrier_board.md:L845-L848`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L845-L848): I think it's fine to have everything 1FLT and 1LLT do nothing but send BLE GATT notifications <!-- uuid:b0cbe13a-5c8c-450e-82f9-667279d9924e -->
-- [x] **[MUST FIX]** [`app/carrier_board.md:L845-L850`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L845-L850): in terms of gesture on/off tones, let's just have a finger down tone that plays for single, double tap, and long press notifications, and another tone for swiping forward or backward <!-- uuid:db54a08e-e8fe-4789-9f50-e1cb6dc44785 -->
-- [x] **[MUST FIX]** [`app/carrier_board.md:L868-L877`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L868-L877): let's change this into a telemetry event that is logged by the sensor controller when a gesture is detected and add a section on gesture telemetry and FP detection <!-- uuid:8ce91422-5ee7-4e84-b82b-65466e18233a -->
-- [x] **[MUST FIX]** [`app/carrier_board.md:L857-L866`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L857-L866): let's reuse https://gitkraken.dev/link/dnNjb2RlOi8vZWFtb2Rpby5naXRsZW5zL2xpbmsvci81MDQyMWEwYWMxOGU5YjkwZTZhMjFlZmMxODVkMGEwOWZlNTY2MDJjL2YvbW9kZWwvc3JjL3R5cGVzLnJzP3VybD1odHRwcyUzQSUyRiUyRmdpdGh1Yi5jb20lMkZwaWNrbGV0aGVjYXQxNDg4LWh1ZSUyRmZpcm13YXJlJmxpbmVzPTI1Ny0yNjU%3D?origin=gitlens pls <!-- uuid:9ff99b58-fa14-46ff-8334-8b45463359bf -->
-- [x] **[MUST FIX]** [`app/carrier_board.md:L883-L899`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L883-L899): instead of a single FSM, can we define FSMs for each gesture state we implement Gesture enum, and introduce state cancellation to prevent FP detections. also, we need to adapt gesture detector to implement each gesture state and support differing gesture sets for rp2040/n947 add support for cap touch to the gesture detector, and have a plan for lowering the gesture detector onto the NPU for the N947 processors. we can define these intermediate states for each gesture primitive: FINGER_DOWN, FINGER_MOVE, FINGER_UP <!-- uuid:f6606db9-fb26-4162-a2de-6c21fc4e1277 -->
-- [x] **[MUST FIX]** [`app/carrier_board.md:L901`](file:///Users/daparker/gh/firmware/app/carrier_board.md#L901): we also need to support tap and long press for the action button. can you add the action button to this section? <!-- uuid:8c479a32-b0c2-4083-9c8d-a64114ffb782 -->
+- [x] **[MUST FIX]** [`app/carrier_board.md:L835`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L835): I think we should shoot for >=95% <!-- uuid:acea940c-10e4-4fc0-b758-6e3a281bcfd8 -->
+- [x] **[MUST FIX]** [`app/carrier_board.md:L836`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L836): let's use the same type safe enum gesture type we use for rp2040 <!-- uuid:2ee14223-c270-4375-aed5-d550368a84fb -->
+- [x] **[MUST FIX]** [`app/carrier_board.md:L833`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L833): core 0's sensor controller should be doing this. we just need to specialize it for cap touch devices. I don't see a reason to create a separate polling task for this <!-- uuid:d678adc1-d8bb-4287-afa1-3bdff7e038d8 -->
+- [x] **[MUST FIX]** [`app/carrier_board.md:L833`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L833): we have a FIFO on this chip. can we assume a 10-30Hz poll rate instead? <!-- uuid:f9d898b7-8ca9-4c68-9e2d-adb50e719a7e -->
+- [x] **[MUST FIX]** [`app/carrier_board.md:L837`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L837): I'm confused about this statement bcuz I thought core 1 was the "lower power" CPU that would run the system controller, and after boot, core 0 would be running sensor controller and doing all the ML inference and DSP operations because it had the FPU? <!-- uuid:77e5adf8-0009-46b2-9dfe-e13639e5fdc9 -->
+- [x] **[MUST FIX]** [`app/carrier_board.md:L849-L850`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L849-L850): let's swap these- 1F long extra long press initiates BLE pairing, and 1F long press initiates a power down <!-- uuid:445a0d81-1f2a-4531-95b9-3d9ccc62337f -->
+- [x] **[MUST FIX]** [`app/carrier_board.md:L845-L848`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L845-L848): I think it's fine to have everything 1FLT and 1LLT do nothing but send BLE GATT notifications <!-- uuid:b0cbe13a-5c8c-450e-82f9-667279d9924e -->
+- [x] **[MUST FIX]** [`app/carrier_board.md:L845-L850`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L845-L850): in terms of gesture on/off tones, let's just have a finger down tone that plays for single, double tap, and long press notifications, and another tone for swiping forward or backward <!-- uuid:db54a08e-e8fe-4789-9f50-e1cb6dc44785 -->
+- [x] **[MUST FIX]** [`app/carrier_board.md:L868-L877`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L868-L877): let's change this into a telemetry event that is logged by the sensor controller when a gesture is detected and add a section on gesture telemetry and FP detection <!-- uuid:8ce91422-5ee7-4e84-b82b-65466e18233a -->
+- [x] **[MUST FIX]** [`app/carrier_board.md:L857-L866`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L857-L866): let's reuse https://gitkraken.dev/link/dnNjb2RlOi8vZWFtb2Rpby5naXRsZW5zL2xpbmsvci81MDQyMWEwYWMxOGU5YjkwZTZhMjFlZmMxODVkMGEwOWZlNTY2MDJjL2YvbW9kZWwvc3JjL3R5cGVzLnJzP3VybD1odHRwcyUzQSUyRiUyRmdpdGh1Yi5jb20lMkZwaWNrbGV0aGVjYXQxNDg4LWh1ZSUyRmZpcm13YXJlJmxpbmVzPTI1Ny0yNjU%3D?origin=gitlens pls <!-- uuid:9ff99b58-fa14-46ff-8334-8b45463359bf -->
+- [x] **[MUST FIX]** [`app/carrier_board.md:L883-L899`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L883-L899): instead of a single FSM, can we define FSMs for each gesture state we implement Gesture enum, and introduce state cancellation to prevent FP detections. also, we need to adapt gesture detector to implement each gesture state and support differing gesture sets for rp2040/n947 add support for cap touch to the gesture detector, and have a plan for lowering the gesture detector onto the NPU for the N947 processors. we can define these intermediate states for each gesture primitive: FINGER_DOWN, FINGER_MOVE, FINGER_UP <!-- uuid:f6606db9-fb26-4162-a2de-6c21fc4e1277 -->
+- [x] **[MUST FIX]** [`app/carrier_board.md:L901`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L901): we also need to support tap and long press for the action button. can you add the action button to this section? <!-- uuid:8c479a32-b0c2-4083-9c8d-a64114ffb782 -->
