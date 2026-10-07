@@ -2,7 +2,7 @@
 
 #![deny(missing_docs)]
 
-use crate::types::{Direction, Gesture};
+use crate::types::{Direction, Gesture, GestureSource};
 
 /// Trait for extensible gesture detection.
 pub trait GestureDetector<Input> {
@@ -165,7 +165,7 @@ impl ProximityGestureDetector {
             self.last_press_duration_us = duration;
             if duration >= DUAL_LONG_PRESS_DURATION_US && !self.gesture_triggered {
                 self.gesture_triggered = true;
-                return Some(Gesture::DualLongPress);
+                return Some(Gesture::DualLongPress(GestureSource::Proximity));
             }
         } else {
             self.press_start_time_us = None;

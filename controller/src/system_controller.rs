@@ -401,7 +401,13 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 {
                     let gest_str = match gesture {
-                        Gesture::DualLongPress => "DualLongPress",
+                        Gesture::DualLongPress(_) => "DualLongPress",
+                        Gesture::SingleTap(_) => "SingleTap",
+                        Gesture::DoubleTap(_) => "DoubleTap",
+                        Gesture::SwipeForward(_) => "SwipeForward",
+                        Gesture::SwipeBack(_) => "SwipeBack",
+                        Gesture::LongPress(_) => "LongPress",
+                        Gesture::ExtraLongPress(_) => "ExtraLongPress",
                     };
                     defmt::info!("SystemController: Gesture input detected: {}", gest_str);
                 }

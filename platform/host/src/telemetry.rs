@@ -168,7 +168,13 @@ fn telemetry_record_to_perfetto_json(rec: &TelemetryRecord, ts: f64) -> Vec<serd
         }
         TelemetryRecord::Gesture(g) => {
             let g_str = match g {
-                model::types::Gesture::DualLongPress => "DualLongPress",
+                model::types::Gesture::DualLongPress(_) => "DualLongPress",
+                model::types::Gesture::SingleTap(_) => "SingleTap",
+                model::types::Gesture::DoubleTap(_) => "DoubleTap",
+                model::types::Gesture::SwipeForward(_) => "SwipeForward",
+                model::types::Gesture::SwipeBack(_) => "SwipeBack",
+                model::types::Gesture::LongPress(_) => "LongPress",
+                model::types::Gesture::ExtraLongPress(_) => "ExtraLongPress",
             };
             events.push(make_telemetry_event(
                 "Gesture Action",

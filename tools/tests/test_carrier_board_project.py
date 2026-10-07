@@ -71,8 +71,8 @@ def test_carrier_board_firmware_document() -> None:
     assert "IQS7222A" in content
     assert "NINA-B312" in content
 
-    # FlexSPI assigned to Core 0; Core 1 for peripherals
-    assert "FlexSPI Port A (Core 0)" in content or "FlexSPI NAND Flash Storage Controller" in content
+    # FlexSPI assigned to Core 1; Core 0 for real-time sensing and audio
+    assert "FlexSPI Port A (Core 1)" in content or "FlexSPI NAND Flash Storage Controller" in content
     assert "Core 1" in content
 
     # 1 Mb/s UART support
@@ -268,8 +268,8 @@ def test_carrier_board_firmware_document() -> None:
     assert "SwipeBack" in content
     assert "LongPress" in content
     assert "ExtraLongPress" in content
-    assert "ButtonTap" in content
-    assert "ButtonLongPress" in content
+    assert "GestureSource" in content
+    assert "ActionButton" in content
     assert "Finger Down Tone" in content
     assert "Swipe Tone" in content
     assert "SW1" in content or "Action Button" in content
