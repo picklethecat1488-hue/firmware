@@ -1121,24 +1121,43 @@ class DashboardServer(ThreadingHTTPServer):
             num = re.sub(r"^(?:WORM|BUG)[-_]", "", w.id, flags=re.IGNORECASE)
             worm_dict[f"WORM-{num}"] = w
             worm_dict[f"BUG-{num}"] = w
+            if num.isdigit():
+                norm_num = f"{int(num):03d}"
+                worm_dict[f"WORM-{norm_num}"] = w
+                worm_dict[f"BUG-{norm_num}"] = w
             worm_dict[w.id] = w
 
         for node in smartlog_nodes:
-            # Canonicalize existing tag IDs
+            # Canonicalize existing tag IDs and filter out non-existent worms
+            retained_tags: List[CommitWormTagModel] = []
             for tag in node.worm_tags:
                 num = re.sub(r"^(?:WORM|BUG)[-_]", "", tag.id, flags=re.IGNORECASE)
-                tag.id = f"WORM-{num}"
-                if tag.id in worm_dict:
-                    w = worm_dict[tag.id]
+                canonical_id = f"WORM-{int(num):03d}" if num.isdigit() else f"WORM-{num}"
+                if canonical_id in worm_dict:
+                    w = worm_dict[canonical_id]
+                    tag.id = canonical_id
                     tag.title = w.title
                     tag.status = w.status.value
                     tag.severity = w.severity.value
+                    retained_tags.append(tag)
+                else:
+                    md_path = self.repo_root / "feedback" / f"WORM_{num}.md"
+                    if not md_path.exists() and num.isdigit():
+                        md_path = self.repo_root / "feedback" / f"WORM_{int(num):03d}.md"
+                    if not md_path.exists() and num.isdigit():
+                        md_path = self.repo_root / "feedback" / f"WORM_{int(num)}.md"
+                    if not md_path.exists():
+                        md_path = self.repo_root / "feedback" / f"BUG_{num}.md"
+                    if md_path.exists():
+                        tag.id = canonical_id
+                        retained_tags.append(tag)
+            node.worm_tags = retained_tags
 
             worm_ids = re.findall(r"\b((?:WORM|BUG)[_-]\d+)\b", node.subject, re.IGNORECASE)
             existing_ids = {t.id for t in node.worm_tags}
             for wid in worm_ids:
                 num = re.sub(r"^(?:WORM|BUG)[-_]", "", wid, flags=re.IGNORECASE)
-                canonical_id = f"WORM-{num}"
+                canonical_id = f"WORM-{int(num):03d}" if num.isdigit() else f"WORM-{num}"
                 if canonical_id not in existing_ids:
                     if canonical_id in worm_dict:
                         w = worm_dict[canonical_id]
@@ -1150,16 +1169,43 @@ class DashboardServer(ThreadingHTTPServer):
                                 severity=w.severity.value,
                             )
                         )
+                        existing_ids.add(canonical_id)
                     else:
-                        node.worm_tags.append(
-                            CommitWormTagModel(
-                                id=canonical_id,
-                                title=canonical_id,
-                                status="OPEN",
-                                severity="LOW",
+                        md_path = self.repo_root / "feedback" / f"WORM_{num}.md"
+                        if not md_path.exists() and num.isdigit():
+                            md_path = self.repo_root / "feedback" / f"WORM_{int(num):03d}.md"
+                        if not md_path.exists() and num.isdigit():
+                            md_path = self.repo_root / "feedback" / f"WORM_{int(num)}.md"
+                        if not md_path.exists():
+                            md_path = self.repo_root / "feedback" / f"BUG_{num}.md"
+                        if md_path.exists():
+                            status = "OPEN"
+                            title = canonical_id
+                            severity = "LOW"
+                            try:
+                                content = md_path.read_text(encoding="utf-8", errors="replace")
+                                for line in content.splitlines():
+                                    if line.startswith("# ") and ("WORM-" in line or "BUG-" in line):
+                                        title = line.split("]", 1)[-1].strip()
+                                    if line.startswith("- **Status**:"):
+                                        parts = line.split("`")
+                                        if len(parts) >= 2:
+                                            status = parts[1].strip()
+                                    if line.startswith("- **Severity**:"):
+                                        parts = line.split("`")
+                                        if len(parts) >= 2:
+                                            severity = parts[1].strip()
+                            except Exception:
+                                pass
+                            node.worm_tags.append(
+                                CommitWormTagModel(
+                                    id=canonical_id,
+                                    title=title,
+                                    status=status,
+                                    severity=severity,
+                                )
                             )
-                        )
-                    existing_ids.add(canonical_id)
+                            existing_ids.add(canonical_id)
 
         # Ensure file watcher syncs any newly placed or edited CR feedback files (BUG-236)
         if hasattr(self, "review_server") and self.review_server:

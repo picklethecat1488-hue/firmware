@@ -867,12 +867,14 @@ class GitEngine:
                 )
             else:
                 md_path = self.repo_root / "feedback" / f"WORM_{num}.md"
+                if not md_path.exists() and num.isdigit():
+                    md_path = self.repo_root / "feedback" / f"WORM_{int(num)}.md"
                 if not md_path.exists():
                     md_path = self.repo_root / "feedback" / f"BUG_{num}.md"
-                status = "OPEN"
-                title = ""
-                severity = "LOW"
                 if md_path.exists():
+                    status = "OPEN"
+                    title = ""
+                    severity = "LOW"
                     try:
                         content = md_path.read_text(encoding="utf-8", errors="replace")
                         for line in content.splitlines():
@@ -888,14 +890,14 @@ class GitEngine:
                                     severity = parts[1].strip()
                     except Exception:
                         pass
-                tags.append(
-                    CommitWormTagModel(
-                        id=cid,
-                        title=title,
-                        status=status,
-                        severity=severity,
+                    tags.append(
+                        CommitWormTagModel(
+                            id=cid,
+                            title=title or cid,
+                            status=status,
+                            severity=severity,
+                        )
                     )
-                )
         return tags
 
     def get_repo_web_url(self) -> Optional[str]:
