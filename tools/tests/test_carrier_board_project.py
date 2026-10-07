@@ -105,6 +105,18 @@ def test_carrier_board_firmware_document() -> None:
     assert "service endpoint" in content.lower() or "Service Endpoint" in content
     assert "telemetry" in content.lower()
 
+    # BLE latency and throughput evaluation across scenarios (CR-962579d)
+    assert "BLE Latency, Throughput & Connection Parameter Evaluation across Operating Scenarios" in content
+    assert "`Active` (Interactive / Telemetry)" in content
+    assert "`Sleep` (Low-Power Sensing)" in content
+    assert "`PowerDown` (Deep Standby)" in content
+    assert "`OTA` (Firmware & Model Updates)" in content
+    assert "LE 2M PHY" in content and "LE 1M PHY" in content
+    assert "Slave Latency" in content
+    assert "Net Application Throughput" in content
+    assert "55.0 – 75.0 kB/s" in content
+    assert "40.0 – 60.0 kB/s" in content
+
     # Option 3: Embassy Multi-Executor AMP
     assert "Option 3" in content or "Embassy Multi-Executor" in content
     assert "AMP" in content
@@ -276,6 +288,12 @@ def test_carrier_board_firmware_document() -> None:
     assert "10–30 Hz" in content or "10-30 Hz" in content
     assert "FINGER_DOWN" in content and "FINGER_MOVE" in content and "FINGER_UP" in content
     assert "GestureDetector" in content
+
+    # Touchpad proximity detection wake to Active (CR-962579d / ffaad707)
+    assert "Touchpad Proximity Detection" in content
+    assert "awakens system directly to `Active`" in content
+    assert "proximity to the touchpad" in content.lower()
+    assert "pre-warming UI and DSP pipeline prior to physical contact" in content
 
     # 4. Hardware FIFO buffering, on-chip high-resolution timer, and sensor fusion
     assert "FIFO" in content

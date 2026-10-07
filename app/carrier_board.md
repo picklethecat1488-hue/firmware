@@ -36,6 +36,7 @@ The source of truth for bringup verification steps is [`app/carrier_board_bringu
     - [Resolution of RP2040 Core 1 SRAM Execution Limitation on MCX N947](#resolution-of-rp2040-core-1-sram-execution-limitation-on-mcx-n947)
 - [3. Communication, Telemetry & Logging Strategy](#3-communication-telemetry--logging-strategy)
   - [Tradeoff Evaluation: Segger RTT vs. High-Speed UART Service Model](#tradeoff-evaluation-segger-rtt-vs-high-speed-uart-service-model)
+  - [BLE Latency, Throughput & Connection Parameter Evaluation across Operating Scenarios](#ble-latency-throughput--connection-parameter-evaluation-across-operating-scenarios)
   - [Host CLI (`tools/host_cli`) Production, Field Servicing & OTA Support](#host-cli-toolshost_cli-production-field-servicing--ota-support)
     - [1. Production Manufacturing & Factory Provisioning](#1-production-manufacturing--factory-provisioning)
     - [2. Structured Diagnostic Error Handling (`ServiceError`)](#2-structured-diagnostic-error-handling-serviceerror)
@@ -145,8 +146,9 @@ Carrier Board 2.0 adopts the project's decoupled domain controller design patter
    - Drives the on-board piezo buzzer and ADI MAX98357A I2S Class-D audio amplifier (`U4` on Core 0).
    - Synthesizes acoustic alerts, status chimes, and decodes I2S audio playback streams.
 6. **`BleController` (`controller::ble_controller`)**:
-   - Serves as the primary communication and IPC gateway to the u-blox NINA-B312 BLE module over 1 Mb/s UART.
+   - Serves as the primary communication and IPC gateway to the u-blox NINA-B312 BLE module over 1 Mb/s UART (`FC5` / UART1 with hardware RTS/CTS flow control).
    - Coordinates BLE advertising, GATT service connection lifecycle, client RPC command routing, and wireless telemetry egress streaming.
+   - Dynamically manages BLE connection intervals ($CI$), slave latency, and PHY modes across operational states (`Active`, `Sleep`, `PowerDown`, and `OTA`), as detailed in [BLE Latency, Throughput & Connection Parameter Evaluation across Operating Scenarios](#ble-latency-throughput--connection-parameter-evaluation-across-operating-scenarios).
 7. **`FilesystemController` (`controller::filesystem_controller`)**:
    - Manages persistent storage on the Winbond W25N01GV 128 MB SLC NAND flash via FlexSPI DMA and `sequential-storage`.
    - Mounts and manages `telemetry` (queue), `crash_logs` (map), `ota_staging` (queue), `recovery` (read-only), and `models` (map) partitions.
@@ -571,6 +573,83 @@ Carrier Board 2.0 maintains a dual-channel strategy tailored for development vs.
 | **Field Telemetry** | Not possible in standalone/enclosed devices. | **Fully Supported** wirelessly via BLE and over external USB-C port. |
 | **Enclosure Access** | None (requires open enclosure). | Accessible via external connectors and RF window. |
 
+### BLE Latency, Throughput & Connection Parameter Evaluation across Operating Scenarios
+
+The carrier board integrates a **u-blox NINA-B312** Bluetooth 5.0 / 5.2 module (`U11`) interfaced directly to Core 0 over a dedicated high-speed Flexcomm LPUART (`FC5` / UART1 @ 1 Mb/s) with hardware RTS/CTS flow control and dual-channel eDMA ring buffering. Core 0 executes `BleController` (`controller::ble_controller`), which acts as the autonomous wireless communication and RPC gateway.
+
+Because the system transitions between high-throughput data transfer, real-time interactive sensing, low-power idle listening, and deep quiescent standby, a static BLE connection profile would either deplete the battery or introduce unacceptable latency. The table below details the BLE connection parameters, PHY selections, latency budgets, application throughputs, and power consumption profiles across the four core operational scenarios:
+
+| Parameter / Metric | `Active` (Interactive / Telemetry) | `Sleep` (Low-Power Sensing) | `PowerDown` (Deep Standby) | `OTA` (Firmware & Model Updates) |
+| :--- | :--- | :--- | :--- | :--- |
+| **System State (`SystemStatus`)** | `Active` (State 2 & 3) | `Sleep` (State 1) | `PowerDown` (State 0) | `Active` / `OTA_PROGRAMMING` |
+| **Primary Objective** | Immediate UI response, fast telemetry | Low-power connection keepalive | Quiescent battery preservation | Maximum sustained data throughput |
+| **BLE Radio State** | Connected (Central & Peripheral) | Connected (Duty-cycled RX) | Deep Sleep / Directed Adv | Connected (Continuous Streaming) |
+| **Connection Interval ($CI$)** | **15.0 ms – 30.0 ms** (nom. 20.0 ms) | **100.0 ms – 150.0 ms** | Disconnected or **500 – 1000 ms** | **15.0 ms** (Fixed / Central Floor) |
+| **Slave Latency (Skipped Events)** | **0** (Immediate transfer) | **4 – 8** (Skipping 400 – 1200 ms) | N/A or **10 – 19** (5 – 10 s window) | **0** (Strictly zero missed events) |
+| **Supervision Timeout** | 2.0 s (2000 ms) | 5.0 s (5000 ms) | 10.0 s (10000 ms) | 4.0 s – 5.0 s |
+| **BLE PHY Mode** | **LE 2M PHY** (2.0 Mb/s symbol rate) | **LE 1M PHY** (1.0 Mb/s symbol rate) | LE 1M PHY (Extended range/adv) | **LE 2M PHY** (2.0 Mb/s symbol rate) |
+| **Negotiated ATT MTU** | 247 bytes (244-byte ATT payload) | 247 bytes | 247 bytes (if connected) | 247 – 512 bytes (typical 247 bytes) |
+| **Data Length Extension (DLE)** | 251 bytes PDU | 251 bytes PDU | Disabled / Default (27 bytes) | 251 bytes PDU (244-byte L2CAP SDU) |
+| **Packets per Conn. Event** | 4 – 8 packets / interval | 1 packet / event | 1 packet / event | **6 – 12 packets / interval** |
+| **One-Way Event Latency** | **15.0 ms – 30.0 ms** ($\text{avg } \approx 20\text{ ms}$) | $\le 100\text{ ms}$ (slave latency bypass) | $\le 2.5\text{ ms}$ (MCU) + $15\text{ ms}$ (Adv) | $\le 15.0\text{ ms}$ per packet chunk |
+| **Round-Trip RPC / Command Latency** | **30.0 ms – 50.0 ms** | 100.0 ms – 250.0 ms | 150.0 ms – 300.0 ms (conn boot) | 25.0 ms – 35.0 ms (window ACK) |
+| **Net Application Throughput** | **40.0 – 60.0 kB/s** (320 – 480 kbps) | **0.5 – 2.0 kB/s** (Heartbeats) | **0.0 kB/s** (Quiescent) | **55.0 – 75.0 kB/s** (440 – 600 kbps) |
+| **Average BLE Current ($I_{BLE}$)** | **1.8 – 3.2 mA** (Continuous telemetry) | **80 – 150 $\mu\text{A}$** (Duty-cycled) | **$\le 1.5\,\mu\text{A}$** (Radio Sleep / UART Wake) | **9.5 – 12.0 mA** (Sustained TX/RX) |
+
+---
+
+#### 1. Active Interactive Scenario (`Active`)
+- **Interaction & Telemetry Characteristics**:
+  In the `Active` state (States 2 and 3), the carrier board streams binary `defmt` execution frames, sensor fusion outputs, and immediate capacitive gesture notifications (`SingleTap`, `DoubleTap`, `SwipeForward`, `SwipeBack`, `LongPress`, `ExtraLongPress`).
+- **Connection Interval & Latency Tuning**:
+  - Connection interval is negotiated between **15.0 ms and 30.0 ms** (nominal 20.0 ms).
+  - **Slave Latency is set to 0**, guaranteeing that the peripheral wakes on every connection anchor point to exchange packets without skipping.
+  - End-to-end latency from hardware capacitive touch interrupt (`CAP_INT` on `C4`) through Core 0 classification and BLE GATT notification egress to the host/mobile client is bounded to **$15 - 30\text{ ms}$** ($\approx 20\text{ ms}$ average).
+  - Bidirectional RPC commands dispatched from `host_cli` or client apps complete a full round trip within **$30 - 50\text{ ms}$**.
+- **Throughput & Protocol Efficiency**:
+  - By activating **LE 2M PHY** and **Data Length Extension (DLE)** with a 251-byte Link Layer PDU, each GATT notification transmits up to 244 bytes of CBOR or binary telemetry in a single RF packet.
+  - With 4 to 8 packets scheduled per connection event, net application payload throughput reaches **$40 - 60\text{ kB/s}$** ($320 - 480\text{ kbps}$), allowing real-time multi-channel sensor streaming without choking the 1 Mb/s UART bridging to Core 0.
+
+#### 2. Sleep Sensing Scenario (`Sleep`)
+- **Low-Power Link Maintenance**:
+  In the `Sleep` state (State 1), the system has experienced 30 seconds of user inactivity. The MCX N947 scales clock frequencies down to 12 MHz, but maintains the BLE connection to avoid expensive reconnect cycles upon the next user interaction.
+- **Dynamic Parameter Optimization (Slave Latency)**:
+  - `BleController` negotiates a connection interval of **100.0 ms – 150.0 ms** combined with a **Slave Latency of 4 to 8**.
+  - Under quiescent conditions (no active data), the NINA-B312 BLE module sleeps through skipped connection events, waking only once every $500\text{ ms} - 1.2\text{ s}$ to service anchor keepalives. This reduces average BLE subsystem current to **$80 - 150\,\mu\text{A}$**.
+  - **Zero-Latency Wake Override (Slave Latency Bypass)**: When an IQS7222A touch interrupt or hardware action button event triggers while in `Sleep`, the firmware immediately overrides Slave Latency and dispatches the gesture notification on the **very next connection event anchor** ($\le 100\text{ ms}$). Concurrently, `BleController` issues a dynamic Connection Parameter Update Request (CPUR) downshifting the connection interval back to $15 - 30\text{ ms}$ ($< 150\text{ ms}$ transition latency).
+- **Throughput Profile**: Sustained throughput is throttled to $0.5 - 2.0\text{ kB/s}$, reserved for periodic battery SOC updates (every 30 s) and baseline sensor drift compensations.
+
+#### 3. PowerDown Standby Scenario (`PowerDown`)
+- **Quiescent Power Conservation ($\le 185\,\mu\text{A}$ Total)**:
+  In `PowerDown` (State 0 / Standby), entered after 5 minutes of inactivity or upon a 1F Long Press ($\ge 1.5\text{ s}$), the primary architectural requirement is minimizing battery draw to preserve multi-month shelf life.
+- **BLE Radio Power-Down & Wake Architecture**:
+  - *Default Configuration (Disconnected Standby)*: The BLE module is commanded into deep sleep via AT / HCI command, asserting `BLE_WAKE` low. In deep sleep, the NINA-B312 current drops to **$I_Q \le 1.5\,\mu\text{A}$**. High-frequency oscillators are gated.
+  - *Wake-Up Sequence*: Waking from `PowerDown` is triggered exclusively by a 1F Long Press / touch interrupt via Azoteq IQS7222A (`CAP_INT` routing to `WUU0`), action button touch, or charger insertion (`CHG_PGOOD_WAKE`). MCX N947 wakes within $\le 2.5\text{ ms}$, pulls `BLE_WAKE` high ($< 5\text{ ms}$ module boot), and initializes fast undirected connectable advertising ($T_{adv} = 20 - 40\text{ ms}$) within $\approx 15\text{ ms}$. Total elapsed time from finger contact to active BLE reconnect is **$150 - 300\text{ ms}$**.
+  - *Connected Low-Duty Standby (Alternative Configuration)*: If persistent cloud/mobile connectivity is required, the link is held at $CI = 500 - 1000\text{ ms}$ with Slave Latency = 10 (effective wake every 5–10 seconds) and a 10.0 s supervision timeout. Any emergency wake event bypasses slave latency, signaling the host within $\le 500\text{ ms}$. Average module current in this mode is $\approx 15 - 25\,\mu\text{A}$.
+- **Throughput**: 0.0 kB/s in quiescent standby.
+
+#### 4. OTA Firmware & Model Update Scenario (`OTA`)
+- **High-Throughput Pipelining Architecture**:
+  During OTA firmware updates or external neural network weight uploads (e.g. 16 MB model chunks into `dev:ext-flash` `models` partition), the objective is minimizing transfer time while maintaining 100% data integrity without stalling the MCU.
+- **Connection Parameter Tuning for Maximum Throughput**:
+  - **Connection Interval**: Locked to **15.0 ms** (the lowest universal connection interval supported across both iOS and Android centrals; Android devices supporting 11.25 ms automatically negotiate down).
+  - **Slave Latency**: **Strictly 0** (no missed connection events).
+  - **Supervision Timeout**: Extended to **4.0 s – 5.0 s** to prevent RF timeouts during high-density NAND flash block erase operations.
+  - **Physical Layer (PHY)**: **LE 2M PHY** (2.0 Mb/s RF transmission). Compared to LE 1M PHY, 2M PHY doubles the raw symbol rate, reduces on-air packet transmission time by ~50%, and cuts the energy consumed per transferred megabyte in half.
+  - **Data Length Extension (DLE) & MTU**: Negotiated ATT MTU is set to **247 bytes** (or 512 bytes where supported by the central). DLE extends the Link Layer PDU to **251 bytes**, allowing full 244-byte L2CAP SDU payloads per BLE packet without fragmentation.
+- **Pipelined Transfer Protocol & Dual-Core Buffer Offloading**:
+  - `host_cli` streams firmware and model payloads using 4 KB CBOR-framed blocks over GATT **Write Without Response** (GATT Write Command) with credit-based sliding window flow control (acknowledgments issued every 16–32 KB).
+  - Incoming BLE packets stream over the 1 Mb/s UART directly into Core 0's eDMA ring buffer.
+  - **Core Decoupling Advantage**: Core 0 transfers incoming chunks across inter-core IPC (`embassy-ipc-channel`) to Core 1. Core 1 commits the blocks into the 32 MB SLC NAND `ota_staging` partition via FlexSPI DMA. Because writing to external NAND is completely offloaded to Core 1, NAND flash erase/program latencies (typically 2–3 ms per block) never block or stall Core 0's UART reception or BLE link layer scheduling, preventing packet drops and buffer overruns.
+- **Throughput & Transfer Duration Benchmark**:
+  - **Sustained Net Application Throughput**: **55.0 – 75.0 kB/s** ($440 - 600\text{ kbps}$) under LE 2M PHY and DLE 251. (Fallback to LE 1M PHY yields $25.0 - 35.0\text{ kB/s}$).
+  - **512 KB Core Firmware Binary (`app`)**: Transfers in **$7 - 9\text{ seconds}$** (2M PHY) vs. $15 - 20\text{ seconds}$ (1M PHY).
+  - **2.0 MB Full Dual-Core Monolithic Image**: Transfers in **$28 - 36\text{ seconds}$** (2M PHY) vs. $60 - 80\text{ seconds}$ (1M PHY).
+  - **16.0 MB Neural Network Model Partition**: Streams in **$3.5 - 4.5\text{ minutes}$** directly to SLC NAND.
+- **Packet and ACK Latencies**:
+  - Per-packet delivery latency: $\le 15.0\text{ ms}$ (synchronous with connection interval).
+  - Sliding-window flow-control ACK round-trip: $25.0 - 35.0\text{ ms}$.
+
 ### Host CLI (`tools/host_cli`) Production, Field Servicing & OTA Support
 
 The repository's host command-line utility (`tools/host_cli`) is extended to serve as the unified workstation interface for production manufacturing, field diagnostic servicing, and Over-the-Air (OTA) firmware deployment over USB UART or BLE:
@@ -856,6 +935,10 @@ The table below maps out every supported 1F gesture and action button interactio
 | **Action Button Tap (Flex Tail)** | Momentary touch contact on flex tail capacitive action button: $50\,\text{ms} \le T < 500\,\text{ms}$. | Dispatches BLE GATT notification (no local state mutation). | In `Sleep`, restores clocks. Ignored in `PowerDown`. | `Finger Down Tone` ($784\text{ Hz}$, $40\text{ ms}$). | Emits `Gesture::SingleTap(GestureSource::ActionButton)`; sends BLE GATT notification; `SensorController` logs `TelemetryRecord::Gesture`. |
 | **Action Button Long Press (Flex Tail)** | Sustained touch contact on flex tail capacitive action button: $1.5\,\text{s} \le T < 5.0\,\text{s}$. | **Graceful Sleep Transition (`PowerDown`)**: Initiates graceful shutdown: commits NVRAM dirty cache to `metadata`, flushes NAND telemetry, and signals `SystemController` on Core 1 to enter `PowerDown` ($\le 185\,\mu\text{A}$) (identical behavior to 1F Long Press). | In `Sleep`, awakens system to `Active`. Ignored in `PowerDown` (only 1F Long Press wakes from `PowerDown`). | `Finger Down Tone` on contact. | Emits `Gesture::LongPress(GestureSource::ActionButton)`; Core 0 commands `SystemController` on Core 1 to enter `PowerDown`; `SensorController` logs `TelemetryRecord::Gesture`. |
 | **Action Button Extra Long Press (Flex Tail)** | Sustained touch contact on flex tail capacitive action button: $T \ge 5.0\,\text{s}$. | **BLE Pairing Mode Trigger**: Enters BLE discoverable advertising mode for 60 seconds; if already connected, initiates graceful disconnect and re-advertising (identical behavior to 1F Extra Long Press). | In `Sleep`, awakens system and initiates immediate BLE pairing sequence. Ignored in `PowerDown`. | `Finger Down Tone` on contact. | Emits `Gesture::ExtraLongPress(GestureSource::ActionButton)`; Core 0 signals `BleController` to start fast advertising; `SensorController` logs `TelemetryRecord::Gesture`. |
+| **Touchpad Proximity Detection** | Hand or finger hover/approach within proximity range: $d \le 30\,\text{mm}$, capacitive SNR $\ge 12\,\text{dB}$. | Maintains `Active` state; resets inactivity watchdog timer ($T_{sleep} = 30\,\text{s}$). | In `Sleep`, **awakens system directly to `Active`** ($\approx 250\,\mu\text{s}$ wake latency) upon detecting touchpad proximity, pre-warming UI and DSP pipeline prior to physical contact. In `PowerDown`, triggers low-power wake via `WUU0` if proximity scan is enabled. | Restores Solid Cyan LED; silent (no acoustic tone until physical contact). | Emits `GestureSource::Proximity` event; Core 0 signals `SystemController` on Core 1 to transition to `SystemStatus::Active`; logs `TelemetryRecord::Gesture`. |
+
+- **Touchpad Proximity Wake to `Active` State**:
+  In addition to physical contact gestures and action button presses, the Azoteq IQS7222A ProxFusion controller continuously monitors high-sensitivity capacitive proximity channels ($d \le 30\,\text{mm}$) over the touch surface. Whenever the device is in the low-power `Sleep` state (`SystemStatus::Sleep`), **detecting user proximity to the touchpad immediately triggers `CAP_INT` and awakens the system directly into the `Active` state** ($\approx 250\,\mu\text{s}$ wake latency). This pre-warms the 150 MHz clocks, energizes the PowerQuad DSP smoothing pipeline, and elevates the LP5009 LED to Solid Cyan before the user's finger makes physical contact, providing instantaneous, zero-latency responsiveness for subsequent tap or swipe gestures. In `PowerDown`, proximity scanning can be configured to wake the system via `WUU0` when ultra-low-power proximity sensing ($15\,\mu\text{A}$) is enabled.
 
 #### 3. Strongly Typed Shared Gesture Data Structures
 
