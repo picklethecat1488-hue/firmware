@@ -259,14 +259,23 @@ def test_carrier_board_firmware_document() -> None:
     assert "1F Swipe Back" in content
     assert "1F Long Press" in content
     assert "1F Extra Long Press" in content
-    assert "pub enum GestureType" in content
-    assert "pub struct GestureEvent" in content
+    assert "model::types::Gesture" in content or "enum Gesture" in content
+    assert "TelemetryRecord::Gesture" in content
+    assert "DualLongPress" in content
     assert "SingleTap" in content
     assert "DoubleTap" in content
     assert "SwipeForward" in content
     assert "SwipeBack" in content
     assert "LongPress" in content
     assert "ExtraLongPress" in content
+    assert "ButtonTap" in content
+    assert "ButtonLongPress" in content
+    assert "Finger Down Tone" in content
+    assert "Swipe Tone" in content
+    assert "SW1" in content or "Action Button" in content
+    assert "10–30 Hz" in content or "10-30 Hz" in content
+    assert "FINGER_DOWN" in content and "FINGER_MOVE" in content and "FINGER_UP" in content
+    assert "GestureDetector" in content
 
     # 4. Hardware FIFO buffering, on-chip high-resolution timer, and sensor fusion
     assert "FIFO" in content

@@ -3297,3 +3297,79 @@ def test_regression_bug_274_workstations_modal_windows() -> None:
     assert "✕" in worm_text
     assert "closeWorkstation()" in worm_text
     assert "window.parent.closeWorkstationModal()" in worm_text
+
+
+def test_regression_worm_015_workstation_modal_dom_hierarchy_and_rendering() -> None:
+    """Verify WORM-015: workstationModal is NOT nested inside modalBranchPicker or hidden modals."""
+    from bs4 import BeautifulSoup
+    from html.parser import HTMLParser
+    import jinja2
+    from dashboard.model.vcs import BranchInfoModel, DiffViewSessionModel
+
+    tpl_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(tpl_dir)),
+        trim_blocks=True,
+        lstrip_blocks=True,
+        autoescape=False,
+    )
+    template = env.get_template("diff_view.html.j2")
+
+    dummy_session = DiffViewSessionModel(
+        title="VCS Dashboard",
+        current_user="picklethecat1488-hue",
+        active_commit="working",
+        branches=[
+            BranchInfoModel(name="main", is_current=True, is_remote=False),
+        ],
+        smartlog_tree=[],
+        working_files=[],
+        selected_commits=[],
+    )
+    rendered_html = template.render(
+        session=dummy_session,
+        active_branch="main",
+        active_commit="working",
+    )
+
+    soup = BeautifulSoup(rendered_html, "html.parser")
+
+    # 1. workstationModal must exist
+    workstation_modal = soup.find(id="workstationModal")
+    assert workstation_modal is not None, "workstationModal not found in rendered diff_view"
+
+    # 2. modalBranchPicker must exist
+    branch_modal = soup.find(id="modalBranchPicker")
+    assert branch_modal is not None, "modalBranchPicker not found in rendered diff_view"
+
+    # 3. workstationModal must NOT be a child or descendant of modalBranchPicker or any other modal
+    assert branch_modal.find(id="workstationModal") is None, (
+        "workstationModal is incorrectly nested inside modalBranchPicker, causing it to be hidden by display: none"
+    )
+    for overlay in soup.find_all(class_="quake-modal-overlay"):
+        if overlay.get("id") != "workstationModal":
+            assert overlay.find(id="workstationModal") is None, (
+                f"workstationModal is incorrectly nested inside {overlay.get('id')}"
+            )
+
+    # 4. Check for tag balance (no unclosed div tags leaking through the template)
+    class DivBalanceChecker(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.div_depth = 0
+            self.mismatches = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "div":
+                self.div_depth += 1
+
+        def handle_endtag(self, tag):
+            if tag == "div":
+                self.div_depth -= 1
+                if self.div_depth < 0:
+                    self.mismatches.append("Extra closing </div> encountered")
+
+    checker = DivBalanceChecker()
+    checker.feed(rendered_html)
+    assert checker.div_depth == 0, f"Unbalanced <div> tags in diff_view.html.j2: depth is {checker.div_depth}"
+    assert len(checker.mismatches) == 0, f"Encountered div mismatches: {checker.mismatches}"

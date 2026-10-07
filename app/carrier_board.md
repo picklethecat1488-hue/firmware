@@ -105,7 +105,8 @@ The Carrier Board 2.0 is a modular hardware evaluation, sensor fusion, and telem
 | **`U7`** | **ADI MAX17048** | 1-Cell Li+ ModelGauge Fuel Gauge | Core `I2C0` (`0x36`) | Precision voltage, state of charge (SoC), alert interrupt (`G4`). |
 | **`U6`** | **TI LP5009** | 9-Channel Logarithmic RGB LED Driver | Core `I2C0` (`0x14`) | Low-power breathing, charge animations, offloading MCU core. |
 | **`U9`** | **FTDI FT232RNQ** | High-Speed USB 2.0 to UART Serial Bridge | `FC1` UART0 (115.2k - 1 Mb/s)| Diagnostic bringup shell, 1Mb/s telemetry, UART service endpoint. |
-| **`U2`** | **Azoteq IQS7222A**| ProxFusion Cap-Touch & Proximity IC | Touch `I2C1` (`0x44`)| Single-finger (1 finger) touch tracking, tap/slider gestures, and proximity sensing (`CAP_INT` on `C4`, Core 1). |
+| **`U2`** | **Azoteq IQS7222A**| ProxFusion Cap-Touch & Proximity IC | Touch `I2C1` (`0x44`)| Single-finger (1 finger) touch tracking, tap/slider gestures, and proximity sensing (`CAP_INT` on `C4`, Core 0 `SensorController`). |
+| **`SW1`** | **Tactile Switch** | Hardware Action Button | GPIO (`P1_2` / `E4`) | User input action trigger (tap, long press) with hardware debouncing. |
 | **`U4`** | **ADI MAX98357A** | 3.2W I2S Class-D Mono Audio Amplifier | `I2S` Audio (`B14`/`A14`)| Chime audio feedback, filterless I2S Class-D drive on Core 1. |
 | **`U11`**| **u-blox NINA-B312**| Bluetooth Low Energy 5.0 Module | UART1 (1 Mb/s) | Bidirectional BLE: Telemetry streaming & GATT service endpoint. |
 | **`Q2`–`Q4`**| **TI TPS22918**| 5.5V, 2A Load Switches | GPIO (`L4`, `L5`, `M4`)| Power-gating Audio (`Q2`), Sensors (`Q3`), and Debug Bridge (`Q4`). |
@@ -125,17 +126,17 @@ Carrier Board 2.0 adopts the project's decoupled domain controller design patter
    - Renders visual patterns for boot (`BOOTING`, `BOOT_FAILED`), wireless status (`BLE_PAIRING`, `BLE_CONNECTED`), runtime modes (`ACTIVE_RUNNING`, `CAMERA_ACTIVE`), thermal alerts (`OVERTEMP_ALERT`), and OTA updates (`OTA_PROGRAMMING`).
 4. **`SensorController` (`controller::sensor_controller`)**:
    - Serves as the unified canonical controller for all current and future sensor peripherals (environmental, ambient light, IMU/inertial, optical/ToF, capacitive touch, proximity).
-   - Manages the Azoteq IQS7222A capacitive touch and proximity sensor (`I2C1` @ `0x44` on Core 1).
+   - Manages the Azoteq IQS7222A capacitive touch and proximity sensor (`I2C1` @ `0x44` on Core 0).
    - **Hardware FIFO Buffering & Low-Power Coprocessor Scheduling**:
      - Azoteq IQS7222A capacitive touch sensing and motion sensor peripherals stream readings into internal on-chip hardware FIFOs (up to 32 samples deep).
-     - Hardware pin interrupts (`CAP_INT` on `C4`) fire only when the hardware FIFO reaches a configurable watermark threshold (e.g. 75% full) or an inactivity flush timeout expires.
-     - This permits Core 1 to remain in deep low-power sleep (WFI / power-down) during sampling intervals, waking only when a burst batch of samples is ready, drastically reducing active processor energy.
+     - Hardware pin interrupts (`CAP_INT` on `C4`) trigger Core 0's `SensorController` at an adaptive 10–30 Hz poll rate (nominal 20 Hz) when the hardware FIFO reaches a watermark threshold or on touch activity.
+     - This permits Core 0 to sleep between FIFO batch transfers and allows Core 1 (running `SystemController`) to remain in deep low-power supervisory sleep (WFI / power-down), waking only on validated state transitions, drastically reducing active processor energy.
    - **On-Chip High-Resolution Timer (`CTIMER`) Microsecond Timestamp Integration**:
-     - To ensure cycle-accurate sensor fusion without CPU polling, Core 1 integrates the MCX N947 on-chip 32-bit Standard Counter/Timer (`CTIMER0`..`CTIMER4`).
-     - Upon waking from a FIFO watermark interrupt, Core 1 reads the running `CTIMER` microsecond timestamp counter. The inter-sample time step ($\Delta t$) is integrated backward across each sample in the FIFO batch using the known hardware sample clock rate and hardware timer delta:
+     - To ensure cycle-accurate sensor fusion without CPU polling, Core 0 integrates the MCX N947 on-chip 32-bit Standard Counter/Timer (`CTIMER0`..`CTIMER4`).
+     - Upon waking from a FIFO watermark interrupt, Core 0 reads the running `CTIMER` microsecond timestamp counter. The inter-sample time step ($\Delta t$) is integrated backward across each sample in the FIFO batch using the known hardware sample clock rate and hardware timer delta:
        $$\Delta t_{batch} = t_{interrupt} - t_{previous\_batch}, \quad \Delta t_{sample} = \frac{\Delta t_{batch}}{N_{samples}}$$
    - **FIFO Buffering in the Sensor Fusion Pipeline**:
-     - Batched, timestamped samples are staged directly into the **Core 1 Sensor Fusion Arena** (`0x2002_0000`, 64 KB).
+     - Batched, timestamped samples are staged directly into the **Core 0 Sensor Fusion Arena** (`0x2002_0000`, 64 KB).
      - The sensor fusion algorithms (Kalman filter state estimation, complementary attitude filters, and temporal trajectory smoothing) operate over contiguous vector slices of batched samples rather than sample-by-sample loops.
      - Integration equations use exact microsecond $\Delta t$ from `CTIMER`, eliminating phase jitter caused by variable interrupt latency, context switches, or inter-core IPC delivery delays.
    - Handles single-finger touch position detection, continuous tracking, gesture recognition, and proximity event emission over IPC.
@@ -404,13 +405,13 @@ To validate the Rust machine learning and tensor processing software framework o
    - A sliding 32-sample temporal window is assembled into a zero-copy $32 \times 3$ normalized feature matrix (X-coordinate, Y-coordinate, touch delta intensity).
 
 3. **Inference Execution via Framework (`tract` / `Burn`)**:
-   - A compact 1D temporal convolutional gesture classification model (trained offline in PyTorch/JAX and lowered via `burn-import` or `tract` into `no_std` Rust structs) executes inference on Core 1.
+   - A compact 1D temporal convolutional gesture classification model (trained offline in PyTorch/JAX and lowered via `burn-import` or `tract` into `no_std` Rust structs) executes inference on Core 0 (`SensorController`).
    - Quantized INT8 weights execute with zero heap allocation, utilizing the eIQ Neutron NPU and PowerQuad matrix primitives.
-   - The model accurately distinguishes user gestures: Single Tap, Double Tap, Drag/Swipe (Up/Down/Left/Right), Long Press Hold, and Proximity Hover.
+   - The model accurately distinguishes user gestures with classification confidence $\ge 0.95$: Single Tap, Double Tap, Swipe (Forward/Back), Long Press, Extra Long Press, and Action Button presses.
 
 4. **Event Dispatch & Inter-Core Routing**:
-   - Upon gesture recognition with confidence $\ge 0.85$, Core 1 emits a typed `GestureEvent` struct across the `embassy-ipc-channel` to Core 0.
-   - Core 0 routes the event to `BleController` for GATT client notification and triggers acoustic confirmation on the audio amplifier.
+   - Upon gesture recognition with confidence $\ge 0.95$, Core 0 emits a typed `model::types::Gesture` variant and logs a `TelemetryRecord::Gesture` record to the NAND flash queue.
+   - Core 0 routes the event to `BleController` for GATT client notification and commands Core 1's `SpeakerController` to trigger acoustic confirmation on the Class-D audio amplifier.
    - This physical loop provides complete end-to-end hardware validation of the software development framework, graph lowering pipeline, and embedded inference dispatch.
 
 ### Design Hardening & Memory Protection (ARMv8-M MPU & Storage Security)
@@ -663,7 +664,7 @@ cargo run -p host_cli -- filter-update --device dev:ext-flash --filter-type audi
 ```
 
 - **In-Place Partition Update**: Model and filter payloads are written directly into the `models` partition using `sequential_storage::map::store_item`.
-- **Zero-Downtime Reload via BLE**: Models and filter coefficients can be updated directly over BLE without performing a full firmware OTA reboot. Once the cryptographic signature is verified, Core 1 reloads the new weights into the Neutron NPU Tensor Arena (`0x2003_C000`) dynamically while Core 0 continues running, ensuring zero service disruption.
+- **Zero-Downtime Reload via BLE**: Models and filter coefficients can be updated directly over BLE without performing a full firmware OTA reboot. Once the cryptographic signature is verified, Core 0 reloads the new weights into the Neutron NPU Tensor Arena (`0x2003_C000`) dynamically while running, ensuring zero service disruption.
 
 ---
 
@@ -822,82 +823,177 @@ Audio feedback is synthesized or streamed by Core 1 via PDM to the on-board Clas
 | **Boot Up Sound** | Ascending two-tone chime ($523\text{ Hz} \to 659\text{ Hz}$) | 120 ms | Nominal (65 dBA) | Emitted when primary application vector table boots successfully. |
 | **BLE Connected Chime** | Crisp ascending chirp ($880\text{ Hz} \to 1046\text{ Hz}$) | 80 ms | Nominal (65 dBA) | BLE link encryption and GATT handshake complete. |
 | **BLE Disconnected Chime** | Falling soft chirp ($1046\text{ Hz} \to 587\text{ Hz}$) | 80 ms | Soft (55 dBA) | BLE link terminated or peer out of range. |
-| **Gesture Confirmed Tone** | Crisp harmonic tone ($784\text{ Hz}$, $G_5$) | 60 ms | Soft (60 dBA) | Touch proximity or vision gesture event recognized. |
+| **Finger Down Tone** | Crisp harmonic click/ping tone ($784\text{ Hz}$, $G_5$) | 40 ms | Soft (60 dBA) | Physical contact / confirmation for Single Tap, Double Tap, Long Press, Extra Long Press, and Button Tap/Long Press. |
+| **Swipe Tone** | Smooth frequency sweep tone ($587\text{ Hz} \leftrightarrow 880\text{ Hz}$) | 60 ms | Soft (60 dBA) | Swiping forward or backward along capacitive touch strip. |
 | **Low Battery / Overtemp Alert** | Repeating double beep ($440\text{ Hz} \times 2$) | 100 ms cadence | Audible (70 dBA) | Battery State of Charge drops below 10% threshold or junction temperature exceeds safe thermal limit. |
 
 ### 4. Capacitive Touch Gesture Recognition & Interaction Model (1F Gestures)
 
-The Carrier Board 2.0 user interface incorporates an on-board Azoteq IQS7222A ProxFusion capacitive touch controller (`U2`), communicating over dedicated $\text{I}^2\text{C}$ (`FC2`) with a physical interrupt line (`CAP_INT`) assigned to Core 1 (`C4`). The capacitive surface supports continuous single-finger (1F) tracking and gesture classification to enable intuitive, physical device control without mechanical buttons.
+The Carrier Board 2.0 user interface incorporates an on-board Azoteq IQS7222A ProxFusion capacitive touch controller (`U2`), communicating over dedicated $\text{I}^2\text{C}$ (`FC2`) with a physical interrupt line (`CAP_INT` on `C4`), alongside a dedicated tactile Hardware Action Button (`SW1`). Together, the capacitive touch surface and action button support intuitive physical device interaction: continuous single-finger (1F) capacitive touch gestures and discrete hardware button presses.
 
 #### 1. Real-Time Processing Pipeline & Concurrency
-- **100 Hz Async eDMA Ingestion**: Core 1 runs an Embassy task polling the IQS7222A over $\text{I}^2\text{C}$ at 100 Hz upon `CAP_INT` assertion.
-- **PowerQuad DSP Smoothing**: Raw touch coordinates ($X, Y$) and capacitive deltas ($\Delta C$) pass through biquad low-pass smoothing filters accelerated by the MCX N947 PowerQuad DSP engine.
-- **Temporal Gesture Classifier**: Core 1 evaluates sliding touch windows to classify discrete 1-finger gestures with confidence $\ge 0.85$.
-- **Zero-Copy IPC Dispatch**: When a gesture is confirmed, Core 1 packages a typed `GestureEvent` struct into the lock-free shared SRAMX SPSC ring buffer (`0x2006_8000`), pulsing the hardware Messaging Unit (MU) doorbell to wake Core 0.
-- **Controller Action Routing**: Core 0's `SensorController` and `SystemController` map incoming gestures to system state changes, UI feedback (RGB LED patterns via `LedController`, acoustic chimes via `SpeakerController`), and wireless BLE notifications via `BleController`.
+- **Core Allocation & Architectural Invariant**:
+  - **Core 0 (High-Performance Execution Domain)**: Operates at 150 MHz equipped with Cortex-M33 single-precision FPU, PowerQuad DSP accelerator, and eIQ Neutron NPU coprocessor. Core 0 executes `SensorController` (specialized for capacitive touch devices), runs PowerQuad DSP touch smoothing filters, executes discrete gesture detection FSMs and NPU inference passes, and manages high-bandwidth BLE and flash storage telemetry (`BleController`, `TelemetryController`, `FilesystemController`).
+  - **Core 1 (Low-Power Supervisory Domain)**: Operates as the dedicated low-power supervisory processor running `SystemController`. Core 1 oversees lifecycle power states (`Active`, `Sleep`, `PowerDown`), manages low-power wake interrupts (WUU / Wakeup Unit), monitors power rails and fuel gauge alerts, and handles Class-D audio chime streaming via `SpeakerController`.
+- **Adaptive 10–30 Hz Hardware FIFO Ingestion**: The Azoteq IQS7222A incorporates an integrated hardware FIFO buffer (up to 32 frames deep). Rather than running a separate busy-polling task, Core 0's `SensorController` ingests batch frames over $\text{I}^2\text{C}$ (`FC2`) using async eDMA at an adaptive 10–30 Hz poll rate (nominal 20 Hz, ramping to 30 Hz upon active touch displacement and throttling to 10 Hz when idle) triggered by `CAP_INT` watermark interrupts. This dramatically eliminates bus traffic and CPU wake overhead.
+- **PowerQuad DSP Smoothing**: Raw touch coordinates ($X, Y$) and capacitive deltas ($\Delta C$) pass through biquad low-pass smoothing and median rejection filters accelerated by the MCX N947 PowerQuad DSP engine.
+- **High-Confidence Classification Threshold ($\ge 95\%$)**: Sliding temporal touch windows are evaluated across discrete primitive FSMs and ML inference, enforcing a strict classification confidence threshold of $\ge 0.95$ ($\ge 95\%$) before event confirmation.
+- **Direct Domain Controller Dispatch**: Once a gesture is validated, `SensorController` on Core 0 constructs a canonical `model::types::Gesture` variant and dispatches it over internal async Embassy channels to `SystemController` (on Core 1 via lock-free SRAMX ring buffer and MU doorbell) and locally to `LedController` and `BleController`.
 
-#### 2. 1-Finger (1F) Gesture Action & Mapping Matrix
+#### 2. 1-Finger (1F) Gesture & Action Button Mapping Matrix
 
-The table below maps out every supported 1F gesture, its physical detection criteria, its action across operational states, and the corresponding user feedback:
+The table below maps out every supported 1F gesture and action button interaction, its physical detection criteria, its action across operational states, and the corresponding user feedback:
 
-| Gesture Name | Physical Detection Criteria | Action in `Active` State | Action in `Sleep` / `PowerDown` | Audio & Visual Feedback | IPC & Telemetry Dispatch |
+| Gesture / Input Name | Physical Detection Criteria | Action in `Active` State | Action in `Sleep` / `PowerDown` | Audio & Visual Feedback | IPC & Telemetry Dispatch |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **1F Tap (Single Tap)** | Single contact: $50\,\text{ms} \le T < 300\,\text{ms}$, displacement $\Delta X < 3.0\,\text{mm}$. | **Toggle / Primary Action**: Toggles active feature state (e.g. telemetry sampling enable/pause); confirms active system prompt. | **Instant System Wake**: In `Sleep`, restores 150 MHz clocks ($\approx 250\,\mu\text{s}$). In `PowerDown`, triggers hardware WUU wake ($\le 1.8\,\text{ms}$). | `Gesture Confirmed Tone` ($784\text{ Hz}$, $60\text{ ms}$, $60\text{ dBA}$); momentary Cyan LED pulse ($150\text{ ms}$). | Emits `GestureType::SingleTap`; sends BLE GATT notification; appends CBOR record to NAND `telemetry` queue. |
-| **1F Double Tap** | Two sequential taps within $T_{interval} \le 350\,\text{ms}$; individual tap duration $< 250\,\text{ms}$; impact delta $\le 4.0\,\text{mm}$. | **Cycle Mode / Quick Action**: Cycles active sensor acquisition profiles; triggers immediate forced dirty-buffer flush over BLE. | Ignored in `PowerDown` (first tap awakens device to `Active`). | Ascending two-tone ping ($659\text{ Hz} \to 784\text{ Hz}$, $40\text{ ms}$ each); double Cyan LED flash ($100\text{ ms} \times 2$). | Emits `GestureType::DoubleTap`; Core 0 commands `TelemetryController` to initiate high-speed BLE flush. |
-| **1F Swipe Forward** | Contact swept forward along strip axis: $\Delta X \ge +12.0\,\text{mm}$ within $80\,\text{ms} \le T \le 500\,\text{ms}$ ($v \ge +40\,\text{mm/s}$). | **Navigate Forward / Increment**: Advances to next operational preset/profile; increases Class-D speaker output volume (+3 dB). | In `Sleep`, awakens system directly into next operational preset. | Ascending chirp sweep ($587\text{ Hz} \to 880\text{ Hz}$, $80\text{ ms}$); forward trailing Cyan chase animation on LP5009 RGB LED. | Emits `GestureType::SwipeForward { displacement_mm, velocity_mm_s }`; Core 0 updates active preset index. |
-| **1F Swipe Back** | Contact swept backward along strip axis: $\Delta X \le -12.0\,\text{mm}$ within $80\,\text{ms} \le T \le 500\,\text{ms}$ ($v \le -40\,\text{mm/s}$). | **Navigate Backward / Decrement**: Returns to previous operational preset/profile; decreases Class-D speaker output volume (-3 dB). | In `Sleep`, awakens system directly into previous operational preset. | Descending chirp sweep ($880\text{ Hz} \to 587\text{ Hz}$, $80\text{ ms}$); backward trailing Cyan chase animation on LP5009 RGB LED. | Emits `GestureType::SwipeBack { displacement_mm, velocity_mm_s }`; Core 0 updates active preset index. |
-| **1F Long Press** | Stationary contact held for $1.5\text{ s} \le T < 3.5\text{ s}$ with displacement drift $\Delta X < 2.5\,\text{mm}$. | **BLE Pairing Mode Trigger**: Enters BLE discoverable advertising mode for 60 seconds; if already connected, initiates graceful disconnect and re-advertising. | In `Sleep`, awakens system and initiates immediate BLE pairing sequence. | Rising dual-tone chime ($523\text{ Hz} \to 784\text{ Hz}$, $120\text{ ms}$); transition from Solid Cyan to Fast Blue Blink (`BLE_PAIRING` @ 2 Hz). | Emits `GestureType::LongPress { hold_duration_ms }`; Core 0 signals `BleController` to start fast advertising. |
-| **1F Extra Long Press** | Stationary contact held continuously for $T \ge 5.0\text{ s}$ with displacement drift $\Delta X < 2.5\,\text{mm}$. | **Graceful Sleep Transition (`PowerDown`)**: Initiates graceful shutdown: commits NVRAM dirty cache to `metadata`, flushes NAND telemetry, and enters `PowerDown` ($\le 185\,\mu\text{A}$). | If held $\ge 10.0\text{ s}$ during system panic/fault: triggers hardware watchdog hard reboot (`NVIC_SystemReset()`). | Triple descending warning chime ($880\text{ Hz} \to 659\text{ Hz} \to 440\text{ Hz}$, $250\text{ ms}$); Amber/Red pulse followed by LED dark (Off). | Emits `GestureType::ExtraLongPress { hold_duration_ms: 5000 }`; `SystemController` initiates `SystemStatus::PowerDown`. |
+| **1F Tap (Single Tap)** | Single contact: $50\,\text{ms} \le T < 300\,\text{ms}$, displacement $\Delta X < 3.0\,\text{mm}$. | Dispatches BLE GATT notification (no local state mutation). | **Instant System Wake**: In `Sleep`, restores 150 MHz clocks ($\approx 250\,\mu\text{s}$). In `PowerDown`, triggers hardware WUU wake ($\le 1.8\,\text{ms}$). | `Finger Down Tone` ($784\text{ Hz}$, $40\text{ ms}$, $60\text{ dBA}$); momentary Cyan LED pulse ($150\text{ ms}$). | Emits `Gesture::SingleTap`; sends BLE GATT notification; `SensorController` appends `TelemetryRecord::Gesture(Gesture::SingleTap)` to NAND `telemetry` queue. |
+| **1F Double Tap** | Two sequential taps within $T_{interval} \le 350\,\text{ms}$; individual tap duration $< 250\,\text{ms}$; impact delta $\le 4.0\,\text{mm}$. | Dispatches BLE GATT notification (no local state mutation). | Ignored in `PowerDown` (first tap awakens device to `Active`). | `Finger Down Tone` ($784\text{ Hz}$, $40\text{ ms}$, played on each tap contact); double Cyan LED flash ($100\text{ ms} \times 2$). | Emits `Gesture::DoubleTap`; sends BLE GATT notification; `SensorController` logs `TelemetryRecord::Gesture(Gesture::DoubleTap)`. |
+| **1F Swipe Forward** | Contact swept forward along strip axis: $\Delta X \ge +12.0\,\text{mm}$ within $80\,\text{ms} \le T \le 500\,\text{ms}$ ($v \ge +40\,\text{mm/s}$). | Dispatches BLE GATT notification (no local state mutation). | In `Sleep`, awakens system directly into `Active`. | `Swipe Tone` ($587\text{ Hz} \leftrightarrow 880\text{ Hz}$, $60\text{ ms}$); forward trailing Cyan chase animation on LP5009 RGB LED. | Emits `Gesture::SwipeForward`; sends BLE GATT notification; `SensorController` logs `TelemetryRecord::Gesture(Gesture::SwipeForward)`. |
+| **1F Swipe Back** | Contact swept backward along strip axis: $\Delta X \le -12.0\,\text{mm}$ within $80\,\text{ms} \le T \le 500\,\text{ms}$ ($v \le -40\,\text{mm/s}$). | Dispatches BLE GATT notification (no local state mutation). | In `Sleep`, awakens system directly into `Active`. | `Swipe Tone` ($587\text{ Hz} \leftrightarrow 880\text{ Hz}$, $60\text{ ms}$); backward trailing Cyan chase animation on LP5009 RGB LED. | Emits `Gesture::SwipeBack`; sends BLE GATT notification; `SensorController` logs `TelemetryRecord::Gesture(Gesture::SwipeBack)`. |
+| **1F Long Press** | Stationary contact held for $1.5\text{ s} \le T < 5.0\text{ s}$ with displacement drift $\Delta X < 2.5\,\text{mm}$. | **Graceful Sleep Transition (`PowerDown`)**: Initiates graceful shutdown: commits NVRAM dirty cache to `metadata`, flushes NAND telemetry, and signals `SystemController` to enter `PowerDown` ($\le 185\,\mu\text{A}$). | In `Sleep`, awakens system to `Active`. | `Finger Down Tone` on contact; Amber/Red pulse followed by LED dark (Off). | Emits `Gesture::LongPress`; Core 0 commands `SystemController` on Core 1 to initiate `SystemStatus::PowerDown`; `SensorController` logs `TelemetryRecord::Gesture(Gesture::LongPress)`. |
+| **1F Extra Long Press** | Stationary contact held continuously for $T \ge 5.0\text{ s}$ with displacement drift $\Delta X < 2.5\,\text{mm}$. | **BLE Pairing Mode Trigger**: Enters BLE discoverable advertising mode for 60 seconds; if already connected, initiates graceful disconnect and re-advertising. (If held $\ge 10.0\text{ s}$, triggers hardware watchdog hard reboot `NVIC_SystemReset()`). | In `Sleep`, awakens system and initiates immediate BLE pairing sequence. | `Finger Down Tone` on contact; transition from Solid Cyan to Fast Blue Blink (`BLE_PAIRING` @ 2 Hz). | Emits `Gesture::ExtraLongPress`; Core 0 signals `BleController` to start fast advertising; `SensorController` logs `TelemetryRecord::Gesture(Gesture::ExtraLongPress)`. |
+| **Action Button Tap (`SW1`)** | Momentary press of tactile switch `SW1`: $50\,\text{ms} \le T < 500\,\text{ms}$ with hardware/software debouncing. | Dispatches BLE GATT notification (no local state mutation). | In `Sleep` / `PowerDown`, triggers GPIO edge wake to `Active` ($\le 1.8\,\text{ms}$). | `Finger Down Tone` ($784\text{ Hz}$, $40\text{ ms}$); momentary Cyan LED pulse ($150\text{ ms}$). | Emits `Gesture::ButtonTap`; sends BLE GATT notification; `SensorController` logs `TelemetryRecord::Gesture(Gesture::ButtonTap)`. |
+| **Action Button Long Press (`SW1`)** | Sustained press of tactile switch `SW1`: $T \ge 1.5\,\text{s}$ with debounced hold. | Dispatches BLE GATT notification; triggers diagnostic status telemetry report. | In `Sleep` / `PowerDown`, wakes system to `Active`. | `Finger Down Tone` on press; momentary double Cyan LED flash. | Emits `Gesture::ButtonLongPress`; sends BLE GATT notification; `SensorController` logs `TelemetryRecord::Gesture(Gesture::ButtonLongPress)`. |
 
-#### 3. Strongly Typed Gesture Data Structures
+#### 3. Strongly Typed Shared Gesture Data Structures
 
-To guarantee zero format-string overhead and type-safe cross-core communication, gestures are represented using canonical Rust enums and plain-old-data (POD) structs compatible with `minicbor`:
+To prevent architectural divergence and eliminate legacy backward compatibility shims, all platforms in the repository (RP2040 and MCX N947) reuse and extend the canonical, strongly typed enum `model::types::Gesture` defined in `model/src/types.rs`:
 
 ```rust
-#[repr(u8)]
-#[derive(Copy, Clone, Eq, PartialEq, Debug, minicbor::Encode, minicbor::Decode)]
-pub enum GestureType {
-    #[n(0)] SingleTap = 0,
-    #[n(1)] DoubleTap = 1,
-    #[n(2)] SwipeForward = 2,
-    #[n(3)] SwipeBack = 3,
-    #[n(4)] LongPress = 4,
-    #[n(5)] ExtraLongPress = 5,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, minicbor::Encode, minicbor::Decode)]
-pub struct GestureEvent {
-    #[n(0)] pub gesture: GestureType,
-    #[n(1)] pub timestamp_us: u64,
-    #[n(2)] pub duration_ms: u16,
-    #[n(3)] pub displacement_mm: i16,
-    #[n(4)] pub velocity_mm_s: i16,
-    #[n(5)] pub confidence_pct: u8,
+/// Canonical gesture identifiers shared across RP2040 and MCX N947 platforms.
+#[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum Gesture {
+    /// A completed dual-sensor long press gesture (RP2040 ToF proximity).
+    #[n(1)]
+    DualLongPress,
+    /// 1-Finger single tap contact.
+    #[n(2)]
+    SingleTap,
+    /// 1-Finger double tap contact sequence.
+    #[n(3)]
+    DoubleTap,
+    /// 1-Finger swipe forward along capacitive touch strip.
+    #[n(4)]
+    SwipeForward,
+    /// 1-Finger swipe back along capacitive touch strip.
+    #[n(5)]
+    SwipeBack,
+    /// 1-Finger sustained long press (>= 1.5s, initiates PowerDown transition).
+    #[n(6)]
+    LongPress,
+    /// 1-Finger extra long press (>= 5.0s, initiates BLE pairing mode).
+    #[n(7)]
+    ExtraLongPress,
+    /// Hardware Action Button (SW1) momentary single tap.
+    #[n(8)]
+    ButtonTap,
+    /// Hardware Action Button (SW1) sustained long press.
+    #[n(9)]
+    ButtonLongPress,
 }
 ```
 
-#### 4. Touch State Machine & Gesture Classification Logic
+#### 4. Gesture Telemetry & False Positive (FP) Detection
+
+##### Telemetry Event Logging
+When any gesture is confirmed by `SensorController` on Core 0, it is recorded as a strongly typed telemetry event `TelemetryRecord::Gesture(model::types::Gesture)` and published over the Embassy telemetry channel. The storage controller persists this record to the SLC NAND `telemetry` queue:
+
+```rust
+// Telemetry record logged to sequential-storage NAND flash queue by SensorController
+let record = TelemetryRecord::Gesture(Gesture::SingleTap);
+telemetry_channel.send(record).await;
+```
+
+##### False Positive (FP) Mitigation & Rejection Algorithms
+Reliable capacitive touch interaction on a physical carrier board requires deterministic discrimination against ambient interference, moisture, and unintended contact:
+1. **Palm & Large Object Rejection**: The Azoteq IQS7222A tracks active channel counts and contact surface area. When contact span exceeds the single-finger bounding envelope ($> 18.0\,\text{mm}$ span or $> 3$ channels concurrently active), the entire touch frame is classified as an unintended palm or grip contact and dropped before entering detection FSMs.
+2. **Baseline Jitter & Environmental Noise Discrimination**: Raw capacitive counts are continuously tracked against baseline capacitance ($C_{base}$). Touches with signal delta $\Delta C < \Delta C_{min}$ (e.g. 50 counts) or exhibiting high-frequency fluctuation are rejected as ambient noise or thermal drift.
+3. **Intermediate State Cancellation**:
+   - *Tap Cancellation*: If displacement exceeds the jitter limit ($\Delta X > 3.0\,\text{mm}$) during contact, the Tap FSM immediately transitions to `CANCELLED` and hands off tracking to the Swipe detector.
+   - *Long Press Cancellation*: If contact releases prior to $1.5\,\text{s}$ or exhibits displacement drift ($\Delta X > 2.5\,\text{mm}$), the Long Press FSM cancels without triggering `PowerDown`.
+   - *Swipe Trajectory & Velocity Bounds*: Swipes that fail to achieve minimal travel ($\Delta X < 12.0\,\text{mm}$) within the $500\,\text{ms}$ window or deviate along off-axis coordinates cancel cleanly.
+4. **Diagnostic False Positive Counters**: `SensorController` maintains internal diagnostic counters (`fp_palm_reject_count`, `fp_noise_abort_count`, `fp_timeout_cancel_count`, `fp_jitter_cancel_count`) logged periodically via `TelemetryRecord` to monitor field reliability and evaluate sensor tuning.
+
+#### 5. Discrete Gesture FSMs, Intermediate States & NPU Lowering Plan
+
+##### Intermediate Primitive States
+Each gesture detector tracks three common primitive touch lifecycle states:
+- `FINGER_DOWN`: Initial physical contact established (capacitive delta crosses threshold $\Delta C \ge \Delta C_{th}$). Starts touch duration timer $T_0$ and registers initial coordinate $X_0$.
+- `FINGER_MOVE`: Touch contact sustained while coordinates update ($|X_t - X_0| > 0$). Evaluates displacement, velocity $v = \Delta X / \Delta T$, and trajectory bounds.
+- `FINGER_UP`: Touch contact terminates (capacitive delta drops below release threshold). Evaluates final duration, release distance, and inter-tap timing.
+
+##### Discrete Gesture State Machines
 
 ```mermaid
 flowchart TD
-    IDLE["Touch Surface IDLE (No Contact)"] -->|"Touch Down (Delta > Threshold)"| TOUCH_DOWN["Touch Contact Initiated (Timer Started)"]
-    TOUCH_DOWN -->|"Released in 50-300 ms, Delta X < 3mm"| TAP_PENDING{"Inter-Tap Window (350 ms)"}
-    TAP_PENDING -->|"Second Tap within 350 ms"| DOUBLE_TAP["Emit GestureType::DoubleTap"]
-    TAP_PENDING -->|"Timeout without Second Tap"| SINGLE_TAP["Emit GestureType::SingleTap"]
-    TOUCH_DOWN -->|"Displacement Delta X >= +12mm"| SWIPE_FWD["Emit GestureType::SwipeForward"]
-    TOUCH_DOWN -->|"Displacement Delta X <= -12mm"| SWIPE_BACK["Emit GestureType::SwipeBack"]
-    TOUCH_DOWN -->|"Stationary Hold >= 1.5 s"| LONG_PRESS_EVAL{"Hold Duration"}
-    LONG_PRESS_EVAL -->|"Released before 3.5 s"| LONG_PRESS["Emit GestureType::LongPress (BLE Pairing)"]
-    LONG_PRESS_EVAL -->|"Sustained Hold >= 5.0 s"| EXTRA_LONG_PRESS["Emit GestureType::ExtraLongPress (Enter PowerDown)"]
-    LONG_PRESS_EVAL -->|"Sustained Hold >= 10.0 s"| HARD_RESET["Trigger Emergency Reboot (NVIC_SystemReset)"]
-    DOUBLE_TAP --> IDLE
-    SINGLE_TAP --> IDLE
-    SWIPE_FWD --> IDLE
-    SWIPE_BACK --> IDLE
-    LONG_PRESS --> IDLE
-    EXTRA_LONG_PRESS --> IDLE
+    IDLE_TAP["IDLE (No Touch)"] -->|"Touch Down (Delta C >= Threshold)"| FINGER_DOWN_TAP["FINGER_DOWN (Timer T0 Started)"]
+    FINGER_DOWN_TAP -->|"Motion Drift (Delta X >= 3.0mm)"| CANCELLED_TAP["CANCELLED (Hand off to Swipe)"]
+    FINGER_DOWN_TAP -->|"Released (T < 300ms, Delta X < 3.0mm)"| FINGER_UP_TAP["FINGER_UP (Inter-Tap Timer 350ms)"]
+    FINGER_UP_TAP -->|"Second Tap within 350ms"| EMIT_DOUBLE["Emit Gesture::DoubleTap"]
+    FINGER_UP_TAP -->|"350ms Timeout Expired"| EMIT_SINGLE["Emit Gesture::SingleTap"]
+    EMIT_DOUBLE --> IDLE_TAP
+    EMIT_SINGLE --> IDLE_TAP
+    CANCELLED_TAP --> IDLE_TAP
 ```
+
+```mermaid
+flowchart TD
+    IDLE_SWIPE["IDLE (No Touch)"] -->|"Touch Down (Delta C >= Threshold)"| FINGER_DOWN_SWIPE["FINGER_DOWN (Tracking Initial X0)"]
+    FINGER_DOWN_SWIPE -->|"Active Travel (|Delta X| > 0)"| FINGER_MOVE_SWIPE["FINGER_MOVE (Track Velocity & Axis)"]
+    FINGER_MOVE_SWIPE -->|"Delta X >= +12mm within 80-500ms (v >= +40mm/s)"| EMIT_SWIPE_FWD["Emit Gesture::SwipeForward"]
+    FINGER_MOVE_SWIPE -->|"Delta X <= -12mm within 80-500ms (v <= -40mm/s)"| EMIT_SWIPE_BACK["Emit Gesture::SwipeBack"]
+    FINGER_MOVE_SWIPE -->|"Timeout (> 500ms) or Off-Axis Drift"| CANCELLED_SWIPE["CANCELLED (Displacement Abort)"]
+    EMIT_SWIPE_FWD --> IDLE_SWIPE
+    EMIT_SWIPE_BACK --> IDLE_SWIPE
+    CANCELLED_SWIPE --> IDLE_SWIPE
+```
+
+```mermaid
+flowchart TD
+    IDLE_PRESS["IDLE (No Touch)"] -->|"Touch Down (Delta C >= Threshold)"| FINGER_DOWN_PRESS["FINGER_DOWN (Stationary Hold Timer)"]
+    FINGER_DOWN_PRESS -->|"Drift Detected (Delta X >= 2.5mm)"| CANCELLED_PRESS["CANCELLED (Motion Drift Abort)"]
+    FINGER_DOWN_PRESS -->|"Stationary Hold >= 1.5s"| EVAL_HOLD{"Hold Evaluation"}
+    EVAL_HOLD -->|"Released before 5.0s (1.5s <= T < 5.0s)"| EMIT_LONG["Emit Gesture::LongPress (Initiate PowerDown)"]
+    EVAL_HOLD -->|"Sustained Hold >= 5.0s"| EMIT_EXTRA["Emit Gesture::ExtraLongPress (Initiate BLE Pairing)"]
+    EVAL_HOLD -->|"Emergency Hold >= 10.0s during Fault"| HARD_REBOOT["Trigger Hardware Reset (NVIC_SystemReset)"]
+    EMIT_LONG --> IDLE_PRESS
+    EMIT_EXTRA --> IDLE_PRESS
+    CANCELLED_PRESS --> IDLE_PRESS
+```
+
+```mermaid
+flowchart TD
+    BTN_IDLE["Button Released (P1_2 HIGH)"] -->|"Falling Edge (Button Down)"| BTN_DEBOUNCE["Debounce Filter (20ms Stable)"]
+    BTN_DEBOUNCE -->|"Glitch / Bounce"| BTN_IDLE
+    BTN_DEBOUNCE -->|"Contact Confirmed"| BTN_DOWN["Button Pressed (Timer Started)"]
+    BTN_DOWN -->|"Released in 50ms <= T < 500ms"| EMIT_BTN_TAP["Emit Gesture::ButtonTap"]
+    BTN_DOWN -->|"Sustained Hold T >= 1.5s"| EMIT_BTN_LONG["Emit Gesture::ButtonLongPress"]
+    EMIT_BTN_TAP --> BTN_IDLE
+    EMIT_BTN_LONG --> BTN_IDLE
+```
+
+##### Generic `GestureDetector<Input>` Trait Adaptation
+To ensure firmware target independence across RP2040 and MCX N947, all gesture processing implements the canonical `GestureDetector<Input>` trait defined in `model/src/gesture.rs`:
+
+```rust
+pub trait GestureDetector<Input> {
+    type Output;
+    fn update(&mut self, input: Input, current_time_us: u64) -> Option<Self::Output>;
+    fn reset(&mut self);
+}
+```
+
+- **RP2040 Implementation**: `ProximityGestureDetector` implements `GestureDetector<ProximityEvent>`, accepting Time-of-Flight (ToF) distance readings across directional channels (North, East, West) and emitting `Gesture::DualLongPress`.
+- **MCX N947 Implementation**: `CapTouchGestureDetector` implements `GestureDetector<CapTouchFrame>`, accepting Azoteq IQS7222A FIFO frames (`x_pos: u16`, `delta_c: u16`, `contact: bool`) and evaluating discrete sub-detectors for `SingleTap`, `DoubleTap`, `SwipeForward`, `SwipeBack`, `LongPress`, and `ExtraLongPress`.
+- **Hardware Action Button (`SW1`)**: `ButtonGestureDetector` implements `GestureDetector<ButtonEvent>` for GPIO state transitions on pin `P1_2`, emitting `Gesture::ButtonTap` and `Gesture::ButtonLongPress`.
+
+##### Lowering Plan onto MCX N947 eIQ Neutron NPU
+To enable advanced spatial gesture recognition while maintaining extreme energy efficiency, Carrier Board 2.0 incorporates an Ahead-of-Time (AOT) lowering pipeline onto the MCX N947 eIQ Neutron NPU:
+1. **Telemetry Data Pipeline**: Core 0 streams raw 10–30 Hz IQS7222A capacitive touch FIFO frames and time-series feature frames over high-speed 1 Mb/s UART / BLE into offline training storage.
+2. **Offline Model Training & Symmetric INT8 Quantization**: Train lightweight 1D temporal convolution (1D-CNN) or gated recurrent unit (GRU) models using PyTorch / JAX / Burn on captured touch sequences. Quantize model weights and activations to symmetric INT8 using the NXP eIQ toolkit.
+3. **AOT Lowering to eIQ Neutron NPU**: Lower the quantized model onto MCX N947's eIQ Neutron NPU using `burn-import` or `tract` Ahead-of-Time compilation to generate static hardware command buffers and tensor arenas in SRAMX (`0x2006_0000`).
+4. **Deterministic Zero-Allocation Execution**: Core 0's `SensorController` triggers non-blocking NPU inference passes directly from DMA-filled FIFO buffers, achieving sub-100 microsecond inference latency with classification confidence $\ge 95\%$.
 
 ### 5. Boot Timing & Latency Budget
 
@@ -930,7 +1026,7 @@ To ensure that the dual-core bare-metal firmware achieves industrial reliability
 | **AR-3** | **Power State Transition Race & Brownout** | Rapid voltage dips during high-current wake bursts (`PowerDown` $\to$ `Active`) causing brownout reset (BOD); incomplete state cleanup in `Sleep` mode. | **Critical** / Medium | Smart Power Controller (SPC) low-voltage warning interrupts; MAX17048 fuel gauge alert pin (`ALRT`); power rails logged via ADC telemetry. | Deterministic transition sequencing enforced in `SystemController`; TI BQ24074 `/PGOOD` and VBAT threshold qualification prior to peripheral rail power-up; step-by-step clock frequency ramping; non-volatile state journaling in `metadata` before low-power entry. |
 | **AR-4** | **In-SRAM Flashing Kernel Corruption** | SRAM memory overlap, stack overflow, or invalid pointer write corrupting `flash_loader_ram` during live OTA programming, resulting in bricked device. | **Critical** / Low | Pre-execution CRC32 integrity check of `flash_loader_ram` image in SRAM; hardfault trap vectors mapped to dedicated crash logger. | Relocate `flash_loader_ram` to high SRAM (`0x2007_C000`) outside application dynamic ranges; configure ARMv8-M MPU to enforce `Privileged Execution (RX)` with stack limits (`MSPLIM`); golden fallback image in 16 MB NAND `recovery` partition restored by SSBL on integrity failure. |
 | **AR-5** | **Modular Expansion Peripheral Faults** | Unseated expansion cards, missing pullups, or bus noise causing hanging I2C (`FC4`), SPI (`FC2`), or UART (`FC5`) transactions. | **Medium** / Medium | Asynchronous hardware bus timeouts; `ServiceError` diagnostic events emitted with domain `Sensor` or `Transport`. | Compile-time Cargo feature gating (`expansion-*`); non-blocking peripheral probing during boot Stage 2; structured error containment isolating faulty cards without halting core system operation or blocking boot. |
-| **AR-6** | **Capacitive Touch Drift & Low-Power False Wake** | Environmental noise, temperature swings, or moisture causing false wakeups from `PowerDown` or unresponsive proximity detection. | **Medium** / Medium | Real-time baseline capacitance tracking; continuous threshold delta telemetry streamed to `host_cli`. | Core 1 runs dedicated tracking filter using Azoteq IQS7222A auto-tuning algorithm; baseline baselines persisted to SLC NAND `models` partition; dual-stage Wakeup Unit (WUU) digital filtering requiring sustained touch assertion. |
+| **AR-6** | **Capacitive Touch Drift & Low-Power False Wake** | Environmental noise, temperature swings, or moisture causing false wakeups from `PowerDown` or unresponsive proximity detection. | **Medium** / Medium | Real-time baseline capacitance tracking; continuous threshold delta telemetry streamed to `host_cli`. | Core 0's `SensorController` runs dedicated tracking filter using Azoteq IQS7222A auto-tuning algorithm; baselines persisted to SLC NAND `models` partition; Core 1 dual-stage Wakeup Unit (WUU) digital filtering requires sustained touch assertion. |
 
 ### Bringup & Verification Milestones & Deliverables Roadmap
 
@@ -989,8 +1085,8 @@ flowchart LR
 
 #### Milestone 4 (M4): Peripheral Sensors, User Interface & Communications
 - **Core Deliverables**:
-  - Core 1 peripheral drivers: Azoteq IQS7222A capacitive touch, TI LP5009 RGB LED controller, TI BQ24074 charger monitor, MAX17048 fuel gauge, and Class-D speaker chime engine.
-  - Core 0 communications: NINA-B312 BLE module UART framing, bidirectional GATT service endpoints, and CBOR RPC command dispatcher.
+  - Core 0 drivers & algorithms: Azoteq IQS7222A capacitive touch (10–30 Hz FIFO), PowerQuad DSP smoothing, eIQ Neutron NPU gesture classifier, NINA-B312 BLE module UART framing, and GATT service endpoints.
+  - Core 1 low-power drivers: TI LP5009 RGB LED controller, TI BQ24074 charger monitor, MAX17048 fuel gauge, and Class-D speaker chime engine.
   - High-speed UART host servicing interface (`tools/host_cli`) supporting production provisioning and field diagnostics.
 - **Verification Gate**:
   - Executes steps 11–14 of [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml).
@@ -1021,7 +1117,7 @@ flowchart LR
 
 The ultimate deliverable of this engineering roadmap is a **fully functional, production-hardened carrier board application** (`carrier_board` / `carrier_board_shell`) that natively supports:
 1. **Complete Power & System State Coverage**: Full operational lifecycle support spanning `Active`, `Sleep`, `PowerDown`, and ultra-low-power `Off` (factory ship mode), adhering strictly to the validated operating power state matrix.
-2. **Deterministic Dual-Core AMP Concurrency**: Core 0 managing networking, storage, and supervisory tasks while Core 1 executes real-time sensor acquisition, capacitive gesture filtering, and audio synthesis in Execute-in-Place (XIP) flash mode without SRAM starvation.
+2. **Deterministic Dual-Core AMP Concurrency**: Core 0 managing real-time sensor acquisition, capacitive gesture DSP/NPU inference, storage, and wireless communications while Core 1 executes low-power system lifecycle management, wake supervision, and Class-D audio synthesis in Execute-in-Place (XIP) flash mode without SRAM starvation.
 3. **Resilient Flash Architecture**: Zero-data-loss telemetry and crash dumps using `sequential-storage`, cryptographic secure boot with Ed25519 signatures, and in-SRAM OTA updating with golden recovery fallbacks.
 4. **Decoupled Modular Expansion**: Clean compile-time Cargo feature flags and structured `ServiceError` runtime fault isolation providing full expansion support without hardware EEPROM dependencies.
 
