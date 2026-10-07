@@ -236,13 +236,15 @@ def test_carrier_board_firmware_document() -> None:
     assert "BLE_CONNECTED" not in content, "BLE_CONNECTED state must be eliminated (CR-4229058)"
     assert "BLE_PAIRING" in content
 
-    # Dual-Core AMP naming and role demarcation (CR-4229058)
+    # Dual-Core AMP naming and role demarcation (CR-4229058, CR-67d1e5f4)
     assert "Always-On Core" in content
     assert "Real-Time Processing Core" in content
     assert "Real-Time Processing Core (Core 0)" in content
     assert "Always-On Core (Core 1)" in content
     assert "transition directly to `ACTIVE_RUNNING`" in content
     assert "BleController` notifies `SystemController`" in content
+    assert "before the runtime roles of the cores" in content
+    assert "ROM bootloader" in content
 
     # Expansion board error handling and fault isolation (CR-e45b9423)
     assert "eliminates on-card identification EEPROMs" in content
