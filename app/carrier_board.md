@@ -2,7 +2,7 @@
 
 This document specifies the firmware design, dual-core task execution model, memory partitions, and hardware bringup procedures for the **Carrier Board 2.0** architecture powered by the **NXP MCX N947** dual-core Arm Cortex-M33 microcontroller.
 
-The source of truth for bringup verification steps is [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml).
+The source of truth for bringup verification steps is [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
 
 ---
 
@@ -373,7 +373,7 @@ pub struct PartitionDescriptor {
 }
 ```
 
-- **Bootloader (SSBL) Integration**: The custom Second-Stage Bootloader fetches the `.program_metadata` header from internal flash on boot to determine active `app` partition boundaries, keystore location, and NAND `ota_staging` offsets dynamically without requiring hardcoded flash addresses in bootloader C/Rust code.
+- **Bootloader (SSBL) Integration & Pre-Role Execution**: The custom Second-Stage Bootloader executes immediately upon handoff from the NXP ROM bootloader, running on Core 0 before the runtime roles of the cores (**Always-On Core** and **Real-Time Processing Core**) have been established. The SSBL fetches the `.program_metadata` header from internal flash on boot to determine active `app` partition boundaries, keystore location, and NAND `ota_staging` offsets dynamically without requiring hardcoded flash addresses in bootloader C/Rust code. Once the application image is verified, Core 0 transfers execution to the application vector table, which boots the Embassy executors and starts Core 1 to establish the dual-core operational roles.
 - **Host Tooling Introspection (`host_fs` & `host_cli`)**: When connecting over USB UART or reading an ELF binary, host utilities parse `.program_metadata` directly. This enables host tools to discover the full partition layout across all storage media (`dev:builtin-flash`, `dev:ext-flash`) automatically, preventing flash configuration divergence between host and embedded targets.
 
 ### Application Software Framework for DSP & NPU (Rust ML Ecosystem)
@@ -854,7 +854,7 @@ flowchart LR
    - Core 0 initiates Core 1 startup; Core 1 transmits a greeting token back to Core 0 via the Messaging Unit (MU).
    - Measure round-trip ping-pong latency across the shared SRAMX ring buffer; verify zero data corruption.
 5. **Stage 5: Full Bringup YAML Integration**:
-   - Execute all automated checks codified in [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml). Verification passes only when 100% of checks succeed.
+   - Execute all automated checks codified in [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml). Verification passes only when 100% of checks succeed.
 
 ---
 
@@ -1121,7 +1121,7 @@ To deliver instantaneous user responsiveness while guaranteeing cryptographic in
 
 ## 7. Hardware Bringup, Verification & Architecture Risk Protocol
 
-The authoritative source of truth for bringup verification is [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml). All hardware verification procedures must follow the step definitions established in that configuration.
+The authoritative source of truth for bringup verification is [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml). All hardware verification procedures must follow the step definitions established in that configuration.
 
 ### Architecture Risk Identification & Mitigation Matrix
 
@@ -1161,7 +1161,7 @@ flowchart LR
   - Internal flash partitioning: `bootloader` (64 KB), `app` (1,856 KB), `metadata` (64 KB), and `keystore` (64 KB).
   - High-speed UART0 (1 Mb/s) diagnostic banner and Segger RTT logging output.
 - **Verification Gate**:
-  - Executes steps 1–4 of [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml).
+  - Executes steps 1–4 of [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
   - `embassy-mcx` Stage 1 register smoke tests and foundational timer/UART async drivers pass on hardware.
   - Cold boot ready latency measured $\le 39.5\,\text{ms}$ (strict budget: $\le 50.0\,\text{ms}$).
   - Ed25519 signature verification and anti-rollback monotonic counter validation pass 100% on valid and invalid test images.
@@ -1174,7 +1174,7 @@ flowchart LR
   - `embassy-ipc-channel` protocol operational with Messaging Unit (MU) doorbell hardware interrupts.
   - High-performance POD direct copy and `minicbor` framing for cross-core telemetry events.
 - **Verification Gate**:
-  - Executes steps 5–7 of [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml).
+  - Executes steps 5–7 of [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
   - 100,000 round-trip IPC messages transferred without dropped frames, race conditions, or core lockups.
   - The Real-Time Processing Core (Core 0) maintains deterministic 1 kHz sensor sampling loop jitter $\le 2.0\,\mu\text{s}$.
 
@@ -1188,7 +1188,7 @@ flowchart LR
   - Host filesystem tool (`tools/host_fs`) operational with `dev:builtin-flash` and `dev:ext-flash` targets.
   - SRAM-relocatable flashing kernel (`flash_loader_ram`, 8 KB) for OTA image installation.
 - **Verification Gate**:
-  - Executes steps 8–10 of [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml).
+  - Executes steps 8–10 of [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
   - Flash wear leveling, power-loss brownout atomicity, and CRC32 payload verification pass across 5,000 simulated power interruption cycles.
 
 #### Milestone 4 (M4): Peripheral Sensors, User Interface & Communications
@@ -1197,7 +1197,7 @@ flowchart LR
   - Always-On Core (Core 1) low-power drivers: TI LP5009 RGB LED controller, TI BQ24074 charger monitor, MAX17048 fuel gauge, and FlexSPI SLC NAND storage subsystem (`sequential-storage`).
   - High-speed UART host servicing interface (`tools/host_cli`) supporting production provisioning and field diagnostics.
 - **Verification Gate**:
-  - Executes steps 11–14 of [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml).
+  - Executes steps 11–14 of [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
   - Proximity touch gesture detection accuracy $\ge 98\%$; acoustic alert playback at nominal $65\,\text{dBA}$ verified.
   - BLE sustained telemetry throughput $\ge 24\,\text{kB/s}$ without dropped event frames.
 
@@ -1217,7 +1217,7 @@ flowchart LR
     - `ThermalController`: Silicon junction temperature tracking and throttling.
   - Factory ship mode entry (`host_cli ship-mode`) and USB cable insertion wake asserted via `/PGOOD` without enclosure disassembly.
 - **Verification Gate**:
-  - Executes complete bringup suite (steps 1–16 of [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml)).
+  - Executes complete bringup suite (steps 1–16 of [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml)).
   - End-to-end power consumption validated: $\le 185\,\mu\text{A}$ in `PowerDown` (Standby), $< 1.0\,\mu\text{A}$ in `Off` (Ship Mode), and $\le 12.0\,\text{mA}$ in baseline `Active` running mode.
   - Instantaneous capacitive touch wake from `PowerDown` mode $\le 1.8\,\text{ms}$ (target bound: $\le 2.5\,\text{ms}$).
 

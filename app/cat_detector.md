@@ -76,7 +76,7 @@ sequenceDiagram
 
 To ensure the hardware and firmware designs are fully validated and operating correctly, follow this ordered checklist of functional and system-level test procedures.
 
-The official, executable source of truth for these bringup steps is defined in [projects/cat_detector_bringup.yaml](file:///Users/daparker/gh/firmware/projects/cat_detector_bringup.yaml). You should run the interactive bringup helper script [bringup.py](file:///Users/daparker/gh/firmware/tools/helpers/bringup.py) to guide you through this checklist, compile/flash the correct target binaries automatically, and generate a markdown verification report:
+The official, executable source of truth for these bringup steps is defined in [projects/cat_detector_bringup.yaml](../projects/cat_detector_bringup.yaml). You should run the interactive bringup helper script [bringup.py](../tools/helpers/bringup.py) to guide you through this checklist, compile/flash the correct target binaries automatically, and generate a markdown verification report:
 
 ```bash
 conda run -n firmware-env python tools/helpers/bringup.py --config projects/cat_detector_bringup.yaml
@@ -94,7 +94,7 @@ conda run -n firmware-env python tools/helpers/bringup.py --config projects/cat_
 
 ### 3.2. Ordered Functional Test Checklist
 
-Below is the sequence of bringup steps defined in [projects/cat_detector_bringup.yaml](file:///Users/daparker/gh/firmware/projects/cat_detector_bringup.yaml). The bringup script compiles and downloads the required firmware automatically as indicated by `flash_before` directives.
+Below is the sequence of bringup steps defined in [projects/cat_detector_bringup.yaml](../projects/cat_detector_bringup.yaml). The bringup script compiles and downloads the required firmware automatically as indicated by `flash_before` directives.
 
 #### Phase 1: Diagnostic Shell (`shell` binary)
 The checklist starts by flashing the diagnostic shell to run low-level hardware verification and calibration commands.
