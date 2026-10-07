@@ -1449,6 +1449,8 @@
         <button class="quake-btn quake-btn-default" onclick="closeBranchModal()">Close</button>
       </div>
     </div>
+  </div>
+
   <!-- WORKSTATION MODAL WINDOW (Code Review & Worm Report) (BUG-274) -->
   <div id="workstationModal" class="workstation-modal-overlay" onclick="if(event.target===this) closeWorkstationModal()">
     <div class="workstation-modal-container">
@@ -3015,7 +3017,10 @@
     }
 
     async function onOpenInCodeReview() {
-      const commits = state.selectedCommits.length > 0 ? state.selectedCommits : [state.activeCommit];
+      let commits = state.selectedCommits.length > 0 ? state.selectedCommits : (state.activeCommit ? [state.activeCommit] : []);
+      if (commits.length === 1 && commits[0] === "working" && (!state.workingFiles || state.workingFiles.length === 0)) {
+        commits = [];
+      }
       try {
         const resp = await fetch("/api/open_code_review", {
           method: "POST",
@@ -3027,7 +3032,8 @@
         // Fallback for popups (BUG-201): window.open(res.url, "firmware_code_review");
       } catch (err) {
         const revStr = commits.join(",");
-        openWorkstationModal(`/review?revisions=${encodeURIComponent(revStr)}`, "firmware_code_review");
+        const fallbackUrl = revStr ? `/review?revisions=${encodeURIComponent(revStr)}` : "/review";
+        openWorkstationModal(fallbackUrl, "firmware_code_review");
       }
     }
 

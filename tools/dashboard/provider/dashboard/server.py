@@ -190,6 +190,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                     if not revs and self.server.review_server.session.revisions:
                         revs = self.server.review_server.session.revisions
                     commits = self.server.git_engine.get_commits(rev_args=revs)
+                    if not commits and revs == ["working"]:
+                        commits = self.server.git_engine.get_commits()
                     self._send_json([c.model_dump(mode="json") for c in commits])
                 else:
                     limit_str = query.get("limit", ["40"])[0]
