@@ -1512,7 +1512,7 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
     ) -> crate::GestureAction {
         #[allow(unreachable_patterns)]
         match gesture {
-            model::types::Gesture::DualLongPress => self.dual_long_press_action,
+            model::types::Gesture::DualLongPress(_) => self.dual_long_press_action,
             _ => crate::GestureAction::None,
         }
     }

@@ -169,7 +169,12 @@ fn test_parse_telemetry_record_log_all_variants() {
     assert_eq!(events[0]["tid"].as_i64().unwrap(), 3);
 
     // 9. Gesture
-    let log = make_rtt_log(TelemetryRecord::Gesture(Gesture::DualLongPress), 1008);
+    let log = make_rtt_log(
+        TelemetryRecord::Gesture(Gesture::DualLongPress(
+            model::types::GestureSource::Proximity,
+        )),
+        1008,
+    );
     let events = parser.parse_log(&log, 1008.0).unwrap();
     assert_eq!(events.len(), 1);
     assert_eq!(events[0]["name"].as_str().unwrap(), "Gesture Action");

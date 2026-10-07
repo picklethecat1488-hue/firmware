@@ -396,7 +396,9 @@ fn test_power_down_and_gesture_detection() {
     while MOTOR_CHANNEL.try_receive().is_ok() {}
     while LED_CHANNEL.try_receive().is_ok() {}
 
-    controller.handle_command(SystemCommand::Gesture(Gesture::DualLongPress));
+    controller.handle_command(SystemCommand::Gesture(Gesture::DualLongPress(
+        model::types::GestureSource::Proximity,
+    )));
     process!(controller);
     assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
 
@@ -425,7 +427,9 @@ fn test_power_down_and_gesture_detection() {
     assert_eq!(receive_led!(), SystemLedState::SolidYellow);
 
     // 7. Trying to unlock with 2F long press while charger is connected should be ignored
-    controller.handle_command(SystemCommand::Gesture(Gesture::DualLongPress));
+    controller.handle_command(SystemCommand::Gesture(Gesture::DualLongPress(
+        model::types::GestureSource::Proximity,
+    )));
     process!(controller);
     assert_eq!(controller.power_manager.status(), SystemStatus::PowerDown);
 
@@ -439,7 +443,9 @@ fn test_power_down_and_gesture_detection() {
     assert_eq!(receive_led!(), SystemLedState::Off);
 
     // 9. Unlock with 2F long press gesture after charger is disconnected
-    controller.handle_command(SystemCommand::Gesture(Gesture::DualLongPress));
+    controller.handle_command(SystemCommand::Gesture(Gesture::DualLongPress(
+        model::types::GestureSource::Proximity,
+    )));
     process!(controller);
     assert_eq!(controller.power_manager.status(), SystemStatus::Active);
 
