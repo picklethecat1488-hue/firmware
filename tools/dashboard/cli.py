@@ -27,6 +27,7 @@ import os
 from pathlib import Path
 import signal
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -1088,6 +1089,9 @@ def main(cli_args: Optional[List[str]] = None) -> None:
             engine=engine,
         )
         return
+
+    # Interactive Server Mode
+    url = server.get_url()
 
     # Detach from terminal unless --no-detach / --foreground is requested
     if not getattr(args, "no_detach", False):
