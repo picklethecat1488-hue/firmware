@@ -165,6 +165,11 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="When listing worms or reviews, only show open / unresolved issues.",
     )
     parser.add_argument(
+        "--planned",
+        action="store_true",
+        help="When listing worms, only show Planned issues.",
+    )
+    parser.add_argument(
         "--add-worm",
         "--add",
         dest="add_worm",
@@ -282,6 +287,7 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     # list-worms
     p_worms = subparsers.add_parser("list-worms", help="List all active worms directly in terminal and exit.")
     p_worms.add_argument("--open", action="store_true", help="Only show open / unresolved issues.")
+    p_worms.add_argument("--planned", action="store_true", help="Only show Planned issues.")
     p_worms.add_argument(
         "--severity",
         choices=[s.value for s in WormSeverity],
@@ -418,8 +424,9 @@ def print_cli_smartlog(engine: GitEngine) -> None:
 
 
 def print_cli_worms(
-    server: DashboardServer,
+    server: Any,
     open_only: bool = False,
+    planned_only: bool = False,
     all_users: bool = False,
     filter_user: str = "",
     engine: Optional[GitEngine] = None,
@@ -427,7 +434,19 @@ def print_cli_worms(
     category: Optional[str] = None,
 ) -> None:
     """Print worm tracker status to terminal console with optional filtering."""
-    worms = server.worm_server.database.worms
+    if hasattr(server, "worm_server"):
+        worms = server.worm_server.database.worms
+        actual_server = server
+    elif hasattr(server, "database"):
+        worms = server.database.worms
+        actual_server = getattr(server, "server", None)
+    elif hasattr(server, "worms"):
+        worms = server.worms
+        actual_server = None
+    else:
+        worms = []
+        actual_server = None
+
     print("\n" + "=" * 70)
     print("  🪱 SYSTEM SHOCK 2 // XERXES WORM MATRIX")
     print("=" * 70)
@@ -438,7 +457,9 @@ def print_cli_worms(
     curr_user = engine.get_current_user() if engine else {"name": "", "email": ""}
     filtered = []
     for w in worms:
-        if open_only and w.status in (WormStatus.RESOLVED, WormStatus.CLOSED):
+        if open_only and w.status in (WormStatus.RESOLVED, WormStatus.CLOSED, WormStatus.PLANNED):
+            continue
+        if planned_only and w.status != WormStatus.PLANNED:
             continue
         if severity and w.severity.value != severity:
             continue
@@ -446,8 +467,8 @@ def print_cli_worms(
             continue
 
         # Per-user filtering
-        if not all_users and engine:
-            worm_file = server.repo_root / "feedback" / f"{w.id}.md"
+        if not all_users and engine and actual_server:
+            worm_file = actual_server.repo_root / "feedback" / f"{w.id}.md"
             w_author = engine.get_file_author(worm_file)
             if filter_user:
                 if (
@@ -465,7 +486,7 @@ def print_cli_worms(
         comp = f" ({w.component})" if w.component else ""
         print(f"  {chk} 🪱 [{w.id}] [{w.severity.value}] [{w.category.value}] {w.title}{comp} -> {w.status.value}")
 
-    total_open = sum(1 for w in filtered if w.status not in (WormStatus.RESOLVED, WormStatus.CLOSED))
+    total_open = sum(1 for w in filtered if w.status not in (WormStatus.RESOLVED, WormStatus.CLOSED, WormStatus.PLANNED))
     total_all = len(filtered)
     print(f"\nShowing {len(filtered)} worms ({total_open} open, {total_all} total).\n")
 
@@ -644,6 +665,7 @@ def main(cli_args: Optional[List[str]] = None) -> None:
             print_cli_worms(
                 server,
                 open_only=getattr(args, "open", False),
+                planned_only=getattr(args, "planned", False),
                 all_users=all_users,
                 filter_user=filter_user,
                 engine=engine,
@@ -860,12 +882,13 @@ def main(cli_args: Optional[List[str]] = None) -> None:
         print(f"Resolved worm [{worm.id}]: {worm.title}")
         return
 
-    if getattr(args, "worms", False) or (
+    if getattr(args, "worms", False) or getattr(args, "planned", False) or (
         getattr(args, "list", False) and args.db_file and ("worm" in str(args.db_file) or "bug" in str(args.db_file))
     ):
         print_cli_worms(
             server,
             open_only=getattr(args, "open", False),
+            planned_only=getattr(args, "planned", False),
             all_users=all_users,
             filter_user=filter_user,
             engine=engine,
