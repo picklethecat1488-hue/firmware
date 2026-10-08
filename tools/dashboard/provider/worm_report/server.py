@@ -141,12 +141,20 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
         )
         template = env.get_template("worm_report.html.j2")
         db_dump = self.server.database.model_dump(mode="json")
+        components = sorted(
+            {
+                w.component.strip()
+                for w in self.server.database.worms
+                if w.component and w.component.strip()
+            }
+        )
         html_content = template.render(
             database=self.server.database,
             database_json=json.dumps(db_dump),
             statuses=[s.value for s in WormStatus],
             severities=[s.value for s in WormSeverity],
             categories=[c.value for c in WormCategory],
+            components=components,
             server_port=self.server.actual_port,
         )
         self._send_html(html_content)

@@ -6,34 +6,34 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-10-04 17:00:39 UTC` |
-| **Total Issues** | `12` |
-| **Open Issues** | `0` |
-| **Resolved / Closed** | `12 (100%)` |
+| **Report Date** | `2026-10-08 02:43:07 UTC` |
+| **Total Issues** | `18` |
+| **Open Issues** | `1` |
+| **Resolved / Closed** | `17 (94%)` |
 
 ## Issues by Severity
 
 | Severity | Count | Meaning |
 | :--- | :---: | :--- |
 | **`[CRITICAL]`** | 0 | System crashes, build failures, blockages, or electrical shorts. |
-| **`[HIGH]`** | 1 | Major functional defects, broken routing, DRC violations, or unphysical behavior. |
-| **`[MEDIUM]`** | 10 | Silkscreen collisions, layout sub-optimality, or visual clipping. |
-| **`[LOW]`** | 1 | Minor aesthetic imperfections or documentation notes. |
+| **`[HIGH]`** | 3 | Major functional defects, broken routing, DRC violations, or unphysical behavior. |
+| **`[MEDIUM]`** | 13 | Silkscreen collisions, layout sub-optimality, or visual clipping. |
+| **`[LOW]`** | 2 | Minor aesthetic imperfections or documentation notes. |
 
 ## Issues by Category
 
 | Category | Count | Description |
 | :--- | :---: | :--- |
-| **`FIRMWARE`** | 2 | Core firmware logic, state machines, async tasks. |
+| **`FIRMWARE`** | 3 | Core firmware logic, state machines, async tasks. |
 | **`CONTROLLER`** | 1 | Domain controllers, PID loops, event dispatch. |
 | **`DRIVER`** | 0 | Hardware peripheral drivers, embedded-hal. |
 | **`PLATFORM`** | 0 | Chip support, PAC, HAL, clock/power management. |
 | **`BOARD`** | 1 | Board support packages (BSP), pinmux, boards. |
 | **`MODEL`** | 0 | Domain data models, configurations, state definitions. |
 | **`SHELL`** | 0 | CLI interface, shell commands, debug console. |
-| **`INFRASTRUCTURE`** | 8 | Build tooling, compilers, test runners, headless tools. |
+| **`INFRASTRUCTURE`** | 12 | Build tooling, compilers, test runners, headless tools. |
 | **`UI`** | 0 | Web dashboards, CLI viewers, review interfaces. |
-| **`GENERAL`** | 0 | Unclassified or cross-cutting firmware issues. |
+| **`GENERAL`** | 1 | Unclassified or cross-cutting firmware issues. |
 
 ## Issue Checklist
 
@@ -49,6 +49,12 @@
 - [x] **`[MEDIUM]`** [#WORM-010](#worm-010): "Open in VSCode" didn't work (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-011](#worm-011): Traceback in dashboard `[dashboard]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-012](#worm-012): Rename audio controller to speaker controller `[carrier_board]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-013](#worm-013): Feedbacks about carrier_board.md `[carrier_board]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-014](#worm-014): Unresolved worms in VCS UI `[dashboard]` (`RESOLVED`)
+- [x] **`[HIGH]`** [#WORM-015](#worm-015): Unable to open code review or worm report pages from VCS UI `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-016](#worm-016): Remove my username from tracked files (`RESOLVED`)
+- [x] **`[HIGH]`** [#WORM-017](#worm-017): Working tree actions doesn't show up unless I click an older commit `[dashboard]` (`RESOLVED`)
+- [x] **`[LOW]`** [#WORM-018](#worm-018): Populate component list (`RESOLVED`)
 
 ## Detailed Issue Log
 
@@ -10252,5 +10258,192 @@ Rename the AudioController definition in carrier_board.md to SpeakerController
 #### Resolution Notes
 
 Renamed AudioController and controller::audio_controller to SpeakerController and controller::speaker_controller in app/carrier_board.md and updated regression test in test_carrier_board_project.py.
+
+---
+
+### <a id="worm-013"></a> 🟢 `[WORM-013]` Feedbacks about carrier_board.md
+
+- **UUID**: `6e2400a4-8fa5-46fd-938a-58996597f407`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `GENERAL`
+- **Component**: `carrier_board`
+- **Created**: `2026-10-04 16:50:42 UTC`
+- **Resolved**: `2026-10-04 17:11:10 UTC`
+
+#### Description
+
+Some more general feedbacks about carrier_board.md:
+-host_fs should support EEPROM programming in the same way it can program other flash devices
+-eeprom should be sequential storage based in a sequential format similar to USB descriptors
+-the ProgramMetadata section should contain all the partition and descriptor info for a given firmware target
+-we want to use FIFO for this design-cap touch, and otherwise. can we use an on chip high resolution timer to integrate and timestamp buffered samples, where needed? we also need to elaborate on how FIFO buffering will work with sensor fusion
+-Production Manufacturing & Factory Provisioning- going with this approach, I think we also need some kind of structure logging and status display on the host side
+-under section 6-the definition of PowerDown is diff than the one rp2040 uses; rp2040 uses these states: Active/Sleep/PowerDown. They will use the same system controller. Can we resolve this?
+
+#### Resolution Notes
+
+Updated app/carrier_board.md with all 6 architecture requirements: dev:eeprom host_fs support, USB-descriptor sequential-storage TLV format, ProgramMetadata partition table section, hardware FIFO and CTIMER microsecond timestamping for sensor fusion, host_cli structured logging and terminal HUD for factory provisioning, and power state harmonization with RP2040 SystemController SystemStatus (Active, Sleep, PowerDown). Added regression assertions in test_carrier_board_project.py and verified with ./tools/verify.sh.
+
+---
+
+### <a id="worm-014"></a> 🟢 `[WORM-014]` Unresolved worms in VCS UI
+
+- **UUID**: `a9d4483b-b38d-4f56-bdef-7ef9e5b1be0a`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-07 02:29:34 UTC`
+- **Resolved**: `2026-10-07 02:38:05 UTC`
+
+#### Description
+
+I see these two unresolved worms in the VCS UI which seem to be an artifact of porting changes over from the hardware repo
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `screenshot` | [pasted_screenshot_1791340187710.png](attachments/WORM-014/pasted_screenshot_1791340187710.png) | Pasted screenshot |
+
+#### Resolution Notes
+
+Prevent phantom OPEN worm tags in VCS UI for non-existent bug IDs ported from external repositories
+
+---
+
+### <a id="worm-015"></a> 🟢 `[WORM-015]` Unable to open code review or worm report pages from VCS UI
+
+- **UUID**: `5d358f8e-a5fa-4bfc-ba86-0231449f60e8`
+- **Status**: `RESOLVED`
+- **Severity**: `HIGH`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-07 03:39:52 UTC`
+- **Resolved**: `2026-10-07 03:41:04 UTC`
+
+#### Description
+
+workstationModal in diff_view.html.j2 was mistakenly nested inside modalBranchPicker due to a missing closing div tag on modalBranchPicker introduced in f4fc95e2. Because modalBranchPicker has display: none, workstationModal was never visible when opened.
+
+#### Resolution Notes
+
+Closed modalBranchPicker div properly so workstationModal is mounted directly under body rather than being hidden inside modalBranchPicker.
+
+---
+
+### <a id="worm-016"></a> 🟢 `[WORM-016]` Remove my username from tracked files
+
+- **UUID**: `732d3b51-3220-448f-95a3-491046668c64`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Created**: `2026-10-07 22:12:15 UTC`
+- **Resolved**: `2026-10-07 22:29:44 UTC`
+
+#### Description
+
+See below, remove my username from tracked files and update your skills to always use relative file paths when updating tracked files. For bugs and worms, and other files which contain tracebacks, make a code update to automatically elide personal information when saving bug and code report feedback.
+
+#### Execution / Console Logs
+
+```text
+.agents/skills/cat-fountain-development/SKILL.md:14
+* **Controllers**: [controller/controllers.toml](file:///Users/<username>/gh/firmware/controller/controllers.toml)
+.agents/skills/cat-fountain-development/SKILL.md:15
+* **CLIs**: [shell.toml](file:///Users/<username>/gh/firmware/shell.toml)
+.cargo/config.toml:7
+runner = "/Users/<username>/gh/firmware/tools/runner.sh"
+.cargo/config.toml:12
+"--remap-path-prefix", "firmware=/Users/<username>/gh/firmware",
+CONTRIBUTING.md:188
+- To add a new controller or modify module parameters, edit the configuration in [controller/controllers.toml](file:///Users/<username>/gh/firmware/controller/controllers.toml).
+CONTRIBUTING.md:189
+- To add or modify interactive CLI subcommands, arguments, or resolver fields, edit [shell.toml](file:///Users/<username>/gh/firmware/shell.toml).
+CONTRIBUTING.md:190
+- The template files are defined in `controller/templates/` (e.g. [generated_controllers.rs.jinja](file:///Users/<username>/gh/firmware/controller/templates/generated_controllers.rs.jinja) and [sample_cli.rs.jinja](file:///Users/<username>/gh/firmware/controller/templates/sample_cli.rs.jinja)).
+CONTRIBUTING.md:290
+4.  Link the new project in the root [Cargo.toml](file:///Users/<username>/gh/firmware/Cargo.toml) workspace members list.
+GEMINI.md:74
+1. [Microcontroller Decoupling & BSPs](file:///Users/<username>/gh/firmware/docs/mcu_decoupling.md)
+GEMINI.md:79
+2. [Peripheral Sharing & Concurrency Patterns](file:///Users/<username>/gh/firmware/docs/peripheral_sharing.md)
+GEMINI.md:85
+3. [Domain Controller Design, Task Runners & Codegen](file:///Users/<username>/gh/firmware/docs/controller_design.md)
+GEMINI.md:91
+4. [Embedded Logging, Tracing & Host Tools](file:///Users/<username>/gh/firmware/docs/logging_tracing.md)
+GEMINI.md:96
+5. [Hardware-Firmware Co-Design & Downselection Architecture](file:///Users/<username>/gh/firmware/docs/hardware_firmware_codesign.md)
+GEMINI.md:101
+6. [VCS Workstation, Code Review & Xerxes HUD Templates](file:///Users/<username>/gh/firmware/docs/vcs_code_review.md)
+app/carrier_board.md:5
+The source of truth for bringup verification steps is [`app/carrier_board_bringup.yaml`](file:///Users/<username>/gh/firmware/app/carrier_board_bringup.yaml).
+app/carrier_board.md:857
+- Execute all automated checks codified in [`app/carrier_board_bringup.yaml`](file:///Users/<username>/gh/firmware/app/carrier_board_bringup.yaml). Verification passes only when 100% of checks succeed.
+app/carrier_board.md:1124
+The authoritative source of truth for bringup verification is [`app/carrier_board_bringup.yaml`](file:///Users/<username>/gh/firmware/app/carrier_board_bringup.yaml). All hardware verification procedures must follow the step definitions established in that configuration.
+app/carrier_board.md:1164
+- Executes steps 1–4 of [`app/carrier_board_bringup.yaml`](file:///Users/<username>/gh/firmware/app/carrier_board_bringup.yaml).
+app/carrier_board.md:1177
+- Executes steps 5–7 of [`app/carrier_board_bringup.yaml`](file:///Users/<username>/gh/firmware/app/carrier_board_bringup.yaml).
+app/carrier_board.md:1191
+- Executes steps 8–10 of [`app/carrier_board_bringup.yaml`](file:///Users/<username>/gh/firmware/app/carrier_board_bringup.yaml).
+app/carrier_board.md:1200
+- Executes steps 11–14 of [`app/carrier_board_bringup.yaml`](file:///Users/<username>/gh/firmware/app/carrier_board_bringup.yaml).
+app/carrier_board.md:1220
+- Executes complete bringup suite (steps 1–16 of [`app/carrier_board_bringup.yaml`](file:///Users/<username>/gh/firmware/app/carrier_board_bringup.yaml)).
+app/cat_detector.md:79
+The official, executable source of truth for these bringup steps is defined in [projects/cat_detector_bringup.yaml](file:///Users/<username>/gh/firmware/projects/cat_detector_bringup.yaml). You should run the interactive bringup helper script [bringup.py](file:///Users/<username>/gh/firmware/tools/helpers/bringup.py) to guide you through this checklist, compile/flash the correct target binaries automatically, and generate a markdown verification report:
+app/cat_detector.md:97
+Below is the sequence of bringup steps defined in [projects/cat_detector_bringup.yaml](file:///Users/<username>/gh/firmware/projects/cat_detector_bringup.yaml). The bringup script compiles and downloads the required firmware automatically as indicated by `flash_before` directives.
+docs/hardware_firmware_codesign.md:11
+* **Bare-Metal Rust Specification**: The target runtime environment is bare-metal Rust (`no_std`, Embassy asynchronous executor, `embedded-hal` and `embedded-hal-async` driver abstractions, `defmt` structured logging, stack-based zero-allocation concurrency, and static memory analysis) as detailed in [CONTRIBUTING.md](file:///Users/<username>/gh/firmware/CONTRIBUTING.md).
+docs/hardware_firmware_codesign.md:14
+Component selection and pinmux topologies are governed by the Test Board Revision 2.0 Downselection Process documented in [docs/downselection_report.md](file:///Users/<username>/gh/firmware/docs/downselection_report.md):
+```
+
+#### Resolution Notes
+
+Purged username from all git-tracked files across firmware and hardware repositories, converted absolute links to relative paths, updated SKILL.md with relative paths and privacy mandate, implemented automatic personal info elision for bug/worm and code report feedback in both repos, and codified dedicated regression test suites.
+
+---
+
+### <a id="worm-017"></a> 🟢 `[WORM-017]` Working tree actions doesn't show up unless I click an older commit
+
+- **UUID**: `064fec38-c4a1-436a-ae12-26ea26844579`
+- **Status**: `RESOLVED`
+- **Severity**: `HIGH`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-07 23:26:10 UTC`
+- **Resolved**: `2026-10-08 02:42:55 UTC`
+
+#### Description
+
+Working tree actions doesn't show up unless I click an older commit, then click on the working tree changes and staging area
+
+#### Resolution Notes
+
+Updated diff_view.html.j2 template to dynamically render workingTreeCommitArea with display: flex and filesHeaderTitle as 'Working Tree Files' when active_commit is 'working', and added DOMContentLoaded and loadFilesForActiveCommit display state synchronization.
+
+---
+
+### <a id="worm-018"></a> 🟢 `[WORM-018]` Populate component list
+
+- **UUID**: `53d3ceb2-8a2f-4117-8fa7-f1c9c2160daa`
+- **Status**: `RESOLVED`
+- **Severity**: `LOW`
+- **Category**: `INFRASTRUCTURE`
+- **Created**: `2026-10-07 23:27:07 UTC`
+- **Resolved**: `2026-10-08 02:49:15 UTC`
+
+#### Description
+
+Populate the component textbox with an autocomplete list based off prior worm history
+
+#### Resolution Notes
+
+Added <datalist id="worm-component-list"> to worm_report.html.j2 connected to worm-component input, dynamically populated and kept up to date via updateComponentDatalist() from prior worm history, with server-side extraction fallback. Added regression unit test test_regression_worm_018_component_autocomplete_datalist.
 
 ---
