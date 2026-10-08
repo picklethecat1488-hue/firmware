@@ -135,8 +135,20 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self._handle_serve_static(path)
             return
 
-        if path in ("/favicon.ico", "/favicon.svg"):
+        if path == "/manifest.json":
+            self._handle_serve_static("/static/manifest.json")
+            return
+
+        if path == "/favicon.ico":
+            self._handle_serve_static("/static/favicon.ico")
+            return
+
+        if path == "/favicon.svg":
             self._handle_serve_static("/static/favicon.svg")
+            return
+
+        if path == "/apple-touch-icon.png":
+            self._handle_serve_static("/static/apple-touch-icon.png")
             return
 
         if (
@@ -642,14 +654,26 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             return
         if file_target.suffix == ".svg":
             content_type = "image/svg+xml"
+        elif file_target.suffix == ".png":
+            content_type = "image/png"
+        elif file_target.suffix == ".ico":
+            content_type = "image/x-icon"
+        elif file_target.suffix == ".json":
+            content_type = "application/manifest+json" if filename.endswith("manifest.json") else "application/json"
         elif file_target.suffix == ".js":
             content_type = "application/javascript"
-        else:
+        elif file_target.suffix == ".css":
             content_type = "text/css"
+        else:
+            content_type = "application/octet-stream"
+
         data = file_target.read_bytes()
         try:
             self.send_response(200)
-            self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+            if content_type.startswith("text/") or content_type.startswith("application/"):
+                self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+            else:
+                self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Connection", "close")

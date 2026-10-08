@@ -153,6 +153,8 @@ def launch_eel(url: str, size: Tuple[int, int] = (1400, 900)) -> bool:
             "app_mode": True,
             "cmdline_args": [
                 f"--window-size={size[0]},{size[1]}",
+                "--force-dark-mode",
+                "--enable-features=OverlayScrollbar",
                 "--disable-http-cache",
             ],
             "size": size,
