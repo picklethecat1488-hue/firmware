@@ -1,0 +1,28 @@
+{
+  "name": "Xerxes Tactical Workstation",
+  "short_name": "Xerxes",
+  "description": "System Shock 2 Unified VCS Diff, Code Review, and Worm Log Workstation",
+  "start_url": "/",
+  "display": "standalone",
+  "theme_color": "#0a1c24",
+  "background_color": "#04090c",
+  "icons": [
+    {
+      "src": "/static/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
