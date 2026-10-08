@@ -940,27 +940,6 @@ def main(cli_args: Optional[List[str]] = None) -> None:
 
     # Interactive Server Mode
     url = server.get_url()
-    curr_branch = engine.get_current_branch()
-
-    banner = rf"""
-======================================================================
-  XERXES-7 // UNIFIED NEURAL WORKSTATION v1.0
-  SYSTEM SHOCK 2 - STARSHIP VON BRAUN TACTICAL CONSOLE
-======================================================================
-  * Workstation URL: {url}
-  * Primary Node   : {repo_root.name}
-  * Active Channel : {curr_branch}
-  * Neural Decks   :
-      - Deck A: VCS Diff Analysis  : {url}/
-      - Deck B: Code Review Engine : {url}/review
-      - Deck C: Tactical Worm Log  : {url}/worms
-  * Visual Display : EEL STANDALONE APP
-  * Press [Ctrl+C] to terminate workstation link.
-======================================================================
-  ➜ Standalone application window running via Eel.
-======================================================================
-"""
-    print(banner)
 
     if not args.no_browser:
 
@@ -973,10 +952,9 @@ def main(cli_args: Optional[List[str]] = None) -> None:
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nTerminating neural link via interrupt signal...")
+        pass
     finally:
         server.server_close()
-        print("Xerxes workstation offline. Terminal released.\n")
 
 
 if __name__ == "__main__":

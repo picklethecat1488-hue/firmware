@@ -28,21 +28,12 @@ def find_eel_app_browser() -> Optional[str]:
     Returns:
         Absolute filesystem path to the browser binary, or None if not found.
     """
-    # 1. Check if Eel's default chrome locator finds a binary
+    # 1. Check if an app browser path is already registered with Eel
     registered_path = eel_browsers._browser_paths.get("chrome")
     if registered_path and Path(registered_path).is_file():
         return registered_path
 
-    chrome_mod = eel_browsers._browser_modules.get("chrome")
-    if chrome_mod is not None:
-        try:
-            detected = chrome_mod.find_path()
-            if detected and Path(detected).is_file():
-                return detected
-        except (OSError, subprocess.SubprocessError):
-            pass
-
-    # 2. Check candidate locations by operating system
+    # 2. Check candidate locations by operating system directly
     candidates = []
     if sys.platform == "darwin":
         candidates = [
@@ -87,6 +78,16 @@ def find_eel_app_browser() -> Optional[str]:
     for candidate in candidates:
         if Path(candidate).is_file():
             return candidate
+
+    # 3. Fall back to Eel's built-in browser module discovery
+    chrome_mod = eel_browsers._browser_modules.get("chrome")
+    if chrome_mod is not None:
+        try:
+            detected = chrome_mod.find_path()
+            if detected and Path(detected).is_file():
+                return detected
+        except (OSError, subprocess.SubprocessError):
+            pass
 
     return None
 

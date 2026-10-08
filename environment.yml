@@ -21,4 +21,5 @@ dependencies:
       - tree-sitter
       - tree-sitter-rust
       - jinja-lsp
+      - eel
 
