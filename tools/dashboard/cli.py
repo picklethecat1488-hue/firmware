@@ -28,7 +28,6 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 import uuid
-import webbrowser
 
 # Add tools/dashboard and tools/ to sys.path so imports succeed in any environment
 _dashboard_dir = Path(__file__).resolve().parent
@@ -112,9 +111,9 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--browser",
-        choices=["eel", "vscode", "system", "none"],
+        choices=["eel"],
         default="eel",
-        help="Target browser environment to display dashboard (default: eel).",
+        help="Target display environment (only 'eel' standalone window supported).",
     )
     parser.add_argument(
         "--eel",
@@ -132,8 +131,10 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--no-browser",
+        "--no-app",
         action="store_true",
-        help="Disable automatic browser opening on server launch.",
+        dest="no_browser",
+        help="Disable automatic Eel application window launch on server start.",
     )
 
     # Database & Session Configuration
@@ -359,29 +360,15 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     return parsed
 
 
-def launch_browser(url: str, target: str = "eel") -> None:
-    """Open the review or diff workstation dashboard in the specified browser environment.
+def launch_browser(url: str) -> None:
+    """Open the review or diff workstation dashboard in the Eel standalone application window.
 
     Args:
         url: The web URL of the workstation dashboard.
-        target: Target browser environment ('eel', 'vscode', 'system', 'none').
     """
-    match target:
-        case "none":
-            return
-        case "eel":
-            from provider.eel.launcher import launch_eel
+    from provider.eel.launcher import launch_eel
 
-            launch_eel(url)
-        case "vscode":
-            # In VS Code, the integrated terminal intercepts localhost links with
-            # workbench.externalUriOpeners configured for simpleBrowser.open.
-            # We avoid spawning the system browser or the 'code' binary.
-            return
-        case "system":
-            webbrowser.open(url)
-        case _:
-            webbrowser.open(url)
+    launch_eel(url)
 
 
 def print_cli_smartlog(engine: GitEngine) -> None:
@@ -967,21 +954,19 @@ def main(cli_args: Optional[List[str]] = None) -> None:
       - Deck A: VCS Diff Analysis  : {url}/
       - Deck B: Code Review Engine : {url}/review
       - Deck C: Tactical Worm Log  : {url}/worms
-  * Visual Display : {args.browser.upper()}
+  * Visual Display : EEL STANDALONE APP
   * Press [Ctrl+C] to terminate workstation link.
 ======================================================================
-  ➜ In VS Code: [Cmd+Click] the Workstation URL above to open inside
-    the integrated Simple Browser (or press [F5] / run Task).
+  ➜ Standalone application window running via Eel.
 ======================================================================
 """
     print(banner)
 
-    browser_mode = "none" if args.no_browser else args.browser
-    if browser_mode != "none":
+    if not args.no_browser:
 
         def _open() -> None:
             time.sleep(0.3)
-            launch_browser(url, target=browser_mode)
+            launch_browser(url)
 
         threading.Thread(target=_open, daemon=True).start()
 
