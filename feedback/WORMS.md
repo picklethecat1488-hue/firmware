@@ -6,10 +6,10 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-10-07 23:29:11 UTC` |
+| **Report Date** | `2026-10-08 02:43:07 UTC` |
 | **Total Issues** | `18` |
-| **Open Issues** | `2` |
-| **Resolved / Closed** | `16 (88%)` |
+| **Open Issues** | `1` |
+| **Resolved / Closed** | `17 (94%)` |
 
 ## Issues by Severity
 
@@ -53,7 +53,7 @@
 - [x] **`[MEDIUM]`** [#WORM-014](#worm-014): Unresolved worms in VCS UI `[dashboard]` (`RESOLVED`)
 - [x] **`[HIGH]`** [#WORM-015](#worm-015): Unable to open code review or worm report pages from VCS UI `[dashboard]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-016](#worm-016): Remove my username from tracked files (`RESOLVED`)
-- [ ] **`[HIGH]`** [#WORM-017](#worm-017): Working tree actions doesn't show up unless I click an older commit `[dashboard]` (`OPEN`)
+- [x] **`[HIGH]`** [#WORM-017](#worm-017): Working tree actions doesn't show up unless I click an older commit `[dashboard]` (`RESOLVED`)
 - [ ] **`[LOW]`** [#WORM-018](#worm-018): Populate component list (`OPEN`)
 
 ## Detailed Issue Log
@@ -10409,18 +10409,23 @@ Purged username from all git-tracked files across firmware and hardware reposito
 
 ---
 
-### <a id="worm-017"></a> 🔴 `[WORM-017]` Working tree actions doesn't show up unless I click an older commit
+### <a id="worm-017"></a> 🟢 `[WORM-017]` Working tree actions doesn't show up unless I click an older commit
 
 - **UUID**: `064fec38-c4a1-436a-ae12-26ea26844579`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `HIGH`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-07 23:26:10 UTC`
+- **Resolved**: `2026-10-08 02:42:55 UTC`
 
 #### Description
 
 Working tree actions doesn't show up unless I click an older commit, then click on the working tree changes and staging area
+
+#### Resolution Notes
+
+Updated diff_view.html.j2 template to dynamically render workingTreeCommitArea with display: flex and filesHeaderTitle as 'Working Tree Files' when active_commit is 'working', and added DOMContentLoaded and loadFilesForActiveCommit display state synchronization.
 
 ---
 
