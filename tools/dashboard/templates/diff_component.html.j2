@@ -29,7 +29,7 @@
   }
 
   .diff-file-title {
-    font-size: 13px;
+    font-size: 10px;
     font-weight: 700;
     color: var(--xerxes-cyan, #00f0ff);
     display: flex;
@@ -44,7 +44,7 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    font-size: 11px;
+    font-size: 9px;
     font-weight: 700;
     padding: 2px 6px;
     border-radius: 2px;
@@ -100,14 +100,14 @@
     min-width: 100% !important;
     table-layout: fixed !important;
     font-family: var(--font-mono, monospace);
-    font-size: 11px;
+    font-size: 9px;
     line-height: 1.45;
   }
 
   .diff-sbs-table thead th {
     background: #0a1c24;
     color: var(--xerxes-cyan, #00f0ff);
-    font-size: 10px;
+    font-size: 8px;
     text-transform: uppercase;
     padding: 4px 8px;
     border-bottom: 1px solid var(--xerxes-border-mid, #0b5966);
@@ -142,7 +142,7 @@
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    font-size: 13px;
+    font-size: 10px;
     line-height: 1;
     color: var(--xerxes-cyan, #00f0ff);
     z-index: 26;
@@ -291,7 +291,7 @@
     min-width: 100%;
     width: max-content;
     font-family: var(--font-mono, monospace);
-    font-size: 11px;
+    font-size: 9px;
     line-height: 1.45;
   }
 
@@ -301,7 +301,7 @@
     color: var(--xerxes-cyan, #00f0ff);
     padding: 4px 8px;
     margin: 8px 0 4px 0;
-    font-size: 11px;
+    font-size: 9px;
     font-weight: 700;
   }
 
@@ -323,7 +323,7 @@
     text-align: right;
     color: var(--xerxes-text-dim, #3a626c);
     padding-right: 6px;
-    font-size: 10.5px;
+    font-size: 8.5px;
   }
 
   .diff-unified-marker {
@@ -331,7 +331,7 @@
     text-align: center;
     font-weight: 700;
     color: var(--xerxes-text-dim, #3a626c);
-    font-size: 11px;
+    font-size: 9px;
   }
 
   .diff-unified-text {
@@ -364,12 +364,12 @@
     padding: 40px;
     color: var(--xerxes-text-muted, #7aa5b0);
     text-align: center;
-    font-size: 12px;
+    font-size: 10px;
     gap: 8px;
   }
 
   .diff-binary-icon {
-    font-size: 32px;
+    font-size: 26px;
     color: var(--xerxes-cyan, #00f0ff);
   }
 
@@ -378,7 +378,7 @@
     padding: 10px 14px;
     min-width: 100%;
     font-family: var(--font-mono, monospace);
-    font-size: 11px;
+    font-size: 9px;
     line-height: 1.45;
   }
 
@@ -749,7 +749,7 @@
       container.innerHTML = `
         <div class="diff-binary-box">
           <span class="diff-binary-icon">📦</span>
-          <span style="font-weight: 700; color: var(--xerxes-cyan, #00f0ff); font-size: 13px;">BINARY / LFS ARTIFACT</span>
+          <span style="font-weight: 700; color: var(--xerxes-cyan, #00f0ff); font-size: 10px;">BINARY / LFS ARTIFACT</span>
           <span>Binary differences cannot be rendered inline in plain text.</span>
           <span>${diffData.additions > 0 ? `+${diffData.additions} bytes ` : ''}${diffData.deletions > 0 ? `-${diffData.deletions} bytes` : ''}</span>
           ${previewHtml}
