@@ -2,7 +2,7 @@
 
 This document specifies the firmware design, dual-core task execution model, memory partitions, and hardware bringup procedures for the **Carrier Board 2.0** architecture powered by the **NXP MCX N947** dual-core Arm Cortex-M33 microcontroller.
 
-The source of truth for bringup verification steps is [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml).
+The source of truth for bringup verification steps is [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
 
 ---
 
@@ -36,6 +36,7 @@ The source of truth for bringup verification steps is [`app/carrier_board_bringu
     - [Resolution of RP2040 Core 1 SRAM Execution Limitation on MCX N947](#resolution-of-rp2040-core-1-sram-execution-limitation-on-mcx-n947)
 - [3. Communication, Telemetry & Logging Strategy](#3-communication-telemetry--logging-strategy)
   - [Tradeoff Evaluation: Segger RTT vs. High-Speed UART Service Model](#tradeoff-evaluation-segger-rtt-vs-high-speed-uart-service-model)
+  - [BLE Latency, Throughput & Connection Parameter Evaluation across Operating Scenarios](#ble-latency-throughput--connection-parameter-evaluation-across-operating-scenarios)
   - [Host CLI (`tools/host_cli`) Production, Field Servicing & OTA Support](#host-cli-toolshost_cli-production-field-servicing--ota-support)
     - [1. Production Manufacturing & Factory Provisioning](#1-production-manufacturing--factory-provisioning)
     - [2. Structured Diagnostic Error Handling (`ServiceError`)](#2-structured-diagnostic-error-handling-serviceerror)
@@ -53,7 +54,8 @@ The source of truth for bringup verification steps is [`app/carrier_board_bringu
   - [1. System Controller Architecture: Harmonized `Active`, `Sleep` & `PowerDown` States](#1-system-controller-architecture-harmonized-active-sleep--powerdown-states)
   - [2. User LED Indicator Matrix (TI LP5009 RGB LED)](#2-user-led-indicator-matrix-ti-lp5009-rgb-led)
   - [3. Speaker Audio Chimes](#3-speaker-audio-chimes)
-  - [4. Boot Timing & Latency Budget](#4-boot-timing--latency-budget)
+  - [4. Capacitive Touch Gesture Recognition & Interaction Model (1F Gestures)](#4-capacitive-touch-gesture-recognition--interaction-model-1f-gestures)
+  - [5. Boot Timing & Latency Budget](#5-boot-timing--latency-budget)
 - [7. Hardware Bringup, Verification & Architecture Risk Protocol](#7-hardware-bringup-verification--architecture-risk-protocol)
   - [Architecture Risk Identification & Mitigation Matrix](#architecture-risk-identification--mitigation-matrix)
   - [Bringup & Verification Milestones & Deliverables Roadmap](#bringup--verification-milestones--deliverables-roadmap)
@@ -71,26 +73,28 @@ The Carrier Board 2.0 is a modular hardware evaluation, sensor fusion, and telem
 +-----------------------------------------------------------------------------------+
 |                            CARRIER BOARD 2.0 FIRMWARE                             |
 +-----------------------------------------------------------------------------------+
-|  Core 0 (150 MHz Cortex-M33): System Orchestration, Storage, Network & Services   |
-|  - Embassy Async Executor (Cooperative Multitasking)                              |
+|  Real-Time Processing Core (Core 0, 150 MHz Cortex-M33): Real-Time Sensing, ML & BLE|
+|  - Embassy Async Executor (Deterministic Real-Time Scheduling)                    |
 |  - Inter-Core Async IPC (embassy-ipc-channel over SRAMX + MU interrupts / CBOR)   |
-|  - FlexSPI NAND Flash Storage Controller (Winbond W25N01GV 1Gb NAND Filesystem)   |
+|  - ProxFusion Capacitive Touch & Proximity Engine (Azoteq IQS7222A @ 10-30 Hz FIFO)|
+|  - I2S & PDM Class-D Audio Stream & Frequency Synthesis (MAX98357A Chime Engine) |
+|  - PowerQuad Math Accelerator / DSP Filter Pipelines (CMSIS-DSP)                  |
+|  - eIQ Neutron NPU Neural Inference Engine (Accelerated Gesture ML Graph)         |
 |  - Bidirectional Wireless BLE Service Stack (u-blox NINA-B312 UART @ 1 Mb/s)       |
 |    * Telemetry Egress Streaming                                                   |
 |    * BLE GATT Service Endpoint for Mobile/Host Client RPC & Configuration         |
 |  - Host FTDI Console & High-Speed UART Service Channel (FC1 UART0 @ 115.2k - 1Mb/s)|
-|  - Power Path & Battery State of Charge Manager (BQ24074 & MAX17048)              |
 |  - Status & Ambient LED Animations (TI LP5009 Logarithmic RGB Driver)             |
-|  - Background OTA Firmware Staging & Secure Boot Verification Pipeline            |
 +-----------------------------------------------------------------------------------+
-|  Core 1 (150 MHz Cortex-M33): Dedicated Real-Time Peripheral Coprocessor          |
-|  - Deterministic Real-Time Task Runner                                            |
+|  Always-On Core (Core 1, 150 MHz Cortex-M33): System Lifecycle, Power & Flash     |
+|  - System Lifecycle Orchestration & Power State Machine (Active, Sleep, PowerDown)|
 |  - Inter-Core Async IPC (embassy-ipc-channel over SRAMX + MU interrupts / CBOR)   |
-|  - High-Speed ProxFusion Capacitive Touch & Proximity Engine (Azoteq IQS7222A)    |
-|  - I2S & PDM Class-D Audio Stream & Frequency Synthesis (MAX98357A & Piezo Sounder)|
-|  - Camera Gesture Pipeline & Image Preprocessing Interface                        |
-|  - PowerQuad Math Accelerator / DSP Filter Pipelines (CMSIS-DSP)                  |
-|  - eIQ Neutron NPU Neural Inference Engine (Accelerated ML Graph Execution)       |
+|  - FlexSPI NAND Flash Storage Controller (Winbond W25N01GV 1Gb NAND Filesystem,   |
+|    sequential-storage, wear leveling; isolates flash erase latency from Real-Time |
+|    Processing Core / Core 0)                                                      |
+|  - Dual-Stage Wakeup Unit (WUU) Digital Filter & Standby Supervision              |
+|  - Power Path & Battery State of Charge Manager (BQ24074 & MAX17048)              |
+|  - Background OTA Firmware Staging & Secure Boot Verification Pipeline            |
 +-----------------------------------------------------------------------------------+
 ```
 
@@ -99,13 +103,14 @@ The Carrier Board 2.0 is a modular hardware evaluation, sensor fusion, and telem
 | Designator | Component / Part | Description | Interface / Bus | Key Firmware Role |
 | :--- | :--- | :--- | :--- | :--- |
 | **`U1`** | **NXP MCXN947VDF** | Dual-core Arm Cortex-M33 MCU + eIQ NPU | Host Controller | 150 MHz dual-core, 2MB dual-bank Flash, 512KB SRAM with ECC. |
-| **`U8`** | **Winbond W25N01GV** | 1Gb (128MB) SLC Serial NAND Flash | FlexSPI Port A (Core 0)| Persistent CBOR telemetry queue, crash dump logs, calibration data, OTA staging. |
+| **`U8`** | **Winbond W25N01GV** | 1Gb (128MB) SLC Serial NAND Flash | FlexSPI Port A (Always-On Core / Core 1)| Persistent CBOR telemetry queue, crash dump logs, calibration data, OTA staging (isolated on Always-On Core / Core 1 to eliminate flash erase latency on Real-Time Processing Core / Core 0). |
 | **`U3`** | **TI BQ24074** | 1.5A Dynamic Power Path Li-Ion Charger | GPIO (`/CHG`, `/PGOOD`) | Autonomous charge management, input current limit, brownout avoidance. |
 | **`U7`** | **ADI MAX17048** | 1-Cell Li+ ModelGauge Fuel Gauge | Core `I2C0` (`0x36`) | Precision voltage, state of charge (SoC), alert interrupt (`G4`). |
 | **`U6`** | **TI LP5009** | 9-Channel Logarithmic RGB LED Driver | Core `I2C0` (`0x14`) | Low-power breathing, charge animations, offloading MCU core. |
 | **`U9`** | **FTDI FT232RNQ** | High-Speed USB 2.0 to UART Serial Bridge | `FC1` UART0 (115.2k - 1 Mb/s)| Diagnostic bringup shell, 1Mb/s telemetry, UART service endpoint. |
-| **`U2`** | **Azoteq IQS7222A**| ProxFusion Cap-Touch & Proximity IC | Touch `I2C1` (`0x44`)| Single-finger (1 finger) touch tracking, tap/slider gestures, and proximity sensing (`CAP_INT` on `C4`, Core 1). |
-| **`U4`** | **ADI MAX98357A** | 3.2W I2S Class-D Mono Audio Amplifier | `I2S` Audio (`B14`/`A14`)| Chime audio feedback, filterless I2S Class-D drive on Core 1. |
+| **`U2`** | **Azoteq IQS7222A**| ProxFusion Cap-Touch & Proximity IC | Touch `I2C1` (`0x44`)| Single-finger (1 finger) touch tracking, tap/slider gestures, and proximity sensing (`CAP_INT` on `C4`, Real-Time Processing Core `SensorController`). |
+| **`SW1`** | **Tactile Switch** | Hardware System Reset Button | GPIO (`P1_2` / `E4`) | Dedicated physical button on carrier board used to initiate hardware system reset (`NVIC_SystemReset()`). |
+| **`U4`** | **ADI MAX98357A** | 3.2W I2S Class-D Mono Audio Amplifier | `I2S` Audio (`B14`/`A14`)| Chime audio feedback, filterless I2S Class-D drive on Real-Time Processing Core (Core 0). |
 | **`U11`**| **u-blox NINA-B312**| Bluetooth Low Energy 5.0 Module | UART1 (1 Mb/s) | Bidirectional BLE: Telemetry streaming & GATT service endpoint. |
 | **`Q2`–`Q4`**| **TI TPS22918**| 5.5V, 2A Load Switches | GPIO (`L4`, `L5`, `M4`)| Power-gating Audio (`Q2`), Sensors (`Q3`), and Debug Bridge (`Q4`). |
 
@@ -121,31 +126,32 @@ Carrier Board 2.0 adopts the project's decoupled domain controller design patter
    - Computes state of charge (SoC), cell voltage, charging status, and publishes periodic battery telemetry frames.
 3. **`LedController` (`controller::led_controller`)**:
    - Drives the TI LP5009 9-channel logarithmic $\text{I}^2\text{C}$ RGB LED driver (`I2C0` @ `0x14`).
-   - Renders visual patterns for boot (`BOOTING`, `BOOT_FAILED`), wireless status (`BLE_PAIRING`, `BLE_CONNECTED`), runtime modes (`ACTIVE_RUNNING`, `CAMERA_ACTIVE`), thermal alerts (`OVERTEMP_ALERT`), and OTA updates (`OTA_PROGRAMMING`).
+   - Renders visual patterns for boot (`BOOTING`, `BOOT_FAILED`), wireless status (`BLE_PAIRING`), runtime modes (`ACTIVE_RUNNING`, `CAMERA_ACTIVE`), thermal alerts (`OVERTEMP_ALERT`), and OTA updates (`OTA_PROGRAMMING`).
 4. **`SensorController` (`controller::sensor_controller`)**:
    - Serves as the unified canonical controller for all current and future sensor peripherals (environmental, ambient light, IMU/inertial, optical/ToF, capacitive touch, proximity).
-   - Manages the Azoteq IQS7222A capacitive touch and proximity sensor (`I2C1` @ `0x44` on Core 1).
+   - Manages the Azoteq IQS7222A capacitive touch and proximity sensor (`I2C1` @ `0x44` on Real-Time Processing Core / Core 0).
    - **Hardware FIFO Buffering & Low-Power Coprocessor Scheduling**:
      - Azoteq IQS7222A capacitive touch sensing and motion sensor peripherals stream readings into internal on-chip hardware FIFOs (up to 32 samples deep).
-     - Hardware pin interrupts (`CAP_INT` on `C4`) fire only when the hardware FIFO reaches a configurable watermark threshold (e.g. 75% full) or an inactivity flush timeout expires.
-     - This permits Core 1 to remain in deep low-power sleep (WFI / power-down) during sampling intervals, waking only when a burst batch of samples is ready, drastically reducing active processor energy.
+     - Hardware pin interrupts (`CAP_INT` on `C4`) trigger the Real-Time Processing Core's `SensorController` at an adaptive 10–30 Hz poll rate (nominal 20 Hz) when the hardware FIFO reaches a watermark threshold or on touch activity.
+     - This permits the Real-Time Processing Core (Core 0) to sleep between FIFO batch transfers and allows the Always-On Core (Core 1, running `SystemController`) to remain in deep low-power supervisory sleep (WFI / power-down), waking only on validated state transitions, drastically reducing active processor energy.
    - **On-Chip High-Resolution Timer (`CTIMER`) Microsecond Timestamp Integration**:
-     - To ensure cycle-accurate sensor fusion without CPU polling, Core 1 integrates the MCX N947 on-chip 32-bit Standard Counter/Timer (`CTIMER0`..`CTIMER4`).
-     - Upon waking from a FIFO watermark interrupt, Core 1 reads the running `CTIMER` microsecond timestamp counter. The inter-sample time step ($\Delta t$) is integrated backward across each sample in the FIFO batch using the known hardware sample clock rate and hardware timer delta:
+     - To ensure cycle-accurate sensor fusion without CPU polling, the Real-Time Processing Core (Core 0) integrates the MCX N947 on-chip 32-bit Standard Counter/Timer (`CTIMER0`..`CTIMER4`).
+     - Upon waking from a FIFO watermark interrupt, the Real-Time Processing Core (Core 0) reads the running `CTIMER` microsecond timestamp counter. The inter-sample time step ($\Delta t$) is integrated backward across each sample in the FIFO batch using the known hardware sample clock rate and hardware timer delta:
        $$\Delta t_{batch} = t_{interrupt} - t_{previous\_batch}, \quad \Delta t_{sample} = \frac{\Delta t_{batch}}{N_{samples}}$$
    - **FIFO Buffering in the Sensor Fusion Pipeline**:
-     - Batched, timestamped samples are staged directly into the **Core 1 Sensor Fusion Arena** (`0x2002_0000`, 64 KB).
+     - Batched, timestamped samples are staged directly into the **Real-Time Processing Core Sensor Fusion Arena** (`0x2002_0000`, 64 KB).
      - The sensor fusion algorithms (Kalman filter state estimation, complementary attitude filters, and temporal trajectory smoothing) operate over contiguous vector slices of batched samples rather than sample-by-sample loops.
      - Integration equations use exact microsecond $\Delta t$ from `CTIMER`, eliminating phase jitter caused by variable interrupt latency, context switches, or inter-core IPC delivery delays.
    - Handles single-finger touch position detection, continuous tracking, gesture recognition, and proximity event emission over IPC.
 5. **`SpeakerController` (`controller::speaker_controller`)**:
-   - Drives the on-board piezo buzzer and ADI MAX98357A I2S Class-D audio amplifier (`U4` on Core 1).
+   - Drives the on-board piezo buzzer and ADI MAX98357A I2S Class-D audio amplifier (`U4` on Real-Time Processing Core / Core 0).
    - Synthesizes acoustic alerts, status chimes, and decodes I2S audio playback streams.
 6. **`BleController` (`controller::ble_controller`)**:
-   - Serves as the primary communication and IPC gateway to the u-blox NINA-B312 BLE module over 1 Mb/s UART.
+   - Serves as the primary communication and IPC gateway to the u-blox NINA-B312 BLE module over 1 Mb/s UART (`FC5` / UART1 with hardware RTS/CTS flow control) on the Real-Time Processing Core (Core 0).
    - Coordinates BLE advertising, GATT service connection lifecycle, client RPC command routing, and wireless telemetry egress streaming.
+   - Dynamically manages BLE connection intervals ($CI$), slave latency, and PHY modes across operational states (`Active`, `Sleep`, `PowerDown`, and `OTA`), as detailed in [BLE Latency, Throughput & Connection Parameter Evaluation across Operating Scenarios](#ble-latency-throughput--connection-parameter-evaluation-across-operating-scenarios).
 7. **`FilesystemController` (`controller::filesystem_controller`)**:
-   - Manages persistent storage on the Winbond W25N01GV 128 MB SLC NAND flash via FlexSPI DMA and `sequential-storage`.
+   - Manages persistent storage on the Winbond W25N01GV 128 MB SLC NAND flash via FlexSPI DMA on the Always-On Core (Core 1) and `sequential-storage`.
    - Mounts and manages `telemetry` (queue), `crash_logs` (map), `ota_staging` (queue), `recovery` (read-only), and `models` (map) partitions.
 8. **`TelemetryController` (`controller::telemetry_controller`)**:
    - High-throughput telemetry pipeline aggregating binary `defmt` structured logs and CBOR telemetry records.
@@ -188,8 +194,8 @@ expansion-cellular = []
 ```
 
 #### 3. Conditional Controller & Pipeline Compilation
-- **`expansion-audio`**: Enables Core 1 I2S/SAI audio streaming task, WAV/ADPCM decompression engine, and speaker chime synthesis (+45 KB flash).
-- **`expansion-camera`**: Compiles Core 1 camera DMA capture pipeline, 2D optical flow filter, image patch normalization, and eIQ Neutron NPU inference dispatch (+140 KB flash).
+- **`expansion-audio`**: Enables Real-Time Processing Core (Core 0) I2S/SAI audio streaming task, WAV/ADPCM decompression engine, and speaker chime synthesis (+45 KB flash).
+- **`expansion-camera`**: Compiles Real-Time Processing Core (Core 0) camera DMA capture pipeline, 2D optical flow filter, image patch normalization, and eIQ Neutron NPU inference dispatch (+140 KB flash).
 - **`expansion-location`**: Instantiates GNSS sentence parser task on `UART1` (`FC5`), Kalman dead-reckoning filter, and geodesic solver (+55 KB flash).
 - **`expansion-cellular`**: Enables cellular modem AT command handler, PPP network adapter, and power-saving mode (eDRX / PSM) scheduler (+65 KB flash).
 
@@ -237,13 +243,13 @@ To prove conclusively that the application fits comfortably within the internal 
 
 | Subsystem / Functional Module | Estimated `.text` (Code) | Estimated `.data` / `.rodata` | Total Flash Footprint | Description / Scope |
 | :--- | :---: | :---: | :---: | :--- |
-| **Core 0 Application & Embassy Executor** | 210 KB | 40 KB | **250 KB** | Cooperative async task runner, system state machine, timer scheduler, channel routing. |
-| **Core 1 Coprocessor Runtime** | 150 KB | 30 KB | **180 KB** | Coprocessor bootstrap, real-time sensor loop, Azoteq IQS7222A touch sampling engine. |
+| **Real-Time Processing Core (Core 0) Runtime** | 210 KB | 40 KB | **250 KB** | Cooperative async task runner, real-time sensor acquisition, capacitive touch DSP/NPU pipeline, Class-D audio, BLE communication. |
+| **Always-On Core (Core 1) Runtime** | 150 KB | 30 KB | **180 KB** | Low-power supervisory lifecycle, SystemController state machine, WUU wake handler, FlexSPI SLC NAND filesystem. |
 | **DSP & PowerQuad Math Kernels** | 75 KB | 15 KB | **90 KB** | CMSIS-DSP FFT, biquad IIR/FIR filter cascades, frequency synthesis algorithms. |
 | **Inter-Core Async IPC (SRAMX + MU + minicbor)** | 18 KB | 4 KB | **22 KB** | Lock-free SPSC channel queues in shared SRAMX, MU doorbell interrupt driver, minicbor zero-copy serialization. |
 | **eIQ Neutron NPU Runtime & Driver** | 100 KB | 20 KB | **120 KB** | NPU command stream builder, operator graph dispatcher, weight decompression loader. |
 | **eIQ Quantized Model Weights (Internal)** | 0 KB | 280 KB | **280 KB** | 8-bit quantized gesture classification & keyword spotting weights in `.rodata`. |
-| **Built-in Peripherals & Bus Drivers** | 75 KB | 15 KB | **90 KB** | FlexSPI NAND (Core 0), LPI2C0/1, I3C, LPUART0/1, PDM audio, WUU/SPC drivers. |
+| **Built-in Peripherals & Bus Drivers** | 75 KB | 15 KB | **90 KB** | FlexSPI NAND (Always-On Core / Core 1), LPI2C0/1, I3C, LPUART0/1, PDM audio, WUU/SPC drivers. |
 | **Bidirectional BLE Stack (NINA-B312)** | 55 KB | 15 KB | **70 KB** | Telemetry egress framing, GATT service endpoint dispatcher, client RPC handlers. |
 | **Expansion: Audio Playback Engine** | 38 KB | 7 KB | **45 KB** | WAV / ADPCM streaming decoder, ring buffer feeder to PDM Class-D output. |
 | **Expansion: Camera Gesture Pipeline** | 115 KB | 25 KB | **140 KB** | 2D optical flow filter, image patch normalization, edge trigger detection. |
@@ -260,7 +266,7 @@ A strict architectural invariant of the Carrier Board 2.0 firmware is that **eve
 | Partition Name | Memory Address Range | Size | Filesystem / Storage Driver | Description & Stored Data |
 | :--- | :--- | :---: | :--- | :--- |
 | **`bootloader`** | `0x0000_0000` – `0x0001_0000` | 64 KB | Read-Only Bare-Metal Code | Custom Second-Stage Bootloader (SSBL): Initial startup vector table, XIP pre-boot evaluation, and SRAM-relocatable flash programmer kernel (`flash_loader_ram`) for OTA staging. |
-| **`app`** | `0x0001_0000` – `0x001E_0000` | 1,856 KB | Read-Only Application Code | Primary active dual-core application firmware image (Core 0 + Core 1). |
+| **`app`** | `0x0001_0000` – `0x001E_0000` | 1,856 KB | Read-Only Application Code | Primary active dual-core application firmware image (Real-Time Processing Core + Always-On Core). |
 | **`metadata`** | `0x001E_0000` – `0x001F_0000` | 64 KB | `sequential_storage::map` | Internal non-volatile key-value store: device UUID, monotonic boot counters, and hardware flags. (Sensor calibration baselines are moved to external NAND). |
 | **`keystore`** | `0x001F_0000` – `0x0020_0000` | 64 KB | Hardware Protected Keystore | Cryptographic public keys, anti-rollback monotonic counters, security credentials. |
 
@@ -272,7 +278,7 @@ A strict architectural invariant of the Carrier Board 2.0 firmware is that **eve
 | **`crash_logs`** | `0x0200_0000` – `0x0400_0000` | 32 MB | `sequential_storage::map` | Diagnostic crash dump storage: CPU register snapshots, core task callstacks, and panic assertions. |
 | **`ota_staging`** | `0x0400_0000` – `0x0600_0000` | 32 MB | `sequential_storage::queue` | Staging area for incoming firmware update chunks received over BLE or USB UART prior to verification. |
 | **`recovery`** | `0x0600_0000` – `0x0700_0000` | 16 MB | Read-Only Recovery Image | Golden factory fallback firmware image restored if `app` boot verification fails. |
-| **`models`** | `0x0700_0000` – `0x0800_0000` | 16 MB | `sequential_storage::map` | External neural network weights (eIQ Neutron), sensor calibration baselines, audio chime samples, and gesture templates. Supports independent updates over BLE or USB UART without requiring an OTA reboot, allowing on-the-fly switching and hot-reloading of ML models directly in the Core 1 tensor arena. |
+| **`models`** | `0x0700_0000` – `0x0800_0000` | 16 MB | `sequential_storage::map` | External neural network weights (eIQ Neutron), sensor calibration baselines, audio chime samples, and gesture templates. Supports independent updates over BLE or USB UART without requiring an OTA reboot, allowing on-the-fly switching and hot-reloading of ML models directly in the Real-Time Processing Core (Core 0) tensor arena. |
 
 #### 3. Flash I/O Invariants & Guarantees
 
@@ -367,7 +373,7 @@ pub struct PartitionDescriptor {
 }
 ```
 
-- **Bootloader (SSBL) Integration**: The custom Second-Stage Bootloader fetches the `.program_metadata` header from internal flash on boot to determine active `app` partition boundaries, keystore location, and NAND `ota_staging` offsets dynamically without requiring hardcoded flash addresses in bootloader C/Rust code.
+- **Bootloader (SSBL) Integration & Pre-Role Execution**: The custom Second-Stage Bootloader executes immediately upon handoff from the NXP ROM bootloader, running on Core 0 before the runtime roles of the cores (**Always-On Core** and **Real-Time Processing Core**) have been established. The SSBL fetches the `.program_metadata` header from internal flash on boot to determine active `app` partition boundaries, keystore location, and NAND `ota_staging` offsets dynamically without requiring hardcoded flash addresses in bootloader C/Rust code. Once the application image is verified, Core 0 transfers execution to the application vector table, which boots the Embassy executors and starts Core 1 to establish the dual-core operational roles.
 - **Host Tooling Introspection (`host_fs` & `host_cli`)**: When connecting over USB UART or reading an ELF binary, host utilities parse `.program_metadata` directly. This enables host tools to discover the full partition layout across all storage media (`dev:builtin-flash`, `dev:ext-flash`) automatically, preventing flash configuration divergence between host and embedded targets.
 
 ### Application Software Framework for DSP & NPU (Rust ML Ecosystem)
@@ -395,21 +401,21 @@ To drive the eIQ Neutron NPU and PowerQuad DSP accelerator from Rust without rel
 To validate the Rust machine learning and tensor processing software framework on physical hardware, the framework integrates directly with the gesture processor for the on-board Azoteq IQS7222A capacitive touch sensor:
 
 1. **High-Rate Touch Telemetry Ingestion**:
-   - Core 1 samples raw capacitive delta values and tracking coordinates from the Azoteq IQS7222A touch controller over $\text{I}^2\text{C}$ (`FC2`) via asynchronous eDMA at a sustained 100 Hz rate.
-   - Sensor frames are staged directly into lock-free ring buffers within the Core 1 Sensor Fusion Arena (`0x2002_8000`).
+   - The Real-Time Processing Core (Core 0) samples raw capacitive delta values and tracking coordinates from the Azoteq IQS7222A touch controller over $\text{I}^2\text{C}$ (`FC2`) via asynchronous eDMA at a sustained 100 Hz rate.
+   - Sensor frames are staged directly into lock-free ring buffers within the Real-Time Processing Core's Sensor Fusion Arena (`0x2002_0000`).
 
 2. **Feature Extraction via PowerQuad DSP**:
    - The temporal coordinate sequence passes through biquad smoothing filters and baseline tracking routines accelerated by the MCX N947 PowerQuad DSP coprocessor.
    - A sliding 32-sample temporal window is assembled into a zero-copy $32 \times 3$ normalized feature matrix (X-coordinate, Y-coordinate, touch delta intensity).
 
 3. **Inference Execution via Framework (`tract` / `Burn`)**:
-   - A compact 1D temporal convolutional gesture classification model (trained offline in PyTorch/JAX and lowered via `burn-import` or `tract` into `no_std` Rust structs) executes inference on Core 1.
+   - A compact 1D temporal convolutional gesture classification model (trained offline in PyTorch/JAX and lowered via `burn-import` or `tract` into `no_std` Rust structs) executes inference on the Real-Time Processing Core (Core 0) (`SensorController`).
    - Quantized INT8 weights execute with zero heap allocation, utilizing the eIQ Neutron NPU and PowerQuad matrix primitives.
-   - The model accurately distinguishes user gestures: Single Tap, Double Tap, Drag/Swipe (Up/Down/Left/Right), Long Press Hold, and Proximity Hover.
+   - The model accurately distinguishes user gestures with classification confidence $\ge 0.95$: Single Tap, Double Tap, Swipe (Forward/Back), Long Press, Extra Long Press, and Action Button presses.
 
 4. **Event Dispatch & Inter-Core Routing**:
-   - Upon gesture recognition with confidence $\ge 0.85$, Core 1 emits a typed `GestureEvent` struct across the `embassy-ipc-channel` to Core 0.
-   - Core 0 routes the event to `BleController` for GATT client notification and triggers acoustic confirmation on the audio amplifier.
+   - Upon gesture recognition with confidence $\ge 0.95$, the Real-Time Processing Core (Core 0) emits a typed `model::types::Gesture` variant and dispatches it over IPC to the Always-On Core (Core 1), where it logs a `TelemetryRecord::Gesture` record to the external NAND flash queue.
+   - The Real-Time Processing Core (Core 0) routes the event to `BleController` for GATT client notification and triggers acoustic confirmation on the Class-D audio amplifier via `SpeakerController` (local to the Real-Time Processing Core).
    - This physical loop provides complete end-to-end hardware validation of the software development framework, graph lowering pipeline, and embedded inference dispatch.
 
 ### Design Hardening & Memory Protection (ARMv8-M MPU & Storage Security)
@@ -478,12 +484,12 @@ The MCX N947 features **512 KB of total internal SRAM** with ECC protection. To 
 
 | SRAM Domain / Functional Tier | Base Address | Size | Memory Classification | Primary Function / Scope |
 | :--- | :--- | :---: | :---: | :--- |
-| **Core 0 System Heapless Arena** | `0x2000_0000` | 96 KB | Base System | Embassy executor task arena, networking buffers, BLE packet queues. |
+| **Real-Time Processing Core (Core 0) Task Arena** | `0x2000_0000` | 96 KB | Base System | Embassy executor task arena, networking buffers, BLE packet queues. |
 | **Segger RTT & defmt Logging Buffers**| `0x2001_8000` | 24 KB | Base System | RTT control block (`_SEGGER_RTT`), Up/Down channel ring buffers, defmt queue. |
 | **CLI & Interactive Console Buffers** | `0x2001_E000` | 8 KB | Base System | Command history ring buffer, tokenizer scratchpad, VT100 terminal escape line buffers. |
-| **Core 1 Sensor Fusion Arena** | `0x2002_0000` | 64 KB | Base System | ProxFusion high-rate sample buffers, Azoteq IQS7222A touch filter states. |
+| **Real-Time Processing Core (Core 0) Sensor Arena** | `0x2002_0000` | 64 KB | Base System | ProxFusion high-rate sample buffers, Azoteq IQS7222A touch filter states. |
 | **Inter-Core Shared IPC (SRAMX)**| `0x2003_0000` | 32 KB | Base System | Lock-free SPSC circular ring buffers and hardware mailbox registers. |
-| **Stacks & Hardware Guard Pages** | `0x2003_8000` | 48 KB | Base System | Core 0 stack (24 KB), Core 1 stack (16 KB), MPU guard pages (8 KB). |
+| **Stacks & Hardware Guard Pages** | `0x2003_8000` | 48 KB | Base System | Real-Time Processing Core stack (24 KB), Always-On Core stack (16 KB), MPU guard pages (8 KB). |
 | **Reserved / DMA Bounce Buffers** | `0x2004_4000` | 16 KB | Base System | Transient eDMA scatter-gather descriptors, USB packet staging, and `flash_loader_ram`. |
 | **Expansion: Audio Streaming & DSP**| `0x2004_8000` | 32 KB | Active Expansion | PDM Class-D double-buffers, 512-point FFT scratchpad (`expansion-audio`). |
 | **Expansion: Neutron NPU Tensor Arena**| `0x2005_0000` | 128 KB | Active Expansion | Activation maps and scratchpad (`expansion-camera`). Model weights hot-reloadable from NAND. |
@@ -499,21 +505,31 @@ The MCX N947 features **512 KB of total internal SRAM** with ECC protection. To 
 
 ### Dual-Core Rust Architecture: Embassy Multi-Executor AMP (Option 3)
 
-The architecture establishes **Embassy Multi-Executor Asymmetric Multiprocessing (AMP)**:
+The architecture establishes **Embassy Multi-Executor Asymmetric Multiprocessing (AMP)** between the **Real-Time Processing Core (Core 0)** and the **Always-On Core (Core 1)**:
 
-- **Core 0**: Runs the primary Embassy asynchronous executor. Handles system timers, power rail scheduling, FlexSPI NAND filesystem access, battery fuel gauge monitoring, and bidirectional BLE communication.
-- **Core 1**: Dedicated real-time peripheral coprocessor running a deterministic Embassy executor. Drives Azoteq IQS7222A touch capture, PDM Class-D audio streaming, and camera gesture preprocessing.
+- **Real-Time Processing Core (Core 0)**:
+  - High-performance execution domain operating at 150 MHz, equipped with Arm Cortex-M33 single-precision FPU, PowerQuad DSP accelerator, and eIQ Neutron NPU neural processing coprocessor.
+  - Runs the real-time Embassy asynchronous executor responsible for deterministic high-frequency sensor acquisition: Azoteq IQS7222A capacitive touch and proximity sensing (`SensorController`) with adaptive 10–30 Hz FIFO ingestion and CTIMER microsecond timestamp integration.
+  - Executes PowerQuad DSP filtering, temporal touch trajectory smoothing, and eIQ Neutron NPU gesture classification inference passes.
+  - Drives acoustic alert synthesis and MAX98357A Class-D I2S audio playback streams (`SpeakerController`).
+  - Manages high-speed bidirectional wireless BLE communications (`BleController`) over 1 Mb/s UART with hardware RTS/CTS flow control, servicing GATT attribute requests, connection parameters, and client telemetry streaming.
+- **Always-On Core (Core 1)**:
+  - Dedicated low-power supervisory and persistent storage controller running an independent Embassy executor.
+  - Governs top-level device power lifecycle states (`Active`, `Sleep`, `PowerDown`) via `SystemController`.
+  - Oversees low-power Wakeup Unit (`WUU0`) digital filters and standby monitoring, managing wake events from touch interrupts (`CAP_INT`), charger insertion (`CHG_PGOOD_WAKE`), or reset (`SW1`).
+  - Monitors battery fuel gauge (`BatteryController` / ADI MAX17048) and TI BQ24074 power path status pins.
+  - Owns exclusive control of the Winbond W25N01GV 128 MB SLC NAND flash over FlexSPI Port A (`FilesystemController` and `TelemetryController`), persisting CBOR telemetry records, crash dumps, and OTA staging chunks via eDMA—completely isolating NAND block-erase and page-programming latencies from contaminating the real-time sensing domain.
 
 #### Inter-Core Asynchronous IPC Protocol (`embassy-ipc-channel` & `minicbor`)
 
 Inter-core communication is mediated by a specialized, zero-allocation asynchronous IPC framework (`embassy-ipc-channel` / `controller::ipc`):
 
 - **BLE Services vs. Inter-Core IPC Demarcation**:
-  The u-blox NINA-B312 BLE module connects directly to Core 0 via high-speed UART (`FC5` / UART1 @ 1 Mb/s). Core 0 runs `BleController`, which manages BLE connection states, GATT services, client attribute reads/writes, and telemetry notifications. `embassy-ipc-channel` is strictly the *internal* inter-core communication layer between Core 0 and Core 1 over shared SRAMX and hardware Messaging Unit (MU). When a remote BLE peer writes to a GATT characteristic controlling coprocessor features (e.g. audio chime trigger or gesture calibration), `BleController` on Core 0 decodes the GATT packet and forwards an internal message across the core boundary via `embassy-ipc-channel`. In reverse, real-time sensor events from Core 1 travel over IPC to Core 0, which pushes them out as BLE GATT notifications.
+  The u-blox NINA-B312 BLE module connects directly to the Real-Time Processing Core (Core 0) via high-speed UART (`FC5` / UART1 @ 1 Mb/s). The Real-Time Processing Core runs `BleController`, which manages BLE connection lifecycles, GATT services, client attribute reads/writes, and telemetry notifications. `embassy-ipc-channel` is strictly the *internal* inter-core communication layer between the Real-Time Processing Core (Core 0) and the Always-On Core (Core 1) over shared SRAMX and hardware Messaging Unit (MU). When a remote BLE peer writes to a GATT characteristic controlling supervisory features (e.g. system state transitions, battery query, or factory provisioning), `BleController` on the Real-Time Processing Core decodes the GATT packet and forwards an internal message across the core boundary via `embassy-ipc-channel` to `SystemController` on the Always-On Core. In reverse, when the Real-Time Processing Core validates a gesture or receives telemetry frames, it transfers the record across IPC to the Always-On Core for persistent NAND flash queue storage.
 - **Shared Memory SPSC Queues**:
-  Lock-free `heapless::spsc::Queue` circular ring buffers are allocated in shared ECC SRAMX (`0x2006_8000`, 32 KB). Separate uni-directional channels are maintained for Core 0 &rarr; Core 1 (audio commands, ML inference triggers) and Core 1 &rarr; Core 0 (touch coordinates, gesture events, inference results).
+  Lock-free `heapless::spsc::Queue` circular ring buffers are allocated in shared ECC SRAMX (`0x2006_8000`, 32 KB). Separate uni-directional channels are maintained for Real-Time Processing Core &rarr; Always-On Core (validated gesture events, sensor telemetry records to commit to flash, BLE connection updates) and Always-On Core &rarr; Real-Time Processing Core (power lifecycle state change commands, audio chime triggers, battery status, gesture baseline calibration data).
 - **Hardware Messaging Unit (MU) Signaling**:
-  Doorbell interrupts utilize the NXP MCX N947 hardware Messaging Unit (`MU0_MUA` / `MU0_MUB`). When Core 0 pushes a request into the ring buffer, it sets the MU flag register, instantly triggering an interrupt on Core 1 that wakes the Embassy task awaiting `signal.wait()`. No polling or busy-spins occur.
+  Doorbell interrupts utilize the NXP MCX N947 hardware Messaging Unit (`MU0_MUA` / `MU0_MUB`). When either core pushes a message into its outbound ring buffer, it sets the MU flag register, instantly triggering an interrupt on the receiving core that wakes the Embassy task awaiting `signal.wait()`. No polling or busy-spins occur.
 - **Dual Transport Protocol: Direct Struct Copying & CBOR Serialization**:
   The IPC channel supports two transmission modes:
   - *Direct Plain Old Data (POD) Struct Copying*: For latency-critical internal inter-core events where schemas are static and both cores are compiled from the identical firmware crate (e.g. raw capacitive touch coordinates, DSP FFT bins, audio buffer pointers, status flags), types deriving `Copy`, `Clone`, and memory-safe byte traits (`zerocopy::FromBytes`, `zerocopy::IntoBytes` or `bytemuck::Pod`) are copied directly into the shared SRAMX ring buffer without serialization/deserialization overhead.
@@ -528,12 +544,12 @@ A critical limitation in prior RP2040-based architectures was the requirement th
 - **Root Cause on RP2040**:
   The RP2040 features a single external QSPI flash controller shared across both cores. When Core 0 and Core 1 accessed flash concurrently, bus arbitration delays and cache eviction caused unacceptable latency spikes. Furthermore, our implementation of multi-megabyte Perfetto timeline tracing required cycle-accurate logging on Core 1; any flash access stall distorted trace timestamps and caused event buffer overruns. Consequently, RP2040 forced Core 1 `.text` into SRAM, consuming 48–64 KB of RAM.
 - **Architectural Resolution on NXP MCX N947**:
-  The Carrier Board 2.0 silicon architecture resolves this limitation natively, allowing **Core 1 to execute in-place directly from internal Flash `app` partition (XIP)** with zero performance degradation:
-  1. *Dual Independent 64-Bit Flash Read Ports*: The MCX N947 integrates 2 MB of dual-bank internal flash with dual independent 64-bit read ports. Core 0 and Core 1 fetch instructions independently through separate bus ports with zero cross-core flash read contention.
+  The Carrier Board 2.0 silicon architecture resolves this limitation natively, allowing the **Always-On Core (Core 1) to execute in-place directly from internal Flash `app` partition (XIP)** with zero performance degradation:
+  1. *Dual Independent 64-Bit Flash Read Ports*: The MCX N947 integrates 2 MB of dual-bank internal flash with dual independent 64-bit read ports. The Real-Time Processing Core (Core 0) and Always-On Core (Core 1) fetch instructions independently through separate bus ports with zero cross-core flash read contention.
   2. *Dedicated Instruction Caches (ICache) & Data Cache (DCache) Roadmap*: Each Cortex-M33 core integrates both a 16 KB Instruction Cache (I-Cache) and a 16 KB Data Cache (D-Cache). During initial bringup, the 16 KB I-Cache is enabled for optimal XIP flash throughput, while the D-Cache is bypassed to simplify cache coherency with asynchronous eDMA transfers and shared SRAMX IPC. D-Cache activation is planned on the architectural roadmap for data-intensive DSP and tensor processing; when enabled, standardized cache maintenance primitives (`SCB_CleanDCache`, `SCB_InvalidateDCache`, `SCB_CleanInvalidateDCache`) will be wrapped around DMA descriptor buffers, and shared SRAMX (`0x2006_8000`) will be designated non-cacheable via MPU attributes.
   3. *Multi-Layer AHB Crossbar*: Instructions are fetched across dedicated C-AHB (Code AHB) buses, completely isolated from peripheral and DMA transfers occurring on S-AHB (System AHB).
-  4. *Zero-Flash Perfetto Tracing*: On MCX N947, Perfetto trace events from both cores write directly into the dedicated 24 KB ECC SRAM logging arena (`0x2002_0000`). Tracing never issues flash reads or writes, eliminating any risk of tracing-induced flash bus stalls.
-  5. *SRAM Conservation*: Executing Core 1 natively via XIP preserves 100% of the 512 KB internal SRAM budget for neural network activation tensors (128 KB Neutron arena), audio circular buffers (48 KB), and sensor fusion filters.
+  4. *Zero-Flash Perfetto Tracing*: On MCX N947, Perfetto trace events from both cores write directly into the dedicated 24 KB ECC SRAM logging arena (`0x2001_8000`). Tracing never issues flash reads or writes, eliminating any risk of tracing-induced flash bus stalls.
+  5. *SRAM Conservation*: Executing the Always-On Core (Core 1) natively via XIP preserves 100% of the 512 KB internal SRAM budget for neural network activation tensors (128 KB Neutron arena), audio circular buffers (48 KB), and sensor fusion filters.
 
 ---
 
@@ -567,6 +583,83 @@ Carrier Board 2.0 maintains a dual-channel strategy tailored for development vs.
 | **CLI / Shell** | **Interactive CLI Shell** for low-level developer commands. | Structured **Service RPC Protocol** (framed CBOR commands/responses). |
 | **Field Telemetry** | Not possible in standalone/enclosed devices. | **Fully Supported** wirelessly via BLE and over external USB-C port. |
 | **Enclosure Access** | None (requires open enclosure). | Accessible via external connectors and RF window. |
+
+### BLE Latency, Throughput & Connection Parameter Evaluation across Operating Scenarios
+
+The carrier board integrates a **u-blox NINA-B312** Bluetooth 5.0 / 5.2 module (`U11`) interfaced directly to the **Real-Time Processing Core (Core 0)** over a dedicated high-speed Flexcomm LPUART (`FC5` / UART1 @ 1 Mb/s) with hardware RTS/CTS flow control and dual-channel eDMA ring buffering. The Real-Time Processing Core executes `BleController` (`controller::ble_controller`), which acts as the autonomous wireless communication and RPC gateway.
+
+Because the system transitions between high-throughput data transfer, real-time interactive sensing, low-power idle listening, and deep quiescent standby, a static BLE connection profile would either deplete the battery or introduce unacceptable latency. The table below details the BLE connection parameters, PHY selections, latency budgets, application throughputs, and power consumption profiles across the four core operational scenarios:
+
+| Parameter / Metric | `Active` (Interactive / Telemetry) | `Sleep` (Low-Power Sensing) | `PowerDown` (Deep Standby) | `OTA` (Firmware & Model Updates) |
+| :--- | :--- | :--- | :--- | :--- |
+| **System State (`SystemStatus`)** | `Active` (State 2 & 3) | `Sleep` (State 1) | `PowerDown` (State 0) | `Active` / `OTA_PROGRAMMING` |
+| **Primary Objective** | Immediate UI response, fast telemetry | Low-power connection keepalive | Quiescent battery preservation | Maximum sustained data throughput |
+| **BLE Radio State** | Connected (Central & Peripheral) | Connected (Duty-cycled RX) | Deep Sleep / Directed Adv | Connected (Continuous Streaming) |
+| **Connection Interval ($CI$)** | **15.0 ms – 30.0 ms** (nom. 20.0 ms) | **100.0 ms – 150.0 ms** | Disconnected or **500 – 1000 ms** | **15.0 ms** (Fixed / Central Floor) |
+| **Slave Latency (Skipped Events)** | **0** (Immediate transfer) | **4 – 8** (Skipping 400 – 1200 ms) | N/A or **10 – 19** (5 – 10 s window) | **0** (Strictly zero missed events) |
+| **Supervision Timeout** | 2.0 s (2000 ms) | 5.0 s (5000 ms) | 10.0 s (10000 ms) | 4.0 s – 5.0 s |
+| **BLE PHY Mode** | **LE 2M PHY** (2.0 Mb/s symbol rate) | **LE 1M PHY** (1.0 Mb/s symbol rate) | LE 1M PHY (Extended range/adv) | **LE 2M PHY** (2.0 Mb/s symbol rate) |
+| **Negotiated ATT MTU** | 247 bytes (244-byte ATT payload) | 247 bytes | 247 bytes (if connected) | 247 – 512 bytes (typical 247 bytes) |
+| **Data Length Extension (DLE)** | 251 bytes PDU | 251 bytes PDU | Disabled / Default (27 bytes) | 251 bytes PDU (244-byte L2CAP SDU) |
+| **Packets per Conn. Event** | 4 – 8 packets / interval | 1 packet / event | 1 packet / event | **6 – 12 packets / interval** |
+| **One-Way Event Latency** | **15.0 ms – 30.0 ms** ($\text{avg } \approx 20\text{ ms}$) | $\le 100\text{ ms}$ (slave latency bypass) | $\le 2.5\text{ ms}$ (MCU) + $15\text{ ms}$ (Adv) | $\le 15.0\text{ ms}$ per packet chunk |
+| **Round-Trip RPC / Command Latency** | **30.0 ms – 50.0 ms** | 100.0 ms – 250.0 ms | 150.0 ms – 300.0 ms (conn boot) | 25.0 ms – 35.0 ms (window ACK) |
+| **Net Application Throughput** | **40.0 – 60.0 kB/s** (320 – 480 kbps) | **0.5 – 2.0 kB/s** (Heartbeats) | **0.0 kB/s** (Quiescent) | **55.0 – 75.0 kB/s** (440 – 600 kbps) |
+| **Average BLE Current ($I_{BLE}$)** | **1.8 – 3.2 mA** (Continuous telemetry) | **80 – 150 $\mu\text{A}$** (Duty-cycled) | **$\le 1.5\,\mu\text{A}$** (Radio Sleep / UART Wake) | **9.5 – 12.0 mA** (Sustained TX/RX) |
+
+---
+
+#### 1. Active Interactive Scenario (`Active`)
+- **Interaction & Telemetry Characteristics**:
+  In the `Active` state (States 2 and 3), the carrier board streams binary `defmt` execution frames, sensor fusion outputs, and immediate capacitive gesture notifications (`SingleTap`, `DoubleTap`, `SwipeForward`, `SwipeBack`, `LongPress`, `ExtraLongPress`).
+- **Connection Interval & Latency Tuning**:
+  - Connection interval is negotiated between **15.0 ms and 30.0 ms** (nominal 20.0 ms).
+  - **Slave Latency is set to 0**, guaranteeing that the peripheral wakes on every connection anchor point to exchange packets without skipping.
+  - End-to-end latency from hardware capacitive touch interrupt (`CAP_INT` on `C4`) through the Real-Time Processing Core (Core 0) classification and BLE GATT notification egress to the host/mobile client is bounded to **$15 - 30\text{ ms}$** ($\approx 20\text{ ms}$ average).
+  - Bidirectional RPC commands dispatched from `host_cli` or client apps complete a full round trip within **$30 - 50\text{ ms}$**.
+- **Throughput & Protocol Efficiency**:
+  - By activating **LE 2M PHY** and **Data Length Extension (DLE)** with a 251-byte Link Layer PDU, each GATT notification transmits up to 244 bytes of CBOR or binary telemetry in a single RF packet.
+  - With 4 to 8 packets scheduled per connection event, net application payload throughput reaches **$40 - 60\text{ kB/s}$** ($320 - 480\text{ kbps}$), allowing real-time multi-channel sensor streaming without choking the 1 Mb/s UART bridging to the Real-Time Processing Core (Core 0).
+
+#### 2. Sleep Sensing Scenario (`Sleep`)
+- **Low-Power Link Maintenance**:
+  In the `Sleep` state (State 1), the system has experienced 30 seconds of user inactivity. The MCX N947 scales clock frequencies down to 12 MHz, but maintains the BLE connection to avoid expensive reconnect cycles upon the next user interaction.
+- **Dynamic Parameter Optimization (Slave Latency)**:
+  - `BleController` negotiates a connection interval of **100.0 ms – 150.0 ms** combined with a **Slave Latency of 4 to 8**.
+  - Under quiescent conditions (no active data), the NINA-B312 BLE module sleeps through skipped connection events, waking only once every $500\text{ ms} - 1.2\text{ s}$ to service anchor keepalives. This reduces average BLE subsystem current to **$80 - 150\,\mu\text{A}$**.
+  - **Zero-Latency Wake Override (Slave Latency Bypass)**: When an IQS7222A touch interrupt or hardware action button event triggers while in `Sleep`, the firmware immediately overrides Slave Latency and dispatches the gesture notification on the **very next connection event anchor** ($\le 100\text{ ms}$). Concurrently, `BleController` issues a dynamic Connection Parameter Update Request (CPUR) downshifting the connection interval back to $15 - 30\text{ ms}$ ($< 150\text{ ms}$ transition latency).
+- **Throughput Profile**: Sustained throughput is throttled to $0.5 - 2.0\text{ kB/s}$, reserved for periodic battery SOC updates (every 30 s) and baseline sensor drift compensations.
+
+#### 3. PowerDown Standby Scenario (`PowerDown`)
+- **Quiescent Power Conservation ($\le 185\,\mu\text{A}$ Total)**:
+  In `PowerDown` (State 0 / Standby), entered after 5 minutes of inactivity or upon a 1F Long Press ($\ge 1.5\text{ s}$), the primary architectural requirement is minimizing battery draw to preserve multi-month shelf life.
+- **BLE Radio Power-Down & Wake Architecture**:
+  - *Default Configuration (Disconnected Standby)*: The BLE module is commanded into deep sleep via AT / HCI command, asserting `BLE_WAKE` low. In deep sleep, the NINA-B312 current drops to **$I_Q \le 1.5\,\mu\text{A}$**. High-frequency oscillators are gated.
+  - *Wake-Up Sequence*: Waking from `PowerDown` is triggered exclusively by a 1F Long Press / touch interrupt via Azoteq IQS7222A (`CAP_INT` routing to `WUU0`), action button touch, or charger insertion (`CHG_PGOOD_WAKE`). MCX N947 wakes within $\le 2.5\text{ ms}$, pulls `BLE_WAKE` high ($< 5\text{ ms}$ module boot), and initializes fast undirected connectable advertising ($T_{adv} = 20 - 40\text{ ms}$) within $\approx 15\text{ ms}$. Total elapsed time from finger contact to active BLE reconnect is **$150 - 300\text{ ms}$**.
+  - *Connected Low-Duty Standby (Alternative Configuration)*: If persistent cloud/mobile connectivity is required, the link is held at $CI = 500 - 1000\text{ ms}$ with Slave Latency = 10 (effective wake every 5–10 seconds) and a 10.0 s supervision timeout. Any emergency wake event bypasses slave latency, signaling the host within $\le 500\text{ ms}$. Average module current in this mode is $\approx 15 - 25\,\mu\text{A}$.
+- **Throughput**: 0.0 kB/s in quiescent standby.
+
+#### 4. OTA Firmware & Model Update Scenario (`OTA`)
+- **High-Throughput Pipelining Architecture**:
+  During OTA firmware updates or external neural network weight uploads (e.g. 16 MB model chunks into `dev:ext-flash` `models` partition), the objective is minimizing transfer time while maintaining 100% data integrity without stalling the MCU.
+- **Connection Parameter Tuning for Maximum Throughput**:
+  - **Connection Interval**: Locked to **15.0 ms** (the lowest universal connection interval supported across both iOS and Android centrals; Android devices supporting 11.25 ms automatically negotiate down).
+  - **Slave Latency**: **Strictly 0** (no missed connection events).
+  - **Supervision Timeout**: Extended to **4.0 s – 5.0 s** to prevent RF timeouts during high-density NAND flash block erase operations.
+  - **Physical Layer (PHY)**: **LE 2M PHY** (2.0 Mb/s RF transmission). Compared to LE 1M PHY, 2M PHY doubles the raw symbol rate, reduces on-air packet transmission time by ~50%, and cuts the energy consumed per transferred megabyte in half.
+  - **Data Length Extension (DLE) & MTU**: Negotiated ATT MTU is set to **247 bytes** (or 512 bytes where supported by the central). DLE extends the Link Layer PDU to **251 bytes**, allowing full 244-byte L2CAP SDU payloads per BLE packet without fragmentation.
+- **Pipelined Transfer Protocol & Dual-Core Buffer Offloading**:
+  - `host_cli` streams firmware and model payloads using 4 KB CBOR-framed blocks over GATT **Write Without Response** (GATT Write Command) with credit-based sliding window flow control (acknowledgments issued every 16–32 KB).
+  - Incoming BLE packets stream over the 1 Mb/s UART directly into the Real-Time Processing Core's (Core 0) eDMA ring buffer.
+  - **Core Decoupling Advantage**: The Real-Time Processing Core (Core 0) transfers incoming chunks across inter-core IPC (`embassy-ipc-channel`) to the Always-On Core (Core 1). The Always-On Core commits the blocks into the 32 MB SLC NAND `ota_staging` partition via FlexSPI DMA. Because writing to external NAND is completely offloaded to the Always-On Core (Core 1), NAND flash erase/program latencies (typically 2–3 ms per block) never block or stall Core 0's UART reception or BLE link layer scheduling, preventing packet drops and buffer overruns.
+- **Throughput & Transfer Duration Benchmark**:
+  - **Sustained Net Application Throughput**: **55.0 – 75.0 kB/s** ($440 - 600\text{ kbps}$) under LE 2M PHY and DLE 251. (Fallback to LE 1M PHY yields $25.0 - 35.0\text{ kB/s}$).
+  - **512 KB Core Firmware Binary (`app`)**: Transfers in **$7 - 9\text{ seconds}$** (2M PHY) vs. $15 - 20\text{ seconds}$ (1M PHY).
+  - **2.0 MB Full Dual-Core Monolithic Image**: Transfers in **$28 - 36\text{ seconds}$** (2M PHY) vs. $60 - 80\text{ seconds}$ (1M PHY).
+  - **16.0 MB Neural Network Model Partition**: Streams in **$3.5 - 4.5\text{ minutes}$** directly to SLC NAND.
+- **Packet and ACK Latencies**:
+  - Per-packet delivery latency: $\le 15.0\text{ ms}$ (synchronous with connection interval).
+  - Sliding-window flow-control ACK round-trip: $25.0 - 35.0\text{ ms}$.
 
 ### Host CLI (`tools/host_cli`) Production, Field Servicing & OTA Support
 
@@ -662,7 +755,7 @@ cargo run -p host_cli -- filter-update --device dev:ext-flash --filter-type audi
 ```
 
 - **In-Place Partition Update**: Model and filter payloads are written directly into the `models` partition using `sequential_storage::map::store_item`.
-- **Zero-Downtime Reload via BLE**: Models and filter coefficients can be updated directly over BLE without performing a full firmware OTA reboot. Once the cryptographic signature is verified, Core 1 reloads the new weights into the Neutron NPU Tensor Arena (`0x2003_C000`) dynamically while Core 0 continues running, ensuring zero service disruption.
+- **Zero-Downtime Reload via BLE**: Models and filter coefficients can be updated directly over BLE without performing a full firmware OTA reboot. Once the cryptographic signature is verified, the Real-Time Processing Core (Core 0) reloads the new weights into the Neutron NPU Tensor Arena (`0x2005_0000`) dynamically while running, ensuring zero service disruption.
 
 ---
 
@@ -672,7 +765,7 @@ cargo run -p host_cli -- filter-update --device dev:ext-flash --filter-type audi
 
 The table below delineates active hardware blocks, operational frequencies, and aggregate power consumption across the defined operating states:
 
-| Operating State | Core 0 State | Core 1 State | NPU / DSP State | Peripherals Active | Target Current | Target Power | Primary Use Case |
+| Operating State | Real-Time Processing Core (Core 0) State | Always-On Core (Core 1) State | NPU / DSP State | Peripherals Active | Target Current | Target Power | Primary Use Case |
 | :--- | :--- | :--- | :--- | :--- | :---: | :---: | :--- |
 | **State 0: PowerDown / Deep Standby** | Deep Sleep (WFI) | Deep Sleep (WFI) | Power-gated (OFF) | Fuel gauge, IQS7222A proximity scan | **$\le 185\,\mu\text{A}$** | $\le 0.61\text{ mW}$ | Long-term battery shelf life; wake on touch/RTC. |
 | **State 1: Low-Power Sensing** | 12 MHz Low-Freq | WFI Idle Sleep | Power-gated (OFF) | IQS7222A active touch, LP5009 idle | **3.8 mA** | 12.5 mW | User proximity detected; awaiting interaction. |
@@ -685,8 +778,8 @@ Measurements below quantify the individual current and power contributions corre
 
 | Subsystem / Functional Block | Operating State | Voltage Rail | Current ($I_{active}$) | Power ($P_{active}$) | Active in State | Power Gating / Management Strategy |
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- |
-| **Core 0 (Cortex-M33)** | 150 MHz Active | `SYS_3V3` | 18.0 mA | 59.4 mW | State 2, 3 | Frequency scaling down to 12 MHz; WFI idle sleep. |
-| **Core 1 (Cortex-M33)** | 150 MHz Active | `SYS_3V3` | 16.5 mA | 54.5 mW | State 2, 3 | Clock gated when no touch or audio events pending. |
+| **Real-Time Processing Core (Core 0, Cortex-M33)** | 150 MHz Active | `SYS_3V3` | 18.0 mA | 59.4 mW | State 2, 3 | Frequency scaling down to 12 MHz; WFI idle sleep. |
+| **Always-On Core (Core 1, Cortex-M33)** | 150 MHz Active | `SYS_3V3` | 16.5 mA | 54.5 mW | State 2, 3 | Clock gated when no touch or audio events pending. |
 | **eIQ Neutron NPU** | Inference Burst | `SYS_3V3` | 22.0 mA | 72.6 mW | State 3 | Power-gated autonomously; active only during classification. |
 | **PowerQuad / DSP** | Filter Burst | `SYS_3V3` | 8.5 mA | 28.1 mW | State 3 | Dynamically clocked on demand for math operations. |
 | **FlexSPI NAND Flash (`U8`)** | Active Read/Write | `SYS_3V3` | 15.0 mA | 49.5 mW | State 2, 3 | Standby current $\le 10\,\mu\text{A}$ between telemetry flushes. |
@@ -712,7 +805,7 @@ The custom HAL implements canonical `embedded-hal` (blocking) and `embedded-hal-
 3. **GPIO & Pin Multiplexing (`gpio`)**: Implements `embedded_hal::digital::InputPin` and `OutputPin` over PORT0..PORT4 and GPIO0..GPIO4 with edge-triggered asynchronous pin interrupts.
 4. **Flexcomm Serial Drivers (`flexcomm`)**: Unified Flexcomm architecture supporting runtime configuration as LPUART (with eDMA ring buffers up to 1 Mb/s), LPI2C (Master/Slave with clock stretching), or LPSPI.
 5. **High-Speed I3C Controller Driver (`i3c`)**: High-speed I3C bus driver supporting Single Data Rate (SDR up to 12.5 Mbps), Dynamic Address Assignment (DAA), In-Band Interrupts (IBI), and Hot-Join enumeration.
-6. **FlexSPI Memory Controller (`flexspi`)**: Configurable Quad-SPI engine allocated to Core 0 supporting MMIO read access and Command Lookup Table (LUT) execution for Winbond W25N01GV NAND flash.
+6. **FlexSPI Memory Controller (`flexspi`)**: Configurable Quad-SPI engine allocated to Core 1 supporting MMIO read access and Command Lookup Table (LUT) execution for Winbond W25N01GV NAND flash.
 7. **Timers, Watchdog & RTC**:
    - **High-Resolution Timer (`timer`)**: Microsecond-precision timing using CTIMER / MRT peripherals.
    - **Windowed Watchdog (`wwdt`)**: Watchdog timer driver with reset status query (`RSTCTL` / `CMC`) to inspect reset cause on boot (watchdog timeout vs brownout vs software reset).
@@ -761,7 +854,7 @@ flowchart LR
    - Core 0 initiates Core 1 startup; Core 1 transmits a greeting token back to Core 0 via the Messaging Unit (MU).
    - Measure round-trip ping-pong latency across the shared SRAMX ring buffer; verify zero data corruption.
 5. **Stage 5: Full Bringup YAML Integration**:
-   - Execute all automated checks codified in [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml). Verification passes only when 100% of checks succeed.
+   - Execute all automated checks codified in [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml). Verification passes only when 100% of checks succeed.
 
 ---
 
@@ -773,7 +866,7 @@ Carrier Board 2.0 adopts the proven, event-driven `SystemController` architectur
 
 In earlier draft notes, the software low-power quiescent state was informally called `Standby`; this is now formally harmonized as the canonical `PowerDown` state. In addition, the system architecture supports transitioning to the **`Off` (Ship Mode)** state for factory provisioning and long-term shelf storage, with the essential architectural guarantee that this state can be exited without opening the enclosure:
 
-| System State (`SystemStatus`) | Core 0 State | Core 1 State | Power Rails & Load Switches | Wake Latency | Target Current | Primary Use Case |
+| System State (`SystemStatus`) | Real-Time Processing Core (Core 0) State | Always-On Core (Core 1) State | Power Rails & Load Switches | Wake Latency | Target Current | Primary Use Case |
 | :--- | :--- | :--- | :--- | :---: | :---: | :--- |
 | **`Active` (`SystemStatus::Active`)** | 150 MHz Active | 150 MHz Active | All rails ON (`SYS_3V3`, `SW_3V3_*`) | Immediate | 28.5 – 139.3 mA | User interaction, audio streaming, camera gesture processing. |
 | **`Sleep` (`SystemStatus::Sleep`)** | 12 MHz Low-Freq | WFI Idle Sleep | Sensing rail ON (`SW_3V3_SENSORS`), Audio/Debug OFF | $\approx 250\,\mu\text{s}$ | 3.8 mA | Proximity detection active, ready for instant responsiveness. |
@@ -800,9 +893,8 @@ The TI LP5009 9-channel $\text{I}^2\text{C}$ RGB LED driver provides high-resolu
 | **`BOOTING`** | Cyan Pulsing | 1.0 Hz (Breathing) | SSBL / Early HAL | Device undergoing cold boot and hardware integrity checks. |
 | **`BOOT_FAILED`** | Solid Red | Continuous | SSBL / ROM Trap | SSBL signature check failure, corrupt image, or boot fault. |
 | **`ACTIVE_RUNNING`** | Solid Cyan | Continuous | System Controller | Normal operational state; sensors and audio subsystems ready. |
-| **`BLE_PAIRING`** | Fast Blue Blink | 2.0 Hz (50% Duty) | BLE Controller / NINA-B312 | BLE advertising active; awaiting host client connection. |
-| **`BLE_CONNECTED`** | Solid Cyan Pulse | Single 500 ms pulse | BLE Controller / NINA-B312 | Secure BLE connection successfully negotiated. |
-| **`CAMERA_ACTIVE`** | Blinking Amber | 1.0 Hz (50% Duty) | Core 1 Vision Pipeline | Camera sensor streaming; gesture preprocessing running. |
+| **`BLE_PAIRING`** | Fast Blue Blink | 2.0 Hz (50% Duty) | BLE Controller / NINA-B312 | BLE discoverable advertising active; awaiting host client connection. When BLE connects or pairing is disabled/times out, `BleController` notifies `SystemController` to transition directly to `ACTIVE_RUNNING` (Solid Cyan). |
+| **`CAMERA_ACTIVE`** | Blinking Amber | 1.0 Hz (50% Duty) | Real-Time Processing Core Vision Pipeline | Camera sensor streaming; gesture preprocessing running. |
 | **`BATTERY_CHARGING`** | Solid Amber | 1.0 Hz (Breathing) | BatteryController / BQ24074 | External USB power detected and battery actively charging. |
 | **`BATTERY_FULL`** | Solid Green | Continuous | BatteryController / BQ24074 | External power connected and battery fully charged (100% SOC). |
 | **`BATTERY_LOW`** | Solid Yellow | Continuous | BatteryController | Battery SOC drops below 15% threshold; recharge prompt. |
@@ -812,19 +904,206 @@ The TI LP5009 9-channel $\text{I}^2\text{C}$ RGB LED driver provides high-resolu
 | **`RECOVERY_MODE`** | Yellow Strobe | 2.0 Hz (50% Duty) | SSBL Fallback Handler | Restoring factory golden recovery image into `app` partition. |
 | **`POWER_DOWN` / `STANDBY`** | Off (Dark) | 0 Hz | System Controller | LED driver disabled (`EN` pin low) for $\le 185\,\mu\text{A}$ target. |
 
+- **Direct Transition from `BLE_PAIRING` to `ACTIVE_RUNNING`**:
+  To maintain a lean, deterministic LED lifecycle state machine, the system avoids maintaining a dedicated connected visual state. During advertising, the LED pulses in `BLE_PAIRING` (Fast Blue Blink @ 2.0 Hz). When a remote BLE peer successfully connects and completes link encryption, or alternatively if BLE pairing is disabled or times out after 60 seconds, `BleController` notifies `SystemController` over internal async channels. `SystemController` then transitions the device lifecycle state directly to **`ACTIVE_RUNNING`** (Solid Cyan). Acoustic feedback is concurrently provided by the **BLE Connected Chime** ($880\text{ Hz} \to 1046\text{ Hz}$, $80\text{ ms}$) synthesized by `SpeakerController`, confirming connection without requiring a dedicated LED state.
+
 ### 3. Speaker Audio Chimes
 
-Audio feedback is synthesized or streamed by Core 1 via PDM to the on-board Class-D amplifier (`U4`), producing clear acoustic indications:
+Audio feedback is synthesized or streamed by the Real-Time Processing Core (Core 0) via I2S / PDM to the on-board Class-D amplifier (`U4`), producing clear acoustic indications:
 
 | Audio Event | Acoustic Profile & Frequencies | Duration | Volume / Level | Functional Trigger |
 | :--- | :--- | :---: | :---: | :--- |
 | **Boot Up Sound** | Ascending two-tone chime ($523\text{ Hz} \to 659\text{ Hz}$) | 120 ms | Nominal (65 dBA) | Emitted when primary application vector table boots successfully. |
 | **BLE Connected Chime** | Crisp ascending chirp ($880\text{ Hz} \to 1046\text{ Hz}$) | 80 ms | Nominal (65 dBA) | BLE link encryption and GATT handshake complete. |
 | **BLE Disconnected Chime** | Falling soft chirp ($1046\text{ Hz} \to 587\text{ Hz}$) | 80 ms | Soft (55 dBA) | BLE link terminated or peer out of range. |
-| **Gesture Confirmed Tone** | Crisp harmonic tone ($784\text{ Hz}$, $G_5$) | 60 ms | Soft (60 dBA) | Touch proximity or vision gesture event recognized. |
+| **Finger Down Tone** | Crisp harmonic click/ping tone ($784\text{ Hz}$, $G_5$) | 40 ms | Soft (60 dBA) | Physical contact / confirmation for Single Tap, Double Tap, Long Press, Extra Long Press, and Action Button Tap/Long Press/Extra Long Press. |
+| **Swipe Tone** | Smooth frequency sweep tone ($587\text{ Hz} \leftrightarrow 880\text{ Hz}$) | 60 ms | Soft (60 dBA) | Swiping forward or backward along capacitive touch strip. |
 | **Low Battery / Overtemp Alert** | Repeating double beep ($440\text{ Hz} \times 2$) | 100 ms cadence | Audible (70 dBA) | Battery State of Charge drops below 10% threshold or junction temperature exceeds safe thermal limit. |
 
-### 4. Boot Timing & Latency Budget
+### 4. Capacitive Touch Gesture Recognition & Interaction Model (1F Gestures)
+
+The Carrier Board 2.0 user interface incorporates an on-board Azoteq IQS7222A ProxFusion capacitive touch controller (`U2`), communicating over dedicated $\text{I}^2\text{C}$ (`FC2`) with a physical interrupt line (`CAP_INT` on `C4`), tracking both a capacitive touch strip and a dedicated capacitive touch action button on the flex tail. Together, the touch strip and flex tail action button support intuitive physical device interaction: continuous single-finger (1F) capacitive touch gestures and discrete action button presses. Carrier board tactile switch `SW1` is dedicated to hardware system reset (`NVIC_SystemReset()`) and is not processed by the gesture detection subsystem.
+
+#### 1. Real-Time Processing Pipeline & Concurrency
+- **Core Allocation & Architectural Invariant**:
+  - **Real-Time Processing Core (Core 0, High-Performance Execution Domain)**: Operates at 150 MHz equipped with Cortex-M33 single-precision FPU, PowerQuad DSP accelerator, and eIQ Neutron NPU coprocessor. The Real-Time Processing Core executes `SensorController` (specialized for capacitive touch devices), runs PowerQuad DSP touch smoothing filters, executes discrete gesture detection FSMs and NPU inference passes, drives the Class-D audio chime engine (`SpeakerController`), and manages high-bandwidth BLE telemetry (`BleController`).
+  - **Always-On Core (Core 1, Low-Power Supervisory & Storage Domain)**: Operates as the dedicated low-power supervisory processor running `SystemController`. The Always-On Core oversees lifecycle power states (`Active`, `Sleep`, `PowerDown`), manages low-power wake interrupts (WUU / Wakeup Unit), monitors power rails and fuel gauge alerts, and manages SLC NAND persistent storage via `FilesystemController` and `TelemetryController` (isolating flash write and erase latencies from the Real-Time Processing Core).
+- **Adaptive 10–30 Hz Hardware FIFO Ingestion**: The Azoteq IQS7222A incorporates an integrated hardware FIFO buffer (up to 32 frames deep). Rather than running a separate busy-polling task, the Real-Time Processing Core's `SensorController` ingests batch frames over $\text{I}^2\text{C}$ (`FC2`) using async eDMA at an adaptive 10–30 Hz poll rate (nominal 20 Hz, ramping to 30 Hz upon active touch displacement and throttling to 10 Hz when idle) triggered by `CAP_INT` watermark interrupts. This dramatically eliminates bus traffic and CPU wake overhead.
+- **PowerQuad DSP Smoothing**: Raw touch coordinates ($X, Y$) and capacitive deltas ($\Delta C$) pass through biquad low-pass smoothing and median rejection filters accelerated by the MCX N947 PowerQuad DSP engine.
+- **High-Confidence Classification Threshold ($\ge 95\%$)**: Sliding temporal touch windows are evaluated across discrete primitive FSMs and ML inference, enforcing a strict classification confidence threshold of $\ge 0.95$ ($\ge 95\%$) before event confirmation.
+- **Direct Domain Controller Dispatch**: Once a gesture is validated, `SensorController` on the Real-Time Processing Core (Core 0) constructs a canonical `model::types::Gesture` variant and dispatches it over internal async Embassy channels to `SystemController` (on the Always-On Core / Core 1 via lock-free SRAMX ring buffer and MU doorbell) and locally to `LedController` and `BleController`.
+
+#### 2. 1-Finger (1F) Gesture & Action Button Mapping Matrix
+
+The table below maps out every supported 1F gesture and action button interaction, its physical detection criteria, its action across operational states, and the corresponding user feedback:
+
+| Gesture / Input Name | Physical Detection Criteria | Action in `Active` State | Action in `Sleep` / `PowerDown` | Audio & Visual Feedback | IPC & Telemetry Dispatch |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **1F Tap (Single Tap)** | Single contact: $50\,\text{ms} \le T < 300\,\text{ms}$, displacement $\Delta X < 3.0\,\text{mm}$. | Dispatches BLE GATT notification (no local state mutation). | In `Sleep`, restores 150 MHz clocks ($\approx 250\,\mu\text{s}$). Ignored in `PowerDown` (only 1F Long Press wakes from `PowerDown`). | `Finger Down Tone` ($784\text{ Hz}$, $40\text{ ms}$, $60\text{ dBA}$). | Emits `Gesture::SingleTap(GestureSource::Touchpad)`; sends BLE GATT notification; Real-Time Processing Core (Core 0) `SensorController` logs `TelemetryRecord::Gesture` and dispatches cross-core to Always-On Core (Core 1) for NAND logging. |
+| **1F Double Tap** | Two sequential taps within $T_{interval} \le 350\,\text{ms}$; individual tap duration $< 250\,\text{ms}$; impact delta $\le 4.0\,\text{mm}$. | Dispatches BLE GATT notification (no local state mutation). | In `Sleep`, restores clocks. Ignored in `PowerDown`. | `Finger Down Tone` ($784\text{ Hz}$, $40\text{ ms}$, played on each tap contact). | Emits `Gesture::DoubleTap(GestureSource::Touchpad)`; sends BLE GATT notification; Real-Time Processing Core (Core 0) `SensorController` logs `TelemetryRecord::Gesture` and dispatches to Always-On Core (Core 1) for NAND logging. |
+| **1F Swipe Forward** | Contact swept forward along strip axis: $\Delta X \ge +12.0\,\text{mm}$ within $80\,\text{ms} \le T \le 500\,\text{ms}$ ($v \ge +40\,\text{mm/s}$). | Dispatches BLE GATT notification (no local state mutation). | In `Sleep`, awakens system directly into `Active`. Ignored in `PowerDown`. | `Swipe Tone` ($587\text{ Hz} \leftrightarrow 880\text{ Hz}$, $60\text{ ms}$). | Emits `Gesture::SwipeForward(GestureSource::Touchpad)`; sends BLE GATT notification; Real-Time Processing Core (Core 0) `SensorController` logs `TelemetryRecord::Gesture` and dispatches to Always-On Core (Core 1) for NAND logging. |
+| **1F Swipe Back** | Contact swept backward along strip axis: $\Delta X \le -12.0\,\text{mm}$ within $80\,\text{ms} \le T \le 500\,\text{ms}$ ($v \le -40\,\text{mm/s}$). | Dispatches BLE GATT notification (no local state mutation). | In `Sleep`, awakens system directly into `Active`. Ignored in `PowerDown`. | `Swipe Tone` ($587\text{ Hz} \leftrightarrow 880\text{ Hz}$, $60\text{ ms}$). | Emits `Gesture::SwipeBack(GestureSource::Touchpad)`; sends BLE GATT notification; Real-Time Processing Core (Core 0) `SensorController` logs `TelemetryRecord::Gesture` and dispatches to Always-On Core (Core 1) for NAND logging. |
+| **1F Long Press** | Stationary contact held for $1.5\text{ s} \le T < 5.0\text{ s}$ with displacement drift $\Delta X < 2.5\,\text{mm}$. | **Graceful Sleep Transition (`PowerDown`)**: Initiates graceful shutdown: commits NVRAM dirty cache to `metadata`, flushes NAND telemetry, and signals `SystemController` on Always-On Core (Core 1) to enter `PowerDown` ($\le 185\,\mu\text{A}$). | In `Sleep`, awakens system to `Active`. In `PowerDown`, triggers hardware WUU wake ($\le 1.8\,\text{ms}$) to restore system to `Active` (the only touch gesture capable of waking from `PowerDown`). | `Finger Down Tone` on contact; Amber/Red pulse followed by LED dark (Off). | Emits `Gesture::LongPress(GestureSource::Touchpad)`; Real-Time Processing Core (Core 0) commands `SystemController` on Always-On Core (Core 1) to initiate `SystemStatus::PowerDown`; `SensorController` logs `TelemetryRecord::Gesture`. |
+| **1F Extra Long Press** | Stationary contact held continuously for $T \ge 5.0\text{ s}$ with displacement drift $\Delta X < 2.5\,\text{mm}$. | **BLE Pairing Mode Trigger**: Enters BLE discoverable advertising mode for 60 seconds; if already connected, initiates graceful disconnect and re-advertising. (Note: carrier board hardware system reset is performed via tactile switch `SW1`). | In `Sleep`, awakens system and initiates immediate BLE pairing sequence. Ignored in `PowerDown`. | `Finger Down Tone` on contact; transition from Solid Cyan to Fast Blue Blink (`BLE_PAIRING` @ 2 Hz). | Emits `Gesture::ExtraLongPress(GestureSource::Touchpad)`; Real-Time Processing Core (Core 0) signals `BleController` to start fast advertising; `SensorController` logs `TelemetryRecord::Gesture`. |
+| **Action Button Tap (Flex Tail)** | Momentary touch contact on flex tail capacitive action button: $50\,\text{ms} \le T < 500\,\text{ms}$. | Dispatches BLE GATT notification (no local state mutation). | In `Sleep`, restores clocks. Ignored in `PowerDown`. | `Finger Down Tone` ($784\text{ Hz}$, $40\text{ ms}$). | Emits `Gesture::SingleTap(GestureSource::ActionButton)`; sends BLE GATT notification; Real-Time Processing Core (Core 0) `SensorController` logs `TelemetryRecord::Gesture` and dispatches to Always-On Core (Core 1) for NAND logging. |
+| **Action Button Long Press (Flex Tail)** | Sustained touch contact on flex tail capacitive action button: $1.5\,\text{s} \le T < 5.0\,\text{s}$. | **Graceful Sleep Transition (`PowerDown`)**: Initiates graceful shutdown: commits NVRAM dirty cache to `metadata`, flushes NAND telemetry, and signals `SystemController` on Always-On Core (Core 1) to enter `PowerDown` ($\le 185\,\mu\text{A}$) (identical behavior to 1F Long Press). | In `Sleep`, awakens system to `Active`. Ignored in `PowerDown` (only 1F Long Press wakes from `PowerDown`). | `Finger Down Tone` on contact. | Emits `Gesture::LongPress(GestureSource::ActionButton)`; Real-Time Processing Core (Core 0) commands `SystemController` on Always-On Core (Core 1) to enter `PowerDown`; `SensorController` logs `TelemetryRecord::Gesture`. |
+| **Action Button Extra Long Press (Flex Tail)** | Sustained touch contact on flex tail capacitive action button: $T \ge 5.0\,\text{s}$. | **BLE Pairing Mode Trigger**: Enters BLE discoverable advertising mode for 60 seconds; if already connected, initiates graceful disconnect and re-advertising (identical behavior to 1F Extra Long Press). | In `Sleep`, awakens system and initiates immediate BLE pairing sequence. Ignored in `PowerDown`. | `Finger Down Tone` on contact. | Emits `Gesture::ExtraLongPress(GestureSource::ActionButton)`; Real-Time Processing Core (Core 0) signals `BleController` to start fast advertising; `SensorController` logs `TelemetryRecord::Gesture`. |
+| **Touchpad Proximity Detection** | Hand or finger hover/approach within proximity range: $d \le 30\,\text{mm}$, capacitive SNR $\ge 12\,\text{dB}$. | Maintains `Active` state; resets inactivity watchdog timer ($T_{sleep} = 30\,\text{s}$). | In `Sleep`, **awakens system directly to `Active`** ($\approx 250\,\mu\text{s}$ wake latency) upon detecting touchpad proximity, pre-warming UI and DSP pipeline prior to physical contact. In `PowerDown`, triggers low-power wake via `WUU0` if proximity scan is enabled. | Restores Solid Cyan LED; silent (no acoustic tone until physical contact). | Emits `GestureSource::Proximity` event; Real-Time Processing Core (Core 0) signals `SystemController` on Always-On Core (Core 1) to transition to `SystemStatus::Active`; logs `TelemetryRecord::Gesture`. |
+
+- **Touchpad Proximity Wake to `Active` State**:
+  In addition to physical contact gestures and action button presses, the Azoteq IQS7222A ProxFusion controller continuously monitors high-sensitivity capacitive proximity channels ($d \le 30\,\text{mm}$) over the touch surface. Whenever the device is in the low-power `Sleep` state (`SystemStatus::Sleep`), **detecting user proximity to the touchpad immediately triggers `CAP_INT` and awakens the system directly into the `Active` state** ($\approx 250\,\mu\text{s}$ wake latency). This pre-warms the 150 MHz clocks, energizes the PowerQuad DSP smoothing pipeline, and elevates the LP5009 LED to Solid Cyan before the user's finger makes physical contact, providing instantaneous, zero-latency responsiveness for subsequent tap or swipe gestures. In `PowerDown`, proximity scanning can be configured to wake the system via `WUU0` when ultra-low-power proximity sensing ($15\,\mu\text{A}$) is enabled.
+
+#### 3. Strongly Typed Shared Gesture Data Structures
+
+To prevent architectural divergence and eliminate legacy backward compatibility shims, all platforms in the repository (RP2040 and MCX N947) reuse and extend the canonical, strongly typed enums `model::types::GestureSource` and `model::types::Gesture` defined in `model/src/types.rs`:
+
+```rust
+/// Source transducer or input mechanism that originated the gesture event.
+#[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum GestureSource {
+    /// Azoteq IQS7222A capacitive touch strip / touchpad on the enclosure.
+    #[n(0)]
+    Touchpad,
+    /// Dedicated capacitive touch action button on the flex tail.
+    #[n(1)]
+    ActionButton,
+    /// Optical Time-of-Flight (ToF) proximity sensor array.
+    #[n(2)]
+    Proximity,
+}
+
+/// Canonical gesture identifiers shared across RP2040 and MCX N947 platforms.
+#[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum Gesture {
+    /// A completed dual-sensor long press gesture (typically proximity).
+    #[n(1)]
+    DualLongPress(#[n(0)] GestureSource),
+    /// Single tap contact.
+    #[n(2)]
+    SingleTap(#[n(0)] GestureSource),
+    /// Double tap contact sequence.
+    #[n(3)]
+    DoubleTap(#[n(0)] GestureSource),
+    /// Swipe forward along touch strip.
+    #[n(4)]
+    SwipeForward(#[n(0)] GestureSource),
+    /// Swipe back along touch strip.
+    #[n(5)]
+    SwipeBack(#[n(0)] GestureSource),
+    /// Sustained long press (>= 1.5s, initiates PowerDown transition).
+    #[n(6)]
+    LongPress(#[n(0)] GestureSource),
+    /// Sustained extra long press (>= 5.0s, initiates BLE pairing mode).
+    #[n(7)]
+    ExtraLongPress(#[n(0)] GestureSource),
+}
+```
+
+#### 4. Gesture Telemetry & False Positive (FP) Detection
+
+##### Telemetry Event Logging
+When any gesture is confirmed by `SensorController` on the Real-Time Processing Core (Core 0), it is recorded as a strongly typed telemetry event `TelemetryRecord::Gesture(model::types::Gesture)` and published over the Embassy telemetry channel. It is transferred across the core boundary via IPC to the Always-On Core (Core 1), where the storage controller persists this record to the SLC NAND `telemetry` queue:
+
+```rust
+// Telemetry record logged to sequential-storage NAND flash queue via Always-On Core (Core 1)
+let record = TelemetryRecord::Gesture(Gesture::SingleTap(GestureSource::Touchpad));
+telemetry_channel.send(record).await;
+```
+
+##### False Positive (FP) Mitigation & Rejection Algorithms
+Reliable capacitive touch interaction on a physical carrier board requires deterministic discrimination against ambient interference, moisture, and unintended contact:
+1. **Palm & Large Object Rejection**: The Azoteq IQS7222A tracks active channel counts and contact surface area. When contact span exceeds the single-finger bounding envelope ($> 18.0\,\text{mm}$ span or $> 3$ channels concurrently active), the entire touch frame is classified as an unintended palm or grip contact and dropped before entering detection FSMs.
+2. **Baseline Jitter & Environmental Noise Discrimination**: Raw capacitive counts are continuously tracked against baseline capacitance ($C_{base}$). Touches with signal delta $\Delta C < \Delta C_{min}$ (e.g. 50 counts) or exhibiting high-frequency fluctuation are rejected as ambient noise or thermal drift.
+3. **Intermediate State Cancellation**:
+   - *Tap Cancellation*: If displacement exceeds the jitter limit ($\Delta X > 3.0\,\text{mm}$) during contact, the Tap FSM immediately transitions to `CANCELLED` and hands off tracking to the Swipe detector.
+   - *Long Press Cancellation*: If contact releases prior to $1.5\,\text{s}$ or exhibits displacement drift ($\Delta X > 2.5\,\text{mm}$), the Long Press FSM cancels without triggering `PowerDown`.
+   - *Swipe Trajectory & Velocity Bounds*: Swipes that fail to achieve minimal travel ($\Delta X < 12.0\,\text{mm}$) within the $500\,\text{ms}$ window or deviate along off-axis coordinates cancel cleanly.
+4. **Diagnostic False Positive Counters**: `SensorController` maintains internal diagnostic counters (`fp_palm_reject_count`, `fp_noise_abort_count`, `fp_timeout_cancel_count`, `fp_jitter_cancel_count`) logged periodically via `TelemetryRecord` to monitor field reliability and evaluate sensor tuning.
+
+#### 5. Discrete Gesture FSMs, Intermediate States & NPU Lowering Plan
+
+##### Intermediate Primitive States
+Each gesture detector tracks three common primitive touch lifecycle states:
+- `FINGER_DOWN`: Initial physical contact established (capacitive delta crosses threshold $\Delta C \ge \Delta C_{th}$). Starts touch duration timer $T_0$ and registers initial coordinate $X_0$.
+- `FINGER_MOVE`: Touch contact sustained while coordinates update ($|X_t - X_0| > 0$). Evaluates displacement, velocity $v = \Delta X / \Delta T$, and trajectory bounds.
+- `FINGER_UP`: Touch contact terminates (capacitive delta drops below release threshold). Evaluates final duration, release distance, and inter-tap timing.
+
+##### Discrete Gesture State Machines
+
+```mermaid
+flowchart TD
+    IDLE_TAP["IDLE (No Touch)"] -->|"Touch Down (Delta C >= Threshold)"| FINGER_DOWN_TAP["FINGER_DOWN (Timer T0 Started)"]
+    FINGER_DOWN_TAP -->|"Motion Drift (Delta X >= 3.0mm)"| CANCELLED_TAP["CANCELLED (Hand off to Swipe)"]
+    FINGER_DOWN_TAP -->|"Released (T < 300ms, Delta X < 3.0mm)"| FINGER_UP_TAP["FINGER_UP (Inter-Tap Timer 350ms)"]
+    FINGER_UP_TAP -->|"Second Tap within 350ms"| EMIT_DOUBLE["Emit Gesture::DoubleTap"]
+    FINGER_UP_TAP -->|"350ms Timeout Expired"| EMIT_SINGLE["Emit Gesture::SingleTap"]
+    EMIT_DOUBLE --> IDLE_TAP
+    EMIT_SINGLE --> IDLE_TAP
+    CANCELLED_TAP --> IDLE_TAP
+```
+
+```mermaid
+flowchart TD
+    IDLE_SWIPE["IDLE (No Touch)"] -->|"Touch Down (Delta C >= Threshold)"| FINGER_DOWN_SWIPE["FINGER_DOWN (Tracking Initial X0)"]
+    FINGER_DOWN_SWIPE -->|"Active Travel (|Delta X| > 0)"| FINGER_MOVE_SWIPE["FINGER_MOVE (Track Velocity & Axis)"]
+    FINGER_MOVE_SWIPE -->|"Delta X >= +12mm within 80-500ms (v >= +40mm/s)"| EMIT_SWIPE_FWD["Emit Gesture::SwipeForward"]
+    FINGER_MOVE_SWIPE -->|"Delta X <= -12mm within 80-500ms (v <= -40mm/s)"| EMIT_SWIPE_BACK["Emit Gesture::SwipeBack"]
+    FINGER_MOVE_SWIPE -->|"Timeout (> 500ms) or Off-Axis Drift"| CANCELLED_SWIPE["CANCELLED (Displacement Abort)"]
+    EMIT_SWIPE_FWD --> IDLE_SWIPE
+    EMIT_SWIPE_BACK --> IDLE_SWIPE
+    CANCELLED_SWIPE --> IDLE_SWIPE
+```
+
+```mermaid
+flowchart TD
+    IDLE_PRESS["IDLE (No Touch)"] -->|"Touch Down (Delta C >= Threshold)"| FINGER_DOWN_PRESS["FINGER_DOWN (Stationary Hold Timer)"]
+    FINGER_DOWN_PRESS -->|"Drift Detected (Delta X >= 2.5mm)"| CANCELLED_PRESS["CANCELLED (Motion Drift Abort)"]
+    FINGER_DOWN_PRESS -->|"Stationary Hold >= 1.5s"| EVAL_HOLD{"Hold Evaluation"}
+    EVAL_HOLD -->|"Released before 5.0s (1.5s <= T < 5.0s)"| EMIT_LONG["Emit Gesture::LongPress (Initiate PowerDown)"]
+    EVAL_HOLD -->|"Sustained Hold >= 5.0s"| EMIT_EXTRA["Emit Gesture::ExtraLongPress (Initiate BLE Pairing)"]
+    EMIT_LONG --> IDLE_PRESS
+    EMIT_EXTRA --> IDLE_PRESS
+    CANCELLED_PRESS --> IDLE_PRESS
+```
+
+```mermaid
+flowchart TD
+    ACT_IDLE["IDLE (Action Button Released)"] -->|"Capacitive Touch Down (Delta C >= Threshold)"| ACT_DOWN["ACTION_DOWN (Hold Timer Started)"]
+    ACT_DOWN -->|"Released in 50ms <= T < 500ms"| ACT_EMIT_TAP["Emit Gesture::SingleTap(GestureSource::ActionButton)"]
+    ACT_DOWN -->|"Stationary Hold >= 1.5s"| ACT_EVAL_HOLD{"Hold Evaluation"}
+    ACT_EVAL_HOLD -->|"Released before 5.0s (1.5s <= T < 5.0s)"| ACT_EMIT_LONG["Emit Gesture::LongPress(GestureSource::ActionButton)"]
+    ACT_EVAL_HOLD -->|"Sustained Hold >= 5.0s"| ACT_EMIT_EXTRA["Emit Gesture::ExtraLongPress(GestureSource::ActionButton)"]
+    ACT_EMIT_TAP --> ACT_IDLE
+    ACT_EMIT_LONG --> ACT_IDLE
+    ACT_EMIT_EXTRA --> ACT_IDLE
+```
+
+##### Generic `GestureDetector<Input>` Trait Adaptation
+To ensure firmware target independence across RP2040 and MCX N947, all gesture processing implements the canonical `GestureDetector<Input>` trait defined in `model/src/gesture.rs`:
+
+```rust
+pub trait GestureDetector<Input> {
+    type Output;
+    fn update(&mut self, input: Input, current_time_us: u64) -> Option<Self::Output>;
+    fn reset(&mut self);
+}
+```
+
+- **RP2040 Implementation**: `ProximityGestureDetector` implements `GestureDetector<ProximityEvent>`, accepting Time-of-Flight (ToF) distance readings across directional channels (North, East, West) and emitting `Gesture::DualLongPress(GestureSource::Proximity)`.
+- **MCX N947 Implementation**: `CapTouchGestureDetector` implements `GestureDetector<CapTouchFrame>`, accepting Azoteq IQS7222A FIFO frames (`x_pos: u16`, `delta_c: u16`, `contact: bool`) and evaluating discrete sub-detectors for `SingleTap`, `DoubleTap`, `SwipeForward`, `SwipeBack`, `LongPress`, and `ExtraLongPress` (with `GestureSource::Touchpad`).
+- **Flex Tail Capacitive Action Button**: `CapTouchGestureDetector` on the Real-Time Processing Core (Core 0) monitors the dedicated action button channel on the flex tail, emitting `Gesture::SingleTap(GestureSource::ActionButton)`, `Gesture::LongPress(GestureSource::ActionButton)`, and `Gesture::ExtraLongPress(GestureSource::ActionButton)`.
+- **Carrier Board Tactile Switch (`SW1`)**: Dedicated hardware system reset button wired directly to hardware reset / `NVIC_SystemReset()`; it is dedicated to immediate board reset and is not handled by the gesture detection subsystem.
+
+##### Lowering Plan onto MCX N947 eIQ Neutron NPU
+To enable advanced spatial gesture recognition while maintaining extreme energy efficiency, Carrier Board 2.0 incorporates an Ahead-of-Time (AOT) lowering pipeline onto the MCX N947 eIQ Neutron NPU:
+1. **Telemetry Data Pipeline**: The Real-Time Processing Core (Core 0) streams raw 10–30 Hz IQS7222A capacitive touch FIFO frames and time-series feature frames over high-speed 1 Mb/s UART / BLE into offline training storage.
+2. **Offline Model Training & Symmetric INT8 Quantization**: Train lightweight 1D temporal convolution (1D-CNN) or gated recurrent unit (GRU) models using PyTorch / JAX / Burn on captured touch sequences. Quantize model weights and activations to symmetric INT8 using the NXP eIQ toolkit.
+3. **AOT Lowering to eIQ Neutron NPU**: Lower the quantized model onto MCX N947's eIQ Neutron NPU using `burn-import` or `tract` Ahead-of-Time compilation to generate static hardware command buffers and tensor arenas in SRAMX (`0x2006_0000`).
+4. **Deterministic Zero-Allocation Execution**: The Real-Time Processing Core (Core 0)'s `SensorController` triggers non-blocking NPU inference passes directly from DMA-filled FIFO buffers, achieving sub-100 microsecond inference latency with classification confidence $\ge 95\%$.
+
+### 5. Boot Timing & Latency Budget
 
 To deliver instantaneous user responsiveness while guaranteeing cryptographic integrity, the boot sequence is strictly budgeted:
 
@@ -833,7 +1112,7 @@ To deliver instantaneous user responsiveness while guaranteeing cryptographic in
 | **1. ROM Boot & Clocks** | NXP ROM RoT | 8.5 ms | 12.0 ms | FRO-48M startup, ROM RoT integrity check, SSBL vector fetch. |
 | **2. SSBL Execution** | Custom SSBL (Flash XIP) | 18.0 ms | 22.0 ms | Hardware crypto engine init, Ed25519 signature check of `app` partition. |
 | **3. Application Init** | `app` Partition (Flash XIP) | 4.5 ms | 6.0 ms | Cortex-M33 vector table relocation, Embassy executor startup. |
-| **4. Peripheral Bringup** | Core 0 & Core 1 Drivers | 8.5 ms | 10.0 ms | $\text{I}^2\text{C}$ bus scan, LP5009 init, IQS7222A baseline calibration. |
+| **4. Peripheral Bringup** | Real-Time Processing Core & Always-On Core Drivers | 8.5 ms | 10.0 ms | $\text{I}^2\text{C}$ bus scan, LP5009 init, IQS7222A baseline calibration. |
 | **Total Cold Boot Time** | **Reset &rarr; Active Running** | **$\mathbf{39.5\text{ ms}}$** | **$\mathbf{50.0\text{ ms}}$** | **Cold boot ready for user input in under $50\text{ ms}$.** |
 | **PowerDown / Standby Wake Latency** | **PowerDown &rarr; Active** | **$\mathbf{1.8\text{ ms}}$** | **$\mathbf{2.5\text{ ms}}$** | **Instantaneous capacitive touch response from PowerDown (Standby) mode.** |
 | **OTA Flash Cycle** | **In-SRAM NAND &rarr; Flash** | **$\mathbf{4.2\text{ s}}$** | **$\mathbf{6.0\text{ s}}$** | **Complete 512 KB internal flash erase, program & CRC32 check.** |
@@ -842,7 +1121,7 @@ To deliver instantaneous user responsiveness while guaranteeing cryptographic in
 
 ## 7. Hardware Bringup, Verification & Architecture Risk Protocol
 
-The authoritative source of truth for bringup verification is [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml). All hardware verification procedures must follow the step definitions established in that configuration.
+The authoritative source of truth for bringup verification is [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml). All hardware verification procedures must follow the step definitions established in that configuration.
 
 ### Architecture Risk Identification & Mitigation Matrix
 
@@ -850,12 +1129,12 @@ To ensure that the dual-core bare-metal firmware achieves industrial reliability
 
 | Risk ID | Architecture Risk Domain | Failure Mode & Impact | Severity / Likelihood | Detection & Diagnostic Mechanism | Mitigation & Enforcement Strategy |
 | :--- | :--- | :--- | :---: | :--- | :--- |
-| **AR-1** | **Inter-Core Concurrency & Deadlock** | Core 0 or Core 1 blocking on shared resources; mailbox buffer overflow causing dropped IPC events or executor freeze. | **High** / Low | Dedicated watchdog timers per core (`WWDT0` on Core 0, `WWDT1` on Core 1); IPC timeout assertions with `ServiceError::domain = IPC`. | Lock-free Single-Producer Single-Consumer (SPSC) circular queues in non-cacheable SRAMX (`0x2006_8000`); Mailbox (MU) doorbells with non-blocking ISR wakeups; strict prohibition on cross-core blocking mutexes. |
-| **AR-2** | **FlexSPI Bus Contention & DMA Latency** | High-throughput NAND writes during telemetry or OTA bursts interfering with instruction fetches or delaying real-time sensor processing. | **High** / Medium | Core 1 cycle counter monitoring; bus stall profiling in Segger SystemView / Perfetto trace logs. | Core 0 maintains dedicated, exclusive ownership of FlexSPI NAND peripheral; DMA linked descriptors reside in isolated SRAM; bounded FlexSPI burst lengths (max 256 bytes per transaction) prevent bus starvation. |
+| **AR-1** | **Inter-Core Concurrency & Deadlock** | Real-Time Processing Core (Core 0) or Always-On Core (Core 1) blocking on shared resources; mailbox buffer overflow causing dropped IPC events or executor freeze. | **High** / Low | Dedicated watchdog timers per core (`WWDT0` on Real-Time Processing Core, `WWDT1` on Always-On Core); IPC timeout assertions with `ServiceError::domain = IPC`. | Lock-free Single-Producer Single-Consumer (SPSC) circular queues in non-cacheable SRAMX (`0x2006_8000`); Mailbox (MU) doorbells with non-blocking ISR wakeups; strict prohibition on cross-core blocking mutexes. |
+| **AR-2** | **FlexSPI Bus Contention & DMA Latency** | High-throughput NAND writes during telemetry or OTA bursts interfering with instruction fetches or delaying real-time sensor processing. | **High** / Medium | Always-On Core (Core 1) cycle counter monitoring; bus stall profiling in Segger SystemView / Perfetto trace logs. | The Always-On Core (Core 1) maintains dedicated, exclusive ownership of FlexSPI NAND peripheral; DMA linked descriptors reside in isolated SRAM; bounded FlexSPI burst lengths (max 256 bytes per transaction) prevent bus starvation, ensuring flash write and erase latency never contaminates the Real-Time Processing Core's (Core 0) sensor and audio processing domains. |
 | **AR-3** | **Power State Transition Race & Brownout** | Rapid voltage dips during high-current wake bursts (`PowerDown` $\to$ `Active`) causing brownout reset (BOD); incomplete state cleanup in `Sleep` mode. | **Critical** / Medium | Smart Power Controller (SPC) low-voltage warning interrupts; MAX17048 fuel gauge alert pin (`ALRT`); power rails logged via ADC telemetry. | Deterministic transition sequencing enforced in `SystemController`; TI BQ24074 `/PGOOD` and VBAT threshold qualification prior to peripheral rail power-up; step-by-step clock frequency ramping; non-volatile state journaling in `metadata` before low-power entry. |
 | **AR-4** | **In-SRAM Flashing Kernel Corruption** | SRAM memory overlap, stack overflow, or invalid pointer write corrupting `flash_loader_ram` during live OTA programming, resulting in bricked device. | **Critical** / Low | Pre-execution CRC32 integrity check of `flash_loader_ram` image in SRAM; hardfault trap vectors mapped to dedicated crash logger. | Relocate `flash_loader_ram` to high SRAM (`0x2007_C000`) outside application dynamic ranges; configure ARMv8-M MPU to enforce `Privileged Execution (RX)` with stack limits (`MSPLIM`); golden fallback image in 16 MB NAND `recovery` partition restored by SSBL on integrity failure. |
 | **AR-5** | **Modular Expansion Peripheral Faults** | Unseated expansion cards, missing pullups, or bus noise causing hanging I2C (`FC4`), SPI (`FC2`), or UART (`FC5`) transactions. | **Medium** / Medium | Asynchronous hardware bus timeouts; `ServiceError` diagnostic events emitted with domain `Sensor` or `Transport`. | Compile-time Cargo feature gating (`expansion-*`); non-blocking peripheral probing during boot Stage 2; structured error containment isolating faulty cards without halting core system operation or blocking boot. |
-| **AR-6** | **Capacitive Touch Drift & Low-Power False Wake** | Environmental noise, temperature swings, or moisture causing false wakeups from `PowerDown` or unresponsive proximity detection. | **Medium** / Medium | Real-time baseline capacitance tracking; continuous threshold delta telemetry streamed to `host_cli`. | Core 1 runs dedicated tracking filter using Azoteq IQS7222A auto-tuning algorithm; baseline baselines persisted to SLC NAND `models` partition; dual-stage Wakeup Unit (WUU) digital filtering requiring sustained touch assertion. |
+| **AR-6** | **Capacitive Touch Drift & Low-Power False Wake** | Environmental noise, temperature swings, or moisture causing false wakeups from `PowerDown` or unresponsive proximity detection. | **Medium** / Medium | Real-time baseline capacitance tracking; continuous threshold delta telemetry streamed to `host_cli`. | The Real-Time Processing Core's (Core 0) `SensorController` runs dedicated tracking filter using Azoteq IQS7222A auto-tuning algorithm; baselines persisted to SLC NAND `models` partition; Always-On Core (Core 1) dual-stage Wakeup Unit (WUU) digital filtering requires sustained touch assertion. |
 
 ### Bringup & Verification Milestones & Deliverables Roadmap
 
@@ -882,22 +1161,22 @@ flowchart LR
   - Internal flash partitioning: `bootloader` (64 KB), `app` (1,856 KB), `metadata` (64 KB), and `keystore` (64 KB).
   - High-speed UART0 (1 Mb/s) diagnostic banner and Segger RTT logging output.
 - **Verification Gate**:
-  - Executes steps 1–4 of [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml).
+  - Executes steps 1–4 of [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
   - `embassy-mcx` Stage 1 register smoke tests and foundational timer/UART async drivers pass on hardware.
   - Cold boot ready latency measured $\le 39.5\,\text{ms}$ (strict budget: $\le 50.0\,\text{ms}$).
   - Ed25519 signature verification and anti-rollback monotonic counter validation pass 100% on valid and invalid test images.
 
 #### Milestone 2 (M2): Dual-Core Asymmetric Multiprocessing (AMP) & IPC Fabric
 - **Core Deliverables**:
-  - Core 0 initiates Core 1 startup sequence via `SYSCON` CPU1 boot vector register.
-  - Core 1 starts up directly from internal flash `app` partition in XIP mode.
+  - The Real-Time Processing Core (Core 0) initiates Always-On Core (Core 1) startup sequence via `SYSCON` CPU1 boot vector register.
+  - The Always-On Core (Core 1) starts up directly from internal flash `app` partition in XIP mode.
   - SRAMX shared memory ring buffers initialized at `0x2006_8000` with non-cacheable MPU configuration.
   - `embassy-ipc-channel` protocol operational with Messaging Unit (MU) doorbell hardware interrupts.
   - High-performance POD direct copy and `minicbor` framing for cross-core telemetry events.
 - **Verification Gate**:
-  - Executes steps 5–7 of [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml).
+  - Executes steps 5–7 of [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
   - 100,000 round-trip IPC messages transferred without dropped frames, race conditions, or core lockups.
-  - Core 1 maintains deterministic 1 kHz sensor sampling loop jitter $\le 2.0\,\mu\text{s}$.
+  - The Real-Time Processing Core (Core 0) maintains deterministic 1 kHz sensor sampling loop jitter $\le 2.0\,\mu\text{s}$.
 
 #### Milestone 3 (M3): Storage Subsystem & Flash Filesystems (`sequential-storage`)
 - **Core Deliverables**:
@@ -909,16 +1188,16 @@ flowchart LR
   - Host filesystem tool (`tools/host_fs`) operational with `dev:builtin-flash` and `dev:ext-flash` targets.
   - SRAM-relocatable flashing kernel (`flash_loader_ram`, 8 KB) for OTA image installation.
 - **Verification Gate**:
-  - Executes steps 8–10 of [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml).
+  - Executes steps 8–10 of [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
   - Flash wear leveling, power-loss brownout atomicity, and CRC32 payload verification pass across 5,000 simulated power interruption cycles.
 
 #### Milestone 4 (M4): Peripheral Sensors, User Interface & Communications
 - **Core Deliverables**:
-  - Core 1 peripheral drivers: Azoteq IQS7222A capacitive touch, TI LP5009 RGB LED controller, TI BQ24074 charger monitor, MAX17048 fuel gauge, and Class-D speaker chime engine.
-  - Core 0 communications: NINA-B312 BLE module UART framing, bidirectional GATT service endpoints, and CBOR RPC command dispatcher.
+  - Real-Time Processing Core (Core 0) drivers & algorithms: Azoteq IQS7222A capacitive touch (10–30 Hz FIFO), PowerQuad DSP smoothing, eIQ Neutron NPU gesture classifier, MAX98357A I2S Class-D audio chime engine, NINA-B312 BLE module UART framing, and GATT service endpoints.
+  - Always-On Core (Core 1) low-power drivers: TI LP5009 RGB LED controller, TI BQ24074 charger monitor, MAX17048 fuel gauge, and FlexSPI SLC NAND storage subsystem (`sequential-storage`).
   - High-speed UART host servicing interface (`tools/host_cli`) supporting production provisioning and field diagnostics.
 - **Verification Gate**:
-  - Executes steps 11–14 of [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml).
+  - Executes steps 11–14 of [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
   - Proximity touch gesture detection accuracy $\ge 98\%$; acoustic alert playback at nominal $65\,\text{dBA}$ verified.
   - BLE sustained telemetry throughput $\ge 24\,\text{kB/s}$ without dropped event frames.
 
@@ -938,7 +1217,7 @@ flowchart LR
     - `ThermalController`: Silicon junction temperature tracking and throttling.
   - Factory ship mode entry (`host_cli ship-mode`) and USB cable insertion wake asserted via `/PGOOD` without enclosure disassembly.
 - **Verification Gate**:
-  - Executes complete bringup suite (steps 1–16 of [`app/carrier_board_bringup.yaml`](file:///Users/daparker/gh/firmware/app/carrier_board_bringup.yaml)).
+  - Executes complete bringup suite (steps 1–16 of [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml)).
   - End-to-end power consumption validated: $\le 185\,\mu\text{A}$ in `PowerDown` (Standby), $< 1.0\,\mu\text{A}$ in `Off` (Ship Mode), and $\le 12.0\,\text{mA}$ in baseline `Active` running mode.
   - Instantaneous capacitive touch wake from `PowerDown` mode $\le 1.8\,\text{ms}$ (target bound: $\le 2.5\,\text{ms}$).
 
@@ -946,7 +1225,7 @@ flowchart LR
 
 The ultimate deliverable of this engineering roadmap is a **fully functional, production-hardened carrier board application** (`carrier_board` / `carrier_board_shell`) that natively supports:
 1. **Complete Power & System State Coverage**: Full operational lifecycle support spanning `Active`, `Sleep`, `PowerDown`, and ultra-low-power `Off` (factory ship mode), adhering strictly to the validated operating power state matrix.
-2. **Deterministic Dual-Core AMP Concurrency**: Core 0 managing networking, storage, and supervisory tasks while Core 1 executes real-time sensor acquisition, capacitive gesture filtering, and audio synthesis in Execute-in-Place (XIP) flash mode without SRAM starvation.
+2. **Deterministic Dual-Core AMP Concurrency**: Real-Time Processing Core (Core 0) managing real-time sensor acquisition, capacitive gesture DSP/NPU inference, I2S Class-D audio chime synthesis, and wireless communications while Always-On Core (Core 1) executes low-power system lifecycle management, wake supervision, and FlexSPI SLC NAND flash storage operations (isolating flash write and erase latencies from the Real-Time Processing Core) in Execute-in-Place (XIP) flash mode without SRAM starvation.
 3. **Resilient Flash Architecture**: Zero-data-loss telemetry and crash dumps using `sequential-storage`, cryptographic secure boot with Ed25519 signatures, and in-SRAM OTA updating with golden recovery fallbacks.
 4. **Decoupled Modular Expansion**: Clean compile-time Cargo feature flags and structured `ServiceError` runtime fault isolation providing full expansion support without hardware EEPROM dependencies.
 

@@ -8,10 +8,10 @@ To establish the baseline hardware platform specifications, MCU subsystem capabi
 ## Core Invariants
 
 ### 1. Target Firmware Environment
-* **Bare-Metal Rust Specification**: The target runtime environment is bare-metal Rust (`no_std`, Embassy asynchronous executor, `embedded-hal` and `embedded-hal-async` driver abstractions, `defmt` structured logging, stack-based zero-allocation concurrency, and static memory analysis) as detailed in [CONTRIBUTING.md](file:///Users/daparker/gh/firmware/CONTRIBUTING.md).
+* **Bare-Metal Rust Specification**: The target runtime environment is bare-metal Rust (`no_std`, Embassy asynchronous executor, `embedded-hal` and `embedded-hal-async` driver abstractions, `defmt` structured logging, stack-based zero-allocation concurrency, and static memory analysis) as detailed in [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ### 2. Reference Hardware Architecture (Revision 2.0)
-Component selection and pinmux topologies are governed by the Test Board Revision 2.0 Downselection Process documented in [docs/downselection_report.md](file:///Users/daparker/gh/firmware/docs/downselection_report.md):
+Component selection and pinmux topologies are governed by the Test Board Revision 2.0 Downselection Process documented in [docs/downselection_report.md](downselection_report.md):
 * **Primary MCU Subsystem**: NXP MCX N947 / N946 dual ARM Cortex-M33 cores @ 150 MHz with integrated eIQ Neutron Neural Processing Unit (NPU, 42 GMACs), PowerQuad DSP coprocessor, 2MB dual-bank Flash, and 512KB SRAM.
 * **Secondary Telemetry & Calibration Storage**: Winbond W25N01GV 1Gb Serial SLC NAND Flash over high-speed Dual-Channel FlexSPI (100 MHz SDR OD mode).
 * **Power & Battery Management**: Texas Instruments BQ24074 dynamic Power-Path Li-Ion charger (`/PGOOD` wake interrupt, `/CHG` state monitoring) and Analog Devices MAX17048 precision fuel gauge (I2C0).

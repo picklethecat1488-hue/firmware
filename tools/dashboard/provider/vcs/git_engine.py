@@ -167,6 +167,9 @@ class GitEngine:
             repo_root: Root path of git repository.
         """
         self.repo_root = repo_root or get_git_root()
+        self._commit_diff_cache: Dict[str, Tuple[int, int, int, bool]] = {}
+        self._commit_stat_cache: Dict[str, Tuple[int, int, int, List[str]]] = {}
+        self._worm_tag_cache: Dict[str, Dict[str, str]] = {}
 
     def get_head_commit(self) -> str:
         """Retrieve the commit hash of HEAD in the repository.
@@ -801,39 +804,55 @@ class GitEngine:
                 canonical_ids.append(cid)
 
         db_map: Dict[str, Dict[str, str]] = {}
-        for db_name in ["worms.sqlite", "bugs.sqlite"]:
-            sqlite_path = self.repo_root / "target" / db_name
-            if not sqlite_path.exists() and (self.repo_root / "build" / db_name).exists():
-                sqlite_path = self.repo_root / "build" / db_name
-            if sqlite_path.exists():
-                try:
-                    conn = sqlite3.connect(str(sqlite_path))
+        missing_ids = []
+        for cid in canonical_ids:
+            if cid in self._worm_tag_cache:
+                db_map[cid] = self._worm_tag_cache[cid]
+            else:
+                missing_ids.append(cid)
+
+        if missing_ids:
+            for db_name in ["worms.sqlite", "bugs.sqlite"]:
+                sqlite_path = self.repo_root / "target" / db_name
+                if not sqlite_path.exists() and (self.repo_root / "build" / db_name).exists():
+                    sqlite_path = self.repo_root / "build" / db_name
+                if sqlite_path.exists():
                     try:
-                        cur = conn.cursor()
-                        cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('worms', 'bugs')")
-                        existing_tables = [row[0] for row in cur.fetchall()]
-                        table_name = "worms" if "worms" in existing_tables else ("bugs" if "bugs" in existing_tables else None)
-                        if table_name:
-                            for cid in canonical_ids:
-                                if cid in db_map:
-                                    continue
-                                num = cid.replace("WORM-", "")
-                                bug_id = f"BUG-{num}"
-                                cur.execute(
-                                    f"SELECT id, title, status, severity FROM {table_name} WHERE id = ? OR id = ? OR id LIKE ?",
-                                    (cid, bug_id, f"%{num}"),
-                                )
-                                row = cur.fetchone()
-                                if row:
-                                    db_map[cid] = {
-                                        "title": str(row[1]),
-                                        "status": str(row[2]),
-                                        "severity": str(row[3]),
-                                    }
-                    finally:
-                        conn.close()
-                except Exception:
-                    pass
+                        conn = sqlite3.connect(str(sqlite_path))
+                        try:
+                            cur = conn.cursor()
+                            cur.execute(
+                                "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('worms', 'bugs')"
+                            )
+                            existing_tables = [row[0] for row in cur.fetchall()]
+                            table_name = (
+                                "worms"
+                                if "worms" in existing_tables
+                                else ("bugs" if "bugs" in existing_tables else None)
+                            )
+                            if table_name:
+                                for cid in missing_ids:
+                                    if cid in db_map:
+                                        continue
+                                    num = cid.replace("WORM-", "")
+                                    bug_id = f"BUG-{num}"
+                                    cur.execute(
+                                        f"SELECT id, title, status, severity FROM {table_name} WHERE id = ? OR id = ? OR id LIKE ?",
+                                        (cid, bug_id, f"%{num}"),
+                                    )
+                                    row = cur.fetchone()
+                                    if row:
+                                        info = {
+                                            "title": str(row[1]),
+                                            "status": str(row[2]),
+                                            "severity": str(row[3]),
+                                        }
+                                        db_map[cid] = info
+                                        self._worm_tag_cache[cid] = info
+                        finally:
+                            conn.close()
+                    except Exception:
+                        pass
 
         for cid in canonical_ids:
             num = cid.replace("WORM-", "")
@@ -848,12 +867,14 @@ class GitEngine:
                 )
             else:
                 md_path = self.repo_root / "feedback" / f"WORM_{num}.md"
+                if not md_path.exists() and num.isdigit():
+                    md_path = self.repo_root / "feedback" / f"WORM_{int(num)}.md"
                 if not md_path.exists():
                     md_path = self.repo_root / "feedback" / f"BUG_{num}.md"
-                status = "OPEN"
-                title = ""
-                severity = "LOW"
                 if md_path.exists():
+                    status = "OPEN"
+                    title = ""
+                    severity = "LOW"
                     try:
                         content = md_path.read_text(encoding="utf-8", errors="replace")
                         for line in content.splitlines():
@@ -869,14 +890,14 @@ class GitEngine:
                                     severity = parts[1].strip()
                     except Exception:
                         pass
-                tags.append(
-                    CommitWormTagModel(
-                        id=cid,
-                        title=title,
-                        status=status,
-                        severity=severity,
+                    tags.append(
+                        CommitWormTagModel(
+                            id=cid,
+                            title=title or cid,
+                            status=status,
+                            severity=severity,
+                        )
                     )
-                )
         return tags
 
     def get_repo_web_url(self) -> Optional[str]:
@@ -1082,6 +1103,9 @@ class GitEngine:
 
     def _get_commit_diff_summary(self, commit_hash: str) -> Tuple[int, int, int, bool]:
         """Compute additions, deletions, file count, and whether commit strictly touches feedback."""
+        if commit_hash in self._commit_diff_cache:
+            return self._commit_diff_cache[commit_hash]
+
         cmd = ["diff-tree", "--no-commit-id", "--numstat", "-r", commit_hash]
         try:
             output = run_git_command(cmd, cwd=self.repo_root)
@@ -1114,7 +1138,9 @@ class GitEngine:
                     deletions += int(cols[1])
 
         is_feedback_only = file_count > 0 and non_feedback_count == 0
-        return additions, deletions, file_count, is_feedback_only
+        result = (additions, deletions, file_count, is_feedback_only)
+        self._commit_diff_cache[commit_hash] = result
+        return result
 
     def has_working_tree_changes(self) -> bool:
         """Check whether repository contains any uncommitted or untracked changes."""
@@ -1376,6 +1402,9 @@ class GitEngine:
 
     def _get_commit_stat_summary(self, commit_hash: str) -> Tuple[int, int, int, List[str]]:
         """Calculate additions, deletions, file count, and ignored files list for a commit."""
+        if commit_hash in self._commit_stat_cache:
+            return self._commit_stat_cache[commit_hash]
+
         cmd = ["diff-tree", "--no-commit-id", "--numstat", "-r", commit_hash]
         try:
             output = run_git_command(cmd, cwd=self.repo_root)
@@ -1400,7 +1429,9 @@ class GitEngine:
                     additions += int(cols[0])
                 if cols[1].isdigit():
                     deletions += int(cols[1])
-        return additions, deletions, file_count, ignored_files
+        res = (additions, deletions, file_count, ignored_files)
+        self._commit_stat_cache[commit_hash] = res
+        return res
 
     def get_changed_files(self, commit: str, include_feedback: bool = False) -> List[Dict[str, Any]]:
         """List changed files with status and stats for a revision."""

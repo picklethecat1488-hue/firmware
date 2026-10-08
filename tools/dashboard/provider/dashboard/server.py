@@ -8,6 +8,7 @@ merge conflict resolution, interactive line-by-line Code Review, and Worm Tracke
 import base64
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import errno
 import json
 import mimetypes
 from pathlib import Path
@@ -45,6 +46,30 @@ from provider.vcs.git_engine import GitEngine, extract_line_snippet, get_git_roo
 from provider.worm_report.server import WormReportServer
 
 
+def ensure_high_fd_limit(min_limit: int = 10240) -> int:
+    """Raise process soft file descriptor limit (RLIMIT_NOFILE) up to hard limit.
+
+    Args:
+        min_limit: Target soft limit to achieve (defaults to 10240, capped at 65536).
+
+    Returns:
+        The current or newly set soft limit.
+    """
+    try:
+        import resource
+
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        target = min(hard, 65536) if hard != resource.RLIM_INFINITY else 65536
+        target = max(target, min_limit)
+        if hard != resource.RLIM_INFINITY and target > hard:
+            target = hard
+        if soft < target:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
+            return target
+        return soft
+    except (ImportError, OSError, ValueError):
+        return 0
+
 
 class DashboardRequestHandler(BaseHTTPRequestHandler):
     """HTTP request handler dispatching unified VCS dashboard, code review, and worm report APIs."""
@@ -80,6 +105,17 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         """Route GET requests for UI dashboards and data query endpoints."""
+        try:
+            self._do_get_impl()
+        except OSError as e:
+            if getattr(e, "errno", None) == errno.EMFILE:
+                self.send_error(503, "Server file descriptor limit reached")
+            else:
+                self.send_error(500, f"Internal server error: {e}")
+        except Exception as e:
+            self.send_error(500, f"Internal server error: {e}")
+
+    def _do_get_impl(self) -> None:
         if hasattr(self.server, "review_server") and self.server.review_server:
             try:
                 self.server.review_server.check_file_watch()
@@ -154,6 +190,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                     if not revs and self.server.review_server.session.revisions:
                         revs = self.server.review_server.session.revisions
                     commits = self.server.git_engine.get_commits(rev_args=revs)
+                    if not commits and revs == ["working"]:
+                        commits = self.server.git_engine.get_commits()
                     self._send_json([c.model_dump(mode="json") for c in commits])
                 else:
                     limit_str = query.get("limit", ["40"])[0]
@@ -247,6 +285,17 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         """Route POST requests for mutating actions."""
+        try:
+            self._do_post_impl()
+        except OSError as e:
+            if getattr(e, "errno", None) == errno.EMFILE:
+                self.send_error(503, "Server file descriptor limit reached")
+            else:
+                self.send_error(500, f"Internal server error: {e}")
+        except Exception as e:
+            self.send_error(500, f"Internal server error: {e}")
+
+    def _do_post_impl(self) -> None:
         try:
             self.server.worm_server.check_file_watch()
         except Exception:
@@ -535,12 +584,20 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         template = env.get_template("worm_report.html.j2")
         worm_server = self.server.worm_server
         db_dump = worm_server.database.model_dump(mode="json")
+        components = sorted(
+            {
+                w.component.strip()
+                for w in worm_server.database.worms
+                if w.component and w.component.strip()
+            }
+        )
         html_content = template.render(
             database=worm_server.database,
             database_json=json.dumps(db_dump),
             statuses=[s.value for s in WormStatus],
             severities=[s.value for s in WormSeverity],
             categories=[c.value for c in WormCategory],
+            components=components,
             server_port=self.server.actual_port,
         )
         self._send_html(html_content)
@@ -972,11 +1029,12 @@ class DashboardServer(ThreadingHTTPServer):
 
     def handle_error(self, request: Any, client_address: Any) -> None:
         """Handle client connection errors gracefully without printing tracebacks on client disconnects."""
-        exc_type, _, _ = sys.exc_info()
-        if exc_type is not None and issubclass(
-            exc_type, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
-        ):
-            return
+        exc_type, exc_val, _ = sys.exc_info()
+        if exc_type is not None:
+            if issubclass(exc_type, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
+                return
+            if isinstance(exc_val, OSError) and getattr(exc_val, "errno", None) == errno.EMFILE:
+                return
         super().handle_error(request, client_address)
 
     def __init__(
@@ -995,6 +1053,7 @@ class DashboardServer(ThreadingHTTPServer):
         bind_and_activate: bool = True,
     ) -> None:
         """Initialize the unified dashboard workstation server."""
+        ensure_high_fd_limit()
         self.repo_root = (repo_root or get_git_root()).resolve()
         self.git_engine = GitEngine(repo_root=self.repo_root)
         self.host = host
@@ -1072,24 +1131,43 @@ class DashboardServer(ThreadingHTTPServer):
             num = re.sub(r"^(?:WORM|BUG)[-_]", "", w.id, flags=re.IGNORECASE)
             worm_dict[f"WORM-{num}"] = w
             worm_dict[f"BUG-{num}"] = w
+            if num.isdigit():
+                norm_num = f"{int(num):03d}"
+                worm_dict[f"WORM-{norm_num}"] = w
+                worm_dict[f"BUG-{norm_num}"] = w
             worm_dict[w.id] = w
 
         for node in smartlog_nodes:
-            # Canonicalize existing tag IDs
+            # Canonicalize existing tag IDs and filter out non-existent worms
+            retained_tags: List[CommitWormTagModel] = []
             for tag in node.worm_tags:
                 num = re.sub(r"^(?:WORM|BUG)[-_]", "", tag.id, flags=re.IGNORECASE)
-                tag.id = f"WORM-{num}"
-                if tag.id in worm_dict:
-                    w = worm_dict[tag.id]
+                canonical_id = f"WORM-{int(num):03d}" if num.isdigit() else f"WORM-{num}"
+                if canonical_id in worm_dict:
+                    w = worm_dict[canonical_id]
+                    tag.id = canonical_id
                     tag.title = w.title
                     tag.status = w.status.value
                     tag.severity = w.severity.value
+                    retained_tags.append(tag)
+                else:
+                    md_path = self.repo_root / "feedback" / f"WORM_{num}.md"
+                    if not md_path.exists() and num.isdigit():
+                        md_path = self.repo_root / "feedback" / f"WORM_{int(num):03d}.md"
+                    if not md_path.exists() and num.isdigit():
+                        md_path = self.repo_root / "feedback" / f"WORM_{int(num)}.md"
+                    if not md_path.exists():
+                        md_path = self.repo_root / "feedback" / f"BUG_{num}.md"
+                    if md_path.exists():
+                        tag.id = canonical_id
+                        retained_tags.append(tag)
+            node.worm_tags = retained_tags
 
             worm_ids = re.findall(r"\b((?:WORM|BUG)[_-]\d+)\b", node.subject, re.IGNORECASE)
             existing_ids = {t.id for t in node.worm_tags}
             for wid in worm_ids:
                 num = re.sub(r"^(?:WORM|BUG)[-_]", "", wid, flags=re.IGNORECASE)
-                canonical_id = f"WORM-{num}"
+                canonical_id = f"WORM-{int(num):03d}" if num.isdigit() else f"WORM-{num}"
                 if canonical_id not in existing_ids:
                     if canonical_id in worm_dict:
                         w = worm_dict[canonical_id]
@@ -1101,16 +1179,43 @@ class DashboardServer(ThreadingHTTPServer):
                                 severity=w.severity.value,
                             )
                         )
+                        existing_ids.add(canonical_id)
                     else:
-                        node.worm_tags.append(
-                            CommitWormTagModel(
-                                id=canonical_id,
-                                title=canonical_id,
-                                status="OPEN",
-                                severity="LOW",
+                        md_path = self.repo_root / "feedback" / f"WORM_{num}.md"
+                        if not md_path.exists() and num.isdigit():
+                            md_path = self.repo_root / "feedback" / f"WORM_{int(num):03d}.md"
+                        if not md_path.exists() and num.isdigit():
+                            md_path = self.repo_root / "feedback" / f"WORM_{int(num)}.md"
+                        if not md_path.exists():
+                            md_path = self.repo_root / "feedback" / f"BUG_{num}.md"
+                        if md_path.exists():
+                            status = "OPEN"
+                            title = canonical_id
+                            severity = "LOW"
+                            try:
+                                content = md_path.read_text(encoding="utf-8", errors="replace")
+                                for line in content.splitlines():
+                                    if line.startswith("# ") and ("WORM-" in line or "BUG-" in line):
+                                        title = line.split("]", 1)[-1].strip()
+                                    if line.startswith("- **Status**:"):
+                                        parts = line.split("`")
+                                        if len(parts) >= 2:
+                                            status = parts[1].strip()
+                                    if line.startswith("- **Severity**:"):
+                                        parts = line.split("`")
+                                        if len(parts) >= 2:
+                                            severity = parts[1].strip()
+                            except Exception:
+                                pass
+                            node.worm_tags.append(
+                                CommitWormTagModel(
+                                    id=canonical_id,
+                                    title=title,
+                                    status=status,
+                                    severity=severity,
+                                )
                             )
-                        )
-                    existing_ids.add(canonical_id)
+                            existing_ids.add(canonical_id)
 
         # Ensure file watcher syncs any newly placed or edited CR feedback files (BUG-236)
         if hasattr(self, "review_server") and self.review_server:

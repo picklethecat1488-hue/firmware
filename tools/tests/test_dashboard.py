@@ -3144,7 +3144,9 @@ def test_regression_side_by_side_diff_row_property_mapping() -> None:
     assert "undefined" not in html_fb
 
 
-def test_regression_worm_010_open_in_vscode_server_and_templates(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_regression_worm_010_open_in_vscode_server_and_templates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Verify WORM-010: 'Open in VSCode' invokes server /api/open-vscode endpoint to launch editor."""
     from dashboard.provider.vcs.editor import open_in_vscode
 
@@ -3156,8 +3158,10 @@ def test_regression_worm_010_open_in_vscode_server_and_templates(tmp_path: Path,
     def mock_run(cmd, *args, **kwargs):
         if isinstance(cmd, list) and cmd and (cmd[0].endswith("code") or cmd[0] in ("open", "xdg-open")):
             executed_cmds.append(cmd)
+
             class DummyProc:
                 returncode = 0
+
             return DummyProc()
         return real_run(cmd, *args, **kwargs)
 
@@ -3254,4 +3258,187 @@ def test_regression_worm_010_open_in_vscode_server_and_templates(tmp_path: Path,
         review_server.shutdown()
         review_server.server_close()
 
+
+def test_regression_bug_274_workstations_modal_windows() -> None:
+    """Verify BUG-274: Code review and worm report workstations are modal windows over VCS UI."""
+    tpl_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
+    diff_text = (tpl_dir / "diff_view.html.j2").read_text(encoding="utf-8")
+    cr_text = (tpl_dir / "code_review.html.j2").read_text(encoding="utf-8")
+    worm_text = (tpl_dir / "worm_report.html.j2").read_text(encoding="utf-8")
+
+    # 1. Diff view includes workstation modal overlay and iframe container
+    assert 'id="workstationModal"' in diff_text
+    assert 'id="workstationIframe"' in diff_text
+    assert "workstation-modal-overlay" in diff_text
+    assert "workstation-modal-container" in diff_text
+    assert "workstation-modal-iframe" in diff_text
+
+    # 2. Fixed size with tiny margin and darkened backdrop
+    assert "rgba(0, 0, 0, 0.75)" in diff_text
+    assert "calc(100vw - 36px)" in diff_text
+    assert "calc(100vh - 36px)" in diff_text
+
+    # 3. Diff view JavaScript exposes modal open and close
+    assert "function openWorkstationModal(url, targetName)" in diff_text
+    assert "function closeWorkstationModal()" in diff_text
+    assert "window.closeWorkstationModal = closeWorkstationModal;" in diff_text
+    assert "openWorkstationModal(res.url" in diff_text
+
+    # 4. Code review header replaces back button with X close button
+    assert "← Dashboard" not in cr_text
+    assert "modal-close-btn" in cr_text
+    assert "✕" in cr_text
+    assert "closeWorkstation()" in cr_text
+    assert "window.parent.closeWorkstationModal()" in cr_text
+
+    # 5. Worm report header replaces back button with X close button
+    assert "← Dashboard" not in worm_text
+    assert "modal-close-btn" in worm_text
+    assert "✕" in worm_text
+    assert "closeWorkstation()" in worm_text
+    assert "window.parent.closeWorkstationModal()" in worm_text
+
+
+def test_regression_worm_015_workstation_modal_dom_hierarchy_and_rendering() -> None:
+    """Verify WORM-015: workstationModal is NOT nested inside modalBranchPicker or hidden modals."""
+    from bs4 import BeautifulSoup
+    from html.parser import HTMLParser
+    import jinja2
+    from dashboard.model.vcs import BranchInfoModel, DiffViewSessionModel
+
+    tpl_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(tpl_dir)),
+        trim_blocks=True,
+        lstrip_blocks=True,
+        autoescape=False,
+    )
+    template = env.get_template("diff_view.html.j2")
+
+    dummy_session = DiffViewSessionModel(
+        title="VCS Dashboard",
+        current_user="picklethecat1488-hue",
+        active_commit="working",
+        branches=[
+            BranchInfoModel(name="main", is_current=True, is_remote=False),
+        ],
+        smartlog_tree=[],
+        working_files=[],
+        selected_commits=[],
+    )
+    rendered_html = template.render(
+        session=dummy_session,
+        active_branch="main",
+        active_commit="working",
+    )
+
+    soup = BeautifulSoup(rendered_html, "html.parser")
+
+    # 1. workstationModal must exist
+    workstation_modal = soup.find(id="workstationModal")
+    assert workstation_modal is not None, "workstationModal not found in rendered diff_view"
+
+    # 2. modalBranchPicker must exist
+    branch_modal = soup.find(id="modalBranchPicker")
+    assert branch_modal is not None, "modalBranchPicker not found in rendered diff_view"
+
+    # 3. workstationModal must NOT be a child or descendant of modalBranchPicker or any other modal
+    assert branch_modal.find(id="workstationModal") is None, (
+        "workstationModal is incorrectly nested inside modalBranchPicker, causing it to be hidden by display: none"
+    )
+    for overlay in soup.find_all(class_="quake-modal-overlay"):
+        if overlay.get("id") != "workstationModal":
+            assert overlay.find(id="workstationModal") is None, (
+                f"workstationModal is incorrectly nested inside {overlay.get('id')}"
+            )
+
+    # 4. Check for tag balance (no unclosed div tags leaking through the template)
+    class DivBalanceChecker(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.div_depth = 0
+            self.mismatches = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == "div":
+                self.div_depth += 1
+
+        def handle_endtag(self, tag):
+            if tag == "div":
+                self.div_depth -= 1
+                if self.div_depth < 0:
+                    self.mismatches.append("Extra closing </div> encountered")
+
+    checker = DivBalanceChecker()
+    checker.feed(rendered_html)
+    assert checker.div_depth == 0, f"Unbalanced <div> tags in diff_view.html.j2: depth is {checker.div_depth}"
+    assert len(checker.mismatches) == 0, f"Encountered div mismatches: {checker.mismatches}"
+
+
+def test_regression_worm_017_working_tree_actions_visible_on_load() -> None:
+    """Verify WORM-017 / BUG-278: Working tree actions are visible on initial load when active_commit is 'working'."""
+    import jinja2
+    from bs4 import BeautifulSoup
+
+    tpl_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(tpl_dir)),
+        trim_blocks=True,
+        lstrip_blocks=True,
+        autoescape=False,
+    )
+    template = env.get_template("diff_view.html.j2")
+
+    # 1. When active_commit is "working", workingTreeCommitArea must be visible (display: flex)
+    session_working = DiffViewSessionModel(
+        title="VCS Dashboard",
+        current_user="picklethecat1488-hue",
+        active_commit="working",
+        branches=[
+            BranchInfoModel(name="main", is_current=True, is_remote=False),
+        ],
+        smartlog_tree=[],
+        working_files=[],
+        selected_commits=[],
+    )
+    html_working = template.render(
+        session=session_working,
+        active_branch="main",
+        active_commit="working",
+    )
+    soup_working = BeautifulSoup(html_working, "html.parser")
+    commit_area_working = soup_working.find(id="workingTreeCommitArea")
+    assert commit_area_working is not None, "workingTreeCommitArea element must exist"
+    style_working = commit_area_working.get("style", "")
+    assert "display: flex" in style_working or "display:flex" in style_working, (
+        f"workingTreeCommitArea must have display: flex when active_commit is 'working', but got: '{style_working}'"
+    )
+    assert "display: none" not in style_working and "display:none" not in style_working, (
+        f"workingTreeCommitArea must NOT be hidden when active_commit is 'working', but got: '{style_working}'"
+    )
+
+    # 2. When active_commit is a specific commit hash, workingTreeCommitArea must be hidden (display: none)
+    session_commit = DiffViewSessionModel(
+        title="VCS Dashboard",
+        current_user="picklethecat1488-hue",
+        active_commit="12345678",
+        branches=[
+            BranchInfoModel(name="main", is_current=True, is_remote=False),
+        ],
+        smartlog_tree=[],
+        working_files=[],
+        selected_commits=[],
+    )
+    html_commit = template.render(
+        session=session_commit,
+        active_branch="main",
+        active_commit="12345678",
+    )
+    soup_commit = BeautifulSoup(html_commit, "html.parser")
+    commit_area_commit = soup_commit.find(id="workingTreeCommitArea")
+    assert commit_area_commit is not None, "workingTreeCommitArea element must exist"
+    style_commit = commit_area_commit.get("style", "")
+    assert "display: none" in style_commit or "display:none" in style_commit, (
+        f"workingTreeCommitArea must have display: none when active_commit is a commit hash, but got: '{style_commit}'"
+    )
 

@@ -71,8 +71,8 @@ def test_carrier_board_firmware_document() -> None:
     assert "IQS7222A" in content
     assert "NINA-B312" in content
 
-    # FlexSPI assigned to Core 0; Core 1 for peripherals
-    assert "FlexSPI Port A (Core 0)" in content or "FlexSPI NAND Flash Storage Controller" in content
+    # FlexSPI assigned to Core 1; Core 0 for real-time sensing and audio
+    assert "FlexSPI Port A (Core 1)" in content or "FlexSPI NAND Flash Storage Controller" in content
     assert "Core 1" in content
 
     # 1 Mb/s UART support
@@ -104,6 +104,18 @@ def test_carrier_board_firmware_document() -> None:
     # Bidirectional BLE UART & service endpoint
     assert "service endpoint" in content.lower() or "Service Endpoint" in content
     assert "telemetry" in content.lower()
+
+    # BLE latency and throughput evaluation across scenarios (CR-962579d)
+    assert "BLE Latency, Throughput & Connection Parameter Evaluation across Operating Scenarios" in content
+    assert "`Active` (Interactive / Telemetry)" in content
+    assert "`Sleep` (Low-Power Sensing)" in content
+    assert "`PowerDown` (Deep Standby)" in content
+    assert "`OTA` (Firmware & Model Updates)" in content
+    assert "LE 2M PHY" in content and "LE 1M PHY" in content
+    assert "Slave Latency" in content
+    assert "Net Application Throughput" in content
+    assert "55.0 – 75.0 kB/s" in content
+    assert "40.0 – 60.0 kB/s" in content
 
     # Option 3: Embassy Multi-Executor AMP
     assert "Option 3" in content or "Embassy Multi-Executor" in content
@@ -221,6 +233,18 @@ def test_carrier_board_firmware_document() -> None:
     assert "BATTERY_CHARGING" in content
     assert "BATTERY_LOW" in content
     assert "BATTERY_CRITICAL" in content
+    assert "BLE_CONNECTED" not in content, "BLE_CONNECTED state must be eliminated (CR-4229058)"
+    assert "BLE_PAIRING" in content
+
+    # Dual-Core AMP naming and role demarcation (CR-4229058, CR-67d1e5f4)
+    assert "Always-On Core" in content
+    assert "Real-Time Processing Core" in content
+    assert "Real-Time Processing Core (Core 0)" in content
+    assert "Always-On Core (Core 1)" in content
+    assert "transition directly to `ACTIVE_RUNNING`" in content
+    assert "BleController` notifies `SystemController`" in content
+    assert "before the runtime roles of the cores" in content
+    assert "ROM bootloader" in content
 
     # Expansion board error handling and fault isolation (CR-e45b9423)
     assert "eliminates on-card identification EEPROMs" in content
@@ -250,6 +274,38 @@ def test_carrier_board_firmware_document() -> None:
     assert "AR-1" in content and "AR-6" in content
     assert "Milestone 1 (M1): Silicon Baseline, Embassy HAL Foundation" in content
     assert "Milestone 5 (M5)" in content
+
+    # 1-Finger (1F) Capacitive Touch Gestures and Interaction Model
+    assert "Capacitive Touch Gesture Recognition & Interaction Model (1F Gestures)" in content
+    assert "1F Tap (Single Tap)" in content
+    assert "1F Double Tap" in content
+    assert "1F Swipe Forward" in content
+    assert "1F Swipe Back" in content
+    assert "1F Long Press" in content
+    assert "1F Extra Long Press" in content
+    assert "model::types::Gesture" in content or "enum Gesture" in content
+    assert "TelemetryRecord::Gesture" in content
+    assert "DualLongPress" in content
+    assert "SingleTap" in content
+    assert "DoubleTap" in content
+    assert "SwipeForward" in content
+    assert "SwipeBack" in content
+    assert "LongPress" in content
+    assert "ExtraLongPress" in content
+    assert "GestureSource" in content
+    assert "ActionButton" in content
+    assert "Finger Down Tone" in content
+    assert "Swipe Tone" in content
+    assert "SW1" in content or "Action Button" in content
+    assert "10–30 Hz" in content or "10-30 Hz" in content
+    assert "FINGER_DOWN" in content and "FINGER_MOVE" in content and "FINGER_UP" in content
+    assert "GestureDetector" in content
+
+    # Touchpad proximity detection wake to Active (CR-962579d / ffaad707)
+    assert "Touchpad Proximity Detection" in content
+    assert "awakens system directly to `Active`" in content
+    assert "proximity to the touchpad" in content.lower()
+    assert "pre-warming UI and DSP pipeline prior to physical contact" in content
 
     # 4. Hardware FIFO buffering, on-chip high-resolution timer, and sensor fusion
     assert "FIFO" in content

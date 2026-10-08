@@ -40,7 +40,7 @@ if str(_tools_dir) not in sys.path:
 
 from model.code_review import CommentModel, ReviewSeverity, ReviewStatus
 from model.worm_report import WormCategory, WormReportModel, WormSeverity, WormStatus
-from provider.dashboard.server import DashboardServer
+from provider.dashboard.server import DashboardServer, ensure_high_fd_limit
 from provider.vcs.git_engine import GitEngine, extract_line_snippet, get_git_root
 
 
@@ -568,6 +568,7 @@ def handle_cli_commit(
 
 def main(cli_args: Optional[List[str]] = None) -> None:
     """Launch the System Shock 2 - Xerxes dashboard CLI or workstation server."""
+    ensure_high_fd_limit()
     args = parse_arguments(cli_args)
     repo_root = get_git_root()
     engine = GitEngine(repo_root=repo_root)

@@ -69,7 +69,7 @@ fn test_telemetry_records_size_bounds() {
             SensorReading::Invalid,
         )),
         TelemetryRecord::Led(SystemLedState::SolidOrange),
-        TelemetryRecord::Gesture(Gesture::DualLongPress),
+        TelemetryRecord::Gesture(Gesture::DualLongPress(GestureSource::Proximity)),
         TelemetryRecord::FlashTelemetry(FlashEraseTelemetry {
             sector: u32::MAX,
             duration_ms: u32::MAX,

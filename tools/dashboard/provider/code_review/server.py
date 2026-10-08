@@ -34,6 +34,7 @@ from provider.vcs.git_engine import (
 )
 from provider.code_review.markdown_exporter import MarkdownReviewExporter
 from provider.code_review.sqlite_store import SQLiteReviewStore
+from provider.sanitizer import elide_personal_info
 
 
 class ReviewRequestHandler(BaseHTTPRequestHandler):
@@ -229,7 +230,7 @@ class ReviewRequestHandler(BaseHTTPRequestHandler):
                 severity = ReviewSeverity.NIT
             case _:
                 severity = ReviewSeverity.MUST_FIX
-        body = data.get("body", "").strip()
+        body = elide_personal_info(data.get("body", "").strip())
         author = data.get("author", "Reviewer").strip() or "Reviewer"
 
         if not file_path or not body:
@@ -246,6 +247,7 @@ class ReviewRequestHandler(BaseHTTPRequestHandler):
                 commit=commit,
                 repo_root=self.server.repo_root,
             )
+        snippet = elide_personal_info(snippet or "")
 
         commit = data.get("commit", self.server.session.commit_hash or "working")
         c_uuid = str(data.get("uuid") or uuid.uuid4())
@@ -274,7 +276,7 @@ class ReviewRequestHandler(BaseHTTPRequestHandler):
     def _handle_edit_comment(self, data: dict) -> None:
         """Edit body and optional severity of an existing comment."""
         cid = data.get("id", "").strip()
-        new_body = data.get("body", "").strip()
+        new_body = elide_personal_info(data.get("body", "").strip())
         if not cid or not new_body:
             self._send_json({"error": "Missing id or body"}, status=400)
             return

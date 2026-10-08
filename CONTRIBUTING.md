@@ -185,9 +185,9 @@ To maintain decoupled domain architectures and clean Embassy task separation:
    If diagnostics or calibration commands (which run inside CLI shell contexts) need to access files or direct storage without a running executor task, they must use stateless platform-level direct operations (such as `platform::flash::read_file_direct` and `platform::flash::write_file_direct`) instead of instantiating controller tasks directly.
 4. **Controller & CLI Code Generation (`controllers.toml` / `shell.toml` / Rinja Templates)**:
    All controllers, their channel definitions, task runner macros (`run_*_task!`), `spawn_single_controller!` matching arms, and interactive CLI resolvers/commands are automatically generated at build time using the **Rinja** template engine. 
-   - To add a new controller or modify module parameters, edit the configuration in [controller/controllers.toml](file:///Users/daparker/gh/firmware/controller/controllers.toml).
-   - To add or modify interactive CLI subcommands, arguments, or resolver fields, edit [shell.toml](file:///Users/daparker/gh/firmware/shell.toml).
-   - The template files are defined in `controller/templates/` (e.g. [generated_controllers.rs.jinja](file:///Users/daparker/gh/firmware/controller/templates/generated_controllers.rs.jinja) and [sample_cli.rs.jinja](file:///Users/daparker/gh/firmware/controller/templates/sample_cli.rs.jinja)).
+   - To add a new controller or modify module parameters, edit the configuration in [controller/controllers.toml](controller/controllers.toml).
+   - To add or modify interactive CLI subcommands, arguments, or resolver fields, edit [shell.toml](shell.toml).
+   - The template files are defined in `controller/templates/` (e.g. [generated_controllers.rs.jinja](controller/templates/generated_controllers.rs.jinja) and [sample_cli.rs.jinja](controller/templates/sample_cli.rs.jinja)).
    - The `has_telemetry` flag defaults to `true`. If a controller does not use telemetry reporting, explicitly set `has_telemetry = false` in the TOML file.
    - **Host Code Generation Viewer Tool (`code_gen`)**:
      We provide a host utility to print and inspect the rendered Rust code, list controllers/CLIs, and output sample implementations to the filesystem (defaulting to `target/out`).
@@ -287,7 +287,7 @@ To maintain code quality and style standards, run these checks before committing
 1.  Create a folder under `projects/` (e.g., `projects/my_project`).
 2.  Add a `Cargo.toml` and configure target settings in `.cargo/config.toml` and `memory.x`.
 3.  Implement target-specific pins, configure peripherals, and invoke your controllers.
-4.  Link the new project in the root [Cargo.toml](file:///Users/daparker/gh/firmware/Cargo.toml) workspace members list.
+4.  Link the new project in the root [Cargo.toml](Cargo.toml) workspace members list.
 
 ### Running Tests
 Validate all logic (including host-compatible board mocks) on the host. We use `cargo-nextest` for faster, parallel, and clean test execution:

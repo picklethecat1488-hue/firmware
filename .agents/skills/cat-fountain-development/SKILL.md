@@ -11,8 +11,8 @@ Use this guide to run codebase tasks, flashing procedures, interactive bringup s
 
 ## 1. Code Generation
 If you need to view or regenerate controllers, channels, or CLI command routers:
-* **Controllers**: [controller/controllers.toml](file:///Users/daparker/gh/firmware/controller/controllers.toml)
-* **CLIs**: [shell.toml](file:///Users/daparker/gh/firmware/shell.toml)
+* **Controllers**: [controller/controllers.toml](controller/controllers.toml)
+* **CLIs**: [shell.toml](shell.toml)
 * Run the host generator utility to list controllers/CLIs or generate skeletons:
   ```bash
   cargo run -p code_gen -- list-controllers
@@ -66,3 +66,7 @@ To query files or decode logs directly from the device's flash:
   ```bash
   cargo run -p host_fs -- --elf target/thumbv6m-none-eabi/release/cat_detector_app crash-log
   ```
+
+## 6. Relative Paths & Privacy Hygiene Mandate
+* **Relative File Paths Only**: Always use relative file paths (e.g., `controller/controllers.toml`, `shell.toml`, `docs/mcu_decoupling.md`) when creating, modifying, or linking tracked files in the workspace. Never embed absolute filesystem paths or absolute `file://` URLs in any tracked repository files.
+* **Personal Information Elision**: Ensure personal information (usernames, local user home directories, private environment paths) is never committed or leaked into tracked files, documentation, or issue reports.

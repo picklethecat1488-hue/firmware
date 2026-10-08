@@ -255,13 +255,46 @@ pub enum SystemLedState {
     BlinksRedOncePerThirtySeconds,
 }
 
-/// Gestures representing proximity sensor states (North, East, West) in mm.
+/// Source transducer or input mechanism that originated the gesture event.
+#[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub enum GestureSource {
+    /// Azoteq IQS7222A capacitive touch strip / touchpad on the enclosure.
+    #[n(0)]
+    Touchpad,
+    /// Dedicated capacitive touch action button on the flex tail.
+    #[n(1)]
+    ActionButton,
+    /// Optical Time-of-Flight (ToF) proximity sensor array.
+    #[n(2)]
+    Proximity,
+}
+
+/// Canonical gesture identifiers shared across RP2040 and MCX N947 platforms.
 #[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub enum Gesture {
-    /// A completed dual-sensor long press gesture.
+    /// A completed dual-sensor long press gesture (typically proximity).
     #[n(1)]
-    DualLongPress,
+    DualLongPress(#[n(0)] GestureSource),
+    /// Single tap contact.
+    #[n(2)]
+    SingleTap(#[n(0)] GestureSource),
+    /// Double tap contact sequence.
+    #[n(3)]
+    DoubleTap(#[n(0)] GestureSource),
+    /// Swipe forward along touch strip.
+    #[n(4)]
+    SwipeForward(#[n(0)] GestureSource),
+    /// Swipe back along touch strip.
+    #[n(5)]
+    SwipeBack(#[n(0)] GestureSource),
+    /// Sustained long press (>= 1.5s, initiates PowerDown transition).
+    #[n(6)]
+    LongPress(#[n(0)] GestureSource),
+    /// Sustained extra long press (>= 5.0s, initiates BLE pairing mode).
+    #[n(7)]
+    ExtraLongPress(#[n(0)] GestureSource),
 }
 
 /// Telemetry data from the flash storage/filesystem.
@@ -447,6 +480,7 @@ dummy_debug!(FuelGaugeTelemetry);
 dummy_debug!(SensorTelemetry);
 dummy_debug!(SystemLedState);
 dummy_debug!(Gesture);
+dummy_debug!(GestureSource);
 dummy_debug!(FlashEraseTelemetry);
 dummy_debug!(ChargeState);
 dummy_debug!(Direction);

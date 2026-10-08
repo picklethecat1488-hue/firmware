@@ -20,6 +20,7 @@ from model.worm_report import (
     WormSeverity,
     WormStatus,
 )
+from provider.sanitizer import elide_personal_info
 
 
 class MarkdownWormExporter:
@@ -67,7 +68,7 @@ class MarkdownWormExporter:
         if store and hasattr(store, "resolve_duplicate_ids"):
             store.resolve_duplicate_ids()
 
-        md_text = self.render_markdown(database)
+        md_text = elide_personal_info(self.render_markdown(database))
         output_path.write_text(md_text, encoding="utf-8")
 
         # Export individual WORM_<id>.md files into feedback/ (or custom feedback_dir)
@@ -283,7 +284,7 @@ class MarkdownWormExporter:
 
             lines.append("---\n")
 
-        return "\n".join(lines).strip() + "\n"
+        return elide_personal_info("\n".join(lines).strip() + "\n")
 
     def export_state_json(self, database: WormDatabaseModel, state_path: Path) -> Path:
         """Persist worm database to JSON file.
@@ -669,7 +670,7 @@ class MarkdownWormExporter:
         if bug.resolution_notes.strip():
             lines.extend(["#### Resolution Notes", "", bug.resolution_notes.strip(), ""])
 
-        return "\n".join(lines).strip() + "\n"
+        return elide_personal_info("\n".join(lines).strip() + "\n")
 
     def export_individual_worm(self, bug: WormReportModel, feedback_dir: Path) -> Path:
         """Export a single bug to feedback/WORM_<id>.md.
@@ -684,7 +685,7 @@ class MarkdownWormExporter:
         feedback_dir.mkdir(parents=True, exist_ok=True)
         clean_id = bug.id.removeprefix("WORM-").removeprefix("WORM_")
         target_file = feedback_dir / f"WORM_{clean_id}.md"
-        content = self.render_worm_markdown(bug)
+        content = elide_personal_info(self.render_worm_markdown(bug))
         if target_file.exists():
             try:
                 disk_content = target_file.read_text(encoding="utf-8")

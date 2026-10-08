@@ -71,34 +71,34 @@ Before finalizing any task, committing changes, or proposing modifications to th
 
 To minimize global context overhead and prevent unnecessary token burn, domain- and subsystem-specific architectural mandates are maintained in dedicated reference documents under `docs/`:
 
-1. [Microcontroller Decoupling & BSPs](file:///Users/daparker/gh/firmware/docs/mcu_decoupling.md)
+1. [Microcontroller Decoupling & BSPs](docs/mcu_decoupling.md)
    - Microcontroller decoupling and Board Support Package (`Board::init`) patterns.
    - Target-independent driver wrappers and vendor code isolation.
    - Frequency-independent time-based delays (`embassy_time::Timer`) instead of cycle loops.
 
-2. [Peripheral Sharing & Concurrency Patterns](file:///Users/daparker/gh/firmware/docs/peripheral_sharing.md)
+2. [Peripheral Sharing & Concurrency Patterns](docs/peripheral_sharing.md)
    - Actor / Message-Passing pattern with async channels for system integration.
    - Interior mutability (`Rc` + `RefCell` / `Mutex`) for bringup and diagnostic shells.
    - Strict prohibition on passing raw mutable references across tasks.
    - Global static memory restrictions and `OnceLock` initialization validation.
 
-3. [Domain Controller Design, Task Runners & Codegen](file:///Users/daparker/gh/firmware/docs/controller_design.md)
+3. [Domain Controller Design, Task Runners & Codegen](docs/controller_design.md)
    - Controller isolation with `#[crate::tracing::controller_context]`.
    - Direct platform operations for non-blocking CLI shell commands.
    - Rinja template boilerplate generation via `controllers.toml`, `shell.toml`, and `tools/code_gen`.
    - `include!` macro directives placement at top of file.
 
-4. [Embedded Logging, Tracing & Host Tools](file:///Users/daparker/gh/firmware/docs/logging_tracing.md)
+4. [Embedded Logging, Tracing & Host Tools](docs/logging_tracing.md)
    - `defmt` structured logging macros with zero format-string overhead.
    - Consolidated platform tracing facade module (`crate::tracing`).
    - Host diagnostic and debugging utilities: `tools/host_fs` and `tools/host_cli`.
 
-5. [Hardware-Firmware Co-Design & Downselection Architecture](file:///Users/daparker/gh/firmware/docs/hardware_firmware_codesign.md)
+5. [Hardware-Firmware Co-Design & Downselection Architecture](docs/hardware_firmware_codesign.md)
    - Target runtime environment: bare-metal Rust (`no_std`, Embassy, `embedded-hal`, `defmt`).
    - Revision 2.0 reference hardware architecture (NXP MCX N947/N946, Winbond SLC Flash, TI BQ24074, FTDI bridge, LP5009 LED, CY8CMBR3116 touch).
    - Programmable component qualification criteria (open-source driver code, public datasheets, register maps, zero binary blobs).
 
-6. [VCS Workstation, Code Review & Xerxes HUD Templates](file:///Users/daparker/gh/firmware/docs/vcs_code_review.md)
+6. [VCS Workstation, Code Review & Xerxes HUD Templates](docs/vcs_code_review.md)
    - Jinja2 code generation, template structures, tag balancing, and error guardrails.
    - Dual-layer persistence: SQLite backing store and Read-Modify-Write markdown synchronization.
    - Structured worm tracking, Git LFS attachments, and CLI subcommand parity.

@@ -1,4 +1,4 @@
-use model::types::Gesture;
+use model::types::{Gesture, GestureSource};
 use platform::gesture_detector::{GestureDetector, ProximityGestureDetector};
 
 fn update_detector(
@@ -69,7 +69,7 @@ fn test_gesture_detector_debounce() {
     // Reaches 2 seconds -> triggers Some(DualLongPress)
     assert_eq!(
         update_detector(&mut detector, 1000, 15, 15, 9_000_000),
-        Some(Gesture::DualLongPress)
+        Some(Gesture::DualLongPress(GestureSource::Proximity))
     );
     assert_eq!(detector.press_time_ms(), 2000);
 
@@ -90,7 +90,7 @@ fn test_gesture_detector_debounce() {
     );
     assert_eq!(
         update_detector(&mut detector, 1000, 15, 15, 14_000_000),
-        Some(Gesture::DualLongPress)
+        Some(Gesture::DualLongPress(GestureSource::Proximity))
     );
 }
 

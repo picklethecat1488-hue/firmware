@@ -968,3 +968,78 @@ def test_regression_bug_002_update_bug_to_worm(tmp_path: Path) -> None:
     worm_tpl = worm_tpl_path.read_text(encoding="utf-8")
     assert "WORM" in worm_tpl
     assert "🪱" in worm_tpl or "Worm" in worm_tpl
+
+
+def test_regression_worm_018_component_autocomplete_datalist() -> None:
+    """Verify WORM-018: populate component textbox with autocomplete datalist from prior worm history."""
+    import jinja2
+    from model.worm_report import WormCategory, WormDatabaseModel, WormReportModel, WormSeverity, WormStatus
+
+    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
+    tpl_path = templates_dir / "worm_report.html.j2"
+    assert tpl_path.is_file(), "worm_report.html.j2 must exist"
+    content = tpl_path.read_text(encoding="utf-8")
+
+    # 1. Component textbox must bind to datalist via list attribute
+    assert 'id="worm-component"' in content
+    assert 'list="worm-component-list"' in content or 'list="component-list"' in content, (
+        "worm-component input must have a list attribute referencing a datalist"
+    )
+
+    # 2. Datalist element must exist
+    assert '<datalist id="worm-component-list">' in content or '<datalist id="component-list">' in content, (
+        "worm_report.html.j2 must contain datalist for component autocomplete"
+    )
+
+    # 3. Dynamic JS updater must be present
+    assert "updateComponentDatalist" in content, (
+        "worm_report.html.j2 must define updateComponentDatalist to keep autocomplete in sync"
+    )
+
+    # 4. Jinja2 render with prior worm history renders unique option elements
+    db = WormDatabaseModel(title="Autocomplete Test")
+    db.worms = [
+        WormReportModel(
+            id="WORM-001",
+            title="W1",
+            status=WormStatus.OPEN,
+            severity=WormSeverity.LOW,
+            category=WormCategory.DRIVER,
+            component="carrier_board",
+        ),
+        WormReportModel(
+            id="WORM-002",
+            title="W2",
+            status=WormStatus.OPEN,
+            severity=WormSeverity.LOW,
+            category=WormCategory.DRIVER,
+            component="driver",
+        ),
+        WormReportModel(
+            id="WORM-003",
+            title="W3",
+            status=WormStatus.OPEN,
+            severity=WormSeverity.LOW,
+            category=WormCategory.DRIVER,
+            component="carrier_board",  # duplicate, must be deduplicated
+        ),
+    ]
+
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(templates_dir)),
+        autoescape=jinja2.select_autoescape(["html", "xml"]),
+        trim_blocks=True,
+        lstrip_blocks=True,
+    )
+    tpl = env.get_template("worm_report.html.j2")
+    rendered = tpl.render(
+        database=db,
+        database_json=db.model_dump_json(),
+        statuses=[s.value for s in WormStatus],
+        severities=[s.value for s in WormSeverity],
+        categories=[c.value for c in WormCategory],
+    )
+
+    assert '<option value="carrier_board">' in rendered or '<option value="carrier_board"></option>' in rendered
+    assert '<option value="driver">' in rendered or '<option value="driver"></option>' in rendered
+

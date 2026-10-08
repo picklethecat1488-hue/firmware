@@ -29,6 +29,7 @@ from model.worm_report import (
 )
 from provider.worm_report.markdown_exporter import MarkdownWormExporter
 from provider.worm_report.sqlite_store import SQLiteWormStore
+from provider.sanitizer import elide_personal_info
 
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent.parent / "templates"
 
@@ -140,12 +141,20 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
         )
         template = env.get_template("worm_report.html.j2")
         db_dump = self.server.database.model_dump(mode="json")
+        components = sorted(
+            {
+                w.component.strip()
+                for w in self.server.database.worms
+                if w.component and w.component.strip()
+            }
+        )
         html_content = template.render(
             database=self.server.database,
             database_json=json.dumps(db_dump),
             statuses=[s.value for s in WormStatus],
             severities=[s.value for s in WormSeverity],
             categories=[c.value for c in WormCategory],
+            components=components,
             server_port=self.server.actual_port,
         )
         self._send_html(html_content)
@@ -256,16 +265,16 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
             severity=WormSeverity(data.get("severity", WormSeverity.MEDIUM.value)),
             category=cat_val,
             component=data.get("component", ""),
-            description=data.get("description", ""),
-            reproduction_steps=steps,
-            expected_behavior=data.get("expected_behavior", ""),
-            actual_behavior=data.get("actual_behavior", ""),
-            logs=data.get("logs", ""),
+            description=elide_personal_info(data.get("description", "")),
+            reproduction_steps=[elide_personal_info(s) for s in steps],
+            expected_behavior=elide_personal_info(data.get("expected_behavior", "")),
+            actual_behavior=elide_personal_info(data.get("actual_behavior", "")),
+            logs=elide_personal_info(data.get("logs", "")),
             attachments=attachments,
             created_at=created_at,
             updated_at=now_str,
             resolved_at=resolved_at,
-            resolution_notes=incoming_notes,
+            resolution_notes=elide_personal_info(incoming_notes),
         )
 
         self.server.database.add_or_update(worm)
@@ -292,7 +301,7 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
                 worm.resolved_at = None
 
         if notes is not None:
-            worm.resolution_notes = notes
+            worm.resolution_notes = elide_personal_info(notes)
 
         worm.updated_at = now_str
         self.server.save_and_sync()
