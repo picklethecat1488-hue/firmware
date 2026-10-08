@@ -4,6 +4,7 @@
   "description": "System Shock 2 Unified VCS Diff, Code Review, and Worm Log Workstation",
   "start_url": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
   "theme_color": "#0a1c24",
   "background_color": "#04090c",
   "icons": [
