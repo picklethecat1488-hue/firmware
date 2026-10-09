@@ -1124,25 +1124,28 @@
       });
     }
 
+    const DOCKER_ADJS = "ANNELIDIC BLIND BRISTLY BURROWING CHITINOUS COILING COMPOSTED CREEPING DAMP DEEP DIRT EARTHEN EMBEDDED FERTILE FLESHY FLEXIBLE FOSSORIAL GLIDING GLOWING GROUNDED HUMIC INCHING LARVAL LITHE LOAMY LUBRICATED LUMINESCENT LUSTROUS MOIST MUDDY NOCTURNAL ORGANIC PEATY PINK PROBOSCID RADIANT ROOTED ROUND SEGMENTED SERPENTINE SETOSE SILKEN SLICK SLIMY SLITHERING SOILBOUND SQUIRMY SUBTERRANEAN SUPPLE TRANSLUCENT TUNNELING UNDULATING VELVETY VERMICULAR VERMIFORM WRIGGLY WRITHING".split(" ");
+    const DOCKER_NOUNS = "ANNELID BEETLE BLOODWORM BOBBIT BOOKWORM BRISTLE BRISTLEWORM BURROWER CASTING CATERPILLAR CENTIPEDE CHAETOPOD CHRYSALIS CLITELLUM COCOON COMPOSTER CRAWLER CREEPER DIGGER EARTHWORM EEL ENCHYTRAEID FIREWORM FLATWORM GLOWWORM GRUB HELMINTH INCHWORM LARVA LEECH LOOPER LUGWORM LUMBRICUS MAGGOT MEALWORM MILLIPEDE MINER NEMATODE NIGHTCRAWLER NYMPH OLIGOCHAETE PALOLO PLANARIAN POLYCHAETE PUPA REDWORM RIBBONWORM ROOTER ROUNDWORM SANDWORM SEGMENT SERPULA SETAE SILKWORM SIPUNCULID SLUG SNAIL SQUIRMER TAPEWORM TUBEWORM TUNNELER VELVETWORM VERMIS VINEGARWORM WAXWORM WIREWORM WOODLOUSE WRIGGLER".split(" ");
+
     function generateNextWormId() {
-      let maxIdx = 0;
-      (db.worms || []).forEach(w => {
-        if (w.id) {
-          let num = 0;
-          if (w.id.startsWith("WORM-")) {
-            num = parseInt(w.id.slice(5), 10);
-          } else if (w.id.startsWith("BUG-")) {
-            num = parseInt(w.id.slice(4), 10);
-          }
-          if (!isNaN(num) && num > maxIdx) {
-            maxIdx = num;
-          }
-        }
-      });
-      let nextId = "WORM-" + String(maxIdx + 1).padStart(3, "0");
-      while (db.worms && db.worms.some(w => w.id === nextId)) {
-        maxIdx++;
-        nextId = "WORM-" + String(maxIdx + 1).padStart(3, "0");
+      const cryptoObj = window.crypto || window.msCrypto;
+      const randArr = new Uint32Array(3);
+      if (cryptoObj && cryptoObj.getRandomValues) {
+        cryptoObj.getRandomValues(randArr);
+      } else {
+        randArr[0] = Math.floor(Math.random() * 1000000);
+        randArr[1] = Math.floor(Math.random() * 1000000);
+        randArr[2] = Math.floor(Math.random() * 1000000);
+      }
+      const adj = DOCKER_ADJS[randArr[0] % DOCKER_ADJS.length];
+      const noun = DOCKER_NOUNS[randArr[1] % DOCKER_NOUNS.length];
+      const num = (randArr[2] % 999) + 1;
+      let nextId = `WORM-${adj}-${noun}-${num}`;
+      let attempts = 0;
+      while (db.worms && db.worms.some(w => w.id === nextId) && attempts < 100) {
+        attempts++;
+        const nextNum = Math.floor(Math.random() * 999) + 1;
+        nextId = `WORM-${adj}-${noun}-${nextNum}`;
       }
       return nextId;
     }

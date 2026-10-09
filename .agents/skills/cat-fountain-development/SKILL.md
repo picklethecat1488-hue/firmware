@@ -74,3 +74,32 @@ To query files or decode logs directly from the device's flash:
 ## 7. Worm Tracking & Issue Resolution
 * When querying active issues to work on, run `python tools/dashboard.py list-worms --open`.
 * By default, `list-worms --open` excludes worms in `PLANNED` status. The agent must NOT autonomously select or work on `PLANNED` worms unless explicitly requested by the user. Use `python tools/dashboard.py list-worms --planned` to view planned items.
+* To register a new worm: `python tools/dashboard.py --add-worm "Description" --severity HIGH --category CONTROLLER`
+* To resolve a worm: `python tools/dashboard.py --resolve-worm WORM-001 --notes "Resolution notes"`
+
+## 8. Xerxes VCS Dashboard & Workstation Launcher
+The VCS dashboard provides interactive smartlog DAG tree visualization, staged/unstaged file management, code review, and worm tracking inside a standalone application window:
+* **Launch Native Desktop Workstation (Default)**:
+  ```bash
+  python tools/dashboard.py
+  ```
+  Spawns a native OS standalone window (Cocoa WKWebView on macOS / WebKitGTK on Linux via `pywebview`) with dark HUD theme styling, resize gripper, and automatic server exit on window close. Detaches from the terminal automatically.
+* **Launch Eel Standalone Window (Chromium App Mode)**:
+  ```bash
+  python tools/dashboard.py --eel
+  # or
+  python tools/dashboard.py --browser eel
+  ```
+  Launches the dashboard inside a dedicated Chromium-based standalone app window using the Eel bridge and local user profile directory.
+* **Foreground & Terminal Options**:
+  ```bash
+  # Run in terminal foreground without detaching:
+  python tools/dashboard.py --foreground
+
+  # Start server only without opening any desktop window:
+  python tools/dashboard.py --no-browser
+
+  # Stop any active dashboard instance running on the port:
+  python tools/dashboard.py --stop
+  ```
+

@@ -599,11 +599,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         worm_server = self.server.worm_server
         db_dump = worm_server.database.model_dump(mode="json")
         components = sorted(
-            {
-                w.component.strip()
-                for w in worm_server.database.worms
-                if w.component and w.component.strip()
-            }
+            {w.component.strip() for w in worm_server.database.worms if w.component and w.component.strip()}
         )
         html_content = template.render(
             database=worm_server.database,
@@ -1217,7 +1213,7 @@ class DashboardServer(ThreadingHTTPServer):
                         retained_tags.append(tag)
             node.worm_tags = retained_tags
 
-            worm_ids = re.findall(r"\b((?:WORM|BUG)[_-]\d+)\b", node.subject, re.IGNORECASE)
+            worm_ids = re.findall(r"\b((?:WORM|BUG)[_-][A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)\b", node.subject, re.IGNORECASE)
             existing_ids = {t.id for t in node.worm_tags}
             for wid in worm_ids:
                 num = re.sub(r"^(?:WORM|BUG)[-_]", "", wid, flags=re.IGNORECASE)

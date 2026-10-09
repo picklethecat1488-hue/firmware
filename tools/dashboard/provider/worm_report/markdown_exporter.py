@@ -350,7 +350,7 @@ class MarkdownWormExporter:
         # Check list items for quick-action statuses: - [x] or - [ ]
         checklist_status: Dict[str, WormStatus] = {}
         for line in content.splitlines():
-            chk_m = re.match(r"^-\s+\[([ xX])\]\s+.*?\b(WORM-\d+)\b", line)
+            chk_m = re.match(r"^-\s+\[([ xX])\]\s+.*?\b((?:WORM|BUG)[_-][A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)\b", line)
             if chk_m:
                 is_checked = chk_m.group(1).lower() == "x"
                 chk_id = chk_m.group(2)
@@ -366,7 +366,9 @@ class MarkdownWormExporter:
                 continue
 
             header_match = re.search(
-                r'###\s+(?:<a id=".*?></a>\s*)?(?:[^\n\[]*?)?`\[(WORM-\d+)\]`\s*(.*?)$', sec_clean, re.MULTILINE
+                r'###\s+(?:<a id=".*?></a>\s*)?(?:[^\n\[]*?)?`\[((?:WORM|BUG)[_-][A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)\]`\s*(.*?)$',
+                sec_clean,
+                re.MULTILINE,
             )
             if not header_match:
                 continue
@@ -733,7 +735,7 @@ class MarkdownWormExporter:
         try:
             content = file_path.read_text(encoding="utf-8")
             m_header = re.search(r"^#\s+(?:[^\n\[]*?)?`\[(WORM-[^\]]+|[^\]]+)\]`\s*(.*?)$", content, re.MULTILINE)
-            m_fn = re.match(r"^BUG[_-](.+)\.md$", file_path.name, re.IGNORECASE)
+            m_fn = re.match(r"^(?:WORM|BUG)[_-](.+)\.md$", file_path.name, re.IGNORECASE)
             fn_id = ""
             if m_fn:
                 fn_part = m_fn.group(1)

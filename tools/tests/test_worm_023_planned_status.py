@@ -125,4 +125,3 @@ def test_documentation_planned_worm_exemption() -> None:
     gemini_content = gemini_path.read_text(encoding="utf-8")
     assert "PLANNED" in gemini_content, "GEMINI.md must reference PLANNED worms"
     assert "Planned Worm Exemption" in gemini_content or "planned" in gemini_content.lower()
-

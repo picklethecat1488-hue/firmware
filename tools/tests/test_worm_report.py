@@ -3,6 +3,7 @@
 import base64
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import threading
@@ -66,17 +67,19 @@ def test_worm_report_model_lifecycle() -> None:
 def test_worm_database_metrics_and_management(tmp_path: Path) -> None:
     """Verify bug collection aggregation, ID generation, and markdown export."""
     db = WormDatabaseModel(title="Unit Test Tracker")
-    assert db.generate_worm_id() == "WORM-001"
+    wid1 = db.generate_worm_id()
+    assert re.match(r"^WORM-[A-Z]+-[A-Z]+-\d{1,3}$", wid1)
 
     b1 = WormReportModel(
-        id="WORM-001",
+        id=wid1,
         title="First defect",
         status=WormStatus.OPEN,
         severity=WormSeverity.CRITICAL,
         category=WormCategory.CONTROLLER,
     )
+    wid2 = db.generate_worm_id()
     b2 = WormReportModel(
-        id="WORM-002",
+        id=wid2,
         title="Second defect",
         status=WormStatus.RESOLVED,
         severity=WormSeverity.LOW,
@@ -85,7 +88,9 @@ def test_worm_database_metrics_and_management(tmp_path: Path) -> None:
     db.add_or_update(b1)
     db.add_or_update(b2)
 
-    assert db.generate_worm_id() == "WORM-003"
+    wid3 = db.generate_worm_id()
+    assert re.match(r"^WORM-[A-Z]+-[A-Z]+-\d{1,3}$", wid3)
+    assert wid3 not in (wid1, wid2)
     assert db.count_by_status()[WormStatus.OPEN.value] == 1
     assert db.count_by_status()[WormStatus.RESOLVED.value] == 1
     assert db.count_by_severity()[WormSeverity.CRITICAL.value] == 1
@@ -101,8 +106,8 @@ def test_worm_database_metrics_and_management(tmp_path: Path) -> None:
     assert saved_md.exists()
     content = saved_md.read_text(encoding="utf-8")
     assert "Unit Test Tracker" in content
-    assert "[WORM-001]" in content
-    assert "[WORM-002]" in content
+    assert f"[{wid1}]" in content
+    assert f"[{wid2}]" in content
     assert "CRITICAL" in content
 
     saved_json = exporter.export_state_json(db, json_file)
@@ -382,8 +387,9 @@ def test_regression_bug_079_no_duplicate_worm_ids_and_generator():
             id="WORM-078", title="B78", status=WormStatus.OPEN, severity=WormSeverity.LOW, category=WormCategory.DRIVER
         ),
     ]
-    # Length is 3, but max is 78. Next ID MUST be WORM-079, NOT WORM-004
-    assert db.generate_worm_id() == "WORM-079"
+    new_wid = db.generate_worm_id()
+    assert re.match(r"^WORM-[A-Z]+-[A-Z]+-\d{1,3}$", new_wid)
+    assert new_wid not in {"WORM-001", "WORM-002", "WORM-078"}
 
 
 def test_regression_bug_114_rmw_markdown_sync_and_file_watch(tmp_path: Path) -> None:
@@ -1042,4 +1048,3 @@ def test_regression_worm_018_component_autocomplete_datalist() -> None:
 
     assert '<option value="carrier_board">' in rendered or '<option value="carrier_board"></option>' in rendered
     assert '<option value="driver">' in rendered or '<option value="driver"></option>' in rendered
-

@@ -1,17 +1,22 @@
-# Cat Detector Firmware Design Document
+# Cat Detector Firmware Architecture & Bringup Guide
 
-This document outlines the firmware design, modular architecture, and hardware integration maps for the **Cat Detector** water fountain system, deployed on the Raspberry Pi Pico (RP2040) using a target-agnostic, async-enabled Rust architecture.
+This document outlines the hardware bringup procedures, diagnostic test steps, and operational execution checklist for the **Cat Detector / Cat Fountain** pet water fountain system, deployed on the Raspberry Pi Pico (RP2040).
+
+For the comprehensive architecture specification, see:
+- **[Cat Fountain (RP2040) Firmware Architecture Guide](../docs/cat_fountain_architecture.md)**: Hardware block diagram, Embassy task distribution, sensor data fusion algorithms, peripheral address tables, and flash partitioning.
+- **[Unified Firmware Architecture Guide](../docs/firmware_architecture.md)**: Workspace crate roles, actor concurrency model, and repository design invariants.
 
 ---
 
 ## 1. System Overview
 
-The Cat Detector firmware is a `no_std` embedded application built on the **Embassy** asynchronous framework. The design separates domain models, platform-independent drivers, and high-level controllers to enable testability on host architectures and efficient execution on the target hardware.
-
-
-
-
----
+The Cat Detector firmware is a bare-metal `#![no_std]` embedded application built on the **Embassy** asynchronous framework:
+- **Platform**: Raspberry Pi Pico (RP2040, dual-core Arm Cortex-M0+).
+- **Core Loop**: Asynchronous cooperative task scheduling with zero blocking spin-loops.
+- **Sensors**: Three VL53L0X Time-of-Flight range sensors dynamically addressed via I2C0 (`0x30`, `0x31`, `0x32`).
+- **Actuation**: L9110S H-bridge motor driver regulating an N20 water pump impeller with INA219 current monitoring.
+- **Power & Thermal**: MAX17048 fuel gauge and internal/external thermal trip protection.
+- **Persistence**: Flat flash filesystem governed by `sequential-storage` with `ProfilingFlash` wear monitoring.
 
 ## 2. Control Flow & Tasks Execution
 

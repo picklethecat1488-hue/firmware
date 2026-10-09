@@ -12,6 +12,7 @@ import sqlite3
 from typing import Any, Dict, Generator, List, Optional
 import uuid as uuid_pkg
 
+from model.id_generator import generate_docker_pattern_id
 from model.worm_report import (
     WormAttachmentModel,
     WormCategory,
@@ -371,18 +372,11 @@ class SQLiteWormStore:
             json.dump(db.model_dump(mode="json"), f, indent=2)
 
     def generate_next_worm_id(self) -> str:
-        """Query maximum bug ID directly from SQLite database and return next unique global ID."""
+        """Generate next unique global Docker-pattern worm ID using CRNG (secrets/os.urandom)."""
         with self._get_connection() as conn:
-            rows = conn.execute("SELECT id FROM worms WHERE id LIKE 'WORM-%'").fetchall()
-            max_idx = 0
-            for r in rows:
-                try:
-                    idx = int(r["id"][4:])
-                    if idx > max_idx:
-                        max_idx = idx
-                except ValueError:
-                    pass
-            return f"WORM-{max_idx + 1:03d}"
+            rows = conn.execute("SELECT id FROM worms").fetchall()
+            existing_ids = {r["id"] for r in rows}
+            return generate_docker_pattern_id(prefix="WORM", existing_ids=existing_ids)
 
     def get_worm_by_uuid(self, worm_uuid: str) -> Optional[WormReportModel]:
         """Find a bug in SQLite by its unique UUID."""
@@ -471,18 +465,7 @@ class SQLiteWormStore:
             if not dups:
                 return {}
 
-            max_idx = 0
-            all_ids = conn.execute("SELECT id FROM worms").fetchall()
-            for r in all_ids:
-                b_id = r["id"]
-                if b_id.startswith("WORM-"):
-                    try:
-                        val = int(b_id[4:])
-                        if val > max_idx:
-                            max_idx = val
-                    except ValueError:
-                        pass
-
+            all_ids = {r["id"] for r in conn.execute("SELECT id FROM worms").fetchall()}
             reassigned: Dict[str, str] = {}
             for dup in dups:
                 dup_id = dup["id"]
@@ -492,8 +475,8 @@ class SQLiteWormStore:
                 ).fetchall()
                 # Retain the first entry, reassign subsequent duplicates
                 for row in rows[1:]:
-                    max_idx += 1
-                    new_id = f"WORM-{max_idx:03d}"
+                    new_id = generate_docker_pattern_id(prefix="WORM", existing_ids=all_ids)
+                    all_ids.add(new_id)
                     b_uuid = row["uuid"]
                     conn.execute("PRAGMA foreign_keys = OFF")
                     conn.execute("UPDATE worms SET id = ? WHERE uuid = ?", (new_id, b_uuid))
