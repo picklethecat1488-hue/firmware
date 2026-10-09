@@ -4,10 +4,13 @@ Provides structured schemas for worm reports, severities, statuses, categories,
 attachments (logs, screenshots, references), and worm collection management.
 """
 
+from collections.abc import Collection
 from enum import Enum
 from typing import Dict, List, Optional
 import uuid as uuid_pkg
 from pydantic import BaseModel, Field
+
+from model.id_generator import generate_docker_pattern_id
 
 
 class WormSeverity(str, Enum):
@@ -88,9 +91,18 @@ class WormDatabaseModel(BaseModel):
     updated_at: str = ""
 
     def get_worm(self, worm_id: str) -> Optional[WormReportModel]:
-        """Find a worm by its unique ID."""
+        """Find a worm by its unique ID (exact, case-insensitive, or prefix-normalized)."""
+        clean_target = worm_id.strip()
         for w in self.worms:
-            if w.id == worm_id:
+            if w.id == clean_target:
+                return w
+        for w in self.worms:
+            if w.id.upper() == clean_target.upper():
+                return w
+        for w in self.worms:
+            norm_w = w.id.removeprefix("WORM-").removeprefix("BUG-").upper()
+            norm_target = clean_target.removeprefix("WORM-").removeprefix("BUG-").upper()
+            if norm_w == norm_target:
                 return w
         return None
 
@@ -130,19 +142,16 @@ class WormDatabaseModel(BaseModel):
             counts[w.category.value] = counts.get(w.category.value, 0) + 1
         return counts
 
-    def generate_worm_id(self) -> str:
-        """Generate next sequential worm ID (e.g. WORM-001, WORM-002)."""
-        max_idx = 0
+    def generate_worm_id(self, existing_ids: Optional[Collection[str]] = None) -> str:
+        """Generate a random Docker-pattern worm ID using a CRNG (secrets/os.urandom).
+
+        Format: WORM-[ADJECTIVE]-[ANIMAL/NOUN]-[3 digits]
+        Examples:
+            - WORM-SWIFT-FOX-42
+            - WORM-BOLD-LYNX-809
+            - WORM-IRON-CRANE-17
+        """
+        known = set(existing_ids or [])
         for w in self.worms:
-            id_str = w.id
-            if id_str.startswith("WORM-"):
-                num_str = id_str[5:]
-            elif id_str.startswith("BUG-"):
-                num_str = id_str[4:]
-            else:
-                num_str = ""
-            if num_str.isdigit():
-                idx = int(num_str)
-                if idx > max_idx:
-                    max_idx = idx
-        return f"WORM-{max_idx + 1:03d}"
+            known.add(w.id)
+        return generate_docker_pattern_id(prefix="WORM", existing_ids=known)

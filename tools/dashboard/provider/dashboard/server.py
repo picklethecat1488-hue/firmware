@@ -1213,7 +1213,7 @@ class DashboardServer(ThreadingHTTPServer):
                         retained_tags.append(tag)
             node.worm_tags = retained_tags
 
-            worm_ids = re.findall(r"\b((?:WORM|BUG)[_-]\d+)\b", node.subject, re.IGNORECASE)
+            worm_ids = re.findall(r"\b((?:WORM|BUG)[_-][A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)\b", node.subject, re.IGNORECASE)
             existing_ids = {t.id for t in node.worm_tags}
             for wid in worm_ids:
                 num = re.sub(r"^(?:WORM|BUG)[-_]", "", wid, flags=re.IGNORECASE)
