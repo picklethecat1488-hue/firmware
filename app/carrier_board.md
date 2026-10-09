@@ -2,6 +2,10 @@
 
 This document specifies the firmware design, dual-core task execution model, memory partitions, and hardware bringup procedures for the **Carrier Board 2.0** architecture powered by the **NXP MCX N947** dual-core Arm Cortex-M33 microcontroller.
 
+For dedicated architecture specifications and repository standards, see:
+- **[Carrier Board 2.0 (NXP MCX N947) Firmware Architecture Guide](../docs/carrier_board_architecture.md)**: Silicon specs, dual-core AMP architecture, inter-core IPC protocol, storage partition map, and power states.
+- **[Unified Firmware Architecture Guide](../docs/firmware_architecture.md)**: Modular design principles, cross-platform concurrency patterns, and layered crate demarcations.
+
 The source of truth for bringup verification steps is [`app/carrier_board_bringup.yaml`](carrier_board_bringup.yaml).
 
 ---
