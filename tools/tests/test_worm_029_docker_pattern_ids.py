@@ -32,13 +32,13 @@ def test_compressed_word_lists_save_code_space() -> None:
     assert len(_B64_ADJS) < 500, "Compressed adjectives base64 string must be compact"
     assert len(_B64_NOUNS) < 500, "Compressed nouns base64 string must be compact"
 
-    # Must contain representative words from prompt examples: SWIFT, BOLD, IRON, FOX, LYNX, CRANE
-    assert "SWIFT" in ADJECTIVES
-    assert "BOLD" in ADJECTIVES
-    assert "IRON" in ADJECTIVES
-    assert "FOX" in NOUNS
-    assert "LYNX" in NOUNS
-    assert "CRANE" in NOUNS
+    # Must contain representative words from worm-themed word lists
+    assert "BURROWING" in ADJECTIVES
+    assert "WRIGGLY" in ADJECTIVES
+    assert "LOAMY" in ADJECTIVES
+    assert "ANNELID" in NOUNS
+    assert "EARTHWORM" in NOUNS
+    assert "NIGHTCRAWLER" in NOUNS
 
     assert len(ADJECTIVES) >= 50
     assert len(NOUNS) >= 50
@@ -70,7 +70,7 @@ def test_docker_pattern_id_format_and_crng() -> None:
 
 def test_docker_pattern_id_avoids_existing_ids() -> None:
     """Verify generator respects existing_ids collection and avoids collisions."""
-    mock_id = "WORM-SWIFT-FOX-42"
+    mock_id = "WORM-BURROWING-ANNELID-42"
     existing = {mock_id}
 
     # Should never return an ID present in existing
@@ -129,7 +129,7 @@ def test_markdown_exporter_roundtrip_with_docker_pattern_ids(tmp_path: Path) -> 
     feedback_dir = tmp_path / "feedback"
 
     worm = WormReportModel(
-        id="WORM-SWIFT-FOX-42",
+        id="WORM-BURROWING-ANNELID-42",
         title="Docker pattern issue test",
         status=WormStatus.OPEN,
         severity=WormSeverity.MEDIUM,
@@ -141,12 +141,12 @@ def test_markdown_exporter_roundtrip_with_docker_pattern_ids(tmp_path: Path) -> 
     # 1. Single file export
     exported_file = exporter.export_individual_worm(worm, feedback_dir)
     assert exported_file.exists()
-    assert "WORM_SWIFT-FOX-42.md" in exported_file.name
+    assert "WORM_BURROWING-ANNELID-42.md" in exported_file.name
 
     # 2. Single file loading
     loaded_single = exporter.parse_individual_worm_file(exported_file)
     assert loaded_single is not None
-    assert loaded_single.id == "WORM-SWIFT-FOX-42"
+    assert loaded_single.id == "WORM-BURROWING-ANNELID-42"
     assert loaded_single.title == "Docker pattern issue test"
 
     # 3. Aggregated WORMS.md export and loading
@@ -157,24 +157,24 @@ def test_markdown_exporter_roundtrip_with_docker_pattern_ids(tmp_path: Path) -> 
     loaded_db = exporter.parse_markdown(worms_md)
     assert loaded_db is not None
     assert len(loaded_db.worms) == 1
-    assert loaded_db.worms[0].id == "WORM-SWIFT-FOX-42"
+    assert loaded_db.worms[0].id == "WORM-BURROWING-ANNELID-42"
 
 
 def test_git_engine_extracts_docker_pattern_worm_tags(tmp_path: Path) -> None:
     """Verify GitEngine extracts Docker-pattern worm tags from commit text."""
     feedback_dir = tmp_path / "feedback"
     feedback_dir.mkdir(parents=True, exist_ok=True)
-    (feedback_dir / "WORM_SWIFT-FOX-42.md").write_text(
-        "# 🔴 `[WORM-SWIFT-FOX-42]` Swift fox bug\n- **Status**: `OPEN`\n- **Severity**: `HIGH`\n",
+    (feedback_dir / "WORM_BURROWING-ANNELID-42.md").write_text(
+        "# 🔴 `[WORM-BURROWING-ANNELID-42]` Burrowing annelid worm\n- **Status**: `OPEN`\n- **Severity**: `HIGH`\n",
         encoding="utf-8",
     )
 
     engine = GitEngine(repo_root=tmp_path)
-    commit_text = "fix(core): resolve issue with timing (WORM-SWIFT-FOX-42)"
+    commit_text = "fix(core): resolve issue with timing (WORM-BURROWING-ANNELID-42)"
     tags = engine._extract_worm_tags(commit_text)
 
     assert len(tags) == 1
-    assert tags[0].id == "WORM-SWIFT-FOX-42"
-    assert tags[0].title == "Swift fox bug"
+    assert tags[0].id == "WORM-BURROWING-ANNELID-42"
+    assert tags[0].title == "Burrowing annelid worm"
     assert tags[0].status == "OPEN"
     assert tags[0].severity == "HIGH"

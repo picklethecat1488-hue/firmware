@@ -147,9 +147,9 @@ class WormDatabaseModel(BaseModel):
 
         Format: WORM-[ADJECTIVE]-[ANIMAL/NOUN]-[3 digits]
         Examples:
-            - WORM-SWIFT-FOX-42
-            - WORM-BOLD-LYNX-809
-            - WORM-IRON-CRANE-17
+            - WORM-BURROWING-ANNELID-42
+            - WORM-WRIGGLY-EARTHWORM-809
+            - WORM-SLIMY-NIGHTCRAWLER-17
         """
         known = set(existing_ids or [])
         for w in self.worms:
