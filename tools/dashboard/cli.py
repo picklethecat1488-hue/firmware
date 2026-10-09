@@ -22,11 +22,17 @@ Usage:
 
 import argparse
 from datetime import datetime, timezone
+import json
+import os
 from pathlib import Path
+import signal
+import socket
+import subprocess
 import sys
+import tempfile
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import uuid
 
 # Add tools/dashboard and tools/ to sys.path so imports succeed in any environment
@@ -111,9 +117,16 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--browser",
-        choices=["eel"],
-        default="eel",
-        help="Target display environment (only 'eel' standalone window supported).",
+        choices=["webview", "eel"],
+        default="webview",
+        help="Target display environment ('webview' native window, or 'eel').",
+    )
+    parser.add_argument(
+        "--webview",
+        action="store_const",
+        dest="browser",
+        const="webview",
+        help="Open dashboard in a native desktop application window.",
     )
     parser.add_argument(
         "--eel",
@@ -126,15 +139,27 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         "--app",
         action="store_const",
         dest="browser",
-        const="eel",
-        help="Alias for --eel: open dashboard in a standalone application window.",
+        const="webview",
+        help="Alias for native standalone application window.",
     )
     parser.add_argument(
         "--no-browser",
         "--no-app",
         action="store_true",
         dest="no_browser",
-        help="Disable automatic Eel application window launch on server start.",
+        help="Disable automatic desktop application window launch on server start.",
+    )
+    parser.add_argument(
+        "--no-detach",
+        "--foreground",
+        action="store_true",
+        dest="no_detach",
+        help="Run workstation server in the foreground without detaching from terminal.",
+    )
+    parser.add_argument(
+        "--stop",
+        action="store_true",
+        help="Stop any running background dashboard workstation server.",
     )
 
     # Database & Session Configuration
@@ -163,6 +188,11 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         "--open",
         action="store_true",
         help="When listing worms or reviews, only show open / unresolved issues.",
+    )
+    parser.add_argument(
+        "--planned",
+        action="store_true",
+        help="When listing worms, only show Planned issues.",
     )
     parser.add_argument(
         "--add-worm",
@@ -282,6 +312,7 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     # list-worms
     p_worms = subparsers.add_parser("list-worms", help="List all active worms directly in terminal and exit.")
     p_worms.add_argument("--open", action="store_true", help="Only show open / unresolved issues.")
+    p_worms.add_argument("--planned", action="store_true", help="Only show Planned issues.")
     p_worms.add_argument(
         "--severity",
         choices=[s.value for s in WormSeverity],
@@ -360,15 +391,83 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     return parsed
 
 
-def launch_browser(url: str) -> None:
-    """Open the review or diff workstation dashboard in the Eel standalone application window.
+def is_pid_alive(pid: int) -> bool:
+    """Check if a process with the given PID is running on the local system."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, ProcessLookupError):
+        return False
+
+
+def is_port_in_use(host: str, port: int) -> bool:
+    """Check if a network port is currently open and accepting connections."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        try:
+            s.connect((host, port))
+            return True
+        except (OSError, ConnectionRefusedError):
+            return False
+
+
+def get_dashboard_lock_file(repo_root: Path, port: int = 8877) -> Path:
+    """Return filesystem path for the dashboard single-instance lock file."""
+    target_dir = repo_root / "target"
+    build_dir = repo_root / "build"
+    if target_dir.exists():
+        return target_dir / f"dashboard_{port}.lock"
+    if build_dir.exists():
+        return build_dir / f"dashboard_{port}.lock"
+    return Path(tempfile.gettempdir()) / f"dashboard_{repo_root.name}_{port}.lock"
+
+
+def check_existing_instance(lock_file: Path, host: str, port: int) -> Optional[Tuple[int, str]]:
+    """Check if another dashboard instance is already running.
+
+    Returns (pid, url) if running, or None otherwise.
+    """
+    if lock_file.exists():
+        try:
+            content = lock_file.read_text(encoding="utf-8").strip()
+            data = json.loads(content)
+            pid = data.get("pid", 0)
+            url = data.get("url", f"http://{host}:{port}")
+            if pid and is_pid_alive(pid) and is_port_in_use(host, port):
+                return (pid, url)
+        except Exception:
+            pass
+        try:
+            lock_file.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    if is_port_in_use(host, port):
+        return (0, f"http://{host}:{port}")
+
+    return None
+
+
+def launch_browser(url: str, browser: str = "webview") -> bool:
+    """Open the review or diff workstation dashboard in a standalone desktop window.
 
     Args:
         url: The web URL of the workstation dashboard.
-    """
-    from provider.eel.launcher import launch_eel
+        browser: Display environment ('webview' or 'eel').
 
-    launch_eel(url)
+    Returns:
+        True if successfully launched, False otherwise.
+    """
+    if browser == "eel":
+        from provider.eel.launcher import launch_eel
+
+        return launch_eel(url)
+
+    from provider.webview.launcher import launch_webview
+
+    return launch_webview(url)
 
 
 def print_cli_smartlog(engine: GitEngine) -> None:
@@ -418,8 +517,9 @@ def print_cli_smartlog(engine: GitEngine) -> None:
 
 
 def print_cli_worms(
-    server: DashboardServer,
+    server: Any,
     open_only: bool = False,
+    planned_only: bool = False,
     all_users: bool = False,
     filter_user: str = "",
     engine: Optional[GitEngine] = None,
@@ -427,7 +527,19 @@ def print_cli_worms(
     category: Optional[str] = None,
 ) -> None:
     """Print worm tracker status to terminal console with optional filtering."""
-    worms = server.worm_server.database.worms
+    if hasattr(server, "worm_server"):
+        worms = server.worm_server.database.worms
+        actual_server = server
+    elif hasattr(server, "database"):
+        worms = server.database.worms
+        actual_server = getattr(server, "server", None)
+    elif hasattr(server, "worms"):
+        worms = server.worms
+        actual_server = None
+    else:
+        worms = []
+        actual_server = None
+
     print("\n" + "=" * 70)
     print("  🪱 SYSTEM SHOCK 2 // XERXES WORM MATRIX")
     print("=" * 70)
@@ -438,7 +550,9 @@ def print_cli_worms(
     curr_user = engine.get_current_user() if engine else {"name": "", "email": ""}
     filtered = []
     for w in worms:
-        if open_only and w.status in (WormStatus.RESOLVED, WormStatus.CLOSED):
+        if open_only and w.status in (WormStatus.RESOLVED, WormStatus.CLOSED, WormStatus.PLANNED):
+            continue
+        if planned_only and w.status != WormStatus.PLANNED:
             continue
         if severity and w.severity.value != severity:
             continue
@@ -446,8 +560,8 @@ def print_cli_worms(
             continue
 
         # Per-user filtering
-        if not all_users and engine:
-            worm_file = server.repo_root / "feedback" / f"{w.id}.md"
+        if not all_users and engine and actual_server:
+            worm_file = actual_server.repo_root / "feedback" / f"{w.id}.md"
             w_author = engine.get_file_author(worm_file)
             if filter_user:
                 if (
@@ -465,7 +579,7 @@ def print_cli_worms(
         comp = f" ({w.component})" if w.component else ""
         print(f"  {chk} 🪱 [{w.id}] [{w.severity.value}] [{w.category.value}] {w.title}{comp} -> {w.status.value}")
 
-    total_open = sum(1 for w in filtered if w.status not in (WormStatus.RESOLVED, WormStatus.CLOSED))
+    total_open = sum(1 for w in filtered if w.status not in (WormStatus.RESOLVED, WormStatus.CLOSED, WormStatus.PLANNED))
     total_all = len(filtered)
     print(f"\nShowing {len(filtered)} worms ({total_open} open, {total_all} total).\n")
 
@@ -613,6 +727,42 @@ def main(cli_args: Optional[List[str]] = None) -> None:
     review_db = args.db_file if (args.db_file and not is_worm_cmd) else None
     worm_db = args.db_file if (args.db_file and not is_review_cmd) else None
 
+    lock_file = get_dashboard_lock_file(repo_root, args.port)
+
+    if getattr(args, "stop", False):
+        existing = check_existing_instance(lock_file, args.host, args.port)
+        if existing is not None:
+            pid, _ = existing
+            if pid > 0:
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                    print(f"Stopped dashboard workstation (PID {pid}).")
+                except OSError as e:
+                    print(f"Failed to stop dashboard workstation: {e}", file=sys.stderr)
+            else:
+                print("Dashboard workstation is running on port, but PID is unknown.")
+            try:
+                lock_file.unlink(missing_ok=True)
+            except OSError:
+                pass
+        else:
+            print("No dashboard workstation is running.")
+        return
+
+    if not is_cli_only:
+        existing = check_existing_instance(lock_file, args.host, args.port)
+        if existing is not None:
+            pid, existing_url = existing
+            pid_str = f" (PID {pid})" if pid else ""
+            print(f"Dashboard workstation is already running at {existing_url}{pid_str}.")
+            if not getattr(args, "no_browser", False):
+                browser_target = getattr(args, "browser", "webview")
+                if browser_target == "webview":
+                    launch_browser(existing_url)
+                else:
+                    launch_browser(existing_url, browser=browser_target)
+            return
+
     server = DashboardServer(
         host=args.host,
         port=args.port,
@@ -644,6 +794,7 @@ def main(cli_args: Optional[List[str]] = None) -> None:
             print_cli_worms(
                 server,
                 open_only=getattr(args, "open", False),
+                planned_only=getattr(args, "planned", False),
                 all_users=all_users,
                 filter_user=filter_user,
                 engine=engine,
@@ -860,12 +1011,13 @@ def main(cli_args: Optional[List[str]] = None) -> None:
         print(f"Resolved worm [{worm.id}]: {worm.title}")
         return
 
-    if getattr(args, "worms", False) or (
+    if getattr(args, "worms", False) or getattr(args, "planned", False) or (
         getattr(args, "list", False) and args.db_file and ("worm" in str(args.db_file) or "bug" in str(args.db_file))
     ):
         print_cli_worms(
             server,
             open_only=getattr(args, "open", False),
+            planned_only=getattr(args, "planned", False),
             all_users=all_users,
             filter_user=filter_user,
             engine=engine,
@@ -941,13 +1093,61 @@ def main(cli_args: Optional[List[str]] = None) -> None:
     # Interactive Server Mode
     url = server.get_url()
 
+    # Detach from terminal unless --no-detach / --foreground is requested
+    if not getattr(args, "no_detach", False):
+        log_dir = repo_root / "target" if (repo_root / "target").exists() else repo_root / "build"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / "dashboard.log"
+        log_file = open(log_path, "a", encoding="utf-8")
+
+        child_args = [sys.executable, str(Path(sys.argv[0]).resolve())] + [
+            a for a in sys.argv[1:] if a not in ("--no-detach", "--foreground")
+        ] + ["--no-detach"]
+
+        popen_kwargs = {
+            "stdout": log_file,
+            "stderr": log_file,
+            "stdin": subprocess.DEVNULL,
+        }
+        if os.name == "posix":
+            popen_kwargs["start_new_session"] = True
+        elif sys.platform in ("win32", "win64"):
+            detached_flag = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+            new_grp_flag = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+            popen_kwargs["creationflags"] = detached_flag | new_grp_flag
+
+        server.server_close()
+        proc = subprocess.Popen(child_args, **popen_kwargs)
+
+        deadline = time.time() + 3.0
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                print("Error: Dashboard workstation failed to start.", file=sys.stderr)
+                sys.exit(1)
+            if lock_file.exists():
+                try:
+                    data = json.loads(lock_file.read_text(encoding="utf-8"))
+                    if data.get("pid") == proc.pid:
+                        break
+                except (json.JSONDecodeError, OSError):
+                    pass
+            time.sleep(0.05)
+
+        print(f"➜ Dashboard workstation running at {url} (PID {proc.pid}).")
+        print("➜ Detached from terminal.")
+        sys.exit(0)
+
+    # Foreground / non-detached server process
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
+    lock_file.write_text(json.dumps({"pid": os.getpid(), "url": url}), encoding="utf-8")
+    print(f"➜ Dashboard workstation running at {url} (PID {os.getpid()}).")
+
     if not args.no_browser:
-
-        def _open() -> None:
-            time.sleep(0.3)
+        browser_target = getattr(args, "browser", "webview")
+        if browser_target == "webview":
             launch_browser(url)
-
-        threading.Thread(target=_open, daemon=True).start()
+        else:
+            launch_browser(url, browser=browser_target)
 
     try:
         server.serve_forever()
@@ -955,6 +1155,11 @@ def main(cli_args: Optional[List[str]] = None) -> None:
         pass
     finally:
         server.server_close()
+        if lock_file.exists():
+            try:
+                lock_file.unlink()
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":

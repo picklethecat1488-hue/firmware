@@ -22,4 +22,5 @@ dependencies:
       - tree-sitter-rust
       - jinja-lsp
       - eel
+      - pywebview
 
