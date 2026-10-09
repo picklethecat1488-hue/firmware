@@ -25,4 +25,3 @@ __all__ = [
     "open_in_vscode",
     "run_git_command",
 ]
-

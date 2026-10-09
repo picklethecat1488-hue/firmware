@@ -93,4 +93,3 @@ def test_gemini_documentation_style_uses_rust_syntax() -> None:
     # Pattern matching with match
     assert "match" in content
     assert "if let Some" in content
-

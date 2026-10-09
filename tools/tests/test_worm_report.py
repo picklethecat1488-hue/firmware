@@ -1042,4 +1042,3 @@ def test_regression_worm_018_component_autocomplete_datalist() -> None:
 
     assert '<option value="carrier_board">' in rendered or '<option value="carrier_board"></option>' in rendered
     assert '<option value="driver">' in rendered or '<option value="driver"></option>' in rendered
-
