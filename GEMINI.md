@@ -52,6 +52,7 @@ Before finalizing any task, committing changes, or proposing modifications to th
 
 ### 3. Worm Tracker & Historical Context Inspection
 * Whenever working on tasks, investigating issues, or modifying existing subsystems, you MUST inspect the worm tracking records (`feedback/WORMS.md`, `feedback/WORM_<id>.md`, `target/worms.sqlite`, `python tools/dashboard.py list-worms --open`) for past context, historical failure modes, reproduction steps, and resolved invariants. Leveraging past context prevents re-introducing known regressions. All worm report attachments (`attachments/`, `target/attachments/`, `feedback/attachments/`) are tracked in **GitHub LFS** and considered **non-confidential** and public to the repository; never attach sensitive credentials, secret tokens, private keys, or proprietary secrets.
+* **Planned Worm Exemption**: Issues marked with status `PLANNED` represent deferred work or backlog roadmaps. `python tools/dashboard.py list-worms --open` excludes `PLANNED` worms by default. The assistant MUST NOT autonomously pick up or work on `PLANNED` worms unless specifically and explicitly requested by the user.
 
 ### 4. Single-Bug Focus & Atomic Issue Remediation
 * To prevent context pollution and attention degradation during extended problem-solving sessions, you MUST investigate, diagnose, and resolve only ONE bug/worm or defect at a time:

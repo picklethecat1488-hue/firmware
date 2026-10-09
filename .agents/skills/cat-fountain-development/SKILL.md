@@ -70,3 +70,7 @@ To query files or decode logs directly from the device's flash:
 ## 6. Relative Paths & Privacy Hygiene Mandate
 * **Relative File Paths Only**: Always use relative file paths (e.g., `controller/controllers.toml`, `shell.toml`, `docs/mcu_decoupling.md`) when creating, modifying, or linking tracked files in the workspace. Never embed absolute filesystem paths or absolute `file://` URLs in any tracked repository files.
 * **Personal Information Elision**: Ensure personal information (usernames, local user home directories, private environment paths) is never committed or leaked into tracked files, documentation, or issue reports.
+
+## 7. Worm Tracking & Issue Resolution
+* When querying active issues to work on, run `python tools/dashboard.py list-worms --open`.
+* By default, `list-worms --open` excludes worms in `PLANNED` status. The agent must NOT autonomously select or work on `PLANNED` worms unless explicitly requested by the user. Use `python tools/dashboard.py list-worms --planned` to view planned items.

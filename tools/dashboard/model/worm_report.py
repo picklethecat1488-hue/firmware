@@ -23,6 +23,7 @@ class WormStatus(str, Enum):
     """Lifecycle status for a worm report."""
 
     OPEN = "OPEN"
+    PLANNED = "PLANNED"
     IN_PROGRESS = "IN_PROGRESS"
     RESOLVED = "RESOLVED"
     CLOSED = "CLOSED"

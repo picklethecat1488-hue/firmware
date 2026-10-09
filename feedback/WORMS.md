@@ -6,10 +6,10 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-10-08 02:43:07 UTC` |
-| **Total Issues** | `18` |
-| **Open Issues** | `1` |
-| **Resolved / Closed** | `17 (94%)` |
+| **Report Date** | `2026-10-08 20:01:43 UTC` |
+| **Total Issues** | `19` |
+| **Open Issues** | `0` |
+| **Resolved / Closed** | `19 (100%)` |
 
 ## Issues by Severity
 
@@ -18,7 +18,7 @@
 | **`[CRITICAL]`** | 0 | System crashes, build failures, blockages, or electrical shorts. |
 | **`[HIGH]`** | 3 | Major functional defects, broken routing, DRC violations, or unphysical behavior. |
 | **`[MEDIUM]`** | 13 | Silkscreen collisions, layout sub-optimality, or visual clipping. |
-| **`[LOW]`** | 2 | Minor aesthetic imperfections or documentation notes. |
+| **`[LOW]`** | 3 | Minor aesthetic imperfections or documentation notes. |
 
 ## Issues by Category
 
@@ -31,7 +31,7 @@
 | **`BOARD`** | 1 | Board support packages (BSP), pinmux, boards. |
 | **`MODEL`** | 0 | Domain data models, configurations, state definitions. |
 | **`SHELL`** | 0 | CLI interface, shell commands, debug console. |
-| **`INFRASTRUCTURE`** | 12 | Build tooling, compilers, test runners, headless tools. |
+| **`INFRASTRUCTURE`** | 13 | Build tooling, compilers, test runners, headless tools. |
 | **`UI`** | 0 | Web dashboards, CLI viewers, review interfaces. |
 | **`GENERAL`** | 1 | Unclassified or cross-cutting firmware issues. |
 
@@ -55,6 +55,7 @@
 - [x] **`[MEDIUM]`** [#WORM-016](#worm-016): Remove my username from tracked files (`RESOLVED`)
 - [x] **`[HIGH]`** [#WORM-017](#worm-017): Working tree actions doesn't show up unless I click an older commit `[dashboard]` (`RESOLVED`)
 - [x] **`[LOW]`** [#WORM-018](#worm-018): Populate component list (`RESOLVED`)
+- [x] **`[LOW]`** [#WORM-019](#worm-019): Port dashboard to Eel `[dashboard]` (`RESOLVED`)
 
 ## Detailed Issue Log
 
@@ -10445,5 +10446,25 @@ Populate the component textbox with an autocomplete list based off prior worm hi
 #### Resolution Notes
 
 Added <datalist id="worm-component-list"> to worm_report.html.j2 connected to worm-component input, dynamically populated and kept up to date via updateComponentDatalist() from prior worm history, with server-side extraction fallback. Added regression unit test test_regression_worm_018_component_autocomplete_datalist.
+
+---
+
+### <a id="worm-019"></a> 🟢 `[WORM-019]` Port dashboard to Eel
+
+- **UUID**: `12787545-0734-473d-9ff2-6c2f38ee7191`
+- **Status**: `RESOLVED`
+- **Severity**: `LOW`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-08 19:50:38 UTC`
+- **Resolved**: `2026-10-08 20:01:42 UTC`
+
+#### Description
+
+Port the dashboard to Eel as a standalone app. Maintain the general UI, but open the dashboard in a standalone window, instead of a web browser.
+
+#### Resolution Notes
+
+Integrated Eel standalone desktop window support with browser discovery, /eel.js route, and --eel/--app CLI options
 
 ---

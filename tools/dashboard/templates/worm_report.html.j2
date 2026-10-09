@@ -4,8 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Xerxes Worm Matrix - System Shock 2</title>
+  <meta name="theme-color" content="#0a1c24">
+  <meta name="color-scheme" content="dark">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Xerxes">
+  <link rel="manifest" href="/static/manifest.json">
   <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+  <link rel="shortcut icon" href="/static/favicon.ico">
   <style>
+    html { font-size: 80%; }
     /* =========================================================
        SYSTEM SHOCK 2 // XERXES WORM MATRIX HUD THEME
        ========================================================= */
@@ -70,6 +81,24 @@
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      border: 2px solid var(--xerxes-border-mid);
+      box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.2), 0 0 10px rgba(0, 240, 255, 0.1);
+    }
+
+    /* Window Resize Gripper (WORM-027) */
+    .window-resize-gripper {
+      position: fixed;
+      bottom: 2px;
+      right: 2px;
+      width: 16px;
+      height: 16px;
+      cursor: nwse-resize;
+      z-index: 99999;
+      pointer-events: none;
+      background:
+        linear-gradient(135deg, transparent 0%, transparent 40%, var(--xerxes-border-mid) 40%, var(--xerxes-border-mid) 50%, transparent 50%, transparent 65%, var(--xerxes-border-light) 65%, var(--xerxes-border-light) 75%, transparent 75%, transparent 90%, var(--xerxes-cyan) 90%, var(--xerxes-cyan) 100%);
+      opacity: 0.85;
+      filter: drop-shadow(0 0 2px var(--xerxes-cyan));
     }
 
     /* Visible Quake & Xerxes High-Contrast Scrollbars (BUG-202, BUG-233) */
@@ -124,7 +153,7 @@
     }
 
     .brand-title {
-      font-size: 15px;
+      font-size: 12px;
       font-weight: 700;
       color: var(--xerxes-cyan);
       text-transform: uppercase;
@@ -139,7 +168,7 @@
     }
 
     .metric-pill {
-      font-size: 11px;
+      font-size: 9px;
       color: var(--xerxes-text-muted);
       background: #040d12;
       padding: 4px 10px;
@@ -161,7 +190,7 @@
     /* Buttons */
     .quake-btn {
       font-family: var(--font-mono);
-      font-size: 11px;
+      font-size: 9px;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       padding: 6px 12px;
@@ -234,7 +263,7 @@
       border: none;
       color: var(--xerxes-text-muted);
       cursor: pointer;
-      font-size: 11px;
+      font-size: 9px;
       padding: 1px 3px;
       border-radius: 2px;
       display: inline-flex;
@@ -280,7 +309,7 @@
       color: var(--xerxes-text-light);
       padding: 6px 10px;
       font-family: var(--font-mono);
-      font-size: 11px;
+      font-size: 9px;
       border-radius: 2px;
     }
 
@@ -324,7 +353,7 @@
     }
 
     .worm-id, .bug-id {
-      font-size: 11px;
+      font-size: 9px;
       font-weight: bold;
       color: var(--xerxes-cyan);
       display: inline-flex;
@@ -333,7 +362,7 @@
     }
 
     .worm-item-title, .bug-item-title {
-      font-size: 12px;
+      font-size: 10px;
       color: var(--xerxes-text-light);
       white-space: nowrap;
       overflow: hidden;
@@ -375,7 +404,7 @@
     }
 
     .section-title {
-      font-size: 12px;
+      font-size: 10px;
       font-weight: 700;
       color: var(--xerxes-cyan);
       text-transform: uppercase;
@@ -401,7 +430,7 @@
     }
 
     label {
-      font-size: 10px;
+      font-size: 8px;
       text-transform: uppercase;
       color: var(--xerxes-text-muted);
       letter-spacing: 0.06em;
@@ -413,7 +442,7 @@
       border: 1px solid var(--xerxes-border-mid);
       color: var(--xerxes-text-light);
       font-family: var(--font-mono);
-      font-size: 12px;
+      font-size: 10px;
       padding: 7px 10px;
       border-radius: 2px;
       transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -478,11 +507,11 @@
       gap: 6px;
     }
 
-    .doc-icon { font-size: 28px; }
-    .doc-type { font-size: 9px; color: var(--xerxes-text-muted); font-weight: bold; }
+    .doc-icon { font-size: 22px; }
+    .doc-type { font-size: 7.5px; color: var(--xerxes-text-muted); font-weight: bold; }
 
     .attachment-name {
-      font-size: 11px;
+      font-size: 9px;
       color: var(--xerxes-text-light);
       white-space: nowrap;
       overflow: hidden;
@@ -493,7 +522,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      font-size: 9px;
+      font-size: 7.5px;
       color: var(--xerxes-text-dim);
     }
 
@@ -506,7 +535,7 @@
       cursor: pointer;
       transition: all 0.2s ease;
       background: rgba(0, 240, 255, 0.02);
-      font-size: 11px;
+      font-size: 9px;
     }
 
     .dropzone:hover, .dropzone.dragover {
@@ -524,14 +553,14 @@
       color: var(--xerxes-cyan);
       padding: 10px 18px;
       border-radius: 3px;
-      font-size: 12px;
+      font-size: 10px;
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.8), 0 0 10px rgba(0, 240, 255, 0.4);
       display: none;
       z-index: 10000;
     }
 
     .attachment-lfs-notice {
-      font-size: 10px;
+      font-size: 8px;
       color: var(--xerxes-text-dim);
       margin-top: 4px;
     }
@@ -553,19 +582,19 @@
       <button class="quake-btn quake-btn-default" onclick="syncFeedback()">🔄 Sync Feedback</button>
       <button class="quake-btn quake-btn-default" onclick="newWorm()">+ New Worm</button>
       <button class="quake-btn quake-btn-gold" id="btn-save-exit" onclick="saveAndExit()">💾 Save and Exit</button>
-      <a href="/" target="firmware_vcs_diff_viewer" onclick="returnToDashboard(event)" class="quake-btn quake-btn-default modal-close-btn" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;font-weight:bold;font-size:16px;padding:2px 10px;line-height:1;" title="Close workstation (Esc)">✕</a>
+      <a href="/" target="firmware_vcs_diff_viewer" onclick="returnToDashboard(event)" class="quake-btn quake-btn-default modal-close-btn" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;padding:2px 10px;line-height:1;" title="Close workstation (Esc)">✕</a>
     </div>
   </header>
 
   <!-- Feedback Sync Progress Modal -->
   <div id="feedback-loading-modal" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.85); z-index:99999; align-items:center; justify-content:center;">
     <div class="quake-card" style="padding:24px 32px; max-width:480px; width:90%; text-align:center; border:2px solid var(--quake-gold);">
-      <h3 style="color:var(--quake-gold); margin-bottom:12px; font-size:16px;">🔄 MERGING AGENT FEEDBACK</h3>
-      <p id="loading-status-text" style="color:var(--quake-text-light); font-size:13px; margin-bottom:16px;">Merging stored agent feedback from feedback/ directory into SQLite database...</p>
+      <h3 style="color:var(--quake-gold); margin-bottom:12px; font-size:13px;">🔄 MERGING AGENT FEEDBACK</h3>
+      <p id="loading-status-text" style="color:var(--quake-text-light); font-size:10px; margin-bottom:16px;">Merging stored agent feedback from feedback/ directory into SQLite database...</p>
       <div style="background:#040d12; border:1px solid #0b5966; border-radius:4px; height:12px; overflow:hidden; margin-bottom:12px;">
         <div id="loading-progress-bar" style="background:var(--quake-gold); width:30%; height:100%; transition:width 0.3s ease;"></div>
       </div>
-      <div id="loading-step-text" style="color:var(--quake-text-muted); font-size:11px;">Scanning feedback/ directory for WORM_*.md files...</div>
+      <div id="loading-step-text" style="color:var(--quake-text-muted); font-size:9px;">Scanning feedback/ directory for WORM_*.md files...</div>
     </div>
   </div>
 
@@ -576,14 +605,15 @@
       <div class="sidebar-header" style="flex-direction:column; gap:8px;">
         <input type="text" id="search-input" class="sidebar-search" placeholder="Search worms..." oninput="renderWormList()">
         <div class="filter-pills" style="display:flex; gap:6px; width:100%;">
-          <button id="filter-open" class="quake-btn quake-btn-default quake-btn-active" style="flex:1; padding:4px 6px; font-size:10px;" onclick="setWormFilter('open')">OPEN</button>
-          <button id="filter-all" class="quake-btn quake-btn-default" style="flex:1; padding:4px 6px; font-size:10px;" onclick="setWormFilter('all')">ALL</button>
-          <button id="filter-resolved" class="quake-btn quake-btn-default" style="flex:1; padding:4px 6px; font-size:10px;" onclick="setWormFilter('resolved')">RESOLVED</button>
+          <button id="filter-open" class="quake-btn quake-btn-default quake-btn-active" style="flex:1; padding:4px 6px; font-size:8px;" onclick="setWormFilter('open')">OPEN</button>
+          <button id="filter-planned" class="quake-btn quake-btn-default" style="flex:1; padding:4px 6px; font-size:8px;" onclick="setWormFilter('planned')">PLANNED</button>
+          <button id="filter-all" class="quake-btn quake-btn-default" style="flex:1; padding:4px 6px; font-size:8px;" onclick="setWormFilter('all')">ALL</button>
+          <button id="filter-resolved" class="quake-btn quake-btn-default" style="flex:1; padding:4px 6px; font-size:8px;" onclick="setWormFilter('resolved')">RESOLVED</button>
         </div>
         <div style="display:flex; gap:6px; width:100%;">
           <div style="flex:1; display:flex; flex-direction:column; gap:2px;">
-            <label style="font-size:9px;">Category</label>
-            <select id="select-filter-category" onchange="onFilterCategoryChanged(this.value)" style="width:100%; padding:4px; font-size:10px;">
+            <label style="font-size:7.5px;">Category</label>
+            <select id="select-filter-category" onchange="onFilterCategoryChanged(this.value)" style="width:100%; padding:4px; font-size:8px;">
               <option value="ALL">ALL</option>
               {% for cat in categories %}
               <option value="{{ cat }}">{{ cat }}</option>
@@ -591,8 +621,8 @@
             </select>
           </div>
           <div style="flex:1; display:flex; flex-direction:column; gap:2px;">
-            <label style="font-size:9px;">Severity</label>
-            <select id="select-filter-severity" onchange="onFilterSeverityChanged(this.value)" style="width:100%; padding:4px; font-size:10px;">
+            <label style="font-size:7.5px;">Severity</label>
+            <select id="select-filter-severity" onchange="onFilterSeverityChanged(this.value)" style="width:100%; padding:4px; font-size:8px;">
               <option value="ALL">ALL</option>
               {% for sev in severities %}
               <option value="{{ sev }}">{{ sev }}</option>
@@ -601,8 +631,8 @@
           </div>
         </div>
         <div style="display:flex; flex-direction:column; gap:2px; width:100%;">
-          <label style="font-size:9px;">Sort By</label>
-          <select id="select-worm-sort" onchange="onWormSortChanged(this.value)" style="width:100%; padding:4px; font-size:10px;">
+          <label style="font-size:7.5px;">Sort By</label>
+          <select id="select-worm-sort" onchange="onWormSortChanged(this.value)" style="width:100%; padding:4px; font-size:8px;">
             <option value="id_desc">ID (Newest first)</option>
             <option value="id_asc">ID (Oldest first)</option>
             <option value="severity">Severity (Critical first)</option>
@@ -622,7 +652,7 @@
         <div class="section-title">
           <span style="display:flex; align-items:center; gap:8px;">
             <span>🪱 Worm Identity</span>
-            <span id="active-worm-id-display" class="active-bug-id-display" style="color:var(--quake-gold); font-size:12px;"></span>
+            <span id="active-worm-id-display" class="active-bug-id-display" style="color:var(--quake-gold); font-size:10px;"></span>
             <span id="active-bug-id-display" style="display:none;"></span>
             <button id="btn-copy-active-worm" class="copy-icon-btn copy-badge-btn btn-copy-active-bug" onclick="copyActiveWormId()" title="Copy active worm ID" style="display:none;">📋</button>
           </span>
@@ -723,7 +753,7 @@
       <div class="form-section quake-card" id="attachments-section">
         <div class="section-title">
           <span>Attachments & Trace Dumps</span>
-          <button class="quake-btn quake-btn-default" onclick="pasteFromClipboard()" style="font-size:10px; padding:3px 8px;">📋 Paste Clipboard</button>
+          <button class="quake-btn quake-btn-default" onclick="pasteFromClipboard()" style="font-size:8px; padding:3px 8px;">📋 Paste Clipboard</button>
         </div>
         <div id="dropzone" class="dropzone" onclick="document.getElementById('file-input').click()">
           <div>📥 Drag & Drop Screenshots, Logs, or PDF Documents Here (or click to browse)</div>
@@ -764,7 +794,7 @@
     let currentWormSort = sessionStorage.getItem("worm_sort") || 'id_desc';
 
     const severityOrder = { "CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3 };
-    const statusOrder = { "OPEN": 0, "IN_PROGRESS": 1, "RESOLVED": 2, "CLOSED": 3 };
+    const statusOrder = { "OPEN": 0, "IN_PROGRESS": 1, "PLANNED": 2, "RESOLVED": 3, "CLOSED": 4 };
 
     function init() {
       const seenIds = new Set();
@@ -847,9 +877,11 @@
       currentFilter = filter;
       sessionStorage.setItem("worm_filter_status", filter);
       const btnOpen = document.getElementById("filter-open");
+      const btnPlanned = document.getElementById("filter-planned");
       const btnAll = document.getElementById("filter-all");
       const btnResolved = document.getElementById("filter-resolved");
       if (btnOpen) btnOpen.classList.toggle("quake-btn-active", filter === "open");
+      if (btnPlanned) btnPlanned.classList.toggle("quake-btn-active", filter === "planned");
       if (btnAll) btnAll.classList.toggle("quake-btn-active", filter === "all");
       if (btnResolved) btnResolved.classList.toggle("quake-btn-active", filter === "resolved");
       renderWormList();
@@ -933,7 +965,8 @@
       const query = (searchInput ? searchInput.value || "" : "").toLowerCase();
       let list = (db.worms || []).filter(worm => {
         const isResolved = (worm.status === "RESOLVED" || worm.status === "CLOSED");
-        if (currentFilter === "open" && isResolved) return false;
+        if (currentFilter === "open" && (isResolved || worm.status === "PLANNED")) return false;
+        if (currentFilter === "planned" && worm.status !== "PLANNED") return false;
         if (currentFilter === "resolved" && !isResolved) return false;
         if (currentCategoryFilter && currentCategoryFilter !== "ALL" && worm.category !== currentCategoryFilter) return false;
         if (currentSeverityFilter && currentSeverityFilter !== "ALL" && worm.severity !== currentSeverityFilter) return false;
@@ -1004,6 +1037,8 @@
         let stBadgeClass = "quake-badge quake-badge-amber";
         if (worm.status === "RESOLVED" || worm.status === "CLOSED") {
           stBadgeClass = "quake-badge quake-badge-green";
+        } else if (worm.status === "PLANNED") {
+          stBadgeClass = "quake-badge quake-badge-muted";
         }
 
         li.innerHTML = `
@@ -1599,5 +1634,6 @@
 
     window.onload = init;
   </script>
+  <div class="window-resize-gripper" title="Resize Window" aria-label="Resize Window"></div>
 </body>
 </html>
