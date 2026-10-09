@@ -1752,4 +1752,3 @@ def test_code_review_detect_language_rust() -> None:
 
     assert 'case "rs":' in content, "code_review.html.j2 must contain case 'rs':"
     assert 'return "rust";' in content, "code_review.html.j2 must return 'rust' for .rs files"
-

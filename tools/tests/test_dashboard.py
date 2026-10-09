@@ -2362,7 +2362,11 @@ def test_regression_bug_235_favicon_web_icon(tmp_path: Path):
         with urllib.request.urlopen(f"{base_url}/favicon.ico") as resp:
             assert resp.status == 200
             content_type = resp.headers.get("Content-Type", "")
-            assert "image/x-icon" in content_type or "image/svg+xml" in content_type or "vnd.microsoft.icon" in content_type
+            assert (
+                "image/x-icon" in content_type
+                or "image/svg+xml" in content_type
+                or "vnd.microsoft.icon" in content_type
+            )
             assert len(resp.read()) > 0
 
         with urllib.request.urlopen(f"{base_url}/static/favicon.svg") as resp:
@@ -3442,4 +3446,3 @@ def test_regression_worm_017_working_tree_actions_visible_on_load() -> None:
     assert "display: none" in style_commit or "display:none" in style_commit, (
         f"workingTreeCommitArea must have display: none when active_commit is a commit hash, but got: '{style_commit}'"
     )
-

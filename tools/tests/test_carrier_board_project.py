@@ -46,12 +46,8 @@ def test_carrier_board_project_structure() -> None:
 
     # Assert source files exist under app/src/
     assert (app_dir / "src" / "carrier_board.rs").exists(), "app/src/carrier_board.rs must exist"
-    assert (app_dir / "src" / "carrier_board_shell.rs").exists(), (
-        "app/src/carrier_board_shell.rs must exist"
-    )
-    assert (app_dir / "tests" / "carrier_board_tests.rs").exists(), (
-        "app/tests/carrier_board_tests.rs must exist"
-    )
+    assert (app_dir / "src" / "carrier_board_shell.rs").exists(), "app/src/carrier_board_shell.rs must exist"
+    assert (app_dir / "tests" / "carrier_board_tests.rs").exists(), "app/tests/carrier_board_tests.rs must exist"
 
 
 def test_carrier_board_firmware_document() -> None:
@@ -339,4 +335,6 @@ def test_carrier_board_bringup_yaml() -> None:
 
     step_names = [s.get("name", "") for s in steps]
     assert any("I3C" in name for name in step_names), "Must include I3C validation step"
-    assert any("Watchdog" in name or "Reset" in name for name in step_names), "Must include Watchdog/Reset validation step"
+    assert any("Watchdog" in name or "Reset" in name for name in step_names), (
+        "Must include Watchdog/Reset validation step"
+    )

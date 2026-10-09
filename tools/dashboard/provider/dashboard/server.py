@@ -599,11 +599,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         worm_server = self.server.worm_server
         db_dump = worm_server.database.model_dump(mode="json")
         components = sorted(
-            {
-                w.component.strip()
-                for w in worm_server.database.worms
-                if w.component and w.component.strip()
-            }
+            {w.component.strip() for w in worm_server.database.worms if w.component and w.component.strip()}
         )
         html_content = template.render(
             database=worm_server.database,

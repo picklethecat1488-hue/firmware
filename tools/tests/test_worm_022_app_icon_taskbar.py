@@ -29,7 +29,9 @@ from provider.webview.launcher import (
 
 def test_manifest_theme_and_icons() -> None:
     """Verify manifest.json defines theme_color, display standalone, and icons."""
-    manifest_path = Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "manifest.json"
+    manifest_path = (
+        Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "manifest.json"
+    )
     if not manifest_path.exists():
         manifest_path = Path(__file__).resolve().parent.parent / "provider" / "code_review" / "static" / "manifest.json"
     assert manifest_path.exists(), f"manifest.json not found at {manifest_path}"
@@ -43,7 +45,9 @@ def test_manifest_theme_and_icons() -> None:
 
 def test_static_app_icns_exists() -> None:
     """Verify pregenerated app.icns exists in static directory."""
-    icns_path = Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "app.icns"
+    icns_path = (
+        Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "app.icns"
+    )
     if not icns_path.exists():
         icns_path = Path(__file__).resolve().parent.parent / "provider" / "code_review" / "static" / "app.icns"
     assert icns_path.exists(), f"app.icns not found at {icns_path}"
@@ -117,8 +121,7 @@ def test_run_webview_window_parameters() -> None:
 
 def test_launch_webview_spawns_process() -> None:
     """Verify launch_webview executes child process with webview CLI arguments."""
-    with patch("subprocess.Popen") as mock_popen, \
-         patch("pathlib.Path.exists", return_value=True):
+    with patch("subprocess.Popen") as mock_popen, patch("pathlib.Path.exists", return_value=True):
         res = launch_webview("http://127.0.0.1:8877/")
         assert res is True
         assert mock_popen.called
