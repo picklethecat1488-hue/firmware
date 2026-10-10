@@ -21,7 +21,7 @@ To document the design patterns, template hierarchies, and persistence protocols
   - `list-reviews [--open] [--all-users] [--user <name>]`
   - `add-comment --file <path> --line <num> --body "<text>"`
   - `resolve-comment <id>`
-  - `list-worms [--open] [--severity <sev>] [--category <cat>]`
+  - `list-worms [--open] [--planned] [--severity <sev>] [--category <cat>]`
   - `add-worm "<title>" [--severity <sev>] [--category <cat>]`
   - `resolve-worm <id> --notes "<notes>"`
   - `sync`, `list-commits`, `commit [-m "<msg>"]`

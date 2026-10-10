@@ -40,7 +40,9 @@ def test_reproduction_worm_006_commit_worm_tags_normalized_and_resolved(tmp_path
     conn.close()
 
     engine = GitEngine(repo_root=repo)
-    tags = engine._extract_worm_tags("fix(dashboard): update issue tracking from BUG to WORM and use worm icon (BUG-002)")
+    tags = engine._extract_worm_tags(
+        "fix(dashboard): update issue tracking from BUG to WORM and use worm icon (BUG-002)"
+    )
 
     assert len(tags) == 1
     # Tag ID MUST be normalized to canonical WORM-002 (never remain BUG-002)

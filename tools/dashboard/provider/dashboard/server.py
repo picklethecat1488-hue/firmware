@@ -135,8 +135,20 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self._handle_serve_static(path)
             return
 
-        if path in ("/favicon.ico", "/favicon.svg"):
+        if path == "/manifest.json":
+            self._handle_serve_static("/static/manifest.json")
+            return
+
+        if path == "/favicon.ico":
+            self._handle_serve_static("/static/favicon.ico")
+            return
+
+        if path == "/favicon.svg":
             self._handle_serve_static("/static/favicon.svg")
+            return
+
+        if path == "/apple-touch-icon.png":
+            self._handle_serve_static("/static/apple-touch-icon.png")
             return
 
         if (
@@ -148,6 +160,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             return
 
         match path:
+            case "/eel.js":
+                self._handle_serve_eel_js()
             case "/" | "/index.html":
                 self._handle_serve_diff_ui()
             case "/review" | "/review/":
@@ -584,15 +598,47 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         template = env.get_template("worm_report.html.j2")
         worm_server = self.server.worm_server
         db_dump = worm_server.database.model_dump(mode="json")
+        components = sorted(
+            {w.component.strip() for w in worm_server.database.worms if w.component and w.component.strip()}
+        )
         html_content = template.render(
             database=worm_server.database,
             database_json=json.dumps(db_dump),
             statuses=[s.value for s in WormStatus],
             severities=[s.value for s in WormSeverity],
             categories=[c.value for c in WormCategory],
+            components=components,
             server_port=self.server.actual_port,
         )
         self._send_html(html_content)
+
+    def _handle_serve_eel_js(self) -> None:
+        """Serve eel.js library file for Eel standalone app client."""
+        content: bytes = b""
+        try:
+            import eel
+
+            eel_js_path = Path(eel.__file__).resolve().parent / "eel.js"
+            if eel_js_path.is_file():
+                content = eel_js_path.read_bytes()
+        except Exception:
+            pass
+
+        if not content:
+            content = b"// eel.js fallback\nwindow.eel = window.eel || {};\n"
+
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript; charset=utf-8")
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            self.wfile.write(content)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            self.close_connection = True
+        finally:
+            self.close_connection = True
 
     def _handle_serve_static(self, path: str) -> None:
         """Serve static files such as JavaScript vendor bundles and CSS."""
@@ -604,14 +650,26 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             return
         if file_target.suffix == ".svg":
             content_type = "image/svg+xml"
+        elif file_target.suffix == ".png":
+            content_type = "image/png"
+        elif file_target.suffix == ".ico":
+            content_type = "image/x-icon"
+        elif file_target.suffix == ".json":
+            content_type = "application/manifest+json" if filename.endswith("manifest.json") else "application/json"
         elif file_target.suffix == ".js":
             content_type = "application/javascript"
-        else:
+        elif file_target.suffix == ".css":
             content_type = "text/css"
+        else:
+            content_type = "application/octet-stream"
+
         data = file_target.read_bytes()
         try:
             self.send_response(200)
-            self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+            if content_type.startswith("text/") or content_type.startswith("application/"):
+                self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+            else:
+                self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Connection", "close")
@@ -1155,7 +1213,7 @@ class DashboardServer(ThreadingHTTPServer):
                         retained_tags.append(tag)
             node.worm_tags = retained_tags
 
-            worm_ids = re.findall(r"\b((?:WORM|BUG)[_-]\d+)\b", node.subject, re.IGNORECASE)
+            worm_ids = re.findall(r"\b((?:WORM|BUG)[_-][A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)\b", node.subject, re.IGNORECASE)
             existing_ids = {t.id for t in node.worm_tags}
             for wid in worm_ids:
                 num = re.sub(r"^(?:WORM|BUG)[-_]", "", wid, flags=re.IGNORECASE)

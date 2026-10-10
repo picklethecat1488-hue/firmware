@@ -33,7 +33,12 @@ if str(_tools_dir) not in sys.path:
     sys.path.insert(0, str(_tools_dir))
 
 from dashboard.cli import (  # noqa: E402
+    check_existing_instance,
+    get_dashboard_lock_file,
     handle_cli_commit,
+    has_active_window_process,
+    is_pid_alive,
+    is_port_in_use,
     launch_browser,
     main,
     parse_arguments,
@@ -43,7 +48,12 @@ from dashboard.cli import (  # noqa: E402
 )
 
 __all__ = [
+    "check_existing_instance",
+    "get_dashboard_lock_file",
     "handle_cli_commit",
+    "has_active_window_process",
+    "is_pid_alive",
+    "is_port_in_use",
     "launch_browser",
     "main",
     "parse_arguments",
