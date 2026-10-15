@@ -481,15 +481,42 @@ fn test_motor_limits_checking() {
 }
 
 #[test]
-fn test_motor_controller_hall_sensor_reading() {
+fn test_motor_controller_hall_sensor_rpm_and_zero_rpm_stall() {
     futures::executor::block_on(async {
+        use controller::MotorReader;
+
         let motor = MockMotor::new();
         let sensor = MockCurrentSensor::new(150);
         let speed_sensor = MockSpeedSensor::new(2850);
         let mut controller = MotorController::new(NoTick::new(motor), sensor, speed_sensor);
 
+        controller.set_calibration(&model::calibration::MotorCalibration {
+            current_ma: model::calibration::FourPointCalibration::new(80, 0, 0, 800),
+            max_rpm: Some(3000),
+            rpm_limit: Some(0),
+        });
+
+        // Start motor
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(50).unwrap()), None)
+            .await;
+        assert_eq!(controller.state(), MotorState::On);
+
         // Tick motor so speed sensor is polled
         controller.tick_motor().await.unwrap();
+        assert_eq!(controller.current_rpm(), 2850);
         assert_eq!(controller.measured_rpm(), 2850);
+
+        // Read motor RPM via MotorReader trait
+        let rpm = controller.read_motor_rpm().await.unwrap();
+        assert_eq!(rpm, 2850);
+
+        // Now simulate physical impeller stall: current is 150 mA, but Hall RPM drops to 0
+        controller.speed_sensor.rpm = 0;
+        controller.bypass_startup_blanking();
+        let _ = controller.update(None).await;
+
+        // Motor controller should detect zero-RPM stall and shut down motor to Off
+        assert_eq!(controller.state(), MotorState::Off);
     });
 }

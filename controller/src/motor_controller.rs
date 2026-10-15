@@ -202,13 +202,18 @@ where
         self.limits.max_current_ma = max_ma;
     }
 
-    /// Returns the current rotational speed in RPM based on active speed duty cycle and `max_rpm` calibration.
+    /// Returns the current rotational speed in RPM.
+    ///
+    /// If live Hall sensor measurements are available and non-zero, returns the measured RPM.
+    /// Otherwise falls back to estimated RPM based on active speed duty cycle and `max_rpm` calibration.
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.core1_func"
     )]
     pub fn current_rpm(&self) -> u32 {
-        if self.limits.max_rpm == 0 {
+        if self.last_measured_rpm > 0 {
+            self.last_measured_rpm
+        } else if self.limits.max_rpm == 0 {
             0
         } else {
             (self.active_speed.get() as u32) * self.limits.max_rpm / 100
@@ -307,7 +312,22 @@ where
                         _current_val
                     );
                 }
-                MotorSafetyStatus::Ok => {}
+                MotorSafetyStatus::Ok => {
+                    // Physical stall check via Hall sensor:
+                    // If motor is driven (speed != 0), current is elevated, but Hall RPM is 0 after startup blanking
+                    if self.speed != MotorSpeed::ZERO
+                        && current >= self.limits.min_current_ma
+                        && self.last_measured_rpm == 0
+                        && self.limits.max_rpm > 0
+                    {
+                        self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut())
+                            .await;
+                        #[cfg(all(target_arch = "arm", target_os = "none"))]
+                        defmt::error!(
+                            "Motor Controller: Zero RPM stall detected via Hall sensor. Stopped motor."
+                        );
+                    }
+                }
             }
         }
 
