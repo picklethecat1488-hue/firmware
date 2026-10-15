@@ -37,3 +37,6 @@ pub use boot_status::BootStatus;
 
 pub mod waitable;
 pub use waitable::WaitableMeasurement;
+
+pub mod speed_sensor;
+pub use speed_sensor::SpeedSensor;

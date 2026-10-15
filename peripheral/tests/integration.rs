@@ -52,39 +52,76 @@ impl<'a> InputPin for MockPin<'a> {
 }
 
 #[test]
-fn test_l9110s_functional() {
+fn test_tmc6300_functional_and_commutation() {
     run_test!(async {
-        let pin_ia_state = std::sync::atomic::AtomicBool::new(false);
-        let pin_ib_state = std::sync::atomic::AtomicBool::new(false);
-        let pin_ia = MockPin {
-            is_high: &pin_ia_state,
-        };
-        let pin_ib = MockPin {
-            is_high: &pin_ib_state,
-        };
-        let mut motor = peripheral::l9110s::L9110s::new(pin_ia, pin_ib);
+        let pin_en_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_in1_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_in2_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_in3_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_diag_state = std::sync::atomic::AtomicBool::new(false);
 
-        // 1. Initially both low
-        assert!(!pin_ia_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_ib_state.load(std::sync::atomic::Ordering::SeqCst));
+        let pin_en = MockPin {
+            is_high: &pin_en_state,
+        };
+        let pin_in1 = MockPin {
+            is_high: &pin_in1_state,
+        };
+        let pin_in2 = MockPin {
+            is_high: &pin_in2_state,
+        };
+        let pin_in3 = MockPin {
+            is_high: &pin_in3_state,
+        };
+        let pin_diag = MockPin {
+            is_high: &pin_diag_state,
+        };
+        let mut motor =
+            peripheral::tmc6300::Tmc6300::new(pin_en, pin_in1, pin_in2, pin_in3, pin_diag);
 
-        // 2. Setting speed > 0 drives pin_ia high and pin_ib low
+        // 1. Initially all low
+        assert!(!pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // 2. Diagnostic fault check
+        assert_eq!(motor.is_fault_active(), Ok(false));
+        pin_diag_state.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(motor.is_fault_active(), Ok(true));
+        pin_diag_state.store(false, std::sync::atomic::Ordering::SeqCst);
+
+        // 3. Setting speed > 0 drives EN high (active) and applies initial commutation step 0 (U=1, V=0, W=0)
         assert!(motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
-        assert!(pin_ia_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_ib_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
 
-        // 3. Setting speed == 0 brakes both pins to low
+        // 4. Tick through commutation steps
+        // Step 1: U=1, V=1, W=0
+        assert!(motor.tick().await.is_ok());
+        assert!(pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Step 2: U=0, V=1, W=0
+        assert!(motor.tick().await.is_ok());
+        assert!(!pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // 5. Setting speed == 0 disables driver (EN=0) and brakes phases
         assert!(motor.set_speed(MotorSpeed::ZERO).is_ok());
-        assert!(!pin_ia_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_ib_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
 
-        // 4. Stopping brakes both pins to low
+        // 6. Stopping also halts driver
         assert!(motor.set_speed(MotorSpeed::new(50).unwrap()).is_ok());
-        assert!(pin_ia_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_ib_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
         assert!(motor.stop().is_ok());
-        assert!(!pin_ia_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_ib_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
     });
 }
 
@@ -126,48 +163,54 @@ fn test_vl53l0x_threshold_validation() {
 }
 
 #[test]
-fn test_motor_duty_cycling_ticks() {
-    run_test!(async {
-        let pin_ia_state = std::sync::atomic::AtomicBool::new(false);
-        let pin_ib_state = std::sync::atomic::AtomicBool::new(false);
-        let pin_ia = MockPin {
-            is_high: &pin_ia_state,
-        };
-        let pin_ib = MockPin {
-            is_high: &pin_ib_state,
-        };
-        let mut motor = peripheral::l9110s::L9110s::new(pin_ia, pin_ib);
+fn test_hall_sensor_pulse_counting_and_rpm() {
+    let pin_state = std::sync::atomic::AtomicBool::new(false);
+    let pin = MockPin {
+        is_high: &pin_state,
+    };
+    let mut sensor = peripheral::hall_sensor::HallSensor::new(pin);
 
-        // Set speed to 30 (30% duty cycle)
-        assert!(motor.set_speed(MotorSpeed::new(30).unwrap()).is_ok());
-        // Initial state set_speed drives active immediately
-        assert!(pin_ia_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_ib_state.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(sensor.pulses_per_rev(), 3);
+    assert_eq!(sensor.pulse_count(), 0);
 
-        // Tick 1 to 2: active (total 3 active ticks: 0, 1, 2)
-        for _ in 1..=2 {
-            assert!(motor.tick().await.is_ok());
-            assert!(pin_ia_state.load(std::sync::atomic::Ordering::SeqCst));
-            assert!(!pin_ib_state.load(std::sync::atomic::Ordering::SeqCst));
-        }
+    // Initial low poll -> no pulse
+    assert!(sensor.poll_state().is_ok());
+    assert_eq!(sensor.pulse_count(), 0);
 
-        // Tick 3: becomes inactive (tick_counter reaches 3 >= threshold 3)
-        assert!(motor.tick().await.is_ok());
-        assert!(!pin_ia_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_ib_state.load(std::sync::atomic::Ordering::SeqCst));
+    // Transition low -> high: 1 pulse
+    pin_state.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(sensor.poll_state().is_ok());
+    assert_eq!(sensor.pulse_count(), 1);
 
-        // Ticks up to 9: inactive
-        for _ in 4..=9 {
-            assert!(motor.tick().await.is_ok());
-            assert!(!pin_ia_state.load(std::sync::atomic::Ordering::SeqCst));
-            assert!(!pin_ib_state.load(std::sync::atomic::Ordering::SeqCst));
-        }
+    // High -> high: no extra pulse
+    assert!(sensor.poll_state().is_ok());
+    assert_eq!(sensor.pulse_count(), 1);
 
-        // Tick 10: resets counter, becomes active again
-        assert!(motor.tick().await.is_ok());
-        assert!(pin_ia_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_ib_state.load(std::sync::atomic::Ordering::SeqCst));
-    });
+    // High -> low: no extra pulse
+    pin_state.store(false, std::sync::atomic::Ordering::SeqCst);
+    assert!(sensor.poll_state().is_ok());
+    assert_eq!(sensor.pulse_count(), 1);
+
+    // Generate 9 more pulses (total 10 pulses)
+    for _ in 0..9 {
+        pin_state.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(sensor.poll_state().is_ok());
+        pin_state.store(false, std::sync::atomic::Ordering::SeqCst);
+        assert!(sensor.poll_state().is_ok());
+    }
+    assert_eq!(sensor.pulse_count(), 10);
+
+    // Calculate RPM over 100 ms:
+    // formula: (10 pulses * 60,000) / (3 ppr * 100 ms) = 600,000 / 300 = 2000 RPM
+    sensor.update_rpm(100);
+    assert_eq!(sensor.pulse_count(), 0); // cleared
+
+    use model::interfaces::SpeedSensor;
+    assert_eq!(sensor.read_rpm(), Ok(2000));
+
+    // Direct override test
+    sensor.set_rpm(3500);
+    assert_eq!(sensor.read_rpm(), Ok(3500));
 }
 
 struct SpyI2c<'a> {

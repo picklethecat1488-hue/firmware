@@ -25,7 +25,8 @@ The Cat Fountain is an autonomous, battery-operated pet water fountain that dete
 +-----------------------------------------------------------------------------------+
 |  Hardware Peripherals & Interfaces                                                |
 |  - I2C0 (GP4/GP5): Shared bus for MAX17048, INA219, 3x VL53L0X, and ATtiny816     |
-|  - PWM (GP14/GP15): L9110S dual-channel H-Bridge N20 pump motor driver            |
+|  - 3-Phase BLDC: SparkFun TMC6300 (GP18 EN, GP19 U, GP20 V, GP21 W, GP22 DIAG)     |
+|  - Speed Sensor: AH3577 latching Hall effect sensor on GP26 (3 pulses/rev)        |
 |  - GPIO Bank: XSHUT control pins (GP2, GP3, GP4) and ToF interrupts (GP5..GP7)   |
 |  - QSPI Flash: 2 MB NOR Flash (1.75 MB Firmware, 256 KB Flash Filesystem)         |
 +-----------------------------------------------------------------------------------+
@@ -103,13 +104,13 @@ sequenceDiagram
   - After charger disconnection, the system requires a 2-Finger (2F) Long Press gesture (simultaneous proximity < 20mm on East and West sensors for 5 seconds) to unlock and transition to `Active`.
 
 ### 3.2. Motor Controller (`MotorController` & `MotorStateMachine`)
-The motor controller drives the pump impeller using an N20 DC motor and reads motor load current via the INA219 sensor (`read_torque_ma`):
+The motor controller drives the pump impeller using a BetaFPV 1102 15W BLDC motor via the SparkFun TMC6300 3-phase driver, reads motor load current via the INA219 sensor (`read_torque_ma`), and monitors real-time impeller rotational speed (RPM) and physical stalls via the AH3577 latching Hall effect speed sensor:
 - **Deterministic FSM States**:
   - `Off`: Motor stopped.
   - `RampUp`: Gradual acceleration to prevent water splashing and current spikes.
   - `On`: Continuous operation at calibrated target speed.
   - `RampDown`: Controlled deceleration.
-- **Dry-Run & Stall Protection**: Shuts down the pump if current drops below minimum fluid load (dry run) or exceeds stall thresholds.
+- **Dry-Run & Stall Protection**: Shuts down the pump if current drops below minimum fluid load (dry run), exceeds stall thresholds, or if Hall sensor measures 0 RPM while active current is drawn (physical stall).
 
 ### 3.3. Proximity Sensors (`SensorController`)
 - Manages an individual VL53L0X Time-of-Flight sensor.
@@ -139,7 +140,8 @@ The RP2040 interfaces with peripherals across the I2C0 bus and GPIO banks:
 | **VL53L0X ToF (East)** | I2C0 `0x31` | XSHUT (GP3), INT (GP6) | `ProximitySensor` | Right pet approach & 2F gesture detection. |
 | **VL53L0X ToF (West)** | I2C0 `0x32` | XSHUT (GP4), INT (GP7) | `ProximitySensor` | Left pet approach & 2F gesture detection. |
 | **ATtiny816 LED Bridge** | I2C0 `0x60` | SDA (GP4) / SCL (GP5) | `LedDriver` | RGB NeoPixel status indicator. |
-| **L9110S Motor Driver** | PWM | GP14, GP15 | `GpioMotor` | Impeller speed regulation. |
+| **TMC6300 Motor Driver** | 3-Phase BLDC | EN (GP18), IN1 (GP19), IN2 (GP20), IN3 (GP21), DIAG (GP22) | `Tmc6300` | Impeller 3-phase BLDC speed regulation & fault diagnostic. |
+| **AH3577 Hall Sensor** | Digital Input | GP26 | `HallSensor` | Real-time impeller RPM sensing (3 pulses/rev) & zero-RPM stall detection. |
 
 > [!NOTE]
 > All three VL53L0X sensors boot with the default address `0x29`. During `Board::init()`, the BSP asserts XSHUT on all sensors, then de-asserts them sequentially to dynamically program unique runtime I2C addresses (`0x30`, `0x31`, `0x32`) via register `0x8A`.

@@ -78,7 +78,7 @@ mod host {
         }
 
         /// Checks if mock pin state is high.
-        pub fn is_high(&self) -> bool {
+        pub fn is_set(&self) -> bool {
             self.value
         }
     }
@@ -95,6 +95,15 @@ mod host {
         fn set_high(&mut self) -> Result<(), Self::Error> {
             self.set_high();
             Ok(())
+        }
+    }
+
+    impl embedded_hal::digital::InputPin for MockFlex {
+        fn is_high(&mut self) -> Result<bool, Self::Error> {
+            Ok(self.value)
+        }
+        fn is_low(&mut self) -> Result<bool, Self::Error> {
+            Ok(!self.value)
         }
     }
 
@@ -118,6 +127,8 @@ mod host {
         pub motor: peripheral::mock::MockMotor,
         /// Mock current sensor
         pub current_sensor: peripheral::mock::DummyCurrentSensor,
+        /// Mock speed sensor
+        pub speed_sensor: peripheral::mock::MockSpeedSensor,
         /// Mock North proximity sensor
         pub tof_north: peripheral::mock::DummyProximitySensor,
         /// Mock East proximity sensor
@@ -179,6 +190,7 @@ mod host {
             let battery = peripheral::mock::MockBattery::new(3700, 25000);
             let motor = peripheral::mock::MockMotor::new();
             let current_sensor = peripheral::mock::DummyCurrentSensor;
+            let speed_sensor = peripheral::mock::MockSpeedSensor::new(0);
 
             let tof_north = peripheral::mock::DummyProximitySensor::new(100);
             let tof_east = peripheral::mock::DummyProximitySensor::new(150);
@@ -199,6 +211,7 @@ mod host {
                 peripherals: Some(BoardPeripherals {
                     motor,
                     current_sensor,
+                    speed_sensor,
                     tof_north,
                     tof_east,
                     tof_west,
@@ -281,6 +294,8 @@ mod host {
     pub type MotorDevice = peripheral::mock::MockMotor;
     /// The motor current sensor type.
     pub type CurrentSensorDevice = peripheral::mock::DummyCurrentSensor;
+    /// The motor speed sensor type.
+    pub type SpeedSensorDevice = peripheral::mock::MockSpeedSensor;
     /// The proximity sensor type.
     pub type ProximitySensorDevice = peripheral::mock::DummyProximitySensor;
     /// The proximity sensor interrupt pin type.
@@ -333,10 +348,12 @@ mod target {
 
     /// Move-by-value drivers and pins returned during board initialization.
     pub struct BoardPeripherals<'d> {
-        /// Motor driver
-        pub motor: peripheral::l9110s::L9110s<Flex<'d>, Flex<'d>>,
+        /// Motor driver (TMC6300 3-phase BLDC driver)
+        pub motor: peripheral::tmc6300::Tmc6300<Flex<'d>, Flex<'d>, Flex<'d>, Flex<'d>, Flex<'d>>,
         /// Motor current sensor
         pub current_sensor: peripheral::ina219::Ina219<platform::i2c::SharedI2cWrapper<'static>>,
+        /// Motor speed sensor (Hall effect sensor)
+        pub speed_sensor: peripheral::hall_sensor::HallSensor<Flex<'d>>,
         /// North proximity sensor
         pub tof_north: peripheral::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>,
         /// East proximity sensor
@@ -400,8 +417,12 @@ mod target {
                 Board::TOF_EAST_INT_PIN => PIN_9,
                 Board::TOF_WEST_INT_PIN => PIN_10,
                 Board::FUEL_GAUGE_INT_PIN => PIN_14,
-                Board::PUMP_PIN_IA => PIN_19,
-                Board::PUMP_PIN_IB => PIN_20,
+                Board::PUMP_EN_PIN => PIN_18,
+                Board::PUMP_IN1_PIN => PIN_19,
+                Board::PUMP_IN2_PIN => PIN_20,
+                Board::PUMP_IN3_PIN => PIN_21,
+                Board::PUMP_DIAG_PIN => PIN_22,
+                Board::SPEED_SENSE_PIN => PIN_26,
             });
 
             // 2. Assert XSHUT (active low) on all ToF sensors (GP2, GP3, GP6)
@@ -500,15 +521,38 @@ mod target {
             peripheral::init_i2c!(&mut current_sensor, &mut boot_status);
 
             // Extract pins needed for drivers/controllers
-            let mut motor_pin_ia = gpio_pins[Board::PUMP_PIN_IA as usize]
+            let mut pump_en = gpio_pins[Board::PUMP_EN_PIN as usize]
                 .take()
-                .expect("Motor pin IA must be available");
-            let mut motor_pin_ib = gpio_pins[Board::PUMP_PIN_IB as usize]
+                .expect("Pump EN pin must be available");
+            let mut pump_in1 = gpio_pins[Board::PUMP_IN1_PIN as usize]
                 .take()
-                .expect("Motor pin IB must be available");
-            motor_pin_ia.set_as_output();
-            motor_pin_ib.set_as_output();
-            let motor = peripheral::l9110s::L9110s::new(motor_pin_ia, motor_pin_ib);
+                .expect("Pump IN1 pin must be available");
+            let mut pump_in2 = gpio_pins[Board::PUMP_IN2_PIN as usize]
+                .take()
+                .expect("Pump IN2 pin must be available");
+            let mut pump_in3 = gpio_pins[Board::PUMP_IN3_PIN as usize]
+                .take()
+                .expect("Pump IN3 pin must be available");
+            let mut pump_diag = gpio_pins[Board::PUMP_DIAG_PIN as usize]
+                .take()
+                .expect("Pump DIAG pin must be available");
+            let mut speed_pin = gpio_pins[Board::SPEED_SENSE_PIN as usize]
+                .take()
+                .expect("Speed sense pin must be available");
+
+            pump_en.set_as_output();
+            pump_in1.set_as_output();
+            pump_in2.set_as_output();
+            pump_in3.set_as_output();
+            pump_diag.set_as_input();
+            pump_diag.set_pull(Pull::Up);
+
+            speed_pin.set_as_input();
+            speed_pin.set_pull(Pull::Up);
+
+            let motor =
+                peripheral::tmc6300::Tmc6300::new(pump_en, pump_in1, pump_in2, pump_in3, pump_diag);
+            let speed_sensor = peripheral::hall_sensor::HallSensor::new(speed_pin);
 
             let fuel_gauge_alert_pin = gpio_pins[Board::FUEL_GAUGE_INT_PIN as usize]
                 .take()
@@ -560,6 +604,7 @@ mod target {
                 peripherals: Some(BoardPeripherals {
                     motor,
                     current_sensor,
+                    speed_sensor,
                     tof_north,
                     tof_east,
                     tof_west,
@@ -691,10 +736,18 @@ mod target {
     /// The battery alert pin type.
     pub type AlertPinType = AlertPinWrapper;
     /// The motor driver type.
-    pub type MotorDevice = peripheral::l9110s::L9110s<Flex<'static>, Flex<'static>>;
+    pub type MotorDevice = peripheral::tmc6300::Tmc6300<
+        Flex<'static>,
+        Flex<'static>,
+        Flex<'static>,
+        Flex<'static>,
+        Flex<'static>,
+    >;
     /// The motor current sensor type.
     pub type CurrentSensorDevice =
         peripheral::ina219::Ina219<platform::i2c::SharedI2cWrapper<'static>>;
+    /// The motor speed sensor type.
+    pub type SpeedSensorDevice = peripheral::hall_sensor::HallSensor<Flex<'static>>;
     /// The proximity sensor type.
     pub type ProximitySensorDevice =
         peripheral::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>;

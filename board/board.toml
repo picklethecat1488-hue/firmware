@@ -11,8 +11,12 @@ core_monitor_timeout_ms = 10000
 core_monitor_warn_pct = 80
 
 [boards.cat_detector.pins]
-PUMP_PIN_IA = 19
-PUMP_PIN_IB = 20
+PUMP_EN_PIN = 18
+PUMP_IN1_PIN = 19
+PUMP_IN2_PIN = 20
+PUMP_IN3_PIN = 21
+PUMP_DIAG_PIN = 22
+SPEED_SENSE_PIN = 26
 I2C_SDA_PIN = 12
 I2C_SCL_PIN = 13
 UART_TX_PIN = 0

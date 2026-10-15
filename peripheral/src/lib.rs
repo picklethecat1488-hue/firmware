@@ -3,18 +3,20 @@
 #![cfg_attr(not(test), no_std)]
 #![deny(missing_docs)]
 
-pub use model::interfaces::{Motor, Tickable};
+pub use model::interfaces::{Motor, SpeedSensor, Tickable};
 pub use model::types::MotorSpeed;
 
 /// Concrete driver implementation for the WS2812 NeoPixel driver.
 pub mod ws2812;
 
+/// Concrete driver implementation for the digital latching Hall effect speed sensor.
+pub mod hall_sensor;
 /// Concrete driver implementation for the INA219 current monitor.
 pub mod ina219;
-/// Concrete driver implementation for the L9110S motor driver.
-pub mod l9110s;
 /// Concrete driver implementation for the MAX17048 fuel gauge.
 pub mod max17048;
+/// Concrete driver implementation for the TMC6300 3-phase BLDC motor driver.
+pub mod tmc6300;
 /// Concrete driver implementation for the VL53L0X proximity sensor.
 pub mod vl53l0x;
 
@@ -87,17 +89,18 @@ impl ToPeripheralError for () {
     }
 }
 
-/// Implement ToPeripheralError for L9110sError.
-impl<E1: core::fmt::Debug, E2: core::fmt::Debug> ToPeripheralError
-    for crate::l9110s::L9110sError<E1, E2>
-{
+/// Implement ToPeripheralError for Tmc6300Error.
+impl<EE, E1, E2, E3, ED> ToPeripheralError for crate::tmc6300::Tmc6300Error<EE, E1, E2, E3, ED> {
     #[inline]
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.core1_func"
     )]
     fn to_peripheral_error(&self) -> PeripheralError {
-        PeripheralError::PinError
+        match self {
+            crate::tmc6300::Tmc6300Error::DriverFault => PeripheralError::DeviceNotAvailable,
+            _ => PeripheralError::PinError,
+        }
     }
 }
 /// Trait implemented by peripherals to allow standard boot-time initialization.

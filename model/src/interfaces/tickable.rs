@@ -47,6 +47,16 @@ impl<T: super::motor::Motor> super::motor::Motor for NoTick<T> {
     }
 }
 
+impl<T: super::speed_sensor::SpeedSensor> super::speed_sensor::SpeedSensor for NoTick<T> {
+    /// Error type derived from the underlying speed sensor.
+    type Error = T::Error;
+
+    /// Delegates RPM reading to the inner speed sensor.
+    fn read_rpm(&mut self) -> Result<u32, Self::Error> {
+        self.0.read_rpm()
+    }
+}
+
 impl<T> core::ops::Deref for NoTick<T> {
     /// Deref target is the underlying peripheral type.
     type Target = T;
