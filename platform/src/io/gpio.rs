@@ -1,5 +1,7 @@
 //! GPIO diagnostic and status utilities.
 
+include!(concat!(env!("OUT_DIR"), "/generated_gpio.rs"));
+
 use core::fmt::Write as _;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -14,6 +16,12 @@ crate::subcommand_enum! {
         Read,
     }
     "status, read"
+}
+
+/// Checks if a specific GPIO pin is at a high logic level given a bitmask.
+#[inline]
+pub fn is_pin_high(bitmask: u32, pin: u32) -> bool {
+    (bitmask & (1 << pin)) != 0
 }
 
 /// Processes GPIO diagnostic CLI subcommands.
@@ -38,33 +46,49 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
             let _ = writeln!(writer, "GPIO Pin Status (0..29):");
             let _ = writeln!(writer, "Pin   Level");
             let _ = writeln!(writer, "-----------");
-            for p in 0..30 {
-                let pin = steal_flex!(p);
-                let lvl_str = if pin.is_high() {
-                    "High (1)"
+            for p in 0..NUM_GPIO_PINS {
+                if is_bus_assigned(p) {
+                    let _ = writeln!(writer, "GP{:<2}  Alt", p);
                 } else {
-                    "Low  (0)"
-                };
-                let _ = writeln!(writer, "GP{:<2}  {}", p, lvl_str);
+                    let pin = steal_flex!(p);
+                    let lvl_str = if pin.is_high() {
+                        "High (1)"
+                    } else {
+                        "Low  (0)"
+                    };
+                    let _ = writeln!(writer, "GP{:<2}  {}", p, lvl_str);
+                }
             }
         }
         GpioSubcommand::Read => {
             if let Some(p) = pin {
-                if p >= 30 {
+                if p >= NUM_GPIO_PINS {
                     return Err("Invalid pin number (must be 0..29)");
                 }
-                let pin = steal_flex!(p);
-                let lvl_val = if pin.is_high() { 1 } else { 0 };
-                let _ = writeln!(writer, "GP{} level is {}", p, lvl_val);
+                if is_bus_assigned(p) {
+                    let _ = writeln!(
+                        writer,
+                        "GP{} is configured for alternate function (not GPIO)",
+                        p
+                    );
+                } else {
+                    let pin = steal_flex!(p);
+                    let lvl_val = if pin.is_high() { 1 } else { 0 };
+                    let _ = writeln!(writer, "GP{} level is {}", p, lvl_val);
+                }
             } else {
                 let _ = writeln!(writer, "GPIO Pin Levels (0..29):");
                 for row in 0..5 {
                     let mut line = heapless::String::<80>::new();
                     for col in 0..6 {
                         let p = row * 6 + col;
-                        let pin = steal_flex!(p);
-                        let lvl_val = if pin.is_high() { 1 } else { 0 };
-                        let _ = write!(line, "GP{:<2}: {}   ", p, lvl_val);
+                        if is_bus_assigned(p) {
+                            let _ = write!(line, "GP{:<2}: Alt ", p);
+                        } else {
+                            let pin = steal_flex!(p);
+                            let lvl_val = if pin.is_high() { 1 } else { 0 };
+                            let _ = write!(line, "GP{:<2}: {}   ", p, lvl_val);
+                        }
                     }
                     let _ = writeln!(writer, "{}", line);
                 }
@@ -86,20 +110,41 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
     match cmd {
         GpioSubcommand::Status => {
             let _ = writeln!(writer, "Mock GPIO Pin Status (0..29):");
-            for p in 0..30 {
-                let _ = writeln!(writer, "GP{:<2}  Low  (0)", p);
+            let _ = writeln!(writer, "Pin   Level");
+            let _ = writeln!(writer, "-----------");
+            for p in 0..NUM_GPIO_PINS {
+                if is_bus_assigned(p) {
+                    let _ = writeln!(writer, "GP{:<2}  Alt", p);
+                } else {
+                    let _ = writeln!(writer, "GP{:<2}  Low  (0)", p);
+                }
             }
         }
         GpioSubcommand::Read => {
             if let Some(p) = pin {
-                let _ = writeln!(writer, "GP{} level is 0", p);
+                if p >= NUM_GPIO_PINS {
+                    return Err("Invalid pin number (must be 0..29)");
+                }
+                if is_bus_assigned(p) {
+                    let _ = writeln!(
+                        writer,
+                        "GP{} is configured for alternate function (not GPIO)",
+                        p
+                    );
+                } else {
+                    let _ = writeln!(writer, "GP{} level is 0", p);
+                }
             } else {
                 let _ = writeln!(writer, "Mock GPIO Pin Levels (0..29):");
                 for row in 0..5 {
                     let mut line = heapless::String::<80>::new();
                     for col in 0..6 {
                         let p = row * 6 + col;
-                        let _ = write!(line, "GP{:<2}: 0   ", p);
+                        if is_bus_assigned(p) {
+                            let _ = write!(line, "GP{:<2}: Alt ", p);
+                        } else {
+                            let _ = write!(line, "GP{:<2}: 0   ", p);
+                        }
                     }
                     let _ = writeln!(writer, "{}", line);
                 }

@@ -11,16 +11,19 @@ core_monitor_timeout_ms = 10000
 core_monitor_warn_pct = 80
 
 [boards.cat_detector.pins]
-PUMP_EN_PIN = 18
-PUMP_IN1_PIN = 19
-PUMP_IN2_PIN = 20
-PUMP_IN3_PIN = 21
+PUMP_UH_PIN = 16
+PUMP_UL_PIN = 17
+PUMP_VH_PIN = 18
+PUMP_VL_PIN = 19
+PUMP_WH_PIN = 20
+PUMP_WL_PIN = 21
 PUMP_DIAG_PIN = 22
 SPEED_SENSE_PIN = 26
 I2C_SDA_PIN = 12
 I2C_SCL_PIN = 13
 UART_TX_PIN = 0
 UART_RX_PIN = 1
+LED_PIN = 11
 TOF_NORTH_XSHUT_PIN = 4
 TOF_EAST_XSHUT_PIN = 5
 TOF_WEST_XSHUT_PIN = 6
@@ -33,6 +36,13 @@ FUEL_GAUGE_INT_PIN = 14
 sda = "I2C_SDA_PIN"
 scl = "I2C_SCL_PIN"
 frequency = 400000
+
+[boards.cat_detector.buses.uart]
+tx = "UART_TX_PIN"
+rx = "UART_RX_PIN"
+
+[boards.cat_detector.buses.pio]
+pin = "LED_PIN"
 
 [boards.cat_detector.hardware_resources]
 TOF_NORTH_I2C_ADDR = { value = 0x30, type = "u8" }

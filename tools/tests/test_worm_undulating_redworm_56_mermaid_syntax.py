@@ -32,16 +32,14 @@ def test_readme_mermaid_syntax_structural() -> None:
                 # Subgraph ID cannot have raw spaces before '[' if brackets are used
                 # e.g. "subgraph Controller Layer [controller]" is invalid
                 match = re.match(r"^subgraph\s+([A-Za-z0-9_]+)\s*(\[.*\])?$", line_str)
-                assert (
-                    match is not None
-                ), f"Invalid subgraph definition with space-separated tokens: {line_str}"
+                assert match is not None, f"Invalid subgraph definition with space-separated tokens: {line_str}"
 
             # Edge syntax check: ensure arrows don't point to multi-word unquoted identifiers
             # e.g. "AppBin -->|Spawns tasks| Controller Layer"
             arrow_match = re.search(r"-->(\|[^|]*\|)?\s*([A-Za-z0-9_]+(\s+[A-Za-z0-9_]+)+)$", line_str)
-            assert (
-                arrow_match is None
-            ), f"Invalid edge target with space-separated unquoted identifier in line: {line_str}"
+            assert arrow_match is None, (
+                f"Invalid edge target with space-separated unquoted identifier in line: {line_str}"
+            )
 
 
 def test_all_markdown_mermaid_blocks_compile_with_mmdc() -> None:
@@ -57,9 +55,7 @@ def test_all_markdown_mermaid_blocks_compile_with_mmdc() -> None:
 
     # Find all markdown files in workspace
     md_files = [
-        p
-        for p in WORKSPACE_ROOT.rglob("*.md")
-        if not any(part in p.parts for part in ["target", ".venv", ".git"])
+        p for p in WORKSPACE_ROOT.rglob("*.md") if not any(part in p.parts for part in ["target", ".venv", ".git"])
     ]
 
     import tempfile
@@ -79,6 +75,6 @@ def test_all_markdown_mermaid_blocks_compile_with_mmdc() -> None:
                     text=True,
                     capture_output=True,
                 )
-                assert (
-                    proc.returncode == 0
-                ), f"Mermaid syntax error in {md_file.relative_to(WORKSPACE_ROOT)} (block {idx}):\n{proc.stderr}"
+                assert proc.returncode == 0, (
+                    f"Mermaid syntax error in {md_file.relative_to(WORKSPACE_ROOT)} (block {idx}):\n{proc.stderr}"
+                )
