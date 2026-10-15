@@ -6,34 +6,34 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-10-08 20:01:43 UTC` |
-| **Total Issues** | `19` |
-| **Open Issues** | `0` |
-| **Resolved / Closed** | `19 (100%)` |
+| **Report Date** | `2026-10-15 20:59:31 UTC` |
+| **Total Issues** | `34` |
+| **Open Issues** | `2` |
+| **Resolved / Closed** | `32 (94%)` |
 
 ## Issues by Severity
 
 | Severity | Count | Meaning |
 | :--- | :---: | :--- |
 | **`[CRITICAL]`** | 0 | System crashes, build failures, blockages, or electrical shorts. |
-| **`[HIGH]`** | 3 | Major functional defects, broken routing, DRC violations, or unphysical behavior. |
-| **`[MEDIUM]`** | 13 | Silkscreen collisions, layout sub-optimality, or visual clipping. |
+| **`[HIGH]`** | 4 | Major functional defects, broken routing, DRC violations, or unphysical behavior. |
+| **`[MEDIUM]`** | 27 | Silkscreen collisions, layout sub-optimality, or visual clipping. |
 | **`[LOW]`** | 3 | Minor aesthetic imperfections or documentation notes. |
 
 ## Issues by Category
 
 | Category | Count | Description |
 | :--- | :---: | :--- |
-| **`FIRMWARE`** | 3 | Core firmware logic, state machines, async tasks. |
+| **`FIRMWARE`** | 6 | Core firmware logic, state machines, async tasks. |
 | **`CONTROLLER`** | 1 | Domain controllers, PID loops, event dispatch. |
 | **`DRIVER`** | 0 | Hardware peripheral drivers, embedded-hal. |
-| **`PLATFORM`** | 0 | Chip support, PAC, HAL, clock/power management. |
+| **`PLATFORM`** | 1 | Chip support, PAC, HAL, clock/power management. |
 | **`BOARD`** | 1 | Board support packages (BSP), pinmux, boards. |
 | **`MODEL`** | 0 | Domain data models, configurations, state definitions. |
 | **`SHELL`** | 0 | CLI interface, shell commands, debug console. |
-| **`INFRASTRUCTURE`** | 13 | Build tooling, compilers, test runners, headless tools. |
+| **`INFRASTRUCTURE`** | 23 | Build tooling, compilers, test runners, headless tools. |
 | **`UI`** | 0 | Web dashboards, CLI viewers, review interfaces. |
-| **`GENERAL`** | 1 | Unclassified or cross-cutting firmware issues. |
+| **`GENERAL`** | 2 | Unclassified or cross-cutting firmware issues. |
 
 ## Issue Checklist
 
@@ -56,6 +56,21 @@
 - [x] **`[HIGH]`** [#WORM-017](#worm-017): Working tree actions doesn't show up unless I click an older commit `[dashboard]` (`RESOLVED`)
 - [x] **`[LOW]`** [#WORM-018](#worm-018): Populate component list (`RESOLVED`)
 - [x] **`[LOW]`** [#WORM-019](#worm-019): Port dashboard to Eel `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-020](#worm-020): Reduce dashboard font sizes `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-021](#worm-021): Detach dashboard from terminal after opening `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-022](#worm-022): Dashboard App icons show up as Chrome icons `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-023](#worm-023): Add Planned status to worms `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-024](#worm-024): UI icons appear corrupted `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-025](#worm-025): Close the dashboard when closing the app `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-026](#worm-026): It doesn’t look like the dashboard is closing automatically :-( `[Das]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-027](#worm-027): Apply dashboard theme to Window UI `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-028](#worm-028): Create separate firwmware architecture docs `[cat_fountain, carrier_board]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-029](#worm-029): Replace integer ID’s with Docker-pattern ID's `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-UNDULATING-REDWORM-56](#worm-undulating-redworm-56): README.md is broken (`RESOLVED`)
+- [ ] **`[MEDIUM]`** [#WORM-GLIDING-BRISTLE-252](#worm-gliding-bristle-252): New Worm Report (`OPEN`)
+- [ ] **`[MEDIUM]`** [#WORM-EARTHEN-NYMPH-383](#worm-earthen-nymph-383): SensorController: Periodic read failed. (`OPEN`)
+- [x] **`[MEDIUM]`** [#WORM-LOAMY-BRISTLE-455](#worm-loamy-bristle-455): Elide physical address and personal email in privacy sanitizer `[sanitizer]` (`RESOLVED`)
+- [x] **`[HIGH]`** [#WORM-TRANSLUCENT-TAPEWORM-953](#worm-translucent-tapeworm-953): Dashboard stuck at 20% on launch `[dashboard]` (`RESOLVED`)
 
 ## Detailed Issue Log
 
@@ -174,12 +189,6 @@ Affects commit: 330e1abbddeeedac588a5fe59eb434f28b75171b
 
 Screenshot attached. Also, none of the WORMs are resolved
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `screenshot` | [pasted_screenshot_1791066480358.png](attachments/WORM-006/pasted_screenshot_1791066480358.png) | Pasted screenshot |
-
 #### Resolution Notes
 
 Canonicalize commit worm tag IDs to WORM-xxx and query worms.sqlite without being overwritten by stale bugs.sqlite
@@ -199,12 +208,6 @@ Canonicalize commit worm tag IDs to WORM-xxx and query worms.sqlite without bein
 #### Description
 
 When I turn on word wrap in the dashboard tool, text still seems to be unwrapped
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `screenshot` | [pasted_screenshot_1791067074636.png](attachments/WORM-007/pasted_screenshot_1791067074636.png) | Pasted screenshot |
 
 #### Resolution Notes
 
@@ -254,12 +257,6 @@ Enforced window.name reuse on Diff Viewer, Code Review, and Worm Tracker; update
 #### Description
 
 Clicked on "Open in VSCode" next to app/carrier_board.md, and nothing seemed to happen. I was viewing the website in the VSCode simple browser window
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `document` | [pasted_document_1791074450389.txt](attachments/WORM-010/pasted_document_1791074450389.txt) | Pasted text document |
 
 #### Resolution Notes
 
@@ -10302,12 +10299,6 @@ Updated app/carrier_board.md with all 6 architecture requirements: dev:eeprom ho
 
 I see these two unresolved worms in the VCS UI which seem to be an artifact of porting changes over from the hardware repo
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `screenshot` | [pasted_screenshot_1791340187710.png](attachments/WORM-014/pasted_screenshot_1791340187710.png) | Pasted screenshot |
-
 #### Resolution Notes
 
 Prevent phantom OPEN worm tags in VCS UI for non-existent bug IDs ported from external repositories
@@ -10466,5 +10457,389 @@ Port the dashboard to Eel as a standalone app. Maintain the general UI, but open
 #### Resolution Notes
 
 Integrated Eel standalone desktop window support with browser discovery, /eel.js route, and --eel/--app CLI options
+
+---
+
+### <a id="worm-020"></a> 🟢 `[WORM-020]` Reduce dashboard font sizes
+
+- **UUID**: `680c7663-029b-47a5-9f21-9ccfa0d5c73a`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-08 21:05:29 UTC`
+- **Resolved**: `2026-10-08 21:13:25 UTC`
+
+#### Description
+
+Please reduce the dashboard font sizes to about 80% of what they are now. They are currently too large.
+
+---
+
+### <a id="worm-021"></a> 🟢 `[WORM-021]` Detach dashboard from terminal after opening
+
+- **UUID**: `61e94a99-68fb-4ea0-9c7b-f4f4d09bd59f`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-08 21:06:01 UTC`
+- **Resolved**: `2026-10-08 21:26:46 UTC`
+
+#### Description
+
+Add a check to dashboard.py to ensure that only one dashboard can run at a time, and detach the dashboard from the current terminal after loading completes.
+
+#### Resolution Notes
+
+Added single-instance check preventing duplicate dashboard processes using lock file and port check, and implemented terminal detachment after loading completes with --no-detach/--foreground and --stop CLI controls.
+
+---
+
+### <a id="worm-022"></a> 🟢 `[WORM-022]` Dashboard App icons show up as Chrome icons
+
+- **UUID**: `8fb06a58-7b19-4768-8ee9-bbf0b9b0187a`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-08 21:06:54 UTC`
+- **Resolved**: `2026-10-08 21:33:24 UTC`
+
+#### Description
+
+The dashboard icons show up as ugly Chrome icons in the taskbar. Please ensure the correct themed PWA app icon shows up in the taskbar.
+
+#### Resolution Notes
+
+Added pregenerated app.icns, updated manifest.json display_override, and implemented ensure_macos_app_bundle in launcher.py to launch standalone window via signed macOS .app shim displaying themed icon in Dock and dark title bar.
+
+---
+
+### <a id="worm-023"></a> 🟢 `[WORM-023]` Add Planned status to worms
+
+- **UUID**: `be9303ee-9ed8-4d56-a20c-0974ab03587c`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-08 21:08:10 UTC`
+- **Resolved**: `2026-10-08 21:18:20 UTC`
+
+#### Description
+
+Add a "Planned" status to Worms, and update skills and dashboard CLI so that the agent will not work on Planned Worms by default. Keep the default status in the Worm console as Open.
+
+#### Resolution Notes
+
+Added PLANNED status to WormStatus enum, updated CLI to exclude PLANNED from --open and added --planned filter, updated worm report template to include PLANNED tab with default OPEN status, and documented agent planned worm exemption in GEMINI.md and skill.
+
+---
+
+### <a id="worm-024"></a> 🟢 `[WORM-024]` UI icons appear corrupted
+
+- **UUID**: `c5a08be1-3c15-4624-8731-c5d5874bf55e`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-09 00:28:30 UTC`
+- **Resolved**: `2026-10-09 00:36:21 UTC`
+
+#### Description
+
+Attached below, both dashboard UI icons appear corrupted
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `screenshot` | [image.png](attachments/WORM-024/image.png) | Uploaded screenshot image.png |
+| `screenshot` | [image.png](attachments/WORM-024/image.png) | Uploaded screenshot image.png |
+
+#### Resolution Notes
+
+Rasterize SVG icons at full resolution with alpha transparency, proper centered coordinates, and generate high-res multi-resolution app.icns up to 1024x1024 for Retina macOS Dock and taskbar
+
+---
+
+### <a id="worm-025"></a> 🟢 `[WORM-025]` Close the dashboard when closing the app
+
+- **UUID**: `04a45bbe-385d-4912-99b4-3363835f8632`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-09 00:32:10 UTC`
+- **Resolved**: `2026-10-09 00:48:41 UTC`
+
+#### Description
+
+Can we close the dashboard server when closing the app window? No point in keeping it running after the app closes.
+
+#### Behavior Comparison
+
+- **Expected**: $ python tools/dashboard.py
+- **Actual**: $ python tools/dashboard.py
+
+#### Resolution Notes
+
+Register on_close callback in webview and eel launchers to cleanly terminate background dashboard server and unlink lock file upon window closure
+
+---
+
+### <a id="worm-026"></a> 🟢 `[WORM-026]` It doesn’t look like the dashboard is closing automatically :-(
+
+- **UUID**: `f863343e-01e3-4a38-a010-6dbb55320a05`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `Das`
+- **Created**: `2026-10-09 02:49:22 UTC`
+- **Resolved**: `2026-10-09 03:13:46 UTC`
+
+#### Description
+
+See traceback below
+
+#### Execution / Console Logs
+
+```text
+<username> at THE-HEARTH-NODE in ~/gh/firmware (main●●) 
+$ python tools/dashboard.py 
+Dashboard workstation is already running at http://127.0.0.1:8877 (PID 99042).
+(firmware-env) 
+<username> at THE-HEARTH-NODE in ~/gh/firmware (main●●) 
+$ python tools/dashboard.py
+Dashboard workstation is already running at http://127.0.0.1:8877 (PID 99042).
+(firmware-env) 
+<username> at THE-HEARTH-NODE in ~/gh/firmware (main●●) 
+$ python tools/dashboard.py
+Dashboard workstation is already running at http://127.0.0.1:8877 (PID 99042).
+(firmware-env)
+```
+
+#### Resolution Notes
+
+Hook window closed event to terminate pywebview process cleanly on window exit, ensure server shutdown unlinks lock file and exits, and automatically detect and recover orphaned background server instances.
+
+---
+
+### <a id="worm-027"></a> 🟢 `[WORM-027]` Apply dashboard theme to Window UI
+
+- **UUID**: `5965947b-7974-4334-933d-7f00c32c6ac7`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-09 02:50:05 UTC`
+- **Resolved**: `2026-10-09 03:26:33 UTC`
+
+#### Description
+
+Can you please apply the dashboard theme to the window UI, and add a gripper to the bottom right or make the resize borders of the window more visible?
+
+#### Resolution Notes
+
+Apply dashboard theme to native window UI with dark appearance and transparent title bar, add high-contrast themed border to window body, and add retro-styled resize gripper to the bottom right corner.
+
+---
+
+### <a id="worm-028"></a> 🟢 `[WORM-028]` Create separate firwmware architecture docs
+
+- **UUID**: `7b3d890e-45a1-43b8-a232-037f0a818cd3`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `PLATFORM`
+- **Component**: `cat_fountain, carrier_board`
+- **Created**: `2026-10-09 20:18:18 UTC`
+- **Resolved**: `2026-10-09 20:25:32 UTC`
+
+#### Description
+
+Hello, can you please create separate architecture docs for the rp2040-based cat fountain firmware architecture, and NXP MCX 947-based carrier board firmware arcitecture, with a top level firmware architecture doc. Then update the architectural definitions in README.md, cat_fountain.md, and carrier_board.md to refer to these separate architecture docs, simplifying all three existing documents in the process.
+
+#### Resolution Notes
+
+Created separate architecture docs docs/firmware_architecture.md, docs/cat_fountain_architecture.md, and docs/carrier_board_architecture.md. Updated and simplified README.md, app/cat_detector.md, app/cat_fountain.md, and app/carrier_board.md with links to dedicated architecture guides.
+
+---
+
+### <a id="worm-029"></a> 🟢 `[WORM-029]` Replace integer ID’s with Docker-pattern ID's
+
+- **UUID**: `b52165bd-d3e5-409a-bb0c-2f3ff9284a27`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-09 20:51:32 UTC`
+- **Resolved**: `2026-10-09 21:02:49 UTC`
+
+#### Description
+
+Replace the integer-based issue ID’s with Docker-pattern ID’s which are generated at random using a CRNG (E.g. openssl’s rand function). The issue format should be:
+
+   • Format: [ADJECTIVE]-[ANIMAL/NOUN]-[3 digits]
+ ┃   • Examples:
+ ┃       • WORM-SWIFT-FOX-42
+ ┃       • WORM-BOLD-LYNX-809
+ ┃       • WORM-IRON-CRANE-17
+
+Please compress the adjective and noun lists to save code space.
+
+#### Resolution Notes
+
+Replaced integer-based issue IDs with Docker-pattern IDs generated via CRNG with compressed word lists.
+
+---
+
+### <a id="worm-undulating-redworm-56"></a> 🟢 `[WORM-UNDULATING-REDWORM-56]` README.md is broken
+
+- **UUID**: `dc740603-beaa-4db2-b995-bcaa130a0ba2`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `GENERAL`
+- **Created**: `2026-10-15 03:35:22 UTC`
+- **Resolved**: `2026-10-15 03:38:54 UTC`
+
+#### Description
+
+See the error below
+
+#### Execution / Console Logs
+
+```text
+Unable to render rich display
+
+Parse error on line 32:
+...s tasks| Controller Layer ShellBin -
+-----------------------^
+Expecting 'SEMI', 'NEWLINE', 'EOF', 'AMP', 'START_LINK', 'LINK', 'LINK_ID', got 'NODE_STRING'
+
+For more information, see https://docs.github.com/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams#creating-mermaid-diagrams
+```
+
+#### Resolution Notes
+
+Fixed syntax error in README.md Mermaid diagram by replacing unquoted space-separated subgraph identifiers with valid quoted titles and identifiers, updated edge targets, and added regression tests in tools/tests/test_worm_undulating_redworm_56_mermaid_syntax.py.
+
+---
+
+### <a id="worm-gliding-bristle-252"></a> 🔴 `[WORM-GLIDING-BRISTLE-252]` New Worm Report
+
+- **UUID**: `7e4bd5e7-82e8-44b4-bce7-6b05b7cfbc56`
+- **Status**: `OPEN`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Created**: `2026-10-15 20:53:40 UTC`
+
+---
+
+### <a id="worm-earthen-nymph-383"></a> 🔴 `[WORM-EARTHEN-NYMPH-383]` SensorController: Periodic read failed.
+
+- **UUID**: `a177e2b9-941f-4bd8-85ad-bc66c2789e13`
+- **Status**: `OPEN`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Created**: `2026-10-15 20:53:09 UTC`
+
+#### Description
+
+I see a warning message from SEnsorController when I run `GpioStatus`
+
+#### Reproduction Steps
+
+1. 1. flash shell app
+2. 2. run `gpio status`
+
+#### Execution / Console Logs
+
+```text
+gpio status
+g372.454013 INFO [controller::shell_controller::log_command] received command "Gpio { subcommand: Some(Status), pin: None }"
+372.454165 INFO [controller::shell_controller::log_success] command execution succeeded
+GPIO Pin Status (0..29):
+Pin   Level
+-----------
+GP0   Low  (0)
+GP1   Low  (0)
+GP2   Low  (0)
+GP3   Low  (0)
+GP4   Hih (1)
+GP5   High (1)
+GP6   High (1)
+GP7   Low  (0)
+GP8   Low  (0)
+GP9   High (1)
+GP10  High (1)
+GP11  Low  (0)
+GP12  Low  (0)
+GP13  High (1)
+GP14  High (1)
+GP15  High (1)
+GP16  High (1)
+GP17  Low  (0)
+GP18  Low  (0)
+GP19  Low  (0)
+GP20  High (1)
+GP21  Low  (0)
+GP22  Low  (0)
+GP23  Low  (0)
+GP24  Low  (0)
+GP25  Low  (0)
+GP26  High (1)
+GP27  Low  (0)
+GP28  High (1)
+GP29  High (1)
+
+shell> 372.458954 WARN [controller::sensor_controller::{impl#11}::run::{async_fn#0}] SensorController: Periodic read failed.
+372.509120 WARN [controller::sensor_controller::{impl#11}::run::{async_fn#0}] SensorController: Periodic read failed.
+```
+
+---
+
+### <a id="worm-loamy-bristle-455"></a> 🟢 `[WORM-LOAMY-BRISTLE-455]` Elide physical address and personal email in privacy sanitizer
+
+- **UUID**: `09c3136e-35c6-442e-9708-46ac711fa0ed`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `sanitizer`
+- **Created**: `2026-10-15 00:37:10 UTC`
+- **Resolved**: `2026-10-15 00:37:11 UTC`
+
+#### Description
+
+Extend the zero-dependency personal privacy and identity sanitizer (`tools/dashboard/provider/sanitizer.py`) to systematically redact physical addresses (street names, numbers, suite/apt/unit designators, P.O. Boxes, and postal/ZIP codes) and personal email addresses (user handles, consumer email domains like `@gmail.com`, `@me.com`, etc.) across developer feedback, bug reports, and logs. Additionally, update VCS engine commit author and email mapping to redact user author identities to `User` and `user@workspace`.
+
+#### Resolution Notes
+
+1. Added physical street address, unit/suite, and P.O. Box regex redaction to `<address>` and `<zip>` in `elide_personal_info()`, using pure regex matching without requiring an engineering whitelist or supplier address preservation.
+2. Dynamically discovered user emails, handles, and system usernames to map all personal identifiers and consumer email domains to `<email>`.
+3. Updated `elide_commit_author()` and `elide_commit_email()` in `tools/dashboard/provider/sanitizer.py` to map user author identities and commit emails to `User` and `user@workspace` via dynamic discovery.
+4. Updated VCS workstation frontend `sanitizeAuthor()` in `diff_view.html.j2` and `code_review.html.j2` to read the author blacklist dynamically from the backend session.
+5. Added dedicated regression unit tests in `tools/tests/test_privacy_and_relative_paths.py`.
+
+---
+
+### <a id="worm-translucent-tapeworm-953"></a> 🟢 `[WORM-TRANSLUCENT-TAPEWORM-953]` Dashboard stuck at 20% on launch
+
+- **UUID**: `3e17a613-50d8-4c90-9e62-24e63b8f13fe`
+- **Status**: `RESOLVED`
+- **Severity**: `HIGH`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-15 00:32:11 UTC`
+- **Resolved**: `2026-10-15 00:32:17 UTC`
+
+#### Description
+
+Upon launching or restarting the dashboard workstation, the UI was stuck displaying the feedback database synchronization modal at 20% progress. Inspection revealed a JavaScript `SyntaxError: Unexpected token ')'` in `diff_view.html.j2:1705` within the `sanitizeAuthor()` function introduced during privacy sanitization hardening. Because the script failed to parse, `initDiffView()` and `performInitialSync()` never ran, leaving the modal stuck at its initial 20% HTML state.
+
+#### Resolution Notes
+
+1. Pruned dangling closing parenthesis in `sanitizeAuthor()` condition in `tools/dashboard/templates/diff_view.html.j2`.
+2. Hardened workstation initialization lifecycle so `initDiffView()` fires immediately if `document.readyState !== 'loading'`, eliminating dependency on potentially pre-fired `DOMContentLoaded` events.
+3. Added comprehensive regression test `test_regression_bug_translucent_tapeworm_953_dashboard_js_syntax_and_sync_screen` in `tools/tests/test_dashboard.py` verifying balanced syntax and executing `node -c` across extracted `<script>` blocks in all dashboard templates (`diff_view.html.j2`, `code_review.html.j2`, `worm_report.html.j2`).
 
 ---
