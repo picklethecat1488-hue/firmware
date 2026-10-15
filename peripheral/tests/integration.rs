@@ -841,6 +841,82 @@ fn test_probeable_ina219() {
 }
 
 #[test]
+fn test_ina219_read_current_ma_scaling_and_fallback() {
+    run_test!(async {
+        use model::interfaces::{PowerMeasurementMode, PowerSensor};
+        use peripheral::ina219::Ina219;
+
+        // Test 1: Current scaling from 0.1mA raw units to mA
+        // Bus voltage has CNVR bit (0x0002) set
+        // Current register returns 750 (representing 75.0 mA)
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x00, 0x02]); // Bus Voltage (CNVR = 1)
+        reads.push_back(vec![0x02, 0xEE]); // Current = 750 (75 mA)
+
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+
+        let current = dev.read_current_ma().await.unwrap();
+        assert_eq!(current, 75); // 750 * 0.1mA = 75mA
+
+        // Test 2: Current scaling for 2A (20000 raw counts)
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x00, 0x02]); // Bus Voltage (CNVR = 1)
+        reads.push_back(vec![0x4E, 0x20]); // Current = 20000 (2000 mA)
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+        let current = dev.read_current_ma().await.unwrap();
+        assert_eq!(current, 2000);
+
+        // Test 3: Calibration lost fallback to Shunt Voltage register (0x01)
+        // Current register returns 0 (due to lost calibration)
+        // Shunt voltage register returns 20000 (representing 2000 mA)
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x00, 0x02]); // Bus Voltage (CNVR = 1)
+        reads.push_back(vec![0x00, 0x00]); // Current = 0
+        reads.push_back(vec![0x4E, 0x20]); // Shunt Voltage = 20000 (2000 mA)
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+        let current = dev.read_current_ma().await.unwrap();
+        assert_eq!(current, 2000);
+        // Verify calibration register was rewritten with 4096 (0x1000)
+        {
+            let written = writes.lock().unwrap();
+            assert!(written.iter().any(|w| w == &vec![0x05, 0x10, 0x00]));
+        }
+
+        // Test 4: set_measurement_mode restores calibration
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x39, 0x98]); // Current Config
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+        dev.set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
+            .await
+            .unwrap();
+        let written = writes.lock().unwrap();
+        assert_eq!(written[0], vec![0x00]); // Read config
+        assert_eq!(written[1], vec![0x00, 0x39, 0x9F]); // Write config
+        assert_eq!(written[2], vec![0x05, 0x10, 0x00]); // Write calibration (4096)
+    });
+}
+
+#[test]
 fn test_probeable_vl53l0x() {
     run_test!(async {
         use model::interfaces::Probeable;
