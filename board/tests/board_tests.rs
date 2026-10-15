@@ -67,3 +67,15 @@ fn test_mock_board_initialization() {
     let peripherals = board.take_peripherals();
     assert_eq!(peripherals.speed_sensor.pulses_per_rev(), 3);
 }
+
+#[test]
+fn test_board_bus_assigned_pins() {
+    assert_eq!(Board::BUS_ASSIGNED_PINS, &[0, 1, 11, 12, 13]);
+    assert!(Board::is_bus_assigned(0)); // UART TX
+    assert!(Board::is_bus_assigned(1)); // UART RX
+    assert!(Board::is_bus_assigned(11)); // LED PIO
+    assert!(Board::is_bus_assigned(12)); // I2C SDA
+    assert!(Board::is_bus_assigned(13)); // I2C SCL
+    assert!(!Board::is_bus_assigned(16)); // Motor pin
+    assert!(!Board::is_bus_assigned(26)); // Speed sense
+}

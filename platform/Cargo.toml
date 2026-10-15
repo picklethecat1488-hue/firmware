@@ -37,10 +37,14 @@ embassy-executor = { version = "0.7.0", features = ["arch-std", "executor-thread
 [dev-dependencies]
 futures = "0.3"
 
+[build-dependencies]
+code_gen = { path = "../tools/code_gen" }
+
 [features]
 default = []
 tracing = ["dep:tracing-defmt"]
 dual-core = []
 rp2040 = []
+
 
 

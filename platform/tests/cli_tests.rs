@@ -151,6 +151,15 @@ fn test_is_pin_high() {
 
 #[test]
 fn test_is_alternate_function() {
+    assert_eq!(platform::gpio::BUS_ASSIGNED_PINS, &[0, 1, 11, 12, 13]);
+    assert!(platform::gpio::is_bus_assigned(0));
+    assert!(platform::gpio::is_bus_assigned(1));
+    assert!(platform::gpio::is_bus_assigned(11));
+    assert!(platform::gpio::is_bus_assigned(12));
+    assert!(platform::gpio::is_bus_assigned(13));
+    assert!(!platform::gpio::is_bus_assigned(2));
+    assert!(!platform::gpio::is_bus_assigned(26));
+
     assert!(platform::gpio::is_alternate_function(0)); // UART0 TX
     assert!(platform::gpio::is_alternate_function(1)); // UART0 RX
     assert!(platform::gpio::is_alternate_function(11)); // PIO0 WS2812

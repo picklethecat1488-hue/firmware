@@ -1,5 +1,7 @@
 //! GPIO diagnostic and status utilities.
 
+include!(concat!(env!("OUT_DIR"), "/generated_gpio.rs"));
+
 use core::fmt::Write as _;
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -16,17 +18,12 @@ crate::subcommand_enum! {
     "status, read"
 }
 
-/// Total number of GPIO pins on the microcontroller.
-pub const NUM_GPIO_PINS: u32 = 30;
-
 /// Checks if a GPIO pin is configured for an alternate (non-GPIO) peripheral function.
 ///
-/// Returns `true` if the pin is dedicated to a hardware peripheral (such as
-/// UART0 on GP0/GP1, PIO0 on GP11, or I2C0 on GP12/GP13), indicating that
-/// reading the pin as a general-purpose digital input should be skipped.
+/// Delegates to the code-generated BSP bus assignment mapping [`is_bus_assigned`].
 #[inline]
 pub fn is_alternate_function(pin: u32) -> bool {
-    matches!(pin, 0 | 1 | 11 | 12 | 13)
+    is_bus_assigned(pin)
 }
 
 /// Checks if a specific GPIO pin is at a high logic level given a bitmask.
