@@ -37,9 +37,6 @@ pub struct BoardConfig {
     pub pins: HashMap<String, u32>,
     /// Mappings of named communication buses to bus controller settings.
     pub buses: HashMap<String, BoardBusConfig>,
-    /// Explicit list of bus-assigned pin names or indices.
-    #[serde(default)]
-    pub bus_assigned_pins: Vec<String>,
     /// Mappings of custom hardware resources to typed key-value settings.
     pub hardware_resources: HashMap<String, TypedResource>,
     /// Mappings of named memory layout partitions.
@@ -155,52 +152,50 @@ impl GeneratedGpioTemplate {
     }
 }
 
-/// Resolves all unique numeric GPIO pin IDs assigned to communication buses or marked as bus-assigned.
+/// Resolves all unique numeric GPIO pin IDs assigned to communication buses.
 pub fn resolve_bus_assigned_pins(board_config: &BoardConfig) -> Vec<u32> {
     let mut assigned_pins = std::collections::BTreeSet::new();
 
-    // 1. From buses table
+    let resolve_pin = |entry: &str| -> Option<u32> {
+        board_config
+            .pins
+            .get(entry)
+            .copied()
+            .or_else(|| entry.parse::<u32>().ok())
+    };
+
     for bus in board_config.buses.values() {
         if let Some(ref sda) = bus.sda {
-            if let Some(&pin) = board_config.pins.get(sda) {
+            if let Some(pin) = resolve_pin(sda) {
                 assigned_pins.insert(pin);
             }
         }
         if let Some(ref scl) = bus.scl {
-            if let Some(&pin) = board_config.pins.get(scl) {
+            if let Some(pin) = resolve_pin(scl) {
                 assigned_pins.insert(pin);
             }
         }
         if let Some(ref tx) = bus.tx {
-            if let Some(&pin) = board_config.pins.get(tx) {
+            if let Some(pin) = resolve_pin(tx) {
                 assigned_pins.insert(pin);
             }
         }
         if let Some(ref rx) = bus.rx {
-            if let Some(&pin) = board_config.pins.get(rx) {
+            if let Some(pin) = resolve_pin(rx) {
                 assigned_pins.insert(pin);
             }
         }
         if let Some(ref pin_name) = bus.pin {
-            if let Some(&pin) = board_config.pins.get(pin_name) {
+            if let Some(pin) = resolve_pin(pin_name) {
                 assigned_pins.insert(pin);
             }
         }
         if let Some(ref pin_list) = bus.pins {
             for pin_name in pin_list {
-                if let Some(&pin) = board_config.pins.get(pin_name) {
+                if let Some(pin) = resolve_pin(pin_name) {
                     assigned_pins.insert(pin);
                 }
             }
-        }
-    }
-
-    // 2. From explicit bus_assigned_pins
-    for entry in &board_config.bus_assigned_pins {
-        if let Ok(num) = entry.parse::<u32>() {
-            assigned_pins.insert(num);
-        } else if let Some(&pin) = board_config.pins.get(entry) {
-            assigned_pins.insert(pin);
         }
     }
 

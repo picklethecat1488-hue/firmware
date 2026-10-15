@@ -18,14 +18,6 @@ crate::subcommand_enum! {
     "status, read"
 }
 
-/// Checks if a GPIO pin is configured for an alternate (non-GPIO) peripheral function.
-///
-/// Delegates to the code-generated BSP bus assignment mapping [`is_bus_assigned`].
-#[inline]
-pub fn is_alternate_function(pin: u32) -> bool {
-    is_bus_assigned(pin)
-}
-
 /// Checks if a specific GPIO pin is at a high logic level given a bitmask.
 #[inline]
 pub fn is_pin_high(bitmask: u32, pin: u32) -> bool {
@@ -55,7 +47,7 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
             let _ = writeln!(writer, "Pin   Level");
             let _ = writeln!(writer, "-----------");
             for p in 0..NUM_GPIO_PINS {
-                if is_alternate_function(p) {
+                if is_bus_assigned(p) {
                     let _ = writeln!(writer, "GP{:<2}  Alt", p);
                 } else {
                     let pin = steal_flex!(p);
@@ -73,7 +65,7 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
                 if p >= NUM_GPIO_PINS {
                     return Err("Invalid pin number (must be 0..29)");
                 }
-                if is_alternate_function(p) {
+                if is_bus_assigned(p) {
                     let _ = writeln!(
                         writer,
                         "GP{} is configured for alternate function (not GPIO)",
@@ -90,7 +82,7 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
                     let mut line = heapless::String::<80>::new();
                     for col in 0..6 {
                         let p = row * 6 + col;
-                        if is_alternate_function(p) {
+                        if is_bus_assigned(p) {
                             let _ = write!(line, "GP{:<2}: Alt ", p);
                         } else {
                             let pin = steal_flex!(p);
@@ -121,7 +113,7 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
             let _ = writeln!(writer, "Pin   Level");
             let _ = writeln!(writer, "-----------");
             for p in 0..NUM_GPIO_PINS {
-                if is_alternate_function(p) {
+                if is_bus_assigned(p) {
                     let _ = writeln!(writer, "GP{:<2}  Alt", p);
                 } else {
                     let _ = writeln!(writer, "GP{:<2}  Low  (0)", p);
@@ -133,7 +125,7 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
                 if p >= NUM_GPIO_PINS {
                     return Err("Invalid pin number (must be 0..29)");
                 }
-                if is_alternate_function(p) {
+                if is_bus_assigned(p) {
                     let _ = writeln!(
                         writer,
                         "GP{} is configured for alternate function (not GPIO)",
@@ -148,7 +140,7 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
                     let mut line = heapless::String::<80>::new();
                     for col in 0..6 {
                         let p = row * 6 + col;
-                        if is_alternate_function(p) {
+                        if is_bus_assigned(p) {
                             let _ = write!(line, "GP{:<2}: Alt ", p);
                         } else {
                             let _ = write!(line, "GP{:<2}: 0   ", p);

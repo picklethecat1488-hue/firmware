@@ -20,14 +20,10 @@ def test_cr_175e39e2_no_rp_pac_in_platform():
     assert gpio_rs.exists(), f"File not found: {gpio_rs}"
 
     cargo_content = cargo_toml.read_text(encoding="utf-8")
-    assert "rp-pac" not in cargo_content, (
-        "platform/Cargo.toml must not depend directly on rp-pac! (CR-175e39e2)"
-    )
+    assert "rp-pac" not in cargo_content, "platform/Cargo.toml must not depend directly on rp-pac! (CR-175e39e2)"
 
     gpio_content = gpio_rs.read_text(encoding="utf-8")
-    assert "rp_pac" not in gpio_content, (
-        "platform/src/io/gpio.rs must not import or reference rp_pac! (CR-175e39e2)"
-    )
+    assert "rp_pac" not in gpio_content, "platform/src/io/gpio.rs must not import or reference rp_pac! (CR-175e39e2)"
 
 
 def test_cr_175e39e2_skips_alternate_function_gpio():
@@ -37,11 +33,8 @@ def test_cr_175e39e2_skips_alternate_function_gpio():
 
     content = gpio_rs.read_text(encoding="utf-8")
 
-    assert "pub fn is_alternate_function" in content, (
-        "platform/src/io/gpio.rs must expose is_alternate_function to detect peripheral pins."
-    )
-    assert "is_alternate_function(p)" in content, (
-        "platform/src/io/gpio.rs must inspect is_alternate_function before reading logic levels."
+    assert "is_bus_assigned(p)" in content, (
+        "platform/src/io/gpio.rs must inspect is_bus_assigned before reading logic levels."
     )
     assert 'let _ = writeln!(writer, "GP{:<2}  Alt", p);' in content, (
         "platform/src/io/gpio.rs must label alternate function pins as 'Alt' in status output."
@@ -58,13 +51,8 @@ def test_cr_175e39e2_no_raw_memory_map_in_gpio_rs():
 
     content = gpio_rs.read_text(encoding="utf-8")
 
-    assert "0x4001" not in content, (
-        "platform/src/io/gpio.rs must not hardcode RP2040 IO_BANK0 memory map addresses."
-    )
-    assert "0xd000" not in content, (
-        "platform/src/io/gpio.rs must not hardcode RP2040 SIO memory map addresses."
-    )
+    assert "0x4001" not in content, "platform/src/io/gpio.rs must not hardcode RP2040 IO_BANK0 memory map addresses."
+    assert "0xd000" not in content, "platform/src/io/gpio.rs must not hardcode RP2040 SIO memory map addresses."
     assert "read_volatile" not in content, (
         "platform/src/io/gpio.rs must rely on Embassy driver abstractions rather than raw volatile reads."
     )
-

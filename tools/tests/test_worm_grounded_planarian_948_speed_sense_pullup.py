@@ -24,9 +24,7 @@ def test_worm_grounded_planarian_948_speed_sense_pin_pullup_configured():
     )
 
     # Invariant 2: Configured as input with Pull::Up
-    assert "speed_pin.set_as_input()" in content, (
-        "board/src/cat_detector.rs must configure speed_pin as input."
-    )
+    assert "speed_pin.set_as_input()" in content, "board/src/cat_detector.rs must configure speed_pin as input."
     assert "speed_pin.set_pull(Pull::Up)" in content, (
         "board/src/cat_detector.rs must enable Pull::Up on speed_pin for open-drain Hall sensor."
     )
@@ -46,9 +44,5 @@ def test_worm_grounded_planarian_948_no_pad_ctrl_clobbering_in_gpio_cli():
     )
 
     # Invariant 4: No rp-pac dependency or raw memory map access
-    assert "rp_pac" not in content, (
-        "platform/src/io/gpio.rs must not depend on rp_pac."
-    )
-    assert "0xd000" not in content, (
-        "platform/src/io/gpio.rs must not assume the RP2040 memory map."
-    )
+    assert "rp_pac" not in content, "platform/src/io/gpio.rs must not depend on rp_pac."
+    assert "0xd000" not in content, "platform/src/io/gpio.rs must not assume the RP2040 memory map."

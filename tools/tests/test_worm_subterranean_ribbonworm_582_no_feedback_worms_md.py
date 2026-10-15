@@ -30,9 +30,7 @@ def test_worm_subterranean_ribbonworm_582_no_feedback_worms_md_in_repo():
         text=True,
         check=True,
     )
-    assert not res.stdout.strip(), (
-        "feedback/WORMS.md must not be tracked by git!"
-    )
+    assert not res.stdout.strip(), "feedback/WORMS.md must not be tracked by git!"
 
 
 def test_worm_subterranean_ribbonworm_582_dashboard_list_worms_works_without_feedback_worms_md():

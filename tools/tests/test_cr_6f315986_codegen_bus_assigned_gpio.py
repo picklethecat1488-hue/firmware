@@ -32,26 +32,24 @@ def test_cr_6f315986_no_hardcoded_gpio_matching_in_platform():
         "platform/src/io/gpio.rs must include generated_gpio.rs generated from board.toml."
     )
 
-    # Invariant 3: Delegates is_alternate_function to is_bus_assigned
-    assert "pub fn is_alternate_function(pin: u32) -> bool" in content, (
-        "platform/src/io/gpio.rs must expose is_alternate_function for compatibility."
+    # Invariant 3: Calls is_bus_assigned directly; is_alternate_function is purged
+    assert "is_alternate_function" not in content, (
+        "is_alternate_function shim must be deleted; use is_bus_assigned directly."
     )
-    assert "is_bus_assigned(pin)" in content, (
-        "is_alternate_function must delegate directly to code-generated is_bus_assigned."
-    )
+    assert "is_bus_assigned(p)" in content, "platform/src/io/gpio.rs must call is_bus_assigned directly."
 
 
 def test_cr_6f315986_board_toml_marks_bus_assigned():
-    """Verify board.toml marks GPIOs as bus-assigned."""
+    """Verify board.toml marks GPIOs as bus-assigned via communication buses."""
     workspace_root = Path(__file__).resolve().parent.parent.parent
     board_toml = workspace_root / "board" / "board.toml"
 
     assert board_toml.exists(), f"File not found: {board_toml}"
     content = board_toml.read_text(encoding="utf-8")
 
-    assert "bus_assigned_pins" in content, (
-        "board/board.toml must explicitly mark GPIOs as bus-assigned."
-    )
+    assert "[boards.cat_detector.buses.i2c]" in content, "board/board.toml must define i2c bus."
+    assert "[boards.cat_detector.buses.uart]" in content, "board/board.toml must define uart bus."
+    assert "[boards.cat_detector.buses.pio]" in content, "board/board.toml must define pio bus."
     assert "UART_TX_PIN" in content
     assert "UART_RX_PIN" in content
     assert "LED_PIN" in content
@@ -63,12 +61,8 @@ def test_cr_6f315986_codegen_generates_gpio_mapping():
     """Verify tools/code_gen provides GPIO generation utilities and templates."""
     workspace_root = Path(__file__).resolve().parent.parent.parent
     codegen_board = workspace_root / "tools" / "code_gen" / "src" / "board.rs"
-    gpio_template = (
-        workspace_root / "platform" / "templates" / "generated_gpio.rs.jinja"
-    )
-    board_template = (
-        workspace_root / "board" / "templates" / "generated_board.rs.jinja"
-    )
+    gpio_template = workspace_root / "platform" / "templates" / "generated_gpio.rs.jinja"
+    board_template = workspace_root / "board" / "templates" / "generated_board.rs.jinja"
 
     assert codegen_board.exists(), f"File not found: {codegen_board}"
     assert gpio_template.exists(), f"File not found: {gpio_template}"

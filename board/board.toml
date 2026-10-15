@@ -9,13 +9,6 @@ stack_top = 0x20042000
 core0_stack_bottom = 0x2003C000
 core_monitor_timeout_ms = 10000
 core_monitor_warn_pct = 80
-bus_assigned_pins = [
-    "UART_TX_PIN",
-    "UART_RX_PIN",
-    "LED_PIN",
-    "I2C_SDA_PIN",
-    "I2C_SCL_PIN",
-]
 
 [boards.cat_detector.pins]
 PUMP_UH_PIN = 16

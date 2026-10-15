@@ -150,29 +150,21 @@ fn test_is_pin_high() {
 }
 
 #[test]
-fn test_is_alternate_function() {
+fn test_is_bus_assigned() {
     assert_eq!(platform::gpio::BUS_ASSIGNED_PINS, &[0, 1, 11, 12, 13]);
-    assert!(platform::gpio::is_bus_assigned(0));
-    assert!(platform::gpio::is_bus_assigned(1));
-    assert!(platform::gpio::is_bus_assigned(11));
-    assert!(platform::gpio::is_bus_assigned(12));
-    assert!(platform::gpio::is_bus_assigned(13));
+    assert!(platform::gpio::is_bus_assigned(0)); // UART0 TX
+    assert!(platform::gpio::is_bus_assigned(1)); // UART0 RX
+    assert!(platform::gpio::is_bus_assigned(11)); // PIO0 WS2812
+    assert!(platform::gpio::is_bus_assigned(12)); // I2C0 SDA
+    assert!(platform::gpio::is_bus_assigned(13)); // I2C0 SCL
     assert!(!platform::gpio::is_bus_assigned(2));
+    assert!(!platform::gpio::is_bus_assigned(5));
     assert!(!platform::gpio::is_bus_assigned(26));
-
-    assert!(platform::gpio::is_alternate_function(0)); // UART0 TX
-    assert!(platform::gpio::is_alternate_function(1)); // UART0 RX
-    assert!(platform::gpio::is_alternate_function(11)); // PIO0 WS2812
-    assert!(platform::gpio::is_alternate_function(12)); // I2C0 SDA
-    assert!(platform::gpio::is_alternate_function(13)); // I2C0 SCL
-    assert!(!platform::gpio::is_alternate_function(2));
-    assert!(!platform::gpio::is_alternate_function(5));
-    assert!(!platform::gpio::is_alternate_function(26));
-    assert!(!platform::gpio::is_alternate_function(30)); // Beyond range
+    assert!(!platform::gpio::is_bus_assigned(30)); // Beyond range
 }
 
 #[test]
-fn test_gpio_cli_skips_alternate_pin() {
+fn test_gpio_cli_skips_bus_assigned_pin() {
     let mock_resolver = ();
     let mut mock_write = MockWriter {
         buf: heapless::Vec::new(),
