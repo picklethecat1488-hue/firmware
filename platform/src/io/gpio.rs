@@ -2,9 +2,6 @@
 
 use core::fmt::Write as _;
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
-use embassy_rp::gpio::Flex;
-
 crate::subcommand_enum! {
     /// Subcommands for GPIO diagnostics.
     pub enum GpioSubcommand {
@@ -14,6 +11,12 @@ crate::subcommand_enum! {
         Read,
     }
     "status, read"
+}
+
+/// Checks if a specific GPIO pin is at a high logic level given the GPIO_IN bitmask.
+#[inline]
+pub fn is_pin_high(gpio_in: u32, pin: u32) -> bool {
+    (gpio_in & (1 << pin)) != 0
 }
 
 /// Processes GPIO diagnostic CLI subcommands.
@@ -26,12 +29,7 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
 ) -> Result<(), &'static str> {
     let cmd = subcommand.ok_or("Missing gpio subcommand (expected: status, read)")?;
 
-    // Helper macro to steal a pin and wrap in Flex
-    macro_rules! steal_flex {
-        ($pin_num:expr) => {
-            Flex::new(unsafe { embassy_rp::gpio::AnyPin::steal($pin_num as u8) })
-        };
-    }
+    let gpio_in = rp_pac::SIO.gpio_in(0).read();
 
     match cmd {
         GpioSubcommand::Status => {
@@ -39,8 +37,7 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
             let _ = writeln!(writer, "Pin   Level");
             let _ = writeln!(writer, "-----------");
             for p in 0..30 {
-                let pin = steal_flex!(p);
-                let lvl_str = if pin.is_high() {
+                let lvl_str = if is_pin_high(gpio_in, p) {
                     "High (1)"
                 } else {
                     "Low  (0)"
@@ -53,8 +50,7 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
                 if p >= 30 {
                     return Err("Invalid pin number (must be 0..29)");
                 }
-                let pin = steal_flex!(p);
-                let lvl_val = if pin.is_high() { 1 } else { 0 };
+                let lvl_val = if is_pin_high(gpio_in, p) { 1 } else { 0 };
                 let _ = writeln!(writer, "GP{} level is {}", p, lvl_val);
             } else {
                 let _ = writeln!(writer, "GPIO Pin Levels (0..29):");
@@ -62,8 +58,7 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
                     let mut line = heapless::String::<80>::new();
                     for col in 0..6 {
                         let p = row * 6 + col;
-                        let pin = steal_flex!(p);
-                        let lvl_val = if pin.is_high() { 1 } else { 0 };
+                        let lvl_val = if is_pin_high(gpio_in, p) { 1 } else { 0 };
                         let _ = write!(line, "GP{:<2}: {}   ", p, lvl_val);
                     }
                     let _ = writeln!(writer, "{}", line);
