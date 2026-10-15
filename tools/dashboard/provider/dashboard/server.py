@@ -41,6 +41,7 @@ from model.worm_report import (
     WormStatus,
 )
 from provider.code_review.server import ReviewServer
+from provider.sanitizer import get_author_blacklist
 from provider.vcs.editor import open_in_vscode
 from provider.vcs.git_engine import GitEngine, extract_line_snippet, get_git_root
 from provider.worm_report.server import WormReportServer
@@ -1350,6 +1351,7 @@ class DashboardServer(ThreadingHTTPServer):
             conflicts=conflicts,
             agent_feedback_files=agent_feedback,
             initial_sync_done=self.initial_sync_done,
+            author_blacklist=get_author_blacklist(),
         )
 
     def get_review_session(self, revisions: Optional[List[str]] = None) -> ReviewSessionModel:
@@ -1360,15 +1362,19 @@ class DashboardServer(ThreadingHTTPServer):
             except Exception:
                 pass
 
+        blacklist = get_author_blacklist()
+
         if not revisions:
             if self.review_server.session:
                 self.review_server.session.repo_root = str(self.repo_root)
+                self.review_server.session.author_blacklist = blacklist
             return self.review_server.session
 
         resolved = self.git_engine.resolve_revisions(revisions)
         if not resolved:
             if self.review_server.session:
                 self.review_server.session.repo_root = str(self.repo_root)
+                self.review_server.session.author_blacklist = blacklist
             return self.review_server.session
 
         commit_hash = resolved[0]
@@ -1378,6 +1384,7 @@ class DashboardServer(ThreadingHTTPServer):
             and set(self.review_server.session.revisions) == set(resolved)
         ):
             self.review_server.session.repo_root = str(self.repo_root)
+            self.review_server.session.author_blacklist = blacklist
             return self.review_server.session
 
         session = ReviewSessionModel(
@@ -1386,6 +1393,7 @@ class DashboardServer(ThreadingHTTPServer):
             repo_root=str(self.repo_root),
             commit_hash=commit_hash,
             revisions=resolved,
+            author_blacklist=blacklist,
             created_at=datetime.now(timezone.utc).isoformat(),
             updated_at=datetime.now(timezone.utc).isoformat(),
         )

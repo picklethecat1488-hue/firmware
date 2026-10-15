@@ -126,13 +126,20 @@ steps:
     description: Verify West sensor reads correct calibrated distance (~100mm).
 
   - id: "7a"
-    name: Verify Actuator (Pump Motor) Start
+    name: Verify Actuator (TMC6300 BLDC Pump Motor) Start
     type: shell_command
     command: motor speed 50
     expected_regex: 'Motor current: \d+ mA'
-    description: Spin pump motor at 50% speed.
+    description: Spin BetaFPV 1102 BLDC pump motor via TMC6300 at 50% speed.
 
   - id: "7b"
+    name: Verify Hall Speed Sensor RPM Reading
+    type: shell_command
+    command: motor rpm
+    expected_regex: 'Motor speed: \d+ RPM'
+    description: Read measured rotational speed from AH3577 latching Hall effect speed sensor.
+
+  - id: "7c"
     name: Verify Actuator (Pump Motor) Stop
     type: shell_command
     command: motor stop

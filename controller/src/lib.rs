@@ -220,14 +220,23 @@ impl ProximityReader for () {
     }
 }
 
-/// Trait for reading motor current/torque asynchronously.
+/// Trait for reading motor current/torque and rotational speed asynchronously.
 pub trait MotorReader {
     /// Read motor current in mA.
     async fn read_motor_current_ma(&mut self) -> Result<i32, PeripheralError>;
+
+    /// Read motor rotational speed in RPM.
+    async fn read_motor_rpm(&mut self) -> Result<u32, PeripheralError> {
+        Ok(0)
+    }
 }
 
 impl MotorReader for () {
     async fn read_motor_current_ma(&mut self) -> Result<i32, PeripheralError> {
+        Err(PeripheralError::NotImplemented)
+    }
+
+    async fn read_motor_rpm(&mut self) -> Result<u32, PeripheralError> {
         Err(PeripheralError::NotImplemented)
     }
 }

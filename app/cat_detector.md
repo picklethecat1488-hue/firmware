@@ -14,7 +14,7 @@ The Cat Detector firmware is a bare-metal `#![no_std]` embedded application buil
 - **Platform**: Raspberry Pi Pico (RP2040, dual-core Arm Cortex-M0+).
 - **Core Loop**: Asynchronous cooperative task scheduling with zero blocking spin-loops.
 - **Sensors**: Three VL53L0X Time-of-Flight range sensors dynamically addressed via I2C0 (`0x30`, `0x31`, `0x32`).
-- **Actuation**: L9110S H-bridge motor driver regulating an N20 water pump impeller with INA219 current monitoring.
+- **Actuation**: SparkFun TMC6300 3-phase BLDC motor driver regulating a BetaFPV 1102 15W brushless water pump impeller with INA219 current monitoring and AH3577 latching Hall effect speed sensor.
 - **Power & Thermal**: MAX17048 fuel gauge and internal/external thermal trip protection.
 - **Persistence**: Flat flash filesystem governed by `sequential-storage` with `ProfilingFlash` wear monitoring.
 
@@ -128,10 +128,10 @@ The checklist starts by flashing the diagnostic shell to run low-level hardware 
     *   *Type*: Target Shell Commands
     *   *Commands*: `sensor cal_near <sensor>` and `sensor cal_far <sensor>` (for `north`, `east`, `west`).
     *   *Expected Output*: Performs two-point linear distance mapping and saves calibrated offsets to `vl53l0x_cal.cbor` in flash.
-*   **Step 6a - 6b: Verify Pump Motor Control**
+*   **Step 6a - 6c: Verify Pump Motor Control & RPM**
     *   *Type*: Target Shell Commands
-    *   *Commands*: `motor speed 50` and `motor stop`
-    *   *Expected Output*: Spins pump motor at 50% speed, reports active current draw in mA (e.g., `Motor current: 120 mA`), and halts motor.
+    *   *Commands*: `motor speed 50`, `motor rpm`, and `motor stop`
+    *   *Expected Output*: Spins pump motor at 50% speed, reports active current draw in mA (e.g., `Motor current: 120 mA`), reports measured rotational speed (e.g., `Motor speed: 3200 RPM`), and halts motor.
 *   **Step 7a - 7b: Calibrate Motor Current**
     *   *Type*: Target Shell Commands
     *   *Commands*: `motor calibrate <empty|low|high|overload>`

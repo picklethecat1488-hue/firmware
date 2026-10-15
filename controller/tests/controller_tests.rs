@@ -3,14 +3,15 @@ use controller::MotorState;
 use model::calibration::Calibration;
 use model::interfaces::{Motor, NoTick, Tickable};
 use model::types::MotorSpeed;
-use peripheral::mock::{MockCurrentSensor, MockMotor};
+use peripheral::mock::{MockCurrentSensor, MockMotor, MockSpeedSensor};
 
 #[test]
 fn test_motor_controller_flow() {
     futures::executor::block_on(async {
         let motor = MockMotor::new();
         let sensor = MockCurrentSensor::new(150); // healthy current: 150mA
-        let mut controller = MotorController::new(NoTick::new(motor), sensor);
+        let speed_sensor = MockSpeedSensor::new(3000);
+        let mut controller = MotorController::new(NoTick::new(motor), sensor, speed_sensor);
 
         assert_eq!(controller.state(), MotorState::Off);
 
@@ -95,7 +96,8 @@ fn test_motor_controller_sad_cases() {
         let mut motor = MockMotor::new();
         motor.should_fail = true; // Make motor fail
         let sensor = MockCurrentSensor::new(150);
-        let mut controller = MotorController::new(NoTick::new(motor), sensor);
+        let speed_sensor = MockSpeedSensor::new(3000);
+        let mut controller = MotorController::new(NoTick::new(motor), sensor, speed_sensor);
         controller.set_calibration(&model::calibration::MotorCalibration {
             current_ma: model::calibration::FourPointCalibration::new(80, 0, 0, 800),
             max_rpm: Some(3000),
@@ -137,7 +139,8 @@ fn test_motor_controller_sad_cases() {
         let motor2 = MockMotor::new();
         let mut sensor2 = MockCurrentSensor::new(150);
         sensor2.should_fail = true; // Make current sensor fail
-        let mut controller2 = MotorController::new(NoTick::new(motor2), sensor2);
+        let speed_sensor2 = MockSpeedSensor::new(3000);
+        let mut controller2 = MotorController::new(NoTick::new(motor2), sensor2, speed_sensor2);
         controller2.set_calibration(&model::calibration::MotorCalibration {
             current_ma: model::calibration::FourPointCalibration::new(80, 0, 0, 800),
             max_rpm: Some(3000),
@@ -348,7 +351,8 @@ fn test_motor_controller_tickable_vs_notick() {
         // 1. Test stateful Tickable motor
         let motor = MockTickableMotor::new();
         let sensor = MockCurrentSensor::new(150);
-        let mut controller = MotorController::new(motor, sensor);
+        let speed_sensor = MockSpeedSensor::new(3000);
+        let mut controller = MotorController::new(motor, sensor, speed_sensor);
 
         // Calibrate and start the motor so active_speed will ramp to non-zero
         controller.set_calibration(&model::calibration::MotorCalibration {
@@ -371,7 +375,8 @@ fn test_motor_controller_tickable_vs_notick() {
         // 2. Test NoTick motor wrapper
         let notick_motor = NoTick::new(MockTickableMotor::new());
         let sensor2 = MockCurrentSensor::new(150);
-        let mut controller2 = MotorController::new(notick_motor, sensor2);
+        let speed_sensor2 = MockSpeedSensor::new(3000);
+        let mut controller2 = MotorController::new(notick_motor, sensor2, speed_sensor2);
 
         // Calibrate and start the motor so active_speed will ramp to non-zero
         controller2.set_calibration(&model::calibration::MotorCalibration {
@@ -396,7 +401,8 @@ fn test_motor_controller_rpm_command() {
     futures::executor::block_on(async {
         let motor = MockMotor::new();
         let sensor = MockCurrentSensor::new(150);
-        let mut controller = MotorController::new(NoTick::new(motor), sensor);
+        let speed_sensor = MockSpeedSensor::new(3000);
+        let mut controller = MotorController::new(NoTick::new(motor), sensor, speed_sensor);
 
         // Set calibration with max RPM = 3000
         controller.set_calibration(&model::calibration::MotorCalibration {
@@ -472,4 +478,45 @@ fn test_motor_limits_checking() {
         limits.check_limits(2500, 900),
         MotorSafetyStatus::Stall(900)
     );
+}
+
+#[test]
+fn test_motor_controller_hall_sensor_rpm_and_zero_rpm_stall() {
+    futures::executor::block_on(async {
+        use controller::MotorReader;
+
+        let motor = MockMotor::new();
+        let sensor = MockCurrentSensor::new(150);
+        let speed_sensor = MockSpeedSensor::new(2850);
+        let mut controller = MotorController::new(NoTick::new(motor), sensor, speed_sensor);
+
+        controller.set_calibration(&model::calibration::MotorCalibration {
+            current_ma: model::calibration::FourPointCalibration::new(80, 0, 0, 800),
+            max_rpm: Some(3000),
+            rpm_limit: Some(0),
+        });
+
+        // Start motor
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(50).unwrap()), None)
+            .await;
+        assert_eq!(controller.state(), MotorState::On);
+
+        // Tick motor so speed sensor is polled
+        controller.tick_motor().await.unwrap();
+        assert_eq!(controller.current_rpm(), 2850);
+        assert_eq!(controller.measured_rpm(), 2850);
+
+        // Read motor RPM via MotorReader trait
+        let rpm = controller.read_motor_rpm().await.unwrap();
+        assert_eq!(rpm, 2850);
+
+        // Now simulate physical impeller stall: current is 150 mA, but Hall RPM drops to 0
+        controller.speed_sensor.rpm = 0;
+        controller.bypass_startup_blanking();
+        let _ = controller.update(None).await;
+
+        // Motor controller should detect zero-RPM stall and shut down motor to Off
+        assert_eq!(controller.state(), MotorState::Off);
+    });
 }

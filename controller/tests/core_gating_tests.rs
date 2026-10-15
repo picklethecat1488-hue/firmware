@@ -1,6 +1,6 @@
 use model::interfaces::NoTick;
 use model::types::{Direction, MotorSpeed, SensorReading};
-use peripheral::mock::{DummyCurrentSensor, MockMotor, MockProximitySensor};
+use peripheral::mock::{DummyCurrentSensor, MockMotor, MockProximitySensor, MockSpeedSensor};
 
 #[test]
 fn test_core_gating_motor_compiles() {
@@ -9,6 +9,7 @@ fn test_core_gating_motor_compiles() {
         let mut motor_ctrl = controller::motor_controller::MotorController::new(
             NoTick::new(mock_motor),
             DummyCurrentSensor,
+            MockSpeedSensor::new(0),
         );
 
         let speed = MotorSpeed::new(50).unwrap();
