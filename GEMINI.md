@@ -40,6 +40,10 @@ Before finalizing any task, committing changes, or proposing modifications to th
 * **Idiomatic Iteration & Pattern Matching**: Prefer looping over iterators directly (`for item in items.iter()`, `.enumerate()`) or iterator adapters (`.map()`, `.filter()`) rather than manual integer indexing by range bounds. Prefer exhaustive Rust `match` expression pattern matching (or `if let Some(...) = ...`) over chained `if/else` ladders when comparing against variants or enum branches.
 * **Markdown Preview Asset Location**: All markdown preview galleries, rendered frame previews, inspection figures, and simulation snapshots intended for visual evaluation MUST be placed inside the workspace under `recordings/previews/` using relative image paths to ensure compatibility with VS Code Markdown Preview security sandbox restrictions.
 
+### 5. Personal Privacy & Identity Redaction
+* **Zero Personal Name & Email Leaks**: The user's personal real name, local usernames, and personal email addresses MUST NEVER be leaked into git-tracked files, code comments, documentation guides, bug reports, or code review summaries. Use generic placeholders like `[Customer Name]`, `<username>`, or `User`.
+* **VCS Engine & UI Sanitization**: Git interaction layers (`GitEngine`), smartlog DAG generation, commit inspect APIs, and VCS web workstation views (`code_review.html.j2`, `diff_view.html.j2`) MUST automatically sanitize commit authors and email addresses (e.g. historical user handles and personal email domains) to `User` and `user@workspace`.
+
 ---
 
 ## Workflow & Issue Tracking Principles
