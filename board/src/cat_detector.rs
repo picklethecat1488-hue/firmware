@@ -467,6 +467,16 @@ mod target {
                 }
             }
 
+            // 5. Configure Speed Sense (GP26) and Pump Diag (GP22) as inputs with pull-ups (open-drain)
+            if let Some(ref mut pin) = gpio_pins[Board::SPEED_SENSE_PIN as usize] {
+                pin.set_as_input();
+                pin.set_pull(Pull::Up);
+            }
+            if let Some(ref mut pin) = gpio_pins[Board::PUMP_DIAG_PIN as usize] {
+                pin.set_as_input();
+                pin.set_pull(Pull::Up);
+            }
+
             // Wait for sensors to register reset state
             ::embassy_time::Timer::after_micros(200).await;
 
