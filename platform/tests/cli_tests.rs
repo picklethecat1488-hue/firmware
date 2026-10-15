@@ -141,6 +141,15 @@ fn test_gpio_cli() {
 }
 
 #[test]
+fn test_is_pin_high() {
+    assert!(!platform::gpio::is_pin_high(0, 0));
+    assert!(platform::gpio::is_pin_high(1 << 5, 5));
+    assert!(!platform::gpio::is_pin_high(1 << 5, 6));
+    assert!(platform::gpio::is_pin_high(0xFFFF_FFFF, 29));
+    assert!(!platform::gpio::is_pin_high(0, 29));
+}
+
+#[test]
 fn test_core_monitor_cli() {
     let resolver = ();
 
