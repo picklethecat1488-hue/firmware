@@ -349,7 +349,15 @@ mod target {
     /// Move-by-value drivers and pins returned during board initialization.
     pub struct BoardPeripherals<'d> {
         /// Motor driver (TMC6300 3-phase BLDC driver)
-        pub motor: peripheral::tmc6300::Tmc6300<Flex<'d>, Flex<'d>, Flex<'d>, Flex<'d>, Flex<'d>>,
+        pub motor: peripheral::tmc6300::Tmc6300<
+            Flex<'d>,
+            Flex<'d>,
+            Flex<'d>,
+            Flex<'d>,
+            Flex<'d>,
+            Flex<'d>,
+            Flex<'d>,
+        >,
         /// Motor current sensor
         pub current_sensor: peripheral::ina219::Ina219<platform::i2c::SharedI2cWrapper<'static>>,
         /// Motor speed sensor (Hall effect sensor)
@@ -417,10 +425,12 @@ mod target {
                 Board::TOF_EAST_INT_PIN => PIN_9,
                 Board::TOF_WEST_INT_PIN => PIN_10,
                 Board::FUEL_GAUGE_INT_PIN => PIN_14,
-                Board::PUMP_EN_PIN => PIN_18,
-                Board::PUMP_IN1_PIN => PIN_19,
-                Board::PUMP_IN2_PIN => PIN_20,
-                Board::PUMP_IN3_PIN => PIN_21,
+                Board::PUMP_UH_PIN => PIN_16,
+                Board::PUMP_UL_PIN => PIN_17,
+                Board::PUMP_VH_PIN => PIN_18,
+                Board::PUMP_VL_PIN => PIN_19,
+                Board::PUMP_WH_PIN => PIN_20,
+                Board::PUMP_WL_PIN => PIN_21,
                 Board::PUMP_DIAG_PIN => PIN_22,
                 Board::SPEED_SENSE_PIN => PIN_26,
             });
@@ -455,6 +465,16 @@ mod target {
                     pin.set_as_input();
                     pin.set_pull(Pull::Up);
                 }
+            }
+
+            // 5. Configure Speed Sense (GP26) and Pump Diag (GP22) as inputs with pull-ups (open-drain)
+            if let Some(ref mut pin) = gpio_pins[Board::SPEED_SENSE_PIN as usize] {
+                pin.set_as_input();
+                pin.set_pull(Pull::Up);
+            }
+            if let Some(ref mut pin) = gpio_pins[Board::PUMP_DIAG_PIN as usize] {
+                pin.set_as_input();
+                pin.set_pull(Pull::Up);
             }
 
             // Wait for sensors to register reset state
@@ -521,18 +541,24 @@ mod target {
             peripheral::init_i2c!(&mut current_sensor, &mut boot_status);
 
             // Extract pins needed for drivers/controllers
-            let mut pump_en = gpio_pins[Board::PUMP_EN_PIN as usize]
+            let mut pump_uh = gpio_pins[Board::PUMP_UH_PIN as usize]
                 .take()
-                .expect("Pump EN pin must be available");
-            let mut pump_in1 = gpio_pins[Board::PUMP_IN1_PIN as usize]
+                .expect("Pump UH pin must be available");
+            let mut pump_ul = gpio_pins[Board::PUMP_UL_PIN as usize]
                 .take()
-                .expect("Pump IN1 pin must be available");
-            let mut pump_in2 = gpio_pins[Board::PUMP_IN2_PIN as usize]
+                .expect("Pump UL pin must be available");
+            let mut pump_vh = gpio_pins[Board::PUMP_VH_PIN as usize]
                 .take()
-                .expect("Pump IN2 pin must be available");
-            let mut pump_in3 = gpio_pins[Board::PUMP_IN3_PIN as usize]
+                .expect("Pump VH pin must be available");
+            let mut pump_vl = gpio_pins[Board::PUMP_VL_PIN as usize]
                 .take()
-                .expect("Pump IN3 pin must be available");
+                .expect("Pump VL pin must be available");
+            let mut pump_wh = gpio_pins[Board::PUMP_WH_PIN as usize]
+                .take()
+                .expect("Pump WH pin must be available");
+            let mut pump_wl = gpio_pins[Board::PUMP_WL_PIN as usize]
+                .take()
+                .expect("Pump WL pin must be available");
             let mut pump_diag = gpio_pins[Board::PUMP_DIAG_PIN as usize]
                 .take()
                 .expect("Pump DIAG pin must be available");
@@ -540,18 +566,28 @@ mod target {
                 .take()
                 .expect("Speed sense pin must be available");
 
-            pump_en.set_as_output();
-            pump_in1.set_as_output();
-            pump_in2.set_as_output();
-            pump_in3.set_as_output();
+            pump_uh.set_as_output();
+            pump_uh.set_low();
+            pump_ul.set_as_output();
+            pump_ul.set_low();
+            pump_vh.set_as_output();
+            pump_vh.set_low();
+            pump_vl.set_as_output();
+            pump_vl.set_low();
+            pump_wh.set_as_output();
+            pump_wh.set_low();
+            pump_wl.set_as_output();
+            pump_wl.set_low();
+
             pump_diag.set_as_input();
             pump_diag.set_pull(Pull::Up);
 
             speed_pin.set_as_input();
             speed_pin.set_pull(Pull::Up);
 
-            let motor =
-                peripheral::tmc6300::Tmc6300::new(pump_en, pump_in1, pump_in2, pump_in3, pump_diag);
+            let motor = peripheral::tmc6300::Tmc6300::new(
+                pump_uh, pump_ul, pump_vh, pump_vl, pump_wh, pump_wl, pump_diag,
+            );
             let speed_sensor = peripheral::hall_sensor::HallSensor::new(speed_pin);
 
             let fuel_gauge_alert_pin = gpio_pins[Board::FUEL_GAUGE_INT_PIN as usize]
@@ -737,6 +773,8 @@ mod target {
     pub type AlertPinType = AlertPinWrapper;
     /// The motor driver type.
     pub type MotorDevice = peripheral::tmc6300::Tmc6300<
+        Flex<'static>,
+        Flex<'static>,
         Flex<'static>,
         Flex<'static>,
         Flex<'static>,
