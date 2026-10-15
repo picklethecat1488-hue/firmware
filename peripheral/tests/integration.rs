@@ -122,6 +122,25 @@ fn test_tmc6300_functional_and_commutation() {
         assert!(pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
         assert!(motor.stop().is_ok());
         assert!(!pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // 7. Commutation when speed is zero returns ZeroSpeed error
+        assert!(matches!(
+            motor.apply_commutation(),
+            Err(peripheral::tmc6300::Tmc6300Error::ZeroSpeed)
+        ));
+
+        // 8. Reverse commutation when speed < 0
+        assert!(motor.set_speed(MotorSpeed::new(-100).unwrap()).is_ok());
+        assert!(pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
+        // Reverse step 0: U=1, V=0, W=1
+        assert!(pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+        // Reverse step 1: U=0, V=0, W=1
+        assert!(motor.tick().await.is_ok());
+        assert!(!pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
     });
 }
 

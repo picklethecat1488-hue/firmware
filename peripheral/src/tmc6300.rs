@@ -90,27 +90,39 @@ where
     }
 
     /// Applies the active commutation step based on direction.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Tmc6300Error::ZeroSpeed`] if speed is exactly zero, or pin error if GPIO toggle fails.
     #[allow(clippy::type_complexity)]
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.core1_func"
     )]
-    fn apply_commutation(
+    pub fn apply_commutation(
         &mut self,
     ) -> Tmc6300Result<PE::Error, P1::Error, P2::Error, P3::Error, PD::Error> {
-        let step = if self.speed >= 0 {
-            self.commutation_step % 6
+        let step = self.commutation_step % 6;
+        if self.speed > 0 {
+            match step {
+                0 => self.set_phase_outputs(true, false, false),
+                1 => self.set_phase_outputs(true, true, false),
+                2 => self.set_phase_outputs(false, true, false),
+                3 => self.set_phase_outputs(false, true, true),
+                4 => self.set_phase_outputs(false, false, true),
+                _ => self.set_phase_outputs(true, false, true),
+            }
+        } else if self.speed < 0 {
+            match step {
+                0 => self.set_phase_outputs(true, false, true),
+                1 => self.set_phase_outputs(false, false, true),
+                2 => self.set_phase_outputs(false, true, true),
+                3 => self.set_phase_outputs(false, true, false),
+                4 => self.set_phase_outputs(true, true, false),
+                _ => self.set_phase_outputs(true, false, false),
+            }
         } else {
-            (5 - (self.commutation_step % 6)) % 6
-        };
-
-        match step {
-            0 => self.set_phase_outputs(true, false, false),
-            1 => self.set_phase_outputs(true, true, false),
-            2 => self.set_phase_outputs(false, true, false),
-            3 => self.set_phase_outputs(false, true, true),
-            4 => self.set_phase_outputs(false, false, true),
-            _ => self.set_phase_outputs(true, false, true),
+            Err(Tmc6300Error::ZeroSpeed)
         }
     }
 }
@@ -231,4 +243,6 @@ pub enum Tmc6300Error<EE, E1, E2, E3, ED> {
     PinDiag(ED),
     /// Hardware driver fault reported via DIAG assertion.
     DriverFault,
+    /// Commutation error when commanded speed is zero.
+    ZeroSpeed,
 }

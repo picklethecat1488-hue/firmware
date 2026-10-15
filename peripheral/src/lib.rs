@@ -99,6 +99,7 @@ impl<EE, E1, E2, E3, ED> ToPeripheralError for crate::tmc6300::Tmc6300Error<EE, 
     fn to_peripheral_error(&self) -> PeripheralError {
         match self {
             crate::tmc6300::Tmc6300Error::DriverFault => PeripheralError::DeviceNotAvailable,
+            crate::tmc6300::Tmc6300Error::ZeroSpeed => PeripheralError::InvalidConfiguration,
             _ => PeripheralError::PinError,
         }
     }
