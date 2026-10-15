@@ -187,7 +187,11 @@ fn test_spawn_all_controllers_configuration() {
     ))));
     let mock_temp = Box::leak(Box::new(Mutex::new(MockBattery::new(3700, 25000))));
 
-    let motor_ctrl = MotorController::new(NoTick::new(mock_motor), DummyCurrentSensor);
+    let motor_ctrl = MotorController::new(
+        NoTick::new(mock_motor),
+        DummyCurrentSensor,
+        peripheral::mock::MockSpeedSensor::new(0),
+    );
     let led_ctrl = LedController::new(mock_led);
     let battery_ctrl = BatteryController::new_with_system_and_alert(
         mock_battery,
@@ -284,7 +288,7 @@ fn test_spawn_all_controllers_configuration() {
             controllers: {
                 Thermal(thermal_ctrl, THERMAL_CHANNEL), generics: (peripheral::mock::MockBattery),
                 Battery(battery_ctrl, BATTERY_CHANNEL), generics: (peripheral::mock::MockBattery, peripheral::mock::MockCharger, MockPin),
-                Motor(motor_ctrl, MOTOR_CHANNEL), generics: (model::interfaces::NoTick<MockMotor>, DummyCurrentSensor),
+                Motor(motor_ctrl, MOTOR_CHANNEL), generics: (model::interfaces::NoTick<MockMotor>, DummyCurrentSensor, peripheral::mock::MockSpeedSensor),
                 Sensor(sensor_ctrl_north, SENSOR_NORTH_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_east, SENSOR_EAST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_west, SENSOR_WEST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),

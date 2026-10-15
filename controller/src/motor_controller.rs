@@ -8,7 +8,7 @@ use core::fmt::Write as _;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::calibration::Calibration;
-use model::interfaces::{Motor, PowerMeasurementMode, PowerSensor, Tickable};
+use model::interfaces::{Motor, PowerMeasurementMode, PowerSensor, SpeedSensor, Tickable};
 use model::telemetry::TelemetryClient;
 use model::types::{MotorSpeed, PeripheralError, SystemStatus};
 use peripheral::ToPeripheralError;
@@ -58,14 +58,18 @@ impl MotorLimits {
     }
 }
 
-/// A generalized motor controller that orchestrates motor driver outputs and current sensor monitoring.
+/// A generalized motor controller that orchestrates motor driver outputs, current sensor monitoring, and Hall speed sensing.
 #[controller_context(core1_feature = "motor-core")]
-pub struct MotorController<M, C> {
+pub struct MotorController<M, C, S> {
     state: MotorState,
     /// The physical or mock motor peripheral.
     pub motor: M,
     /// The physical or mock current sensor peripheral.
     pub current_sensor: C,
+    /// The physical or mock speed sensor peripheral.
+    pub speed_sensor: S,
+    /// Last measured rotational speed in RPM from the speed sensor.
+    last_measured_rpm: u32,
     /// Telemetry: last measured current in mA.
     last_current_ma: i32,
     speed: MotorSpeed,
@@ -133,6 +137,13 @@ impl crate::MotorReader for MotorChannelSender {
         self.sender.send(cmd).await;
         signal.wait().await
     }
+
+    async fn read_motor_rpm(&mut self) -> Result<u32, PeripheralError> {
+        let signal = embassy_sync::signal::Signal::new();
+        let cmd = MotorCommand::ReadRpm(SendSignalU32Ptr(&signal as *const _));
+        self.sender.send(cmd).await;
+        signal.wait().await
+    }
 }
 
 impl model::calibration::Calibration for MotorChannelSender {
@@ -140,18 +151,21 @@ impl model::calibration::Calibration for MotorChannelSender {
     type Store = model::calibration::MotorCalibration;
 }
 
-impl<M: Motor + Tickable, C: PowerSensor> MotorController<M, C>
+impl<M: Motor + Tickable, C: PowerSensor, S: SpeedSensor> MotorController<M, C, S>
 where
     <M as Motor>::Error: ToPeripheralError,
     <M as Tickable>::Error: ToPeripheralError,
     <C as PowerSensor>::Error: ToPeripheralError,
+    <S as SpeedSensor>::Error: core::fmt::Debug,
 {
-    /// Creates a new motor controller managing the specified motor and current sensor.
-    pub const fn new(motor: M, current_sensor: C) -> Self {
+    /// Creates a new motor controller managing the specified motor, current sensor, and speed sensor.
+    pub fn new(motor: M, current_sensor: C, speed_sensor: S) -> Self {
         Self {
             state: MotorState::Off,
             motor,
             current_sensor,
+            speed_sensor,
+            last_measured_rpm: 0,
             last_current_ma: 0,
             speed: MotorSpeed::ZERO,
             active_speed: MotorSpeed::ZERO,
@@ -188,7 +202,7 @@ where
         self.limits.max_current_ma = max_ma;
     }
 
-    /// Returns the current estimated RPM based on the active speed and max_rpm calibration.
+    /// Returns the current rotational speed in RPM based on active speed duty cycle and `max_rpm` calibration.
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.core1_func"
@@ -199,6 +213,11 @@ where
         } else {
             (self.active_speed.get() as u32) * self.limits.max_rpm / 100
         }
+    }
+
+    /// Returns the last raw measured RPM from the Hall speed sensor.
+    pub fn measured_rpm(&self) -> u32 {
+        self.last_measured_rpm
     }
 
     /// Gets the last measured current in mA.
@@ -248,6 +267,11 @@ where
         } else {
             0
         };
+
+        // Sample speed sensor to update measured RPM
+        if let Ok(rpm) = self.speed_sensor.read_rpm() {
+            self.last_measured_rpm = rpm;
+        }
 
         // If the motor is running, verify safety limits (RPM and load torque)
         if !self.safety_bypass
@@ -418,6 +442,12 @@ where
                     (*signal_ptr.0).signal(current);
                 }
             }
+            MotorCommand::ReadRpm(signal_ptr) => {
+                let rpm = self.current_rpm();
+                unsafe {
+                    (*signal_ptr.0).signal(Ok(rpm));
+                }
+            }
             MotorCommand::SetSafetyBypass(bypass) => {
                 self.safety_bypass = bypass;
             }
@@ -446,6 +476,11 @@ where
         level = "trace"
     )]
     pub async fn tick_motor(&mut self) -> Result<(), PeripheralError> {
+        // Poll speed sensor on each motor tick to capture Hall pulse transitions
+        if let Ok(rpm) = self.speed_sensor.read_rpm() {
+            self.last_measured_rpm = rpm;
+        }
+
         let state = self.state;
         let speed = self.speed;
         let mut active_speed = self.active_speed;
@@ -630,7 +665,7 @@ where
     }
 }
 
-/// Thread-safe wrapper around a raw pointer to an embassy_sync::signal::Signal.
+/// Thread-safe wrapper around a raw pointer to an embassy_sync::signal::Signal for i32.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct SendSignalPtr(
     pub *const embassy_sync::signal::Signal<CriticalSectionRawMutex, Result<i32, PeripheralError>>,
@@ -642,6 +677,21 @@ unsafe impl Sync for SendSignalPtr {}
 impl core::fmt::Debug for SendSignalPtr {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(f, "SendSignalPtr({:p})", self.0)
+    }
+}
+
+/// Thread-safe wrapper around a raw pointer to an embassy_sync::signal::Signal for u32.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct SendSignalU32Ptr(
+    pub *const embassy_sync::signal::Signal<CriticalSectionRawMutex, Result<u32, PeripheralError>>,
+);
+
+unsafe impl Send for SendSignalU32Ptr {}
+unsafe impl Sync for SendSignalU32Ptr {}
+
+impl core::fmt::Debug for SendSignalU32Ptr {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "SendSignalU32Ptr({:p})", self.0)
     }
 }
 
@@ -659,15 +709,19 @@ pub enum MotorCommand {
     UpdateCalibration(model::calibration::MotorCalibration),
     /// Read the motor current draw in mA
     ReadCurrent(SendSignalPtr),
+    /// Read the motor rotational speed in RPM
+    ReadRpm(SendSignalU32Ptr),
     /// Enable or disable safety bypass
     SetSafetyBypass(bool),
 }
 
-impl<M: Motor + Tickable, C: PowerSensor> model::calibration::Calibration for MotorController<M, C>
+impl<M: Motor + Tickable, C: PowerSensor, S: SpeedSensor> model::calibration::Calibration
+    for MotorController<M, C, S>
 where
     <M as Motor>::Error: ToPeripheralError,
     <M as Tickable>::Error: ToPeripheralError,
     <C as PowerSensor>::Error: ToPeripheralError,
+    <S as SpeedSensor>::Error: core::fmt::Debug,
 {
     const CALIBRATION_FILE_NAME: &'static str = MOTOR_CALIBRATION_FILE_NAME;
     type Store = model::calibration::MotorCalibration;
@@ -690,22 +744,33 @@ where
     }
 }
 
-impl<M: Motor + Tickable, C: PowerSensor> crate::MotorReader for MotorController<M, C>
+impl<M: Motor + Tickable, C: PowerSensor, S: SpeedSensor> crate::MotorReader
+    for MotorController<M, C, S>
 where
     <C as PowerSensor>::Error: ToPeripheralError,
     <M as Motor>::Error: ToPeripheralError,
     <M as Tickable>::Error: ToPeripheralError,
+    <S as SpeedSensor>::Error: core::fmt::Debug,
 {
     async fn read_motor_current_ma(&mut self) -> Result<i32, PeripheralError> {
         self.read_torque_ma().await
     }
+
+    async fn read_motor_rpm(&mut self) -> Result<u32, PeripheralError> {
+        if let Ok(rpm) = self.speed_sensor.read_rpm() {
+            self.last_measured_rpm = rpm;
+        }
+        Ok(self.current_rpm())
+    }
 }
 
-impl<M: Motor + Tickable, C: PowerSensor> crate::MotorWriter for MotorController<M, C>
+impl<M: Motor + Tickable, C: PowerSensor, S: SpeedSensor> crate::MotorWriter
+    for MotorController<M, C, S>
 where
     <C as PowerSensor>::Error: ToPeripheralError,
     <M as Motor>::Error: ToPeripheralError,
     <M as Tickable>::Error: ToPeripheralError,
+    <S as SpeedSensor>::Error: core::fmt::Debug,
 {
     async fn set_motor_speed(&mut self, speed: i8) -> Result<(), PeripheralError> {
         let motor_speed = MotorSpeed::new(speed).ok_or(PeripheralError::InvalidConfiguration)?;
@@ -765,12 +830,14 @@ subcommand_enum! {
         Stop,
         /// Read motor current
         Current,
+        /// Read measured motor speed in RPM
+        Rpm,
         /// Calibrate motor
         Calibrate,
         /// Control safety bypass
         SafetyBypass = "safety-bypass",
     }
-    "Invalid motor subcommand. Expected: speed, rpm-speed, stop, current, calibrate, safety-bypass"
+    "Invalid motor subcommand. Expected: speed, rpm-speed, stop, current, rpm, calibrate, safety-bypass"
 }
 
 /// Processes motor-specific CLI subcommands.
@@ -835,6 +902,14 @@ pub async fn handle_motor_cli<
                 .await
                 .map_err(|_| "Failed to read motor current")?;
             let _ = core::writeln!(writer, "\r\nMotor current: {} mA", current);
+            Ok(())
+        }
+        MotorSubcommand::Rpm => {
+            let rpm = motor_ctrl
+                .read_motor_rpm()
+                .await
+                .map_err(|_| "Failed to read motor RPM")?;
+            let _ = core::writeln!(writer, "\r\nMotor speed: {} RPM", rpm);
             Ok(())
         }
         MotorSubcommand::Calibrate => {

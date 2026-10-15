@@ -70,16 +70,16 @@ run_params = [
 [[controllers]]
 name = "Motor"
 msg_type = "crate::motor_controller::MotorCommand"
-macro_params = ["$rx:expr", "$telemetry_tx:expr", "$motor_type:ty", "$current_sensor_type:ty"]
+macro_params = ["$rx:expr", "$telemetry_tx:expr", "$motor_type:ty", "$current_sensor_type:ty", "$speed_sensor_type:ty"]
 task_call_args = ["$rx", "$telemetry_tx"]
-controller_type = "$crate::motor_controller::MotorController<$motor_type, $current_sensor_type>"
+controller_type = "$crate::motor_controller::MotorController<$motor_type, $current_sensor_type, $speed_sensor_type>"
 spawn_call_args = ["$rx.receiver()", "$telemetry.sender()"]
-macro_generics = ["$motor_type:ty", "$current_sensor_type:ty"]
-spawn_generics = ["$motor_type", "$current_sensor_type"]
+macro_generics = ["$motor_type:ty", "$current_sensor_type:ty", "$speed_sensor_type:ty"]
+spawn_generics = ["$motor_type", "$current_sensor_type", "$speed_sensor_type"]
 attributes = ['#[cfg_attr(all(target_arch = "arm", feature = "motor-core"), link_section = ".data.core1_func")]']
-impl_generics = "<M, C>"
-impl_type = "MotorController<M, C>"
-impl_phantom = "(M, C)"
+impl_generics = "<M, C, S>"
+impl_type = "MotorController<M, C, S>"
+impl_phantom = "(M, C, S)"
 run_params = [
     { param = "r", type = "$crate::MotorReceiver<$crate::CriticalSectionRawMutex>" },
     { param = "t", type = "$crate::TelemetrySender<$crate::CriticalSectionRawMutex>" }

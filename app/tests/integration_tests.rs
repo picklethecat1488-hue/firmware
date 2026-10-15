@@ -21,6 +21,7 @@ use model::interfaces::NoTick;
 use model::types::{BootReason, ChargeState, Direction, MotorSpeed, SystemLedState, SystemStatus};
 use peripheral::mock::{
     DummyCurrentSensor, MockBattery, MockCharger, MockLed, MockMotor, MockProximitySensor,
+    MockSpeedSensor,
 };
 use platform::types::{MapFilesystem, QueueFilesystem};
 use platform::GestureDetector;
@@ -147,7 +148,11 @@ fn test_system_integration_flow() {
         let mock_temp = Mutex::new(MockBattery::new(3700, 25000)); // MockBattery implements TemperatureSensor
 
         // Controllers
-        let mut motor_ctrl = MotorController::new(NoTick::new(mock_motor), DummyCurrentSensor);
+        let mut motor_ctrl = MotorController::new(
+            NoTick::new(mock_motor),
+            DummyCurrentSensor,
+            MockSpeedSensor::new(0),
+        );
         use model::calibration::Calibration;
         motor_ctrl.set_calibration(&model::calibration::MotorCalibration {
             current_ma: model::calibration::FourPointCalibration::new(80, 0, 0, 800),
@@ -737,7 +742,11 @@ fn test_spawn_controllers_embassy_routing() {
     let mock_temp = Box::leak(Box::new(Mutex::new(MockBattery::new(3700, 25000))));
 
     // 2. Controllers
-    let motor_ctrl = MotorController::new(NoTick::new(mock_motor), DummyCurrentSensor);
+    let motor_ctrl = MotorController::new(
+        NoTick::new(mock_motor),
+        DummyCurrentSensor,
+        peripheral::mock::MockSpeedSensor::new(0),
+    );
     let led_ctrl = LedController::new(mock_led);
     let battery_ctrl = BatteryController::new_with_system_and_alert(
         mock_battery,
@@ -847,7 +856,7 @@ fn test_spawn_controllers_embassy_routing() {
             controllers: {
                 Thermal(thermal_ctrl, RUN_THERMAL_CHANNEL), generics: (peripheral::mock::MockBattery),
                 Battery(battery_ctrl, RUN_BATTERY_CHANNEL), generics: (peripheral::mock::MockBattery, peripheral::mock::MockCharger, MockPin),
-                Motor(motor_ctrl, RUN_MOTOR_CHANNEL), generics: (model::interfaces::NoTick<MockMotor>, DummyCurrentSensor),
+                Motor(motor_ctrl, RUN_MOTOR_CHANNEL), generics: (model::interfaces::NoTick<MockMotor>, DummyCurrentSensor, peripheral::mock::MockSpeedSensor),
                 Sensor(sensor_ctrl_north, RUN_SENSOR_NORTH_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_east, RUN_SENSOR_EAST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),
                 Sensor(sensor_ctrl_west, RUN_SENSOR_WEST_CHANNEL), generics: (MockProximitySensor, MockPin, SystemCommand),

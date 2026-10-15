@@ -57,7 +57,7 @@ generics = "{ controller::telemetry_controller::CHANNEL_CAPACITY }, platform::fl
 name = "Motor"
 core = 1
 instance = "controllers.core1.motor"
-generics = "crate::MotorDevice, crate::CurrentSensorDevice"
+generics = "crate::MotorDevice, crate::CurrentSensorDevice, crate::SpeedSensorDevice"
 # Motor also registers the raw motor device into motors shell field
 device_shell_type = "MotorDevice"
 
