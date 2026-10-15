@@ -14,8 +14,10 @@ crate::subcommand_enum! {
         Status,
         /// Read the level of a single pin.
         Read,
+        /// Set the logic level of a single pin (0 or 1).
+        Set,
     }
-    "status, read"
+    "status, read, set"
 }
 
 /// Checks if a specific GPIO pin is at a high logic level given a bitmask.
@@ -30,9 +32,10 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
     _resolver: &R,
     subcommand: Option<GpioSubcommand>,
     pin: Option<u32>,
+    value: Option<u8>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let cmd = subcommand.ok_or("Missing gpio subcommand (expected: status, read)")?;
+    let cmd = subcommand.ok_or("Missing gpio subcommand (expected: status, read, set)")?;
 
     // Helper macro to steal a pin and wrap in Flex
     macro_rules! steal_flex {
@@ -94,6 +97,25 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
                 }
             }
         }
+        GpioSubcommand::Set => {
+            let p = pin.ok_or("Missing pin number (expected: gpio set <pin> <0|1>)")?;
+            if p >= NUM_GPIO_PINS {
+                return Err("Invalid pin number (must be 0..29)");
+            }
+            if is_bus_assigned(p) {
+                return Err("Cannot set pin configured for alternate function (bus assigned)");
+            }
+            let val = value.ok_or("Missing pin value (expected: gpio set <pin> <0|1>)")?;
+            let mut pin = steal_flex!(p);
+            pin.set_as_output();
+            if val != 0 {
+                pin.set_high();
+                let _ = writeln!(writer, "GP{} set to High (1)", p);
+            } else {
+                pin.set_low();
+                let _ = writeln!(writer, "GP{} set to Low (0)", p);
+            }
+        }
     }
     Ok(())
 }
@@ -104,9 +126,10 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
     _resolver: &R,
     subcommand: Option<GpioSubcommand>,
     pin: Option<u32>,
+    value: Option<u8>,
     writer: &mut embedded_cli::writer::Writer<'_, W, E>,
 ) -> Result<(), &'static str> {
-    let cmd = subcommand.ok_or("Missing gpio subcommand (expected: status, read)")?;
+    let cmd = subcommand.ok_or("Missing gpio subcommand (expected: status, read, set)")?;
     match cmd {
         GpioSubcommand::Status => {
             let _ = writeln!(writer, "Mock GPIO Pin Status (0..29):");
@@ -148,6 +171,21 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
                     }
                     let _ = writeln!(writer, "{}", line);
                 }
+            }
+        }
+        GpioSubcommand::Set => {
+            let p = pin.ok_or("Missing pin number (expected: gpio set <pin> <0|1>)")?;
+            if p >= NUM_GPIO_PINS {
+                return Err("Invalid pin number (must be 0..29)");
+            }
+            if is_bus_assigned(p) {
+                return Err("Cannot set pin configured for alternate function (bus assigned)");
+            }
+            let val = value.ok_or("Missing pin value (expected: gpio set <pin> <0|1>)")?;
+            if val != 0 {
+                let _ = writeln!(writer, "Mock GP{} set to High (1)", p);
+            } else {
+                let _ = writeln!(writer, "Mock GP{} set to Low (0)", p);
             }
         }
     }
