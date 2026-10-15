@@ -11,7 +11,7 @@ pub mod carrier_board;
 pub use board::cat_detector::{
     get_boot_reason, AlertPinType, BatteryDevice, Board, BoardPeripherals, ChargerDevice,
     CurrentSensorDevice, DataReadyPinType, LedDevice, MotorDevice, MutexRaw, ProximitySensorDevice,
-    Rp2040TempSensor, TempSensorDevice,
+    Rp2040TempSensor, SpeedSensorDevice, TempSensorDevice,
 };
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -96,6 +96,7 @@ pub async fn init_controllers(
     let motor = controller::motor_controller::MotorController::new(
         peripherals.motor,
         peripherals.current_sensor,
+        peripherals.speed_sensor,
     );
 
     let motor_proxy = controller::motor_controller::MotorChannelSender::new(MOTOR_CHANNEL.sender());
@@ -127,8 +128,11 @@ include!(concat!(env!("OUT_DIR"), "/generated_app.rs"));
 
 /// Type alias for the motor controller.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
-pub type MotorType =
-    controller::motor_controller::MotorController<crate::MotorDevice, crate::CurrentSensorDevice>;
+pub type MotorType = controller::motor_controller::MotorController<
+    crate::MotorDevice,
+    crate::CurrentSensorDevice,
+    crate::SpeedSensorDevice,
+>;
 
 /// Type alias for the sensor controller.
 #[cfg(all(target_arch = "arm", target_os = "none"))]
@@ -231,8 +235,11 @@ pub type LedControllerType = ();
 
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 /// Concrete type for the motor controller.
-pub type MotorControllerType =
-    controller::motor_controller::MotorController<MotorDevice, CurrentSensorDevice>;
+pub type MotorControllerType = controller::motor_controller::MotorController<
+    MotorDevice,
+    CurrentSensorDevice,
+    SpeedSensorDevice,
+>;
 
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
 /// Mock motor controller structure for the host shell.
@@ -242,6 +249,10 @@ pub struct MockMotorController;
 impl controller::MotorReader for MockMotorController {
     async fn read_motor_current_ma(&mut self) -> Result<i32, model::types::PeripheralError> {
         Ok(150)
+    }
+
+    async fn read_motor_rpm(&mut self) -> Result<u32, model::types::PeripheralError> {
+        Ok(3000)
     }
 }
 

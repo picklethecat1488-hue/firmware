@@ -175,7 +175,9 @@ fn test_board_codegen() {
     let toml_path = root.join("board/board.toml");
     let content = std::fs::read_to_string(&toml_path).unwrap();
     let generated = code_gen::generate_board_definitions(&content, "cat_detector");
-    assert!(generated.contains("pub const PUMP_PIN_IA: u32 = 19;"));
+    assert!(generated.contains("pub const PUMP_EN_PIN: u32 = 18;"));
+    assert!(generated.contains("pub const PUMP_IN1_PIN: u32 = 19;"));
+    assert!(generated.contains("pub const SPEED_SENSE_PIN: u32 = 26;"));
     assert!(generated.contains("pub const FS_PARTITION_START: u32 = 0x001C0000;"));
 
     assert!(generated.contains("chip: \"rp2040\""));

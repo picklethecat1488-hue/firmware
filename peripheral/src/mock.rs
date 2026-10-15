@@ -621,3 +621,42 @@ impl TemperatureSensor for DummyTempSensor {
         Ok(0)
     }
 }
+
+/// A mock implementation of SpeedSensor for host-based testing.
+#[derive(Default)]
+pub struct MockSpeedSensor {
+    /// Rotational speed in RPM.
+    pub rpm: u32,
+    /// Total pulses counted.
+    pub pulses: u32,
+    /// Whether sensor calls should fail.
+    pub should_fail: bool,
+}
+
+impl MockSpeedSensor {
+    /// Creates a new mock speed sensor with the specified RPM.
+    pub const fn new(rpm: u32) -> Self {
+        Self {
+            rpm,
+            pulses: 0,
+            should_fail: false,
+        }
+    }
+
+    /// Sets the simulated RPM value.
+    pub fn set_rpm(&mut self, rpm: u32) {
+        self.rpm = rpm;
+    }
+}
+
+impl model::interfaces::SpeedSensor for MockSpeedSensor {
+    type Error = ();
+
+    fn read_rpm(&mut self) -> Result<u32, Self::Error> {
+        if self.should_fail {
+            Err(())
+        } else {
+            Ok(self.rpm)
+        }
+    }
+}

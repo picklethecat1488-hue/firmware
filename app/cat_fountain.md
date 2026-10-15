@@ -11,7 +11,7 @@ The detailed architectural definitions and hardware integration specifications h
 1. **[Cat Fountain (RP2040) Firmware Architecture Guide](../docs/cat_fountain_architecture.md)**:
    - Hardware block diagram and RP2040 silicon capabilities.
    - Embassy asynchronous executor task breakdown and control sequence.
-   - Domain controllers: `SystemController` (3-sensor data fusion), `MotorController` (INA219 torque monitoring), `SensorController` (VL53L0X 2-point calibration), and `LedController`.
+   - Domain controllers: `SystemController` (3-sensor data fusion), `MotorController` (TMC6300 BLDC, INA219 current monitoring, AH3577 Hall speed sensing), `SensorController` (VL53L0X 2-point calibration), and `LedController`.
    - Hardware peripheral mapping and dynamically assigned I2C address space (`0x30`, `0x31`, `0x32`).
    - 2 MB QSPI NOR flash layout, `sequential-storage` filesystem, and MPU stack guard.
 
