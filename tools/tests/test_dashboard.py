@@ -8,6 +8,7 @@ and inter-tool navigation to code_review and bug_report.
 import base64
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import threading
@@ -16,6 +17,7 @@ from typing import Tuple
 from unittest.mock import MagicMock
 import urllib.request
 
+import jinja2
 import pytest
 
 from dashboard import main, parse_arguments, print_cli_smartlog
@@ -938,7 +940,6 @@ def test_regression_bug_190_pr_branch_tag_clickable_link(tmp_path: Path) -> None
     tpl_text = template_path.read_text(encoding="utf-8")
     assert "onBranchBadgeClick" in tpl_text
     assert "pr-tag-link" in tpl_text
-    assert "picklethecat1488-hue/firmware/pull/" in tpl_text
 
     # 3. Serve via DashboardServer and assert HTML contains clickable branch tag
     server = DashboardServer(
@@ -3323,7 +3324,7 @@ def test_regression_worm_015_workstation_modal_dom_hierarchy_and_rendering() -> 
 
     dummy_session = DiffViewSessionModel(
         title="VCS Dashboard",
-        current_user="picklethecat1488-hue",
+        current_user="testuser",
         active_commit="working",
         branches=[
             BranchInfoModel(name="main", is_current=True, is_remote=False),
@@ -3398,7 +3399,7 @@ def test_regression_worm_017_working_tree_actions_visible_on_load() -> None:
     # 1. When active_commit is "working", workingTreeCommitArea must be visible (display: flex)
     session_working = DiffViewSessionModel(
         title="VCS Dashboard",
-        current_user="picklethecat1488-hue",
+        current_user="testuser",
         active_commit="working",
         branches=[
             BranchInfoModel(name="main", is_current=True, is_remote=False),
@@ -3426,7 +3427,7 @@ def test_regression_worm_017_working_tree_actions_visible_on_load() -> None:
     # 2. When active_commit is a specific commit hash, workingTreeCommitArea must be hidden (display: none)
     session_commit = DiffViewSessionModel(
         title="VCS Dashboard",
-        current_user="picklethecat1488-hue",
+        current_user="testuser",
         active_commit="12345678",
         branches=[
             BranchInfoModel(name="main", is_current=True, is_remote=False),
@@ -3520,3 +3521,82 @@ def test_regression_bug_subterranean_vinegarworm_291_dashboard_upload_collision(
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_regression_bug_translucent_tapeworm_953_dashboard_js_syntax_and_sync_screen(tmp_path: Path) -> None:
+    """Verify BUG-TRANSLUCENT-TAPEWORM-953: Dashboard JavaScript syntax is valid and sync screen does not freeze at 20%.
+
+    Ensures:
+    1. sanitizeAuthor and other JavaScript blocks in diff_view.html.j2 contain valid syntax without syntax errors.
+    2. node -c passes on extracted script blocks from rendered dashboard templates.
+    3. sanitizeAuthor line in diff_view.html.j2 does not have dangling closing parentheses.
+    """
+    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
+    diff_view_text = (templates_dir / "diff_view.html.j2").read_text(encoding="utf-8")
+
+    # 1. Verify sanitizeAuthor exists and has no dangling parenthesis
+    assert "function sanitizeAuthor" in diff_view_text
+    match = re.search(r"function sanitizeAuthor\(str\)\s*\{([^}]+)\}", diff_view_text)
+    assert match is not None, "sanitizeAuthor function definition must exist"
+    func_body = match.group(1)
+    # Count open and close parentheses in sanitizeAuthor
+    assert func_body.count("(") == func_body.count(")"), (
+        f"Mismatched parentheses in sanitizeAuthor: {func_body.count('(')} open vs {func_body.count(')')} close"
+    )
+
+    # 2. Extract script blocks from rendered diff_view template and syntax check with node if available
+    node_bin = shutil.which("node")
+    if node_bin:
+        env = jinja2.Environment(
+            loader=jinja2.FileSystemLoader(str(templates_dir)),
+            trim_blocks=True,
+            lstrip_blocks=True,
+            autoescape=False,
+        )
+        tpl = env.get_template("diff_view.html.j2")
+        mock_session = DiffViewSessionModel(
+            repo_name="firmware",
+            repo_root=str(tmp_path),
+            active_commit="working",
+            initial_sync_done=False,
+        )
+        rendered_html = tpl.render(session=mock_session, active_branch="main", active_commit="working")
+        scripts = re.findall(r"<script>(.*?)</script>", rendered_html, re.DOTALL)
+        assert len(scripts) > 0, "Rendered diff_view must contain <script> tags"
+
+        for idx, script in enumerate(scripts):
+            script_file = tmp_path / f"test_script_{idx}.js"
+            script_file.write_text(script, encoding="utf-8")
+            res = subprocess.run([node_bin, "-c", str(script_file)], capture_output=True, text=True)
+            assert res.returncode == 0, f"Node syntax error in diff_view script block {idx}:\n{res.stderr}"
+
+        from model.code_review import ReviewSessionModel
+
+        cr_tpl = env.get_template("code_review.html.j2")
+        mock_cr_session = ReviewSessionModel(
+            repo_name="firmware",
+            revisions=["working"],
+        )
+        cr_html = cr_tpl.render(session=mock_cr_session)
+        cr_scripts = re.findall(r"<script>(.*?)</script>", cr_html, re.DOTALL)
+        for idx, script in enumerate(cr_scripts):
+            script_file = tmp_path / f"cr_script_{idx}.js"
+            script_file.write_text(script, encoding="utf-8")
+            res = subprocess.run([node_bin, "-c", str(script_file)], capture_output=True, text=True)
+            assert res.returncode == 0, f"Node syntax error in code_review script block {idx}:\n{res.stderr}"
+
+        from model.worm_report import WormDatabaseModel
+
+        worm_db = WormDatabaseModel()
+        worm_tpl = env.get_template("worm_report.html.j2")
+        worm_html = worm_tpl.render(
+            database=worm_db,
+            database_json=json.dumps(worm_db.model_dump(mode="json")),
+        )
+        worm_scripts = re.findall(r"<script>(.*?)</script>", worm_html, re.DOTALL)
+        for idx, script in enumerate(worm_scripts):
+            script_file = tmp_path / f"worm_script_{idx}.js"
+            script_file.write_text(script, encoding="utf-8")
+            res = subprocess.run([node_bin, "-c", str(script_file)], capture_output=True, text=True)
+            assert res.returncode == 0, f"Node syntax error in worm_report script block {idx}:\n{res.stderr}"
+

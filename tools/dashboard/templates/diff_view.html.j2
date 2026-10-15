@@ -1189,9 +1189,10 @@
               {% if node.is_ancestor_top %}
                 <span class="node-badge node-badge-ancestor" title="Top of ancestor branch ({{ node.ancestor_name or 'main' }})">📌 {{ node.ancestor_name or 'main' }}</span>
               {% endif %}
+              {% set repo_web_base = session.repo_web_url or ('https://github.com/' ~ (session.github_repo or ('workspace/' ~ session.repo_name))) %}
               {% for br in node.branches %}
                 {% set is_pr_br = ('pr' in br.lower() or 'pull' in br.lower()) %}
-                {% set br_url = node.pr_url if (is_pr_br and node.pr_url) else ('https://github.com/picklethecat1488-hue/firmware/tree/' ~ br.replace('origin/', '')) %}
+                {% set br_url = node.pr_url if (is_pr_br and node.pr_url) else (repo_web_base ~ '/tree/' ~ br.replace('origin/', '')) %}
                 <span style="display:inline-flex;align-items:center;">
                   <a href="{{ br_url }}"
                      target="_blank"
@@ -1206,7 +1207,7 @@
               {% endfor %}
               {% for tag in node.tags %}
                 {% set is_pr_tag = ('pr' in tag.lower() or 'pull' in tag.lower()) %}
-                {% set tag_url = node.pr_url if (is_pr_tag and node.pr_url) else ('https://github.com/picklethecat1488-hue/firmware/releases/tag/' ~ tag) %}
+                {% set tag_url = node.pr_url if (is_pr_tag and node.pr_url) else (repo_web_base ~ '/releases/tag/' ~ tag) %}
                 <a href="{{ tag_url }}"
                    target="_blank"
                    rel="noopener noreferrer"
@@ -1474,7 +1475,7 @@
         </div>
       </div>
       <div class="quake-modal-footer">
-        <span style="font-size:8px;color:var(--quake-text-dim);">Current user: {{ session.current_user or 'picklethecat1488-hue' }}</span>
+        <span style="font-size:8px;color:var(--quake-text-dim);">Current user: {{ session.current_user or 'User' }}</span>
         <button class="quake-btn quake-btn-default" onclick="closeBranchModal()">Close</button>
       </div>
     </div>
@@ -1721,6 +1722,16 @@
         .replace(/'/g, "&#039;");
     }
 
+    const FORBIDDEN_AUTHORS = {{ session.author_blacklist | tojson if session and session.author_blacklist else [] }};
+    function sanitizeAuthor(str) {
+      if (!str) return "";
+      const lower = String(str).toLowerCase().trim();
+      if (FORBIDDEN_AUTHORS.some(f => lower === f.toLowerCase() || lower.includes(f.toLowerCase()))) {
+        return "User";
+      }
+      return str;
+    }
+
     function copyText(text) {
       if (!text) return;
       if (navigator.clipboard && window.isSecureContext) {
@@ -1850,7 +1861,7 @@
     function renderSmartlogList(nodes) {
       const listEl = document.getElementById("smartlogList");
       if (!listEl) return;
-      const repoWebBase = state.repoWebUrl || (state.githubRepo ? `https://github.com/${state.githubRepo}` : `https://github.com/picklethecat1488-hue/${state.repoName}`);
+      const repoWebBase = state.repoWebUrl || (state.githubRepo ? `https://github.com/${state.githubRepo}` : `https://github.com/workspace/${state.repoName}`);
 
       let html = `
         <!-- Working Tree Node -->
@@ -2821,7 +2832,7 @@
     function renderBranchLists() {
       const search = (document.getElementById("branchSearchInput")?.value || "").trim().toLowerCase();
       const hideOtherUsers = document.getElementById("chkHideOtherUsers")?.checked ?? true;
-      const currentUser = "{{ session.current_user or 'picklethecat1488-hue' }}".toLowerCase();
+      const currentUser = "{{ session.current_user or 'User' }}".toLowerCase();
 
       const mainContainer = document.getElementById("mainReleaseBranchList");
       const featContainer = document.getElementById("featureBranchList");
@@ -3174,13 +3185,14 @@
       }
       const match = branchName.match(/(?:^|\/)(?:pr|pull)[/-]?(\d+)\b/i);
       const isRemote = branchName.startsWith("origin/") || branchName.startsWith("remotes/");
+      const repoBase = state.repoWebUrl || (state.githubRepo ? `https://github.com/${state.githubRepo}` : `https://github.com/workspace/${state.repoName || 'firmware'}`);
       if (match && isRemote) {
-        window.open(`https://github.com/picklethecat1488-hue/firmware/pull/${match[1]}`, "_blank");
+        window.open(`${repoBase}/pull/${match[1]}`, "_blank");
         return;
       }
       if (isRemote) {
         const cleaned = branchName.replace(/^(?:remotes\/)?origin\//i, "");
-        window.open(`https://github.com/picklethecat1488-hue/firmware/tree/${cleaned}`, "_blank");
+        window.open(`${repoBase}/tree/${cleaned}`, "_blank");
       } else if (match) {
         showToast(`PR #${match[1]} (branch "${branchName}") has not been created on GitHub yet.`);
       } else {
@@ -3410,7 +3422,7 @@
     });
 
     // Initialize on load
-    window.addEventListener("DOMContentLoaded", () => {
+    function initDiffView() {
       initWordWrap();
       initPanelResizers();
       updateMergedVisibility();
@@ -3431,7 +3443,13 @@
 
       loadFilesForActiveCommit();
       startAutoSync();
-    });
+    }
+
+    if (document.readyState === "loading") {
+      window.addEventListener("DOMContentLoaded", initDiffView);
+    } else {
+      initDiffView();
+    }
   </script>
   <div class="window-resize-gripper" title="Resize Window" aria-label="Resize Window"></div>
 </body>
