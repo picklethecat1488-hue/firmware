@@ -150,6 +150,41 @@ fn test_is_pin_high() {
 }
 
 #[test]
+fn test_is_alternate_function() {
+    assert!(platform::gpio::is_alternate_function(0)); // UART0 TX
+    assert!(platform::gpio::is_alternate_function(1)); // UART0 RX
+    assert!(platform::gpio::is_alternate_function(11)); // PIO0 WS2812
+    assert!(platform::gpio::is_alternate_function(12)); // I2C0 SDA
+    assert!(platform::gpio::is_alternate_function(13)); // I2C0 SCL
+    assert!(!platform::gpio::is_alternate_function(2));
+    assert!(!platform::gpio::is_alternate_function(5));
+    assert!(!platform::gpio::is_alternate_function(26));
+    assert!(!platform::gpio::is_alternate_function(30)); // Beyond range
+}
+
+#[test]
+fn test_gpio_cli_skips_alternate_pin() {
+    let mock_resolver = ();
+    let mut mock_write = MockWriter {
+        buf: heapless::Vec::new(),
+    };
+
+    // Test Gpio read on an alternate function pin (GP12 - I2C0 SDA)
+    {
+        let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
+        let res = futures::executor::block_on(platform::gpio::handle_gpio_cli(
+            &mock_resolver,
+            Some(platform::gpio::GpioSubcommand::Read),
+            Some(12),
+            &mut writer,
+        ));
+        assert!(res.is_ok());
+    }
+    let output_str = core::str::from_utf8(&mock_write.buf).unwrap();
+    assert!(output_str.contains("GP12 is configured for alternate function"));
+}
+
+#[test]
 fn test_core_monitor_cli() {
     let resolver = ();
 

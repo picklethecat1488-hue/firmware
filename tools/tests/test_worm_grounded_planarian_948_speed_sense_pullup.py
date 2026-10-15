@@ -45,7 +45,10 @@ def test_worm_grounded_planarian_948_no_pad_ctrl_clobbering_in_gpio_cli():
         "platform/src/io/gpio.rs must not write to pad_ctrl registers during diagnostic reads."
     )
 
-    # Invariant 4: Non-invasive SIO register read
-    assert "rp_pac::SIO.gpio_in" in content, (
-        "platform/src/io/gpio.rs must perform non-destructive SIO register reads."
+    # Invariant 4: No rp-pac dependency or raw memory map access
+    assert "rp_pac" not in content, (
+        "platform/src/io/gpio.rs must not depend on rp_pac."
+    )
+    assert "0xd000" not in content, (
+        "platform/src/io/gpio.rs must not assume the RP2040 memory map."
     )
