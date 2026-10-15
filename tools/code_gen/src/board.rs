@@ -106,7 +106,7 @@ pub fn parse_memory_map(root: &Path) -> (u32, u32) {
     }
     let content = std::fs::read_to_string(path).expect("Failed to read memory.x");
 
-    let mut flash_start = 0x10000000;
+    let mut flash_start = None;
     let mut ram_start = 0x20000000;
     let mut ram_length = 264 * 1024;
 
@@ -140,10 +140,14 @@ pub fn parse_memory_map(root: &Path) -> (u32, u32) {
                 }
             }
 
-            if name.eq_ignore_ascii_case("BOOT2") || name.eq_ignore_ascii_case("FLASH") {
+            if name.eq_ignore_ascii_case("BOOT2") {
                 if let Some(orig) = origin {
-                    if name.eq_ignore_ascii_case("BOOT2") || flash_start == 0x10000000 {
-                        flash_start = orig;
+                    flash_start = Some(orig);
+                }
+            } else if name.eq_ignore_ascii_case("FLASH") {
+                if let Some(orig) = origin {
+                    if flash_start.is_none() {
+                        flash_start = Some(orig);
                     }
                 }
             } else if name.eq_ignore_ascii_case("RAM") {
@@ -157,7 +161,7 @@ pub fn parse_memory_map(root: &Path) -> (u32, u32) {
         }
     }
 
-    (flash_start, ram_start + ram_length)
+    (flash_start.unwrap_or(0x10000000), ram_start + ram_length)
 }
 
 fn parse_numeric_value(val: &str) -> Option<u32> {
