@@ -411,6 +411,7 @@ where
     async fn tick(&mut self) -> Result<(), Self::Error> {
         // Check diagnostic fault pin first
         if self.pin_diag.is_high().map_err(Tmc6300Error::PinDiag)? {
+            tracing::error!("TMC6300 DIAG pin asserted: driver fault detected");
             self.stop()?;
             Err(Tmc6300Error::DriverFault)
         } else {
@@ -765,6 +766,7 @@ where
     #[tracing::instrument(core1 = "core1", level = "trace")]
     async fn tick(&mut self) -> Result<(), Self::Error> {
         if self.pin_diag.is_high().map_err(Tmc6300PioError::PinDiag)? {
+            tracing::error!("TMC6300 PIO DIAG pin asserted: driver fault detected");
             self.stop()?;
             Err(Tmc6300PioError::DriverFault)
         } else {
@@ -882,6 +884,7 @@ where
 
     async fn tick(&mut self) -> Result<(), Self::Error> {
         if self.pin_diag.is_high().map_err(Tmc6300PioError::PinDiag)? {
+            tracing::error!("TMC6300 PIO DIAG pin asserted: driver fault detected");
             self.stop()?;
             Err(Tmc6300PioError::DriverFault)
         } else {
