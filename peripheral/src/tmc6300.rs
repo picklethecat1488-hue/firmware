@@ -666,7 +666,6 @@ where
 
         let pins = [&p16, &p17, &p18, &p19, &p20, &p21];
         cfg.set_out_pins(&pins);
-        cfg.set_set_pins(&pins);
 
         cfg.use_program(&program.prg, &[]);
 
