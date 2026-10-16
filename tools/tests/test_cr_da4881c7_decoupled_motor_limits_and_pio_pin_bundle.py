@@ -41,17 +41,17 @@ def test_cr_29b62fd1_decoupled_motor_current_limit_injection():
 
 
 def test_cr_b5140851_target_compatibility_error_guard():
-    """Verify build.rs and tmc6300.rs guard against non-RP2040 ARM targets."""
+    """Verify build.rs sets target_has_embassy_rp for RP2040 and does not error on non-RP2040 baremetal."""
     workspace_root = Path(__file__).resolve().parent.parent.parent
     build_rs = workspace_root / "peripheral" / "build.rs"
     tmc6300_rs = workspace_root / "peripheral" / "src" / "tmc6300.rs"
 
     build_code = build_rs.read_text(encoding="utf-8")
     assert 'println!("cargo:rustc-cfg=target_has_embassy_rp");' in build_code
-    assert "The TMC6300 PIO driver requires RP2040 hardware support" in build_code
+    assert 'eprintln!("Error:' not in build_code
 
     tmc_code = tmc6300_rs.read_text(encoding="utf-8")
-    assert "compile_error!" in tmc_code
+    assert "compile_error!" not in tmc_code
     assert "target_has_embassy_rp" in tmc_code
 
 

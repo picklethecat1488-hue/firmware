@@ -507,14 +507,7 @@ pub struct Tmc6300PhasePins<PUH, PUL, PVH, PVL, PWH, PWL> {
     pub pin_wl: PWL,
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none", not(target_has_embassy_rp)))]
-compile_error!(
-    "Target architecture does not support the RP2040-specific embassy_rp crate. \
-    The TMC6300 PIO driver requires RP2040 (thumbv6m-none-eabi). \
-    For non-RP2040 targets, use the standard GPIO-based Tmc6300 driver."
-);
-
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 use {
     embassy_rp::pio::{
         Common, Config, Direction, FifoJoin, Instance, InterruptHandler, LoadedProgram, Pio,
@@ -523,13 +516,13 @@ use {
     fixed::types::U24F8,
 };
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 /// PIO program for 6-pin BLDC PWM duty-cycling.
 pub struct PioTmc6300Program<'a, PIO: Instance> {
     prg: LoadedProgram<'a, PIO>,
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 impl<'a, PIO: Instance> PioTmc6300Program<'a, PIO> {
     /// Loads the 6-pin BLDC PWM duty-cycling program into the given PIO block.
     pub fn new(common: &mut Common<'a, PIO>) -> Self {
@@ -580,7 +573,7 @@ impl<'a, PIO: Instance> PioTmc6300Program<'a, PIO> {
     }
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 /// Driver for the SparkFun TMC6300 BLDC motor driver using RP2040 PIO state machine.
 pub struct Tmc6300Pio<'d, PIO: Instance, const SM: usize, PD: InputPin> {
     sm: StateMachine<'d, PIO, SM>,
@@ -590,7 +583,7 @@ pub struct Tmc6300Pio<'d, PIO: Instance, const SM: usize, PD: InputPin> {
     duty_cycle: u8,
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 impl<'d, PD: InputPin> Tmc6300Pio<'d, embassy_rp::peripherals::PIO1, 0, PD>
 where
     PD::Error: core::fmt::Debug,
@@ -634,7 +627,7 @@ where
     }
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 impl<'d, PIO: Instance, const SM: usize, PD: InputPin> Tmc6300Pio<'d, PIO, SM, PD>
 where
     PD::Error: core::fmt::Debug,
@@ -717,7 +710,7 @@ where
     }
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 impl<'d, PIO: Instance, const SM: usize, PD: InputPin> Motor for Tmc6300Pio<'d, PIO, SM, PD>
 where
     PD::Error: core::fmt::Debug,
@@ -758,7 +751,7 @@ where
     }
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 impl<'d, PIO: Instance, const SM: usize, PD: InputPin> Tickable for Tmc6300Pio<'d, PIO, SM, PD>
 where
     PD::Error: core::fmt::Debug,
@@ -788,7 +781,7 @@ where
     }
 }
 
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+#[cfg(not(all(target_arch = "arm", target_os = "none", target_has_embassy_rp)))]
 /// Mock PIO-driven TMC6300 motor driver for host testing.
 pub struct Tmc6300Pio<PD = ()> {
     pin_diag: PD,
@@ -798,7 +791,7 @@ pub struct Tmc6300Pio<PD = ()> {
     last_word: u32,
 }
 
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+#[cfg(not(all(target_arch = "arm", target_os = "none", target_has_embassy_rp)))]
 impl<PD: InputPin> Tmc6300Pio<PD>
 where
     PD::Error: core::fmt::Debug,
@@ -812,6 +805,16 @@ where
             duty_cycle: 0,
             last_word: make_pwm_word(0, 0, PWM_PERIOD_CYCLES),
         }
+    }
+
+    /// Creates a dummy TMC6300 PIO driver from hardware pins and IRQ.
+    pub fn new_pio<PUH, PUL, PVH, PVL, PWH, PWL, IRQ, PIO>(
+        _pio: PIO,
+        _pins: Tmc6300PhasePins<PUH, PUL, PVH, PVL, PWH, PWL>,
+        pin_diag: PD,
+        _irq: IRQ,
+    ) -> Self {
+        Self::new(pin_diag)
     }
 
     /// Checks if the hardware diagnostic pin (`DIAG`) is actively asserted (high).
@@ -840,7 +843,7 @@ where
     }
 }
 
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+#[cfg(not(all(target_arch = "arm", target_os = "none", target_has_embassy_rp)))]
 impl<PD: InputPin> Motor for Tmc6300Pio<PD>
 where
     PD::Error: core::fmt::Debug,
@@ -870,7 +873,7 @@ where
     }
 }
 
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+#[cfg(not(all(target_arch = "arm", target_os = "none", target_has_embassy_rp)))]
 impl<PD: InputPin> Tickable for Tmc6300Pio<PD>
 where
     PD::Error: core::fmt::Debug,

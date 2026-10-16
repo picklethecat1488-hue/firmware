@@ -14,13 +14,6 @@ fn main() {
     let target = env::var("TARGET").unwrap_or_default();
     if target == "thumbv6m-none-eabi" {
         println!("cargo:rustc-cfg=target_has_embassy_rp");
-    } else if target.contains("none") {
-        eprintln!(
-            "Error: Target '{}' does not support the RP2040-specific embassy_rp crate. \
-            The TMC6300 PIO driver requires RP2040 hardware support (thumbv6m-none-eabi). \
-            For non-RP2040 ARM targets, use the standard GPIO-based Tmc6300 driver.",
-            target
-        );
     }
 
     let out_dir = env::var("OUT_DIR").unwrap();
