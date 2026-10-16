@@ -490,6 +490,30 @@ pub enum Tmc6300PioError<ED> {
     ZeroSpeed,
 }
 
+/// Pin bundle for the 6-PWM phase control inputs of the TMC6300 BLDC driver.
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub struct Tmc6300PhasePins<PUH, PUL, PVH, PVL, PWH, PWL> {
+    /// High-side phase U control pin.
+    pub pin_uh: PUH,
+    /// Low-side phase U control pin.
+    pub pin_ul: PUL,
+    /// High-side phase V control pin.
+    pub pin_vh: PVH,
+    /// Low-side phase V control pin.
+    pub pin_vl: PVL,
+    /// High-side phase W control pin.
+    pub pin_wh: PWH,
+    /// Low-side phase W control pin.
+    pub pin_wl: PWL,
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none", not(target_has_embassy_rp)))]
+compile_error!(
+    "Target architecture does not support the RP2040-specific embassy_rp crate. \
+    The TMC6300 PIO driver requires RP2040 (thumbv6m-none-eabi). \
+    For non-RP2040 targets, use the standard GPIO-based Tmc6300 driver."
+);
+
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 use {
     embassy_rp::pio::{
@@ -572,19 +596,10 @@ where
     PD::Error: core::fmt::Debug,
 {
     /// Creates and configures the TMC6300 PIO driver using PIO1 and state machine 0.
-    #[allow(
-        static_mut_refs,
-        clippy::missing_transmute_annotations,
-        clippy::too_many_arguments
-    )]
+    #[allow(static_mut_refs, clippy::missing_transmute_annotations)]
     pub fn new_pio<PUH, PUL, PVH, PVL, PWH, PWL, IRQ>(
         pio: embassy_rp::peripherals::PIO1,
-        pin_uh: PUH,
-        pin_ul: PUL,
-        pin_vh: PVH,
-        pin_vl: PVL,
-        pin_wh: PWH,
-        pin_wl: PWL,
+        pins: Tmc6300PhasePins<PUH, PUL, PVH, PVL, PWH, PWL>,
         pin_diag: PD,
         irq: IRQ,
     ) -> Self
@@ -614,18 +629,7 @@ where
             PIO_PROGRAM = Some(core::mem::transmute(program));
             let program_ref: &PioTmc6300Program<'d, embassy_rp::peripherals::PIO1> =
                 core::mem::transmute(PIO_PROGRAM.as_ref().unwrap());
-            Self::new(
-                common_ref,
-                sm0,
-                pin_uh,
-                pin_ul,
-                pin_vh,
-                pin_vl,
-                pin_wh,
-                pin_wl,
-                pin_diag,
-                program_ref,
-            )
+            Self::new(common_ref, sm0, pins, pin_diag, program_ref)
         }
     }
 }
@@ -636,27 +640,29 @@ where
     PD::Error: core::fmt::Debug,
 {
     /// Creates a new TMC6300 PIO driver using pre-allocated state machine and program.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub fn new<PUH, PUL, PVH, PVL, PWH, PWL>(
         common: &mut Common<'d, PIO>,
         mut sm: StateMachine<'d, PIO, SM>,
-        pin_uh: impl PioPin + 'd,
-        pin_ul: impl PioPin + 'd,
-        pin_vh: impl PioPin + 'd,
-        pin_vl: impl PioPin + 'd,
-        pin_wh: impl PioPin + 'd,
-        pin_wl: impl PioPin + 'd,
+        pins: Tmc6300PhasePins<PUH, PUL, PVH, PVL, PWH, PWL>,
         pin_diag: PD,
         program: &PioTmc6300Program<'d, PIO>,
-    ) -> Self {
+    ) -> Self
+    where
+        PUH: PioPin + 'd,
+        PUL: PioPin + 'd,
+        PVH: PioPin + 'd,
+        PVL: PioPin + 'd,
+        PWH: PioPin + 'd,
+        PWL: PioPin + 'd,
+    {
         let mut cfg = Config::default();
 
-        let p16 = common.make_pio_pin(pin_uh);
-        let p17 = common.make_pio_pin(pin_ul);
-        let p18 = common.make_pio_pin(pin_vh);
-        let p19 = common.make_pio_pin(pin_vl);
-        let p20 = common.make_pio_pin(pin_wh);
-        let p21 = common.make_pio_pin(pin_wl);
+        let p16 = common.make_pio_pin(pins.pin_uh);
+        let p17 = common.make_pio_pin(pins.pin_ul);
+        let p18 = common.make_pio_pin(pins.pin_vh);
+        let p19 = common.make_pio_pin(pins.pin_vl);
+        let p20 = common.make_pio_pin(pins.pin_wh);
+        let p21 = common.make_pio_pin(pins.pin_wl);
 
         let pins = [&p16, &p17, &p18, &p19, &p20, &p21];
         cfg.set_out_pins(&pins);

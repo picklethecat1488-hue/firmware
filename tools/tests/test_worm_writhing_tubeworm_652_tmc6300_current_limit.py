@@ -133,23 +133,34 @@ def test_worm_writhing_tubeworm_652_board_pio1_motor_initialization():
 
 
 def test_worm_writhing_tubeworm_652_motor_controller_clamps_to_2a():
-    """Verify controller/src/motor_controller.rs clamps max current to 2000 mA."""
+    """Verify MotorController supports injected max current limit and app.toml configures 2000 mA."""
     workspace_root = Path(__file__).resolve().parent.parent.parent
     mc_rs_path = workspace_root / "controller" / "src" / "motor_controller.rs"
+    app_toml_path = workspace_root / "app" / "app.toml"
+    cat_detector_rs_path = workspace_root / "app" / "src" / "cat_detector.rs"
 
-    content = mc_rs_path.read_text(encoding="utf-8")
+    mc_content = mc_rs_path.read_text(encoding="utf-8")
+    assert "pub const DEFAULT_MAX_CURRENT_MA: i32 = 2500;" in mc_content, (
+        "controller/src/motor_controller.rs must retain default canonical MAX_CURRENT_MA of 2500."
+    )
+    assert "pub fn new_with_max_current(" in mc_content, (
+        "controller/src/motor_controller.rs must define new_with_max_current constructor."
+    )
+    assert "max_ma.min(self.max_hardware_current_ma)" in mc_content, (
+        "controller/src/motor_controller.rs must clamp configured limits to self.max_hardware_current_ma."
+    )
+    assert "store.current_ma.overload.min(self.max_hardware_current_ma)" in mc_content, (
+        "controller/src/motor_controller.rs must clamp calibration overload limits to self.max_hardware_current_ma."
+    )
 
-    assert "pub const MAX_TMC6300_CURRENT_MA: i32 = 2000;" in content, (
-        "controller/src/motor_controller.rs must define MAX_TMC6300_CURRENT_MA as 2000."
+    app_toml_content = app_toml_path.read_text(encoding="utf-8")
+    assert "max_current_ma = 2000" in app_toml_content, (
+        "app/app.toml must configure max_current_ma = 2000 for Motor controller."
     )
-    assert "max_current_ma: MAX_TMC6300_CURRENT_MA," in content, (
-        "controller/src/motor_controller.rs must use MAX_TMC6300_CURRENT_MA in default limits."
-    )
-    assert "max_ma.min(MAX_TMC6300_CURRENT_MA)" in content, (
-        "controller/src/motor_controller.rs must clamp configured limits to MAX_TMC6300_CURRENT_MA."
-    )
-    assert "store.current_ma.overload.min(MAX_TMC6300_CURRENT_MA)" in content, (
-        "controller/src/motor_controller.rs must clamp calibration overload limits to MAX_TMC6300_CURRENT_MA."
+
+    cat_detector_content = cat_detector_rs_path.read_text(encoding="utf-8")
+    assert "new_with_max_current" in cat_detector_content and "MOTOR_MAX_CURRENT_MA" in cat_detector_content, (
+        "app/src/cat_detector.rs must pass MOTOR_MAX_CURRENT_MA to new_with_max_current."
     )
 
 

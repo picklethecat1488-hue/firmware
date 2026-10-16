@@ -542,7 +542,17 @@ mod target {
             speed_pin.set_pull(Pull::Up);
 
             let motor = peripheral::tmc6300::Tmc6300Pio::new_pio(
-                p.PIO1, p.PIN_16, p.PIN_17, p.PIN_18, p.PIN_19, p.PIN_20, p.PIN_21, pump_diag, Irqs,
+                p.PIO1,
+                peripheral::tmc6300::Tmc6300PhasePins {
+                    pin_uh: p.PIN_16,
+                    pin_ul: p.PIN_17,
+                    pin_vh: p.PIN_18,
+                    pin_vl: p.PIN_19,
+                    pin_wh: p.PIN_20,
+                    pin_wl: p.PIN_21,
+                },
+                pump_diag,
+                Irqs,
             );
             let speed_sensor = peripheral::hall_sensor::HallSensor::new(speed_pin);
 
