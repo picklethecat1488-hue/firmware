@@ -1258,3 +1258,112 @@ fn test_vl53l0x_measurement_min_range() {
         );
     });
 }
+
+#[test]
+fn test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm() {
+    run_test!(async {
+        use model::interfaces::{Motor, Tickable};
+        use model::types::MotorSpeed;
+        use peripheral::tmc6300::{
+            make_pwm_word, phase_mask, Tmc6300Pio, Tmc6300PioError, COMMUTATION_STEPS,
+            MAX_TMC6300_CURRENT_MA, PIO_PWM_FREQUENCY_HZ, PWM_PERIOD_CYCLES,
+        };
+
+        // 1. Verify constant invariants for 2A max current and >=20kHz PWM frequency
+        const { assert!(MAX_TMC6300_CURRENT_MA == 2000) };
+        const { assert!(PIO_PWM_FREQUENCY_HZ >= 20_000) };
+        const { assert!(PWM_PERIOD_CYCLES == 100) };
+
+        // 2. Verify all forward and reverse phase masks guarantee zero shoot-through:
+        // UH (bit 0) and UL (bit 1) must never both be high
+        // VH (bit 2) and VL (bit 3) must never both be high
+        // WH (bit 4) and WL (bit 5) must never both be high
+        for speed in [-100, -50, -8, 8, 50, 100] {
+            for step in 0..COMMUTATION_STEPS as u8 {
+                let mask = phase_mask(speed, step);
+                let uh = (mask & (1 << 0)) != 0;
+                let ul = (mask & (1 << 1)) != 0;
+                let vh = (mask & (1 << 2)) != 0;
+                let vl = (mask & (1 << 3)) != 0;
+                let wh = (mask & (1 << 4)) != 0;
+                let wl = (mask & (1 << 5)) != 0;
+
+                assert!(
+                    !(uh && ul),
+                    "Shoot-through on Phase U at speed {speed}, step {step}"
+                );
+                assert!(
+                    !(vh && vl),
+                    "Shoot-through on Phase V at speed {speed}, step {step}"
+                );
+                assert!(
+                    !(wh && wl),
+                    "Shoot-through on Phase W at speed {speed}, step {step}"
+                );
+
+                // Active step must have exactly one high-side and one low-side FET on
+                let high_count = (uh as u8) + (vh as u8) + (wh as u8);
+                let low_count = (ul as u8) + (vl as u8) + (wl as u8);
+                assert_eq!(high_count, 1, "Must have exactly 1 high-side FET active");
+                assert_eq!(low_count, 1, "Must have exactly 1 low-side FET active");
+            }
+        }
+
+        // Zero speed must produce all-zero mask
+        assert_eq!(phase_mask(0, 0), 0);
+
+        // 3. Verify PIO word packing helper
+        // Word format: bits 0..7 = phase_mask, bits 8..15 = on_count, bits 16..23 = off_count
+        let word = make_pwm_word(0b001001, 8, 92);
+        assert_eq!(word & 0xFF, 0b001001);
+        assert_eq!((word >> 8) & 0xFF, 8);
+        assert_eq!((word >> 16) & 0xFF, 92);
+
+        // 4. Test driver operations on host mock
+        let diag = std::sync::atomic::AtomicBool::new(false);
+        let pin_diag = MockPin { is_high: &diag };
+        let mut motor = Tmc6300Pio::new(pin_diag);
+
+        // At startup, motor is stopped with 0 duty cycle
+        assert_eq!(motor.speed(), 0);
+        assert_eq!(motor.duty_cycle(), 0);
+
+        // Command speed 8 (startup duty cycle capping current to <= 2A)
+        assert!(motor.set_speed(MotorSpeed::new(8).unwrap()).is_ok());
+        assert_eq!(motor.speed(), 8);
+        assert_eq!(motor.duty_cycle(), 8);
+        let w8 = motor.last_word();
+        assert_eq!((w8 >> 8) & 0xFF, 8);
+        assert_eq!((w8 >> 16) & 0xFF, 92);
+        assert_eq!(w8 & 0xFF, phase_mask(8, 0) as u32);
+
+        // Advance commutation step via tick()
+        assert!(motor.tick().await.is_ok());
+        assert_eq!(motor.commutation_step(), 1);
+        let w_step1 = motor.last_word();
+        assert_eq!((w_step1 >> 8) & 0xFF, 8);
+        assert_eq!(w_step1 & 0xFF, phase_mask(8, 1) as u32);
+
+        // Ramp up to full speed 100
+        assert!(motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert_eq!(motor.speed(), 100);
+        assert_eq!(motor.duty_cycle(), 100);
+        let w100 = motor.last_word();
+        assert_eq!((w100 >> 8) & 0xFF, 100);
+        assert_eq!((w100 >> 16) & 0xFF, 0);
+
+        // Stop motor: duty cycle and mask go to 0
+        assert!(motor.stop().is_ok());
+        assert_eq!(motor.speed(), 0);
+        assert_eq!(motor.duty_cycle(), 0);
+        assert_eq!(motor.last_word() & 0xFF, 0);
+
+        // Diagnostic fault trips DriverFault and stops motor
+        assert!(motor.set_speed(MotorSpeed::new(50).unwrap()).is_ok());
+        diag.store(true, std::sync::atomic::Ordering::SeqCst);
+        let tick_res = motor.tick().await;
+        assert!(matches!(tick_res, Err(Tmc6300PioError::DriverFault)));
+        assert_eq!(motor.duty_cycle(), 0);
+        assert_eq!(motor.speed(), 0);
+    });
+}
