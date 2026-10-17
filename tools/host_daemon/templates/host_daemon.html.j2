@@ -28,7 +28,10 @@
       --xerxes-text-dim: #3a626c;
       --font-mono: "Share Tech Mono", ui-monospace, "SF Mono", "Courier New", monospace;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html {
+      height: 100%;
+      width: 100%;
+    }
     body {
       background-color: var(--xerxes-bg);
       background-image:
@@ -36,7 +39,8 @@
         radial-gradient(ellipse at 50% 0%, #0a2f3a 0%, #03080b 100%);
       color: var(--xerxes-text-light);
       font-family: var(--font-mono);
-      height: 100vh;
+      height: 100%;
+      width: 100%;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -756,6 +760,14 @@
               <span>Fetch &amp; attach target filesystem metadata (host_fs cat metadata)</span>
             </label>
           </div>
+        <div id="targetBugProgressContainer" style="display:none; margin-top:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <span id="targetBugProgressMsg" style="font-size:9px; color:var(--xerxes-cyan);">Initializing defect report...</span>
+            <span id="targetBugProgressPct" style="font-size:9px; color:var(--xerxes-cyan); font-weight:bold;">0%</span>
+          </div>
+          <div class="sync-progress-container" style="height:6px; background:#021217; border:1px solid #0b5966; border-radius:2px; overflow:hidden;">
+            <div id="targetBugProgressBar" class="sync-progress-bar" style="width:0%; height:100%; background:linear-gradient(90deg, var(--xerxes-teal), var(--xerxes-cyan)); transition:width 0.25s ease;"></div>
+          </div>
         </div>
 
         <div id="targetBugStatusMsg" style="display:none; font-size:9.5px; padding:6px 10px; border-radius:2px;"></div>
@@ -1390,7 +1402,12 @@
 
           let formatted = allCls.length > 0 ? `<span class="${allCls.join(' ')}">${inner}</span>` : inner;
           if (currentUrl) {
-            formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
+            if (currentUrl.startsWith("command:") || currentUrl.startsWith("action:")) {
+              const cmd = currentUrl.replace(/^(command|action):/, "");
+              formatted = `<a href="javascript:void(0)" onclick="handleCliCommandClick('${escapeHtmlText(cmd)}')" class="term-link term-cmd-link" data-command="${escapeHtmlText(cmd)}" title="Click to select ${escapeHtmlText(cmd)}">${formatted}</a>`;
+            } else {
+              formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
+            }
           }
           outChunks.push(formatted);
         }
@@ -1453,12 +1470,31 @@
 
         let formatted = allCls.length > 0 ? `<span class="${allCls.join(' ')}">${inner}</span>` : inner;
         if (currentUrl) {
-          formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
+          if (currentUrl.startsWith("command:") || currentUrl.startsWith("action:")) {
+            const cmd = currentUrl.replace(/^(command|action):/, "");
+            formatted = `<a href="javascript:void(0)" onclick="handleCliCommandClick('${escapeHtmlText(cmd)}')" class="term-link term-cmd-link" data-command="${escapeHtmlText(cmd)}" title="Click to select ${escapeHtmlText(cmd)}">${formatted}</a>`;
+          } else {
+            formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
+          }
         }
         outChunks.push(formatted);
       }
 
       return outChunks.join('');
+    }
+
+    function handleCliCommandClick(cmd) {
+      if (typeof respondBringup === "function" && ["pass", "fail", "skip"].includes(cmd.toLowerCase())) {
+        respondBringup(cmd.toLowerCase());
+        return;
+      }
+      const input = document.getElementById("cmdInput");
+      if (input) {
+        input.value = cmd;
+        if (typeof submitCommand === "function") {
+          submitCommand();
+        }
+      }
     }
 
     let lastLogCount = 0;
@@ -1891,6 +1927,13 @@
       const factor = parseInt(scale, 10) / 100;
       if (document.documentElement) {
         document.documentElement.style.zoom = factor;
+        if (factor === 1.0) {
+          document.documentElement.style.width = "";
+          document.documentElement.style.height = "";
+        } else {
+          document.documentElement.style.width = (window.innerWidth / factor) + "px";
+          document.documentElement.style.height = (window.innerHeight / factor) + "px";
+        }
       }
       try {
         localStorage.setItem(UI_SCALE_KEY, scale);
@@ -1900,6 +1943,18 @@
         sel.value = scale;
       }
     }
+
+    window.addEventListener("resize", () => {
+      let current = "100%";
+      try {
+        current = localStorage.getItem(UI_SCALE_KEY) || "100%";
+      } catch (e) {}
+      const factor = parseInt(current, 10) / 100;
+      if (factor !== 1.0 && document.documentElement) {
+        document.documentElement.style.width = (window.innerWidth / factor) + "px";
+        document.documentElement.style.height = (window.innerHeight / factor) + "px";
+      }
+    });
 
     function onUiScaleChange(scale) {
       applyUiScale(scale);
@@ -2064,6 +2119,14 @@
         statusEl.style.display = "none";
         statusEl.textContent = "";
       }
+
+      const progressContainer = document.getElementById("targetBugProgressContainer");
+      if (progressContainer) progressContainer.style.display = "none";
+      const progressBar = document.getElementById("targetBugProgressBar");
+      if (progressBar) {
+        progressBar.style.width = "0%";
+        progressBar.style.background = "linear-gradient(90deg, var(--xerxes-teal), var(--xerxes-cyan))";
+      }
     }
 
     function closeTargetBugModal() {
@@ -2075,6 +2138,17 @@
       const title = document.getElementById("targetBugTitle")?.value.trim();
       const statusEl = document.getElementById("targetBugStatusMsg");
       const submitBtn = document.getElementById("btnSubmitTargetBug");
+      const progressContainer = document.getElementById("targetBugProgressContainer");
+      const progressBar = document.getElementById("targetBugProgressBar");
+      const progressMsg = document.getElementById("targetBugProgressMsg");
+      const progressPct = document.getElementById("targetBugProgressPct");
+
+      function updateBugProgress(pct, msg) {
+        if (progressContainer) progressContainer.style.display = "block";
+        if (progressBar) progressBar.style.width = pct + "%";
+        if (progressPct) progressPct.textContent = pct + "%";
+        if (progressMsg) progressMsg.textContent = msg;
+      }
 
       if (!title) {
         if (statusEl) {
@@ -2090,6 +2164,8 @@
         submitBtn.disabled = true;
         submitBtn.textContent = "⏳ Filing Bug Report...";
       }
+
+      updateBugProgress(20, "Collecting system logs & target hardware context...");
 
       const payload = {
         title: title,
@@ -2107,13 +2183,16 @@
       };
 
       try {
+        updateBugProgress(45, "Packaging defect attachments & telemetry data...");
         const resp = await fetch("/api/target_bug", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
+        updateBugProgress(85, "Registering worm in tracking matrix...");
         const res = await resp.json();
         if (res.success) {
+          updateBugProgress(100, `✓ Created defect report ${res.worm_id} with ${res.attachments_count} attachments.`);
           if (statusEl) {
             statusEl.style.display = "block";
             statusEl.style.background = "rgba(20, 217, 196, 0.15)";
@@ -2128,6 +2207,8 @@
             }
           }, 1500);
         } else {
+          updateBugProgress(100, "Defect submission failed");
+          if (progressBar) progressBar.style.background = "var(--xerxes-red)";
           if (statusEl) {
             statusEl.style.display = "block";
             statusEl.style.background = "rgba(255, 42, 75, 0.15)";
@@ -2140,6 +2221,8 @@
           }
         }
       } catch (err) {
+        updateBugProgress(100, "Defect submission failed");
+        if (progressBar) progressBar.style.background = "var(--xerxes-red)";
         if (statusEl) {
           statusEl.style.display = "block";
           statusEl.style.background = "rgba(255, 42, 75, 0.15)";

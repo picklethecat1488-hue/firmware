@@ -11,7 +11,7 @@ import uuid as uuid_pkg
 
 import jinja2
 
-dashboard_dir = Path(__file__).resolve().parent.parent / "dashboard"
+dashboard_dir = Path(__file__).resolve().parents[3] / "dashboard"
 if str(dashboard_dir) not in sys.path:
     sys.path.insert(0, str(dashboard_dir))
 
@@ -26,7 +26,7 @@ from model.worm_report import (
 from provider.worm_report.markdown_exporter import MarkdownWormExporter
 from provider.worm_report.sqlite_store import SQLiteWormStore
 
-from .runner import DaemonRunner
+from host_daemon.provider.daemon.runner import DaemonRunner
 
 
 class HostDaemonRequestHandler(BaseHTTPRequestHandler):
@@ -82,7 +82,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             with runner._lock:
                 self._send_json(list(runner.fs_outputs))
         elif path == "/api/bringup/scripts":
-            from .bringup import discover_bringup_scripts
+            from host_daemon.model.bringup import discover_bringup_scripts
             self._send_json(discover_bringup_scripts(runner.repo_root))
         elif path == "/api/bringup/status":
             self._send_json(runner.bringup_manager.get_status())
@@ -90,7 +90,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"success": True, "report": runner.bringup_manager.generate_report()})
         elif path.startswith("/static/"):
             rel_file = path[len("/static/"):]
-            static_dir = Path(__file__).resolve().parent / "static"
+            static_dir = Path(__file__).resolve().parents[2] / "static"
             file_path = static_dir / rel_file
             if file_path.exists() and file_path.is_file():
                 ext = file_path.suffix.lower()
@@ -141,7 +141,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     chip=payload.get("chip"),
                 )
                 try:
-                    from .cli import get_lock_data, write_lock_file
+                    from host_daemon.cli import get_lock_data, write_lock_file
 
                     lock_data = get_lock_data() or {}
                     lock_data.update({
@@ -404,7 +404,7 @@ class HostDaemonServer(ThreadingHTTPServer):
         """Initialize host daemon HTTP server and configure Jinja template environment."""
         super().__init__((host, port), HostDaemonRequestHandler)
         self.runner = runner
-        template_dir = Path(__file__).resolve().parent / "templates"
+        template_dir = Path(__file__).resolve().parents[2] / "templates"
         self.jinja_env = jinja2.Environment(
             loader=jinja2.FileSystemLoader(str(template_dir)),
             autoescape=jinja2.select_autoescape(["html", "xml"]),

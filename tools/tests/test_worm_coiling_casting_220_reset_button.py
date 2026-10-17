@@ -21,8 +21,8 @@ if str(_tools_dir) not in sys.path:
     sys.path.insert(0, str(_tools_dir))
 
 from host_daemon.cli import parse_arguments
-from host_daemon.runner import DaemonRunner
-from host_daemon.server import HostDaemonRequestHandler, HostDaemonServer
+from host_daemon.provider.daemon.runner import DaemonRunner
+from host_daemon.provider.daemon.server import HostDaemonRequestHandler, HostDaemonServer
 
 
 def test_daemon_runner_reset_target():

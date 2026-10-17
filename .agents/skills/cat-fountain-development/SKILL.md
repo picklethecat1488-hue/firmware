@@ -38,7 +38,7 @@ Before flashing, ensure the host environment builds successfully and checks pass
 ## 3. Interactive Hardware Bringup
 Run the automated bringup guide under the Conda environment:
 ```bash
-conda run -n firmware-env python tools/helpers/bringup.py --config projects/cat_detector_bringup.yaml
+conda run -n firmware-env python tools/host.py bringup --script projects/cat_detector_bringup.yaml --run
 ```
 
 ## 4. Log Streaming & Interactive Console (`host_cli`)

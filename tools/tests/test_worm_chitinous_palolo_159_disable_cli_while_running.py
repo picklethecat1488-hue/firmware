@@ -46,7 +46,7 @@ def test_code_review_template_disables_cli_during_execution():
 
 def test_daemon_runner_guards_execute_fs_during_sync():
     """Verify DaemonRunner rejects execute_fs while target sync is active."""
-    from tools.host_daemon.runner import DaemonRunner
+    from tools.host_daemon.provider.daemon.runner import DaemonRunner
 
     runner = DaemonRunner(REPO_ROOT, "thumbv6m-none-eabi", "cat_detector", "cat_detector_shell", False, 4000)
     assert hasattr(runner, "_fs_lock"), "DaemonRunner must have _fs_lock"
@@ -65,7 +65,7 @@ def test_daemon_runner_guards_execute_fs_during_sync():
 
 def test_daemon_runner_serializes_execute_fs():
     """Verify DaemonRunner uses _fs_lock to serialize concurrent execute_fs calls."""
-    from tools.host_daemon.runner import DaemonRunner
+    from tools.host_daemon.provider.daemon.runner import DaemonRunner
 
     runner = DaemonRunner(REPO_ROOT, "thumbv6m-none-eabi", "cat_detector", "cat_detector_shell", False, 4000)
 

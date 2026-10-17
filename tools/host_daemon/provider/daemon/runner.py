@@ -10,7 +10,7 @@ import threading
 import time
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
-from .bringup import BringupManager
+from host_daemon.provider.bringup.bringup_manager import BringupManager
 
 
 class DaemonRunner:

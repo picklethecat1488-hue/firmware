@@ -15,8 +15,8 @@ from typing import Any, Callable, Dict, List, Optional
 import urllib.error
 import urllib.request
 
-from .runner import DaemonRunner
-from .server import HostDaemonServer
+from host_daemon.provider.daemon.runner import DaemonRunner
+from host_daemon.provider.daemon.server import HostDaemonServer
 
 _repo_root = Path(__file__).resolve().parent.parent.parent
 if str(_repo_root) not in sys.path:
@@ -26,6 +26,21 @@ if str(_tools_dir) not in sys.path:
     sys.path.insert(0, str(_tools_dir))
 
 LOCK_FILE: Path = Path("/tmp/xerxes_host_daemon.lock")
+
+
+def format_clickable_choice(label: str, key: str, action: str, color_ansi: str) -> str:
+    """Format an interactive choice with ANSI colors and an OSC 8 terminal hyperlink.
+
+    Args:
+        label: Full option label text (e.g. 'Pass').
+        key: Accelerator character to enclose in brackets (e.g. 'P').
+        action: Semantic action keyword (e.g. 'pass').
+        color_ansi: ANSI color escape sequence to style the bracketed accelerator.
+
+    Returns:
+        String with embedded OSC 8 hyperlink and ANSI styling.
+    """
+    return f"\033]8;;command:{action}\033\\{color_ansi}[{key}]{label[1:]}\033[0m\033]8;;\033\\"
 
 
 def get_host_daemon_icon_path() -> Optional[Path]:
@@ -383,7 +398,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 1
 
     if args.subcommand == "bringup":
-        from .bringup import BringupManager, discover_bringup_scripts
+        from host_daemon.model.bringup import discover_bringup_scripts
+        from host_daemon.provider.bringup.bringup_manager import BringupManager
 
         # 1. List scripts if requested
         if args.list:
@@ -496,7 +512,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 print(f"  ✘ Check failed (expected pattern not matched)")
 
             try:
-                choice = input(f"Status [P]ass, [F]ail, [S]kip (default: {def_status.upper()}): ").strip().lower()
+                pass_choice = format_clickable_choice("Pass", "P", "pass", "\033[1;32m")
+                fail_choice = format_clickable_choice("Fail", "F", "fail", "\033[1;31m")
+                skip_choice = format_clickable_choice("Skip", "S", "skip", "\033[1;33m")
+                prompt_str = f"Status {pass_choice}, {fail_choice}, {skip_choice} (default: {def_status.upper()}): "
+                choice = input(prompt_str).strip().lower()
                 if not choice:
                     choice = def_status
                 notes = input("Notes (optional): ").strip()

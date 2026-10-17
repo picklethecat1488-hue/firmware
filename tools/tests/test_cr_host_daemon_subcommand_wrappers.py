@@ -17,7 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tools.host_daemon.runner import DaemonRunner
+from tools.host_daemon.provider.daemon.runner import DaemonRunner
 
 
 def test_cr_01b411f5_subcommand_wrappers_exist_and_stream():

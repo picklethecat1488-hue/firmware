@@ -22,8 +22,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tools.host_daemon.runner import DaemonRunner
-from tools.host_daemon.server import HostDaemonServer
+from tools.host_daemon.provider.daemon.runner import DaemonRunner
+from tools.host_daemon.provider.daemon.server import HostDaemonServer
 
 
 def test_cr_6decfd3c_template_modal_and_sync_button():

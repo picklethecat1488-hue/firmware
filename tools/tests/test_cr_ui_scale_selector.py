@@ -58,6 +58,11 @@ def test_ui_scale_selector_present_in_all_templates() -> None:
             f"{file_path.name} missing zoom reset shortcut"
         )
 
+        # 5. Check for viewport compensation on zoom (a2ee1118)
+        assert "window.innerWidth / factor" in content, f"{file_path.name} missing viewport width compensation"
+        assert "window.innerHeight / factor" in content, f"{file_path.name} missing viewport height compensation"
+        assert 'window.addEventListener("resize"' in content, f"{file_path.name} missing window resize handler"
+
 
 def test_commit_selection_parity_in_code_review() -> None:
     """Verify finding 5d8eff1f: commit-item.selected styles and logic in code_review.html.j2."""
@@ -107,3 +112,16 @@ def test_templates_js_syntax_validation() -> None:
                 assert res.returncode == 0, f"JS syntax error in {file_path.name} block {idx}:\n{res.stderr}"
             finally:
                 Path(tf_path).unlink(missing_ok=True)
+
+
+def test_regression_cr_finding_a2ee1118_iframe_scale_isolation() -> None:
+    """Verify finding a2ee1118: prevent double-scaling and CLI displacement when workstations are embedded in iframe."""
+    files_to_check = [
+        TEMPLATES_DIR / "code_review.html.j2",
+        TEMPLATES_DIR / "worm_report.html.j2",
+    ]
+    for file_path in files_to_check:
+        content = file_path.read_text(encoding="utf-8")
+        assert "function isInsideIframe()" in content, f"{file_path.name} missing isInsideIframe guard"
+        assert "window.self !== window.top" in content, f"{file_path.name} missing frame hierarchy check"
+        assert "if (isInsideIframe())" in content, f"{file_path.name} missing iframe branch in applyUiScale"

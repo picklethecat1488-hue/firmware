@@ -9,8 +9,8 @@ import tempfile
 from unittest.mock import MagicMock, patch
 import pytest
 
-from host_daemon.runner import DaemonRunner
-from host_daemon.server import HostDaemonRequestHandler, HostDaemonServer
+from host_daemon.provider.daemon.runner import DaemonRunner
+from host_daemon.provider.daemon.server import HostDaemonRequestHandler, HostDaemonServer
 from model.worm_report import WormCategory, WormSeverity, WormStatus
 
 
@@ -47,6 +47,13 @@ def test_target_bug_ui_elements_in_template() -> None:
     # 4. Submit button and handler
     assert 'id="btnSubmitTargetBug"' in content, "Missing #btnSubmitTargetBug submit button"
     assert "submitTargetBug()" in content, "Missing submitTargetBug() JavaScript function"
+
+    # 5. Progress bar modal UI elements (CR cd712274)
+    assert 'id="targetBugProgressContainer"' in content, "Missing #targetBugProgressContainer"
+    assert 'id="targetBugProgressBar"' in content, "Missing #targetBugProgressBar"
+    assert 'id="targetBugProgressMsg"' in content, "Missing #targetBugProgressMsg"
+    assert 'id="targetBugProgressPct"' in content, "Missing #targetBugProgressPct"
+    assert "updateBugProgress" in content, "Missing updateBugProgress helper function"
 
 
 def test_target_bug_server_api_creates_worm_with_attachments() -> None:

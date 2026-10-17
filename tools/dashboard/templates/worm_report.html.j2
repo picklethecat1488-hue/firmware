@@ -16,7 +16,11 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
   <link rel="shortcut icon" href="/static/favicon.ico">
   <style>
-    html { font-size: 80%; }
+    html {
+      font-size: 80%;
+      height: 100%;
+      width: 100%;
+    }
     /* =========================================================
        SYSTEM SHOCK 2 // XERXES WORM MATRIX HUD THEME
        ========================================================= */
@@ -77,7 +81,8 @@
       color: var(--xerxes-text-light);
       font-family: var(--font-mono);
       letter-spacing: 0.02em;
-      height: 100vh;
+      height: 100%;
+      width: 100%;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -1346,13 +1351,17 @@
     const UI_SCALES = ["75%", "80%", "90%", "100%", "110%", "125%", "150%"];
     const UI_SCALE_KEY = "ui_scale";
 
+    function isInsideIframe() {
+      try {
+        return window.self !== window.top;
+      } catch (e) {
+        return true;
+      }
+    }
+
     function applyUiScale(scale) {
       if (!UI_SCALES.includes(scale)) {
         scale = "100%";
-      }
-      const factor = parseInt(scale, 10) / 100;
-      if (document.documentElement) {
-        document.documentElement.style.zoom = factor;
       }
       try {
         localStorage.setItem(UI_SCALE_KEY, scale);
@@ -1361,7 +1370,39 @@
       if (sel && sel.value !== scale) {
         sel.value = scale;
       }
+      if (isInsideIframe()) {
+        if (document.documentElement) {
+          document.documentElement.style.zoom = "";
+          document.documentElement.style.width = "";
+          document.documentElement.style.height = "";
+        }
+        return;
+      }
+      const factor = parseInt(scale, 10) / 100;
+      if (document.documentElement) {
+        document.documentElement.style.zoom = factor;
+        if (factor === 1.0) {
+          document.documentElement.style.width = "";
+          document.documentElement.style.height = "";
+        } else {
+          document.documentElement.style.width = (window.innerWidth / factor) + "px";
+          document.documentElement.style.height = (window.innerHeight / factor) + "px";
+        }
+      }
     }
+
+    window.addEventListener("resize", () => {
+      if (isInsideIframe()) return;
+      let current = "100%";
+      try {
+        current = localStorage.getItem(UI_SCALE_KEY) || "100%";
+      } catch (e) {}
+      const factor = parseInt(current, 10) / 100;
+      if (factor !== 1.0 && document.documentElement) {
+        document.documentElement.style.width = (window.innerWidth / factor) + "px";
+        document.documentElement.style.height = (window.innerHeight / factor) + "px";
+      }
+    });
 
     function onUiScaleChange(scale) {
       applyUiScale(scale);

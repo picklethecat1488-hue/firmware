@@ -23,16 +23,16 @@ for p in (str(_repo_root), str(_tools_dir), str(_dashboard_dir)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from host_daemon.bringup import (
+from host_daemon.model.bringup import (
     BringupConfig,
-    BringupManager,
     BringupStep,
     discover_bringup_scripts,
     load_bringup_yaml,
 )
+from host_daemon.provider.bringup.bringup_manager import BringupManager
 from host_daemon.cli import parse_arguments
-from host_daemon.runner import DaemonRunner
-from host_daemon.server import HostDaemonRequestHandler, HostDaemonServer
+from host_daemon.provider.daemon.runner import DaemonRunner
+from host_daemon.provider.daemon.server import HostDaemonRequestHandler, HostDaemonServer
 
 
 class TestBringupIntegration(unittest.TestCase):
