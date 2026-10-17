@@ -629,6 +629,8 @@ pub struct MockSpeedSensor {
     pub rpm: u32,
     /// Total pulses counted.
     pub pulses: u32,
+    /// Pulses per mechanical revolution.
+    pub pulses_per_rev: u8,
     /// Whether sensor calls should fail.
     pub should_fail: bool,
 }
@@ -639,6 +641,7 @@ impl MockSpeedSensor {
         Self {
             rpm,
             pulses: 0,
+            pulses_per_rev: 3,
             should_fail: false,
         }
     }
@@ -646,6 +649,11 @@ impl MockSpeedSensor {
     /// Sets the simulated RPM value.
     pub fn set_rpm(&mut self, rpm: u32) {
         self.rpm = rpm;
+    }
+
+    /// Returns the configured pulses per revolution.
+    pub fn pulses_per_rev(&self) -> u8 {
+        self.pulses_per_rev
     }
 }
 
