@@ -1693,7 +1693,7 @@
       <div id="cliSuggestions" class="cli-suggestions" style="display:none;"></div>
       <span id="cliPromptPrefix" class="cli-prompt-prefix">[READY] ></span>
       <input type="text" id="cliInput" class="cli-cmd-input" placeholder="Type review comment, command, or @file reference (e.g. '@src/model/pcb.py:42', 'must_fix ...', 'feedback')..." autocomplete="off">
-      <button class="quake-btn quake-btn-gold" onclick="executeCliCommand()">Send [↵]</button>
+      <button class="quake-btn quake-btn-gold" id="btnCliSend" onclick="executeCliCommand()">Send [↵]</button>
     </div>
   </footer>
 
@@ -3360,6 +3360,8 @@
 
     async function executeCliCommand() {
       const input = document.getElementById("cliInput");
+      const btn = document.getElementById("btnCliSend") || (input ? input.nextElementSibling : null);
+      if (!input || input.disabled) return;
       const suggestionsEl = document.getElementById("cliSuggestions");
       if (suggestionsEl) suggestionsEl.style.display = "none";
 
@@ -3376,20 +3378,32 @@
       }
       input.value = "";
 
-      // Direct @file navigation (e.g. "@src/model/pcb.py:42" or "@pcb.py")
-      if (rawCmd.startsWith("@")) {
+      input.disabled = true;
+      if (btn) btn.disabled = true;
+      const prevPlaceholder = input.placeholder;
+      input.placeholder = `Running command: ${rawCmd}...`;
+
+      try {
+        // Direct @file navigation (e.g. "@src/model/pcb.py:42" or "@pcb.py")
+        if (rawCmd.startsWith("@")) {
+          logCli(`> ${rawCmd}`, "gold");
+          await goto(rawCmd);
+          return;
+        }
+
+        const parts = rawCmd.split(/\s+/);
+        const rawVerb = parts[0].toLowerCase();
+        const verb = rawVerb.startsWith("/") ? rawVerb.slice(1) : rawVerb;
+
         logCli(`> ${rawCmd}`, "gold");
-        await goto(rawCmd);
-        return;
+
+        await matchCommand(verb, rawCmd, parts);
+      } finally {
+        input.disabled = false;
+        if (btn) btn.disabled = false;
+        input.placeholder = prevPlaceholder;
+        input.focus();
       }
-
-      const parts = rawCmd.split(/\s+/);
-      const rawVerb = parts[0].toLowerCase();
-      const verb = rawVerb.startsWith("/") ? rawVerb.slice(1) : rawVerb;
-
-      logCli(`> ${rawCmd}`, "gold");
-
-      matchCommand(verb, rawCmd, parts);
     }
 
     async function matchCommand(verb, fullText, parts) {
@@ -4236,39 +4250,51 @@
 
     function ansiToHtml(rawText) {
       if (!rawText) return "";
-      const ansiEscapeRe = /\x1b\[([0-9;]*)m/g;
-      const otherAnsiRe = /\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
 
-      let parts = rawText.split(ansiEscapeRe);
+      // Normalize any orphaned / unprefixed 8;;url...8;; sequences where \x1b] was dropped
+      rawText = rawText.replace(/(^|[^\x1b\]])8;;(https?:\/\/[^\s`"'<>\)]+)(.*?)(?:8;;)/g, function(m, p1, url, text) {
+        return p1 + '\x1b]8;;' + url + '\x1b\\' + text + '\x1b]8;;\x1b\\';
+      });
+
+      const tokenRe = /(\x1b\[([0-9;]*)m|\x1b\]8;[^\x1b\x07]*;([^\x1b\x07]+)(?:\x1b\\|\x07)|\x1b\]8;[^\x1b\x07]*;(?:\x1b\\|\x07)|\x1b\][^\x1b\x07]*(?:\x1b\\|\x07)|\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])|[\x00-\x08\x0b-\x1a\x1c-\x1f])/g;
+
+      let lastIndex = 0;
       let outChunks = [];
       let classes = [];
       let fgClass = null;
       let bgClass = null;
+      let currentUrl = null;
+      let match;
 
-      for (let i = 0; i < parts.length; i += 2) {
-        let chunk = parts[i].replace(otherAnsiRe, "");
+      while ((match = tokenRe.exec(rawText)) !== null) {
+        let chunk = rawText.substring(lastIndex, match.index);
+        lastIndex = tokenRe.lastIndex;
+
         if (chunk) {
           let escaped = escapeHtmlText(chunk);
-          let linked = formatTerminalLinks(escaped);
+          let inner = currentUrl ? escaped : formatTerminalLinks(escaped);
           let allCls = [...classes];
           if (fgClass) allCls.push(fgClass);
           if (bgClass) allCls.push(bgClass);
 
-          if (allCls.length > 0) {
-            outChunks.push(`<span class="${allCls.join(' ')}">${linked}</span>`);
-          } else {
-            outChunks.push(linked);
+          let formatted = allCls.length > 0 ? `<span class="${allCls.join(' ')}">${inner}</span>` : inner;
+          if (currentUrl) {
+            formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
           }
+          outChunks.push(formatted);
         }
 
-        if (i + 1 < parts.length) {
-          let codeStr = parts[i + 1];
-          if (!codeStr || codeStr === '0') {
+        let fullTok = match[0];
+        let sgrCode = match[2];
+        let osc8Url = match[3];
+
+        if (sgrCode !== undefined) {
+          if (!sgrCode || sgrCode === '0') {
             classes = [];
             fgClass = null;
             bgClass = null;
           } else {
-            let codes = codeStr.split(';').map(c => parseInt(c, 10)).filter(c => !isNaN(c));
+            let codes = sgrCode.split(';').map(c => parseInt(c, 10)).filter(c => !isNaN(c));
             codes.forEach(code => {
               if (code === 0) {
                 classes = [];
@@ -4299,8 +4325,28 @@
               }
             });
           }
+        } else if (osc8Url !== undefined) {
+          currentUrl = osc8Url;
+        } else if (fullTok.startsWith('\x1b]8;')) {
+          currentUrl = null;
         }
       }
+
+      let remaining = rawText.substring(lastIndex);
+      if (remaining) {
+        let escaped = escapeHtmlText(remaining);
+        let inner = currentUrl ? escaped : formatTerminalLinks(escaped);
+        let allCls = [...classes];
+        if (fgClass) allCls.push(fgClass);
+        if (bgClass) allCls.push(bgClass);
+
+        let formatted = allCls.length > 0 ? `<span class="${allCls.join(' ')}">${inner}</span>` : inner;
+        if (currentUrl) {
+          formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
+        }
+        outChunks.push(formatted);
+      }
+
       return outChunks.join('');
     }
 

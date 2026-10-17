@@ -209,7 +209,9 @@
       align-items: center;
     }
     .panel-content {
+      display: block;
       flex: 1;
+      flex-direction: column;
       overflow-y: auto;
       padding: 8px;
       font-size: 12px;
@@ -590,11 +592,11 @@
         <button class="btn" onclick="runFsQuick('format')">format</button>
       </div>
 
-      <div class="panel-content" id="cliView" style="display: {% if runner.active_mode == 'FS' %}none{% else %}flex{% endif %};">
+      <div class="panel-content" id="cliView" style="display: {% if runner.active_mode == 'FS' %}none{% else %}block{% endif %};">
         <div class="log-line log-line-info">> Interactive CLI workstation ready. Type commands below.</div>
       </div>
 
-      <div class="panel-content" id="fsView" style="display: {% if runner.active_mode == 'FS' %}flex{% else %}none{% endif %};">
+      <div class="panel-content" id="fsView" style="display: {% if runner.active_mode == 'FS' %}block{% else %}none{% endif %};">
         <div class="log-line log-line-info">> Filesystem (host_fs) workstation ready. Type FS commands below (e.g. 'ls', 'cat metadata', 'format').</div>
       </div>
     </div>
@@ -611,7 +613,7 @@
     </div>
     <span class="prompt-label" id="promptLabel">{% if runner.active_mode == 'FS' %}fs> {% else %}shell> {% endif %}</span>
     <input type="text" id="cmdInput" class="cmd-input" placeholder="{% if runner.active_mode == 'FS' %}Type FS command (e.g. 'ls', 'cat metadata', 'crash-log', 'format')...{% else %}Type shell command (e.g. 'motor speed 100', 'gpio status', 'battery status')...{% endif %}" autofocus autocomplete="off">
-    <button class="btn btn-cyan" onclick="submitCommand()">Send [↵]</button>
+    <button class="btn btn-cyan" id="btnSubmitCmd" onclick="submitCommand()">Send [↵]</button>
   </footer>
 
   <script>
@@ -630,13 +632,13 @@
 
       if (currentMode === "FS") {
         if (cliView) cliView.style.display = "none";
-        if (fsView) fsView.style.display = "flex";
+        if (fsView) fsView.style.display = "block";
         if (fsToolbar) fsToolbar.style.display = "flex";
         if (promptLabel) promptLabel.innerText = "fs> ";
         if (title) title.innerText = "FILESYSTEM COMMAND WORKSTATION (host_fs)";
         if (cmdInput) cmdInput.placeholder = "Type FS command (e.g. 'ls', 'cat metadata', 'crash-log', 'format')...";
       } else {
-        if (cliView) cliView.style.display = "flex";
+        if (cliView) cliView.style.display = "block";
         if (fsView) fsView.style.display = "none";
         if (fsToolbar) fsToolbar.style.display = "none";
         if (promptLabel) promptLabel.innerText = "shell> ";
@@ -657,7 +659,9 @@
     }
 
     function runFsQuick(action) {
-      document.getElementById("cmdInput").value = action;
+      const input = document.getElementById("cmdInput");
+      if (input && input.disabled) return;
+      input.value = action;
       submitCommand();
     }
 
@@ -675,12 +679,26 @@
 
     async function submitCommand() {
       const input = document.getElementById("cmdInput");
+      const btn = document.getElementById("btnSubmitCmd");
+      const fsToolbar = document.getElementById("fsToolbar");
+      if (!input || input.disabled) return;
       const cmd = input.value.trim();
       if (!cmd) return;
 
       cmdHistory.push(cmd);
       historyIdx = cmdHistory.length;
       input.value = "";
+
+      // Disable input and action buttons while command is executing
+      input.disabled = true;
+      if (btn) btn.disabled = true;
+      if (fsToolbar) {
+        fsToolbar.querySelectorAll("button").forEach(b => b.disabled = true);
+      }
+      const prevPlaceholder = input.placeholder;
+      input.placeholder = `Running command: ${cmd}...`;
+      input.style.opacity = "0.6";
+      input.style.cursor = "wait";
 
       const endpoint = currentMode === "FS" ? "/api/fs/execute" : "/api/cli/execute";
       try {
@@ -708,6 +726,18 @@
           appendFsText(`[ERROR] Command failed: ${e}`, false);
         } else {
           appendCliText(`[ERROR] Command failed: ${e}`, false);
+        }
+      } finally {
+        if (!input.hasAttribute("data-prev-placeholder")) {
+          input.disabled = false;
+          if (btn) btn.disabled = false;
+          if (fsToolbar) {
+            fsToolbar.querySelectorAll("button").forEach(b => b.disabled = false);
+          }
+          input.placeholder = prevPlaceholder;
+          input.style.opacity = "1";
+          input.style.cursor = "text";
+          input.focus();
         }
       }
     }
@@ -759,39 +789,51 @@
 
     function ansiToHtml(rawText) {
       if (!rawText) return "";
-      const ansiEscapeRe = /\x1b\[([0-9;]*)m/g;
-      const otherAnsiRe = /\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
 
-      let parts = rawText.split(ansiEscapeRe);
+      // Normalize any orphaned / unprefixed 8;;url...8;; sequences where \x1b] was dropped
+      rawText = rawText.replace(/(^|[^\x1b\]])8;;(https?:\/\/[^\s`"'<>\)]+)(.*?)(?:8;;)/g, function(m, p1, url, text) {
+        return p1 + '\x1b]8;;' + url + '\x1b\\' + text + '\x1b]8;;\x1b\\';
+      });
+
+      const tokenRe = /(\x1b\[([0-9;]*)m|\x1b\]8;[^\x1b\x07]*;([^\x1b\x07]+)(?:\x1b\\|\x07)|\x1b\]8;[^\x1b\x07]*;(?:\x1b\\|\x07)|\x1b\][^\x1b\x07]*(?:\x1b\\|\x07)|\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])|[\x00-\x08\x0b-\x1a\x1c-\x1f])/g;
+
+      let lastIndex = 0;
       let outChunks = [];
       let classes = [];
       let fgClass = null;
       let bgClass = null;
+      let currentUrl = null;
+      let match;
 
-      for (let i = 0; i < parts.length; i += 2) {
-        let chunk = parts[i].replace(otherAnsiRe, "");
+      while ((match = tokenRe.exec(rawText)) !== null) {
+        let chunk = rawText.substring(lastIndex, match.index);
+        lastIndex = tokenRe.lastIndex;
+
         if (chunk) {
           let escaped = escapeHtmlText(chunk);
-          let linked = formatTerminalLinks(escaped);
+          let inner = currentUrl ? escaped : formatTerminalLinks(escaped);
           let allCls = [...classes];
           if (fgClass) allCls.push(fgClass);
           if (bgClass) allCls.push(bgClass);
 
-          if (allCls.length > 0) {
-            outChunks.push(`<span class="${allCls.join(' ')}">${linked}</span>`);
-          } else {
-            outChunks.push(linked);
+          let formatted = allCls.length > 0 ? `<span class="${allCls.join(' ')}">${inner}</span>` : inner;
+          if (currentUrl) {
+            formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
           }
+          outChunks.push(formatted);
         }
 
-        if (i + 1 < parts.length) {
-          let codeStr = parts[i + 1];
-          if (!codeStr || codeStr === '0') {
+        let fullTok = match[0];
+        let sgrCode = match[2];
+        let osc8Url = match[3];
+
+        if (sgrCode !== undefined) {
+          if (!sgrCode || sgrCode === '0') {
             classes = [];
             fgClass = null;
             bgClass = null;
           } else {
-            let codes = codeStr.split(';').map(c => parseInt(c, 10)).filter(c => !isNaN(c));
+            let codes = sgrCode.split(';').map(c => parseInt(c, 10)).filter(c => !isNaN(c));
             codes.forEach(code => {
               if (code === 0) {
                 classes = [];
@@ -822,8 +864,28 @@
               }
             });
           }
+        } else if (osc8Url !== undefined) {
+          currentUrl = osc8Url;
+        } else if (fullTok.startsWith('\x1b]8;')) {
+          currentUrl = null;
         }
       }
+
+      let remaining = rawText.substring(lastIndex);
+      if (remaining) {
+        let escaped = escapeHtmlText(remaining);
+        let inner = currentUrl ? escaped : formatTerminalLinks(escaped);
+        let allCls = [...classes];
+        if (fgClass) allCls.push(fgClass);
+        if (bgClass) allCls.push(bgClass);
+
+        let formatted = allCls.length > 0 ? `<span class="${allCls.join(' ')}">${inner}</span>` : inner;
+        if (currentUrl) {
+          formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
+        }
+        outChunks.push(formatted);
+      }
+
       return outChunks.join('');
     }
 

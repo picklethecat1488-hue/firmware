@@ -517,6 +517,54 @@ use {
     fixed::types::U24F8,
 };
 
+/// Assembles the 6-pin BLDC PWM duty-cycling PIO program.
+///
+/// Ensures valid instruction wrapping within the program bounds (offsets 0..=9),
+/// with a 100% duty cycle cleanly skipping the off-phase pin de-energization and
+/// looping directly back to wrap target without jumping past wrap source into uninitialized SRAM.
+pub fn assemble_tmc6300_pio_program() -> pio::Program<32> {
+    let mut a: pio::Assembler<32> = pio::Assembler::new();
+    let mut wrap_target = a.label();
+    let mut wrap_source = a.label();
+    let mut skip_on = a.label();
+    let mut on_loop = a.label();
+    let mut off_loop = a.label();
+
+    a.bind(&mut wrap_target);
+    // Non-blocking pull: pop word from TX FIFO into OSR, or copy X into OSR if empty
+    a.pull(false, false);
+    // Save word into X so next non-blocking pull preserves it
+    a.mov(
+        pio::MovDestination::X,
+        pio::MovOperation::None,
+        pio::MovSource::OSR,
+    );
+    // Shift lower 8 bits (6-bit phase mask) into output pins (GP16..GP21)
+    a.out(pio::OutDestination::PINS, 8);
+    // Shift next 8 bits (on_count) into Y
+    a.out(pio::OutDestination::Y, 8);
+    // If on_count == 0, skip ON delay loop
+    a.jmp(pio::JmpCondition::YIsZero, &mut skip_on);
+    a.bind(&mut on_loop);
+    a.jmp(pio::JmpCondition::YDecNonZero, &mut on_loop);
+    a.bind(&mut skip_on);
+    // Shift next 8 bits (off_count) into Y
+    a.out(pio::OutDestination::Y, 8);
+    // If off_count == 0, skip OFF delay loop (jump directly to wrap_target)
+    a.jmp(pio::JmpCondition::YIsZero, &mut wrap_target);
+    // Turn OFF all phase pins (write 0 to OUT pins)
+    a.mov(
+        pio::MovDestination::PINS,
+        pio::MovOperation::None,
+        pio::MovSource::NULL,
+    );
+    a.bind(&mut off_loop);
+    a.jmp(pio::JmpCondition::YDecNonZero, &mut off_loop);
+    a.bind(&mut wrap_source);
+
+    a.assemble_with_wrap(wrap_source, wrap_target)
+}
+
 #[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 /// PIO program for 6-pin BLDC PWM duty-cycling.
 pub struct PioTmc6300Program<'a, PIO: Instance> {
@@ -527,48 +575,7 @@ pub struct PioTmc6300Program<'a, PIO: Instance> {
 impl<'a, PIO: Instance> PioTmc6300Program<'a, PIO> {
     /// Loads the 6-pin BLDC PWM duty-cycling program into the given PIO block.
     pub fn new(common: &mut Common<'a, PIO>) -> Self {
-        let mut a: pio::Assembler<32> = pio::Assembler::new();
-        let mut wrap_target = a.label();
-        let mut wrap_source = a.label();
-        let mut skip_on = a.label();
-        let mut on_loop = a.label();
-        let mut skip_off = a.label();
-        let mut off_loop = a.label();
-
-        a.bind(&mut wrap_target);
-        // Non-blocking pull: pop word from TX FIFO into OSR, or copy X into OSR if empty
-        a.pull(false, false);
-        // Save word into X so next non-blocking pull preserves it
-        a.mov(
-            pio::MovDestination::X,
-            pio::MovOperation::None,
-            pio::MovSource::OSR,
-        );
-        // Shift lower 8 bits (6-bit phase mask) into output pins (GP16..GP21)
-        a.out(pio::OutDestination::PINS, 8);
-        // Shift next 8 bits (on_count) into Y
-        a.out(pio::OutDestination::Y, 8);
-        // If on_count == 0, skip ON delay loop
-        a.jmp(pio::JmpCondition::YIsZero, &mut skip_on);
-        a.bind(&mut on_loop);
-        a.jmp(pio::JmpCondition::YDecNonZero, &mut on_loop);
-        a.bind(&mut skip_on);
-        // Turn OFF all phase pins (write 0 to OUT pins)
-        a.mov(
-            pio::MovDestination::PINS,
-            pio::MovOperation::None,
-            pio::MovSource::NULL,
-        );
-        // Shift next 8 bits (off_count) into Y
-        a.out(pio::OutDestination::Y, 8);
-        // If off_count == 0, skip OFF delay loop
-        a.jmp(pio::JmpCondition::YIsZero, &mut skip_off);
-        a.bind(&mut off_loop);
-        a.jmp(pio::JmpCondition::YDecNonZero, &mut off_loop);
-        a.bind(&mut skip_off);
-        a.bind(&mut wrap_source);
-
-        let prg = a.assemble_with_wrap(wrap_source, wrap_target);
+        let prg = assemble_tmc6300_pio_program();
         let prg = common.load_program(&prg);
         Self { prg }
     }

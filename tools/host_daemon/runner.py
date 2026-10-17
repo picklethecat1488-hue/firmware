@@ -39,6 +39,7 @@ class DaemonRunner:
 
         self.active_mode: str = "CLI"
         self._lock = threading.Lock()
+        self._fs_lock = threading.Lock()
         self.logs: Deque[Dict[str, Any]] = deque(maxlen=5000)
         self.cli_outputs: Deque[Dict[str, Any]] = deque(maxlen=5000)
         self.fs_outputs: Deque[Dict[str, Any]] = deque(maxlen=5000)
@@ -627,36 +628,44 @@ class DaemonRunner:
 
     def execute_fs(self, command_or_subcommand: str, args: Optional[List[str]] = None) -> str:
         """Execute host_fs utility command by invoking cargo run."""
-        args = args or []
-        tokens = command_or_subcommand.strip().split()
-        if tokens:
-            subcmd = tokens[0]
-            extra_args = tokens[1:] + args
-        else:
-            subcmd = "ls"
-            extra_args = args
+        with self._lock:
+            sync_active = bool(self._sync_thread and self._sync_thread.is_alive())
+        if sync_active:
+            err = "Target synchronization is currently in progress. Please wait for sync to complete."
+            self.log_fs(err)
+            return f"Error: {err}"
 
-        self.log_fs(f"fs> {subcmd} {' '.join(extra_args)}", is_input=True)
+        with self._fs_lock:
+            args = args or []
+            tokens = command_or_subcommand.strip().split()
+            if tokens:
+                subcmd = tokens[0]
+                extra_args = tokens[1:] + args
+            else:
+                subcmd = "ls"
+                extra_args = args
 
-        # Ensure probe is available by pausing RTT streaming if currently running
-        rtt_was_running = (self.rtt_process is not None and self.rtt_process.poll() is None)
-        if rtt_was_running:
-            self.stop_rtt_streaming()
-            time.sleep(0.15)
+            self.log_fs(f"fs> {subcmd} {' '.join(extra_args)}", is_input=True)
 
-        fs_args: List[str] = []
-        if self.elf_path and self.elf_path.exists():
-            fs_args.extend(["--elf", str(self.elf_path)])
-        fs_args.append(subcmd)
-        fs_args.extend(extra_args)
+            # Ensure probe is available by pausing RTT streaming if currently running
+            rtt_was_running = (self.rtt_process is not None and self.rtt_process.poll() is None)
+            if rtt_was_running:
+                self.stop_rtt_streaming()
+                time.sleep(0.15)
 
-        try:
-            ret, out = self.run_host_fs(fs_args)
-            out = out.strip() or f"Completed {subcmd} (exit code {ret})"
-            return out
-        finally:
-            if rtt_was_running and self.active_mode == "CLI":
-                self.start_rtt_streaming()
+            fs_args: List[str] = []
+            if self.elf_path and self.elf_path.exists():
+                fs_args.extend(["--elf", str(self.elf_path)])
+            fs_args.append(subcmd)
+            fs_args.extend(extra_args)
+
+            try:
+                ret, out = self.run_host_fs(fs_args)
+                out = out.strip() or f"Completed {subcmd} (exit code {ret})"
+                return out
+            finally:
+                if rtt_was_running and self.active_mode == "CLI":
+                    self.start_rtt_streaming()
 
     def get_status(self) -> Dict[str, Any]:
         """Return daemon status dictionary."""

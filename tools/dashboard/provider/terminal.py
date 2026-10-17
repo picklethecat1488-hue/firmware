@@ -49,9 +49,20 @@ ANSI_BG_COLORS: Dict[int, str] = {
     107: "term-bg-bright-white",
 }
 
-# Regex to match ANSI escape sequences (CSI sequences)
-ANSI_ESCAPE_RE = re.compile(r"\x1b\[([0-9;]*)m")
-ANSI_OTHER_RE = re.compile(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+# Regex to match ANSI SGR escapes, OSC 8 hyperlinks, other OSC sequences, and control characters
+ANSI_TOKEN_RE = re.compile(
+    r"("
+    r"\x1b\[([0-9;]*)m"                                      # Group 2: CSI SGR codes
+    r"|\x1b\]8;[^\x1b\x07]*;([^\x1b\x07]+)(?:\x1b\\|\x07)"  # Group 3: OSC 8 Hyperlink open (URL)
+    r"|\x1b\]8;[^\x1b\x07]*;(?:\x1b\\|\x07)"                # OSC 8 Hyperlink close
+    r"|\x1b\][^\x1b\x07]*(?:\x1b\\|\x07)"                    # Other OSC sequences (window title, etc.)
+    r"|\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])"               # Other CSI / Fe escape sequences
+    r"|[\x00-\x08\x0b-\x1a\x1c-\x1f]"                       # Other control characters (excluding \t, \n, \r)
+    r")"
+)
+
+# Regex to detect orphaned/stripped 8;;<URL><TEXT>8;; sequences where \x1b] was dropped
+ORPHANED_OSC8_RE = re.compile(r"(^|[^\x1b\]])8;;(https?://[^\s`\"'<>\)]+)(.*?)(?:8;;)")
 
 # Regex to match URLs
 URL_RE = re.compile(r"(https?://[^\s<>\"'\)]+)")
@@ -101,28 +112,32 @@ def ansi_to_html(raw_text: str) -> str:
     """Convert raw text containing ANSI escape sequences into styled HTML.
 
     Handles font weights (bold, dim), styles (italic, underline), foreground/background
-    colors, stripping unhandled control codes, escaping HTML characters, and creating
-    clickable links for URLs and file paths.
+    colors, OSC 8 hyperlinks, stripping unhandled control codes, escaping HTML characters,
+    and creating clickable links for URLs and file paths.
     """
     if not raw_text:
         return ""
 
-    # Split text by SGR ANSI escape sequences
-    parts = ANSI_ESCAPE_RE.split(raw_text)
+    # Normalize any orphaned / unprefixed 8;;url...8;; sequences
+    raw_text = ORPHANED_OSC8_RE.sub(
+        lambda m: m.group(1) + "\x1b]8;;" + m.group(2) + "\x1b\\" + m.group(3) + "\x1b]8;;\x1b\\",
+        raw_text,
+    )
 
     out_chunks: List[str] = []
     classes: List[str] = []
     fg_class: str | None = None
     bg_class: str | None = None
+    current_url: str | None = None
+    last_idx = 0
 
-    for i in range(0, len(parts), 2):
-        chunk = parts[i]
-        # Strip any other remaining ANSI non-SGR sequences
-        chunk = ANSI_OTHER_RE.sub("", chunk)
+    for m in ANSI_TOKEN_RE.finditer(raw_text):
+        chunk = raw_text[last_idx:m.start()]
+        last_idx = m.end()
 
         if chunk:
             escaped_chunk = html.escape(chunk)
-            formatted_chunk = _format_links(escaped_chunk)
+            formatted_chunk = escaped_chunk if current_url else _format_links(escaped_chunk)
 
             all_classes = list(classes)
             if fg_class:
@@ -132,20 +147,25 @@ def ansi_to_html(raw_text: str) -> str:
 
             if all_classes:
                 class_str = " ".join(all_classes)
-                out_chunks.append(f'<span class="{class_str}">{formatted_chunk}</span>')
+                content = f'<span class="{class_str}">{formatted_chunk}</span>'
             else:
-                out_chunks.append(formatted_chunk)
+                content = formatted_chunk
 
-        # Check if there is an ANSI code after this chunk
-        if i + 1 < len(parts):
-            code_str = parts[i + 1]
-            if not code_str or code_str == "0":
-                # Reset all
+            if current_url:
+                content = f'<a href="{html.escape(current_url)}" target="_blank" rel="noopener noreferrer" class="term-link">{content}</a>'
+            out_chunks.append(content)
+
+        full_token = m.group(1)
+        sgr_code = m.group(2)
+        osc8_url = m.group(3)
+
+        if sgr_code is not None:
+            if not sgr_code or sgr_code == "0":
                 classes.clear()
                 fg_class = None
                 bg_class = None
             else:
-                codes = [int(c) for c in code_str.split(";") if c.isdigit()]
+                codes = [int(c) for c in sgr_code.split(";") if c.isdigit()]
                 for code in codes:
                     if code == 0:
                         classes.clear()
@@ -177,5 +197,31 @@ def ansi_to_html(raw_text: str) -> str:
                         bg_class = ANSI_BG_COLORS[code]
                     elif code == 49:
                         bg_class = None
+        elif osc8_url is not None:
+            current_url = osc8_url
+        elif full_token.startswith("\x1b]8;"):
+            current_url = None
+
+    chunk = raw_text[last_idx:]
+    if chunk:
+        escaped_chunk = html.escape(chunk)
+        formatted_chunk = escaped_chunk if current_url else _format_links(escaped_chunk)
+
+        all_classes = list(classes)
+        if fg_class:
+            all_classes.append(fg_class)
+        if bg_class:
+            all_classes.append(bg_class)
+
+        if all_classes:
+            class_str = " ".join(all_classes)
+            content = f'<span class="{class_str}">{formatted_chunk}</span>'
+        else:
+            content = formatted_chunk
+
+        if current_url:
+            content = f'<a href="{html.escape(current_url)}" target="_blank" rel="noopener noreferrer" class="term-link">{content}</a>'
+        out_chunks.append(content)
 
     return "".join(out_chunks)
+
