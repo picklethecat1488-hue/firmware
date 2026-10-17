@@ -603,7 +603,9 @@ fn test_worm_peaty_bobbit_630_motor_tick_driver_fault_stops_ticking() {
 
         // Subsequent tick_motor() calls must NOT tick the failed motor again (zero log spam)
         let count_before = controller.motor.tick_count;
-        assert!(controller.tick_motor().await.is_ok());
+        for _ in 0..50 {
+            assert!(controller.tick_motor().await.is_ok());
+        }
         assert_eq!(controller.motor.tick_count, count_before);
         assert_eq!(controller.state(), MotorState::Off);
     });
