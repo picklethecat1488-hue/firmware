@@ -555,7 +555,12 @@
           body: JSON.stringify({ command: cmd })
         });
         const data = await resp.json();
+        if (data && data.output && !data.output.startsWith("Dispatched:")) {
+          appendCliText(data.output, false);
+        }
         pollOutputs();
+        setTimeout(pollOutputs, 100);
+        setTimeout(pollOutputs, 300);
       } catch (e) {
         appendCliText(`[ERROR] Command failed: ${e}`, false);
       }

@@ -139,3 +139,50 @@ def test_cr_97bc2d55_execute_fs_invokes_cargo_run_host_fs():
             args = mock_run_fs.call_args[0][0]
             assert "--elf" in args
             assert "ls" in args
+
+
+def test_cr_4bdad9c1_help_command_and_rtt_reset():
+    """Verify typing 'help' produces shell output and start_rtt_streaming uses --reset."""
+    runner = DaemonRunner(
+        repo_root=REPO_ROOT,
+        target="thumbv6m-none-eabi",
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+    )
+    fake_elf = REPO_ROOT / "target" / "thumbv6m-none-eabi" / "debug" / "cat_detector_shell"
+    runner.elf_path = fake_elf
+    runner.host_cli_path = REPO_ROOT / "target" / "debug" / "host_cli"
+
+    # 1. Verify typing 'help' produces output even when in standby / offline mode
+    help_out = runner.execute_cli("help")
+    assert "Commands:" in help_out
+    assert "battery" in help_out
+    assert "motor" in help_out
+    assert "gpio" in help_out
+    assert any("Commands:" in entry["text"] for entry in runner.cli_outputs)
+
+    # 2. Verify start_rtt_streaming includes --reset to avoid corrupt RTT channel errors
+    with patch.object(Path, "exists", return_value=True):
+        with patch("subprocess.Popen") as mock_popen:
+            mock_proc = MagicMock()
+            mock_proc.poll.return_value = 0
+            mock_proc.stdout = None
+            mock_popen.return_value = mock_proc
+
+            runner.start_rtt_streaming()
+            assert mock_popen.called
+            called_cmd = mock_popen.call_args[0][0]
+            assert "--reset" in called_cmd
+            assert "--channel" in called_cmd
+            assert "both" in called_cmd
+
+    # 3. Verify stop_rtt_streaming cleanly terminates rtt_process
+    mock_active = MagicMock()
+    mock_active.poll.return_value = None
+    runner.rtt_process = mock_active
+    runner.is_connected = True
+    runner.stop_rtt_streaming()
+    mock_active.terminate.assert_called_once()
+    assert runner.rtt_process is None
+    assert runner.is_connected is False
+

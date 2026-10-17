@@ -103,7 +103,8 @@ class DaemonRunner:
             self._update_sync("compiling_host_tools", 2, 50, "Compiling host utilities (host_cli, host_fs)...")
             self.build_host_tools()
 
-            # 3. Flash target device
+            # 3. Flash target device (release probe first)
+            self.stop_rtt_streaming()
             self._update_sync("flashing_target", 3, 75, "Flashing target device via probe-rs...")
             self.flash_target()
 
@@ -387,10 +388,26 @@ class DaemonRunner:
                 self.status_message = f"Flash failed: {out[:100]}"
                 return False
 
+    def stop_rtt_streaming(self) -> None:
+        """Terminate active RTT streaming process to release the USB debug probe."""
+        if self.rtt_process and self.rtt_process.poll() is None:
+            try:
+                self.rtt_process.terminate()
+                self.rtt_process.wait(timeout=2)
+            except Exception:
+                try:
+                    self.rtt_process.kill()
+                except Exception:
+                    pass
+        self.rtt_process = None
+        self.is_connected = False
+
     def start_rtt_streaming(self) -> None:
         """Start streaming RTT logs and CLI interactions in a background thread."""
         if not self.host_cli_path or not self.host_cli_path.exists() or not self.elf_path:
             return
+
+        self.stop_rtt_streaming()
 
         cmd = [
             str(self.host_cli_path),
@@ -400,6 +417,7 @@ class DaemonRunner:
             str(self.speed),
             "--channel",
             "both",
+            "--reset",
         ]
 
         def _stream_worker() -> None:
@@ -418,7 +436,7 @@ class DaemonRunner:
                     for line in iter(self.rtt_process.stdout.readline, ""):
                         stripped = line.rstrip("\r\n")
                         if stripped:
-                            if "INFO" in stripped or "WARN" in stripped or "ERROR" in stripped or "DEBUG" in stripped:
+                            if "INFO" in stripped or "WARN" in stripped or "ERROR" in stripped or "DEBUG" in stripped or "TRACE" in stripped:
                                 self.log(stripped, channel="target")
                             else:
                                 self.log_cli(stripped)
@@ -445,7 +463,25 @@ class DaemonRunner:
                 self.log_cli(err)
                 return err
 
-        # Host offline / one-shot fallback simulation
+        # Standby/offline shell response for help or simulated dispatch
+        if command.strip().lower() == "help":
+            help_text = (
+                "Commands:\n"
+                "  battery  Battery commands (battery status, battery test-alert)\n"
+                "  thermal  Thermal commands (thermal status, thermal mcu)\n"
+                "  motor    Motor commands (motor speed, motor rpm-speed, motor stop, motor current, motor rpm, motor calibrate, motor safety-bypass)\n"
+                "  sensor   Sensor commands (sensor status, sensor cal_near, sensor cal_far, sensor cal_xtalk)\n"
+                "  fs       Filesystem commands (fs format, fs ls)\n"
+                "  system   System commands (system activity)\n"
+                "  i2c      I2C commands (i2c scan)\n"
+                "  gpio     GPIO commands (gpio status, gpio read, gpio set)\n"
+                "  led      LED commands (led off, led green, led blue, led yellow, led orange, led blink-four, led blink-slow, led brightness)\n"
+                "  core     Core monitor commands (core status, core crash)"
+            )
+            for line in help_text.splitlines():
+                self.log_cli(line)
+            return help_text
+
         output = f"[host_cli] Executed: '{command}' (mock/standby mode)"
         self.log_cli(output)
         return output
