@@ -81,6 +81,13 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/fs/output":
             with runner._lock:
                 self._send_json(list(runner.fs_outputs))
+        elif path == "/api/bringup/scripts":
+            from .bringup import discover_bringup_scripts
+            self._send_json(discover_bringup_scripts(runner.repo_root))
+        elif path == "/api/bringup/status":
+            self._send_json(runner.bringup_manager.get_status())
+        elif path == "/api/bringup/report":
+            self._send_json({"success": True, "report": runner.bringup_manager.generate_report()})
         elif path.startswith("/static/"):
             rel_file = path[len("/static/"):]
             static_dir = Path(__file__).resolve().parent / "static"
@@ -164,14 +171,36 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"success": True, "output": output})
         elif path == "/api/mode":
             mode = payload.get("mode", "CLI").upper()
-            if mode in ("CLI", "FS"):
+            if mode in ("CLI", "FS", "BRINGUP"):
                 runner.set_mode(mode)
                 self._send_json({"success": True, "mode": mode})
             else:
-                self._send_json({"error": "Invalid mode. Expected: CLI, FS"}, status=400)
+                self._send_json({"error": "Invalid mode. Expected: CLI, FS, BRINGUP"}, status=400)
         elif path == "/api/reset":
             res = runner.reset_target()
             self._send_json(res)
+        elif path == "/api/bringup/load":
+            script_path = payload.get("script_path") or payload.get("script") or "app/cat_detector_bringup.yaml"
+            try:
+                cfg = runner.bringup_manager.load_script(script_path)
+                self._send_json({"success": True, "config": cfg.to_dict(), "status": runner.bringup_manager.get_status()})
+            except Exception as e:
+                self._send_json({"error": f"Failed to load bringup script: {e}"}, status=400)
+        elif path == "/api/bringup/step":
+            res = runner.bringup_manager.step()
+            self._send_json(res)
+        elif path == "/api/bringup/respond":
+            action = payload.get("action") or "pass"
+            notes = payload.get("notes") or ""
+            res = runner.bringup_manager.respond(action=action, notes=notes)
+            self._send_json(res)
+        elif path == "/api/bringup/reset":
+            res = runner.bringup_manager.reset()
+            self._send_json(res)
+        elif path == "/api/bringup/report":
+            output_path = payload.get("output_path") or "bringup_report.md"
+            report_text = runner.bringup_manager.generate_report(output_path)
+            self._send_json({"success": True, "output_path": str(output_path), "report": report_text})
         elif path == "/api/target_bug":
             title = (payload.get("title") or "").strip()
             if not title:

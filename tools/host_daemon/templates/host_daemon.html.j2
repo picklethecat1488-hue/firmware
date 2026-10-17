@@ -506,6 +506,97 @@
       padding-top: 6px;
       border-top: 1px solid var(--xerxes-border-dark, #073840);
     }
+    /* Bringup Workstation Styles */
+    .bringup-toolbar {
+      background: var(--xerxes-panel);
+      border-bottom: 1px solid var(--xerxes-border-mid);
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .bringup-container {
+      display: flex;
+      flex: 1;
+      height: 100%;
+      overflow: hidden;
+    }
+    .bringup-sidebar {
+      width: 320px;
+      border-right: 1px solid var(--xerxes-border-mid);
+      display: flex;
+      flex-direction: column;
+      background: var(--xerxes-panel);
+    }
+    .bringup-sidebar-header {
+      padding: 6px 10px;
+      background: var(--xerxes-header-bg);
+      border-bottom: 1px solid var(--xerxes-border-mid);
+      font-size: 9px;
+      font-weight: bold;
+      color: var(--xerxes-cyan);
+      letter-spacing: 0.05em;
+    }
+    .bringup-step-list {
+      flex: 1;
+      overflow-y: auto;
+      list-style: none;
+      padding: 4px;
+    }
+    .bringup-step-item {
+      padding: 6px 8px;
+      border: 1px solid transparent;
+      border-radius: 2px;
+      margin-bottom: 3px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      font-size: 8.5px;
+    }
+    .bringup-step-item:hover {
+      background: var(--xerxes-panel-hover);
+      border-color: var(--xerxes-cyan-dim);
+    }
+    .bringup-step-item.active {
+      background: rgba(0, 240, 255, 0.15);
+      border-color: var(--xerxes-cyan);
+    }
+    .bringup-main-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 8px;
+      gap: 8px;
+    }
+    .bringup-card {
+      background: var(--xerxes-panel);
+      border: 1px solid var(--xerxes-border-mid);
+      border-radius: 2px;
+      padding: 10px;
+    }
+    .bringup-prompt-card {
+      border-color: var(--xerxes-cyan);
+      box-shadow: 0 0 10px rgba(0, 240, 255, 0.15);
+    }
+    .bringup-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+      font-size: 8.5px;
+    }
+    .bringup-table th, .bringup-table td {
+      border: 1px solid var(--xerxes-border-mid);
+      padding: 4px 6px;
+      text-align: left;
+    }
+    .bringup-table th {
+      background: var(--xerxes-header-bg);
+      color: var(--xerxes-cyan);
+    }
   </style>
 </head>
 <body>
@@ -525,6 +616,7 @@
       <select id="modeSelect" class="select-dropdown" onchange="changeMode(this.value)">
         <option value="CLI" {% if runner.active_mode == 'CLI' %}selected{% endif %}>CLI (RTT Console)</option>
         <option value="FS" {% if runner.active_mode == 'FS' %}selected{% endif %}>FS (Filesystem)</option>
+        <option value="BRINGUP" {% if runner.active_mode == 'BRINGUP' %}selected{% endif %}>BRINGUP (Checklist)</option>
       </select>
       <!-- UI Scale Selector (8715cab2) -->
       <label for="uiScaleSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">SCALE:</label>
@@ -716,12 +808,62 @@
         <button class="btn" onclick="runFsQuick('format')">format</button>
       </div>
 
-      <div class="panel-content" id="cliView" style="display: {% if runner.active_mode == 'FS' %}none{% else %}block{% endif %};">
+      <!-- Optional Bringup Action Toolbar -->
+      <div id="bringupToolbar" class="bringup-toolbar" style="display: {% if runner.active_mode == 'BRINGUP' %}flex{% else %}none{% endif %};">
+        <label for="bringupScriptSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">SCRIPT:</label>
+        <select id="bringupScriptSelect" class="select-dropdown" onchange="onBringupScriptSelected(this.value)">
+          <option value="">Loading bringup scripts...</option>
+        </select>
+        <button class="btn btn-cyan" id="btnBringupStep" onclick="stepBringup()" title="Execute current checklist step">▶ Step</button>
+        <button class="btn btn-cyan" id="btnBringupRun" onclick="runBringupAll()" title="Auto-run remaining checklist steps">⚡ Run All</button>
+        <button class="btn btn-amber" id="btnBringupReset" onclick="resetBringup()" title="Reset checklist to step 1">↺ Reset</button>
+        <button class="btn" id="btnBringupReport" onclick="exportBringupReport()" title="Export markdown verification report">📄 Report</button>
+        <span id="bringupSummaryBadge" class="badge" style="margin-left: auto;">CHECKLIST: IDLE</span>
+      </div>
+
+      <div class="panel-content" id="cliView" style="display: {% if runner.active_mode in ('FS', 'BRINGUP') %}none{% else %}block{% endif %};">
         <div class="log-line log-line-info">> Interactive CLI workstation ready. Type commands below.</div>
       </div>
 
       <div class="panel-content" id="fsView" style="display: {% if runner.active_mode == 'FS' %}block{% else %}none{% endif %};">
         <div class="log-line log-line-info">> Filesystem (host_fs) workstation ready. Type FS commands below (e.g. 'ls', 'cat metadata', 'format').</div>
+      </div>
+
+      <div class="panel-content bringup-panel-content" id="bringupView" style="display: {% if runner.active_mode == 'BRINGUP' %}flex{% else %}none{% endif %}; flex-direction: row; padding: 0; overflow: hidden; height: 100%;">
+        <!-- Left: Step list -->
+        <div class="bringup-sidebar">
+          <div class="bringup-sidebar-header">CHECKLIST STEPS</div>
+          <ul class="bringup-step-list" id="bringupStepList">
+            <li class="log-line log-line-info" style="padding: 8px;">Loading checklist steps...</li>
+          </ul>
+        </div>
+        <!-- Right: Active Step Details, Prompt Card & Live CLI Output -->
+        <div class="bringup-main-area">
+          <div class="bringup-card bringup-prompt-card" id="bringupPromptCard">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span id="bringupCardTitle" style="font-weight: bold; color: var(--xerxes-cyan); font-size: 10px;">NO SCRIPT LOADED</span>
+              <span id="bringupCardType" class="badge">TYPE: --</span>
+            </div>
+            <div id="bringupCardDesc" style="font-size: 8.5px; color: var(--xerxes-text-light); margin-bottom: 8px;">Select a bringup script above to begin verification.</div>
+            <div id="bringupCardDetails" style="font-size: 8px; color: var(--xerxes-text-muted);"></div>
+            <div id="bringupPromptActionArea" style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--xerxes-border-mid); display: none;">
+              <div style="font-size: 8.5px; color: var(--xerxes-amber); font-weight: bold; margin-bottom: 6px;" id="bringupPromptText">ACTION REQUIRED: Verify step outcome</div>
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <input type="text" id="bringupPromptNotes" class="cmd-input" placeholder="Notes/observations (optional)..." style="flex: 1; min-width: 160px; height: 22px; font-size: 8.5px;">
+                <button class="btn btn-cyan" onclick="respondBringup('pass')">✔ Pass</button>
+                <button class="btn btn-red" onclick="respondBringup('fail')">✘ Fail</button>
+                <button class="btn btn-amber" onclick="respondBringup('skip')">⏭ Skip</button>
+              </div>
+            </div>
+          </div>
+          <div class="panel-header" style="background: var(--xerxes-header-bg); border-top: 1px solid var(--xerxes-border-mid); padding: 4px 8px;">
+            <span style="font-size: 8.5px; color: var(--xerxes-cyan);">LIVE BRINGUP LOGS & CLI OUTPUT</span>
+            <button class="btn btn-copy" onclick="copyBringupConsole(this)">📋 Copy Log</button>
+          </div>
+          <div class="panel-content" id="bringupConsoleOutput" style="flex: 1; overflow-y: auto; background: var(--xerxes-bg); border: 1px solid var(--xerxes-border-mid); padding: 6px; font-size: 8.5px; font-family: var(--font-mono);">
+            <div class="log-line log-line-info">> Bringup workstation initialized.</div>
+          </div>
+        </div>
       </div>
     </div>
   </main>
@@ -749,7 +891,9 @@
       currentMode = newMode;
       const cliView = document.getElementById("cliView");
       const fsView = document.getElementById("fsView");
+      const bringupView = document.getElementById("bringupView");
       const fsToolbar = document.getElementById("fsToolbar");
+      const bringupToolbar = document.getElementById("bringupToolbar");
       const promptLabel = document.getElementById("promptLabel");
       const cmdInput = document.getElementById("cmdInput");
       const title = document.getElementById("cliPanelTitle");
@@ -757,14 +901,29 @@
       if (currentMode === "FS") {
         if (cliView) cliView.style.display = "none";
         if (fsView) fsView.style.display = "block";
+        if (bringupView) bringupView.style.display = "none";
         if (fsToolbar) fsToolbar.style.display = "flex";
+        if (bringupToolbar) bringupToolbar.style.display = "none";
         if (promptLabel) promptLabel.innerText = "fs> ";
         if (title) title.innerText = "FILESYSTEM COMMAND WORKSTATION (host_fs)";
         if (cmdInput) cmdInput.placeholder = "Type FS command (e.g. 'ls', 'cat metadata', 'crash-log', 'format')...";
+      } else if (currentMode === "BRINGUP") {
+        if (cliView) cliView.style.display = "none";
+        if (fsView) fsView.style.display = "none";
+        if (bringupView) bringupView.style.display = "flex";
+        if (fsToolbar) fsToolbar.style.display = "none";
+        if (bringupToolbar) bringupToolbar.style.display = "flex";
+        if (promptLabel) promptLabel.innerText = "bringup> ";
+        if (title) title.innerText = "BRINGUP VERIFICATION CHECKLIST";
+        if (cmdInput) cmdInput.placeholder = "Type shell/override command for active bringup step...";
+        loadBringupScriptsList();
+        pollBringupStatus();
       } else {
         if (cliView) cliView.style.display = "block";
         if (fsView) fsView.style.display = "none";
+        if (bringupView) bringupView.style.display = "none";
         if (fsToolbar) fsToolbar.style.display = "none";
+        if (bringupToolbar) bringupToolbar.style.display = "none";
         if (promptLabel) promptLabel.innerText = "shell> ";
         if (title) title.innerText = "INTERACTIVE CLI CONSOLE (host_cli)";
         if (cmdInput) cmdInput.placeholder = "Type shell command (e.g. 'motor speed 100', 'gpio status', 'battery status')...";
@@ -780,6 +939,285 @@
       } catch (e) {
         console.error("Failed to update mode:", e);
       }
+    }
+
+    let lastBringupLogCount = 0;
+    let isBringupRunning = false;
+
+    async function loadBringupScriptsList() {
+      try {
+        const resp = await fetch("/api/bringup/scripts");
+        if (!resp.ok) return;
+        const scripts = await resp.json();
+        const select = document.getElementById("bringupScriptSelect");
+        if (!select) return;
+        const currentVal = select.value;
+        select.innerHTML = "";
+        scripts.forEach(s => {
+          const opt = document.createElement("option");
+          opt.value = s.path;
+          opt.textContent = `${s.name} (${s.chip}) - ${s.path}`;
+          if (currentVal && opt.value === currentVal) opt.selected = true;
+          select.appendChild(opt);
+        });
+        if (!currentVal && scripts.length > 0) {
+          onBringupScriptSelected(scripts[0].path);
+        }
+      } catch (e) {
+        console.error("Failed to load bringup scripts:", e);
+      }
+    }
+
+    async function onBringupScriptSelected(scriptPath) {
+      if (!scriptPath) return;
+      try {
+        const resp = await fetch("/api/bringup/load", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ script_path: scriptPath })
+        });
+        if (resp.ok) {
+          pollBringupStatus();
+        }
+      } catch (e) {
+        console.error("Failed to load selected bringup script:", e);
+      }
+    }
+
+    async function pollBringupStatus() {
+      if (currentMode !== "BRINGUP") return;
+      try {
+        const resp = await fetch("/api/bringup/status");
+        if (!resp.ok) return;
+        const data = await resp.json();
+        renderBringupView(data);
+      } catch (e) {
+        console.error("Failed to poll bringup status:", e);
+      }
+    }
+
+    function renderBringupView(data) {
+      if (!data) return;
+
+      const summaryBadge = document.getElementById("bringupSummaryBadge");
+      if (summaryBadge && data.summary) {
+        summaryBadge.textContent = `STEP ${data.current_step_idx + 1}/${data.total_steps} | ${data.summary.passed} PASSED, ${data.summary.failed} FAILED, ${data.summary.skipped} SKIPPED`;
+        summaryBadge.className = data.summary.failed > 0 ? "badge badge-amber" : "badge badge-green";
+      }
+
+      const stepList = document.getElementById("bringupStepList");
+      if (stepList && data.steps) {
+        stepList.innerHTML = "";
+        data.steps.forEach((step, idx) => {
+          const li = document.createElement("li");
+          const isActive = idx === data.current_step_idx;
+          li.className = `bringup-step-item ${isActive ? "active" : ""}`;
+          
+          let statusBadgeClass = "badge";
+          let statusIcon = "⏳";
+          if (step.status === "passed") {
+            statusBadgeClass = "badge badge-green";
+            statusIcon = "✔";
+          } else if (step.status === "failed") {
+            statusBadgeClass = "badge badge-amber";
+            statusIcon = "✘";
+          } else if (step.status === "skipped") {
+            statusBadgeClass = "badge";
+            statusIcon = "⏭";
+          } else if (step.status === "running") {
+            statusBadgeClass = "badge badge-cyan";
+            statusIcon = "⚙";
+          }
+
+          li.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
+              <span style="font-weight: bold; color: var(--xerxes-cyan);">${statusIcon} [${step.id}]</span>
+              <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--xerxes-text-light);">${step.name}</span>
+            </div>
+            <span class="${statusBadgeClass}" style="font-size: 7.5px;">${step.type}</span>
+          `;
+          stepList.appendChild(li);
+        });
+      }
+
+      const currStep = data.current_step;
+      const cardTitle = document.getElementById("bringupCardTitle");
+      const cardType = document.getElementById("bringupCardType");
+      const cardDesc = document.getElementById("bringupCardDesc");
+      const cardDetails = document.getElementById("bringupCardDetails");
+      const promptActionArea = document.getElementById("bringupPromptActionArea");
+      const promptText = document.getElementById("bringupPromptText");
+
+      if (currStep) {
+        if (cardTitle) cardTitle.textContent = `STEP ${currStep.id}: ${currStep.name.toUpperCase()}`;
+        if (cardType) {
+          cardType.textContent = `TYPE: ${currStep.type.toUpperCase()}`;
+          cardType.className = "badge";
+        }
+        if (cardDesc) cardDesc.textContent = currStep.description || "No description provided for this step.";
+
+        let detailsHtml = "";
+        if (currStep.command) {
+          detailsHtml += `<div style="margin-top: 4px;"><strong>Command:</strong> <code style="color: var(--xerxes-cyan);">${currStep.command}</code></div>`;
+        }
+        if (currStep.expected_regex) {
+          detailsHtml += `<div style="margin-top: 4px;"><strong>Expected Regex:</strong> <code style="color: var(--xerxes-teal);">${currStep.expected_regex}</code></div>`;
+        }
+        if (currStep.matched_line) {
+          detailsHtml += `<div style="margin-top: 4px; color: var(--xerxes-green);"><strong>Matched Output:</strong> <code>${currStep.matched_line}</code></div>`;
+        }
+        if (currStep.procedure) {
+          detailsHtml += `<div style="margin-top: 4px;"><strong>Procedure:</strong> ${currStep.procedure}</div>`;
+        }
+        if (currStep.expected) {
+          detailsHtml += `<div style="margin-top: 4px;"><strong>Expected Outcome:</strong> ${currStep.expected}</div>`;
+        }
+
+        if (currStep.test_points && Object.keys(currStep.test_points).length > 0) {
+          detailsHtml += `<table class="bringup-table"><thead><tr><th>Test Point</th><th>Expected Voltage / Signal</th></tr></thead><tbody>`;
+          for (const [tp, val] of Object.entries(currStep.test_points)) {
+            detailsHtml += `<tr><td><strong>${tp}</strong></td><td>${val}</td></tr>`;
+          }
+          detailsHtml += `</tbody></table>`;
+        }
+
+        if (currStep.control_pins && Object.keys(currStep.control_pins).length > 0) {
+          detailsHtml += `<table class="bringup-table"><thead><tr><th>Control Signal</th><th>Target Pin</th></tr></thead><tbody>`;
+          for (const [cp, val] of Object.entries(currStep.control_pins)) {
+            detailsHtml += `<tr><td><strong>${cp}</strong></td><td>${val}</td></tr>`;
+          }
+          detailsHtml += `</tbody></table>`;
+        }
+
+        if (cardDetails) cardDetails.innerHTML = detailsHtml;
+
+        if (data.active_prompt) {
+          if (promptActionArea) promptActionArea.style.display = "block";
+          const p = data.active_prompt;
+          let promptMsg = `ACTION REQUIRED: Verify step outcome (Default: ${p.default_status.toUpperCase()})`;
+          if (p.auto_pass === true) {
+            promptMsg = `✔ AUTOMATIC MATCH CONFIRMED (${p.matched_line || 'Pattern Matched'}). Click Pass to proceed.`;
+          } else if (p.auto_pass === false) {
+            promptMsg = `✘ AUTOMATIC MATCH FAILED: Expected pattern '${currStep.expected_regex}' not found.`;
+          }
+          if (promptText) promptText.textContent = promptMsg;
+        } else {
+          if (promptActionArea) promptActionArea.style.display = "none";
+        }
+      }
+
+      const consoleOut = document.getElementById("bringupConsoleOutput");
+      if (consoleOut && data.logs) {
+        if (data.logs.length !== lastBringupLogCount) {
+          consoleOut.innerHTML = "";
+          data.logs.forEach(l => {
+            const d = document.createElement("div");
+            d.className = "log-line log-line-info";
+            d.innerHTML = ansiToHtml(l);
+            consoleOut.appendChild(d);
+          });
+          lastBringupLogCount = data.logs.length;
+          consoleOut.scrollTop = consoleOut.scrollHeight;
+        }
+      }
+    }
+
+    async function stepBringup() {
+      try {
+        const resp = await fetch("/api/bringup/step", { method: "POST" });
+        if (resp.ok) {
+          pollBringupStatus();
+        }
+      } catch (e) {
+        console.error("Failed to step bringup:", e);
+      }
+    }
+
+    async function runBringupAll() {
+      isBringupRunning = true;
+      async function runNext() {
+        if (!isBringupRunning) return;
+        const statusResp = await fetch("/api/bringup/status");
+        if (!statusResp.ok) return;
+        const data = await statusResp.json();
+        renderBringupView(data);
+
+        if (data.status === "complete" || data.current_step_idx >= data.total_steps) {
+          isBringupRunning = false;
+          return;
+        }
+
+        if (data.status === "waiting_prompt") {
+          if (data.active_prompt && data.active_prompt.auto_pass === true) {
+            await respondBringup("pass");
+            setTimeout(runNext, 200);
+          } else {
+            isBringupRunning = false;
+          }
+          return;
+        }
+
+        await stepBringup();
+        setTimeout(runNext, 250);
+      }
+      runNext();
+    }
+
+    async function respondBringup(action) {
+      const notesInput = document.getElementById("bringupPromptNotes");
+      const notes = notesInput ? notesInput.value.trim() : "";
+      try {
+        const resp = await fetch("/api/bringup/respond", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: action, notes: notes })
+        });
+        if (notesInput) notesInput.value = "";
+        if (resp.ok) {
+          pollBringupStatus();
+        }
+      } catch (e) {
+        console.error("Failed to respond to bringup prompt:", e);
+      }
+    }
+
+    async function resetBringup() {
+      isBringupRunning = false;
+      try {
+        const resp = await fetch("/api/bringup/reset", { method: "POST" });
+        if (resp.ok) {
+          pollBringupStatus();
+        }
+      } catch (e) {
+        console.error("Failed to reset bringup:", e);
+      }
+    }
+
+    async function exportBringupReport() {
+      try {
+        const resp = await fetch("/api/bringup/report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ output_path: "bringup_report.md" })
+        });
+        const data = await resp.json();
+        if (data && data.success) {
+          alert(`Bringup report exported successfully to: ${data.output_path}`);
+        }
+      } catch (e) {
+        console.error("Failed to export bringup report:", e);
+      }
+    }
+
+    function copyBringupConsole(btn) {
+      const consoleOut = document.getElementById("bringupConsoleOutput");
+      if (!consoleOut) return;
+      const text = consoleOut.innerText || "";
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.innerText;
+        btn.innerText = "✔ Copied";
+        setTimeout(() => btn.innerText = orig, 1500);
+      });
     }
 
     function runFsQuick(action) {
@@ -1268,6 +1706,10 @@
               fsView.scrollTop = fsView.scrollHeight;
             }
           }
+        }
+
+        if (currentMode === "BRINGUP") {
+          pollBringupStatus();
         }
       } catch (e) {
         // Background polling errors silent
@@ -1836,6 +2278,11 @@
     setupCliFuzzyHistory();
     setInterval(pollOutputs, 1000);
     pollOutputs();
+
+    if (currentMode === "BRINGUP") {
+      loadBringupScriptsList();
+      pollBringupStatus();
+    }
 
     // Check if initial synchronization is in progress on page load
     fetch("/api/sync/status").then(r => r.json()).then(data => {
