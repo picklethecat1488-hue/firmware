@@ -11,6 +11,16 @@ impl<'d> Board<'d> {
     /// {{ const.doc }}
     pub const {{ const.name }}: {{ const.const_type }} = {{ const.val_str }};
     {% endfor %}
+
+    /// List of GPIO pin numbers assigned to hardware buses or alternate functions.
+    pub const BUS_ASSIGNED_PINS: &'static [u32] = &[
+        {% for pin in bus_assigned_pins %}{{ pin }}, {% endfor %}
+    ];
+
+    /// Returns true if the GPIO pin is assigned to a communication bus.
+    pub fn is_bus_assigned(pin: u32) -> bool {
+        matches!(pin, {{ bus_assigned_match() }})
+    }
 }
 
 #[cfg(not(all(target_arch = "arm", target_os = "none")))]
@@ -24,6 +34,16 @@ impl Board {
     /// {{ const.doc }}
     pub const {{ const.name }}: {{ const.const_type }} = {{ const.val_str }};
     {% endfor %}
+
+    /// List of GPIO pin numbers assigned to hardware buses or alternate functions.
+    pub const BUS_ASSIGNED_PINS: &'static [u32] = &[
+        {% for pin in bus_assigned_pins %}{{ pin }}, {% endfor %}
+    ];
+
+    /// Returns true if the GPIO pin is assigned to a communication bus.
+    pub fn is_bus_assigned(pin: u32) -> bool {
+        matches!(pin, {{ bus_assigned_match() }})
+    }
 }
 
 // Statically verify partition layouts

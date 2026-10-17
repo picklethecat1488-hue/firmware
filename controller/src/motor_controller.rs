@@ -26,6 +26,9 @@ pub const MOTOR_INACTIVE_TICK_INTERVAL: embassy_time::Duration =
 /// Startup blanking period (3 seconds at 100Hz = 300 ticks) during which safety limits/cutoff checks are bypassed.
 pub const MOTOR_STARTUP_BLANKING_TICKS: u32 = 300;
 
+/// Maximum current limit for the TMC6300 BLDC driver in milliamperes (2A).
+pub const MAX_TMC6300_CURRENT_MA: i32 = 2000;
+
 /// Safety limits for the motor controller.
 pub struct MotorLimits {
     /// Minimum current threshold in mA for dry-run detection.
@@ -172,7 +175,7 @@ where
             calibration_present: false,
             limits: MotorLimits {
                 min_current_ma: 15,
-                max_current_ma: 2500,
+                max_current_ma: MAX_TMC6300_CURRENT_MA,
                 max_rpm: 0,
                 rpm_limit: 0,
             },
@@ -199,7 +202,7 @@ where
     /// Sets the minimum and maximum current limits for load/stall safety checks.
     pub fn set_current_limits(&mut self, min_ma: i32, max_ma: i32) {
         self.limits.min_current_ma = min_ma;
-        self.limits.max_current_ma = max_ma;
+        self.limits.max_current_ma = max_ma.min(MAX_TMC6300_CURRENT_MA);
     }
 
     /// Returns the current rotational speed in RPM.
@@ -679,7 +682,7 @@ where
     pub fn set_calibration_ram(&mut self, store: &model::calibration::MotorCalibration) {
         self.calibration_present = true;
         self.limits.min_current_ma = store.current_ma.low;
-        self.limits.max_current_ma = store.current_ma.overload;
+        self.limits.max_current_ma = store.current_ma.overload.min(MAX_TMC6300_CURRENT_MA);
         self.limits.max_rpm = store.max_rpm.unwrap_or(0);
         self.limits.rpm_limit = store.rpm_limit.unwrap_or(0);
     }
