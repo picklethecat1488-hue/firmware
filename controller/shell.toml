@@ -150,7 +150,8 @@ async_cli = true
 handler = "platform::gpio::handle_gpio_cli"
 help = "GPIO commands"
 args = [
-    { name = "pin", type = "Option<u32>", help = "Pin number to read" }
+    { name = "pin", type = "Option<u32>", help = "Pin number to read or set", attributes = [] },
+    { name = "value", type = "Option<u8>", help = "Pin level to set (0 or 1)", attributes = [] }
 ]
 
 [[cli_commands]]
