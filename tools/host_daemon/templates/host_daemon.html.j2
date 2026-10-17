@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Xerxes Host Daemon // {{ runner.package }}:{{ runner.bin_name }}</title>
+  <meta name="theme-color" content="#0a1c24">
+  <meta name="color-scheme" content="dark">
+  <style>
+    :root {
+      --xerxes-bg: #04090c;
+      --xerxes-panel: #08161d;
+      --xerxes-panel-hover: #0e242f;
+      --xerxes-header-bg: #0a1c24;
+      --xerxes-border-light: #00f0ff;
+      --xerxes-border-mid: #0b5966;
+      --xerxes-border-dark: #021217;
+      --xerxes-cyan: #00f0ff;
+      --xerxes-cyan-dim: #00a4b3;
+      --xerxes-teal: #14d9c4;
+      --xerxes-mint: #00ffb4;
+      --xerxes-amber: #ffb000;
+      --xerxes-red: #ff2a4b;
+      --xerxes-green: #00ffb4;
+      --xerxes-text-light: #e6f9ff;
+      --xerxes-text-muted: #7aa5b0;
+      --xerxes-text-dim: #3a626c;
+      --font-mono: "Share Tech Mono", ui-monospace, "SF Mono", "Courier New", monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--xerxes-bg);
+      background-image:
+        repeating-linear-gradient(0deg, rgba(0,0,0,0.38) 0px, rgba(0,0,0,0.38) 2px, transparent 2px, transparent 4px),
+        radial-gradient(ellipse at 50% 0%, #0a2f3a 0%, #03080b 100%);
+      color: var(--xerxes-text-light);
+      font-family: var(--font-mono);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    header {
+      background: var(--xerxes-header-bg);
+      border-bottom: 2px solid var(--xerxes-border-mid);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .header-title {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: var(--xerxes-cyan);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 2px;
+      background: rgba(0, 240, 255, 0.15);
+      border: 1px solid var(--xerxes-cyan-dim);
+      color: var(--xerxes-cyan);
+    }
+    .badge-green {
+      background: rgba(0, 255, 180, 0.15);
+      border-color: var(--xerxes-green);
+      color: var(--xerxes-green);
+    }
+    .badge-amber {
+      background: rgba(255, 176, 0, 0.15);
+      border-color: var(--xerxes-amber);
+      color: var(--xerxes-amber);
+    }
+    .select-dropdown {
+      background: var(--xerxes-panel);
+      border: 1px solid var(--xerxes-border-light);
+      color: var(--xerxes-cyan);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: bold;
+      padding: 4px 8px;
+      border-radius: 2px;
+      cursor: pointer;
+      outline: none;
+    }
+    .btn {
+      background: var(--xerxes-panel);
+      border: 1px solid var(--xerxes-border-mid);
+      color: var(--xerxes-text-light);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: bold;
+      padding: 4px 10px;
+      border-radius: 2px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .btn:hover {
+      background: var(--xerxes-panel-hover);
+      border-color: var(--xerxes-cyan);
+      color: var(--xerxes-cyan);
+    }
+    .btn-cyan {
+      background: rgba(0, 240, 255, 0.2);
+      border-color: var(--xerxes-cyan);
+      color: var(--xerxes-cyan);
+    }
+    .workspace-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 8px;
+      overflow: hidden;
+    }
+    .panel-container {
+      background: var(--xerxes-panel);
+      border: 1px solid var(--xerxes-border-mid);
+      box-shadow: inset 1px 1px 0px rgba(0, 240, 255, 0.25), inset -1px -1px 0px var(--xerxes-border-dark);
+      border-radius: 3px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-header {
+      background: rgba(10, 28, 36, 0.85);
+      border-bottom: 1px solid var(--xerxes-border-mid);
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: bold;
+      color: var(--xerxes-cyan);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .panel-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-line {
+      margin-bottom: 2px;
+    }
+    .log-line-error { color: var(--xerxes-red); }
+    .log-line-warn { color: var(--xerxes-amber); }
+    .log-line-info { color: var(--xerxes-text-light); }
+    .log-line-target { color: var(--xerxes-mint); }
+    .cli-line-input { color: var(--xerxes-cyan); font-weight: bold; }
+    .cli-line-output { color: var(--xerxes-text-light); }
+    .fs-toolbar {
+      padding: 4px 8px;
+      border-bottom: 1px solid var(--xerxes-border-dark);
+      display: flex;
+      gap: 6px;
+      background: rgba(0, 240, 255, 0.05);
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    footer.cli-input-bar {
+      background: var(--xerxes-header-bg);
+      border-top: 2px solid var(--xerxes-border-mid);
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      position: relative;
+    }
+    .prompt-label {
+      color: var(--xerxes-cyan);
+      font-weight: bold;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .cmd-input {
+      flex: 1;
+      background: var(--xerxes-bg);
+      border: 1px solid var(--xerxes-border-mid);
+      color: var(--xerxes-text-light);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      padding: 6px 10px;
+      outline: none;
+      border-radius: 2px;
+    }
+    .cmd-input:focus {
+      border-color: var(--xerxes-cyan);
+      box-shadow: 0 0 6px rgba(0, 240, 255, 0.4);
+    }
+
+    /* CLI Fuzzy History Search (Ctrl-R) */
+    .cli-fuzzy-history {
+      position: absolute;
+      bottom: 48px;
+      left: 0;
+      right: 0;
+      max-height: 220px;
+      background: var(--xerxes-panel, #08161d);
+      border: 2px solid var(--xerxes-cyan, #00f0ff);
+      box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.9), 0 0 10px rgba(0, 240, 255, 0.2);
+      z-index: 2500;
+      display: flex;
+      flex-direction: column;
+    }
+    .fuzzy-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: rgba(10, 28, 36, 0.95);
+      border-bottom: 1px solid var(--xerxes-border-mid, #0b5966);
+    }
+    .fuzzy-prompt {
+      color: var(--xerxes-amber, #ffb000);
+      font-weight: bold;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .fuzzy-search-input {
+      flex: 1;
+      background: var(--xerxes-bg, #04090c);
+      border: 1px solid var(--xerxes-border-mid, #0b5966);
+      color: var(--xerxes-text-light, #e6f9ff);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 4px 8px;
+      outline: none;
+    }
+    .fuzzy-results-list {
+      overflow-y: auto;
+      max-height: 170px;
+    }
+    .fuzzy-item {
+      padding: 5px 12px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(11, 89, 102, 0.3);
+      color: var(--xerxes-text-light, #e6f9ff);
+    }
+    .fuzzy-item:hover, .fuzzy-item.active {
+      background: rgba(0, 240, 255, 0.2);
+      color: var(--xerxes-cyan, #00f0ff);
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-title">
+      <span>⚡ SYSTEM SHOCK 2 // XERXES HOST DAEMON</span>
+      <span class="badge" id="targetBadge">{{ runner.target }}</span>
+      <span class="badge" id="binBadge">{{ runner.bin_name }}</span>
+      <span class="badge badge-green" id="statusBadge">ONLINE</span>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <label for="modeSelect" style="font-size: 11px; color: var(--xerxes-text-muted);">ACTIVE MODE:</label>
+      <select id="modeSelect" class="select-dropdown" onchange="changeMode(this.value)">
+        <option value="CLI" {% if runner.active_mode == 'CLI' %}selected{% endif %}>CLI (RTT Console)</option>
+        <option value="FS" {% if runner.active_mode == 'FS' %}selected{% endif %}>FS (Filesystem)</option>
+      </select>
+      <button class="btn" onclick="clearOutput()">Clear</button>
+    </div>
+  </header>
+
+  <main class="workspace-body">
+    <!-- Left Panel: System / Target Logging -->
+    <div class="panel-container log-panel" id="logPanel">
+      <div class="panel-header">
+        <span>SYSTEM LOGGING MONITOR (defmt / RTT)</span>
+        <span style="font-size: 9px; color: var(--xerxes-text-dim);">AUTO-SCROLL: ON</span>
+      </div>
+      <div class="panel-content" id="logView">
+        <div class="log-line log-line-info">> Host daemon online. Attached to {{ runner.package }}.</div>
+      </div>
+    </div>
+
+    <!-- Right Panel: Interactive CLI & FS View -->
+    <div class="panel-container cli-panel" id="cliPanel">
+      <div class="panel-header">
+        <span id="cliPanelTitle">INTERACTIVE CLI CONSOLE</span>
+        <span style="font-size: 9px; color: var(--xerxes-text-muted);" id="channelBadge">CHANNEL: BOTH</span>
+      </div>
+
+      <!-- Optional FS Action Toolbar -->
+      <div id="fsToolbar" class="fs-toolbar" style="display: {% if runner.active_mode == 'FS' %}flex{% else %}none{% endif %};">
+        <span style="font-size: 10px; color: var(--xerxes-text-muted); margin-right: 4px;">Quick Actions:</span>
+        <button class="btn btn-cyan" onclick="runFsQuick('ls')">ls</button>
+        <button class="btn" onclick="runFsQuick('crash-log')">crash-log</button>
+        <button class="btn" onclick="runFsQuick('cat metadata')">cat metadata</button>
+        <button class="btn" onclick="runFsQuick('export-telemetry')">export-telemetry</button>
+        <button class="btn" onclick="runFsQuick('format')">format</button>
+      </div>
+
+      <div class="panel-content" id="cliView">
+        <div class="log-line log-line-info">> Interactive CLI workstation ready. Type commands below.</div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="cli-input-bar">
+    <div id="cliFuzzyHistory" class="cli-fuzzy-history" style="display:none;">
+      <div class="fuzzy-header">
+        <span class="fuzzy-prompt">(reverse-i-search)`':</span>
+        <input type="text" id="fuzzySearchInput" class="fuzzy-search-input" placeholder="Search command history..." autocomplete="off">
+        <button class="btn" style="padding: 1px 6px; font-size: 10px;" onclick="closeCliFuzzyHistory()">✕</button>
+      </div>
+      <div id="fuzzyResultsList" class="fuzzy-results-list"></div>
+    </div>
+    <span class="prompt-label" id="promptLabel">{% if runner.active_mode == 'FS' %}fs> {% else %}shell> {% endif %}</span>
+    <input type="text" id="cmdInput" class="cmd-input" placeholder="Type command and press ENTER (e.g. 'motor speed 100', 'gpio status', 'ls')..." autofocus autocomplete="off">
+    <button class="btn btn-cyan" onclick="submitCommand()">Send [↵]</button>
+  </footer>
+
+  <script>
+    let currentMode = "{{ runner.active_mode }}";
+    let cmdHistory = [];
+    let historyIdx = -1;
+
+    async function changeMode(newMode) {
+      currentMode = newMode;
+      document.getElementById("promptLabel").innerText = currentMode === "FS" ? "fs> " : "shell> ";
+      document.getElementById("cliPanelTitle").innerText = currentMode === "FS" ? "FILESYSTEM COMMAND WORKSTATION (host_fs)" : "INTERACTIVE CLI CONSOLE (host_cli)";
+      document.getElementById("fsToolbar").style.display = currentMode === "FS" ? "flex" : "none";
+
+      try {
+        await fetch("/api/mode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: newMode })
+        });
+      } catch (e) {
+        console.error("Failed to update mode:", e);
+      }
+    }
+
+    function runFsQuick(action) {
+      document.getElementById("cmdInput").value = action;
+      submitCommand();
+    }
+
+    function clearOutput() {
+      document.getElementById("logView").innerHTML = "";
+      document.getElementById("cliView").innerHTML = "";
+    }
+
+    async function submitCommand() {
+      const input = document.getElementById("cmdInput");
+      const cmd = input.value.trim();
+      if (!cmd) return;
+
+      cmdHistory.push(cmd);
+      historyIdx = cmdHistory.length;
+      input.value = "";
+
+      const endpoint = currentMode === "FS" ? "/api/fs/execute" : "/api/cli/execute";
+      try {
+        const resp = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command: cmd })
+        });
+        const data = await resp.json();
+        pollOutputs();
+      } catch (e) {
+        appendCliText(`[ERROR] Command failed: ${e}`, false);
+      }
+    }
+
+    function appendCliText(text, isInput) {
+      const view = document.getElementById("cliView");
+      const div = document.createElement("div");
+      div.className = isInput ? "log-line cli-line-input" : "log-line cli-line-output";
+      div.innerText = text;
+      view.appendChild(div);
+      view.scrollTop = view.scrollHeight;
+    }
+
+    async function pollOutputs() {
+      try {
+        const logResp = await fetch("/api/logs");
+        if (logResp.ok) {
+          const logs = await logResp.json();
+          const logView = document.getElementById("logView");
+          logView.innerHTML = "";
+          logs.forEach(l => {
+            const d = document.createElement("div");
+            d.className = `log-line log-line-${l.level.toLowerCase()}`;
+            d.innerText = `[${l.channel}] ${l.message}`;
+            logView.appendChild(d);
+          });
+          logView.scrollTop = logView.scrollHeight;
+        }
+
+        const cliResp = await fetch("/api/cli/output");
+        if (cliResp.ok) {
+          const lines = await cliResp.json();
+          const cliView = document.getElementById("cliView");
+          cliView.innerHTML = "";
+          lines.forEach(line => {
+            const d = document.createElement("div");
+            d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+            d.innerText = line.text;
+            cliView.appendChild(d);
+          });
+          cliView.scrollTop = cliView.scrollHeight;
+        }
+      } catch (e) {
+        // Background polling errors silent
+      }
+    }
+
+    function fuzzyMatch(pattern, text) {
+      if (!pattern) return true;
+      let pIdx = 0;
+      let tIdx = 0;
+      const p = pattern.toLowerCase();
+      const t = text.toLowerCase();
+      while (pIdx < p.length && tIdx < t.length) {
+        if (p[pIdx] === t[tIdx]) {
+          pIdx++;
+        }
+        tIdx++;
+      }
+      return pIdx === p.length;
+    }
+
+    let fuzzySelectedIndex = 0;
+    let currentFuzzyMatches = [];
+
+    function openCliFuzzyHistory() {
+      const container = document.getElementById("cliFuzzyHistory");
+      const searchInput = document.getElementById("fuzzySearchInput");
+      if (!container || !searchInput) return;
+
+      container.style.display = "flex";
+      searchInput.value = "";
+      fuzzySelectedIndex = 0;
+      updateFuzzyResults("");
+      searchInput.focus();
+    }
+
+    function closeCliFuzzyHistory() {
+      const container = document.getElementById("cliFuzzyHistory");
+      if (container) {
+        container.style.display = "none";
+      }
+      const cmdInput = document.getElementById("cmdInput");
+      if (cmdInput) {
+        cmdInput.focus();
+      }
+    }
+
+    function updateFuzzyResults(query) {
+      const list = document.getElementById("fuzzyResultsList");
+      if (!list) return;
+
+      const historyReversed = [];
+      const seen = new Set();
+      for (let i = cmdHistory.length - 1; i >= 0; i--) {
+        const item = cmdHistory[i];
+        if (item && !seen.has(item)) {
+          seen.add(item);
+          historyReversed.push(item);
+        }
+      }
+
+      currentFuzzyMatches = historyReversed.filter(cmd => fuzzyMatch(query, cmd));
+      if (fuzzySelectedIndex >= currentFuzzyMatches.length) {
+        fuzzySelectedIndex = Math.max(0, currentFuzzyMatches.length - 1);
+      }
+
+      list.innerHTML = "";
+      if (currentFuzzyMatches.length === 0) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "fuzzy-item";
+        emptyDiv.style.color = "var(--xerxes-text-dim, #567)";
+        emptyDiv.innerText = "No matching commands";
+        list.appendChild(emptyDiv);
+        return;
+      }
+
+      currentFuzzyMatches.forEach((cmd, idx) => {
+        const itemDiv = document.createElement("div");
+        itemDiv.className = `fuzzy-item ${idx === fuzzySelectedIndex ? 'active' : ''}`;
+        itemDiv.innerText = cmd;
+        itemDiv.addEventListener("click", () => {
+          selectFuzzyCommand(cmd);
+        });
+        list.appendChild(itemDiv);
+      });
+
+      const activeEl = list.children[fuzzySelectedIndex];
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: "nearest" });
+      }
+    }
+
+    function selectFuzzyCommand(cmd) {
+      const input = document.getElementById("cmdInput");
+      if (input) {
+        input.value = cmd;
+      }
+      closeCliFuzzyHistory();
+    }
+
+    function setupCliFuzzyHistory() {
+      const searchInput = document.getElementById("fuzzySearchInput");
+      if (!searchInput) return;
+
+      searchInput.addEventListener("input", (e) => {
+        fuzzySelectedIndex = 0;
+        updateFuzzyResults(e.target.value);
+      });
+
+      searchInput.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0) {
+            fuzzySelectedIndex = (fuzzySelectedIndex + 1) % currentFuzzyMatches.length;
+            updateFuzzyResults(searchInput.value);
+          }
+          return;
+        }
+
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeCliFuzzyHistory();
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0 && currentFuzzyMatches[fuzzySelectedIndex]) {
+            selectFuzzyCommand(currentFuzzyMatches[fuzzySelectedIndex]);
+          } else {
+            closeCliFuzzyHistory();
+          }
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0) {
+            fuzzySelectedIndex = (fuzzySelectedIndex - 1 + currentFuzzyMatches.length) % currentFuzzyMatches.length;
+            updateFuzzyResults(searchInput.value);
+          }
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0) {
+            fuzzySelectedIndex = (fuzzySelectedIndex + 1) % currentFuzzyMatches.length;
+            updateFuzzyResults(searchInput.value);
+          }
+        }
+      });
+    }
+
+    document.getElementById("cmdInput").addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+        e.preventDefault();
+        openCliFuzzyHistory();
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        submitCommand();
+      } else if (e.key === "ArrowUp") {
+        if (historyIdx > 0) {
+          historyIdx--;
+          document.getElementById("cmdInput").value = cmdHistory[historyIdx];
+        }
+      } else if (e.key === "ArrowDown") {
+        if (historyIdx < cmdHistory.length - 1) {
+          historyIdx++;
+          document.getElementById("cmdInput").value = cmdHistory[historyIdx];
+        } else {
+          historyIdx = cmdHistory.length;
+          document.getElementById("cmdInput").value = "";
+        }
+      }
+    });
+
+    window.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+        if (e.target.id !== "fuzzySearchInput") {
+          e.preventDefault();
+          openCliFuzzyHistory();
+        }
+      }
+    });
+
+    setupCliFuzzyHistory();
+    setInterval(pollOutputs, 1000);
+    pollOutputs();
+  </script>
+</body>
+</html>

@@ -22,3 +22,8 @@ To establish clean domain boundaries, lifecycle supervision, and automated boile
 
 ### 4. Include Directives Placement
 * **Top-of-File Placement**: The `include!` macro directives that load generated topology or code structures (e.g., `include!(concat!(env!("OUT_DIR"), "/generated_app.rs"));` or `include!(concat!(env!("OUT_DIR"), "/generated_board.rs"));`) MUST be placed at the very beginning of the source file listing (i.e. the first line of code in a listing, immediately after module-level doc comments).
+
+### 5. Target-Independent Controller Limits & Declarative Parameter Injection
+* **No Target Hardware Constants in Domain Controllers**: Domain controllers in the `controller` crate must remain completely hardware- and target-independent. Do NOT hardcode target-specific or driver-specific electrical/safety limits (such as IC driver peak current ratings) as constants inside domain controllers.
+* **Declarative Parameter Injection via `app.toml`**: Target- and application-specific operating parameters must be declared in `app.toml` under the corresponding controller entry in `[[apps.<app>.controllers]]` (e.g. `max_current_ma = 2000`), exposed via generated constants in `generated_app.rs`, and injected into the controller constructor at application startup.
+* **Preserve Canonical Defaults**: Maintain canonical, generic defaults in default controller constructors (`new()`) and provide dedicated parameterized constructors (e.g. `new_with_max_current()`) for application configuration injection.
