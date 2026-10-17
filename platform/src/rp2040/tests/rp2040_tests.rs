@@ -1,6 +1,5 @@
-use platform::i2c::PlatformI2cRecovery;
 use platform::types::{CpuId, MulticoreStack};
-use rp2040::{PlatformMulticore, Rp2040I2cRecovery, Rp2040Panic};
+use rp2040::{PlatformI2cRecovery, PlatformMulticore, Rp2040I2cRecovery, Rp2040Panic};
 use std::sync::atomic::AtomicU32;
 
 #[test]

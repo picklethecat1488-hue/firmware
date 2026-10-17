@@ -1420,6 +1420,97 @@
       font-size: 8px;
       color: var(--quake-text-dim);
     }
+
+    /* CLI Fuzzy History Search (Ctrl-R) */
+    .cli-fuzzy-history {
+      position: absolute;
+      bottom: 40px;
+      left: 0;
+      right: 0;
+      max-height: 220px;
+      background: var(--xerxes-panel, #08161d);
+      border: 2px solid var(--xerxes-cyan, #00f0ff);
+      box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.9), 0 0 10px rgba(0, 240, 255, 0.2);
+      z-index: 2500;
+      display: flex;
+      flex-direction: column;
+    }
+    .fuzzy-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: rgba(10, 28, 36, 0.95);
+      border-bottom: 1px solid var(--xerxes-border-mid, #0b5966);
+    }
+    .fuzzy-prompt {
+      color: var(--xerxes-amber, #ffb000);
+      font-weight: bold;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .fuzzy-search-input {
+      flex: 1;
+      background: var(--xerxes-bg, #04090c);
+      border: 1px solid var(--xerxes-cyan-dim, #00a4b3);
+      color: var(--xerxes-text-light, #e6f9ff);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 3px 8px;
+      outline: none;
+    }
+    .fuzzy-results-list {
+      overflow-y: auto;
+      max-height: 170px;
+    }
+    .fuzzy-item {
+      padding: 5px 12px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(11, 89, 102, 0.3);
+      color: var(--xerxes-text-light, #e6f9ff);
+    }
+    /* Terminal Formatting & Coloration (VS Code Terminal Aesthetic) */
+    .term-bold { font-weight: bold; }
+    .term-dim { opacity: 0.7; }
+    .term-italic { font-style: italic; }
+    .term-underline { text-decoration: underline; }
+    .term-fg-black { color: #5c6370; }
+    .term-fg-red { color: #e06c75; }
+    .term-fg-green { color: #98c379; }
+    .term-fg-yellow { color: #e5c07b; }
+    .term-fg-blue { color: #61afef; }
+    .term-fg-magenta { color: #c678dd; }
+    .term-fg-cyan { color: #56b6c2; }
+    .term-fg-white { color: #dcdfe4; }
+    .term-fg-bright-black { color: #7f848e; }
+    .term-fg-bright-red { color: #ff6b68; }
+    .term-fg-bright-green { color: #a8cc8c; }
+    .term-fg-bright-yellow { color: #e5c07b; }
+    .term-fg-bright-blue { color: #73b8ff; }
+    .term-fg-bright-magenta { color: #d68ff0; }
+    .term-fg-bright-cyan { color: #00f0ff; }
+    .term-fg-bright-white { color: #ffffff; }
+    .term-bg-black { background-color: #282c34; }
+    .term-bg-red { background-color: #e06c75; }
+    .term-bg-green { background-color: #98c379; }
+    .term-bg-yellow { background-color: #e5c07b; }
+    .term-bg-blue { background-color: #61afef; }
+    .term-bg-magenta { background-color: #c678dd; }
+    .term-bg-cyan { background-color: #56b6c2; }
+    .term-bg-white { background-color: #dcdfe4; }
+    .term-link {
+      color: var(--xerxes-cyan, #00f0ff);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .term-link:hover {
+      color: #ffffff;
+      text-shadow: 0 0 6px var(--xerxes-cyan, #00f0ff);
+    }
   </style>
 
   <!-- Syntax Highlighting Engine (Local vendor with CDN fallback) -->
@@ -1591,10 +1682,18 @@
     </div>
 
     <div class="cli-input-tray" style="position: relative;">
+      <div id="cliFuzzyHistory" class="cli-fuzzy-history" style="display:none;">
+        <div class="fuzzy-header">
+          <span class="fuzzy-prompt">(reverse-i-search)`':</span>
+          <input type="text" id="fuzzySearchInput" class="fuzzy-search-input" placeholder="Search command history..." autocomplete="off">
+          <button class="quake-btn" style="padding: 1px 6px; font-size: 10px;" onclick="closeCliFuzzyHistory()">✕</button>
+        </div>
+        <div id="fuzzyResultsList" class="fuzzy-results-list"></div>
+      </div>
       <div id="cliSuggestions" class="cli-suggestions" style="display:none;"></div>
       <span id="cliPromptPrefix" class="cli-prompt-prefix">[READY] ></span>
       <input type="text" id="cliInput" class="cli-cmd-input" placeholder="Type review comment, command, or @file reference (e.g. '@src/model/pcb.py:42', 'must_fix ...', 'feedback')..." autocomplete="off">
-      <button class="quake-btn quake-btn-gold" onclick="executeCliCommand()">Send [↵]</button>
+      <button class="quake-btn quake-btn-gold" id="btnCliSend" onclick="executeCliCommand()">Send [↵]</button>
     </div>
   </footer>
 
@@ -2820,6 +2919,11 @@
     function setupCliInput() {
       const input = document.getElementById("cliInput");
       input.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+          e.preventDefault();
+          openCliFuzzyHistory();
+          return;
+        }
         if (e.key === "Enter") {
           e.preventDefault();
           executeCliCommand();
@@ -2849,6 +2953,147 @@
       }
 
       setupCliAutocomplete();
+      setupCliFuzzyHistory();
+    }
+
+    function fuzzyMatch(pattern, text) {
+      if (!pattern) return true;
+      let pIdx = 0;
+      let tIdx = 0;
+      const p = pattern.toLowerCase();
+      const t = text.toLowerCase();
+      while (pIdx < p.length && tIdx < t.length) {
+        if (p[pIdx] === t[tIdx]) {
+          pIdx++;
+        }
+        tIdx++;
+      }
+      return pIdx === p.length;
+    }
+
+    let fuzzySelectedIndex = 0;
+    let currentFuzzyMatches = [];
+
+    function openCliFuzzyHistory() {
+      const container = document.getElementById("cliFuzzyHistory");
+      const searchInput = document.getElementById("fuzzySearchInput");
+      if (!container || !searchInput) return;
+
+      container.style.display = "flex";
+      searchInput.value = "";
+      fuzzySelectedIndex = 0;
+      updateFuzzyResults("");
+      searchInput.focus();
+    }
+
+    function closeCliFuzzyHistory() {
+      const container = document.getElementById("cliFuzzyHistory");
+      if (container) {
+        container.style.display = "none";
+      }
+      const cliInput = document.getElementById("cliInput");
+      if (cliInput) {
+        cliInput.focus();
+      }
+    }
+
+    function updateFuzzyResults(query) {
+      const list = document.getElementById("fuzzyResultsList");
+      if (!list) return;
+
+      const rawHistory = state.cmdHistory || [];
+      const historyReversed = [];
+      const seen = new Set();
+      for (let i = rawHistory.length - 1; i >= 0; i--) {
+        const item = rawHistory[i];
+        if (item && !seen.has(item)) {
+          seen.add(item);
+          historyReversed.push(item);
+        }
+      }
+
+      currentFuzzyMatches = historyReversed.filter(cmd => fuzzyMatch(query, cmd));
+      if (fuzzySelectedIndex >= currentFuzzyMatches.length) {
+        fuzzySelectedIndex = Math.max(0, currentFuzzyMatches.length - 1);
+      }
+
+      list.innerHTML = "";
+      if (currentFuzzyMatches.length === 0) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "fuzzy-item";
+        emptyDiv.style.color = "var(--xerxes-text-dim, #567)";
+        emptyDiv.innerText = "No matching commands";
+        list.appendChild(emptyDiv);
+        return;
+      }
+
+      currentFuzzyMatches.forEach((cmd, idx) => {
+        const itemDiv = document.createElement("div");
+        itemDiv.className = `fuzzy-item ${idx === fuzzySelectedIndex ? 'active' : ''}`;
+        itemDiv.innerText = cmd;
+        itemDiv.addEventListener("click", () => {
+          selectFuzzyCommand(cmd);
+        });
+        list.appendChild(itemDiv);
+      });
+
+      const activeEl = list.children[fuzzySelectedIndex];
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: "nearest" });
+      }
+    }
+
+    function selectFuzzyCommand(cmd) {
+      const input = document.getElementById("cliInput");
+      if (input) {
+        input.value = cmd;
+      }
+      closeCliFuzzyHistory();
+    }
+
+    function setupCliFuzzyHistory() {
+      const searchInput = document.getElementById("fuzzySearchInput");
+      if (!searchInput) return;
+
+      searchInput.addEventListener("input", (e) => {
+        fuzzySelectedIndex = 0;
+        updateFuzzyResults(e.target.value);
+      });
+
+      searchInput.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0) {
+            fuzzySelectedIndex = (fuzzySelectedIndex + 1) % currentFuzzyMatches.length;
+            updateFuzzyResults(searchInput.value);
+          }
+          return;
+        }
+
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeCliFuzzyHistory();
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0 && currentFuzzyMatches[fuzzySelectedIndex]) {
+            selectFuzzyCommand(currentFuzzyMatches[fuzzySelectedIndex]);
+          } else {
+            closeCliFuzzyHistory();
+          }
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0) {
+            fuzzySelectedIndex = (fuzzySelectedIndex - 1 + currentFuzzyMatches.length) % currentFuzzyMatches.length;
+            updateFuzzyResults(searchInput.value);
+          }
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0) {
+            fuzzySelectedIndex = (fuzzySelectedIndex + 1) % currentFuzzyMatches.length;
+            updateFuzzyResults(searchInput.value);
+          }
+        }
+      });
     }
 
     function setupCliResizer() {
@@ -3115,6 +3360,8 @@
 
     async function executeCliCommand() {
       const input = document.getElementById("cliInput");
+      const btn = document.getElementById("btnCliSend") || (input ? input.nextElementSibling : null);
+      if (!input || input.disabled) return;
       const suggestionsEl = document.getElementById("cliSuggestions");
       if (suggestionsEl) suggestionsEl.style.display = "none";
 
@@ -3131,20 +3378,32 @@
       }
       input.value = "";
 
-      // Direct @file navigation (e.g. "@src/model/pcb.py:42" or "@pcb.py")
-      if (rawCmd.startsWith("@")) {
+      input.disabled = true;
+      if (btn) btn.disabled = true;
+      const prevPlaceholder = input.placeholder;
+      input.placeholder = `Running command: ${rawCmd}...`;
+
+      try {
+        // Direct @file navigation (e.g. "@src/model/pcb.py:42" or "@pcb.py")
+        if (rawCmd.startsWith("@")) {
+          logCli(`> ${rawCmd}`, "gold");
+          await goto(rawCmd);
+          return;
+        }
+
+        const parts = rawCmd.split(/\s+/);
+        const rawVerb = parts[0].toLowerCase();
+        const verb = rawVerb.startsWith("/") ? rawVerb.slice(1) : rawVerb;
+
         logCli(`> ${rawCmd}`, "gold");
-        await goto(rawCmd);
-        return;
+
+        await matchCommand(verb, rawCmd, parts);
+      } finally {
+        input.disabled = false;
+        if (btn) btn.disabled = false;
+        input.placeholder = prevPlaceholder;
+        input.focus();
       }
-
-      const parts = rawCmd.split(/\s+/);
-      const rawVerb = parts[0].toLowerCase();
-      const verb = rawVerb.startsWith("/") ? rawVerb.slice(1) : rawVerb;
-
-      logCli(`> ${rawCmd}`, "gold");
-
-      matchCommand(verb, rawCmd, parts);
     }
 
     async function matchCommand(verb, fullText, parts) {
@@ -3944,11 +4203,165 @@
       document.getElementById("cliDrawer").classList.toggle("minimized", !state.panes.cli);
     }
 
+    const ANSI_FG_MAP = {
+      30: 'term-fg-black', 31: 'term-fg-red', 32: 'term-fg-green', 33: 'term-fg-yellow',
+      34: 'term-fg-blue', 35: 'term-fg-magenta', 36: 'term-fg-cyan', 37: 'term-fg-white',
+      90: 'term-fg-bright-black', 91: 'term-fg-bright-red', 92: 'term-fg-bright-green', 93: 'term-fg-bright-yellow',
+      94: 'term-fg-bright-blue', 95: 'term-fg-bright-magenta', 96: 'term-fg-bright-cyan', 97: 'term-fg-bright-white'
+    };
+    const ANSI_BG_MAP = {
+      40: 'term-bg-black', 41: 'term-bg-red', 42: 'term-bg-green', 43: 'term-bg-yellow',
+      44: 'term-bg-blue', 45: 'term-bg-magenta', 46: 'term-bg-cyan', 47: 'term-bg-white',
+      100: 'term-bg-bright-black', 101: 'term-bg-bright-red', 102: 'term-bg-bright-green', 103: 'term-bg-bright-yellow',
+      104: 'term-bg-bright-blue', 105: 'term-bg-bright-magenta', 106: 'term-bg-bright-cyan', 107: 'term-bg-bright-white'
+    };
+
+    function escapeHtmlText(str) {
+      if (!str) return "";
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function formatTerminalLinks(escapedText) {
+      const urlRe = /(https?:\/\/[^\s<>"'\)]+)/g;
+      let res = escapedText.replace(urlRe, (url) => {
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="term-link">${url}</a>`;
+      });
+
+      const filePathRe = /(?<![a-zA-Z0-9_\-\.\/])((?:\/(?:Users|home|root|[a-zA-Z0-9_\-\.]+)\/[a-zA-Z0-9_\-\.\/]+)|(?:(?:src|tools|board|platform|controller|peripheral|tests|docs|attachments|feedback|target)\/[a-zA-Z0-9_\-\.\/]+))/g;
+      const tokens = res.split(/(<[^>]+>)/);
+      for (let i = 0; i < tokens.length; i++) {
+        if (!tokens[i].startsWith('<')) {
+          tokens[i] = tokens[i].replace(filePathRe, (m, path) => {
+            let trailing = "";
+            let p = path;
+            while (p && ".,;:?)'\"]".includes(p[p.length - 1])) {
+              trailing = p[p.length - 1] + trailing;
+              p = p.slice(0, -1);
+            }
+            if (!p) return m;
+            const fullPath = p.startsWith('/') ? p : `/${p}`;
+            const vscodeUrl = `vscode://file${fullPath}`;
+            return `<a href="${vscodeUrl}" class="term-link term-file-link" data-path="${p}" onclick="handleTermFileClick(event, '${p}')">${p}</a>${trailing}`;
+          });
+        }
+      }
+      return tokens.join('');
+    }
+
+    function ansiToHtml(rawText) {
+      if (!rawText) return "";
+
+      // Normalize any orphaned / unprefixed 8;;url...8;; sequences where \x1b] was dropped
+      rawText = rawText.replace(/(^|[^\x1b\]])8;;(https?:\/\/[^\s`"'<>\)]+)(.*?)(?:8;;)/g, function(m, p1, url, text) {
+        return p1 + '\x1b]8;;' + url + '\x1b\\' + text + '\x1b]8;;\x1b\\';
+      });
+
+      const tokenRe = /(\x1b\[([0-9;]*)m|\x1b\]8;[^\x1b\x07]*;([^\x1b\x07]+)(?:\x1b\\|\x07)|\x1b\]8;[^\x1b\x07]*;(?:\x1b\\|\x07)|\x1b\][^\x1b\x07]*(?:\x1b\\|\x07)|\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])|[\x00-\x08\x0b-\x1a\x1c-\x1f])/g;
+
+      let lastIndex = 0;
+      let outChunks = [];
+      let classes = [];
+      let fgClass = null;
+      let bgClass = null;
+      let currentUrl = null;
+      let match;
+
+      while ((match = tokenRe.exec(rawText)) !== null) {
+        let chunk = rawText.substring(lastIndex, match.index);
+        lastIndex = tokenRe.lastIndex;
+
+        if (chunk) {
+          let escaped = escapeHtmlText(chunk);
+          let inner = currentUrl ? escaped : formatTerminalLinks(escaped);
+          let allCls = [...classes];
+          if (fgClass) allCls.push(fgClass);
+          if (bgClass) allCls.push(bgClass);
+
+          let formatted = allCls.length > 0 ? `<span class="${allCls.join(' ')}">${inner}</span>` : inner;
+          if (currentUrl) {
+            formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
+          }
+          outChunks.push(formatted);
+        }
+
+        let fullTok = match[0];
+        let sgrCode = match[2];
+        let osc8Url = match[3];
+
+        if (sgrCode !== undefined) {
+          if (!sgrCode || sgrCode === '0') {
+            classes = [];
+            fgClass = null;
+            bgClass = null;
+          } else {
+            let codes = sgrCode.split(';').map(c => parseInt(c, 10)).filter(c => !isNaN(c));
+            codes.forEach(code => {
+              if (code === 0) {
+                classes = [];
+                fgClass = null;
+                bgClass = null;
+              } else if (code === 1) {
+                if (!classes.includes('term-bold')) classes.push('term-bold');
+              } else if (code === 2) {
+                if (!classes.includes('term-dim')) classes.push('term-dim');
+              } else if (code === 3) {
+                if (!classes.includes('term-italic')) classes.push('term-italic');
+              } else if (code === 4) {
+                if (!classes.includes('term-underline')) classes.push('term-underline');
+              } else if (code === 21 || code === 22) {
+                classes = classes.filter(c => c !== 'term-bold' && c !== 'term-dim');
+              } else if (code === 23) {
+                classes = classes.filter(c => c !== 'term-italic');
+              } else if (code === 24) {
+                classes = classes.filter(c => c !== 'term-underline');
+              } else if (ANSI_FG_MAP[code]) {
+                fgClass = ANSI_FG_MAP[code];
+              } else if (code === 39) {
+                fgClass = null;
+              } else if (ANSI_BG_MAP[code]) {
+                bgClass = ANSI_BG_MAP[code];
+              } else if (code === 49) {
+                bgClass = null;
+              }
+            });
+          }
+        } else if (osc8Url !== undefined) {
+          currentUrl = osc8Url;
+        } else if (fullTok.startsWith('\x1b]8;')) {
+          currentUrl = null;
+        }
+      }
+
+      let remaining = rawText.substring(lastIndex);
+      if (remaining) {
+        let escaped = escapeHtmlText(remaining);
+        let inner = currentUrl ? escaped : formatTerminalLinks(escaped);
+        let allCls = [...classes];
+        if (fgClass) allCls.push(fgClass);
+        if (bgClass) allCls.push(bgClass);
+
+        let formatted = allCls.length > 0 ? `<span class="${allCls.join(' ')}">${inner}</span>` : inner;
+        if (currentUrl) {
+          formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
+        }
+        outChunks.push(formatted);
+      }
+
+      return outChunks.join('');
+    }
+
+    function handleTermFileClick(e, path) {
+      if (typeof openInVsCode === 'function') {
+        e.preventDefault();
+        openInVsCode(path);
+      }
+    }
+
     function logCli(msg, colorClass) {
       const screen = document.getElementById("cliLog");
       const line = document.createElement("div");
       line.className = "cli-log-line" + (colorClass ? ` cli-log-${colorClass}` : "");
-      line.innerText = msg;
+      line.innerHTML = ansiToHtml(msg);
       screen.appendChild(line);
       screen.scrollTop = screen.scrollHeight;
     }
@@ -4072,6 +4485,11 @@
 
     function setupKeyboardShortcuts() {
       window.addEventListener("keydown", async (e) => {
+        if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+          e.preventDefault();
+          openCliFuzzyHistory();
+          return;
+        }
         if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
         if (e.key === "[") togglePane("commits");
         if (e.key === "]") togglePane("files");
