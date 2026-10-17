@@ -53,14 +53,29 @@ pub struct TypedResource {
 }
 
 /// Settings configuration for a target hardware serial bus controller.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Default)]
 pub struct BoardBusConfig {
     /// SDA data pin identifier.
-    pub sda: String,
+    #[serde(default)]
+    pub sda: Option<String>,
     /// SCL clock pin identifier.
-    pub scl: String,
+    #[serde(default)]
+    pub scl: Option<String>,
     /// Operating frequency of the bus in Hz.
-    pub frequency: u32,
+    #[serde(default)]
+    pub frequency: Option<u32>,
+    /// TX pin identifier.
+    #[serde(default)]
+    pub tx: Option<String>,
+    /// RX pin identifier.
+    #[serde(default)]
+    pub rx: Option<String>,
+    /// Generic or PIO pin identifier.
+    #[serde(default)]
+    pub pin: Option<String>,
+    /// Multiple pins assigned to this bus.
+    #[serde(default)]
+    pub pins: Option<Vec<String>>,
 }
 
 /// Memory partition boundary coordinates relative to storage space boundaries.
@@ -91,12 +106,120 @@ pub struct GeneratedBoardTemplate {
     pub chip: String,
     pub flash_base: u32,
     pub constants: Vec<BoardConstant>,
+    pub bus_assigned_pins: Vec<u32>,
 }
 
 impl GeneratedBoardTemplate {
     pub fn flash_base_hex(&self) -> String {
         format!("0x{:08X}", self.flash_base)
     }
+
+    pub fn bus_assigned_match(&self) -> String {
+        if self.bus_assigned_pins.is_empty() {
+            "u32::MAX".to_string()
+        } else {
+            self.bus_assigned_pins
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(" | ")
+        }
+    }
+}
+
+/// Rinja template for generating GPIO bus-assignment and alternate-function mappings.
+#[derive(Template)]
+#[template(path = "generated_gpio.rs.jinja", escape = "none")]
+pub struct GeneratedGpioTemplate {
+    /// List of numeric GPIO pin IDs assigned to buses.
+    pub bus_assigned_pins: Vec<u32>,
+    /// Total number of GPIO pins.
+    pub num_gpio_pins: u32,
+}
+
+impl GeneratedGpioTemplate {
+    /// Returns the pipe-delimited pattern string for match statements.
+    pub fn bus_assigned_match(&self) -> String {
+        if self.bus_assigned_pins.is_empty() {
+            "u32::MAX".to_string()
+        } else {
+            self.bus_assigned_pins
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(" | ")
+        }
+    }
+}
+
+/// Resolves all unique numeric GPIO pin IDs assigned to communication buses.
+pub fn resolve_bus_assigned_pins(board_config: &BoardConfig) -> Vec<u32> {
+    let mut assigned_pins = std::collections::BTreeSet::new();
+
+    let resolve_pin = |entry: &str| -> Option<u32> {
+        board_config
+            .pins
+            .get(entry)
+            .copied()
+            .or_else(|| entry.parse::<u32>().ok())
+    };
+
+    for bus in board_config.buses.values() {
+        if let Some(ref sda) = bus.sda {
+            if let Some(pin) = resolve_pin(sda) {
+                assigned_pins.insert(pin);
+            }
+        }
+        if let Some(ref scl) = bus.scl {
+            if let Some(pin) = resolve_pin(scl) {
+                assigned_pins.insert(pin);
+            }
+        }
+        if let Some(ref tx) = bus.tx {
+            if let Some(pin) = resolve_pin(tx) {
+                assigned_pins.insert(pin);
+            }
+        }
+        if let Some(ref rx) = bus.rx {
+            if let Some(pin) = resolve_pin(rx) {
+                assigned_pins.insert(pin);
+            }
+        }
+        if let Some(ref pin_name) = bus.pin {
+            if let Some(pin) = resolve_pin(pin_name) {
+                assigned_pins.insert(pin);
+            }
+        }
+        if let Some(ref pin_list) = bus.pins {
+            for pin_name in pin_list {
+                if let Some(pin) = resolve_pin(pin_name) {
+                    assigned_pins.insert(pin);
+                }
+            }
+        }
+    }
+
+    assigned_pins.into_iter().collect()
+}
+
+/// Generates GPIO diagnostic mapping definitions from board TOML content.
+pub fn generate_gpio_definitions(toml_content: &str, board_name: &str) -> String {
+    let config: BoardsConfig =
+        toml::from_str(toml_content).expect("Failed to parse boards TOML content");
+
+    let board_config = config
+        .boards
+        .get(board_name)
+        .unwrap_or_else(|| panic!("Board '{}' not found in TOML", board_name));
+
+    let bus_assigned_pins = resolve_bus_assigned_pins(board_config);
+
+    let template = GeneratedGpioTemplate {
+        bus_assigned_pins,
+        num_gpio_pins: 30,
+    };
+
+    template.render().expect("Failed to render GPIO template")
 }
 
 pub fn parse_memory_map(root: &Path) -> (u32, u32) {
@@ -106,7 +229,7 @@ pub fn parse_memory_map(root: &Path) -> (u32, u32) {
     }
     let content = std::fs::read_to_string(path).expect("Failed to read memory.x");
 
-    let mut flash_start = 0x10000000;
+    let mut flash_start = None;
     let mut ram_start = 0x20000000;
     let mut ram_length = 264 * 1024;
 
@@ -140,10 +263,14 @@ pub fn parse_memory_map(root: &Path) -> (u32, u32) {
                 }
             }
 
-            if name.eq_ignore_ascii_case("BOOT2") || name.eq_ignore_ascii_case("FLASH") {
+            if name.eq_ignore_ascii_case("BOOT2") {
                 if let Some(orig) = origin {
-                    if name.eq_ignore_ascii_case("BOOT2") || flash_start == 0x10000000 {
-                        flash_start = orig;
+                    flash_start = Some(orig);
+                }
+            } else if name.eq_ignore_ascii_case("FLASH") {
+                if let Some(orig) = origin {
+                    if flash_start.is_none() {
+                        flash_start = Some(orig);
                     }
                 }
             } else if name.eq_ignore_ascii_case("RAM") {
@@ -157,7 +284,7 @@ pub fn parse_memory_map(root: &Path) -> (u32, u32) {
         }
     }
 
-    (flash_start, ram_start + ram_length)
+    (flash_start.unwrap_or(0x10000000), ram_start + ram_length)
 }
 
 fn parse_numeric_value(val: &str) -> Option<u32> {
@@ -444,11 +571,14 @@ pub fn generate_board_definitions(toml_content: &str, board_name: &str) -> Strin
 
     constants.sort_by(|a, b| a.name.cmp(&b.name));
 
+    let bus_assigned_pins = resolve_bus_assigned_pins(board_config);
+
     let template = GeneratedBoardTemplate {
         name: board_name.to_string(),
         chip: board_config.chip.clone(),
         flash_base: board_config.flash_base,
         constants,
+        bus_assigned_pins,
     };
 
     template.render().expect("Failed to render board template")
@@ -497,9 +627,15 @@ pub fn render_board_skeleton(name_pascal: &str) -> String {
     let mut i2c_scl_pin = "13".to_string();
     let mut i2c_frequency = 400000;
     if let Some(i2c_bus) = matched_board.buses.get("i2c") {
-        i2c_sda_pin = i2c_bus.sda.clone();
-        i2c_scl_pin = i2c_bus.scl.clone();
-        i2c_frequency = i2c_bus.frequency;
+        if let Some(ref sda) = i2c_bus.sda {
+            i2c_sda_pin = sda.clone();
+        }
+        if let Some(ref scl) = i2c_bus.scl {
+            i2c_scl_pin = scl.clone();
+        }
+        if let Some(freq) = i2c_bus.frequency {
+            i2c_frequency = freq;
+        }
     }
 
     let fs_buf_size = matched_board

@@ -90,7 +90,9 @@ impl ToPeripheralError for () {
 }
 
 /// Implement ToPeripheralError for Tmc6300Error.
-impl<EE, E1, E2, E3, ED> ToPeripheralError for crate::tmc6300::Tmc6300Error<EE, E1, E2, E3, ED> {
+impl<EUH, EUL, EVH, EVL, EWH, EWL, ED> ToPeripheralError
+    for crate::tmc6300::Tmc6300Error<EUH, EUL, EVH, EVL, EWH, EWL, ED>
+{
     #[inline]
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),

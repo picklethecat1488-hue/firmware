@@ -54,35 +54,46 @@ impl<'a> InputPin for MockPin<'a> {
 #[test]
 fn test_tmc6300_functional_and_commutation() {
     run_test!(async {
-        let pin_en_state = std::sync::atomic::AtomicBool::new(false);
-        let pin_in1_state = std::sync::atomic::AtomicBool::new(false);
-        let pin_in2_state = std::sync::atomic::AtomicBool::new(false);
-        let pin_in3_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_uh_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_ul_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_vh_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_vl_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_wh_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_wl_state = std::sync::atomic::AtomicBool::new(false);
         let pin_diag_state = std::sync::atomic::AtomicBool::new(false);
 
-        let pin_en = MockPin {
-            is_high: &pin_en_state,
+        let pin_uh = MockPin {
+            is_high: &pin_uh_state,
         };
-        let pin_in1 = MockPin {
-            is_high: &pin_in1_state,
+        let pin_ul = MockPin {
+            is_high: &pin_ul_state,
         };
-        let pin_in2 = MockPin {
-            is_high: &pin_in2_state,
+        let pin_vh = MockPin {
+            is_high: &pin_vh_state,
         };
-        let pin_in3 = MockPin {
-            is_high: &pin_in3_state,
+        let pin_vl = MockPin {
+            is_high: &pin_vl_state,
+        };
+        let pin_wh = MockPin {
+            is_high: &pin_wh_state,
+        };
+        let pin_wl = MockPin {
+            is_high: &pin_wl_state,
         };
         let pin_diag = MockPin {
             is_high: &pin_diag_state,
         };
-        let mut motor =
-            peripheral::tmc6300::Tmc6300::new(pin_en, pin_in1, pin_in2, pin_in3, pin_diag);
+        let mut motor = peripheral::tmc6300::Tmc6300::new(
+            pin_uh, pin_ul, pin_vh, pin_vl, pin_wh, pin_wl, pin_diag,
+        );
 
         // 1. Initially all low
-        assert!(!pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
 
         // 2. Diagnostic fault check
         assert_eq!(motor.is_fault_active(), Ok(false));
@@ -90,38 +101,89 @@ fn test_tmc6300_functional_and_commutation() {
         assert_eq!(motor.is_fault_active(), Ok(true));
         pin_diag_state.store(false, std::sync::atomic::Ordering::SeqCst);
 
-        // 3. Setting speed > 0 drives EN high (active) and applies initial commutation step 0 (U=1, V=0, W=0)
+        // 3. Setting speed > 0 applies initial commutation step 0:
+        // Step 0: U=High, V=Low, W=Float
         assert!(motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
-        assert!(pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
 
-        // 4. Tick through commutation steps
-        // Step 1: U=1, V=1, W=0
+        // 4. Tick through remaining forward commutation steps
+        // Step 1: U=High, V=Float, W=Low
         assert!(motor.tick().await.is_ok());
-        assert!(pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
 
-        // Step 2: U=0, V=1, W=0
+        // Step 2: U=Float, V=High, W=Low
         assert!(motor.tick().await.is_ok());
-        assert!(!pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
 
-        // 5. Setting speed == 0 disables driver (EN=0) and brakes phases
+        // Step 3: U=Low, V=High, W=Float
+        assert!(motor.tick().await.is_ok());
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Step 4: U=Low, V=Float, W=High
+        assert!(motor.tick().await.is_ok());
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Step 5: U=Float, V=Low, W=High
+        assert!(motor.tick().await.is_ok());
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Step 6 / wrap to Step 0: U=High, V=Low, W=Float
+        assert!(motor.tick().await.is_ok());
+        assert!(pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // 5. Setting speed == 0 puts all phases into Float (all low)
         assert!(motor.set_speed(MotorSpeed::ZERO).is_ok());
-        assert!(!pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
 
-        // 6. Stopping also halts driver
+        // 6. Stopping also puts all phases into Float
         assert!(motor.set_speed(MotorSpeed::new(50).unwrap()).is_ok());
-        assert!(pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
         assert!(motor.stop().is_ok());
-        assert!(!pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
 
         // 7. Commutation when speed is zero returns ZeroSpeed error
         assert!(matches!(
@@ -131,16 +193,125 @@ fn test_tmc6300_functional_and_commutation() {
 
         // 8. Reverse commutation when speed < 0
         assert!(motor.set_speed(MotorSpeed::new(-100).unwrap()).is_ok());
-        assert!(pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
-        // Reverse step 0: U=1, V=0, W=1
-        assert!(pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
-        // Reverse step 1: U=0, V=0, W=1
+        // Reverse step 0: (Float, Low, High) -> U=Float, V=Low, W=High
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Reverse step 1: (Low, Float, High) -> U=Low, V=Float, W=High
         assert!(motor.tick().await.is_ok());
-        assert!(!pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // 9. Fault assertion triggers stop and returns DriverFault error
+        pin_diag_state.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(matches!(
+            motor.tick().await,
+            Err(peripheral::tmc6300::Tmc6300Error::DriverFault)
+        ));
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
+    });
+}
+
+#[test]
+fn test_tmc6300_break_before_make_and_low_side_conduction() {
+    run_test!(async {
+        // Regression test for WORM-GLIDING-BRISTLE-252:
+        // Verifies that low-side FETs can be independently driven HIGH to conduct to GND,
+        // and that high-side and low-side on any phase are NEVER both HIGH simultaneously
+        // across all forward and reverse commutation steps.
+        let uh = std::sync::atomic::AtomicBool::new(false);
+        let ul = std::sync::atomic::AtomicBool::new(false);
+        let vh = std::sync::atomic::AtomicBool::new(false);
+        let vl = std::sync::atomic::AtomicBool::new(false);
+        let wh = std::sync::atomic::AtomicBool::new(false);
+        let wl = std::sync::atomic::AtomicBool::new(false);
+        let diag = std::sync::atomic::AtomicBool::new(false);
+
+        let pin_uh = MockPin { is_high: &uh };
+        let pin_ul = MockPin { is_high: &ul };
+        let pin_vh = MockPin { is_high: &vh };
+        let pin_vl = MockPin { is_high: &vl };
+        let pin_wh = MockPin { is_high: &wh };
+        let pin_wl = MockPin { is_high: &wl };
+        let pin_diag = MockPin { is_high: &diag };
+
+        let mut motor = peripheral::tmc6300::Tmc6300::new(
+            pin_uh, pin_ul, pin_vh, pin_vl, pin_wh, pin_wl, pin_diag,
+        );
+
+        // Test all forward commutation steps
+        motor.set_speed(MotorSpeed::new(100).unwrap()).unwrap();
+        for _ in 0..12 {
+            let u_high = uh.load(std::sync::atomic::Ordering::SeqCst);
+            let u_low = ul.load(std::sync::atomic::Ordering::SeqCst);
+            let v_high = vh.load(std::sync::atomic::Ordering::SeqCst);
+            let v_low = vl.load(std::sync::atomic::Ordering::SeqCst);
+            let w_high = wh.load(std::sync::atomic::Ordering::SeqCst);
+            let w_low = wl.load(std::sync::atomic::Ordering::SeqCst);
+
+            // Invariant: Never allow shoot-through (both high-side and low-side asserted)
+            assert!(!(u_high && u_low), "Shoot-through detected on Phase U!");
+            assert!(!(v_high && v_low), "Shoot-through detected on Phase V!");
+            assert!(!(w_high && w_low), "Shoot-through detected on Phase W!");
+
+            // Invariant: Exactly one high-side and one low-side active per step
+            let high_count = [u_high, v_high, w_high].iter().filter(|&&b| b).count();
+            let low_count = [u_low, v_low, w_low].iter().filter(|&&b| b).count();
+            assert_eq!(high_count, 1, "Exactly one high-side FET must be active");
+            assert_eq!(low_count, 1, "Exactly one low-side FET must be active");
+
+            motor.tick().await.unwrap();
+        }
+
+        // Test all reverse commutation steps
+        motor.set_speed(MotorSpeed::new(-100).unwrap()).unwrap();
+        for _ in 0..12 {
+            let u_high = uh.load(std::sync::atomic::Ordering::SeqCst);
+            let u_low = ul.load(std::sync::atomic::Ordering::SeqCst);
+            let v_high = vh.load(std::sync::atomic::Ordering::SeqCst);
+            let v_low = vl.load(std::sync::atomic::Ordering::SeqCst);
+            let w_high = wh.load(std::sync::atomic::Ordering::SeqCst);
+            let w_low = wl.load(std::sync::atomic::Ordering::SeqCst);
+
+            assert!(
+                !(u_high && u_low),
+                "Shoot-through detected on Phase U (reverse)!"
+            );
+            assert!(
+                !(v_high && v_low),
+                "Shoot-through detected on Phase V (reverse)!"
+            );
+            assert!(
+                !(w_high && w_low),
+                "Shoot-through detected on Phase W (reverse)!"
+            );
+
+            let high_count = [u_high, v_high, w_high].iter().filter(|&&b| b).count();
+            let low_count = [u_low, v_low, w_low].iter().filter(|&&b| b).count();
+            assert_eq!(
+                high_count, 1,
+                "Exactly one high-side FET must be active in reverse"
+            );
+            assert_eq!(
+                low_count, 1,
+                "Exactly one low-side FET must be active in reverse"
+            );
+
+            motor.tick().await.unwrap();
+        }
     });
 }
 
@@ -666,6 +837,82 @@ fn test_probeable_ina219() {
             dev.read_chip_id().await.unwrap_err(),
             PeripheralError::DeviceNotFound(0x1234)
         );
+    });
+}
+
+#[test]
+fn test_ina219_read_current_ma_scaling_and_fallback() {
+    run_test!(async {
+        use model::interfaces::{PowerMeasurementMode, PowerSensor};
+        use peripheral::ina219::Ina219;
+
+        // Test 1: Current scaling from 0.1mA raw units to mA
+        // Bus voltage has CNVR bit (0x0002) set
+        // Current register returns 750 (representing 75.0 mA)
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x00, 0x02]); // Bus Voltage (CNVR = 1)
+        reads.push_back(vec![0x02, 0xEE]); // Current = 750 (75 mA)
+
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+
+        let current = dev.read_current_ma().await.unwrap();
+        assert_eq!(current, 75); // 750 * 0.1mA = 75mA
+
+        // Test 2: Current scaling for 2A (20000 raw counts)
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x00, 0x02]); // Bus Voltage (CNVR = 1)
+        reads.push_back(vec![0x4E, 0x20]); // Current = 20000 (2000 mA)
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+        let current = dev.read_current_ma().await.unwrap();
+        assert_eq!(current, 2000);
+
+        // Test 3: Calibration lost fallback to Shunt Voltage register (0x01)
+        // Current register returns 0 (due to lost calibration)
+        // Shunt voltage register returns 20000 (representing 2000 mA)
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x00, 0x02]); // Bus Voltage (CNVR = 1)
+        reads.push_back(vec![0x00, 0x00]); // Current = 0
+        reads.push_back(vec![0x4E, 0x20]); // Shunt Voltage = 20000 (2000 mA)
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+        let current = dev.read_current_ma().await.unwrap();
+        assert_eq!(current, 2000);
+        // Verify calibration register was rewritten with 4096 (0x1000)
+        {
+            let written = writes.lock().unwrap();
+            assert!(written.iter().any(|w| w == &vec![0x05, 0x10, 0x00]));
+        }
+
+        // Test 4: set_measurement_mode restores calibration
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x39, 0x98]); // Current Config
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+        dev.set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
+            .await
+            .unwrap();
+        let written = writes.lock().unwrap();
+        assert_eq!(written[0], vec![0x00]); // Read config
+        assert_eq!(written[1], vec![0x00, 0x39, 0x9F]); // Write config
+        assert_eq!(written[2], vec![0x05, 0x10, 0x00]); // Write calibration (4096)
     });
 }
 
