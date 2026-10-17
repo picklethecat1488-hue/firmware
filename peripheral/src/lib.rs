@@ -90,7 +90,9 @@ impl ToPeripheralError for () {
 }
 
 /// Implement ToPeripheralError for Tmc6300Error.
-impl<EE, E1, E2, E3, ED> ToPeripheralError for crate::tmc6300::Tmc6300Error<EE, E1, E2, E3, ED> {
+impl<EUH, EUL, EVH, EVL, EWH, EWL, ED> ToPeripheralError
+    for crate::tmc6300::Tmc6300Error<EUH, EUL, EVH, EVL, EWH, EWL, ED>
+{
     #[inline]
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
@@ -104,6 +106,23 @@ impl<EE, E1, E2, E3, ED> ToPeripheralError for crate::tmc6300::Tmc6300Error<EE, 
         }
     }
 }
+
+/// Implement ToPeripheralError for Tmc6300PioError.
+impl<ED> ToPeripheralError for crate::tmc6300::Tmc6300PioError<ED> {
+    #[inline]
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    fn to_peripheral_error(&self) -> PeripheralError {
+        match self {
+            crate::tmc6300::Tmc6300PioError::DriverFault => PeripheralError::DeviceNotAvailable,
+            crate::tmc6300::Tmc6300PioError::ZeroSpeed => PeripheralError::InvalidConfiguration,
+            crate::tmc6300::Tmc6300PioError::PinDiag(_) => PeripheralError::PinError,
+        }
+    }
+}
+
 /// Trait implemented by peripherals to allow standard boot-time initialization.
 #[allow(async_fn_in_trait)]
 pub trait BootInit {
