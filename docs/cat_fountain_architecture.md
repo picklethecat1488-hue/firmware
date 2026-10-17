@@ -140,7 +140,7 @@ The RP2040 interfaces with peripherals across the I2C0 bus and GPIO banks:
 | **VL53L0X ToF (East)** | I2C0 `0x31` | XSHUT (GP3), INT (GP6) | `ProximitySensor` | Right pet approach & 2F gesture detection. |
 | **VL53L0X ToF (West)** | I2C0 `0x32` | XSHUT (GP4), INT (GP7) | `ProximitySensor` | Left pet approach & 2F gesture detection. |
 | **ATtiny816 LED Bridge** | I2C0 `0x60` | SDA (GP4) / SCL (GP5) | `LedDriver` | RGB NeoPixel status indicator. |
-| **TMC6300 Motor Driver** | 3-Phase BLDC | EN (GP18), IN1 (GP19), IN2 (GP20), IN3 (GP21), DIAG (GP22) | `Tmc6300` | Impeller 3-phase BLDC speed regulation & fault diagnostic. |
+| **TMC6300 Motor Driver** | 3-Phase BLDC | UH (GP16), UL (GP17), VH (GP18), VL (GP19), WH (GP20), WL (GP21), DIAG (GP22) | `Tmc6300` | Impeller 3-phase BLDC speed regulation & fault diagnostic. |
 | **AH3577 Hall Sensor** | Digital Input | GP26 | `HallSensor` | Real-time impeller RPM sensing (3 pulses/rev) & zero-RPM stall detection. |
 
 > [!NOTE]

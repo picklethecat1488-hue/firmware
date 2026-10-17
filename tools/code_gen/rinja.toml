@@ -4,4 +4,5 @@ dirs = [
     "../../peripheral/templates",
     "../../board/templates",
     "../../app/templates",
+    "../../platform/templates",
 ]
