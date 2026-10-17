@@ -102,6 +102,7 @@ fn test_gpio_cli() {
             &mock_resolver,
             Some(platform::gpio::GpioSubcommand::Status),
             None,
+            None,
             &mut writer,
         ));
         assert!(res.is_ok());
@@ -117,6 +118,7 @@ fn test_gpio_cli() {
             &mock_resolver,
             Some(platform::gpio::GpioSubcommand::Read),
             Some(5),
+            None,
             &mut writer,
         ));
         assert!(res.is_ok());
@@ -132,12 +134,106 @@ fn test_gpio_cli() {
             &mock_resolver,
             Some(platform::gpio::GpioSubcommand::Read),
             None,
+            None,
             &mut writer,
         ));
         assert!(res.is_ok());
     }
     let output_str = core::str::from_utf8(&mock_write.buf).unwrap();
     assert!(output_str.contains("GP0") && output_str.contains("GP29"));
+
+    // Test Gpio set high
+    mock_write.buf.clear();
+    {
+        let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
+        let res = futures::executor::block_on(platform::gpio::handle_gpio_cli(
+            &mock_resolver,
+            Some(platform::gpio::GpioSubcommand::Set),
+            Some(5),
+            Some(1),
+            &mut writer,
+        ));
+        assert!(res.is_ok());
+    }
+    let output_str = core::str::from_utf8(&mock_write.buf).unwrap();
+    assert!(output_str.contains("Mock GP5 set to High (1)"));
+
+    // Test Gpio set low
+    mock_write.buf.clear();
+    {
+        let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
+        let res = futures::executor::block_on(platform::gpio::handle_gpio_cli(
+            &mock_resolver,
+            Some(platform::gpio::GpioSubcommand::Set),
+            Some(5),
+            Some(0),
+            &mut writer,
+        ));
+        assert!(res.is_ok());
+    }
+    let output_str = core::str::from_utf8(&mock_write.buf).unwrap();
+    assert!(output_str.contains("Mock GP5 set to Low (0)"));
+
+    // Test Gpio set missing pin
+    {
+        let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
+        let res = futures::executor::block_on(platform::gpio::handle_gpio_cli(
+            &mock_resolver,
+            Some(platform::gpio::GpioSubcommand::Set),
+            None,
+            Some(1),
+            &mut writer,
+        ));
+        assert_eq!(
+            res,
+            Err("Missing pin number (expected: gpio set <pin> <0|1>)")
+        );
+    }
+
+    // Test Gpio set missing value
+    {
+        let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
+        let res = futures::executor::block_on(platform::gpio::handle_gpio_cli(
+            &mock_resolver,
+            Some(platform::gpio::GpioSubcommand::Set),
+            Some(5),
+            None,
+            &mut writer,
+        ));
+        assert_eq!(
+            res,
+            Err("Missing pin value (expected: gpio set <pin> <0|1>)")
+        );
+    }
+
+    // Test Gpio set invalid pin (out of range)
+    {
+        let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
+        let res = futures::executor::block_on(platform::gpio::handle_gpio_cli(
+            &mock_resolver,
+            Some(platform::gpio::GpioSubcommand::Set),
+            Some(30),
+            Some(1),
+            &mut writer,
+        ));
+        assert_eq!(res, Err("Invalid pin number (must be 0..29)"));
+    }
+
+    // Test Gpio set on alternate function pin (GP12 - I2C0 SDA)
+    {
+        let mut writer = embedded_cli::writer::Writer::new(&mut mock_write);
+        let res = futures::executor::block_on(platform::gpio::handle_gpio_cli(
+            &mock_resolver,
+            Some(platform::gpio::GpioSubcommand::Set),
+            Some(12),
+            Some(1),
+            &mut writer,
+        ));
+        assert_eq!(
+            res,
+            Err("Cannot set pin configured for alternate function (bus assigned)")
+        );
+    }
 }
 
 #[test]
@@ -177,6 +273,7 @@ fn test_gpio_cli_skips_bus_assigned_pin() {
             &mock_resolver,
             Some(platform::gpio::GpioSubcommand::Read),
             Some(12),
+            None,
             &mut writer,
         ));
         assert!(res.is_ok());

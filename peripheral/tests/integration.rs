@@ -841,6 +841,82 @@ fn test_probeable_ina219() {
 }
 
 #[test]
+fn test_ina219_read_current_ma_scaling_and_fallback() {
+    run_test!(async {
+        use model::interfaces::{PowerMeasurementMode, PowerSensor};
+        use peripheral::ina219::Ina219;
+
+        // Test 1: Current scaling from 0.1mA raw units to mA
+        // Bus voltage has CNVR bit (0x0002) set
+        // Current register returns 750 (representing 75.0 mA)
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x00, 0x02]); // Bus Voltage (CNVR = 1)
+        reads.push_back(vec![0x02, 0xEE]); // Current = 750 (75 mA)
+
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+
+        let current = dev.read_current_ma().await.unwrap();
+        assert_eq!(current, 75); // 750 * 0.1mA = 75mA
+
+        // Test 2: Current scaling for 2A (20000 raw counts)
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x00, 0x02]); // Bus Voltage (CNVR = 1)
+        reads.push_back(vec![0x4E, 0x20]); // Current = 20000 (2000 mA)
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+        let current = dev.read_current_ma().await.unwrap();
+        assert_eq!(current, 2000);
+
+        // Test 3: Calibration lost fallback to Shunt Voltage register (0x01)
+        // Current register returns 0 (due to lost calibration)
+        // Shunt voltage register returns 20000 (representing 2000 mA)
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x00, 0x02]); // Bus Voltage (CNVR = 1)
+        reads.push_back(vec![0x00, 0x00]); // Current = 0
+        reads.push_back(vec![0x4E, 0x20]); // Shunt Voltage = 20000 (2000 mA)
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+        let current = dev.read_current_ma().await.unwrap();
+        assert_eq!(current, 2000);
+        // Verify calibration register was rewritten with 4096 (0x1000)
+        {
+            let written = writes.lock().unwrap();
+            assert!(written.iter().any(|w| w == &vec![0x05, 0x10, 0x00]));
+        }
+
+        // Test 4: set_measurement_mode restores calibration
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x39, 0x98]); // Current Config
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+        dev.set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
+            .await
+            .unwrap();
+        let written = writes.lock().unwrap();
+        assert_eq!(written[0], vec![0x00]); // Read config
+        assert_eq!(written[1], vec![0x00, 0x39, 0x9F]); // Write config
+        assert_eq!(written[2], vec![0x05, 0x10, 0x00]); // Write calibration (4096)
+    });
+}
+
+#[test]
 fn test_probeable_vl53l0x() {
     run_test!(async {
         use model::interfaces::Probeable;
@@ -1180,5 +1256,114 @@ fn test_vl53l0x_measurement_min_range() {
             res.unwrap(),
             model::types::SensorReading::Proximity(Vl53l0x::<Vl53l0xTestI2c>::MIN_RANGE_MM)
         );
+    });
+}
+
+#[test]
+fn test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm() {
+    run_test!(async {
+        use model::interfaces::{Motor, Tickable};
+        use model::types::MotorSpeed;
+        use peripheral::tmc6300::{
+            make_pwm_word, phase_mask, Tmc6300Pio, Tmc6300PioError, COMMUTATION_STEPS,
+            MAX_TMC6300_CURRENT_MA, PIO_PWM_FREQUENCY_HZ, PWM_PERIOD_CYCLES,
+        };
+
+        // 1. Verify constant invariants for 2A max current and >=20kHz PWM frequency
+        const { assert!(MAX_TMC6300_CURRENT_MA == 2000) };
+        const { assert!(PIO_PWM_FREQUENCY_HZ >= 20_000) };
+        const { assert!(PWM_PERIOD_CYCLES == 100) };
+
+        // 2. Verify all forward and reverse phase masks guarantee zero shoot-through:
+        // UH (bit 0) and UL (bit 1) must never both be high
+        // VH (bit 2) and VL (bit 3) must never both be high
+        // WH (bit 4) and WL (bit 5) must never both be high
+        for speed in [-100, -50, -8, 8, 50, 100] {
+            for step in 0..COMMUTATION_STEPS as u8 {
+                let mask = phase_mask(speed, step);
+                let uh = (mask & (1 << 0)) != 0;
+                let ul = (mask & (1 << 1)) != 0;
+                let vh = (mask & (1 << 2)) != 0;
+                let vl = (mask & (1 << 3)) != 0;
+                let wh = (mask & (1 << 4)) != 0;
+                let wl = (mask & (1 << 5)) != 0;
+
+                assert!(
+                    !(uh && ul),
+                    "Shoot-through on Phase U at speed {speed}, step {step}"
+                );
+                assert!(
+                    !(vh && vl),
+                    "Shoot-through on Phase V at speed {speed}, step {step}"
+                );
+                assert!(
+                    !(wh && wl),
+                    "Shoot-through on Phase W at speed {speed}, step {step}"
+                );
+
+                // Active step must have exactly one high-side and one low-side FET on
+                let high_count = (uh as u8) + (vh as u8) + (wh as u8);
+                let low_count = (ul as u8) + (vl as u8) + (wl as u8);
+                assert_eq!(high_count, 1, "Must have exactly 1 high-side FET active");
+                assert_eq!(low_count, 1, "Must have exactly 1 low-side FET active");
+            }
+        }
+
+        // Zero speed must produce all-zero mask
+        assert_eq!(phase_mask(0, 0), 0);
+
+        // 3. Verify PIO word packing helper
+        // Word format: bits 0..7 = phase_mask, bits 8..15 = on_count, bits 16..23 = off_count
+        let word = make_pwm_word(0b001001, 8, 92);
+        assert_eq!(word & 0xFF, 0b001001);
+        assert_eq!((word >> 8) & 0xFF, 8);
+        assert_eq!((word >> 16) & 0xFF, 92);
+
+        // 4. Test driver operations on host mock
+        let diag = std::sync::atomic::AtomicBool::new(false);
+        let pin_diag = MockPin { is_high: &diag };
+        let mut motor = Tmc6300Pio::new(pin_diag);
+
+        // At startup, motor is stopped with 0 duty cycle
+        assert_eq!(motor.speed(), 0);
+        assert_eq!(motor.duty_cycle(), 0);
+
+        // Command speed 8 (startup duty cycle capping current to <= 2A)
+        assert!(motor.set_speed(MotorSpeed::new(8).unwrap()).is_ok());
+        assert_eq!(motor.speed(), 8);
+        assert_eq!(motor.duty_cycle(), 8);
+        let w8 = motor.last_word();
+        assert_eq!((w8 >> 8) & 0xFF, 8);
+        assert_eq!((w8 >> 16) & 0xFF, 92);
+        assert_eq!(w8 & 0xFF, phase_mask(8, 0) as u32);
+
+        // Advance commutation step via tick()
+        assert!(motor.tick().await.is_ok());
+        assert_eq!(motor.commutation_step(), 1);
+        let w_step1 = motor.last_word();
+        assert_eq!((w_step1 >> 8) & 0xFF, 8);
+        assert_eq!(w_step1 & 0xFF, phase_mask(8, 1) as u32);
+
+        // Ramp up to full speed 100
+        assert!(motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert_eq!(motor.speed(), 100);
+        assert_eq!(motor.duty_cycle(), 100);
+        let w100 = motor.last_word();
+        assert_eq!((w100 >> 8) & 0xFF, 100);
+        assert_eq!((w100 >> 16) & 0xFF, 0);
+
+        // Stop motor: duty cycle and mask go to 0
+        assert!(motor.stop().is_ok());
+        assert_eq!(motor.speed(), 0);
+        assert_eq!(motor.duty_cycle(), 0);
+        assert_eq!(motor.last_word() & 0xFF, 0);
+
+        // Diagnostic fault trips DriverFault and stops motor
+        assert!(motor.set_speed(MotorSpeed::new(50).unwrap()).is_ok());
+        diag.store(true, std::sync::atomic::Ordering::SeqCst);
+        let tick_res = motor.tick().await;
+        assert!(matches!(tick_res, Err(Tmc6300PioError::DriverFault)));
+        assert_eq!(motor.duty_cycle(), 0);
+        assert_eq!(motor.speed(), 0);
     });
 }

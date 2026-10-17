@@ -41,14 +41,7 @@ macro_rules! init_i2c {{ "{" }}
 #[macro_export]
 macro_rules! init_pio {{ "{" }}
     ($device_type:ty, $config:expr, $boot_status:expr) => {{ "{" }}{{ "{" }}
-        #[cfg(all(target_arch = "arm", target_os = "none"))]
-        {{ "{" }}
-            <$device_type>::new_pio($config)
-        {{ "}" }}
-        #[cfg(not(all(target_arch = "arm", target_os = "none")))]
-        {{ "{" }}
-            let _ = $boot_status;
-            <$device_type>::new_pio($config)
-        {{ "}" }}
+        let _ = &$boot_status;
+        <$device_type>::new_pio($config)
     {{ "}" }}{{ "}" }};
 {{ "}" }}
