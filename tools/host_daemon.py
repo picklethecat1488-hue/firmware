@@ -17,12 +17,13 @@ Usage:
 from pathlib import Path
 import sys
 
-# Ensure tools and tools/host_daemon are on sys.path
+# Ensure repo root, tools, and subdirectories are on sys.path
 _tools_dir = Path(__file__).resolve().parent
+_repo_root = _tools_dir.parent
 _daemon_dir = _tools_dir / "host_daemon"
 _dashboard_dir = _tools_dir / "dashboard"
 
-for p in (str(_tools_dir), str(_daemon_dir), str(_dashboard_dir)):
+for p in (str(_repo_root), str(_tools_dir), str(_daemon_dir), str(_dashboard_dir)):
     if p not in sys.path:
         sys.path.insert(0, p)
 

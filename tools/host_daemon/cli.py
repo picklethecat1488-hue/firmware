@@ -16,6 +16,13 @@ import urllib.request
 from .runner import DaemonRunner
 from .server import HostDaemonServer
 
+_repo_root = Path(__file__).resolve().parent.parent.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+_tools_dir = _repo_root / "tools"
+if str(_tools_dir) not in sys.path:
+    sys.path.insert(0, str(_tools_dir))
+
 LOCK_FILE: Path = Path("/tmp/xerxes_host_daemon.lock")
 
 
@@ -54,14 +61,20 @@ def launch_host_daemon_app(
     """Launch the host daemon in a dedicated native window using webview or eel."""
     if browser == "eel":
         try:
-            from tools.dashboard.provider.eel.launcher import launch_eel
+            try:
+                from tools.dashboard.provider.eel.launcher import launch_eel
+            except ImportError:
+                from dashboard.provider.eel.launcher import launch_eel
 
             return launch_eel(url, size=(1400, 900), on_close=on_close)
         except Exception as e:
             print(f"[HostDaemon] Eel launch failed, falling back to webview: {e}", file=sys.stderr)
 
     try:
-        from tools.dashboard.provider.webview.launcher import launch_webview
+        try:
+            from tools.dashboard.provider.webview.launcher import launch_webview
+        except ImportError:
+            from dashboard.provider.webview.launcher import launch_webview
 
         icon = get_host_daemon_icon_path()
         return launch_webview(
@@ -302,9 +315,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.subcommand == "status":
         try:
             res = send_daemon_request("/api/status")
-            print("======================================================================")
-            print("  ⚡ SYSTEM SHOCK 2 // XERXES HOST DAEMON STATUS")
-            print("======================================================================")
+            print("Host daemon status:")
             for k, v in res.items():
                 print(f"  {k:<15}: {v}")
             return 0
@@ -370,26 +381,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 break
             time.sleep(0.05)
 
-        print("======================================================================")
-        print("  ⚡ SYSTEM SHOCK 2 // XERXES HOST DAEMON WORKSTATION")
-        print("======================================================================")
-        print(f"  Target:    {args.target}")
-        print(f"  Package:   {args.package} ({args.bin})")
-        print(f"  Profile:   {'release' if args.release else 'debug'}")
-        print(f"  Speed:     {args.speed} kHz")
-        print(f"  Port:      {args.port}")
-        print(f"  Workstation URL: http://{args.host}:{args.port} (PID {proc.pid})")
+        print(f"➜ Host daemon running at http://{args.host}:{args.port} (PID {proc.pid}).")
         print("➜ Detached from terminal.")
         return 0
-
-    print("======================================================================")
-    print("  ⚡ SYSTEM SHOCK 2 // XERXES HOST DAEMON WORKSTATION")
-    print("======================================================================")
-    print(f"  Target:    {args.target}")
-    print(f"  Package:   {args.package} ({args.bin})")
-    print(f"  Profile:   {'release' if args.release else 'debug'}")
-    print(f"  Speed:     {args.speed} kHz")
-    print(f"  Port:      {args.port}")
 
     runner = DaemonRunner(
         repo_root=repo_root,
@@ -427,7 +421,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # Trigger asynchronous target synchronization (compiles target, compiles host tools, flashes, connects RTT)
     runner.sync_async()
 
-    print(f"\n  Workstation URL: {url} (PID {os.getpid()})")
+    print(f"➜ Host daemon running at {url} (PID {os.getpid()}).")
     print("  Press Ctrl+C to stop daemon.\n")
 
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
