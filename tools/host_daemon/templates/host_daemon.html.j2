@@ -142,11 +142,50 @@
     }
     .workspace-body {
       flex: 1;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
+      display: flex;
+      flex-direction: row;
+      gap: 0;
       padding: 8px;
       overflow: hidden;
+      position: relative;
+    }
+    .log-panel {
+      width: 50%;
+      min-width: 0px;
+      flex-shrink: 0;
+    }
+    .cli-panel {
+      flex: 1;
+      min-width: 200px;
+    }
+    .vertical-splitter {
+      width: 10px;
+      cursor: col-resize;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      user-select: none;
+      flex-shrink: 0;
+      margin: 0 4px;
+      transition: background 0.15s ease;
+      z-index: 10;
+    }
+    .vertical-splitter:hover, .vertical-splitter.dragging {
+      background: rgba(0, 240, 255, 0.2);
+    }
+    .splitter-gripper {
+      width: 2px;
+      height: 40px;
+      background: var(--xerxes-cyan, #00f0ff);
+      box-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
+      border-radius: 1px;
+      opacity: 0.6;
+      transition: opacity 0.2s, height 0.2s;
+    }
+    .vertical-splitter:hover .splitter-gripper, .vertical-splitter.dragging .splitter-gripper {
+      opacity: 1;
+      height: 60px;
     }
     .panel-container {
       background: var(--xerxes-panel);
@@ -473,6 +512,7 @@
         <option value="CLI" {% if runner.active_mode == 'CLI' %}selected{% endif %}>CLI (RTT Console)</option>
         <option value="FS" {% if runner.active_mode == 'FS' %}selected{% endif %}>FS (Filesystem)</option>
       </select>
+      <button class="btn" id="btnToggleLog" onclick="toggleLogPanel()">Hide Log</button>
       <button class="btn" onclick="clearOutput()">Clear</button>
     </div>
   </header>
@@ -515,12 +555,18 @@
         <span>SYSTEM LOGGING MONITOR (defmt / RTT)</span>
         <div style="display: flex; align-items: center; gap: 8px;">
           <button class="btn btn-copy" id="btnCopyLog" onclick="copyPanelText('logView', this)" title="Copy log output">📋 Copy</button>
+          <button class="btn btn-copy" id="btnCollapseLog" onclick="toggleLogPanel()" title="Hide logging monitor">◀ Hide</button>
           <span style="font-size: 9px; color: var(--xerxes-text-dim);">AUTO-SCROLL: ON</span>
         </div>
       </div>
       <div class="panel-content" id="logView">
         <div class="log-line log-line-info">> Host daemon online. Attached to {{ runner.package }}.</div>
       </div>
+    </div>
+
+    <!-- Draggable Vertical Splitter with Gripper -->
+    <div class="vertical-splitter" id="vSplitter" title="Drag to resize panels">
+      <div class="splitter-gripper"></div>
     </div>
 
     <!-- Right Panel: Interactive CLI & FS View -->
@@ -834,6 +880,83 @@
       const mode = document.getElementById("modeSelect") ? document.getElementById("modeSelect").value : "CLI";
       const targetId = mode === "FS" ? "fsView" : "cliView";
       copyPanelText(targetId, btn);
+    }
+
+    let isLogHidden = false;
+    let prevLogWidth = "50%";
+    let isDraggingSplitter = false;
+
+    function toggleLogPanel() {
+      const logPanel = document.getElementById("logPanel");
+      const splitter = document.getElementById("vSplitter");
+      const toggleBtn = document.getElementById("btnToggleLog");
+      const collapseBtn = document.getElementById("btnCollapseLog");
+      if (!logPanel) return;
+
+      isLogHidden = !isLogHidden;
+      if (isLogHidden) {
+        prevLogWidth = logPanel.style.width || "50%";
+        logPanel.style.display = "none";
+        if (splitter) splitter.style.display = "none";
+        if (toggleBtn) {
+          toggleBtn.innerText = "Show Log";
+          toggleBtn.classList.add("btn-amber");
+        }
+        if (collapseBtn) {
+          collapseBtn.innerText = "▶ Show";
+        }
+      } else {
+        logPanel.style.display = "flex";
+        logPanel.style.width = prevLogWidth;
+        if (splitter) splitter.style.display = "flex";
+        if (toggleBtn) {
+          toggleBtn.innerText = "Hide Log";
+          toggleBtn.classList.remove("btn-amber");
+        }
+        if (collapseBtn) {
+          collapseBtn.innerText = "◀ Hide";
+        }
+      }
+    }
+
+    function setupSplitter() {
+      const splitter = document.getElementById("vSplitter");
+      const logPanel = document.getElementById("logPanel");
+      const workspace = document.querySelector(".workspace-body");
+      if (!splitter || !logPanel || !workspace) return;
+
+      splitter.addEventListener("mousedown", (e) => {
+        isDraggingSplitter = true;
+        splitter.classList.add("dragging");
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+        e.preventDefault();
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        if (!isDraggingSplitter) return;
+        const rect = workspace.getBoundingClientRect();
+        const offsetX = e.clientX - rect.left;
+        const totalWidth = rect.width - 16;
+        if (offsetX < 30) {
+          if (!isLogHidden) toggleLogPanel();
+          return;
+        } else if (isLogHidden) {
+          toggleLogPanel();
+        }
+        const clampedWidth = Math.max(80, Math.min(totalWidth - 150, offsetX));
+        const pct = (clampedWidth / totalWidth) * 100;
+        logPanel.style.width = `${pct}%`;
+      });
+
+      window.addEventListener("mouseup", () => {
+        if (isDraggingSplitter) {
+          isDraggingSplitter = false;
+          splitter.classList.remove("dragging");
+          document.body.style.cursor = "";
+          document.body.style.userSelect = "";
+        }
+      });
     }
 
     function appendCliText(text, isInput) {
@@ -1322,6 +1445,7 @@
       }
     }
 
+    setupSplitter();
     setupCliFuzzyHistory();
     setInterval(pollOutputs, 1000);
     pollOutputs();
