@@ -26,6 +26,9 @@ pub const MOTOR_INACTIVE_TICK_INTERVAL: embassy_time::Duration =
 /// Startup blanking period (3 seconds at 100Hz = 300 ticks) during which safety limits/cutoff checks are bypassed.
 pub const MOTOR_STARTUP_BLANKING_TICKS: u32 = 300;
 
+/// Default maximum current limit for the motor controller in milliamperes (2.5A).
+pub const DEFAULT_MAX_CURRENT_MA: i32 = 2500;
+
 /// Safety limits for the motor controller.
 pub struct MotorLimits {
     /// Minimum current threshold in mA for dry-run detection.
@@ -78,6 +81,7 @@ pub struct MotorController<M, C, S> {
     limits: MotorLimits,
     startup_ticks: u32,
     safety_bypass: bool,
+    max_hardware_current_ma: i32,
 }
 
 /// The filename of the motor calibration file.
@@ -158,8 +162,20 @@ where
     <C as PowerSensor>::Error: ToPeripheralError,
     <S as SpeedSensor>::Error: core::fmt::Debug,
 {
-    /// Creates a new motor controller managing the specified motor, current sensor, and speed sensor.
+    /// Creates a new motor controller managing the specified motor, current sensor, and speed sensor
+    /// using default canonical safety limits (2500 mA maximum current).
     pub fn new(motor: M, current_sensor: C, speed_sensor: S) -> Self {
+        Self::new_with_max_current(motor, current_sensor, speed_sensor, DEFAULT_MAX_CURRENT_MA)
+    }
+
+    /// Creates a new motor controller managing the specified motor, current sensor, and speed sensor
+    /// with a specific maximum current limit in milliamperes (e.g. configured via `app.toml`).
+    pub fn new_with_max_current(
+        motor: M,
+        current_sensor: C,
+        speed_sensor: S,
+        max_current_ma: i32,
+    ) -> Self {
         Self {
             state: MotorState::Off,
             motor,
@@ -172,12 +188,13 @@ where
             calibration_present: false,
             limits: MotorLimits {
                 min_current_ma: 15,
-                max_current_ma: 2500,
+                max_current_ma,
                 max_rpm: 0,
                 rpm_limit: 0,
             },
             startup_ticks: 0,
             safety_bypass: false,
+            max_hardware_current_ma: max_current_ma,
         }
     }
 
@@ -196,10 +213,11 @@ where
         self.limits.max_current_ma
     }
 
-    /// Sets the minimum and maximum current limits for load/stall safety checks.
+    /// Sets the minimum and maximum current limits for load/stall safety checks,
+    /// clamped to the controller's configured maximum hardware current limit.
     pub fn set_current_limits(&mut self, min_ma: i32, max_ma: i32) {
         self.limits.min_current_ma = min_ma;
-        self.limits.max_current_ma = max_ma;
+        self.limits.max_current_ma = max_ma.min(self.max_hardware_current_ma);
     }
 
     /// Returns the current rotational speed in RPM.
@@ -679,7 +697,7 @@ where
     pub fn set_calibration_ram(&mut self, store: &model::calibration::MotorCalibration) {
         self.calibration_present = true;
         self.limits.min_current_ma = store.current_ma.low;
-        self.limits.max_current_ma = store.current_ma.overload;
+        self.limits.max_current_ma = store.current_ma.overload.min(self.max_hardware_current_ma);
         self.limits.max_rpm = store.max_rpm.unwrap_or(0);
         self.limits.rpm_limit = store.rpm_limit.unwrap_or(0);
     }

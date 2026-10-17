@@ -8,6 +8,7 @@ controller::declare_shell_commands! {
         System,
         Core,
         Led,
+        Gpio,
     }
 }
 use controller::motor_controller::MotorSubcommand;
@@ -250,6 +251,53 @@ fn test_led_pattern_brightness_command_parsing() {
         Some(CliCommand::Led {
             subcommand: Some(controller::led_controller::LedSubcommand::Green),
             arg1: Some("25")
+        })
+    ));
+}
+
+#[test]
+fn test_gpio_command_parsing() {
+    let mut cli = CliBuilder::default().writer(DummyWriter).build().unwrap();
+
+    let mut processor = TestProcessor { cmd: None };
+    for byte in b"gpio set 16 1\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*byte, &mut processor);
+    }
+
+    assert!(matches!(
+        processor.cmd,
+        Some(CliCommand::Gpio {
+            subcommand: Some(platform::gpio::GpioSubcommand::Set),
+            pin: Some(16),
+            value: Some(1),
+        })
+    ));
+
+    processor.cmd = None;
+    for byte in b"gpio read 5\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*byte, &mut processor);
+    }
+
+    assert!(matches!(
+        processor.cmd,
+        Some(CliCommand::Gpio {
+            subcommand: Some(platform::gpio::GpioSubcommand::Read),
+            pin: Some(5),
+            value: None,
+        })
+    ));
+
+    processor.cmd = None;
+    for byte in b"gpio status\n" {
+        let _ = cli.process_byte::<CliCommand, _>(*byte, &mut processor);
+    }
+
+    assert!(matches!(
+        processor.cmd,
+        Some(CliCommand::Gpio {
+            subcommand: Some(platform::gpio::GpioSubcommand::Status),
+            pin: None,
+            value: None,
         })
     ));
 }

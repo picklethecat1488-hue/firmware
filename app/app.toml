@@ -60,6 +60,7 @@ instance = "controllers.core1.motor"
 generics = "crate::MotorDevice, crate::CurrentSensorDevice, crate::SpeedSensorDevice"
 # Motor also registers the raw motor device into motors shell field
 device_shell_type = "MotorDevice"
+max_current_ma = 2000
 
 [[apps.cat_detector.controllers]]
 name = "Sensor"

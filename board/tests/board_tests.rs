@@ -3,10 +3,12 @@ use embedded_hal::digital::{InputPin, OutputPin};
 
 #[test]
 fn test_board_pin_constants() {
-    assert_eq!(Board::PUMP_EN_PIN, 18);
-    assert_eq!(Board::PUMP_IN1_PIN, 19);
-    assert_eq!(Board::PUMP_IN2_PIN, 20);
-    assert_eq!(Board::PUMP_IN3_PIN, 21);
+    assert_eq!(Board::PUMP_UH_PIN, 16);
+    assert_eq!(Board::PUMP_UL_PIN, 17);
+    assert_eq!(Board::PUMP_VH_PIN, 18);
+    assert_eq!(Board::PUMP_VL_PIN, 19);
+    assert_eq!(Board::PUMP_WH_PIN, 20);
+    assert_eq!(Board::PUMP_WL_PIN, 21);
     assert_eq!(Board::PUMP_DIAG_PIN, 22);
     assert_eq!(Board::SPEED_SENSE_PIN, 26);
 }
@@ -45,21 +47,35 @@ fn test_embedded_hal_output_trait_compatibility() {
 fn test_mock_board_initialization() {
     let mut board = Board::init();
 
-    assert!(board.gpio_pins[Board::PUMP_EN_PIN as usize].is_some());
-    assert!(board.gpio_pins[Board::PUMP_IN1_PIN as usize].is_some());
-    assert!(board.gpio_pins[Board::PUMP_IN2_PIN as usize].is_some());
-    assert!(board.gpio_pins[Board::PUMP_IN3_PIN as usize].is_some());
+    assert!(board.gpio_pins[Board::PUMP_UH_PIN as usize].is_some());
+    assert!(board.gpio_pins[Board::PUMP_UL_PIN as usize].is_some());
+    assert!(board.gpio_pins[Board::PUMP_VH_PIN as usize].is_some());
+    assert!(board.gpio_pins[Board::PUMP_VL_PIN as usize].is_some());
+    assert!(board.gpio_pins[Board::PUMP_WH_PIN as usize].is_some());
+    assert!(board.gpio_pins[Board::PUMP_WL_PIN as usize].is_some());
     assert!(board.gpio_pins[Board::PUMP_DIAG_PIN as usize].is_some());
     assert!(board.gpio_pins[Board::SPEED_SENSE_PIN as usize].is_some());
 
-    let mut pump_en = board.gpio_pins[Board::PUMP_EN_PIN as usize].take().unwrap();
-    assert!(!pump_en.is_set());
-    assert!(!pump_en.is_high().unwrap());
+    let mut pump_uh = board.gpio_pins[Board::PUMP_UH_PIN as usize].take().unwrap();
+    assert!(!pump_uh.is_set());
+    assert!(!pump_uh.is_high().unwrap());
 
-    pump_en.set_high();
-    assert!(pump_en.is_set());
-    assert!(pump_en.is_high().unwrap());
+    pump_uh.set_high();
+    assert!(pump_uh.is_set());
+    assert!(pump_uh.is_high().unwrap());
 
     let peripherals = board.take_peripherals();
     assert_eq!(peripherals.speed_sensor.pulses_per_rev(), 3);
+}
+
+#[test]
+fn test_board_bus_assigned_pins() {
+    assert_eq!(Board::BUS_ASSIGNED_PINS, &[0, 1, 11, 12, 13]);
+    assert!(Board::is_bus_assigned(0)); // UART TX
+    assert!(Board::is_bus_assigned(1)); // UART RX
+    assert!(Board::is_bus_assigned(11)); // LED PIO
+    assert!(Board::is_bus_assigned(12)); // I2C SDA
+    assert!(Board::is_bus_assigned(13)); // I2C SCL
+    assert!(!Board::is_bus_assigned(16)); // Motor pin
+    assert!(!Board::is_bus_assigned(26)); // Speed sense
 }
