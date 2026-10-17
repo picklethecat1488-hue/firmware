@@ -620,28 +620,10 @@ class DaemonRunner:
                 self.log_cli(err)
                 return err
 
-        # Standby/offline shell response for help or simulated dispatch
-        if command.strip().lower() == "help":
-            help_text = (
-                "Commands:\n"
-                "  battery  Battery commands (battery status, battery test-alert)\n"
-                "  thermal  Thermal commands (thermal status, thermal mcu)\n"
-                "  motor    Motor commands (motor speed, motor rpm-speed, motor stop, motor current, motor rpm, motor calibrate, motor safety-bypass)\n"
-                "  sensor   Sensor commands (sensor status, sensor cal_near, sensor cal_far, sensor cal_xtalk)\n"
-                "  fs       Filesystem commands (fs format, fs ls)\n"
-                "  system   System commands (system activity)\n"
-                "  i2c      I2C commands (i2c scan)\n"
-                "  gpio     GPIO commands (gpio status, gpio read, gpio set)\n"
-                "  led      LED commands (led off, led green, led blue, led yellow, led orange, led blink-four, led blink-slow, led brightness)\n"
-                "  core     Core monitor commands (core status, core crash)"
-            )
-            for line in help_text.splitlines():
-                self.log_cli(line)
-            return help_text
-
-        output = f"[host_cli] Executed: '{command}' (mock/standby mode)"
-        self.log_cli(output)
-        return output
+        err = "Target CLI is not available (RTT console is not connected). Please synchronize target."
+        self.log_cli(err)
+        self.log(err, level="ERROR", channel="host_cli")
+        return f"Error: {err}"
 
     def execute_fs(self, command_or_subcommand: str, args: Optional[List[str]] = None) -> str:
         """Execute host_fs utility command by invoking cargo run."""

@@ -7,6 +7,7 @@
   <meta name="theme-color" content="#0a1c24">
   <meta name="color-scheme" content="dark">
   <style>
+    html { font-size: 80%; }
     :root {
       --xerxes-bg: #04090c;
       --xerxes-panel: #08161d;
@@ -694,6 +695,9 @@
             appendFsText(data.output, false);
           } else {
             appendCliText(data.output, false);
+            if (data.output.includes("Target CLI is not available")) {
+              setWorkstationDisabled(true, "Target CLI is not available. Click ⚡ Sync to connect.");
+            }
           }
         }
         pollOutputs();

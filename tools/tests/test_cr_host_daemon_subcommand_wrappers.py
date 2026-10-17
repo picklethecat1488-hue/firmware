@@ -153,13 +153,21 @@ def test_cr_4bdad9c1_help_command_and_rtt_reset():
     runner.elf_path = fake_elf
     runner.host_cli_path = REPO_ROOT / "target" / "debug" / "host_cli"
 
-    # 1. Verify typing 'help' produces output even when in standby / offline mode
+    # 1. Verify typing 'help' logs an error and returns not-available when target CLI/RTT is offline
     help_out = runner.execute_cli("help")
-    assert "Commands:" in help_out
-    assert "battery" in help_out
-    assert "motor" in help_out
-    assert "gpio" in help_out
-    assert any("Commands:" in entry["text"] for entry in runner.cli_outputs)
+    assert "Error:" in help_out
+    assert "Target CLI is not available" in help_out
+    assert any("Target CLI is not available" in entry["text"] for entry in runner.cli_outputs)
+
+    # 1b. Verify typing 'help' dispatches to RTT stdin when RTT process is active
+    mock_rtt = MagicMock()
+    mock_rtt.poll.return_value = None
+    mock_rtt.stdin = MagicMock()
+    runner.rtt_process = mock_rtt
+    disp_out = runner.execute_cli("help")
+    assert disp_out == "Dispatched: help"
+    mock_rtt.stdin.write.assert_called_with("help\n")
+    runner.rtt_process = None
 
     # 2. Verify start_rtt_streaming includes --reset to avoid corrupt RTT channel errors
     with patch.object(Path, "exists", return_value=True):
