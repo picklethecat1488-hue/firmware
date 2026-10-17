@@ -3599,4 +3599,3 @@ def test_regression_bug_translucent_tapeworm_953_dashboard_js_syntax_and_sync_sc
             script_file.write_text(script, encoding="utf-8")
             res = subprocess.run([node_bin, "-c", str(script_file)], capture_output=True, text=True)
             assert res.returncode == 0, f"Node syntax error in worm_report script block {idx}:\n{res.stderr}"
-

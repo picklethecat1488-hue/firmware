@@ -15,6 +15,7 @@ To ensure firmware portability across multiple hardware platforms and target mic
 ### 2. Driver & Struct Naming Hygiene
 * **No MCU Model Prefixes**: Do NOT prefix files or structs with MCU model numbers (e.g., do NOT write `rp2040_sensor.rs` or `struct NxpI2cDriver`). Keep driver wrappers and peripheral interfaces target-independent.
 * **Portable Abstractions**: Drivers must implement or accept canonical traits (such as Rust `embedded-hal` / `embedded-hal-async`) rather than concrete vendor peripheral structs.
+* **Target-Specific Driver Gating & Explicit Compile Errors**: When an optional hardware driver relies on microcontroller-specific peripherals (such as RP2040 PIO state machines), the driver MUST explicitly guard against unsupported target microcontrollers with descriptive compile errors and build script diagnostics, rather than emitting unrunnable or silently failing code on other platforms.
 
 ### 3. Vendor-Specific Code Boundaries
 * **Placement Restrictions**: Vendor-specific code (register blocks, PAC access, boot stages, manufacturer errata workarounds) should ONLY be placed inside the `board` or `app` crate.

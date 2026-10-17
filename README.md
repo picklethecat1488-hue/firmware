@@ -109,7 +109,7 @@ The workspace is organized into target-agnostic crates for logic/simulation, tar
 
 ```mermaid
 graph TD
-    subgraph Controller Layer [controller]
+    subgraph Controller_Layer ["Controller Layer [controller]"]
         SC["SystemController"]
         MC["MotorController"]
         BC["BatteryController"]
@@ -121,28 +121,28 @@ graph TD
         ShC["ShellController"]
     end
 
-    subgraph Domain Models [model]
+    subgraph Domain_Models ["Domain Models [model]"]
         TM["Telemetry Types & States"]
         TR["Peripheral Traits"]
     end
 
-    subgraph Peripherals [peripheral]
+    subgraph Peripherals ["Peripherals [peripheral]"]
         HAL["embedded-hal Drivers & Mocks"]
     end
 
-    subgraph Board Support [board]
+    subgraph Board_Support ["Board Support [board]"]
         BSP["Board::init (RP2040 / MCX N947)"]
     end
 
-    subgraph Application Binaries [app]
+    subgraph Application_Binaries ["Application Binaries [app]"]
         AppBin["cat_detector_app / carrier_board"]
         ShellBin["cat_detector_shell / carrier_board_shell"]
     end
 
-    AppBin -->|Spawns tasks| Controller Layer
+    AppBin -->|Spawns tasks| Controller_Layer
     ShellBin -->|Executes| ShC
-    Controller Layer -->|Queries & Updates| Domain Models
-    Controller Layer -->|Drives| Peripherals
+    Controller_Layer -->|Queries & Updates| Domain_Models
+    Controller_Layer -->|Drives| Peripherals
     Peripherals -->|Implements| TR
     ShellBin -->|Resolves devices on| BSP
 ```
