@@ -1693,7 +1693,7 @@
       <div id="cliSuggestions" class="cli-suggestions" style="display:none;"></div>
       <span id="cliPromptPrefix" class="cli-prompt-prefix">[READY] ></span>
       <input type="text" id="cliInput" class="cli-cmd-input" placeholder="Type review comment, command, or @file reference (e.g. '@src/model/pcb.py:42', 'must_fix ...', 'feedback')..." autocomplete="off">
-      <button class="quake-btn quake-btn-gold" onclick="executeCliCommand()">Send [↵]</button>
+      <button class="quake-btn quake-btn-gold" id="btnCliSend" onclick="executeCliCommand()">Send [↵]</button>
     </div>
   </footer>
 
@@ -3360,6 +3360,8 @@
 
     async function executeCliCommand() {
       const input = document.getElementById("cliInput");
+      const btn = document.getElementById("btnCliSend") || (input ? input.nextElementSibling : null);
+      if (!input || input.disabled) return;
       const suggestionsEl = document.getElementById("cliSuggestions");
       if (suggestionsEl) suggestionsEl.style.display = "none";
 
@@ -3376,20 +3378,32 @@
       }
       input.value = "";
 
-      // Direct @file navigation (e.g. "@src/model/pcb.py:42" or "@pcb.py")
-      if (rawCmd.startsWith("@")) {
+      input.disabled = true;
+      if (btn) btn.disabled = true;
+      const prevPlaceholder = input.placeholder;
+      input.placeholder = `Running command: ${rawCmd}...`;
+
+      try {
+        // Direct @file navigation (e.g. "@src/model/pcb.py:42" or "@pcb.py")
+        if (rawCmd.startsWith("@")) {
+          logCli(`> ${rawCmd}`, "gold");
+          await goto(rawCmd);
+          return;
+        }
+
+        const parts = rawCmd.split(/\s+/);
+        const rawVerb = parts[0].toLowerCase();
+        const verb = rawVerb.startsWith("/") ? rawVerb.slice(1) : rawVerb;
+
         logCli(`> ${rawCmd}`, "gold");
-        await goto(rawCmd);
-        return;
+
+        await matchCommand(verb, rawCmd, parts);
+      } finally {
+        input.disabled = false;
+        if (btn) btn.disabled = false;
+        input.placeholder = prevPlaceholder;
+        input.focus();
       }
-
-      const parts = rawCmd.split(/\s+/);
-      const rawVerb = parts[0].toLowerCase();
-      const verb = rawVerb.startsWith("/") ? rawVerb.slice(1) : rawVerb;
-
-      logCli(`> ${rawCmd}`, "gold");
-
-      matchCommand(verb, rawCmd, parts);
     }
 
     async function matchCommand(verb, fullText, parts) {

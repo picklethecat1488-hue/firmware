@@ -613,7 +613,7 @@
     </div>
     <span class="prompt-label" id="promptLabel">{% if runner.active_mode == 'FS' %}fs> {% else %}shell> {% endif %}</span>
     <input type="text" id="cmdInput" class="cmd-input" placeholder="{% if runner.active_mode == 'FS' %}Type FS command (e.g. 'ls', 'cat metadata', 'crash-log', 'format')...{% else %}Type shell command (e.g. 'motor speed 100', 'gpio status', 'battery status')...{% endif %}" autofocus autocomplete="off">
-    <button class="btn btn-cyan" onclick="submitCommand()">Send [↵]</button>
+    <button class="btn btn-cyan" id="btnSubmitCmd" onclick="submitCommand()">Send [↵]</button>
   </footer>
 
   <script>
@@ -659,7 +659,9 @@
     }
 
     function runFsQuick(action) {
-      document.getElementById("cmdInput").value = action;
+      const input = document.getElementById("cmdInput");
+      if (input && input.disabled) return;
+      input.value = action;
       submitCommand();
     }
 
@@ -677,12 +679,26 @@
 
     async function submitCommand() {
       const input = document.getElementById("cmdInput");
+      const btn = document.getElementById("btnSubmitCmd");
+      const fsToolbar = document.getElementById("fsToolbar");
+      if (!input || input.disabled) return;
       const cmd = input.value.trim();
       if (!cmd) return;
 
       cmdHistory.push(cmd);
       historyIdx = cmdHistory.length;
       input.value = "";
+
+      // Disable input and action buttons while command is executing
+      input.disabled = true;
+      if (btn) btn.disabled = true;
+      if (fsToolbar) {
+        fsToolbar.querySelectorAll("button").forEach(b => b.disabled = true);
+      }
+      const prevPlaceholder = input.placeholder;
+      input.placeholder = `Running command: ${cmd}...`;
+      input.style.opacity = "0.6";
+      input.style.cursor = "wait";
 
       const endpoint = currentMode === "FS" ? "/api/fs/execute" : "/api/cli/execute";
       try {
@@ -710,6 +726,18 @@
           appendFsText(`[ERROR] Command failed: ${e}`, false);
         } else {
           appendCliText(`[ERROR] Command failed: ${e}`, false);
+        }
+      } finally {
+        if (!input.hasAttribute("data-prev-placeholder")) {
+          input.disabled = false;
+          if (btn) btn.disabled = false;
+          if (fsToolbar) {
+            fsToolbar.querySelectorAll("button").forEach(b => b.disabled = false);
+          }
+          input.placeholder = prevPlaceholder;
+          input.style.opacity = "1";
+          input.style.cursor = "text";
+          input.focus();
         }
       }
     }
