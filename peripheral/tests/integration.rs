@@ -1367,3 +1367,133 @@ fn test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm() {
         assert_eq!(motor.speed(), 0);
     });
 }
+
+#[test]
+fn test_worm_dirt_ribbonworm_196_tmc6300_pio_program_verification_and_duty_cycle_100() {
+    use peripheral::tmc6300::{assemble_tmc6300_pio_program, make_pwm_word};
+
+    let prg = assemble_tmc6300_pio_program();
+
+    // 1. Program size must be exactly 10 instructions
+    assert_eq!(prg.code.len(), 10);
+    // 2. Wrap boundaries: target = 0, source = 9 (last instruction)
+    assert_eq!(prg.wrap.target, 0);
+    assert_eq!(prg.wrap.source, 9);
+
+    // 3. Verify all JMP instructions target valid addresses within [0..=prg.wrap.source].
+    // Any target > 9 jumps past wrap_source into uninitialized SRAM!
+    for (addr, &inst) in prg.code.iter().enumerate() {
+        let opcode = (inst >> 13) & 0x7;
+        if opcode == 0 {
+            // JMP instruction
+            let cond = (inst >> 5) & 0x7;
+            let target = (inst & 0x1F) as u8;
+            assert!(
+                target <= prg.wrap.source,
+                "Instruction at {addr} jumps out-of-bounds to {target} (wrap.source={})",
+                prg.wrap.source
+            );
+            if addr == 7 {
+                // Must be jmp !y, wrap_target (0)
+                assert_eq!(cond, 0b011, "Instruction at 7 must test condition !Y");
+                assert_eq!(target, 0, "Instruction at 7 must jump to wrap_target (0)");
+            }
+        }
+    }
+
+    // 4. Simulate PIO execution for duty cycle 100% (on_count = 100, off_count = 0)
+    let word100 = make_pwm_word(0b001001, 100, 0);
+    let mut pc: u8 = 0;
+    let mut x: u32 = 0;
+    let mut y: u32 = 0;
+    let mut osr: u32 = 0;
+    let mut pins: u8 = 0;
+    let mut fifo: Option<u32> = Some(word100);
+    let mut pin_cleared_to_null = false;
+
+    // Run 500 PIO instruction cycles
+    for _ in 0..500 {
+        let current_pc = pc;
+        match current_pc {
+            0 => {
+                // pull(false, false)
+                if let Some(w) = fifo.take() {
+                    osr = w;
+                } else {
+                    osr = x;
+                }
+            }
+            1 => {
+                // mov x, osr
+                x = osr;
+            }
+            2 => {
+                // out pins, 8
+                pins = (osr & 0xFF) as u8;
+                osr >>= 8;
+            }
+            3 => {
+                // out y, 8
+                y = osr & 0xFF;
+                osr >>= 8;
+            }
+            4 => {
+                // jmp !y, skip_on (6)
+                if y == 0 {
+                    pc = 6;
+                }
+            }
+            5 => {
+                // jmp y--, on_loop (5)
+                if y != 0 {
+                    y -= 1;
+                    pc = 5;
+                } else {
+                    y = u32::MAX;
+                }
+            }
+            6 => {
+                // out y, 8 (off_count)
+                y = osr & 0xFF;
+                osr >>= 8;
+            }
+            7 => {
+                // jmp !y, wrap_target (0)
+                if y == 0 {
+                    pc = 0;
+                }
+            }
+            8 => {
+                // mov pins, null
+                pins = 0;
+                pin_cleared_to_null = true;
+            }
+            9 => {
+                // jmp y--, off_loop (9)
+                if y != 0 {
+                    y -= 1;
+                    pc = 9;
+                } else {
+                    y = u32::MAX;
+                }
+            }
+            _ => panic!("PC reached out-of-bounds address {current_pc}"),
+        }
+
+        // Advance PC if jump did not branch to a new target
+        if pc == current_pc {
+            if pc == prg.wrap.source {
+                pc = prg.wrap.target;
+            } else {
+                pc += 1;
+            }
+        }
+    }
+
+    // At 100% duty cycle, pins must never be cleared to null!
+    assert!(
+        !pin_cleared_to_null,
+        "Pins were erroneously cleared to null at 100% duty cycle"
+    );
+    assert_eq!(pins, 0b001001, "Pins should remain continuously asserted");
+}
