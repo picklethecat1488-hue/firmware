@@ -135,21 +135,26 @@ def is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
         return s.connect_ex((host, port)) == 0
 
 
-def send_daemon_request(path: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def send_daemon_request(
+    path: str,
+    payload: Optional[Dict[str, Any]] = None,
+    port: Optional[int] = None,
+    host: Optional[str] = None,
+) -> Dict[str, Any]:
     """Send an HTTP request to an active running host daemon."""
     lock = get_lock_data()
-    if not lock:
+    req_port = port if port is not None else (lock.get("port", 8899) if lock else 8899)
+    req_host = host if host is not None else (lock.get("host", "127.0.0.1") if lock else "127.0.0.1")
+    pid = lock.get("pid", 0) if lock else 0
+
+    if not lock and port is None:
         raise RuntimeError("No active host daemon detected (lock file /tmp/xerxes_host_daemon.lock not found).")
 
-    pid = lock.get("pid", 0)
-    port = lock.get("port", 8899)
-    host = lock.get("host", "127.0.0.1")
-
-    if not is_pid_alive(pid) and not is_port_in_use(port, host):
+    if lock and not is_pid_alive(pid) and not is_port_in_use(req_port, req_host):
         remove_lock_file()
         raise RuntimeError(f"Host daemon (PID {pid}) is not running.")
 
-    url = f"http://{host}:{port}{path}"
+    url = f"http://{req_host}:{req_port}{path}"
     headers = {"Content-Type": "application/json"}
     data = json.dumps(payload).encode("utf-8") if payload is not None else None
     req = urllib.request.Request(url, data=data, headers=headers, method="POST" if payload is not None else "GET")
@@ -262,6 +267,12 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Run workstation server in the foreground without detaching from terminal.",
     )
 
+    parser.add_argument(
+        "--restart",
+        action="store_true",
+        help="Restart existing host daemon if already running.",
+    )
+
     subparsers = parser.add_subparsers(dest="subcommand", help="Host daemon subcommands")
 
     # CLI forwarding
@@ -274,6 +285,10 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
 
     # Status
     subparsers.add_parser("status", help="Show status of running host daemon")
+
+    # Sync & Flash
+    subparsers.add_parser("sync", help="Trigger target compilation, flash, and RTT sync on running daemon")
+    subparsers.add_parser("flash", help="Trigger target compilation, flash, and RTT sync on running daemon")
 
     # Reset
     subparsers.add_parser("reset", help="Reset the target device via active host daemon")
@@ -326,6 +341,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"Host daemon is not running ({e}).")
             return 1
 
+    if args.subcommand in ("sync", "flash"):
+        try:
+            res = send_daemon_request("/api/sync", {})
+            print("Target synchronization and flash triggered.")
+            return 0
+        except Exception as e:
+            print(f"Could not trigger sync: {e}", file=sys.stderr)
+            return 1
+
     if args.subcommand == "reset":
         try:
             res = send_daemon_request("/api/reset", {})
@@ -351,9 +375,59 @@ def main(argv: Optional[List[str]] = None) -> int:
         pid = existing.get("pid", 0)
         port = existing.get("port", args.port)
         if is_pid_alive(pid) or is_port_in_use(port, args.host):
-            print(f"Host daemon is already running (PID {pid} on port {port}).")
-            print(f"Workstation URL: http://{args.host}:{port}")
-            return 0
+            if getattr(args, "restart", False):
+                print(f"Restarting host daemon (stopping existing PID {pid})...")
+                try:
+                    send_daemon_request("/api/stop", {}, port=port, host=args.host)
+                except Exception:
+                    pass
+                deadline = time.time() + 3.0
+                while time.time() < deadline and is_pid_alive(pid):
+                    time.sleep(0.05)
+                remove_lock_file()
+            else:
+                req_profile = "release" if args.release else "debug"
+                config_changed = (
+                    (args.bin and args.bin != existing.get("bin"))
+                    or (args.package and args.package != existing.get("package"))
+                    or (args.target and args.target != existing.get("target"))
+                    or (req_profile != existing.get("profile"))
+                    or (args.speed and args.speed != existing.get("speed"))
+                )
+                if config_changed:
+                    print(f"➜ Host daemon is running (PID {pid} on port {port}).")
+                    print(f"➜ Reconfiguring and flashing target: {args.package} ({args.bin}) [{req_profile}]...")
+                    try:
+                        send_daemon_request(
+                            "/api/sync",
+                            {
+                                "target": args.target,
+                                "package": args.package,
+                                "bin": args.bin,
+                                "release": args.release,
+                                "speed": args.speed,
+                                "chip": args.chip,
+                            },
+                            port=port,
+                            host=args.host,
+                        )
+                        print("➜ Target synchronization and flash started.")
+                        print(f"Workstation URL: http://{args.host}:{port}")
+                        return 0
+                    except Exception as e:
+                        print(f"Warning: Could not reconfigure running daemon ({e}). Restarting daemon...", file=sys.stderr)
+                        try:
+                            send_daemon_request("/api/stop", {}, port=port, host=args.host)
+                        except Exception:
+                            pass
+                        deadline = time.time() + 3.0
+                        while time.time() < deadline and is_pid_alive(pid):
+                            time.sleep(0.05)
+                        remove_lock_file()
+                else:
+                    print(f"Host daemon is already running (PID {pid} on port {port}).")
+                    print(f"Workstation URL: http://{args.host}:{port}")
+                    return 0
         remove_lock_file()
 
     # Detach from terminal unless --no-detach / --foreground is requested

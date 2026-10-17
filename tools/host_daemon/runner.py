@@ -93,6 +93,50 @@ class DaemonRunner:
             )
         self.log(f"[Sync] {message}")
 
+    def update_config(
+        self,
+        target: Optional[str] = None,
+        package: Optional[str] = None,
+        bin_name: Optional[str] = None,
+        release: Optional[bool] = None,
+        speed: Optional[int] = None,
+        chip: Optional[str] = None,
+    ) -> None:
+        """Dynamically update runner configuration parameters and resolved paths."""
+        with self._lock:
+            if target:
+                self.target = target
+            if package:
+                self.package = package
+            if bin_name:
+                self.bin_name = bin_name
+            if release is not None:
+                self.release = release
+            if speed:
+                self.speed = speed
+            if chip:
+                self.chip = chip
+
+            profile_dir = "release" if self.release else "debug"
+            elf = self.repo_root / "target" / self.target / profile_dir / self.bin_name
+            if not elf.exists():
+                alt_elf = self.repo_root / "target" / "out" / profile_dir / "embedded" / self.package / self.bin_name
+                if alt_elf.exists():
+                    elf = alt_elf
+            if elf.exists():
+                self.elf_path = elf
+
+            self.sync_status.update({
+                "target": self.target,
+                "package": self.package,
+                "bin": self.bin_name,
+                "profile": "release" if self.release else "debug",
+                "speed": self.speed,
+            })
+        self.log(
+            f"Updated configuration: package={self.package}, bin={self.bin_name}, target={self.target}, profile={'release' if self.release else 'debug'}, speed={self.speed}"
+        )
+
     def sync(self) -> Dict[str, Any]:
         """Perform full synchronization: compile target, compile tools, flash, and connect RTT."""
         try:

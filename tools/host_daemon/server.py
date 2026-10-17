@@ -98,6 +98,29 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             payload = {}
 
         if path == "/api/sync":
+            if payload:
+                runner.update_config(
+                    target=payload.get("target"),
+                    package=payload.get("package"),
+                    bin_name=payload.get("bin") or payload.get("bin_name"),
+                    release=payload.get("release"),
+                    speed=payload.get("speed"),
+                    chip=payload.get("chip"),
+                )
+                try:
+                    from .cli import get_lock_data, write_lock_file
+
+                    lock_data = get_lock_data() or {}
+                    lock_data.update({
+                        "target": runner.target,
+                        "package": runner.package,
+                        "bin": runner.bin_name,
+                        "profile": "release" if runner.release else "debug",
+                        "speed": runner.speed,
+                    })
+                    write_lock_file(lock_data)
+                except Exception:
+                    pass
             runner.sync_async()
             self._send_json({"success": True, "sync": runner.sync_status})
         elif path == "/api/cli/execute":
