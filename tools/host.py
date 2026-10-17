@@ -6,12 +6,12 @@ logging and CLI shell interactions, and serves an interactive web workstation fo
 executing host_cli and host_fs subcommands.
 
 Usage:
-    PROBE_RS_SPEED=4000 python tools/host_daemon.py --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
-    python tools/host_daemon.py cli motor speed 100
-    python tools/host_daemon.py fs ls
-    python tools/host_daemon.py fs cat metadata
-    python tools/host_daemon.py status
-    python tools/host_daemon.py stop
+    PROBE_RS_SPEED=4000 python tools/host.py --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
+    python tools/host.py cli motor speed 100
+    python tools/host.py fs ls
+    python tools/host.py fs cat metadata
+    python tools/host.py status
+    python tools/host.py stop
 """
 
 from pathlib import Path

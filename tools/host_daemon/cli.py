@@ -310,7 +310,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.subcommand == "cli":
         cmd_str = " ".join(args.command) if args.command else ""
         if not cmd_str:
-            print("Error: Missing CLI command. Usage: host_daemon.py cli <command...>", file=sys.stderr)
+            print("Error: Missing CLI command. Usage: host.py cli <command...>", file=sys.stderr)
             return 1
         try:
             res = send_daemon_request("/api/cli/execute", {"command": cmd_str})
@@ -440,7 +440,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         log_file = open(log_path, "a", encoding="utf-8")
 
         child_args = (
-            [sys.executable, str(Path(__file__).resolve().parent.parent / "host_daemon.py")]
+            [sys.executable, str(Path(__file__).resolve().parent.parent / "host.py")]
             + [a for a in sys.argv[1:] if a not in ("--no-detach", "--foreground", "--detach")]
             + ["--no-detach"]
         )
