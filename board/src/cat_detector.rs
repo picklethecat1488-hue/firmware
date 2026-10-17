@@ -329,6 +329,7 @@ mod target {
 
     bind_interrupts!(struct Irqs {
         PIO0_IRQ_0 => InterruptHandler<embassy_rp::peripherals::PIO0>;
+        PIO1_IRQ_0 => InterruptHandler<embassy_rp::peripherals::PIO1>;
     });
 
     /// Helper structure containing all pre-initialized board interfaces.
@@ -349,7 +350,7 @@ mod target {
     /// Move-by-value drivers and pins returned during board initialization.
     pub struct BoardPeripherals<'d> {
         /// Motor driver (TMC6300 3-phase BLDC driver)
-        pub motor: peripheral::tmc6300::Tmc6300<Flex<'d>, Flex<'d>, Flex<'d>, Flex<'d>, Flex<'d>>,
+        pub motor: peripheral::tmc6300::Tmc6300Pio<'d, embassy_rp::peripherals::PIO1, 0, Flex<'d>>,
         /// Motor current sensor
         pub current_sensor: peripheral::ina219::Ina219<platform::i2c::SharedI2cWrapper<'static>>,
         /// Motor speed sensor (Hall effect sensor)
@@ -417,10 +418,6 @@ mod target {
                 Board::TOF_EAST_INT_PIN => PIN_9,
                 Board::TOF_WEST_INT_PIN => PIN_10,
                 Board::FUEL_GAUGE_INT_PIN => PIN_14,
-                Board::PUMP_EN_PIN => PIN_18,
-                Board::PUMP_IN1_PIN => PIN_19,
-                Board::PUMP_IN2_PIN => PIN_20,
-                Board::PUMP_IN3_PIN => PIN_21,
                 Board::PUMP_DIAG_PIN => PIN_22,
                 Board::SPEED_SENSE_PIN => PIN_26,
             });
@@ -455,6 +452,16 @@ mod target {
                     pin.set_as_input();
                     pin.set_pull(Pull::Up);
                 }
+            }
+
+            // 5. Configure Speed Sense (GP26) and Pump Diag (GP22) as inputs with pull-ups (open-drain)
+            if let Some(ref mut pin) = gpio_pins[Board::SPEED_SENSE_PIN as usize] {
+                pin.set_as_input();
+                pin.set_pull(Pull::Up);
+            }
+            if let Some(ref mut pin) = gpio_pins[Board::PUMP_DIAG_PIN as usize] {
+                pin.set_as_input();
+                pin.set_pull(Pull::Up);
             }
 
             // Wait for sensors to register reset state
@@ -521,18 +528,6 @@ mod target {
             peripheral::init_i2c!(&mut current_sensor, &mut boot_status);
 
             // Extract pins needed for drivers/controllers
-            let mut pump_en = gpio_pins[Board::PUMP_EN_PIN as usize]
-                .take()
-                .expect("Pump EN pin must be available");
-            let mut pump_in1 = gpio_pins[Board::PUMP_IN1_PIN as usize]
-                .take()
-                .expect("Pump IN1 pin must be available");
-            let mut pump_in2 = gpio_pins[Board::PUMP_IN2_PIN as usize]
-                .take()
-                .expect("Pump IN2 pin must be available");
-            let mut pump_in3 = gpio_pins[Board::PUMP_IN3_PIN as usize]
-                .take()
-                .expect("Pump IN3 pin must be available");
             let mut pump_diag = gpio_pins[Board::PUMP_DIAG_PIN as usize]
                 .take()
                 .expect("Pump DIAG pin must be available");
@@ -540,18 +535,25 @@ mod target {
                 .take()
                 .expect("Speed sense pin must be available");
 
-            pump_en.set_as_output();
-            pump_in1.set_as_output();
-            pump_in2.set_as_output();
-            pump_in3.set_as_output();
             pump_diag.set_as_input();
-            pump_diag.set_pull(Pull::Up);
+            pump_diag.set_pull(Pull::Down);
 
             speed_pin.set_as_input();
             speed_pin.set_pull(Pull::Up);
 
-            let motor =
-                peripheral::tmc6300::Tmc6300::new(pump_en, pump_in1, pump_in2, pump_in3, pump_diag);
+            let motor = peripheral::tmc6300::Tmc6300Pio::new_pio(
+                p.PIO1,
+                peripheral::tmc6300::Tmc6300PhasePins {
+                    pin_uh: p.PIN_16,
+                    pin_ul: p.PIN_17,
+                    pin_vh: p.PIN_18,
+                    pin_vl: p.PIN_19,
+                    pin_wh: p.PIN_20,
+                    pin_wl: p.PIN_21,
+                },
+                pump_diag,
+                Irqs,
+            );
             let speed_sensor = peripheral::hall_sensor::HallSensor::new(speed_pin);
 
             let fuel_gauge_alert_pin = gpio_pins[Board::FUEL_GAUGE_INT_PIN as usize]
@@ -736,13 +738,8 @@ mod target {
     /// The battery alert pin type.
     pub type AlertPinType = AlertPinWrapper;
     /// The motor driver type.
-    pub type MotorDevice = peripheral::tmc6300::Tmc6300<
-        Flex<'static>,
-        Flex<'static>,
-        Flex<'static>,
-        Flex<'static>,
-        Flex<'static>,
-    >;
+    pub type MotorDevice =
+        peripheral::tmc6300::Tmc6300Pio<'static, embassy_rp::peripherals::PIO1, 0, Flex<'static>>;
     /// The motor current sensor type.
     pub type CurrentSensorDevice =
         peripheral::ina219::Ina219<platform::i2c::SharedI2cWrapper<'static>>;
