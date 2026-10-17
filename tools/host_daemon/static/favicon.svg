@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#08161d"/>
+      <stop offset="100%" stop-color="#04090c"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00f0ff"/>
+      <stop offset="100%" stop-color="#00ffff"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="28" height="28" rx="4" fill="url(#bg)" stroke="#00f0ff" stroke-width="1.5"/>
+  <rect x="4" y="4" width="24" height="24" rx="2" fill="none" stroke="#0b5966" stroke-width="0.8"/>
+  <!-- Hardware daemon lightning bolt -->
+  <polygon points="18,5 10,16 15,16 13,27 22,14 17,14 19,5" fill="url(#bolt)" stroke="#ffffff" stroke-width="0.5"/>
+  <!-- Hardware indicator pins -->
+  <rect x="9" y="1" width="2" height="2" fill="#ffb000"/>
+  <rect x="21" y="1" width="2" height="2" fill="#ffb000"/>
+  <rect x="9" y="29" width="2" height="2" fill="#ffb000"/>
+  <rect x="21" y="29" width="2" height="2" fill="#ffb000"/>
+</svg>
