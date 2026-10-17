@@ -2,7 +2,7 @@
 """Regression unit test for WORM-SLIMY-SNAIL-582.
 
 Verifies that:
-1. tools/host_daemon.py and tools/host_daemon/cli.py ensure repo root is in sys.path
+1. tools/host.py and tools/host_daemon/cli.py ensure repo root is in sys.path
    so that native webview and eel launchers can be imported without 'No module named tools' error.
 2. The ASCII box banner is removed from host_daemon startup console output,
    matching the compact output format of dashboard.py:
@@ -22,8 +22,8 @@ if str(REPO_ROOT) not in sys.path:
 
 def test_worm_slimy_snail_582_webview_import_without_pythonpath():
     """Verify host_daemon launcher can import dashboard webview modules without PYTHONPATH set."""
-    host_daemon_py = REPO_ROOT / "tools" / "host_daemon.py"
-    assert host_daemon_py.exists(), f"File not found: {host_daemon_py}"
+    host_py = REPO_ROOT / "tools" / "host.py"
+    assert host_py.exists(), f"File not found: {host_py}"
 
     # Run python snippet in a subprocess with empty PYTHONPATH
     env = os.environ.copy()
@@ -32,7 +32,7 @@ def test_worm_slimy_snail_582_webview_import_without_pythonpath():
     code = (
         "import sys\n"
         f"from pathlib import Path\n"
-        f"sys.path.insert(0, str(Path('{host_daemon_py}').resolve().parent))\n"
+        f"sys.path.insert(0, str(Path('{host_py}').resolve().parent))\n"
         "import host_daemon\n"
         "from host_daemon.cli import launch_host_daemon_app\n"
         "assert callable(launch_host_daemon_app)\n"

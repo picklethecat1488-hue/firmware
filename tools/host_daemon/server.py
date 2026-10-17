@@ -43,6 +43,9 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
                 self.end_headers()
                 self.wfile.write(body)
             except Exception as e:
@@ -81,6 +84,9 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+                self.send_header("Pragma", "no-cache")
+                self.send_header("Expires", "0")
                 self.end_headers()
                 self.wfile.write(data)
             else:

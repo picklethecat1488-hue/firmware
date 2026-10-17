@@ -2,9 +2,9 @@
 """Regression unit test for WORM-SUPPLE-PUPA-464.
 
 Verifies that:
-1. tools/host_daemon.py exists and supports command line arguments:
+1. tools/host.py exists and supports command line arguments:
    --target, --package, --bin, --release, --port, --speed, --no-browser, etc.
-2. tools/host_daemon.py supports forwarding subcommands:
+2. tools/host.py supports forwarding subcommands:
    'cli' and 'fs' to forward commands to an active running daemon.
 3. Server implementation in tools/host_daemon/ exposes REST endpoints:
    /api/status, /api/logs, /api/cli/execute, /api/fs/execute, /api/mode.
@@ -28,19 +28,19 @@ from host_daemon.server import HostDaemonServer
 
 
 def test_worm_supple_pupa_464_host_daemon_exists():
-    """Verify tools/host_daemon.py exists and is executable/importable."""
+    """Verify tools/host.py exists and is executable/importable."""
     workspace_root = Path(__file__).resolve().parent.parent.parent
-    host_daemon_py = workspace_root / "tools" / "host_daemon.py"
+    host_py = workspace_root / "tools" / "host.py"
 
-    assert host_daemon_py.exists(), f"File not found: {host_daemon_py}"
+    assert host_py.exists(), f"File not found: {host_py}"
 
-    # Verify python tools/host_daemon.py --help succeeds
+    # Verify python tools/host.py --help succeeds
     proc = subprocess.run(
-        [sys.executable, str(host_daemon_py), "--help"],
+        [sys.executable, str(host_py), "--help"],
         capture_output=True,
         text=True,
     )
-    assert proc.returncode == 0, f"host_daemon.py --help failed: {proc.stderr}"
+    assert proc.returncode == 0, f"host.py --help failed: {proc.stderr}"
     assert "--target" in proc.stdout
     assert "--package" in proc.stdout
     assert "--bin" in proc.stdout
@@ -154,3 +154,61 @@ def test_worm_supple_pupa_464_daemon_rest_endpoints():
     finally:
         server.shutdown()
         server_thread.join(timeout=2)
+
+
+def test_worm_luminescent_palolo_130_host_py_rename():
+    """Verify WORM-LUMINESCENT-PALOLO-130: tools/host.py canonical entrypoint exists and host_daemon.py is purged."""
+    workspace_root = Path(__file__).resolve().parent.parent.parent
+    host_py = workspace_root / "tools" / "host.py"
+    host_daemon_py = workspace_root / "tools" / "host_daemon.py"
+
+    assert host_py.exists(), f"Canonical entrypoint not found: {host_py}"
+    assert not host_daemon_py.exists(), f"Obsolete host_daemon.py must be purged: {host_daemon_py}"
+
+    # Verify python tools/host.py --help succeeds
+    proc = subprocess.run(
+        [sys.executable, str(host_py), "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, f"tools/host.py --help failed: {proc.stderr}"
+    assert "subcommand" in proc.stdout.lower() or "usage:" in proc.stdout.lower()
+
+
+def test_host_daemon_no_cache_headers_and_compact_font_sizes():
+    """Verify host workstation sends Cache-Control: no-cache headers and uses compact font sizes."""
+    workspace_root = Path(__file__).resolve().parent.parent.parent
+    tmpl_path = workspace_root / "tools" / "host_daemon" / "templates" / "host_daemon.html.j2"
+    assert tmpl_path.exists()
+
+    tmpl_content = tmpl_path.read_text(encoding="utf-8")
+    # Verify compact font sizes matching dashboard aesthetic
+    assert ".header-title {\n      font-size: 10.5px;" in tmpl_content
+    assert ".panel-header {\n      background: rgba(10, 28, 36, 0.85);\n      border-bottom: 1px solid var(--xerxes-border-mid);\n      padding: 5px 10px;\n      font-size: 9px;" in tmpl_content
+    assert ".panel-content {\n      display: block;\n      flex: 1;\n      flex-direction: column;\n      overflow-y: auto;\n      padding: 6px 8px;\n      font-size: 9.5px;" in tmpl_content
+
+    runner = DaemonRunner(
+        repo_root=workspace_root,
+        target="thumbv6m-none-eabi",
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+        release=False,
+    )
+    server = HostDaemonServer("127.0.0.1", 0, runner)
+    host, port = server.server_address
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    try:
+        time.sleep(0.1)
+        req = urllib.request.Request(f"http://{host}:{port}/")
+        with urllib.request.urlopen(req) as resp:
+            cache_ctrl = resp.headers.get("Cache-Control", "")
+            assert "no-cache" in cache_ctrl
+            assert "no-store" in cache_ctrl
+            assert "must-revalidate" in cache_ctrl
+            assert resp.headers.get("Pragma") == "no-cache"
+    finally:
+        server.shutdown()
+        server_thread.join(timeout=2)
+
+

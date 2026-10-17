@@ -12,6 +12,26 @@
 
 Motor does not spin, current readings are constant at 7 mA. See tracebacks below
 
+#### Behavior Comparison
+
+- **Expected**: During motor operation, the 6-PWM bridge outputs continuous 25 kHz PWM switching across commutating phase pairs (U, V, W) at the proper electrical commutation angle (6-step trapezoidal commutation) to generate a rotating stator magnetic field. When commanded to speed 100%, the driver continuously energizes the phases according to the rotating commutation sequence.
+- **Actual**: In the attached logic analyzer capture (`digital.csv`), when commanded to `motor speed 100`, only Phase U High (`UH`) and Phase V Low (`VL`) exhibit activity, pulsing briefly for 2.88 to 40 microseconds on each 10 ms (100 Hz) `motor_controller` tick. Phases UL, VH, WL, and WH remain completely unasserted (logic 0.0V) across the entire capture. The commutation sequence never advances beyond initial step 0 (`UH=1, VL=1`), failing to generate a rotating stator magnetic field, which leaves the motor stationary. Consequently, motor current consumption remains flat at standby (7 mA), and upon expiration of the 3-second startup blanking window, the controller triggers a low load / dry detection fault and halts the motor.
+
+#### Trace Analysis (`digital.csv`)
+
+1. **Pulse Timing & Periodicity**:
+   - Pulses occur at exact ~10.0 ms intervals (e.g., $t=15.143874$, $15.153815$, $15.163800$, $15.173784$, etc.), which precisely corresponds to the 100 Hz tick rate of `motor_controller::tick_motor`.
+   - Each pulse duration spans only 2.88 µs to ~40 µs before instantly returning all outputs to zero. Continuous 25 kHz PWM modulation is absent between ticks.
+2. **Channel Distribution**:
+   - Channel 2 (`UH`) and Channel 3 (`VL`) toggle together on every 10 ms pulse (`0,1,1,0,0,0`).
+   - Channel 1 (`UL`), Channel 4 (`VH`), Channel 5 (`WL`), and Channel 6 (`WH`) remain constant 0.
+   - Initial commutation step 0 uses mask `0b001001` (UH=1, VL=1). The lack of commutation advance indicates either the state machine word recycling drops on non-blocking pull, or `commutation_step` is continually reset or overridden before phase progression can occur.
+3. **Current & Fault Telemetry Correlation**:
+   - Standby current: 7 mA (measured by INA219).
+   - Startup blanking duration: 3.0 seconds (300 ticks). At $t \approx 3.2$ s after start command, `update()` flags `Low load / dry detected (current: 7 mA)` and stops the motor.
+4. **Status**:
+   - Issue remains **OPEN** per user direction pending definitive hardware/gate-driver bench validation and commutation sequencer root-cause resolution.
+
 #### Execution / Console Logs
 
 ```text
@@ -66,3 +86,9 @@ motor stop
 
 shell>
 ```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `document` | [digital.csv](attachments/WORM-EMBEDDED-LEECH-268/digital.csv) | Uploaded document digital.csv |

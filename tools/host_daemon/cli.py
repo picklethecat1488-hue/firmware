@@ -1,9 +1,11 @@
 """Command-line interface and daemon management for Xerxes Host Daemon."""
 
 import argparse
+import atexit
 import json
 import os
 from pathlib import Path
+import signal
 import socket
 import subprocess
 import sys
@@ -308,7 +310,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.subcommand == "cli":
         cmd_str = " ".join(args.command) if args.command else ""
         if not cmd_str:
-            print("Error: Missing CLI command. Usage: host_daemon.py cli <command...>", file=sys.stderr)
+            print("Error: Missing CLI command. Usage: host.py cli <command...>", file=sys.stderr)
             return 1
         try:
             res = send_daemon_request("/api/cli/execute", {"command": cmd_str})
@@ -438,7 +440,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         log_file = open(log_path, "a", encoding="utf-8")
 
         child_args = (
-            [sys.executable, str(Path(__file__).resolve().parent.parent / "host_daemon.py")]
+            [sys.executable, str(Path(__file__).resolve().parent.parent / "host.py")]
             + [a for a in sys.argv[1:] if a not in ("--no-detach", "--foreground", "--detach")]
             + ["--no-detach"]
         )
@@ -480,6 +482,22 @@ def main(argv: Optional[List[str]] = None) -> int:
         speed=args.speed,
         chip=args.chip,
     )
+    atexit.register(runner.stop)
+    atexit.register(remove_lock_file)
+
+    def _sig_handler(signum: int, frame: Any) -> None:
+        try:
+            runner.stop()
+        except Exception:
+            pass
+        remove_lock_file()
+        sys.exit(0)
+
+    try:
+        signal.signal(signal.SIGTERM, _sig_handler)
+        signal.signal(signal.SIGINT, _sig_handler)
+    except Exception:
+        pass
 
     # Start HTTP server first so workstation UI and /api/sync are immediately accessible
     try:
@@ -517,6 +535,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not getattr(args, "no_browser", False):
         def _on_app_close() -> None:
             def _shutdown() -> None:
+                try:
+                    runner.stop()
+                except Exception:
+                    pass
                 try:
                     server.shutdown()
                 except Exception:
