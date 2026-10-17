@@ -735,9 +735,6 @@ where
         self.speed = speed_raw;
         if speed_raw != 0 {
             self.duty_cycle = speed_raw.unsigned_abs().min(100);
-            let mask = phase_mask(self.speed, self.commutation_step);
-            let word = make_pwm_word(mask, self.duty_cycle, PWM_PERIOD_CYCLES - self.duty_cycle);
-            self.sm.tx().push(word);
         } else {
             self.stop()?;
         }

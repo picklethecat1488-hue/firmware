@@ -1497,3 +1497,233 @@ fn test_worm_dirt_ribbonworm_196_tmc6300_pio_program_verification_and_duty_cycle
     );
     assert_eq!(pins, 0b001001, "Pins should remain continuously asserted");
 }
+
+#[test]
+fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
+    run_test!(async {
+        use peripheral::tmc6300::{
+            assemble_tmc6300_pio_program, make_pwm_word, phase_mask, Tmc6300Pio, COMMUTATION_STEPS,
+            PWM_PERIOD_CYCLES,
+        };
+
+        // 1. Setup mock TMC6300 PIO driver
+        let diag = std::sync::atomic::AtomicBool::new(false);
+        let pin_diag = MockPin { is_high: &diag };
+        let mut motor = Tmc6300Pio::new(pin_diag);
+
+        assert_eq!(motor.speed(), 0);
+        assert_eq!(motor.duty_cycle(), 0);
+        assert_eq!(motor.commutation_step(), 0);
+
+        // 2. Set speed to 50%
+        assert!(motor.set_speed(MotorSpeed::new(50).unwrap()).is_ok());
+        assert_eq!(motor.speed(), 50);
+        assert_eq!(motor.duty_cycle(), 50);
+
+        // Advance through 18 commutation ticks (3 full 6-step electrical revolutions)
+        let expected_forward_masks = [
+            0b001001, // Step 0: UH High, VL Low
+            0b100001, // Step 1: UH High, WL Low
+            0b100100, // Step 2: VH High, WL Low
+            0b000110, // Step 3: VH High, UL Low
+            0b010010, // Step 4: WH High, UL Low
+            0b011000, // Step 5: WH High, VL Low
+        ];
+
+        for tick_idx in 1..=18 {
+            assert!(motor.tick().await.is_ok());
+            let expected_step = (tick_idx % COMMUTATION_STEPS) as u8;
+            assert_eq!(
+                motor.commutation_step(),
+                expected_step,
+                "Commutation step did not advance as expected on tick {tick_idx}"
+            );
+            assert_eq!(motor.duty_cycle(), 50);
+
+            let word = motor.last_word();
+            let mask = (word & 0xFF) as u8;
+            let on_count = ((word >> 8) & 0xFF) as u8;
+            let off_count = ((word >> 16) & 0xFF) as u8;
+
+            assert_eq!(on_count, 50);
+            assert_eq!(off_count, 50);
+            assert_eq!(mask, expected_forward_masks[expected_step as usize]);
+            assert_eq!(mask, phase_mask(50, expected_step));
+        }
+
+        // 3. Steady state 100% speed operation across all steps 0..=5
+        assert!(motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert_eq!(motor.speed(), 100);
+        assert_eq!(motor.duty_cycle(), 100);
+
+        for _ in 0..12 {
+            let current_step = motor.commutation_step();
+            let next_step = (current_step + 1) % (COMMUTATION_STEPS as u8);
+            assert!(motor.tick().await.is_ok());
+            assert_eq!(motor.commutation_step(), next_step);
+            assert_eq!(motor.duty_cycle(), 100);
+
+            let word = motor.last_word();
+            let mask = (word & 0xFF) as u8;
+            let on_count = ((word >> 8) & 0xFF) as u8;
+            let off_count = ((word >> 16) & 0xFF) as u8;
+
+            assert_eq!(on_count, 100);
+            assert_eq!(off_count, 0);
+            assert_eq!(mask, expected_forward_masks[next_step as usize]);
+        }
+
+        // 4. Reverse rotation commutation sequence
+        assert!(motor.set_speed(MotorSpeed::new(-75).unwrap()).is_ok());
+        assert_eq!(motor.speed(), -75);
+        assert_eq!(motor.duty_cycle(), 75);
+
+        let expected_reverse_masks = [
+            0b011000, // Step 0: U Float, VL Low, WH High
+            0b010010, // Step 1: UL Low, V Float, WH High
+            0b000110, // Step 2: UL Low, VH High, W Float
+            0b100100, // Step 3: U Float, VH High, WL Low
+            0b100001, // Step 4: UH High, V Float, WL Low
+            0b001001, // Step 5: UH High, VL Low, W Float
+        ];
+
+        for _ in 0..12 {
+            let current_step = motor.commutation_step();
+            let next_step = (current_step + 1) % (COMMUTATION_STEPS as u8);
+            assert!(motor.tick().await.is_ok());
+            assert_eq!(motor.commutation_step(), next_step);
+            assert_eq!(motor.duty_cycle(), 75);
+
+            let word = motor.last_word();
+            let mask = (word & 0xFF) as u8;
+            let on_count = ((word >> 8) & 0xFF) as u8;
+            let off_count = ((word >> 16) & 0xFF) as u8;
+
+            assert_eq!(on_count, 75);
+            assert_eq!(off_count, 25);
+            assert_eq!(mask, expected_reverse_masks[next_step as usize]);
+            assert_eq!(mask, phase_mask(-75, next_step));
+        }
+
+        // 5. Motor stop completely clears duty cycle and de-energizes all FETs
+        assert!(motor.stop().is_ok());
+        assert_eq!(motor.speed(), 0);
+        assert_eq!(motor.duty_cycle(), 0);
+        assert_eq!(motor.commutation_step(), 0);
+        assert_eq!(motor.last_word(), make_pwm_word(0, 0, PWM_PERIOD_CYCLES));
+
+        // 6. PIO program simulation: continuous 25 kHz recycling and dynamic step transition
+        let prg = assemble_tmc6300_pio_program();
+        let mut pc: u8 = 0;
+        let mut x: u32 = 0;
+        let mut y: u32 = 0;
+        let mut osr: u32 = 0;
+        let mut pins: u8 = 0;
+        let mut fifo: std::collections::VecDeque<u32> = std::collections::VecDeque::new();
+
+        // Push initial word for Step 0 with 50% duty cycle
+        fifo.push_back(make_pwm_word(expected_forward_masks[0], 50, 50));
+
+        let mut high_count = 0;
+        let mut low_count = 0;
+
+        // Run 400 PIO cycles (~4 PWM periods) with empty FIFO to verify continuous recycling
+        for cycle in 0..400 {
+            // At cycle 200, push Step 1 with 80% duty cycle to simulate tick arrival
+            if cycle == 200 {
+                fifo.push_back(make_pwm_word(expected_forward_masks[1], 80, 20));
+            }
+
+            let current_pc = pc;
+            match current_pc {
+                0 => {
+                    if let Some(w) = fifo.pop_front() {
+                        osr = w;
+                    } else {
+                        osr = x;
+                    }
+                }
+                1 => {
+                    x = osr;
+                }
+                2 => {
+                    pins = (osr & 0xFF) as u8;
+                    osr >>= 8;
+                }
+                3 => {
+                    y = osr & 0xFF;
+                    osr >>= 8;
+                }
+                4 => {
+                    if y == 0 {
+                        pc = 6;
+                    }
+                }
+                5 => {
+                    if y != 0 {
+                        y -= 1;
+                        pc = 5;
+                    } else {
+                        y = u32::MAX;
+                    }
+                }
+                6 => {
+                    y = osr & 0xFF;
+                    osr >>= 8;
+                }
+                7 => {
+                    if y == 0 {
+                        pc = 0;
+                    }
+                }
+                8 => {
+                    pins = 0;
+                }
+                9 => {
+                    if y != 0 {
+                        y -= 1;
+                        pc = 9;
+                    } else {
+                        y = u32::MAX;
+                    }
+                }
+                _ => panic!("PC reached out-of-bounds address {current_pc}"),
+            }
+
+            if pins != 0 {
+                high_count += 1;
+                if cycle < 200 {
+                    assert_eq!(
+                        pins, expected_forward_masks[0],
+                        "During first 200 cycles, pins should match step 0"
+                    );
+                } else if cycle > 300 {
+                    assert_eq!(
+                        pins, expected_forward_masks[1],
+                        "After transition, pins should match step 1"
+                    );
+                }
+            } else {
+                low_count += 1;
+            }
+
+            if pc == current_pc {
+                if pc == prg.wrap.source {
+                    pc = prg.wrap.target;
+                } else {
+                    pc += 1;
+                }
+            }
+        }
+
+        // Both high and low cycles occurred, confirming continuous PWM switching
+        assert!(
+            high_count > 50,
+            "Continuous PWM high-side pulses were absent"
+        );
+        assert!(
+            low_count > 50,
+            "Continuous PWM low-side de-energizations were absent"
+        );
+    });
+}
