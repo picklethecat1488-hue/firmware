@@ -122,6 +122,24 @@
       border-color: var(--xerxes-amber);
       color: #fff;
     }
+    .btn-copy {
+      background: rgba(0, 240, 255, 0.1);
+      border: 1px solid var(--xerxes-cyan);
+      color: var(--xerxes-cyan);
+      padding: 1px 7px;
+      font-size: 10px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      border-radius: 2px;
+      outline: none;
+    }
+    .btn-copy:hover {
+      background: rgba(0, 240, 255, 0.25);
+      color: #ffffff;
+      box-shadow: 0 0 6px rgba(0, 240, 255, 0.4);
+    }
     .workspace-body {
       flex: 1;
       display: grid;
@@ -495,7 +513,10 @@
     <div class="panel-container log-panel" id="logPanel">
       <div class="panel-header">
         <span>SYSTEM LOGGING MONITOR (defmt / RTT)</span>
-        <span style="font-size: 9px; color: var(--xerxes-text-dim);">AUTO-SCROLL: ON</span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button class="btn btn-copy" id="btnCopyLog" onclick="copyPanelText('logView', this)" title="Copy log output">📋 Copy</button>
+          <span style="font-size: 9px; color: var(--xerxes-text-dim);">AUTO-SCROLL: ON</span>
+        </div>
       </div>
       <div class="panel-content" id="logView">
         <div class="log-line log-line-info">> Host daemon online. Attached to {{ runner.package }}.</div>
@@ -506,7 +527,10 @@
     <div class="panel-container cli-panel" id="cliPanel">
       <div class="panel-header">
         <span id="cliPanelTitle">INTERACTIVE CLI CONSOLE</span>
-        <span style="font-size: 9px; color: var(--xerxes-text-muted);" id="channelBadge">CHANNEL: BOTH</span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button class="btn btn-copy" id="btnCopyWorkstation" onclick="copyActiveWorkstationText(this)" title="Copy workstation output">📋 Copy</button>
+          <span style="font-size: 9px; color: var(--xerxes-text-muted);" id="channelBadge">CHANNEL: BOTH</span>
+        </div>
       </div>
 
       <!-- Optional FS Action Toolbar -->
@@ -591,6 +615,9 @@
     }
 
     function clearOutput() {
+      lastLogCount = 0;
+      lastCliCount = 0;
+      lastFsCount = 0;
       const logView = document.getElementById("logView");
       if (logView) logView.innerHTML = "";
       const cliView = document.getElementById("cliView");
@@ -750,6 +777,65 @@
       return outChunks.join('');
     }
 
+    let lastLogCount = 0;
+    let lastCliCount = 0;
+    let lastFsCount = 0;
+
+    function isSelectionInside(element) {
+      if (!element) return false;
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return false;
+      try {
+        if (element.contains(sel.anchorNode) || element.contains(sel.focusNode)) {
+          return true;
+        }
+        const range = sel.getRangeAt(0);
+        return element.contains(range.commonAncestorContainer);
+      } catch (e) {
+        return false;
+      }
+    }
+
+    async function copyPanelText(elementId, btn) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      const text = el.innerText || el.textContent || "";
+      let copied = false;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        } catch (e) {
+          copied = false;
+        }
+      }
+      if (!copied) {
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          copied = document.execCommand("copy");
+          document.body.removeChild(ta);
+        } catch (e) {
+          console.error("Copy fallback error:", e);
+        }
+      }
+      if (btn) {
+        const orig = btn.innerText;
+        btn.innerText = copied ? "✓ Copied!" : "Error";
+        setTimeout(() => { btn.innerText = orig; }, 1500);
+      }
+    }
+
+    function copyActiveWorkstationText(btn) {
+      const mode = document.getElementById("modeSelect") ? document.getElementById("modeSelect").value : "CLI";
+      const targetId = mode === "FS" ? "fsView" : "cliView";
+      copyPanelText(targetId, btn);
+    }
+
     function appendCliText(text, isInput) {
       const view = document.getElementById("cliView");
       if (!view) return;
@@ -758,6 +844,7 @@
       div.innerHTML = ansiToHtml(text);
       view.appendChild(div);
       view.scrollTop = view.scrollHeight;
+      lastCliCount++;
     }
 
     function appendFsText(text, isInput) {
@@ -768,6 +855,7 @@
       div.innerHTML = ansiToHtml(text);
       view.appendChild(div);
       view.scrollTop = view.scrollHeight;
+      lastFsCount++;
     }
 
     async function pollOutputs() {
@@ -776,15 +864,28 @@
         if (logResp.ok) {
           const logs = await logResp.json();
           const logView = document.getElementById("logView");
-          if (logView) {
-            logView.innerHTML = "";
-            logs.forEach(l => {
-              const d = document.createElement("div");
-              d.className = `log-line log-line-${l.level.toLowerCase()}`;
-              d.innerHTML = ansiToHtml(`[${l.channel}] ${l.message}`);
-              logView.appendChild(d);
-            });
-            logView.scrollTop = logView.scrollHeight;
+          if (logView && !isSelectionInside(logView)) {
+            if (logs.length < lastLogCount || lastLogCount === 0) {
+              logView.innerHTML = "";
+              logs.forEach(l => {
+                const d = document.createElement("div");
+                d.className = `log-line log-line-${l.level.toLowerCase()}`;
+                d.innerHTML = ansiToHtml(`[${l.channel}] ${l.message}`);
+                logView.appendChild(d);
+              });
+              lastLogCount = logs.length;
+              logView.scrollTop = logView.scrollHeight;
+            } else if (logs.length > lastLogCount) {
+              const newLogs = logs.slice(lastLogCount);
+              newLogs.forEach(l => {
+                const d = document.createElement("div");
+                d.className = `log-line log-line-${l.level.toLowerCase()}`;
+                d.innerHTML = ansiToHtml(`[${l.channel}] ${l.message}`);
+                logView.appendChild(d);
+              });
+              lastLogCount = logs.length;
+              logView.scrollTop = logView.scrollHeight;
+            }
           }
         }
 
@@ -792,15 +893,28 @@
         if (cliResp.ok) {
           const lines = await cliResp.json();
           const cliView = document.getElementById("cliView");
-          if (cliView) {
-            cliView.innerHTML = "";
-            lines.forEach(line => {
-              const d = document.createElement("div");
-              d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
-              d.innerHTML = ansiToHtml(line.text);
-              cliView.appendChild(d);
-            });
-            cliView.scrollTop = cliView.scrollHeight;
+          if (cliView && !isSelectionInside(cliView)) {
+            if (lines.length < lastCliCount || lastCliCount === 0) {
+              cliView.innerHTML = "";
+              lines.forEach(line => {
+                const d = document.createElement("div");
+                d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+                d.innerHTML = ansiToHtml(line.text);
+                cliView.appendChild(d);
+              });
+              lastCliCount = lines.length;
+              cliView.scrollTop = cliView.scrollHeight;
+            } else if (lines.length > lastCliCount) {
+              const newLines = lines.slice(lastCliCount);
+              newLines.forEach(line => {
+                const d = document.createElement("div");
+                d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+                d.innerHTML = ansiToHtml(line.text);
+                cliView.appendChild(d);
+              });
+              lastCliCount = lines.length;
+              cliView.scrollTop = cliView.scrollHeight;
+            }
           }
         }
 
@@ -808,15 +922,28 @@
         if (fsResp.ok) {
           const lines = await fsResp.json();
           const fsView = document.getElementById("fsView");
-          if (fsView) {
-            fsView.innerHTML = "";
-            lines.forEach(line => {
-              const d = document.createElement("div");
-              d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
-              d.innerHTML = ansiToHtml(line.text);
-              fsView.appendChild(d);
-            });
-            fsView.scrollTop = fsView.scrollHeight;
+          if (fsView && !isSelectionInside(fsView)) {
+            if (lines.length < lastFsCount || lastFsCount === 0) {
+              fsView.innerHTML = "";
+              lines.forEach(line => {
+                const d = document.createElement("div");
+                d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+                d.innerHTML = ansiToHtml(line.text);
+                fsView.appendChild(d);
+              });
+              lastFsCount = lines.length;
+              fsView.scrollTop = fsView.scrollHeight;
+            } else if (lines.length > lastFsCount) {
+              const newLines = lines.slice(lastFsCount);
+              newLines.forEach(line => {
+                const d = document.createElement("div");
+                d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+                d.innerHTML = ansiToHtml(line.text);
+                fsView.appendChild(d);
+              });
+              lastFsCount = lines.length;
+              fsView.scrollTop = fsView.scrollHeight;
+            }
           }
         }
       } catch (e) {
