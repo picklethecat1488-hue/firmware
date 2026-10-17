@@ -11,6 +11,13 @@ pub static {{ ch.name.to_uppercase() }}_CHANNEL: {{ ch.channel_type }}<MutexRaw,
 {% endif -%}
 {% endfor %}
 
+{% for ctrl in controllers %}
+{% if ctrl.name == "Motor" && ctrl.max_current_ma.is_some() %}
+/// Configured maximum motor current limit in mA from app.toml.
+pub const MOTOR_MAX_CURRENT_MA: i32 = {{ ctrl.max_current_ma.unwrap() }};
+{% endif %}
+{% endfor %}
+
 /// Spawns Core 0 controllers configured in app.toml.
 #[allow(clippy::crate_in_macro_def, clippy::empty_line_after_doc_comments)]
 #[macro_export]
