@@ -77,6 +77,8 @@ pub struct ResolvedController {
     pub device_shell_name: Option<String>,
     /// Pointer expression for the raw hardware device.
     pub device_ptr: Option<String>,
+    /// Optional maximum motor current limit in mA.
+    pub max_current_ma: Option<i32>,
 }
 
 /// Rinja template context for generating `generated_app.rs`.
@@ -224,6 +226,7 @@ pub fn generate_app_topology(app_toml_content: &str, app_name: &str) -> String {
             device_shell_type: ctrl.device_shell_type.clone(),
             device_shell_name: ctrl.device_shell_name.clone(),
             device_ptr: ctrl.device_ptr.clone(),
+            max_current_ma: ctrl.max_current_ma,
         });
     }
 

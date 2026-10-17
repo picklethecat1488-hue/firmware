@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Xerxes Host Daemon // {{ runner.package }}:{{ runner.bin_name }}</title>
+  <meta name="theme-color" content="#0a1c24">
+  <meta name="color-scheme" content="dark">
+  <style>
+    :root {
+      --xerxes-bg: #04090c;
+      --xerxes-panel: #08161d;
+      --xerxes-panel-hover: #0e242f;
+      --xerxes-header-bg: #0a1c24;
+      --xerxes-border-light: #00f0ff;
+      --xerxes-border-mid: #0b5966;
+      --xerxes-border-dark: #021217;
+      --xerxes-cyan: #00f0ff;
+      --xerxes-cyan-dim: #00a4b3;
+      --xerxes-teal: #14d9c4;
+      --xerxes-mint: #00ffb4;
+      --xerxes-amber: #ffb000;
+      --xerxes-red: #ff2a4b;
+      --xerxes-green: #00ffb4;
+      --xerxes-text-light: #e6f9ff;
+      --xerxes-text-muted: #7aa5b0;
+      --xerxes-text-dim: #3a626c;
+      --font-mono: "Share Tech Mono", ui-monospace, "SF Mono", "Courier New", monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--xerxes-bg);
+      background-image:
+        repeating-linear-gradient(0deg, rgba(0,0,0,0.38) 0px, rgba(0,0,0,0.38) 2px, transparent 2px, transparent 4px),
+        radial-gradient(ellipse at 50% 0%, #0a2f3a 0%, #03080b 100%);
+      color: var(--xerxes-text-light);
+      font-family: var(--font-mono);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    header {
+      background: var(--xerxes-header-bg);
+      border-bottom: 2px solid var(--xerxes-border-mid);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .header-title {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: var(--xerxes-cyan);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 2px;
+      background: rgba(0, 240, 255, 0.15);
+      border: 1px solid var(--xerxes-cyan-dim);
+      color: var(--xerxes-cyan);
+    }
+    .badge-green {
+      background: rgba(0, 255, 180, 0.15);
+      border-color: var(--xerxes-green);
+      color: var(--xerxes-green);
+    }
+    .badge-amber {
+      background: rgba(255, 176, 0, 0.15);
+      border-color: var(--xerxes-amber);
+      color: var(--xerxes-amber);
+    }
+    .select-dropdown {
+      background: var(--xerxes-panel);
+      border: 1px solid var(--xerxes-border-light);
+      color: var(--xerxes-cyan);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: bold;
+      padding: 4px 8px;
+      border-radius: 2px;
+      cursor: pointer;
+      outline: none;
+    }
+    .btn {
+      background: var(--xerxes-panel);
+      border: 1px solid var(--xerxes-border-mid);
+      color: var(--xerxes-text-light);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: bold;
+      padding: 4px 10px;
+      border-radius: 2px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .btn:hover {
+      background: var(--xerxes-panel-hover);
+      border-color: var(--xerxes-cyan);
+      color: var(--xerxes-cyan);
+    }
+    .btn-cyan {
+      background: rgba(0, 240, 255, 0.2);
+      border-color: var(--xerxes-cyan);
+      color: var(--xerxes-cyan);
+    }
+    .workspace-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 8px;
+      overflow: hidden;
+    }
+    .panel-container {
+      background: var(--xerxes-panel);
+      border: 1px solid var(--xerxes-border-mid);
+      box-shadow: inset 1px 1px 0px rgba(0, 240, 255, 0.25), inset -1px -1px 0px var(--xerxes-border-dark);
+      border-radius: 3px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-header {
+      background: rgba(10, 28, 36, 0.85);
+      border-bottom: 1px solid var(--xerxes-border-mid);
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: bold;
+      color: var(--xerxes-cyan);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .panel-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-line {
+      margin-bottom: 2px;
+    }
+    .log-line-error { color: var(--xerxes-red); }
+    .log-line-warn { color: var(--xerxes-amber); }
+    .log-line-info { color: var(--xerxes-text-light); }
+    .log-line-target { color: var(--xerxes-mint); }
+    .cli-line-input { color: var(--xerxes-cyan); font-weight: bold; }
+    .cli-line-output { color: var(--xerxes-text-light); }
+    .fs-toolbar {
+      padding: 4px 8px;
+      border-bottom: 1px solid var(--xerxes-border-dark);
+      display: flex;
+      gap: 6px;
+      background: rgba(0, 240, 255, 0.05);
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    footer.cli-input-bar {
+      background: var(--xerxes-header-bg);
+      border-top: 2px solid var(--xerxes-border-mid);
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      position: relative;
+    }
+    .prompt-label {
+      color: var(--xerxes-cyan);
+      font-weight: bold;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .cmd-input {
+      flex: 1;
+      background: var(--xerxes-bg);
+      border: 1px solid var(--xerxes-border-mid);
+      color: var(--xerxes-text-light);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      padding: 6px 10px;
+      outline: none;
+      border-radius: 2px;
+    }
+    .cmd-input:focus {
+      border-color: var(--xerxes-cyan);
+      box-shadow: 0 0 6px rgba(0, 240, 255, 0.4);
+    }
+
+    /* CLI Fuzzy History Search (Ctrl-R) */
+    .cli-fuzzy-history {
+      position: absolute;
+      bottom: 48px;
+      left: 0;
+      right: 0;
+      max-height: 220px;
+      background: var(--xerxes-panel, #08161d);
+      border: 2px solid var(--xerxes-cyan, #00f0ff);
+      box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.9), 0 0 10px rgba(0, 240, 255, 0.2);
+      z-index: 2500;
+      display: flex;
+      flex-direction: column;
+    }
+    .fuzzy-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: rgba(10, 28, 36, 0.95);
+      border-bottom: 1px solid var(--xerxes-border-mid, #0b5966);
+    }
+    .fuzzy-prompt {
+      color: var(--xerxes-amber, #ffb000);
+      font-weight: bold;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .fuzzy-search-input {
+      flex: 1;
+      background: var(--xerxes-bg, #04090c);
+      border: 1px solid var(--xerxes-border-mid, #0b5966);
+      color: var(--xerxes-text-light, #e6f9ff);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 4px 8px;
+      outline: none;
+    }
+    .fuzzy-results-list {
+      overflow-y: auto;
+      max-height: 170px;
+    }
+    .fuzzy-item {
+      padding: 5px 12px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(11, 89, 102, 0.3);
+      color: var(--xerxes-text-light, #e6f9ff);
+    }
+    .fuzzy-item:hover, .fuzzy-item.active {
+      background: rgba(0, 240, 255, 0.2);
+      color: var(--xerxes-cyan, #00f0ff);
+      font-weight: bold;
+    }
+
+    /* Terminal Formatting & Coloration (VS Code Terminal Aesthetic) */
+    .term-bold { font-weight: bold; }
+    .term-dim { opacity: 0.7; }
+    .term-italic { font-style: italic; }
+    .term-underline { text-decoration: underline; }
+    .term-fg-black { color: #5c6370; }
+    .term-fg-red { color: #e06c75; }
+    .term-fg-green { color: #98c379; }
+    .term-fg-yellow { color: #e5c07b; }
+    .term-fg-blue { color: #61afef; }
+    .term-fg-magenta { color: #c678dd; }
+    .term-fg-cyan { color: #56b6c2; }
+    .term-fg-white { color: #dcdfe4; }
+    .term-fg-bright-black { color: #7f848e; }
+    .term-fg-bright-red { color: #ff6b68; }
+    .term-fg-bright-green { color: #a8cc8c; }
+    .term-fg-bright-yellow { color: #e5c07b; }
+    .term-fg-bright-blue { color: #73b8ff; }
+    .term-fg-bright-magenta { color: #d68ff0; }
+    .term-fg-bright-cyan { color: #00f0ff; }
+    .term-fg-bright-white { color: #ffffff; }
+    .term-bg-black { background-color: #282c34; }
+    .term-bg-red { background-color: #e06c75; }
+    .term-bg-green { background-color: #98c379; }
+    .term-bg-yellow { background-color: #e5c07b; }
+    .term-bg-blue { background-color: #61afef; }
+    .term-bg-magenta { background-color: #c678dd; }
+    .term-bg-cyan { background-color: #56b6c2; }
+    .term-bg-white { background-color: #dcdfe4; }
+    .term-link {
+      color: var(--xerxes-cyan, #00f0ff);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .term-link:hover {
+      color: #ffffff;
+      text-shadow: 0 0 6px var(--xerxes-cyan, #00f0ff);
+    }
+
+    /* Modal Flashing Status Window & Progress Bar */
+    .sync-modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(4, 9, 12, 0.85);
+      backdrop-filter: blur(4px);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .sync-modal-box {
+      width: 500px;
+      max-width: 90vw;
+      background: var(--xerxes-panel, #08161d);
+      border: 2px solid var(--xerxes-cyan, #00f0ff);
+      box-shadow: 0 0 30px rgba(0, 240, 255, 0.3), inset 0 0 15px rgba(0, 240, 255, 0.1);
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      gap: 12px;
+      border-radius: 4px;
+    }
+    .sync-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--xerxes-border-mid, #0b5966);
+      padding-bottom: 8px;
+    }
+    .sync-modal-title {
+      font-size: 13px;
+      font-weight: bold;
+      color: var(--xerxes-cyan, #00f0ff);
+      letter-spacing: 1px;
+    }
+    .sync-modal-info {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      background: rgba(0, 240, 255, 0.05);
+      padding: 10px;
+      border: 1px solid var(--xerxes-border-dark, #073840);
+      font-size: 11px;
+    }
+    .sync-info-row {
+      display: flex;
+      justify-content: space-between;
+      color: var(--xerxes-text-muted, #729ba6);
+    }
+    .sync-info-row strong {
+      color: var(--xerxes-text-light, #e6f9ff);
+    }
+    .sync-status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 4px 0;
+    }
+    .sync-status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--xerxes-amber, #ffb000);
+      display: inline-block;
+    }
+    .sync-status-dot.pulse {
+      animation: xerxesPulse 1.2s infinite ease-in-out;
+    }
+    .sync-status-dot.success {
+      background: var(--xerxes-mint, #00ff88);
+      animation: none;
+    }
+    .sync-status-dot.error {
+      background: var(--xerxes-red, #ff3366);
+      animation: none;
+    }
+    @keyframes xerxesPulse {
+      0% { transform: scale(0.9); opacity: 0.5; box-shadow: 0 0 2px var(--xerxes-cyan); }
+      50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 10px var(--xerxes-cyan); }
+      100% { transform: scale(0.9); opacity: 0.5; box-shadow: 0 0 2px var(--xerxes-cyan); }
+    }
+    .sync-progress-msg {
+      font-size: 12px;
+      color: var(--xerxes-text-light, #e6f9ff);
+      font-family: var(--font-mono);
+      flex: 1;
+    }
+    .sync-progress-container {
+      width: 100%;
+      height: 14px;
+      background: var(--xerxes-bg, #04090c);
+      border: 1px solid var(--xerxes-border-mid, #0b5966);
+      border-radius: 2px;
+      overflow: hidden;
+      position: relative;
+    }
+    .sync-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--xerxes-cyan-dim, #00a4b3), var(--xerxes-cyan, #00f0ff));
+      transition: width 0.3s ease;
+      box-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+    }
+    .sync-modal-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 6px;
+      border-top: 1px solid var(--xerxes-border-dark, #073840);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-title">
+      <span>⚡ SYSTEM SHOCK 2 // XERXES HOST DAEMON</span>
+      <span class="badge" id="targetBadge">{{ runner.target }}</span>
+      <span class="badge" id="binBadge">{{ runner.bin_name }}</span>
+      <span class="badge badge-green" id="statusBadge">ONLINE</span>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <button class="btn btn-cyan" id="btnSync" onclick="triggerSync()">⚡ Sync</button>
+      <label for="modeSelect" style="font-size: 11px; color: var(--xerxes-text-muted);">ACTIVE MODE:</label>
+      <select id="modeSelect" class="select-dropdown" onchange="changeMode(this.value)">
+        <option value="CLI" {% if runner.active_mode == 'CLI' %}selected{% endif %}>CLI (RTT Console)</option>
+        <option value="FS" {% if runner.active_mode == 'FS' %}selected{% endif %}>FS (Filesystem)</option>
+      </select>
+      <button class="btn" onclick="clearOutput()">Clear</button>
+    </div>
+  </header>
+
+  <!-- Target Flashing & Synchronization Modal (Xerxes Theme) -->
+  <div id="syncModal" class="sync-modal-backdrop" style="display:none;">
+    <div class="sync-modal-box">
+      <div class="sync-modal-header">
+        <span class="sync-modal-title">⚡ TARGET SYNC & FLASH MATRIX</span>
+        <button class="btn" style="padding: 2px 6px; font-size: 10px;" onclick="closeSyncModal()">✕</button>
+      </div>
+      <div class="sync-modal-info">
+        <div class="sync-info-row"><span>Target:</span><strong>{{ runner.target }}</strong></div>
+        <div class="sync-info-row"><span>Package:</span><strong>{{ runner.package }} ({{ runner.bin_name }})</strong></div>
+        <div class="sync-info-row"><span>Profile:</span><strong>{{ 'release' if runner.release else 'debug' }}</strong></div>
+        <div class="sync-info-row"><span>Speed:</span><strong>{{ runner.speed }} kHz</strong></div>
+      </div>
+      <div class="sync-status-indicator">
+        <span class="sync-status-dot pulse" id="syncStatusDot"></span>
+        <span id="syncProgressMsg" class="sync-progress-msg">Synchronizing target firmware...</span>
+      </div>
+      <div class="sync-progress-container">
+        <div class="sync-progress-bar" id="syncProgressBar" style="width: 0%;"></div>
+      </div>
+      <div class="sync-modal-footer">
+        <span id="syncProgressPct" style="font-size: 11px; color: var(--xerxes-cyan);">0%</span>
+        <button class="btn" id="btnSyncDismiss" onclick="closeSyncModal()">Dismiss</button>
+      </div>
+    </div>
+  </div>
+
+  <main class="workspace-body">
+    <!-- Left Panel: System / Target Logging -->
+    <div class="panel-container log-panel" id="logPanel">
+      <div class="panel-header">
+        <span>SYSTEM LOGGING MONITOR (defmt / RTT)</span>
+        <span style="font-size: 9px; color: var(--xerxes-text-dim);">AUTO-SCROLL: ON</span>
+      </div>
+      <div class="panel-content" id="logView">
+        <div class="log-line log-line-info">> Host daemon online. Attached to {{ runner.package }}.</div>
+      </div>
+    </div>
+
+    <!-- Right Panel: Interactive CLI & FS View -->
+    <div class="panel-container cli-panel" id="cliPanel">
+      <div class="panel-header">
+        <span id="cliPanelTitle">INTERACTIVE CLI CONSOLE</span>
+        <span style="font-size: 9px; color: var(--xerxes-text-muted);" id="channelBadge">CHANNEL: BOTH</span>
+      </div>
+
+      <!-- Optional FS Action Toolbar -->
+      <div id="fsToolbar" class="fs-toolbar" style="display: {% if runner.active_mode == 'FS' %}flex{% else %}none{% endif %};">
+        <span style="font-size: 10px; color: var(--xerxes-text-muted); margin-right: 4px;">Quick Actions:</span>
+        <button class="btn btn-cyan" onclick="runFsQuick('ls')">ls</button>
+        <button class="btn" onclick="runFsQuick('crash-log')">crash-log</button>
+        <button class="btn" onclick="runFsQuick('cat metadata')">cat metadata</button>
+        <button class="btn" onclick="runFsQuick('export-telemetry')">export-telemetry</button>
+        <button class="btn" onclick="runFsQuick('format')">format</button>
+      </div>
+
+      <div class="panel-content" id="cliView">
+        <div class="log-line log-line-info">> Interactive CLI workstation ready. Type commands below.</div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="cli-input-bar">
+    <div id="cliFuzzyHistory" class="cli-fuzzy-history" style="display:none;">
+      <div class="fuzzy-header">
+        <span class="fuzzy-prompt">(reverse-i-search)`':</span>
+        <input type="text" id="fuzzySearchInput" class="fuzzy-search-input" placeholder="Search command history..." autocomplete="off">
+        <button class="btn" style="padding: 1px 6px; font-size: 10px;" onclick="closeCliFuzzyHistory()">✕</button>
+      </div>
+      <div id="fuzzyResultsList" class="fuzzy-results-list"></div>
+    </div>
+    <span class="prompt-label" id="promptLabel">{% if runner.active_mode == 'FS' %}fs> {% else %}shell> {% endif %}</span>
+    <input type="text" id="cmdInput" class="cmd-input" placeholder="Type command and press ENTER (e.g. 'motor speed 100', 'gpio status', 'ls')..." autofocus autocomplete="off">
+    <button class="btn btn-cyan" onclick="submitCommand()">Send [↵]</button>
+  </footer>
+
+  <script>
+    let currentMode = "{{ runner.active_mode }}";
+    let cmdHistory = [];
+    let historyIdx = -1;
+
+    async function changeMode(newMode) {
+      currentMode = newMode;
+      document.getElementById("promptLabel").innerText = currentMode === "FS" ? "fs> " : "shell> ";
+      document.getElementById("cliPanelTitle").innerText = currentMode === "FS" ? "FILESYSTEM COMMAND WORKSTATION (host_fs)" : "INTERACTIVE CLI CONSOLE (host_cli)";
+      document.getElementById("fsToolbar").style.display = currentMode === "FS" ? "flex" : "none";
+
+      try {
+        await fetch("/api/mode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: newMode })
+        });
+      } catch (e) {
+        console.error("Failed to update mode:", e);
+      }
+    }
+
+    function runFsQuick(action) {
+      document.getElementById("cmdInput").value = action;
+      submitCommand();
+    }
+
+    function clearOutput() {
+      document.getElementById("logView").innerHTML = "";
+      document.getElementById("cliView").innerHTML = "";
+    }
+
+    async function submitCommand() {
+      const input = document.getElementById("cmdInput");
+      const cmd = input.value.trim();
+      if (!cmd) return;
+
+      cmdHistory.push(cmd);
+      historyIdx = cmdHistory.length;
+      input.value = "";
+
+      const endpoint = currentMode === "FS" ? "/api/fs/execute" : "/api/cli/execute";
+      try {
+        const resp = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command: cmd })
+        });
+        const data = await resp.json();
+        pollOutputs();
+      } catch (e) {
+        appendCliText(`[ERROR] Command failed: ${e}`, false);
+      }
+    }
+
+    const ANSI_FG_MAP = {
+      30: 'term-fg-black', 31: 'term-fg-red', 32: 'term-fg-green', 33: 'term-fg-yellow',
+      34: 'term-fg-blue', 35: 'term-fg-magenta', 36: 'term-fg-cyan', 37: 'term-fg-white',
+      90: 'term-fg-bright-black', 91: 'term-fg-bright-red', 92: 'term-fg-bright-green', 93: 'term-fg-bright-yellow',
+      94: 'term-fg-bright-blue', 95: 'term-fg-bright-magenta', 96: 'term-fg-bright-cyan', 97: 'term-fg-bright-white'
+    };
+    const ANSI_BG_MAP = {
+      40: 'term-bg-black', 41: 'term-bg-red', 42: 'term-bg-green', 43: 'term-bg-yellow',
+      44: 'term-bg-blue', 45: 'term-bg-magenta', 46: 'term-bg-cyan', 47: 'term-bg-white',
+      100: 'term-bg-bright-black', 101: 'term-bg-bright-red', 102: 'term-bg-bright-green', 103: 'term-bg-bright-yellow',
+      104: 'term-bg-bright-blue', 105: 'term-bg-bright-magenta', 106: 'term-bg-bright-cyan', 107: 'term-bg-bright-white'
+    };
+
+    function escapeHtmlText(str) {
+      if (!str) return "";
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function formatTerminalLinks(escapedText) {
+      const urlRe = /(https?:\/\/[^\s<>"'\)]+)/g;
+      let res = escapedText.replace(urlRe, (url) => {
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="term-link">${url}</a>`;
+      });
+
+      const filePathRe = /(?<![a-zA-Z0-9_\-\.\/])((?:\/(?:Users|home|root|[a-zA-Z0-9_\-\.]+)\/[a-zA-Z0-9_\-\.\/]+)|(?:(?:src|tools|board|platform|controller|peripheral|tests|docs|attachments|feedback|target)\/[a-zA-Z0-9_\-\.\/]+))/g;
+      const tokens = res.split(/(<[^>]+>)/);
+      for (let i = 0; i < tokens.length; i++) {
+        if (!tokens[i].startsWith('<')) {
+          tokens[i] = tokens[i].replace(filePathRe, (m, path) => {
+            let trailing = "";
+            let p = path;
+            while (p && ".,;:?)'\"]".includes(p[p.length - 1])) {
+              trailing = p[p.length - 1] + trailing;
+              p = p.slice(0, -1);
+            }
+            if (!p) return m;
+            const fullPath = p.startsWith('/') ? p : `/${p}`;
+            const vscodeUrl = `vscode://file${fullPath}`;
+            return `<a href="${vscodeUrl}" class="term-link term-file-link" data-path="${p}">${p}</a>${trailing}`;
+          });
+        }
+      }
+      return tokens.join('');
+    }
+
+    function ansiToHtml(rawText) {
+      if (!rawText) return "";
+      const ansiEscapeRe = /\x1b\[([0-9;]*)m/g;
+      const otherAnsiRe = /\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
+
+      let parts = rawText.split(ansiEscapeRe);
+      let outChunks = [];
+      let classes = [];
+      let fgClass = null;
+      let bgClass = null;
+
+      for (let i = 0; i < parts.length; i += 2) {
+        let chunk = parts[i].replace(otherAnsiRe, "");
+        if (chunk) {
+          let escaped = escapeHtmlText(chunk);
+          let linked = formatTerminalLinks(escaped);
+          let allCls = [...classes];
+          if (fgClass) allCls.push(fgClass);
+          if (bgClass) allCls.push(bgClass);
+
+          if (allCls.length > 0) {
+            outChunks.push(`<span class="${allCls.join(' ')}">${linked}</span>`);
+          } else {
+            outChunks.push(linked);
+          }
+        }
+
+        if (i + 1 < parts.length) {
+          let codeStr = parts[i + 1];
+          if (!codeStr || codeStr === '0') {
+            classes = [];
+            fgClass = null;
+            bgClass = null;
+          } else {
+            let codes = codeStr.split(';').map(c => parseInt(c, 10)).filter(c => !isNaN(c));
+            codes.forEach(code => {
+              if (code === 0) {
+                classes = [];
+                fgClass = null;
+                bgClass = null;
+              } else if (code === 1) {
+                if (!classes.includes('term-bold')) classes.push('term-bold');
+              } else if (code === 2) {
+                if (!classes.includes('term-dim')) classes.push('term-dim');
+              } else if (code === 3) {
+                if (!classes.includes('term-italic')) classes.push('term-italic');
+              } else if (code === 4) {
+                if (!classes.includes('term-underline')) classes.push('term-underline');
+              } else if (code === 21 || code === 22) {
+                classes = classes.filter(c => c !== 'term-bold' && c !== 'term-dim');
+              } else if (code === 23) {
+                classes = classes.filter(c => c !== 'term-italic');
+              } else if (code === 24) {
+                classes = classes.filter(c => c !== 'term-underline');
+              } else if (ANSI_FG_MAP[code]) {
+                fgClass = ANSI_FG_MAP[code];
+              } else if (code === 39) {
+                fgClass = null;
+              } else if (ANSI_BG_MAP[code]) {
+                bgClass = ANSI_BG_MAP[code];
+              } else if (code === 49) {
+                bgClass = null;
+              }
+            });
+          }
+        }
+      }
+      return outChunks.join('');
+    }
+
+    function appendCliText(text, isInput) {
+      const view = document.getElementById("cliView");
+      const div = document.createElement("div");
+      div.className = isInput ? "log-line cli-line-input" : "log-line cli-line-output";
+      div.innerHTML = ansiToHtml(text);
+      view.appendChild(div);
+      view.scrollTop = view.scrollHeight;
+    }
+
+    async function pollOutputs() {
+      try {
+        const logResp = await fetch("/api/logs");
+        if (logResp.ok) {
+          const logs = await logResp.json();
+          const logView = document.getElementById("logView");
+          logView.innerHTML = "";
+          logs.forEach(l => {
+            const d = document.createElement("div");
+            d.className = `log-line log-line-${l.level.toLowerCase()}`;
+            d.innerHTML = ansiToHtml(`[${l.channel}] ${l.message}`);
+            logView.appendChild(d);
+          });
+          logView.scrollTop = logView.scrollHeight;
+        }
+
+        const cliResp = await fetch("/api/cli/output");
+        if (cliResp.ok) {
+          const lines = await cliResp.json();
+          const cliView = document.getElementById("cliView");
+          cliView.innerHTML = "";
+          lines.forEach(line => {
+            const d = document.createElement("div");
+            d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+            d.innerHTML = ansiToHtml(line.text);
+            cliView.appendChild(d);
+          });
+          cliView.scrollTop = cliView.scrollHeight;
+        }
+      } catch (e) {
+        // Background polling errors silent
+      }
+    }
+
+    function fuzzyMatch(pattern, text) {
+      if (!pattern) return true;
+      let pIdx = 0;
+      let tIdx = 0;
+      const p = pattern.toLowerCase();
+      const t = text.toLowerCase();
+      while (pIdx < p.length && tIdx < t.length) {
+        if (p[pIdx] === t[tIdx]) {
+          pIdx++;
+        }
+        tIdx++;
+      }
+      return pIdx === p.length;
+    }
+
+    let fuzzySelectedIndex = 0;
+    let currentFuzzyMatches = [];
+
+    function openCliFuzzyHistory() {
+      const container = document.getElementById("cliFuzzyHistory");
+      const searchInput = document.getElementById("fuzzySearchInput");
+      if (!container || !searchInput) return;
+
+      container.style.display = "flex";
+      searchInput.value = "";
+      fuzzySelectedIndex = 0;
+      updateFuzzyResults("");
+      searchInput.focus();
+    }
+
+    function closeCliFuzzyHistory() {
+      const container = document.getElementById("cliFuzzyHistory");
+      if (container) {
+        container.style.display = "none";
+      }
+      const cmdInput = document.getElementById("cmdInput");
+      if (cmdInput) {
+        cmdInput.focus();
+      }
+    }
+
+    function updateFuzzyResults(query) {
+      const list = document.getElementById("fuzzyResultsList");
+      if (!list) return;
+
+      const historyReversed = [];
+      const seen = new Set();
+      for (let i = cmdHistory.length - 1; i >= 0; i--) {
+        const item = cmdHistory[i];
+        if (item && !seen.has(item)) {
+          seen.add(item);
+          historyReversed.push(item);
+        }
+      }
+
+      currentFuzzyMatches = historyReversed.filter(cmd => fuzzyMatch(query, cmd));
+      if (fuzzySelectedIndex >= currentFuzzyMatches.length) {
+        fuzzySelectedIndex = Math.max(0, currentFuzzyMatches.length - 1);
+      }
+
+      list.innerHTML = "";
+      if (currentFuzzyMatches.length === 0) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "fuzzy-item";
+        emptyDiv.style.color = "var(--xerxes-text-dim, #567)";
+        emptyDiv.innerText = "No matching commands";
+        list.appendChild(emptyDiv);
+        return;
+      }
+
+      currentFuzzyMatches.forEach((cmd, idx) => {
+        const itemDiv = document.createElement("div");
+        itemDiv.className = `fuzzy-item ${idx === fuzzySelectedIndex ? 'active' : ''}`;
+        itemDiv.innerText = cmd;
+        itemDiv.addEventListener("click", () => {
+          selectFuzzyCommand(cmd);
+        });
+        list.appendChild(itemDiv);
+      });
+
+      const activeEl = list.children[fuzzySelectedIndex];
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: "nearest" });
+      }
+    }
+
+    function selectFuzzyCommand(cmd) {
+      const input = document.getElementById("cmdInput");
+      if (input) {
+        input.value = cmd;
+      }
+      closeCliFuzzyHistory();
+    }
+
+    function setupCliFuzzyHistory() {
+      const searchInput = document.getElementById("fuzzySearchInput");
+      if (!searchInput) return;
+
+      searchInput.addEventListener("input", (e) => {
+        fuzzySelectedIndex = 0;
+        updateFuzzyResults(e.target.value);
+      });
+
+      searchInput.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0) {
+            fuzzySelectedIndex = (fuzzySelectedIndex + 1) % currentFuzzyMatches.length;
+            updateFuzzyResults(searchInput.value);
+          }
+          return;
+        }
+
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeCliFuzzyHistory();
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0 && currentFuzzyMatches[fuzzySelectedIndex]) {
+            selectFuzzyCommand(currentFuzzyMatches[fuzzySelectedIndex]);
+          } else {
+            closeCliFuzzyHistory();
+          }
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0) {
+            fuzzySelectedIndex = (fuzzySelectedIndex - 1 + currentFuzzyMatches.length) % currentFuzzyMatches.length;
+            updateFuzzyResults(searchInput.value);
+          }
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0) {
+            fuzzySelectedIndex = (fuzzySelectedIndex + 1) % currentFuzzyMatches.length;
+            updateFuzzyResults(searchInput.value);
+          }
+        }
+      });
+    }
+
+    document.getElementById("cmdInput").addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+        e.preventDefault();
+        openCliFuzzyHistory();
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        submitCommand();
+      } else if (e.key === "ArrowUp") {
+        if (historyIdx > 0) {
+          historyIdx--;
+          document.getElementById("cmdInput").value = cmdHistory[historyIdx];
+        }
+      } else if (e.key === "ArrowDown") {
+        if (historyIdx < cmdHistory.length - 1) {
+          historyIdx++;
+          document.getElementById("cmdInput").value = cmdHistory[historyIdx];
+        } else {
+          historyIdx = cmdHistory.length;
+          document.getElementById("cmdInput").value = "";
+        }
+      }
+    });
+
+    window.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+        if (e.target.id !== "fuzzySearchInput") {
+          e.preventDefault();
+          openCliFuzzyHistory();
+        }
+      }
+    });
+
+    let syncPollTimer = null;
+
+    function openSyncModal() {
+      const modal = document.getElementById("syncModal");
+      if (modal) modal.style.display = "flex";
+    }
+
+    function closeSyncModal() {
+      const modal = document.getElementById("syncModal");
+      if (modal) modal.style.display = "none";
+    }
+
+    async function triggerSync() {
+      openSyncModal();
+      const dot = document.getElementById("syncStatusDot");
+      const msg = document.getElementById("syncProgressMsg");
+      const bar = document.getElementById("syncProgressBar");
+      const pct = document.getElementById("syncProgressPct");
+
+      if (dot) {
+        dot.className = "sync-status-dot pulse";
+      }
+      if (msg) msg.innerText = "Triggering target synchronization...";
+      if (bar) bar.style.width = "5%";
+      if (pct) pct.innerText = "5%";
+
+      try {
+        const resp = await fetch("/api/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
+        });
+        if (resp.ok) {
+          startSyncPolling();
+        } else {
+          if (dot) dot.className = "sync-status-dot error";
+          if (msg) msg.innerText = "Failed to trigger sync.";
+        }
+      } catch (e) {
+        if (dot) dot.className = "sync-status-dot error";
+        if (msg) msg.innerText = `Sync error: ${e}`;
+      }
+    }
+
+    function startSyncPolling() {
+      if (syncPollTimer) clearInterval(syncPollTimer);
+      syncPollTimer = setInterval(pollSyncStatus, 500);
+      pollSyncStatus();
+    }
+
+    async function pollSyncStatus() {
+      try {
+        const resp = await fetch("/api/sync/status");
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        const dot = document.getElementById("syncStatusDot");
+        const msg = document.getElementById("syncProgressMsg");
+        const bar = document.getElementById("syncProgressBar");
+        const pct = document.getElementById("syncProgressPct");
+
+        if (bar) bar.style.width = `${data.progress || 0}%`;
+        if (pct) pct.innerText = `${data.progress || 0}%`;
+        if (msg) msg.innerText = data.message || "Synchronizing...";
+
+        if (data.step === "complete") {
+          if (dot) dot.className = "sync-status-dot success";
+          if (syncPollTimer) {
+            clearInterval(syncPollTimer);
+            syncPollTimer = null;
+          }
+          pollOutputs();
+        } else if (data.step === "failed") {
+          if (dot) dot.className = "sync-status-dot error";
+          if (syncPollTimer) {
+            clearInterval(syncPollTimer);
+            syncPollTimer = null;
+          }
+        } else {
+          if (dot) dot.className = "sync-status-dot pulse";
+        }
+      } catch (e) {
+        // Polling error
+      }
+    }
+
+    setupCliFuzzyHistory();
+    setInterval(pollOutputs, 1000);
+    pollOutputs();
+
+    // Check if initial synchronization is in progress on page load
+    fetch("/api/sync/status").then(r => r.json()).then(data => {
+      if (data && (data.active || (data.progress > 0 && data.progress < 100))) {
+        openSyncModal();
+        startSyncPolling();
+      }
+    }).catch(() => {});
+  </script>
+</body>
+</html>
