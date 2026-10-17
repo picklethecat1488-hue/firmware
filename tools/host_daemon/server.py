@@ -126,6 +126,9 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     pass
             runner.sync_async()
             self._send_json({"success": True, "sync": runner.sync_status})
+        elif path == "/api/sync/cancel":
+            res = runner.cancel_sync()
+            self._send_json(res)
         elif path == "/api/cli/execute":
             cmd = payload.get("command", "")
             output = runner.execute_cli(cmd)

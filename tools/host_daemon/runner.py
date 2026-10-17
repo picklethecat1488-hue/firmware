@@ -48,6 +48,9 @@ class DaemonRunner:
         self.is_flashed = False
         self.is_connected = False
         self.status_message = "Initialized"
+        self.sync_logs: Deque[str] = deque(maxlen=2000)
+        self.is_sync_cancelled: bool = False
+        self._active_sync_process: Optional[subprocess.Popen] = None
 
         self.sync_status: Dict[str, Any] = {
             "active": False,
@@ -62,8 +65,32 @@ class DaemonRunner:
             "profile": "release" if self.release else "debug",
             "speed": self.speed,
             "error": None,
+            "console": [],
         }
         self._sync_thread: Optional[threading.Thread] = None
+
+    def log_sync_console(self, line: str) -> None:
+        """Append a line to the sync console log buffer and update sync_status."""
+        with self._lock:
+            self.sync_logs.append(line)
+            self.sync_status["console"] = list(self.sync_logs)
+
+    def cancel_sync(self) -> Dict[str, Any]:
+        """Abort running synchronization process and mark status cancelled."""
+        self.is_sync_cancelled = True
+        proc = self._active_sync_process
+        if proc and proc.poll() is None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=1.0)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        self._update_sync("cancelled", 0, 0, "Target synchronization cancelled by user.", active=False, error="Sync cancelled by user")
+        self.log("Target synchronization cancelled by user", level="WARN")
+        return {"success": True, "step": "cancelled"}
 
     def _update_sync(
         self,
@@ -90,6 +117,7 @@ class DaemonRunner:
                     "profile": "release" if self.release else "debug",
                     "speed": self.speed,
                     "error": error,
+                    "console": list(self.sync_logs),
                 }
             )
         self.log(f"[Sync] {message}")
@@ -140,27 +168,42 @@ class DaemonRunner:
 
     def sync(self) -> Dict[str, Any]:
         """Perform full synchronization: compile target, compile tools, flash, and connect RTT."""
+        self.is_sync_cancelled = False
+        with self._lock:
+            self.sync_logs.clear()
+            self.sync_status["console"] = []
         try:
             # 1. Compile target firmware
+            if self.is_sync_cancelled:
+                return dict(self.sync_status)
             self._update_sync("compiling_target", 1, 25, "Compiling target firmware...")
             self.build_target()
 
             # 2. Compile host tools
+            if self.is_sync_cancelled:
+                return dict(self.sync_status)
             self._update_sync("compiling_host_tools", 2, 50, "Compiling host utilities (host_cli, host_fs)...")
             self.build_host_tools()
 
             # 3. Flash target device (release probe first)
+            if self.is_sync_cancelled:
+                return dict(self.sync_status)
             self.stop_rtt_streaming()
             self._update_sync("flashing_target", 3, 75, "Flashing target device via probe-rs...")
-            self.flash_target()
+            if not self.flash_target():
+                raise RuntimeError(self.status_message or "Flash target failed")
 
             # 4. Start RTT streaming
+            if self.is_sync_cancelled:
+                return dict(self.sync_status)
             self._update_sync("starting_rtt", 4, 90, "Starting RTT streaming channels...")
             self.start_rtt_streaming()
 
             # Complete
             self._update_sync("complete", 4, 100, "Target synchronized & RTT connected successfully.", active=False)
         except Exception as e:
+            if self.is_sync_cancelled:
+                return dict(self.sync_status)
             err_msg = f"Synchronization failed: {e}"
             self._update_sync("failed", 0, 0, err_msg, active=False, error=str(e))
             self.log(err_msg, level="ERROR")
@@ -229,10 +272,9 @@ class DaemonRunner:
         if self.release:
             cmd.append("--release")
 
-        env = os.environ.copy()
-        proc = subprocess.run(cmd, cwd=self.repo_root, capture_output=True, text=True, env=env)
-        if proc.returncode != 0:
-            err_msg = f"Failed to build target binary:\n{proc.stderr}"
+        ret, out = self._run_command_streaming(cmd, log_to_cli=False, log_channel="build")
+        if ret != 0:
+            err_msg = f"Failed to build target binary:\n{out}"
             self.log(err_msg, level="ERROR")
             raise RuntimeError(err_msg)
 
@@ -263,9 +305,9 @@ class DaemonRunner:
         env.pop("CARGO_BUILD_TARGET", None)
         env.pop("CARGO_ENCODED_RUSTFLAGS", None)
 
-        proc = subprocess.run(cmd, cwd=self.repo_root, capture_output=True, text=True, env=env)
-        if proc.returncode != 0:
-            err_msg = f"Failed to build host tools:\n{proc.stderr}"
+        ret, out = self._run_command_streaming(cmd, env=env, log_to_cli=False, log_channel="build")
+        if ret != 0:
+            err_msg = f"Failed to build host tools:\n{out}"
             self.log(err_msg, level="ERROR")
             raise RuntimeError(err_msg)
 
@@ -329,11 +371,13 @@ class DaemonRunner:
                 bufsize=1,
                 env=run_env,
             )
+            self._active_sync_process = proc
             if proc.stdout:
                 for line in iter(proc.stdout.readline, ""):
                     stripped = line.rstrip("\r\n")
                     if stripped:
                         output_lines.append(stripped)
+                        self.log_sync_console(stripped)
                         if log_to_cli:
                             self.log_cli(stripped)
                         if log_to_fs:
@@ -343,12 +387,15 @@ class DaemonRunner:
             return proc.returncode, "\n".join(output_lines)
         except Exception as e:
             err = f"Execution error running {cmd[0]}: {e}"
+            self.log_sync_console(err)
             if log_to_cli:
                 self.log_cli(err)
             if log_to_fs:
                 self.log_fs(err)
             self.log(err, level="ERROR", channel=log_channel)
             return 1, err
+        finally:
+            self._active_sync_process = None
 
     def run_host_cli(
         self,
