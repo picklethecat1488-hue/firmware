@@ -58,6 +58,9 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/cli/output":
             with runner._lock:
                 self._send_json(list(runner.cli_outputs))
+        elif path == "/api/fs/output":
+            with runner._lock:
+                self._send_json(list(runner.fs_outputs))
         elif path.startswith("/static/"):
             rel_file = path[len("/static/"):]
             static_dir = Path(__file__).resolve().parent / "static"
@@ -136,7 +139,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/mode":
             mode = payload.get("mode", "CLI").upper()
             if mode in ("CLI", "FS"):
-                runner.active_mode = mode
+                runner.set_mode(mode)
                 self._send_json({"success": True, "mode": mode})
             else:
                 self._send_json({"error": "Invalid mode. Expected: CLI, FS"}, status=400)

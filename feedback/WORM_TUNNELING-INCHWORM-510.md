@@ -1,12 +1,13 @@
-# 🔴 `[WORM-TUNNELING-INCHWORM-510]` FS doesn’t work
+# 🟢 `[WORM-TUNNELING-INCHWORM-510]` FS doesn’t work
 
 - **UUID**: `392a47ce-f137-404d-94cb-3f7af58334bc`
 - **ID**: `WORM-TUNNELING-INCHWORM-510`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 01:34:30 UTC`
+- **Resolved**: `2026-10-17 01:54:29 UTC`
 
 #### Description
 
@@ -124,3 +125,7 @@ fs>
 | Type | Filename | Description |
 | :--- | :--- | :--- |
 | `screenshot` | [screenshot_paste_1792200935540_x027h.png](attachments/WORM-TUNNELING-INCHWORM-510/screenshot_paste_1792200935540_x027h.png) | Pasted screenshot screenshot_paste_1792200935540_x027h.png |
+
+#### Resolution Notes
+
+Guaranteed probe exclusivity by stopping RTT streaming before FS commands and on switching to FS mode, separated CLI and FS output queues and terminal DOM views, and updated command placeholders.

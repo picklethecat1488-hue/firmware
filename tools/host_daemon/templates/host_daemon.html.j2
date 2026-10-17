@@ -497,8 +497,12 @@
         <button class="btn" onclick="runFsQuick('format')">format</button>
       </div>
 
-      <div class="panel-content" id="cliView">
+      <div class="panel-content" id="cliView" style="display: {% if runner.active_mode == 'FS' %}none{% else %}flex{% endif %};">
         <div class="log-line log-line-info">> Interactive CLI workstation ready. Type commands below.</div>
+      </div>
+
+      <div class="panel-content" id="fsView" style="display: {% if runner.active_mode == 'FS' %}flex{% else %}none{% endif %};">
+        <div class="log-line log-line-info">> Filesystem (host_fs) workstation ready. Type FS commands below (e.g. 'ls', 'cat metadata', 'format').</div>
       </div>
     </div>
   </main>
@@ -513,7 +517,7 @@
       <div id="fuzzyResultsList" class="fuzzy-results-list"></div>
     </div>
     <span class="prompt-label" id="promptLabel">{% if runner.active_mode == 'FS' %}fs> {% else %}shell> {% endif %}</span>
-    <input type="text" id="cmdInput" class="cmd-input" placeholder="Type command and press ENTER (e.g. 'motor speed 100', 'gpio status', 'ls')..." autofocus autocomplete="off">
+    <input type="text" id="cmdInput" class="cmd-input" placeholder="{% if runner.active_mode == 'FS' %}Type FS command (e.g. 'ls', 'cat metadata', 'crash-log', 'format')...{% else %}Type shell command (e.g. 'motor speed 100', 'gpio status', 'battery status')...{% endif %}" autofocus autocomplete="off">
     <button class="btn btn-cyan" onclick="submitCommand()">Send [↵]</button>
   </footer>
 
@@ -524,9 +528,28 @@
 
     async function changeMode(newMode) {
       currentMode = newMode;
-      document.getElementById("promptLabel").innerText = currentMode === "FS" ? "fs> " : "shell> ";
-      document.getElementById("cliPanelTitle").innerText = currentMode === "FS" ? "FILESYSTEM COMMAND WORKSTATION (host_fs)" : "INTERACTIVE CLI CONSOLE (host_cli)";
-      document.getElementById("fsToolbar").style.display = currentMode === "FS" ? "flex" : "none";
+      const cliView = document.getElementById("cliView");
+      const fsView = document.getElementById("fsView");
+      const fsToolbar = document.getElementById("fsToolbar");
+      const promptLabel = document.getElementById("promptLabel");
+      const cmdInput = document.getElementById("cmdInput");
+      const title = document.getElementById("cliPanelTitle");
+
+      if (currentMode === "FS") {
+        if (cliView) cliView.style.display = "none";
+        if (fsView) fsView.style.display = "flex";
+        if (fsToolbar) fsToolbar.style.display = "flex";
+        if (promptLabel) promptLabel.innerText = "fs> ";
+        if (title) title.innerText = "FILESYSTEM COMMAND WORKSTATION (host_fs)";
+        if (cmdInput) cmdInput.placeholder = "Type FS command (e.g. 'ls', 'cat metadata', 'crash-log', 'format')...";
+      } else {
+        if (cliView) cliView.style.display = "flex";
+        if (fsView) fsView.style.display = "none";
+        if (fsToolbar) fsToolbar.style.display = "none";
+        if (promptLabel) promptLabel.innerText = "shell> ";
+        if (title) title.innerText = "INTERACTIVE CLI CONSOLE (host_cli)";
+        if (cmdInput) cmdInput.placeholder = "Type shell command (e.g. 'motor speed 100', 'gpio status', 'battery status')...";
+      }
 
       try {
         await fetch("/api/mode", {
@@ -534,6 +557,7 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ mode: newMode })
         });
+        pollOutputs();
       } catch (e) {
         console.error("Failed to update mode:", e);
       }
@@ -545,8 +569,12 @@
     }
 
     function clearOutput() {
-      document.getElementById("logView").innerHTML = "";
-      document.getElementById("cliView").innerHTML = "";
+      const logView = document.getElementById("logView");
+      if (logView) logView.innerHTML = "";
+      const cliView = document.getElementById("cliView");
+      if (cliView) cliView.innerHTML = "";
+      const fsView = document.getElementById("fsView");
+      if (fsView) fsView.innerHTML = "";
     }
 
     async function submitCommand() {
@@ -567,13 +595,21 @@
         });
         const data = await resp.json();
         if (data && data.output && !data.output.startsWith("Dispatched:")) {
-          appendCliText(data.output, false);
+          if (currentMode === "FS") {
+            appendFsText(data.output, false);
+          } else {
+            appendCliText(data.output, false);
+          }
         }
         pollOutputs();
         setTimeout(pollOutputs, 100);
         setTimeout(pollOutputs, 300);
       } catch (e) {
-        appendCliText(`[ERROR] Command failed: ${e}`, false);
+        if (currentMode === "FS") {
+          appendFsText(`[ERROR] Command failed: ${e}`, false);
+        } else {
+          appendCliText(`[ERROR] Command failed: ${e}`, false);
+        }
       }
     }
 
@@ -694,6 +730,17 @@
 
     function appendCliText(text, isInput) {
       const view = document.getElementById("cliView");
+      if (!view) return;
+      const div = document.createElement("div");
+      div.className = isInput ? "log-line cli-line-input" : "log-line cli-line-output";
+      div.innerHTML = ansiToHtml(text);
+      view.appendChild(div);
+      view.scrollTop = view.scrollHeight;
+    }
+
+    function appendFsText(text, isInput) {
+      const view = document.getElementById("fsView");
+      if (!view) return;
       const div = document.createElement("div");
       div.className = isInput ? "log-line cli-line-input" : "log-line cli-line-output";
       div.innerHTML = ansiToHtml(text);
@@ -707,28 +754,48 @@
         if (logResp.ok) {
           const logs = await logResp.json();
           const logView = document.getElementById("logView");
-          logView.innerHTML = "";
-          logs.forEach(l => {
-            const d = document.createElement("div");
-            d.className = `log-line log-line-${l.level.toLowerCase()}`;
-            d.innerHTML = ansiToHtml(`[${l.channel}] ${l.message}`);
-            logView.appendChild(d);
-          });
-          logView.scrollTop = logView.scrollHeight;
+          if (logView) {
+            logView.innerHTML = "";
+            logs.forEach(l => {
+              const d = document.createElement("div");
+              d.className = `log-line log-line-${l.level.toLowerCase()}`;
+              d.innerHTML = ansiToHtml(`[${l.channel}] ${l.message}`);
+              logView.appendChild(d);
+            });
+            logView.scrollTop = logView.scrollHeight;
+          }
         }
 
         const cliResp = await fetch("/api/cli/output");
         if (cliResp.ok) {
           const lines = await cliResp.json();
           const cliView = document.getElementById("cliView");
-          cliView.innerHTML = "";
-          lines.forEach(line => {
-            const d = document.createElement("div");
-            d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
-            d.innerHTML = ansiToHtml(line.text);
-            cliView.appendChild(d);
-          });
-          cliView.scrollTop = cliView.scrollHeight;
+          if (cliView) {
+            cliView.innerHTML = "";
+            lines.forEach(line => {
+              const d = document.createElement("div");
+              d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+              d.innerHTML = ansiToHtml(line.text);
+              cliView.appendChild(d);
+            });
+            cliView.scrollTop = cliView.scrollHeight;
+          }
+        }
+
+        const fsResp = await fetch("/api/fs/output");
+        if (fsResp.ok) {
+          const lines = await fsResp.json();
+          const fsView = document.getElementById("fsView");
+          if (fsView) {
+            fsView.innerHTML = "";
+            lines.forEach(line => {
+              const d = document.createElement("div");
+              d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+              d.innerHTML = ansiToHtml(line.text);
+              fsView.appendChild(d);
+            });
+            fsView.scrollTop = fsView.scrollHeight;
+          }
         }
       } catch (e) {
         // Background polling errors silent

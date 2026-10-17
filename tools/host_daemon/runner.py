@@ -41,6 +41,7 @@ class DaemonRunner:
         self._lock = threading.Lock()
         self.logs: Deque[Dict[str, Any]] = deque(maxlen=5000)
         self.cli_outputs: Deque[Dict[str, Any]] = deque(maxlen=5000)
+        self.fs_outputs: Deque[Dict[str, Any]] = deque(maxlen=5000)
 
         self.rtt_process: Optional[subprocess.Popen] = None
         self._streaming_thread: Optional[threading.Thread] = None
@@ -195,6 +196,30 @@ class DaemonRunner:
         with self._lock:
             self.cli_outputs.append(entry)
 
+    def log_fs(self, message: str, is_input: bool = False) -> None:
+        """Append a line to the FS console output buffer."""
+        entry = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "is_input": is_input,
+            "text": message,
+        }
+        with self._lock:
+            self.fs_outputs.append(entry)
+
+    def set_mode(self, mode: str) -> None:
+        """Switch active workstation mode between CLI and FS, managing probe ownership."""
+        mode = mode.upper()
+        if mode == self.active_mode:
+            return
+        self.active_mode = mode
+        if mode == "FS":
+            self.log("Switching to Filesystem mode (stopping RTT streaming to release probe)...", channel="system")
+            self.stop_rtt_streaming()
+            time.sleep(0.15)
+        elif mode == "CLI":
+            self.log("Switching to CLI console mode (starting RTT streaming)...", channel="system")
+            self.start_rtt_streaming()
+
     def build_target(self) -> Path:
         """Compile the target embedded firmware binary."""
         self.log(
@@ -278,6 +303,7 @@ class DaemonRunner:
         env: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None,
         log_to_cli: bool = True,
+        log_to_fs: bool = False,
         log_channel: str = "daemon",
     ) -> Tuple[int, str]:
         """Execute a subprocess command while streaming colorized output line-by-line in real time."""
@@ -310,6 +336,8 @@ class DaemonRunner:
                         output_lines.append(stripped)
                         if log_to_cli:
                             self.log_cli(stripped)
+                        if log_to_fs:
+                            self.log_fs(stripped)
                         self.log(stripped, channel=log_channel)
             proc.wait(timeout=timeout)
             return proc.returncode, "\n".join(output_lines)
@@ -317,6 +345,8 @@ class DaemonRunner:
             err = f"Execution error running {cmd[0]}: {e}"
             if log_to_cli:
                 self.log_cli(err)
+            if log_to_fs:
+                self.log_fs(err)
             self.log(err, level="ERROR", channel=log_channel)
             return 1, err
 
@@ -342,7 +372,7 @@ class DaemonRunner:
     ) -> Tuple[int, str]:
         """Subcommand wrapper for host_fs by invoking cargo run, streaming colorized output in real time."""
         cmd = ["cargo", "run", "-q", "-p", "host_fs", "--"] + args
-        return self._run_command_streaming(cmd, env=env, timeout=timeout, log_to_cli=True, log_channel="host_fs")
+        return self._run_command_streaming(cmd, env=env, timeout=timeout, log_to_cli=False, log_to_fs=True, log_channel="host_fs")
 
     def run_probe_rs(
         self,
@@ -577,7 +607,13 @@ class DaemonRunner:
             subcmd = "ls"
             extra_args = args
 
-        self.log_cli(f"fs> {subcmd} {' '.join(extra_args)}", is_input=True)
+        self.log_fs(f"fs> {subcmd} {' '.join(extra_args)}", is_input=True)
+
+        # Ensure probe is available by pausing RTT streaming if currently running
+        rtt_was_running = (self.rtt_process is not None and self.rtt_process.poll() is None)
+        if rtt_was_running:
+            self.stop_rtt_streaming()
+            time.sleep(0.15)
 
         fs_args: List[str] = []
         if self.elf_path and self.elf_path.exists():
@@ -585,9 +621,13 @@ class DaemonRunner:
         fs_args.append(subcmd)
         fs_args.extend(extra_args)
 
-        ret, out = self.run_host_fs(fs_args)
-        out = out.strip() or f"Completed {subcmd} (exit code {ret})"
-        return out
+        try:
+            ret, out = self.run_host_fs(fs_args)
+            out = out.strip() or f"Completed {subcmd} (exit code {ret})"
+            return out
+        finally:
+            if rtt_was_running and self.active_mode == "CLI":
+                self.start_rtt_streaming()
 
     def get_status(self) -> Dict[str, Any]:
         """Return daemon status dictionary."""
