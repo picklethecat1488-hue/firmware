@@ -211,62 +211,181 @@ class DaemonRunner:
             if alt.exists():
                 fs_cand = alt
 
+        if not cli_cand.exists() or not fs_cand.exists():
+            missing = []
+            if not cli_cand.exists():
+                missing.append(f"host_cli at {cli_cand}")
+            if not fs_cand.exists():
+                missing.append(f"host_fs at {fs_cand}")
+            err = f"Host tools build completed but binaries not found: {', '.join(missing)}"
+            self.log(err, level="ERROR")
+            raise FileNotFoundError(err)
+
         self.host_cli_path = cli_cand
         self.host_fs_path = fs_cand
         self.log(f"Host tools ready: cli={cli_cand}, fs={fs_cand}")
         return cli_cand, fs_cand
 
+    def _run_command_streaming(
+        self,
+        cmd: List[str],
+        env: Optional[Dict[str, str]] = None,
+        timeout: Optional[float] = None,
+        log_to_cli: bool = True,
+        log_channel: str = "daemon",
+    ) -> Tuple[int, str]:
+        """Execute a subprocess command while streaming colorized output line-by-line in real time."""
+        run_env = os.environ.copy()
+        if "cargo" in cmd[0] and "-p" in cmd and ("host_cli" in cmd or "host_fs" in cmd):
+            run_env.pop("CARGO_BUILD_TARGET", None)
+            run_env.pop("CARGO_ENCODED_RUSTFLAGS", None)
+        if env:
+            run_env.update(env)
+
+        # Force full colorization for cargo, compilers, and CLI tools
+        run_env.setdefault("CARGO_TERM_COLOR", "always")
+        run_env.setdefault("CLICOLOR_FORCE", "1")
+
+        output_lines: List[str] = []
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                cwd=self.repo_root,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                env=run_env,
+            )
+            if proc.stdout:
+                for line in iter(proc.stdout.readline, ""):
+                    stripped = line.rstrip("\r\n")
+                    if stripped:
+                        output_lines.append(stripped)
+                        if log_to_cli:
+                            self.log_cli(stripped)
+                        self.log(stripped, channel=log_channel)
+            proc.wait(timeout=timeout)
+            return proc.returncode, "\n".join(output_lines)
+        except Exception as e:
+            err = f"Execution error running {cmd[0]}: {e}"
+            if log_to_cli:
+                self.log_cli(err)
+            self.log(err, level="ERROR", channel=log_channel)
+            return 1, err
+
+    def run_host_cli(
+        self,
+        args: List[str],
+        env: Optional[Dict[str, str]] = None,
+        timeout: Optional[float] = None,
+        use_cargo_run: bool = False,
+    ) -> Tuple[int, str]:
+        """Subcommand wrapper for host_cli, streaming colorized output in real time."""
+        if not use_cargo_run and self.host_cli_path and self.host_cli_path.exists():
+            cmd = [str(self.host_cli_path)] + args
+        else:
+            cmd = ["cargo", "run", "-q", "-p", "host_cli", "--"] + args
+        return self._run_command_streaming(cmd, env=env, timeout=timeout, log_to_cli=True, log_channel="host_cli")
+
+    def run_host_fs(
+        self,
+        args: List[str],
+        env: Optional[Dict[str, str]] = None,
+        timeout: Optional[float] = None,
+    ) -> Tuple[int, str]:
+        """Subcommand wrapper for host_fs by invoking cargo run, streaming colorized output in real time."""
+        cmd = ["cargo", "run", "-q", "-p", "host_fs", "--"] + args
+        return self._run_command_streaming(cmd, env=env, timeout=timeout, log_to_cli=True, log_channel="host_fs")
+
+    def run_probe_rs(
+        self,
+        args: List[str],
+        env: Optional[Dict[str, str]] = None,
+        timeout: Optional[float] = None,
+    ) -> Tuple[int, str]:
+        """Subcommand wrapper for probe-rs, streaming colorized output in real time."""
+        probe_bin = shutil.which("probe-rs") or "probe-rs"
+        cmd = [probe_bin] + args
+        return self._run_command_streaming(cmd, env=env, timeout=timeout, log_to_cli=True, log_channel="probe-rs")
+
     def detect_chip(self) -> str:
-        """Detect the target chip name from ELF metadata using host_cli."""
+        """Detect the target chip name from ELF metadata using host_cli.
+
+        Explicitly raises RuntimeError if program metadata is missing or target is unsupported.
+        """
         if self.chip:
             return self.chip
-        if self.host_cli_path and self.elf_path and self.host_cli_path.exists() and self.elf_path.exists():
-            try:
-                proc = subprocess.run(
-                    [str(self.host_cli_path), "--elf", str(self.elf_path), "--print-chip"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if proc.returncode == 0 and proc.stdout.strip():
-                    self.chip = proc.stdout.strip()
-                    return self.chip
-            except Exception as e:
-                self.log(f"Chip detection warning: {e}", level="WARN")
 
-        self.chip = "RP2040"
-        return self.chip
-
-    def flash_target(self) -> bool:
-        """Flash target device with probe-rs."""
         if not self.elf_path or not self.elf_path.exists():
-            self.log("Cannot flash target: ELF not compiled", level="ERROR")
-            return False
+            raise RuntimeError(
+                f"Target ELF '{self.elf_path}' not found; cannot detect program metadata"
+            )
 
-        chip = self.detect_chip()
-        probe_rs = shutil.which("probe-rs")
-        if not probe_rs:
-            self.log("probe-rs not found in PATH; skipping hardware download", level="WARN")
-            self.status_message = "Ready (probe-rs not in PATH)"
-            return False
+        if self.host_cli_path and self.host_cli_path.exists():
+            cmd = [str(self.host_cli_path), "--elf", str(self.elf_path), "--print-chip"]
+        else:
+            cmd = ["cargo", "run", "-q", "-p", "host_cli", "--", "--elf", str(self.elf_path), "--print-chip"]
 
-        cmd = [probe_rs, "download", "--chip", chip, "--speed", str(self.speed), str(self.elf_path)]
-        self.log(f"Executing: {' '.join(cmd)}")
+        env = os.environ.copy()
+        env.pop("CARGO_BUILD_TARGET", None)
+        env.pop("CARGO_ENCODED_RUSTFLAGS", None)
+
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            if proc.returncode == 0:
+            proc = subprocess.run(cmd, cwd=self.repo_root, capture_output=True, text=True, timeout=10, env=env)
+            if proc.returncode == 0 and proc.stdout.strip():
+                detected = proc.stdout.strip().splitlines()[-1].strip()
+                if detected:
+                    self.chip = detected
+                    return self.chip
+        except Exception as e:
+            self.log(f"Chip detection execution failed: {e}", level="WARN")
+
+        # Explicitly error out if target does not support host_daemon because it lacks program metadata (CR-6783fe41)
+        err_msg = f"Target ELF '{self.elf_path}' does not contain required program metadata for host_daemon"
+        self.log(err_msg, level="ERROR")
+        raise RuntimeError(err_msg)
+
+    def flash_target(self, use_cargo_run: bool = True) -> bool:
+        """Flash target device by invoking cargo run or probe-rs download."""
+        if not self.elf_path or not self.elf_path.exists():
+            err_msg = f"Cannot flash target: ELF not found at {self.elf_path}"
+            self.log(err_msg, level="ERROR")
+            raise FileNotFoundError(err_msg)
+
+        if use_cargo_run:
+            self.log(
+                f"Flashing target via cargo run: package={self.package}, bin={self.bin_name}, target={self.target}"
+            )
+            cmd = ["cargo", "run", "--target", self.target, "-p", self.package, "--bin", self.bin_name]
+            if self.release:
+                cmd.append("--release")
+            cmd.extend(["--", "--dump"])
+
+            ret, out = self._run_command_streaming(cmd, log_to_cli=True, log_channel="flash")
+            if ret == 0:
                 self.is_flashed = True
                 self.status_message = "Flashed & Running"
-                self.log("Flash download succeeded", level="INFO")
+                self.log("Flash download succeeded via cargo run", level="INFO")
                 return True
             else:
-                self.log(f"probe-rs download failed:\n{proc.stderr}", level="WARN")
-                self.status_message = f"Flash failed: {proc.stderr[:100]}"
+                self.log(f"cargo run flash failed (exit code {ret}):\n{out}", level="WARN")
+                self.status_message = f"Flash failed: {out[:100]}"
                 return False
-        except Exception as e:
-            self.log(f"probe-rs invocation error: {e}", level="WARN")
-            self.status_message = f"Flash error: {e}"
-            return False
+        else:
+            chip = self.detect_chip()
+            cmd_args = ["download", "--chip", chip, "--speed", str(self.speed), str(self.elf_path)]
+            self.log(f"Flashing target via probe-rs: {' '.join(cmd_args)}")
+            ret, out = self.run_probe_rs(cmd_args)
+            if ret == 0:
+                self.is_flashed = True
+                self.status_message = "Flashed & Running"
+                self.log("Flash download succeeded via probe-rs", level="INFO")
+                return True
+            else:
+                self.log(f"probe-rs download failed (exit code {ret}):\n{out}", level="WARN")
+                self.status_message = f"Flash failed: {out[:100]}"
+                return False
 
     def start_rtt_streaming(self) -> None:
         """Start streaming RTT logs and CLI interactions in a background thread."""
@@ -332,7 +451,7 @@ class DaemonRunner:
         return output
 
     def execute_fs(self, command_or_subcommand: str, args: Optional[List[str]] = None) -> str:
-        """Execute host_fs utility command."""
+        """Execute host_fs utility command by invoking cargo run."""
         args = args or []
         tokens = command_or_subcommand.strip().split()
         if tokens:
@@ -344,27 +463,15 @@ class DaemonRunner:
 
         self.log_cli(f"fs> {subcmd} {' '.join(extra_args)}", is_input=True)
 
-        if not self.host_fs_path or not self.host_fs_path.exists():
-            res = "host_fs binary not available. Build host tools first."
-            self.log_cli(res)
-            return res
-
-        cmd = [str(self.host_fs_path)]
+        fs_args: List[str] = []
         if self.elf_path and self.elf_path.exists():
-            cmd.extend(["--elf", str(self.elf_path)])
-        cmd.append(subcmd)
-        cmd.extend(extra_args)
+            fs_args.extend(["--elf", str(self.elf_path)])
+        fs_args.append(subcmd)
+        fs_args.extend(extra_args)
 
-        try:
-            proc = subprocess.run(cmd, cwd=self.repo_root, capture_output=True, text=True, timeout=15)
-            out = proc.stdout if proc.stdout else proc.stderr
-            out = out.strip() or f"Completed {subcmd} (exit code {proc.returncode})"
-            self.log_cli(out)
-            return out
-        except Exception as e:
-            err = f"host_fs execution failed: {e}"
-            self.log_cli(err)
-            return err
+        ret, out = self.run_host_fs(fs_args)
+        out = out.strip() or f"Completed {subcmd} (exit code {ret})"
+        return out
 
     def get_status(self) -> Dict[str, Any]:
         """Return daemon status dictionary."""
