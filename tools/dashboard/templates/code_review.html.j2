@@ -1473,10 +1473,43 @@
       border-bottom: 1px solid rgba(11, 89, 102, 0.3);
       color: var(--xerxes-text-light, #e6f9ff);
     }
-    .fuzzy-item:hover, .fuzzy-item.active {
-      background: rgba(0, 240, 255, 0.2);
+    /* Terminal Formatting & Coloration (VS Code Terminal Aesthetic) */
+    .term-bold { font-weight: bold; }
+    .term-dim { opacity: 0.7; }
+    .term-italic { font-style: italic; }
+    .term-underline { text-decoration: underline; }
+    .term-fg-black { color: #5c6370; }
+    .term-fg-red { color: #e06c75; }
+    .term-fg-green { color: #98c379; }
+    .term-fg-yellow { color: #e5c07b; }
+    .term-fg-blue { color: #61afef; }
+    .term-fg-magenta { color: #c678dd; }
+    .term-fg-cyan { color: #56b6c2; }
+    .term-fg-white { color: #dcdfe4; }
+    .term-fg-bright-black { color: #7f848e; }
+    .term-fg-bright-red { color: #ff6b68; }
+    .term-fg-bright-green { color: #a8cc8c; }
+    .term-fg-bright-yellow { color: #e5c07b; }
+    .term-fg-bright-blue { color: #73b8ff; }
+    .term-fg-bright-magenta { color: #d68ff0; }
+    .term-fg-bright-cyan { color: #00f0ff; }
+    .term-fg-bright-white { color: #ffffff; }
+    .term-bg-black { background-color: #282c34; }
+    .term-bg-red { background-color: #e06c75; }
+    .term-bg-green { background-color: #98c379; }
+    .term-bg-yellow { background-color: #e5c07b; }
+    .term-bg-blue { background-color: #61afef; }
+    .term-bg-magenta { background-color: #c678dd; }
+    .term-bg-cyan { background-color: #56b6c2; }
+    .term-bg-white { background-color: #dcdfe4; }
+    .term-link {
       color: var(--xerxes-cyan, #00f0ff);
-      font-weight: bold;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .term-link:hover {
+      color: #ffffff;
+      text-shadow: 0 0 6px var(--xerxes-cyan, #00f0ff);
     }
   </style>
 
@@ -4156,11 +4189,133 @@
       document.getElementById("cliDrawer").classList.toggle("minimized", !state.panes.cli);
     }
 
+    const ANSI_FG_MAP = {
+      30: 'term-fg-black', 31: 'term-fg-red', 32: 'term-fg-green', 33: 'term-fg-yellow',
+      34: 'term-fg-blue', 35: 'term-fg-magenta', 36: 'term-fg-cyan', 37: 'term-fg-white',
+      90: 'term-fg-bright-black', 91: 'term-fg-bright-red', 92: 'term-fg-bright-green', 93: 'term-fg-bright-yellow',
+      94: 'term-fg-bright-blue', 95: 'term-fg-bright-magenta', 96: 'term-fg-bright-cyan', 97: 'term-fg-bright-white'
+    };
+    const ANSI_BG_MAP = {
+      40: 'term-bg-black', 41: 'term-bg-red', 42: 'term-bg-green', 43: 'term-bg-yellow',
+      44: 'term-bg-blue', 45: 'term-bg-magenta', 46: 'term-bg-cyan', 47: 'term-bg-white',
+      100: 'term-bg-bright-black', 101: 'term-bg-bright-red', 102: 'term-bg-bright-green', 103: 'term-bg-bright-yellow',
+      104: 'term-bg-bright-blue', 105: 'term-bg-bright-magenta', 106: 'term-bg-bright-cyan', 107: 'term-bg-bright-white'
+    };
+
+    function escapeHtmlText(str) {
+      if (!str) return "";
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function formatTerminalLinks(escapedText) {
+      const urlRe = /(https?:\/\/[^\s<>"'\)]+)/g;
+      let res = escapedText.replace(urlRe, (url) => {
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="term-link">${url}</a>`;
+      });
+
+      const filePathRe = /(?<![a-zA-Z0-9_\-\.\/])((?:\/(?:Users|home|root|[a-zA-Z0-9_\-\.]+)\/[a-zA-Z0-9_\-\.\/]+)|(?:(?:src|tools|board|platform|controller|peripheral|tests|docs|attachments|feedback|target)\/[a-zA-Z0-9_\-\.\/]+))/g;
+      const tokens = res.split(/(<[^>]+>)/);
+      for (let i = 0; i < tokens.length; i++) {
+        if (!tokens[i].startsWith('<')) {
+          tokens[i] = tokens[i].replace(filePathRe, (m, path) => {
+            let trailing = "";
+            let p = path;
+            while (p && ".,;:?)'\"]".includes(p[p.length - 1])) {
+              trailing = p[p.length - 1] + trailing;
+              p = p.slice(0, -1);
+            }
+            if (!p) return m;
+            const fullPath = p.startsWith('/') ? p : `/${p}`;
+            const vscodeUrl = `vscode://file${fullPath}`;
+            return `<a href="${vscodeUrl}" class="term-link term-file-link" data-path="${p}" onclick="handleTermFileClick(event, '${p}')">${p}</a>${trailing}`;
+          });
+        }
+      }
+      return tokens.join('');
+    }
+
+    function ansiToHtml(rawText) {
+      if (!rawText) return "";
+      const ansiEscapeRe = /\x1b\[([0-9;]*)m/g;
+      const otherAnsiRe = /\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
+
+      let parts = rawText.split(ansiEscapeRe);
+      let outChunks = [];
+      let classes = [];
+      let fgClass = null;
+      let bgClass = null;
+
+      for (let i = 0; i < parts.length; i += 2) {
+        let chunk = parts[i].replace(otherAnsiRe, "");
+        if (chunk) {
+          let escaped = escapeHtmlText(chunk);
+          let linked = formatTerminalLinks(escaped);
+          let allCls = [...classes];
+          if (fgClass) allCls.push(fgClass);
+          if (bgClass) allCls.push(bgClass);
+
+          if (allCls.length > 0) {
+            outChunks.push(`<span class="${allCls.join(' ')}">${linked}</span>`);
+          } else {
+            outChunks.push(linked);
+          }
+        }
+
+        if (i + 1 < parts.length) {
+          let codeStr = parts[i + 1];
+          if (!codeStr || codeStr === '0') {
+            classes = [];
+            fgClass = null;
+            bgClass = null;
+          } else {
+            let codes = codeStr.split(';').map(c => parseInt(c, 10)).filter(c => !isNaN(c));
+            codes.forEach(code => {
+              if (code === 0) {
+                classes = [];
+                fgClass = null;
+                bgClass = null;
+              } else if (code === 1) {
+                if (!classes.includes('term-bold')) classes.push('term-bold');
+              } else if (code === 2) {
+                if (!classes.includes('term-dim')) classes.push('term-dim');
+              } else if (code === 3) {
+                if (!classes.includes('term-italic')) classes.push('term-italic');
+              } else if (code === 4) {
+                if (!classes.includes('term-underline')) classes.push('term-underline');
+              } else if (code === 21 || code === 22) {
+                classes = classes.filter(c => c !== 'term-bold' && c !== 'term-dim');
+              } else if (code === 23) {
+                classes = classes.filter(c => c !== 'term-italic');
+              } else if (code === 24) {
+                classes = classes.filter(c => c !== 'term-underline');
+              } else if (ANSI_FG_MAP[code]) {
+                fgClass = ANSI_FG_MAP[code];
+              } else if (code === 39) {
+                fgClass = null;
+              } else if (ANSI_BG_MAP[code]) {
+                bgClass = ANSI_BG_MAP[code];
+              } else if (code === 49) {
+                bgClass = null;
+              }
+            });
+          }
+        }
+      }
+      return outChunks.join('');
+    }
+
+    function handleTermFileClick(e, path) {
+      if (typeof openInVsCode === 'function') {
+        e.preventDefault();
+        openInVsCode(path);
+      }
+    }
+
     function logCli(msg, colorClass) {
       const screen = document.getElementById("cliLog");
       const line = document.createElement("div");
       line.className = "cli-log-line" + (colorClass ? ` cli-log-${colorClass}` : "");
-      line.innerText = msg;
+      line.innerHTML = ansiToHtml(msg);
       screen.appendChild(line);
       screen.scrollTop = screen.scrollHeight;
     }
