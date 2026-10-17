@@ -52,10 +52,10 @@ def test_worm_tunneling_silkworm_860_links_and_file_paths():
     assert '<a href="http://localhost:8080"' in url_html
 
     # Absolute file path
-    abs_path = "Running `/Users/daparker/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell`"
+    abs_path = "Running `/Users/developer/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell`"
     path_html = ansi_to_html(abs_path)
     assert "term-link" in path_html
-    assert "/Users/daparker/gh/firmware/tools/runner.sh" in path_html
+    assert "/Users/developer/gh/firmware/tools/runner.sh" in path_html
     assert "target/thumbv6m-none-eabi/release/cat_detector_shell" in path_html
 
 

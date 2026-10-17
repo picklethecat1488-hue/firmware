@@ -9,7 +9,7 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 import urllib.error
 import urllib.request
 
@@ -17,6 +17,64 @@ from .runner import DaemonRunner
 from .server import HostDaemonServer
 
 LOCK_FILE: Path = Path("/tmp/xerxes_host_daemon.lock")
+
+
+def get_host_daemon_icon_path() -> Optional[Path]:
+    """Resolve distinct host daemon application icon for native desktop window."""
+    static_dir = Path(__file__).resolve().parent / "static"
+    if not static_dir.exists():
+        return None
+
+    if sys.platform == "darwin":
+        icns = static_dir / "app.icns"
+        if icns.exists():
+            return icns
+
+    if sys.platform in ("win32", "win64"):
+        ico = static_dir / "favicon.ico"
+        if ico.exists():
+            return ico
+
+    png = static_dir / "icon-512.png"
+    if png.exists():
+        return png
+
+    fallback_ico = static_dir / "favicon.ico"
+    if fallback_ico.exists():
+        return fallback_ico
+
+    return None
+
+
+def launch_host_daemon_app(
+    url: str,
+    browser: str = "webview",
+    on_close: Optional[Callable[[], None]] = None,
+) -> bool:
+    """Launch the host daemon in a dedicated native window using webview or eel."""
+    if browser == "eel":
+        try:
+            from tools.dashboard.provider.eel.launcher import launch_eel
+
+            return launch_eel(url, size=(1400, 900), on_close=on_close)
+        except Exception as e:
+            print(f"[HostDaemon] Eel launch failed, falling back to webview: {e}", file=sys.stderr)
+
+    try:
+        from tools.dashboard.provider.webview.launcher import launch_webview
+
+        icon = get_host_daemon_icon_path()
+        return launch_webview(
+            url=url,
+            title="⚡ SYSTEM SHOCK 2 // XERXES HOST DAEMON",
+            size=(1400, 900),
+            bg_color="#08161d",
+            icon_path=icon,
+            on_close=on_close,
+        )
+    except Exception as e:
+        print(f"[HostDaemon] Native webview launch failed: {e}", file=sys.stderr)
+        return False
 
 
 def get_lock_data() -> Optional[Dict[str, Any]]:
@@ -155,12 +213,40 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         "--browser",
         choices=["webview", "eel"],
         default="webview",
-        help="Desktop window display environment.",
+        help="Desktop window display environment ('webview' or 'eel'). Default is 'webview'.",
+    )
+    parser.add_argument(
+        "--webview",
+        dest="browser",
+        action="store_const",
+        const="webview",
+        help="Target native OS webview window.",
+    )
+    parser.add_argument(
+        "--eel",
+        dest="browser",
+        action="store_const",
+        const="eel",
+        help="Target standalone Chromium window via Eel.",
+    )
+    parser.add_argument(
+        "--app",
+        dest="browser",
+        action="store_const",
+        const="webview",
+        help="Target native OS webview window.",
     )
     parser.add_argument(
         "--detach",
         action="store_true",
-        help="Detach daemon from current terminal and run in background.",
+        help="Detach daemon from current terminal and run in background (default behavior).",
+    )
+    parser.add_argument(
+        "--no-detach",
+        "--foreground",
+        dest="no_detach",
+        action="store_true",
+        help="Run workstation server in the foreground without detaching from terminal.",
     )
 
     subparsers = parser.add_subparsers(dest="subcommand", help="Host daemon subcommands")
@@ -247,14 +333,53 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
         remove_lock_file()
 
-    # Detach if requested
-    if args.detach:
-        cmd = [sys.executable, str(Path(__file__).resolve().parent.parent / "host_daemon.py")]
-        for a in sys.argv[1:]:
-            if a != "--detach":
-                cmd.append(a)
-        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-        print("Host daemon spawned in background.")
+    # Detach from terminal unless --no-detach / --foreground is requested
+    if not getattr(args, "no_detach", False):
+        log_dir = repo_root / "target" if (repo_root / "target").exists() else repo_root / "build"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_path = log_dir / "host_daemon.log"
+        log_file = open(log_path, "a", encoding="utf-8")
+
+        child_args = (
+            [sys.executable, str(Path(__file__).resolve().parent.parent / "host_daemon.py")]
+            + [a for a in sys.argv[1:] if a not in ("--no-detach", "--foreground", "--detach")]
+            + ["--no-detach"]
+        )
+
+        popen_kwargs: Dict[str, Any] = {
+            "stdout": log_file,
+            "stderr": log_file,
+            "stdin": subprocess.DEVNULL,
+        }
+        if os.name == "posix":
+            popen_kwargs["start_new_session"] = True
+        elif sys.platform in ("win32", "win64"):
+            detached_flag = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+            new_grp_flag = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+            popen_kwargs["creationflags"] = detached_flag | new_grp_flag
+
+        proc = subprocess.Popen(child_args, **popen_kwargs)
+
+        deadline = time.time() + 4.0
+        while time.time() < deadline:
+            if proc.poll() is not None:
+                print("Error: Host daemon failed to start.", file=sys.stderr)
+                return 1
+            lock_data = get_lock_data()
+            if lock_data and lock_data.get("pid") == proc.pid:
+                break
+            time.sleep(0.05)
+
+        print("======================================================================")
+        print("  ⚡ SYSTEM SHOCK 2 // XERXES HOST DAEMON WORKSTATION")
+        print("======================================================================")
+        print(f"  Target:    {args.target}")
+        print(f"  Package:   {args.package} ({args.bin})")
+        print(f"  Profile:   {'release' if args.release else 'debug'}")
+        print(f"  Speed:     {args.speed} kHz")
+        print(f"  Port:      {args.port}")
+        print(f"  Workstation URL: http://{args.host}:{args.port} (PID {proc.pid})")
+        print("➜ Detached from terminal.")
         return 0
 
     print("======================================================================")
@@ -283,6 +408,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"Failed to bind port {args.port}: {e}", file=sys.stderr)
         return 1
 
+    url = f"http://{args.host}:{args.port}"
     write_lock_file(
         {
             "pid": os.getpid(),
@@ -292,36 +418,39 @@ def main(argv: Optional[List[str]] = None) -> int:
             "package": args.package,
             "bin": args.bin,
             "profile": "release" if args.release else "debug",
-            "url": f"http://{args.host}:{args.port}",
+            "url": url,
+            "browser": getattr(args, "browser", "webview"),
+            "no_browser": getattr(args, "no_browser", False),
         }
     )
 
     # Trigger asynchronous target synchronization (compiles target, compiles host tools, flashes, connects RTT)
     runner.sync_async()
 
-    print(f"\n  Workstation URL: http://{args.host}:{args.port}")
+    print(f"\n  Workstation URL: {url} (PID {os.getpid()})")
     print("  Press Ctrl+C to stop daemon.\n")
 
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
 
-    # Launch desktop UI window if not disabled
-    if not args.no_browser:
-        try:
-            from dashboard.cli import launch_browser
+    # Launch dedicated desktop application window if not disabled
+    if not getattr(args, "no_browser", False):
+        def _on_app_close() -> None:
+            def _shutdown() -> None:
+                try:
+                    server.shutdown()
+                except Exception:
+                    pass
+                remove_lock_file()
+                os._exit(0)
 
-            def _window_closed() -> None:
-                runner.stop()
-                server.shutdown()
+            threading.Thread(target=_shutdown, daemon=True).start()
 
-            launch_browser(
-                f"http://{args.host}:{args.port}",
-                target=args.browser,
-                window_title=f"Xerxes Host Daemon // {args.package}:{args.bin}",
-                on_closed=_window_closed,
-            )
-        except Exception:
-            pass
+        launch_host_daemon_app(
+            url,
+            browser=getattr(args, "browser", "webview"),
+            on_close=_on_app_close,
+        )
 
     try:
         while server_thread.is_alive():

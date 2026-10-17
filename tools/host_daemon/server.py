@@ -58,6 +58,30 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/cli/output":
             with runner._lock:
                 self._send_json(list(runner.cli_outputs))
+        elif path.startswith("/static/"):
+            rel_file = path[len("/static/"):]
+            static_dir = Path(__file__).resolve().parent / "static"
+            file_path = static_dir / rel_file
+            if file_path.exists() and file_path.is_file():
+                ext = file_path.suffix.lower()
+                content_types = {
+                    ".ico": "image/x-icon",
+                    ".png": "image/png",
+                    ".svg": "image/svg+xml",
+                    ".json": "application/json",
+                    ".js": "application/javascript",
+                    ".css": "text/css",
+                    ".icns": "application/octet-stream",
+                }
+                ctype = content_types.get(ext, "application/octet-stream")
+                data = file_path.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            else:
+                self.send_error(404, "Static asset not found")
         else:
             self.send_error(404, "Endpoint not found")
 
