@@ -536,7 +536,7 @@ mod target {
                 .expect("Speed sense pin must be available");
 
             pump_diag.set_as_input();
-            pump_diag.set_pull(Pull::Up);
+            pump_diag.set_pull(Pull::Down);
 
             speed_pin.set_as_input();
             speed_pin.set_pull(Pull::Up);

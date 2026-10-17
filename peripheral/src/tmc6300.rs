@@ -675,8 +675,8 @@ where
             direction: ShiftDirection::Right,
         };
 
-        sm.set_config(&cfg);
         sm.set_pin_dirs(Direction::Out, &pins);
+        sm.set_config(&cfg);
         sm.set_enable(true);
 
         sm.tx().push(make_pwm_word(0, 0, PWM_PERIOD_CYCLES));

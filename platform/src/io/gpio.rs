@@ -37,10 +37,14 @@ pub async fn handle_gpio_cli<W: embedded_io::Write<Error = E>, E: embedded_io::E
 ) -> Result<(), &'static str> {
     let cmd = subcommand.ok_or("Missing gpio subcommand (expected: status, read, set)")?;
 
-    // Helper macro to steal a pin and wrap in Flex
+    // Helper macro to steal a pin and wrap in ManuallyDrop<Flex>.
+    // Suppressing Drop prevents Flex::drop from clearing pad configuration and resetting
+    // funcsel to NULL, ensuring GPIO pin directions and levels persist indefinitely.
     macro_rules! steal_flex {
         ($pin_num:expr) => {
-            Flex::new(unsafe { embassy_rp::gpio::AnyPin::steal($pin_num as u8) })
+            core::mem::ManuallyDrop::new(Flex::new(unsafe {
+                embassy_rp::gpio::AnyPin::steal($pin_num as u8)
+            }))
         };
     }
 
