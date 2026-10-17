@@ -685,11 +685,30 @@ class DaemonRunner:
         }
 
     def stop(self) -> None:
-        """Terminate active RTT processes and background tasks."""
+        """Terminate active RTT processes, sync tasks, and release hardware debug probes."""
+        self.is_sync_cancelled = True
+        self.stop_rtt_streaming()
+        if self._active_sync_process and self._active_sync_process.poll() is None:
+            try:
+                self._active_sync_process.terminate()
+                self._active_sync_process.wait(timeout=2)
+            except Exception:
+                try:
+                    self._active_sync_process.kill()
+                except Exception:
+                    pass
+            self._active_sync_process = None
+
         if self.rtt_process and self.rtt_process.poll() is None:
             try:
                 self.rtt_process.terminate()
                 self.rtt_process.wait(timeout=2)
             except Exception:
-                self.rtt_process.kill()
+                try:
+                    self.rtt_process.kill()
+                except Exception:
+                    pass
+            self.rtt_process = None
+
+        self.is_connected = False
         self.log("Daemon stopped")

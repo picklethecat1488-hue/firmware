@@ -1,9 +1,11 @@
 """Command-line interface and daemon management for Xerxes Host Daemon."""
 
 import argparse
+import atexit
 import json
 import os
 from pathlib import Path
+import signal
 import socket
 import subprocess
 import sys
@@ -480,6 +482,22 @@ def main(argv: Optional[List[str]] = None) -> int:
         speed=args.speed,
         chip=args.chip,
     )
+    atexit.register(runner.stop)
+    atexit.register(remove_lock_file)
+
+    def _sig_handler(signum: int, frame: Any) -> None:
+        try:
+            runner.stop()
+        except Exception:
+            pass
+        remove_lock_file()
+        sys.exit(0)
+
+    try:
+        signal.signal(signal.SIGTERM, _sig_handler)
+        signal.signal(signal.SIGINT, _sig_handler)
+    except Exception:
+        pass
 
     # Start HTTP server first so workstation UI and /api/sync are immediately accessible
     try:
@@ -517,6 +535,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not getattr(args, "no_browser", False):
         def _on_app_close() -> None:
             def _shutdown() -> None:
+                try:
+                    runner.stop()
+                except Exception:
+                    pass
                 try:
                     server.shutdown()
                 except Exception:
