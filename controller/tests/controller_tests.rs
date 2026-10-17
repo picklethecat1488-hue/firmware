@@ -520,3 +520,44 @@ fn test_motor_controller_hall_sensor_rpm_and_zero_rpm_stall() {
         assert_eq!(controller.state(), MotorState::Off);
     });
 }
+
+#[test]
+fn test_motor_controller_parameterized_max_current_and_default() {
+    futures::executor::block_on(async {
+        use controller::motor_controller::DEFAULT_MAX_CURRENT_MA;
+
+        let motor = MockMotor::new();
+        let sensor = MockCurrentSensor::new(150);
+        let speed_sensor = MockSpeedSensor::new(3000);
+
+        // 1. Default constructor must retain canonical 2500 mA default
+        let default_ctrl = MotorController::new(NoTick::new(motor), sensor, speed_sensor);
+        assert_eq!(default_ctrl.max_current_ma(), DEFAULT_MAX_CURRENT_MA);
+        assert_eq!(DEFAULT_MAX_CURRENT_MA, 2500);
+
+        // 2. Parameterized constructor sets custom limit (e.g. 2000 mA from app.toml)
+        let motor2 = MockMotor::new();
+        let sensor2 = MockCurrentSensor::new(150);
+        let speed_sensor2 = MockSpeedSensor::new(3000);
+        let mut custom_ctrl = MotorController::new_with_max_current(
+            NoTick::new(motor2),
+            sensor2,
+            speed_sensor2,
+            2000,
+        );
+        assert_eq!(custom_ctrl.max_current_ma(), 2000);
+
+        // 3. set_current_limits cannot exceed configured hardware limit (2000 mA)
+        custom_ctrl.set_current_limits(20, 3000);
+        assert_eq!(custom_ctrl.max_current_ma(), 2000);
+        assert_eq!(custom_ctrl.min_current_ma(), 20);
+
+        // 4. Calibration overload cannot exceed configured hardware limit (2000 mA)
+        custom_ctrl.set_calibration(&model::calibration::MotorCalibration {
+            current_ma: model::calibration::FourPointCalibration::new(80, 0, 0, 2800),
+            max_rpm: Some(3000),
+            rpm_limit: Some(0),
+        });
+        assert_eq!(custom_ctrl.max_current_ma(), 2000);
+    });
+}

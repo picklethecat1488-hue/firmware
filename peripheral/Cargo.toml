@@ -33,9 +33,11 @@ peripheral = { path = ".", features = ["mock"] }
 [target.'cfg(all(target_arch = "arm", target_os = "none"))'.dependencies]
 defmt = "0.3"
 embassy-rp = { version = "0.3.0", features = ["rp2040", "defmt"] }
+pio = "0.2"
 
 [target.'cfg(not(all(target_arch = "arm", target_os = "none")))'.dev-dependencies]
 embassy-executor = { version = "0.7.0", features = ["arch-std", "executor-thread", "task-arena-size-1048576"] }
+embassy-time = { version = "0.4.0", features = ["std"] }
 
 [build-dependencies]
 serde = { version = "1.0", features = ["derive"] }
