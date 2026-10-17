@@ -133,6 +133,8 @@ pub struct TopologyController {
     pub device_shell_name: Option<String>,
     /// Pointer expression for the raw hardware device.
     pub device_ptr: Option<String>,
+    /// Optional maximum motor current limit in mA.
+    pub max_current_ma: Option<i32>,
 }
 
 /// A channel configuration in the topology

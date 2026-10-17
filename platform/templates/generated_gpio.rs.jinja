@@ -1,0 +1,19 @@
+// Generated from board.toml. Do not edit.
+
+/// Total number of GPIO pins on the microcontroller.
+pub const NUM_GPIO_PINS: u32 = {{ num_gpio_pins }};
+
+/// List of GPIO pin numbers assigned to hardware buses or alternate peripheral functions.
+pub const BUS_ASSIGNED_PINS: &[u32] = &[
+    {% for pin in bus_assigned_pins %}{{ pin }}, {% endfor %}
+];
+
+/// Checks if a GPIO pin is assigned to a communication bus or alternate function.
+///
+/// Returns `true` if the pin is dedicated to a hardware peripheral or bus
+/// (such as UART, PIO, or I2C), indicating that reading the pin as a
+/// general-purpose digital input should be skipped.
+#[inline]
+pub fn is_bus_assigned(pin: u32) -> bool {
+    matches!(pin, {{ bus_assigned_match() }})
+}
