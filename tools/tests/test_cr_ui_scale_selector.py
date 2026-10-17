@@ -125,3 +125,33 @@ def test_regression_cr_finding_a2ee1118_iframe_scale_isolation() -> None:
         assert "function isInsideIframe()" in content, f"{file_path.name} missing isInsideIframe guard"
         assert "window.self !== window.top" in content, f"{file_path.name} missing frame hierarchy check"
         assert "if (isInsideIframe())" in content, f"{file_path.name} missing iframe branch in applyUiScale"
+
+
+def test_common_stylesheet_linkage_and_presence() -> None:
+    """Verify common.css stylesheet exists in static assets and is linked across all UI templates."""
+    # 1. Static asset existence
+    dashboard_static_css = Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "common.css"
+    host_static_css = Path(__file__).resolve().parent.parent / "host_daemon" / "static" / "common.css"
+
+    assert dashboard_static_css.is_file(), "static/common.css missing in dashboard code_review static directory"
+    assert host_static_css.is_file(), "static/common.css missing in host_daemon static directory"
+
+    css_content = dashboard_static_css.read_text(encoding="utf-8")
+    assert "font-size: 80% !important;" in css_content
+    assert ".ui-scale-container" in css_content
+    assert ".ui-scale-select" in css_content
+    assert ".workstation-modal-overlay" in css_content
+
+    files_to_check = [
+        TEMPLATES_DIR / "diff_view.html.j2",
+        TEMPLATES_DIR / "code_review.html.j2",
+        TEMPLATES_DIR / "worm_report.html.j2",
+        HOST_TEMPLATES_DIR / "host_daemon.html.j2",
+    ]
+
+    for file_path in files_to_check:
+        content = file_path.read_text(encoding="utf-8")
+        assert '<link rel="stylesheet" href="/static/common.css">' in content, (
+            f"{file_path.name} missing <link rel=\"stylesheet\" href=\"/static/common.css\">"
+        )
+
