@@ -371,6 +371,9 @@ fn test_motor_controller_tickable_vs_notick() {
         // Test failing tick
         controller.motor.should_fail_tick = true;
         assert!(controller.tick_motor().await.is_err());
+        assert_eq!(controller.state(), MotorState::Off);
+        assert_eq!(controller.motor.speed, MotorSpeed::ZERO);
+        assert!(controller.tick_motor().await.is_ok());
 
         // 2. Test NoTick motor wrapper
         let notick_motor = NoTick::new(MockTickableMotor::new());
@@ -559,5 +562,49 @@ fn test_motor_controller_parameterized_max_current_and_default() {
             rpm_limit: Some(0),
         });
         assert_eq!(custom_ctrl.max_current_ma(), 2000);
+    });
+}
+
+#[test]
+fn test_worm_peaty_bobbit_630_motor_tick_driver_fault_stops_ticking() {
+    futures::executor::block_on(async {
+        use model::calibration::Calibration;
+
+        let motor = MockTickableMotor::new();
+        let sensor = MockCurrentSensor::new(150);
+        let speed_sensor = MockSpeedSensor::new(3000);
+        let mut controller = MotorController::new(motor, sensor, speed_sensor);
+
+        // Calibrate and start the motor at speed 100
+        controller.set_calibration(&model::calibration::MotorCalibration {
+            current_ma: model::calibration::FourPointCalibration::new(0, 0, 0, 1000),
+            max_rpm: Some(3000),
+            rpm_limit: Some(3000),
+        });
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(100).unwrap()), None)
+            .await;
+
+        // Verify initial tick succeeds and motor begins ramping up
+        assert_eq!(controller.motor.tick_count, 0);
+        assert!(controller.tick_motor().await.is_ok());
+        assert_eq!(controller.motor.tick_count, 1);
+        assert_eq!(controller.state(), MotorState::On);
+
+        // Simulate driver fault assertion (e.g. TMC6300 DIAG pin asserted)
+        controller.motor.should_fail_tick = true;
+
+        // tick_motor() must return an error and immediately transition controller to Off
+        let tick_res = controller.tick_motor().await;
+        assert!(tick_res.is_err());
+        assert_eq!(controller.state(), MotorState::Off);
+        assert_eq!(controller.motor.speed, MotorSpeed::ZERO);
+        assert_eq!(controller.current_rpm(), 0);
+
+        // Subsequent tick_motor() calls must NOT tick the failed motor again (zero log spam)
+        let count_before = controller.motor.tick_count;
+        assert!(controller.tick_motor().await.is_ok());
+        assert_eq!(controller.motor.tick_count, count_before);
+        assert_eq!(controller.state(), MotorState::Off);
     });
 }

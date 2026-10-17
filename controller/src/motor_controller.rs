@@ -229,6 +229,9 @@ where
         link_section = ".data.core1_func"
     )]
     pub fn current_rpm(&self) -> u32 {
+        if self.state == MotorState::Off {
+            return 0;
+        }
         if self.last_measured_rpm > 0 {
             self.last_measured_rpm
         } else if self.limits.max_rpm == 0 {
@@ -386,11 +389,14 @@ where
             self.state = MotorState::Off;
             self.active_speed = MotorSpeed::ZERO;
             self.speed = MotorSpeed::ZERO;
-            self.motor.stop().map_err(|e| e.to_peripheral_error())?;
+            self.last_measured_rpm = 0;
+            self.last_current_ma = 0;
+            let stop_res = self.motor.stop();
             let _ = self
                 .current_sensor
                 .set_measurement_mode(PowerMeasurementMode::PowerDown)
                 .await;
+            stop_res.map_err(|e| e.to_peripheral_error())?;
         }
         Ok(())
     }
@@ -523,6 +529,8 @@ where
         let speed = self.speed;
         let mut active_speed = self.active_speed;
 
+        let mut tick_result = Ok(());
+
         // 1. Ramping logic
         if state == MotorState::On {
             self.startup_ticks = self.startup_ticks.saturating_add(1);
@@ -533,15 +541,14 @@ where
                 self.active_speed = active_speed;
                 if active_speed == MotorSpeed::ZERO && speed == MotorSpeed::ZERO {
                     self.state = MotorState::Off;
-                    self.motor.stop().map_err(|e| e.to_peripheral_error())?;
+                    let _ = self.motor.stop();
                     let _ = self
                         .current_sensor
                         .set_measurement_mode(PowerMeasurementMode::PowerDown)
                         .await;
-                } else {
-                    self.motor
-                        .set_speed(active_speed)
-                        .map_err(|e| e.to_peripheral_error())?;
+                } else if let Err(e) = self.motor.set_speed(active_speed) {
+                    let _ = self.set_running_state(false).await;
+                    tick_result = Err(e.to_peripheral_error());
                 }
             } else if active_speed > speed {
                 // Ramp down
@@ -550,15 +557,14 @@ where
                 self.active_speed = active_speed;
                 if active_speed == MotorSpeed::ZERO && speed == MotorSpeed::ZERO {
                     self.state = MotorState::Off;
-                    self.motor.stop().map_err(|e| e.to_peripheral_error())?;
+                    let _ = self.motor.stop();
                     let _ = self
                         .current_sensor
                         .set_measurement_mode(PowerMeasurementMode::PowerDown)
                         .await;
-                } else {
-                    self.motor
-                        .set_speed(active_speed)
-                        .map_err(|e| e.to_peripheral_error())?;
+                } else if let Err(e) = self.motor.set_speed(active_speed) {
+                    let _ = self.set_running_state(false).await;
+                    tick_result = Err(e.to_peripheral_error());
                 }
             }
         } else if active_speed.get() != 0 {
@@ -572,22 +578,22 @@ where
             active_speed = MotorSpeed::new(next).unwrap();
             self.active_speed = active_speed;
             if active_speed == MotorSpeed::ZERO {
-                self.motor.stop().map_err(|e| e.to_peripheral_error())?;
-            } else {
-                self.motor
-                    .set_speed(active_speed)
-                    .map_err(|e| e.to_peripheral_error())?;
+                let _ = self.motor.stop();
+            } else if let Err(e) = self.motor.set_speed(active_speed) {
+                let _ = self.set_running_state(false).await;
+                tick_result = Err(e.to_peripheral_error());
             }
         }
 
         // 2. Call motor driver's tick() for software PWM toggling only when active
-        if self.active_speed.get() != 0 {
-            self.motor
-                .tick()
-                .await
-                .map_err(|e| e.to_peripheral_error())?;
+        if tick_result.is_ok() && self.active_speed.get() != 0 {
+            if let Err(e) = self.motor.tick().await {
+                let _ = self.set_running_state(false).await;
+                tick_result = Err(e.to_peripheral_error());
+            }
         }
-        Ok(())
+
+        tick_result
     }
 
     /// Runs the controller's control loop infinitely, reading from the command channel.
@@ -634,6 +640,10 @@ where
                 // Tick ramping and duty cycle
                 if let Err(e) = self.tick_motor().await {
                     telemetry_client.report_error(e);
+                    last_telemetry = embassy_time::Instant::now();
+                    if let Err(update_err) = self.update(Some(&mut telemetry_client)).await {
+                        telemetry_client.report_error(update_err);
+                    }
                 }
 
                 // Run telemetry, safety, and current monitoring once per second
