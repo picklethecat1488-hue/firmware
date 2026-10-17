@@ -174,6 +174,7 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      position: relative;
     }
     .prompt-label {
       color: var(--xerxes-cyan);
@@ -195,6 +196,64 @@
     .cmd-input:focus {
       border-color: var(--xerxes-cyan);
       box-shadow: 0 0 6px rgba(0, 240, 255, 0.4);
+    }
+
+    /* CLI Fuzzy History Search (Ctrl-R) */
+    .cli-fuzzy-history {
+      position: absolute;
+      bottom: 48px;
+      left: 0;
+      right: 0;
+      max-height: 220px;
+      background: var(--xerxes-panel, #08161d);
+      border: 2px solid var(--xerxes-cyan, #00f0ff);
+      box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.9), 0 0 10px rgba(0, 240, 255, 0.2);
+      z-index: 2500;
+      display: flex;
+      flex-direction: column;
+    }
+    .fuzzy-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      background: rgba(10, 28, 36, 0.95);
+      border-bottom: 1px solid var(--xerxes-border-mid, #0b5966);
+    }
+    .fuzzy-prompt {
+      color: var(--xerxes-amber, #ffb000);
+      font-weight: bold;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .fuzzy-search-input {
+      flex: 1;
+      background: var(--xerxes-bg, #04090c);
+      border: 1px solid var(--xerxes-border-mid, #0b5966);
+      color: var(--xerxes-text-light, #e6f9ff);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 4px 8px;
+      outline: none;
+    }
+    .fuzzy-results-list {
+      overflow-y: auto;
+      max-height: 170px;
+    }
+    .fuzzy-item {
+      padding: 5px 12px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(11, 89, 102, 0.3);
+      color: var(--xerxes-text-light, #e6f9ff);
+    }
+    .fuzzy-item:hover, .fuzzy-item.active {
+      background: rgba(0, 240, 255, 0.2);
+      color: var(--xerxes-cyan, #00f0ff);
+      font-weight: bold;
     }
   </style>
 </head>
@@ -253,6 +312,14 @@
   </main>
 
   <footer class="cli-input-bar">
+    <div id="cliFuzzyHistory" class="cli-fuzzy-history" style="display:none;">
+      <div class="fuzzy-header">
+        <span class="fuzzy-prompt">(reverse-i-search)`':</span>
+        <input type="text" id="fuzzySearchInput" class="fuzzy-search-input" placeholder="Search command history..." autocomplete="off">
+        <button class="btn" style="padding: 1px 6px; font-size: 10px;" onclick="closeCliFuzzyHistory()">✕</button>
+      </div>
+      <div id="fuzzyResultsList" class="fuzzy-results-list"></div>
+    </div>
     <span class="prompt-label" id="promptLabel">{% if runner.active_mode == 'FS' %}fs> {% else %}shell> {% endif %}</span>
     <input type="text" id="cmdInput" class="cmd-input" placeholder="Type command and press ENTER (e.g. 'motor speed 100', 'gpio status', 'ls')..." autofocus autocomplete="off">
     <button class="btn btn-cyan" onclick="submitCommand()">Send [↵]</button>
@@ -356,7 +423,151 @@
       }
     }
 
+    function fuzzyMatch(pattern, text) {
+      if (!pattern) return true;
+      let pIdx = 0;
+      let tIdx = 0;
+      const p = pattern.toLowerCase();
+      const t = text.toLowerCase();
+      while (pIdx < p.length && tIdx < t.length) {
+        if (p[pIdx] === t[tIdx]) {
+          pIdx++;
+        }
+        tIdx++;
+      }
+      return pIdx === p.length;
+    }
+
+    let fuzzySelectedIndex = 0;
+    let currentFuzzyMatches = [];
+
+    function openCliFuzzyHistory() {
+      const container = document.getElementById("cliFuzzyHistory");
+      const searchInput = document.getElementById("fuzzySearchInput");
+      if (!container || !searchInput) return;
+
+      container.style.display = "flex";
+      searchInput.value = "";
+      fuzzySelectedIndex = 0;
+      updateFuzzyResults("");
+      searchInput.focus();
+    }
+
+    function closeCliFuzzyHistory() {
+      const container = document.getElementById("cliFuzzyHistory");
+      if (container) {
+        container.style.display = "none";
+      }
+      const cmdInput = document.getElementById("cmdInput");
+      if (cmdInput) {
+        cmdInput.focus();
+      }
+    }
+
+    function updateFuzzyResults(query) {
+      const list = document.getElementById("fuzzyResultsList");
+      if (!list) return;
+
+      const historyReversed = [];
+      const seen = new Set();
+      for (let i = cmdHistory.length - 1; i >= 0; i--) {
+        const item = cmdHistory[i];
+        if (item && !seen.has(item)) {
+          seen.add(item);
+          historyReversed.push(item);
+        }
+      }
+
+      currentFuzzyMatches = historyReversed.filter(cmd => fuzzyMatch(query, cmd));
+      if (fuzzySelectedIndex >= currentFuzzyMatches.length) {
+        fuzzySelectedIndex = Math.max(0, currentFuzzyMatches.length - 1);
+      }
+
+      list.innerHTML = "";
+      if (currentFuzzyMatches.length === 0) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "fuzzy-item";
+        emptyDiv.style.color = "var(--xerxes-text-dim, #567)";
+        emptyDiv.innerText = "No matching commands";
+        list.appendChild(emptyDiv);
+        return;
+      }
+
+      currentFuzzyMatches.forEach((cmd, idx) => {
+        const itemDiv = document.createElement("div");
+        itemDiv.className = `fuzzy-item ${idx === fuzzySelectedIndex ? 'active' : ''}`;
+        itemDiv.innerText = cmd;
+        itemDiv.addEventListener("click", () => {
+          selectFuzzyCommand(cmd);
+        });
+        list.appendChild(itemDiv);
+      });
+
+      const activeEl = list.children[fuzzySelectedIndex];
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: "nearest" });
+      }
+    }
+
+    function selectFuzzyCommand(cmd) {
+      const input = document.getElementById("cmdInput");
+      if (input) {
+        input.value = cmd;
+      }
+      closeCliFuzzyHistory();
+    }
+
+    function setupCliFuzzyHistory() {
+      const searchInput = document.getElementById("fuzzySearchInput");
+      if (!searchInput) return;
+
+      searchInput.addEventListener("input", (e) => {
+        fuzzySelectedIndex = 0;
+        updateFuzzyResults(e.target.value);
+      });
+
+      searchInput.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0) {
+            fuzzySelectedIndex = (fuzzySelectedIndex + 1) % currentFuzzyMatches.length;
+            updateFuzzyResults(searchInput.value);
+          }
+          return;
+        }
+
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeCliFuzzyHistory();
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0 && currentFuzzyMatches[fuzzySelectedIndex]) {
+            selectFuzzyCommand(currentFuzzyMatches[fuzzySelectedIndex]);
+          } else {
+            closeCliFuzzyHistory();
+          }
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0) {
+            fuzzySelectedIndex = (fuzzySelectedIndex - 1 + currentFuzzyMatches.length) % currentFuzzyMatches.length;
+            updateFuzzyResults(searchInput.value);
+          }
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0) {
+            fuzzySelectedIndex = (fuzzySelectedIndex + 1) % currentFuzzyMatches.length;
+            updateFuzzyResults(searchInput.value);
+          }
+        }
+      });
+    }
+
     document.getElementById("cmdInput").addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+        e.preventDefault();
+        openCliFuzzyHistory();
+        return;
+      }
       if (e.key === "Enter") {
         e.preventDefault();
         submitCommand();
@@ -376,6 +587,16 @@
       }
     });
 
+    window.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+        if (e.target.id !== "fuzzySearchInput") {
+          e.preventDefault();
+          openCliFuzzyHistory();
+        }
+      }
+    });
+
+    setupCliFuzzyHistory();
     setInterval(pollOutputs, 1000);
     pollOutputs();
   </script>
