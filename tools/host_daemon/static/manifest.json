@@ -1,0 +1,22 @@
+{
+  "name": "Xerxes Host Daemon",
+  "short_name": "HostDaemon",
+  "description": "Hardware Target Bringup, RTT Console, and Filesystem Daemon Workstation",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#08161d",
+  "theme_color": "#00f0ff",
+  "icons": [
+    {
+      "src": "/static/favicon.ico",
+      "sizes": "16x16 32x32 48x48 64x64",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

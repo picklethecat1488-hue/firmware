@@ -5,29 +5,29 @@
 use model::interfaces::LedDriver;
 use model::types::PeripheralError;
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 use {
     embassy_rp::pio::{Common, Instance, InterruptHandler, Pio, PioPin, StateMachine},
     embassy_rp::pio_programs::ws2812::PioWs2812Program,
     fixed::types::U24F8,
 };
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 const T1: u8 = 2; // start bit
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 const T2: u8 = 5; // data bit
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 const T3: u8 = 3; // stop bit
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 const CYCLES_PER_BIT: u32 = (T1 + T2 + T3) as u32;
 
 /// Driver for WS2812 addressable LED.
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 pub struct Ws2812<'d, PIO: Instance, const SM: usize> {
     sm: StateMachine<'d, PIO, SM>,
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 impl<'d, PIO: Instance, const SM: usize> Ws2812<'d, PIO, SM> {
     /// Creates a new Ws2812 driver instance using PIO state machine.
     pub fn new(
@@ -71,7 +71,7 @@ impl<'d, PIO: Instance, const SM: usize> Ws2812<'d, PIO, SM> {
     }
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 impl<'d> Ws2812<'d, embassy_rp::peripherals::PIO0, 0> {
     /// Creates and configures the Ws2812 driver using PIO0 and state machine 0.
     #[allow(static_mut_refs, clippy::missing_transmute_annotations)]
@@ -104,7 +104,7 @@ impl<'d> Ws2812<'d, embassy_rp::peripherals::PIO0, 0> {
     }
 }
 
-#[cfg(all(target_arch = "arm", target_os = "none"))]
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 impl<'d, PIO: Instance, const SM: usize> LedDriver for Ws2812<'d, PIO, SM> {
     type Error = PeripheralError;
 
@@ -124,13 +124,13 @@ impl<'d, PIO: Instance, const SM: usize> LedDriver for Ws2812<'d, PIO, SM> {
     }
 }
 
-/// Dummy Ws2812 driver for host-compilation.
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+/// Dummy Ws2812 driver for host-compilation and non-RP2040 baremetal targets.
+#[cfg(not(all(target_arch = "arm", target_os = "none", target_has_embassy_rp)))]
 pub struct Ws2812 {
     _dummy: (),
 }
 
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+#[cfg(not(all(target_arch = "arm", target_os = "none", target_has_embassy_rp)))]
 impl Ws2812 {
     /// Creates a new dummy Ws2812 instance.
     pub const fn new() -> Self {
@@ -138,19 +138,19 @@ impl Ws2812 {
     }
 
     /// Creates a dummy Ws2812 instance.
-    pub const fn new_pio(_config: rp2040::pio::PioInitConfig) -> Self {
+    pub fn new_pio<C>(_config: C) -> Self {
         Self { _dummy: () }
     }
 }
 
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+#[cfg(not(all(target_arch = "arm", target_os = "none", target_has_embassy_rp)))]
 impl Default for Ws2812 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
+#[cfg(not(all(target_arch = "arm", target_os = "none", target_has_embassy_rp)))]
 impl LedDriver for Ws2812 {
     type Error = PeripheralError;
 
