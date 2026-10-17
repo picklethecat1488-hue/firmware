@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import threading
+import time
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
 
@@ -387,6 +388,41 @@ class DaemonRunner:
                 self.log(f"probe-rs download failed (exit code {ret}):\n{out}", level="WARN")
                 self.status_message = f"Flash failed: {out[:100]}"
                 return False
+
+    def reset_target(self) -> Dict[str, Any]:
+        """Reset the target microcontroller via debug probe and reconnect RTT streaming."""
+        self.log("Resetting target microcontroller...", channel="system")
+        self.stop_rtt_streaming()
+        time.sleep(0.15)
+
+        chip_name = self.chip
+        if not chip_name and self.elf_path and self.elf_path.exists():
+            try:
+                chip_name = self.detect_chip()
+            except Exception:
+                chip_name = "rp2040"
+        if not chip_name:
+            chip_name = "rp2040"
+
+        cmd_args = ["reset", "--chip", chip_name]
+        if self.speed:
+            cmd_args.extend(["--speed", str(self.speed)])
+
+        ret, out = self.run_probe_rs(cmd_args)
+        reset_success = (ret == 0)
+        if reset_success:
+            self.log("Target reset successfully via probe-rs", channel="system")
+        else:
+            self.log(f"probe-rs reset returned {ret}: {out.strip()}", level="WARN")
+
+        time.sleep(0.15)
+        self.start_rtt_streaming()
+        return {
+            "success": True,
+            "probe_reset": reset_success,
+            "message": "Target reset completed" if reset_success else "Target reset attempted and RTT reconnected",
+            "output": out.strip() if out else "",
+        }
 
     def stop_rtt_streaming(self) -> None:
         """Terminate active RTT streaming process to release the USB debug probe."""

@@ -112,6 +112,16 @@
       border-color: var(--xerxes-cyan);
       color: var(--xerxes-cyan);
     }
+    .btn-amber {
+      background: rgba(255, 176, 0, 0.2);
+      border-color: var(--xerxes-amber);
+      color: var(--xerxes-amber);
+    }
+    .btn-amber:hover {
+      background: rgba(255, 176, 0, 0.35);
+      border-color: var(--xerxes-amber);
+      color: #fff;
+    }
     .workspace-body {
       flex: 1;
       display: grid;
@@ -421,6 +431,7 @@
 
     <div style="display: flex; align-items: center; gap: 8px;">
       <button class="btn btn-cyan" id="btnSync" onclick="triggerSync()">⚡ Sync</button>
+      <button class="btn btn-amber" id="btnReset" onclick="triggerReset()">⚡ Reset</button>
       <label for="modeSelect" style="font-size: 11px; color: var(--xerxes-text-muted);">ACTIVE MODE:</label>
       <select id="modeSelect" class="select-dropdown" onchange="changeMode(this.value)">
         <option value="CLI" {% if runner.active_mode == 'CLI' %}selected{% endif %}>CLI (RTT Console)</option>
@@ -896,6 +907,32 @@
         }
       }
     });
+
+    async function triggerReset() {
+      const btn = document.getElementById("btnReset");
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = "⚡ Resetting...";
+      }
+      try {
+        const resp = await fetch("/api/reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
+        });
+        const data = await resp.json();
+        console.log("Reset result:", data);
+      } catch (e) {
+        console.error("Reset error:", e);
+      } finally {
+        setTimeout(() => {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerText = "⚡ Reset";
+          }
+        }, 1200);
+      }
+    }
 
     let syncPollTimer = null;
 

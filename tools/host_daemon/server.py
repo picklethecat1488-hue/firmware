@@ -117,6 +117,9 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": True, "mode": mode})
             else:
                 self._send_json({"error": "Invalid mode. Expected: CLI, FS"}, status=400)
+        elif path == "/api/reset":
+            res = runner.reset_target()
+            self._send_json(res)
         elif path == "/api/stop":
             self._send_json({"success": True, "message": "Stopping host daemon"})
 

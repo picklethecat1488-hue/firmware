@@ -275,6 +275,9 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     # Status
     subparsers.add_parser("status", help="Show status of running host daemon")
 
+    # Reset
+    subparsers.add_parser("reset", help="Reset the target device via active host daemon")
+
     # Stop
     subparsers.add_parser("stop", help="Stop running host daemon")
 
@@ -321,6 +324,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
         except Exception as e:
             print(f"Host daemon is not running ({e}).")
+            return 1
+
+    if args.subcommand == "reset":
+        try:
+            res = send_daemon_request("/api/reset", {})
+            print(res.get("message", "Target reset completed."))
+            return 0
+        except Exception as e:
+            print(f"Could not reset target: {e}", file=sys.stderr)
             return 1
 
     if args.subcommand == "stop":
