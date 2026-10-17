@@ -17,9 +17,37 @@ macro_rules! log_warn {
     };
 }
 
+/// Default I2C 7-bit address for the INA219 current/power monitor.
+pub const DEFAULT_I2C_ADDRESS: u8 = 0x40;
+
+/// Default configuration word (0x399F: 32V bus range, +-320mV shunt range, 12-bit ADC, continuous).
+pub const DEFAULT_CONFIG: u16 = 0x399F;
+
+/// Software reset configuration word (bit 15 RST = 1).
+pub const RESET_CONFIG: u16 = 0x8000;
+
+/// Default calibration register value for 0.1 ohm shunt resistor (0.1 mA / LSB).
+pub const DEFAULT_CALIBRATION: u16 = 4096;
+
+/// Scale factor to convert 0.1 mA counts from INA219 current/shunt registers to integer milliamperes.
+pub const CURRENT_LSB_DIVISOR: i32 = 10;
+
+/// Conversion ready (CNVR) bit mask in the Bus Voltage Register (0x02, bit 1).
+pub const BUS_VOLTAGE_CNVR_MASK: u16 = 0x0002;
+
+/// Bus voltage bit shift to extract 13-bit voltage data from Bus Voltage Register (bits 3..15).
+pub const BUS_VOLTAGE_SHIFT: u32 = 3;
+
+/// Bus voltage LSB resolution in millivolts (4 mV / LSB).
+pub const BUS_VOLTAGE_LSB_MV: u32 = 4;
+
+/// Timeout in milliseconds for waiting for a measurement conversion.
+pub const MEASUREMENT_TIMEOUT_MS: u32 = 100;
+
 struct Register;
 impl Register {
     const CONFIG: u8 = 0x00;
+    const SHUNT_VOLTAGE: u8 = 0x01;
     const BUS_VOLTAGE: u8 = 0x02;
     const CURRENT: u8 = 0x04;
     const CALIBRATION: u8 = 0x05;
@@ -34,15 +62,20 @@ pub struct Ina219<I> {
 impl<I: I2c> Ina219<I> {
     /// Creates a new INA219 driver instance with the default address (0x40).
     pub const fn new(i2c: I) -> Self {
-        Self { i2c, address: 0x40 }
+        Self {
+            i2c,
+            address: DEFAULT_I2C_ADDRESS,
+        }
     }
 
     /// Initializes the INA219 by writing the default calibration (e.g. 4096).
     pub async fn init(&mut self) -> Result<(), PeripheralError> {
         // Write configuration word (0x399F default settings)
-        self.write_register(Register::CONFIG, 0x399F).await?;
-        // Write calibration word (4096 LSB matches typical mA ranges)
-        self.write_register(Register::CALIBRATION, 4096).await?;
+        self.write_register(Register::CONFIG, DEFAULT_CONFIG)
+            .await?;
+        // Write calibration word (4096 LSB matches typical 0.1 mA per count)
+        self.write_register(Register::CALIBRATION, DEFAULT_CALIBRATION)
+            .await?;
         Ok(())
     }
 
@@ -83,9 +116,9 @@ impl<I: I2c> WaitableMeasurement for Ina219<I> {
     async fn wait_for_measurement(&mut self) -> Result<(), PeripheralError> {
         // Poll CNVR bit (bit 1) in the Bus Voltage Register (0x02)
         // Set a timeout of 100ms (100 * 1ms)
-        for _ in 0..100 {
+        for _ in 0..MEASUREMENT_TIMEOUT_MS {
             let bus_voltage = self.read_register(Register::BUS_VOLTAGE).await?;
-            if (bus_voltage & 0x0002) != 0 {
+            if (bus_voltage & BUS_VOLTAGE_CNVR_MASK) != 0 {
                 return Ok(());
             }
             ::embassy_time::Timer::after_millis(1).await;
@@ -113,7 +146,21 @@ impl<I: I2c> PowerSensor for Ina219<I> {
             );
         }
         let val = res? as i16;
-        Ok(val as i32)
+        if val != 0 {
+            Ok((val as i32) / CURRENT_LSB_DIVISOR)
+        } else {
+            // Fallback to shunt voltage register in case calibration register was lost/cleared
+            let shunt_raw = self.read_register(Register::SHUNT_VOLTAGE).await? as i16;
+            if shunt_raw != 0 {
+                // Restore calibration register
+                let _ = self
+                    .write_register(Register::CALIBRATION, DEFAULT_CALIBRATION)
+                    .await;
+                Ok((shunt_raw as i32) / CURRENT_LSB_DIVISOR)
+            } else {
+                Ok(0)
+            }
+        }
     }
 
     #[cfg_attr(
@@ -132,7 +179,7 @@ impl<I: I2c> PowerSensor for Ina219<I> {
             );
         }
         let reg_val = res?;
-        let voltage_mv = ((reg_val >> 3) as u32) * 4;
+        let voltage_mv = ((reg_val >> BUS_VOLTAGE_SHIFT) as u32) * BUS_VOLTAGE_LSB_MV;
         Ok(voltage_mv)
     }
 
@@ -163,6 +210,10 @@ impl<I: I2c> PowerSensor for Ina219<I> {
         };
         let new_config = (config & 0xFFF8) | mode_val;
         self.write_register(Register::CONFIG, new_config).await?;
+        if mode != PowerMeasurementMode::PowerDown {
+            self.write_register(Register::CALIBRATION, DEFAULT_CALIBRATION)
+                .await?;
+        }
         Ok(())
     }
 }
@@ -182,6 +233,6 @@ impl<I: I2c> Probeable for Ina219<I> {
 
     #[tracing::instrument(level = "trace")]
     async fn reset(&mut self) -> Result<(), Self::Error> {
-        self.write_register(Register::CONFIG, 0x8000).await
+        self.write_register(Register::CONFIG, RESET_CONFIG).await
     }
 }
