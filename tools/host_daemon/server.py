@@ -49,6 +49,9 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 self.send_error(500, f"Template rendering error: {e}")
         elif path == "/api/status":
             self._send_json(runner.get_status())
+        elif path in ("/api/sync", "/api/sync/status"):
+            with runner._lock:
+                self._send_json(dict(runner.sync_status))
         elif path == "/api/logs":
             with runner._lock:
                 self._send_json(list(runner.logs))
@@ -70,7 +73,10 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
         except Exception:
             payload = {}
 
-        if path == "/api/cli/execute":
+        if path == "/api/sync":
+            runner.sync_async()
+            self._send_json({"success": True, "sync": runner.sync_status})
+        elif path == "/api/cli/execute":
             cmd = payload.get("command", "")
             output = runner.execute_cli(cmd)
             self._send_json({"success": True, "output": output})

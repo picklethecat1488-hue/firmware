@@ -47,6 +47,87 @@ class DaemonRunner:
         self.is_connected = False
         self.status_message = "Initialized"
 
+        self.sync_status: Dict[str, Any] = {
+            "active": False,
+            "step": "idle",
+            "step_index": 0,
+            "total_steps": 4,
+            "progress": 0,
+            "message": "Idle",
+            "target": self.target,
+            "package": self.package,
+            "bin": self.bin_name,
+            "profile": "release" if self.release else "debug",
+            "speed": self.speed,
+            "error": None,
+        }
+        self._sync_thread: Optional[threading.Thread] = None
+
+    def _update_sync(
+        self,
+        step: str,
+        step_index: int,
+        progress: int,
+        message: str,
+        active: bool = True,
+        error: Optional[str] = None,
+    ) -> None:
+        """Update the thread-safe target synchronization status."""
+        with self._lock:
+            self.sync_status.update(
+                {
+                    "active": active,
+                    "step": step,
+                    "step_index": step_index,
+                    "total_steps": 4,
+                    "progress": progress,
+                    "message": message,
+                    "target": self.target,
+                    "package": self.package,
+                    "bin": self.bin_name,
+                    "profile": "release" if self.release else "debug",
+                    "speed": self.speed,
+                    "error": error,
+                }
+            )
+        self.log(f"[Sync] {message}")
+
+    def sync(self) -> Dict[str, Any]:
+        """Perform full synchronization: compile target, compile tools, flash, and connect RTT."""
+        try:
+            # 1. Compile target firmware
+            self._update_sync("compiling_target", 1, 25, "Compiling target firmware...")
+            self.build_target()
+
+            # 2. Compile host tools
+            self._update_sync("compiling_host_tools", 2, 50, "Compiling host utilities (host_cli, host_fs)...")
+            self.build_host_tools()
+
+            # 3. Flash target device
+            self._update_sync("flashing_target", 3, 75, "Flashing target device via probe-rs...")
+            self.flash_target()
+
+            # 4. Start RTT streaming
+            self._update_sync("starting_rtt", 4, 90, "Starting RTT streaming channels...")
+            self.start_rtt_streaming()
+
+            # Complete
+            self._update_sync("complete", 4, 100, "Target synchronized & RTT connected successfully.", active=False)
+        except Exception as e:
+            err_msg = f"Synchronization failed: {e}"
+            self._update_sync("failed", 0, 0, err_msg, active=False, error=str(e))
+            self.log(err_msg, level="ERROR")
+
+        return dict(self.sync_status)
+
+    def sync_async(self) -> None:
+        """Trigger target synchronization asynchronously in a background thread."""
+        with self._lock:
+            if self._sync_thread and self._sync_thread.is_alive():
+                return
+            self._sync_thread = threading.Thread(target=self.sync, daemon=True)
+            self._sync_thread.start()
+
     def log(self, message: str, level: str = "INFO", channel: str = "daemon") -> None:
         """Append a log message to the thread-safe log buffer."""
         entry = {

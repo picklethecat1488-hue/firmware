@@ -276,27 +276,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         chip=args.chip,
     )
 
-    # 1. Compile target binary
-    try:
-        runner.build_target()
-    except Exception as e:
-        print(f"Error compiling target firmware: {e}", file=sys.stderr)
-        return 1
-
-    # 2. Compile host tools
-    try:
-        runner.build_host_tools()
-    except Exception as e:
-        print(f"Error compiling host tools: {e}", file=sys.stderr)
-        return 1
-
-    # 3. Flash target (gracefully falls back if no probe attached)
-    runner.flash_target()
-
-    # 4. Start RTT streaming
-    runner.start_rtt_streaming()
-
-    # 5. Start HTTP server
+    # Start HTTP server first so workstation UI and /api/sync are immediately accessible
     try:
         server = HostDaemonServer(args.host, args.port, runner)
     except OSError as e:
@@ -315,6 +295,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             "url": f"http://{args.host}:{args.port}",
         }
     )
+
+    # Trigger asynchronous target synchronization (compiles target, compiles host tools, flashes, connects RTT)
+    runner.sync_async()
 
     print(f"\n  Workstation URL: http://{args.host}:{args.port}")
     print("  Press Ctrl+C to stop daemon.\n")
