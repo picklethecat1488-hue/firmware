@@ -123,6 +123,16 @@
       border-color: var(--xerxes-amber);
       color: #fff;
     }
+    .btn-red {
+      background: rgba(255, 42, 75, 0.2);
+      border-color: var(--xerxes-red);
+      color: var(--xerxes-red);
+    }
+    .btn-red:hover {
+      background: rgba(255, 42, 75, 0.35);
+      border-color: var(--xerxes-red);
+      color: #fff;
+    }
     .btn-copy {
       background: rgba(0, 240, 255, 0.1);
       border: 1px solid var(--xerxes-cyan);
@@ -510,6 +520,7 @@
     <div style="display: flex; align-items: center; gap: 8px;">
       <button class="btn btn-cyan" id="btnSync" onclick="triggerSync()">⚡ Sync</button>
       <button class="btn btn-amber" id="btnReset" onclick="triggerReset()">⚡ Reset</button>
+      <button class="btn btn-red" id="btnTargetBug" onclick="openTargetBugModal()" title="Report defect discovered on target">🐞 Target Bug</button>
       <label for="modeSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">ACTIVE MODE:</label>
       <select id="modeSelect" class="select-dropdown" onchange="changeMode(this.value)">
         <option value="CLI" {% if runner.active_mode == 'CLI' %}selected{% endif %}>CLI (RTT Console)</option>
@@ -558,6 +569,108 @@
           <button class="btn btn-amber" id="btnSyncCancel" onclick="cancelSync()">Cancel</button>
           <button class="btn" id="btnSyncDismiss" onclick="closeSyncModal()">Dismiss</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Target Bug Reporting Modal (WORM-LOAMY-LUGWORM-536) -->
+  <div id="targetBugModal" class="sync-modal-backdrop" style="display:none;" onclick="if(event.target===this)closeTargetBugModal()">
+    <div class="sync-modal-box" style="max-width: 680px; width: 92%;">
+      <div class="sync-modal-header" style="border-bottom: 2px solid var(--xerxes-red);">
+        <span class="sync-modal-title" style="color: var(--xerxes-red);">🐞 TARGET DEFECT DISCOVERY // REPORT WORM</span>
+        <button class="btn" style="padding: 2px 6px; font-size: 8.5px;" onclick="closeTargetBugModal()">✕</button>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px; padding:14px; max-height:75vh; overflow-y:auto;">
+        <div style="display:flex; gap:10px;">
+          <div style="flex:2;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">BUG TITLE *</label>
+            <input type="text" id="targetBugTitle" class="quake-input" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:11px; background:#040d12; border:1px solid #0b5966; color:#00f0ff;" placeholder="Brief summary of defect (e.g. Motor fails to spin on speed 100)...">
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">SEVERITY</label>
+            <select id="targetBugSeverity" class="select-dropdown" style="width:100%; height:28px;">
+              <option value="CRITICAL">🔴 CRITICAL</option>
+              <option value="HIGH">🟠 HIGH</option>
+              <option value="MEDIUM" selected>🟡 MEDIUM</option>
+              <option value="LOW">🟢 LOW</option>
+            </select>
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">CATEGORY</label>
+            <select id="targetBugCategory" class="select-dropdown" style="width:100%; height:28px;">
+              <option value="FIRMWARE" selected>FIRMWARE</option>
+              <option value="CONTROLLER">CONTROLLER</option>
+              <option value="DRIVER">DRIVER</option>
+              <option value="PLATFORM">PLATFORM</option>
+              <option value="BOARD">BOARD</option>
+              <option value="SHELL">SHELL</option>
+              <option value="INFRASTRUCTURE">INFRASTRUCTURE</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+          <div style="flex:1;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">COMPONENT</label>
+            <input type="text" id="targetBugComponent" class="quake-input" style="width:100%; box-sizing:border-box; padding:5px 8px; font-size:10px; background:#040d12; border:1px solid #0b5966; color:#e0f8ff;" value="target">
+          </div>
+          <div style="flex:2;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">TARGET DETAILS</label>
+            <div style="font-size:9px; color:var(--xerxes-text-dim); padding-top:4px;">
+              Target: <strong>{{ runner.target }}</strong> | Binary: <strong>{{ runner.bin_name }}</strong> ({{ 'release' if runner.release else 'debug' }})
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">DESCRIPTION</label>
+          <textarea id="targetBugDescription" rows="3" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:10px; background:#040d12; border:1px solid #0b5966; color:#e0f8ff; font-family:monospace; resize:vertical;" placeholder="Detailed description of defect observed on target..."></textarea>
+        </div>
+
+        <div>
+          <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">REPRODUCTION STEPS</label>
+          <textarea id="targetBugSteps" rows="4" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:10px; background:#040d12; border:1px solid #0b5966; color:#e0f8ff; font-family:monospace; resize:vertical;"></textarea>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+          <div style="flex:1;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">EXPECTED BEHAVIOR</label>
+            <textarea id="targetBugExpected" rows="2" style="width:100%; box-sizing:border-box; padding:5px 8px; font-size:10px; background:#040d12; border:1px solid #0b5966; color:#e0f8ff; font-family:monospace; resize:vertical;"></textarea>
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">ACTUAL BEHAVIOR</label>
+            <textarea id="targetBugActual" rows="2" style="width:100%; box-sizing:border-box; padding:5px 8px; font-size:10px; background:#040d12; border:1px solid #0b5966; color:#e0f8ff; font-family:monospace; resize:vertical;"></textarea>
+          </div>
+        </div>
+
+        <!-- Target Attachment Options -->
+        <div style="background:rgba(0,240,255,0.03); border:1px solid #0b5966; border-radius:3px; padding:10px;">
+          <span style="font-size:9px; font-weight:bold; color:var(--xerxes-cyan); display:block; margin-bottom:8px;">AUTOMATIC TARGET ATTACHMENTS</span>
+          <div style="display:flex; flex-direction:column; gap:6px; font-size:9px;">
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="attachSystemLogs" checked>
+              <span>Attach recent system logs (defmt / RTT output from session)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="attachCrashLog">
+              <span>Fetch &amp; attach target crash log (host_fs crash-log)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="attachTelemetry">
+              <span>Fetch &amp; attach target telemetry (host_fs export-telemetry)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="attachMetadata">
+              <span>Fetch &amp; attach target filesystem metadata (host_fs cat metadata)</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="targetBugStatusMsg" style="display:none; font-size:9.5px; padding:6px 10px; border-radius:2px;"></div>
+      </div>
+      <div class="sync-modal-footer" style="padding:10px 14px; border-top:1px solid #0b5966; display:flex; justify-content:flex-end; gap:8px;">
+        <button class="btn" onclick="closeTargetBugModal()">Cancel</button>
+        <button class="btn btn-red" id="btnSubmitTargetBug" onclick="submitTargetBug()">⚡ File Target Bug</button>
       </div>
     </div>
   </div>
@@ -1475,6 +1588,127 @@
       }
       const modal = document.getElementById("syncModal");
       if (modal) modal.style.display = "none";
+    }
+
+    // Target Bug Reporting Modal Management (WORM-LOAMY-LUGWORM-536)
+    function openTargetBugModal() {
+      const modal = document.getElementById("targetBugModal");
+      if (!modal) return;
+      modal.style.display = "flex";
+
+      const titleInput = document.getElementById("targetBugTitle");
+      if (titleInput) {
+        titleInput.value = "";
+        setTimeout(() => titleInput.focus(), 50);
+      }
+
+      const stepsInput = document.getElementById("targetBugSteps");
+      if (stepsInput && !stepsInput.value) {
+        const recentCmds = (cmdHistory || []).slice(-3);
+        let defaultSteps = "1. Connect target device via probe-rs / RTT\n2. Synchronize firmware: package {{ runner.package }} ({{ runner.bin_name }})";
+        if (recentCmds.length > 0) {
+          recentCmds.forEach((cmd, idx) => {
+            defaultSteps += `\n${idx + 3}. Execute command '${cmd}'`;
+          });
+          defaultSteps += `\n${recentCmds.length + 3}. Observe defect/failure on target`;
+        } else {
+          defaultSteps += "\n3. Execute target CLI/FS commands\n4. Observe defect/failure on target";
+        }
+        stepsInput.value = defaultSteps;
+      }
+
+      const statusEl = document.getElementById("targetBugStatusMsg");
+      if (statusEl) {
+        statusEl.style.display = "none";
+        statusEl.textContent = "";
+      }
+    }
+
+    function closeTargetBugModal() {
+      const modal = document.getElementById("targetBugModal");
+      if (modal) modal.style.display = "none";
+    }
+
+    async function submitTargetBug() {
+      const title = document.getElementById("targetBugTitle")?.value.trim();
+      const statusEl = document.getElementById("targetBugStatusMsg");
+      const submitBtn = document.getElementById("btnSubmitTargetBug");
+
+      if (!title) {
+        if (statusEl) {
+          statusEl.style.display = "block";
+          statusEl.style.background = "rgba(255, 42, 75, 0.15)";
+          statusEl.style.color = "var(--xerxes-red)";
+          statusEl.textContent = "Error: Bug title is required.";
+        }
+        return;
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "⏳ Filing Bug Report...";
+      }
+
+      const payload = {
+        title: title,
+        severity: document.getElementById("targetBugSeverity")?.value || "MEDIUM",
+        category: document.getElementById("targetBugCategory")?.value || "FIRMWARE",
+        component: document.getElementById("targetBugComponent")?.value.trim() || "target",
+        description: document.getElementById("targetBugDescription")?.value.trim() || "",
+        reproduction_steps: document.getElementById("targetBugSteps")?.value.trim() || "",
+        expected_behavior: document.getElementById("targetBugExpected")?.value.trim() || "",
+        actual_behavior: document.getElementById("targetBugActual")?.value.trim() || "",
+        attach_system_logs: document.getElementById("attachSystemLogs")?.checked ?? true,
+        attach_crash_log: document.getElementById("attachCrashLog")?.checked ?? false,
+        attach_telemetry: document.getElementById("attachTelemetry")?.checked ?? false,
+        attach_metadata: document.getElementById("attachMetadata")?.checked ?? false,
+      };
+
+      try {
+        const resp = await fetch("/api/target_bug", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const res = await resp.json();
+        if (res.success) {
+          if (statusEl) {
+            statusEl.style.display = "block";
+            statusEl.style.background = "rgba(20, 217, 196, 0.15)";
+            statusEl.style.color = "var(--xerxes-teal)";
+            statusEl.textContent = `✓ Created defect report ${res.worm_id} with ${res.attachments_count} attachments.`;
+          }
+          setTimeout(() => {
+            closeTargetBugModal();
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = "⚡ File Target Bug";
+            }
+          }, 1500);
+        } else {
+          if (statusEl) {
+            statusEl.style.display = "block";
+            statusEl.style.background = "rgba(255, 42, 75, 0.15)";
+            statusEl.style.color = "var(--xerxes-red)";
+            statusEl.textContent = `Error: ${res.error || "Failed to create bug report"}`;
+          }
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "⚡ File Target Bug";
+          }
+        }
+      } catch (err) {
+        if (statusEl) {
+          statusEl.style.display = "block";
+          statusEl.style.background = "rgba(255, 42, 75, 0.15)";
+          statusEl.style.color = "var(--xerxes-red)";
+          statusEl.textContent = `Network error: ${err.message}`;
+        }
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "⚡ File Target Bug";
+        }
+      }
     }
 
     async function cancelSync() {
