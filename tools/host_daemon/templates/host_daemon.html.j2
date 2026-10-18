@@ -602,6 +602,22 @@
       background: var(--xerxes-header-bg);
       color: var(--xerxes-cyan);
     }
+    .dropzone {
+      border: 2px dashed var(--xerxes-border-mid);
+      border-radius: 4px;
+      padding: 12px;
+      text-align: center;
+      color: var(--xerxes-text-muted);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: rgba(0, 240, 255, 0.02);
+      font-size: 9px;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--xerxes-cyan) !important;
+      background: rgba(0, 240, 255, 0.08) !important;
+      color: var(--xerxes-cyan) !important;
+    }
   </style>
 </head>
 <body>
@@ -762,6 +778,22 @@
             </label>
           </div>
         </div>
+
+        <!-- Attachments & Screenshots Section (WORM-BRISTLY-GLOWWORM-390) -->
+        <div style="background:rgba(0,240,255,0.03); border:1px solid #0b5966; border-radius:3px; padding:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:9px; font-weight:bold; color:var(--xerxes-cyan); text-transform:uppercase;">Attachments &amp; Screenshots</span>
+            <button type="button" class="btn" onclick="pasteTargetBugClipboard()" style="font-size:8px; padding:2px 6px;">📋 Paste Clipboard</button>
+          </div>
+          <div id="targetBugDropzone" class="dropzone" onclick="document.getElementById('targetBugFileInput').click()">
+            <div>📥 Drag &amp; Drop Screenshots, Logs, or Documents Here (or click to browse)</div>
+            <div style="font-size:8.5px; margin-top:3px; color:var(--xerxes-text-dim);">Press ⌘V / Ctrl+V to paste screenshots or text</div>
+            <div style="font-size:7.5px; margin-top:4px; color:var(--xerxes-text-dim);">Attachments are tracked in GitHub LFS and considered non-confidential.</div>
+          </div>
+          <input type="file" id="targetBugFileInput" style="display:none;" multiple onchange="handleTargetBugFileUpload(this.files)">
+          <div id="targetBugAttachmentsGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:8px; margin-top:8px;"></div>
+        </div>
+
         <div id="targetBugProgressContainer" style="display:none; margin-top:4px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
             <span id="targetBugProgressMsg" style="font-size:9px; color:var(--xerxes-cyan);">Initializing defect report...</span>
@@ -2089,11 +2121,129 @@
       if (modal) modal.style.display = "none";
     }
 
-    // Target Bug Reporting Modal Management (WORM-LOAMY-LUGWORM-536)
+    // Target Bug Reporting Modal Management (WORM-LOAMY-LUGWORM-536, WORM-BRISTLY-GLOWWORM-390)
+    let targetBugAttachments = [];
+
+    function handleTargetBugFileUpload(files) {
+      if (!files || !files.length) return;
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        const isImage = file.type.startsWith("image/");
+        const isLog = file.name.endsWith(".log") || file.name.endsWith(".txt") || file.type === "text/plain";
+        const fileType = isImage ? "screenshot" : (isLog ? "log" : "document");
+        reader.onload = (e) => {
+          targetBugAttachments.push({
+            filename: file.name,
+            file_type: fileType,
+            content_base64: e.target.result,
+            size_bytes: file.size,
+            description: `Attached ${fileType} (${file.name})`
+          });
+          renderTargetBugAttachments();
+        };
+        reader.readAsDataURL(file);
+      });
+      const input = document.getElementById("targetBugFileInput");
+      if (input) input.value = "";
+    }
+
+    async function pasteTargetBugClipboard() {
+      try {
+        if (navigator.clipboard && navigator.clipboard.read) {
+          const items = await navigator.clipboard.read();
+          let pasted = false;
+          for (const item of items) {
+            for (const type of item.types) {
+              if (type.startsWith("image/")) {
+                const blob = await item.getType(type);
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                  targetBugAttachments.push({
+                    filename: `screenshot_${Date.now()}.png`,
+                    file_type: "screenshot",
+                    content_base64: e.target.result,
+                    size_bytes: blob.size,
+                    description: "Pasted clipboard screenshot"
+                  });
+                  renderTargetBugAttachments();
+                };
+                reader.readAsDataURL(blob);
+                pasted = true;
+                break;
+              }
+            }
+            if (pasted) break;
+          }
+          if (pasted) return;
+        }
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const text = await navigator.clipboard.readText();
+          if (text && text.trim()) {
+            const b64 = "data:text/plain;base64," + btoa(unescape(encodeURIComponent(text)));
+            targetBugAttachments.push({
+              filename: `clipboard_${Date.now()}.txt`,
+              file_type: "log",
+              content_base64: b64,
+              content_text: text,
+              size_bytes: new Blob([text]).size,
+              description: "Pasted clipboard text snippet"
+            });
+            renderTargetBugAttachments();
+          }
+        }
+      } catch (err) {
+        console.warn("Clipboard access error:", err);
+      }
+    }
+
+    function removeTargetBugAttachment(idx) {
+      if (idx >= 0 && idx < targetBugAttachments.length) {
+        targetBugAttachments.splice(idx, 1);
+        renderTargetBugAttachments();
+      }
+    }
+
+    function renderTargetBugAttachments() {
+      const grid = document.getElementById("targetBugAttachmentsGrid");
+      if (!grid) return;
+      grid.innerHTML = "";
+      targetBugAttachments.forEach((att, idx) => {
+        const card = document.createElement("div");
+        card.style.background = "#040e14";
+        card.style.border = "1px solid var(--xerxes-border-mid)";
+        card.style.borderRadius = "3px";
+        card.style.padding = "6px";
+        card.style.display = "flex";
+        card.style.flexDirection = "column";
+        card.style.gap = "4px";
+
+        let previewHtml = "";
+        if (att.file_type === "screenshot" || (att.content_base64 && att.content_base64.startsWith("data:image/"))) {
+          previewHtml = `<img src="${att.content_base64}" style="width:100%; height:65px; object-fit:cover; border-radius:2px; border:1px solid #092430; background:#02070a;" alt="${att.filename}">`;
+        } else {
+          previewHtml = `<div style="width:100%; height:65px; border-radius:2px; border:1px solid #092430; background:#02070a; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;"><span style="font-size:16px;">📄</span><span style="font-size:7px; color:var(--xerxes-text-muted); font-weight:bold;">${(att.file_type || 'DOCUMENT').toUpperCase()}</span></div>`;
+        }
+
+        const sizeKb = ((att.size_bytes || 0) / 1024).toFixed(1);
+        card.innerHTML = `
+          ${previewHtml}
+          <div style="font-size:8.5px; color:#e0f8ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${att.filename}">${att.filename}</div>
+          <div style="display:flex; justify-content:space-between; align-items:center; font-size:7.5px; color:var(--xerxes-text-dim);">
+            <span>${sizeKb} KB</span>
+            <button type="button" class="btn" style="font-size:7.5px; padding:1px 4px; color:var(--xerxes-red); border-color:rgba(255,42,75,0.4);" onclick="removeTargetBugAttachment(${idx})">✕</button>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
     function openTargetBugModal() {
       const modal = document.getElementById("targetBugModal");
       if (!modal) return;
       modal.style.display = "flex";
+
+      targetBugAttachments = [];
+      renderTargetBugAttachments();
 
       const titleInput = document.getElementById("targetBugTitle");
       if (titleInput) {
@@ -2182,6 +2332,7 @@
         attach_crash_log: document.getElementById("attachCrashLog")?.checked ?? false,
         attach_telemetry: document.getElementById("attachTelemetry")?.checked ?? false,
         attach_metadata: document.getElementById("attachMetadata")?.checked ?? false,
+        manual_attachments: targetBugAttachments,
       };
 
       try {
@@ -2376,6 +2527,54 @@
         startSyncPolling();
       }
     }).catch(() => {});
+
+    // Target Bug Dropzone & Clipboard Paste Setup (WORM-BRISTLY-GLOWWORM-390)
+    const targetBugDropzoneEl = document.getElementById("targetBugDropzone");
+    if (targetBugDropzoneEl) {
+      targetBugDropzoneEl.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        targetBugDropzoneEl.classList.add("dragover");
+      });
+      targetBugDropzoneEl.addEventListener("dragleave", (e) => {
+        e.preventDefault();
+        targetBugDropzoneEl.classList.remove("dragover");
+      });
+      targetBugDropzoneEl.addEventListener("drop", (e) => {
+        e.preventDefault();
+        targetBugDropzoneEl.classList.remove("dragover");
+        if (e.dataTransfer && e.dataTransfer.files) {
+          handleTargetBugFileUpload(e.dataTransfer.files);
+        }
+      });
+    }
+
+    window.addEventListener("paste", (e) => {
+      const modal = document.getElementById("targetBugModal");
+      if (!modal || modal.style.display === "none") return;
+      if (e.clipboardData && e.clipboardData.items) {
+        for (const item of e.clipboardData.items) {
+          if (item.type.startsWith("image/")) {
+            e.preventDefault();
+            const blob = item.getAsFile();
+            if (blob) {
+              const reader = new FileReader();
+              reader.onload = (evt) => {
+                targetBugAttachments.push({
+                  filename: `screenshot_${Date.now()}.png`,
+                  file_type: "screenshot",
+                  content_base64: evt.target.result,
+                  size_bytes: blob.size,
+                  description: "Pasted screenshot"
+                });
+                renderTargetBugAttachments();
+              };
+              reader.readAsDataURL(blob);
+            }
+            break;
+          }
+        }
+      }
+    });
   </script>
 </body>
 </html>

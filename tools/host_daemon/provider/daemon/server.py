@@ -1,5 +1,6 @@
 """HTTP server and REST API for Xerxes Host Daemon workstation."""
 
+import base64
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -83,13 +84,14 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(list(runner.fs_outputs))
         elif path == "/api/bringup/scripts":
             from host_daemon.model.bringup import discover_bringup_scripts
+
             self._send_json(discover_bringup_scripts(runner.repo_root))
         elif path == "/api/bringup/status":
             self._send_json(runner.bringup_manager.get_status())
         elif path == "/api/bringup/report":
             self._send_json({"success": True, "report": runner.bringup_manager.generate_report()})
         elif path.startswith("/static/"):
-            rel_file = path[len("/static/"):]
+            rel_file = path[len("/static/") :]
             static_dir = Path(__file__).resolve().parents[2] / "static"
             file_path = static_dir / rel_file
             if file_path.exists() and file_path.is_file():
@@ -113,8 +115,38 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 self.send_header("Expires", "0")
                 self.end_headers()
                 self.wfile.write(data)
+        elif path.startswith("/attachments/"):
+            clean_path = path.lstrip("/")
+            rel_name = clean_path[len("attachments/") :]
+            repo_root = runner.repo_root
+            file_path = repo_root / "attachments" / rel_name
+            if not file_path.exists() or not file_path.is_file():
+                fallback_att = repo_root / "feedback" / "attachments" / rel_name
+                if fallback_att.exists() and fallback_att.is_file():
+                    file_path = fallback_att
+            if file_path.exists() and file_path.is_file():
+                ext = file_path.suffix.lower()
+                content_types = {
+                    ".png": "image/png",
+                    ".jpg": "image/jpeg",
+                    ".jpeg": "image/jpeg",
+                    ".gif": "image/gif",
+                    ".svg": "image/svg+xml",
+                    ".pdf": "application/pdf",
+                    ".csv": "text/csv",
+                    ".log": "text/plain",
+                    ".txt": "text/plain",
+                    ".json": "application/json",
+                }
+                ctype = content_types.get(ext, "application/octet-stream")
+                data = file_path.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
             else:
-                self.send_error(404, "Static asset not found")
+                self.send_error(404, "Attachment not found")
         else:
             self.send_error(404, "Endpoint not found")
 
@@ -144,13 +176,15 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     from host_daemon.cli import get_lock_data, write_lock_file
 
                     lock_data = get_lock_data() or {}
-                    lock_data.update({
-                        "target": runner.target,
-                        "package": runner.package,
-                        "bin": runner.bin_name,
-                        "profile": "release" if runner.release else "debug",
-                        "speed": runner.speed,
-                    })
+                    lock_data.update(
+                        {
+                            "target": runner.target,
+                            "package": runner.package,
+                            "bin": runner.bin_name,
+                            "profile": "release" if runner.release else "debug",
+                            "speed": runner.speed,
+                        }
+                    )
                     write_lock_file(lock_data)
                 except Exception:
                     pass
@@ -183,7 +217,9 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             script_path = payload.get("script_path") or payload.get("script") or "app/cat_detector_bringup.yaml"
             try:
                 cfg = runner.bringup_manager.load_script(script_path)
-                self._send_json({"success": True, "config": cfg.to_dict(), "status": runner.bringup_manager.get_status()})
+                self._send_json(
+                    {"success": True, "config": cfg.to_dict(), "status": runner.bringup_manager.get_status()}
+                )
             except Exception as e:
                 self._send_json({"error": f"Failed to load bringup script: {e}"}, status=400)
         elif path == "/api/bringup/step":
@@ -264,7 +300,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 rel_att_path = f"attachments/{worm_id}/{log_filename}"
                 attachments.append(
                     WormAttachmentModel(
-                        id=f"att-{len(attachments)+1}",
+                        id=f"att-{len(attachments) + 1}",
                         filename=log_filename,
                         file_type="log",
                         file_path=rel_att_path,
@@ -285,7 +321,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 crash_file_path.write_text(crash_out, encoding="utf-8")
                 attachments.append(
                     WormAttachmentModel(
-                        id=f"att-{len(attachments)+1}",
+                        id=f"att-{len(attachments) + 1}",
                         filename=crash_filename,
                         file_type="log",
                         file_path=f"attachments/{worm_id}/{crash_filename}",
@@ -306,7 +342,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 telem_file_path.write_text(telem_out, encoding="utf-8")
                 attachments.append(
                     WormAttachmentModel(
-                        id=f"att-{len(attachments)+1}",
+                        id=f"att-{len(attachments) + 1}",
                         filename=telem_filename,
                         file_type="reference",
                         file_path=f"attachments/{worm_id}/{telem_filename}",
@@ -327,12 +363,58 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 meta_file_path.write_text(meta_out, encoding="utf-8")
                 attachments.append(
                     WormAttachmentModel(
-                        id=f"att-{len(attachments)+1}",
+                        id=f"att-{len(attachments) + 1}",
                         filename=meta_filename,
                         file_type="reference",
                         file_path=f"attachments/{worm_id}/{meta_filename}",
                         size_bytes=len(meta_out.encode("utf-8")),
                         description="Filesystem metadata retrieved via host_fs",
+                        created_at=now_str,
+                    )
+                )
+
+            # 5. Attach manual attachments and screenshots if provided (WORM-BRISTLY-GLOWWORM-390)
+            manual_atts = payload.get("manual_attachments") or payload.get("attachments") or []
+            for att_data in manual_atts:
+                if not isinstance(att_data, dict):
+                    continue
+                fname = Path(att_data.get("filename") or f"attachment_{uuid_pkg.uuid4().hex[:8]}.bin").name
+                ftype = att_data.get("file_type") or "reference"
+                desc = att_data.get("description") or "Target bug attachment"
+                b64 = att_data.get("content_base64") or ""
+                text = att_data.get("content_text") or ""
+
+                dest_path = worm_att_dir / fname
+                if dest_path.exists():
+                    stem = dest_path.stem
+                    suf = dest_path.suffix
+                    c = 1
+                    while (worm_att_dir / f"{stem}_{c}{suf}").exists():
+                        c += 1
+                    fname = f"{stem}_{c}{suf}"
+                    dest_path = worm_att_dir / fname
+
+                if b64:
+                    if "," in b64:
+                        b64 = b64.split(",", 1)[1]
+                    raw_bytes = base64.b64decode(b64)
+                    dest_path.write_bytes(raw_bytes)
+                elif text:
+                    raw_bytes = text.encode("utf-8")
+                    dest_path.write_bytes(raw_bytes)
+                else:
+                    raw_bytes = b""
+                    dest_path.write_bytes(raw_bytes)
+
+                rel_att_path = f"attachments/{worm_id}/{fname}"
+                attachments.append(
+                    WormAttachmentModel(
+                        id=f"att-{len(attachments) + 1}",
+                        filename=fname,
+                        file_type=ftype,
+                        file_path=rel_att_path,
+                        size_bytes=len(raw_bytes),
+                        description=desc,
                         created_at=now_str,
                     )
                 )
@@ -377,14 +459,20 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
-            runner.log(f"Target bug created: {worm_id} ({title}) with {len(attachments)} attachments", level="INFO", channel="daemon")
+            runner.log(
+                f"Target bug created: {worm_id} ({title}) with {len(attachments)} attachments",
+                level="INFO",
+                channel="daemon",
+            )
 
-            self._send_json({
-                "success": True,
-                "worm_id": worm_id,
-                "file_path": str(exported_path),
-                "attachments_count": len(attachments),
-            })
+            self._send_json(
+                {
+                    "success": True,
+                    "worm_id": worm_id,
+                    "file_path": str(exported_path),
+                    "attachments_count": len(attachments),
+                }
+            )
         elif path == "/api/stop":
             self._send_json({"success": True, "message": "Stopping host daemon"})
 
