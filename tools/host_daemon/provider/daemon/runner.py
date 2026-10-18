@@ -92,7 +92,9 @@ class DaemonRunner:
                     proc.kill()
                 except Exception:
                     pass
-        self._update_sync("cancelled", 0, 0, "Target synchronization cancelled by user.", active=False, error="Sync cancelled by user")
+        self._update_sync(
+            "cancelled", 0, 0, "Target synchronization cancelled by user.", active=False, error="Sync cancelled by user"
+        )
         self.log("Target synchronization cancelled by user", level="WARN")
         return {"success": True, "step": "cancelled"}
 
@@ -159,13 +161,15 @@ class DaemonRunner:
             if elf.exists():
                 self.elf_path = elf
 
-            self.sync_status.update({
-                "target": self.target,
-                "package": self.package,
-                "bin": self.bin_name,
-                "profile": "release" if self.release else "debug",
-                "speed": self.speed,
-            })
+            self.sync_status.update(
+                {
+                    "target": self.target,
+                    "package": self.package,
+                    "bin": self.bin_name,
+                    "profile": "release" if self.release else "debug",
+                    "speed": self.speed,
+                }
+            )
         self.log(
             f"Updated configuration: package={self.package}, bin={self.bin_name}, target={self.target}, profile={'release' if self.release else 'debug'}, speed={self.speed}"
         )
@@ -423,7 +427,9 @@ class DaemonRunner:
     ) -> Tuple[int, str]:
         """Subcommand wrapper for host_fs by invoking cargo run, streaming colorized output in real time."""
         cmd = ["cargo", "run", "-q", "-p", "host_fs", "--"] + args
-        return self._run_command_streaming(cmd, env=env, timeout=timeout, log_to_cli=False, log_to_fs=True, log_channel="host_fs")
+        return self._run_command_streaming(
+            cmd, env=env, timeout=timeout, log_to_cli=False, log_to_fs=True, log_channel="host_fs"
+        )
 
     def run_probe_rs(
         self,
@@ -434,7 +440,7 @@ class DaemonRunner:
         """Subcommand wrapper for probe-rs, streaming colorized output in real time."""
         probe_bin = shutil.which("probe-rs") or "probe-rs"
         cmd = [probe_bin] + args
-        return self._run_command_streaming(cmd, env=env, timeout=timeout, log_to_cli=True, log_channel="probe-rs")
+        return self._run_command_streaming(cmd, env=env, timeout=timeout, log_to_cli=False, log_channel="probe-rs")
 
     def detect_chip(self) -> str:
         """Detect the target chip name from ELF metadata using host_cli.
@@ -445,9 +451,7 @@ class DaemonRunner:
             return self.chip
 
         if not self.elf_path or not self.elf_path.exists():
-            raise RuntimeError(
-                f"Target ELF '{self.elf_path}' not found; cannot detect program metadata"
-            )
+            raise RuntimeError(f"Target ELF '{self.elf_path}' not found; cannot detect program metadata")
 
         if self.host_cli_path and self.host_cli_path.exists():
             cmd = [str(self.host_cli_path), "--elf", str(self.elf_path), "--print-chip"]
@@ -489,7 +493,7 @@ class DaemonRunner:
                 cmd.append("--release")
             cmd.extend(["--", "--dump"])
 
-            ret, out = self._run_command_streaming(cmd, log_to_cli=True, log_channel="flash")
+            ret, out = self._run_command_streaming(cmd, log_to_cli=False, log_channel="flash")
             if ret == 0:
                 self.is_flashed = True
                 self.status_message = "Flashed & Running"
@@ -534,7 +538,7 @@ class DaemonRunner:
             cmd_args.extend(["--speed", str(self.speed)])
 
         ret, out = self.run_probe_rs(cmd_args)
-        reset_success = (ret == 0)
+        reset_success = ret == 0
         if reset_success:
             self.log("Target reset successfully via probe-rs", channel="system")
         else:
@@ -597,7 +601,14 @@ class DaemonRunner:
                     for line in iter(self.rtt_process.stdout.readline, ""):
                         stripped = line.rstrip("\r\n")
                         if stripped:
-                            if "INFO" in stripped or "WARN" in stripped or "ERROR" in stripped or "DEBUG" in stripped or "TRACE" in stripped:
+                            if (
+                                "INFO" in stripped
+                                or "WARN" in stripped
+                                or "ERROR" in stripped
+                                or "DEBUG" in stripped
+                                or "TRACE" in stripped
+                                or "Draining buffered defmt logs" in stripped
+                            ):
                                 self.log(stripped, channel="target")
                             else:
                                 self.log_cli(stripped)
@@ -651,7 +662,7 @@ class DaemonRunner:
             self.log_fs(f"fs> {subcmd} {' '.join(extra_args)}", is_input=True)
 
             # Ensure probe is available by pausing RTT streaming if currently running
-            rtt_was_running = (self.rtt_process is not None and self.rtt_process.poll() is None)
+            rtt_was_running = self.rtt_process is not None and self.rtt_process.poll() is None
             if rtt_was_running:
                 self.stop_rtt_streaming()
                 time.sleep(0.15)
