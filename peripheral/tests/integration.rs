@@ -1275,18 +1275,18 @@ fn test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm() {
         const { assert!(PWM_PERIOD_CYCLES == 100) };
 
         // 2. Verify all forward and reverse phase masks guarantee zero shoot-through:
-        // UL (bit 0) and UH (bit 1) must never both be high
-        // VL (bit 2) and VH (bit 3) must never both be high
-        // WL (bit 4) and WH (bit 5) must never both be high
+        // UH (bit 0) and UL (bit 1) must never both be high
+        // VH (bit 2) and VL (bit 3) must never both be high
+        // WH (bit 4) and WL (bit 5) must never both be high
         for speed in [-100, -50, -8, 8, 50, 100] {
             for step in 0..COMMUTATION_STEPS as u8 {
                 let mask = phase_mask(speed, step);
-                let ul = (mask & (1 << 0)) != 0;
-                let uh = (mask & (1 << 1)) != 0;
-                let vl = (mask & (1 << 2)) != 0;
-                let vh = (mask & (1 << 3)) != 0;
-                let wl = (mask & (1 << 4)) != 0;
-                let wh = (mask & (1 << 5)) != 0;
+                let uh = (mask & (1 << 0)) != 0;
+                let ul = (mask & (1 << 1)) != 0;
+                let vh = (mask & (1 << 2)) != 0;
+                let vl = (mask & (1 << 3)) != 0;
+                let wh = (mask & (1 << 4)) != 0;
+                let wl = (mask & (1 << 5)) != 0;
 
                 assert!(
                     !(uh && ul),
@@ -1314,8 +1314,8 @@ fn test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm() {
 
         // 3. Verify PIO word packing helper
         // Word format: bits 0..7 = phase_mask, bits 8..15 = on_count, bits 16..23 = off_count
-        let word = make_pwm_word(0b000110, 8, 92);
-        assert_eq!(word & 0xFF, 0b000110);
+        let word = make_pwm_word(0b001001, 8, 92);
+        assert_eq!(word & 0xFF, 0b001001);
         assert_eq!((word >> 8) & 0xFF, 8);
         assert_eq!((word >> 16) & 0xFF, 92);
 
@@ -1522,12 +1522,12 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
 
         // Advance through 18 commutation ticks (3 full 6-step electrical revolutions)
         let expected_forward_masks = [
-            0b000110, // Step 0: UH High, VL Low
-            0b010010, // Step 1: UH High, WL Low
-            0b011000, // Step 2: VH High, WL Low
-            0b001001, // Step 3: VH High, UL Low
-            0b100001, // Step 4: WH High, UL Low
-            0b100100, // Step 5: WH High, VL Low
+            0b001001, // Step 0: UH High, VL Low
+            0b100001, // Step 1: UH High, WL Low
+            0b100100, // Step 2: VH High, WL Low
+            0b000110, // Step 3: VH High, UL Low
+            0b010010, // Step 4: WH High, UL Low
+            0b011000, // Step 5: WH High, VL Low
         ];
 
         for tick_idx in 1..=18 {
@@ -1579,12 +1579,12 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
         assert_eq!(motor.duty_cycle(), 75);
 
         let expected_reverse_masks = [
-            0b100100, // Step 0: U Float, VL Low, WH High
-            0b100001, // Step 1: UL Low, V Float, WH High
-            0b001001, // Step 2: UL Low, VH High, W Float
-            0b011000, // Step 3: U Float, VH High, WL Low
-            0b010010, // Step 4: UH High, V Float, WL Low
-            0b000110, // Step 5: UH High, VL Low, W Float
+            0b011000, // Step 0: U Float, VL Low, WH High
+            0b010010, // Step 1: UL Low, V Float, WH High
+            0b000110, // Step 2: UL Low, VH High, W Float
+            0b100100, // Step 3: U Float, VH High, WL Low
+            0b100001, // Step 4: UH High, V Float, WL Low
+            0b001001, // Step 5: UH High, VL Low, W Float
         ];
 
         for _ in 0..12 {
@@ -1734,34 +1734,34 @@ fn test_worm_creeping_wriggler_223_vl_pin_assertion_and_commutation_masks() {
         use peripheral::tmc6300::phase_mask;
 
         // Bit mapping (GP16..GP21):
-        // Bit 0: UL (GP16)
-        // Bit 1: UH (GP17)
-        // Bit 2: VL (GP18)
-        // Bit 3: VH (GP19)
-        // Bit 4: WL (GP20)
-        // Bit 5: WH (GP21)
-        const BIT_UL: u8 = 1 << 0;
-        const BIT_UH: u8 = 1 << 1;
-        const BIT_VL: u8 = 1 << 2;
-        const BIT_VH: u8 = 1 << 3;
-        const BIT_WL: u8 = 1 << 4;
-        const BIT_WH: u8 = 1 << 5;
+        // Bit 0: UH (GP16)
+        // Bit 1: UL (GP17)
+        // Bit 2: VH (GP18)
+        // Bit 3: VL (GP19)
+        // Bit 4: WH (GP20)
+        // Bit 5: WL (GP21)
+        const BIT_UH: u8 = 1 << 0;
+        const BIT_UL: u8 = 1 << 1;
+        const BIT_VH: u8 = 1 << 2;
+        const BIT_VL: u8 = 1 << 3;
+        const BIT_WH: u8 = 1 << 4;
+        const BIT_WL: u8 = 1 << 5;
 
         // Forward commutation:
-        // Step 0: UH High, VL Low -> UH(Bit 1), VL(Bit 2)
+        // Step 0: UH High, VL Low -> UH(Bit 0), VL(Bit 3)
         let mask0 = phase_mask(100, 0);
         assert_eq!(
             mask0 & BIT_VL,
             BIT_VL,
-            "Step 0 (forward) must assert VL (bit 2 / GP18)"
+            "Step 0 (forward) must assert VL (bit 3 / GP19)"
         );
         assert_eq!(
             mask0 & BIT_UH,
             BIT_UH,
-            "Step 0 (forward) must assert UH (bit 1 / GP17)"
+            "Step 0 (forward) must assert UH (bit 0 / GP16)"
         );
 
-        // Step 1: UH High, WL Low -> UH(Bit 1), WL(Bit 4)
+        // Step 1: UH High, WL Low -> UH(Bit 0), WL(Bit 5)
         let mask1 = phase_mask(100, 1);
         assert_eq!(
             mask1,
@@ -1769,7 +1769,7 @@ fn test_worm_creeping_wriggler_223_vl_pin_assertion_and_commutation_masks() {
             "Step 1 (forward) must assert UH and WL"
         );
 
-        // Step 2: VH High, WL Low -> VH(Bit 3), WL(Bit 4)
+        // Step 2: VH High, WL Low -> VH(Bit 2), WL(Bit 5)
         let mask2 = phase_mask(100, 2);
         assert_eq!(
             mask2,
@@ -1777,7 +1777,7 @@ fn test_worm_creeping_wriggler_223_vl_pin_assertion_and_commutation_masks() {
             "Step 2 (forward) must assert VH and WL"
         );
 
-        // Step 3: VH High, UL Low -> VH(Bit 3), UL(Bit 0)
+        // Step 3: VH High, UL Low -> VH(Bit 2), UL(Bit 1)
         let mask3 = phase_mask(100, 3);
         assert_eq!(
             mask3,
@@ -1785,7 +1785,7 @@ fn test_worm_creeping_wriggler_223_vl_pin_assertion_and_commutation_masks() {
             "Step 3 (forward) must assert VH and UL"
         );
 
-        // Step 4: WH High, UL Low -> WH(Bit 5), UL(Bit 0)
+        // Step 4: WH High, UL Low -> WH(Bit 4), UL(Bit 1)
         let mask4 = phase_mask(100, 4);
         assert_eq!(
             mask4,
@@ -1793,34 +1793,34 @@ fn test_worm_creeping_wriggler_223_vl_pin_assertion_and_commutation_masks() {
             "Step 4 (forward) must assert WH and UL"
         );
 
-        // Step 5: WH High, VL Low -> WH(Bit 5), VL(Bit 2)
+        // Step 5: WH High, VL Low -> WH(Bit 4), VL(Bit 3)
         let mask5 = phase_mask(100, 5);
         assert_eq!(
             mask5 & BIT_VL,
             BIT_VL,
-            "Step 5 (forward) must assert VL (bit 2 / GP18)"
+            "Step 5 (forward) must assert VL (bit 3 / GP19)"
         );
         assert_eq!(
             mask5 & BIT_WH,
             BIT_WH,
-            "Step 5 (forward) must assert WH (bit 5 / GP21)"
+            "Step 5 (forward) must assert WH (bit 4 / GP20)"
         );
 
         // Reverse commutation:
-        // Step 0: WH High, VL Low -> WH(Bit 5), VL(Bit 2)
+        // Step 0: WH High, VL Low -> WH(Bit 4), VL(Bit 3)
         let rev_mask0 = phase_mask(-100, 0);
         assert_eq!(
             rev_mask0 & BIT_VL,
             BIT_VL,
-            "Step 0 (reverse) must assert VL (bit 2 / GP18)"
+            "Step 0 (reverse) must assert VL (bit 3 / GP19)"
         );
         assert_eq!(
             rev_mask0 & BIT_WH,
             BIT_WH,
-            "Step 0 (reverse) must assert WH (bit 5 / GP21)"
+            "Step 0 (reverse) must assert WH (bit 4 / GP20)"
         );
 
-        // Step 1: WH High, UL Low -> WH(Bit 5), UL(Bit 0)
+        // Step 1: WH High, UL Low -> WH(Bit 4), UL(Bit 1)
         let rev_mask1 = phase_mask(-100, 1);
         assert_eq!(
             rev_mask1,
@@ -1828,7 +1828,7 @@ fn test_worm_creeping_wriggler_223_vl_pin_assertion_and_commutation_masks() {
             "Step 1 (reverse) must assert WH and UL"
         );
 
-        // Step 2: VH High, UL Low -> VH(Bit 3), UL(Bit 0)
+        // Step 2: VH High, UL Low -> VH(Bit 2), UL(Bit 1)
         let rev_mask2 = phase_mask(-100, 2);
         assert_eq!(
             rev_mask2,
@@ -1836,7 +1836,7 @@ fn test_worm_creeping_wriggler_223_vl_pin_assertion_and_commutation_masks() {
             "Step 2 (reverse) must assert VH and UL"
         );
 
-        // Step 3: VH High, WL Low -> VH(Bit 3), WL(Bit 4)
+        // Step 3: VH High, WL Low -> VH(Bit 2), WL(Bit 5)
         let rev_mask3 = phase_mask(-100, 3);
         assert_eq!(
             rev_mask3,
@@ -1844,7 +1844,7 @@ fn test_worm_creeping_wriggler_223_vl_pin_assertion_and_commutation_masks() {
             "Step 3 (reverse) must assert VH and WL"
         );
 
-        // Step 4: UH High, WL Low -> UH(Bit 1), WL(Bit 4)
+        // Step 4: UH High, WL Low -> UH(Bit 0), WL(Bit 5)
         let rev_mask4 = phase_mask(-100, 4);
         assert_eq!(
             rev_mask4,
@@ -1852,17 +1852,286 @@ fn test_worm_creeping_wriggler_223_vl_pin_assertion_and_commutation_masks() {
             "Step 4 (reverse) must assert UH and WL"
         );
 
-        // Step 5: UH High, VL Low -> UH(Bit 1), VL(Bit 2)
+        // Step 5: UH High, VL Low -> UH(Bit 0), VL(Bit 3)
         let rev_mask5 = phase_mask(-100, 5);
         assert_eq!(
             rev_mask5 & BIT_VL,
             BIT_VL,
-            "Step 5 (reverse) must assert VL (bit 2 / GP18)"
+            "Step 5 (reverse) must assert VL (bit 3 / GP19)"
         );
         assert_eq!(
             rev_mask5 & BIT_UH,
             BIT_UH,
-            "Step 5 (reverse) must assert UH (bit 1 / GP17)"
+            "Step 5 (reverse) must assert UH (bit 0 / GP16)"
+        );
+    });
+}
+
+#[test]
+fn test_worm_gliding_larva_522_pin_mapping_and_forward_commutation_progression() {
+    run_test!(async {
+        use model::interfaces::{Motor, Tickable};
+        use model::types::MotorSpeed;
+        use peripheral::tmc6300::{make_pwm_word, COMMUTATION_STEPS};
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct MockDiagPin<'a> {
+            is_high: &'a AtomicBool,
+        }
+
+        impl<'a> embedded_hal::digital::ErrorType for MockDiagPin<'a> {
+            type Error = core::convert::Infallible;
+        }
+
+        impl<'a> embedded_hal::digital::InputPin for MockDiagPin<'a> {
+            fn is_high(&mut self) -> Result<bool, Self::Error> {
+                Ok(self.is_high.load(Ordering::SeqCst))
+            }
+            fn is_low(&mut self) -> Result<bool, Self::Error> {
+                Ok(!self.is_high.load(Ordering::SeqCst))
+            }
+        }
+
+        let diag_asserted = AtomicBool::new(false);
+        let pin_diag = MockDiagPin {
+            is_high: &diag_asserted,
+        };
+        let mut motor = peripheral::tmc6300::Tmc6300Pio::new(pin_diag);
+
+        // Canonical forward commutation masks:
+        // Step 0: UH High (bit 0), VL Low (bit 3) -> 0b001001 (0x09)
+        // Step 1: UH High (bit 0), WL Low (bit 5) -> 0b100001 (0x21)
+        // Step 2: VH High (bit 2), WL Low (bit 5) -> 0b100100 (0x24)
+        // Step 3: VH High (bit 2), UL Low (bit 1) -> 0b000110 (0x06)
+        // Step 4: WH High (bit 4), UL Low (bit 1) -> 0b010010 (0x12)
+        // Step 5: WH High (bit 4), VL Low (bit 3) -> 0b011000 (0x18)
+        let expected_masks = [0b001001, 0b100001, 0b100100, 0b000110, 0b010010, 0b011000];
+
+        // Start motor at 100% speed
+        assert!(motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert_eq!(motor.speed(), 100);
+        assert_eq!(motor.duty_cycle(), 100);
+
+        // Verify progression through 24 consecutive ticks (4 full 6-step commutation cycles)
+        // In particular, verifies advancing past Step 1 without stall or fault
+        for tick in 1..=24 {
+            assert!(
+                motor.tick().await.is_ok(),
+                "Motor tick failed at tick {tick}"
+            );
+            let expected_step = (tick % COMMUTATION_STEPS) as u8;
+            assert_eq!(
+                motor.commutation_step(),
+                expected_step,
+                "Commutation step mismatch at tick {tick}"
+            );
+
+            let word = motor.last_word();
+            let mask = (word & 0xFF) as u8;
+            assert_eq!(
+                mask, expected_masks[expected_step as usize],
+                "Mask mismatch at step {expected_step}"
+            );
+            assert_eq!(
+                word,
+                make_pwm_word(expected_masks[expected_step as usize], 100, 0),
+                "PWM word mismatch at tick {tick}"
+            );
+
+            // Verify break-before-make and no shoot-through
+            let uh = (mask & (1 << 0)) != 0;
+            let ul = (mask & (1 << 1)) != 0;
+            let vh = (mask & (1 << 2)) != 0;
+            let vl = (mask & (1 << 3)) != 0;
+            let wh = (mask & (1 << 4)) != 0;
+            let wl = (mask & (1 << 5)) != 0;
+            assert!(!(uh && ul), "Phase U shoot-through at step {expected_step}");
+            assert!(!(vh && vl), "Phase V shoot-through at step {expected_step}");
+            assert!(!(wh && wl), "Phase W shoot-through at step {expected_step}");
+            assert_eq!((uh as u8) + (vh as u8) + (wh as u8), 1);
+            assert_eq!((ul as u8) + (vl as u8) + (wl as u8), 1);
+        }
+
+        // Test fault detection: DIAG pin asserted trips DriverFault
+        diag_asserted.store(true, Ordering::SeqCst);
+        let tick_result = motor.tick().await;
+        assert!(
+            tick_result.is_err(),
+            "Motor tick must fail when DIAG is asserted"
+        );
+    });
+}
+
+#[test]
+fn test_tmc6300_freewheeling_window_and_decay_modes() {
+    run_test!(async {
+        use model::interfaces::{Motor, Tickable};
+        use model::types::MotorSpeed;
+        use peripheral::tmc6300::{
+            make_pwm_word, FreewheelMode, Tmc6300, Tmc6300Pio, DEFAULT_FREEWHEEL_US,
+            FREEWHEEL_PHASE_MASK, PWM_PERIOD_CYCLES,
+        };
+        use std::sync::atomic::AtomicBool;
+
+        // 1. Verify constant invariants
+        assert_eq!(DEFAULT_FREEWHEEL_US, 500);
+        assert_eq!(FREEWHEEL_PHASE_MASK, 0b101010);
+        // Verify low-side pins in FREEWHEEL_PHASE_MASK: UL (bit 1), VL (bit 3), WL (bit 5)
+        assert_eq!(FREEWHEEL_PHASE_MASK & (1 << 0), 0); // UH off
+        assert_ne!(FREEWHEEL_PHASE_MASK & (1 << 1), 0); // UL on
+        assert_eq!(FREEWHEEL_PHASE_MASK & (1 << 2), 0); // VH off
+        assert_ne!(FREEWHEEL_PHASE_MASK & (1 << 3), 0); // VL on
+        assert_eq!(FREEWHEEL_PHASE_MASK & (1 << 4), 0); // WH off
+        assert_ne!(FREEWHEEL_PHASE_MASK & (1 << 5), 0); // WL on
+
+        // 2. Test Tmc6300Pio host mock defaults and configuration
+        let diag_flag = AtomicBool::new(false);
+        let pin_diag = MockPin {
+            is_high: &diag_flag,
+        };
+        let mut pio_motor = Tmc6300Pio::new(pin_diag);
+
+        assert_eq!(pio_motor.freewheel_us(), DEFAULT_FREEWHEEL_US);
+        assert_eq!(pio_motor.freewheel_mode(), FreewheelMode::LowSide);
+
+        // Adjust freewheel duration and mode
+        pio_motor.set_freewheel_us(250);
+        assert_eq!(pio_motor.freewheel_us(), 250);
+        pio_motor.set_freewheel_mode(FreewheelMode::Float);
+        assert_eq!(pio_motor.freewheel_mode(), FreewheelMode::Float);
+
+        // Reset to LowSide for execution test
+        pio_motor.set_freewheel_mode(FreewheelMode::LowSide);
+        assert!(pio_motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+
+        // On tick with LowSide freewheel, freewheel word must have FREEWHEEL_PHASE_MASK at 100% duty
+        assert!(pio_motor.tick().await.is_ok());
+        let expected_low_side_word = make_pwm_word(FREEWHEEL_PHASE_MASK, PWM_PERIOD_CYCLES, 0);
+        assert_eq!(
+            pio_motor.last_freewheel_word(),
+            expected_low_side_word,
+            "LowSide freewheel word must energize all 3 low-side FETs at 100% duty cycle"
+        );
+
+        // Switch to Float decay mode and tick again
+        pio_motor.set_freewheel_mode(FreewheelMode::Float);
+        assert!(pio_motor.tick().await.is_ok());
+        let expected_float_word = make_pwm_word(0, 0, PWM_PERIOD_CYCLES);
+        assert_eq!(
+            pio_motor.last_freewheel_word(),
+            expected_float_word,
+            "Float freewheel word must de-energize all FETs (0% duty cycle)"
+        );
+
+        // Disabling freewheeling (0 us) must bypass freewheel word emission
+        pio_motor.set_freewheel_us(0);
+        assert_eq!(pio_motor.freewheel_us(), 0);
+        // Reset last_freewheel_word by stopping and restarting
+        assert!(pio_motor.stop().is_ok());
+        assert_eq!(pio_motor.last_freewheel_word(), 0);
+        assert!(pio_motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert!(pio_motor.tick().await.is_ok());
+        assert_eq!(
+            pio_motor.last_freewheel_word(),
+            0,
+            "When freewheel_us is 0, no freewheel word should be pushed"
+        );
+
+        // 3. Test GPIO Tmc6300 driver configuration and defaults
+        let pin_uh_state = AtomicBool::new(false);
+        let pin_ul_state = AtomicBool::new(false);
+        let pin_vh_state = AtomicBool::new(false);
+        let pin_vl_state = AtomicBool::new(false);
+        let pin_wh_state = AtomicBool::new(false);
+        let pin_wl_state = AtomicBool::new(false);
+        let pin_diag_state = AtomicBool::new(false);
+
+        let pin_uh = MockPin {
+            is_high: &pin_uh_state,
+        };
+        let pin_ul = MockPin {
+            is_high: &pin_ul_state,
+        };
+        let pin_vh = MockPin {
+            is_high: &pin_vh_state,
+        };
+        let pin_vl = MockPin {
+            is_high: &pin_vl_state,
+        };
+        let pin_wh = MockPin {
+            is_high: &pin_wh_state,
+        };
+        let pin_wl = MockPin {
+            is_high: &pin_wl_state,
+        };
+        let pin_diag = MockPin {
+            is_high: &pin_diag_state,
+        };
+
+        let mut gpio_motor = Tmc6300::new(pin_uh, pin_ul, pin_vh, pin_vl, pin_wh, pin_wl, pin_diag);
+
+        assert_eq!(gpio_motor.freewheel_us(), DEFAULT_FREEWHEEL_US);
+        assert_eq!(gpio_motor.freewheel_mode(), FreewheelMode::LowSide);
+
+        gpio_motor.set_freewheel_us(100);
+        assert_eq!(gpio_motor.freewheel_us(), 100);
+        gpio_motor.set_freewheel_mode(FreewheelMode::Float);
+        assert_eq!(gpio_motor.freewheel_mode(), FreewheelMode::Float);
+
+        assert!(gpio_motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert!(gpio_motor.tick().await.is_ok());
+    });
+}
+
+#[test]
+fn test_tmc6300_pwm_frequency_and_clock_divider() {
+    run_test!(async {
+        use peripheral::tmc6300::{
+            calculate_clock_divider, Tmc6300Pio, DEFAULT_PIO_PWM_FREQUENCY_HZ,
+            PIO_PWM_FREQUENCY_HZ, REDUCED_PWM_FREQUENCY_HZ,
+        };
+        use std::sync::atomic::AtomicBool;
+
+        // 1. Verify PWM frequency constant invariants
+        assert_eq!(PIO_PWM_FREQUENCY_HZ, 25_000);
+        assert_eq!(REDUCED_PWM_FREQUENCY_HZ, 10_000);
+        assert_eq!(DEFAULT_PIO_PWM_FREQUENCY_HZ, 10_000);
+
+        // 2. Verify clock divider calculation at 125 MHz system clock
+        // Target PIO clock for 25 kHz @ 100 cycles/period: 2.5 MHz -> divider 50
+        assert_eq!(calculate_clock_divider(125_000_000, 25_000), 50);
+        // Target PIO clock for 10 kHz @ 100 cycles/period: 1.0 MHz -> divider 125
+        assert_eq!(calculate_clock_divider(125_000_000, 10_000), 125);
+        // Target PIO clock for 20 kHz @ 100 cycles/period: 2.0 MHz -> divider 62
+        assert_eq!(calculate_clock_divider(125_000_000, 20_000), 62);
+        // Zero frequency guard returns 1
+        assert_eq!(calculate_clock_divider(125_000_000, 0), 1);
+
+        // 3. Verify Tmc6300Pio default and runtime adjustable PWM frequency
+        let diag_flag = AtomicBool::new(false);
+        let pin_diag = MockPin {
+            is_high: &diag_flag,
+        };
+        let mut pio_motor = Tmc6300Pio::new(pin_diag);
+
+        assert_eq!(
+            pio_motor.pwm_frequency_hz(),
+            DEFAULT_PIO_PWM_FREQUENCY_HZ,
+            "Tmc6300Pio must default to REDUCED_PWM_FREQUENCY_HZ (10 kHz)"
+        );
+
+        pio_motor.set_pwm_frequency_hz(25_000);
+        assert_eq!(
+            pio_motor.pwm_frequency_hz(),
+            25_000,
+            "Tmc6300Pio must allow setting PWM frequency to 25 kHz"
+        );
+
+        pio_motor.set_pwm_frequency_hz(10_000);
+        assert_eq!(
+            pio_motor.pwm_frequency_hz(),
+            10_000,
+            "Tmc6300Pio must allow setting PWM frequency to 10 kHz"
         );
     });
 }

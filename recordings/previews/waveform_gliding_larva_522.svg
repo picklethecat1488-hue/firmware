@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 780" width="1100" height="780" style="background-color: #0e1117; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;">
+<defs>
+  <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+    <feGaussianBlur stdDeviation="2" result="blur" />
+    <feMerge>
+      <feMergeNode in="blur" />
+      <feMergeNode in="SourceGraphic" />
+    </feMerge>
+  </filter>
+</defs>
+<rect x="0" y="0" width="1100" height="55" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+<text x="25" y="34" fill="#58a6ff" font-size="18" font-weight="bold">WORM-GLIDING-LARVA-522: TMC6300 Commutation Waveform Comparison</text>
+<text x="820" y="34" fill="#8b949e" font-size="13">Saleae Scope vs Canonical 6-Step BLDC</text>
+<rect x="20" y="75" width="1060" height="315" rx="6" fill="#161b22" stroke="#f85149" stroke-width="1.5"/>
+<text x="35" y="99" fill="#f85149" font-size="14" font-weight="bold">🔴 OBSERVED WAVEFORM: Inverted Pin Mapping (Stalls at Phase 1, Trips DIAG)</text>
+<text x="35" y="117" fill="#8b949e" font-size="11">Firmware energized UL &amp; WH (Step 0) then VL &amp; WH (Step 1) -> Reverse magnetic field locked rotor -> Overcurrent fault @ 20ms</text>
+<line x1="300" y1="125" x2="300" y2="375" stroke="#30363d" stroke-width="1" stroke-dasharray="4,4"/>
+<line x1="440" y1="125" x2="440" y2="375" stroke="#f85149" stroke-width="1.5" stroke-dasharray="4,4"/>
+<text x="210" y="137" fill="#8b949e" font-size="11" text-anchor="middle">Step 0 (0-10ms)</text>
+<text x="370" y="137" fill="#8b949e" font-size="11" text-anchor="middle">Step 1 (10-20ms)</text>
+<text x="720" y="137" fill="#f85149" font-size="11" font-weight="bold" text-anchor="middle">MOTOR HALTED / ALL GATES SHUT OFF (20ms - 60ms)</text>
+<rect x="440" y="145" width="560" height="225" fill="#f85149" fill-opacity="0.08" />
+<text x="720" y="255" fill="#f85149" font-size="14" font-weight="bold" text-anchor="middle">⚠️ TMC6300 DIAG DRIVER FAULT ASSERTED (Stall Overcurrent)</text>
+<text x="25" y="167" fill="#58a6ff" font-size="12" font-weight="bold">UH</text>
+<text x="85" y="167" fill="#6e7681" font-size="11">GP16</text>
+<line x1="160" y1="171" x2="1050" y2="171" stroke="#21262d" stroke-width="1" stroke-dasharray="2,2"/>
+<path d="M 160 171 L 300 171 L 440 171 L 1000 171" fill="none" stroke="#58a6ff" stroke-width="2"/>
+<text x="25" y="195" fill="#79c0ff" font-size="12" font-weight="bold">UL</text>
+<text x="85" y="195" fill="#6e7681" font-size="11">GP17</text>
+<line x1="160" y1="199" x2="1050" y2="199" stroke="#21262d" stroke-width="1" stroke-dasharray="2,2"/>
+<path d="M 160 183 L 300 183 L 300 199 L 440 199 L 1000 199" fill="none" stroke="#79c0ff" stroke-width="2"/>
+<text x="25" y="223" fill="#d29922" font-size="12" font-weight="bold">VH</text>
+<text x="85" y="223" fill="#6e7681" font-size="11">GP18</text>
+<line x1="160" y1="227" x2="1050" y2="227" stroke="#21262d" stroke-width="1" stroke-dasharray="2,2"/>
+<path d="M 160 227 L 300 227 L 440 227 L 1000 227" fill="none" stroke="#d29922" stroke-width="2"/>
+<text x="25" y="251" fill="#e3b341" font-size="12" font-weight="bold">VL</text>
+<text x="85" y="251" fill="#6e7681" font-size="11">GP19</text>
+<line x1="160" y1="255" x2="1050" y2="255" stroke="#21262d" stroke-width="1" stroke-dasharray="2,2"/>
+<path d="M 160 255 L 300 255 L 300 239 L 440 239 L 440 255 L 1000 255" fill="none" stroke="#e3b341" stroke-width="2"/>
+<text x="25" y="279" fill="#bc8cff" font-size="12" font-weight="bold">WH</text>
+<text x="85" y="279" fill="#6e7681" font-size="11">GP20</text>
+<line x1="160" y1="283" x2="1050" y2="283" stroke="#21262d" stroke-width="1" stroke-dasharray="2,2"/>
+<path d="M 160 267 L 300 267 L 440 267 L 440 283 L 1000 283" fill="none" stroke="#bc8cff" stroke-width="2"/>
+<text x="25" y="307" fill="#d2a8ff" font-size="12" font-weight="bold">WL</text>
+<text x="85" y="307" fill="#6e7681" font-size="11">GP21</text>
+<line x1="160" y1="311" x2="1050" y2="311" stroke="#21262d" stroke-width="1" stroke-dasharray="2,2"/>
+<path d="M 160 311 L 300 311 L 440 311 L 1000 311" fill="none" stroke="#d2a8ff" stroke-width="2"/>
+<text x="25" y="339" fill="#f85149" font-size="12" font-weight="bold">DIAG</text>
+<text x="85" y="339" fill="#6e7681" font-size="11">GP22 [Fault]</text>
+<line x1="160" y1="343" x2="1050" y2="343" stroke="#21262d" stroke-width="1" stroke-dasharray="2,2"/>
+<path d="M 160 343 L 300 343 L 440 343 L 440 327 L 1000 327" fill="none" stroke="#f85149" stroke-width="2"/>
+<rect x="20" y="410" width="1060" height="340" rx="6" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+<text x="35" y="434" fill="#3fb950" font-size="14" font-weight="bold">🟢 EXPECTED CANONICAL WAVEFORM: Correct Forward Commutation Progression</text>
+<text x="35" y="452" fill="#8b949e" font-size="11">Standard 6-step trapezoidal sequence with break-before-make. Continuous smooth rotation, zero DIAG faults.</text>
+<text x="230" y="472" fill="#58a6ff" font-size="10" font-weight="bold" text-anchor="middle">Step 0 (UH+VL)</text>
+<line x1="300" y1="460" x2="300" y2="735" stroke="#30363d" stroke-width="1" stroke-dasharray="4,4"/>
+<text x="370" y="472" fill="#58a6ff" font-size="10" font-weight="bold" text-anchor="middle">Step 1 (UH+WL)</text>
+<line x1="440" y1="460" x2="440" y2="735" stroke="#30363d" stroke-width="1" stroke-dasharray="4,4"/>
+<text x="510" y="472" fill="#58a6ff" font-size="10" font-weight="bold" text-anchor="middle">Step 2 (VH+WL)</text>
+<line x1="580" y1="460" x2="580" y2="735" stroke="#30363d" stroke-width="1" stroke-dasharray="4,4"/>
+<text x="650" y="472" fill="#58a6ff" font-size="10" font-weight="bold" text-anchor="middle">Step 3 (VH+UL)</text>
+<line x1="720" y1="460" x2="720" y2="735" stroke="#30363d" stroke-width="1" stroke-dasharray="4,4"/>
+<text x="790" y="472" fill="#58a6ff" font-size="10" font-weight="bold" text-anchor="middle">Step 4 (WH+UL)</text>
+<line x1="860" y1="460" x2="860" y2="735" stroke="#30363d" stroke-width="1" stroke-dasharray="4,4"/>
+<text x="930" y="472" fill="#58a6ff" font-size="10" font-weight="bold" text-anchor="middle">Step 5 (WH+VL)</text>
+<text x="25" y="502" fill="#58a6ff" font-size="12" font-weight="bold">UH</text>
+<text x="85" y="502" fill="#6e7681" font-size="11">GP16</text>
+<line x1="160" y1="506" x2="1050" y2="506" stroke="#21262d" stroke-width="1" stroke-dasharray="2,2"/>
+<path d="M 160 490 L 300 490 L 440 490 L 440 506 L 580 506 L 720 506 L 860 506 L 1000 506" fill="none" stroke="#58a6ff" stroke-width="2"/>
+<text x="25" y="530" fill="#79c0ff" font-size="12" font-weight="bold">UL</text>
+<text x="85" y="530" fill="#6e7681" font-size="11">GP17</text>
+<line x1="160" y1="534" x2="1050" y2="534" stroke="#21262d" stroke-width="1" stroke-dasharray="2,2"/>
+<path d="M 160 534 L 300 534 L 440 534 L 580 534 L 580 518 L 720 518 L 860 518 L 860 534 L 1000 534" fill="none" stroke="#79c0ff" stroke-width="2"/>
+<text x="25" y="558" fill="#d29922" font-size="12" font-weight="bold">VH</text>
+<text x="85" y="558" fill="#6e7681" font-size="11">GP18</text>
+<line x1="160" y1="562" x2="1050" y2="562" stroke="#21262d" stroke-width="1" stroke-dasharray="2,2"/>
+<path d="M 160 562 L 300 562 L 440 562 L 440 546 L 580 546 L 720 546 L 720 562 L 860 562 L 1000 562" fill="none" stroke="#d29922" stroke-width="2"/>
+<text x="25" y="586" fill="#e3b341" font-size="12" font-weight="bold">VL</text>
+<text x="85" y="586" fill="#6e7681" font-size="11">GP19</text>
+<line x1="160" y1="590" x2="1050" y2="590" stroke="#21262d" stroke-width="1" stroke-dasharray="2,2"/>
+<path d="M 160 574 L 300 574 L 300 590 L 440 590 L 580 590 L 720 590 L 860 590 L 860 574 L 1000 574" fill="none" stroke="#e3b341" stroke-width="2"/>
+<text x="25" y="614" fill="#bc8cff" font-size="12" font-weight="bold">WH</text>
+<text x="85" y="614" fill="#6e7681" font-size="11">GP20</text>
+<line x1="160" y1="618" x2="1050" y2="618" stroke="#21262d" stroke-width="1" stroke-dasharray="2,2"/>
+<path d="M 160 618 L 300 618 L 440 618 L 580 618 L 720 618 L 720 602 L 860 602 L 1000 602" fill="none" stroke="#bc8cff" stroke-width="2"/>
+<text x="25" y="642" fill="#d2a8ff" font-size="12" font-weight="bold">WL</text>
+<text x="85" y="642" fill="#6e7681" font-size="11">GP21</text>
+<line x1="160" y1="646" x2="1050" y2="646" stroke="#21262d" stroke-width="1" stroke-dasharray="2,2"/>
+<path d="M 160 646 L 300 646 L 300 630 L 440 630 L 580 630 L 580 646 L 720 646 L 860 646 L 1000 646" fill="none" stroke="#d2a8ff" stroke-width="2"/>
+<text x="25" y="674" fill="#3fb950" font-size="12" font-weight="bold">DIAG</text>
+<text x="85" y="674" fill="#6e7681" font-size="11">GP22 [Clear]</text>
+<line x1="160" y1="678" x2="1050" y2="678" stroke="#21262d" stroke-width="1" stroke-dasharray="2,2"/>
+<path d="M 160 678 L 1000 678" fill="none" stroke="#3fb950" stroke-width="2"/>
+</svg>

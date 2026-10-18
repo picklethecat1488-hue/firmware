@@ -544,12 +544,12 @@ mod target {
             let motor = peripheral::tmc6300::Tmc6300Pio::new_pio(
                 p.PIO1,
                 peripheral::tmc6300::Tmc6300PhasePins {
-                    pin_ul: p.PIN_16,
-                    pin_uh: p.PIN_17,
-                    pin_vl: p.PIN_18,
-                    pin_vh: p.PIN_19,
-                    pin_wl: p.PIN_20,
-                    pin_wh: p.PIN_21,
+                    pin_uh: p.PIN_16,
+                    pin_ul: p.PIN_17,
+                    pin_vh: p.PIN_18,
+                    pin_vl: p.PIN_19,
+                    pin_wh: p.PIN_20,
+                    pin_wl: p.PIN_21,
                 },
                 pump_diag,
                 Irqs,

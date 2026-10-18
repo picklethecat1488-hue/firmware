@@ -739,3 +739,35 @@ fn test_worm_rooted_clitellum_453_format_target_namespace() {
     assert_eq!(format_target_namespace(""), "");
     assert_eq!(format_target_namespace("   "), "");
 }
+
+#[test]
+fn test_worm_slick_fireworm_677_dump_logs_no_unexpected_eof() {
+    let source = MockLogSource {
+        data: vec![],
+        read_index: 0,
+    };
+
+    let elf_candidates = [
+        "target/thumbv6m-none-eabi/debug/cat_detector/app",
+        "target/thumbv6m-none-eabi/release/cat_detector/app",
+        "target/thumbv6m-none-eabi/release/cat_detector_shell",
+        "target/thumbv6m-none-eabi/debug/cat_detector_shell",
+        "../../target/thumbv6m-none-eabi/debug/cat_detector/app",
+    ];
+    let mut elf_path = None;
+    for &c in &elf_candidates {
+        if PathBuf::from(c).is_file() {
+            elf_path = Some(PathBuf::from(c));
+            break;
+        }
+    }
+
+    if let Some(path) = elf_path {
+        let elf_data = std::fs::read(path).unwrap();
+        if let Ok(Some(table)) = defmt_decoder::Table::parse(&elf_data) {
+            let mut writer = Vec::new();
+            let res = dump_logs(source, &table, &mut writer);
+            assert!(res.is_ok());
+        }
+    }
+}

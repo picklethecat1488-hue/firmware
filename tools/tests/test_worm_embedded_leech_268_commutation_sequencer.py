@@ -83,25 +83,25 @@ def test_worm_embedded_leech_268_regression_integration_test_present():
 
 def test_worm_embedded_leech_268_six_step_commutation_phase_masks():
     """Verify 6-step trapezoidal commutation masks for both directions."""
-    # Step definitions: (UL, UH, VL, VH, WL, WH) matching J1 header pinout:
-    # Bit 0: UL, Bit 1: UH, Bit 2: VL, Bit 3: VH, Bit 4: WL, Bit 5: WH
+    # Step definitions: (UH, UL, VH, VL, WH, WL)
+    # Bit 0: UH, Bit 1: UL, Bit 2: VH, Bit 3: VL, Bit 4: WH, Bit 5: WL
     # Forward: UH/VL -> UH/WL -> VH/WL -> VH/UL -> WH/UL -> WH/VL
     forward_expected = [
-        0b000110,  # step 0: UH(1), VL(2)
-        0b010010,  # step 1: UH(1), WL(4)
-        0b011000,  # step 2: VH(3), WL(4)
-        0b001001,  # step 3: VH(3), UL(0)
-        0b100001,  # step 4: WH(5), UL(0)
-        0b100100,  # step 5: WH(5), VL(2)
+        0b001001,  # step 0: UH(0), VL(3)
+        0b100001,  # step 1: UH(0), WL(5)
+        0b100100,  # step 2: VH(2), WL(5)
+        0b000110,  # step 3: VH(2), UL(1)
+        0b010010,  # step 4: WH(4), UL(1)
+        0b011000,  # step 5: WH(4), VL(3)
     ]
 
     for step, mask in enumerate(forward_expected):
-        ul = (mask & (1 << 0)) != 0
-        uh = (mask & (1 << 1)) != 0
-        vl = (mask & (1 << 2)) != 0
-        vh = (mask & (1 << 3)) != 0
-        wl = (mask & (1 << 4)) != 0
-        wh = (mask & (1 << 5)) != 0
+        uh = (mask & (1 << 0)) != 0
+        ul = (mask & (1 << 1)) != 0
+        vh = (mask & (1 << 2)) != 0
+        vl = (mask & (1 << 3)) != 0
+        wh = (mask & (1 << 4)) != 0
+        wl = (mask & (1 << 5)) != 0
 
         # Assert no shoot-through on any half-bridge
         assert not (uh and ul), f"Phase U shoot-through on step {step}"

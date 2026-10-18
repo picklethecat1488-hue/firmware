@@ -431,8 +431,13 @@ where
                     }
                     self.speed = speed;
                 } else {
-                    // Set target speed to 0 and let it ramp down
                     self.speed = MotorSpeed::ZERO;
+                    self.active_speed = MotorSpeed::ZERO;
+                    if let Err(e) = self.set_running_state(false).await {
+                        if let Some(ref client) = telemetry_client {
+                            client.report_error(e);
+                        }
+                    }
                 }
             }
             MotorCommand::SetSpeedRpm(rpm) => {
@@ -462,9 +467,17 @@ where
                     }
                 } else {
                     self.speed = MotorSpeed::ZERO;
+                    self.active_speed = MotorSpeed::ZERO;
+                    if let Err(e) = self.set_running_state(false).await {
+                        if let Some(ref client) = telemetry_client {
+                            client.report_error(e);
+                        }
+                    }
                 }
             }
             MotorCommand::Stop => {
+                self.speed = MotorSpeed::ZERO;
+                self.active_speed = MotorSpeed::ZERO;
                 if let Err(e) = self.set_running_state(false).await {
                     if let Some(ref client) = telemetry_client {
                         client.report_error(e);
@@ -525,29 +538,11 @@ where
 
         let mut tick_result = Ok(());
 
-        // 1. Ramping logic
+        // 1. Direct speed application (ramping disabled)
         if state == MotorState::On {
             self.startup_ticks = self.startup_ticks.saturating_add(1);
-            if active_speed < speed {
-                // Ramp up
-                let next = (active_speed.get() + 1).min(speed.get());
-                active_speed = MotorSpeed::new(next).unwrap();
-                self.active_speed = active_speed;
-                if active_speed == MotorSpeed::ZERO && speed == MotorSpeed::ZERO {
-                    self.state = MotorState::Off;
-                    let _ = self.motor.stop();
-                    let _ = self
-                        .current_sensor
-                        .set_measurement_mode(PowerMeasurementMode::PowerDown)
-                        .await;
-                } else if let Err(e) = self.motor.set_speed(active_speed) {
-                    let _ = self.set_running_state(false).await;
-                    tick_result = Err(e.to_peripheral_error());
-                }
-            } else if active_speed > speed {
-                // Ramp down
-                let next = (active_speed.get() - 1).max(speed.get());
-                active_speed = MotorSpeed::new(next).unwrap();
+            if active_speed != speed {
+                active_speed = speed;
                 self.active_speed = active_speed;
                 if active_speed == MotorSpeed::ZERO && speed == MotorSpeed::ZERO {
                     self.state = MotorState::Off;
@@ -562,21 +557,9 @@ where
                 }
             }
         } else if active_speed.get() != 0 {
-            // Ramping down/up to 0 even if state is Off
-            let current_raw = active_speed.get();
-            let next = if current_raw > 0 {
-                current_raw - 1
-            } else {
-                current_raw + 1
-            };
-            active_speed = MotorSpeed::new(next).unwrap();
+            active_speed = MotorSpeed::ZERO;
             self.active_speed = active_speed;
-            if active_speed == MotorSpeed::ZERO {
-                let _ = self.motor.stop();
-            } else if let Err(e) = self.motor.set_speed(active_speed) {
-                let _ = self.set_running_state(false).await;
-                tick_result = Err(e.to_peripheral_error());
-            }
+            let _ = self.motor.stop();
         }
 
         // 2. Call motor driver's tick() for software PWM toggling only when active
