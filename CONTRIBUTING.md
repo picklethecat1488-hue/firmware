@@ -473,6 +473,89 @@ When introducing or modifying telemetry records, filesystem files, or crash logs
 
 ---
 
+## Interactive Xerxes Host Workstation, Bringup & Flash Matrix (`tools/host.py`)
+
+The repository includes a unified, terminal-aesthetic developer workstation and background daemon (`tools/host.py` / `tools/host_daemon/`) designed to control physical target microcontrollers, stream real-time RTT `defmt` logging and interactive CLI shells, manage the sequential-storage flash filesystem, and execute hardware bringup verification checklists:
+
+### 1. Launching the Host Workstation
+
+```bash
+# Launch interactive workstation (defaults to port 8899 in native desktop webview window)
+python tools/host.py
+
+# Launch using Eel (Chromium) or custom network interface
+python tools/host.py --browser eel --port 8899
+python tools/host.py --host 0.0.0.0
+
+# Run daemon detached in the background
+python tools/host.py --no-browser --detach
+
+# Inspect daemon status or stop the background service
+python tools/host.py status
+python tools/host.py stop
+```
+
+### 2. Operational Workstation Modes
+
+1. **CLI Console Mode (`shell>`)**:
+   - Direct, bi-directional interaction with the target embedded shell over dual-channel Segger RTT.
+   - Dispatch peripheral and controller commands directly (e.g. `motor speed 100`, `battery status`, `thermal status`, `gpio status`).
+   - Built-in reverse-i-search (`Ctrl+R`) command history search and one-click clipboard copying.
+2. **Filesystem Workstation Mode (`fs>`)**:
+   - Direct host interaction with target sequential-storage flash partitions (`host_fs`).
+   - Quick action triggers and manual commands: `ls`, `cat metadata`, `crash-log`, `export-telemetry`, and `format`.
+   - Intelligent probe arbitration: automatically pauses background RTT streaming during filesystem flash accesses and cleanly restores streaming upon completion.
+3. **Bringup Verification Checklist Mode (`bringup>`)**:
+   - Automated and interactive bringup assistant supporting YAML checklist specifications (such as `app/cat_detector_bringup.yaml` and `app/carrier_board_bringup.yaml`).
+   - Multi-script selector allowing on-the-fly checklist switching between target designs.
+   - Comprehensive step support: `shell_command`, `host_command`, `hardware_check` (with test point voltage tables and control pin assignments), `interactive`, and `manual` procedures.
+   - Automated regex output matching, interactive user prompts (`Pass`, `Fail`, `Skip`), and real-time execution log console.
+   - Export structured Markdown verification reports (`bringup_report.md`).
+
+### 3. Integrated Hardware Controls & Diagnostic Reporting
+
+* **Target Synchronization Matrix (`⚡ Sync`)**:
+  - One-click compile, flash, and RTT reconnection matrix.
+  - Automatically compiles target embedded binaries and host utilities (`host_cli`, `host_fs`), resolves target chips via ELF metadata, programs target flash via `probe-rs`, and restores streaming with progress telemetry and cancellation support.
+* **Hardware Target Reset (`⚡ Reset`)**:
+  - Issues hardware reset pulse over the attached SWD/JTAG debug probe and re-establishes RTT capture.
+* **Automated Target Bug Reporting (`🐞 Target Bug`)**:
+  - Defect reporting modal available directly in the workstation header.
+  - Automatically captures and packages active RTT defmt session logs, target crash dumps (`host_fs crash-log`), telemetry records (`host_fs export-telemetry`), and filesystem metadata (`host_fs cat metadata`) into the Worm Defect Tracker (`attachments/<worm_id>/`, SQLite, and `feedback/WORM_<id>.md`).
+* **UI Scale Selector & Keyboard Shortcuts**:
+  - Global scaling selector (`75%` to `150%`) with `Cmd/Ctrl +=`, `Cmd/Ctrl +-`, and `Cmd/Ctrl +0` keyboard shortcuts and persistent `localStorage` across page reloads.
+
+### 4. Host CLI Subcommands
+
+All workstation operations can be performed directly from the command line:
+
+```bash
+# Forward shell commands to running target
+python tools/host.py cli motor speed 100
+python tools/host.py cli battery status
+
+# Forward flash filesystem subcommands
+python tools/host.py fs ls
+python tools/host.py fs cat metadata
+python tools/host.py fs crash-log
+
+# Hardware bringup operations
+python tools/host.py bringup --list
+python tools/host.py bringup --script app/cat_detector_bringup.yaml --status
+python tools/host.py bringup --script app/cat_detector_bringup.yaml --run
+python tools/host.py bringup --script app/carrier_board_bringup.yaml --step
+python tools/host.py bringup --reset
+
+# Flash & debug probe controls
+python tools/host.py sync
+python tools/host.py flash
+python tools/host.py reset
+python tools/host.py status
+python tools/host.py stop
+```
+
+---
+
 ## Unified VCS Dashboard, Code Review & Worm Workstation
 
 The repository features an integrated web workstation and CLI suite (`tools/dashboard.py`) styled after the System Shock 2 - Xerxes terminal HUD aesthetic. It unifies commit diff inspection, code review audits, and defect (worm) tracking into a centralized local workflow.
@@ -495,14 +578,16 @@ python tools/dashboard.py --no-browser
    - Side-by-side and unified git diff visualization.
    - Interactive syntax highlighting and line wrapping toggle (`WRAP: ON` / `WRAP: OFF`).
    - Smartlog DAG commit graph navigation and unstaged working-tree delta inspection.
+   - Global UI Scale Selector (`75%` to `150%`, shortcuts: `Cmd/Ctrl +=`, `Cmd/Ctrl +-`, `Cmd/Ctrl +0`).
 2. **Code Review Audit (`/review`)**:
    - Granular, inline code commenting anchored to specific file paths, line ranges, and commit revisions.
+   - Smartlog commit selection highlight styling with direct revision navigation.
    - Severity categorization: `MUST_FIX` (blockers), `PROPOSAL` (architecture design suggestions), and `NIT` (minor cosmetic cleanups).
    - Review progress tracking, resolution checklist verification, and overall verdict assignment (`IN_REVIEW`, `CHANGES_REQUESTED`, `APPROVED`).
 3. **Worm Matrix (`/bugs`)**:
    - Defect tracking and bug lifecycle management with Xerxes terminal HUD styling.
    - Severity filtering (`CRITICAL`, `HIGH`, `MEDIUM`, `LOW`) and component classification (`FIRMWARE`, `CONTROLLER`, `DRIVER`, `PLATFORM`, `BOARD`, `MODEL`, `SHELL`, `INFRASTRUCTURE`, `UI`, `GENERAL`).
-   - File attachment support: diagnostic logs, screenshots, and core dumps stored in `feedback/attachments/` and tracked via Git LFS.
+   - File attachment support: diagnostic logs, screenshots, and core dumps stored in `feedback/attachments/` or `attachments/<worm_id>/` and tracked via Git LFS.
    - Resolution tracking with formal engineering root cause and resolution notes.
 
 ---

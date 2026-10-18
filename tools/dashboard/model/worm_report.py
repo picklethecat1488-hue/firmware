@@ -59,6 +59,13 @@ class WormAttachmentModel(BaseModel):
     created_at: str = ""
 
 
+class WormSectionModel(BaseModel):
+    """Arbitrary or custom markdown section associated with a worm report."""
+
+    title: str
+    content: str
+
+
 class WormReportModel(BaseModel):
     """Complete specification of an engineering worm report."""
 
@@ -75,6 +82,7 @@ class WormReportModel(BaseModel):
     actual_behavior: str = ""
     logs: str = ""
     attachments: List[WormAttachmentModel] = Field(default_factory=list)
+    custom_sections: List[WormSectionModel] = Field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
     resolved_at: Optional[str] = None

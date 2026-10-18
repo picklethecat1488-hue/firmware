@@ -10,6 +10,8 @@ import threading
 import time
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
+from host_daemon.provider.bringup.bringup_manager import BringupManager
+
 
 class DaemonRunner:
     """Manages firmware compilation, device flashing, RTT streaming, and CLI/FS command execution."""
@@ -36,6 +38,7 @@ class DaemonRunner:
         self.elf_path: Optional[Path] = None
         self.host_cli_path: Optional[Path] = None
         self.host_fs_path: Optional[Path] = None
+        self.bringup_manager = BringupManager(runner=self, repo_root=self.repo_root)
 
         self.active_mode: str = "CLI"
         self._lock = threading.Lock()
@@ -251,7 +254,7 @@ class DaemonRunner:
             self.fs_outputs.append(entry)
 
     def set_mode(self, mode: str) -> None:
-        """Switch active workstation mode between CLI and FS, managing probe ownership."""
+        """Switch active workstation mode between CLI, FS, and BRINGUP, managing probe ownership."""
         mode = mode.upper()
         if mode == self.active_mode:
             return
@@ -260,8 +263,8 @@ class DaemonRunner:
             self.log("Switching to Filesystem mode (stopping RTT streaming to release probe)...", channel="system")
             self.stop_rtt_streaming()
             time.sleep(0.15)
-        elif mode == "CLI":
-            self.log("Switching to CLI console mode (starting RTT streaming)...", channel="system")
+        elif mode in ("CLI", "BRINGUP"):
+            self.log(f"Switching to {mode} mode (starting RTT streaming)...", channel="system")
             self.start_rtt_streaming()
 
     def build_target(self) -> Path:

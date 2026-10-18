@@ -6,6 +6,7 @@
   <title>Xerxes Host Daemon // {{ runner.package }}:{{ runner.bin_name }}</title>
   <meta name="theme-color" content="#0a1c24">
   <meta name="color-scheme" content="dark">
+  <link rel="stylesheet" href="/static/common.css">
   <style>
     html { font-size: 80%; }
     :root {
@@ -28,7 +29,10 @@
       --xerxes-text-dim: #3a626c;
       --font-mono: "Share Tech Mono", ui-monospace, "SF Mono", "Courier New", monospace;
     }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html {
+      height: 100%;
+      width: 100%;
+    }
     body {
       background-color: var(--xerxes-bg);
       background-image:
@@ -36,7 +40,8 @@
         radial-gradient(ellipse at 50% 0%, #0a2f3a 0%, #03080b 100%);
       color: var(--xerxes-text-light);
       font-family: var(--font-mono);
-      height: 100vh;
+      height: 100%;
+      width: 100%;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -121,6 +126,16 @@
     .btn-amber:hover {
       background: rgba(255, 176, 0, 0.35);
       border-color: var(--xerxes-amber);
+      color: #fff;
+    }
+    .btn-red {
+      background: rgba(255, 42, 75, 0.2);
+      border-color: var(--xerxes-red);
+      color: var(--xerxes-red);
+    }
+    .btn-red:hover {
+      background: rgba(255, 42, 75, 0.35);
+      border-color: var(--xerxes-red);
       color: #fff;
     }
     .btn-copy {
@@ -496,6 +511,113 @@
       padding-top: 6px;
       border-top: 1px solid var(--xerxes-border-dark, #073840);
     }
+    /* Bringup Workstation Styles */
+    .bringup-toolbar {
+      background: var(--xerxes-panel);
+      border-bottom: 1px solid var(--xerxes-border-mid);
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .bringup-container {
+      display: flex;
+      flex: 1;
+      height: 100%;
+      overflow: hidden;
+    }
+    .bringup-sidebar {
+      width: 320px;
+      border-right: 1px solid var(--xerxes-border-mid);
+      display: flex;
+      flex-direction: column;
+      background: var(--xerxes-panel);
+    }
+    .bringup-sidebar-header {
+      padding: 6px 10px;
+      background: var(--xerxes-header-bg);
+      border-bottom: 1px solid var(--xerxes-border-mid);
+      font-size: 9px;
+      font-weight: bold;
+      color: var(--xerxes-cyan);
+      letter-spacing: 0.05em;
+    }
+    .bringup-step-list {
+      flex: 1;
+      overflow-y: auto;
+      list-style: none;
+      padding: 4px;
+    }
+    .bringup-step-item {
+      padding: 6px 8px;
+      border: 1px solid transparent;
+      border-radius: 2px;
+      margin-bottom: 3px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      font-size: 8.5px;
+    }
+    .bringup-step-item:hover {
+      background: var(--xerxes-panel-hover);
+      border-color: var(--xerxes-cyan-dim);
+    }
+    .bringup-step-item.active {
+      background: rgba(0, 240, 255, 0.15);
+      border-color: var(--xerxes-cyan);
+    }
+    .bringup-main-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 8px;
+      gap: 8px;
+    }
+    .bringup-card {
+      background: var(--xerxes-panel);
+      border: 1px solid var(--xerxes-border-mid);
+      border-radius: 2px;
+      padding: 10px;
+    }
+    .bringup-prompt-card {
+      border-color: var(--xerxes-cyan);
+      box-shadow: 0 0 10px rgba(0, 240, 255, 0.15);
+    }
+    .bringup-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+      font-size: 8.5px;
+    }
+    .bringup-table th, .bringup-table td {
+      border: 1px solid var(--xerxes-border-mid);
+      padding: 4px 6px;
+      text-align: left;
+    }
+    .bringup-table th {
+      background: var(--xerxes-header-bg);
+      color: var(--xerxes-cyan);
+    }
+    .dropzone {
+      border: 2px dashed var(--xerxes-border-mid);
+      border-radius: 4px;
+      padding: 12px;
+      text-align: center;
+      color: var(--xerxes-text-muted);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: rgba(0, 240, 255, 0.02);
+      font-size: 9px;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--xerxes-cyan) !important;
+      background: rgba(0, 240, 255, 0.08) !important;
+      color: var(--xerxes-cyan) !important;
+    }
   </style>
 </head>
 <body>
@@ -510,10 +632,23 @@
     <div style="display: flex; align-items: center; gap: 8px;">
       <button class="btn btn-cyan" id="btnSync" onclick="triggerSync()">⚡ Sync</button>
       <button class="btn btn-amber" id="btnReset" onclick="triggerReset()">⚡ Reset</button>
+      <button class="btn btn-red" id="btnTargetBug" onclick="openTargetBugModal()" title="Report defect discovered on target">🐞 Target Bug</button>
       <label for="modeSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">ACTIVE MODE:</label>
       <select id="modeSelect" class="select-dropdown" onchange="changeMode(this.value)">
         <option value="CLI" {% if runner.active_mode == 'CLI' %}selected{% endif %}>CLI (RTT Console)</option>
         <option value="FS" {% if runner.active_mode == 'FS' %}selected{% endif %}>FS (Filesystem)</option>
+        <option value="BRINGUP" {% if runner.active_mode == 'BRINGUP' %}selected{% endif %}>BRINGUP (Checklist)</option>
+      </select>
+      <!-- UI Scale Selector (8715cab2) -->
+      <label for="uiScaleSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">SCALE:</label>
+      <select id="uiScaleSelect" class="select-dropdown" onchange="onUiScaleChange(this.value)" title="UI Scale (Shortcuts: Cmd/Ctrl +/- or 0 to reset)" style="padding: 2px 4px; font-size: 8.5px; height: 22px;">
+        <option value="75%">75%</option>
+        <option value="80%">80%</option>
+        <option value="90%">90%</option>
+        <option value="100%" selected>100%</option>
+        <option value="110%">110%</option>
+        <option value="125%">125%</option>
+        <option value="150%">150%</option>
       </select>
       <button class="btn" id="btnToggleLog" onclick="toggleLogPanel()">Hide Log</button>
       <button class="btn" onclick="clearOutput()">Clear</button>
@@ -547,6 +682,133 @@
           <button class="btn btn-amber" id="btnSyncCancel" onclick="cancelSync()">Cancel</button>
           <button class="btn" id="btnSyncDismiss" onclick="closeSyncModal()">Dismiss</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Target Bug Reporting Modal (WORM-LOAMY-LUGWORM-536) -->
+  <div id="targetBugModal" class="sync-modal-backdrop" style="display:none;" onclick="if(event.target===this)closeTargetBugModal()">
+    <div class="sync-modal-box" style="max-width: 680px; width: 92%;">
+      <div class="sync-modal-header" style="border-bottom: 2px solid var(--xerxes-red);">
+        <span class="sync-modal-title" style="color: var(--xerxes-red);">🐞 TARGET DEFECT DISCOVERY // REPORT WORM</span>
+        <button class="btn" style="padding: 2px 6px; font-size: 8.5px;" onclick="closeTargetBugModal()">✕</button>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px; padding:14px; max-height:75vh; overflow-y:auto;">
+        <div style="display:flex; gap:10px;">
+          <div style="flex:2;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">BUG TITLE *</label>
+            <input type="text" id="targetBugTitle" class="quake-input" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:11px; background:#040d12; border:1px solid #0b5966; color:#00f0ff;" placeholder="Brief summary of defect (e.g. Motor fails to spin on speed 100)...">
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">SEVERITY</label>
+            <select id="targetBugSeverity" class="select-dropdown" style="width:100%; height:28px;">
+              <option value="CRITICAL">🔴 CRITICAL</option>
+              <option value="HIGH">🟠 HIGH</option>
+              <option value="MEDIUM" selected>🟡 MEDIUM</option>
+              <option value="LOW">🟢 LOW</option>
+            </select>
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">CATEGORY</label>
+            <select id="targetBugCategory" class="select-dropdown" style="width:100%; height:28px;">
+              <option value="FIRMWARE" selected>FIRMWARE</option>
+              <option value="CONTROLLER">CONTROLLER</option>
+              <option value="DRIVER">DRIVER</option>
+              <option value="PLATFORM">PLATFORM</option>
+              <option value="BOARD">BOARD</option>
+              <option value="SHELL">SHELL</option>
+              <option value="INFRASTRUCTURE">INFRASTRUCTURE</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+          <div style="flex:1;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">COMPONENT</label>
+            <input type="text" id="targetBugComponent" class="quake-input" style="width:100%; box-sizing:border-box; padding:5px 8px; font-size:10px; background:#040d12; border:1px solid #0b5966; color:#e0f8ff;" value="target">
+          </div>
+          <div style="flex:2;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">TARGET DETAILS</label>
+            <div style="font-size:9px; color:var(--xerxes-text-dim); padding-top:4px;">
+              Target: <strong>{{ runner.target }}</strong> | Binary: <strong>{{ runner.bin_name }}</strong> ({{ 'release' if runner.release else 'debug' }})
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">DESCRIPTION</label>
+          <textarea id="targetBugDescription" rows="3" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:10px; background:#040d12; border:1px solid #0b5966; color:#e0f8ff; font-family:monospace; resize:vertical;" placeholder="Detailed description of defect observed on target..."></textarea>
+        </div>
+
+        <div>
+          <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">REPRODUCTION STEPS</label>
+          <textarea id="targetBugSteps" rows="4" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:10px; background:#040d12; border:1px solid #0b5966; color:#e0f8ff; font-family:monospace; resize:vertical;"></textarea>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+          <div style="flex:1;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">EXPECTED BEHAVIOR</label>
+            <textarea id="targetBugExpected" rows="2" style="width:100%; box-sizing:border-box; padding:5px 8px; font-size:10px; background:#040d12; border:1px solid #0b5966; color:#e0f8ff; font-family:monospace; resize:vertical;"></textarea>
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">ACTUAL BEHAVIOR</label>
+            <textarea id="targetBugActual" rows="2" style="width:100%; box-sizing:border-box; padding:5px 8px; font-size:10px; background:#040d12; border:1px solid #0b5966; color:#e0f8ff; font-family:monospace; resize:vertical;"></textarea>
+          </div>
+        </div>
+
+        <!-- Target Attachment Options -->
+        <div style="background:rgba(0,240,255,0.03); border:1px solid #0b5966; border-radius:3px; padding:10px;">
+          <span style="font-size:9px; font-weight:bold; color:var(--xerxes-cyan); display:block; margin-bottom:8px;">AUTOMATIC TARGET ATTACHMENTS</span>
+          <div style="display:flex; flex-direction:column; gap:6px; font-size:9px;">
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="attachSystemLogs" checked>
+              <span>Attach recent system logs (defmt / RTT output from session)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="attachCrashLog">
+              <span>Fetch &amp; attach target crash log (host_fs crash-log)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="attachTelemetry">
+              <span>Fetch &amp; attach target telemetry (host_fs export-telemetry)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="attachMetadata">
+              <span>Fetch &amp; attach target filesystem metadata (host_fs cat metadata)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Attachments & Screenshots Section (WORM-BRISTLY-GLOWWORM-390) -->
+        <div style="background:rgba(0,240,255,0.03); border:1px solid #0b5966; border-radius:3px; padding:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:9px; font-weight:bold; color:var(--xerxes-cyan); text-transform:uppercase;">Attachments &amp; Screenshots</span>
+            <button type="button" class="btn" onclick="pasteTargetBugClipboard()" style="font-size:8px; padding:2px 6px;">📋 Paste Clipboard</button>
+          </div>
+          <div id="targetBugDropzone" class="dropzone" onclick="document.getElementById('targetBugFileInput').click()">
+            <div>📥 Drag &amp; Drop Screenshots, Logs, or Documents Here (or click to browse)</div>
+            <div style="font-size:8.5px; margin-top:3px; color:var(--xerxes-text-dim);">Press ⌘V / Ctrl+V to paste screenshots or text</div>
+            <div style="font-size:7.5px; margin-top:4px; color:var(--xerxes-text-dim);">Attachments are tracked in GitHub LFS and considered non-confidential.</div>
+          </div>
+          <input type="file" id="targetBugFileInput" style="display:none;" multiple onchange="handleTargetBugFileUpload(this.files)">
+          <div id="targetBugAttachmentsGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:8px; margin-top:8px;"></div>
+        </div>
+
+        <div id="targetBugProgressContainer" style="display:none; margin-top:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <span id="targetBugProgressMsg" style="font-size:9px; color:var(--xerxes-cyan);">Initializing defect report...</span>
+            <span id="targetBugProgressPct" style="font-size:9px; color:var(--xerxes-cyan); font-weight:bold;">0%</span>
+          </div>
+          <div class="sync-progress-container" style="height:6px; background:#021217; border:1px solid #0b5966; border-radius:2px; overflow:hidden;">
+            <div id="targetBugProgressBar" class="sync-progress-bar" style="width:0%; height:100%; background:linear-gradient(90deg, var(--xerxes-teal), var(--xerxes-cyan)); transition:width 0.25s ease;"></div>
+          </div>
+        </div>
+
+        <div id="targetBugStatusMsg" style="display:none; font-size:9.5px; padding:6px 10px; border-radius:2px;"></div>
+      </div>
+      <div class="sync-modal-footer" style="padding:10px 14px; border-top:1px solid #0b5966; display:flex; justify-content:flex-end; gap:8px;">
+        <button class="btn" onclick="closeTargetBugModal()">Cancel</button>
+        <button class="btn btn-red" id="btnSubmitTargetBug" onclick="submitTargetBug()">⚡ File Target Bug</button>
       </div>
     </div>
   </div>
@@ -592,12 +854,62 @@
         <button class="btn" onclick="runFsQuick('format')">format</button>
       </div>
 
-      <div class="panel-content" id="cliView" style="display: {% if runner.active_mode == 'FS' %}none{% else %}block{% endif %};">
+      <!-- Optional Bringup Action Toolbar -->
+      <div id="bringupToolbar" class="bringup-toolbar" style="display: {% if runner.active_mode == 'BRINGUP' %}flex{% else %}none{% endif %};">
+        <label for="bringupScriptSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">SCRIPT:</label>
+        <select id="bringupScriptSelect" class="select-dropdown" onchange="onBringupScriptSelected(this.value)">
+          <option value="">Loading bringup scripts...</option>
+        </select>
+        <button class="btn btn-cyan" id="btnBringupStep" onclick="stepBringup()" title="Execute current checklist step">▶ Step</button>
+        <button class="btn btn-cyan" id="btnBringupRun" onclick="runBringupAll()" title="Auto-run remaining checklist steps">⚡ Run All</button>
+        <button class="btn btn-amber" id="btnBringupReset" onclick="resetBringup()" title="Reset checklist to step 1">↺ Reset</button>
+        <button class="btn" id="btnBringupReport" onclick="exportBringupReport()" title="Export markdown verification report">📄 Report</button>
+        <span id="bringupSummaryBadge" class="badge" style="margin-left: auto;">CHECKLIST: IDLE</span>
+      </div>
+
+      <div class="panel-content" id="cliView" style="display: {% if runner.active_mode in ('FS', 'BRINGUP') %}none{% else %}block{% endif %};">
         <div class="log-line log-line-info">> Interactive CLI workstation ready. Type commands below.</div>
       </div>
 
       <div class="panel-content" id="fsView" style="display: {% if runner.active_mode == 'FS' %}block{% else %}none{% endif %};">
         <div class="log-line log-line-info">> Filesystem (host_fs) workstation ready. Type FS commands below (e.g. 'ls', 'cat metadata', 'format').</div>
+      </div>
+
+      <div class="panel-content bringup-panel-content" id="bringupView" style="display: {% if runner.active_mode == 'BRINGUP' %}flex{% else %}none{% endif %}; flex-direction: row; padding: 0; overflow: hidden; height: 100%;">
+        <!-- Left: Step list -->
+        <div class="bringup-sidebar">
+          <div class="bringup-sidebar-header">CHECKLIST STEPS</div>
+          <ul class="bringup-step-list" id="bringupStepList">
+            <li class="log-line log-line-info" style="padding: 8px;">Loading checklist steps...</li>
+          </ul>
+        </div>
+        <!-- Right: Active Step Details, Prompt Card & Live CLI Output -->
+        <div class="bringup-main-area">
+          <div class="bringup-card bringup-prompt-card" id="bringupPromptCard">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span id="bringupCardTitle" style="font-weight: bold; color: var(--xerxes-cyan); font-size: 10px;">NO SCRIPT LOADED</span>
+              <span id="bringupCardType" class="badge">TYPE: --</span>
+            </div>
+            <div id="bringupCardDesc" style="font-size: 8.5px; color: var(--xerxes-text-light); margin-bottom: 8px;">Select a bringup script above to begin verification.</div>
+            <div id="bringupCardDetails" style="font-size: 8px; color: var(--xerxes-text-muted);"></div>
+            <div id="bringupPromptActionArea" style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--xerxes-border-mid); display: none;">
+              <div style="font-size: 8.5px; color: var(--xerxes-amber); font-weight: bold; margin-bottom: 6px;" id="bringupPromptText">ACTION REQUIRED: Verify step outcome</div>
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <input type="text" id="bringupPromptNotes" class="cmd-input" placeholder="Notes/observations (optional)..." style="flex: 1; min-width: 160px; height: 22px; font-size: 8.5px;">
+                <button class="btn btn-cyan" onclick="respondBringup('pass')">✔ Pass</button>
+                <button class="btn btn-red" onclick="respondBringup('fail')">✘ Fail</button>
+                <button class="btn btn-amber" onclick="respondBringup('skip')">⏭ Skip</button>
+              </div>
+            </div>
+          </div>
+          <div class="panel-header" style="background: var(--xerxes-header-bg); border-top: 1px solid var(--xerxes-border-mid); padding: 4px 8px;">
+            <span style="font-size: 8.5px; color: var(--xerxes-cyan);">LIVE BRINGUP LOGS & CLI OUTPUT</span>
+            <button class="btn btn-copy" onclick="copyBringupConsole(this)">📋 Copy Log</button>
+          </div>
+          <div class="panel-content" id="bringupConsoleOutput" style="flex: 1; overflow-y: auto; background: var(--xerxes-bg); border: 1px solid var(--xerxes-border-mid); padding: 6px; font-size: 8.5px; font-family: var(--font-mono);">
+            <div class="log-line log-line-info">> Bringup workstation initialized.</div>
+          </div>
+        </div>
       </div>
     </div>
   </main>
@@ -625,7 +937,9 @@
       currentMode = newMode;
       const cliView = document.getElementById("cliView");
       const fsView = document.getElementById("fsView");
+      const bringupView = document.getElementById("bringupView");
       const fsToolbar = document.getElementById("fsToolbar");
+      const bringupToolbar = document.getElementById("bringupToolbar");
       const promptLabel = document.getElementById("promptLabel");
       const cmdInput = document.getElementById("cmdInput");
       const title = document.getElementById("cliPanelTitle");
@@ -633,14 +947,29 @@
       if (currentMode === "FS") {
         if (cliView) cliView.style.display = "none";
         if (fsView) fsView.style.display = "block";
+        if (bringupView) bringupView.style.display = "none";
         if (fsToolbar) fsToolbar.style.display = "flex";
+        if (bringupToolbar) bringupToolbar.style.display = "none";
         if (promptLabel) promptLabel.innerText = "fs> ";
         if (title) title.innerText = "FILESYSTEM COMMAND WORKSTATION (host_fs)";
         if (cmdInput) cmdInput.placeholder = "Type FS command (e.g. 'ls', 'cat metadata', 'crash-log', 'format')...";
+      } else if (currentMode === "BRINGUP") {
+        if (cliView) cliView.style.display = "none";
+        if (fsView) fsView.style.display = "none";
+        if (bringupView) bringupView.style.display = "flex";
+        if (fsToolbar) fsToolbar.style.display = "none";
+        if (bringupToolbar) bringupToolbar.style.display = "flex";
+        if (promptLabel) promptLabel.innerText = "bringup> ";
+        if (title) title.innerText = "BRINGUP VERIFICATION CHECKLIST";
+        if (cmdInput) cmdInput.placeholder = "Type shell/override command for active bringup step...";
+        loadBringupScriptsList();
+        pollBringupStatus();
       } else {
         if (cliView) cliView.style.display = "block";
         if (fsView) fsView.style.display = "none";
+        if (bringupView) bringupView.style.display = "none";
         if (fsToolbar) fsToolbar.style.display = "none";
+        if (bringupToolbar) bringupToolbar.style.display = "none";
         if (promptLabel) promptLabel.innerText = "shell> ";
         if (title) title.innerText = "INTERACTIVE CLI CONSOLE (host_cli)";
         if (cmdInput) cmdInput.placeholder = "Type shell command (e.g. 'motor speed 100', 'gpio status', 'battery status')...";
@@ -656,6 +985,285 @@
       } catch (e) {
         console.error("Failed to update mode:", e);
       }
+    }
+
+    let lastBringupLogCount = 0;
+    let isBringupRunning = false;
+
+    async function loadBringupScriptsList() {
+      try {
+        const resp = await fetch("/api/bringup/scripts");
+        if (!resp.ok) return;
+        const scripts = await resp.json();
+        const select = document.getElementById("bringupScriptSelect");
+        if (!select) return;
+        const currentVal = select.value;
+        select.innerHTML = "";
+        scripts.forEach(s => {
+          const opt = document.createElement("option");
+          opt.value = s.path;
+          opt.textContent = `${s.name} (${s.chip}) - ${s.path}`;
+          if (currentVal && opt.value === currentVal) opt.selected = true;
+          select.appendChild(opt);
+        });
+        if (!currentVal && scripts.length > 0) {
+          onBringupScriptSelected(scripts[0].path);
+        }
+      } catch (e) {
+        console.error("Failed to load bringup scripts:", e);
+      }
+    }
+
+    async function onBringupScriptSelected(scriptPath) {
+      if (!scriptPath) return;
+      try {
+        const resp = await fetch("/api/bringup/load", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ script_path: scriptPath })
+        });
+        if (resp.ok) {
+          pollBringupStatus();
+        }
+      } catch (e) {
+        console.error("Failed to load selected bringup script:", e);
+      }
+    }
+
+    async function pollBringupStatus() {
+      if (currentMode !== "BRINGUP") return;
+      try {
+        const resp = await fetch("/api/bringup/status");
+        if (!resp.ok) return;
+        const data = await resp.json();
+        renderBringupView(data);
+      } catch (e) {
+        console.error("Failed to poll bringup status:", e);
+      }
+    }
+
+    function renderBringupView(data) {
+      if (!data) return;
+
+      const summaryBadge = document.getElementById("bringupSummaryBadge");
+      if (summaryBadge && data.summary) {
+        summaryBadge.textContent = `STEP ${data.current_step_idx + 1}/${data.total_steps} | ${data.summary.passed} PASSED, ${data.summary.failed} FAILED, ${data.summary.skipped} SKIPPED`;
+        summaryBadge.className = data.summary.failed > 0 ? "badge badge-amber" : "badge badge-green";
+      }
+
+      const stepList = document.getElementById("bringupStepList");
+      if (stepList && data.steps) {
+        stepList.innerHTML = "";
+        data.steps.forEach((step, idx) => {
+          const li = document.createElement("li");
+          const isActive = idx === data.current_step_idx;
+          li.className = `bringup-step-item ${isActive ? "active" : ""}`;
+          
+          let statusBadgeClass = "badge";
+          let statusIcon = "⏳";
+          if (step.status === "passed") {
+            statusBadgeClass = "badge badge-green";
+            statusIcon = "✔";
+          } else if (step.status === "failed") {
+            statusBadgeClass = "badge badge-amber";
+            statusIcon = "✘";
+          } else if (step.status === "skipped") {
+            statusBadgeClass = "badge";
+            statusIcon = "⏭";
+          } else if (step.status === "running") {
+            statusBadgeClass = "badge badge-cyan";
+            statusIcon = "⚙";
+          }
+
+          li.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
+              <span style="font-weight: bold; color: var(--xerxes-cyan);">${statusIcon} [${step.id}]</span>
+              <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--xerxes-text-light);">${step.name}</span>
+            </div>
+            <span class="${statusBadgeClass}" style="font-size: 7.5px;">${step.type}</span>
+          `;
+          stepList.appendChild(li);
+        });
+      }
+
+      const currStep = data.current_step;
+      const cardTitle = document.getElementById("bringupCardTitle");
+      const cardType = document.getElementById("bringupCardType");
+      const cardDesc = document.getElementById("bringupCardDesc");
+      const cardDetails = document.getElementById("bringupCardDetails");
+      const promptActionArea = document.getElementById("bringupPromptActionArea");
+      const promptText = document.getElementById("bringupPromptText");
+
+      if (currStep) {
+        if (cardTitle) cardTitle.textContent = `STEP ${currStep.id}: ${currStep.name.toUpperCase()}`;
+        if (cardType) {
+          cardType.textContent = `TYPE: ${currStep.type.toUpperCase()}`;
+          cardType.className = "badge";
+        }
+        if (cardDesc) cardDesc.textContent = currStep.description || "No description provided for this step.";
+
+        let detailsHtml = "";
+        if (currStep.command) {
+          detailsHtml += `<div style="margin-top: 4px;"><strong>Command:</strong> <code style="color: var(--xerxes-cyan);">${currStep.command}</code></div>`;
+        }
+        if (currStep.expected_regex) {
+          detailsHtml += `<div style="margin-top: 4px;"><strong>Expected Regex:</strong> <code style="color: var(--xerxes-teal);">${currStep.expected_regex}</code></div>`;
+        }
+        if (currStep.matched_line) {
+          detailsHtml += `<div style="margin-top: 4px; color: var(--xerxes-green);"><strong>Matched Output:</strong> <code>${currStep.matched_line}</code></div>`;
+        }
+        if (currStep.procedure) {
+          detailsHtml += `<div style="margin-top: 4px;"><strong>Procedure:</strong> ${currStep.procedure}</div>`;
+        }
+        if (currStep.expected) {
+          detailsHtml += `<div style="margin-top: 4px;"><strong>Expected Outcome:</strong> ${currStep.expected}</div>`;
+        }
+
+        if (currStep.test_points && Object.keys(currStep.test_points).length > 0) {
+          detailsHtml += `<table class="bringup-table"><thead><tr><th>Test Point</th><th>Expected Voltage / Signal</th></tr></thead><tbody>`;
+          for (const [tp, val] of Object.entries(currStep.test_points)) {
+            detailsHtml += `<tr><td><strong>${tp}</strong></td><td>${val}</td></tr>`;
+          }
+          detailsHtml += `</tbody></table>`;
+        }
+
+        if (currStep.control_pins && Object.keys(currStep.control_pins).length > 0) {
+          detailsHtml += `<table class="bringup-table"><thead><tr><th>Control Signal</th><th>Target Pin</th></tr></thead><tbody>`;
+          for (const [cp, val] of Object.entries(currStep.control_pins)) {
+            detailsHtml += `<tr><td><strong>${cp}</strong></td><td>${val}</td></tr>`;
+          }
+          detailsHtml += `</tbody></table>`;
+        }
+
+        if (cardDetails) cardDetails.innerHTML = detailsHtml;
+
+        if (data.active_prompt) {
+          if (promptActionArea) promptActionArea.style.display = "block";
+          const p = data.active_prompt;
+          let promptMsg = `ACTION REQUIRED: Verify step outcome (Default: ${p.default_status.toUpperCase()})`;
+          if (p.auto_pass === true) {
+            promptMsg = `✔ AUTOMATIC MATCH CONFIRMED (${p.matched_line || 'Pattern Matched'}). Click Pass to proceed.`;
+          } else if (p.auto_pass === false) {
+            promptMsg = `✘ AUTOMATIC MATCH FAILED: Expected pattern '${currStep.expected_regex}' not found.`;
+          }
+          if (promptText) promptText.textContent = promptMsg;
+        } else {
+          if (promptActionArea) promptActionArea.style.display = "none";
+        }
+      }
+
+      const consoleOut = document.getElementById("bringupConsoleOutput");
+      if (consoleOut && data.logs) {
+        if (data.logs.length !== lastBringupLogCount) {
+          consoleOut.innerHTML = "";
+          data.logs.forEach(l => {
+            const d = document.createElement("div");
+            d.className = "log-line log-line-info";
+            d.innerHTML = ansiToHtml(l);
+            consoleOut.appendChild(d);
+          });
+          lastBringupLogCount = data.logs.length;
+          consoleOut.scrollTop = consoleOut.scrollHeight;
+        }
+      }
+    }
+
+    async function stepBringup() {
+      try {
+        const resp = await fetch("/api/bringup/step", { method: "POST" });
+        if (resp.ok) {
+          pollBringupStatus();
+        }
+      } catch (e) {
+        console.error("Failed to step bringup:", e);
+      }
+    }
+
+    async function runBringupAll() {
+      isBringupRunning = true;
+      async function runNext() {
+        if (!isBringupRunning) return;
+        const statusResp = await fetch("/api/bringup/status");
+        if (!statusResp.ok) return;
+        const data = await statusResp.json();
+        renderBringupView(data);
+
+        if (data.status === "complete" || data.current_step_idx >= data.total_steps) {
+          isBringupRunning = false;
+          return;
+        }
+
+        if (data.status === "waiting_prompt") {
+          if (data.active_prompt && data.active_prompt.auto_pass === true) {
+            await respondBringup("pass");
+            setTimeout(runNext, 200);
+          } else {
+            isBringupRunning = false;
+          }
+          return;
+        }
+
+        await stepBringup();
+        setTimeout(runNext, 250);
+      }
+      runNext();
+    }
+
+    async function respondBringup(action) {
+      const notesInput = document.getElementById("bringupPromptNotes");
+      const notes = notesInput ? notesInput.value.trim() : "";
+      try {
+        const resp = await fetch("/api/bringup/respond", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: action, notes: notes })
+        });
+        if (notesInput) notesInput.value = "";
+        if (resp.ok) {
+          pollBringupStatus();
+        }
+      } catch (e) {
+        console.error("Failed to respond to bringup prompt:", e);
+      }
+    }
+
+    async function resetBringup() {
+      isBringupRunning = false;
+      try {
+        const resp = await fetch("/api/bringup/reset", { method: "POST" });
+        if (resp.ok) {
+          pollBringupStatus();
+        }
+      } catch (e) {
+        console.error("Failed to reset bringup:", e);
+      }
+    }
+
+    async function exportBringupReport() {
+      try {
+        const resp = await fetch("/api/bringup/report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ output_path: "bringup_report.md" })
+        });
+        const data = await resp.json();
+        if (data && data.success) {
+          alert(`Bringup report exported successfully to: ${data.output_path}`);
+        }
+      } catch (e) {
+        console.error("Failed to export bringup report:", e);
+      }
+    }
+
+    function copyBringupConsole(btn) {
+      const consoleOut = document.getElementById("bringupConsoleOutput");
+      if (!consoleOut) return;
+      const text = consoleOut.innerText || "";
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.innerText;
+        btn.innerText = "✔ Copied";
+        setTimeout(() => btn.innerText = orig, 1500);
+      });
     }
 
     function runFsQuick(action) {
@@ -828,7 +1436,12 @@
 
           let formatted = allCls.length > 0 ? `<span class="${allCls.join(' ')}">${inner}</span>` : inner;
           if (currentUrl) {
-            formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
+            if (currentUrl.startsWith("command:") || currentUrl.startsWith("action:")) {
+              const cmd = currentUrl.replace(/^(command|action):/, "");
+              formatted = `<a href="javascript:void(0)" onclick="handleCliCommandClick('${escapeHtmlText(cmd)}')" class="term-link term-cmd-link" data-command="${escapeHtmlText(cmd)}" title="Click to select ${escapeHtmlText(cmd)}">${formatted}</a>`;
+            } else {
+              formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
+            }
           }
           outChunks.push(formatted);
         }
@@ -891,12 +1504,31 @@
 
         let formatted = allCls.length > 0 ? `<span class="${allCls.join(' ')}">${inner}</span>` : inner;
         if (currentUrl) {
-          formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
+          if (currentUrl.startsWith("command:") || currentUrl.startsWith("action:")) {
+            const cmd = currentUrl.replace(/^(command|action):/, "");
+            formatted = `<a href="javascript:void(0)" onclick="handleCliCommandClick('${escapeHtmlText(cmd)}')" class="term-link term-cmd-link" data-command="${escapeHtmlText(cmd)}" title="Click to select ${escapeHtmlText(cmd)}">${formatted}</a>`;
+          } else {
+            formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
+          }
         }
         outChunks.push(formatted);
       }
 
       return outChunks.join('');
+    }
+
+    function handleCliCommandClick(cmd) {
+      if (typeof respondBringup === "function" && ["pass", "fail", "skip"].includes(cmd.toLowerCase())) {
+        respondBringup(cmd.toLowerCase());
+        return;
+      }
+      const input = document.getElementById("cmdInput");
+      if (input) {
+        input.value = cmd;
+        if (typeof submitCommand === "function") {
+          submitCommand();
+        }
+      }
     }
 
     let lastLogCount = 0;
@@ -1145,6 +1777,10 @@
             }
           }
         }
+
+        if (currentMode === "BRINGUP") {
+          pollBringupStatus();
+        }
       } catch (e) {
         // Background polling errors silent
       }
@@ -1314,7 +1950,91 @@
       }
     });
 
+    // UI Scale Management (8715cab2)
+    const UI_SCALES = ["75%", "80%", "90%", "100%", "110%", "125%", "150%"];
+    const UI_SCALE_KEY = "ui_scale";
+
+    function applyUiScale(scale) {
+      if (!UI_SCALES.includes(scale)) {
+        scale = "100%";
+      }
+      const factor = parseInt(scale, 10) / 100;
+      if (document.documentElement) {
+        document.documentElement.style.zoom = factor;
+        if (factor === 1.0) {
+          document.documentElement.style.width = "";
+          document.documentElement.style.height = "";
+        } else {
+          document.documentElement.style.width = (window.innerWidth / factor) + "px";
+          document.documentElement.style.height = (window.innerHeight / factor) + "px";
+        }
+      }
+      try {
+        localStorage.setItem(UI_SCALE_KEY, scale);
+      } catch (e) {}
+      const sel = document.getElementById("uiScaleSelect");
+      if (sel && sel.value !== scale) {
+        sel.value = scale;
+      }
+    }
+
+    window.addEventListener("resize", () => {
+      let current = "100%";
+      try {
+        current = localStorage.getItem(UI_SCALE_KEY) || "100%";
+      } catch (e) {}
+      const factor = parseInt(current, 10) / 100;
+      if (factor !== 1.0 && document.documentElement) {
+        document.documentElement.style.width = (window.innerWidth / factor) + "px";
+        document.documentElement.style.height = (window.innerHeight / factor) + "px";
+      }
+    });
+
+    function onUiScaleChange(scale) {
+      applyUiScale(scale);
+    }
+
+    function adjustUiScale(delta) {
+      let current = "100%";
+      try {
+        current = localStorage.getItem(UI_SCALE_KEY) || "100%";
+      } catch (e) {}
+      let idx = UI_SCALES.indexOf(current);
+      if (idx === -1) idx = UI_SCALES.indexOf("100%");
+      const nextIdx = Math.max(0, Math.min(UI_SCALES.length - 1, idx + delta));
+      applyUiScale(UI_SCALES[nextIdx]);
+    }
+
+    function resetUiScale() {
+      applyUiScale("100%");
+    }
+
+    function initUiScale() {
+      let saved = "100%";
+      try {
+        saved = localStorage.getItem(UI_SCALE_KEY) || "100%";
+      } catch (e) {}
+      applyUiScale(saved);
+    }
+
     window.addEventListener("keydown", (e) => {
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === "=" || e.key === "+" || e.code === "Equal" || e.code === "NumpadAdd") {
+          e.preventDefault();
+          adjustUiScale(1);
+          return;
+        }
+        if (e.key === "-" || e.key === "_" || e.code === "Minus" || e.code === "NumpadSubtract") {
+          e.preventDefault();
+          adjustUiScale(-1);
+          return;
+        }
+        if (e.key === "0" || e.code === "Digit0" || e.code === "Numpad0") {
+          e.preventDefault();
+          resetUiScale();
+          return;
+        }
+      }
       if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
         if (e.target.id !== "fuzzySearchInput") {
           e.preventDefault();
@@ -1399,6 +2119,274 @@
       }
       const modal = document.getElementById("syncModal");
       if (modal) modal.style.display = "none";
+    }
+
+    // Target Bug Reporting Modal Management (WORM-LOAMY-LUGWORM-536, WORM-BRISTLY-GLOWWORM-390)
+    let targetBugAttachments = [];
+
+    function handleTargetBugFileUpload(files) {
+      if (!files || !files.length) return;
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        const isImage = file.type.startsWith("image/");
+        const isLog = file.name.endsWith(".log") || file.name.endsWith(".txt") || file.type === "text/plain";
+        const fileType = isImage ? "screenshot" : (isLog ? "log" : "document");
+        reader.onload = (e) => {
+          targetBugAttachments.push({
+            filename: file.name,
+            file_type: fileType,
+            content_base64: e.target.result,
+            size_bytes: file.size,
+            description: `Attached ${fileType} (${file.name})`
+          });
+          renderTargetBugAttachments();
+        };
+        reader.readAsDataURL(file);
+      });
+      const input = document.getElementById("targetBugFileInput");
+      if (input) input.value = "";
+    }
+
+    async function pasteTargetBugClipboard() {
+      try {
+        if (navigator.clipboard && navigator.clipboard.read) {
+          const items = await navigator.clipboard.read();
+          let pasted = false;
+          for (const item of items) {
+            for (const type of item.types) {
+              if (type.startsWith("image/")) {
+                const blob = await item.getType(type);
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                  targetBugAttachments.push({
+                    filename: `screenshot_${Date.now()}.png`,
+                    file_type: "screenshot",
+                    content_base64: e.target.result,
+                    size_bytes: blob.size,
+                    description: "Pasted clipboard screenshot"
+                  });
+                  renderTargetBugAttachments();
+                };
+                reader.readAsDataURL(blob);
+                pasted = true;
+                break;
+              }
+            }
+            if (pasted) break;
+          }
+          if (pasted) return;
+        }
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const text = await navigator.clipboard.readText();
+          if (text && text.trim()) {
+            const b64 = "data:text/plain;base64," + btoa(unescape(encodeURIComponent(text)));
+            targetBugAttachments.push({
+              filename: `clipboard_${Date.now()}.txt`,
+              file_type: "log",
+              content_base64: b64,
+              content_text: text,
+              size_bytes: new Blob([text]).size,
+              description: "Pasted clipboard text snippet"
+            });
+            renderTargetBugAttachments();
+          }
+        }
+      } catch (err) {
+        console.warn("Clipboard access error:", err);
+      }
+    }
+
+    function removeTargetBugAttachment(idx) {
+      if (idx >= 0 && idx < targetBugAttachments.length) {
+        targetBugAttachments.splice(idx, 1);
+        renderTargetBugAttachments();
+      }
+    }
+
+    function renderTargetBugAttachments() {
+      const grid = document.getElementById("targetBugAttachmentsGrid");
+      if (!grid) return;
+      grid.innerHTML = "";
+      targetBugAttachments.forEach((att, idx) => {
+        const card = document.createElement("div");
+        card.style.background = "#040e14";
+        card.style.border = "1px solid var(--xerxes-border-mid)";
+        card.style.borderRadius = "3px";
+        card.style.padding = "6px";
+        card.style.display = "flex";
+        card.style.flexDirection = "column";
+        card.style.gap = "4px";
+
+        let previewHtml = "";
+        if (att.file_type === "screenshot" || (att.content_base64 && att.content_base64.startsWith("data:image/"))) {
+          previewHtml = `<img src="${att.content_base64}" style="width:100%; height:65px; object-fit:cover; border-radius:2px; border:1px solid #092430; background:#02070a;" alt="${att.filename}">`;
+        } else {
+          previewHtml = `<div style="width:100%; height:65px; border-radius:2px; border:1px solid #092430; background:#02070a; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;"><span style="font-size:16px;">📄</span><span style="font-size:7px; color:var(--xerxes-text-muted); font-weight:bold;">${(att.file_type || 'DOCUMENT').toUpperCase()}</span></div>`;
+        }
+
+        const sizeKb = ((att.size_bytes || 0) / 1024).toFixed(1);
+        card.innerHTML = `
+          ${previewHtml}
+          <div style="font-size:8.5px; color:#e0f8ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${att.filename}">${att.filename}</div>
+          <div style="display:flex; justify-content:space-between; align-items:center; font-size:7.5px; color:var(--xerxes-text-dim);">
+            <span>${sizeKb} KB</span>
+            <button type="button" class="btn" style="font-size:7.5px; padding:1px 4px; color:var(--xerxes-red); border-color:rgba(255,42,75,0.4);" onclick="removeTargetBugAttachment(${idx})">✕</button>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function openTargetBugModal() {
+      const modal = document.getElementById("targetBugModal");
+      if (!modal) return;
+      modal.style.display = "flex";
+
+      targetBugAttachments = [];
+      renderTargetBugAttachments();
+
+      const titleInput = document.getElementById("targetBugTitle");
+      if (titleInput) {
+        titleInput.value = "";
+        setTimeout(() => titleInput.focus(), 50);
+      }
+
+      const stepsInput = document.getElementById("targetBugSteps");
+      if (stepsInput && !stepsInput.value) {
+        const recentCmds = (cmdHistory || []).slice(-3);
+        let defaultSteps = "1. Connect target device via probe-rs / RTT\n2. Synchronize firmware: package {{ runner.package }} ({{ runner.bin_name }})";
+        if (recentCmds.length > 0) {
+          recentCmds.forEach((cmd, idx) => {
+            defaultSteps += `\n${idx + 3}. Execute command '${cmd}'`;
+          });
+          defaultSteps += `\n${recentCmds.length + 3}. Observe defect/failure on target`;
+        } else {
+          defaultSteps += "\n3. Execute target CLI/FS commands\n4. Observe defect/failure on target";
+        }
+        stepsInput.value = defaultSteps;
+      }
+
+      const statusEl = document.getElementById("targetBugStatusMsg");
+      if (statusEl) {
+        statusEl.style.display = "none";
+        statusEl.textContent = "";
+      }
+
+      const progressContainer = document.getElementById("targetBugProgressContainer");
+      if (progressContainer) progressContainer.style.display = "none";
+      const progressBar = document.getElementById("targetBugProgressBar");
+      if (progressBar) {
+        progressBar.style.width = "0%";
+        progressBar.style.background = "linear-gradient(90deg, var(--xerxes-teal), var(--xerxes-cyan))";
+      }
+    }
+
+    function closeTargetBugModal() {
+      const modal = document.getElementById("targetBugModal");
+      if (modal) modal.style.display = "none";
+    }
+
+    async function submitTargetBug() {
+      const title = document.getElementById("targetBugTitle")?.value.trim();
+      const statusEl = document.getElementById("targetBugStatusMsg");
+      const submitBtn = document.getElementById("btnSubmitTargetBug");
+      const progressContainer = document.getElementById("targetBugProgressContainer");
+      const progressBar = document.getElementById("targetBugProgressBar");
+      const progressMsg = document.getElementById("targetBugProgressMsg");
+      const progressPct = document.getElementById("targetBugProgressPct");
+
+      function updateBugProgress(pct, msg) {
+        if (progressContainer) progressContainer.style.display = "block";
+        if (progressBar) progressBar.style.width = pct + "%";
+        if (progressPct) progressPct.textContent = pct + "%";
+        if (progressMsg) progressMsg.textContent = msg;
+      }
+
+      if (!title) {
+        if (statusEl) {
+          statusEl.style.display = "block";
+          statusEl.style.background = "rgba(255, 42, 75, 0.15)";
+          statusEl.style.color = "var(--xerxes-red)";
+          statusEl.textContent = "Error: Bug title is required.";
+        }
+        return;
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "⏳ Filing Bug Report...";
+      }
+
+      updateBugProgress(20, "Collecting system logs & target hardware context...");
+
+      const payload = {
+        title: title,
+        severity: document.getElementById("targetBugSeverity")?.value || "MEDIUM",
+        category: document.getElementById("targetBugCategory")?.value || "FIRMWARE",
+        component: document.getElementById("targetBugComponent")?.value.trim() || "target",
+        description: document.getElementById("targetBugDescription")?.value.trim() || "",
+        reproduction_steps: document.getElementById("targetBugSteps")?.value.trim() || "",
+        expected_behavior: document.getElementById("targetBugExpected")?.value.trim() || "",
+        actual_behavior: document.getElementById("targetBugActual")?.value.trim() || "",
+        attach_system_logs: document.getElementById("attachSystemLogs")?.checked ?? true,
+        attach_crash_log: document.getElementById("attachCrashLog")?.checked ?? false,
+        attach_telemetry: document.getElementById("attachTelemetry")?.checked ?? false,
+        attach_metadata: document.getElementById("attachMetadata")?.checked ?? false,
+        manual_attachments: targetBugAttachments,
+      };
+
+      try {
+        updateBugProgress(45, "Packaging defect attachments & telemetry data...");
+        const resp = await fetch("/api/target_bug", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        updateBugProgress(85, "Registering worm in tracking matrix...");
+        const res = await resp.json();
+        if (res.success) {
+          updateBugProgress(100, `✓ Created defect report ${res.worm_id} with ${res.attachments_count} attachments.`);
+          if (statusEl) {
+            statusEl.style.display = "block";
+            statusEl.style.background = "rgba(20, 217, 196, 0.15)";
+            statusEl.style.color = "var(--xerxes-teal)";
+            statusEl.textContent = `✓ Created defect report ${res.worm_id} with ${res.attachments_count} attachments.`;
+          }
+          setTimeout(() => {
+            closeTargetBugModal();
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = "⚡ File Target Bug";
+            }
+          }, 1500);
+        } else {
+          updateBugProgress(100, "Defect submission failed");
+          if (progressBar) progressBar.style.background = "var(--xerxes-red)";
+          if (statusEl) {
+            statusEl.style.display = "block";
+            statusEl.style.background = "rgba(255, 42, 75, 0.15)";
+            statusEl.style.color = "var(--xerxes-red)";
+            statusEl.textContent = `Error: ${res.error || "Failed to create bug report"}`;
+          }
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "⚡ File Target Bug";
+          }
+        }
+      } catch (err) {
+        updateBugProgress(100, "Defect submission failed");
+        if (progressBar) progressBar.style.background = "var(--xerxes-red)";
+        if (statusEl) {
+          statusEl.style.display = "block";
+          statusEl.style.background = "rgba(255, 42, 75, 0.15)";
+          statusEl.style.color = "var(--xerxes-red)";
+          statusEl.textContent = `Network error: ${err.message}`;
+        }
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "⚡ File Target Bug";
+        }
+      }
     }
 
     async function cancelSync() {
@@ -1521,10 +2509,16 @@
       }
     }
 
+    initUiScale();
     setupSplitter();
     setupCliFuzzyHistory();
     setInterval(pollOutputs, 1000);
     pollOutputs();
+
+    if (currentMode === "BRINGUP") {
+      loadBringupScriptsList();
+      pollBringupStatus();
+    }
 
     // Check if initial synchronization is in progress on page load
     fetch("/api/sync/status").then(r => r.json()).then(data => {
@@ -1533,6 +2527,54 @@
         startSyncPolling();
       }
     }).catch(() => {});
+
+    // Target Bug Dropzone & Clipboard Paste Setup (WORM-BRISTLY-GLOWWORM-390)
+    const targetBugDropzoneEl = document.getElementById("targetBugDropzone");
+    if (targetBugDropzoneEl) {
+      targetBugDropzoneEl.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        targetBugDropzoneEl.classList.add("dragover");
+      });
+      targetBugDropzoneEl.addEventListener("dragleave", (e) => {
+        e.preventDefault();
+        targetBugDropzoneEl.classList.remove("dragover");
+      });
+      targetBugDropzoneEl.addEventListener("drop", (e) => {
+        e.preventDefault();
+        targetBugDropzoneEl.classList.remove("dragover");
+        if (e.dataTransfer && e.dataTransfer.files) {
+          handleTargetBugFileUpload(e.dataTransfer.files);
+        }
+      });
+    }
+
+    window.addEventListener("paste", (e) => {
+      const modal = document.getElementById("targetBugModal");
+      if (!modal || modal.style.display === "none") return;
+      if (e.clipboardData && e.clipboardData.items) {
+        for (const item of e.clipboardData.items) {
+          if (item.type.startsWith("image/")) {
+            e.preventDefault();
+            const blob = item.getAsFile();
+            if (blob) {
+              const reader = new FileReader();
+              reader.onload = (evt) => {
+                targetBugAttachments.push({
+                  filename: `screenshot_${Date.now()}.png`,
+                  file_type: "screenshot",
+                  content_base64: evt.target.result,
+                  size_bytes: blob.size,
+                  description: "Pasted screenshot"
+                });
+                renderTargetBugAttachments();
+              };
+              reader.readAsDataURL(blob);
+            }
+            break;
+          }
+        }
+      }
+    });
   </script>
 </body>
 </html>

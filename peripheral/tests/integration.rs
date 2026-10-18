@@ -1275,18 +1275,18 @@ fn test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm() {
         const { assert!(PWM_PERIOD_CYCLES == 100) };
 
         // 2. Verify all forward and reverse phase masks guarantee zero shoot-through:
-        // UH (bit 0) and UL (bit 1) must never both be high
-        // VH (bit 2) and VL (bit 3) must never both be high
-        // WH (bit 4) and WL (bit 5) must never both be high
+        // UL (bit 0) and UH (bit 1) must never both be high
+        // VL (bit 2) and VH (bit 3) must never both be high
+        // WL (bit 4) and WH (bit 5) must never both be high
         for speed in [-100, -50, -8, 8, 50, 100] {
             for step in 0..COMMUTATION_STEPS as u8 {
                 let mask = phase_mask(speed, step);
-                let uh = (mask & (1 << 0)) != 0;
-                let ul = (mask & (1 << 1)) != 0;
-                let vh = (mask & (1 << 2)) != 0;
-                let vl = (mask & (1 << 3)) != 0;
-                let wh = (mask & (1 << 4)) != 0;
-                let wl = (mask & (1 << 5)) != 0;
+                let ul = (mask & (1 << 0)) != 0;
+                let uh = (mask & (1 << 1)) != 0;
+                let vl = (mask & (1 << 2)) != 0;
+                let vh = (mask & (1 << 3)) != 0;
+                let wl = (mask & (1 << 4)) != 0;
+                let wh = (mask & (1 << 5)) != 0;
 
                 assert!(
                     !(uh && ul),
@@ -1314,8 +1314,8 @@ fn test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm() {
 
         // 3. Verify PIO word packing helper
         // Word format: bits 0..7 = phase_mask, bits 8..15 = on_count, bits 16..23 = off_count
-        let word = make_pwm_word(0b001001, 8, 92);
-        assert_eq!(word & 0xFF, 0b001001);
+        let word = make_pwm_word(0b000110, 8, 92);
+        assert_eq!(word & 0xFF, 0b000110);
         assert_eq!((word >> 8) & 0xFF, 8);
         assert_eq!((word >> 16) & 0xFF, 92);
 
@@ -1496,4 +1496,373 @@ fn test_worm_dirt_ribbonworm_196_tmc6300_pio_program_verification_and_duty_cycle
         "Pins were erroneously cleared to null at 100% duty cycle"
     );
     assert_eq!(pins, 0b001001, "Pins should remain continuously asserted");
+}
+
+#[test]
+fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
+    run_test!(async {
+        use peripheral::tmc6300::{
+            assemble_tmc6300_pio_program, make_pwm_word, phase_mask, Tmc6300Pio, COMMUTATION_STEPS,
+            PWM_PERIOD_CYCLES,
+        };
+
+        // 1. Setup mock TMC6300 PIO driver
+        let diag = std::sync::atomic::AtomicBool::new(false);
+        let pin_diag = MockPin { is_high: &diag };
+        let mut motor = Tmc6300Pio::new(pin_diag);
+
+        assert_eq!(motor.speed(), 0);
+        assert_eq!(motor.duty_cycle(), 0);
+        assert_eq!(motor.commutation_step(), 0);
+
+        // 2. Set speed to 50%
+        assert!(motor.set_speed(MotorSpeed::new(50).unwrap()).is_ok());
+        assert_eq!(motor.speed(), 50);
+        assert_eq!(motor.duty_cycle(), 50);
+
+        // Advance through 18 commutation ticks (3 full 6-step electrical revolutions)
+        let expected_forward_masks = [
+            0b000110, // Step 0: UH High, VL Low
+            0b010010, // Step 1: UH High, WL Low
+            0b011000, // Step 2: VH High, WL Low
+            0b001001, // Step 3: VH High, UL Low
+            0b100001, // Step 4: WH High, UL Low
+            0b100100, // Step 5: WH High, VL Low
+        ];
+
+        for tick_idx in 1..=18 {
+            assert!(motor.tick().await.is_ok());
+            let expected_step = (tick_idx % COMMUTATION_STEPS) as u8;
+            assert_eq!(
+                motor.commutation_step(),
+                expected_step,
+                "Commutation step did not advance as expected on tick {tick_idx}"
+            );
+            assert_eq!(motor.duty_cycle(), 50);
+
+            let word = motor.last_word();
+            let mask = (word & 0xFF) as u8;
+            let on_count = ((word >> 8) & 0xFF) as u8;
+            let off_count = ((word >> 16) & 0xFF) as u8;
+
+            assert_eq!(on_count, 50);
+            assert_eq!(off_count, 50);
+            assert_eq!(mask, expected_forward_masks[expected_step as usize]);
+            assert_eq!(mask, phase_mask(50, expected_step));
+        }
+
+        // 3. Steady state 100% speed operation across all steps 0..=5
+        assert!(motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert_eq!(motor.speed(), 100);
+        assert_eq!(motor.duty_cycle(), 100);
+
+        for _ in 0..12 {
+            let current_step = motor.commutation_step();
+            let next_step = (current_step + 1) % (COMMUTATION_STEPS as u8);
+            assert!(motor.tick().await.is_ok());
+            assert_eq!(motor.commutation_step(), next_step);
+            assert_eq!(motor.duty_cycle(), 100);
+
+            let word = motor.last_word();
+            let mask = (word & 0xFF) as u8;
+            let on_count = ((word >> 8) & 0xFF) as u8;
+            let off_count = ((word >> 16) & 0xFF) as u8;
+
+            assert_eq!(on_count, 100);
+            assert_eq!(off_count, 0);
+            assert_eq!(mask, expected_forward_masks[next_step as usize]);
+        }
+
+        // 4. Reverse rotation commutation sequence
+        assert!(motor.set_speed(MotorSpeed::new(-75).unwrap()).is_ok());
+        assert_eq!(motor.speed(), -75);
+        assert_eq!(motor.duty_cycle(), 75);
+
+        let expected_reverse_masks = [
+            0b100100, // Step 0: U Float, VL Low, WH High
+            0b100001, // Step 1: UL Low, V Float, WH High
+            0b001001, // Step 2: UL Low, VH High, W Float
+            0b011000, // Step 3: U Float, VH High, WL Low
+            0b010010, // Step 4: UH High, V Float, WL Low
+            0b000110, // Step 5: UH High, VL Low, W Float
+        ];
+
+        for _ in 0..12 {
+            let current_step = motor.commutation_step();
+            let next_step = (current_step + 1) % (COMMUTATION_STEPS as u8);
+            assert!(motor.tick().await.is_ok());
+            assert_eq!(motor.commutation_step(), next_step);
+            assert_eq!(motor.duty_cycle(), 75);
+
+            let word = motor.last_word();
+            let mask = (word & 0xFF) as u8;
+            let on_count = ((word >> 8) & 0xFF) as u8;
+            let off_count = ((word >> 16) & 0xFF) as u8;
+
+            assert_eq!(on_count, 75);
+            assert_eq!(off_count, 25);
+            assert_eq!(mask, expected_reverse_masks[next_step as usize]);
+            assert_eq!(mask, phase_mask(-75, next_step));
+        }
+
+        // 5. Motor stop completely clears duty cycle and de-energizes all FETs
+        assert!(motor.stop().is_ok());
+        assert_eq!(motor.speed(), 0);
+        assert_eq!(motor.duty_cycle(), 0);
+        assert_eq!(motor.commutation_step(), 0);
+        assert_eq!(motor.last_word(), make_pwm_word(0, 0, PWM_PERIOD_CYCLES));
+
+        // 6. PIO program simulation: continuous 25 kHz recycling and dynamic step transition
+        let prg = assemble_tmc6300_pio_program();
+        let mut pc: u8 = 0;
+        let mut x: u32 = 0;
+        let mut y: u32 = 0;
+        let mut osr: u32 = 0;
+        let mut pins: u8 = 0;
+        let mut fifo: std::collections::VecDeque<u32> = std::collections::VecDeque::new();
+
+        // Push initial word for Step 0 with 50% duty cycle
+        fifo.push_back(make_pwm_word(expected_forward_masks[0], 50, 50));
+
+        let mut high_count = 0;
+        let mut low_count = 0;
+
+        // Run 400 PIO cycles (~4 PWM periods) with empty FIFO to verify continuous recycling
+        for cycle in 0..400 {
+            // At cycle 200, push Step 1 with 80% duty cycle to simulate tick arrival
+            if cycle == 200 {
+                fifo.push_back(make_pwm_word(expected_forward_masks[1], 80, 20));
+            }
+
+            let current_pc = pc;
+            match current_pc {
+                0 => {
+                    if let Some(w) = fifo.pop_front() {
+                        osr = w;
+                    } else {
+                        osr = x;
+                    }
+                }
+                1 => {
+                    x = osr;
+                }
+                2 => {
+                    pins = (osr & 0xFF) as u8;
+                    osr >>= 8;
+                }
+                3 => {
+                    y = osr & 0xFF;
+                    osr >>= 8;
+                }
+                4 => {
+                    if y == 0 {
+                        pc = 6;
+                    }
+                }
+                5 => {
+                    if y != 0 {
+                        y -= 1;
+                        pc = 5;
+                    } else {
+                        y = u32::MAX;
+                    }
+                }
+                6 => {
+                    y = osr & 0xFF;
+                    osr >>= 8;
+                }
+                7 => {
+                    if y == 0 {
+                        pc = 0;
+                    }
+                }
+                8 => {
+                    pins = 0;
+                }
+                9 => {
+                    if y != 0 {
+                        y -= 1;
+                        pc = 9;
+                    } else {
+                        y = u32::MAX;
+                    }
+                }
+                _ => panic!("PC reached out-of-bounds address {current_pc}"),
+            }
+
+            if pins != 0 {
+                high_count += 1;
+                if cycle < 200 {
+                    assert_eq!(
+                        pins, expected_forward_masks[0],
+                        "During first 200 cycles, pins should match step 0"
+                    );
+                } else if cycle > 300 {
+                    assert_eq!(
+                        pins, expected_forward_masks[1],
+                        "After transition, pins should match step 1"
+                    );
+                }
+            } else {
+                low_count += 1;
+            }
+
+            if pc == current_pc {
+                if pc == prg.wrap.source {
+                    pc = prg.wrap.target;
+                } else {
+                    pc += 1;
+                }
+            }
+        }
+
+        // Both high and low cycles occurred, confirming continuous PWM switching
+        assert!(
+            high_count > 50,
+            "Continuous PWM high-side pulses were absent"
+        );
+        assert!(
+            low_count > 50,
+            "Continuous PWM low-side de-energizations were absent"
+        );
+    });
+}
+
+#[test]
+fn test_worm_creeping_wriggler_223_vl_pin_assertion_and_commutation_masks() {
+    run_test!(async {
+        use peripheral::tmc6300::phase_mask;
+
+        // Bit mapping (GP16..GP21):
+        // Bit 0: UL (GP16)
+        // Bit 1: UH (GP17)
+        // Bit 2: VL (GP18)
+        // Bit 3: VH (GP19)
+        // Bit 4: WL (GP20)
+        // Bit 5: WH (GP21)
+        const BIT_UL: u8 = 1 << 0;
+        const BIT_UH: u8 = 1 << 1;
+        const BIT_VL: u8 = 1 << 2;
+        const BIT_VH: u8 = 1 << 3;
+        const BIT_WL: u8 = 1 << 4;
+        const BIT_WH: u8 = 1 << 5;
+
+        // Forward commutation:
+        // Step 0: UH High, VL Low -> UH(Bit 1), VL(Bit 2)
+        let mask0 = phase_mask(100, 0);
+        assert_eq!(
+            mask0 & BIT_VL,
+            BIT_VL,
+            "Step 0 (forward) must assert VL (bit 2 / GP18)"
+        );
+        assert_eq!(
+            mask0 & BIT_UH,
+            BIT_UH,
+            "Step 0 (forward) must assert UH (bit 1 / GP17)"
+        );
+
+        // Step 1: UH High, WL Low -> UH(Bit 1), WL(Bit 4)
+        let mask1 = phase_mask(100, 1);
+        assert_eq!(
+            mask1,
+            BIT_UH | BIT_WL,
+            "Step 1 (forward) must assert UH and WL"
+        );
+
+        // Step 2: VH High, WL Low -> VH(Bit 3), WL(Bit 4)
+        let mask2 = phase_mask(100, 2);
+        assert_eq!(
+            mask2,
+            BIT_VH | BIT_WL,
+            "Step 2 (forward) must assert VH and WL"
+        );
+
+        // Step 3: VH High, UL Low -> VH(Bit 3), UL(Bit 0)
+        let mask3 = phase_mask(100, 3);
+        assert_eq!(
+            mask3,
+            BIT_VH | BIT_UL,
+            "Step 3 (forward) must assert VH and UL"
+        );
+
+        // Step 4: WH High, UL Low -> WH(Bit 5), UL(Bit 0)
+        let mask4 = phase_mask(100, 4);
+        assert_eq!(
+            mask4,
+            BIT_WH | BIT_UL,
+            "Step 4 (forward) must assert WH and UL"
+        );
+
+        // Step 5: WH High, VL Low -> WH(Bit 5), VL(Bit 2)
+        let mask5 = phase_mask(100, 5);
+        assert_eq!(
+            mask5 & BIT_VL,
+            BIT_VL,
+            "Step 5 (forward) must assert VL (bit 2 / GP18)"
+        );
+        assert_eq!(
+            mask5 & BIT_WH,
+            BIT_WH,
+            "Step 5 (forward) must assert WH (bit 5 / GP21)"
+        );
+
+        // Reverse commutation:
+        // Step 0: WH High, VL Low -> WH(Bit 5), VL(Bit 2)
+        let rev_mask0 = phase_mask(-100, 0);
+        assert_eq!(
+            rev_mask0 & BIT_VL,
+            BIT_VL,
+            "Step 0 (reverse) must assert VL (bit 2 / GP18)"
+        );
+        assert_eq!(
+            rev_mask0 & BIT_WH,
+            BIT_WH,
+            "Step 0 (reverse) must assert WH (bit 5 / GP21)"
+        );
+
+        // Step 1: WH High, UL Low -> WH(Bit 5), UL(Bit 0)
+        let rev_mask1 = phase_mask(-100, 1);
+        assert_eq!(
+            rev_mask1,
+            BIT_WH | BIT_UL,
+            "Step 1 (reverse) must assert WH and UL"
+        );
+
+        // Step 2: VH High, UL Low -> VH(Bit 3), UL(Bit 0)
+        let rev_mask2 = phase_mask(-100, 2);
+        assert_eq!(
+            rev_mask2,
+            BIT_VH | BIT_UL,
+            "Step 2 (reverse) must assert VH and UL"
+        );
+
+        // Step 3: VH High, WL Low -> VH(Bit 3), WL(Bit 4)
+        let rev_mask3 = phase_mask(-100, 3);
+        assert_eq!(
+            rev_mask3,
+            BIT_VH | BIT_WL,
+            "Step 3 (reverse) must assert VH and WL"
+        );
+
+        // Step 4: UH High, WL Low -> UH(Bit 1), WL(Bit 4)
+        let rev_mask4 = phase_mask(-100, 4);
+        assert_eq!(
+            rev_mask4,
+            BIT_UH | BIT_WL,
+            "Step 4 (reverse) must assert UH and WL"
+        );
+
+        // Step 5: UH High, VL Low -> UH(Bit 1), VL(Bit 2)
+        let rev_mask5 = phase_mask(-100, 5);
+        assert_eq!(
+            rev_mask5 & BIT_VL,
+            BIT_VL,
+            "Step 5 (reverse) must assert VL (bit 2 / GP18)"
+        );
+        assert_eq!(
+            rev_mask5 & BIT_UH,
+            BIT_UH,
+            "Step 5 (reverse) must assert UH (bit 1 / GP17)"
+        );
+    });
 }

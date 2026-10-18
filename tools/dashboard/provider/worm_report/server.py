@@ -24,6 +24,7 @@ from model.worm_report import (
     WormCategory,
     WormDatabaseModel,
     WormReportModel,
+    WormSectionModel,
     WormSeverity,
     WormStatus,
 )
@@ -253,6 +254,12 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
         except ValueError:
             cat_val = WormCategory.GENERAL
 
+        custom_sections = (
+            [WormSectionModel.model_validate(c) for c in data.get("custom_sections", [])]
+            if "custom_sections" in data
+            else (existing.custom_sections if existing else [])
+        )
+
         worm = WormReportModel(
             id=worm_id,
             uuid=data.get("uuid") or (existing.uuid if existing else str(uuid.uuid4())),
@@ -267,6 +274,7 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
             actual_behavior=elide_personal_info(data.get("actual_behavior", "")),
             logs=elide_personal_info(data.get("logs", "")),
             attachments=attachments,
+            custom_sections=custom_sections,
             created_at=created_at,
             updated_at=now_str,
             resolved_at=resolved_at,
@@ -396,11 +404,14 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
         if not str(file_target).startswith(str(static_dir)) or not file_target.is_file():
             self.send_error(404, "Static asset not found")
             return
-        content_type = (
-            "image/svg+xml"
-            if file_target.suffix == ".svg"
-            else ("application/javascript" if file_target.suffix == ".js" else "text/plain")
-        )
+        if file_target.suffix == ".svg":
+            content_type = "image/svg+xml"
+        elif file_target.suffix == ".js":
+            content_type = "application/javascript"
+        elif file_target.suffix == ".css":
+            content_type = "text/css"
+        else:
+            content_type = "text/plain"
         data = file_target.read_bytes()
         try:
             self.send_response(200)

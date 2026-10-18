@@ -682,7 +682,7 @@ where
 
             if res.is_none() && self.update().await.is_err() {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::warn!("SensorController: Periodic read failed.");
+                defmt::warn!("Periodic read failed.");
             }
         }
     }
@@ -1487,7 +1487,7 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
             self.proximity_active.set(in_range);
             if in_range {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::debug!("SensorController: Object in range (proximity active)");
+                defmt::debug!("Object in range (proximity active)");
                 if status == model::types::SystemStatus::Active {
                     action = crate::ProximityAction::AcquireWakeLock;
                 } else if status == model::types::SystemStatus::Sleep {
@@ -1495,7 +1495,7 @@ impl<MutexRaw: RawMutex + 'static, const S_CAP: usize, const N: usize>
                 }
             } else {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::debug!("SensorController: Object went out of range (proximity inactive)");
+                defmt::debug!("Object went out of range (proximity inactive)");
                 if status == model::types::SystemStatus::Active {
                     action = crate::ProximityAction::ReleaseWakeLock;
                 }

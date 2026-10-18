@@ -81,10 +81,10 @@ sequenceDiagram
 
 To ensure the hardware and firmware designs are fully validated and operating correctly, follow this ordered checklist of functional and system-level test procedures.
 
-The official, executable source of truth for these bringup steps is defined in [projects/cat_detector_bringup.yaml](../projects/cat_detector_bringup.yaml). You should run the interactive bringup helper script [bringup.py](../tools/helpers/bringup.py) to guide you through this checklist, compile/flash the correct target binaries automatically, and generate a markdown verification report:
+The official, executable source of truth for these bringup steps is defined in [projects/cat_detector_bringup.yaml](../projects/cat_detector_bringup.yaml). You can run the interactive bringup checklist runner in `tools/host.py` to guide you through this checklist, compile/flash the correct target binaries automatically, and generate a markdown verification report:
 
 ```bash
-conda run -n firmware-env python tools/helpers/bringup.py --config projects/cat_detector_bringup.yaml
+conda run -n firmware-env python tools/host.py bringup --script projects/cat_detector_bringup.yaml --run
 ```
 
 ### 3.1. Verification Prerequisites

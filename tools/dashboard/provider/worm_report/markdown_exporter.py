@@ -17,6 +17,7 @@ from model.worm_report import (
     WormCategory,
     WormDatabaseModel,
     WormReportModel,
+    WormSectionModel,
     WormSeverity,
     WormStatus,
 )
@@ -245,6 +246,10 @@ class MarkdownWormExporter:
                     ]
                 )
 
+            for sec in b.custom_sections:
+                if sec.content.strip():
+                    lines.extend([f"#### {sec.title}", "", sec.content.strip(), ""])
+
             if b.logs.strip():
                 lines.extend(
                     [
@@ -436,6 +441,7 @@ class MarkdownWormExporter:
             logs = ""
             res_notes = ""
             attachments: List[WormAttachmentModel] = []
+            custom_sections: List[WormSectionModel] = []
 
             for sub in subsections:
                 sub_clean = sub.strip()
@@ -443,7 +449,8 @@ class MarkdownWormExporter:
                     continue
 
                 sub_lines = sub_clean.splitlines()
-                sub_title = sub_lines[0].replace("####", "").strip().lower()
+                raw_sub_title = sub_lines[0].replace("####", "").strip()
+                sub_title = raw_sub_title.lower()
                 sub_body = "\n".join(sub_lines[1:]).strip()
                 # Remove trailing divider --- if present
                 if sub_body.endswith("---"):
@@ -459,6 +466,13 @@ class MarkdownWormExporter:
                                 steps.append(step_m.group(1).strip())
                             elif step_line.strip().startswith("-"):
                                 steps.append(step_line.strip().lstrip("-").strip())
+                    case "behavior comparison":
+                        exp_m = re.search(r"-\s+\*\*Expected\*\*:\s*(.*?)$", sub_body, re.MULTILINE)
+                        act_m = re.search(r"-\s+\*\*Actual\*\*:\s*(.*?)$", sub_body, re.MULTILINE)
+                        if exp_m:
+                            expected = exp_m.group(1).strip()
+                        if act_m:
+                            actual = act_m.group(1).strip()
                     case "expected behavior":
                         expected = sub_body
                     case "actual behavior":
@@ -474,7 +488,7 @@ class MarkdownWormExporter:
                         logs = cleaned_logs.strip()
                     case "resolution notes" | "resolution":
                         res_notes = sub_body
-                    case "attachments & references":
+                    case "attachments & references" | "attachments":
                         for att_line in sub_body.splitlines():
                             att_m = re.match(
                                 r"^\|\s*`?(.*?)`?\s*\|\s*\[(.*?)\]\((.*?)\)\s*\|\s*(.*?)\s*\|$", att_line.strip()
@@ -495,6 +509,9 @@ class MarkdownWormExporter:
                                         description=fdesc,
                                     )
                                 )
+                    case _:
+                        if raw_sub_title and sub_body:
+                            custom_sections.append(WormSectionModel(title=raw_sub_title, content=sub_body))
 
             bug = WormReportModel(
                 id=bug_id,
@@ -512,6 +529,7 @@ class MarkdownWormExporter:
                 actual_behavior=actual,
                 logs=logs,
                 attachments=attachments,
+                custom_sections=custom_sections,
                 resolution_notes=res_notes,
             )
             db.add_or_update(bug)
@@ -591,6 +609,10 @@ class MarkdownWormExporter:
                 if md_bug.logs.strip() and md_bug.logs.strip() != existing.logs.strip():
                     existing.logs = md_bug.logs
 
+                # Custom sections
+                if md_bug.custom_sections:
+                    existing.custom_sections = md_bug.custom_sections
+
                 # Attachments: merge unique by file_path
                 existing_paths = {a.file_path for a in existing.attachments}
                 for att in md_bug.attachments:
@@ -650,6 +672,10 @@ class MarkdownWormExporter:
                     "",
                 ]
             )
+
+        for sec in bug.custom_sections:
+            if sec.content.strip():
+                lines.extend([f"#### {sec.title}", "", sec.content.strip(), ""])
 
         if bug.logs.strip():
             lines.extend(["#### Execution / Console Logs", "", "```text", bug.logs.strip(), "```", ""])
@@ -812,13 +838,15 @@ class MarkdownWormExporter:
             logs = ""
             res_notes = ""
             attachments: List[WormAttachmentModel] = []
+            custom_sections: List[WormSectionModel] = []
 
             for sub in subsections:
                 sub_clean = sub.strip()
                 if not sub_clean.startswith("####"):
                     continue
                 sub_lines = sub_clean.splitlines()
-                sub_title = sub_lines[0].replace("####", "").strip().lower()
+                raw_sub_title = sub_lines[0].replace("####", "").strip()
+                sub_title = raw_sub_title.lower()
                 sub_body = "\n".join(sub_lines[1:]).strip()
 
                 match sub_title:
@@ -853,7 +881,7 @@ class MarkdownWormExporter:
                         logs = cleaned.strip()
                     case "resolution notes" | "resolution":
                         res_notes = sub_body
-                    case "attachments & references":
+                    case "attachments & references" | "attachments":
                         for att_line in sub_body.splitlines():
                             att_m = re.match(
                                 r"^\|\s*`?(.*?)`?\s*\|\s*\[(.*?)\]\((.*?)\)\s*\|\s*(.*?)\s*\|$", att_line.strip()
@@ -870,6 +898,9 @@ class MarkdownWormExporter:
                                         else att_m.group(4).strip(),
                                     )
                                 )
+                    case _:
+                        if raw_sub_title and sub_body:
+                            custom_sections.append(WormSectionModel(title=raw_sub_title, content=sub_body))
 
             return WormReportModel(
                 id=bug_id,
@@ -887,6 +918,7 @@ class MarkdownWormExporter:
                 actual_behavior=actual,
                 logs=logs,
                 attachments=attachments,
+                custom_sections=custom_sections,
                 resolution_notes=res_notes,
             )
         except Exception:

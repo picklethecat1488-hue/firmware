@@ -1784,3 +1784,54 @@ pub fn handle_tracing_line(
         Ok(false)
     }
 }
+
+/// Intelligently formats a raw target function or location namespace into crate and module name only.
+///
+/// Strips compiler-generated implementation blocks (`{impl#...}`), closures (`{closure#...}`),
+/// async function artifacts (`{async_fn#...}`), and trailing function/method names to isolate
+/// the canonical crate and module path (e.g. `controller::motor_controller`, `peripheral::tmc6300`).
+pub fn format_target_namespace(raw: &str) -> String {
+    let trimmed = raw.trim().trim_matches(|c| c == '[' || c == ']');
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let segments: Vec<&str> = trimmed.split("::").collect();
+    if segments.is_empty() {
+        return String::new();
+    }
+
+    // 1. If an impl block ({impl#...}) is encountered, all preceding segments define the module.
+    if let Some(impl_idx) = segments.iter().position(|s| s.starts_with("{impl#")) {
+        let valid_prefix = &segments[..impl_idx];
+        if !valid_prefix.is_empty() {
+            return valid_prefix.join("::");
+        }
+    }
+
+    // 2. Otherwise, strip any compiler-generated segments ({closure#...}, {async_fn#...}, <...>)
+    let non_compiler: Vec<&str> = segments
+        .into_iter()
+        .take_while(|s| !s.starts_with('{') && !s.starts_with('<'))
+        .collect();
+
+    if non_compiler.is_empty() {
+        return String::new();
+    }
+
+    // 3. For 3+ segments (crate::module::func or crate::sub1::sub2::func), drop the function name.
+    if non_compiler.len() >= 3 {
+        return non_compiler[..non_compiler.len() - 1].join("::");
+    }
+
+    // 4. For 2 segments (crate::main or crate::module), drop "main" if present.
+    if non_compiler.len() == 2 {
+        if non_compiler[1] == "main" {
+            return non_compiler[0].to_string();
+        }
+        return non_compiler.join("::");
+    }
+
+    // 5. Single segment
+    non_compiler[0].to_string()
+}

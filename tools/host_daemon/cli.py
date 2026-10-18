@@ -15,8 +15,8 @@ from typing import Any, Callable, Dict, List, Optional
 import urllib.error
 import urllib.request
 
-from .runner import DaemonRunner
-from .server import HostDaemonServer
+from host_daemon.provider.daemon.runner import DaemonRunner
+from host_daemon.provider.daemon.server import HostDaemonServer
 
 _repo_root = Path(__file__).resolve().parent.parent.parent
 if str(_repo_root) not in sys.path:
@@ -26,6 +26,21 @@ if str(_tools_dir) not in sys.path:
     sys.path.insert(0, str(_tools_dir))
 
 LOCK_FILE: Path = Path("/tmp/xerxes_host_daemon.lock")
+
+
+def format_clickable_choice(label: str, key: str, action: str, color_ansi: str) -> str:
+    """Format an interactive choice with ANSI colors and an OSC 8 terminal hyperlink.
+
+    Args:
+        label: Full option label text (e.g. 'Pass').
+        key: Accelerator character to enclose in brackets (e.g. 'P').
+        action: Semantic action keyword (e.g. 'pass').
+        color_ansi: ANSI color escape sequence to style the bracketed accelerator.
+
+    Returns:
+        String with embedded OSC 8 hyperlink and ANSI styling.
+    """
+    return f"\033]8;;command:{action}\033\\{color_ansi}[{key}]{label[1:]}\033[0m\033]8;;\033\\"
 
 
 def get_host_daemon_icon_path() -> Optional[Path]:
@@ -298,6 +313,17 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     # Stop
     subparsers.add_parser("stop", help="Stop running host daemon")
 
+    # Bringup
+    bringup_parser = subparsers.add_parser("bringup", help="Parse and run bringup verification scripts")
+    bringup_parser.add_argument("--script", "-s", type=str, default=None, help="Path to bringup YAML script")
+    bringup_parser.add_argument("--list", action="store_true", help="List discovered bringup scripts in repository")
+    bringup_parser.add_argument("--status", action="store_true", help="Show current bringup checklist status")
+    bringup_parser.add_argument("--run", action="store_true", help="Execute bringup checklist steps")
+    bringup_parser.add_argument("--step", action="store_true", help="Execute single bringup step")
+    bringup_parser.add_argument("--reset", action="store_true", help="Reset bringup checklist execution")
+    bringup_parser.add_argument("--output", "-o", type=str, default="bringup_report.md", help="Path to output markdown report")
+    bringup_parser.add_argument("--manual", action="store_true", help="Run in manual prompt mode without hardware probe")
+
     return parser.parse_args(args)
 
 
@@ -370,6 +396,140 @@ def main(argv: Optional[List[str]] = None) -> int:
         except Exception as e:
             print(f"Could not stop daemon: {e}", file=sys.stderr)
             return 1
+
+    if args.subcommand == "bringup":
+        from host_daemon.model.bringup import discover_bringup_scripts
+        from host_daemon.provider.bringup.bringup_manager import BringupManager
+
+        # 1. List scripts if requested
+        if args.list:
+            scripts = discover_bringup_scripts(repo_root)
+            print("Available Bringup Checklist Scripts:")
+            for s in scripts:
+                print(f"  • {s['name']:<25} ({s['chip']}) - {s['path']} [{s['steps_count']} steps]")
+            return 0
+
+        # 2. Check if active host daemon can handle the request
+        daemon_alive = False
+        try:
+            lock_data = get_lock_data()
+            if lock_data and is_pid_alive(lock_data.get("pid", 0)):
+                daemon_alive = True
+        except Exception:
+            daemon_alive = False
+
+        if daemon_alive and not args.manual:
+            try:
+                if args.script:
+                    send_daemon_request("/api/bringup/load", {"script_path": args.script})
+                    print(f"Loaded bringup script '{args.script}' into host daemon.")
+
+                if args.reset:
+                    send_daemon_request("/api/bringup/reset", {})
+                    print("Bringup checklist reset to beginning on host daemon.")
+
+                if args.status:
+                    st = send_daemon_request("/api/bringup/status")
+                    print(f"Bringup Checklist Status: {st.get('script_name', 'None')} ({st.get('status', 'unknown')})")
+                    print(f"  Current Step: {st.get('current_step_idx', 0) + 1} / {st.get('total_steps', 0)}")
+                    summary = st.get("summary", {})
+                    print(f"  Passed: {summary.get('passed', 0)}, Failed: {summary.get('failed', 0)}, Skipped: {summary.get('skipped', 0)}, Pending: {summary.get('pending', 0)}")
+                    return 0
+
+                if args.step:
+                    res = send_daemon_request("/api/bringup/step", {})
+                    print(f"Executed step on host daemon: {res}")
+                    return 0
+            except Exception as e:
+                print(f"Host daemon interaction failed: {e}. Falling back to standalone mode.")
+                daemon_alive = False
+
+        # 3. Standalone Bringup Execution
+        script_path = args.script
+        if not script_path:
+            discovered = discover_bringup_scripts(repo_root)
+            if discovered:
+                script_path = discovered[0]["path"]
+            else:
+                print("Error: No bringup script specified and none found in repository.", file=sys.stderr)
+                return 1
+
+        resolved_script = repo_root / script_path if not Path(script_path).is_absolute() else Path(script_path)
+        if not resolved_script.exists():
+            print(f"Error: Bringup script not found: {resolved_script}", file=sys.stderr)
+            return 1
+
+        manager = BringupManager(repo_root=repo_root)
+        try:
+            cfg = manager.load_script(resolved_script)
+        except Exception as e:
+            print(f"Error loading bringup YAML: {e}", file=sys.stderr)
+            return 1
+
+        if args.status:
+            print(f"Bringup Checklist: {cfg.project_name} ({cfg.device_chip})")
+            print(f"  Total Steps: {len(cfg.steps)}")
+            for s in cfg.steps:
+                print(f"  [{s.id}] {s.name:<40} ({s.type.value}) - {s.status.value.upper()}")
+            return 0
+
+        # Execute checklist interactively
+        print("=" * 60)
+        print(f"BRINGUP CHECKLIST ASSISTANT: {cfg.project_name} ({cfg.device_chip})")
+        rel_disp = resolved_script.relative_to(repo_root) if resolved_script.is_relative_to(repo_root) else resolved_script
+        print(f"Script: {rel_disp}")
+        print(f"Total Steps: {len(cfg.steps)}")
+        print("=" * 60)
+
+        for idx, step in enumerate(cfg.steps):
+            print(f"\n--- STEP {idx+1}/{len(cfg.steps)}: {step.name} (ID: {step.id}) [{step.type.value.upper()}] ---")
+            if step.description:
+                print(f"  Description: {step.description}")
+            if step.procedure:
+                print(f"  Procedure: {step.procedure}")
+            if step.expected:
+                print(f"  Expected: {step.expected}")
+            if step.test_points:
+                print("  Test Points:")
+                for tp, val in step.test_points.items():
+                    print(f"    • {tp}: {val}")
+            if step.control_pins:
+                print("  Control Pins:")
+                for cp, val in step.control_pins.items():
+                    print(f"    • {cp}: {val}")
+
+            res = manager.step()
+            prompt = res.get("prompt", {})
+            auto_pass = prompt.get("auto_pass")
+            def_status = prompt.get("default_status", "passed")
+
+            if step.output_log:
+                print(f"  Output:\n{step.output_log.strip()}")
+
+            if auto_pass is True:
+                print(f"  ✔ Check passed: {step.matched_line or 'OK'}")
+            elif auto_pass is False:
+                print(f"  ✘ Check failed (expected pattern not matched)")
+
+            try:
+                pass_choice = format_clickable_choice("Pass", "P", "pass", "\033[1;32m")
+                fail_choice = format_clickable_choice("Fail", "F", "fail", "\033[1;31m")
+                skip_choice = format_clickable_choice("Skip", "S", "skip", "\033[1;33m")
+                prompt_str = f"Status {pass_choice}, {fail_choice}, {skip_choice} (default: {def_status.upper()}): "
+                choice = input(prompt_str).strip().lower()
+                if not choice:
+                    choice = def_status
+                notes = input("Notes (optional): ").strip()
+                manager.respond(action=choice, notes=notes)
+            except (KeyboardInterrupt, EOFError):
+                print("\nChecklist run interrupted by user.")
+                break
+
+        # Generate markdown report
+        report_path = repo_root / args.output if not Path(args.output).is_absolute() else Path(args.output)
+        manager.generate_report(output_path=report_path)
+        print(f"\nBringup report generated: {report_path}")
+        return 0
 
     # Check if daemon already running
     existing = get_lock_data()

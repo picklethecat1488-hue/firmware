@@ -23,8 +23,8 @@ import threading
 import time
 import urllib.request
 
-from host_daemon.runner import DaemonRunner
-from host_daemon.server import HostDaemonServer
+from host_daemon.provider.daemon.runner import DaemonRunner
+from host_daemon.provider.daemon.server import HostDaemonServer
 
 
 def test_worm_supple_pupa_464_host_daemon_exists():

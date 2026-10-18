@@ -83,7 +83,9 @@ impl<I: I2c> Max17048<I> {
         // RI is bit 8 (0x0100)
         if (status & 0x0100) != 0 {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::info!("MAX17048: Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.");
+            defmt::info!(
+                "Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start."
+            );
 
             // Clear RI bit by writing 0x00FF (clearing bit 8, keeping lower byte 0xFF)
             self.write_register(Register::STATUS, status & !0x0100)
@@ -237,7 +239,7 @@ impl<I: I2c> FuelGauge for Max17048<I> {
         if self.last_rcomp != Some(rcomp) {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
             defmt::debug!(
-                "MAX17048: Temperature is {} mC, compensating RCOMP to 0x{:02x}",
+                "Temperature is {} mC, compensating RCOMP to 0x{:02x}",
                 temp_milli_c,
                 rcomp
             );

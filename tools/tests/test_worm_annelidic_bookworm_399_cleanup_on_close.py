@@ -20,7 +20,7 @@ _tools_dir = REPO_ROOT / "tools"
 if str(_tools_dir) not in sys.path:
     sys.path.insert(0, str(_tools_dir))
 
-from host_daemon.runner import DaemonRunner
+from host_daemon.provider.daemon.runner import DaemonRunner
 import host_daemon.cli as cli
 
 

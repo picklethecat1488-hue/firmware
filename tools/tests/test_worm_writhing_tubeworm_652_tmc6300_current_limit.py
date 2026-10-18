@@ -58,31 +58,31 @@ def test_worm_writhing_tubeworm_652_phase_masks_zero_shoot_through():
     """Verify phase masks enforce break-before-make and prevent shoot-through."""
     # Commutation phase masks per step (forward)
     forward_masks = [
-        0b001001,  # step 0: UH (bit 0), VL (bit 3)
-        0b100001,  # step 1: UH (bit 0), WL (bit 5)
-        0b100100,  # step 2: VH (bit 2), WL (bit 5)
-        0b000110,  # step 3: VH (bit 2), UL (bit 1)
-        0b010010,  # step 4: WH (bit 4), UL (bit 1)
-        0b011000,  # step 5: WH (bit 4), VL (bit 3)
+        0b000110,  # step 0: UH (bit 1), VL (bit 2)
+        0b010010,  # step 1: UH (bit 1), WL (bit 4)
+        0b011000,  # step 2: VH (bit 3), WL (bit 4)
+        0b001001,  # step 3: VH (bit 3), UL (bit 0)
+        0b100001,  # step 4: WH (bit 5), UL (bit 0)
+        0b100100,  # step 5: WH (bit 5), VL (bit 2)
     ]
 
     # Commutation phase masks per step (reverse)
     reverse_masks = [
-        0b011000,  # step 0: WH (bit 4), VL (bit 3)
-        0b010010,  # step 1: WH (bit 4), UL (bit 1)
-        0b000110,  # step 2: VH (bit 2), UL (bit 1)
-        0b100100,  # step 3: VH (bit 2), WL (bit 5)
-        0b100001,  # step 4: UH (bit 0), WL (bit 5)
-        0b001001,  # step 5: UH (bit 0), VL (bit 3)
+        0b100100,  # step 0: WH (bit 5), VL (bit 2)
+        0b100001,  # step 1: WH (bit 5), UL (bit 0)
+        0b001001,  # step 2: VH (bit 3), UL (bit 0)
+        0b011000,  # step 3: VH (bit 3), WL (bit 4)
+        0b010010,  # step 4: UH (bit 1), WL (bit 4)
+        0b000110,  # step 5: UH (bit 1), VL (bit 2)
     ]
 
     for step, mask in enumerate(forward_masks):
-        uh = (mask & (1 << 0)) != 0
-        ul = (mask & (1 << 1)) != 0
-        vh = (mask & (1 << 2)) != 0
-        vl = (mask & (1 << 3)) != 0
-        wh = (mask & (1 << 4)) != 0
-        wl = (mask & (1 << 5)) != 0
+        ul = (mask & (1 << 0)) != 0
+        uh = (mask & (1 << 1)) != 0
+        vl = (mask & (1 << 2)) != 0
+        vh = (mask & (1 << 3)) != 0
+        wl = (mask & (1 << 4)) != 0
+        wh = (mask & (1 << 5)) != 0
 
         assert not (uh and ul), f"Forward step {step}: Phase U shoot-through!"
         assert not (vh and vl), f"Forward step {step}: Phase V shoot-through!"
@@ -94,12 +94,12 @@ def test_worm_writhing_tubeworm_652_phase_masks_zero_shoot_through():
         assert low_count == 1, f"Forward step {step}: Must have exactly 1 low-side FET active"
 
     for step, mask in enumerate(reverse_masks):
-        uh = (mask & (1 << 0)) != 0
-        ul = (mask & (1 << 1)) != 0
-        vh = (mask & (1 << 2)) != 0
-        vl = (mask & (1 << 3)) != 0
-        wh = (mask & (1 << 4)) != 0
-        wl = (mask & (1 << 5)) != 0
+        ul = (mask & (1 << 0)) != 0
+        uh = (mask & (1 << 1)) != 0
+        vl = (mask & (1 << 2)) != 0
+        vh = (mask & (1 << 3)) != 0
+        wl = (mask & (1 << 4)) != 0
+        wh = (mask & (1 << 5)) != 0
 
         assert not (uh and ul), f"Reverse step {step}: Phase U shoot-through!"
         assert not (vh and vl), f"Reverse step {step}: Phase V shoot-through!"

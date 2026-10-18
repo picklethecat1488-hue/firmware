@@ -36,31 +36,31 @@ pub const fn make_pwm_word(phase_mask: u8, on_count: u8, off_count: u8) -> u32 {
 /// Returns the 6-bit phase mask for the given speed and commutation step.
 ///
 /// Ensures strict break-before-make and zero shoot-through across all steps:
-/// - Bit 0: UH (GP16)
-/// - Bit 1: UL (GP17)
-/// - Bit 2: VH (GP18)
-/// - Bit 3: VL (GP19)
-/// - Bit 4: WH (GP20)
-/// - Bit 5: WL (GP21)
+/// - Bit 0: UL (GP16)
+/// - Bit 1: UH (GP17)
+/// - Bit 2: VL (GP18)
+/// - Bit 3: VH (GP19)
+/// - Bit 4: WL (GP20)
+/// - Bit 5: WH (GP21)
 pub fn phase_mask(speed: i8, step: u8) -> u8 {
     let step = (step as usize) % COMMUTATION_STEPS;
     if speed > 0 {
         match step {
-            0 => 0b001001, // UH High, VL Low, W Float
-            1 => 0b100001, // UH High, WL Low, V Float
-            2 => 0b100100, // VH High, WL Low, U Float
-            3 => 0b000110, // VH High, UL Low, W Float
-            4 => 0b010010, // WH High, UL Low, V Float
-            _ => 0b011000, // WH High, VL Low, U Float
+            0 => 0b000110, // UH High (bit 1), VL Low (bit 2), W Float
+            1 => 0b010010, // UH High (bit 1), WL Low (bit 4), V Float
+            2 => 0b011000, // VH High (bit 3), WL Low (bit 4), U Float
+            3 => 0b001001, // VH High (bit 3), UL Low (bit 0), W Float
+            4 => 0b100001, // WH High (bit 5), UL Low (bit 0), V Float
+            _ => 0b100100, // WH High (bit 5), VL Low (bit 2), U Float
         }
     } else if speed < 0 {
         match step {
-            0 => 0b011000, // U Float, VL Low, WH High
-            1 => 0b010010, // UL Low, V Float, WH High
-            2 => 0b000110, // UL Low, VH High, W Float
-            3 => 0b100100, // U Float, VH High, WL Low
-            4 => 0b100001, // UH High, V Float, WL Low
-            _ => 0b001001, // UH High, VL Low, W Float
+            0 => 0b100100, // U Float, VL Low (bit 2), WH High (bit 5)
+            1 => 0b100001, // UL Low (bit 0), V Float, WH High (bit 5)
+            2 => 0b001001, // UL Low (bit 0), VH High (bit 3), W Float
+            3 => 0b011000, // U Float, VH High (bit 3), WL Low (bit 4)
+            4 => 0b010010, // UH High (bit 1), V Float, WL Low (bit 4)
+            _ => 0b000110, // UH High (bit 1), VL Low (bit 2), W Float
         }
     } else {
         0b000000
@@ -658,12 +658,12 @@ where
     {
         let mut cfg = Config::default();
 
-        let p16 = common.make_pio_pin(pins.pin_uh);
-        let p17 = common.make_pio_pin(pins.pin_ul);
-        let p18 = common.make_pio_pin(pins.pin_vh);
-        let p19 = common.make_pio_pin(pins.pin_vl);
-        let p20 = common.make_pio_pin(pins.pin_wh);
-        let p21 = common.make_pio_pin(pins.pin_wl);
+        let p16 = common.make_pio_pin(pins.pin_ul);
+        let p17 = common.make_pio_pin(pins.pin_uh);
+        let p18 = common.make_pio_pin(pins.pin_vl);
+        let p19 = common.make_pio_pin(pins.pin_vh);
+        let p20 = common.make_pio_pin(pins.pin_wl);
+        let p21 = common.make_pio_pin(pins.pin_wh);
 
         let pins = [&p16, &p17, &p18, &p19, &p20, &p21];
         cfg.set_out_pins(&pins);
@@ -735,9 +735,6 @@ where
         self.speed = speed_raw;
         if speed_raw != 0 {
             self.duty_cycle = speed_raw.unsigned_abs().min(100);
-            let mask = phase_mask(self.speed, self.commutation_step);
-            let word = make_pwm_word(mask, self.duty_cycle, PWM_PERIOD_CYCLES - self.duty_cycle);
-            self.sm.tx().push(word);
         } else {
             self.stop()?;
         }

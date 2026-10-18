@@ -1,12 +1,13 @@
-# 🔴 `[WORM-EMBEDDED-LEECH-268]` Motor does not spin
+# 🟢 `[WORM-EMBEDDED-LEECH-268]` Motor does not spin
 
 - **UUID**: `f7f59f93-5829-427e-b5ec-301b2de7486b`
 - **ID**: `WORM-EMBEDDED-LEECH-268`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-16 01:24:25 UTC`
+- **Resolved**: `2026-10-17 20:54:50 UTC`
 
 #### Description
 
@@ -92,3 +93,7 @@ shell>
 | Type | Filename | Description |
 | :--- | :--- | :--- |
 | `document` | [digital.csv](attachments/WORM-EMBEDDED-LEECH-268/digital.csv) | Uploaded document digital.csv |
+
+#### Resolution Notes
+
+Decoupled set_speed from sm.tx push in Tmc6300Pio, ensuring tick exclusively drives 6-step trapezoidal commutation advancement and non-blocking 25 kHz PIO PWM word recycling without FIFO overflow.

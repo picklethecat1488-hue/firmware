@@ -79,9 +79,53 @@ cargo build --target thumbv8m.main-none-eabihf --package app --bin carrier_board
 
 For interactive diagnostic shell commands, host tools, and flash decoding, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+### Interactive Host Workstation & Daemon (`tools/host.py`)
+
+The repository includes a unified System Shock 2 - Xerxes styled developer workstation and background daemon for flashing target firmware, streaming RTT defmt logs, issuing shell commands, managing the sequential-storage flash filesystem, and executing hardware bringup verification checklists:
+
+```bash
+# Launch interactive workstation (defaults to port 8899 in native desktop window)
+python tools/host.py
+
+# Run in background or headless mode
+python tools/host.py --no-browser --detach
+
+# Forward shell commands directly to running target
+python tools/host.py cli motor speed 100
+python tools/host.py cli battery status
+
+# Inspect or manipulate target sequential-storage flash filesystem
+python tools/host.py fs ls
+python tools/host.py fs cat metadata
+python tools/host.py fs crash-log
+
+# Parse and run hardware bringup verification checklists
+python tools/host.py bringup --list
+python tools/host.py bringup --script app/cat_detector_bringup.yaml --run
+
+# Trigger target compilation, flashing, and RTT synchronization
+python tools/host.py sync
+python tools/host.py reset
+python tools/host.py status
+python tools/host.py stop
+```
+
+### Unified VCS Dashboard, Code Review & Defect Tracker (`tools/dashboard.py`)
+
+For local code reviews, smartlog DAG visualization, commit diffs, and defect (worm) tracking:
+
+```bash
+# Launch dashboard workstation (default port 8877)
+python tools/dashboard.py
+
+# CLI inspection
+python tools/dashboard.py list-reviews --open
+python tools/dashboard.py list-worms --open
+```
+
 ### Python Utilities & Bringup Environment
 
-Hardware bringup scripts (`tools/helpers/bringup.py`) and host utilities rely on a dedicated Conda environment:
+Hardware bringup scripts, host daemon utilities, and dashboard tooling rely on a dedicated Conda environment:
 
 ```bash
 # Create and activate the conda environment
