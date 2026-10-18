@@ -19,8 +19,24 @@ pub const MAX_TMC6300_CURRENT_MA: i32 = 2000;
 /// Target PWM frequency for PIO duty cycling in Hz (~25 kHz).
 pub const PIO_PWM_FREQUENCY_HZ: u32 = 25_000;
 
+/// Reduced/temporary target PWM frequency for PIO duty cycling in Hz (10 kHz) to reduce gate switching transient current.
+pub const REDUCED_PWM_FREQUENCY_HZ: u32 = 10_000;
+
+/// Default active PWM frequency for the PIO motor driver in Hz (10 kHz).
+pub const DEFAULT_PIO_PWM_FREQUENCY_HZ: u32 = REDUCED_PWM_FREQUENCY_HZ;
+
 /// Number of cycles in one PWM period (resolution).
 pub const PWM_PERIOD_CYCLES: u8 = 100;
+
+/// Computes the integer clock divider given system clock frequency and PWM frequency in Hz.
+pub const fn calculate_clock_divider(sys_clk_hz: u32, pwm_freq_hz: u32) -> u32 {
+    let pio_target_hz = pwm_freq_hz * (PWM_PERIOD_CYCLES as u32);
+    if pio_target_hz == 0 {
+        1
+    } else {
+        sys_clk_hz / pio_target_hz
+    }
+}
 
 /// Helper to construct a 32-bit PWM command word for the PIO state machine.
 ///
@@ -641,6 +657,13 @@ impl<'a, PIO: Instance> PioTmc6300Program<'a, PIO> {
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
+fn compute_clock_divider(freq_hz: u32) -> U24F8 {
+    let clock_freq = U24F8::from_num(embassy_rp::clocks::clk_sys_freq() / 1000);
+    let target_freq = U24F8::from_num((freq_hz.max(1000) / 1000) * (PWM_PERIOD_CYCLES as u32));
+    clock_freq / target_freq
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
 /// Driver for the SparkFun TMC6300 BLDC motor driver using RP2040 PIO state machine.
 pub struct Tmc6300Pio<'d, PIO: Instance, const SM: usize, PD: InputPin> {
     sm: StateMachine<'d, PIO, SM>,
@@ -650,6 +673,7 @@ pub struct Tmc6300Pio<'d, PIO: Instance, const SM: usize, PD: InputPin> {
     duty_cycle: u8,
     freewheel_us: u32,
     freewheel_mode: FreewheelMode,
+    pwm_frequency_hz: u32,
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
@@ -731,10 +755,7 @@ where
 
         cfg.use_program(&program.prg, &[]);
 
-        let clock_freq = U24F8::from_num(embassy_rp::clocks::clk_sys_freq() / 1000);
-        let target_freq =
-            U24F8::from_num((PIO_PWM_FREQUENCY_HZ / 1000) * (PWM_PERIOD_CYCLES as u32));
-        cfg.clock_divider = clock_freq / target_freq;
+        cfg.clock_divider = compute_clock_divider(DEFAULT_PIO_PWM_FREQUENCY_HZ);
 
         cfg.fifo_join = FifoJoin::TxOnly;
         cfg.shift_out = ShiftConfig {
@@ -757,6 +778,7 @@ where
             duty_cycle: 0,
             freewheel_us: DEFAULT_FREEWHEEL_US,
             freewheel_mode: FreewheelMode::LowSide,
+            pwm_frequency_hz: DEFAULT_PIO_PWM_FREQUENCY_HZ,
         }
     }
 
@@ -799,6 +821,18 @@ where
     /// Returns the freewheeling decay mode.
     pub fn freewheel_mode(&self) -> FreewheelMode {
         self.freewheel_mode
+    }
+
+    /// Sets the active PWM frequency in Hz and dynamically reconfigures the PIO clock divider.
+    pub fn set_pwm_frequency_hz(&mut self, freq_hz: u32) {
+        let divider = compute_clock_divider(freq_hz);
+        self.sm.set_clock_divider(divider);
+        self.pwm_frequency_hz = freq_hz;
+    }
+
+    /// Returns the active PWM frequency in Hz.
+    pub fn pwm_frequency_hz(&self) -> u32 {
+        self.pwm_frequency_hz
     }
 }
 
@@ -896,6 +930,7 @@ pub struct Tmc6300Pio<PD = ()> {
     freewheel_us: u32,
     freewheel_mode: FreewheelMode,
     last_freewheel_word: u32,
+    pwm_frequency_hz: u32,
 }
 
 #[cfg(not(all(target_arch = "arm", target_os = "none", target_has_embassy_rp)))]
@@ -914,6 +949,7 @@ where
             freewheel_us: DEFAULT_FREEWHEEL_US,
             freewheel_mode: FreewheelMode::LowSide,
             last_freewheel_word: 0,
+            pwm_frequency_hz: DEFAULT_PIO_PWM_FREQUENCY_HZ,
         }
     }
 
@@ -976,6 +1012,16 @@ where
     /// Returns the last freewheel PWM word pushed during freewheeling.
     pub fn last_freewheel_word(&self) -> u32 {
         self.last_freewheel_word
+    }
+
+    /// Sets the active PWM frequency in Hz.
+    pub fn set_pwm_frequency_hz(&mut self, freq_hz: u32) {
+        self.pwm_frequency_hz = freq_hz;
+    }
+
+    /// Returns the active PWM frequency in Hz.
+    pub fn pwm_frequency_hz(&self) -> u32 {
+        self.pwm_frequency_hz
     }
 }
 

@@ -2082,3 +2082,56 @@ fn test_tmc6300_freewheeling_window_and_decay_modes() {
         assert!(gpio_motor.tick().await.is_ok());
     });
 }
+
+#[test]
+fn test_tmc6300_pwm_frequency_and_clock_divider() {
+    run_test!(async {
+        use peripheral::tmc6300::{
+            calculate_clock_divider, Tmc6300Pio, DEFAULT_PIO_PWM_FREQUENCY_HZ,
+            PIO_PWM_FREQUENCY_HZ, REDUCED_PWM_FREQUENCY_HZ,
+        };
+        use std::sync::atomic::AtomicBool;
+
+        // 1. Verify PWM frequency constant invariants
+        assert_eq!(PIO_PWM_FREQUENCY_HZ, 25_000);
+        assert_eq!(REDUCED_PWM_FREQUENCY_HZ, 10_000);
+        assert_eq!(DEFAULT_PIO_PWM_FREQUENCY_HZ, 10_000);
+
+        // 2. Verify clock divider calculation at 125 MHz system clock
+        // Target PIO clock for 25 kHz @ 100 cycles/period: 2.5 MHz -> divider 50
+        assert_eq!(calculate_clock_divider(125_000_000, 25_000), 50);
+        // Target PIO clock for 10 kHz @ 100 cycles/period: 1.0 MHz -> divider 125
+        assert_eq!(calculate_clock_divider(125_000_000, 10_000), 125);
+        // Target PIO clock for 20 kHz @ 100 cycles/period: 2.0 MHz -> divider 62
+        assert_eq!(calculate_clock_divider(125_000_000, 20_000), 62);
+        // Zero frequency guard returns 1
+        assert_eq!(calculate_clock_divider(125_000_000, 0), 1);
+
+        // 3. Verify Tmc6300Pio default and runtime adjustable PWM frequency
+        let diag_flag = AtomicBool::new(false);
+        let pin_diag = MockPin {
+            is_high: &diag_flag,
+        };
+        let mut pio_motor = Tmc6300Pio::new(pin_diag);
+
+        assert_eq!(
+            pio_motor.pwm_frequency_hz(),
+            DEFAULT_PIO_PWM_FREQUENCY_HZ,
+            "Tmc6300Pio must default to REDUCED_PWM_FREQUENCY_HZ (10 kHz)"
+        );
+
+        pio_motor.set_pwm_frequency_hz(25_000);
+        assert_eq!(
+            pio_motor.pwm_frequency_hz(),
+            25_000,
+            "Tmc6300Pio must allow setting PWM frequency to 25 kHz"
+        );
+
+        pio_motor.set_pwm_frequency_hz(10_000);
+        assert_eq!(
+            pio_motor.pwm_frequency_hz(),
+            10_000,
+            "Tmc6300Pio must allow setting PWM frequency to 10 kHz"
+        );
+    });
+}
