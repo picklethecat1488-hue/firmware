@@ -1961,3 +1961,124 @@ fn test_worm_gliding_larva_522_pin_mapping_and_forward_commutation_progression()
         );
     });
 }
+
+#[test]
+fn test_tmc6300_freewheeling_window_and_decay_modes() {
+    run_test!(async {
+        use model::interfaces::{Motor, Tickable};
+        use model::types::MotorSpeed;
+        use peripheral::tmc6300::{
+            make_pwm_word, FreewheelMode, Tmc6300, Tmc6300Pio, DEFAULT_FREEWHEEL_US,
+            FREEWHEEL_PHASE_MASK, PWM_PERIOD_CYCLES,
+        };
+        use std::sync::atomic::AtomicBool;
+
+        // 1. Verify constant invariants
+        assert_eq!(DEFAULT_FREEWHEEL_US, 500);
+        assert_eq!(FREEWHEEL_PHASE_MASK, 0b101010);
+        // Verify low-side pins in FREEWHEEL_PHASE_MASK: UL (bit 1), VL (bit 3), WL (bit 5)
+        assert_eq!(FREEWHEEL_PHASE_MASK & (1 << 0), 0); // UH off
+        assert_ne!(FREEWHEEL_PHASE_MASK & (1 << 1), 0); // UL on
+        assert_eq!(FREEWHEEL_PHASE_MASK & (1 << 2), 0); // VH off
+        assert_ne!(FREEWHEEL_PHASE_MASK & (1 << 3), 0); // VL on
+        assert_eq!(FREEWHEEL_PHASE_MASK & (1 << 4), 0); // WH off
+        assert_ne!(FREEWHEEL_PHASE_MASK & (1 << 5), 0); // WL on
+
+        // 2. Test Tmc6300Pio host mock defaults and configuration
+        let diag_flag = AtomicBool::new(false);
+        let pin_diag = MockPin {
+            is_high: &diag_flag,
+        };
+        let mut pio_motor = Tmc6300Pio::new(pin_diag);
+
+        assert_eq!(pio_motor.freewheel_us(), DEFAULT_FREEWHEEL_US);
+        assert_eq!(pio_motor.freewheel_mode(), FreewheelMode::LowSide);
+
+        // Adjust freewheel duration and mode
+        pio_motor.set_freewheel_us(250);
+        assert_eq!(pio_motor.freewheel_us(), 250);
+        pio_motor.set_freewheel_mode(FreewheelMode::Float);
+        assert_eq!(pio_motor.freewheel_mode(), FreewheelMode::Float);
+
+        // Reset to LowSide for execution test
+        pio_motor.set_freewheel_mode(FreewheelMode::LowSide);
+        assert!(pio_motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+
+        // On tick with LowSide freewheel, freewheel word must have FREEWHEEL_PHASE_MASK at 100% duty
+        assert!(pio_motor.tick().await.is_ok());
+        let expected_low_side_word = make_pwm_word(FREEWHEEL_PHASE_MASK, PWM_PERIOD_CYCLES, 0);
+        assert_eq!(
+            pio_motor.last_freewheel_word(),
+            expected_low_side_word,
+            "LowSide freewheel word must energize all 3 low-side FETs at 100% duty cycle"
+        );
+
+        // Switch to Float decay mode and tick again
+        pio_motor.set_freewheel_mode(FreewheelMode::Float);
+        assert!(pio_motor.tick().await.is_ok());
+        let expected_float_word = make_pwm_word(0, 0, PWM_PERIOD_CYCLES);
+        assert_eq!(
+            pio_motor.last_freewheel_word(),
+            expected_float_word,
+            "Float freewheel word must de-energize all FETs (0% duty cycle)"
+        );
+
+        // Disabling freewheeling (0 us) must bypass freewheel word emission
+        pio_motor.set_freewheel_us(0);
+        assert_eq!(pio_motor.freewheel_us(), 0);
+        // Reset last_freewheel_word by stopping and restarting
+        assert!(pio_motor.stop().is_ok());
+        assert_eq!(pio_motor.last_freewheel_word(), 0);
+        assert!(pio_motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert!(pio_motor.tick().await.is_ok());
+        assert_eq!(
+            pio_motor.last_freewheel_word(),
+            0,
+            "When freewheel_us is 0, no freewheel word should be pushed"
+        );
+
+        // 3. Test GPIO Tmc6300 driver configuration and defaults
+        let pin_uh_state = AtomicBool::new(false);
+        let pin_ul_state = AtomicBool::new(false);
+        let pin_vh_state = AtomicBool::new(false);
+        let pin_vl_state = AtomicBool::new(false);
+        let pin_wh_state = AtomicBool::new(false);
+        let pin_wl_state = AtomicBool::new(false);
+        let pin_diag_state = AtomicBool::new(false);
+
+        let pin_uh = MockPin {
+            is_high: &pin_uh_state,
+        };
+        let pin_ul = MockPin {
+            is_high: &pin_ul_state,
+        };
+        let pin_vh = MockPin {
+            is_high: &pin_vh_state,
+        };
+        let pin_vl = MockPin {
+            is_high: &pin_vl_state,
+        };
+        let pin_wh = MockPin {
+            is_high: &pin_wh_state,
+        };
+        let pin_wl = MockPin {
+            is_high: &pin_wl_state,
+        };
+        let pin_diag = MockPin {
+            is_high: &pin_diag_state,
+        };
+
+        let mut gpio_motor = Tmc6300::new(pin_uh, pin_ul, pin_vh, pin_vl, pin_wh, pin_wl, pin_diag);
+
+        assert_eq!(gpio_motor.freewheel_us(), DEFAULT_FREEWHEEL_US);
+        assert_eq!(gpio_motor.freewheel_mode(), FreewheelMode::LowSide);
+
+        gpio_motor.set_freewheel_us(100);
+        assert_eq!(gpio_motor.freewheel_us(), 100);
+        gpio_motor.set_freewheel_mode(FreewheelMode::Float);
+        assert_eq!(gpio_motor.freewheel_mode(), FreewheelMode::Float);
+
+        assert!(gpio_motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert!(gpio_motor.tick().await.is_ok());
+    });
+}

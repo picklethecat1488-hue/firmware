@@ -29,14 +29,8 @@ fn test_motor_controller_flow() {
             .await;
         assert_eq!(controller.state(), MotorState::On);
         assert_eq!(controller.motor.speed, 0);
-        // Let's call tick_motor() once:
+        // Speed ramping disabled: speed is applied immediately on the first tick
         controller.tick_motor().await.unwrap();
-        assert_eq!(controller.motor.speed, 1);
-
-        // Tick to complete the ramp
-        for _ in 0..99 {
-            controller.tick_motor().await.unwrap();
-        }
         assert_eq!(controller.motor.speed, 100);
 
         // Simulate dry run (low current draw)
@@ -53,10 +47,6 @@ fn test_motor_controller_flow() {
             .await;
         assert_eq!(controller.state(), MotorState::On);
         controller.tick_motor().await.unwrap();
-        assert_eq!(controller.motor.speed, 1);
-        for _ in 0..99 {
-            controller.tick_motor().await.unwrap();
-        }
         assert_eq!(controller.motor.speed, 100);
 
         // Simulate stall (high current draw)

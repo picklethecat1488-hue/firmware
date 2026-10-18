@@ -67,6 +67,23 @@ pub fn phase_mask(speed: i8, step: u8) -> u8 {
     }
 }
 
+/// Freewheel / decay mode applied between commutation steps.
+#[derive(Copy, Clone, Eq, PartialEq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+pub enum FreewheelMode {
+    /// Low-side recirculation/braking: all low-side FETs (UL, VL, WL) on, all high-side off.
+    LowSide,
+    /// High-impedance float: all FETs off.
+    Float,
+}
+
+/// Default duration of the freewheeling window in microseconds (500 µs).
+pub const DEFAULT_FREEWHEEL_US: u32 = 500;
+
+/// 6-bit phase mask activating all three low-side FETs (UL: bit 1, VL: bit 3, WL: bit 5).
+pub const FREEWHEEL_PHASE_MASK: u8 = 0b101010;
+
 /// Phase state for 3-phase BLDC commutation.
 #[derive(Copy, Clone, Eq, PartialEq)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
@@ -99,6 +116,8 @@ pub struct Tmc6300<PUH, PUL, PVH, PVL, PWH, PWL, PD> {
     speed: i8,
     commutation_step: u8,
     tick_counter: u8,
+    freewheel_us: u32,
+    freewheel_mode: FreewheelMode,
 }
 
 impl<
@@ -140,6 +159,8 @@ where
             speed: 0,
             commutation_step: 0,
             tick_counter: 0,
+            freewheel_us: DEFAULT_FREEWHEEL_US,
+            freewheel_mode: FreewheelMode::LowSide,
         }
     }
 
@@ -149,6 +170,27 @@ where
     /// or undervoltage fault conditions.
     pub fn is_fault_active(&mut self) -> Result<bool, PD::Error> {
         self.pin_diag.is_high()
+    }
+
+    /// Sets the freewheeling window duration in microseconds.
+    /// Setting to 0 disables the freewheeling window.
+    pub fn set_freewheel_us(&mut self, us: u32) {
+        self.freewheel_us = us;
+    }
+
+    /// Returns the freewheeling window duration in microseconds.
+    pub fn freewheel_us(&self) -> u32 {
+        self.freewheel_us
+    }
+
+    /// Sets the freewheeling decay mode (low-side or float).
+    pub fn set_freewheel_mode(&mut self, mode: FreewheelMode) {
+        self.freewheel_mode = mode;
+    }
+
+    /// Returns the freewheeling decay mode.
+    pub fn freewheel_mode(&self) -> FreewheelMode {
+        self.freewheel_mode
     }
 
     /// Sets the state of Phase U enforcing software break-before-make.
@@ -418,6 +460,23 @@ where
             let speed = self.speed;
             let abs_speed = speed.abs();
             if abs_speed != 0 {
+                // If freewheeling is enabled, drain/recirculate coils before active commutation step
+                if self.freewheel_us > 0 {
+                    match self.freewheel_mode {
+                        FreewheelMode::LowSide => {
+                            self.set_phases(PhaseState::Low, PhaseState::Low, PhaseState::Low)?;
+                        }
+                        FreewheelMode::Float => {
+                            self.set_phases(
+                                PhaseState::Float,
+                                PhaseState::Float,
+                                PhaseState::Float,
+                            )?;
+                        }
+                    }
+                    embassy_time::Timer::after_micros(self.freewheel_us as u64).await;
+                }
+
                 // Advance commutation step
                 self.commutation_step = (self.commutation_step + 1) % (COMMUTATION_STEPS as u8);
 
@@ -589,6 +648,8 @@ pub struct Tmc6300Pio<'d, PIO: Instance, const SM: usize, PD: InputPin> {
     speed: i8,
     commutation_step: u8,
     duty_cycle: u8,
+    freewheel_us: u32,
+    freewheel_mode: FreewheelMode,
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
@@ -694,6 +755,8 @@ where
             speed: 0,
             commutation_step: 0,
             duty_cycle: 0,
+            freewheel_us: DEFAULT_FREEWHEEL_US,
+            freewheel_mode: FreewheelMode::LowSide,
         }
     }
 
@@ -715,6 +778,27 @@ where
     /// Returns the current commutation step index (0..5).
     pub fn commutation_step(&self) -> u8 {
         self.commutation_step
+    }
+
+    /// Sets the freewheeling window duration in microseconds.
+    /// Setting to 0 disables the freewheeling window.
+    pub fn set_freewheel_us(&mut self, us: u32) {
+        self.freewheel_us = us;
+    }
+
+    /// Returns the freewheeling window duration in microseconds.
+    pub fn freewheel_us(&self) -> u32 {
+        self.freewheel_us
+    }
+
+    /// Sets the freewheeling decay mode (low-side or float).
+    pub fn set_freewheel_mode(&mut self, mode: FreewheelMode) {
+        self.freewheel_mode = mode;
+    }
+
+    /// Returns the freewheeling decay mode.
+    pub fn freewheel_mode(&self) -> FreewheelMode {
+        self.freewheel_mode
     }
 }
 
@@ -776,6 +860,20 @@ where
         } else {
             let speed = self.speed;
             if speed != 0 {
+                if self.freewheel_us > 0 {
+                    let fw_mask = match self.freewheel_mode {
+                        FreewheelMode::LowSide => FREEWHEEL_PHASE_MASK,
+                        FreewheelMode::Float => 0,
+                    };
+                    let fw_word = if fw_mask != 0 {
+                        make_pwm_word(fw_mask, PWM_PERIOD_CYCLES, 0)
+                    } else {
+                        make_pwm_word(0, 0, PWM_PERIOD_CYCLES)
+                    };
+                    self.sm.tx().push(fw_word);
+                    embassy_time::Timer::after_micros(self.freewheel_us as u64).await;
+                }
+
                 self.commutation_step = (self.commutation_step + 1) % (COMMUTATION_STEPS as u8);
                 let mask = phase_mask(speed, self.commutation_step);
                 let word =
@@ -795,6 +893,9 @@ pub struct Tmc6300Pio<PD = ()> {
     commutation_step: u8,
     duty_cycle: u8,
     last_word: u32,
+    freewheel_us: u32,
+    freewheel_mode: FreewheelMode,
+    last_freewheel_word: u32,
 }
 
 #[cfg(not(all(target_arch = "arm", target_os = "none", target_has_embassy_rp)))]
@@ -810,6 +911,9 @@ where
             commutation_step: 0,
             duty_cycle: 0,
             last_word: make_pwm_word(0, 0, PWM_PERIOD_CYCLES),
+            freewheel_us: DEFAULT_FREEWHEEL_US,
+            freewheel_mode: FreewheelMode::LowSide,
+            last_freewheel_word: 0,
         }
     }
 
@@ -847,6 +951,32 @@ where
     pub fn last_word(&self) -> u32 {
         self.last_word
     }
+
+    /// Sets the freewheeling window duration in microseconds.
+    /// Setting to 0 disables the freewheeling window.
+    pub fn set_freewheel_us(&mut self, us: u32) {
+        self.freewheel_us = us;
+    }
+
+    /// Returns the freewheeling window duration in microseconds.
+    pub fn freewheel_us(&self) -> u32 {
+        self.freewheel_us
+    }
+
+    /// Sets the freewheeling decay mode (low-side or float).
+    pub fn set_freewheel_mode(&mut self, mode: FreewheelMode) {
+        self.freewheel_mode = mode;
+    }
+
+    /// Returns the freewheeling decay mode.
+    pub fn freewheel_mode(&self) -> FreewheelMode {
+        self.freewheel_mode
+    }
+
+    /// Returns the last freewheel PWM word pushed during freewheeling.
+    pub fn last_freewheel_word(&self) -> u32 {
+        self.last_freewheel_word
+    }
 }
 
 #[cfg(not(all(target_arch = "arm", target_os = "none", target_has_embassy_rp)))]
@@ -875,6 +1005,7 @@ where
         self.duty_cycle = 0;
         self.commutation_step = 0;
         self.last_word = make_pwm_word(0, 0, PWM_PERIOD_CYCLES);
+        self.last_freewheel_word = 0;
         Ok(())
     }
 }
@@ -894,6 +1025,19 @@ where
         } else {
             let raw = self.speed;
             if raw != 0 {
+                if self.freewheel_us > 0 {
+                    let fw_mask = match self.freewheel_mode {
+                        FreewheelMode::LowSide => FREEWHEEL_PHASE_MASK,
+                        FreewheelMode::Float => 0,
+                    };
+                    self.last_freewheel_word = if fw_mask != 0 {
+                        make_pwm_word(fw_mask, PWM_PERIOD_CYCLES, 0)
+                    } else {
+                        make_pwm_word(0, 0, PWM_PERIOD_CYCLES)
+                    };
+                    embassy_time::Timer::after_micros(self.freewheel_us as u64).await;
+                }
+
                 self.commutation_step = (self.commutation_step + 1) % (COMMUTATION_STEPS as u8);
                 let mask = phase_mask(raw, self.commutation_step);
                 self.last_word =
