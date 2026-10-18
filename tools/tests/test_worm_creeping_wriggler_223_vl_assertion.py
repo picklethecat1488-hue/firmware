@@ -2,14 +2,14 @@
 """Regression functional test for WORM-CREEPING-WRIGGLER-223.
 
 Ensures that the TMC6300 6-step trapezoidal commutation sequence asserts the VL (Low-side Phase V)
-pin (bit 2 / GP18) during commutation steps 0 and 5 in forward rotation and step 0 and 5 in reverse
-rotation, matching the physical SparkFun TMC6300 breakout J1 header pinout:
-  - Bit 0: UL (GP16)
-  - Bit 1: UH (GP17)
-  - Bit 2: VL (GP18)
-  - Bit 3: VH (GP19)
-  - Bit 4: WL (GP20)
-  - Bit 5: WH (GP21)
+pin (bit 3 / GP19) during commutation steps 0 and 5 in forward rotation and step 0 and 5 in reverse
+rotation:
+  - Bit 0: UH (GP16)
+  - Bit 1: UL (GP17)
+  - Bit 2: VH (GP18)
+  - Bit 3: VL (GP19)
+  - Bit 4: WH (GP20)
+  - Bit 5: WL (GP21)
 
 Rather than checking for source code strings or AST tokens, this test executes the actual
 compiled functional unit/integration test in peripheral/tests/integration.rs.

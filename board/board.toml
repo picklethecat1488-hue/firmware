@@ -11,12 +11,12 @@ core_monitor_timeout_ms = 10000
 core_monitor_warn_pct = 80
 
 [boards.cat_detector.pins]
-PUMP_UL_PIN = 16
-PUMP_UH_PIN = 17
-PUMP_VL_PIN = 18
-PUMP_VH_PIN = 19
-PUMP_WL_PIN = 20
-PUMP_WH_PIN = 21
+PUMP_UH_PIN = 16
+PUMP_UL_PIN = 17
+PUMP_VH_PIN = 18
+PUMP_VL_PIN = 19
+PUMP_WH_PIN = 20
+PUMP_WL_PIN = 21
 PUMP_DIAG_PIN = 22
 SPEED_SENSE_PIN = 26
 I2C_SDA_PIN = 12

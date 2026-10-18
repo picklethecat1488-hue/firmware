@@ -3,12 +3,12 @@ use embedded_hal::digital::{InputPin, OutputPin};
 
 #[test]
 fn test_board_pin_constants() {
-    assert_eq!(Board::PUMP_UL_PIN, 16);
-    assert_eq!(Board::PUMP_UH_PIN, 17);
-    assert_eq!(Board::PUMP_VL_PIN, 18);
-    assert_eq!(Board::PUMP_VH_PIN, 19);
-    assert_eq!(Board::PUMP_WL_PIN, 20);
-    assert_eq!(Board::PUMP_WH_PIN, 21);
+    assert_eq!(Board::PUMP_UH_PIN, 16);
+    assert_eq!(Board::PUMP_UL_PIN, 17);
+    assert_eq!(Board::PUMP_VH_PIN, 18);
+    assert_eq!(Board::PUMP_VL_PIN, 19);
+    assert_eq!(Board::PUMP_WH_PIN, 20);
+    assert_eq!(Board::PUMP_WL_PIN, 21);
     assert_eq!(Board::PUMP_DIAG_PIN, 22);
     assert_eq!(Board::SPEED_SENSE_PIN, 26);
 }
