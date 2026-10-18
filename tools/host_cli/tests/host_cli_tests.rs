@@ -475,8 +475,12 @@ fn test_post_process_trace_telemetry() {
         println!("Event {}: {}", i, ev);
     }
 
-    // We expect 5 events (4 metadata + 1 parsed event)
-    assert_eq!(events.len(), 5);
+    // We expect 6 events (4 metadata + 2 parsed telemetry events: speed and current)
+    assert_eq!(events.len(), 6);
+    assert_eq!(events[4]["name"], "Motor Speed");
+    assert_eq!(events[4]["args"]["value"], 75);
+    assert_eq!(events[5]["name"], "Motor Current (mA)");
+    assert_eq!(events[5]["args"]["value"], 150);
 }
 
 #[test]
@@ -664,4 +668,74 @@ fn test_post_process_implicit_closure_on_data_loss() {
         device_events[3].get("span_id").and_then(|s| s.as_str()),
         Some("2")
     );
+}
+
+#[test]
+fn test_worm_rooted_clitellum_453_format_target_namespace() {
+    use host_cli::format_target_namespace;
+
+    // Test cases directly from WORM-ROOTED-CLITELLUM-453
+    assert_eq!(
+        format_target_namespace("peripheral::tmc6300::{impl#7}::tick::{async_fn#0}"),
+        "peripheral::tmc6300"
+    );
+    assert_eq!(
+        format_target_namespace(
+            "controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}"
+        ),
+        "controller::motor_controller"
+    );
+    assert_eq!(
+        format_target_namespace("controller::motor_controller::{impl#5}::update::{async_fn#0}"),
+        "controller::motor_controller"
+    );
+    assert_eq!(
+        format_target_namespace("controller::shell_controller::log_command"),
+        "controller::shell_controller"
+    );
+    assert_eq!(
+        format_target_namespace("controller::shell_controller::log_success"),
+        "controller::shell_controller"
+    );
+
+    // Test bracketed forms from console output
+    assert_eq!(
+        format_target_namespace("[peripheral::tmc6300::{impl#7}::tick::{async_fn#0}]"),
+        "peripheral::tmc6300"
+    );
+    assert_eq!(
+        format_target_namespace("[controller::shell_controller::log_command]"),
+        "controller::shell_controller"
+    );
+
+    // Test other peripheral and nested module cases
+    assert_eq!(
+        format_target_namespace("peripherals::tmc6300::{impl#2}::tick"),
+        "peripherals::tmc6300"
+    );
+    assert_eq!(
+        format_target_namespace("platform::io::flash::{impl#1}::read"),
+        "platform::io::flash"
+    );
+    assert_eq!(
+        format_target_namespace("platform::io::flash::read_data"),
+        "platform::io::flash"
+    );
+    assert_eq!(
+        format_target_namespace("controller::shell_controller::run_shell::{closure#0}"),
+        "controller::shell_controller"
+    );
+
+    // Test binary crate / main / edge cases
+    assert_eq!(
+        format_target_namespace("cat_detector_app::main"),
+        "cat_detector_app"
+    );
+    assert_eq!(
+        format_target_namespace("controller::motor_controller"),
+        "controller::motor_controller"
+    );
+    assert_eq!(format_target_namespace("cat_detector"), "cat_detector");
+    assert_eq!(format_target_namespace(""), "");
+    assert_eq!(format_target_namespace("   "), "");
 }

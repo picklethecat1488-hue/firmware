@@ -311,7 +311,7 @@ where
                         .await;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::error!(
-                        "Motor Controller: RPM safety limit exceeded ({} RPM). Stopped motor.",
+                        "RPM safety limit exceeded ({} RPM). Stopped motor.",
                         _rpm_val
                     );
                 }
@@ -320,7 +320,7 @@ where
                         .await;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::warn!(
-                        "Motor Controller: Low load / dry detected (current: {} mA). Stopped motor.",
+                        "Low load / dry detected (current: {} mA). Stopped motor.",
                         _current_val
                     );
                 }
@@ -329,7 +329,7 @@ where
                         .await;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::error!(
-                        "Motor Controller: Motor stall detected (current: {} mA). Stopped motor.",
+                        "Motor stall detected (current: {} mA). Stopped motor.",
                         _current_val
                     );
                 }
@@ -344,9 +344,7 @@ where
                         self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut())
                             .await;
                         #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        defmt::error!(
-                            "Motor Controller: Zero RPM stall detected via Hall sensor. Stopped motor."
-                        );
+                        defmt::error!("Zero RPM stall detected via Hall sensor. Stopped motor.");
                     }
                 }
             }
@@ -374,7 +372,7 @@ where
             self.startup_ticks = 0;
             if self.state == MotorState::Off {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::info!("Motor Controller: Starting motor...");
+                defmt::info!("Starting motor...");
                 self.state = MotorState::On;
                 self.current_sensor
                     .set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
@@ -384,7 +382,7 @@ where
         } else {
             if self.state != MotorState::Off {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::info!("Motor Controller: Stopping motor...");
+                defmt::info!("Stopping motor...");
             }
             self.state = MotorState::Off;
             self.active_speed = MotorSpeed::ZERO;
@@ -423,7 +421,7 @@ where
                     if !self.calibration_present && self.speed != speed {
                         #[cfg(all(target_arch = "arm", target_os = "none"))]
                         defmt::warn!(
-                            "Motor Controller: Warning, calibration is not present! Running with fallback limits."
+                            "Warning, calibration is not present! Running with fallback limits."
                         );
                     }
                     if let Err(e) = self.set_running_state(true).await {
@@ -440,9 +438,7 @@ where
             MotorCommand::SetSpeedRpm(rpm) => {
                 let speed_val = if self.limits.max_rpm == 0 {
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    defmt::warn!(
-                        "Motor Controller: Cannot set speed by RPM, max_rpm calibration is not set!"
-                    );
+                    defmt::warn!("Cannot set speed by RPM, max_rpm calibration is not set!");
                     0
                 } else {
                     let val = (rpm * 100) / (self.limits.max_rpm as i32);
@@ -453,9 +449,7 @@ where
                     if !self.calibration_present {
                         if self.speed != speed {
                             #[cfg(all(target_arch = "arm", target_os = "none"))]
-                            defmt::error!(
-                                "Motor Controller: Cannot start motor, calibration is not present!"
-                            );
+                            defmt::error!("Cannot start motor, calibration is not present!");
                             self.speed = speed;
                         }
                     } else {
