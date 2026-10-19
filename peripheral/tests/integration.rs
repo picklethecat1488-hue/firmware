@@ -1974,7 +1974,7 @@ fn test_tmc6300_freewheeling_window_and_decay_modes() {
         use std::sync::atomic::AtomicBool;
 
         // 1. Verify constant invariants
-        assert_eq!(DEFAULT_FREEWHEEL_US, 500);
+        assert_eq!(DEFAULT_FREEWHEEL_US, 0);
         assert_eq!(FREEWHEEL_PHASE_MASK, 0b101010);
         // Verify low-side pins in FREEWHEEL_PHASE_MASK: UL (bit 1), VL (bit 3), WL (bit 5)
         assert_eq!(FREEWHEEL_PHASE_MASK & (1 << 0), 0); // UH off
@@ -1992,7 +1992,7 @@ fn test_tmc6300_freewheeling_window_and_decay_modes() {
         let mut pio_motor = Tmc6300Pio::new(pin_diag);
 
         assert_eq!(pio_motor.freewheel_us(), DEFAULT_FREEWHEEL_US);
-        assert_eq!(pio_motor.freewheel_mode(), FreewheelMode::LowSide);
+        assert_eq!(pio_motor.freewheel_mode(), FreewheelMode::Float);
 
         // Adjust freewheel duration and mode
         pio_motor.set_freewheel_us(250);
@@ -2071,7 +2071,7 @@ fn test_tmc6300_freewheeling_window_and_decay_modes() {
         let mut gpio_motor = Tmc6300::new(pin_uh, pin_ul, pin_vh, pin_vl, pin_wh, pin_wl, pin_diag);
 
         assert_eq!(gpio_motor.freewheel_us(), DEFAULT_FREEWHEEL_US);
-        assert_eq!(gpio_motor.freewheel_mode(), FreewheelMode::LowSide);
+        assert_eq!(gpio_motor.freewheel_mode(), FreewheelMode::Float);
 
         gpio_motor.set_freewheel_us(100);
         assert_eq!(gpio_motor.freewheel_us(), 100);
@@ -2095,7 +2095,7 @@ fn test_tmc6300_pwm_frequency_and_clock_divider() {
         // 1. Verify PWM frequency constant invariants
         assert_eq!(PIO_PWM_FREQUENCY_HZ, 25_000);
         assert_eq!(REDUCED_PWM_FREQUENCY_HZ, 10_000);
-        assert_eq!(DEFAULT_PIO_PWM_FREQUENCY_HZ, 10_000);
+        assert_eq!(DEFAULT_PIO_PWM_FREQUENCY_HZ, 25_000);
 
         // 2. Verify clock divider calculation at 125 MHz system clock
         // Target PIO clock for 25 kHz @ 100 cycles/period: 2.5 MHz -> divider 50
@@ -2117,7 +2117,7 @@ fn test_tmc6300_pwm_frequency_and_clock_divider() {
         assert_eq!(
             pio_motor.pwm_frequency_hz(),
             DEFAULT_PIO_PWM_FREQUENCY_HZ,
-            "Tmc6300Pio must default to REDUCED_PWM_FREQUENCY_HZ (10 kHz)"
+            "Tmc6300Pio must default to PIO_PWM_FREQUENCY_HZ (25 kHz)"
         );
 
         pio_motor.set_pwm_frequency_hz(25_000);

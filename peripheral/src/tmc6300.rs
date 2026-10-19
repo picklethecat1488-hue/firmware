@@ -22,8 +22,8 @@ pub const PIO_PWM_FREQUENCY_HZ: u32 = 25_000;
 /// Reduced/temporary target PWM frequency for PIO duty cycling in Hz (10 kHz) to reduce gate switching transient current.
 pub const REDUCED_PWM_FREQUENCY_HZ: u32 = 10_000;
 
-/// Default active PWM frequency for the PIO motor driver in Hz (10 kHz).
-pub const DEFAULT_PIO_PWM_FREQUENCY_HZ: u32 = REDUCED_PWM_FREQUENCY_HZ;
+/// Default active PWM frequency for the PIO motor driver in Hz (25 kHz).
+pub const DEFAULT_PIO_PWM_FREQUENCY_HZ: u32 = PIO_PWM_FREQUENCY_HZ;
 
 /// Number of cycles in one PWM period (resolution).
 pub const PWM_PERIOD_CYCLES: u8 = 100;
@@ -94,8 +94,8 @@ pub enum FreewheelMode {
     Float,
 }
 
-/// Default duration of the freewheeling window in microseconds (500 µs).
-pub const DEFAULT_FREEWHEEL_US: u32 = 500;
+/// Default duration of the freewheeling window in microseconds (0 µs, disabled by default to prevent low-side braking).
+pub const DEFAULT_FREEWHEEL_US: u32 = 0;
 
 /// 6-bit phase mask activating all three low-side FETs (UL: bit 1, VL: bit 3, WL: bit 5).
 pub const FREEWHEEL_PHASE_MASK: u8 = 0b101010;
@@ -176,7 +176,7 @@ where
             commutation_step: 0,
             tick_counter: 0,
             freewheel_us: DEFAULT_FREEWHEEL_US,
-            freewheel_mode: FreewheelMode::LowSide,
+            freewheel_mode: FreewheelMode::Float,
         }
     }
 
@@ -777,7 +777,7 @@ where
             commutation_step: 0,
             duty_cycle: 0,
             freewheel_us: DEFAULT_FREEWHEEL_US,
-            freewheel_mode: FreewheelMode::LowSide,
+            freewheel_mode: FreewheelMode::Float,
             pwm_frequency_hz: DEFAULT_PIO_PWM_FREQUENCY_HZ,
         }
     }
@@ -947,7 +947,7 @@ where
             duty_cycle: 0,
             last_word: make_pwm_word(0, 0, PWM_PERIOD_CYCLES),
             freewheel_us: DEFAULT_FREEWHEEL_US,
-            freewheel_mode: FreewheelMode::LowSide,
+            freewheel_mode: FreewheelMode::Float,
             last_freewheel_word: 0,
             pwm_frequency_hz: DEFAULT_PIO_PWM_FREQUENCY_HZ,
         }
