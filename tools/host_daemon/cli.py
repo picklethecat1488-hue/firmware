@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, List, Optional
 import urllib.error
 import urllib.request
 
+from host_daemon.provider.daemon.config import has_explicit_target_args, load_last_session, save_last_session
 from host_daemon.provider.daemon.runner import DaemonRunner
 from host_daemon.provider.daemon.server import HostDaemonServer
 
@@ -321,8 +322,12 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     bringup_parser.add_argument("--run", action="store_true", help="Execute bringup checklist steps")
     bringup_parser.add_argument("--step", action="store_true", help="Execute single bringup step")
     bringup_parser.add_argument("--reset", action="store_true", help="Reset bringup checklist execution")
-    bringup_parser.add_argument("--output", "-o", type=str, default="bringup_report.md", help="Path to output markdown report")
-    bringup_parser.add_argument("--manual", action="store_true", help="Run in manual prompt mode without hardware probe")
+    bringup_parser.add_argument(
+        "--output", "-o", type=str, default="bringup_report.md", help="Path to output markdown report"
+    )
+    bringup_parser.add_argument(
+        "--manual", action="store_true", help="Run in manual prompt mode without hardware probe"
+    )
 
     return parser.parse_args(args)
 
@@ -331,6 +336,37 @@ def main(argv: Optional[List[str]] = None) -> int:
     """Execute host daemon CLI commands or launch daemon server."""
     args = parse_arguments(argv)
     repo_root = Path(__file__).resolve().parent.parent.parent
+
+    raw_args = argv if argv is not None else sys.argv[1:]
+    is_explicit = has_explicit_target_args(raw_args)
+    package_selection_mode = not is_explicit and args.subcommand is None
+
+    last_session = load_last_session(repo_root)
+    if not is_explicit and last_session and args.subcommand is None:
+        if "package" in last_session:
+            args.package = last_session["package"]
+        if "bin" in last_session:
+            args.bin = last_session["bin"]
+        if "release" in last_session:
+            args.release = last_session["release"]
+        if "target" in last_session:
+            args.target = last_session["target"]
+        if "speed" in last_session:
+            args.speed = last_session["speed"]
+        if "chip" in last_session:
+            args.chip = last_session["chip"]
+    elif is_explicit and args.subcommand is None:
+        save_last_session(
+            repo_root,
+            {
+                "package": args.package,
+                "bin": args.bin,
+                "release": args.release,
+                "target": args.target,
+                "speed": args.speed,
+                "chip": args.chip,
+            },
+        )
 
     # Subcommand handling
     if args.subcommand == "cli":
@@ -433,7 +469,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                     print(f"Bringup Checklist Status: {st.get('script_name', 'None')} ({st.get('status', 'unknown')})")
                     print(f"  Current Step: {st.get('current_step_idx', 0) + 1} / {st.get('total_steps', 0)}")
                     summary = st.get("summary", {})
-                    print(f"  Passed: {summary.get('passed', 0)}, Failed: {summary.get('failed', 0)}, Skipped: {summary.get('skipped', 0)}, Pending: {summary.get('pending', 0)}")
+                    print(
+                        f"  Passed: {summary.get('passed', 0)}, Failed: {summary.get('failed', 0)}, Skipped: {summary.get('skipped', 0)}, Pending: {summary.get('pending', 0)}"
+                    )
                     return 0
 
                 if args.step:
@@ -476,13 +514,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         # Execute checklist interactively
         print("=" * 60)
         print(f"BRINGUP CHECKLIST ASSISTANT: {cfg.project_name} ({cfg.device_chip})")
-        rel_disp = resolved_script.relative_to(repo_root) if resolved_script.is_relative_to(repo_root) else resolved_script
+        rel_disp = (
+            resolved_script.relative_to(repo_root) if resolved_script.is_relative_to(repo_root) else resolved_script
+        )
         print(f"Script: {rel_disp}")
         print(f"Total Steps: {len(cfg.steps)}")
         print("=" * 60)
 
         for idx, step in enumerate(cfg.steps):
-            print(f"\n--- STEP {idx+1}/{len(cfg.steps)}: {step.name} (ID: {step.id}) [{step.type.value.upper()}] ---")
+            print(f"\n--- STEP {idx + 1}/{len(cfg.steps)}: {step.name} (ID: {step.id}) [{step.type.value.upper()}] ---")
             if step.description:
                 print(f"  Description: {step.description}")
             if step.procedure:
@@ -577,7 +617,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                         print(f"Workstation URL: http://{args.host}:{port}")
                         return 0
                     except Exception as e:
-                        print(f"Warning: Could not reconfigure running daemon ({e}). Restarting daemon...", file=sys.stderr)
+                        print(
+                            f"Warning: Could not reconfigure running daemon ({e}). Restarting daemon...",
+                            file=sys.stderr,
+                        )
                         try:
                             send_daemon_request("/api/stop", {}, port=port, host=args.host)
                         except Exception:
@@ -641,6 +684,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         release=args.release,
         speed=args.speed,
         chip=args.chip,
+        package_selection_mode=package_selection_mode,
     )
     atexit.register(runner.stop)
     atexit.register(remove_lock_file)
@@ -679,11 +723,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             "url": url,
             "browser": getattr(args, "browser", "webview"),
             "no_browser": getattr(args, "no_browser", False),
+            "package_selection_mode": package_selection_mode,
         }
     )
 
-    # Trigger asynchronous target synchronization (compiles target, compiles host tools, flashes, connects RTT)
-    runner.sync_async()
+    # Trigger asynchronous target synchronization unless awaiting package selection in UI
+    if not package_selection_mode:
+        runner.sync_async()
+    else:
+        print("➜ Target package selection mode: awaiting configuration modal confirmation in workstation.")
 
     print(f"➜ Host daemon running at {url} (PID {os.getpid()}).")
     print("  Press Ctrl+C to stop daemon.\n")
@@ -693,6 +741,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # Launch dedicated desktop application window if not disabled
     if not getattr(args, "no_browser", False):
+
         def _on_app_close() -> None:
             def _shutdown() -> None:
                 try:

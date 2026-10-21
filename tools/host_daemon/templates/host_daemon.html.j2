@@ -632,6 +632,7 @@
     <div style="display: flex; align-items: center; gap: 8px;">
       <button class="btn btn-cyan" id="btnSync" onclick="triggerSync()">⚡ Sync</button>
       <button class="btn btn-amber" id="btnReset" onclick="triggerReset()">⚡ Reset</button>
+      <button class="btn btn-cyan" id="btnTargetConfig" onclick="openTargetConfigModal()" title="Target Application Configuration">🎯 Target Config</button>
       <button class="btn btn-red" id="btnTargetBug" onclick="openTargetBugModal()" title="Report defect discovered on target">🐞 Target Bug</button>
       <label for="modeSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">ACTIVE MODE:</label>
       <select id="modeSelect" class="select-dropdown" onchange="changeMode(this.value)">
@@ -809,6 +810,78 @@
       <div class="sync-modal-footer" style="padding:10px 14px; border-top:1px solid #0b5966; display:flex; justify-content:flex-end; gap:8px;">
         <button class="btn" onclick="closeTargetBugModal()">Cancel</button>
         <button class="btn btn-red" id="btnSubmitTargetBug" onclick="submitTargetBug()">⚡ File Target Bug</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Target Application Configuration Modal (WORM-SLIMY-PLANARIAN-761) -->
+  <div id="targetConfigModal" class="sync-modal-backdrop" style="display:none;" onclick="if(event.target===this)closeTargetConfigModal()">
+    <div class="sync-modal-box" style="max-width: 580px; width: 92%;">
+      <div class="sync-modal-header" style="border-bottom: 2px solid var(--xerxes-cyan);">
+        <span class="sync-modal-title" style="color: var(--xerxes-cyan);">⚡ TARGET CONFIGURATION // PACKAGE SELECTION MATRIX</span>
+        <button class="btn" style="padding: 2px 6px; font-size: 8.5px;" onclick="closeTargetConfigModal()">✕</button>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; padding:16px;">
+        <div style="font-size: 9.5px; color: var(--xerxes-text-dim); line-height: 1.4;">
+          Configure target application package, binary artifact, build profile, and probe parameters. Target ARM architecture is automatically inferred based on MCU hardware mappings.
+        </div>
+
+        <!-- Package & Binary selection -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:4px; font-weight:bold;">TARGET PACKAGE *</label>
+            <select id="cfgPackageSelect" class="quake-input" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:11px; background:#040d12; border:1px solid #0b5966; color:#00f0ff;" onchange="onTargetPackageChange()">
+              {% if target_packages %}
+                {% for pkg in target_packages %}
+                  <option value="{{ pkg.package }}" {% if pkg.package == runner.package %}selected{% endif %}>{{ pkg.package }}</option>
+                {% endfor %}
+              {% else %}
+                <option value="{{ runner.package }}" selected>{{ runner.package }}</option>
+              {% endif %}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:4px; font-weight:bold;">TARGET BINARY *</label>
+            <select id="cfgBinSelect" class="quake-input" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:11px; background:#040d12; border:1px solid #0b5966; color:#00f0ff;" onchange="onTargetBinChange()">
+              <option value="{{ runner.bin_name }}" selected>{{ runner.bin_name }}</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Build Profile & Speed -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items:center;">
+          <div>
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:4px; font-weight:bold;">BUILD PROFILE</label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:10px; color:var(--xerxes-text-bright); margin-top:4px;">
+              <input type="checkbox" id="cfgReleaseCheckbox" {% if runner.release %}checked{% endif %} style="accent-color:var(--xerxes-cyan); cursor:pointer;">
+              <span>Release (--release, opt-level=z, LTO)</span>
+            </label>
+          </div>
+          <div>
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:4px; font-weight:bold;">PROBE PROTOCOL SPEED</label>
+            <select id="cfgSpeedSelect" class="quake-input" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:11px; background:#040d12; border:1px solid #0b5966; color:#00f0ff;">
+              <option value="4000" {% if runner.speed == 4000 %}selected{% endif %}>4000 kHz (High Speed)</option>
+              <option value="1000" {% if runner.speed == 1000 %}selected{% endif %}>1000 kHz (Default)</option>
+              <option value="500" {% if runner.speed == 500 %}selected{% endif %}>500 kHz (Safe)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Inferred Target Architecture Display -->
+        <div style="background:#05141c; border:1px solid #0b5966; padding:8px 12px; border-radius:3px; display:flex; flex-direction:column; gap:4px;">
+          <span style="font-size:8.5px; color:var(--xerxes-text-muted); font-weight:bold;">INFERRED ARM ARCHITECTURE</span>
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <span id="cfgInferredArchDisplay" style="color:var(--xerxes-cyan); font-weight:bold; font-family:var(--font-mono); font-size:11px;">{{ runner.target }}</span>
+            <span id="cfgInferredArchNote" style="color:var(--xerxes-text-dim); font-size:9px;">(Auto-inferred from board definition)</span>
+          </div>
+          <input type="hidden" id="cfgTargetArchInput" value="{{ runner.target }}">
+        </div>
+
+        <div id="cfgStatusMsg" style="display:none; font-size:9.5px; padding:6px 10px; border-radius:2px;"></div>
+      </div>
+      <div class="sync-modal-footer" style="padding:10px 14px; border-top:1px solid #0b5966; display:flex; justify-content:flex-end; gap:8px;">
+        <button class="btn" id="btnCancelTargetConfig" onclick="closeTargetConfigModal()">DISMISS</button>
+        <button class="btn btn-primary" id="btnConfirmTargetConfig" onclick="submitTargetConfig()">⚡ FLASH & CONNECT</button>
       </div>
     </div>
   </div>
@@ -2575,6 +2648,137 @@
         }
       }
     });
+
+    // Package Selection & Target Configuration Management (WORM-SLIMY-PLANARIAN-761)
+    const DISCOVERED_PACKAGES = {{ target_packages | tojson if target_packages is defined else '[]' }};
+    const LAST_SESSION = {{ last_session | tojson if last_session is defined and last_session else 'null' }};
+    const IS_PACKAGE_SELECTION_MODE = {{ 'true' if package_selection_mode else 'false' }};
+
+    function populateTargetBinaries(selectedPkgName, defaultBinName) {
+      const binSelect = document.getElementById("cfgBinSelect");
+      if (!binSelect) return;
+      binSelect.innerHTML = "";
+
+      const pkgData = Array.isArray(DISCOVERED_PACKAGES) ? DISCOVERED_PACKAGES.find(p => p.package === selectedPkgName) : null;
+      const binaries = pkgData ? pkgData.binaries : ["cat_detector_shell", "cat_detector_app", "carrier_board_shell"];
+
+      binaries.forEach(b => {
+        const opt = document.createElement("option");
+        opt.value = b;
+        opt.textContent = b;
+        if (b === defaultBinName || (!defaultBinName && b === pkgData?.default_bin)) {
+          opt.selected = true;
+        }
+        binSelect.appendChild(opt);
+      });
+      updateInferredArchDisplay(selectedPkgName);
+    }
+
+    function updateInferredArchDisplay(pkgName) {
+      const archDisplay = document.getElementById("cfgInferredArchDisplay");
+      const archInput = document.getElementById("cfgTargetArchInput");
+      const archNote = document.getElementById("cfgInferredArchNote");
+      const pkgData = Array.isArray(DISCOVERED_PACKAGES) ? DISCOVERED_PACKAGES.find(p => p.package === pkgName) : null;
+      const target = pkgData ? pkgData.inferred_target : "thumbv6m-none-eabi";
+
+      if (archDisplay) archDisplay.textContent = target;
+      if (archInput) archInput.value = target;
+      if (archNote) {
+        if (target.includes("thumbv6m")) {
+          archNote.textContent = "(Auto-inferred: ARM Cortex-M0+ / RP2040)";
+        } else if (target.includes("thumbv8m")) {
+          archNote.textContent = "(Auto-inferred: ARM Cortex-M33 / NXP MCX)";
+        } else if (target.includes("thumbv7em")) {
+          archNote.textContent = "(Auto-inferred: ARM Cortex-M4F/M7F)";
+        } else {
+          archNote.textContent = "(Auto-inferred from hardware target)";
+        }
+      }
+    }
+
+    function onTargetPackageChange() {
+      const pkgSelect = document.getElementById("cfgPackageSelect");
+      if (!pkgSelect) return;
+      populateTargetBinaries(pkgSelect.value);
+    }
+
+    function onTargetBinChange() {
+      const pkgSelect = document.getElementById("cfgPackageSelect");
+      if (pkgSelect) updateInferredArchDisplay(pkgSelect.value);
+    }
+
+    function openTargetConfigModal() {
+      const modal = document.getElementById("targetConfigModal");
+      if (!modal) return;
+
+      const currentPkg = (LAST_SESSION && LAST_SESSION.package) || "{{ runner.package }}";
+      const currentBin = (LAST_SESSION && LAST_SESSION.bin) || "{{ runner.bin_name }}";
+      const pkgSelect = document.getElementById("cfgPackageSelect");
+      if (pkgSelect && currentPkg) {
+        pkgSelect.value = currentPkg;
+      }
+      populateTargetBinaries(currentPkg, currentBin);
+
+      const relBox = document.getElementById("cfgReleaseCheckbox");
+      if (relBox) {
+        relBox.checked = LAST_SESSION && typeof LAST_SESSION.release === "boolean" ? LAST_SESSION.release : {{ 'true' if runner.release else 'false' }};
+      }
+
+      const spdSelect = document.getElementById("cfgSpeedSelect");
+      if (spdSelect) {
+        const spd = (LAST_SESSION && LAST_SESSION.speed) || {{ runner.speed }};
+        spdSelect.value = String(spd);
+      }
+
+      modal.style.display = "flex";
+    }
+
+    function closeTargetConfigModal() {
+      const modal = document.getElementById("targetConfigModal");
+      if (modal) modal.style.display = "none";
+    }
+
+    async function submitTargetConfig() {
+      const pkg = document.getElementById("cfgPackageSelect")?.value || "{{ runner.package }}";
+      const bin = document.getElementById("cfgBinSelect")?.value || "{{ runner.bin_name }}";
+      const release = document.getElementById("cfgReleaseCheckbox")?.checked ?? true;
+      const speed = parseInt(document.getElementById("cfgSpeedSelect")?.value || "1000", 10);
+      const target = document.getElementById("cfgTargetArchInput")?.value || "thumbv6m-none-eabi";
+
+      const btnConfirm = document.getElementById("btnConfirmTargetConfig");
+      if (btnConfirm) btnConfirm.disabled = true;
+
+      try {
+        const res = await fetch("/api/target/configure", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ package: pkg, bin: bin, release: release, speed: speed, target: target })
+        });
+        const data = await res.json();
+        if (data.success) {
+          localStorage.setItem("xerxes_last_target_package", pkg);
+          localStorage.setItem("xerxes_last_target_bin", bin);
+          localStorage.setItem("xerxes_last_target_release", String(release));
+
+          closeTargetConfigModal();
+          openSyncModal();
+        } else {
+          alert("Failed to configure target: " + (data.error || "Unknown error"));
+        }
+      } catch (err) {
+        alert("Error communicating with host daemon: " + err);
+      } finally {
+        if (btnConfirm) btnConfirm.disabled = false;
+      }
+    }
+
+    // Initialize binaries on page load
+    populateTargetBinaries(document.getElementById("cfgPackageSelect")?.value || "{{ runner.package }}", "{{ runner.bin_name }}");
+
+    // Auto-open modal if package selection mode is active on startup
+    if (IS_PACKAGE_SELECTION_MODE) {
+      openTargetConfigModal();
+    }
   </script>
 </body>
 </html>
