@@ -2135,3 +2135,134 @@ fn test_tmc6300_pwm_frequency_and_clock_divider() {
         );
     });
 }
+
+#[test]
+fn test_worm_slithering_lumbricus_809_tmc6300_short_protection_pulse_invariants() {
+    run_test!(async {
+        use model::interfaces::{Motor, Tickable};
+        use model::types::MotorSpeed;
+        use peripheral::tmc6300::{
+            calculate_on_time_ns, clamp_on_count_short_protection, phase_mask, Tmc6300Pio,
+            SHORT_PROTECTION_HARD_LIMIT_ON_COUNT, SHORT_PROTECTION_MAX_ON_COUNT,
+            SHORT_PROTECTION_MAX_ON_TIME_NS, SHORT_PROTECTION_MIN_ON_COUNT,
+            SHORT_PROTECTION_MIN_ON_TIME_NS, SHORT_PROTECTION_NOMINAL_ON_TIME_NS,
+            SHORT_PROTECTION_PIO_DIVIDER, SHORT_PROTECTION_PWM_FREQUENCY_HZ,
+            SHORT_PROTECTION_THRESHOLD_NS,
+        };
+        use std::sync::atomic::AtomicBool;
+
+        // 1. Verify constant invariants for TMC6300 hardware short-circuit protection
+        // TMC6300 t_S2G short detection delay is 1000 ns (1.0 µs)
+        assert_eq!(SHORT_PROTECTION_THRESHOLD_NS, 1000);
+        // Target pulse bounds: between 500 ns and 800 ns
+        assert_eq!(SHORT_PROTECTION_MIN_ON_TIME_NS, 500);
+        assert_eq!(SHORT_PROTECTION_MAX_ON_TIME_NS, 800);
+        assert_eq!(SHORT_PROTECTION_NOMINAL_ON_TIME_NS, 640);
+        assert_eq!(SHORT_PROTECTION_PWM_FREQUENCY_HZ, 250_000);
+        assert_eq!(SHORT_PROTECTION_PIO_DIVIDER, 5);
+        assert_eq!(SHORT_PROTECTION_MIN_ON_COUNT, 7);
+        assert_eq!(SHORT_PROTECTION_MAX_ON_COUNT, 14);
+        assert_eq!(SHORT_PROTECTION_HARD_LIMIT_ON_COUNT, 18);
+
+        // 2. Mathematical reproduction of the defect:
+        // Under buggy divider 50 (2.5 MHz PIO clock, 400 ns/cycle), speed 10 on_count produces:
+        // (10 + 6) * 400 ns = 6400 ns (6.4 µs) -> TRIPS short protection (t_S2G = 1.0 µs)!
+        let buggy_pulse_ns = calculate_on_time_ns(10, 50, 125_000_000);
+        assert_eq!(buggy_pulse_ns, 6400);
+        assert!(buggy_pulse_ns > SHORT_PROTECTION_THRESHOLD_NS);
+
+        // Under fixed divider 5 (25 MHz PIO clock, 40 ns/cycle), speed 10 on_count produces:
+        // (10 + 6) * 40 ns = 640 ns (0.64 µs) -> Safe, inside ideal 500..800 ns window!
+        let fixed_pulse_ns = calculate_on_time_ns(10, SHORT_PROTECTION_PIO_DIVIDER, 125_000_000);
+        assert_eq!(fixed_pulse_ns, 640);
+        assert!(fixed_pulse_ns < SHORT_PROTECTION_THRESHOLD_NS);
+        assert!(fixed_pulse_ns >= SHORT_PROTECTION_MIN_ON_TIME_NS);
+        assert!(fixed_pulse_ns <= SHORT_PROTECTION_MAX_ON_TIME_NS);
+
+        // 3. Verify on_count clamping across all duty cycles (1..=100)
+        assert_eq!(clamp_on_count_short_protection(0), 0);
+        // Minimum non-zero duty cycle clamped to 7 cycles (520 ns, > 500 ns)
+        assert_eq!(clamp_on_count_short_protection(1), 7);
+        let min_pulse = calculate_on_time_ns(
+            clamp_on_count_short_protection(1),
+            SHORT_PROTECTION_PIO_DIVIDER,
+            125_000_000,
+        );
+        assert_eq!(min_pulse, 520);
+        assert!(min_pulse >= SHORT_PROTECTION_MIN_ON_TIME_NS);
+
+        // Speed 10 reproduces user scenario: 10 cycles -> 640 ns
+        assert_eq!(clamp_on_count_short_protection(10), 10);
+        let pulse_10 = calculate_on_time_ns(
+            clamp_on_count_short_protection(10),
+            SHORT_PROTECTION_PIO_DIVIDER,
+            125_000_000,
+        );
+        assert_eq!(pulse_10, 640);
+
+        // Speed 100 clamped to 14 cycles -> exactly 800 ns target
+        assert_eq!(clamp_on_count_short_protection(100), 14);
+        let max_pulse = calculate_on_time_ns(
+            clamp_on_count_short_protection(100),
+            SHORT_PROTECTION_PIO_DIVIDER,
+            125_000_000,
+        );
+        assert_eq!(max_pulse, 800);
+        assert_eq!(max_pulse, SHORT_PROTECTION_MAX_ON_TIME_NS);
+
+        // Across all commanded speeds (1..=100), pulse duration MUST be in [500 ns, 800 ns]
+        for speed_val in 1..=100 {
+            let clamped = clamp_on_count_short_protection(speed_val);
+            let duration = calculate_on_time_ns(clamped, SHORT_PROTECTION_PIO_DIVIDER, 125_000_000);
+            assert!(
+                duration >= SHORT_PROTECTION_MIN_ON_TIME_NS,
+                "Speed {speed_val} pulse duration {duration} ns below min {SHORT_PROTECTION_MIN_ON_TIME_NS} ns"
+            );
+            assert!(
+                duration <= SHORT_PROTECTION_MAX_ON_TIME_NS,
+                "Speed {speed_val} pulse duration {duration} ns exceeds max {SHORT_PROTECTION_MAX_ON_TIME_NS} ns"
+            );
+            assert!(
+                duration < SHORT_PROTECTION_THRESHOLD_NS,
+                "Speed {speed_val} pulse duration {duration} ns exceeds threshold {SHORT_PROTECTION_THRESHOLD_NS} ns"
+            );
+        }
+
+        // 4. Functional driver verification on host mock
+        let diag_flag = AtomicBool::new(false);
+        let pin_diag = MockPin {
+            is_high: &diag_flag,
+        };
+        let mut pio_motor = Tmc6300Pio::new(pin_diag);
+
+        // Initial state stopped
+        assert_eq!(pio_motor.effective_on_count(), 0);
+        assert_eq!(pio_motor.pulse_duration_ns(), 240); // 6 cycles idle
+
+        // Command speed 10 (reproduction step)
+        assert!(pio_motor.set_speed(MotorSpeed::new(10).unwrap()).is_ok());
+        assert_eq!(pio_motor.speed(), 10);
+        assert_eq!(pio_motor.effective_on_count(), 10);
+        assert_eq!(pio_motor.pulse_duration_ns(), 640);
+        let eff_word10 = pio_motor.effective_word();
+        assert_eq!((eff_word10 >> 8) & 0xFF, 10);
+        assert_eq!((eff_word10 >> 16) & 0xFF, 90);
+        assert_eq!(eff_word10 & 0xFF, phase_mask(10, 0) as u32);
+
+        // Command speed 100
+        assert!(pio_motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert_eq!(pio_motor.speed(), 100);
+        assert_eq!(pio_motor.effective_on_count(), 14);
+        assert_eq!(pio_motor.pulse_duration_ns(), 800);
+        let eff_word100 = pio_motor.effective_word();
+        assert_eq!((eff_word100 >> 8) & 0xFF, 14);
+        assert_eq!((eff_word100 >> 16) & 0xFF, 86);
+
+        // Advance commutation tick
+        assert!(pio_motor.tick().await.is_ok());
+        assert_eq!(pio_motor.commutation_step(), 1);
+        let eff_step1 = pio_motor.effective_word();
+        assert_eq!(eff_step1 & 0xFF, phase_mask(100, 1) as u32);
+        assert_eq!((eff_step1 >> 8) & 0xFF, 14);
+    });
+}

@@ -38,6 +38,74 @@ pub const fn calculate_clock_divider(sys_clk_hz: u32, pwm_freq_hz: u32) -> u32 {
     }
 }
 
+/// TMC6300 hardware short-circuit detection filter delay threshold in nanoseconds (1.0 µs = 1000 ns).
+///
+/// If any FET conducts across the low-resistance (0.5 Ω) winding path for longer than this
+/// threshold, the driver asserts the DIAG pin and enters shutdown to prevent overheating.
+pub const SHORT_PROTECTION_THRESHOLD_NS: u32 = 1000;
+
+/// Maximum winding connection pulse duration target in nanoseconds (0.8 µs = 800 ns).
+///
+/// Keeping the active commutation pulse below 800 ns ensures margin below the 1.0 µs
+/// short protection threshold across silicon process, temperature, and supply voltage variation.
+pub const SHORT_PROTECTION_MAX_ON_TIME_NS: u32 = 800;
+
+/// Minimum winding connection pulse duration target in nanoseconds (0.5 µs = 500 ns).
+///
+/// A pulse width of at least 500 ns provides sufficient volt-second energization to build
+/// magnetic flux in the 0.5 Ω stator coils and generate commutation torque.
+pub const SHORT_PROTECTION_MIN_ON_TIME_NS: u32 = 500;
+
+/// Nominal winding connection pulse duration in nanoseconds (0.64 µs = 640 ns).
+pub const SHORT_PROTECTION_NOMINAL_ON_TIME_NS: u32 = 640;
+
+/// Target PWM frequency for short-protected commutation in Hz (250 kHz).
+///
+/// Running the PIO state machine at 25 MHz (divider 5 from 125 MHz sys_clk) with 100 cycles/period
+/// provides 40 ns per PIO cycle.
+pub const SHORT_PROTECTION_PWM_FREQUENCY_HZ: u32 = 250_000;
+
+/// PIO clock divider ensuring winding connection pulse width remains strictly below 1 µs
+/// (nominally 0.5 µs to 0.8 µs) to prevent TMC6300 short protection faults.
+pub const SHORT_PROTECTION_PIO_DIVIDER: u32 = 5;
+
+/// Minimum PIO on_count loop cycles to maintain at least 500 ns pulse width at 25 MHz PIO clock (40 ns/cycle).
+///
+/// Total ON cycles = on_count + 6 overhead instructions: (7 + 6) * 40 ns = 520 ns (> 500 ns).
+pub const SHORT_PROTECTION_MIN_ON_COUNT: u8 = 7;
+
+/// Maximum PIO on_count loop cycles permitted to ensure winding connection time does not exceed
+/// 800 ns at 25 MHz PIO clock (40 ns/cycle).
+///
+/// Total ON cycles = on_count + 6 overhead instructions: (14 + 6) * 40 ns = 800 ns.
+pub const SHORT_PROTECTION_MAX_ON_COUNT: u8 = 14;
+
+/// Upper limit PIO on_count loop cycles before reaching the 1000 ns (1 µs) short detection threshold.
+///
+/// Total ON cycles = (18 + 6) * 40 ns = 960 ns (< 1000 ns).
+pub const SHORT_PROTECTION_HARD_LIMIT_ON_COUNT: u8 = 18;
+
+/// Clamps duty cycle to short-protection on_count bounds (7..=14 cycles, or 0 if stopped)
+/// to guarantee winding connection duration stays strictly between 0.5 µs and 0.8 µs at 25 MHz PIO clock.
+pub const fn clamp_on_count_short_protection(duty_cycle: u8) -> u8 {
+    if duty_cycle == 0 {
+        0
+    } else if duty_cycle < SHORT_PROTECTION_MIN_ON_COUNT {
+        SHORT_PROTECTION_MIN_ON_COUNT
+    } else if duty_cycle > SHORT_PROTECTION_MAX_ON_COUNT {
+        SHORT_PROTECTION_MAX_ON_COUNT
+    } else {
+        duty_cycle
+    }
+}
+
+/// Computes the winding connection pulse duration in nanoseconds for a given on_count, clock divider, and system clock frequency.
+pub const fn calculate_on_time_ns(on_count: u8, clock_divider: u32, sys_clk_hz: u32) -> u32 {
+    let cycles = (on_count as u64) + 6;
+    let total_ns = (cycles * (clock_divider as u64) * 1_000_000_000) / (sys_clk_hz as u64);
+    total_ns as u32
+}
+
 /// Helper to construct a 32-bit PWM command word for the PIO state machine.
 ///
 /// Bit layout:
@@ -755,7 +823,7 @@ where
 
         cfg.use_program(&program.prg, &[]);
 
-        cfg.clock_divider = compute_clock_divider(DEFAULT_PIO_PWM_FREQUENCY_HZ);
+        cfg.clock_divider = compute_clock_divider(SHORT_PROTECTION_PWM_FREQUENCY_HZ);
 
         cfg.fifo_join = FifoJoin::TxOnly;
         cfg.shift_out = ShiftConfig {
@@ -778,7 +846,7 @@ where
             duty_cycle: 0,
             freewheel_us: DEFAULT_FREEWHEEL_US,
             freewheel_mode: FreewheelMode::Float,
-            pwm_frequency_hz: DEFAULT_PIO_PWM_FREQUENCY_HZ,
+            pwm_frequency_hz: SHORT_PROTECTION_PWM_FREQUENCY_HZ,
         }
     }
 
@@ -833,6 +901,27 @@ where
     /// Returns the active PWM frequency in Hz.
     pub fn pwm_frequency_hz(&self) -> u32 {
         self.pwm_frequency_hz
+    }
+
+    /// Returns the effective short-protection clamped on_count loop cycles for the active duty cycle.
+    pub fn effective_on_count(&self) -> u8 {
+        clamp_on_count_short_protection(self.duty_cycle)
+    }
+
+    /// Returns the 32-bit PWM word with short-protection clamped on_count and off_count.
+    pub fn effective_word(&self) -> u32 {
+        let mask = phase_mask(self.speed, self.commutation_step);
+        let on = self.effective_on_count();
+        make_pwm_word(mask, on, PWM_PERIOD_CYCLES.saturating_sub(on))
+    }
+
+    /// Returns the active winding connection duration in nanoseconds.
+    pub fn pulse_duration_ns(&self) -> u32 {
+        calculate_on_time_ns(
+            self.effective_on_count(),
+            SHORT_PROTECTION_PIO_DIVIDER,
+            embassy_rp::clocks::clk_sys_freq(),
+        )
     }
 }
 
@@ -909,9 +998,7 @@ where
                 }
 
                 self.commutation_step = (self.commutation_step + 1) % (COMMUTATION_STEPS as u8);
-                let mask = phase_mask(speed, self.commutation_step);
-                let word =
-                    make_pwm_word(mask, self.duty_cycle, PWM_PERIOD_CYCLES - self.duty_cycle);
+                let word = self.effective_word();
                 self.sm.tx().push(word);
             }
             Ok(())
@@ -1022,6 +1109,27 @@ where
     /// Returns the active PWM frequency in Hz.
     pub fn pwm_frequency_hz(&self) -> u32 {
         self.pwm_frequency_hz
+    }
+
+    /// Returns the effective short-protection clamped on_count loop cycles for the active duty cycle.
+    pub fn effective_on_count(&self) -> u8 {
+        clamp_on_count_short_protection(self.duty_cycle)
+    }
+
+    /// Returns the 32-bit PWM word with short-protection clamped on_count and off_count.
+    pub fn effective_word(&self) -> u32 {
+        let mask = phase_mask(self.speed, self.commutation_step);
+        let on = self.effective_on_count();
+        make_pwm_word(mask, on, PWM_PERIOD_CYCLES.saturating_sub(on))
+    }
+
+    /// Returns the active winding connection duration in nanoseconds assuming 125 MHz sys_clk.
+    pub fn pulse_duration_ns(&self) -> u32 {
+        calculate_on_time_ns(
+            self.effective_on_count(),
+            SHORT_PROTECTION_PIO_DIVIDER,
+            125_000_000,
+        )
     }
 }
 
