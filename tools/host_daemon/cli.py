@@ -589,7 +589,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 remove_lock_file()
             else:
                 req_profile = "release" if args.release else "debug"
-                config_changed = (
+                config_changed = is_explicit and (
                     (args.bin and args.bin != existing.get("bin"))
                     or (args.package and args.package != existing.get("package"))
                     or (args.target and args.target != existing.get("target"))

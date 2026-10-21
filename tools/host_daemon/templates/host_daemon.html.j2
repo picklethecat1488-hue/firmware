@@ -666,10 +666,10 @@
         <button class="btn" style="padding: 2px 6px; font-size: 8.5px;" onclick="closeSyncModal()">✕</button>
       </div>
       <div class="sync-modal-info">
-        <div class="sync-info-row"><span>Target:</span><strong>{{ runner.target }}</strong></div>
-        <div class="sync-info-row"><span>Package:</span><strong>{{ runner.package }} ({{ runner.bin_name }})</strong></div>
-        <div class="sync-info-row"><span>Profile:</span><strong>{{ 'release' if runner.release else 'debug' }}</strong></div>
-        <div class="sync-info-row"><span>Speed:</span><strong>{{ runner.speed }} kHz</strong></div>
+        <div class="sync-info-row"><span>Target:</span><strong id="syncInfoTarget">{{ runner.target }}</strong></div>
+        <div class="sync-info-row"><span>Package:</span><strong id="syncInfoPackage">{{ runner.package }} ({{ runner.bin_name }})</strong></div>
+        <div class="sync-info-row"><span>Profile:</span><strong id="syncInfoProfile">{{ 'release' if runner.release else 'debug' }}</strong></div>
+        <div class="sync-info-row"><span>Speed:</span><strong id="syncInfoSpeed">{{ runner.speed }} kHz</strong></div>
       </div>
       <div class="sync-status-indicator">
         <span class="sync-status-dot pulse" id="syncStatusDot"></span>
@@ -2590,6 +2590,23 @@
         if (pct) pct.innerText = `${data.progress || 0}%`;
         if (msg) msg.innerText = data.message || "Synchronizing...";
 
+        if (data.target) {
+          const el = document.getElementById("syncInfoTarget");
+          if (el) el.innerText = data.target;
+        }
+        if (data.package && data.bin) {
+          const el = document.getElementById("syncInfoPackage");
+          if (el) el.innerText = `${data.package} (${data.bin})`;
+        }
+        if (data.profile) {
+          const el = document.getElementById("syncInfoProfile");
+          if (el) el.innerText = data.profile;
+        }
+        if (data.speed) {
+          const el = document.getElementById("syncInfoSpeed");
+          if (el) el.innerText = `${data.speed} kHz`;
+        }
+
         if (consoleEl && data.console && Array.isArray(data.console)) {
           const shouldScroll = consoleEl.scrollTop + consoleEl.clientHeight >= consoleEl.scrollHeight - 30;
           consoleEl.innerHTML = data.console.map(line => ansiToHtml(line)).join("<br>");
@@ -2814,6 +2831,29 @@
 
           closeTargetConfigModal();
           openSyncModal();
+
+          const dot = document.getElementById("syncStatusDot");
+          const msg = document.getElementById("syncProgressMsg");
+          const bar = document.getElementById("syncProgressBar");
+          const pct = document.getElementById("syncProgressPct");
+          const consoleEl = document.getElementById("syncConsoleLog");
+
+          if (dot) dot.className = "sync-status-dot pulse";
+          if (msg) msg.innerText = "Synchronizing target firmware...";
+          if (bar) bar.style.width = "5%";
+          if (pct) pct.innerText = "5%";
+          if (consoleEl) consoleEl.innerHTML = "";
+
+          const elTgt = document.getElementById("syncInfoTarget");
+          if (elTgt) elTgt.innerText = target;
+          const elPkg = document.getElementById("syncInfoPackage");
+          if (elPkg) elPkg.innerText = `${pkg} (${bin})`;
+          const elProf = document.getElementById("syncInfoProfile");
+          if (elProf) elProf.innerText = release ? "release" : "debug";
+          const elSpd = document.getElementById("syncInfoSpeed");
+          if (elSpd) elSpd.innerText = `${speed} kHz`;
+
+          startSyncPolling();
         } else {
           alert("Failed to configure target: " + (data.error || "Unknown error"));
         }

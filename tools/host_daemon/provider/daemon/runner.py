@@ -237,6 +237,20 @@ class DaemonRunner:
         with self._lock:
             if self._sync_thread and self._sync_thread.is_alive():
                 return
+            self.is_sync_cancelled = False
+            self.sync_logs.clear()
+            self.sync_status.update(
+                {
+                    "active": True,
+                    "step": "starting",
+                    "step_index": 0,
+                    "total_steps": 4,
+                    "progress": 5,
+                    "message": "Starting target synchronization...",
+                    "error": None,
+                    "console": [],
+                }
+            )
             self._sync_thread = threading.Thread(target=self.sync, daemon=True)
             self._sync_thread.start()
 
