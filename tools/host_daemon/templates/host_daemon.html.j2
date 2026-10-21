@@ -241,7 +241,8 @@
     .log-line-warn { color: var(--xerxes-amber); }
     .log-line-info { color: var(--xerxes-text-light); }
     .log-line-target { color: var(--xerxes-mint); }
-    .cli-line-input { color: var(--xerxes-cyan); font-weight: bold; }
+    .cli-line-input { color: var(--xerxes-cyan); font-weight: bold; cursor: pointer; }
+    .cli-line-input:hover { text-decoration: underline; }
     .cli-line-output { color: var(--xerxes-text-light); }
     .fs-toolbar {
       padding: 4px 8px;
@@ -266,6 +267,7 @@
       font-weight: bold;
       font-size: 9.5px;
       white-space: nowrap;
+      cursor: pointer;
     }
     .cmd-input {
       flex: 1;
@@ -1598,9 +1600,8 @@
       const input = document.getElementById("cmdInput");
       if (input) {
         input.value = cmd;
-        if (typeof submitCommand === "function") {
-          submitCommand();
-        }
+        input.focus();
+        input.select();
       }
     }
 
@@ -2021,6 +2022,57 @@
           document.getElementById("cmdInput").value = "";
         }
       }
+    });
+
+    // Single-Click Text Control Highlighting (WORM-MOIST-TAPEWORM-650)
+    const cmdInputEl = document.getElementById("cmdInput");
+    if (cmdInputEl) {
+      cmdInputEl.addEventListener("click", function() {
+        this.select();
+      });
+    }
+
+    const promptLabelEl = document.getElementById("promptLabel");
+    if (promptLabelEl) {
+      promptLabelEl.addEventListener("click", () => {
+        const input = document.getElementById("cmdInput");
+        if (input && !input.disabled) {
+          input.focus();
+          input.select();
+        }
+      });
+    }
+
+    const cliFooterEl = document.querySelector("footer.cli-input-bar");
+    if (cliFooterEl) {
+      cliFooterEl.addEventListener("click", (e) => {
+        if (e.target.tagName !== "BUTTON" && e.target.id !== "fuzzySearchInput") {
+          const input = document.getElementById("cmdInput");
+          if (input && !input.disabled) {
+            input.focus();
+            input.select();
+          }
+        }
+      });
+    }
+
+    // Single click on previous CLI command lines (.cli-line-input) populates and highlights cmdInput
+    ["cliView", "fsView"].forEach(viewId => {
+      const view = document.getElementById(viewId);
+      if (!view) return;
+      view.addEventListener("click", (e) => {
+        const lineInput = e.target.closest(".cli-line-input");
+        if (lineInput) {
+          let text = (lineInput.innerText || lineInput.textContent || "").trim();
+          text = text.replace(/^(shell>|fs>|>)\s*/, "").trim();
+          const input = document.getElementById("cmdInput");
+          if (input && text) {
+            input.value = text;
+            input.focus();
+            input.select();
+          }
+        }
+      });
     });
 
     // UI Scale Management (8715cab2)
