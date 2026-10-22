@@ -16,8 +16,8 @@ use peripheral::ToPeripheralError;
 use crate::tracing::{self, controller_context};
 use crate::types::{MotorCalState, MotorSafetyStatus, MotorState};
 
-/// The tick interval of the motor controller (500µs / 2kHz for high-speed BLDC commutation).
-pub const MOTOR_TICK_INTERVAL: embassy_time::Duration = embassy_time::Duration::from_micros(500);
+/// The default tick interval of the motor controller, kept in sync with the motor driver's default tick interval.
+pub const MOTOR_TICK_INTERVAL: embassy_time::Duration = peripheral::tmc6300::DEFAULT_TICK_INTERVAL;
 
 /// The tick interval of the motor controller when inactive (1s).
 pub const MOTOR_INACTIVE_TICK_INTERVAL: embassy_time::Duration =
@@ -29,19 +29,19 @@ pub const MOTOR_STARTUP_BLANKING_TICKS: u32 = MotorConfig::DEFAULT.startup_blank
 /// Default maximum current limit for the motor controller in milliamperes (2.5A).
 pub const DEFAULT_MAX_CURRENT_MA: i32 = 2500;
 
-/// Initial commutation step interval in 10ms ticks during motor startup soft-start ramp (10 ticks = 100ms = 10Hz step rate).
+/// Initial commutation step interval in controller ticks during motor startup soft-start ramp.
 pub const STARTUP_COMMUTATION_STEP_TICKS: u32 = MotorConfig::DEFAULT.startup_commutation_step_ticks;
 
 /// Base speed percentage divisor for calculating target commutation step interval ticks.
 pub const COMMUTATION_SPEED_DIVISOR: u32 = MotorConfig::DEFAULT.commutation_speed_divisor;
 
-/// Minimum commutation step interval in 10ms ticks (1 tick = 10ms = 100Hz step rate at full speed).
+/// Minimum commutation step interval in controller ticks.
 pub const MIN_COMMUTATION_STEP_TICKS: u32 = MotorConfig::DEFAULT.min_commutation_step_ticks;
 
-/// Maximum commutation step interval in 10ms ticks (100 ticks = 1000ms = 1Hz step rate at 1% speed).
+/// Maximum commutation step interval in controller ticks.
 pub const MAX_COMMUTATION_STEP_TICKS: u32 = MotorConfig::DEFAULT.max_commutation_step_ticks;
 
-/// Computes the target commutation step interval in 10ms controller ticks for a given commanded speed percentage (1..=100).
+/// Computes the target commutation step interval in controller ticks for a given commanded speed percentage (1..=100).
 #[cfg_attr(
     all(target_arch = "arm", feature = "motor-core"),
     link_section = ".data.core1_func"
@@ -248,12 +248,26 @@ where
         self.state
     }
 
-    /// Returns the active commutation step interval in 10ms controller ticks.
+    /// Returns the active tick interval for the motor controller based on the motor driver's required tick interval.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    pub fn tick_interval(&self) -> embassy_time::Duration {
+        let us = self.motor.tick_interval_us();
+        if us == 0 {
+            MOTOR_TICK_INTERVAL
+        } else {
+            embassy_time::Duration::from_micros(us as u64)
+        }
+    }
+
+    /// Returns the active commutation step interval in controller ticks.
     pub fn commutation_interval_ticks(&self) -> u32 {
         self.commutation_interval_ticks
     }
 
-    /// Returns the target commutation step interval in 10ms controller ticks for the commanded speed.
+    /// Returns the target commutation step interval in controller ticks for the commanded speed.
     pub fn target_commutation_step_ticks(&self) -> u32 {
         self.config
             .calculate_commutation_step_ticks(self.speed.get().unsigned_abs())
@@ -677,7 +691,7 @@ where
         }
 
         let mut last_telemetry = embassy_time::Instant::now();
-        let mut ticker = embassy_time::Ticker::every(MOTOR_TICK_INTERVAL);
+        let mut ticker = embassy_time::Ticker::every(self.tick_interval());
         let mut was_active = false;
 
         loop {
@@ -685,7 +699,7 @@ where
 
             if active {
                 if !was_active {
-                    ticker = embassy_time::Ticker::every(MOTOR_TICK_INTERVAL);
+                    ticker = embassy_time::Ticker::every(self.tick_interval());
                     was_active = true;
                 }
 

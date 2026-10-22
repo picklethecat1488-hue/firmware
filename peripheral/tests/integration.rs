@@ -2291,3 +2291,35 @@ fn test_worm_segmented_sipunculid_504_hall_sensor_preserves_rpm_between_slow_pul
     sensor.update_rpm(100);
     assert_eq!(sensor.read_rpm(), Ok(166));
 }
+
+#[test]
+fn test_cr_7f321327_tmc6300_tick_interval_and_sync() {
+    use model::interfaces::Tickable;
+    use peripheral::tmc6300::{Tmc6300Pio, DEFAULT_TICK_INTERVAL, DEFAULT_TICK_INTERVAL_US};
+
+    let pin_diag = MockPin {
+        is_high: &std::sync::atomic::AtomicBool::new(false),
+    };
+    let mut driver = Tmc6300Pio::new(pin_diag);
+
+    // Initial default tick interval should match DEFAULT_TICK_INTERVAL_US (500us)
+    assert_eq!(driver.tick_interval_us(), DEFAULT_TICK_INTERVAL_US);
+    assert_eq!(
+        Tickable::tick_interval_us(&driver),
+        DEFAULT_TICK_INTERVAL_US
+    );
+    assert_eq!(driver.tick_interval(), DEFAULT_TICK_INTERVAL);
+    assert_eq!(
+        driver.tick_interval(),
+        embassy_time::Duration::from_micros(500)
+    );
+
+    // Dynamic configuration updates tick interval
+    driver.set_tick_interval_us(250);
+    assert_eq!(driver.tick_interval_us(), 250);
+    assert_eq!(Tickable::tick_interval_us(&driver), 250);
+    assert_eq!(
+        driver.tick_interval(),
+        embassy_time::Duration::from_micros(250)
+    );
+}
