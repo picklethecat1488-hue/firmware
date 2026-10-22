@@ -29,6 +29,38 @@ pub const MOTOR_STARTUP_BLANKING_TICKS: u32 = 300;
 /// Default maximum current limit for the motor controller in milliamperes (2.5A).
 pub const DEFAULT_MAX_CURRENT_MA: i32 = 2500;
 
+/// Initial commutation step interval in 10ms ticks during motor startup soft-start ramp (10 ticks = 100ms = 10Hz step rate).
+pub const STARTUP_COMMUTATION_STEP_TICKS: u32 = 10;
+
+/// Base speed percentage divisor for calculating target commutation step interval ticks.
+pub const COMMUTATION_SPEED_DIVISOR: u32 = 100;
+
+/// Minimum commutation step interval in 10ms ticks (1 tick = 10ms = 100Hz step rate at full speed).
+pub const MIN_COMMUTATION_STEP_TICKS: u32 = 1;
+
+/// Maximum commutation step interval in 10ms ticks (100 ticks = 1000ms = 1Hz step rate at 1% speed).
+pub const MAX_COMMUTATION_STEP_TICKS: u32 = 100;
+
+/// Computes the target commutation step interval in 10ms controller ticks for a given commanded speed percentage (1..=100).
+#[cfg_attr(
+    all(target_arch = "arm", feature = "motor-core"),
+    link_section = ".data.core1_func"
+)]
+pub const fn calculate_commutation_step_ticks(abs_speed: u8) -> u32 {
+    if abs_speed == 0 {
+        MAX_COMMUTATION_STEP_TICKS
+    } else {
+        let ticks = COMMUTATION_SPEED_DIVISOR / (abs_speed as u32);
+        if ticks < MIN_COMMUTATION_STEP_TICKS {
+            MIN_COMMUTATION_STEP_TICKS
+        } else if ticks > MAX_COMMUTATION_STEP_TICKS {
+            MAX_COMMUTATION_STEP_TICKS
+        } else {
+            ticks
+        }
+    }
+}
+
 /// Safety limits for the motor controller.
 pub struct MotorLimits {
     /// Minimum current threshold in mA for dry-run detection.
@@ -82,6 +114,8 @@ pub struct MotorController<M, C, S> {
     startup_ticks: u32,
     safety_bypass: bool,
     max_hardware_current_ma: i32,
+    step_tick_counter: u32,
+    commutation_interval_ticks: u32,
 }
 
 /// The filename of the motor calibration file.
@@ -195,12 +229,24 @@ where
             startup_ticks: 0,
             safety_bypass: false,
             max_hardware_current_ma: max_current_ma,
+            step_tick_counter: 0,
+            commutation_interval_ticks: 0,
         }
     }
 
     /// Gets the current operating state of the motor.
     pub fn state(&self) -> MotorState {
         self.state
+    }
+
+    /// Returns the active commutation step interval in 10ms controller ticks.
+    pub fn commutation_interval_ticks(&self) -> u32 {
+        self.commutation_interval_ticks
+    }
+
+    /// Returns the target commutation step interval in 10ms controller ticks for the commanded speed.
+    pub fn target_commutation_step_ticks(&self) -> u32 {
+        calculate_commutation_step_ticks(self.speed.get().unsigned_abs())
     }
 
     /// Gets the minimum current limit in mA.
@@ -370,6 +416,8 @@ where
     async fn set_running_state(&mut self, running: bool) -> Result<(), PeripheralError> {
         if running {
             self.startup_ticks = 0;
+            self.commutation_interval_ticks = STARTUP_COMMUTATION_STEP_TICKS;
+            self.step_tick_counter = STARTUP_COMMUTATION_STEP_TICKS;
             if self.state == MotorState::Off {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::info!("Starting motor...");
@@ -389,6 +437,8 @@ where
             self.speed = MotorSpeed::ZERO;
             self.last_measured_rpm = 0;
             self.last_current_ma = 0;
+            self.step_tick_counter = 0;
+            self.commutation_interval_ticks = 0;
             let stop_res = self.motor.stop();
             let _ = self
                 .current_sensor
@@ -562,11 +612,28 @@ where
             let _ = self.motor.stop();
         }
 
-        // 2. Call motor driver's tick() for software PWM toggling only when active
+        // 2. Commutation step rate scaling and startup soft-start ramping
         if tick_result.is_ok() && self.active_speed.get() != 0 {
-            if let Err(e) = self.motor.tick().await {
-                let _ = self.set_running_state(false).await;
-                tick_result = Err(e.to_peripheral_error());
+            let abs_speed = self.active_speed.get().unsigned_abs();
+            let target_interval = calculate_commutation_step_ticks(abs_speed);
+
+            self.step_tick_counter = self.step_tick_counter.saturating_add(1);
+            if self.step_tick_counter >= self.commutation_interval_ticks {
+                self.step_tick_counter = 0;
+
+                // Soft-start ramp: gradually step commutation interval toward target interval
+                if self.commutation_interval_ticks > target_interval {
+                    self.commutation_interval_ticks =
+                        self.commutation_interval_ticks.saturating_sub(1);
+                } else if self.commutation_interval_ticks < target_interval {
+                    self.commutation_interval_ticks =
+                        self.commutation_interval_ticks.saturating_add(1);
+                }
+
+                if let Err(e) = self.motor.tick().await {
+                    let _ = self.set_running_state(false).await;
+                    tick_result = Err(e.to_peripheral_error());
+                }
             }
         }
 

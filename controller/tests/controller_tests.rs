@@ -357,10 +357,16 @@ fn test_motor_controller_tickable_vs_notick() {
         assert_eq!(controller.motor.tick_count, 0);
         assert!(controller.tick_motor().await.is_ok());
         assert_eq!(controller.motor.tick_count, 1);
-
-        // Test failing tick
+        // Test failing tick: tick until next commutation step executes
         controller.motor.should_fail_tick = true;
-        assert!(controller.tick_motor().await.is_err());
+        let mut tick_res = Ok(());
+        for _ in 0..15 {
+            tick_res = controller.tick_motor().await;
+            if tick_res.is_err() {
+                break;
+            }
+        }
+        assert!(tick_res.is_err());
         assert_eq!(controller.state(), MotorState::Off);
         assert_eq!(controller.motor.speed, MotorSpeed::ZERO);
         assert!(controller.tick_motor().await.is_ok());
@@ -584,8 +590,14 @@ fn test_worm_peaty_bobbit_630_motor_tick_driver_fault_stops_ticking() {
         // Simulate driver fault assertion (e.g. TMC6300 DIAG pin asserted)
         controller.motor.should_fail_tick = true;
 
-        // tick_motor() must return an error and immediately transition controller to Off
-        let tick_res = controller.tick_motor().await;
+        // tick_motor() must return an error and immediately transition controller to Off when next step executes
+        let mut tick_res = Ok(());
+        for _ in 0..15 {
+            tick_res = controller.tick_motor().await;
+            if tick_res.is_err() {
+                break;
+            }
+        }
         assert!(tick_res.is_err());
         assert_eq!(controller.state(), MotorState::Off);
         assert_eq!(controller.motor.speed, MotorSpeed::ZERO);
@@ -598,5 +610,97 @@ fn test_worm_peaty_bobbit_630_motor_tick_driver_fault_stops_ticking() {
         }
         assert_eq!(controller.motor.tick_count, count_before);
         assert_eq!(controller.state(), MotorState::Off);
+    });
+}
+
+#[test]
+fn test_worm_setosa_tubeworm_177_commutation_step_scaling_and_soft_start_ramp() {
+    futures::executor::block_on(async {
+        use controller::motor_controller::{
+            calculate_commutation_step_ticks, STARTUP_COMMUTATION_STEP_TICKS,
+        };
+
+        // Invariant 1: Speed scaling for target step intervals
+        // At speed 100: 1 tick (10ms) per step (100 Hz step rate)
+        assert_eq!(calculate_commutation_step_ticks(100), 1);
+        // At speed 50: 2 ticks (20ms) per step (50 Hz step rate)
+        assert_eq!(calculate_commutation_step_ticks(50), 2);
+        // At speed 20: 5 ticks (50ms) per step (20 Hz step rate)
+        assert_eq!(calculate_commutation_step_ticks(20), 5);
+        // At speed 10: 10 ticks (100ms) per step (10 Hz step rate)
+        assert_eq!(calculate_commutation_step_ticks(10), 10);
+        // At speed 1: 100 ticks (1000ms) per step (1 Hz step rate)
+        assert_eq!(calculate_commutation_step_ticks(1), 100);
+
+        // Invariant 2: Startup soft-start ramp and stepping intervals
+        let motor = MockTickableMotor::new();
+        let sensor = MockCurrentSensor::new(150);
+        let speed_sensor = MockSpeedSensor::new(3000);
+        let mut controller = MotorController::new(motor, sensor, speed_sensor);
+
+        controller.set_calibration(&model::calibration::MotorCalibration {
+            current_ma: model::calibration::FourPointCalibration::new(0, 0, 0, 1000),
+            max_rpm: Some(3000),
+            rpm_limit: Some(3000),
+        });
+
+        // Command speed 10 (target interval = 10 ticks)
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(10).unwrap()), None)
+            .await;
+
+        assert_eq!(controller.target_commutation_step_ticks(), 10);
+        assert_eq!(
+            controller.commutation_interval_ticks(),
+            STARTUP_COMMUTATION_STEP_TICKS
+        );
+
+        // Initial tick executes Step 0 immediately
+        assert_eq!(controller.motor.tick_count, 0);
+        assert!(controller.tick_motor().await.is_ok());
+        assert_eq!(controller.motor.tick_count, 1);
+
+        // Subsequent 9 ticks hold the step without stepping
+        for _ in 0..9 {
+            assert!(controller.tick_motor().await.is_ok());
+            assert_eq!(
+                controller.motor.tick_count, 1,
+                "Must hold step during 100ms interval"
+            );
+        }
+
+        // 10th tick advances to Step 1
+        assert!(controller.tick_motor().await.is_ok());
+        assert_eq!(
+            controller.motor.tick_count, 2,
+            "Must advance step when 100ms interval expires"
+        );
+
+        // Now test soft-start acceleration ramp on speed 100
+        controller.handle_command(MotorCommand::Stop, None).await;
+        assert_eq!(controller.commutation_interval_ticks(), 0);
+
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(100).unwrap()), None)
+            .await;
+        assert_eq!(controller.target_commutation_step_ticks(), 1);
+
+        // First step executes immediately
+        let initial_ticks = controller.motor.tick_count;
+        assert!(controller.tick_motor().await.is_ok());
+        assert_eq!(controller.motor.tick_count, initial_ticks + 1);
+
+        // Over the next steps, interval gradually decrements toward 1
+        let mut previous_interval = controller.commutation_interval_ticks();
+        while controller.commutation_interval_ticks() > 1 {
+            assert!(controller.tick_motor().await.is_ok());
+            let current = controller.commutation_interval_ticks();
+            assert!(
+                current <= previous_interval,
+                "Interval must decrease during ramp"
+            );
+            previous_interval = current;
+        }
+        assert_eq!(controller.commutation_interval_ticks(), 1);
     });
 }
