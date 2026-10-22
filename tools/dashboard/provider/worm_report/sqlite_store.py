@@ -170,9 +170,11 @@ class SQLiteWormStore:
                 "updated_at, resolved_at, resolution_notes, custom_sections FROM worms"
             ).fetchall()
 
-            def _sort_key(r: sqlite3.Row) -> int:
+            def _sort_key(r: sqlite3.Row) -> tuple[str, int, str]:
+                created = r["created_at"] or ""
                 m = re.search(r"\d+", r["id"] or "")
-                return int(m.group(0)) if m else 999999
+                num = int(m.group(0)) if m else 999999
+                return (created if created else f"0000-{num:06d}", num, r["id"] or "")
 
             sorted_bug_rows = sorted(bug_rows, key=_sort_key)
 
