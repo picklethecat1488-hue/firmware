@@ -47,6 +47,9 @@ def load_last_session(repo_root: Path) -> Optional[Dict[str, Any]]:
 
 def save_last_session(repo_root: Path, session: Dict[str, Any]) -> None:
     """Persist target selection from the active connected session."""
+    # Guard against automated test suites mutating the live workspace session file
+    if "PYTEST_CURRENT_TEST" in os.environ and repo_root.resolve() == Path(__file__).resolve().parents[4]:
+        return
     session_path = get_session_file(repo_root)
     try:
         session_path.parent.mkdir(parents=True, exist_ok=True)
@@ -107,11 +110,14 @@ def discover_target_packages(repo_root: Path) -> List[Dict[str, Any]]:
         try:
             content = cargo_path.read_text(encoding="utf-8")
             pkg_name = None
+            default_run = None
             binaries: List[str] = []
 
             if tomllib:
                 data = tomllib.loads(content)
-                pkg_name = data.get("package", {}).get("name")
+                pkg_data = data.get("package", {})
+                pkg_name = pkg_data.get("name")
+                default_run = pkg_data.get("default-run")
                 for b in data.get("bin", []):
                     b_name = b.get("name")
                     if b_name:
@@ -121,6 +127,9 @@ def discover_target_packages(repo_root: Path) -> List[Dict[str, Any]]:
                 pkg_match = re.search(r'\[package\][^\[]*?name\s*=\s*"([^"]+)"', content, re.DOTALL)
                 if pkg_match:
                     pkg_name = pkg_match.group(1)
+                default_run_match = re.search(r'\[package\][^\[]*?default-run\s*=\s*"([^"]+)"', content, re.DOTALL)
+                if default_run_match:
+                    default_run = default_run_match.group(1)
                 bin_matches = re.findall(r'\[\[bin\]\][^\[]*?name\s*=\s*"([^"]+)"', content, re.DOTALL)
                 binaries.extend(bin_matches)
 
@@ -130,12 +139,28 @@ def discover_target_packages(repo_root: Path) -> List[Dict[str, Any]]:
 
             if pkg_name and binaries:
                 chip_val = "rp2040" if pkg_name == "cat_detector" else None
-                inferred = infer_arm_target(pkg_name, binaries[0], chip=chip_val, repo_root=repo_root)
+                # Determine default binary: explicit default-run > cat_detector_shell > shell binary > first binary
+                if default_run and default_run in binaries:
+                    default_bin = default_run
+                elif "cat_detector_shell" in binaries:
+                    default_bin = "cat_detector_shell"
+                elif any("shell" in b for b in binaries):
+                    default_bin = next(b for b in binaries if "shell" in b)
+                else:
+                    default_bin = binaries[0]
+
+                # Ensure default_bin appears first in binaries list for UI selection
+                if default_bin in binaries:
+                    binaries_ordered = [default_bin] + [b for b in binaries if b != default_bin]
+                else:
+                    binaries_ordered = binaries
+
+                inferred = infer_arm_target(pkg_name, default_bin, chip=chip_val, repo_root=repo_root)
                 discovered.append(
                     {
                         "package": pkg_name,
-                        "binaries": binaries,
-                        "default_bin": binaries[0],
+                        "binaries": binaries_ordered,
+                        "default_bin": default_bin,
                         "inferred_target": inferred,
                         "chip": chip_val or "rp2040",
                     }

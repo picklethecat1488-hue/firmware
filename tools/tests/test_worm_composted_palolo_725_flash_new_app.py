@@ -26,9 +26,9 @@ from host_daemon.provider.daemon.runner import DaemonRunner
 from host_daemon.provider.daemon.server import HostDaemonRequestHandler, HostDaemonServer
 
 
-def test_daemon_runner_update_config():
+def test_daemon_runner_update_config(tmp_path: Path):
     """Verify DaemonRunner.update_config updates runner fields and sync_status."""
-    runner = DaemonRunner(repo_root=REPO_ROOT, package="cat_detector", bin_name="cat_detector_shell", release=False)
+    runner = DaemonRunner(repo_root=tmp_path, package="cat_detector", bin_name="cat_detector_shell", release=False)
     assert runner.bin_name == "cat_detector_shell"
     assert runner.release is False
 
@@ -86,6 +86,7 @@ def test_cli_forwards_new_app_when_daemon_running():
 
     with patch("host_daemon.cli.get_lock_data", return_value=mock_lock), \
          patch("host_daemon.cli.is_pid_alive", return_value=True), \
+         patch("host_daemon.cli.save_last_session"), \
          patch("host_daemon.cli.send_daemon_request") as mock_send:
         mock_send.return_value = {"success": True}
         ret = main(["--package", "cat_detector", "--bin", "cat_detector_app", "--release"])

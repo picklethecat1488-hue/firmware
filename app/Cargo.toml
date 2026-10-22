@@ -4,21 +4,22 @@ version = "0.1.0"
 edition = "2021"
 license.workspace = true
 publish = false
+default-run = "cat_detector_shell"
 
 [lib]
 name = "cat_detector"
 path = "src/cat_detector.rs"
 
 [[bin]]
-name = "cat_detector_app"
-path = "src/cat_detector_app.rs"
-test = false
-bench = false
-
-[[bin]]
 name = "cat_detector_shell"
 path = "src/cat_detector_shell.rs"
 test = true
+bench = false
+
+[[bin]]
+name = "cat_detector_app"
+path = "src/cat_detector_app.rs"
+test = false
 bench = false
 
 [[bin]]

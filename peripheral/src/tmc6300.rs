@@ -99,6 +99,36 @@ pub const fn clamp_on_count_short_protection(duty_cycle: u8) -> u8 {
     }
 }
 
+/// Calculates the PIO PWM on_count and off_count cycles for a given commanded duty cycle percentage (0..=100).
+///
+/// For duty cycles up to [`SHORT_PROTECTION_MAX_ON_COUNT`] (14%), modulates on_count with a fixed period of 100 cycles (4 µs).
+/// For duty cycles above 14%, holds on_count at the maximum safe limit (14 cycles = 800 ns, staying strictly below the
+/// 1.0 µs TMC6300 short-circuit threshold t_S2G) while modulating off_count downward from 86 cycles down to 1 cycle.
+/// This delivers smooth, full torque scaling up to 100% duty cycle while guaranteeing individual FET conduction pulses never trip DIAG.
+pub const fn calculate_pwm_counts(duty_cycle: u8) -> (u8, u8) {
+    if duty_cycle == 0 {
+        (0, PWM_PERIOD_CYCLES)
+    } else if duty_cycle < SHORT_PROTECTION_MIN_ON_COUNT {
+        let on = SHORT_PROTECTION_MIN_ON_COUNT;
+        let off = PWM_PERIOD_CYCLES - on;
+        (on, off)
+    } else if duty_cycle <= SHORT_PROTECTION_MAX_ON_COUNT {
+        let on = duty_cycle;
+        let off = PWM_PERIOD_CYCLES - on;
+        (on, off)
+    } else {
+        let on = SHORT_PROTECTION_MAX_ON_COUNT;
+        let duty = if duty_cycle > 100 {
+            100
+        } else {
+            duty_cycle as u32
+        };
+        let off = (((100 - duty) * (on as u32) + (duty / 2)) / duty) as u8;
+        let off = if off == 0 { 1 } else { off };
+        (on, off)
+    }
+}
+
 /// Computes the winding connection pulse duration in nanoseconds for a given on_count, clock divider, and system clock frequency.
 pub const fn calculate_on_time_ns(on_count: u8, clock_divider: u32, sys_clk_hz: u32) -> u32 {
     let cycles = (on_count as u64) + 6;
@@ -903,16 +933,16 @@ where
         self.pwm_frequency_hz
     }
 
-    /// Returns the effective short-protection clamped on_count loop cycles for the active duty cycle.
+    /// Returns the effective on_count loop cycles for the active duty cycle.
     pub fn effective_on_count(&self) -> u8 {
-        clamp_on_count_short_protection(self.duty_cycle)
+        calculate_pwm_counts(self.duty_cycle).0
     }
 
-    /// Returns the 32-bit PWM word with short-protection clamped on_count and off_count.
+    /// Returns the 32-bit PWM word with on_count and off_count for the commanded duty cycle.
     pub fn effective_word(&self) -> u32 {
         let mask = phase_mask(self.speed, self.commutation_step);
-        let on = self.effective_on_count();
-        make_pwm_word(mask, on, PWM_PERIOD_CYCLES.saturating_sub(on))
+        let (on, off) = calculate_pwm_counts(self.duty_cycle);
+        make_pwm_word(mask, on, off)
     }
 
     /// Returns the active winding connection duration in nanoseconds.
@@ -1111,16 +1141,16 @@ where
         self.pwm_frequency_hz
     }
 
-    /// Returns the effective short-protection clamped on_count loop cycles for the active duty cycle.
+    /// Returns the effective on_count loop cycles for the active duty cycle.
     pub fn effective_on_count(&self) -> u8 {
-        clamp_on_count_short_protection(self.duty_cycle)
+        calculate_pwm_counts(self.duty_cycle).0
     }
 
-    /// Returns the 32-bit PWM word with short-protection clamped on_count and off_count.
+    /// Returns the 32-bit PWM word with on_count and off_count for the commanded duty cycle.
     pub fn effective_word(&self) -> u32 {
         let mask = phase_mask(self.speed, self.commutation_step);
-        let on = self.effective_on_count();
-        make_pwm_word(mask, on, PWM_PERIOD_CYCLES.saturating_sub(on))
+        let (on, off) = calculate_pwm_counts(self.duty_cycle);
+        make_pwm_word(mask, on, off)
     }
 
     /// Returns the active winding connection duration in nanoseconds assuming 125 MHz sys_clk.

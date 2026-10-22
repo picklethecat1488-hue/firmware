@@ -2256,7 +2256,7 @@ fn test_worm_slithering_lumbricus_809_tmc6300_short_protection_pulse_invariants(
         assert_eq!(pio_motor.pulse_duration_ns(), 800);
         let eff_word100 = pio_motor.effective_word();
         assert_eq!((eff_word100 >> 8) & 0xFF, 14);
-        assert_eq!((eff_word100 >> 16) & 0xFF, 86);
+        assert_eq!((eff_word100 >> 16) & 0xFF, 1);
 
         // Advance commutation tick
         assert!(pio_motor.tick().await.is_ok());

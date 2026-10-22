@@ -10,7 +10,7 @@ use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::calibration::Calibration;
 use model::interfaces::{Motor, PowerMeasurementMode, PowerSensor, SpeedSensor, Tickable};
 use model::telemetry::TelemetryClient;
-use model::types::{MotorSpeed, PeripheralError, SystemStatus};
+use model::types::{MotorConfig, MotorSpeed, PeripheralError, SystemStatus};
 use peripheral::ToPeripheralError;
 
 use crate::tracing::{self, controller_context};
@@ -24,10 +24,31 @@ pub const MOTOR_INACTIVE_TICK_INTERVAL: embassy_time::Duration =
     embassy_time::Duration::from_secs(1);
 
 /// Startup blanking period (3 seconds at 100Hz = 300 ticks) during which safety limits/cutoff checks are bypassed.
-pub const MOTOR_STARTUP_BLANKING_TICKS: u32 = 300;
+pub const MOTOR_STARTUP_BLANKING_TICKS: u32 = MotorConfig::DEFAULT.startup_blanking_ticks;
 
 /// Default maximum current limit for the motor controller in milliamperes (2.5A).
 pub const DEFAULT_MAX_CURRENT_MA: i32 = 2500;
+
+/// Initial commutation step interval in 10ms ticks during motor startup soft-start ramp (10 ticks = 100ms = 10Hz step rate).
+pub const STARTUP_COMMUTATION_STEP_TICKS: u32 = MotorConfig::DEFAULT.startup_commutation_step_ticks;
+
+/// Base speed percentage divisor for calculating target commutation step interval ticks.
+pub const COMMUTATION_SPEED_DIVISOR: u32 = MotorConfig::DEFAULT.commutation_speed_divisor;
+
+/// Minimum commutation step interval in 10ms ticks (1 tick = 10ms = 100Hz step rate at full speed).
+pub const MIN_COMMUTATION_STEP_TICKS: u32 = MotorConfig::DEFAULT.min_commutation_step_ticks;
+
+/// Maximum commutation step interval in 10ms ticks (100 ticks = 1000ms = 1Hz step rate at 1% speed).
+pub const MAX_COMMUTATION_STEP_TICKS: u32 = MotorConfig::DEFAULT.max_commutation_step_ticks;
+
+/// Computes the target commutation step interval in 10ms controller ticks for a given commanded speed percentage (1..=100).
+#[cfg_attr(
+    all(target_arch = "arm", feature = "motor-core"),
+    link_section = ".data.core1_func"
+)]
+pub const fn calculate_commutation_step_ticks(abs_speed: u8) -> u32 {
+    MotorConfig::DEFAULT.calculate_commutation_step_ticks(abs_speed)
+}
 
 /// Safety limits for the motor controller.
 pub struct MotorLimits {
@@ -82,6 +103,9 @@ pub struct MotorController<M, C, S> {
     startup_ticks: u32,
     safety_bypass: bool,
     max_hardware_current_ma: i32,
+    step_tick_counter: u32,
+    commutation_interval_ticks: u32,
+    config: MotorConfig,
 }
 
 /// The filename of the motor calibration file.
@@ -165,7 +189,7 @@ where
     /// Creates a new motor controller managing the specified motor, current sensor, and speed sensor
     /// using default canonical safety limits (2500 mA maximum current).
     pub fn new(motor: M, current_sensor: C, speed_sensor: S) -> Self {
-        Self::new_with_max_current(motor, current_sensor, speed_sensor, DEFAULT_MAX_CURRENT_MA)
+        Self::new_with_config(motor, current_sensor, speed_sensor, MotorConfig::DEFAULT)
     }
 
     /// Creates a new motor controller managing the specified motor, current sensor, and speed sensor
@@ -175,6 +199,19 @@ where
         current_sensor: C,
         speed_sensor: S,
         max_current_ma: i32,
+    ) -> Self {
+        let mut config = MotorConfig::DEFAULT;
+        config.default_max_current_ma = max_current_ma;
+        Self::new_with_config(motor, current_sensor, speed_sensor, config)
+    }
+
+    /// Creates a new motor controller managing the specified motor, current sensor, and speed sensor
+    /// with a custom [`MotorConfig`].
+    pub fn new_with_config(
+        motor: M,
+        current_sensor: C,
+        speed_sensor: S,
+        config: MotorConfig,
     ) -> Self {
         Self {
             state: MotorState::Off,
@@ -188,19 +225,38 @@ where
             calibration_present: false,
             limits: MotorLimits {
                 min_current_ma: 15,
-                max_current_ma,
+                max_current_ma: config.default_max_current_ma,
                 max_rpm: 0,
                 rpm_limit: 0,
             },
             startup_ticks: 0,
             safety_bypass: false,
-            max_hardware_current_ma: max_current_ma,
+            max_hardware_current_ma: config.default_max_current_ma,
+            step_tick_counter: 0,
+            commutation_interval_ticks: 0,
+            config,
         }
+    }
+
+    /// Returns a reference to the active [`MotorConfig`].
+    pub fn config(&self) -> &MotorConfig {
+        &self.config
     }
 
     /// Gets the current operating state of the motor.
     pub fn state(&self) -> MotorState {
         self.state
+    }
+
+    /// Returns the active commutation step interval in 10ms controller ticks.
+    pub fn commutation_interval_ticks(&self) -> u32 {
+        self.commutation_interval_ticks
+    }
+
+    /// Returns the target commutation step interval in 10ms controller ticks for the commanded speed.
+    pub fn target_commutation_step_ticks(&self) -> u32 {
+        self.config
+            .calculate_commutation_step_ticks(self.speed.get().unsigned_abs())
     }
 
     /// Gets the minimum current limit in mA.
@@ -302,7 +358,7 @@ where
         // If the motor is running, verify safety limits (RPM and load torque)
         if !self.safety_bypass
             && self.state == MotorState::On
-            && self.startup_ticks > MOTOR_STARTUP_BLANKING_TICKS
+            && self.startup_ticks > self.config.startup_blanking_ticks
         {
             let rpm = self.current_rpm();
             match self.limits.check_limits(rpm, current) {
@@ -370,6 +426,8 @@ where
     async fn set_running_state(&mut self, running: bool) -> Result<(), PeripheralError> {
         if running {
             self.startup_ticks = 0;
+            self.commutation_interval_ticks = self.config.startup_commutation_step_ticks;
+            self.step_tick_counter = self.config.startup_commutation_step_ticks;
             if self.state == MotorState::Off {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::info!("Starting motor...");
@@ -389,6 +447,8 @@ where
             self.speed = MotorSpeed::ZERO;
             self.last_measured_rpm = 0;
             self.last_current_ma = 0;
+            self.step_tick_counter = 0;
+            self.commutation_interval_ticks = 0;
             let stop_res = self.motor.stop();
             let _ = self
                 .current_sensor
@@ -562,11 +622,28 @@ where
             let _ = self.motor.stop();
         }
 
-        // 2. Call motor driver's tick() for software PWM toggling only when active
+        // 2. Commutation step rate scaling and startup soft-start ramping
         if tick_result.is_ok() && self.active_speed.get() != 0 {
-            if let Err(e) = self.motor.tick().await {
-                let _ = self.set_running_state(false).await;
-                tick_result = Err(e.to_peripheral_error());
+            let abs_speed = self.active_speed.get().unsigned_abs();
+            let target_interval = calculate_commutation_step_ticks(abs_speed);
+
+            self.step_tick_counter = self.step_tick_counter.saturating_add(1);
+            if self.step_tick_counter >= self.commutation_interval_ticks {
+                self.step_tick_counter = 0;
+
+                // Soft-start ramp: gradually step commutation interval toward target interval
+                if self.commutation_interval_ticks > target_interval {
+                    self.commutation_interval_ticks =
+                        self.commutation_interval_ticks.saturating_sub(1);
+                } else if self.commutation_interval_ticks < target_interval {
+                    self.commutation_interval_ticks =
+                        self.commutation_interval_ticks.saturating_add(1);
+                }
+
+                if let Err(e) = self.motor.tick().await {
+                    let _ = self.set_running_state(false).await;
+                    tick_result = Err(e.to_peripheral_error());
+                }
             }
         }
 
@@ -660,7 +737,7 @@ where
 
     /// Bypasses the startup blanking period immediately (primarily for testing).
     pub fn bypass_startup_blanking(&mut self) {
-        self.startup_ticks = MOTOR_STARTUP_BLANKING_TICKS + 1;
+        self.startup_ticks = self.config.startup_blanking_ticks + 1;
     }
 
     /// Update the calibration parameters in RAM (Core 1).

@@ -9,6 +9,9 @@ use model::interfaces::SpeedSensor;
 /// Default number of Hall pulses per mechanical revolution (6 magnets = 3 pole pairs).
 pub const DEFAULT_PULSES_PER_REV: u8 = 3;
 
+/// Default measurement window interval for calculating live RPM in milliseconds (100ms = 10Hz calculation rate).
+pub const DEFAULT_RPM_CALC_INTERVAL_MS: u32 = 100;
+
 /// Driver for a digital latching Hall effect speed sensor (e.g., AH3577, US1881).
 ///
 /// Measures rotational speed contactlessly by counting digital output transitions
@@ -19,6 +22,7 @@ pub struct HallSensor<P> {
     pulse_count: u32,
     current_rpm: u32,
     pulses_per_rev: u8,
+    last_calc_instant: Option<embassy_time::Instant>,
 }
 
 impl<P: InputPin> HallSensor<P> {
@@ -39,6 +43,7 @@ impl<P: InputPin> HallSensor<P> {
             } else {
                 pulses_per_rev
             },
+            last_calc_instant: None,
         }
     }
 
@@ -59,12 +64,17 @@ impl<P: InputPin> HallSensor<P> {
     /// Calculates and updates the current RPM given elapsed milliseconds since the last calculation.
     ///
     /// Clears the accumulated pulse counter upon calculation.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
     pub fn update_rpm(&mut self, elapsed_ms: u32) {
         if elapsed_ms > 0 {
             let ppr = self.pulses_per_rev as u64;
             let elapsed = elapsed_ms as u64;
             self.current_rpm = ((self.pulse_count as u64 * 60_000) / (ppr * elapsed)) as u32;
             self.pulse_count = 0;
+            self.last_calc_instant = Some(embassy_time::Instant::now());
         }
     }
 
@@ -88,6 +98,8 @@ impl<P: InputPin> SpeedSensor for HallSensor<P> {
     type Error = P::Error;
 
     /// Reads the current measured rotational speed in RPM.
+    ///
+    /// Periodically computes RPM every [`DEFAULT_RPM_CALC_INTERVAL_MS`] based on accumulated Hall pulse edges.
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.core1_func"
@@ -95,6 +107,15 @@ impl<P: InputPin> SpeedSensor for HallSensor<P> {
     #[tracing::instrument(core1 = "core1", level = "trace")]
     fn read_rpm(&mut self) -> Result<u32, Self::Error> {
         self.poll_state()?;
+        let now = embassy_time::Instant::now();
+        if let Some(last) = self.last_calc_instant {
+            let elapsed = now.duration_since(last).as_millis() as u32;
+            if elapsed >= DEFAULT_RPM_CALC_INTERVAL_MS {
+                self.update_rpm(elapsed);
+            }
+        } else {
+            self.last_calc_instant = Some(now);
+        }
         Ok(self.current_rpm)
     }
 }
