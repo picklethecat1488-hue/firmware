@@ -739,10 +739,7 @@ fn test_cr_7f321327_motor_driver_tick_interval_sync() {
 
         // 1. Controller compile-time constant is synchronized with motor driver default
         assert_eq!(MOTOR_TICK_INTERVAL, DEFAULT_TICK_INTERVAL);
-        assert_eq!(
-            MOTOR_TICK_INTERVAL,
-            embassy_time::Duration::from_micros(500)
-        );
+        assert_eq!(MOTOR_TICK_INTERVAL, embassy_time::Duration::from_millis(10));
 
         // 2. MotorController tick_interval() reflects the driver's configured tick interval
         let motor = MockTickableMotor::new();
@@ -753,10 +750,10 @@ fn test_cr_7f321327_motor_driver_tick_interval_sync() {
         // MockTickableMotor defaults to standard 10ms tick interval via Tickable trait default
         assert_eq!(
             controller.tick_interval(),
-            embassy_time::Duration::from_micros(10_000)
+            embassy_time::Duration::from_millis(10)
         );
 
-        // 3. With TMC6300 PIO driver mock, tick_interval() matches TMC6300 (500us)
+        // 3. With TMC6300 PIO driver mock, tick_interval() matches TMC6300 (10ms)
         struct MockInputPin;
         impl embedded_hal::digital::ErrorType for MockInputPin {
             type Error = core::convert::Infallible;
@@ -776,7 +773,7 @@ fn test_cr_7f321327_motor_driver_tick_interval_sync() {
         let mut controller_tmc = MotorController::new(tmc_driver, sensor2, speed_sensor2);
         assert_eq!(
             controller_tmc.tick_interval(),
-            embassy_time::Duration::from_micros(500)
+            embassy_time::Duration::from_millis(10)
         );
         assert_eq!(controller_tmc.tick_interval(), MOTOR_TICK_INTERVAL);
 
@@ -786,5 +783,74 @@ fn test_cr_7f321327_motor_driver_tick_interval_sync() {
             controller_tmc.tick_interval(),
             embassy_time::Duration::from_micros(250)
         );
+    });
+}
+
+#[test]
+fn test_worm_proboscid_roundworm_8_startup_commutation_and_alignment() {
+    futures::executor::block_on(async {
+        use controller::motor_controller::{MOTOR_TICK_INTERVAL, STARTUP_COMMUTATION_STEP_TICKS};
+
+        // 1. Tick interval must be 10ms (10_000 us) to ensure open-loop commutation timing
+        // supports physical BLDC rotor synchronism (10 ticks = 100ms startup interval)
+        assert_eq!(MOTOR_TICK_INTERVAL, embassy_time::Duration::from_millis(10));
+
+        // 2. Startup commutation step duration must be at least 50ms (here: 100ms = 10 ticks * 10ms)
+        let startup_period_us =
+            STARTUP_COMMUTATION_STEP_TICKS * (MOTOR_TICK_INTERVAL.as_micros() as u32);
+        assert!(
+            startup_period_us >= 50_000,
+            "Startup commutation step duration must be >= 50ms (got {}us)",
+            startup_period_us
+        );
+
+        // 3. Controller startup alignment: holding Step 0 for full startup duration
+        let motor = MockTickableMotor::new();
+        let sensor = MockCurrentSensor::new(150);
+        let speed_sensor = MockSpeedSensor::new(0);
+        let mut controller = MotorController::new(motor, sensor, speed_sensor);
+
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(100).unwrap()), None)
+            .await;
+
+        // Startup blanking must be 300 ticks (3 seconds at 100 Hz)
+        assert_eq!(controller.config().startup_blanking_ticks, 300);
+
+        // Initial tick executes Step 0 for alignment
+        assert_eq!(controller.motor.tick_count, 0);
+        assert!(controller.tick_motor().await.is_ok());
+        assert_eq!(
+            controller.motor.tick_count, 1,
+            "Initial tick must energize Step 0"
+        );
+
+        // Step 0 must be held for the remaining 9 ticks of the 10-tick startup period
+        for tick in 1..STARTUP_COMMUTATION_STEP_TICKS {
+            assert!(controller.tick_motor().await.is_ok());
+            assert_eq!(
+                controller.motor.tick_count, 1,
+                "Must hold Step 0 during startup alignment period at tick {}",
+                tick
+            );
+        }
+
+        // The 10th tick after Step 0 advances to Step 1 and decrements interval to 9
+        assert!(controller.tick_motor().await.is_ok());
+        assert_eq!(
+            controller.motor.tick_count, 2,
+            "Must advance to Step 1 after startup alignment period expires"
+        );
+        assert_eq!(controller.commutation_interval_ticks(), 9);
+
+        // Next 8 ticks hold Step 1
+        for _ in 1..9 {
+            assert!(controller.tick_motor().await.is_ok());
+            assert_eq!(controller.motor.tick_count, 2);
+        }
+        // 9th tick advances to Step 2 and decrements interval to 8
+        assert!(controller.tick_motor().await.is_ok());
+        assert_eq!(controller.motor.tick_count, 3);
+        assert_eq!(controller.commutation_interval_ticks(), 8);
     });
 }
