@@ -11,6 +11,7 @@ import time
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
 from host_daemon.provider.bringup.bringup_manager import BringupManager
+from host_daemon.provider.daemon.config import infer_arm_target, load_last_session, save_last_session
 
 
 class DaemonRunner:
@@ -25,6 +26,7 @@ class DaemonRunner:
         release: bool = False,
         speed: int = 1000,
         chip: Optional[str] = None,
+        package_selection_mode: bool = False,
     ) -> None:
         """Initialize DaemonRunner with workspace configuration and build parameters."""
         self.repo_root = repo_root
@@ -34,6 +36,7 @@ class DaemonRunner:
         self.release = release
         self.speed = speed
         self.chip = chip
+        self.package_selection_mode = package_selection_mode
 
         self.elf_path: Optional[Path] = None
         self.host_cli_path: Optional[Path] = None
@@ -51,7 +54,7 @@ class DaemonRunner:
         self._streaming_thread: Optional[threading.Thread] = None
         self.is_flashed = False
         self.is_connected = False
-        self.status_message = "Initialized"
+        self.status_message = "Awaiting Target Configuration" if package_selection_mode else "Initialized"
         self.sync_logs: Deque[str] = deque(maxlen=2000)
         self.is_sync_cancelled: bool = False
         self._active_sync_process: Optional[subprocess.Popen] = None
@@ -170,6 +173,17 @@ class DaemonRunner:
                     "speed": self.speed,
                 }
             )
+        save_last_session(
+            self.repo_root,
+            {
+                "package": self.package,
+                "bin": self.bin_name,
+                "release": self.release,
+                "target": self.target,
+                "speed": self.speed,
+                "chip": self.chip,
+            },
+        )
         self.log(
             f"Updated configuration: package={self.package}, bin={self.bin_name}, target={self.target}, profile={'release' if self.release else 'debug'}, speed={self.speed}"
         )
@@ -223,6 +237,20 @@ class DaemonRunner:
         with self._lock:
             if self._sync_thread and self._sync_thread.is_alive():
                 return
+            self.is_sync_cancelled = False
+            self.sync_logs.clear()
+            self.sync_status.update(
+                {
+                    "active": True,
+                    "step": "starting",
+                    "step_index": 0,
+                    "total_steps": 4,
+                    "progress": 5,
+                    "message": "Starting target synchronization...",
+                    "error": None,
+                    "console": [],
+                }
+            )
             self._sync_thread = threading.Thread(target=self.sync, daemon=True)
             self._sync_thread.start()
 

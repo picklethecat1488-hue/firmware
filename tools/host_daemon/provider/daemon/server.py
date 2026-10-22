@@ -55,8 +55,15 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
 
         if path in ("/", "/index.html"):
             try:
+                from host_daemon.provider.daemon.config import discover_target_packages, load_last_session
+
                 template = self.server.jinja_env.get_template("host_daemon.html.j2")
-                html = template.render(runner=runner)
+                html = template.render(
+                    runner=runner,
+                    package_selection_mode=getattr(runner, "package_selection_mode", False),
+                    target_packages=discover_target_packages(runner.repo_root),
+                    last_session=load_last_session(runner.repo_root),
+                )
                 body = html.encode("utf-8")
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -70,6 +77,24 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 self.send_error(500, f"Template rendering error: {e}")
         elif path == "/api/status":
             self._send_json(runner.get_status())
+        elif path == "/api/targets":
+            from host_daemon.provider.daemon.config import discover_target_packages, load_last_session
+
+            self._send_json(
+                {
+                    "packages": discover_target_packages(runner.repo_root),
+                    "last_session": load_last_session(runner.repo_root),
+                    "current": {
+                        "package": runner.package,
+                        "bin": runner.bin_name,
+                        "release": runner.release,
+                        "target": runner.target,
+                        "speed": runner.speed,
+                        "chip": runner.chip,
+                    },
+                    "package_selection_mode": getattr(runner, "package_selection_mode", False),
+                }
+            )
         elif path in ("/api/sync", "/api/sync/status"):
             with runner._lock:
                 self._send_json(dict(runner.sync_status))
@@ -190,6 +215,67 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     pass
             runner.sync_async()
             self._send_json({"success": True, "sync": runner.sync_status})
+        elif path == "/api/target/configure":
+            from host_daemon.provider.daemon.config import infer_arm_target, save_last_session
+
+            pkg = payload.get("package") or runner.package
+            bin_name = payload.get("bin") or payload.get("bin_name") or runner.bin_name
+            rel = payload.get("release") if "release" in payload else runner.release
+            spd = payload.get("speed") or runner.speed
+            chp = payload.get("chip") or runner.chip
+            tgt = payload.get("target")
+
+            if not tgt:
+                tgt = infer_arm_target(pkg, bin_name, chip=chp, repo_root=runner.repo_root)
+
+            runner.update_config(
+                target=tgt,
+                package=pkg,
+                bin_name=bin_name,
+                release=rel,
+                speed=spd,
+                chip=chp,
+            )
+            runner.package_selection_mode = False
+            save_last_session(
+                runner.repo_root,
+                {
+                    "package": pkg,
+                    "bin": bin_name,
+                    "release": rel,
+                    "target": tgt,
+                    "speed": spd,
+                    "chip": chp,
+                },
+            )
+            try:
+                from host_daemon.cli import get_lock_data, write_lock_file
+
+                lock_data = get_lock_data() or {}
+                lock_data.update(
+                    {
+                        "target": runner.target,
+                        "package": runner.package,
+                        "bin": runner.bin_name,
+                        "profile": "release" if runner.release else "debug",
+                        "speed": runner.speed,
+                    }
+                )
+                write_lock_file(lock_data)
+            except Exception:
+                pass
+
+            runner.sync_async()
+            self._send_json(
+                {
+                    "success": True,
+                    "message": "Target configuration applied and synchronization started.",
+                    "target": tgt,
+                    "package": pkg,
+                    "bin": bin_name,
+                    "profile": "release" if rel else "debug",
+                }
+            )
         elif path == "/api/sync/cancel":
             res = runner.cancel_sync()
             self._send_json(res)
