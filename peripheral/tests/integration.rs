@@ -2266,3 +2266,28 @@ fn test_worm_slithering_lumbricus_809_tmc6300_short_protection_pulse_invariants(
         assert_eq!((eff_step1 >> 8) & 0xFF, 14);
     });
 }
+
+#[test]
+fn test_worm_segmented_sipunculid_504_hall_sensor_preserves_rpm_between_slow_pulses() {
+    let pin_state = std::sync::atomic::AtomicBool::new(false);
+    let pin = MockPin {
+        is_high: &pin_state,
+    };
+    let mut sensor = peripheral::hall_sensor::HallSensor::new(pin);
+    use model::interfaces::SpeedSensor;
+
+    // Simulate 1 pulse arriving at slow speed (166 RPM)
+    pin_state.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(sensor.poll_state().is_ok());
+    assert_eq!(sensor.pulse_count(), 1);
+
+    // Calculate RPM for 1 pulse over 120 ms:
+    // (1 * 60,000) / (3 * 120) = 60,000 / 360 = 166 RPM
+    sensor.update_rpm(120);
+    assert_eq!(sensor.read_rpm(), Ok(166));
+
+    // When a calculation window passes without a new pulse (pulse_count == 0),
+    // RPM must NOT collapse to 0 RPM
+    sensor.update_rpm(100);
+    assert_eq!(sensor.read_rpm(), Ok(166));
+}

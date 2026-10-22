@@ -704,3 +704,29 @@ fn test_worm_setosa_tubeworm_177_commutation_step_scaling_and_soft_start_ramp() 
         assert_eq!(controller.commutation_interval_ticks(), 1);
     });
 }
+
+#[test]
+fn test_worm_segmented_sipunculid_504_read_rpm_samples_speed_sensor() {
+    futures::executor::block_on(async {
+        use controller::motor_controller::SendSignalU32Ptr;
+
+        let motor = MockTickableMotor::new();
+        let sensor = MockCurrentSensor::new(150);
+        let speed_sensor = MockSpeedSensor::new(2500);
+        let mut controller = MotorController::new(motor, sensor, speed_sensor);
+
+        // Start motor without pre-existing calibration
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(100).unwrap()), None)
+            .await;
+
+        // Command ReadRpm via channel signal pattern
+        let signal = embassy_sync::signal::Signal::new();
+        let cmd = MotorCommand::ReadRpm(SendSignalU32Ptr(&signal as *const _));
+        controller.handle_command(cmd, None).await;
+
+        let rpm = signal.wait().await;
+        assert_eq!(rpm, Ok(2500u32));
+        assert_eq!(controller.measured_rpm(), 2500);
+    });
+}

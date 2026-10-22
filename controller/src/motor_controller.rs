@@ -16,14 +16,14 @@ use peripheral::ToPeripheralError;
 use crate::tracing::{self, controller_context};
 use crate::types::{MotorCalState, MotorSafetyStatus, MotorState};
 
-/// The tick interval of the motor controller (10ms / 100Hz).
-pub const MOTOR_TICK_INTERVAL: embassy_time::Duration = embassy_time::Duration::from_millis(10);
+/// The tick interval of the motor controller (500µs / 2kHz for high-speed BLDC commutation).
+pub const MOTOR_TICK_INTERVAL: embassy_time::Duration = embassy_time::Duration::from_micros(500);
 
 /// The tick interval of the motor controller when inactive (1s).
 pub const MOTOR_INACTIVE_TICK_INTERVAL: embassy_time::Duration =
     embassy_time::Duration::from_secs(1);
 
-/// Startup blanking period (3 seconds at 100Hz = 300 ticks) during which safety limits/cutoff checks are bypassed.
+/// Startup blanking period (3 seconds at 2000Hz = 6000 ticks) during which safety limits/cutoff checks are bypassed.
 pub const MOTOR_STARTUP_BLANKING_TICKS: u32 = MotorConfig::DEFAULT.startup_blanking_ticks;
 
 /// Default maximum current limit for the motor controller in milliamperes (2.5A).
@@ -554,6 +554,9 @@ where
                 }
             }
             MotorCommand::ReadRpm(signal_ptr) => {
+                if let Ok(rpm) = self.speed_sensor.read_rpm() {
+                    self.last_measured_rpm = rpm;
+                }
                 let rpm = self.current_rpm();
                 unsafe {
                     (*signal_ptr.0).signal(Ok(rpm));
