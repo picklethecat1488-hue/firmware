@@ -15,8 +15,13 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
   <link rel="shortcut icon" href="/static/favicon.ico">
+  <link rel="stylesheet" href="/static/common.css">
   <style>
-    html { font-size: 80%; }
+    html {
+      font-size: 80%;
+      height: 100%;
+      width: 100%;
+    }
     /* =========================================================
        SYSTEM SHOCK 2 // XERXES WORM MATRIX HUD THEME
        ========================================================= */
@@ -77,7 +82,8 @@
       color: var(--xerxes-text-light);
       font-family: var(--font-mono);
       letter-spacing: 0.02em;
-      height: 100vh;
+      height: 100%;
+      width: 100%;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -579,6 +585,19 @@
       <div class="metric-pill">RESOLVED: <span id="m-resolved" class="metric-highlight" style="color:var(--quake-green);">0</span></div>
     </div>
     <div class="header-actions">
+      <!-- UI Scale Selector (8715cab2) -->
+      <div style="display:flex;align-items:center;gap:4px;margin-right:4px;">
+        <span style="font-size:8px;color:var(--quake-text-dim);">SCALE:</span>
+        <select id="uiScaleSelect" class="quake-select" onchange="onUiScaleChange(this.value)" title="UI Scale (Shortcuts: Cmd/Ctrl +/- or 0 to reset)" style="padding: 2px 4px; font-size: 9px; height: 22px;">
+          <option value="75%">75%</option>
+          <option value="80%">80%</option>
+          <option value="90%">90%</option>
+          <option value="100%" selected>100%</option>
+          <option value="110%">110%</option>
+          <option value="125%">125%</option>
+          <option value="150%">150%</option>
+        </select>
+      </div>
       <button class="quake-btn quake-btn-default" onclick="syncFeedback()">🔄 Sync Feedback</button>
       <button class="quake-btn quake-btn-default" onclick="newWorm()">+ New Worm</button>
       <button class="quake-btn quake-btn-gold" id="btn-save-exit" onclick="saveAndExit()">💾 Save and Exit</button>
@@ -797,6 +816,7 @@
     const statusOrder = { "OPEN": 0, "IN_PROGRESS": 1, "PLANNED": 2, "RESOLVED": 3, "CLOSED": 4 };
 
     function init() {
+      initUiScale();
       const seenIds = new Set();
       (db.worms || []).forEach(w => {
         if (seenIds.has(w.id)) {
@@ -979,25 +999,47 @@
       list.sort((a, b) => {
         switch (currentWormSort) {
           case "id_asc": {
+            const timeA = a.created_at ? (Date.parse(a.created_at.replace(" UTC", "Z")) || a.created_at) : "";
+            const timeB = b.created_at ? (Date.parse(b.created_at.replace(" UTC", "Z")) || b.created_at) : "";
+            if (timeA && timeB && timeA !== timeB) {
+              return timeA < timeB ? -1 : 1;
+            }
+            if (timeA && !timeB) return -1;
+            if (!timeA && timeB) return 1;
             const numA = parseInt((a.id || "").replace(/\D/g, ""), 10) || 0;
             const numB = parseInt((b.id || "").replace(/\D/g, ""), 10) || 0;
-            return numA - numB;
+            if (numA !== numB) return numA - numB;
+            return (a.id || "").localeCompare(b.id || "");
           }
           case "id_desc": {
+            const timeA = a.created_at ? (Date.parse(a.created_at.replace(" UTC", "Z")) || a.created_at) : "";
+            const timeB = b.created_at ? (Date.parse(b.created_at.replace(" UTC", "Z")) || b.created_at) : "";
+            if (timeA && timeB && timeA !== timeB) {
+              return timeA > timeB ? -1 : 1;
+            }
+            if (timeA && !timeB) return -1;
+            if (!timeA && timeB) return 1;
             const numA = parseInt((a.id || "").replace(/\D/g, ""), 10) || 0;
             const numB = parseInt((b.id || "").replace(/\D/g, ""), 10) || 0;
-            return numB - numA;
+            if (numA !== numB) return numB - numA;
+            return (b.id || "").localeCompare(a.id || "");
           }
           case "severity": {
             const rankA = severityOrder[a.severity] !== undefined ? severityOrder[a.severity] : 99;
             const rankB = severityOrder[b.severity] !== undefined ? severityOrder[b.severity] : 99;
             if (rankA !== rankB) return rankA - rankB;
+            const timeA = a.created_at ? (Date.parse(a.created_at.replace(" UTC", "Z")) || a.created_at) : "";
+            const timeB = b.created_at ? (Date.parse(b.created_at.replace(" UTC", "Z")) || b.created_at) : "";
+            if (timeA && timeB && timeA !== timeB) return timeA > timeB ? -1 : 1;
             return (b.id || "").localeCompare(a.id || "");
           }
           case "status": {
             const rankA = statusOrder[a.status] !== undefined ? statusOrder[a.status] : 99;
             const rankB = statusOrder[b.status] !== undefined ? statusOrder[b.status] : 99;
             if (rankA !== rankB) return rankA - rankB;
+            const timeA = a.created_at ? (Date.parse(a.created_at.replace(" UTC", "Z")) || a.created_at) : "";
+            const timeB = b.created_at ? (Date.parse(b.created_at.replace(" UTC", "Z")) || b.created_at) : "";
+            if (timeA && timeB && timeA !== timeB) return timeA > timeB ? -1 : 1;
             return (b.id || "").localeCompare(a.id || "");
           }
           case "component": {
@@ -1164,6 +1206,10 @@
         }
       } catch (e) {}
 
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const nowStr = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())} UTC`;
+
       const worm = {
         id: newId,
         title: "New Worm Report",
@@ -1177,6 +1223,7 @@
         actual_behavior: "",
         logs: "",
         attachments: [],
+        created_at: nowStr,
         resolution_notes: ""
       };
       db.worms.unshift(worm);
@@ -1214,6 +1261,10 @@
           }
         } catch (e) {}
 
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const nowStr = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())} UTC`;
+
         worm = {
           id: newId,
           title: title || "New Worm Report",
@@ -1227,6 +1278,7 @@
           actual_behavior: actual,
           logs: logs,
           attachments: [],
+          created_at: nowStr,
           resolution_notes: resolution
         };
         db.worms.unshift(worm);
@@ -1328,7 +1380,108 @@
       window.location.href = "/";
     }
 
+    // UI Scale Management (8715cab2)
+    const UI_SCALES = ["75%", "80%", "90%", "100%", "110%", "125%", "150%"];
+    const UI_SCALE_KEY = "ui_scale";
+
+    function isInsideIframe() {
+      try {
+        return window.self !== window.top;
+      } catch (e) {
+        return true;
+      }
+    }
+
+    function applyUiScale(scale) {
+      if (!UI_SCALES.includes(scale)) {
+        scale = "100%";
+      }
+      try {
+        localStorage.setItem(UI_SCALE_KEY, scale);
+      } catch (e) {}
+      const sel = document.getElementById("uiScaleSelect");
+      if (sel && sel.value !== scale) {
+        sel.value = scale;
+      }
+      if (isInsideIframe()) {
+        if (document.documentElement) {
+          document.documentElement.style.zoom = "";
+          document.documentElement.style.width = "";
+          document.documentElement.style.height = "";
+        }
+        return;
+      }
+      const factor = parseInt(scale, 10) / 100;
+      if (document.documentElement) {
+        document.documentElement.style.zoom = factor;
+        if (factor === 1.0) {
+          document.documentElement.style.width = "";
+          document.documentElement.style.height = "";
+        } else {
+          document.documentElement.style.width = (window.innerWidth / factor) + "px";
+          document.documentElement.style.height = (window.innerHeight / factor) + "px";
+        }
+      }
+    }
+
+    window.addEventListener("resize", () => {
+      if (isInsideIframe()) return;
+      let current = "100%";
+      try {
+        current = localStorage.getItem(UI_SCALE_KEY) || "100%";
+      } catch (e) {}
+      const factor = parseInt(current, 10) / 100;
+      if (factor !== 1.0 && document.documentElement) {
+        document.documentElement.style.width = (window.innerWidth / factor) + "px";
+        document.documentElement.style.height = (window.innerHeight / factor) + "px";
+      }
+    });
+
+    function onUiScaleChange(scale) {
+      applyUiScale(scale);
+    }
+
+    function adjustUiScale(delta) {
+      let current = "100%";
+      try {
+        current = localStorage.getItem(UI_SCALE_KEY) || "100%";
+      } catch (e) {}
+      let idx = UI_SCALES.indexOf(current);
+      if (idx === -1) idx = UI_SCALES.indexOf("100%");
+      const nextIdx = Math.max(0, Math.min(UI_SCALES.length - 1, idx + delta));
+      applyUiScale(UI_SCALES[nextIdx]);
+    }
+
+    function resetUiScale() {
+      applyUiScale("100%");
+    }
+
+    function initUiScale() {
+      let saved = "100%";
+      try {
+        saved = localStorage.getItem(UI_SCALE_KEY) || "100%";
+      } catch (e) {}
+      applyUiScale(saved);
+    }
+
     window.addEventListener("keydown", (e) => {
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === "=" || e.key === "+" || e.code === "Equal" || e.code === "NumpadAdd") {
+          e.preventDefault();
+          adjustUiScale(1);
+          return;
+        }
+        if (e.key === "-" || e.key === "_" || e.code === "Minus" || e.code === "NumpadSubtract") {
+          e.preventDefault();
+          adjustUiScale(-1);
+          return;
+        }
+        if (e.key === "0" || e.code === "Digit0" || e.code === "Numpad0") {
+          e.preventDefault();
+          resetUiScale();
+          return;
+        }
+      }
       if (e.key === "Escape") {
         const loadingModal = document.getElementById("feedback-loading-modal");
         if (!loadingModal || loadingModal.style.display === "none") {
@@ -1458,10 +1611,16 @@
       }
     }
 
+    const MAX_ATTACHMENT_SIZE_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB (GitHub LFS maximum file limit)
+
     function handleFileUpload(files, isPaste = false) {
       if (!files || files.length === 0) return;
       for (let i = 0; i < files.length; i++) {
         const f = files[i];
+        if (f.size >= MAX_ATTACHMENT_SIZE_BYTES) {
+          showToast(`Error: ${f.name} exceeds maximum allowed size of 2 GB (GitHub LFS limit).`, 5000);
+          continue;
+        }
         const reader = new FileReader();
         reader.onload = () => {
           const b64 = reader.result.split(",")[1];
@@ -1489,6 +1648,10 @@
     }
 
     function uploadBlob(blob, filename, fileType) {
+      if (blob.size >= MAX_ATTACHMENT_SIZE_BYTES) {
+        showToast("Error: Attachment exceeds maximum allowed size of 2 GB (GitHub LFS limit).", 5000);
+        return;
+      }
       const reader = new FileReader();
       reader.onload = () => {
         const b64 = reader.result.split(",")[1];
@@ -1504,6 +1667,10 @@
     }
 
     function uploadTextDocument(text, filename) {
+      if (text.length >= MAX_ATTACHMENT_SIZE_BYTES) {
+        showToast("Error: Document exceeds maximum allowed size of 2 GB.", 5000);
+        return;
+      }
       uploadPayload({
         filename: filename,
         file_type: "document",
@@ -1520,6 +1687,15 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
+      if (res.status === 413) {
+        const errData = await res.json().catch(() => ({}));
+        showToast(errData.error || "Attachment exceeds maximum allowed size of 2 GB (GitHub LFS limit).", 5000);
+        return;
+      }
+      if (!res.ok) {
+        showToast("Failed to upload attachment: HTTP " + res.status);
+        return;
+      }
       const att = await res.json();
       const worm = db.worms.find(w => w.id === activeWormId);
       if (worm) {

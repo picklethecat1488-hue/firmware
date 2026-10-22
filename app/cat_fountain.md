@@ -28,5 +28,5 @@ For interactive bringup steps, target shell command checklists, and YAML verific
 - **[`app/cat_detector_bringup.yaml`](cat_detector_bringup.yaml)**
 - Bringup script execution:
   ```bash
-  conda run -n firmware-env python tools/helpers/bringup.py --config app/cat_detector_bringup.yaml
+  conda run -n firmware-env python tools/host.py bringup --script projects/cat_detector_bringup.yaml --run
   ```

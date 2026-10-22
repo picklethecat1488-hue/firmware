@@ -10,21 +10,45 @@ use embassy_sync::blocking_mutex::raw::RawMutex;
 use model::calibration::Calibration;
 use model::interfaces::{Motor, PowerMeasurementMode, PowerSensor, SpeedSensor, Tickable};
 use model::telemetry::TelemetryClient;
-use model::types::{MotorSpeed, PeripheralError, SystemStatus};
+use model::types::{MotorConfig, MotorSpeed, PeripheralError, SystemStatus};
 use peripheral::ToPeripheralError;
 
 use crate::tracing::{self, controller_context};
 use crate::types::{MotorCalState, MotorSafetyStatus, MotorState};
 
-/// The tick interval of the motor controller (10ms / 100Hz).
-pub const MOTOR_TICK_INTERVAL: embassy_time::Duration = embassy_time::Duration::from_millis(10);
+/// The default tick interval of the motor controller, kept in sync with the motor driver's default tick interval.
+pub const MOTOR_TICK_INTERVAL: embassy_time::Duration = peripheral::tmc6300::DEFAULT_TICK_INTERVAL;
 
 /// The tick interval of the motor controller when inactive (1s).
 pub const MOTOR_INACTIVE_TICK_INTERVAL: embassy_time::Duration =
     embassy_time::Duration::from_secs(1);
 
-/// Startup blanking period (3 seconds at 100Hz = 300 ticks) during which safety limits/cutoff checks are bypassed.
-pub const MOTOR_STARTUP_BLANKING_TICKS: u32 = 300;
+/// Startup blanking period (3 seconds at 2000Hz = 6000 ticks) during which safety limits/cutoff checks are bypassed.
+pub const MOTOR_STARTUP_BLANKING_TICKS: u32 = MotorConfig::DEFAULT.startup_blanking_ticks;
+
+/// Default maximum current limit for the motor controller in milliamperes (2.5A).
+pub const DEFAULT_MAX_CURRENT_MA: i32 = 2500;
+
+/// Initial commutation step interval in controller ticks during motor startup soft-start ramp.
+pub const STARTUP_COMMUTATION_STEP_TICKS: u32 = MotorConfig::DEFAULT.startup_commutation_step_ticks;
+
+/// Base speed percentage divisor for calculating target commutation step interval ticks.
+pub const COMMUTATION_SPEED_DIVISOR: u32 = MotorConfig::DEFAULT.commutation_speed_divisor;
+
+/// Minimum commutation step interval in controller ticks.
+pub const MIN_COMMUTATION_STEP_TICKS: u32 = MotorConfig::DEFAULT.min_commutation_step_ticks;
+
+/// Maximum commutation step interval in controller ticks.
+pub const MAX_COMMUTATION_STEP_TICKS: u32 = MotorConfig::DEFAULT.max_commutation_step_ticks;
+
+/// Computes the target commutation step interval in controller ticks for a given commanded speed percentage (1..=100).
+#[cfg_attr(
+    all(target_arch = "arm", feature = "motor-core"),
+    link_section = ".data.core1_func"
+)]
+pub const fn calculate_commutation_step_ticks(abs_speed: u8) -> u32 {
+    MotorConfig::DEFAULT.calculate_commutation_step_ticks(abs_speed)
+}
 
 /// Safety limits for the motor controller.
 pub struct MotorLimits {
@@ -78,6 +102,10 @@ pub struct MotorController<M, C, S> {
     limits: MotorLimits,
     startup_ticks: u32,
     safety_bypass: bool,
+    max_hardware_current_ma: i32,
+    step_tick_counter: u32,
+    commutation_interval_ticks: u32,
+    config: MotorConfig,
 }
 
 /// The filename of the motor calibration file.
@@ -158,8 +186,33 @@ where
     <C as PowerSensor>::Error: ToPeripheralError,
     <S as SpeedSensor>::Error: core::fmt::Debug,
 {
-    /// Creates a new motor controller managing the specified motor, current sensor, and speed sensor.
+    /// Creates a new motor controller managing the specified motor, current sensor, and speed sensor
+    /// using default canonical safety limits (2500 mA maximum current).
     pub fn new(motor: M, current_sensor: C, speed_sensor: S) -> Self {
+        Self::new_with_config(motor, current_sensor, speed_sensor, MotorConfig::DEFAULT)
+    }
+
+    /// Creates a new motor controller managing the specified motor, current sensor, and speed sensor
+    /// with a specific maximum current limit in milliamperes (e.g. configured via `app.toml`).
+    pub fn new_with_max_current(
+        motor: M,
+        current_sensor: C,
+        speed_sensor: S,
+        max_current_ma: i32,
+    ) -> Self {
+        let mut config = MotorConfig::DEFAULT;
+        config.default_max_current_ma = max_current_ma;
+        Self::new_with_config(motor, current_sensor, speed_sensor, config)
+    }
+
+    /// Creates a new motor controller managing the specified motor, current sensor, and speed sensor
+    /// with a custom [`MotorConfig`].
+    pub fn new_with_config(
+        motor: M,
+        current_sensor: C,
+        speed_sensor: S,
+        config: MotorConfig,
+    ) -> Self {
         Self {
             state: MotorState::Off,
             motor,
@@ -172,18 +225,52 @@ where
             calibration_present: false,
             limits: MotorLimits {
                 min_current_ma: 15,
-                max_current_ma: 2500,
+                max_current_ma: config.default_max_current_ma,
                 max_rpm: 0,
                 rpm_limit: 0,
             },
             startup_ticks: 0,
             safety_bypass: false,
+            max_hardware_current_ma: config.default_max_current_ma,
+            step_tick_counter: 0,
+            commutation_interval_ticks: 0,
+            config,
         }
+    }
+
+    /// Returns a reference to the active [`MotorConfig`].
+    pub fn config(&self) -> &MotorConfig {
+        &self.config
     }
 
     /// Gets the current operating state of the motor.
     pub fn state(&self) -> MotorState {
         self.state
+    }
+
+    /// Returns the active tick interval for the motor controller based on the motor driver's required tick interval.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    pub fn tick_interval(&self) -> embassy_time::Duration {
+        let us = self.motor.tick_interval_us();
+        if us == 0 {
+            MOTOR_TICK_INTERVAL
+        } else {
+            embassy_time::Duration::from_micros(us as u64)
+        }
+    }
+
+    /// Returns the active commutation step interval in controller ticks.
+    pub fn commutation_interval_ticks(&self) -> u32 {
+        self.commutation_interval_ticks
+    }
+
+    /// Returns the target commutation step interval in controller ticks for the commanded speed.
+    pub fn target_commutation_step_ticks(&self) -> u32 {
+        self.config
+            .calculate_commutation_step_ticks(self.speed.get().unsigned_abs())
     }
 
     /// Gets the minimum current limit in mA.
@@ -196,10 +283,11 @@ where
         self.limits.max_current_ma
     }
 
-    /// Sets the minimum and maximum current limits for load/stall safety checks.
+    /// Sets the minimum and maximum current limits for load/stall safety checks,
+    /// clamped to the controller's configured maximum hardware current limit.
     pub fn set_current_limits(&mut self, min_ma: i32, max_ma: i32) {
         self.limits.min_current_ma = min_ma;
-        self.limits.max_current_ma = max_ma;
+        self.limits.max_current_ma = max_ma.min(self.max_hardware_current_ma);
     }
 
     /// Returns the current rotational speed in RPM.
@@ -211,6 +299,9 @@ where
         link_section = ".data.core1_func"
     )]
     pub fn current_rpm(&self) -> u32 {
+        if self.state == MotorState::Off {
+            return 0;
+        }
         if self.last_measured_rpm > 0 {
             self.last_measured_rpm
         } else if self.limits.max_rpm == 0 {
@@ -281,7 +372,7 @@ where
         // If the motor is running, verify safety limits (RPM and load torque)
         if !self.safety_bypass
             && self.state == MotorState::On
-            && self.startup_ticks > MOTOR_STARTUP_BLANKING_TICKS
+            && self.startup_ticks > self.config.startup_blanking_ticks
         {
             let rpm = self.current_rpm();
             match self.limits.check_limits(rpm, current) {
@@ -290,7 +381,7 @@ where
                         .await;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::error!(
-                        "Motor Controller: RPM safety limit exceeded ({} RPM). Stopped motor.",
+                        "RPM safety limit exceeded ({} RPM). Stopped motor.",
                         _rpm_val
                     );
                 }
@@ -299,7 +390,7 @@ where
                         .await;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::warn!(
-                        "Motor Controller: Low load / dry detected (current: {} mA). Stopped motor.",
+                        "Low load / dry detected (current: {} mA). Stopped motor.",
                         _current_val
                     );
                 }
@@ -308,7 +399,7 @@ where
                         .await;
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
                     defmt::error!(
-                        "Motor Controller: Motor stall detected (current: {} mA). Stopped motor.",
+                        "Motor stall detected (current: {} mA). Stopped motor.",
                         _current_val
                     );
                 }
@@ -323,9 +414,7 @@ where
                         self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut())
                             .await;
                         #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        defmt::error!(
-                            "Motor Controller: Zero RPM stall detected via Hall sensor. Stopped motor."
-                        );
+                        defmt::error!("Zero RPM stall detected via Hall sensor. Stopped motor.");
                     }
                 }
             }
@@ -351,9 +440,11 @@ where
     async fn set_running_state(&mut self, running: bool) -> Result<(), PeripheralError> {
         if running {
             self.startup_ticks = 0;
+            self.commutation_interval_ticks = self.config.startup_commutation_step_ticks;
+            self.step_tick_counter = 0;
             if self.state == MotorState::Off {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::info!("Motor Controller: Starting motor...");
+                defmt::info!("Starting motor...");
                 self.state = MotorState::On;
                 self.current_sensor
                     .set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
@@ -363,16 +454,21 @@ where
         } else {
             if self.state != MotorState::Off {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::info!("Motor Controller: Stopping motor...");
+                defmt::info!("Stopping motor...");
             }
             self.state = MotorState::Off;
             self.active_speed = MotorSpeed::ZERO;
             self.speed = MotorSpeed::ZERO;
-            self.motor.stop().map_err(|e| e.to_peripheral_error())?;
+            self.last_measured_rpm = 0;
+            self.last_current_ma = 0;
+            self.step_tick_counter = 0;
+            self.commutation_interval_ticks = 0;
+            let stop_res = self.motor.stop();
             let _ = self
                 .current_sensor
                 .set_measurement_mode(PowerMeasurementMode::PowerDown)
                 .await;
+            stop_res.map_err(|e| e.to_peripheral_error())?;
         }
         Ok(())
     }
@@ -399,7 +495,7 @@ where
                     if !self.calibration_present && self.speed != speed {
                         #[cfg(all(target_arch = "arm", target_os = "none"))]
                         defmt::warn!(
-                            "Motor Controller: Warning, calibration is not present! Running with fallback limits."
+                            "Warning, calibration is not present! Running with fallback limits."
                         );
                     }
                     if let Err(e) = self.set_running_state(true).await {
@@ -409,16 +505,19 @@ where
                     }
                     self.speed = speed;
                 } else {
-                    // Set target speed to 0 and let it ramp down
                     self.speed = MotorSpeed::ZERO;
+                    self.active_speed = MotorSpeed::ZERO;
+                    if let Err(e) = self.set_running_state(false).await {
+                        if let Some(ref client) = telemetry_client {
+                            client.report_error(e);
+                        }
+                    }
                 }
             }
             MotorCommand::SetSpeedRpm(rpm) => {
                 let speed_val = if self.limits.max_rpm == 0 {
                     #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    defmt::warn!(
-                        "Motor Controller: Cannot set speed by RPM, max_rpm calibration is not set!"
-                    );
+                    defmt::warn!("Cannot set speed by RPM, max_rpm calibration is not set!");
                     0
                 } else {
                     let val = (rpm * 100) / (self.limits.max_rpm as i32);
@@ -429,9 +528,7 @@ where
                     if !self.calibration_present {
                         if self.speed != speed {
                             #[cfg(all(target_arch = "arm", target_os = "none"))]
-                            defmt::error!(
-                                "Motor Controller: Cannot start motor, calibration is not present!"
-                            );
+                            defmt::error!("Cannot start motor, calibration is not present!");
                             self.speed = speed;
                         }
                     } else {
@@ -444,9 +541,17 @@ where
                     }
                 } else {
                     self.speed = MotorSpeed::ZERO;
+                    self.active_speed = MotorSpeed::ZERO;
+                    if let Err(e) = self.set_running_state(false).await {
+                        if let Some(ref client) = telemetry_client {
+                            client.report_error(e);
+                        }
+                    }
                 }
             }
             MotorCommand::Stop => {
+                self.speed = MotorSpeed::ZERO;
+                self.active_speed = MotorSpeed::ZERO;
                 if let Err(e) = self.set_running_state(false).await {
                     if let Some(ref client) = telemetry_client {
                         client.report_error(e);
@@ -463,6 +568,9 @@ where
                 }
             }
             MotorCommand::ReadRpm(signal_ptr) => {
+                if let Ok(rpm) = self.speed_sensor.read_rpm() {
+                    self.last_measured_rpm = rpm;
+                }
                 let rpm = self.current_rpm();
                 unsafe {
                     (*signal_ptr.0).signal(Ok(rpm));
@@ -505,71 +613,62 @@ where
         let speed = self.speed;
         let mut active_speed = self.active_speed;
 
-        // 1. Ramping logic
+        let mut tick_result = Ok(());
+
+        // 1. Direct speed application (ramping disabled)
         if state == MotorState::On {
             self.startup_ticks = self.startup_ticks.saturating_add(1);
-            if active_speed < speed {
-                // Ramp up
-                let next = (active_speed.get() + 1).min(speed.get());
-                active_speed = MotorSpeed::new(next).unwrap();
+            if active_speed != speed {
+                active_speed = speed;
                 self.active_speed = active_speed;
                 if active_speed == MotorSpeed::ZERO && speed == MotorSpeed::ZERO {
                     self.state = MotorState::Off;
-                    self.motor.stop().map_err(|e| e.to_peripheral_error())?;
+                    let _ = self.motor.stop();
                     let _ = self
                         .current_sensor
                         .set_measurement_mode(PowerMeasurementMode::PowerDown)
                         .await;
-                } else {
-                    self.motor
-                        .set_speed(active_speed)
-                        .map_err(|e| e.to_peripheral_error())?;
-                }
-            } else if active_speed > speed {
-                // Ramp down
-                let next = (active_speed.get() - 1).max(speed.get());
-                active_speed = MotorSpeed::new(next).unwrap();
-                self.active_speed = active_speed;
-                if active_speed == MotorSpeed::ZERO && speed == MotorSpeed::ZERO {
-                    self.state = MotorState::Off;
-                    self.motor.stop().map_err(|e| e.to_peripheral_error())?;
-                    let _ = self
-                        .current_sensor
-                        .set_measurement_mode(PowerMeasurementMode::PowerDown)
-                        .await;
-                } else {
-                    self.motor
-                        .set_speed(active_speed)
-                        .map_err(|e| e.to_peripheral_error())?;
+                } else if let Err(e) = self.motor.set_speed(active_speed) {
+                    let _ = self.set_running_state(false).await;
+                    tick_result = Err(e.to_peripheral_error());
                 }
             }
         } else if active_speed.get() != 0 {
-            // Ramping down/up to 0 even if state is Off
-            let current_raw = active_speed.get();
-            let next = if current_raw > 0 {
-                current_raw - 1
-            } else {
-                current_raw + 1
-            };
-            active_speed = MotorSpeed::new(next).unwrap();
+            active_speed = MotorSpeed::ZERO;
             self.active_speed = active_speed;
-            if active_speed == MotorSpeed::ZERO {
-                self.motor.stop().map_err(|e| e.to_peripheral_error())?;
-            } else {
-                self.motor
-                    .set_speed(active_speed)
-                    .map_err(|e| e.to_peripheral_error())?;
+            let _ = self.motor.stop();
+        }
+
+        // 2. Commutation step rate scaling and startup soft-start ramping
+        if tick_result.is_ok() && self.active_speed.get() != 0 {
+            let abs_speed = self.active_speed.get().unsigned_abs();
+            let target_interval = calculate_commutation_step_ticks(abs_speed);
+
+            if self.step_tick_counter == 0 {
+                if let Err(e) = self.motor.tick().await {
+                    let _ = self.set_running_state(false).await;
+                    tick_result = Err(e.to_peripheral_error());
+                }
+            }
+
+            if tick_result.is_ok() {
+                self.step_tick_counter = self.step_tick_counter.saturating_add(1);
+                if self.step_tick_counter >= self.commutation_interval_ticks {
+                    self.step_tick_counter = 0;
+
+                    // Soft-start ramp: gradually step commutation interval toward target interval
+                    if self.commutation_interval_ticks > target_interval {
+                        self.commutation_interval_ticks =
+                            self.commutation_interval_ticks.saturating_sub(1);
+                    } else if self.commutation_interval_ticks < target_interval {
+                        self.commutation_interval_ticks =
+                            self.commutation_interval_ticks.saturating_add(1);
+                    }
+                }
             }
         }
 
-        // 2. Call motor driver's tick() for software PWM toggling only when active
-        if self.active_speed.get() != 0 {
-            self.motor
-                .tick()
-                .await
-                .map_err(|e| e.to_peripheral_error())?;
-        }
-        Ok(())
+        tick_result
     }
 
     /// Runs the controller's control loop infinitely, reading from the command channel.
@@ -596,7 +695,7 @@ where
         }
 
         let mut last_telemetry = embassy_time::Instant::now();
-        let mut ticker = embassy_time::Ticker::every(MOTOR_TICK_INTERVAL);
+        let mut ticker = embassy_time::Ticker::every(self.tick_interval());
         let mut was_active = false;
 
         loop {
@@ -604,7 +703,7 @@ where
 
             if active {
                 if !was_active {
-                    ticker = embassy_time::Ticker::every(MOTOR_TICK_INTERVAL);
+                    ticker = embassy_time::Ticker::every(self.tick_interval());
                     was_active = true;
                 }
 
@@ -616,6 +715,10 @@ where
                 // Tick ramping and duty cycle
                 if let Err(e) = self.tick_motor().await {
                     telemetry_client.report_error(e);
+                    last_telemetry = embassy_time::Instant::now();
+                    if let Err(update_err) = self.update(Some(&mut telemetry_client)).await {
+                        telemetry_client.report_error(update_err);
+                    }
                 }
 
                 // Run telemetry, safety, and current monitoring once per second
@@ -655,7 +758,7 @@ where
 
     /// Bypasses the startup blanking period immediately (primarily for testing).
     pub fn bypass_startup_blanking(&mut self) {
-        self.startup_ticks = MOTOR_STARTUP_BLANKING_TICKS + 1;
+        self.startup_ticks = self.config.startup_blanking_ticks + 1;
     }
 
     /// Update the calibration parameters in RAM (Core 1).
@@ -679,7 +782,7 @@ where
     pub fn set_calibration_ram(&mut self, store: &model::calibration::MotorCalibration) {
         self.calibration_present = true;
         self.limits.min_current_ma = store.current_ma.low;
-        self.limits.max_current_ma = store.current_ma.overload;
+        self.limits.max_current_ma = store.current_ma.overload.min(self.max_hardware_current_ma);
         self.limits.max_rpm = store.max_rpm.unwrap_or(0);
         self.limits.rpm_limit = store.rpm_limit.unwrap_or(0);
     }

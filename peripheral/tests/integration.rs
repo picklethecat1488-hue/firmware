@@ -54,35 +54,46 @@ impl<'a> InputPin for MockPin<'a> {
 #[test]
 fn test_tmc6300_functional_and_commutation() {
     run_test!(async {
-        let pin_en_state = std::sync::atomic::AtomicBool::new(false);
-        let pin_in1_state = std::sync::atomic::AtomicBool::new(false);
-        let pin_in2_state = std::sync::atomic::AtomicBool::new(false);
-        let pin_in3_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_uh_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_ul_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_vh_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_vl_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_wh_state = std::sync::atomic::AtomicBool::new(false);
+        let pin_wl_state = std::sync::atomic::AtomicBool::new(false);
         let pin_diag_state = std::sync::atomic::AtomicBool::new(false);
 
-        let pin_en = MockPin {
-            is_high: &pin_en_state,
+        let pin_uh = MockPin {
+            is_high: &pin_uh_state,
         };
-        let pin_in1 = MockPin {
-            is_high: &pin_in1_state,
+        let pin_ul = MockPin {
+            is_high: &pin_ul_state,
         };
-        let pin_in2 = MockPin {
-            is_high: &pin_in2_state,
+        let pin_vh = MockPin {
+            is_high: &pin_vh_state,
         };
-        let pin_in3 = MockPin {
-            is_high: &pin_in3_state,
+        let pin_vl = MockPin {
+            is_high: &pin_vl_state,
+        };
+        let pin_wh = MockPin {
+            is_high: &pin_wh_state,
+        };
+        let pin_wl = MockPin {
+            is_high: &pin_wl_state,
         };
         let pin_diag = MockPin {
             is_high: &pin_diag_state,
         };
-        let mut motor =
-            peripheral::tmc6300::Tmc6300::new(pin_en, pin_in1, pin_in2, pin_in3, pin_diag);
+        let mut motor = peripheral::tmc6300::Tmc6300::new(
+            pin_uh, pin_ul, pin_vh, pin_vl, pin_wh, pin_wl, pin_diag,
+        );
 
         // 1. Initially all low
-        assert!(!pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
 
         // 2. Diagnostic fault check
         assert_eq!(motor.is_fault_active(), Ok(false));
@@ -90,38 +101,89 @@ fn test_tmc6300_functional_and_commutation() {
         assert_eq!(motor.is_fault_active(), Ok(true));
         pin_diag_state.store(false, std::sync::atomic::Ordering::SeqCst);
 
-        // 3. Setting speed > 0 drives EN high (active) and applies initial commutation step 0 (U=1, V=0, W=0)
+        // 3. Setting speed > 0 applies initial commutation step 0:
+        // Step 0: U=High, V=Low, W=Float
         assert!(motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
-        assert!(pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
 
-        // 4. Tick through commutation steps
-        // Step 1: U=1, V=1, W=0
+        // 4. Tick through remaining forward commutation steps
+        // Step 1: U=High, V=Float, W=Low
         assert!(motor.tick().await.is_ok());
-        assert!(pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
 
-        // Step 2: U=0, V=1, W=0
+        // Step 2: U=Float, V=High, W=Low
         assert!(motor.tick().await.is_ok());
-        assert!(!pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
 
-        // 5. Setting speed == 0 disables driver (EN=0) and brakes phases
+        // Step 3: U=Low, V=High, W=Float
+        assert!(motor.tick().await.is_ok());
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Step 4: U=Low, V=Float, W=High
+        assert!(motor.tick().await.is_ok());
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Step 5: U=Float, V=Low, W=High
+        assert!(motor.tick().await.is_ok());
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Step 6 / wrap to Step 0: U=High, V=Low, W=Float
+        assert!(motor.tick().await.is_ok());
+        assert!(pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // 5. Setting speed == 0 puts all phases into Float (all low)
         assert!(motor.set_speed(MotorSpeed::ZERO).is_ok());
-        assert!(!pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
 
-        // 6. Stopping also halts driver
+        // 6. Stopping also puts all phases into Float
         assert!(motor.set_speed(MotorSpeed::new(50).unwrap()).is_ok());
-        assert!(pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
         assert!(motor.stop().is_ok());
-        assert!(!pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
 
         // 7. Commutation when speed is zero returns ZeroSpeed error
         assert!(matches!(
@@ -131,16 +193,125 @@ fn test_tmc6300_functional_and_commutation() {
 
         // 8. Reverse commutation when speed < 0
         assert!(motor.set_speed(MotorSpeed::new(-100).unwrap()).is_ok());
-        assert!(pin_en_state.load(std::sync::atomic::Ordering::SeqCst));
-        // Reverse step 0: U=1, V=0, W=1
-        assert!(pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
-        // Reverse step 1: U=0, V=0, W=1
+        // Reverse step 0: (Float, Low, High) -> U=Float, V=Low, W=High
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // Reverse step 1: (Low, Float, High) -> U=Low, V=Float, W=High
         assert!(motor.tick().await.is_ok());
-        assert!(!pin_in1_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(!pin_in2_state.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(pin_in3_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
+
+        // 9. Fault assertion triggers stop and returns DriverFault error
+        pin_diag_state.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert!(matches!(
+            motor.tick().await,
+            Err(peripheral::tmc6300::Tmc6300Error::DriverFault)
+        ));
+        assert!(!pin_uh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_ul_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_vl_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wh_state.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!pin_wl_state.load(std::sync::atomic::Ordering::SeqCst));
+    });
+}
+
+#[test]
+fn test_tmc6300_break_before_make_and_low_side_conduction() {
+    run_test!(async {
+        // Regression test for WORM-GLIDING-BRISTLE-252:
+        // Verifies that low-side FETs can be independently driven HIGH to conduct to GND,
+        // and that high-side and low-side on any phase are NEVER both HIGH simultaneously
+        // across all forward and reverse commutation steps.
+        let uh = std::sync::atomic::AtomicBool::new(false);
+        let ul = std::sync::atomic::AtomicBool::new(false);
+        let vh = std::sync::atomic::AtomicBool::new(false);
+        let vl = std::sync::atomic::AtomicBool::new(false);
+        let wh = std::sync::atomic::AtomicBool::new(false);
+        let wl = std::sync::atomic::AtomicBool::new(false);
+        let diag = std::sync::atomic::AtomicBool::new(false);
+
+        let pin_uh = MockPin { is_high: &uh };
+        let pin_ul = MockPin { is_high: &ul };
+        let pin_vh = MockPin { is_high: &vh };
+        let pin_vl = MockPin { is_high: &vl };
+        let pin_wh = MockPin { is_high: &wh };
+        let pin_wl = MockPin { is_high: &wl };
+        let pin_diag = MockPin { is_high: &diag };
+
+        let mut motor = peripheral::tmc6300::Tmc6300::new(
+            pin_uh, pin_ul, pin_vh, pin_vl, pin_wh, pin_wl, pin_diag,
+        );
+
+        // Test all forward commutation steps
+        motor.set_speed(MotorSpeed::new(100).unwrap()).unwrap();
+        for _ in 0..12 {
+            let u_high = uh.load(std::sync::atomic::Ordering::SeqCst);
+            let u_low = ul.load(std::sync::atomic::Ordering::SeqCst);
+            let v_high = vh.load(std::sync::atomic::Ordering::SeqCst);
+            let v_low = vl.load(std::sync::atomic::Ordering::SeqCst);
+            let w_high = wh.load(std::sync::atomic::Ordering::SeqCst);
+            let w_low = wl.load(std::sync::atomic::Ordering::SeqCst);
+
+            // Invariant: Never allow shoot-through (both high-side and low-side asserted)
+            assert!(!(u_high && u_low), "Shoot-through detected on Phase U!");
+            assert!(!(v_high && v_low), "Shoot-through detected on Phase V!");
+            assert!(!(w_high && w_low), "Shoot-through detected on Phase W!");
+
+            // Invariant: Exactly one high-side and one low-side active per step
+            let high_count = [u_high, v_high, w_high].iter().filter(|&&b| b).count();
+            let low_count = [u_low, v_low, w_low].iter().filter(|&&b| b).count();
+            assert_eq!(high_count, 1, "Exactly one high-side FET must be active");
+            assert_eq!(low_count, 1, "Exactly one low-side FET must be active");
+
+            motor.tick().await.unwrap();
+        }
+
+        // Test all reverse commutation steps
+        motor.set_speed(MotorSpeed::new(-100).unwrap()).unwrap();
+        for _ in 0..12 {
+            let u_high = uh.load(std::sync::atomic::Ordering::SeqCst);
+            let u_low = ul.load(std::sync::atomic::Ordering::SeqCst);
+            let v_high = vh.load(std::sync::atomic::Ordering::SeqCst);
+            let v_low = vl.load(std::sync::atomic::Ordering::SeqCst);
+            let w_high = wh.load(std::sync::atomic::Ordering::SeqCst);
+            let w_low = wl.load(std::sync::atomic::Ordering::SeqCst);
+
+            assert!(
+                !(u_high && u_low),
+                "Shoot-through detected on Phase U (reverse)!"
+            );
+            assert!(
+                !(v_high && v_low),
+                "Shoot-through detected on Phase V (reverse)!"
+            );
+            assert!(
+                !(w_high && w_low),
+                "Shoot-through detected on Phase W (reverse)!"
+            );
+
+            let high_count = [u_high, v_high, w_high].iter().filter(|&&b| b).count();
+            let low_count = [u_low, v_low, w_low].iter().filter(|&&b| b).count();
+            assert_eq!(
+                high_count, 1,
+                "Exactly one high-side FET must be active in reverse"
+            );
+            assert_eq!(
+                low_count, 1,
+                "Exactly one low-side FET must be active in reverse"
+            );
+
+            motor.tick().await.unwrap();
+        }
     });
 }
 
@@ -670,6 +841,82 @@ fn test_probeable_ina219() {
 }
 
 #[test]
+fn test_ina219_read_current_ma_scaling_and_fallback() {
+    run_test!(async {
+        use model::interfaces::{PowerMeasurementMode, PowerSensor};
+        use peripheral::ina219::Ina219;
+
+        // Test 1: Current scaling from 0.1mA raw units to mA
+        // Bus voltage has CNVR bit (0x0002) set
+        // Current register returns 750 (representing 75.0 mA)
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x00, 0x02]); // Bus Voltage (CNVR = 1)
+        reads.push_back(vec![0x02, 0xEE]); // Current = 750 (75 mA)
+
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+
+        let current = dev.read_current_ma().await.unwrap();
+        assert_eq!(current, 75); // 750 * 0.1mA = 75mA
+
+        // Test 2: Current scaling for 2A (20000 raw counts)
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x00, 0x02]); // Bus Voltage (CNVR = 1)
+        reads.push_back(vec![0x4E, 0x20]); // Current = 20000 (2000 mA)
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+        let current = dev.read_current_ma().await.unwrap();
+        assert_eq!(current, 2000);
+
+        // Test 3: Calibration lost fallback to Shunt Voltage register (0x01)
+        // Current register returns 0 (due to lost calibration)
+        // Shunt voltage register returns 20000 (representing 2000 mA)
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x00, 0x02]); // Bus Voltage (CNVR = 1)
+        reads.push_back(vec![0x00, 0x00]); // Current = 0
+        reads.push_back(vec![0x4E, 0x20]); // Shunt Voltage = 20000 (2000 mA)
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+        let current = dev.read_current_ma().await.unwrap();
+        assert_eq!(current, 2000);
+        // Verify calibration register was rewritten with 4096 (0x1000)
+        {
+            let written = writes.lock().unwrap();
+            assert!(written.iter().any(|w| w == &vec![0x05, 0x10, 0x00]));
+        }
+
+        // Test 4: set_measurement_mode restores calibration
+        let mut reads = std::collections::VecDeque::new();
+        reads.push_back(vec![0x39, 0x98]); // Current Config
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+        dev.set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
+            .await
+            .unwrap();
+        let written = writes.lock().unwrap();
+        assert_eq!(written[0], vec![0x00]); // Read config
+        assert_eq!(written[1], vec![0x00, 0x39, 0x9F]); // Write config
+        assert_eq!(written[2], vec![0x05, 0x10, 0x00]); // Write calibration (4096)
+    });
+}
+
+#[test]
 fn test_probeable_vl53l0x() {
     run_test!(async {
         use model::interfaces::Probeable;
@@ -1008,6 +1255,1109 @@ fn test_vl53l0x_measurement_min_range() {
         assert_eq!(
             res.unwrap(),
             model::types::SensorReading::Proximity(Vl53l0x::<Vl53l0xTestI2c>::MIN_RANGE_MM)
+        );
+    });
+}
+
+#[test]
+fn test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm() {
+    run_test!(async {
+        use model::interfaces::{Motor, Tickable};
+        use model::types::MotorSpeed;
+        use peripheral::tmc6300::{
+            make_pwm_word, phase_mask, Tmc6300Pio, Tmc6300PioError, COMMUTATION_STEPS,
+            MAX_TMC6300_CURRENT_MA, PIO_PWM_FREQUENCY_HZ, PWM_PERIOD_CYCLES,
+        };
+
+        // 1. Verify constant invariants for 2A max current and >=20kHz PWM frequency
+        const { assert!(MAX_TMC6300_CURRENT_MA == 2000) };
+        const { assert!(PIO_PWM_FREQUENCY_HZ >= 20_000) };
+        const { assert!(PWM_PERIOD_CYCLES == 100) };
+
+        // 2. Verify all forward and reverse phase masks guarantee zero shoot-through:
+        // UH (bit 0) and UL (bit 1) must never both be high
+        // VH (bit 2) and VL (bit 3) must never both be high
+        // WH (bit 4) and WL (bit 5) must never both be high
+        for speed in [-100, -50, -8, 8, 50, 100] {
+            for step in 0..COMMUTATION_STEPS as u8 {
+                let mask = phase_mask(speed, step);
+                let uh = (mask & (1 << 0)) != 0;
+                let ul = (mask & (1 << 1)) != 0;
+                let vh = (mask & (1 << 2)) != 0;
+                let vl = (mask & (1 << 3)) != 0;
+                let wh = (mask & (1 << 4)) != 0;
+                let wl = (mask & (1 << 5)) != 0;
+
+                assert!(
+                    !(uh && ul),
+                    "Shoot-through on Phase U at speed {speed}, step {step}"
+                );
+                assert!(
+                    !(vh && vl),
+                    "Shoot-through on Phase V at speed {speed}, step {step}"
+                );
+                assert!(
+                    !(wh && wl),
+                    "Shoot-through on Phase W at speed {speed}, step {step}"
+                );
+
+                // Active step must have exactly one high-side and one low-side FET on
+                let high_count = (uh as u8) + (vh as u8) + (wh as u8);
+                let low_count = (ul as u8) + (vl as u8) + (wl as u8);
+                assert_eq!(high_count, 1, "Must have exactly 1 high-side FET active");
+                assert_eq!(low_count, 1, "Must have exactly 1 low-side FET active");
+            }
+        }
+
+        // Zero speed must produce all-zero mask
+        assert_eq!(phase_mask(0, 0), 0);
+
+        // 3. Verify PIO word packing helper
+        // Word format: bits 0..7 = phase_mask, bits 8..15 = on_count, bits 16..23 = off_count
+        let word = make_pwm_word(0b001001, 8, 92);
+        assert_eq!(word & 0xFF, 0b001001);
+        assert_eq!((word >> 8) & 0xFF, 8);
+        assert_eq!((word >> 16) & 0xFF, 92);
+
+        // 4. Test driver operations on host mock
+        let diag = std::sync::atomic::AtomicBool::new(false);
+        let pin_diag = MockPin { is_high: &diag };
+        let mut motor = Tmc6300Pio::new(pin_diag);
+
+        // At startup, motor is stopped with 0 duty cycle
+        assert_eq!(motor.speed(), 0);
+        assert_eq!(motor.duty_cycle(), 0);
+
+        // Command speed 8 (startup duty cycle capping current to <= 2A)
+        assert!(motor.set_speed(MotorSpeed::new(8).unwrap()).is_ok());
+        assert_eq!(motor.speed(), 8);
+        assert_eq!(motor.duty_cycle(), 8);
+        let w8 = motor.last_word();
+        assert_eq!((w8 >> 8) & 0xFF, 8);
+        assert_eq!((w8 >> 16) & 0xFF, 92);
+        assert_eq!(w8 & 0xFF, phase_mask(8, 0) as u32);
+
+        // Advance commutation step via tick()
+        assert!(motor.tick().await.is_ok());
+        assert_eq!(motor.commutation_step(), 1);
+        let w_step1 = motor.last_word();
+        assert_eq!((w_step1 >> 8) & 0xFF, 8);
+        assert_eq!(w_step1 & 0xFF, phase_mask(8, 1) as u32);
+
+        // Ramp up to full speed 100
+        assert!(motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert_eq!(motor.speed(), 100);
+        assert_eq!(motor.duty_cycle(), 100);
+        let w100 = motor.last_word();
+        assert_eq!((w100 >> 8) & 0xFF, 100);
+        assert_eq!((w100 >> 16) & 0xFF, 0);
+
+        // Stop motor: duty cycle and mask go to 0
+        assert!(motor.stop().is_ok());
+        assert_eq!(motor.speed(), 0);
+        assert_eq!(motor.duty_cycle(), 0);
+        assert_eq!(motor.last_word() & 0xFF, 0);
+
+        // Diagnostic fault trips DriverFault and stops motor
+        assert!(motor.set_speed(MotorSpeed::new(50).unwrap()).is_ok());
+        diag.store(true, std::sync::atomic::Ordering::SeqCst);
+        let tick_res = motor.tick().await;
+        assert!(matches!(tick_res, Err(Tmc6300PioError::DriverFault)));
+        assert_eq!(motor.duty_cycle(), 0);
+        assert_eq!(motor.speed(), 0);
+    });
+}
+
+#[test]
+fn test_worm_dirt_ribbonworm_196_tmc6300_pio_program_verification_and_duty_cycle_100() {
+    use peripheral::tmc6300::{assemble_tmc6300_pio_program, make_pwm_word};
+
+    let prg = assemble_tmc6300_pio_program();
+
+    // 1. Program size must be exactly 10 instructions
+    assert_eq!(prg.code.len(), 10);
+    // 2. Wrap boundaries: target = 0, source = 9 (last instruction)
+    assert_eq!(prg.wrap.target, 0);
+    assert_eq!(prg.wrap.source, 9);
+
+    // 3. Verify all JMP instructions target valid addresses within [0..=prg.wrap.source].
+    // Any target > 9 jumps past wrap_source into uninitialized SRAM!
+    for (addr, &inst) in prg.code.iter().enumerate() {
+        let opcode = (inst >> 13) & 0x7;
+        if opcode == 0 {
+            // JMP instruction
+            let cond = (inst >> 5) & 0x7;
+            let target = (inst & 0x1F) as u8;
+            assert!(
+                target <= prg.wrap.source,
+                "Instruction at {addr} jumps out-of-bounds to {target} (wrap.source={})",
+                prg.wrap.source
+            );
+            if addr == 7 {
+                // Must be jmp !y, wrap_target (0)
+                assert_eq!(cond, 0b011, "Instruction at 7 must test condition !Y");
+                assert_eq!(target, 0, "Instruction at 7 must jump to wrap_target (0)");
+            }
+        }
+    }
+
+    // 4. Simulate PIO execution for duty cycle 100% (on_count = 100, off_count = 0)
+    let word100 = make_pwm_word(0b001001, 100, 0);
+    let mut pc: u8 = 0;
+    let mut x: u32 = 0;
+    let mut y: u32 = 0;
+    let mut osr: u32 = 0;
+    let mut pins: u8 = 0;
+    let mut fifo: Option<u32> = Some(word100);
+    let mut pin_cleared_to_null = false;
+
+    // Run 500 PIO instruction cycles
+    for _ in 0..500 {
+        let current_pc = pc;
+        match current_pc {
+            0 => {
+                // pull(false, false)
+                if let Some(w) = fifo.take() {
+                    osr = w;
+                } else {
+                    osr = x;
+                }
+            }
+            1 => {
+                // mov x, osr
+                x = osr;
+            }
+            2 => {
+                // out pins, 8
+                pins = (osr & 0xFF) as u8;
+                osr >>= 8;
+            }
+            3 => {
+                // out y, 8
+                y = osr & 0xFF;
+                osr >>= 8;
+            }
+            4 => {
+                // jmp !y, skip_on (6)
+                if y == 0 {
+                    pc = 6;
+                }
+            }
+            5 => {
+                // jmp y--, on_loop (5)
+                if y != 0 {
+                    y -= 1;
+                    pc = 5;
+                } else {
+                    y = u32::MAX;
+                }
+            }
+            6 => {
+                // out y, 8 (off_count)
+                y = osr & 0xFF;
+                osr >>= 8;
+            }
+            7 => {
+                // jmp !y, wrap_target (0)
+                if y == 0 {
+                    pc = 0;
+                }
+            }
+            8 => {
+                // mov pins, null
+                pins = 0;
+                pin_cleared_to_null = true;
+            }
+            9 => {
+                // jmp y--, off_loop (9)
+                if y != 0 {
+                    y -= 1;
+                    pc = 9;
+                } else {
+                    y = u32::MAX;
+                }
+            }
+            _ => panic!("PC reached out-of-bounds address {current_pc}"),
+        }
+
+        // Advance PC if jump did not branch to a new target
+        if pc == current_pc {
+            if pc == prg.wrap.source {
+                pc = prg.wrap.target;
+            } else {
+                pc += 1;
+            }
+        }
+    }
+
+    // At 100% duty cycle, pins must never be cleared to null!
+    assert!(
+        !pin_cleared_to_null,
+        "Pins were erroneously cleared to null at 100% duty cycle"
+    );
+    assert_eq!(pins, 0b001001, "Pins should remain continuously asserted");
+}
+
+#[test]
+fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
+    run_test!(async {
+        use peripheral::tmc6300::{
+            assemble_tmc6300_pio_program, make_pwm_word, phase_mask, Tmc6300Pio, COMMUTATION_STEPS,
+            PWM_PERIOD_CYCLES,
+        };
+
+        // 1. Setup mock TMC6300 PIO driver
+        let diag = std::sync::atomic::AtomicBool::new(false);
+        let pin_diag = MockPin { is_high: &diag };
+        let mut motor = Tmc6300Pio::new(pin_diag);
+
+        assert_eq!(motor.speed(), 0);
+        assert_eq!(motor.duty_cycle(), 0);
+        assert_eq!(motor.commutation_step(), 0);
+
+        // 2. Set speed to 50%
+        assert!(motor.set_speed(MotorSpeed::new(50).unwrap()).is_ok());
+        assert_eq!(motor.speed(), 50);
+        assert_eq!(motor.duty_cycle(), 50);
+
+        // Advance through 18 commutation ticks (3 full 6-step electrical revolutions)
+        let expected_forward_masks = [
+            0b001001, // Step 0: UH High, VL Low
+            0b100001, // Step 1: UH High, WL Low
+            0b100100, // Step 2: VH High, WL Low
+            0b000110, // Step 3: VH High, UL Low
+            0b010010, // Step 4: WH High, UL Low
+            0b011000, // Step 5: WH High, VL Low
+        ];
+
+        for tick_idx in 1..=18 {
+            assert!(motor.tick().await.is_ok());
+            let expected_step = (tick_idx % COMMUTATION_STEPS) as u8;
+            assert_eq!(
+                motor.commutation_step(),
+                expected_step,
+                "Commutation step did not advance as expected on tick {tick_idx}"
+            );
+            assert_eq!(motor.duty_cycle(), 50);
+
+            let word = motor.last_word();
+            let mask = (word & 0xFF) as u8;
+            let on_count = ((word >> 8) & 0xFF) as u8;
+            let off_count = ((word >> 16) & 0xFF) as u8;
+
+            assert_eq!(on_count, 50);
+            assert_eq!(off_count, 50);
+            assert_eq!(mask, expected_forward_masks[expected_step as usize]);
+            assert_eq!(mask, phase_mask(50, expected_step));
+        }
+
+        // 3. Steady state 100% speed operation across all steps 0..=5
+        assert!(motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert_eq!(motor.speed(), 100);
+        assert_eq!(motor.duty_cycle(), 100);
+
+        for _ in 0..12 {
+            let current_step = motor.commutation_step();
+            let next_step = (current_step + 1) % (COMMUTATION_STEPS as u8);
+            assert!(motor.tick().await.is_ok());
+            assert_eq!(motor.commutation_step(), next_step);
+            assert_eq!(motor.duty_cycle(), 100);
+
+            let word = motor.last_word();
+            let mask = (word & 0xFF) as u8;
+            let on_count = ((word >> 8) & 0xFF) as u8;
+            let off_count = ((word >> 16) & 0xFF) as u8;
+
+            assert_eq!(on_count, 100);
+            assert_eq!(off_count, 0);
+            assert_eq!(mask, expected_forward_masks[next_step as usize]);
+        }
+
+        // 4. Reverse rotation commutation sequence
+        assert!(motor.set_speed(MotorSpeed::new(-75).unwrap()).is_ok());
+        assert_eq!(motor.speed(), -75);
+        assert_eq!(motor.duty_cycle(), 75);
+
+        let expected_reverse_masks = [
+            0b011000, // Step 0: U Float, VL Low, WH High
+            0b010010, // Step 1: UL Low, V Float, WH High
+            0b000110, // Step 2: UL Low, VH High, W Float
+            0b100100, // Step 3: U Float, VH High, WL Low
+            0b100001, // Step 4: UH High, V Float, WL Low
+            0b001001, // Step 5: UH High, VL Low, W Float
+        ];
+
+        for _ in 0..12 {
+            let current_step = motor.commutation_step();
+            let next_step = (current_step + 1) % (COMMUTATION_STEPS as u8);
+            assert!(motor.tick().await.is_ok());
+            assert_eq!(motor.commutation_step(), next_step);
+            assert_eq!(motor.duty_cycle(), 75);
+
+            let word = motor.last_word();
+            let mask = (word & 0xFF) as u8;
+            let on_count = ((word >> 8) & 0xFF) as u8;
+            let off_count = ((word >> 16) & 0xFF) as u8;
+
+            assert_eq!(on_count, 75);
+            assert_eq!(off_count, 25);
+            assert_eq!(mask, expected_reverse_masks[next_step as usize]);
+            assert_eq!(mask, phase_mask(-75, next_step));
+        }
+
+        // 5. Motor stop completely clears duty cycle and de-energizes all FETs
+        assert!(motor.stop().is_ok());
+        assert_eq!(motor.speed(), 0);
+        assert_eq!(motor.duty_cycle(), 0);
+        assert_eq!(motor.commutation_step(), 0);
+        assert_eq!(motor.last_word(), make_pwm_word(0, 0, PWM_PERIOD_CYCLES));
+
+        // 6. PIO program simulation: continuous 25 kHz recycling and dynamic step transition
+        let prg = assemble_tmc6300_pio_program();
+        let mut pc: u8 = 0;
+        let mut x: u32 = 0;
+        let mut y: u32 = 0;
+        let mut osr: u32 = 0;
+        let mut pins: u8 = 0;
+        let mut fifo: std::collections::VecDeque<u32> = std::collections::VecDeque::new();
+
+        // Push initial word for Step 0 with 50% duty cycle
+        fifo.push_back(make_pwm_word(expected_forward_masks[0], 50, 50));
+
+        let mut high_count = 0;
+        let mut low_count = 0;
+
+        // Run 400 PIO cycles (~4 PWM periods) with empty FIFO to verify continuous recycling
+        for cycle in 0..400 {
+            // At cycle 200, push Step 1 with 80% duty cycle to simulate tick arrival
+            if cycle == 200 {
+                fifo.push_back(make_pwm_word(expected_forward_masks[1], 80, 20));
+            }
+
+            let current_pc = pc;
+            match current_pc {
+                0 => {
+                    if let Some(w) = fifo.pop_front() {
+                        osr = w;
+                    } else {
+                        osr = x;
+                    }
+                }
+                1 => {
+                    x = osr;
+                }
+                2 => {
+                    pins = (osr & 0xFF) as u8;
+                    osr >>= 8;
+                }
+                3 => {
+                    y = osr & 0xFF;
+                    osr >>= 8;
+                }
+                4 => {
+                    if y == 0 {
+                        pc = 6;
+                    }
+                }
+                5 => {
+                    if y != 0 {
+                        y -= 1;
+                        pc = 5;
+                    } else {
+                        y = u32::MAX;
+                    }
+                }
+                6 => {
+                    y = osr & 0xFF;
+                    osr >>= 8;
+                }
+                7 => {
+                    if y == 0 {
+                        pc = 0;
+                    }
+                }
+                8 => {
+                    pins = 0;
+                }
+                9 => {
+                    if y != 0 {
+                        y -= 1;
+                        pc = 9;
+                    } else {
+                        y = u32::MAX;
+                    }
+                }
+                _ => panic!("PC reached out-of-bounds address {current_pc}"),
+            }
+
+            if pins != 0 {
+                high_count += 1;
+                if cycle < 200 {
+                    assert_eq!(
+                        pins, expected_forward_masks[0],
+                        "During first 200 cycles, pins should match step 0"
+                    );
+                } else if cycle > 300 {
+                    assert_eq!(
+                        pins, expected_forward_masks[1],
+                        "After transition, pins should match step 1"
+                    );
+                }
+            } else {
+                low_count += 1;
+            }
+
+            if pc == current_pc {
+                if pc == prg.wrap.source {
+                    pc = prg.wrap.target;
+                } else {
+                    pc += 1;
+                }
+            }
+        }
+
+        // Both high and low cycles occurred, confirming continuous PWM switching
+        assert!(
+            high_count > 50,
+            "Continuous PWM high-side pulses were absent"
+        );
+        assert!(
+            low_count > 50,
+            "Continuous PWM low-side de-energizations were absent"
+        );
+    });
+}
+
+#[test]
+fn test_worm_creeping_wriggler_223_vl_pin_assertion_and_commutation_masks() {
+    run_test!(async {
+        use peripheral::tmc6300::phase_mask;
+
+        // Bit mapping (GP16..GP21):
+        // Bit 0: UH (GP16)
+        // Bit 1: UL (GP17)
+        // Bit 2: VH (GP18)
+        // Bit 3: VL (GP19)
+        // Bit 4: WH (GP20)
+        // Bit 5: WL (GP21)
+        const BIT_UH: u8 = 1 << 0;
+        const BIT_UL: u8 = 1 << 1;
+        const BIT_VH: u8 = 1 << 2;
+        const BIT_VL: u8 = 1 << 3;
+        const BIT_WH: u8 = 1 << 4;
+        const BIT_WL: u8 = 1 << 5;
+
+        // Forward commutation:
+        // Step 0: UH High, VL Low -> UH(Bit 0), VL(Bit 3)
+        let mask0 = phase_mask(100, 0);
+        assert_eq!(
+            mask0 & BIT_VL,
+            BIT_VL,
+            "Step 0 (forward) must assert VL (bit 3 / GP19)"
+        );
+        assert_eq!(
+            mask0 & BIT_UH,
+            BIT_UH,
+            "Step 0 (forward) must assert UH (bit 0 / GP16)"
+        );
+
+        // Step 1: UH High, WL Low -> UH(Bit 0), WL(Bit 5)
+        let mask1 = phase_mask(100, 1);
+        assert_eq!(
+            mask1,
+            BIT_UH | BIT_WL,
+            "Step 1 (forward) must assert UH and WL"
+        );
+
+        // Step 2: VH High, WL Low -> VH(Bit 2), WL(Bit 5)
+        let mask2 = phase_mask(100, 2);
+        assert_eq!(
+            mask2,
+            BIT_VH | BIT_WL,
+            "Step 2 (forward) must assert VH and WL"
+        );
+
+        // Step 3: VH High, UL Low -> VH(Bit 2), UL(Bit 1)
+        let mask3 = phase_mask(100, 3);
+        assert_eq!(
+            mask3,
+            BIT_VH | BIT_UL,
+            "Step 3 (forward) must assert VH and UL"
+        );
+
+        // Step 4: WH High, UL Low -> WH(Bit 4), UL(Bit 1)
+        let mask4 = phase_mask(100, 4);
+        assert_eq!(
+            mask4,
+            BIT_WH | BIT_UL,
+            "Step 4 (forward) must assert WH and UL"
+        );
+
+        // Step 5: WH High, VL Low -> WH(Bit 4), VL(Bit 3)
+        let mask5 = phase_mask(100, 5);
+        assert_eq!(
+            mask5 & BIT_VL,
+            BIT_VL,
+            "Step 5 (forward) must assert VL (bit 3 / GP19)"
+        );
+        assert_eq!(
+            mask5 & BIT_WH,
+            BIT_WH,
+            "Step 5 (forward) must assert WH (bit 4 / GP20)"
+        );
+
+        // Reverse commutation:
+        // Step 0: WH High, VL Low -> WH(Bit 4), VL(Bit 3)
+        let rev_mask0 = phase_mask(-100, 0);
+        assert_eq!(
+            rev_mask0 & BIT_VL,
+            BIT_VL,
+            "Step 0 (reverse) must assert VL (bit 3 / GP19)"
+        );
+        assert_eq!(
+            rev_mask0 & BIT_WH,
+            BIT_WH,
+            "Step 0 (reverse) must assert WH (bit 4 / GP20)"
+        );
+
+        // Step 1: WH High, UL Low -> WH(Bit 4), UL(Bit 1)
+        let rev_mask1 = phase_mask(-100, 1);
+        assert_eq!(
+            rev_mask1,
+            BIT_WH | BIT_UL,
+            "Step 1 (reverse) must assert WH and UL"
+        );
+
+        // Step 2: VH High, UL Low -> VH(Bit 2), UL(Bit 1)
+        let rev_mask2 = phase_mask(-100, 2);
+        assert_eq!(
+            rev_mask2,
+            BIT_VH | BIT_UL,
+            "Step 2 (reverse) must assert VH and UL"
+        );
+
+        // Step 3: VH High, WL Low -> VH(Bit 2), WL(Bit 5)
+        let rev_mask3 = phase_mask(-100, 3);
+        assert_eq!(
+            rev_mask3,
+            BIT_VH | BIT_WL,
+            "Step 3 (reverse) must assert VH and WL"
+        );
+
+        // Step 4: UH High, WL Low -> UH(Bit 0), WL(Bit 5)
+        let rev_mask4 = phase_mask(-100, 4);
+        assert_eq!(
+            rev_mask4,
+            BIT_UH | BIT_WL,
+            "Step 4 (reverse) must assert UH and WL"
+        );
+
+        // Step 5: UH High, VL Low -> UH(Bit 0), VL(Bit 3)
+        let rev_mask5 = phase_mask(-100, 5);
+        assert_eq!(
+            rev_mask5 & BIT_VL,
+            BIT_VL,
+            "Step 5 (reverse) must assert VL (bit 3 / GP19)"
+        );
+        assert_eq!(
+            rev_mask5 & BIT_UH,
+            BIT_UH,
+            "Step 5 (reverse) must assert UH (bit 0 / GP16)"
+        );
+    });
+}
+
+#[test]
+fn test_worm_gliding_larva_522_pin_mapping_and_forward_commutation_progression() {
+    run_test!(async {
+        use model::interfaces::{Motor, Tickable};
+        use model::types::MotorSpeed;
+        use peripheral::tmc6300::{make_pwm_word, COMMUTATION_STEPS};
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct MockDiagPin<'a> {
+            is_high: &'a AtomicBool,
+        }
+
+        impl<'a> embedded_hal::digital::ErrorType for MockDiagPin<'a> {
+            type Error = core::convert::Infallible;
+        }
+
+        impl<'a> embedded_hal::digital::InputPin for MockDiagPin<'a> {
+            fn is_high(&mut self) -> Result<bool, Self::Error> {
+                Ok(self.is_high.load(Ordering::SeqCst))
+            }
+            fn is_low(&mut self) -> Result<bool, Self::Error> {
+                Ok(!self.is_high.load(Ordering::SeqCst))
+            }
+        }
+
+        let diag_asserted = AtomicBool::new(false);
+        let pin_diag = MockDiagPin {
+            is_high: &diag_asserted,
+        };
+        let mut motor = peripheral::tmc6300::Tmc6300Pio::new(pin_diag);
+
+        // Canonical forward commutation masks:
+        // Step 0: UH High (bit 0), VL Low (bit 3) -> 0b001001 (0x09)
+        // Step 1: UH High (bit 0), WL Low (bit 5) -> 0b100001 (0x21)
+        // Step 2: VH High (bit 2), WL Low (bit 5) -> 0b100100 (0x24)
+        // Step 3: VH High (bit 2), UL Low (bit 1) -> 0b000110 (0x06)
+        // Step 4: WH High (bit 4), UL Low (bit 1) -> 0b010010 (0x12)
+        // Step 5: WH High (bit 4), VL Low (bit 3) -> 0b011000 (0x18)
+        let expected_masks = [0b001001, 0b100001, 0b100100, 0b000110, 0b010010, 0b011000];
+
+        // Start motor at 100% speed
+        assert!(motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert_eq!(motor.speed(), 100);
+        assert_eq!(motor.duty_cycle(), 100);
+
+        // Verify progression through 24 consecutive ticks (4 full 6-step commutation cycles)
+        // In particular, verifies advancing past Step 1 without stall or fault
+        for tick in 1..=24 {
+            assert!(
+                motor.tick().await.is_ok(),
+                "Motor tick failed at tick {tick}"
+            );
+            let expected_step = (tick % COMMUTATION_STEPS) as u8;
+            assert_eq!(
+                motor.commutation_step(),
+                expected_step,
+                "Commutation step mismatch at tick {tick}"
+            );
+
+            let word = motor.last_word();
+            let mask = (word & 0xFF) as u8;
+            assert_eq!(
+                mask, expected_masks[expected_step as usize],
+                "Mask mismatch at step {expected_step}"
+            );
+            assert_eq!(
+                word,
+                make_pwm_word(expected_masks[expected_step as usize], 100, 0),
+                "PWM word mismatch at tick {tick}"
+            );
+
+            // Verify break-before-make and no shoot-through
+            let uh = (mask & (1 << 0)) != 0;
+            let ul = (mask & (1 << 1)) != 0;
+            let vh = (mask & (1 << 2)) != 0;
+            let vl = (mask & (1 << 3)) != 0;
+            let wh = (mask & (1 << 4)) != 0;
+            let wl = (mask & (1 << 5)) != 0;
+            assert!(!(uh && ul), "Phase U shoot-through at step {expected_step}");
+            assert!(!(vh && vl), "Phase V shoot-through at step {expected_step}");
+            assert!(!(wh && wl), "Phase W shoot-through at step {expected_step}");
+            assert_eq!((uh as u8) + (vh as u8) + (wh as u8), 1);
+            assert_eq!((ul as u8) + (vl as u8) + (wl as u8), 1);
+        }
+
+        // Test fault detection: DIAG pin asserted trips DriverFault
+        diag_asserted.store(true, Ordering::SeqCst);
+        let tick_result = motor.tick().await;
+        assert!(
+            tick_result.is_err(),
+            "Motor tick must fail when DIAG is asserted"
+        );
+    });
+}
+
+#[test]
+fn test_tmc6300_freewheeling_window_and_decay_modes() {
+    run_test!(async {
+        use model::interfaces::{Motor, Tickable};
+        use model::types::MotorSpeed;
+        use peripheral::tmc6300::{
+            make_pwm_word, FreewheelMode, Tmc6300, Tmc6300Pio, DEFAULT_FREEWHEEL_US,
+            FREEWHEEL_PHASE_MASK, PWM_PERIOD_CYCLES,
+        };
+        use std::sync::atomic::AtomicBool;
+
+        // 1. Verify constant invariants
+        assert_eq!(DEFAULT_FREEWHEEL_US, 0);
+        assert_eq!(FREEWHEEL_PHASE_MASK, 0b101010);
+        // Verify low-side pins in FREEWHEEL_PHASE_MASK: UL (bit 1), VL (bit 3), WL (bit 5)
+        assert_eq!(FREEWHEEL_PHASE_MASK & (1 << 0), 0); // UH off
+        assert_ne!(FREEWHEEL_PHASE_MASK & (1 << 1), 0); // UL on
+        assert_eq!(FREEWHEEL_PHASE_MASK & (1 << 2), 0); // VH off
+        assert_ne!(FREEWHEEL_PHASE_MASK & (1 << 3), 0); // VL on
+        assert_eq!(FREEWHEEL_PHASE_MASK & (1 << 4), 0); // WH off
+        assert_ne!(FREEWHEEL_PHASE_MASK & (1 << 5), 0); // WL on
+
+        // 2. Test Tmc6300Pio host mock defaults and configuration
+        let diag_flag = AtomicBool::new(false);
+        let pin_diag = MockPin {
+            is_high: &diag_flag,
+        };
+        let mut pio_motor = Tmc6300Pio::new(pin_diag);
+
+        assert_eq!(pio_motor.freewheel_us(), DEFAULT_FREEWHEEL_US);
+        assert_eq!(pio_motor.freewheel_mode(), FreewheelMode::Float);
+
+        // Adjust freewheel duration and mode
+        pio_motor.set_freewheel_us(250);
+        assert_eq!(pio_motor.freewheel_us(), 250);
+        pio_motor.set_freewheel_mode(FreewheelMode::Float);
+        assert_eq!(pio_motor.freewheel_mode(), FreewheelMode::Float);
+
+        // Reset to LowSide for execution test
+        pio_motor.set_freewheel_mode(FreewheelMode::LowSide);
+        assert!(pio_motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+
+        // On tick with LowSide freewheel, freewheel word must have FREEWHEEL_PHASE_MASK at 100% duty
+        assert!(pio_motor.tick().await.is_ok());
+        let expected_low_side_word = make_pwm_word(FREEWHEEL_PHASE_MASK, PWM_PERIOD_CYCLES, 0);
+        assert_eq!(
+            pio_motor.last_freewheel_word(),
+            expected_low_side_word,
+            "LowSide freewheel word must energize all 3 low-side FETs at 100% duty cycle"
+        );
+
+        // Switch to Float decay mode and tick again
+        pio_motor.set_freewheel_mode(FreewheelMode::Float);
+        assert!(pio_motor.tick().await.is_ok());
+        let expected_float_word = make_pwm_word(0, 0, PWM_PERIOD_CYCLES);
+        assert_eq!(
+            pio_motor.last_freewheel_word(),
+            expected_float_word,
+            "Float freewheel word must de-energize all FETs (0% duty cycle)"
+        );
+
+        // Disabling freewheeling (0 us) must bypass freewheel word emission
+        pio_motor.set_freewheel_us(0);
+        assert_eq!(pio_motor.freewheel_us(), 0);
+        // Reset last_freewheel_word by stopping and restarting
+        assert!(pio_motor.stop().is_ok());
+        assert_eq!(pio_motor.last_freewheel_word(), 0);
+        assert!(pio_motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert!(pio_motor.tick().await.is_ok());
+        assert_eq!(
+            pio_motor.last_freewheel_word(),
+            0,
+            "When freewheel_us is 0, no freewheel word should be pushed"
+        );
+
+        // 3. Test GPIO Tmc6300 driver configuration and defaults
+        let pin_uh_state = AtomicBool::new(false);
+        let pin_ul_state = AtomicBool::new(false);
+        let pin_vh_state = AtomicBool::new(false);
+        let pin_vl_state = AtomicBool::new(false);
+        let pin_wh_state = AtomicBool::new(false);
+        let pin_wl_state = AtomicBool::new(false);
+        let pin_diag_state = AtomicBool::new(false);
+
+        let pin_uh = MockPin {
+            is_high: &pin_uh_state,
+        };
+        let pin_ul = MockPin {
+            is_high: &pin_ul_state,
+        };
+        let pin_vh = MockPin {
+            is_high: &pin_vh_state,
+        };
+        let pin_vl = MockPin {
+            is_high: &pin_vl_state,
+        };
+        let pin_wh = MockPin {
+            is_high: &pin_wh_state,
+        };
+        let pin_wl = MockPin {
+            is_high: &pin_wl_state,
+        };
+        let pin_diag = MockPin {
+            is_high: &pin_diag_state,
+        };
+
+        let mut gpio_motor = Tmc6300::new(pin_uh, pin_ul, pin_vh, pin_vl, pin_wh, pin_wl, pin_diag);
+
+        assert_eq!(gpio_motor.freewheel_us(), DEFAULT_FREEWHEEL_US);
+        assert_eq!(gpio_motor.freewheel_mode(), FreewheelMode::Float);
+
+        gpio_motor.set_freewheel_us(100);
+        assert_eq!(gpio_motor.freewheel_us(), 100);
+        gpio_motor.set_freewheel_mode(FreewheelMode::Float);
+        assert_eq!(gpio_motor.freewheel_mode(), FreewheelMode::Float);
+
+        assert!(gpio_motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert!(gpio_motor.tick().await.is_ok());
+    });
+}
+
+#[test]
+fn test_tmc6300_pwm_frequency_and_clock_divider() {
+    run_test!(async {
+        use peripheral::tmc6300::{
+            calculate_clock_divider, Tmc6300Pio, DEFAULT_PIO_PWM_FREQUENCY_HZ,
+            PIO_PWM_FREQUENCY_HZ, REDUCED_PWM_FREQUENCY_HZ,
+        };
+        use std::sync::atomic::AtomicBool;
+
+        // 1. Verify PWM frequency constant invariants
+        assert_eq!(PIO_PWM_FREQUENCY_HZ, 25_000);
+        assert_eq!(REDUCED_PWM_FREQUENCY_HZ, 10_000);
+        assert_eq!(DEFAULT_PIO_PWM_FREQUENCY_HZ, 25_000);
+
+        // 2. Verify clock divider calculation at 125 MHz system clock
+        // Target PIO clock for 25 kHz @ 100 cycles/period: 2.5 MHz -> divider 50
+        assert_eq!(calculate_clock_divider(125_000_000, 25_000), 50);
+        // Target PIO clock for 10 kHz @ 100 cycles/period: 1.0 MHz -> divider 125
+        assert_eq!(calculate_clock_divider(125_000_000, 10_000), 125);
+        // Target PIO clock for 20 kHz @ 100 cycles/period: 2.0 MHz -> divider 62
+        assert_eq!(calculate_clock_divider(125_000_000, 20_000), 62);
+        // Zero frequency guard returns 1
+        assert_eq!(calculate_clock_divider(125_000_000, 0), 1);
+
+        // 3. Verify Tmc6300Pio default and runtime adjustable PWM frequency
+        let diag_flag = AtomicBool::new(false);
+        let pin_diag = MockPin {
+            is_high: &diag_flag,
+        };
+        let mut pio_motor = Tmc6300Pio::new(pin_diag);
+
+        assert_eq!(
+            pio_motor.pwm_frequency_hz(),
+            DEFAULT_PIO_PWM_FREQUENCY_HZ,
+            "Tmc6300Pio must default to PIO_PWM_FREQUENCY_HZ (25 kHz)"
+        );
+
+        pio_motor.set_pwm_frequency_hz(25_000);
+        assert_eq!(
+            pio_motor.pwm_frequency_hz(),
+            25_000,
+            "Tmc6300Pio must allow setting PWM frequency to 25 kHz"
+        );
+
+        pio_motor.set_pwm_frequency_hz(10_000);
+        assert_eq!(
+            pio_motor.pwm_frequency_hz(),
+            10_000,
+            "Tmc6300Pio must allow setting PWM frequency to 10 kHz"
+        );
+    });
+}
+
+#[test]
+fn test_worm_slithering_lumbricus_809_tmc6300_short_protection_pulse_invariants() {
+    run_test!(async {
+        use model::interfaces::{Motor, Tickable};
+        use model::types::MotorSpeed;
+        use peripheral::tmc6300::{
+            calculate_on_time_ns, clamp_on_count_short_protection, phase_mask, Tmc6300Pio,
+            SHORT_PROTECTION_HARD_LIMIT_ON_COUNT, SHORT_PROTECTION_MAX_ON_COUNT,
+            SHORT_PROTECTION_MAX_ON_TIME_NS, SHORT_PROTECTION_MIN_ON_COUNT,
+            SHORT_PROTECTION_MIN_ON_TIME_NS, SHORT_PROTECTION_NOMINAL_ON_TIME_NS,
+            SHORT_PROTECTION_PIO_DIVIDER, SHORT_PROTECTION_PWM_FREQUENCY_HZ,
+            SHORT_PROTECTION_THRESHOLD_NS,
+        };
+        use std::sync::atomic::AtomicBool;
+
+        // 1. Verify constant invariants for TMC6300 hardware short-circuit protection
+        // TMC6300 t_S2G short detection delay is 1000 ns (1.0 µs)
+        assert_eq!(SHORT_PROTECTION_THRESHOLD_NS, 1000);
+        // Target pulse bounds: between 500 ns and 800 ns
+        assert_eq!(SHORT_PROTECTION_MIN_ON_TIME_NS, 500);
+        assert_eq!(SHORT_PROTECTION_MAX_ON_TIME_NS, 800);
+        assert_eq!(SHORT_PROTECTION_NOMINAL_ON_TIME_NS, 640);
+        assert_eq!(SHORT_PROTECTION_PWM_FREQUENCY_HZ, 250_000);
+        assert_eq!(SHORT_PROTECTION_PIO_DIVIDER, 5);
+        assert_eq!(SHORT_PROTECTION_MIN_ON_COUNT, 7);
+        assert_eq!(SHORT_PROTECTION_MAX_ON_COUNT, 14);
+        assert_eq!(SHORT_PROTECTION_HARD_LIMIT_ON_COUNT, 18);
+
+        // 2. Mathematical reproduction of the defect:
+        // Under buggy divider 50 (2.5 MHz PIO clock, 400 ns/cycle), speed 10 on_count produces:
+        // (10 + 6) * 400 ns = 6400 ns (6.4 µs) -> TRIPS short protection (t_S2G = 1.0 µs)!
+        let buggy_pulse_ns = calculate_on_time_ns(10, 50, 125_000_000);
+        assert_eq!(buggy_pulse_ns, 6400);
+        assert!(buggy_pulse_ns > SHORT_PROTECTION_THRESHOLD_NS);
+
+        // Under fixed divider 5 (25 MHz PIO clock, 40 ns/cycle), speed 10 on_count produces:
+        // (10 + 6) * 40 ns = 640 ns (0.64 µs) -> Safe, inside ideal 500..800 ns window!
+        let fixed_pulse_ns = calculate_on_time_ns(10, SHORT_PROTECTION_PIO_DIVIDER, 125_000_000);
+        assert_eq!(fixed_pulse_ns, 640);
+        assert!(fixed_pulse_ns < SHORT_PROTECTION_THRESHOLD_NS);
+        assert!(fixed_pulse_ns >= SHORT_PROTECTION_MIN_ON_TIME_NS);
+        assert!(fixed_pulse_ns <= SHORT_PROTECTION_MAX_ON_TIME_NS);
+
+        // 3. Verify on_count clamping across all duty cycles (1..=100)
+        assert_eq!(clamp_on_count_short_protection(0), 0);
+        // Minimum non-zero duty cycle clamped to 7 cycles (520 ns, > 500 ns)
+        assert_eq!(clamp_on_count_short_protection(1), 7);
+        let min_pulse = calculate_on_time_ns(
+            clamp_on_count_short_protection(1),
+            SHORT_PROTECTION_PIO_DIVIDER,
+            125_000_000,
+        );
+        assert_eq!(min_pulse, 520);
+        assert!(min_pulse >= SHORT_PROTECTION_MIN_ON_TIME_NS);
+
+        // Speed 10 reproduces user scenario: 10 cycles -> 640 ns
+        assert_eq!(clamp_on_count_short_protection(10), 10);
+        let pulse_10 = calculate_on_time_ns(
+            clamp_on_count_short_protection(10),
+            SHORT_PROTECTION_PIO_DIVIDER,
+            125_000_000,
+        );
+        assert_eq!(pulse_10, 640);
+
+        // Speed 100 clamped to 14 cycles -> exactly 800 ns target
+        assert_eq!(clamp_on_count_short_protection(100), 14);
+        let max_pulse = calculate_on_time_ns(
+            clamp_on_count_short_protection(100),
+            SHORT_PROTECTION_PIO_DIVIDER,
+            125_000_000,
+        );
+        assert_eq!(max_pulse, 800);
+        assert_eq!(max_pulse, SHORT_PROTECTION_MAX_ON_TIME_NS);
+
+        // Across all commanded speeds (1..=100), pulse duration MUST be in [500 ns, 800 ns]
+        for speed_val in 1..=100 {
+            let clamped = clamp_on_count_short_protection(speed_val);
+            let duration = calculate_on_time_ns(clamped, SHORT_PROTECTION_PIO_DIVIDER, 125_000_000);
+            assert!(
+                duration >= SHORT_PROTECTION_MIN_ON_TIME_NS,
+                "Speed {speed_val} pulse duration {duration} ns below min {SHORT_PROTECTION_MIN_ON_TIME_NS} ns"
+            );
+            assert!(
+                duration <= SHORT_PROTECTION_MAX_ON_TIME_NS,
+                "Speed {speed_val} pulse duration {duration} ns exceeds max {SHORT_PROTECTION_MAX_ON_TIME_NS} ns"
+            );
+            assert!(
+                duration < SHORT_PROTECTION_THRESHOLD_NS,
+                "Speed {speed_val} pulse duration {duration} ns exceeds threshold {SHORT_PROTECTION_THRESHOLD_NS} ns"
+            );
+        }
+
+        // 4. Functional driver verification on host mock
+        let diag_flag = AtomicBool::new(false);
+        let pin_diag = MockPin {
+            is_high: &diag_flag,
+        };
+        let mut pio_motor = Tmc6300Pio::new(pin_diag);
+
+        // Initial state stopped
+        assert_eq!(pio_motor.effective_on_count(), 0);
+        assert_eq!(pio_motor.pulse_duration_ns(), 240); // 6 cycles idle
+
+        // Command speed 10 (reproduction step)
+        assert!(pio_motor.set_speed(MotorSpeed::new(10).unwrap()).is_ok());
+        assert_eq!(pio_motor.speed(), 10);
+        assert_eq!(pio_motor.effective_on_count(), 10);
+        assert_eq!(pio_motor.pulse_duration_ns(), 640);
+        let eff_word10 = pio_motor.effective_word();
+        assert_eq!((eff_word10 >> 8) & 0xFF, 10);
+        assert_eq!((eff_word10 >> 16) & 0xFF, 90);
+        assert_eq!(eff_word10 & 0xFF, phase_mask(10, 0) as u32);
+
+        // Command speed 100
+        assert!(pio_motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
+        assert_eq!(pio_motor.speed(), 100);
+        assert_eq!(pio_motor.effective_on_count(), 14);
+        assert_eq!(pio_motor.pulse_duration_ns(), 800);
+        let eff_word100 = pio_motor.effective_word();
+        assert_eq!((eff_word100 >> 8) & 0xFF, 14);
+        assert_eq!((eff_word100 >> 16) & 0xFF, 1);
+
+        // Advance commutation tick
+        assert!(pio_motor.tick().await.is_ok());
+        assert_eq!(pio_motor.commutation_step(), 1);
+        let eff_step1 = pio_motor.effective_word();
+        assert_eq!(eff_step1 & 0xFF, phase_mask(100, 1) as u32);
+        assert_eq!((eff_step1 >> 8) & 0xFF, 14);
+    });
+}
+
+#[test]
+fn test_worm_segmented_sipunculid_504_hall_sensor_preserves_rpm_between_slow_pulses() {
+    let pin_state = std::sync::atomic::AtomicBool::new(false);
+    let pin = MockPin {
+        is_high: &pin_state,
+    };
+    let mut sensor = peripheral::hall_sensor::HallSensor::new(pin);
+    use model::interfaces::SpeedSensor;
+
+    // Simulate 1 pulse arriving at slow speed (166 RPM)
+    pin_state.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(sensor.poll_state().is_ok());
+    assert_eq!(sensor.pulse_count(), 1);
+
+    // Calculate RPM for 1 pulse over 120 ms:
+    // (1 * 60,000) / (3 * 120) = 60,000 / 360 = 166 RPM
+    sensor.update_rpm(120);
+    assert_eq!(sensor.read_rpm(), Ok(166));
+
+    // When a calculation window passes without a new pulse (pulse_count == 0),
+    // RPM must NOT collapse to 0 RPM
+    sensor.update_rpm(100);
+    assert_eq!(sensor.read_rpm(), Ok(166));
+}
+
+#[test]
+fn test_cr_7f321327_tmc6300_tick_interval_and_sync() {
+    use model::interfaces::Tickable;
+    use peripheral::tmc6300::{Tmc6300Pio, DEFAULT_TICK_INTERVAL, DEFAULT_TICK_INTERVAL_US};
+
+    let pin_diag = MockPin {
+        is_high: &std::sync::atomic::AtomicBool::new(false),
+    };
+    let mut driver = Tmc6300Pio::new(pin_diag);
+
+    // Initial default tick interval should match DEFAULT_TICK_INTERVAL_US (10ms)
+    assert_eq!(driver.tick_interval_us(), DEFAULT_TICK_INTERVAL_US);
+    assert_eq!(
+        Tickable::tick_interval_us(&driver),
+        DEFAULT_TICK_INTERVAL_US
+    );
+    assert_eq!(driver.tick_interval(), DEFAULT_TICK_INTERVAL);
+    assert_eq!(
+        driver.tick_interval(),
+        embassy_time::Duration::from_millis(10)
+    );
+
+    // Dynamic configuration updates tick interval
+    driver.set_tick_interval_us(250);
+    assert_eq!(driver.tick_interval_us(), 250);
+    assert_eq!(Tickable::tick_interval_us(&driver), 250);
+    assert_eq!(
+        driver.tick_interval(),
+        embassy_time::Duration::from_micros(250)
+    );
+}
+
+#[test]
+fn test_worm_proboscid_roundworm_8_driver_first_tick_executes_step_0() {
+    run_test!(async {
+        use model::interfaces::{Motor, Tickable};
+        use model::types::MotorSpeed;
+        use peripheral::tmc6300::{Tmc6300Pio, DEFAULT_TICK_INTERVAL_US};
+
+        let pin_diag = MockPin {
+            is_high: &std::sync::atomic::AtomicBool::new(false),
+        };
+        let mut driver = Tmc6300Pio::new(pin_diag);
+
+        // 1. Driver default tick interval must be 10,000 µs (10 ms)
+        assert_eq!(driver.tick_interval_us(), 10_000);
+        assert_eq!(DEFAULT_TICK_INTERVAL_US, 10_000);
+
+        // 2. Set speed: initial step index is Step 0
+        driver.set_speed(MotorSpeed::new(100).unwrap()).unwrap();
+        assert_eq!(driver.commutation_step(), 0, "Initial step must be Step 0");
+
+        // 3. First tick advances to Step 1
+        assert!(driver.tick().await.is_ok());
+        assert_eq!(
+            driver.commutation_step(),
+            1,
+            "First tick must advance to Step 1"
+        );
+
+        // 4. Second tick advances to Step 2
+        assert!(driver.tick().await.is_ok());
+        assert_eq!(
+            driver.commutation_step(),
+            2,
+            "Second tick must advance to Step 2"
         );
     });
 }

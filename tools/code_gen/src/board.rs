@@ -41,6 +41,64 @@ pub struct BoardConfig {
     pub hardware_resources: HashMap<String, TypedResource>,
     /// Mappings of named memory layout partitions.
     pub partitions: HashMap<String, BoardPartitionConfig>,
+    /// Optional motor configuration settings.
+    #[serde(default)]
+    pub motor: Option<BoardMotorConfig>,
+}
+
+/// Target-specific motor timing, current, and commutation parameters.
+#[derive(Deserialize, Debug, Clone)]
+pub struct BoardMotorConfig {
+    /// Startup blanking period in ticks.
+    #[serde(default = "default_startup_blanking_ticks")]
+    pub startup_blanking_ticks: u32,
+    /// Default maximum current limit in milliamperes.
+    #[serde(default = "default_max_current_ma")]
+    pub default_max_current_ma: i32,
+    /// Initial commutation step interval in ticks during startup ramp.
+    #[serde(default = "default_startup_commutation_step_ticks")]
+    pub startup_commutation_step_ticks: u32,
+    /// Base speed percentage divisor for calculating target commutation step interval ticks.
+    #[serde(default = "default_commutation_speed_divisor")]
+    pub commutation_speed_divisor: u32,
+    /// Minimum commutation step interval in ticks.
+    #[serde(default = "default_min_commutation_step_ticks")]
+    pub min_commutation_step_ticks: u32,
+    /// Maximum commutation step interval in ticks.
+    #[serde(default = "default_max_commutation_step_ticks")]
+    pub max_commutation_step_ticks: u32,
+}
+
+fn default_startup_blanking_ticks() -> u32 {
+    300
+}
+fn default_max_current_ma() -> i32 {
+    2500
+}
+fn default_startup_commutation_step_ticks() -> u32 {
+    10
+}
+fn default_commutation_speed_divisor() -> u32 {
+    100
+}
+fn default_min_commutation_step_ticks() -> u32 {
+    1
+}
+fn default_max_commutation_step_ticks() -> u32 {
+    100
+}
+
+impl Default for BoardMotorConfig {
+    fn default() -> Self {
+        Self {
+            startup_blanking_ticks: default_startup_blanking_ticks(),
+            default_max_current_ma: default_max_current_ma(),
+            startup_commutation_step_ticks: default_startup_commutation_step_ticks(),
+            commutation_speed_divisor: default_commutation_speed_divisor(),
+            min_commutation_step_ticks: default_min_commutation_step_ticks(),
+            max_commutation_step_ticks: default_max_commutation_step_ticks(),
+        }
+    }
 }
 
 /// A custom board configuration resource containing a value and an explicit Rust type.
@@ -53,14 +111,29 @@ pub struct TypedResource {
 }
 
 /// Settings configuration for a target hardware serial bus controller.
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Default)]
 pub struct BoardBusConfig {
     /// SDA data pin identifier.
-    pub sda: String,
+    #[serde(default)]
+    pub sda: Option<String>,
     /// SCL clock pin identifier.
-    pub scl: String,
+    #[serde(default)]
+    pub scl: Option<String>,
     /// Operating frequency of the bus in Hz.
-    pub frequency: u32,
+    #[serde(default)]
+    pub frequency: Option<u32>,
+    /// TX pin identifier.
+    #[serde(default)]
+    pub tx: Option<String>,
+    /// RX pin identifier.
+    #[serde(default)]
+    pub rx: Option<String>,
+    /// Generic or PIO pin identifier.
+    #[serde(default)]
+    pub pin: Option<String>,
+    /// Multiple pins assigned to this bus.
+    #[serde(default)]
+    pub pins: Option<Vec<String>>,
 }
 
 /// Memory partition boundary coordinates relative to storage space boundaries.
@@ -91,12 +164,120 @@ pub struct GeneratedBoardTemplate {
     pub chip: String,
     pub flash_base: u32,
     pub constants: Vec<BoardConstant>,
+    pub bus_assigned_pins: Vec<u32>,
 }
 
 impl GeneratedBoardTemplate {
     pub fn flash_base_hex(&self) -> String {
         format!("0x{:08X}", self.flash_base)
     }
+
+    pub fn bus_assigned_match(&self) -> String {
+        if self.bus_assigned_pins.is_empty() {
+            "u32::MAX".to_string()
+        } else {
+            self.bus_assigned_pins
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(" | ")
+        }
+    }
+}
+
+/// Rinja template for generating GPIO bus-assignment and alternate-function mappings.
+#[derive(Template)]
+#[template(path = "generated_gpio.rs.jinja", escape = "none")]
+pub struct GeneratedGpioTemplate {
+    /// List of numeric GPIO pin IDs assigned to buses.
+    pub bus_assigned_pins: Vec<u32>,
+    /// Total number of GPIO pins.
+    pub num_gpio_pins: u32,
+}
+
+impl GeneratedGpioTemplate {
+    /// Returns the pipe-delimited pattern string for match statements.
+    pub fn bus_assigned_match(&self) -> String {
+        if self.bus_assigned_pins.is_empty() {
+            "u32::MAX".to_string()
+        } else {
+            self.bus_assigned_pins
+                .iter()
+                .map(|p| p.to_string())
+                .collect::<Vec<_>>()
+                .join(" | ")
+        }
+    }
+}
+
+/// Resolves all unique numeric GPIO pin IDs assigned to communication buses.
+pub fn resolve_bus_assigned_pins(board_config: &BoardConfig) -> Vec<u32> {
+    let mut assigned_pins = std::collections::BTreeSet::new();
+
+    let resolve_pin = |entry: &str| -> Option<u32> {
+        board_config
+            .pins
+            .get(entry)
+            .copied()
+            .or_else(|| entry.parse::<u32>().ok())
+    };
+
+    for bus in board_config.buses.values() {
+        if let Some(ref sda) = bus.sda {
+            if let Some(pin) = resolve_pin(sda) {
+                assigned_pins.insert(pin);
+            }
+        }
+        if let Some(ref scl) = bus.scl {
+            if let Some(pin) = resolve_pin(scl) {
+                assigned_pins.insert(pin);
+            }
+        }
+        if let Some(ref tx) = bus.tx {
+            if let Some(pin) = resolve_pin(tx) {
+                assigned_pins.insert(pin);
+            }
+        }
+        if let Some(ref rx) = bus.rx {
+            if let Some(pin) = resolve_pin(rx) {
+                assigned_pins.insert(pin);
+            }
+        }
+        if let Some(ref pin_name) = bus.pin {
+            if let Some(pin) = resolve_pin(pin_name) {
+                assigned_pins.insert(pin);
+            }
+        }
+        if let Some(ref pin_list) = bus.pins {
+            for pin_name in pin_list {
+                if let Some(pin) = resolve_pin(pin_name) {
+                    assigned_pins.insert(pin);
+                }
+            }
+        }
+    }
+
+    assigned_pins.into_iter().collect()
+}
+
+/// Generates GPIO diagnostic mapping definitions from board TOML content.
+pub fn generate_gpio_definitions(toml_content: &str, board_name: &str) -> String {
+    let config: BoardsConfig =
+        toml::from_str(toml_content).expect("Failed to parse boards TOML content");
+
+    let board_config = config
+        .boards
+        .get(board_name)
+        .unwrap_or_else(|| panic!("Board '{}' not found in TOML", board_name));
+
+    let bus_assigned_pins = resolve_bus_assigned_pins(board_config);
+
+    let template = GeneratedGpioTemplate {
+        bus_assigned_pins,
+        num_gpio_pins: 30,
+    };
+
+    template.render().expect("Failed to render GPIO template")
 }
 
 pub fn parse_memory_map(root: &Path) -> (u32, u32) {
@@ -106,7 +287,7 @@ pub fn parse_memory_map(root: &Path) -> (u32, u32) {
     }
     let content = std::fs::read_to_string(path).expect("Failed to read memory.x");
 
-    let mut flash_start = 0x10000000;
+    let mut flash_start = None;
     let mut ram_start = 0x20000000;
     let mut ram_length = 264 * 1024;
 
@@ -140,10 +321,14 @@ pub fn parse_memory_map(root: &Path) -> (u32, u32) {
                 }
             }
 
-            if name.eq_ignore_ascii_case("BOOT2") || name.eq_ignore_ascii_case("FLASH") {
+            if name.eq_ignore_ascii_case("BOOT2") {
                 if let Some(orig) = origin {
-                    if name.eq_ignore_ascii_case("BOOT2") || flash_start == 0x10000000 {
-                        flash_start = orig;
+                    flash_start = Some(orig);
+                }
+            } else if name.eq_ignore_ascii_case("FLASH") {
+                if let Some(orig) = origin {
+                    if flash_start.is_none() {
+                        flash_start = Some(orig);
                     }
                 }
             } else if name.eq_ignore_ascii_case("RAM") {
@@ -157,7 +342,7 @@ pub fn parse_memory_map(root: &Path) -> (u32, u32) {
         }
     }
 
-    (flash_start, ram_start + ram_length)
+    (flash_start.unwrap_or(0x10000000), ram_start + ram_length)
 }
 
 fn parse_numeric_value(val: &str) -> Option<u32> {
@@ -442,13 +627,72 @@ pub fn generate_board_definitions(toml_content: &str, board_name: &str) -> Strin
         doc: "Default core monitor warning threshold percentage.".to_string(),
     });
 
+    // Motor configuration
+    let motor_config = board_config.motor.clone().unwrap_or_default();
+    constants.push(BoardConstant {
+        name: "MOTOR_STARTUP_BLANKING_TICKS".to_string(),
+        const_type: "u32".to_string(),
+        val_str: motor_config.startup_blanking_ticks.to_string(),
+        doc: "Startup blanking period in ticks during which safety limits/cutoff checks are bypassed.".to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "MOTOR_DEFAULT_MAX_CURRENT_MA".to_string(),
+        const_type: "i32".to_string(),
+        val_str: motor_config.default_max_current_ma.to_string(),
+        doc: "Default maximum current limit for the motor controller in milliamperes.".to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "MOTOR_STARTUP_COMMUTATION_STEP_TICKS".to_string(),
+        const_type: "u32".to_string(),
+        val_str: motor_config.startup_commutation_step_ticks.to_string(),
+        doc: "Initial commutation step interval in 10ms ticks during startup soft-start ramp."
+            .to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "MOTOR_COMMUTATION_SPEED_DIVISOR".to_string(),
+        const_type: "u32".to_string(),
+        val_str: motor_config.commutation_speed_divisor.to_string(),
+        doc:
+            "Base speed percentage divisor for calculating target commutation step interval ticks."
+                .to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "MOTOR_MIN_COMMUTATION_STEP_TICKS".to_string(),
+        const_type: "u32".to_string(),
+        val_str: motor_config.min_commutation_step_ticks.to_string(),
+        doc: "Minimum commutation step interval in 10ms ticks at full speed.".to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "MOTOR_MAX_COMMUTATION_STEP_TICKS".to_string(),
+        const_type: "u32".to_string(),
+        val_str: motor_config.max_commutation_step_ticks.to_string(),
+        doc: "Maximum commutation step interval in 10ms ticks at minimum speed.".to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "MOTOR_CONFIG".to_string(),
+        const_type: "model::types::MotorConfig".to_string(),
+        val_str: format!(
+            "model::types::MotorConfig {{\n        startup_blanking_ticks: {},\n        default_max_current_ma: {},\n        startup_commutation_step_ticks: {},\n        commutation_speed_divisor: {},\n        min_commutation_step_ticks: {},\n        max_commutation_step_ticks: {},\n    }}",
+            motor_config.startup_blanking_ticks,
+            motor_config.default_max_current_ma,
+            motor_config.startup_commutation_step_ticks,
+            motor_config.commutation_speed_divisor,
+            motor_config.min_commutation_step_ticks,
+            motor_config.max_commutation_step_ticks,
+        ),
+        doc: "Canonical MotorConfig model instance configured from board.toml.".to_string(),
+    });
+
     constants.sort_by(|a, b| a.name.cmp(&b.name));
+
+    let bus_assigned_pins = resolve_bus_assigned_pins(board_config);
 
     let template = GeneratedBoardTemplate {
         name: board_name.to_string(),
         chip: board_config.chip.clone(),
         flash_base: board_config.flash_base,
         constants,
+        bus_assigned_pins,
     };
 
     template.render().expect("Failed to render board template")
@@ -497,9 +741,15 @@ pub fn render_board_skeleton(name_pascal: &str) -> String {
     let mut i2c_scl_pin = "13".to_string();
     let mut i2c_frequency = 400000;
     if let Some(i2c_bus) = matched_board.buses.get("i2c") {
-        i2c_sda_pin = i2c_bus.sda.clone();
-        i2c_scl_pin = i2c_bus.scl.clone();
-        i2c_frequency = i2c_bus.frequency;
+        if let Some(ref sda) = i2c_bus.sda {
+            i2c_sda_pin = sda.clone();
+        }
+        if let Some(ref scl) = i2c_bus.scl {
+            i2c_scl_pin = scl.clone();
+        }
+        if let Some(freq) = i2c_bus.frequency {
+            i2c_frequency = freq;
+        }
     }
 
     let fs_buf_size = matched_board

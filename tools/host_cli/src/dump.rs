@@ -30,7 +30,6 @@ pub fn dump_logs<S: DefmtLogSource, W: Write>(
                             }
                         }
                         Err(defmt_decoder::DecodeError::UnexpectedEof) => {
-                            eprintln!("Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)");
                             break;
                         }
                         Err(defmt_decoder::DecodeError::Malformed) => {

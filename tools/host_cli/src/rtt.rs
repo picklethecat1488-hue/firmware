@@ -1,4 +1,4 @@
-use crate::tracing::handle_tracing_line;
+use crate::tracing::{format_target_namespace, handle_tracing_line};
 use defmt_decoder::Table;
 use host_cli::{dump_logs, DefmtLogSource};
 use probe_rs::probe::list::Lister;
@@ -619,6 +619,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                             .as_ref()
                                             .and_then(|locs| locs.get(&frame.index()))
                                             .map(|loc| loc.module.as_str());
+                                        let clean_module = module_path.map(format_target_namespace);
 
                                         let device_ts = frame
                                             .display_timestamp()
@@ -626,8 +627,11 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                             .and_then(|s| s.trim().parse::<f64>().ok())
                                             .map(|ts_sec| ts_sec * 1_000_000.0);
 
-                                        match handle_tracing_line(&line_str, module_path, device_ts)
-                                        {
+                                        match handle_tracing_line(
+                                            &line_str,
+                                            clean_module.as_deref(),
+                                            device_ts,
+                                        ) {
                                             Ok(true) => continue,
                                             Err(e) => {
                                                 eprintln!("Error parsing trace line: {}", e);
@@ -664,7 +668,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                                 (
                                                     loc.file.display().to_string(),
                                                     loc.line as i64,
-                                                    loc.module.clone(),
+                                                    format_target_namespace(&loc.module),
                                                 )
                                             } else {
                                                 (String::new(), 0i64, "rp_pico".to_string())
@@ -685,8 +689,11 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                         let mut module_context = String::new();
                                         if let Some(ref locs) = locations {
                                             if let Some(loc) = locs.get(&frame.index()) {
-                                                module_context =
-                                                    format!("\x1b[36m[{}]\x1b[0m ", loc.module);
+                                                let clean_ns = format_target_namespace(&loc.module);
+                                                if !clean_ns.is_empty() {
+                                                    module_context =
+                                                        format!("\x1b[36m[{}]\x1b[0m ", clean_ns);
+                                                }
                                             }
                                         }
 

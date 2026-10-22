@@ -110,6 +110,7 @@ def test_cli_stop_active_instance(tmp_path: Path) -> None:
     with (
         patch("dashboard.cli.get_dashboard_lock_file", return_value=lock_file),
         patch("dashboard.cli.check_existing_instance", return_value=(12345, "http://127.0.0.1:8877")),
+        patch("dashboard.cli.is_pid_alive", return_value=False),
         patch("os.kill") as mock_kill,
         patch("sys.stdout", out),
         patch("sys.argv", ["dashboard.py", "--stop"]),
@@ -137,3 +138,51 @@ def test_cli_stop_no_instance(tmp_path: Path) -> None:
         main()
 
     assert "No dashboard workstation is running" in out.getvalue()
+
+
+def test_cli_restart_active_instance(tmp_path: Path) -> None:
+    """Verify --restart terminates active instance and cleans lock before starting."""
+    lock_file = tmp_path / "dashboard_8877.lock"
+    lock_file.write_text(json.dumps({"pid": 12345, "url": "http://127.0.0.1:8877"}), encoding="utf-8")
+
+    from dashboard.cli import main
+
+    out = StringIO()
+    with (
+        patch("dashboard.cli.get_dashboard_lock_file", return_value=lock_file),
+        patch("dashboard.cli.check_existing_instance", side_effect=[(12345, "http://127.0.0.1:8877"), None]),
+        patch("dashboard.cli.stop_dashboard_instance") as mock_stop,
+        patch("dashboard.cli.DashboardServer") as mock_server,
+        patch("dashboard.cli.launch_browser"),
+        patch("sys.stdout", out),
+        patch("sys.argv", ["dashboard.py", "--restart", "--no-detach", "--no-browser"]),
+    ):
+        mock_server.return_value.get_url.return_value = "http://127.0.0.1:8877"
+        main()
+
+    mock_stop.assert_called_once_with(12345, lock_file, "127.0.0.1", 8877)
+    assert "Restarting dashboard" in out.getvalue()
+
+
+def test_cli_restart_subcommand(tmp_path: Path) -> None:
+    """Verify restart subcommand terminates active instance and starts new server."""
+    lock_file = tmp_path / "dashboard_8877.lock"
+    lock_file.write_text(json.dumps({"pid": 12345, "url": "http://127.0.0.1:8877"}), encoding="utf-8")
+
+    from dashboard.cli import main
+
+    out = StringIO()
+    with (
+        patch("dashboard.cli.get_dashboard_lock_file", return_value=lock_file),
+        patch("dashboard.cli.check_existing_instance", side_effect=[(12345, "http://127.0.0.1:8877"), None]),
+        patch("dashboard.cli.stop_dashboard_instance") as mock_stop,
+        patch("dashboard.cli.DashboardServer") as mock_server,
+        patch("dashboard.cli.launch_browser"),
+        patch("sys.stdout", out),
+        patch("sys.argv", ["dashboard.py", "restart", "--no-detach", "--no-browser"]),
+    ):
+        mock_server.return_value.get_url.return_value = "http://127.0.0.1:8877"
+        main()
+
+    mock_stop.assert_called_once_with(12345, lock_file, "127.0.0.1", 8877)
+    assert "Restarting dashboard" in out.getvalue()

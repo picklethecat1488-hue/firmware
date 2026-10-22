@@ -228,11 +228,13 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
                 BootTrapReason::Battery => "Battery",
                 BootTrapReason::Thermal => "Thermal",
             };
-            defmt::info!("SystemController: cleared boot trap: {}", cleared_str);
+            defmt::info!("cleared boot trap: {}", cleared_str);
             if self.power_manager.is_boot_trapped() {
                 self.log_active_boot_traps();
             } else {
-                defmt::info!("SystemController: all boot traps cleared. exiting PowerDown state. Waking up to Active mode.");
+                defmt::info!(
+                    "all boot traps cleared. exiting PowerDown state. Waking up to Active mode."
+                );
             }
         }
     }
@@ -334,7 +336,7 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
                     self.set_status(SystemStatus::Sleep)?;
                 }
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::info!("SystemController: Alert triggered. LED indicator set to RED.");
+                defmt::info!("Alert triggered. LED indicator set to RED.");
             }
             SystemCommand::BatteryUpdate {
                 state_of_charge,
@@ -409,7 +411,7 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
                         Gesture::LongPress(_) => "LongPress",
                         Gesture::ExtraLongPress(_) => "ExtraLongPress",
                     };
-                    defmt::info!("SystemController: Gesture input detected: {}", gest_str);
+                    defmt::info!("Gesture input detected: {}", gest_str);
                 }
                 let current_status = self.power_manager.status();
                 self.feature_set
@@ -448,11 +450,7 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
                         SystemStatus::Active => "Active",
                         SystemStatus::Sleep => "Sleep",
                     };
-                    defmt::info!(
-                        "SystemController: State transition: {} -> {}",
-                        from_str,
-                        to_str
-                    );
+                    defmt::info!("State transition: {} -> {}", from_str, to_str);
                 }
                 if to == SystemStatus::Active {
                     self.power_manager.reset_on_wake();
@@ -508,7 +506,7 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
 
         if action == ThermalUpdateAction::AlertTriggered {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::info!("SystemController: Alert triggered. LED indicator set to RED.");
+            defmt::info!("Alert triggered. LED indicator set to RED.");
         }
 
         Ok(())
@@ -526,11 +524,7 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
             if mask.has(BootTrapReason::Thermal) {
                 thermal = " Thermal";
             }
-            defmt::info!(
-                "SystemController: boot blocked by traps:{}{}",
-                battery,
-                thermal
-            );
+            defmt::info!("boot blocked by traps:{}{}", battery, thermal);
         }
     }
 

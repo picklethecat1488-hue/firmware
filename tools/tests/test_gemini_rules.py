@@ -30,6 +30,7 @@ def test_gemini_markdown_core_skills_and_back_compat_mandate() -> None:
 
     # 2. Regression unit testing mandate
     assert "Regression Unit Testing Mandate" in content
+    assert "Functional Behavioral Testing Mandate" in content
 
     # 3. Firmware target back-compatibility mandate (BUG-003)
     mandate_phrase = "unless duly noted, any firmware code should apply to all firmware targets in the repository"

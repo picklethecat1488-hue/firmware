@@ -18,6 +18,7 @@ from model.worm_report import (
     WormCategory,
     WormDatabaseModel,
     WormReportModel,
+    WormSectionModel,
     WormSeverity,
     WormStatus,
 )
@@ -62,6 +63,9 @@ class SQLiteWormStore:
         cols = [row["name"] for row in cursor.fetchall()]
         if "uuid" not in cols:
             self._init_schema_with_conn(conn)
+            return
+        if "custom_sections" not in cols:
+            conn.execute("ALTER TABLE worms ADD COLUMN custom_sections TEXT NOT NULL DEFAULT '[]'")
 
     def _init_schema(self) -> None:
         """Initialize tables and indices if they do not already exist."""
@@ -93,7 +97,8 @@ class SQLiteWormStore:
                 created_at TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL DEFAULT '',
                 resolved_at TEXT,
-                resolution_notes TEXT NOT NULL DEFAULT ''
+                resolution_notes TEXT NOT NULL DEFAULT '',
+                custom_sections TEXT NOT NULL DEFAULT '[]'
             );
 
             CREATE TABLE IF NOT EXISTS worm_attachments (
@@ -162,12 +167,14 @@ class SQLiteWormStore:
             bug_rows = conn.execute(
                 "SELECT id, uuid, title, status, severity, category, component, description, "
                 "reproduction_steps, expected_behavior, actual_behavior, logs, created_at, "
-                "updated_at, resolved_at, resolution_notes FROM worms"
+                "updated_at, resolved_at, resolution_notes, custom_sections FROM worms"
             ).fetchall()
 
-            def _sort_key(r: sqlite3.Row) -> int:
+            def _sort_key(r: sqlite3.Row) -> tuple[str, int, str]:
+                created = r["created_at"] or ""
                 m = re.search(r"\d+", r["id"] or "")
-                return int(m.group(0)) if m else 999999
+                num = int(m.group(0)) if m else 999999
+                return (created if created else f"0000-{num:06d}", num, r["id"] or "")
 
             sorted_bug_rows = sorted(bug_rows, key=_sort_key)
 
@@ -178,6 +185,13 @@ class SQLiteWormStore:
                     steps = json.loads(steps_raw) if steps_raw else []
                 except (json.JSONDecodeError, TypeError):
                     steps = []
+
+                custom_raw = row["custom_sections"] if ("custom_sections" in row.keys() and row["custom_sections"]) else "[]"
+                try:
+                    custom_list = json.loads(custom_raw) if custom_raw else []
+                    custom_sections = [WormSectionModel.model_validate(c) for c in custom_list]
+                except Exception:
+                    custom_sections = []
 
                 b_uuid = row["uuid"] if ("uuid" in row.keys() and row["uuid"]) else str(uuid_pkg.uuid4())
                 try:
@@ -198,6 +212,7 @@ class SQLiteWormStore:
                     actual_behavior=row["actual_behavior"] or "",
                     logs=row["logs"] or "",
                     attachments=attachments_by_bug.get(row["id"], []),
+                    custom_sections=custom_sections,
                     created_at=row["created_at"] or "",
                     updated_at=row["updated_at"] or "",
                     resolved_at=row["resolved_at"],
@@ -260,14 +275,19 @@ class SQLiteWormStore:
         notes_clean = elide_personal_info(bug.resolution_notes)
         steps_clean = [elide_personal_info(s) for s in bug.reproduction_steps]
         steps_json = json.dumps(steps_clean)
+        custom_clean = [
+            {"title": elide_personal_info(s.title), "content": elide_personal_info(s.content)}
+            for s in bug.custom_sections
+        ]
+        custom_json = json.dumps(custom_clean)
         b_uuid = bug.uuid or str(uuid_pkg.uuid4())
         conn.execute(
             """
             INSERT INTO worms (
                 id, uuid, title, status, severity, category, component, description,
                 reproduction_steps, expected_behavior, actual_behavior, logs,
-                created_at, updated_at, resolved_at, resolution_notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                created_at, updated_at, resolved_at, resolution_notes, custom_sections
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 uuid=COALESCE(excluded.uuid, worms.uuid),
                 title=excluded.title,
@@ -283,7 +303,8 @@ class SQLiteWormStore:
                 created_at=excluded.created_at,
                 updated_at=excluded.updated_at,
                 resolved_at=excluded.resolved_at,
-                resolution_notes=excluded.resolution_notes
+                resolution_notes=excluded.resolution_notes,
+                custom_sections=excluded.custom_sections
             """,
             (
                 bug.id,
@@ -302,6 +323,7 @@ class SQLiteWormStore:
                 bug.updated_at,
                 bug.resolved_at,
                 notes_clean,
+                custom_json,
             ),
         )
 

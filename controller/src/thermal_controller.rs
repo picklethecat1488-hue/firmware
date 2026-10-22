@@ -166,7 +166,10 @@ impl<'a, M: RawMutex, B: TemperatureSensor, const SYS_CAP: usize>
                             panic!("failed to send thermal alert");
                         }
                         #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        defmt::error!("Thermal Controller: Critical temperature exceeded ({} mC). Dispatching safety shutdown.", temp);
+                        defmt::error!(
+                            "Critical temperature exceeded ({} mC). Dispatching safety shutdown.",
+                            temp
+                        );
                     }
                 } else if self.first_update {
                     if let Some(tx) = &self.thermal_tx {
@@ -206,7 +209,7 @@ impl<'a, M: RawMutex, B: TemperatureSensor, const SYS_CAP: usize>
         // Run initial status check on boot to clear the boot trap immediately.
         if self.update(Some(&mut telemetry_client)).await.is_err() {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::warn!("ThermalController: Boot read failed/timed out!");
+            defmt::warn!("Boot read failed/timed out!");
         }
 
         loop {
@@ -230,9 +233,7 @@ impl<'a, M: RawMutex, B: TemperatureSensor, const SYS_CAP: usize>
                         && self.update(Some(&mut telemetry_client)).await.is_err()
                     {
                         #[cfg(all(target_arch = "arm", target_os = "none"))]
-                        defmt::warn!(
-                            "ThermalController: Periodic read failed; disabling periodic updates."
-                        );
+                        defmt::warn!("Periodic read failed; disabling periodic updates.");
                         check_interval = crate::OVERFLOW_SAFE_MAX_DURATION;
                     }
                 }

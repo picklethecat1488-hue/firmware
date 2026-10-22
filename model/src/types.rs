@@ -154,6 +154,59 @@ pub enum MotorStatus {
     Running(#[n(0)] MotorSpeed, #[n(1)] i32),
 }
 
+/// Configuration parameters for motor timing, safety blanking, and commutation scaling.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub struct MotorConfig {
+    /// Startup blanking period in ticks (e.g. 6000 ticks at 2000Hz = 3 seconds)
+    /// during which safety limits/cutoff checks are bypassed.
+    pub startup_blanking_ticks: u32,
+    /// Default maximum current limit for the motor controller in milliamperes (e.g. 2500).
+    pub default_max_current_ma: i32,
+    /// Initial commutation step interval in 10ms ticks during startup soft-start ramp (e.g. 10 ticks = 100ms = 10Hz step rate).
+    pub startup_commutation_step_ticks: u32,
+    /// Base speed percentage divisor for calculating target commutation step interval ticks (e.g. 100).
+    pub commutation_speed_divisor: u32,
+    /// Minimum commutation step interval in 10ms ticks (e.g. 1 tick = 10ms = 100Hz step rate at full speed).
+    pub min_commutation_step_ticks: u32,
+    /// Maximum commutation step interval in 10ms ticks (e.g. 100 ticks = 1000ms = 1Hz step rate at 1% speed).
+    pub max_commutation_step_ticks: u32,
+}
+
+impl Default for MotorConfig {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl MotorConfig {
+    /// Default canonical motor configuration.
+    pub const DEFAULT: Self = Self {
+        startup_blanking_ticks: 300,
+        default_max_current_ma: 2500,
+        startup_commutation_step_ticks: 10,
+        commutation_speed_divisor: 100,
+        min_commutation_step_ticks: 1,
+        max_commutation_step_ticks: 100,
+    };
+
+    /// Computes the target commutation step interval in controller ticks for a given commanded speed percentage (1..=100).
+    pub const fn calculate_commutation_step_ticks(&self, abs_speed: u8) -> u32 {
+        if abs_speed == 0 {
+            self.max_commutation_step_ticks
+        } else {
+            let ticks = self.commutation_speed_divisor / (abs_speed as u32);
+            if ticks < self.min_commutation_step_ticks {
+                self.min_commutation_step_ticks
+            } else if ticks > self.max_commutation_step_ticks {
+                self.max_commutation_step_ticks
+            } else {
+                ticks
+            }
+        }
+    }
+}
+
 /// Telemetry status of the thermal monitoring system.
 #[derive(Clone, Copy, PartialEq, Eq, minicbor::Encode, minicbor::Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]

@@ -341,7 +341,7 @@ where
             BatteryControllerError::FuelGauge(err) => {
                 telemetry_client.report_error(err.to_peripheral_error());
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
-                defmt::error!("BatteryController: status read failed!");
+                defmt::error!("status read failed!");
                 if let Some(interval) = check_interval {
                     *interval = crate::OVERFLOW_SAFE_MAX_DURATION;
                 }
@@ -378,7 +378,7 @@ where
         // Run initial status check on boot.
         if let Err(e) = self.update(Some(&mut telemetry_client)).await {
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::warn!("BatteryController: Boot read failed/timed out!");
+            defmt::warn!("Boot read failed/timed out!");
             self.handle_update_error(e, &mut telemetry_client, Some(&mut check_interval));
             // Explicitly clear boot trap on timeout/failure to allow booting with warnings
             if let Some(ref tx) = self.system_tx {
@@ -391,7 +391,7 @@ where
         if boot_config_failed {
             telemetry_client.report_error(model::types::PeripheralError::InvalidConfiguration);
             #[cfg(all(target_arch = "arm", target_os = "none"))]
-            defmt::error!("BatteryController: Boot alert configuration failed!");
+            defmt::error!("Boot alert configuration failed!");
         }
         loop {
             let res = select_branch_with_timeout!(
@@ -457,7 +457,7 @@ where
                         {
                             telemetry_client.report_error(model::types::PeripheralError::Unknown);
                             #[cfg(all(target_arch = "arm", target_os = "none"))]
-                            defmt::error!("BatteryController: Critical battery alert send failed!");
+                            defmt::error!("Critical battery alert send failed!");
                         }
                     }
                 } else if is_soc_alert {

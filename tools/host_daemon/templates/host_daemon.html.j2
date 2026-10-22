@@ -1,0 +1,2876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Xerxes Host Daemon // {{ runner.package }}:{{ runner.bin_name }}</title>
+  <meta name="theme-color" content="#0a1c24">
+  <meta name="color-scheme" content="dark">
+  <link rel="stylesheet" href="/static/common.css">
+  <style>
+    html { font-size: 80%; }
+    :root {
+      --xerxes-bg: #04090c;
+      --xerxes-panel: #08161d;
+      --xerxes-panel-hover: #0e242f;
+      --xerxes-header-bg: #0a1c24;
+      --xerxes-border-light: #00f0ff;
+      --xerxes-border-mid: #0b5966;
+      --xerxes-border-dark: #021217;
+      --xerxes-cyan: #00f0ff;
+      --xerxes-cyan-dim: #00a4b3;
+      --xerxes-teal: #14d9c4;
+      --xerxes-mint: #00ffb4;
+      --xerxes-amber: #ffb000;
+      --xerxes-red: #ff2a4b;
+      --xerxes-green: #00ffb4;
+      --xerxes-text-light: #e6f9ff;
+      --xerxes-text-muted: #7aa5b0;
+      --xerxes-text-dim: #3a626c;
+      --font-mono: "Share Tech Mono", ui-monospace, "SF Mono", "Courier New", monospace;
+    }
+    html {
+      height: 100%;
+      width: 100%;
+    }
+    body {
+      background-color: var(--xerxes-bg);
+      background-image:
+        repeating-linear-gradient(0deg, rgba(0,0,0,0.38) 0px, rgba(0,0,0,0.38) 2px, transparent 2px, transparent 4px),
+        radial-gradient(ellipse at 50% 0%, #0a2f3a 0%, #03080b 100%);
+      color: var(--xerxes-text-light);
+      font-family: var(--font-mono);
+      height: 100%;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    header {
+      background: var(--xerxes-header-bg);
+      border-bottom: 2px solid var(--xerxes-border-mid);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .header-title {
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: var(--xerxes-cyan);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .badge {
+      font-size: 8.5px;
+      padding: 2px 6px;
+      border-radius: 2px;
+      background: rgba(0, 240, 255, 0.15);
+      border: 1px solid var(--xerxes-cyan-dim);
+      color: var(--xerxes-cyan);
+    }
+    .badge-green {
+      background: rgba(0, 255, 180, 0.15);
+      border-color: var(--xerxes-green);
+      color: var(--xerxes-green);
+    }
+    .badge-amber {
+      background: rgba(255, 176, 0, 0.15);
+      border-color: var(--xerxes-amber);
+      color: var(--xerxes-amber);
+    }
+    .select-dropdown {
+      background: var(--xerxes-panel);
+      border: 1px solid var(--xerxes-border-light);
+      color: var(--xerxes-cyan);
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      font-weight: bold;
+      padding: 3px 6px;
+      border-radius: 2px;
+      cursor: pointer;
+      outline: none;
+    }
+    .btn {
+      background: var(--xerxes-panel);
+      border: 1px solid var(--xerxes-border-mid);
+      color: var(--xerxes-text-light);
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      font-weight: bold;
+      padding: 3px 8px;
+      border-radius: 2px;
+      cursor: pointer;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .btn:hover {
+      background: var(--xerxes-panel-hover);
+      border-color: var(--xerxes-cyan);
+      color: var(--xerxes-cyan);
+    }
+    .btn-cyan {
+      background: rgba(0, 240, 255, 0.2);
+      border-color: var(--xerxes-cyan);
+      color: var(--xerxes-cyan);
+    }
+    .btn-amber {
+      background: rgba(255, 176, 0, 0.2);
+      border-color: var(--xerxes-amber);
+      color: var(--xerxes-amber);
+    }
+    .btn-amber:hover {
+      background: rgba(255, 176, 0, 0.35);
+      border-color: var(--xerxes-amber);
+      color: #fff;
+    }
+    .btn-red {
+      background: rgba(255, 42, 75, 0.2);
+      border-color: var(--xerxes-red);
+      color: var(--xerxes-red);
+    }
+    .btn-red:hover {
+      background: rgba(255, 42, 75, 0.35);
+      border-color: var(--xerxes-red);
+      color: #fff;
+    }
+    .btn-copy {
+      background: rgba(0, 240, 255, 0.1);
+      border: 1px solid var(--xerxes-cyan);
+      color: var(--xerxes-cyan);
+      padding: 1px 6px;
+      font-size: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      border-radius: 2px;
+      outline: none;
+    }
+    .btn-copy:hover {
+      background: rgba(0, 240, 255, 0.25);
+      color: #ffffff;
+      box-shadow: 0 0 6px rgba(0, 240, 255, 0.4);
+    }
+    .workspace-body {
+      flex: 1;
+      display: flex;
+      flex-direction: row;
+      gap: 0;
+      padding: 8px;
+      overflow: hidden;
+      position: relative;
+    }
+    .log-panel {
+      width: 50%;
+      min-width: 0px;
+      flex-shrink: 0;
+    }
+    .cli-panel {
+      flex: 1;
+      min-width: 200px;
+    }
+    .vertical-splitter {
+      width: 10px;
+      cursor: col-resize;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      user-select: none;
+      flex-shrink: 0;
+      margin: 0 4px;
+      transition: background 0.15s ease;
+      z-index: 10;
+    }
+    .vertical-splitter:hover, .vertical-splitter.dragging {
+      background: rgba(0, 240, 255, 0.2);
+    }
+    .splitter-gripper {
+      width: 2px;
+      height: 40px;
+      background: var(--xerxes-cyan, #00f0ff);
+      box-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
+      border-radius: 1px;
+      opacity: 0.6;
+      transition: opacity 0.2s, height 0.2s;
+    }
+    .vertical-splitter:hover .splitter-gripper, .vertical-splitter.dragging .splitter-gripper {
+      opacity: 1;
+      height: 60px;
+    }
+    .panel-container {
+      background: var(--xerxes-panel);
+      border: 1px solid var(--xerxes-border-mid);
+      box-shadow: inset 1px 1px 0px rgba(0, 240, 255, 0.25), inset -1px -1px 0px var(--xerxes-border-dark);
+      border-radius: 3px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-header {
+      background: rgba(10, 28, 36, 0.85);
+      border-bottom: 1px solid var(--xerxes-border-mid);
+      padding: 5px 10px;
+      font-size: 9px;
+      font-weight: bold;
+      color: var(--xerxes-cyan);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .panel-content {
+      display: block;
+      flex: 1;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 6px 8px;
+      font-size: 9.5px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-line {
+      margin-bottom: 2px;
+    }
+    .log-line-error { color: var(--xerxes-red); }
+    .log-line-warn { color: var(--xerxes-amber); }
+    .log-line-info { color: var(--xerxes-text-light); }
+    .log-line-target { color: var(--xerxes-mint); }
+    .cli-line-input { color: var(--xerxes-cyan); font-weight: bold; cursor: pointer; }
+    .cli-line-input:hover { text-decoration: underline; }
+    .cli-line-output { color: var(--xerxes-text-light); }
+    .fs-toolbar {
+      padding: 4px 8px;
+      border-bottom: 1px solid var(--xerxes-border-dark);
+      display: flex;
+      gap: 6px;
+      background: rgba(0, 240, 255, 0.05);
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    footer.cli-input-bar {
+      background: var(--xerxes-header-bg);
+      border-top: 2px solid var(--xerxes-border-mid);
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      position: relative;
+    }
+    .prompt-label {
+      color: var(--xerxes-cyan);
+      font-weight: bold;
+      font-size: 9.5px;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .cmd-input {
+      flex: 1;
+      background: var(--xerxes-bg);
+      border: 1px solid var(--xerxes-border-mid);
+      color: var(--xerxes-text-light);
+      font-family: var(--font-mono);
+      font-size: 9.5px;
+      padding: 4px 8px;
+      outline: none;
+      border-radius: 2px;
+    }
+    .cmd-input:focus {
+      border-color: var(--xerxes-cyan);
+      box-shadow: 0 0 6px rgba(0, 240, 255, 0.4);
+    }
+
+    /* CLI Fuzzy History Search (Ctrl-R) */
+    .cli-fuzzy-history {
+      position: absolute;
+      bottom: 48px;
+      left: 0;
+      right: 0;
+      max-height: 220px;
+      background: var(--xerxes-panel, #08161d);
+      border: 2px solid var(--xerxes-cyan, #00f0ff);
+      box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.9), 0 0 10px rgba(0, 240, 255, 0.2);
+      z-index: 2500;
+      display: flex;
+      flex-direction: column;
+    }
+    .fuzzy-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 8px;
+      background: rgba(10, 28, 36, 0.95);
+      border-bottom: 1px solid var(--xerxes-border-mid, #0b5966);
+    }
+    .fuzzy-prompt {
+      color: var(--xerxes-amber, #ffb000);
+      font-weight: bold;
+      font-size: 8.5px;
+      white-space: nowrap;
+    }
+    .fuzzy-search-input {
+      flex: 1;
+      background: var(--xerxes-bg, #04090c);
+      border: 1px solid var(--xerxes-border-mid, #0b5966);
+      color: var(--xerxes-text-light, #e6f9ff);
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      padding: 3px 6px;
+      outline: none;
+    }
+    .fuzzy-results-list {
+      overflow-y: auto;
+      max-height: 170px;
+    }
+    .fuzzy-item {
+      padding: 4px 10px;
+      font-size: 8.5px;
+      font-family: var(--font-mono);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(11, 89, 102, 0.3);
+      color: var(--xerxes-text-light, #e6f9ff);
+    }
+    .fuzzy-item:hover, .fuzzy-item.active {
+      background: rgba(0, 240, 255, 0.2);
+      color: var(--xerxes-cyan, #00f0ff);
+      font-weight: bold;
+    }
+
+    /* Terminal Formatting & Coloration (VS Code Terminal Aesthetic) */
+    .term-bold { font-weight: bold; }
+    .term-dim { opacity: 0.7; }
+    .term-italic { font-style: italic; }
+    .term-underline { text-decoration: underline; }
+    .term-fg-black { color: #5c6370; }
+    .term-fg-red { color: #e06c75; }
+    .term-fg-green { color: #98c379; }
+    .term-fg-yellow { color: #e5c07b; }
+    .term-fg-blue { color: #61afef; }
+    .term-fg-magenta { color: #c678dd; }
+    .term-fg-cyan { color: #56b6c2; }
+    .term-fg-white { color: #dcdfe4; }
+    .term-fg-bright-black { color: #7f848e; }
+    .term-fg-bright-red { color: #ff6b68; }
+    .term-fg-bright-green { color: #a8cc8c; }
+    .term-fg-bright-yellow { color: #e5c07b; }
+    .term-fg-bright-blue { color: #73b8ff; }
+    .term-fg-bright-magenta { color: #d68ff0; }
+    .term-fg-bright-cyan { color: #00f0ff; }
+    .term-fg-bright-white { color: #ffffff; }
+    .term-bg-black { background-color: #282c34; }
+    .term-bg-red { background-color: #e06c75; }
+    .term-bg-green { background-color: #98c379; }
+    .term-bg-yellow { background-color: #e5c07b; }
+    .term-bg-blue { background-color: #61afef; }
+    .term-bg-magenta { background-color: #c678dd; }
+    .term-bg-cyan { background-color: #56b6c2; }
+    .term-bg-white { background-color: #dcdfe4; }
+    .term-link {
+      color: var(--xerxes-cyan, #00f0ff);
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .term-link:hover {
+      color: #ffffff;
+      text-shadow: 0 0 6px var(--xerxes-cyan, #00f0ff);
+    }
+
+    /* Modal Flashing Status Window & Progress Bar */
+    .sync-modal-backdrop {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(4, 9, 12, 0.85);
+      backdrop-filter: blur(4px);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .sync-modal-box {
+      width: 780px;
+      max-width: 95vw;
+      max-height: 88vh;
+      background: var(--xerxes-panel, #08161d);
+      border: 2px solid var(--xerxes-cyan, #00f0ff);
+      box-shadow: 0 0 30px rgba(0, 240, 255, 0.3), inset 0 0 15px rgba(0, 240, 255, 0.1);
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      gap: 12px;
+      border-radius: 4px;
+    }
+    .sync-console-container {
+      width: 100%;
+      height: 280px;
+      max-height: 42vh;
+      background: var(--xerxes-bg, #04090c);
+      border: 1px solid var(--xerxes-border-dark, #073840);
+      border-radius: 2px;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 9px;
+      line-height: 1.4;
+      padding: 6px 8px;
+      color: var(--xerxes-text-light, #e6f9ff);
+      box-sizing: border-box;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .sync-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--xerxes-border-mid, #0b5966);
+      padding-bottom: 6px;
+    }
+    .sync-modal-title {
+      font-size: 10.5px;
+      font-weight: bold;
+      color: var(--xerxes-cyan, #00f0ff);
+      letter-spacing: 1px;
+    }
+    .sync-modal-info {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      background: rgba(0, 240, 255, 0.05);
+      padding: 8px;
+      border: 1px solid var(--xerxes-border-dark, #073840);
+      font-size: 8.5px;
+    }
+    .sync-info-row {
+      display: flex;
+      justify-content: space-between;
+      color: var(--xerxes-text-muted, #729ba6);
+    }
+    .sync-info-row strong {
+      color: var(--xerxes-text-light, #e6f9ff);
+    }
+    .sync-status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 4px 0;
+    }
+    .sync-status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--xerxes-amber, #ffb000);
+      display: inline-block;
+    }
+    .sync-status-dot.pulse {
+      animation: xerxesPulse 1.2s infinite ease-in-out;
+    }
+    .sync-status-dot.success {
+      background: var(--xerxes-mint, #00ff88);
+      animation: none;
+    }
+    .sync-status-dot.error {
+      background: var(--xerxes-red, #ff3366);
+      animation: none;
+    }
+    @keyframes xerxesPulse {
+      0% { transform: scale(0.9); opacity: 0.5; box-shadow: 0 0 2px var(--xerxes-cyan); }
+      50% { transform: scale(1.3); opacity: 1; box-shadow: 0 0 10px var(--xerxes-cyan); }
+      100% { transform: scale(0.9); opacity: 0.5; box-shadow: 0 0 2px var(--xerxes-cyan); }
+    }
+    .sync-progress-msg {
+      font-size: 9.5px;
+      color: var(--xerxes-text-light, #e6f9ff);
+      font-family: var(--font-mono);
+      flex: 1;
+    }
+    .sync-progress-container {
+      width: 100%;
+      height: 14px;
+      background: var(--xerxes-bg, #04090c);
+      border: 1px solid var(--xerxes-border-mid, #0b5966);
+      border-radius: 2px;
+      overflow: hidden;
+      position: relative;
+    }
+    .sync-progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--xerxes-cyan-dim, #00a4b3), var(--xerxes-cyan, #00f0ff));
+      transition: width 0.3s ease;
+      box-shadow: 0 0 8px rgba(0, 240, 255, 0.5);
+    }
+    .sync-modal-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 6px;
+      border-top: 1px solid var(--xerxes-border-dark, #073840);
+    }
+    /* Bringup Workstation Styles */
+    .bringup-toolbar {
+      background: var(--xerxes-panel);
+      border-bottom: 1px solid var(--xerxes-border-mid);
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .bringup-container {
+      display: flex;
+      flex: 1;
+      height: 100%;
+      overflow: hidden;
+    }
+    .bringup-sidebar {
+      width: 320px;
+      border-right: 1px solid var(--xerxes-border-mid);
+      display: flex;
+      flex-direction: column;
+      background: var(--xerxes-panel);
+    }
+    .bringup-sidebar-header {
+      padding: 6px 10px;
+      background: var(--xerxes-header-bg);
+      border-bottom: 1px solid var(--xerxes-border-mid);
+      font-size: 9px;
+      font-weight: bold;
+      color: var(--xerxes-cyan);
+      letter-spacing: 0.05em;
+    }
+    .bringup-step-list {
+      flex: 1;
+      overflow-y: auto;
+      list-style: none;
+      padding: 4px;
+    }
+    .bringup-step-item {
+      padding: 6px 8px;
+      border: 1px solid transparent;
+      border-radius: 2px;
+      margin-bottom: 3px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      font-size: 8.5px;
+    }
+    .bringup-step-item:hover {
+      background: var(--xerxes-panel-hover);
+      border-color: var(--xerxes-cyan-dim);
+    }
+    .bringup-step-item.active {
+      background: rgba(0, 240, 255, 0.15);
+      border-color: var(--xerxes-cyan);
+    }
+    .bringup-main-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 8px;
+      gap: 8px;
+    }
+    .bringup-card {
+      background: var(--xerxes-panel);
+      border: 1px solid var(--xerxes-border-mid);
+      border-radius: 2px;
+      padding: 10px;
+    }
+    .bringup-prompt-card {
+      border-color: var(--xerxes-cyan);
+      box-shadow: 0 0 10px rgba(0, 240, 255, 0.15);
+    }
+    .bringup-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 6px;
+      font-size: 8.5px;
+    }
+    .bringup-table th, .bringup-table td {
+      border: 1px solid var(--xerxes-border-mid);
+      padding: 4px 6px;
+      text-align: left;
+    }
+    .bringup-table th {
+      background: var(--xerxes-header-bg);
+      color: var(--xerxes-cyan);
+    }
+    .dropzone {
+      border: 2px dashed var(--xerxes-border-mid);
+      border-radius: 4px;
+      padding: 12px;
+      text-align: center;
+      color: var(--xerxes-text-muted);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background: rgba(0, 240, 255, 0.02);
+      font-size: 9px;
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--xerxes-cyan) !important;
+      background: rgba(0, 240, 255, 0.08) !important;
+      color: var(--xerxes-cyan) !important;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-title">
+      <span>⚡ SYSTEM SHOCK 2 // XERXES HOST DAEMON</span>
+      <span class="badge" id="targetBadge">{{ runner.target }}</span>
+      <span class="badge" id="binBadge">{{ runner.bin_name }}</span>
+      <span class="badge badge-green" id="statusBadge">ONLINE</span>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <button class="btn btn-cyan" id="btnSync" onclick="triggerSync()">⚡ Sync</button>
+      <button class="btn btn-amber" id="btnReset" onclick="triggerReset()">⚡ Reset</button>
+      <button class="btn btn-cyan" id="btnTargetConfig" onclick="openTargetConfigModal()" title="Target Application Configuration">🎯 Target Config</button>
+      <button class="btn btn-red" id="btnTargetBug" onclick="openTargetBugModal()" title="Report defect discovered on target">🐞 Target Bug</button>
+      <label for="modeSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">ACTIVE MODE:</label>
+      <select id="modeSelect" class="select-dropdown" onchange="changeMode(this.value)">
+        <option value="CLI" {% if runner.active_mode == 'CLI' %}selected{% endif %}>CLI (RTT Console)</option>
+        <option value="FS" {% if runner.active_mode == 'FS' %}selected{% endif %}>FS (Filesystem)</option>
+        <option value="BRINGUP" {% if runner.active_mode == 'BRINGUP' %}selected{% endif %}>BRINGUP (Checklist)</option>
+      </select>
+      <!-- UI Scale Selector (8715cab2) -->
+      <label for="uiScaleSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">SCALE:</label>
+      <select id="uiScaleSelect" class="select-dropdown" onchange="onUiScaleChange(this.value)" title="UI Scale (Shortcuts: Cmd/Ctrl +/- or 0 to reset)" style="padding: 2px 4px; font-size: 8.5px; height: 22px;">
+        <option value="75%">75%</option>
+        <option value="80%">80%</option>
+        <option value="90%">90%</option>
+        <option value="100%" selected>100%</option>
+        <option value="110%">110%</option>
+        <option value="125%">125%</option>
+        <option value="150%">150%</option>
+      </select>
+      <button class="btn" id="btnToggleLog" onclick="toggleLogPanel()">Hide Log</button>
+      <button class="btn" onclick="clearOutput()">Clear</button>
+    </div>
+  </header>
+
+  <!-- Target Flashing & Synchronization Modal (Xerxes Theme) -->
+  <div id="syncModal" class="sync-modal-backdrop" style="display:none;">
+    <div class="sync-modal-box">
+      <div class="sync-modal-header">
+        <span class="sync-modal-title">⚡ TARGET SYNC & FLASH MATRIX</span>
+        <button class="btn" style="padding: 2px 6px; font-size: 8.5px;" onclick="closeSyncModal()">✕</button>
+      </div>
+      <div class="sync-modal-info">
+        <div class="sync-info-row"><span>Target:</span><strong id="syncInfoTarget">{{ runner.target }}</strong></div>
+        <div class="sync-info-row"><span>Package:</span><strong id="syncInfoPackage">{{ runner.package }} ({{ runner.bin_name }})</strong></div>
+        <div class="sync-info-row"><span>Profile:</span><strong id="syncInfoProfile">{{ 'release' if runner.release else 'debug' }}</strong></div>
+        <div class="sync-info-row"><span>Speed:</span><strong id="syncInfoSpeed">{{ runner.speed }} kHz</strong></div>
+      </div>
+      <div class="sync-status-indicator">
+        <span class="sync-status-dot pulse" id="syncStatusDot"></span>
+        <span id="syncProgressMsg" class="sync-progress-msg">Synchronizing target firmware...</span>
+      </div>
+      <div class="sync-progress-container">
+        <div class="sync-progress-bar" id="syncProgressBar" style="width: 0%;"></div>
+      </div>
+      <div class="sync-console-container" id="syncConsoleLog"></div>
+      <div class="sync-modal-footer">
+        <span id="syncProgressPct" style="font-size: 9px; color: var(--xerxes-cyan);">0%</span>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-amber" id="btnSyncCancel" onclick="cancelSync()">Cancel</button>
+          <button class="btn" id="btnSyncDismiss" onclick="closeSyncModal()">Dismiss</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Target Bug Reporting Modal (WORM-LOAMY-LUGWORM-536) -->
+  <div id="targetBugModal" class="sync-modal-backdrop" style="display:none;" onclick="if(event.target===this)closeTargetBugModal()">
+    <div class="sync-modal-box" style="max-width: 680px; width: 92%;">
+      <div class="sync-modal-header" style="border-bottom: 2px solid var(--xerxes-red);">
+        <span class="sync-modal-title" style="color: var(--xerxes-red);">🐞 TARGET DEFECT DISCOVERY // REPORT WORM</span>
+        <button class="btn" style="padding: 2px 6px; font-size: 8.5px;" onclick="closeTargetBugModal()">✕</button>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:10px; padding:14px; max-height:75vh; overflow-y:auto;">
+        <div style="display:flex; gap:10px;">
+          <div style="flex:2;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">BUG TITLE *</label>
+            <input type="text" id="targetBugTitle" class="quake-input" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:11px; background:#040d12; border:1px solid #0b5966; color:#00f0ff;" placeholder="Brief summary of defect (e.g. Motor fails to spin on speed 100)...">
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">SEVERITY</label>
+            <select id="targetBugSeverity" class="select-dropdown" style="width:100%; height:28px;">
+              <option value="CRITICAL">🔴 CRITICAL</option>
+              <option value="HIGH">🟠 HIGH</option>
+              <option value="MEDIUM" selected>🟡 MEDIUM</option>
+              <option value="LOW">🟢 LOW</option>
+            </select>
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">CATEGORY</label>
+            <select id="targetBugCategory" class="select-dropdown" style="width:100%; height:28px;">
+              <option value="FIRMWARE" selected>FIRMWARE</option>
+              <option value="CONTROLLER">CONTROLLER</option>
+              <option value="DRIVER">DRIVER</option>
+              <option value="PLATFORM">PLATFORM</option>
+              <option value="BOARD">BOARD</option>
+              <option value="SHELL">SHELL</option>
+              <option value="INFRASTRUCTURE">INFRASTRUCTURE</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+          <div style="flex:1;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">COMPONENT</label>
+            <input type="text" id="targetBugComponent" class="quake-input" style="width:100%; box-sizing:border-box; padding:5px 8px; font-size:10px; background:#040d12; border:1px solid #0b5966; color:#e0f8ff;" value="target">
+          </div>
+          <div style="flex:2;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">TARGET DETAILS</label>
+            <div style="font-size:9px; color:var(--xerxes-text-dim); padding-top:4px;">
+              Target: <strong>{{ runner.target }}</strong> | Binary: <strong>{{ runner.bin_name }}</strong> ({{ 'release' if runner.release else 'debug' }})
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">DESCRIPTION</label>
+          <textarea id="targetBugDescription" rows="3" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:10px; background:#040d12; border:1px solid #0b5966; color:#e0f8ff; font-family:monospace; resize:vertical;" placeholder="Detailed description of defect observed on target..."></textarea>
+        </div>
+
+        <div>
+          <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">REPRODUCTION STEPS</label>
+          <textarea id="targetBugSteps" rows="4" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:10px; background:#040d12; border:1px solid #0b5966; color:#e0f8ff; font-family:monospace; resize:vertical;"></textarea>
+        </div>
+
+        <div style="display:flex; gap:10px;">
+          <div style="flex:1;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">EXPECTED BEHAVIOR</label>
+            <textarea id="targetBugExpected" rows="2" style="width:100%; box-sizing:border-box; padding:5px 8px; font-size:10px; background:#040d12; border:1px solid #0b5966; color:#e0f8ff; font-family:monospace; resize:vertical;"></textarea>
+          </div>
+          <div style="flex:1;">
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:3px;">ACTUAL BEHAVIOR</label>
+            <textarea id="targetBugActual" rows="2" style="width:100%; box-sizing:border-box; padding:5px 8px; font-size:10px; background:#040d12; border:1px solid #0b5966; color:#e0f8ff; font-family:monospace; resize:vertical;"></textarea>
+          </div>
+        </div>
+
+        <!-- Target Attachment Options -->
+        <div style="background:rgba(0,240,255,0.03); border:1px solid #0b5966; border-radius:3px; padding:10px;">
+          <span style="font-size:9px; font-weight:bold; color:var(--xerxes-cyan); display:block; margin-bottom:8px;">AUTOMATIC TARGET ATTACHMENTS</span>
+          <div style="display:flex; flex-direction:column; gap:6px; font-size:9px;">
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="attachSystemLogs" checked>
+              <span>Attach recent system logs (defmt / RTT output from session)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="attachCrashLog">
+              <span>Fetch &amp; attach target crash log (host_fs crash-log)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="attachTelemetry">
+              <span>Fetch &amp; attach target telemetry (host_fs export-telemetry)</span>
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="attachMetadata">
+              <span>Fetch &amp; attach target filesystem metadata (host_fs cat metadata)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Attachments & Screenshots Section (WORM-BRISTLY-GLOWWORM-390) -->
+        <div style="background:rgba(0,240,255,0.03); border:1px solid #0b5966; border-radius:3px; padding:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:9px; font-weight:bold; color:var(--xerxes-cyan); text-transform:uppercase;">Attachments &amp; Screenshots</span>
+            <button type="button" class="btn" onclick="pasteTargetBugClipboard()" style="font-size:8px; padding:2px 6px;">📋 Paste Clipboard</button>
+          </div>
+          <div id="targetBugDropzone" class="dropzone" onclick="document.getElementById('targetBugFileInput').click()">
+            <div>📥 Drag &amp; Drop Screenshots, Logs, or Documents Here (or click to browse)</div>
+            <div style="font-size:8.5px; margin-top:3px; color:var(--xerxes-text-dim);">Press ⌘V / Ctrl+V to paste screenshots or text</div>
+            <div style="font-size:7.5px; margin-top:4px; color:var(--xerxes-text-dim);">Attachments are tracked in GitHub LFS and considered non-confidential.</div>
+          </div>
+          <input type="file" id="targetBugFileInput" style="display:none;" multiple onchange="handleTargetBugFileUpload(this.files)">
+          <div id="targetBugAttachmentsGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(130px, 1fr)); gap:8px; margin-top:8px;"></div>
+        </div>
+
+        <div id="targetBugProgressContainer" style="display:none; margin-top:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+            <span id="targetBugProgressMsg" style="font-size:9px; color:var(--xerxes-cyan);">Initializing defect report...</span>
+            <span id="targetBugProgressPct" style="font-size:9px; color:var(--xerxes-cyan); font-weight:bold;">0%</span>
+          </div>
+          <div class="sync-progress-container" style="height:6px; background:#021217; border:1px solid #0b5966; border-radius:2px; overflow:hidden;">
+            <div id="targetBugProgressBar" class="sync-progress-bar" style="width:0%; height:100%; background:linear-gradient(90deg, var(--xerxes-teal), var(--xerxes-cyan)); transition:width 0.25s ease;"></div>
+          </div>
+        </div>
+
+        <div id="targetBugStatusMsg" style="display:none; font-size:9.5px; padding:6px 10px; border-radius:2px;"></div>
+      </div>
+      <div class="sync-modal-footer" style="padding:10px 14px; border-top:1px solid #0b5966; display:flex; justify-content:flex-end; gap:8px;">
+        <button class="btn" onclick="closeTargetBugModal()">Cancel</button>
+        <button class="btn btn-red" id="btnSubmitTargetBug" onclick="submitTargetBug()">⚡ File Target Bug</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Target Application Configuration Modal (WORM-SLIMY-PLANARIAN-761) -->
+  <div id="targetConfigModal" class="sync-modal-backdrop" style="display:none;" onclick="if(event.target===this)closeTargetConfigModal()">
+    <div class="sync-modal-box" style="max-width: 580px; width: 92%;">
+      <div class="sync-modal-header" style="border-bottom: 2px solid var(--xerxes-cyan);">
+        <span class="sync-modal-title" style="color: var(--xerxes-cyan);">⚡ TARGET CONFIGURATION // PACKAGE SELECTION MATRIX</span>
+        <button class="btn" style="padding: 2px 6px; font-size: 8.5px;" onclick="closeTargetConfigModal()">✕</button>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:12px; padding:16px;">
+        <div style="font-size: 9.5px; color: var(--xerxes-text-dim); line-height: 1.4;">
+          Configure target application package, binary artifact, build profile, and probe parameters. Target ARM architecture is automatically inferred based on MCU hardware mappings.
+        </div>
+
+        <!-- Package & Binary selection -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:4px; font-weight:bold;">TARGET PACKAGE *</label>
+            <select id="cfgPackageSelect" class="quake-input" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:11px; background:#040d12; border:1px solid #0b5966; color:#00f0ff;" onchange="onTargetPackageChange()">
+              {% if target_packages %}
+                {% for pkg in target_packages %}
+                  <option value="{{ pkg.package }}" {% if pkg.package == runner.package %}selected{% endif %}>{{ pkg.package }}</option>
+                {% endfor %}
+              {% else %}
+                <option value="{{ runner.package }}" selected>{{ runner.package }}</option>
+              {% endif %}
+            </select>
+          </div>
+          <div>
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:4px; font-weight:bold;">TARGET BINARY *</label>
+            <select id="cfgBinSelect" class="quake-input" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:11px; background:#040d12; border:1px solid #0b5966; color:#00f0ff;" onchange="onTargetBinChange()">
+              <option value="{{ runner.bin_name }}" selected>{{ runner.bin_name }}</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Build Profile & Speed -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items:center;">
+          <div>
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:4px; font-weight:bold;">BUILD PROFILE</label>
+            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:10px; color:var(--xerxes-text-bright); margin-top:4px;">
+              <input type="checkbox" id="cfgReleaseCheckbox" {% if runner.release %}checked{% endif %} style="accent-color:var(--xerxes-cyan); cursor:pointer;">
+              <span>Release (--release, opt-level=z, LTO)</span>
+            </label>
+          </div>
+          <div>
+            <label style="font-size:8.5px; color:var(--xerxes-text-muted); display:block; margin-bottom:4px; font-weight:bold;">PROBE PROTOCOL SPEED</label>
+            <select id="cfgSpeedSelect" class="quake-input" style="width:100%; box-sizing:border-box; padding:6px 8px; font-size:11px; background:#040d12; border:1px solid #0b5966; color:#00f0ff;">
+              <option value="4000" {% if runner.speed == 4000 %}selected{% endif %}>4000 kHz (High Speed)</option>
+              <option value="1000" {% if runner.speed == 1000 %}selected{% endif %}>1000 kHz (Default)</option>
+              <option value="500" {% if runner.speed == 500 %}selected{% endif %}>500 kHz (Safe)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Inferred Target Architecture Display -->
+        <div style="background:#05141c; border:1px solid #0b5966; padding:8px 12px; border-radius:3px; display:flex; flex-direction:column; gap:4px;">
+          <span style="font-size:8.5px; color:var(--xerxes-text-muted); font-weight:bold;">INFERRED ARM ARCHITECTURE</span>
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <span id="cfgInferredArchDisplay" style="color:var(--xerxes-cyan); font-weight:bold; font-family:var(--font-mono); font-size:11px;">{{ runner.target }}</span>
+            <span id="cfgInferredArchNote" style="color:var(--xerxes-text-dim); font-size:9px;">(Auto-inferred from board definition)</span>
+          </div>
+          <input type="hidden" id="cfgTargetArchInput" value="{{ runner.target }}">
+        </div>
+
+        <div id="cfgStatusMsg" style="display:none; font-size:9.5px; padding:6px 10px; border-radius:2px;"></div>
+      </div>
+      <div class="sync-modal-footer" style="padding:10px 14px; border-top:1px solid #0b5966; display:flex; justify-content:flex-end; gap:8px;">
+        <button class="btn" id="btnCancelTargetConfig" onclick="closeTargetConfigModal()">DISMISS</button>
+        <button class="btn btn-primary" id="btnConfirmTargetConfig" onclick="submitTargetConfig()">⚡ FLASH & CONNECT</button>
+      </div>
+    </div>
+  </div>
+
+  <main class="workspace-body">
+    <!-- Left Panel: System / Target Logging -->
+    <div class="panel-container log-panel" id="logPanel">
+      <div class="panel-header">
+        <span>SYSTEM LOGGING MONITOR (defmt / RTT)</span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button class="btn btn-copy" id="btnCopyLog" onclick="copyPanelText('logView', this)" title="Copy log output">📋 Copy</button>
+          <button class="btn btn-copy" id="btnCollapseLog" onclick="toggleLogPanel()" title="Hide logging monitor">◀ Hide</button>
+          <span style="font-size: 8px; color: var(--xerxes-text-dim);">AUTO-SCROLL: ON</span>
+        </div>
+      </div>
+      <div class="panel-content" id="logView">
+        <div class="log-line log-line-info">> Host daemon online. Attached to {{ runner.package }}.</div>
+      </div>
+    </div>
+
+    <!-- Draggable Vertical Splitter with Gripper -->
+    <div class="vertical-splitter" id="vSplitter" title="Drag to resize panels">
+      <div class="splitter-gripper"></div>
+    </div>
+
+    <!-- Right Panel: Interactive CLI & FS View -->
+    <div class="panel-container cli-panel" id="cliPanel">
+      <div class="panel-header">
+        <span id="cliPanelTitle">INTERACTIVE CLI CONSOLE</span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <button class="btn btn-copy" id="btnCopyWorkstation" onclick="copyActiveWorkstationText(this)" title="Copy workstation output">📋 Copy</button>
+          <span style="font-size: 8px; color: var(--xerxes-text-muted);" id="channelBadge">CHANNEL: BOTH</span>
+        </div>
+      </div>
+
+      <!-- Optional FS Action Toolbar -->
+      <div id="fsToolbar" class="fs-toolbar" style="display: {% if runner.active_mode == 'FS' %}flex{% else %}none{% endif %};">
+        <span style="font-size: 8.5px; color: var(--xerxes-text-muted); margin-right: 4px;">Quick Actions:</span>
+        <button class="btn btn-cyan" onclick="runFsQuick('ls')">ls</button>
+        <button class="btn" onclick="runFsQuick('crash-log')">crash-log</button>
+        <button class="btn" onclick="runFsQuick('cat metadata')">cat metadata</button>
+        <button class="btn" onclick="runFsQuick('export-telemetry')">export-telemetry</button>
+        <button class="btn" onclick="runFsQuick('format')">format</button>
+      </div>
+
+      <!-- Optional Bringup Action Toolbar -->
+      <div id="bringupToolbar" class="bringup-toolbar" style="display: {% if runner.active_mode == 'BRINGUP' %}flex{% else %}none{% endif %};">
+        <label for="bringupScriptSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">SCRIPT:</label>
+        <select id="bringupScriptSelect" class="select-dropdown" onchange="onBringupScriptSelected(this.value)">
+          <option value="">Loading bringup scripts...</option>
+        </select>
+        <button class="btn btn-cyan" id="btnBringupStep" onclick="stepBringup()" title="Execute current checklist step">▶ Step</button>
+        <button class="btn btn-cyan" id="btnBringupRun" onclick="runBringupAll()" title="Auto-run remaining checklist steps">⚡ Run All</button>
+        <button class="btn btn-amber" id="btnBringupReset" onclick="resetBringup()" title="Reset checklist to step 1">↺ Reset</button>
+        <button class="btn" id="btnBringupReport" onclick="exportBringupReport()" title="Export markdown verification report">📄 Report</button>
+        <span id="bringupSummaryBadge" class="badge" style="margin-left: auto;">CHECKLIST: IDLE</span>
+      </div>
+
+      <div class="panel-content" id="cliView" style="display: {% if runner.active_mode in ('FS', 'BRINGUP') %}none{% else %}block{% endif %};">
+        <div class="log-line log-line-info">> Interactive CLI workstation ready. Type commands below.</div>
+      </div>
+
+      <div class="panel-content" id="fsView" style="display: {% if runner.active_mode == 'FS' %}block{% else %}none{% endif %};">
+        <div class="log-line log-line-info">> Filesystem (host_fs) workstation ready. Type FS commands below (e.g. 'ls', 'cat metadata', 'format').</div>
+      </div>
+
+      <div class="panel-content bringup-panel-content" id="bringupView" style="display: {% if runner.active_mode == 'BRINGUP' %}flex{% else %}none{% endif %}; flex-direction: row; padding: 0; overflow: hidden; height: 100%;">
+        <!-- Left: Step list -->
+        <div class="bringup-sidebar">
+          <div class="bringup-sidebar-header">CHECKLIST STEPS</div>
+          <ul class="bringup-step-list" id="bringupStepList">
+            <li class="log-line log-line-info" style="padding: 8px;">Loading checklist steps...</li>
+          </ul>
+        </div>
+        <!-- Right: Active Step Details, Prompt Card & Live CLI Output -->
+        <div class="bringup-main-area">
+          <div class="bringup-card bringup-prompt-card" id="bringupPromptCard">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span id="bringupCardTitle" style="font-weight: bold; color: var(--xerxes-cyan); font-size: 10px;">NO SCRIPT LOADED</span>
+              <span id="bringupCardType" class="badge">TYPE: --</span>
+            </div>
+            <div id="bringupCardDesc" style="font-size: 8.5px; color: var(--xerxes-text-light); margin-bottom: 8px;">Select a bringup script above to begin verification.</div>
+            <div id="bringupCardDetails" style="font-size: 8px; color: var(--xerxes-text-muted);"></div>
+            <div id="bringupPromptActionArea" style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--xerxes-border-mid); display: none;">
+              <div style="font-size: 8.5px; color: var(--xerxes-amber); font-weight: bold; margin-bottom: 6px;" id="bringupPromptText">ACTION REQUIRED: Verify step outcome</div>
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <input type="text" id="bringupPromptNotes" class="cmd-input" placeholder="Notes/observations (optional)..." style="flex: 1; min-width: 160px; height: 22px; font-size: 8.5px;">
+                <button class="btn btn-cyan" onclick="respondBringup('pass')">✔ Pass</button>
+                <button class="btn btn-red" onclick="respondBringup('fail')">✘ Fail</button>
+                <button class="btn btn-amber" onclick="respondBringup('skip')">⏭ Skip</button>
+              </div>
+            </div>
+          </div>
+          <div class="panel-header" style="background: var(--xerxes-header-bg); border-top: 1px solid var(--xerxes-border-mid); padding: 4px 8px;">
+            <span style="font-size: 8.5px; color: var(--xerxes-cyan);">LIVE BRINGUP LOGS & CLI OUTPUT</span>
+            <button class="btn btn-copy" onclick="copyBringupConsole(this)">📋 Copy Log</button>
+          </div>
+          <div class="panel-content" id="bringupConsoleOutput" style="flex: 1; overflow-y: auto; background: var(--xerxes-bg); border: 1px solid var(--xerxes-border-mid); padding: 6px; font-size: 8.5px; font-family: var(--font-mono);">
+            <div class="log-line log-line-info">> Bringup workstation initialized.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="cli-input-bar">
+    <div id="cliFuzzyHistory" class="cli-fuzzy-history" style="display:none;">
+      <div class="fuzzy-header">
+        <span class="fuzzy-prompt">(reverse-i-search)`':</span>
+        <input type="text" id="fuzzySearchInput" class="fuzzy-search-input" placeholder="Search command history..." autocomplete="off">
+        <button class="btn" style="padding: 1px 6px; font-size: 8.5px;" onclick="closeCliFuzzyHistory()">✕</button>
+      </div>
+      <div id="fuzzyResultsList" class="fuzzy-results-list"></div>
+    </div>
+    <span class="prompt-label" id="promptLabel">{% if runner.active_mode == 'FS' %}fs> {% else %}shell> {% endif %}</span>
+    <input type="text" id="cmdInput" class="cmd-input" placeholder="{% if runner.active_mode == 'FS' %}Type FS command (e.g. 'ls', 'cat metadata', 'crash-log', 'format')...{% else %}Type shell command (e.g. 'motor speed 100', 'gpio status', 'battery status')...{% endif %}" autofocus autocomplete="off">
+    <button class="btn btn-cyan" id="btnSubmitCmd" onclick="submitCommand()">Send [↵]</button>
+  </footer>
+
+  <script>
+    let currentMode = "{{ runner.active_mode }}";
+    let cmdHistory = [];
+    let historyIdx = -1;
+
+    async function changeMode(newMode) {
+      currentMode = newMode;
+      const cliView = document.getElementById("cliView");
+      const fsView = document.getElementById("fsView");
+      const bringupView = document.getElementById("bringupView");
+      const fsToolbar = document.getElementById("fsToolbar");
+      const bringupToolbar = document.getElementById("bringupToolbar");
+      const promptLabel = document.getElementById("promptLabel");
+      const cmdInput = document.getElementById("cmdInput");
+      const title = document.getElementById("cliPanelTitle");
+
+      if (currentMode === "FS") {
+        if (cliView) cliView.style.display = "none";
+        if (fsView) fsView.style.display = "block";
+        if (bringupView) bringupView.style.display = "none";
+        if (fsToolbar) fsToolbar.style.display = "flex";
+        if (bringupToolbar) bringupToolbar.style.display = "none";
+        if (promptLabel) promptLabel.innerText = "fs> ";
+        if (title) title.innerText = "FILESYSTEM COMMAND WORKSTATION (host_fs)";
+        if (cmdInput) cmdInput.placeholder = "Type FS command (e.g. 'ls', 'cat metadata', 'crash-log', 'format')...";
+      } else if (currentMode === "BRINGUP") {
+        if (cliView) cliView.style.display = "none";
+        if (fsView) fsView.style.display = "none";
+        if (bringupView) bringupView.style.display = "flex";
+        if (fsToolbar) fsToolbar.style.display = "none";
+        if (bringupToolbar) bringupToolbar.style.display = "flex";
+        if (promptLabel) promptLabel.innerText = "bringup> ";
+        if (title) title.innerText = "BRINGUP VERIFICATION CHECKLIST";
+        if (cmdInput) cmdInput.placeholder = "Type shell/override command for active bringup step...";
+        loadBringupScriptsList();
+        pollBringupStatus();
+      } else {
+        if (cliView) cliView.style.display = "block";
+        if (fsView) fsView.style.display = "none";
+        if (bringupView) bringupView.style.display = "none";
+        if (fsToolbar) fsToolbar.style.display = "none";
+        if (bringupToolbar) bringupToolbar.style.display = "none";
+        if (promptLabel) promptLabel.innerText = "shell> ";
+        if (title) title.innerText = "INTERACTIVE CLI CONSOLE (host_cli)";
+        if (cmdInput) cmdInput.placeholder = "Type shell command (e.g. 'motor speed 100', 'gpio status', 'battery status')...";
+      }
+
+      try {
+        await fetch("/api/mode", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: newMode })
+        });
+        pollOutputs();
+      } catch (e) {
+        console.error("Failed to update mode:", e);
+      }
+    }
+
+    let lastBringupLogCount = 0;
+    let isBringupRunning = false;
+
+    async function loadBringupScriptsList() {
+      try {
+        const resp = await fetch("/api/bringup/scripts");
+        if (!resp.ok) return;
+        const scripts = await resp.json();
+        const select = document.getElementById("bringupScriptSelect");
+        if (!select) return;
+        const currentVal = select.value;
+        select.innerHTML = "";
+        scripts.forEach(s => {
+          const opt = document.createElement("option");
+          opt.value = s.path;
+          opt.textContent = `${s.name} (${s.chip}) - ${s.path}`;
+          if (currentVal && opt.value === currentVal) opt.selected = true;
+          select.appendChild(opt);
+        });
+        if (!currentVal && scripts.length > 0) {
+          onBringupScriptSelected(scripts[0].path);
+        }
+      } catch (e) {
+        console.error("Failed to load bringup scripts:", e);
+      }
+    }
+
+    async function onBringupScriptSelected(scriptPath) {
+      if (!scriptPath) return;
+      try {
+        const resp = await fetch("/api/bringup/load", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ script_path: scriptPath })
+        });
+        if (resp.ok) {
+          pollBringupStatus();
+        }
+      } catch (e) {
+        console.error("Failed to load selected bringup script:", e);
+      }
+    }
+
+    async function pollBringupStatus() {
+      if (currentMode !== "BRINGUP") return;
+      try {
+        const resp = await fetch("/api/bringup/status");
+        if (!resp.ok) return;
+        const data = await resp.json();
+        renderBringupView(data);
+      } catch (e) {
+        console.error("Failed to poll bringup status:", e);
+      }
+    }
+
+    function renderBringupView(data) {
+      if (!data) return;
+
+      const summaryBadge = document.getElementById("bringupSummaryBadge");
+      if (summaryBadge && data.summary) {
+        summaryBadge.textContent = `STEP ${data.current_step_idx + 1}/${data.total_steps} | ${data.summary.passed} PASSED, ${data.summary.failed} FAILED, ${data.summary.skipped} SKIPPED`;
+        summaryBadge.className = data.summary.failed > 0 ? "badge badge-amber" : "badge badge-green";
+      }
+
+      const stepList = document.getElementById("bringupStepList");
+      if (stepList && data.steps) {
+        stepList.innerHTML = "";
+        data.steps.forEach((step, idx) => {
+          const li = document.createElement("li");
+          const isActive = idx === data.current_step_idx;
+          li.className = `bringup-step-item ${isActive ? "active" : ""}`;
+          
+          let statusBadgeClass = "badge";
+          let statusIcon = "⏳";
+          if (step.status === "passed") {
+            statusBadgeClass = "badge badge-green";
+            statusIcon = "✔";
+          } else if (step.status === "failed") {
+            statusBadgeClass = "badge badge-amber";
+            statusIcon = "✘";
+          } else if (step.status === "skipped") {
+            statusBadgeClass = "badge";
+            statusIcon = "⏭";
+          } else if (step.status === "running") {
+            statusBadgeClass = "badge badge-cyan";
+            statusIcon = "⚙";
+          }
+
+          li.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 6px; overflow: hidden;">
+              <span style="font-weight: bold; color: var(--xerxes-cyan);">${statusIcon} [${step.id}]</span>
+              <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--xerxes-text-light);">${step.name}</span>
+            </div>
+            <span class="${statusBadgeClass}" style="font-size: 7.5px;">${step.type}</span>
+          `;
+          stepList.appendChild(li);
+        });
+      }
+
+      const currStep = data.current_step;
+      const cardTitle = document.getElementById("bringupCardTitle");
+      const cardType = document.getElementById("bringupCardType");
+      const cardDesc = document.getElementById("bringupCardDesc");
+      const cardDetails = document.getElementById("bringupCardDetails");
+      const promptActionArea = document.getElementById("bringupPromptActionArea");
+      const promptText = document.getElementById("bringupPromptText");
+
+      if (currStep) {
+        if (cardTitle) cardTitle.textContent = `STEP ${currStep.id}: ${currStep.name.toUpperCase()}`;
+        if (cardType) {
+          cardType.textContent = `TYPE: ${currStep.type.toUpperCase()}`;
+          cardType.className = "badge";
+        }
+        if (cardDesc) cardDesc.textContent = currStep.description || "No description provided for this step.";
+
+        let detailsHtml = "";
+        if (currStep.command) {
+          detailsHtml += `<div style="margin-top: 4px;"><strong>Command:</strong> <code style="color: var(--xerxes-cyan);">${currStep.command}</code></div>`;
+        }
+        if (currStep.expected_regex) {
+          detailsHtml += `<div style="margin-top: 4px;"><strong>Expected Regex:</strong> <code style="color: var(--xerxes-teal);">${currStep.expected_regex}</code></div>`;
+        }
+        if (currStep.matched_line) {
+          detailsHtml += `<div style="margin-top: 4px; color: var(--xerxes-green);"><strong>Matched Output:</strong> <code>${currStep.matched_line}</code></div>`;
+        }
+        if (currStep.procedure) {
+          detailsHtml += `<div style="margin-top: 4px;"><strong>Procedure:</strong> ${currStep.procedure}</div>`;
+        }
+        if (currStep.expected) {
+          detailsHtml += `<div style="margin-top: 4px;"><strong>Expected Outcome:</strong> ${currStep.expected}</div>`;
+        }
+
+        if (currStep.test_points && Object.keys(currStep.test_points).length > 0) {
+          detailsHtml += `<table class="bringup-table"><thead><tr><th>Test Point</th><th>Expected Voltage / Signal</th></tr></thead><tbody>`;
+          for (const [tp, val] of Object.entries(currStep.test_points)) {
+            detailsHtml += `<tr><td><strong>${tp}</strong></td><td>${val}</td></tr>`;
+          }
+          detailsHtml += `</tbody></table>`;
+        }
+
+        if (currStep.control_pins && Object.keys(currStep.control_pins).length > 0) {
+          detailsHtml += `<table class="bringup-table"><thead><tr><th>Control Signal</th><th>Target Pin</th></tr></thead><tbody>`;
+          for (const [cp, val] of Object.entries(currStep.control_pins)) {
+            detailsHtml += `<tr><td><strong>${cp}</strong></td><td>${val}</td></tr>`;
+          }
+          detailsHtml += `</tbody></table>`;
+        }
+
+        if (cardDetails) cardDetails.innerHTML = detailsHtml;
+
+        if (data.active_prompt) {
+          if (promptActionArea) promptActionArea.style.display = "block";
+          const p = data.active_prompt;
+          let promptMsg = `ACTION REQUIRED: Verify step outcome (Default: ${p.default_status.toUpperCase()})`;
+          if (p.auto_pass === true) {
+            promptMsg = `✔ AUTOMATIC MATCH CONFIRMED (${p.matched_line || 'Pattern Matched'}). Click Pass to proceed.`;
+          } else if (p.auto_pass === false) {
+            promptMsg = `✘ AUTOMATIC MATCH FAILED: Expected pattern '${currStep.expected_regex}' not found.`;
+          }
+          if (promptText) promptText.textContent = promptMsg;
+        } else {
+          if (promptActionArea) promptActionArea.style.display = "none";
+        }
+      }
+
+      const consoleOut = document.getElementById("bringupConsoleOutput");
+      if (consoleOut && data.logs) {
+        if (data.logs.length !== lastBringupLogCount) {
+          consoleOut.innerHTML = "";
+          data.logs.forEach(l => {
+            const d = document.createElement("div");
+            d.className = "log-line log-line-info";
+            d.innerHTML = ansiToHtml(l);
+            consoleOut.appendChild(d);
+          });
+          lastBringupLogCount = data.logs.length;
+          consoleOut.scrollTop = consoleOut.scrollHeight;
+        }
+      }
+    }
+
+    async function stepBringup() {
+      try {
+        const resp = await fetch("/api/bringup/step", { method: "POST" });
+        if (resp.ok) {
+          pollBringupStatus();
+        }
+      } catch (e) {
+        console.error("Failed to step bringup:", e);
+      }
+    }
+
+    async function runBringupAll() {
+      isBringupRunning = true;
+      async function runNext() {
+        if (!isBringupRunning) return;
+        const statusResp = await fetch("/api/bringup/status");
+        if (!statusResp.ok) return;
+        const data = await statusResp.json();
+        renderBringupView(data);
+
+        if (data.status === "complete" || data.current_step_idx >= data.total_steps) {
+          isBringupRunning = false;
+          return;
+        }
+
+        if (data.status === "waiting_prompt") {
+          if (data.active_prompt && data.active_prompt.auto_pass === true) {
+            await respondBringup("pass");
+            setTimeout(runNext, 200);
+          } else {
+            isBringupRunning = false;
+          }
+          return;
+        }
+
+        await stepBringup();
+        setTimeout(runNext, 250);
+      }
+      runNext();
+    }
+
+    async function respondBringup(action) {
+      const notesInput = document.getElementById("bringupPromptNotes");
+      const notes = notesInput ? notesInput.value.trim() : "";
+      try {
+        const resp = await fetch("/api/bringup/respond", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: action, notes: notes })
+        });
+        if (notesInput) notesInput.value = "";
+        if (resp.ok) {
+          pollBringupStatus();
+        }
+      } catch (e) {
+        console.error("Failed to respond to bringup prompt:", e);
+      }
+    }
+
+    async function resetBringup() {
+      isBringupRunning = false;
+      try {
+        const resp = await fetch("/api/bringup/reset", { method: "POST" });
+        if (resp.ok) {
+          pollBringupStatus();
+        }
+      } catch (e) {
+        console.error("Failed to reset bringup:", e);
+      }
+    }
+
+    async function exportBringupReport() {
+      try {
+        const resp = await fetch("/api/bringup/report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ output_path: "bringup_report.md" })
+        });
+        const data = await resp.json();
+        if (data && data.success) {
+          alert(`Bringup report exported successfully to: ${data.output_path}`);
+        }
+      } catch (e) {
+        console.error("Failed to export bringup report:", e);
+      }
+    }
+
+    function copyBringupConsole(btn) {
+      const consoleOut = document.getElementById("bringupConsoleOutput");
+      if (!consoleOut) return;
+      const text = consoleOut.innerText || "";
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.innerText;
+        btn.innerText = "✔ Copied";
+        setTimeout(() => btn.innerText = orig, 1500);
+      });
+    }
+
+    function runFsQuick(action) {
+      const input = document.getElementById("cmdInput");
+      if (input && input.disabled) return;
+      input.value = action;
+      submitCommand();
+    }
+
+    function clearOutput() {
+      lastLogCount = 0;
+      lastCliCount = 0;
+      lastFsCount = 0;
+      const logView = document.getElementById("logView");
+      if (logView) logView.innerHTML = "";
+      const cliView = document.getElementById("cliView");
+      if (cliView) cliView.innerHTML = "";
+      const fsView = document.getElementById("fsView");
+      if (fsView) fsView.innerHTML = "";
+    }
+
+    async function submitCommand() {
+      const input = document.getElementById("cmdInput");
+      const btn = document.getElementById("btnSubmitCmd");
+      const fsToolbar = document.getElementById("fsToolbar");
+      if (!input || input.disabled) return;
+      const cmd = input.value.trim();
+      if (!cmd) return;
+
+      cmdHistory.push(cmd);
+      historyIdx = cmdHistory.length;
+      input.value = "";
+
+      // Disable input and action buttons while command is executing
+      input.disabled = true;
+      if (btn) btn.disabled = true;
+      if (fsToolbar) {
+        fsToolbar.querySelectorAll("button").forEach(b => b.disabled = true);
+      }
+      const prevPlaceholder = input.placeholder;
+      input.placeholder = `Running command: ${cmd}...`;
+      input.style.opacity = "0.6";
+      input.style.cursor = "wait";
+
+      const endpoint = currentMode === "FS" ? "/api/fs/execute" : "/api/cli/execute";
+      try {
+        const resp = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ command: cmd })
+        });
+        const data = await resp.json();
+        if (data && data.output && !data.output.startsWith("Dispatched:")) {
+          if (currentMode === "FS") {
+            appendFsText(data.output, false);
+          } else {
+            appendCliText(data.output, false);
+            if (data.output.includes("Target CLI is not available")) {
+              setWorkstationDisabled(true, "Target CLI is not available. Click ⚡ Sync to connect.");
+            }
+          }
+        }
+        pollOutputs();
+        setTimeout(pollOutputs, 100);
+        setTimeout(pollOutputs, 300);
+      } catch (e) {
+        if (currentMode === "FS") {
+          appendFsText(`[ERROR] Command failed: ${e}`, false);
+        } else {
+          appendCliText(`[ERROR] Command failed: ${e}`, false);
+        }
+      } finally {
+        if (!input.hasAttribute("data-prev-placeholder")) {
+          input.disabled = false;
+          if (btn) btn.disabled = false;
+          if (fsToolbar) {
+            fsToolbar.querySelectorAll("button").forEach(b => b.disabled = false);
+          }
+          input.placeholder = prevPlaceholder;
+          input.style.opacity = "1";
+          input.style.cursor = "text";
+          input.focus();
+        }
+      }
+    }
+
+    const ANSI_FG_MAP = {
+      30: 'term-fg-black', 31: 'term-fg-red', 32: 'term-fg-green', 33: 'term-fg-yellow',
+      34: 'term-fg-blue', 35: 'term-fg-magenta', 36: 'term-fg-cyan', 37: 'term-fg-white',
+      90: 'term-fg-bright-black', 91: 'term-fg-bright-red', 92: 'term-fg-bright-green', 93: 'term-fg-bright-yellow',
+      94: 'term-fg-bright-blue', 95: 'term-fg-bright-magenta', 96: 'term-fg-bright-cyan', 97: 'term-fg-bright-white'
+    };
+    const ANSI_BG_MAP = {
+      40: 'term-bg-black', 41: 'term-bg-red', 42: 'term-bg-green', 43: 'term-bg-yellow',
+      44: 'term-bg-blue', 45: 'term-bg-magenta', 46: 'term-bg-cyan', 47: 'term-bg-white',
+      100: 'term-bg-bright-black', 101: 'term-bg-bright-red', 102: 'term-bg-bright-green', 103: 'term-bg-bright-yellow',
+      104: 'term-bg-bright-blue', 105: 'term-bg-bright-magenta', 106: 'term-bg-bright-cyan', 107: 'term-bg-bright-white'
+    };
+
+    function escapeHtmlText(str) {
+      if (!str) return "";
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function formatTerminalLinks(escapedText) {
+      const urlRe = /(https?:\/\/[^\s<>"'\)]+)/g;
+      let res = escapedText.replace(urlRe, (url) => {
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="term-link">${url}</a>`;
+      });
+
+      const filePathRe = /(?<![a-zA-Z0-9_\-\.\/])((?:\/(?:Users|home|root|[a-zA-Z0-9_\-\.]+)\/[a-zA-Z0-9_\-\.\/]+)|(?:(?:src|tools|board|platform|controller|peripheral|tests|docs|attachments|feedback|target)\/[a-zA-Z0-9_\-\.\/]+))/g;
+      const tokens = res.split(/(<[^>]+>)/);
+      for (let i = 0; i < tokens.length; i++) {
+        if (!tokens[i].startsWith('<')) {
+          tokens[i] = tokens[i].replace(filePathRe, (m, path) => {
+            let trailing = "";
+            let p = path;
+            while (p && ".,;:?)'\"]".includes(p[p.length - 1])) {
+              trailing = p[p.length - 1] + trailing;
+              p = p.slice(0, -1);
+            }
+            if (!p) return m;
+            const fullPath = p.startsWith('/') ? p : `/${p}`;
+            const vscodeUrl = `vscode://file${fullPath}`;
+            return `<a href="${vscodeUrl}" class="term-link term-file-link" data-path="${p}">${p}</a>${trailing}`;
+          });
+        }
+      }
+      return tokens.join('');
+    }
+
+    function ansiToHtml(rawText) {
+      if (!rawText) return "";
+
+      // Handle carriage return overwrites within lines (e.g. interactive Cargo compile progress)
+      if (rawText.includes('\r')) {
+        const lines = rawText.split('\n');
+        rawText = lines.map(line => {
+          if (!line.includes('\r')) return line;
+          const segments = line.split('\r').filter(Boolean);
+          return segments.length > 0 ? segments[segments.length - 1] : "";
+        }).join('\n');
+      }
+
+      // Normalize any orphaned / unprefixed / stripped OSC 8 hyperlink sequences (e.g. 8;;url...8;; or ]8;;url...]8;;)
+      rawText = rawText.replace(/(?:\x1b\]|(?<![\w\[\]])\])?8;;([^\s`"\'<>\)\x1b\x07\\]+)(?:\x1b\\|\x07|\\)?(.*?)(?:\x1b\]|(?<![\w\[\]])\])?8;;(?:\x1b\\|\x07|\\)?/g, function(m, url, text) {
+        return '\x1b]8;;' + url + '\x1b\\' + text + '\x1b]8;;\x1b\\';
+      });
+
+      const tokenRe = /(\x1b\[([0-9;]*)m|\x1b\]8;[^\x1b\x07]*;([^\x1b\x07]+)(?:\x1b\\|\x07)|\x1b\]8;[^\x1b\x07]*;(?:\x1b\\|\x07)|\x1b\][^\x1b\x07]*(?:\x1b\\|\x07)|\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])|[\x00-\x08\x0b-\x1a\x1c-\x1f])/g;
+
+      let lastIndex = 0;
+      let outChunks = [];
+      let classes = [];
+      let fgClass = null;
+      let bgClass = null;
+      let currentUrl = null;
+      let match;
+
+      while ((match = tokenRe.exec(rawText)) !== null) {
+        let chunk = rawText.substring(lastIndex, match.index);
+        lastIndex = tokenRe.lastIndex;
+
+        if (chunk) {
+          let escaped = escapeHtmlText(chunk);
+          let inner = currentUrl ? escaped : formatTerminalLinks(escaped);
+          let allCls = [...classes];
+          if (fgClass) allCls.push(fgClass);
+          if (bgClass) allCls.push(bgClass);
+
+          let formatted = allCls.length > 0 ? `<span class="${allCls.join(' ')}">${inner}</span>` : inner;
+          if (currentUrl) {
+            if (currentUrl.startsWith("command:") || currentUrl.startsWith("action:")) {
+              const cmd = currentUrl.replace(/^(command|action):/, "");
+              formatted = `<a href="javascript:void(0)" onclick="handleCliCommandClick('${escapeHtmlText(cmd)}')" class="term-link term-cmd-link" data-command="${escapeHtmlText(cmd)}" title="Click to select ${escapeHtmlText(cmd)}">${formatted}</a>`;
+            } else {
+              formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
+            }
+          }
+          outChunks.push(formatted);
+        }
+
+        let fullTok = match[0];
+        let sgrCode = match[2];
+        let osc8Url = match[3];
+
+        if (sgrCode !== undefined) {
+          if (!sgrCode || sgrCode === '0') {
+            classes = [];
+            fgClass = null;
+            bgClass = null;
+          } else {
+            let codes = sgrCode.split(';').map(c => parseInt(c, 10)).filter(c => !isNaN(c));
+            codes.forEach(code => {
+              if (code === 0) {
+                classes = [];
+                fgClass = null;
+                bgClass = null;
+              } else if (code === 1) {
+                if (!classes.includes('term-bold')) classes.push('term-bold');
+              } else if (code === 2) {
+                if (!classes.includes('term-dim')) classes.push('term-dim');
+              } else if (code === 3) {
+                if (!classes.includes('term-italic')) classes.push('term-italic');
+              } else if (code === 4) {
+                if (!classes.includes('term-underline')) classes.push('term-underline');
+              } else if (code === 21 || code === 22) {
+                classes = classes.filter(c => c !== 'term-bold' && c !== 'term-dim');
+              } else if (code === 23) {
+                classes = classes.filter(c => c !== 'term-italic');
+              } else if (code === 24) {
+                classes = classes.filter(c => c !== 'term-underline');
+              } else if (ANSI_FG_MAP[code]) {
+                fgClass = ANSI_FG_MAP[code];
+              } else if (code === 39) {
+                fgClass = null;
+              } else if (ANSI_BG_MAP[code]) {
+                bgClass = ANSI_BG_MAP[code];
+              } else if (code === 49) {
+                bgClass = null;
+              }
+            });
+          }
+        } else if (osc8Url !== undefined) {
+          currentUrl = osc8Url;
+        } else if (fullTok.startsWith('\x1b]8;')) {
+          currentUrl = null;
+        }
+      }
+
+      let remaining = rawText.substring(lastIndex);
+      if (remaining) {
+        let escaped = escapeHtmlText(remaining);
+        let inner = currentUrl ? escaped : formatTerminalLinks(escaped);
+        let allCls = [...classes];
+        if (fgClass) allCls.push(fgClass);
+        if (bgClass) allCls.push(bgClass);
+
+        let formatted = allCls.length > 0 ? `<span class="${allCls.join(' ')}">${inner}</span>` : inner;
+        if (currentUrl) {
+          if (currentUrl.startsWith("command:") || currentUrl.startsWith("action:")) {
+            const cmd = currentUrl.replace(/^(command|action):/, "");
+            formatted = `<a href="javascript:void(0)" onclick="handleCliCommandClick('${escapeHtmlText(cmd)}')" class="term-link term-cmd-link" data-command="${escapeHtmlText(cmd)}" title="Click to select ${escapeHtmlText(cmd)}">${formatted}</a>`;
+          } else {
+            formatted = `<a href="${escapeHtmlText(currentUrl)}" target="_blank" rel="noopener noreferrer" class="term-link">${formatted}</a>`;
+          }
+        }
+        outChunks.push(formatted);
+      }
+
+      return outChunks.join('');
+    }
+
+    function handleCliCommandClick(cmd) {
+      if (typeof respondBringup === "function" && ["pass", "fail", "skip"].includes(cmd.toLowerCase())) {
+        respondBringup(cmd.toLowerCase());
+        return;
+      }
+      const input = document.getElementById("cmdInput");
+      if (input) {
+        input.value = cmd;
+        input.focus();
+        input.select();
+      }
+    }
+
+    let lastLogCount = 0;
+    let lastCliCount = 0;
+    let lastFsCount = 0;
+
+    function isSelectionInside(element) {
+      if (!element) return false;
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) return false;
+      try {
+        if (element.contains(sel.anchorNode) || element.contains(sel.focusNode)) {
+          return true;
+        }
+        const range = sel.getRangeAt(0);
+        return element.contains(range.commonAncestorContainer);
+      } catch (e) {
+        return false;
+      }
+    }
+
+    async function copyPanelText(elementId, btn) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      const text = el.innerText || el.textContent || "";
+      let copied = false;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          await navigator.clipboard.writeText(text);
+          copied = true;
+        } catch (e) {
+          copied = false;
+        }
+      }
+      if (!copied) {
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.style.position = "fixed";
+          ta.style.opacity = "0";
+          document.body.appendChild(ta);
+          ta.select();
+          copied = document.execCommand("copy");
+          document.body.removeChild(ta);
+        } catch (e) {
+          console.error("Copy fallback error:", e);
+        }
+      }
+      if (btn) {
+        const orig = btn.innerText;
+        btn.innerText = copied ? "✓ Copied!" : "Error";
+        setTimeout(() => { btn.innerText = orig; }, 1500);
+      }
+    }
+
+    function copyActiveWorkstationText(btn) {
+      const mode = document.getElementById("modeSelect") ? document.getElementById("modeSelect").value : "CLI";
+      const targetId = mode === "FS" ? "fsView" : "cliView";
+      copyPanelText(targetId, btn);
+    }
+
+    let isLogHidden = false;
+    let prevLogWidth = "50%";
+    let isDraggingSplitter = false;
+
+    function toggleLogPanel() {
+      const logPanel = document.getElementById("logPanel");
+      const splitter = document.getElementById("vSplitter");
+      const toggleBtn = document.getElementById("btnToggleLog");
+      const collapseBtn = document.getElementById("btnCollapseLog");
+      if (!logPanel) return;
+
+      isLogHidden = !isLogHidden;
+      if (isLogHidden) {
+        prevLogWidth = logPanel.style.width || "50%";
+        logPanel.style.display = "none";
+        if (splitter) splitter.style.display = "none";
+        if (toggleBtn) {
+          toggleBtn.innerText = "Show Log";
+          toggleBtn.classList.add("btn-amber");
+        }
+        if (collapseBtn) {
+          collapseBtn.innerText = "▶ Show";
+        }
+      } else {
+        logPanel.style.display = "flex";
+        logPanel.style.width = prevLogWidth;
+        if (splitter) splitter.style.display = "flex";
+        if (toggleBtn) {
+          toggleBtn.innerText = "Hide Log";
+          toggleBtn.classList.remove("btn-amber");
+        }
+        if (collapseBtn) {
+          collapseBtn.innerText = "◀ Hide";
+        }
+      }
+    }
+
+    function setupSplitter() {
+      const splitter = document.getElementById("vSplitter");
+      const logPanel = document.getElementById("logPanel");
+      const workspace = document.querySelector(".workspace-body");
+      if (!splitter || !logPanel || !workspace) return;
+
+      splitter.addEventListener("mousedown", (e) => {
+        isDraggingSplitter = true;
+        splitter.classList.add("dragging");
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+        e.preventDefault();
+      });
+
+      window.addEventListener("mousemove", (e) => {
+        if (!isDraggingSplitter) return;
+        const rect = workspace.getBoundingClientRect();
+        const offsetX = e.clientX - rect.left;
+        const totalWidth = rect.width - 16;
+        if (offsetX < 30) {
+          if (!isLogHidden) toggleLogPanel();
+          return;
+        } else if (isLogHidden) {
+          toggleLogPanel();
+        }
+        const clampedWidth = Math.max(80, Math.min(totalWidth - 150, offsetX));
+        const pct = (clampedWidth / totalWidth) * 100;
+        logPanel.style.width = `${pct}%`;
+      });
+
+      window.addEventListener("mouseup", () => {
+        if (isDraggingSplitter) {
+          isDraggingSplitter = false;
+          splitter.classList.remove("dragging");
+          document.body.style.cursor = "";
+          document.body.style.userSelect = "";
+        }
+      });
+    }
+
+    function appendCliText(text, isInput) {
+      const view = document.getElementById("cliView");
+      if (!view) return;
+      const div = document.createElement("div");
+      div.className = isInput ? "log-line cli-line-input" : "log-line cli-line-output";
+      div.innerHTML = ansiToHtml(text);
+      view.appendChild(div);
+      view.scrollTop = view.scrollHeight;
+      lastCliCount++;
+    }
+
+    function appendFsText(text, isInput) {
+      const view = document.getElementById("fsView");
+      if (!view) return;
+      const div = document.createElement("div");
+      div.className = isInput ? "log-line cli-line-input" : "log-line cli-line-output";
+      div.innerHTML = ansiToHtml(text);
+      view.appendChild(div);
+      view.scrollTop = view.scrollHeight;
+      lastFsCount++;
+    }
+
+    async function pollOutputs() {
+      try {
+        const logResp = await fetch("/api/logs");
+        if (logResp.ok) {
+          const logs = await logResp.json();
+          const logView = document.getElementById("logView");
+          if (logView && !isSelectionInside(logView)) {
+            if (logs.length < lastLogCount || lastLogCount === 0) {
+              logView.innerHTML = "";
+              logs.forEach(l => {
+                const d = document.createElement("div");
+                d.className = `log-line log-line-${l.level.toLowerCase()}`;
+                d.innerHTML = ansiToHtml(`[${l.channel}] ${l.message}`);
+                logView.appendChild(d);
+              });
+              lastLogCount = logs.length;
+              logView.scrollTop = logView.scrollHeight;
+            } else if (logs.length > lastLogCount) {
+              const newLogs = logs.slice(lastLogCount);
+              newLogs.forEach(l => {
+                const d = document.createElement("div");
+                d.className = `log-line log-line-${l.level.toLowerCase()}`;
+                d.innerHTML = ansiToHtml(`[${l.channel}] ${l.message}`);
+                logView.appendChild(d);
+              });
+              lastLogCount = logs.length;
+              logView.scrollTop = logView.scrollHeight;
+            }
+          }
+        }
+
+        const cliResp = await fetch("/api/cli/output");
+        if (cliResp.ok) {
+          const lines = await cliResp.json();
+          const cliView = document.getElementById("cliView");
+          if (cliView && !isSelectionInside(cliView)) {
+            if (lines.length < lastCliCount || lastCliCount === 0) {
+              cliView.innerHTML = "";
+              lines.forEach(line => {
+                const d = document.createElement("div");
+                d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+                d.innerHTML = ansiToHtml(line.text);
+                cliView.appendChild(d);
+              });
+              lastCliCount = lines.length;
+              cliView.scrollTop = cliView.scrollHeight;
+            } else if (lines.length > lastCliCount) {
+              const newLines = lines.slice(lastCliCount);
+              newLines.forEach(line => {
+                const d = document.createElement("div");
+                d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+                d.innerHTML = ansiToHtml(line.text);
+                cliView.appendChild(d);
+              });
+              lastCliCount = lines.length;
+              cliView.scrollTop = cliView.scrollHeight;
+            }
+          }
+        }
+
+        const fsResp = await fetch("/api/fs/output");
+        if (fsResp.ok) {
+          const lines = await fsResp.json();
+          const fsView = document.getElementById("fsView");
+          if (fsView && !isSelectionInside(fsView)) {
+            if (lines.length < lastFsCount || lastFsCount === 0) {
+              fsView.innerHTML = "";
+              lines.forEach(line => {
+                const d = document.createElement("div");
+                d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+                d.innerHTML = ansiToHtml(line.text);
+                fsView.appendChild(d);
+              });
+              lastFsCount = lines.length;
+              fsView.scrollTop = fsView.scrollHeight;
+            } else if (lines.length > lastFsCount) {
+              const newLines = lines.slice(lastFsCount);
+              newLines.forEach(line => {
+                const d = document.createElement("div");
+                d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+                d.innerHTML = ansiToHtml(line.text);
+                fsView.appendChild(d);
+              });
+              lastFsCount = lines.length;
+              fsView.scrollTop = fsView.scrollHeight;
+            }
+          }
+        }
+
+        if (currentMode === "BRINGUP") {
+          pollBringupStatus();
+        }
+      } catch (e) {
+        // Background polling errors silent
+      }
+    }
+
+    function fuzzyMatch(pattern, text) {
+      if (!pattern) return true;
+      let pIdx = 0;
+      let tIdx = 0;
+      const p = pattern.toLowerCase();
+      const t = text.toLowerCase();
+      while (pIdx < p.length && tIdx < t.length) {
+        if (p[pIdx] === t[tIdx]) {
+          pIdx++;
+        }
+        tIdx++;
+      }
+      return pIdx === p.length;
+    }
+
+    let fuzzySelectedIndex = 0;
+    let currentFuzzyMatches = [];
+
+    function openCliFuzzyHistory() {
+      const container = document.getElementById("cliFuzzyHistory");
+      const searchInput = document.getElementById("fuzzySearchInput");
+      if (!container || !searchInput) return;
+
+      container.style.display = "flex";
+      searchInput.value = "";
+      fuzzySelectedIndex = 0;
+      updateFuzzyResults("");
+      searchInput.focus();
+    }
+
+    function closeCliFuzzyHistory() {
+      const container = document.getElementById("cliFuzzyHistory");
+      if (container) {
+        container.style.display = "none";
+      }
+      const cmdInput = document.getElementById("cmdInput");
+      if (cmdInput) {
+        cmdInput.focus();
+      }
+    }
+
+    function updateFuzzyResults(query) {
+      const list = document.getElementById("fuzzyResultsList");
+      if (!list) return;
+
+      const historyReversed = [];
+      const seen = new Set();
+      for (let i = cmdHistory.length - 1; i >= 0; i--) {
+        const item = cmdHistory[i];
+        if (item && !seen.has(item)) {
+          seen.add(item);
+          historyReversed.push(item);
+        }
+      }
+
+      currentFuzzyMatches = historyReversed.filter(cmd => fuzzyMatch(query, cmd));
+      if (fuzzySelectedIndex >= currentFuzzyMatches.length) {
+        fuzzySelectedIndex = Math.max(0, currentFuzzyMatches.length - 1);
+      }
+
+      list.innerHTML = "";
+      if (currentFuzzyMatches.length === 0) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "fuzzy-item";
+        emptyDiv.style.color = "var(--xerxes-text-dim, #567)";
+        emptyDiv.innerText = "No matching commands";
+        list.appendChild(emptyDiv);
+        return;
+      }
+
+      currentFuzzyMatches.forEach((cmd, idx) => {
+        const itemDiv = document.createElement("div");
+        itemDiv.className = `fuzzy-item ${idx === fuzzySelectedIndex ? 'active' : ''}`;
+        itemDiv.innerText = cmd;
+        itemDiv.addEventListener("click", () => {
+          selectFuzzyCommand(cmd);
+        });
+        list.appendChild(itemDiv);
+      });
+
+      const activeEl = list.children[fuzzySelectedIndex];
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: "nearest" });
+      }
+    }
+
+    function selectFuzzyCommand(cmd) {
+      const input = document.getElementById("cmdInput");
+      if (input) {
+        input.value = cmd;
+      }
+      closeCliFuzzyHistory();
+    }
+
+    function setupCliFuzzyHistory() {
+      const searchInput = document.getElementById("fuzzySearchInput");
+      if (!searchInput) return;
+
+      searchInput.addEventListener("input", (e) => {
+        fuzzySelectedIndex = 0;
+        updateFuzzyResults(e.target.value);
+      });
+
+      searchInput.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0) {
+            fuzzySelectedIndex = (fuzzySelectedIndex + 1) % currentFuzzyMatches.length;
+            updateFuzzyResults(searchInput.value);
+          }
+          return;
+        }
+
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeCliFuzzyHistory();
+        } else if (e.key === "Enter") {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0 && currentFuzzyMatches[fuzzySelectedIndex]) {
+            selectFuzzyCommand(currentFuzzyMatches[fuzzySelectedIndex]);
+          } else {
+            closeCliFuzzyHistory();
+          }
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0) {
+            fuzzySelectedIndex = (fuzzySelectedIndex - 1 + currentFuzzyMatches.length) % currentFuzzyMatches.length;
+            updateFuzzyResults(searchInput.value);
+          }
+        } else if (e.key === "ArrowDown") {
+          e.preventDefault();
+          if (currentFuzzyMatches.length > 0) {
+            fuzzySelectedIndex = (fuzzySelectedIndex + 1) % currentFuzzyMatches.length;
+            updateFuzzyResults(searchInput.value);
+          }
+        }
+      });
+    }
+
+    document.getElementById("cmdInput").addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+        e.preventDefault();
+        openCliFuzzyHistory();
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        submitCommand();
+      } else if (e.key === "ArrowUp") {
+        if (historyIdx > 0) {
+          historyIdx--;
+          document.getElementById("cmdInput").value = cmdHistory[historyIdx];
+        }
+      } else if (e.key === "ArrowDown") {
+        if (historyIdx < cmdHistory.length - 1) {
+          historyIdx++;
+          document.getElementById("cmdInput").value = cmdHistory[historyIdx];
+        } else {
+          historyIdx = cmdHistory.length;
+          document.getElementById("cmdInput").value = "";
+        }
+      }
+    });
+
+    // Single-Click Text Control Highlighting (WORM-MOIST-TAPEWORM-650)
+    const cmdInputEl = document.getElementById("cmdInput");
+    if (cmdInputEl) {
+      cmdInputEl.addEventListener("click", function() {
+        this.select();
+      });
+    }
+
+    const promptLabelEl = document.getElementById("promptLabel");
+    if (promptLabelEl) {
+      promptLabelEl.addEventListener("click", () => {
+        const input = document.getElementById("cmdInput");
+        if (input && !input.disabled) {
+          input.focus();
+          input.select();
+        }
+      });
+    }
+
+    const cliFooterEl = document.querySelector("footer.cli-input-bar");
+    if (cliFooterEl) {
+      cliFooterEl.addEventListener("click", (e) => {
+        if (e.target.tagName !== "BUTTON" && e.target.id !== "fuzzySearchInput") {
+          const input = document.getElementById("cmdInput");
+          if (input && !input.disabled) {
+            input.focus();
+            input.select();
+          }
+        }
+      });
+    }
+
+    // Single click on previous CLI command lines (.cli-line-input) populates and highlights cmdInput
+    ["cliView", "fsView"].forEach(viewId => {
+      const view = document.getElementById(viewId);
+      if (!view) return;
+      view.addEventListener("click", (e) => {
+        const lineInput = e.target.closest(".cli-line-input");
+        if (lineInput) {
+          let text = (lineInput.innerText || lineInput.textContent || "").trim();
+          text = text.replace(/^(shell>|fs>|>)\s*/, "").trim();
+          const input = document.getElementById("cmdInput");
+          if (input && text) {
+            input.value = text;
+            input.focus();
+            input.select();
+          }
+        }
+      });
+    });
+
+    // UI Scale Management (8715cab2)
+    const UI_SCALES = ["75%", "80%", "90%", "100%", "110%", "125%", "150%"];
+    const UI_SCALE_KEY = "ui_scale";
+
+    function applyUiScale(scale) {
+      if (!UI_SCALES.includes(scale)) {
+        scale = "100%";
+      }
+      const factor = parseInt(scale, 10) / 100;
+      if (document.documentElement) {
+        document.documentElement.style.zoom = factor;
+        if (factor === 1.0) {
+          document.documentElement.style.width = "";
+          document.documentElement.style.height = "";
+        } else {
+          document.documentElement.style.width = (window.innerWidth / factor) + "px";
+          document.documentElement.style.height = (window.innerHeight / factor) + "px";
+        }
+      }
+      try {
+        localStorage.setItem(UI_SCALE_KEY, scale);
+      } catch (e) {}
+      const sel = document.getElementById("uiScaleSelect");
+      if (sel && sel.value !== scale) {
+        sel.value = scale;
+      }
+    }
+
+    window.addEventListener("resize", () => {
+      let current = "100%";
+      try {
+        current = localStorage.getItem(UI_SCALE_KEY) || "100%";
+      } catch (e) {}
+      const factor = parseInt(current, 10) / 100;
+      if (factor !== 1.0 && document.documentElement) {
+        document.documentElement.style.width = (window.innerWidth / factor) + "px";
+        document.documentElement.style.height = (window.innerHeight / factor) + "px";
+      }
+    });
+
+    function onUiScaleChange(scale) {
+      applyUiScale(scale);
+    }
+
+    function adjustUiScale(delta) {
+      let current = "100%";
+      try {
+        current = localStorage.getItem(UI_SCALE_KEY) || "100%";
+      } catch (e) {}
+      let idx = UI_SCALES.indexOf(current);
+      if (idx === -1) idx = UI_SCALES.indexOf("100%");
+      const nextIdx = Math.max(0, Math.min(UI_SCALES.length - 1, idx + delta));
+      applyUiScale(UI_SCALES[nextIdx]);
+    }
+
+    function resetUiScale() {
+      applyUiScale("100%");
+    }
+
+    function initUiScale() {
+      let saved = "100%";
+      try {
+        saved = localStorage.getItem(UI_SCALE_KEY) || "100%";
+      } catch (e) {}
+      applyUiScale(saved);
+    }
+
+    window.addEventListener("keydown", (e) => {
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === "=" || e.key === "+" || e.code === "Equal" || e.code === "NumpadAdd") {
+          e.preventDefault();
+          adjustUiScale(1);
+          return;
+        }
+        if (e.key === "-" || e.key === "_" || e.code === "Minus" || e.code === "NumpadSubtract") {
+          e.preventDefault();
+          adjustUiScale(-1);
+          return;
+        }
+        if (e.key === "0" || e.code === "Digit0" || e.code === "Numpad0") {
+          e.preventDefault();
+          resetUiScale();
+          return;
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+        if (e.target.id !== "fuzzySearchInput") {
+          e.preventDefault();
+          openCliFuzzyHistory();
+        }
+      }
+    });
+
+    async function triggerReset() {
+      const btn = document.getElementById("btnReset");
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = "⚡ Resetting...";
+      }
+      try {
+        const resp = await fetch("/api/reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
+        });
+        const data = await resp.json();
+        console.log("Reset result:", data);
+      } catch (e) {
+        console.error("Reset error:", e);
+      } finally {
+        setTimeout(() => {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerText = "⚡ Reset";
+          }
+        }, 1200);
+      }
+    }
+
+    let syncPollTimer = null;
+    let syncAutoDismissTimer = null;
+
+    function setWorkstationDisabled(disabled, message) {
+      const cmdInput = document.getElementById("cmdInput");
+      const fsToolbar = document.getElementById("fsToolbar");
+      if (cmdInput) {
+        cmdInput.disabled = disabled;
+        if (disabled) {
+          if (!cmdInput.hasAttribute("data-prev-placeholder")) {
+            cmdInput.setAttribute("data-prev-placeholder", cmdInput.placeholder);
+          }
+          cmdInput.placeholder = message || "CLI disabled until target synchronization succeeds. Click ⚡ Sync.";
+          cmdInput.style.opacity = "0.5";
+          cmdInput.style.cursor = "not-allowed";
+        } else {
+          const prev = cmdInput.getAttribute("data-prev-placeholder");
+          if (prev) cmdInput.placeholder = prev;
+          cmdInput.removeAttribute("data-prev-placeholder");
+          cmdInput.style.opacity = "1";
+          cmdInput.style.cursor = "text";
+        }
+      }
+      if (fsToolbar) {
+        const btns = fsToolbar.querySelectorAll("button");
+        btns.forEach(b => b.disabled = disabled);
+      }
+    }
+
+    function openSyncModal() {
+      if (syncAutoDismissTimer) {
+        clearTimeout(syncAutoDismissTimer);
+        syncAutoDismissTimer = null;
+      }
+      const modal = document.getElementById("syncModal");
+      if (modal) modal.style.display = "flex";
+      const cancelBtn = document.getElementById("btnSyncCancel");
+      if (cancelBtn) {
+        cancelBtn.disabled = false;
+        cancelBtn.innerText = "Cancel";
+      }
+    }
+
+    function closeSyncModal() {
+      if (syncAutoDismissTimer) {
+        clearTimeout(syncAutoDismissTimer);
+        syncAutoDismissTimer = null;
+      }
+      const modal = document.getElementById("syncModal");
+      if (modal) modal.style.display = "none";
+    }
+
+    // Target Bug Reporting Modal Management (WORM-LOAMY-LUGWORM-536, WORM-BRISTLY-GLOWWORM-390)
+    let targetBugAttachments = [];
+
+    function handleTargetBugFileUpload(files) {
+      if (!files || !files.length) return;
+      Array.from(files).forEach(file => {
+        const reader = new FileReader();
+        const isImage = file.type.startsWith("image/");
+        const isLog = file.name.endsWith(".log") || file.name.endsWith(".txt") || file.type === "text/plain";
+        const fileType = isImage ? "screenshot" : (isLog ? "log" : "document");
+        reader.onload = (e) => {
+          targetBugAttachments.push({
+            filename: file.name,
+            file_type: fileType,
+            content_base64: e.target.result,
+            size_bytes: file.size,
+            description: `Attached ${fileType} (${file.name})`
+          });
+          renderTargetBugAttachments();
+        };
+        reader.readAsDataURL(file);
+      });
+      const input = document.getElementById("targetBugFileInput");
+      if (input) input.value = "";
+    }
+
+    async function pasteTargetBugClipboard() {
+      try {
+        if (navigator.clipboard && navigator.clipboard.read) {
+          const items = await navigator.clipboard.read();
+          let pasted = false;
+          for (const item of items) {
+            for (const type of item.types) {
+              if (type.startsWith("image/")) {
+                const blob = await item.getType(type);
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                  targetBugAttachments.push({
+                    filename: `screenshot_${Date.now()}.png`,
+                    file_type: "screenshot",
+                    content_base64: e.target.result,
+                    size_bytes: blob.size,
+                    description: "Pasted clipboard screenshot"
+                  });
+                  renderTargetBugAttachments();
+                };
+                reader.readAsDataURL(blob);
+                pasted = true;
+                break;
+              }
+            }
+            if (pasted) break;
+          }
+          if (pasted) return;
+        }
+        if (navigator.clipboard && navigator.clipboard.readText) {
+          const text = await navigator.clipboard.readText();
+          if (text && text.trim()) {
+            const b64 = "data:text/plain;base64," + btoa(unescape(encodeURIComponent(text)));
+            targetBugAttachments.push({
+              filename: `clipboard_${Date.now()}.txt`,
+              file_type: "log",
+              content_base64: b64,
+              content_text: text,
+              size_bytes: new Blob([text]).size,
+              description: "Pasted clipboard text snippet"
+            });
+            renderTargetBugAttachments();
+          }
+        }
+      } catch (err) {
+        console.warn("Clipboard access error:", err);
+      }
+    }
+
+    function removeTargetBugAttachment(idx) {
+      if (idx >= 0 && idx < targetBugAttachments.length) {
+        targetBugAttachments.splice(idx, 1);
+        renderTargetBugAttachments();
+      }
+    }
+
+    function renderTargetBugAttachments() {
+      const grid = document.getElementById("targetBugAttachmentsGrid");
+      if (!grid) return;
+      grid.innerHTML = "";
+      targetBugAttachments.forEach((att, idx) => {
+        const card = document.createElement("div");
+        card.style.background = "#040e14";
+        card.style.border = "1px solid var(--xerxes-border-mid)";
+        card.style.borderRadius = "3px";
+        card.style.padding = "6px";
+        card.style.display = "flex";
+        card.style.flexDirection = "column";
+        card.style.gap = "4px";
+
+        let previewHtml = "";
+        if (att.file_type === "screenshot" || (att.content_base64 && att.content_base64.startsWith("data:image/"))) {
+          previewHtml = `<img src="${att.content_base64}" style="width:100%; height:65px; object-fit:cover; border-radius:2px; border:1px solid #092430; background:#02070a;" alt="${att.filename}">`;
+        } else {
+          previewHtml = `<div style="width:100%; height:65px; border-radius:2px; border:1px solid #092430; background:#02070a; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;"><span style="font-size:16px;">📄</span><span style="font-size:7px; color:var(--xerxes-text-muted); font-weight:bold;">${(att.file_type || 'DOCUMENT').toUpperCase()}</span></div>`;
+        }
+
+        const sizeKb = ((att.size_bytes || 0) / 1024).toFixed(1);
+        card.innerHTML = `
+          ${previewHtml}
+          <div style="font-size:8.5px; color:#e0f8ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${att.filename}">${att.filename}</div>
+          <div style="display:flex; justify-content:space-between; align-items:center; font-size:7.5px; color:var(--xerxes-text-dim);">
+            <span>${sizeKb} KB</span>
+            <button type="button" class="btn" style="font-size:7.5px; padding:1px 4px; color:var(--xerxes-red); border-color:rgba(255,42,75,0.4);" onclick="removeTargetBugAttachment(${idx})">✕</button>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function openTargetBugModal() {
+      const modal = document.getElementById("targetBugModal");
+      if (!modal) return;
+      modal.style.display = "flex";
+
+      targetBugAttachments = [];
+      renderTargetBugAttachments();
+
+      const titleInput = document.getElementById("targetBugTitle");
+      if (titleInput) {
+        titleInput.value = "";
+        setTimeout(() => titleInput.focus(), 50);
+      }
+
+      const stepsInput = document.getElementById("targetBugSteps");
+      if (stepsInput && !stepsInput.value) {
+        const recentCmds = (cmdHistory || []).slice(-3);
+        let defaultSteps = "1. Connect target device via probe-rs / RTT\n2. Synchronize firmware: package {{ runner.package }} ({{ runner.bin_name }})";
+        if (recentCmds.length > 0) {
+          recentCmds.forEach((cmd, idx) => {
+            defaultSteps += `\n${idx + 3}. Execute command '${cmd}'`;
+          });
+          defaultSteps += `\n${recentCmds.length + 3}. Observe defect/failure on target`;
+        } else {
+          defaultSteps += "\n3. Execute target CLI/FS commands\n4. Observe defect/failure on target";
+        }
+        stepsInput.value = defaultSteps;
+      }
+
+      const statusEl = document.getElementById("targetBugStatusMsg");
+      if (statusEl) {
+        statusEl.style.display = "none";
+        statusEl.textContent = "";
+      }
+
+      const progressContainer = document.getElementById("targetBugProgressContainer");
+      if (progressContainer) progressContainer.style.display = "none";
+      const progressBar = document.getElementById("targetBugProgressBar");
+      if (progressBar) {
+        progressBar.style.width = "0%";
+        progressBar.style.background = "linear-gradient(90deg, var(--xerxes-teal), var(--xerxes-cyan))";
+      }
+    }
+
+    function closeTargetBugModal() {
+      const modal = document.getElementById("targetBugModal");
+      if (modal) modal.style.display = "none";
+    }
+
+    async function submitTargetBug() {
+      const title = document.getElementById("targetBugTitle")?.value.trim();
+      const statusEl = document.getElementById("targetBugStatusMsg");
+      const submitBtn = document.getElementById("btnSubmitTargetBug");
+      const progressContainer = document.getElementById("targetBugProgressContainer");
+      const progressBar = document.getElementById("targetBugProgressBar");
+      const progressMsg = document.getElementById("targetBugProgressMsg");
+      const progressPct = document.getElementById("targetBugProgressPct");
+
+      function updateBugProgress(pct, msg) {
+        if (progressContainer) progressContainer.style.display = "block";
+        if (progressBar) progressBar.style.width = pct + "%";
+        if (progressPct) progressPct.textContent = pct + "%";
+        if (progressMsg) progressMsg.textContent = msg;
+      }
+
+      if (!title) {
+        if (statusEl) {
+          statusEl.style.display = "block";
+          statusEl.style.background = "rgba(255, 42, 75, 0.15)";
+          statusEl.style.color = "var(--xerxes-red)";
+          statusEl.textContent = "Error: Bug title is required.";
+        }
+        return;
+      }
+
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "⏳ Filing Bug Report...";
+      }
+
+      updateBugProgress(20, "Collecting system logs & target hardware context...");
+
+      const payload = {
+        title: title,
+        severity: document.getElementById("targetBugSeverity")?.value || "MEDIUM",
+        category: document.getElementById("targetBugCategory")?.value || "FIRMWARE",
+        component: document.getElementById("targetBugComponent")?.value.trim() || "target",
+        description: document.getElementById("targetBugDescription")?.value.trim() || "",
+        reproduction_steps: document.getElementById("targetBugSteps")?.value.trim() || "",
+        expected_behavior: document.getElementById("targetBugExpected")?.value.trim() || "",
+        actual_behavior: document.getElementById("targetBugActual")?.value.trim() || "",
+        attach_system_logs: document.getElementById("attachSystemLogs")?.checked ?? true,
+        attach_crash_log: document.getElementById("attachCrashLog")?.checked ?? false,
+        attach_telemetry: document.getElementById("attachTelemetry")?.checked ?? false,
+        attach_metadata: document.getElementById("attachMetadata")?.checked ?? false,
+        manual_attachments: targetBugAttachments,
+      };
+
+      try {
+        updateBugProgress(45, "Packaging defect attachments & telemetry data...");
+        const resp = await fetch("/api/target_bug", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        updateBugProgress(85, "Registering worm in tracking matrix...");
+        const res = await resp.json();
+        if (res.success) {
+          updateBugProgress(100, `✓ Created defect report ${res.worm_id} with ${res.attachments_count} attachments.`);
+          if (statusEl) {
+            statusEl.style.display = "block";
+            statusEl.style.background = "rgba(20, 217, 196, 0.15)";
+            statusEl.style.color = "var(--xerxes-teal)";
+            statusEl.textContent = `✓ Created defect report ${res.worm_id} with ${res.attachments_count} attachments.`;
+          }
+          setTimeout(() => {
+            closeTargetBugModal();
+            if (submitBtn) {
+              submitBtn.disabled = false;
+              submitBtn.textContent = "⚡ File Target Bug";
+            }
+          }, 1500);
+        } else {
+          updateBugProgress(100, "Defect submission failed");
+          if (progressBar) progressBar.style.background = "var(--xerxes-red)";
+          if (statusEl) {
+            statusEl.style.display = "block";
+            statusEl.style.background = "rgba(255, 42, 75, 0.15)";
+            statusEl.style.color = "var(--xerxes-red)";
+            statusEl.textContent = `Error: ${res.error || "Failed to create bug report"}`;
+          }
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "⚡ File Target Bug";
+          }
+        }
+      } catch (err) {
+        updateBugProgress(100, "Defect submission failed");
+        if (progressBar) progressBar.style.background = "var(--xerxes-red)";
+        if (statusEl) {
+          statusEl.style.display = "block";
+          statusEl.style.background = "rgba(255, 42, 75, 0.15)";
+          statusEl.style.color = "var(--xerxes-red)";
+          statusEl.textContent = `Network error: ${err.message}`;
+        }
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "⚡ File Target Bug";
+        }
+      }
+    }
+
+    async function cancelSync() {
+      const cancelBtn = document.getElementById("btnSyncCancel");
+      if (cancelBtn) {
+        cancelBtn.disabled = true;
+        cancelBtn.innerText = "Cancelling...";
+      }
+      try {
+        await fetch("/api/sync/cancel", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
+        });
+        setWorkstationDisabled(true, "Target sync cancelled. Click ⚡ Sync to re-synchronize before using CLI.");
+      } catch (e) {
+        console.error("Failed to cancel sync:", e);
+      }
+    }
+
+    async function triggerSync() {
+      openSyncModal();
+      const dot = document.getElementById("syncStatusDot");
+      const msg = document.getElementById("syncProgressMsg");
+      const bar = document.getElementById("syncProgressBar");
+      const pct = document.getElementById("syncProgressPct");
+      const consoleEl = document.getElementById("syncConsoleLog");
+
+      if (dot) {
+        dot.className = "sync-status-dot pulse";
+      }
+      if (msg) msg.innerText = "Triggering target synchronization...";
+      if (bar) bar.style.width = "5%";
+      if (pct) pct.innerText = "5%";
+      if (consoleEl) consoleEl.innerHTML = "";
+
+      try {
+        const resp = await fetch("/api/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}"
+        });
+        if (resp.ok) {
+          startSyncPolling();
+        } else {
+          if (dot) dot.className = "sync-status-dot error";
+          if (msg) msg.innerText = "Failed to trigger sync.";
+          setWorkstationDisabled(true, "Sync failed to start. Click ⚡ Sync.");
+        }
+      } catch (e) {
+        if (dot) dot.className = "sync-status-dot error";
+        if (msg) msg.innerText = `Sync error: ${e}`;
+        setWorkstationDisabled(true, "Sync error occurred. Click ⚡ Sync.");
+      }
+    }
+
+    function startSyncPolling() {
+      if (syncPollTimer) clearInterval(syncPollTimer);
+      syncPollTimer = setInterval(pollSyncStatus, 500);
+      pollSyncStatus();
+    }
+
+    async function pollSyncStatus() {
+      try {
+        const resp = await fetch("/api/sync/status");
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        const dot = document.getElementById("syncStatusDot");
+        const msg = document.getElementById("syncProgressMsg");
+        const bar = document.getElementById("syncProgressBar");
+        const pct = document.getElementById("syncProgressPct");
+        const consoleEl = document.getElementById("syncConsoleLog");
+
+        if (bar) bar.style.width = `${data.progress || 0}%`;
+        if (pct) pct.innerText = `${data.progress || 0}%`;
+        if (msg) msg.innerText = data.message || "Synchronizing...";
+
+        if (data.target) {
+          const el = document.getElementById("syncInfoTarget");
+          if (el) el.innerText = data.target;
+        }
+        if (data.package && data.bin) {
+          const el = document.getElementById("syncInfoPackage");
+          if (el) el.innerText = `${data.package} (${data.bin})`;
+        }
+        if (data.profile) {
+          const el = document.getElementById("syncInfoProfile");
+          if (el) el.innerText = data.profile;
+        }
+        if (data.speed) {
+          const el = document.getElementById("syncInfoSpeed");
+          if (el) el.innerText = `${data.speed} kHz`;
+        }
+
+        if (consoleEl && data.console && Array.isArray(data.console)) {
+          const shouldScroll = consoleEl.scrollTop + consoleEl.clientHeight >= consoleEl.scrollHeight - 30;
+          consoleEl.innerHTML = data.console.map(line => ansiToHtml(line)).join("<br>");
+          if (shouldScroll) {
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+          }
+        }
+
+        if (data.step === "complete") {
+          if (dot) dot.className = "sync-status-dot success";
+          if (syncPollTimer) {
+            clearInterval(syncPollTimer);
+            syncPollTimer = null;
+          }
+          setWorkstationDisabled(false);
+          pollOutputs();
+          if (!syncAutoDismissTimer) {
+            syncAutoDismissTimer = setTimeout(() => {
+              closeSyncModal();
+              syncAutoDismissTimer = null;
+            }, 1500);
+          }
+        } else if (data.step === "cancelled") {
+          if (dot) dot.className = "sync-status-dot error";
+          if (syncPollTimer) {
+            clearInterval(syncPollTimer);
+            syncPollTimer = null;
+          }
+          setWorkstationDisabled(true, "Target sync cancelled. Click ⚡ Sync to re-synchronize before using CLI.");
+        } else if (data.step === "failed") {
+          if (dot) dot.className = "sync-status-dot error";
+          if (syncPollTimer) {
+            clearInterval(syncPollTimer);
+            syncPollTimer = null;
+          }
+          setWorkstationDisabled(true, "Target sync failed. Click ⚡ Sync to retry.");
+        } else {
+          if (dot) dot.className = "sync-status-dot pulse";
+        }
+      } catch (e) {
+        // Polling error
+      }
+    }
+
+    initUiScale();
+    setupSplitter();
+    setupCliFuzzyHistory();
+    setInterval(pollOutputs, 1000);
+    pollOutputs();
+
+    if (currentMode === "BRINGUP") {
+      loadBringupScriptsList();
+      pollBringupStatus();
+    }
+
+    // Check if initial synchronization is in progress on page load
+    fetch("/api/sync/status").then(r => r.json()).then(data => {
+      if (data && (data.active || (data.progress > 0 && data.progress < 100))) {
+        openSyncModal();
+        startSyncPolling();
+      }
+    }).catch(() => {});
+
+    // Target Bug Dropzone & Clipboard Paste Setup (WORM-BRISTLY-GLOWWORM-390)
+    const targetBugDropzoneEl = document.getElementById("targetBugDropzone");
+    if (targetBugDropzoneEl) {
+      targetBugDropzoneEl.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        targetBugDropzoneEl.classList.add("dragover");
+      });
+      targetBugDropzoneEl.addEventListener("dragleave", (e) => {
+        e.preventDefault();
+        targetBugDropzoneEl.classList.remove("dragover");
+      });
+      targetBugDropzoneEl.addEventListener("drop", (e) => {
+        e.preventDefault();
+        targetBugDropzoneEl.classList.remove("dragover");
+        if (e.dataTransfer && e.dataTransfer.files) {
+          handleTargetBugFileUpload(e.dataTransfer.files);
+        }
+      });
+    }
+
+    window.addEventListener("paste", (e) => {
+      const modal = document.getElementById("targetBugModal");
+      if (!modal || modal.style.display === "none") return;
+      if (e.clipboardData && e.clipboardData.items) {
+        for (const item of e.clipboardData.items) {
+          if (item.type.startsWith("image/")) {
+            e.preventDefault();
+            const blob = item.getAsFile();
+            if (blob) {
+              const reader = new FileReader();
+              reader.onload = (evt) => {
+                targetBugAttachments.push({
+                  filename: `screenshot_${Date.now()}.png`,
+                  file_type: "screenshot",
+                  content_base64: evt.target.result,
+                  size_bytes: blob.size,
+                  description: "Pasted screenshot"
+                });
+                renderTargetBugAttachments();
+              };
+              reader.readAsDataURL(blob);
+            }
+            break;
+          }
+        }
+      }
+    });
+
+    // Package Selection & Target Configuration Management (WORM-SLIMY-PLANARIAN-761)
+    const DISCOVERED_PACKAGES = {{ target_packages | tojson if target_packages is defined else '[]' }};
+    const LAST_SESSION = {{ last_session | tojson if last_session is defined and last_session else 'null' }};
+    const IS_PACKAGE_SELECTION_MODE = {{ 'true' if package_selection_mode else 'false' }};
+
+    function populateTargetBinaries(selectedPkgName, defaultBinName) {
+      const binSelect = document.getElementById("cfgBinSelect");
+      if (!binSelect) return;
+      binSelect.innerHTML = "";
+
+      const pkgData = Array.isArray(DISCOVERED_PACKAGES) ? DISCOVERED_PACKAGES.find(p => p.package === selectedPkgName) : null;
+      const binaries = pkgData ? pkgData.binaries : ["cat_detector_shell", "cat_detector_app", "carrier_board_shell"];
+
+      binaries.forEach(b => {
+        const opt = document.createElement("option");
+        opt.value = b;
+        opt.textContent = b;
+        if (b === defaultBinName || (!defaultBinName && b === pkgData?.default_bin)) {
+          opt.selected = true;
+        }
+        binSelect.appendChild(opt);
+      });
+      updateInferredArchDisplay(selectedPkgName);
+    }
+
+    function updateInferredArchDisplay(pkgName) {
+      const archDisplay = document.getElementById("cfgInferredArchDisplay");
+      const archInput = document.getElementById("cfgTargetArchInput");
+      const archNote = document.getElementById("cfgInferredArchNote");
+      const pkgData = Array.isArray(DISCOVERED_PACKAGES) ? DISCOVERED_PACKAGES.find(p => p.package === pkgName) : null;
+      const target = pkgData ? pkgData.inferred_target : "thumbv6m-none-eabi";
+
+      if (archDisplay) archDisplay.textContent = target;
+      if (archInput) archInput.value = target;
+      if (archNote) {
+        if (target.includes("thumbv6m")) {
+          archNote.textContent = "(Auto-inferred: ARM Cortex-M0+ / RP2040)";
+        } else if (target.includes("thumbv8m")) {
+          archNote.textContent = "(Auto-inferred: ARM Cortex-M33 / NXP MCX)";
+        } else if (target.includes("thumbv7em")) {
+          archNote.textContent = "(Auto-inferred: ARM Cortex-M4F/M7F)";
+        } else {
+          archNote.textContent = "(Auto-inferred from hardware target)";
+        }
+      }
+    }
+
+    function onTargetPackageChange() {
+      const pkgSelect = document.getElementById("cfgPackageSelect");
+      if (!pkgSelect) return;
+      populateTargetBinaries(pkgSelect.value);
+    }
+
+    function onTargetBinChange() {
+      const pkgSelect = document.getElementById("cfgPackageSelect");
+      if (pkgSelect) updateInferredArchDisplay(pkgSelect.value);
+    }
+
+    function openTargetConfigModal() {
+      const modal = document.getElementById("targetConfigModal");
+      if (!modal) return;
+
+      const currentPkg = (LAST_SESSION && LAST_SESSION.package) || "{{ runner.package }}";
+      const currentBin = (LAST_SESSION && LAST_SESSION.bin) || "{{ runner.bin_name }}";
+      const pkgSelect = document.getElementById("cfgPackageSelect");
+      if (pkgSelect && currentPkg) {
+        pkgSelect.value = currentPkg;
+      }
+      populateTargetBinaries(currentPkg, currentBin);
+
+      const relBox = document.getElementById("cfgReleaseCheckbox");
+      if (relBox) {
+        relBox.checked = LAST_SESSION && typeof LAST_SESSION.release === "boolean" ? LAST_SESSION.release : {{ 'true' if runner.release else 'false' }};
+      }
+
+      const spdSelect = document.getElementById("cfgSpeedSelect");
+      if (spdSelect) {
+        const spd = (LAST_SESSION && LAST_SESSION.speed) || {{ runner.speed }};
+        spdSelect.value = String(spd);
+      }
+
+      modal.style.display = "flex";
+    }
+
+    function closeTargetConfigModal() {
+      const modal = document.getElementById("targetConfigModal");
+      if (modal) modal.style.display = "none";
+    }
+
+    async function submitTargetConfig() {
+      const pkg = document.getElementById("cfgPackageSelect")?.value || "{{ runner.package }}";
+      const bin = document.getElementById("cfgBinSelect")?.value || "{{ runner.bin_name }}";
+      const release = document.getElementById("cfgReleaseCheckbox")?.checked ?? true;
+      const speed = parseInt(document.getElementById("cfgSpeedSelect")?.value || "1000", 10);
+      const target = document.getElementById("cfgTargetArchInput")?.value || "thumbv6m-none-eabi";
+
+      const btnConfirm = document.getElementById("btnConfirmTargetConfig");
+      if (btnConfirm) btnConfirm.disabled = true;
+
+      try {
+        const res = await fetch("/api/target/configure", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ package: pkg, bin: bin, release: release, speed: speed, target: target })
+        });
+        const data = await res.json();
+        if (data.success) {
+          localStorage.setItem("xerxes_last_target_package", pkg);
+          localStorage.setItem("xerxes_last_target_bin", bin);
+          localStorage.setItem("xerxes_last_target_release", String(release));
+
+          closeTargetConfigModal();
+          openSyncModal();
+
+          const dot = document.getElementById("syncStatusDot");
+          const msg = document.getElementById("syncProgressMsg");
+          const bar = document.getElementById("syncProgressBar");
+          const pct = document.getElementById("syncProgressPct");
+          const consoleEl = document.getElementById("syncConsoleLog");
+
+          if (dot) dot.className = "sync-status-dot pulse";
+          if (msg) msg.innerText = "Synchronizing target firmware...";
+          if (bar) bar.style.width = "5%";
+          if (pct) pct.innerText = "5%";
+          if (consoleEl) consoleEl.innerHTML = "";
+
+          const elTgt = document.getElementById("syncInfoTarget");
+          if (elTgt) elTgt.innerText = target;
+          const elPkg = document.getElementById("syncInfoPackage");
+          if (elPkg) elPkg.innerText = `${pkg} (${bin})`;
+          const elProf = document.getElementById("syncInfoProfile");
+          if (elProf) elProf.innerText = release ? "release" : "debug";
+          const elSpd = document.getElementById("syncInfoSpeed");
+          if (elSpd) elSpd.innerText = `${speed} kHz`;
+
+          startSyncPolling();
+        } else {
+          alert("Failed to configure target: " + (data.error || "Unknown error"));
+        }
+      } catch (err) {
+        alert("Error communicating with host daemon: " + err);
+      } finally {
+        if (btnConfirm) btnConfirm.disabled = false;
+      }
+    }
+
+    // Initialize binaries on page load
+    populateTargetBinaries(document.getElementById("cfgPackageSelect")?.value || "{{ runner.package }}", "{{ runner.bin_name }}");
+
+    // Auto-open modal if package selection mode is active on startup
+    if (IS_PACKAGE_SELECTION_MODE) {
+      openTargetConfigModal();
+    }
+  </script>
+</body>
+</html>

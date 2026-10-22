@@ -7,6 +7,15 @@ pub trait Tickable {
     /// Error type returned by the physical hardware.
     type Error;
 
+    /// Desired tick interval in microseconds for this periodic peripheral.
+    ///
+    /// Peripherals requiring high-frequency periodic updates (such as high-speed BLDC
+    /// commutation drivers) can override this method to define their required tick rate.
+    /// General peripherals default to 10,000 microseconds (10ms / 100Hz).
+    fn tick_interval_us(&self) -> u32 {
+        10_000
+    }
+
     /// Updates the state of the peripheral (called periodically).
     async fn tick(&mut self) -> Result<(), Self::Error>;
 }
@@ -25,6 +34,11 @@ impl<T> NoTick<T> {
 impl<T> Tickable for NoTick<T> {
     /// Error type is Infallible as the no-op tick never fails.
     type Error = core::convert::Infallible;
+
+    /// No-op peripherals default to standard 10ms tick interval.
+    fn tick_interval_us(&self) -> u32 {
+        10_000
+    }
 
     /// No-op implementation of tick.
     async fn tick(&mut self) -> Result<(), Self::Error> {

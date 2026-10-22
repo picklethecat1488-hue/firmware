@@ -221,7 +221,7 @@ where
                     LogLedState::BlinksRedOncePerThirtySeconds
                 }
             };
-            defmt::info!("LED Controller: Playing animation {:?}", anim);
+            defmt::info!("Playing animation {:?}", anim);
         }
 
         let use_fade = matches!(
@@ -314,7 +314,7 @@ where
                             LogLedState::BlinksRedOncePerThirtySeconds
                         }
                     };
-                    defmt::info!("LED Controller: Playing animation {:?}", anim);
+                    defmt::info!("Playing animation {:?}", anim);
                 }
                 last_logged_state = Some(state);
             }

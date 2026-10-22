@@ -15,6 +15,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
   <link rel="shortcut icon" href="/static/favicon.ico">
+  <link rel="stylesheet" href="/static/common.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/monokai-sublime.min.css">
   <script src="/static/highlight.min.js"></script>
   <script>
@@ -23,7 +24,11 @@
     }
   </script>
   <style>
-    html { font-size: 80%; }
+    html {
+      font-size: 80%;
+      height: 100%;
+      width: 100%;
+    }
     /* =========================================================
        SYSTEM SHOCK 2 // XERXES CYBERNETIC MAINFRAME HUD THEME
        ========================================================= */
@@ -84,7 +89,8 @@
       color: var(--xerxes-text-light);
       font-family: var(--font-mono);
       letter-spacing: 0.02em;
-      height: 100vh;
+      height: 100%;
+      width: 100%;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -517,8 +523,9 @@
 
     /* Smartlog DAG nodes */
     .smartlog-node {
-      background: #160e07;
-      border: 1px solid var(--quake-border-mid);
+      background: var(--xerxes-panel, #08161d);
+      border: 1px solid var(--xerxes-border-mid, #0b5966);
+      border-left: 4px solid transparent;
       border-radius: 3px;
       padding: 8px 10px;
       cursor: pointer;
@@ -529,13 +536,41 @@
       position: relative;
     }
     .smartlog-node:hover {
-      background: var(--quake-panel-hover);
-      border-color: var(--quake-copper);
+      background: var(--xerxes-panel-hover, #0e242f);
+      border-color: var(--xerxes-teal, #14d9c4);
     }
     .smartlog-node.active {
-      border-color: var(--quake-gold);
-      background: #24160a;
-      box-shadow: inset 2px 0 0 var(--quake-gold);
+      background: linear-gradient(90deg, rgba(0, 240, 255, 0.20) 0%, rgba(8, 22, 29, 0.85) 100%) !important;
+      border-left: 4px solid var(--xerxes-cyan, #00f0ff) !important;
+      box-shadow: inset 3px 0 0 var(--xerxes-cyan, #00f0ff), 0 0 10px rgba(0, 240, 255, 0.25) !important;
+    }
+    .smartlog-node.selected {
+      background: linear-gradient(90deg, rgba(0, 240, 255, 0.16) 0%, rgba(20, 217, 196, 0.10) 50%, rgba(8, 22, 29, 0.90) 100%) !important;
+      border-left: 4px solid var(--xerxes-teal, #14d9c4) !important;
+      border-top: 1px solid rgba(0, 240, 255, 0.25) !important;
+      border-bottom: 1px solid rgba(0, 240, 255, 0.25) !important;
+      box-shadow: inset 3px 0 0 var(--xerxes-teal, #14d9c4), 0 0 8px rgba(20, 217, 196, 0.25) !important;
+    }
+    .smartlog-node.selected:hover {
+      background: linear-gradient(90deg, rgba(0, 240, 255, 0.24) 0%, rgba(20, 217, 196, 0.14) 50%, rgba(14, 36, 47, 0.95) 100%) !important;
+    }
+    .smartlog-node.selected.active {
+      background: linear-gradient(90deg, rgba(0, 240, 255, 0.30) 0%, rgba(20, 217, 196, 0.18) 40%, rgba(8, 22, 29, 0.95) 100%) !important;
+      border-left: 4px solid var(--xerxes-cyan, #00f0ff) !important;
+      border-top: 1px solid rgba(0, 240, 255, 0.45) !important;
+      border-bottom: 1px solid rgba(0, 240, 255, 0.45) !important;
+      box-shadow: inset 4px 0 0 var(--xerxes-cyan, #00f0ff), 0 0 14px rgba(0, 240, 255, 0.4) !important;
+    }
+    .smartlog-node.active .node-sha,
+    .smartlog-node.selected .node-sha {
+      color: var(--xerxes-cyan, #00f0ff) !important;
+      font-weight: 700;
+      text-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
+    }
+    .smartlog-node.active .node-subject,
+    .smartlog-node.selected .node-subject {
+      color: #ffffff !important;
+      font-weight: 600;
     }
     .smartlog-node.head-node {
       border-left: 3px solid var(--quake-cyan);
@@ -660,8 +695,8 @@
       margin-left: 2px;
     }
     .smartlog-node.has-pr {
-      border-left: 3px solid #a855f7 !important;
-      background: linear-gradient(90deg, rgba(168, 85, 247, 0.1) 0%, #160e07 40%);
+      border-left: 3px solid #a855f7;
+      background: linear-gradient(90deg, rgba(168, 85, 247, 0.12) 0%, var(--xerxes-panel, #08161d) 40%);
     }
     .pr-highlight-badge {
       display: inline-flex;
@@ -1084,6 +1119,20 @@
       <button class="quake-btn quake-btn-default" onclick="openWormTracker()" title="Open Worm Defect Matrix">
         <span>🪱 Worms</span>
       </button>
+
+      <!-- UI Scale Selector (8715cab2) -->
+      <div style="display:flex;align-items:center;gap:4px;border-left:1px solid var(--quake-border-mid);padding-left:6px;">
+        <span style="font-size:8px;color:var(--quake-text-dim);">SCALE:</span>
+        <select id="uiScaleSelect" class="quake-select" onchange="onUiScaleChange(this.value)" title="UI Scale (Shortcuts: Cmd/Ctrl +/- or 0 to reset)" style="padding: 2px 4px; font-size: 9px; height: 22px;">
+          <option value="75%">75%</option>
+          <option value="80%">80%</option>
+          <option value="90%">90%</option>
+          <option value="100%" selected>100%</option>
+          <option value="110%">110%</option>
+          <option value="125%">125%</option>
+          <option value="150%">150%</option>
+        </select>
+      </div>
     </div>
   </header>
 
@@ -1145,7 +1194,7 @@
 
         <!-- Render Commit Nodes -->
         {% for node in session.smartlog_nodes %}
-          <div class="smartlog-node {% if node.is_head %}head-node{% endif %} {% if node.is_ancestor_top %}ancestor-top-node{% endif %} {% if node.pr_number %}has-pr{% endif %} {% if session.active_commit == node.commit_hash %}active{% endif %} {% if node.is_merged_into_tracking or node.is_merged %}merged-commit{% endif %}"
+          <div class="smartlog-node {% if node.is_head %}head-node{% endif %} {% if node.is_ancestor_top %}ancestor-top-node{% endif %} {% if node.pr_number %}has-pr{% endif %} {% if session.active_commit == node.commit_hash %}active{% endif %} {% if node.is_merged_into_tracking or node.is_merged %}merged-commit{% endif %} {% if node.commit_hash in session.selected_commits %}selected{% endif %}"
                id="node-{{ node.short_hash }}"
                data-hash="{{ node.commit_hash }}"
                onclick="selectCommit('{{ node.commit_hash }}', event)">
@@ -1679,10 +1728,12 @@
           const end = Math.max(prevIdx, currIdx);
           const rangeHashes = allHashes.slice(start, end + 1);
           allNodes.forEach((node, idx) => {
+            const isRange = (idx >= start && idx <= end);
             const cb = node.querySelector(".commit-checkbox");
             if (cb) {
-              cb.checked = (idx >= start && idx <= end);
+              cb.checked = isRange;
             }
+            node.classList.toggle("selected", isRange);
           });
           state.selectedCommits = rangeHashes;
           updateSelectedCount();
@@ -1882,6 +1933,7 @@
         const isActive = state.activeCommit === node.commit_hash ? "active" : "";
         const isMerged = (node.is_merged_into_tracking || node.is_merged) ? "merged-commit" : "";
         const isChecked = state.selectedCommits && state.selectedCommits.includes(node.commit_hash);
+        const isSelected = isChecked ? "selected" : "";
 
         let prBadge = "";
         if (node.pr_number && node.pr_url) {
@@ -1987,7 +2039,7 @@
         }
 
         html += `
-          <div class="smartlog-node ${isHead} ${isAncestorTop} ${hasPr} ${isActive} ${isMerged}"
+          <div class="smartlog-node ${isHead} ${isAncestorTop} ${hasPr} ${isActive} ${isMerged} ${isSelected}"
                id="node-${node.short_hash}"
                data-hash="${node.commit_hash}"
                onclick="selectCommit('${node.commit_hash}', event)">
@@ -2966,7 +3018,12 @@
         const targetState = checkbox.checked;
         for (let i = start; i <= end; i++) {
           allCheckboxes[i].checked = targetState;
+          const node = allCheckboxes[i].closest(".smartlog-node");
+          if (node) node.classList.toggle("selected", targetState);
         }
+      } else if (checkbox) {
+        const node = checkbox.closest(".smartlog-node");
+        if (node) node.classList.toggle("selected", checkbox.checked);
       }
 
       if (checkbox) {
@@ -2987,6 +3044,8 @@
       const allCheckboxes = document.querySelectorAll(".commit-checkbox");
       allCheckboxes.forEach(cb => {
         cb.checked = true;
+        const node = cb.closest(".smartlog-node");
+        if (node) node.classList.add("selected");
       });
       state.selectedCommits = Array.from(allCheckboxes).map(cb => cb.value);
       updateSelectedCount();
@@ -2996,6 +3055,8 @@
       const allCheckboxes = document.querySelectorAll(".commit-checkbox");
       allCheckboxes.forEach(cb => {
         cb.checked = false;
+        const node = cb.closest(".smartlog-node");
+        if (node) node.classList.remove("selected");
       });
       state.selectedCommits = [];
       updateSelectedCount();
@@ -3409,8 +3470,92 @@
       updateMergedVisibility();
     }
 
-    // Keyboard shortcuts for pane toggling
+    // UI Scale Management (8715cab2)
+    const UI_SCALES = ["75%", "80%", "90%", "100%", "110%", "125%", "150%"];
+    const UI_SCALE_KEY = "ui_scale";
+
+    function applyUiScale(scale) {
+      if (!UI_SCALES.includes(scale)) {
+        scale = "100%";
+      }
+      const factor = parseInt(scale, 10) / 100;
+      if (document.documentElement) {
+        document.documentElement.style.zoom = factor;
+        if (factor === 1.0) {
+          document.documentElement.style.width = "";
+          document.documentElement.style.height = "";
+        } else {
+          document.documentElement.style.width = (window.innerWidth / factor) + "px";
+          document.documentElement.style.height = (window.innerHeight / factor) + "px";
+        }
+      }
+      try {
+        localStorage.setItem(UI_SCALE_KEY, scale);
+      } catch (e) {}
+      const sel = document.getElementById("uiScaleSelect");
+      if (sel && sel.value !== scale) {
+        sel.value = scale;
+      }
+    }
+
+    window.addEventListener("resize", () => {
+      let current = "100%";
+      try {
+        current = localStorage.getItem(UI_SCALE_KEY) || "100%";
+      } catch (e) {}
+      const factor = parseInt(current, 10) / 100;
+      if (factor !== 1.0 && document.documentElement) {
+        document.documentElement.style.width = (window.innerWidth / factor) + "px";
+        document.documentElement.style.height = (window.innerHeight / factor) + "px";
+      }
+    });
+
+    function onUiScaleChange(scale) {
+      applyUiScale(scale);
+    }
+
+    function adjustUiScale(delta) {
+      let current = "100%";
+      try {
+        current = localStorage.getItem(UI_SCALE_KEY) || "100%";
+      } catch (e) {}
+      let idx = UI_SCALES.indexOf(current);
+      if (idx === -1) idx = UI_SCALES.indexOf("100%");
+      const nextIdx = Math.max(0, Math.min(UI_SCALES.length - 1, idx + delta));
+      applyUiScale(UI_SCALES[nextIdx]);
+    }
+
+    function resetUiScale() {
+      applyUiScale("100%");
+    }
+
+    function initUiScale() {
+      let saved = "100%";
+      try {
+        saved = localStorage.getItem(UI_SCALE_KEY) || "100%";
+      } catch (e) {}
+      applyUiScale(saved);
+    }
+
+    // Keyboard shortcuts for pane toggling and UI scaling
     document.addEventListener("keydown", (e) => {
+      if (e.metaKey || e.ctrlKey) {
+        if (e.key === "=" || e.key === "+" || e.code === "Equal" || e.code === "NumpadAdd") {
+          e.preventDefault();
+          adjustUiScale(1);
+          return;
+        }
+        if (e.key === "-" || e.key === "_" || e.code === "Minus" || e.code === "NumpadSubtract") {
+          e.preventDefault();
+          adjustUiScale(-1);
+          return;
+        }
+        if (e.key === "0" || e.code === "Digit0" || e.code === "Numpad0") {
+          e.preventDefault();
+          resetUiScale();
+          return;
+        }
+      }
       if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
       if (e.key === "[") {
         togglePane("smartlog");
@@ -3423,6 +3568,7 @@
 
     // Initialize on load
     function initDiffView() {
+      initUiScale();
       initWordWrap();
       initPanelResizers();
       updateMergedVisibility();

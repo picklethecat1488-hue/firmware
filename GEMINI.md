@@ -12,6 +12,7 @@ Before finalizing any task, committing changes, or proposing modifications to th
 3. **Resolution**: If any component fails (such as Cargo tests, Python tests, formatting, or firmware builds), you must address the failure and re-run `./tools/verify.sh` until it passes before concluding your work.
 4. **Process Management & Rerun Hygiene**: When restarting or re-running test suites (`./tools/verify.sh`, `pytest`, `cargo test`, `cargo nextest`, etc.), you MUST explicitly terminate/kill any preceding running instances of that test or task before launching a new execution. Never allow multiple overlapping runs of the same test command.
 5. **GitHub CI Monitoring & Local Stack Remediation**: When commits have been pushed to a remote feature branch or when instructed to inspect CI, you may inspect GitHub Actions CI workflow results (e.g. via `gh run list --limit 5`, `gh pr checks`, or `gh run view <run-id> --log-failed`) and resolve any reported failures. However, the agent MUST NOT autonomously create pull requests (`gh pr create`) or merge pull requests (`gh pr merge`). All pull request creation, peer code reviews, and PR merges MUST be performed manually by the user.
+6. **Host Daemon Firmware Synchronization**: When updating or re-flashing target firmware during iterative development, debugging, or test bringup, do NOT terminate or restart the running `host.py` daemon. Instead, execute `python tools/host.py sync` (or invoke `POST http://127.0.0.1:8899/api/sync`) to trigger incremental compilation, flashing via `probe-rs`, and RTT reconnection while preserving the running workstation and HTTP server session.
 
 ---
 
@@ -22,6 +23,7 @@ Before finalizing any task, committing changes, or proposing modifications to th
 * Place all unit and integration tests in a `tests/` subdirectory at the crate root level (e.g., `model/tests/state_machine_tests.rs`) for Rust crates, or in `tools/tests/` for host Python utilities.
 * New unit and integration tests should be added when code is updated, including coverage for happy and sad cases. Mock structures used for testing and validation should be placed in separate listings.
 * **Regression Unit Testing Mandate**: Whenever a regression is identified, investigated, or bisected to a prior change, you MUST introduce dedicated regression unit tests (or add active regression assertions to existing test suites) that explicitly guard against the identified regression before concluding the task.
+* **Functional Behavioral Testing Mandate**: All test code (Rust unit/integration tests and host Python test suites) MUST test the actual functionality and runtime behavioral invariants of the code being run (e.g. verifying state transitions, execution outcomes, and side-effects such as halting repeated ticks on driver faults). Tests must NOT verify behavior by simply inspecting source files for the existence of specific statements, strings, or AST tokens.
 
 ### 2. Firmware Target Compatibility Mandate
 * **Universal Target Compatibility**: Unless duly noted, any firmware code should apply to all firmware targets in the repository.
@@ -43,6 +45,9 @@ Before finalizing any task, committing changes, or proposing modifications to th
 ### 5. Personal Privacy & Identity Redaction
 * **Zero Personal Name & Email Leaks**: The user's personal real name, local usernames, and personal email addresses MUST NEVER be leaked into git-tracked files, code comments, documentation guides, bug reports, or code review summaries. Use generic placeholders like `[Customer Name]`, `<username>`, or `User`.
 * **VCS Engine & UI Sanitization**: Git interaction layers (`GitEngine`), smartlog DAG generation, commit inspect APIs, and VCS web workstation views (`code_review.html.j2`, `diff_view.html.j2`) MUST automatically sanitize commit authors and email addresses (e.g. historical user handles and personal email domains) to `User` and `user@workspace`.
+
+### 6. Fast Search & Tooling Hygiene
+* **Silver Searcher (`ag`) Mandate**: For file, text, and code symbol searches across the codebase, always use The Silver Searcher (`ag`) instead of recursive `grep -rn` or unbounded `find .`. `ag` automatically respects `.gitignore` rules, ignores `target/` and build artifacts, and executes synchronously without spawning long-running background tasks.
 
 ---
 
