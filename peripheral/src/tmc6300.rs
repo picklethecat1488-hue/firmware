@@ -16,10 +16,10 @@ pub const PWM_DUTY_CYCLE_DIVISOR: u8 = 10;
 /// Maximum rated peak current for the TMC6300 driver in milliamperes (2A).
 pub const MAX_TMC6300_CURRENT_MA: i32 = 2000;
 
-/// Default motor controller tick interval in microseconds for the TMC6300 driver (500µs / 2kHz for high-speed BLDC commutation).
-pub const DEFAULT_TICK_INTERVAL_US: u32 = 500;
+/// Default motor controller tick interval in microseconds for the TMC6300 driver (10,000µs / 10ms for stable open-loop BLDC commutation).
+pub const DEFAULT_TICK_INTERVAL_US: u32 = 10_000;
 
-/// Default motor controller tick interval as an embassy Duration (500µs / 2kHz).
+/// Default motor controller tick interval as an embassy Duration (10ms).
 pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration =
     embassy_time::Duration::from_micros(DEFAULT_TICK_INTERVAL_US as u64);
 
@@ -38,10 +38,9 @@ pub const PWM_PERIOD_CYCLES: u8 = 100;
 /// Computes the integer clock divider given system clock frequency and PWM frequency in Hz.
 pub const fn calculate_clock_divider(sys_clk_hz: u32, pwm_freq_hz: u32) -> u32 {
     let pio_target_hz = pwm_freq_hz * (PWM_PERIOD_CYCLES as u32);
-    if pio_target_hz == 0 {
-        1
-    } else {
-        sys_clk_hz / pio_target_hz
+    match sys_clk_hz.checked_div(pio_target_hz) {
+        Some(div) => div,
+        None => 1,
     }
 }
 

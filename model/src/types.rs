@@ -182,7 +182,7 @@ impl Default for MotorConfig {
 impl MotorConfig {
     /// Default canonical motor configuration.
     pub const DEFAULT: Self = Self {
-        startup_blanking_ticks: 6000,
+        startup_blanking_ticks: 300,
         default_max_current_ma: 2500,
         startup_commutation_step_ticks: 10,
         commutation_speed_divisor: 100,

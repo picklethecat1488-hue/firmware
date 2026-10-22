@@ -441,7 +441,7 @@ where
         if running {
             self.startup_ticks = 0;
             self.commutation_interval_ticks = self.config.startup_commutation_step_ticks;
-            self.step_tick_counter = self.config.startup_commutation_step_ticks;
+            self.step_tick_counter = 0;
             if self.state == MotorState::Off {
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::info!("Starting motor...");
@@ -644,22 +644,26 @@ where
             let abs_speed = self.active_speed.get().unsigned_abs();
             let target_interval = calculate_commutation_step_ticks(abs_speed);
 
-            self.step_tick_counter = self.step_tick_counter.saturating_add(1);
-            if self.step_tick_counter >= self.commutation_interval_ticks {
-                self.step_tick_counter = 0;
-
-                // Soft-start ramp: gradually step commutation interval toward target interval
-                if self.commutation_interval_ticks > target_interval {
-                    self.commutation_interval_ticks =
-                        self.commutation_interval_ticks.saturating_sub(1);
-                } else if self.commutation_interval_ticks < target_interval {
-                    self.commutation_interval_ticks =
-                        self.commutation_interval_ticks.saturating_add(1);
-                }
-
+            if self.step_tick_counter == 0 {
                 if let Err(e) = self.motor.tick().await {
                     let _ = self.set_running_state(false).await;
                     tick_result = Err(e.to_peripheral_error());
+                }
+            }
+
+            if tick_result.is_ok() {
+                self.step_tick_counter = self.step_tick_counter.saturating_add(1);
+                if self.step_tick_counter >= self.commutation_interval_ticks {
+                    self.step_tick_counter = 0;
+
+                    // Soft-start ramp: gradually step commutation interval toward target interval
+                    if self.commutation_interval_ticks > target_interval {
+                        self.commutation_interval_ticks =
+                            self.commutation_interval_ticks.saturating_sub(1);
+                    } else if self.commutation_interval_ticks < target_interval {
+                        self.commutation_interval_ticks =
+                            self.commutation_interval_ticks.saturating_add(1);
+                    }
                 }
             }
         }
