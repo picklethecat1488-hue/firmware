@@ -41,6 +41,64 @@ pub struct BoardConfig {
     pub hardware_resources: HashMap<String, TypedResource>,
     /// Mappings of named memory layout partitions.
     pub partitions: HashMap<String, BoardPartitionConfig>,
+    /// Optional motor configuration settings.
+    #[serde(default)]
+    pub motor: Option<BoardMotorConfig>,
+}
+
+/// Target-specific motor timing, current, and commutation parameters.
+#[derive(Deserialize, Debug, Clone)]
+pub struct BoardMotorConfig {
+    /// Startup blanking period in ticks.
+    #[serde(default = "default_startup_blanking_ticks")]
+    pub startup_blanking_ticks: u32,
+    /// Default maximum current limit in milliamperes.
+    #[serde(default = "default_max_current_ma")]
+    pub default_max_current_ma: i32,
+    /// Initial commutation step interval in ticks during startup ramp.
+    #[serde(default = "default_startup_commutation_step_ticks")]
+    pub startup_commutation_step_ticks: u32,
+    /// Base speed percentage divisor for calculating target commutation step interval ticks.
+    #[serde(default = "default_commutation_speed_divisor")]
+    pub commutation_speed_divisor: u32,
+    /// Minimum commutation step interval in ticks.
+    #[serde(default = "default_min_commutation_step_ticks")]
+    pub min_commutation_step_ticks: u32,
+    /// Maximum commutation step interval in ticks.
+    #[serde(default = "default_max_commutation_step_ticks")]
+    pub max_commutation_step_ticks: u32,
+}
+
+fn default_startup_blanking_ticks() -> u32 {
+    300
+}
+fn default_max_current_ma() -> i32 {
+    2500
+}
+fn default_startup_commutation_step_ticks() -> u32 {
+    10
+}
+fn default_commutation_speed_divisor() -> u32 {
+    100
+}
+fn default_min_commutation_step_ticks() -> u32 {
+    1
+}
+fn default_max_commutation_step_ticks() -> u32 {
+    100
+}
+
+impl Default for BoardMotorConfig {
+    fn default() -> Self {
+        Self {
+            startup_blanking_ticks: default_startup_blanking_ticks(),
+            default_max_current_ma: default_max_current_ma(),
+            startup_commutation_step_ticks: default_startup_commutation_step_ticks(),
+            commutation_speed_divisor: default_commutation_speed_divisor(),
+            min_commutation_step_ticks: default_min_commutation_step_ticks(),
+            max_commutation_step_ticks: default_max_commutation_step_ticks(),
+        }
+    }
 }
 
 /// A custom board configuration resource containing a value and an explicit Rust type.
@@ -567,6 +625,62 @@ pub fn generate_board_definitions(toml_content: &str, board_name: &str) -> Strin
         const_type: "u32".to_string(),
         val_str: board_config.core_monitor_warn_pct.to_string(),
         doc: "Default core monitor warning threshold percentage.".to_string(),
+    });
+
+    // Motor configuration
+    let motor_config = board_config.motor.clone().unwrap_or_default();
+    constants.push(BoardConstant {
+        name: "MOTOR_STARTUP_BLANKING_TICKS".to_string(),
+        const_type: "u32".to_string(),
+        val_str: motor_config.startup_blanking_ticks.to_string(),
+        doc: "Startup blanking period in ticks during which safety limits/cutoff checks are bypassed.".to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "MOTOR_DEFAULT_MAX_CURRENT_MA".to_string(),
+        const_type: "i32".to_string(),
+        val_str: motor_config.default_max_current_ma.to_string(),
+        doc: "Default maximum current limit for the motor controller in milliamperes.".to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "MOTOR_STARTUP_COMMUTATION_STEP_TICKS".to_string(),
+        const_type: "u32".to_string(),
+        val_str: motor_config.startup_commutation_step_ticks.to_string(),
+        doc: "Initial commutation step interval in 10ms ticks during startup soft-start ramp."
+            .to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "MOTOR_COMMUTATION_SPEED_DIVISOR".to_string(),
+        const_type: "u32".to_string(),
+        val_str: motor_config.commutation_speed_divisor.to_string(),
+        doc:
+            "Base speed percentage divisor for calculating target commutation step interval ticks."
+                .to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "MOTOR_MIN_COMMUTATION_STEP_TICKS".to_string(),
+        const_type: "u32".to_string(),
+        val_str: motor_config.min_commutation_step_ticks.to_string(),
+        doc: "Minimum commutation step interval in 10ms ticks at full speed.".to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "MOTOR_MAX_COMMUTATION_STEP_TICKS".to_string(),
+        const_type: "u32".to_string(),
+        val_str: motor_config.max_commutation_step_ticks.to_string(),
+        doc: "Maximum commutation step interval in 10ms ticks at minimum speed.".to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "MOTOR_CONFIG".to_string(),
+        const_type: "model::types::MotorConfig".to_string(),
+        val_str: format!(
+            "model::types::MotorConfig {{\n        startup_blanking_ticks: {},\n        default_max_current_ma: {},\n        startup_commutation_step_ticks: {},\n        commutation_speed_divisor: {},\n        min_commutation_step_ticks: {},\n        max_commutation_step_ticks: {},\n    }}",
+            motor_config.startup_blanking_ticks,
+            motor_config.default_max_current_ma,
+            motor_config.startup_commutation_step_ticks,
+            motor_config.commutation_speed_divisor,
+            motor_config.min_commutation_step_ticks,
+            motor_config.max_commutation_step_ticks,
+        ),
+        doc: "Canonical MotorConfig model instance configured from board.toml.".to_string(),
     });
 
     constants.sort_by(|a, b| a.name.cmp(&b.name));

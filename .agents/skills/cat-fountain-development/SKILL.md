@@ -41,9 +41,23 @@ Run the automated bringup guide under the Conda environment:
 conda run -n firmware-env python tools/host.py bringup --script projects/cat_detector_bringup.yaml --run
 ```
 
-## 4. Log Streaming & Interactive Console (`host_cli`)
-To read RTT log streams or interact with the serial CLI:
-* Standard run (autodetects shell target):
+## 4. Host Daemon & Target Synchronization (`host.py`)
+To run the interactive RTT CLI/FS console, stream logs, or interact with the workstation:
+* Launch host workstation:
+  ```bash
+  python tools/host.py --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
+  ```
+* **Incremental Firmware Updates via Sync**:
+  When firmware code or host utilities are updated, do NOT kill and restart the daemon. Instead, run:
+  ```bash
+  python tools/host.py sync
+  ```
+  This command triggers target compilation, host utility builds, flashing via probe-rs, and RTT reconnection without restarting the daemon or dropping the workstation session.
+* Check sync status:
+  ```bash
+  curl -s http://127.0.0.1:8899/api/sync/status
+  ```
+* Standard CLI run directly via `host_cli`:
   ```bash
   cargo run -p host_cli -- --elf target/thumbv6m-none-eabi/debug/cat_detector_shell
   ```
@@ -67,17 +81,22 @@ To query files or decode logs directly from the device's flash:
   cargo run -p host_fs -- --elf target/thumbv6m-none-eabi/release/cat_detector_app crash-log
   ```
 
-## 6. Relative Paths & Privacy Hygiene Mandate
+## 6. Fast Codebase Search
+When searching for controllers, peripherals, configurations, or symbols:
+* Use `ag "<symbol>"` (e.g. `ag "MotorController::new"`).
+* Avoid `grep -rn` or recursive `find .` across the workspace root, as they scan large untracked build outputs (`target/`) and trigger slow background processes.
+
+## 7. Relative Paths & Privacy Hygiene Mandate
 * **Relative File Paths Only**: Always use relative file paths (e.g., `controller/controllers.toml`, `shell.toml`, `docs/mcu_decoupling.md`) when creating, modifying, or linking tracked files in the workspace. Never embed absolute filesystem paths or absolute `file://` URLs in any tracked repository files.
 * **Personal Information Elision**: Ensure personal information (usernames, local user home directories, private environment paths) is never committed or leaked into tracked files, documentation, or issue reports.
 
-## 7. Worm Tracking & Issue Resolution
+## 8. Worm Tracking & Issue Resolution
 * When querying active issues to work on, run `python tools/dashboard.py list-worms --open`.
 * By default, `list-worms --open` excludes worms in `PLANNED` status. The agent must NOT autonomously select or work on `PLANNED` worms unless explicitly requested by the user. Use `python tools/dashboard.py list-worms --planned` to view planned items.
 * To register a new worm: `python tools/dashboard.py --add-worm "Description" --severity HIGH --category CONTROLLER`
 * To resolve a worm: `python tools/dashboard.py --resolve-worm WORM-001 --notes "Resolution notes"`
 
-## 8. Xerxes VCS Dashboard & Workstation Launcher
+## 9. Xerxes VCS Dashboard & Workstation Launcher
 The VCS dashboard provides interactive smartlog DAG tree visualization, staged/unstaged file management, code review, and worm tracking inside a standalone application window:
 * **Launch Native Desktop Workstation (Default)**:
   ```bash

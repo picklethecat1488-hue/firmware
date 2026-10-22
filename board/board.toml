@@ -10,6 +10,14 @@ core0_stack_bottom = 0x2003C000
 core_monitor_timeout_ms = 10000
 core_monitor_warn_pct = 80
 
+[boards.cat_detector.motor]
+startup_blanking_ticks = 300
+default_max_current_ma = 2500
+startup_commutation_step_ticks = 10
+commutation_speed_divisor = 100
+min_commutation_step_ticks = 1
+max_commutation_step_ticks = 100
+
 [boards.cat_detector.pins]
 PUMP_UH_PIN = 16
 PUMP_UL_PIN = 17
