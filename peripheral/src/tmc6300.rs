@@ -16,6 +16,13 @@ pub const PWM_DUTY_CYCLE_DIVISOR: u8 = 10;
 /// Maximum rated peak current for the TMC6300 driver in milliamperes (2A).
 pub const MAX_TMC6300_CURRENT_MA: i32 = 2000;
 
+/// Default motor controller tick interval in microseconds for the TMC6300 driver (500µs / 2kHz for high-speed BLDC commutation).
+pub const DEFAULT_TICK_INTERVAL_US: u32 = 500;
+
+/// Default motor controller tick interval as an embassy Duration (500µs / 2kHz).
+pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration =
+    embassy_time::Duration::from_micros(DEFAULT_TICK_INTERVAL_US as u64);
+
 /// Target PWM frequency for PIO duty cycling in Hz (~25 kHz).
 pub const PIO_PWM_FREQUENCY_HZ: u32 = 25_000;
 
@@ -232,6 +239,7 @@ pub struct Tmc6300<PUH, PUL, PVH, PVL, PWH, PWL, PD> {
     tick_counter: u8,
     freewheel_us: u32,
     freewheel_mode: FreewheelMode,
+    tick_interval_us: u32,
 }
 
 impl<
@@ -252,6 +260,9 @@ where
     PWL::Error: core::fmt::Debug,
     PD::Error: core::fmt::Debug,
 {
+    /// Default tick interval for the TMC6300 motor driver (500µs / 2kHz).
+    pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration = DEFAULT_TICK_INTERVAL;
+
     /// Creates a new TMC6300 motor driver instance with 6-PWM phase pins and diagnostic pin.
     pub fn new(
         pin_uh: PUH,
@@ -275,7 +286,23 @@ where
             tick_counter: 0,
             freewheel_us: DEFAULT_FREEWHEEL_US,
             freewheel_mode: FreewheelMode::Float,
+            tick_interval_us: DEFAULT_TICK_INTERVAL_US,
         }
+    }
+
+    /// Sets the driver tick interval in microseconds.
+    pub fn set_tick_interval_us(&mut self, interval_us: u32) {
+        self.tick_interval_us = interval_us;
+    }
+
+    /// Returns the driver tick interval in microseconds.
+    pub fn tick_interval_us(&self) -> u32 {
+        self.tick_interval_us
+    }
+
+    /// Returns the driver tick interval as an embassy Duration.
+    pub fn tick_interval(&self) -> embassy_time::Duration {
+        embassy_time::Duration::from_micros(self.tick_interval_us as u64)
     }
 
     /// Checks if the hardware diagnostic pin (`DIAG`) is actively asserted (high).
@@ -559,6 +586,10 @@ where
 {
     type Error = Tmc6300PinError<PUH, PUL, PVH, PVL, PWH, PWL, PD>;
 
+    fn tick_interval_us(&self) -> u32 {
+        self.tick_interval_us
+    }
+
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.core1_func"
@@ -772,6 +803,7 @@ pub struct Tmc6300Pio<'d, PIO: Instance, const SM: usize, PD: InputPin> {
     freewheel_us: u32,
     freewheel_mode: FreewheelMode,
     pwm_frequency_hz: u32,
+    tick_interval_us: u32,
 }
 
 #[cfg(all(target_arch = "arm", target_os = "none", target_has_embassy_rp))]
@@ -779,6 +811,8 @@ impl<'d, PD: InputPin> Tmc6300Pio<'d, embassy_rp::peripherals::PIO1, 0, PD>
 where
     PD::Error: core::fmt::Debug,
 {
+    /// Default tick interval for the TMC6300 PIO motor driver (500µs / 2kHz).
+    pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration = DEFAULT_TICK_INTERVAL;
     /// Creates and configures the TMC6300 PIO driver using PIO1 and state machine 0.
     #[allow(static_mut_refs, clippy::missing_transmute_annotations)]
     pub fn new_pio<PUH, PUL, PVH, PVL, PWH, PWL, IRQ>(
@@ -877,7 +911,31 @@ where
             freewheel_us: DEFAULT_FREEWHEEL_US,
             freewheel_mode: FreewheelMode::Float,
             pwm_frequency_hz: SHORT_PROTECTION_PWM_FREQUENCY_HZ,
+            tick_interval_us: DEFAULT_TICK_INTERVAL_US,
         }
+    }
+
+    /// Sets the driver tick interval in microseconds.
+    pub fn set_tick_interval_us(&mut self, interval_us: u32) {
+        self.tick_interval_us = interval_us;
+    }
+
+    /// Returns the driver tick interval in microseconds.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    pub fn tick_interval_us(&self) -> u32 {
+        self.tick_interval_us
+    }
+
+    /// Returns the driver tick interval as an embassy Duration.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    pub fn tick_interval(&self) -> embassy_time::Duration {
+        embassy_time::Duration::from_micros(self.tick_interval_us as u64)
     }
 
     /// Checks if the hardware diagnostic pin (`DIAG`) is actively asserted (high).
@@ -1004,6 +1062,14 @@ where
         all(target_arch = "arm", feature = "motor-core"),
         link_section = ".data.core1_func"
     )]
+    fn tick_interval_us(&self) -> u32 {
+        self.tick_interval_us
+    }
+
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
     async fn tick(&mut self) -> Result<(), Self::Error> {
         if self.pin_diag.is_high().map_err(Tmc6300PioError::PinDiag)? {
@@ -1048,6 +1114,7 @@ pub struct Tmc6300Pio<PD = ()> {
     freewheel_mode: FreewheelMode,
     last_freewheel_word: u32,
     pwm_frequency_hz: u32,
+    tick_interval_us: u32,
 }
 
 #[cfg(not(all(target_arch = "arm", target_os = "none", target_has_embassy_rp)))]
@@ -1055,6 +1122,9 @@ impl<PD: InputPin> Tmc6300Pio<PD>
 where
     PD::Error: core::fmt::Debug,
 {
+    /// Default tick interval for the TMC6300 PIO motor driver (500µs / 2kHz).
+    pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration = DEFAULT_TICK_INTERVAL;
+
     /// Creates a new mock TMC6300 PIO driver with diagnostic pin.
     pub fn new(pin_diag: PD) -> Self {
         Self {
@@ -1067,6 +1137,7 @@ where
             freewheel_mode: FreewheelMode::Float,
             last_freewheel_word: 0,
             pwm_frequency_hz: DEFAULT_PIO_PWM_FREQUENCY_HZ,
+            tick_interval_us: DEFAULT_TICK_INTERVAL_US,
         }
     }
 
@@ -1161,6 +1232,21 @@ where
             125_000_000,
         )
     }
+
+    /// Sets the driver tick interval in microseconds.
+    pub fn set_tick_interval_us(&mut self, interval_us: u32) {
+        self.tick_interval_us = interval_us;
+    }
+
+    /// Returns the driver tick interval in microseconds.
+    pub fn tick_interval_us(&self) -> u32 {
+        self.tick_interval_us
+    }
+
+    /// Returns the driver tick interval as an embassy Duration.
+    pub fn tick_interval(&self) -> embassy_time::Duration {
+        embassy_time::Duration::from_micros(self.tick_interval_us as u64)
+    }
 }
 
 #[cfg(not(all(target_arch = "arm", target_os = "none", target_has_embassy_rp)))]
@@ -1200,6 +1286,10 @@ where
     PD::Error: core::fmt::Debug,
 {
     type Error = Tmc6300PioError<PD::Error>;
+
+    fn tick_interval_us(&self) -> u32 {
+        self.tick_interval_us
+    }
 
     async fn tick(&mut self) -> Result<(), Self::Error> {
         if self.pin_diag.is_high().map_err(Tmc6300PioError::PinDiag)? {

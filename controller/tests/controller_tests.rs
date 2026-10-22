@@ -704,3 +704,87 @@ fn test_worm_setosa_tubeworm_177_commutation_step_scaling_and_soft_start_ramp() 
         assert_eq!(controller.commutation_interval_ticks(), 1);
     });
 }
+
+#[test]
+fn test_worm_segmented_sipunculid_504_read_rpm_samples_speed_sensor() {
+    futures::executor::block_on(async {
+        use controller::motor_controller::SendSignalU32Ptr;
+
+        let motor = MockTickableMotor::new();
+        let sensor = MockCurrentSensor::new(150);
+        let speed_sensor = MockSpeedSensor::new(2500);
+        let mut controller = MotorController::new(motor, sensor, speed_sensor);
+
+        // Start motor without pre-existing calibration
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(100).unwrap()), None)
+            .await;
+
+        // Command ReadRpm via channel signal pattern
+        let signal = embassy_sync::signal::Signal::new();
+        let cmd = MotorCommand::ReadRpm(SendSignalU32Ptr(&signal as *const _));
+        controller.handle_command(cmd, None).await;
+
+        let rpm = signal.wait().await;
+        assert_eq!(rpm, Ok(2500u32));
+        assert_eq!(controller.measured_rpm(), 2500);
+    });
+}
+
+#[test]
+fn test_cr_7f321327_motor_driver_tick_interval_sync() {
+    futures::executor::block_on(async {
+        use controller::motor_controller::MOTOR_TICK_INTERVAL;
+        use peripheral::tmc6300::DEFAULT_TICK_INTERVAL;
+
+        // 1. Controller compile-time constant is synchronized with motor driver default
+        assert_eq!(MOTOR_TICK_INTERVAL, DEFAULT_TICK_INTERVAL);
+        assert_eq!(
+            MOTOR_TICK_INTERVAL,
+            embassy_time::Duration::from_micros(500)
+        );
+
+        // 2. MotorController tick_interval() reflects the driver's configured tick interval
+        let motor = MockTickableMotor::new();
+        let sensor = MockCurrentSensor::new(150);
+        let speed_sensor = MockSpeedSensor::new(2500);
+        let controller = MotorController::new(motor, sensor, speed_sensor);
+
+        // MockTickableMotor defaults to standard 10ms tick interval via Tickable trait default
+        assert_eq!(
+            controller.tick_interval(),
+            embassy_time::Duration::from_micros(10_000)
+        );
+
+        // 3. With TMC6300 PIO driver mock, tick_interval() matches TMC6300 (500us)
+        struct MockInputPin;
+        impl embedded_hal::digital::ErrorType for MockInputPin {
+            type Error = core::convert::Infallible;
+        }
+        impl embedded_hal::digital::InputPin for MockInputPin {
+            fn is_high(&mut self) -> Result<bool, Self::Error> {
+                Ok(false)
+            }
+            fn is_low(&mut self) -> Result<bool, Self::Error> {
+                Ok(true)
+            }
+        }
+
+        let tmc_driver = peripheral::tmc6300::Tmc6300Pio::new(MockInputPin);
+        let sensor2 = MockCurrentSensor::new(150);
+        let speed_sensor2 = MockSpeedSensor::new(2500);
+        let mut controller_tmc = MotorController::new(tmc_driver, sensor2, speed_sensor2);
+        assert_eq!(
+            controller_tmc.tick_interval(),
+            embassy_time::Duration::from_micros(500)
+        );
+        assert_eq!(controller_tmc.tick_interval(), MOTOR_TICK_INTERVAL);
+
+        // Dynamically adjusting the driver updates controller's active tick interval
+        controller_tmc.motor.set_tick_interval_us(250);
+        assert_eq!(
+            controller_tmc.tick_interval(),
+            embassy_time::Duration::from_micros(250)
+        );
+    });
+}

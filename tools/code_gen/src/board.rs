@@ -70,7 +70,7 @@ pub struct BoardMotorConfig {
 }
 
 fn default_startup_blanking_ticks() -> u32 {
-    300
+    6000
 }
 fn default_max_current_ma() -> i32 {
     2500

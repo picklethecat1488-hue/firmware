@@ -158,7 +158,7 @@ pub enum MotorStatus {
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
 pub struct MotorConfig {
-    /// Startup blanking period in ticks (e.g. 300 ticks at 100Hz = 3 seconds)
+    /// Startup blanking period in ticks (e.g. 6000 ticks at 2000Hz = 3 seconds)
     /// during which safety limits/cutoff checks are bypassed.
     pub startup_blanking_ticks: u32,
     /// Default maximum current limit for the motor controller in milliamperes (e.g. 2500).
@@ -182,7 +182,7 @@ impl Default for MotorConfig {
 impl MotorConfig {
     /// Default canonical motor configuration.
     pub const DEFAULT: Self = Self {
-        startup_blanking_ticks: 300,
+        startup_blanking_ticks: 6000,
         default_max_current_ma: 2500,
         startup_commutation_step_ticks: 10,
         commutation_speed_divisor: 100,
@@ -190,7 +190,7 @@ impl MotorConfig {
         max_commutation_step_ticks: 100,
     };
 
-    /// Computes the target commutation step interval in 10ms controller ticks for a given commanded speed percentage (1..=100).
+    /// Computes the target commutation step interval in controller ticks for a given commanded speed percentage (1..=100).
     pub const fn calculate_commutation_step_ticks(&self, abs_speed: u8) -> u32 {
         if abs_speed == 0 {
             self.max_commutation_step_ticks
