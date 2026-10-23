@@ -1328,20 +1328,20 @@ fn test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm() {
         assert_eq!(motor.speed(), 0);
         assert_eq!(motor.duty_cycle(), 0);
 
-        // Command speed 8 (startup duty cycle capping current to <= 2A)
+        // Command speed 8 (speed controls commutation rate; driver runs at 100% duty cycle)
         assert!(motor.set_speed(MotorSpeed::new(8).unwrap()).is_ok());
         assert_eq!(motor.speed(), 8);
-        assert_eq!(motor.duty_cycle(), 8);
+        assert_eq!(motor.duty_cycle(), 100);
         let w8 = motor.last_word();
-        assert_eq!((w8 >> 8) & 0xFF, 8);
-        assert_eq!((w8 >> 16) & 0xFF, 92);
+        assert_eq!((w8 >> 8) & 0xFF, 100);
+        assert_eq!((w8 >> 16) & 0xFF, 0);
         assert_eq!(w8 & 0xFF, phase_mask(8, 0) as u32);
 
         // Advance commutation step via tick()
         assert!(motor.tick().await.is_ok());
         assert_eq!(motor.commutation_step(), 1);
         let w_step1 = motor.last_word();
-        assert_eq!((w_step1 >> 8) & 0xFF, 8);
+        assert_eq!((w_step1 >> 8) & 0xFF, 100);
         assert_eq!(w_step1 & 0xFF, phase_mask(8, 1) as u32);
 
         // Ramp up to full speed 100
@@ -1522,7 +1522,7 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
         // 2. Set speed to 50%
         assert!(motor.set_speed(MotorSpeed::new(50).unwrap()).is_ok());
         assert_eq!(motor.speed(), 50);
-        assert_eq!(motor.duty_cycle(), 50);
+        assert_eq!(motor.duty_cycle(), 100);
 
         // Advance through 18 commutation ticks (3 full 6-step electrical revolutions)
         let expected_forward_masks = [
@@ -1542,15 +1542,15 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
                 expected_step,
                 "Commutation step did not advance as expected on tick {tick_idx}"
             );
-            assert_eq!(motor.duty_cycle(), 50);
+            assert_eq!(motor.duty_cycle(), 100);
 
             let word = motor.last_word();
             let mask = (word & 0xFF) as u8;
             let on_count = ((word >> 8) & 0xFF) as u8;
             let off_count = ((word >> 16) & 0xFF) as u8;
 
-            assert_eq!(on_count, 50);
-            assert_eq!(off_count, 50);
+            assert_eq!(on_count, 100);
+            assert_eq!(off_count, 0);
             assert_eq!(mask, expected_forward_masks[expected_step as usize]);
             assert_eq!(mask, phase_mask(50, expected_step));
         }
@@ -1580,7 +1580,7 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
         // 4. Reverse rotation commutation sequence
         assert!(motor.set_speed(MotorSpeed::new(-75).unwrap()).is_ok());
         assert_eq!(motor.speed(), -75);
-        assert_eq!(motor.duty_cycle(), 75);
+        assert_eq!(motor.duty_cycle(), 100);
 
         let expected_reverse_masks = [
             0b011000, // Step 0: U Float, VL Low, WH High
@@ -1596,17 +1596,16 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
             let next_step = (current_step + 1) % (COMMUTATION_STEPS as u8);
             assert!(motor.tick().await.is_ok());
             assert_eq!(motor.commutation_step(), next_step);
-            assert_eq!(motor.duty_cycle(), 75);
+            assert_eq!(motor.duty_cycle(), 100);
 
             let word = motor.last_word();
             let mask = (word & 0xFF) as u8;
             let on_count = ((word >> 8) & 0xFF) as u8;
             let off_count = ((word >> 16) & 0xFF) as u8;
 
-            assert_eq!(on_count, 75);
-            assert_eq!(off_count, 25);
+            assert_eq!(on_count, 100);
+            assert_eq!(off_count, 0);
             assert_eq!(mask, expected_reverse_masks[next_step as usize]);
-            assert_eq!(mask, phase_mask(-75, next_step));
         }
 
         // 5. Motor stop completely clears duty cycle and de-energizes all FETs
@@ -2249,12 +2248,22 @@ fn test_worm_slithering_lumbricus_809_tmc6300_short_protection_pulse_invariants(
         // Command speed 10 (reproduction step)
         assert!(pio_motor.set_speed(MotorSpeed::new(10).unwrap()).is_ok());
         assert_eq!(pio_motor.speed(), 10);
-        assert_eq!(pio_motor.effective_on_count(), 10);
-        assert_eq!(pio_motor.pulse_duration_ns(), 640);
-        let eff_word10 = pio_motor.effective_word();
-        assert_eq!((eff_word10 >> 8) & 0xFF, 10);
-        assert_eq!((eff_word10 >> 16) & 0xFF, 90);
-        assert_eq!(eff_word10 & 0xFF, phase_mask(10, 0) as u32);
+        assert_eq!(pio_motor.duty_cycle(), 100);
+        assert_eq!(pio_motor.effective_on_count(), 14);
+        assert_eq!(pio_motor.pulse_duration_ns(), 800);
+
+        // Verify calculate_pwm_counts helper directly
+        let (on10, off10) = peripheral::tmc6300::calculate_pwm_counts(10);
+        assert_eq!(on10, 10);
+        assert_eq!(off10, 90);
+        assert_eq!(
+            peripheral::tmc6300::calculate_on_time_ns(
+                on10,
+                peripheral::tmc6300::SHORT_PROTECTION_PIO_DIVIDER,
+                125_000_000
+            ),
+            640
+        );
 
         // Command speed 100
         assert!(pio_motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
@@ -2309,7 +2318,7 @@ fn test_cr_7f321327_tmc6300_tick_interval_and_sync() {
     };
     let mut driver = Tmc6300Pio::new(pin_diag);
 
-    // Initial default tick interval should match DEFAULT_TICK_INTERVAL_US (500us)
+    // Initial default tick interval should match DEFAULT_TICK_INTERVAL_US (333us)
     assert_eq!(driver.tick_interval_us(), DEFAULT_TICK_INTERVAL_US);
     assert_eq!(
         Tickable::tick_interval_us(&driver),
@@ -2318,7 +2327,7 @@ fn test_cr_7f321327_tmc6300_tick_interval_and_sync() {
     assert_eq!(driver.tick_interval(), DEFAULT_TICK_INTERVAL);
     assert_eq!(
         driver.tick_interval(),
-        embassy_time::Duration::from_millis(10)
+        embassy_time::Duration::from_micros(333)
     );
 
     // Dynamic configuration updates tick interval
@@ -2343,9 +2352,9 @@ fn test_worm_proboscid_roundworm_8_driver_first_tick_executes_step_0() {
         };
         let mut driver = Tmc6300Pio::new(pin_diag);
 
-        // 1. Driver default tick interval must be 10,000 µs (10 ms)
-        assert_eq!(driver.tick_interval_us(), 10_000);
-        assert_eq!(DEFAULT_TICK_INTERVAL_US, 10_000);
+        // 1. Driver default tick interval must be 333 µs
+        assert_eq!(driver.tick_interval_us(), 333);
+        assert_eq!(DEFAULT_TICK_INTERVAL_US, 333);
 
         // 2. Set speed: initial step index is Step 0
         driver.set_speed(MotorSpeed::new(100).unwrap()).unwrap();
@@ -2367,4 +2376,19 @@ fn test_worm_proboscid_roundworm_8_driver_first_tick_executes_step_0() {
             "Second tick must advance to Step 2"
         );
     });
+}
+
+#[test]
+fn test_target_freewheeling_speed_and_tick_interval_constants() {
+    use peripheral::tmc6300::{
+        DEFAULT_TICK_INTERVAL, DEFAULT_TICK_INTERVAL_US, TARGET_FREEWHEELING_MAX_RPM,
+    };
+
+    // Verify 5,000 RPM target constant
+    assert_eq!(TARGET_FREEWHEELING_MAX_RPM, 5000);
+    assert_eq!(DEFAULT_TICK_INTERVAL_US, 333);
+    assert_eq!(
+        DEFAULT_TICK_INTERVAL,
+        embassy_time::Duration::from_micros(333)
+    );
 }

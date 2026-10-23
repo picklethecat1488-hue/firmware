@@ -18,7 +18,6 @@ Attached below, both dashboard UI icons appear corrupted
 | Type | Filename | Description |
 | :--- | :--- | :--- |
 | `screenshot` | [image.png](attachments/WORM-024/image.png) | Uploaded screenshot image.png |
-| `screenshot` | [image.png](attachments/WORM-024/image.png) | Uploaded screenshot image.png |
 
 #### Resolution Notes
 
