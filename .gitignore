@@ -49,6 +49,7 @@ conda-bld/
 TODO.md
 
 # Temporary recordings and inspection artifacts
+recordings/previews/*/
 recordings/previews/frames_*/
 recordings/previews/motor_crops*/
 recordings/previews/video_samples_*/
