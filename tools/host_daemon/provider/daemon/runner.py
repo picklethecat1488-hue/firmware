@@ -51,6 +51,7 @@ class DaemonRunner:
         self.logs: Deque[Dict[str, Any]] = deque(maxlen=5000)
         self.cli_outputs: Deque[Dict[str, Any]] = deque(maxlen=5000)
         self.fs_outputs: Deque[Dict[str, Any]] = deque(maxlen=5000)
+        self.command_history: List[str] = []
 
         self.rtt_process: Optional[subprocess.Popen] = None
         self._streaming_thread: Optional[threading.Thread] = None
@@ -658,6 +659,10 @@ class DaemonRunner:
 
     def execute_cli(self, command: str) -> str:
         """Send command to the interactive CLI shell."""
+        clean_cmd = command.strip()
+        if clean_cmd:
+            with self._lock:
+                self.command_history.append(clean_cmd)
         self.log_cli(f"shell> {command}", is_input=True)
         # If RTT process is actively connected and taking stdin:
         if self.rtt_process and self.rtt_process.stdin and self.rtt_process.poll() is None:
@@ -677,6 +682,11 @@ class DaemonRunner:
 
     def execute_fs(self, command_or_subcommand: str, args: Optional[List[str]] = None) -> str:
         """Execute host_fs utility command by invoking cargo run."""
+        clean_subcmd = command_or_subcommand.strip()
+        if clean_subcmd:
+            full_fs_cmd = f"fs {clean_subcmd}" + (f" {' '.join(args)}" if args else "")
+            with self._lock:
+                self.command_history.append(full_fs_cmd)
         with self._lock:
             sync_active = bool(self._sync_thread and self._sync_thread.is_alive())
         if sync_active:

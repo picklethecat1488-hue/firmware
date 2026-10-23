@@ -2379,6 +2379,19 @@
       });
     }
 
+    function buildReproSteps(cmds) {
+      let defaultSteps = "1. Connect target device via probe-rs / RTT\n2. Synchronize firmware: package {{ runner.package }} ({{ runner.bin_name }})";
+      if (cmds && cmds.length > 0) {
+        cmds.forEach((cmd, idx) => {
+          defaultSteps += `\n${idx + 3}. Execute command '${cmd}'`;
+        });
+        defaultSteps += `\n${cmds.length + 3}. Observe defect/failure on target`;
+      } else {
+        defaultSteps += "\n3. Execute target CLI/FS commands\n4. Observe defect/failure on target";
+      }
+      return defaultSteps;
+    }
+
     function openTargetBugModal() {
       const modal = document.getElementById("targetBugModal");
       if (!modal) return;
@@ -2393,19 +2406,37 @@
         setTimeout(() => titleInput.focus(), 50);
       }
 
+      // Reset description, expected, and actual fields so past defect text is not cached
+      const descInput = document.getElementById("targetBugDescription");
+      if (descInput) descInput.value = "";
+
+      const expectedInput = document.getElementById("targetBugExpected");
+      if (expectedInput) expectedInput.value = "";
+
+      const actualInput = document.getElementById("targetBugActual");
+      if (actualInput) actualInput.value = "";
+
+      // Always dynamically update reproduction steps based on latest commands
       const stepsInput = document.getElementById("targetBugSteps");
-      if (stepsInput && !stepsInput.value) {
-        const recentCmds = (cmdHistory || []).slice(-3);
-        let defaultSteps = "1. Connect target device via probe-rs / RTT\n2. Synchronize firmware: package {{ runner.package }} ({{ runner.bin_name }})";
-        if (recentCmds.length > 0) {
-          recentCmds.forEach((cmd, idx) => {
-            defaultSteps += `\n${idx + 3}. Execute command '${cmd}'`;
-          });
-          defaultSteps += `\n${recentCmds.length + 3}. Observe defect/failure on target`;
-        } else {
-          defaultSteps += "\n3. Execute target CLI/FS commands\n4. Observe defect/failure on target";
-        }
-        stepsInput.value = defaultSteps;
+      if (stepsInput) {
+        let recentCmds = (cmdHistory || []).filter(c => c && c.trim()).slice(-6);
+        stepsInput.value = buildReproSteps(recentCmds);
+
+        // Fetch latest backend CLI history in case of reload or external commands
+        fetch("/api/cli/history")
+          .then(r => r.json())
+          .then(data => {
+            if (data && Array.isArray(data.history) && data.history.length > 0) {
+              if (!cmdHistory || cmdHistory.length === 0) {
+                cmdHistory = [...data.history];
+              }
+              const backendRecent = data.history.filter(c => c && c.trim()).slice(-6);
+              if (backendRecent.length > 0) {
+                stepsInput.value = buildReproSteps(backendRecent);
+              }
+            }
+          })
+          .catch(() => {});
       }
 
       const statusEl = document.getElementById("targetBugStatusMsg");
@@ -2496,6 +2527,18 @@
           }
           setTimeout(() => {
             closeTargetBugModal();
+            const titleInput = document.getElementById("targetBugTitle");
+            if (titleInput) titleInput.value = "";
+            const descInput = document.getElementById("targetBugDescription");
+            if (descInput) descInput.value = "";
+            const stepsInput = document.getElementById("targetBugSteps");
+            if (stepsInput) stepsInput.value = "";
+            const expectedInput = document.getElementById("targetBugExpected");
+            if (expectedInput) expectedInput.value = "";
+            const actualInput = document.getElementById("targetBugActual");
+            if (actualInput) actualInput.value = "";
+            targetBugAttachments = [];
+            renderTargetBugAttachments();
             if (submitBtn) {
               submitBtn.disabled = false;
               submitBtn.textContent = "⚡ File Target Bug";

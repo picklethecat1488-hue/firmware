@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import re
 import sys
 import threading
 from typing import Any, List, Optional
@@ -105,6 +106,9 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/cli/output":
             with runner._lock:
                 self._send_json(list(runner.cli_outputs))
+        elif path == "/api/cli/history":
+            with runner._lock:
+                self._send_json({"history": list(getattr(runner, "command_history", []))})
         elif path == "/api/fs/output":
             with runner._lock:
                 self._send_json(list(runner.fs_outputs))
@@ -351,6 +355,8 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 steps = [s.strip() for s in raw_steps.splitlines() if s.strip()]
             else:
                 steps = [str(s).strip() for s in raw_steps if str(s).strip()]
+            steps = [re.sub(r"^\d+\.\s*", "", s).strip() for s in steps]
+            steps = [s for s in steps if s]
 
             expected = (payload.get("expected_behavior") or "").strip()
             actual = (payload.get("actual_behavior") or "").strip()
