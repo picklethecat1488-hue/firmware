@@ -16,10 +16,10 @@ pub const PWM_DUTY_CYCLE_DIVISOR: u8 = 10;
 /// Maximum rated peak current for the TMC6300 driver in milliamperes (2A).
 pub const MAX_TMC6300_CURRENT_MA: i32 = 2000;
 
-/// Default motor controller tick interval in microseconds for the TMC6300 driver (500µs / 0.5ms for 2000Hz commutation).
-pub const DEFAULT_TICK_INTERVAL_US: u32 = 500;
+/// Default motor controller tick interval in microseconds for the TMC6300 driver (10,000µs / 10ms for stable open-loop BLDC commutation).
+pub const DEFAULT_TICK_INTERVAL_US: u32 = 10_000;
 
-/// Default motor controller tick interval as an embassy Duration (500µs).
+/// Default motor controller tick interval as an embassy Duration (10ms).
 pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration =
     embassy_time::Duration::from_micros(DEFAULT_TICK_INTERVAL_US as u64);
 
@@ -259,7 +259,7 @@ where
     PWL::Error: core::fmt::Debug,
     PD::Error: core::fmt::Debug,
 {
-    /// Default tick interval for the TMC6300 motor driver (500µs / 2kHz).
+    /// Default tick interval for the TMC6300 motor driver (10ms).
     pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration = DEFAULT_TICK_INTERVAL;
 
     /// Creates a new TMC6300 motor driver instance with 6-PWM phase pins and diagnostic pin.
@@ -814,7 +814,7 @@ impl<'d, PD: InputPin> Tmc6300Pio<'d, embassy_rp::peripherals::PIO1, 0, PD>
 where
     PD::Error: core::fmt::Debug,
 {
-    /// Default tick interval for the TMC6300 PIO motor driver (500µs / 2kHz).
+    /// Default tick interval for the TMC6300 PIO motor driver (10ms).
     pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration = DEFAULT_TICK_INTERVAL;
     /// Creates and configures the TMC6300 PIO driver using PIO1 and state machine 0.
     #[allow(static_mut_refs, clippy::missing_transmute_annotations)]
@@ -1125,7 +1125,7 @@ impl<PD: InputPin> Tmc6300Pio<PD>
 where
     PD::Error: core::fmt::Debug,
 {
-    /// Default tick interval for the TMC6300 PIO motor driver (500µs / 2kHz).
+    /// Default tick interval for the TMC6300 PIO motor driver (10ms).
     pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration = DEFAULT_TICK_INTERVAL;
 
     /// Creates a new mock TMC6300 PIO driver with diagnostic pin.

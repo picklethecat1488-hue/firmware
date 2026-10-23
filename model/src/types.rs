@@ -284,7 +284,7 @@ impl MotorConfig {
     pub const DEFAULT: Self = Self {
         startup_blanking_ticks: 300,
         default_max_current_ma: 2500,
-        startup_commutation_step_ticks: 60,
+        startup_commutation_step_ticks: 10,
         commutation_speed_divisor: 100,
         min_commutation_step_ticks: 1,
         max_commutation_step_ticks: 100,

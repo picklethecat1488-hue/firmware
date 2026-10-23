@@ -739,10 +739,7 @@ fn test_cr_7f321327_motor_driver_tick_interval_sync() {
 
         // 1. Controller compile-time constant is synchronized with motor driver default
         assert_eq!(MOTOR_TICK_INTERVAL, DEFAULT_TICK_INTERVAL);
-        assert_eq!(
-            MOTOR_TICK_INTERVAL,
-            embassy_time::Duration::from_micros(500)
-        );
+        assert_eq!(MOTOR_TICK_INTERVAL, embassy_time::Duration::from_millis(10));
 
         // 2. MotorController tick_interval() reflects the driver's configured tick interval
         let motor = MockTickableMotor::new();
@@ -776,7 +773,7 @@ fn test_cr_7f321327_motor_driver_tick_interval_sync() {
         let mut controller_tmc = MotorController::new(tmc_driver, sensor2, speed_sensor2);
         assert_eq!(
             controller_tmc.tick_interval(),
-            embassy_time::Duration::from_micros(500)
+            embassy_time::Duration::from_millis(10)
         );
         assert_eq!(controller_tmc.tick_interval(), MOTOR_TICK_INTERVAL);
 
@@ -794,21 +791,19 @@ fn test_worm_proboscid_roundworm_8_startup_commutation_and_alignment() {
     futures::executor::block_on(async {
         use controller::motor_controller::{MOTOR_TICK_INTERVAL, STARTUP_COMMUTATION_STEP_TICKS};
 
-        // 1. Tick interval must be 500µs (500 us) to ensure high-frequency commutation
-        // for smooth open-loop BLDC rotation without pole slipping or cogging oscillation.
-        assert_eq!(
-            MOTOR_TICK_INTERVAL,
-            embassy_time::Duration::from_micros(500)
-        );
+        // 1. Tick interval must be 10ms (10_000 us) to ensure open-loop commutation timing
+        // supports physical BLDC rotor synchronism (10 ticks = 100ms startup interval)
+        assert_eq!(MOTOR_TICK_INTERVAL, embassy_time::Duration::from_millis(10));
 
-        // 2. Startup commutation step duration (60 ticks * 500µs = 30000µs)
+        // 2. Startup commutation step duration (10 ticks * 10ms = 100,000µs)
         let startup_period_us =
             STARTUP_COMMUTATION_STEP_TICKS * (MOTOR_TICK_INTERVAL.as_micros() as u32);
-        assert_eq!(
-            startup_period_us, 30_000,
-            "Startup commutation step duration must be 30000us (got {}us)",
+        assert!(
+            startup_period_us >= 50_000,
+            "Startup commutation step duration must be >= 50ms (got {}us)",
             startup_period_us
         );
+        assert_eq!(startup_period_us, 100_000);
 
         // 3. Controller startup alignment: holding Step 0 for full startup duration
         let motor = MockTickableMotor::new();

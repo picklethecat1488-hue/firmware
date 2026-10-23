@@ -2318,7 +2318,7 @@ fn test_cr_7f321327_tmc6300_tick_interval_and_sync() {
     assert_eq!(driver.tick_interval(), DEFAULT_TICK_INTERVAL);
     assert_eq!(
         driver.tick_interval(),
-        embassy_time::Duration::from_micros(500)
+        embassy_time::Duration::from_millis(10)
     );
 
     // Dynamic configuration updates tick interval
@@ -2343,9 +2343,9 @@ fn test_worm_proboscid_roundworm_8_driver_first_tick_executes_step_0() {
         };
         let mut driver = Tmc6300Pio::new(pin_diag);
 
-        // 1. Driver default tick interval must be 500 µs
-        assert_eq!(driver.tick_interval_us(), 500);
-        assert_eq!(DEFAULT_TICK_INTERVAL_US, 500);
+        // 1. Driver default tick interval must be 10,000 µs (10 ms)
+        assert_eq!(driver.tick_interval_us(), 10_000);
+        assert_eq!(DEFAULT_TICK_INTERVAL_US, 10_000);
 
         // 2. Set speed: initial step index is Step 0
         driver.set_speed(MotorSpeed::new(100).unwrap()).unwrap();
