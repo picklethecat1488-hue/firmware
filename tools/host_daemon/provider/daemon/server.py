@@ -25,6 +25,7 @@ from model.worm_report import (
     WormSeverity,
     WormStatus,
 )
+from provider.sanitizer import elide_personal_info
 from provider.worm_report.markdown_exporter import MarkdownWormExporter
 from provider.worm_report.sqlite_store import SQLiteWormStore
 
@@ -390,7 +391,8 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
 
                 log_filename = f"target_system_logs_{worm_id}.log"
                 log_file_path = worm_att_dir / log_filename
-                log_file_path.write_text(logs_content, encoding="utf-8")
+                sanitized_logs = elide_personal_info(logs_content)
+                log_file_path.write_text(sanitized_logs, encoding="utf-8")
 
                 rel_att_path = f"attachments/{worm_id}/{log_filename}"
                 attachments.append(
@@ -399,7 +401,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                         filename=log_filename,
                         file_type="log",
                         file_path=rel_att_path,
-                        size_bytes=len(logs_content.encode("utf-8")),
+                        size_bytes=len(sanitized_logs.encode("utf-8")),
                         description="Target system and defmt logs from host daemon session",
                         created_at=now_str,
                     )
@@ -413,14 +415,15 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     crash_out = f"Failed to retrieve crash log: {e}"
                 crash_filename = f"target_crash_log_{worm_id}.log"
                 crash_file_path = worm_att_dir / crash_filename
-                crash_file_path.write_text(crash_out, encoding="utf-8")
+                sanitized_crash = elide_personal_info(crash_out)
+                crash_file_path.write_text(sanitized_crash, encoding="utf-8")
                 attachments.append(
                     WormAttachmentModel(
                         id=f"att-{len(attachments) + 1}",
                         filename=crash_filename,
                         file_type="log",
                         file_path=f"attachments/{worm_id}/{crash_filename}",
-                        size_bytes=len(crash_out.encode("utf-8")),
+                        size_bytes=len(sanitized_crash.encode("utf-8")),
                         description="Target crash log retrieved via host_fs",
                         created_at=now_str,
                     )

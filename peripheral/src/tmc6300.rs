@@ -742,8 +742,12 @@ pub fn assemble_tmc6300_pio_program() -> pio::Program<32> {
         pio::MovOperation::None,
         pio::MovSource::OSR,
     );
-    // Shift lower 8 bits (6-bit phase mask) into output pins (GP16..GP21)
-    a.out(pio::OutDestination::PINS, 8);
+    // Shift lower 6 bits (6-bit phase mask) into output pins (GP16..GP21).
+    // Note: OUT_COUNT is 6. Shifting 8 bits would cause RP2040 PIO to wrap around modulo 6,
+    // overwriting pins 0 and 1 (GP16/UH and GP17/UL) with bits 6 and 7 (zeros) and disabling Phase U!
+    a.out(pio::OutDestination::PINS, 6);
+    // Discard 2 unused alignment bits so subsequent out reads on_count from bit 8
+    a.out(pio::OutDestination::NULL, 2);
     // Shift next 8 bits (on_count) into Y
     a.out(pio::OutDestination::Y, 8);
     // If on_count == 0, skip ON delay loop

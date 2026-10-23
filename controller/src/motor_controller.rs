@@ -474,10 +474,10 @@ where
     )]
     async fn set_running_state(&mut self, running: bool) -> Result<(), PeripheralError> {
         if running {
-            self.startup_ticks = 0;
-            self.commutation_interval_ticks = self.config.startup_commutation_step_ticks;
-            self.step_tick_counter = 0;
             if self.state == MotorState::Off {
+                self.startup_ticks = 0;
+                self.commutation_interval_ticks = self.config.startup_commutation_step_ticks;
+                self.step_tick_counter = 0;
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::info!("Starting motor...");
                 self.state = MotorState::On;
