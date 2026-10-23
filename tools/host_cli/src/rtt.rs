@@ -566,6 +566,9 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
                     let _ = io::stdout().write_all(&initial_buf[..n]);
                     let _ = io::stdout().flush();
+                    if !initial_buf[..n].ends_with(b"\n") {
+                        println!();
+                    }
                 }
                 _ => {}
             }
@@ -593,6 +596,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
         // Run the poll loop
         let mut rtt_buf = [0u8; 1024];
         let mut sent_buffer = Vec::<u8>::new();
+        let mut stdout_at_bol = true;
         let mut run_error = None;
         let mut last_snr_report = std::time::Instant::now();
         let mut valid_frames = 0;
@@ -720,7 +724,11 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                             }
                                         }
                                         if !line_str.contains("Device Telemetry: ") {
+                                            if !stdout_at_bol {
+                                                println!();
+                                            }
                                             println!("{}", line_str);
+                                            stdout_at_bol = true;
                                         }
                                     }
                                     Err(defmt_decoder::DecodeError::UnexpectedEof) => break,
@@ -746,22 +754,11 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                     Ok(n) if n > 0 => {
                         use std::io::Write;
                         did_work = true;
-                        use std::io::IsTerminal;
-                        let use_echo_canceller = std::io::stdout().is_terminal();
-                        let mut write_buf = Vec::with_capacity(n);
-                        for &b in &rtt_buf[..n] {
-                            if use_echo_canceller
-                                && !sent_buffer.is_empty()
-                                && (sent_buffer[0] == b
-                                    || ((b == b'\r' || b == b'\n')
-                                        && (sent_buffer[0] == b'\r' || sent_buffer[0] == b'\n')))
-                            {
-                                sent_buffer.remove(0);
-                            } else {
-                                write_buf.push(b);
-                            }
-                        }
+                        let write_buf = host_cli::cancel_echo(&rtt_buf[..n], &mut sent_buffer);
                         if !write_buf.is_empty() {
+                            if let Some(&last) = write_buf.last() {
+                                stdout_at_bol = last == b'\n';
+                            }
                             let _ = std::io::stdout().write_all(&write_buf);
                             let _ = std::io::stdout().flush();
                         }
@@ -778,20 +775,17 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             if let Ok(input_bytes) = stdin_rx.try_recv() {
                 did_work = true;
                 if let Some(cli_down) = cli_down_channel {
-                    use std::io::IsTerminal;
-                    if std::io::stdout().is_terminal() {
-                        // Queue typed characters for echo cancellation
-                        for &b in &input_bytes {
-                            if b == b'\n' || b == b'\r' {
-                                sent_buffer.push(b'\r');
-                                sent_buffer.push(b'\n');
-                            } else {
-                                sent_buffer.push(b);
-                            }
+                    // Queue typed characters for echo cancellation
+                    for &b in &input_bytes {
+                        if b == b'\n' || b == b'\r' {
+                            sent_buffer.push(b'\r');
+                            sent_buffer.push(b'\n');
+                        } else {
+                            sent_buffer.push(b);
                         }
-                        if sent_buffer.len() > 1024 {
-                            sent_buffer.clear();
-                        }
+                    }
+                    if sent_buffer.len() > 1024 {
+                        sent_buffer.clear();
                     }
 
                     let mut written = 0;

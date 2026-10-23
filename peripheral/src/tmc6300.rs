@@ -16,10 +16,10 @@ pub const PWM_DUTY_CYCLE_DIVISOR: u8 = 10;
 /// Maximum rated peak current for the TMC6300 driver in milliamperes (2A).
 pub const MAX_TMC6300_CURRENT_MA: i32 = 2000;
 
-/// Default motor controller tick interval in microseconds for the TMC6300 driver (10,000µs / 10ms for stable open-loop BLDC commutation).
-pub const DEFAULT_TICK_INTERVAL_US: u32 = 10_000;
+/// Default motor controller tick interval in microseconds for the TMC6300 driver (500µs / 0.5ms for 2000Hz commutation).
+pub const DEFAULT_TICK_INTERVAL_US: u32 = 500;
 
-/// Default motor controller tick interval as an embassy Duration (10ms).
+/// Default motor controller tick interval as an embassy Duration (500µs).
 pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration =
     embassy_time::Duration::from_micros(DEFAULT_TICK_INTERVAL_US as u64);
 
