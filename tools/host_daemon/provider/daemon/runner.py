@@ -27,6 +27,7 @@ class DaemonRunner:
         speed: int = 1000,
         chip: Optional[str] = None,
         package_selection_mode: bool = False,
+        show_system_logs: bool = False,
     ) -> None:
         """Initialize DaemonRunner with workspace configuration and build parameters."""
         self.repo_root = repo_root
@@ -37,6 +38,7 @@ class DaemonRunner:
         self.speed = speed
         self.chip = chip
         self.package_selection_mode = package_selection_mode
+        self.show_system_logs = show_system_logs
 
         self.elf_path: Optional[Path] = None
         self.host_cli_path: Optional[Path] = None
@@ -139,6 +141,7 @@ class DaemonRunner:
         release: Optional[bool] = None,
         speed: Optional[int] = None,
         chip: Optional[str] = None,
+        show_system_logs: Optional[bool] = None,
     ) -> None:
         """Dynamically update runner configuration parameters and resolved paths."""
         with self._lock:
@@ -154,6 +157,8 @@ class DaemonRunner:
                 self.speed = speed
             if chip:
                 self.chip = chip
+            if show_system_logs is not None:
+                self.show_system_logs = show_system_logs
 
             profile_dir = "release" if self.release else "debug"
             elf = self.repo_root / "target" / self.target / profile_dir / self.bin_name
@@ -638,6 +643,8 @@ class DaemonRunner:
                                 or "Draining buffered defmt logs" in stripped
                             ):
                                 self.log(stripped, channel="target")
+                            elif stripped in ("shell>", "shell> "):
+                                pass
                             else:
                                 self.log_cli(stripped)
             except Exception as e:
