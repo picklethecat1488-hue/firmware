@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import re
 import sys
 import threading
 from typing import Any, List, Optional
@@ -91,6 +92,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                         "target": runner.target,
                         "speed": runner.speed,
                         "chip": runner.chip,
+                        "show_system_logs": getattr(runner, "show_system_logs", False),
                     },
                     "package_selection_mode": getattr(runner, "package_selection_mode", False),
                 }
@@ -104,6 +106,9 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/cli/output":
             with runner._lock:
                 self._send_json(list(runner.cli_outputs))
+        elif path == "/api/cli/history":
+            with runner._lock:
+                self._send_json({"history": list(getattr(runner, "command_history", []))})
         elif path == "/api/fs/output":
             with runner._lock:
                 self._send_json(list(runner.fs_outputs))
@@ -224,6 +229,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             spd = payload.get("speed") or runner.speed
             chp = payload.get("chip") or runner.chip
             tgt = payload.get("target")
+            show_logs = payload.get("show_system_logs")
 
             if not tgt:
                 tgt = infer_arm_target(pkg, bin_name, chip=chp, repo_root=runner.repo_root)
@@ -235,6 +241,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 release=rel,
                 speed=spd,
                 chip=chp,
+                show_system_logs=show_logs,
             )
             runner.package_selection_mode = False
             save_last_session(
@@ -348,6 +355,8 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 steps = [s.strip() for s in raw_steps.splitlines() if s.strip()]
             else:
                 steps = [str(s).strip() for s in raw_steps if str(s).strip()]
+            steps = [re.sub(r"^\d+\.\s*", "", s).strip() for s in steps]
+            steps = [s for s in steps if s]
 
             expected = (payload.get("expected_behavior") or "").strip()
             actual = (payload.get("actual_behavior") or "").strip()
