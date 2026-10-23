@@ -1374,14 +1374,14 @@ fn test_worm_dirt_ribbonworm_196_tmc6300_pio_program_verification_and_duty_cycle
 
     let prg = assemble_tmc6300_pio_program();
 
-    // 1. Program size must be exactly 10 instructions
-    assert_eq!(prg.code.len(), 10);
-    // 2. Wrap boundaries: target = 0, source = 9 (last instruction)
+    // 1. Program size must be exactly 11 instructions
+    assert_eq!(prg.code.len(), 11);
+    // 2. Wrap boundaries: target = 0, source = 10 (last instruction)
     assert_eq!(prg.wrap.target, 0);
-    assert_eq!(prg.wrap.source, 9);
+    assert_eq!(prg.wrap.source, 10);
 
     // 3. Verify all JMP instructions target valid addresses within [0..=prg.wrap.source].
-    // Any target > 9 jumps past wrap_source into uninitialized SRAM!
+    // Any target > 10 jumps past wrap_source into uninitialized SRAM!
     for (addr, &inst) in prg.code.iter().enumerate() {
         let opcode = (inst >> 13) & 0x7;
         if opcode == 0 {
@@ -1393,10 +1393,10 @@ fn test_worm_dirt_ribbonworm_196_tmc6300_pio_program_verification_and_duty_cycle
                 "Instruction at {addr} jumps out-of-bounds to {target} (wrap.source={})",
                 prg.wrap.source
             );
-            if addr == 7 {
+            if addr == 8 {
                 // Must be jmp !y, wrap_target (0)
-                assert_eq!(cond, 0b011, "Instruction at 7 must test condition !Y");
-                assert_eq!(target, 0, "Instruction at 7 must jump to wrap_target (0)");
+                assert_eq!(cond, 0b011, "Instruction at 8 must test condition !Y");
+                assert_eq!(target, 0, "Instruction at 8 must jump to wrap_target (0)");
             }
         }
     }
@@ -1428,51 +1428,55 @@ fn test_worm_dirt_ribbonworm_196_tmc6300_pio_program_verification_and_duty_cycle
                 x = osr;
             }
             2 => {
-                // out pins, 8
-                pins = (osr & 0xFF) as u8;
-                osr >>= 8;
+                // out pins, 6 (shifts lower 6 bits to pins 16..21 without modulo wrap overwrite)
+                pins = (osr & 0x3F) as u8;
+                osr >>= 6;
             }
             3 => {
+                // out null, 2 (discards 2 padding bits to preserve 8-bit alignment for on_count)
+                osr >>= 2;
+            }
+            4 => {
                 // out y, 8
                 y = osr & 0xFF;
                 osr >>= 8;
             }
-            4 => {
-                // jmp !y, skip_on (6)
+            5 => {
+                // jmp !y, skip_on (7)
                 if y == 0 {
-                    pc = 6;
+                    pc = 7;
                 }
             }
-            5 => {
-                // jmp y--, on_loop (5)
+            6 => {
+                // jmp y--, on_loop (6)
                 if y != 0 {
                     y -= 1;
-                    pc = 5;
+                    pc = 6;
                 } else {
                     y = u32::MAX;
                 }
             }
-            6 => {
+            7 => {
                 // out y, 8 (off_count)
                 y = osr & 0xFF;
                 osr >>= 8;
             }
-            7 => {
+            8 => {
                 // jmp !y, wrap_target (0)
                 if y == 0 {
                     pc = 0;
                 }
             }
-            8 => {
+            9 => {
                 // mov pins, null
                 pins = 0;
                 pin_cleared_to_null = true;
             }
-            9 => {
-                // jmp y--, off_loop (9)
+            10 => {
+                // jmp y--, off_loop (10)
                 if y != 0 {
                     y -= 1;
-                    pc = 9;
+                    pc = 10;
                 } else {
                     y = u32::MAX;
                 }
@@ -1647,42 +1651,45 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
                     x = osr;
                 }
                 2 => {
-                    pins = (osr & 0xFF) as u8;
-                    osr >>= 8;
+                    pins = (osr & 0x3F) as u8;
+                    osr >>= 6;
                 }
                 3 => {
+                    osr >>= 2;
+                }
+                4 => {
                     y = osr & 0xFF;
                     osr >>= 8;
                 }
-                4 => {
+                5 => {
                     if y == 0 {
-                        pc = 6;
+                        pc = 7;
                     }
                 }
-                5 => {
+                6 => {
                     if y != 0 {
                         y -= 1;
-                        pc = 5;
+                        pc = 6;
                     } else {
                         y = u32::MAX;
                     }
                 }
-                6 => {
+                7 => {
                     y = osr & 0xFF;
                     osr >>= 8;
                 }
-                7 => {
+                8 => {
                     if y == 0 {
                         pc = 0;
                     }
                 }
-                8 => {
+                9 => {
                     pins = 0;
                 }
-                9 => {
+                10 => {
                     if y != 0 {
                         y -= 1;
-                        pc = 9;
+                        pc = 10;
                     } else {
                         y = u32::MAX;
                     }
@@ -2302,7 +2309,7 @@ fn test_cr_7f321327_tmc6300_tick_interval_and_sync() {
     };
     let mut driver = Tmc6300Pio::new(pin_diag);
 
-    // Initial default tick interval should match DEFAULT_TICK_INTERVAL_US (10ms)
+    // Initial default tick interval should match DEFAULT_TICK_INTERVAL_US (500us)
     assert_eq!(driver.tick_interval_us(), DEFAULT_TICK_INTERVAL_US);
     assert_eq!(
         Tickable::tick_interval_us(&driver),
