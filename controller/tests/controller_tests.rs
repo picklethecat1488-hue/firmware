@@ -815,8 +815,8 @@ fn test_worm_proboscid_roundworm_8_startup_commutation_and_alignment() {
             .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(100).unwrap()), None)
             .await;
 
-        // Startup blanking must be 300 ticks (3 seconds at 100 Hz)
-        assert_eq!(controller.config().startup_blanking_ticks, 300);
+        // Startup blanking must be 50 ticks (500 ms at 100 Hz)
+        assert_eq!(controller.config().startup_blanking_ticks, 50);
 
         // Initial tick executes Step 0 for alignment
         assert_eq!(controller.motor.tick_count, 0);
@@ -938,6 +938,58 @@ fn test_worm_glowing_slug_613_motor_speed_transitions_and_startup_ramp() {
         assert_eq!(
             controller.commutation_interval_ticks(),
             STARTUP_COMMUTATION_STEP_TICKS
+        );
+    });
+}
+
+#[test]
+fn test_worm_segmented_mealworm_41_startup_blanking_and_torque_boost() {
+    futures::executor::block_on(async {
+        use controller::motor_controller::{
+            MOTOR_STARTUP_BLANKING_TICKS, MOTOR_TICK_INTERVAL, STARTUP_COMMUTATION_STEP_TICKS,
+        };
+
+        // 1. Startup blanking duration must be <= 500ms
+        let blanking_duration = MOTOR_TICK_INTERVAL * MOTOR_STARTUP_BLANKING_TICKS;
+        assert!(
+            blanking_duration <= embassy_time::Duration::from_millis(500),
+            "Startup blanking interval must be <= 500ms (got {:?})",
+            blanking_duration
+        );
+        assert_eq!(blanking_duration, embassy_time::Duration::from_millis(500));
+        assert_eq!(MOTOR_STARTUP_BLANKING_TICKS, 50);
+
+        // 2. Full torque boost during startup alignment:
+        // Even when commanded to speed 30 (30% duty cycle), driver must be commanded to 100% duty cycle
+        // during the initial STARTUP_COMMUTATION_STEP_TICKS (10 ticks = 100 ms) alignment period
+        // to maximize breakaway holding torque from standstill.
+        let motor = MockTickableMotor::new();
+        let sensor = MockCurrentSensor::new(200);
+        let speed_sensor = MockSpeedSensor::new(0);
+        let mut controller = MotorController::new(motor, sensor, speed_sensor);
+
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(30).unwrap()), None)
+            .await;
+        assert_eq!(controller.state(), MotorState::On);
+
+        // For ticks 1..=STARTUP_COMMUTATION_STEP_TICKS, driver speed must be 100 (maximum torque boost)
+        for tick in 1..=STARTUP_COMMUTATION_STEP_TICKS {
+            assert!(controller.tick_motor().await.is_ok());
+            assert_eq!(
+                controller.motor.speed,
+                MotorSpeed::new(100).unwrap(),
+                "Driver speed must be 100% duty cycle at startup alignment tick {}",
+                tick
+            );
+        }
+
+        // On tick after startup alignment expires, driver transitions to commanded speed 30
+        assert!(controller.tick_motor().await.is_ok());
+        assert_eq!(
+            controller.motor.speed,
+            MotorSpeed::new(30).unwrap(),
+            "Driver speed must transition to commanded speed 30 after alignment"
         );
     });
 }
