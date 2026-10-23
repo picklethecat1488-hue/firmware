@@ -16,10 +16,10 @@ pub const PWM_DUTY_CYCLE_DIVISOR: u8 = 10;
 /// Maximum rated peak current for the TMC6300 driver in milliamperes (2A).
 pub const MAX_TMC6300_CURRENT_MA: i32 = 2000;
 
-/// Default motor controller tick interval in microseconds for the TMC6300 driver (10,000µs / 10ms for stable open-loop BLDC commutation).
-pub const DEFAULT_TICK_INTERVAL_US: u32 = 10_000;
+/// Default motor controller tick interval in microseconds for the TMC6300 driver (500µs / 0.5ms for 2000Hz commutation).
+pub const DEFAULT_TICK_INTERVAL_US: u32 = 500;
 
-/// Default motor controller tick interval as an embassy Duration (10ms).
+/// Default motor controller tick interval as an embassy Duration (500µs).
 pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration =
     embassy_time::Duration::from_micros(DEFAULT_TICK_INTERVAL_US as u64);
 
@@ -742,8 +742,12 @@ pub fn assemble_tmc6300_pio_program() -> pio::Program<32> {
         pio::MovOperation::None,
         pio::MovSource::OSR,
     );
-    // Shift lower 8 bits (6-bit phase mask) into output pins (GP16..GP21)
-    a.out(pio::OutDestination::PINS, 8);
+    // Shift lower 6 bits (6-bit phase mask) into output pins (GP16..GP21).
+    // Note: OUT_COUNT is 6. Shifting 8 bits would cause RP2040 PIO to wrap around modulo 6,
+    // overwriting pins 0 and 1 (GP16/UH and GP17/UL) with bits 6 and 7 (zeros) and disabling Phase U!
+    a.out(pio::OutDestination::PINS, 6);
+    // Discard 2 unused alignment bits so subsequent out reads on_count from bit 8
+    a.out(pio::OutDestination::NULL, 2);
     // Shift next 8 bits (on_count) into Y
     a.out(pio::OutDestination::Y, 8);
     // If on_count == 0, skip ON delay loop
