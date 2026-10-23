@@ -3616,3 +3616,19 @@ def test_regression_worm_annelidic_caterpillar_258_smartlog_node_selected_highli
     # 3. Dynamic renderSmartlogList must apply selected class when commit is checked/selected
     assert "${isSelected}" in tpl_text or "node.classList.toggle(\"selected\"" in tpl_text
 
+
+def test_diff_view_optimizations_polling_and_file_priority() -> None:
+    """Verify diff view optimizations: 10s auto-sync polling interval and regular files prioritized over LFS."""
+    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
+    tpl_text = template_path.read_text(encoding="utf-8")
+
+    # 1. Lightweight Polling: Auto-sync interval set to 10s (10000ms)
+    assert "setInterval(syncWorkingAndCommitsSilently, 10000)" in tpl_text
+
+    # 2. Prioritize Regular Files Over Attachments:
+    # renderCommitFiles must auto-select regular files before LFS files
+    assert "const first = regular[0]?.path || lfs[0]?.path || feedback[0]?.path;" in tpl_text
+
+    # renderWorkingTreeFiles must auto-select staged/unstaged/untracked before LFS files
+    assert "conflicts[0]?.path || staged[0]?.path || unstaged[0]?.path || untracked[0]?.path || lfs[0]?.path || feedback[0]?.path;" in tpl_text
+
