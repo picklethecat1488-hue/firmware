@@ -429,10 +429,17 @@ fn test_post_process_run_span_renaming() {
 #[test]
 fn test_post_process_trace_telemetry() {
     use model::telemetry::TelemetryRecord;
-    use model::types::{MotorSpeed, MotorStatus};
+    use model::types::{MotorSpeed, MotorStatus, MotorTelemetry};
     use std::io::Write;
 
-    let rec = TelemetryRecord::Motor(MotorStatus::Running(MotorSpeed::new(75).unwrap(), 150));
+    let rec = TelemetryRecord::Motor(MotorStatus::Running(MotorTelemetry::new(
+        MotorSpeed::new(75).unwrap(),
+        2500,
+        2500,
+        150,
+        310,
+        102,
+    )));
     let serialized = rec.serialize(1000);
     let len = serialized[0] as usize;
     let payload = &serialized[1..1 + len];
@@ -475,12 +482,20 @@ fn test_post_process_trace_telemetry() {
         println!("Event {}: {}", i, ev);
     }
 
-    // We expect 6 events (4 metadata + 2 parsed telemetry events: speed and current)
-    assert_eq!(events.len(), 6);
+    // We expect 10 events (4 metadata + 6 parsed motor telemetry events)
+    assert_eq!(events.len(), 10);
     assert_eq!(events[4]["name"], "Motor Speed");
     assert_eq!(events[4]["args"]["value"], 75);
     assert_eq!(events[5]["name"], "Motor Current (mA)");
     assert_eq!(events[5]["args"]["value"], 150);
+    assert_eq!(events[6]["name"], "Motor Measured RPM");
+    assert_eq!(events[6]["args"]["value"], 2500);
+    assert_eq!(events[7]["name"], "Motor Estimated RPM");
+    assert_eq!(events[7]["args"]["value"], 2500);
+    assert_eq!(events[8]["name"], "Motor Modeled Peak Current (mA)");
+    assert_eq!(events[8]["args"]["value"], 310);
+    assert_eq!(events[9]["name"], "Motor Modeled Torque (uNm)");
+    assert_eq!(events[9]["args"]["value"], 102);
 }
 
 #[test]
@@ -770,4 +785,39 @@ fn test_worm_slick_fireworm_677_dump_logs_no_unexpected_eof() {
             assert!(res.is_ok());
         }
     }
+}
+
+#[test]
+fn test_cancel_echo_full_match() {
+    let mut sent = b"motor speed 30\r\n".to_vec();
+    let rtt = b"motor speed 30\r\n";
+    let output = host_cli::cancel_echo(rtt, &mut sent);
+    assert!(output.is_empty(), "Echoed characters must be cancelled");
+    assert!(sent.is_empty(), "Sent buffer should be emptied");
+}
+
+#[test]
+fn test_cancel_echo_chunked() {
+    let mut sent = b"motor rpm\r\n".to_vec();
+    let chunk1 = b"motor rp";
+    let chunk2 = b"m\r\n";
+
+    let out1 = host_cli::cancel_echo(chunk1, &mut sent);
+    assert!(out1.is_empty(), "First chunk must be cancelled");
+
+    let out2 = host_cli::cancel_echo(chunk2, &mut sent);
+    assert!(out2.is_empty(), "Second chunk (stray m) must be cancelled");
+    assert!(sent.is_empty());
+}
+
+#[test]
+fn test_cancel_echo_preserves_target_output() {
+    let mut sent = b"motor current\r\n".to_vec();
+    let rtt = b"motor current\r\nMotor current: 1461 mA\r\nshell> ";
+    let output = host_cli::cancel_echo(rtt, &mut sent);
+    assert_eq!(
+        output, b"Motor current: 1461 mA\r\nshell> ",
+        "Target command response must be preserved while echoed command is dropped"
+    );
+    assert!(sent.is_empty());
 }

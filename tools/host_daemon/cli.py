@@ -290,6 +290,14 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Restart existing host daemon if already running.",
     )
+    parser.add_argument(
+        "--show-system-logs",
+        "--show-logs",
+        dest="show_system_logs",
+        action="store_true",
+        default=False,
+        help="Show system logging monitor (defmt/RTT) by default on startup in the host UI.",
+    )
 
     subparsers = parser.add_subparsers(dest="subcommand", help="Host daemon subcommands")
 
@@ -685,6 +693,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         speed=args.speed,
         chip=args.chip,
         package_selection_mode=package_selection_mode,
+        show_system_logs=getattr(args, "show_system_logs", False),
     )
     atexit.register(runner.stop)
     atexit.register(remove_lock_file)

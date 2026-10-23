@@ -653,7 +653,7 @@
         <option value="125%">125%</option>
         <option value="150%">150%</option>
       </select>
-      <button class="btn" id="btnToggleLog" onclick="toggleLogPanel()">Hide Log</button>
+      <button class="btn btn-amber" id="btnToggleLog" onclick="toggleLogPanel()">Show Log</button>
       <button class="btn" onclick="clearOutput()">Clear</button>
     </div>
   </header>
@@ -879,6 +879,15 @@
           <input type="hidden" id="cfgTargetArchInput" value="{{ runner.target }}">
         </div>
 
+        <!-- Logging Preference -->
+        <div style="background:#05141c; border:1px solid #0b5966; padding:8px 12px; border-radius:3px; display:flex; flex-direction:column; gap:4px;">
+          <span style="font-size:8.5px; color:var(--xerxes-text-muted); font-weight:bold;">LOGGING PREFERENCE</span>
+          <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:10px; color:var(--xerxes-text-bright); margin-top:2px;">
+            <input type="checkbox" id="cfgShowLogsCheckbox" {% if runner.show_system_logs %}checked{% endif %} style="accent-color:var(--xerxes-cyan); cursor:pointer;">
+            <span>Show system logs on startup (defmt / RTT monitor)</span>
+          </label>
+        </div>
+
         <div id="cfgStatusMsg" style="display:none; font-size:9.5px; padding:6px 10px; border-radius:2px;"></div>
       </div>
       <div class="sync-modal-footer" style="padding:10px 14px; border-top:1px solid #0b5966; display:flex; justify-content:flex-end; gap:8px;">
@@ -890,12 +899,12 @@
 
   <main class="workspace-body">
     <!-- Left Panel: System / Target Logging -->
-    <div class="panel-container log-panel" id="logPanel">
+    <div class="panel-container log-panel" id="logPanel" style="display: none;">
       <div class="panel-header">
         <span>SYSTEM LOGGING MONITOR (defmt / RTT)</span>
         <div style="display: flex; align-items: center; gap: 8px;">
           <button class="btn btn-copy" id="btnCopyLog" onclick="copyPanelText('logView', this)" title="Copy log output">📋 Copy</button>
-          <button class="btn btn-copy" id="btnCollapseLog" onclick="toggleLogPanel()" title="Hide logging monitor">◀ Hide</button>
+          <button class="btn btn-copy" id="btnCollapseLog" onclick="toggleLogPanel()" title="Show logging monitor">▶ Show</button>
           <span style="font-size: 8px; color: var(--xerxes-text-dim);">AUTO-SCROLL: ON</span>
         </div>
       </div>
@@ -905,7 +914,7 @@
     </div>
 
     <!-- Draggable Vertical Splitter with Gripper -->
-    <div class="vertical-splitter" id="vSplitter" title="Drag to resize panels">
+    <div class="vertical-splitter" id="vSplitter" title="Drag to resize panels" style="display: none;">
       <div class="splitter-gripper"></div>
     </div>
 
@@ -1664,18 +1673,23 @@
       copyPanelText(targetId, btn);
     }
 
-    let isLogHidden = false;
+    let isLogHidden = true;
     let prevLogWidth = "50%";
     let isDraggingSplitter = false;
 
-    function toggleLogPanel() {
+    function toggleLogPanel(show) {
       const logPanel = document.getElementById("logPanel");
       const splitter = document.getElementById("vSplitter");
       const toggleBtn = document.getElementById("btnToggleLog");
       const collapseBtn = document.getElementById("btnCollapseLog");
       if (!logPanel) return;
 
-      isLogHidden = !isLogHidden;
+      if (typeof show === "boolean") {
+        isLogHidden = !show;
+      } else {
+        isLogHidden = !isLogHidden;
+      }
+
       if (isLogHidden) {
         prevLogWidth = logPanel.style.width || "50%";
         logPanel.style.display = "none";
@@ -1699,6 +1713,9 @@
           collapseBtn.innerText = "◀ Hide";
         }
       }
+      try {
+        localStorage.setItem("host_show_system_logs", (!isLogHidden).toString());
+      } catch (e) {}
     }
 
     function setupSplitter() {
@@ -2654,6 +2671,16 @@
     initUiScale();
     setupSplitter();
     setupCliFuzzyHistory();
+
+    const initialShowLogs = {{ 'true' if runner.show_system_logs else 'false' }};
+    const storedShowLogs = localStorage.getItem("host_show_system_logs");
+    const shouldShowSystemLogs = initialShowLogs || (storedShowLogs === "true");
+    if (shouldShowSystemLogs) {
+      toggleLogPanel(true);
+      const cfgLogsBox = document.getElementById("cfgShowLogsCheckbox");
+      if (cfgLogsBox) cfgLogsBox.checked = true;
+    }
+
     setInterval(pollOutputs, 1000);
     pollOutputs();
 
@@ -2799,6 +2826,16 @@
         spdSelect.value = String(spd);
       }
 
+      const logsBox = document.getElementById("cfgShowLogsCheckbox");
+      if (logsBox) {
+        const storedShow = localStorage.getItem("host_show_system_logs");
+        if (storedShow !== null) {
+          logsBox.checked = (storedShow === "true");
+        } else {
+          logsBox.checked = {{ 'true' if runner.show_system_logs else 'false' }};
+        }
+      }
+
       modal.style.display = "flex";
     }
 
@@ -2813,6 +2850,7 @@
       const release = document.getElementById("cfgReleaseCheckbox")?.checked ?? true;
       const speed = parseInt(document.getElementById("cfgSpeedSelect")?.value || "1000", 10);
       const target = document.getElementById("cfgTargetArchInput")?.value || "thumbv6m-none-eabi";
+      const showLogs = document.getElementById("cfgShowLogsCheckbox")?.checked ?? false;
 
       const btnConfirm = document.getElementById("btnConfirmTargetConfig");
       if (btnConfirm) btnConfirm.disabled = true;
@@ -2821,13 +2859,21 @@
         const res = await fetch("/api/target/configure", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ package: pkg, bin: bin, release: release, speed: speed, target: target })
+          body: JSON.stringify({ package: pkg, bin: bin, release: release, speed: speed, target: target, show_system_logs: showLogs })
         });
         const data = await res.json();
         if (data.success) {
           localStorage.setItem("xerxes_last_target_package", pkg);
           localStorage.setItem("xerxes_last_target_bin", bin);
           localStorage.setItem("xerxes_last_target_release", String(release));
+          try {
+            localStorage.setItem("host_show_system_logs", showLogs.toString());
+          } catch (e) {}
+          if (showLogs && isLogHidden) {
+            toggleLogPanel(true);
+          } else if (!showLogs && !isLogHidden) {
+            toggleLogPanel(false);
+          }
 
           closeTargetConfigModal();
           openSyncModal();
