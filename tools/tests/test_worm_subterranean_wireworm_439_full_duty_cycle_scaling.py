@@ -7,12 +7,7 @@ Verifies:
 2. Off-count is guaranteed non-zero (>= 1 cycle) across all non-zero duty cycles to ensure
    the short protection comparator resets on every pulse.
 3. Effective duty cycle at 100% speed reaches ~93.3% nominal rather than being clamped to 14%.
-4. Peripheral integration test test_worm_slithering_lumbricus_809_tmc6300_short_protection_pulse_invariants
-   executes successfully.
 """
-
-from pathlib import Path
-import subprocess
 
 
 def test_worm_subterranean_wireworm_439_duty_cycle_scaling_algorithm():
@@ -70,30 +65,3 @@ def test_worm_subterranean_wireworm_439_duty_cycle_scaling_algorithm():
         assert 500 <= pulse_ns <= 800, f"Duty {duty}% pulse {pulse_ns} ns outside [500, 800] ns"
         # Off count must be >= 1 cycle to prevent pure DC and reset comparator
         assert off >= 1, f"Duty {duty}% off_count must be >= 1, got {off}"
-
-
-def test_worm_subterranean_wireworm_439_cargo_peripheral_tests():
-    """Verify Rust peripheral integration tests pass for short-protection and full duty scaling."""
-    workspace_root = Path(__file__).resolve().parent.parent.parent
-    cmd = [
-        "cargo",
-        "test",
-        "--package",
-        "peripheral",
-        "--test",
-        "integration",
-        "test_worm_slithering_lumbricus_809_tmc6300_short_protection_pulse_invariants",
-        "--",
-        "--nocapture",
-    ]
-    proc = subprocess.run(
-        cmd,
-        cwd=workspace_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert proc.returncode == 0, (
-        f"cargo test failed with return code {proc.returncode}:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
-    )
-    assert "test result: ok. 1 passed" in proc.stdout

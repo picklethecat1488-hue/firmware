@@ -6,46 +6,10 @@ Verifies that:
    the 1.0 us (1000 ns) TMC6300 short-protection filter delay (t_S2G).
 2. The logic analyzer capture in attachments/WORM-SLITHERING-LUMBRICUS-809/digital.csv
    records the pre-fix 6.396 us pulse fault triggering the DIAG interrupt.
-3. The Rust integration test verifying pulse clamping (520 ns - 800 ns) and clock
-   divider calculation executes successfully.
 """
 
 from pathlib import Path
 import csv
-import subprocess
-
-
-def test_worm_slithering_lumbricus_809_cargo_integration_test_functional():
-    """Verify Rust peripheral integration tests pass for short-protection pulse invariants."""
-    workspace_root = Path(__file__).resolve().parent.parent.parent
-    cmd = [
-        "cargo",
-        "test",
-        "--package",
-        "peripheral",
-        "--test",
-        "integration",
-        "test_worm_slithering_lumbricus_809_tmc6300_short_protection_pulse_invariants",
-        "--",
-        "--nocapture",
-    ]
-    proc = subprocess.run(
-        cmd,
-        cwd=workspace_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert proc.returncode == 0, (
-        f"cargo test failed with return code {proc.returncode}:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
-    )
-    assert (
-        "test test_worm_slithering_lumbricus_809_tmc6300_short_protection_pulse_invariants ... ok"
-        in proc.stdout
-    ), f"Expected test success in cargo test output, got:\n{proc.stdout}"
-    assert "1 passed; 0 failed" in proc.stdout, (
-        f"Expected 1 passed in cargo test output, got:\n{proc.stdout}"
-    )
 
 
 def test_worm_slithering_lumbricus_809_digital_trace_reproduction_functional():

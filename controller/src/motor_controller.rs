@@ -23,7 +23,7 @@ pub const MOTOR_TICK_INTERVAL: embassy_time::Duration = peripheral::tmc6300::DEF
 pub const MOTOR_INACTIVE_TICK_INTERVAL: embassy_time::Duration =
     embassy_time::Duration::from_secs(1);
 
-/// Startup blanking period (3 seconds at 2000Hz = 6000 ticks) during which safety limits/cutoff checks are bypassed.
+/// Startup blanking period (500 ms at 100Hz = 50 ticks) during which safety limits/cutoff checks are bypassed.
 pub const MOTOR_STARTUP_BLANKING_TICKS: u32 = MotorConfig::DEFAULT.startup_blanking_ticks;
 
 /// Default maximum current limit for the motor controller in milliamperes (2.5A).
@@ -243,6 +243,11 @@ where
         &self.config
     }
 
+    /// Updates the active [`MotorConfig`].
+    pub fn set_config(&mut self, config: MotorConfig) {
+        self.config = config;
+    }
+
     /// Gets the current operating state of the motor.
     pub fn state(&self) -> MotorState {
         self.state
@@ -319,6 +324,41 @@ where
     /// Gets the last measured current in mA.
     pub fn last_current_ma(&self) -> i32 {
         self.last_current_ma
+    }
+
+    /// Returns the current motor telemetry data including measured and modeled velocity, current, and torque.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    pub fn motor_telemetry(&self) -> model::types::MotorTelemetry {
+        let step_period_us = self
+            .commutation_interval_ticks
+            .saturating_mul(self.tick_interval().as_micros() as u32);
+        let estimated_rpm = if self.state == MotorState::On && self.active_speed.get() != 0 {
+            model::types::calculate_estimated_rpm(step_period_us)
+        } else {
+            0
+        };
+        let measured_rpm = self.last_measured_rpm;
+        let current_ma = self.last_current_ma;
+        let modeled_torque_unm = model::types::calculate_modeled_torque_unm(current_ma);
+        let on_time_ns = if self.state == MotorState::On && self.active_speed.get() != 0 {
+            800
+        } else {
+            0
+        };
+        let modeled_peak_current_ma =
+            model::types::calculate_modeled_peak_current_ma(current_ma, on_time_ns);
+
+        model::types::MotorTelemetry::new(
+            self.speed,
+            measured_rpm,
+            estimated_rpm,
+            current_ma,
+            modeled_peak_current_ma,
+            modeled_torque_unm,
+        )
     }
 
     /// Directly reads the current draw (acting as a proxy for load torque) in mA from the sensor.
@@ -423,7 +463,7 @@ where
         if let Some(client) = telemetry_client {
             let running = self.state == MotorState::On;
             let status = if running {
-                model::types::MotorStatus::Running(self.speed, self.last_current_ma)
+                model::types::MotorStatus::Running(self.motor_telemetry())
             } else {
                 model::types::MotorStatus::Brake
             };
@@ -439,10 +479,10 @@ where
     )]
     async fn set_running_state(&mut self, running: bool) -> Result<(), PeripheralError> {
         if running {
-            self.startup_ticks = 0;
-            self.commutation_interval_ticks = self.config.startup_commutation_step_ticks;
-            self.step_tick_counter = 0;
             if self.state == MotorState::Off {
+                self.startup_ticks = 0;
+                self.commutation_interval_ticks = self.config.startup_commutation_step_ticks;
+                self.step_tick_counter = 0;
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::info!("Starting motor...");
                 self.state = MotorState::On;
@@ -584,7 +624,7 @@ where
         if let Some(client) = telemetry_client {
             let running = self.state == MotorState::On;
             let status = if running {
-                model::types::MotorStatus::Running(self.speed, self.last_current_ma)
+                model::types::MotorStatus::Running(self.motor_telemetry())
             } else {
                 model::types::MotorStatus::Brake
             };
@@ -615,11 +655,21 @@ where
 
         let mut tick_result = Ok(());
 
-        // 1. Direct speed application (ramping disabled)
+        // 1. Direct speed application (ramping disabled) with full startup alignment torque boost
         if state == MotorState::On {
             self.startup_ticks = self.startup_ticks.saturating_add(1);
-            if active_speed != speed {
-                active_speed = speed;
+            let effective_speed =
+                if self.startup_ticks <= self.config.startup_commutation_step_ticks {
+                    if speed.get() < 0 {
+                        MotorSpeed::new(-100).unwrap()
+                    } else {
+                        MotorSpeed::new(100).unwrap()
+                    }
+                } else {
+                    speed
+                };
+            if active_speed != effective_speed {
+                active_speed = effective_speed;
                 self.active_speed = active_speed;
                 if active_speed == MotorSpeed::ZERO && speed == MotorSpeed::ZERO {
                     self.state = MotorState::Off;
@@ -641,8 +691,8 @@ where
 
         // 2. Commutation step rate scaling and startup soft-start ramping
         if tick_result.is_ok() && self.active_speed.get() != 0 {
-            let abs_speed = self.active_speed.get().unsigned_abs();
-            let target_interval = calculate_commutation_step_ticks(abs_speed);
+            let abs_speed = self.speed.get().unsigned_abs();
+            let target_interval = self.config.calculate_commutation_step_ticks(abs_speed);
 
             if self.step_tick_counter == 0 {
                 if let Err(e) = self.motor.tick().await {

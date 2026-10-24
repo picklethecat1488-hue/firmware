@@ -5,7 +5,7 @@ pub mod stream;
 pub mod tracing;
 
 pub use dump::dump_logs;
-pub use stream::stream_logs;
+pub use stream::{cancel_echo, stream_logs};
 pub use tool_common::autodetect_project_info;
 pub use tracing::format_target_namespace;
 
