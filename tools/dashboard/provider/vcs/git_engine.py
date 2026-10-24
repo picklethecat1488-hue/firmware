@@ -95,7 +95,7 @@ def is_file_ignored(file_path: str) -> bool:
         file_path: Relative or absolute file path or filename.
 
     Returns:
-        True if file is in IGNORED_REVIEW_FILES, in feedback/ directory, or matches ignored patterns.
+        True if file is in IGNORED_REVIEW_FILES, in feedback/ or attachments/ directory, or matches ignored patterns.
     """
     clean = file_path.replace("\\", "/").strip().lstrip("./")
     p = Path(clean)
@@ -1129,6 +1129,7 @@ class GitEngine:
                 clean = file_path.replace("\\", "/").strip().lstrip("./")
                 if not (
                     clean.startswith("feedback/")
+                    or clean.startswith("attachments/")
                     or clean.startswith("target/worms")
                     or clean.startswith("target/bugs")
                     or clean.startswith("build/worms")

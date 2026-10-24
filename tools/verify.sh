@@ -3,6 +3,10 @@ set -euo pipefail
 
 START_TIME=$(date +%s)
 
+if [ -d "${HOME}/miniforge3/envs/firmware-env/bin" ]; then
+    export PATH="${HOME}/miniforge3/envs/firmware-env/bin:${PATH}"
+fi
+
 # Run parallel codebase validations (cargo format, clippy, python AST validators)
 echo "Running parallel codebase validations..."
 python tools/validation/validate_all.py

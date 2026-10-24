@@ -1328,20 +1328,21 @@ fn test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm() {
         assert_eq!(motor.speed(), 0);
         assert_eq!(motor.duty_cycle(), 0);
 
-        // Command speed 8 (speed controls commutation rate; driver runs at 100% duty cycle)
+        // Command speed 8 (duty cycle scales with speed to control current and prevent overheating)
         assert!(motor.set_speed(MotorSpeed::new(8).unwrap()).is_ok());
         assert_eq!(motor.speed(), 8);
-        assert_eq!(motor.duty_cycle(), 100);
+        assert_eq!(motor.duty_cycle(), 8);
         let w8 = motor.last_word();
-        assert_eq!((w8 >> 8) & 0xFF, 100);
-        assert_eq!((w8 >> 16) & 0xFF, 0);
+        assert_eq!((w8 >> 8) & 0xFF, 8);
+        assert_eq!((w8 >> 16) & 0xFF, 92);
         assert_eq!(w8 & 0xFF, phase_mask(8, 0) as u32);
 
         // Advance commutation step via tick()
         assert!(motor.tick().await.is_ok());
         assert_eq!(motor.commutation_step(), 1);
         let w_step1 = motor.last_word();
-        assert_eq!((w_step1 >> 8) & 0xFF, 100);
+        assert_eq!((w_step1 >> 8) & 0xFF, 8);
+        assert_eq!((w_step1 >> 16) & 0xFF, 92);
         assert_eq!(w_step1 & 0xFF, phase_mask(8, 1) as u32);
 
         // Ramp up to full speed 100
@@ -1349,8 +1350,8 @@ fn test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm() {
         assert_eq!(motor.speed(), 100);
         assert_eq!(motor.duty_cycle(), 100);
         let w100 = motor.last_word();
-        assert_eq!((w100 >> 8) & 0xFF, 100);
-        assert_eq!((w100 >> 16) & 0xFF, 0);
+        assert_eq!((w100 >> 8) & 0xFF, 14);
+        assert_eq!((w100 >> 16) & 0xFF, 1);
 
         // Stop motor: duty cycle and mask go to 0
         assert!(motor.stop().is_ok());
@@ -1522,7 +1523,7 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
         // 2. Set speed to 50%
         assert!(motor.set_speed(MotorSpeed::new(50).unwrap()).is_ok());
         assert_eq!(motor.speed(), 50);
-        assert_eq!(motor.duty_cycle(), 100);
+        assert_eq!(motor.duty_cycle(), 50);
 
         // Advance through 18 commutation ticks (3 full 6-step electrical revolutions)
         let expected_forward_masks = [
@@ -1542,15 +1543,15 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
                 expected_step,
                 "Commutation step did not advance as expected on tick {tick_idx}"
             );
-            assert_eq!(motor.duty_cycle(), 100);
+            assert_eq!(motor.duty_cycle(), 50);
 
             let word = motor.last_word();
             let mask = (word & 0xFF) as u8;
             let on_count = ((word >> 8) & 0xFF) as u8;
             let off_count = ((word >> 16) & 0xFF) as u8;
 
-            assert_eq!(on_count, 100);
-            assert_eq!(off_count, 0);
+            assert_eq!(on_count, 14);
+            assert_eq!(off_count, 14);
             assert_eq!(mask, expected_forward_masks[expected_step as usize]);
             assert_eq!(mask, phase_mask(50, expected_step));
         }
@@ -1572,15 +1573,15 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
             let on_count = ((word >> 8) & 0xFF) as u8;
             let off_count = ((word >> 16) & 0xFF) as u8;
 
-            assert_eq!(on_count, 100);
-            assert_eq!(off_count, 0);
+            assert_eq!(on_count, 14);
+            assert_eq!(off_count, 1);
             assert_eq!(mask, expected_forward_masks[next_step as usize]);
         }
 
         // 4. Reverse rotation commutation sequence
         assert!(motor.set_speed(MotorSpeed::new(-75).unwrap()).is_ok());
         assert_eq!(motor.speed(), -75);
-        assert_eq!(motor.duty_cycle(), 100);
+        assert_eq!(motor.duty_cycle(), 75);
 
         let expected_reverse_masks = [
             0b011000, // Step 0: U Float, VL Low, WH High
@@ -1596,15 +1597,15 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
             let next_step = (current_step + 1) % (COMMUTATION_STEPS as u8);
             assert!(motor.tick().await.is_ok());
             assert_eq!(motor.commutation_step(), next_step);
-            assert_eq!(motor.duty_cycle(), 100);
+            assert_eq!(motor.duty_cycle(), 75);
 
             let word = motor.last_word();
             let mask = (word & 0xFF) as u8;
             let on_count = ((word >> 8) & 0xFF) as u8;
             let off_count = ((word >> 16) & 0xFF) as u8;
 
-            assert_eq!(on_count, 100);
-            assert_eq!(off_count, 0);
+            assert_eq!(on_count, 14);
+            assert_eq!(off_count, 5);
             assert_eq!(mask, expected_reverse_masks[next_step as usize]);
         }
 
@@ -1940,7 +1941,7 @@ fn test_worm_gliding_larva_522_pin_mapping_and_forward_commutation_progression()
             );
             assert_eq!(
                 word,
-                make_pwm_word(expected_masks[expected_step as usize], 100, 0),
+                make_pwm_word(expected_masks[expected_step as usize], 14, 1),
                 "PWM word mismatch at tick {tick}"
             );
 
@@ -2248,9 +2249,9 @@ fn test_worm_slithering_lumbricus_809_tmc6300_short_protection_pulse_invariants(
         // Command speed 10 (reproduction step)
         assert!(pio_motor.set_speed(MotorSpeed::new(10).unwrap()).is_ok());
         assert_eq!(pio_motor.speed(), 10);
-        assert_eq!(pio_motor.duty_cycle(), 100);
-        assert_eq!(pio_motor.effective_on_count(), 14);
-        assert_eq!(pio_motor.pulse_duration_ns(), 800);
+        assert_eq!(pio_motor.duty_cycle(), 10);
+        assert_eq!(pio_motor.effective_on_count(), 10);
+        assert_eq!(pio_motor.pulse_duration_ns(), 640);
 
         // Verify calculate_pwm_counts helper directly
         let (on10, off10) = peripheral::tmc6300::calculate_pwm_counts(10);

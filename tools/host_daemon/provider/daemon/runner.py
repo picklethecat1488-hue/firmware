@@ -51,6 +51,9 @@ class DaemonRunner:
         self.logs: Deque[Dict[str, Any]] = deque(maxlen=5000)
         self.cli_outputs: Deque[Dict[str, Any]] = deque(maxlen=5000)
         self.fs_outputs: Deque[Dict[str, Any]] = deque(maxlen=5000)
+        self._log_seq: int = 0
+        self._cli_seq: int = 0
+        self._fs_seq: int = 0
         self.command_history: List[str] = []
 
         self.rtt_process: Optional[subprocess.Popen] = None
@@ -262,33 +265,39 @@ class DaemonRunner:
 
     def log(self, message: str, level: str = "INFO", channel: str = "daemon") -> None:
         """Append a log message to the thread-safe log buffer."""
-        entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "level": level,
-            "channel": channel,
-            "message": message,
-        }
         with self._lock:
+            self._log_seq += 1
+            entry = {
+                "id": self._log_seq,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "level": level,
+                "channel": channel,
+                "message": message,
+            }
             self.logs.append(entry)
 
     def log_cli(self, message: str, is_input: bool = False) -> None:
         """Append a line to the CLI console output buffer."""
-        entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "is_input": is_input,
-            "text": message,
-        }
         with self._lock:
+            self._cli_seq += 1
+            entry = {
+                "id": self._cli_seq,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "is_input": is_input,
+                "text": message,
+            }
             self.cli_outputs.append(entry)
 
     def log_fs(self, message: str, is_input: bool = False) -> None:
         """Append a line to the FS console output buffer."""
-        entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "is_input": is_input,
-            "text": message,
-        }
         with self._lock:
+            self._fs_seq += 1
+            entry = {
+                "id": self._fs_seq,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "is_input": is_input,
+                "text": message,
+            }
             self.fs_outputs.append(entry)
 
     def set_mode(self, mode: str) -> None:

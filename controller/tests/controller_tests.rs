@@ -49,10 +49,17 @@ fn test_motor_controller_flow() {
         controller.tick_motor().await.unwrap();
         assert_eq!(controller.motor.speed, 100);
 
-        // Simulate stall (high current draw)
+        // Simulate stall (high current draw persisting for >= 3 samples)
         controller.current_sensor.current_ma = 900; // above 800mA threshold
         controller.bypass_startup_blanking();
-        controller.update(None).await.unwrap(); // triggers PowerOff -> state becomes Off
+        // Sample 1: throttles duty cycle, does not stop yet
+        controller.update(None).await.unwrap();
+        assert_eq!(controller.state(), MotorState::On);
+        // Sample 2: throttles duty cycle further, does not stop yet
+        controller.update(None).await.unwrap();
+        assert_eq!(controller.state(), MotorState::On);
+        // Sample 3: persistent overcurrent triggers emergency stall shutdown
+        controller.update(None).await.unwrap();
         assert_eq!(controller.state(), MotorState::Off);
         assert_eq!(controller.motor.speed, 0); // motor should be stopped
     });
@@ -1149,4 +1156,390 @@ fn test_worm_undulating_serpula_688_freewheeling_motor_without_hall_sensor_spins
         let _ = controller.update(None).await;
         assert_eq!(controller.state(), MotorState::On);
     });
+}
+
+#[test]
+fn test_motor_speed_proportional_duty_cycle_prevents_low_speed_overheating() {
+    futures::executor::block_on(async {
+        use peripheral::tmc6300::Tmc6300Pio;
+
+        struct MockInputPin;
+        impl embedded_hal::digital::ErrorType for MockInputPin {
+            type Error = core::convert::Infallible;
+        }
+        impl embedded_hal::digital::InputPin for MockInputPin {
+            fn is_high(&mut self) -> Result<bool, Self::Error> {
+                Ok(false)
+            }
+            fn is_low(&mut self) -> Result<bool, Self::Error> {
+                Ok(true)
+            }
+        }
+
+        let tmc = Tmc6300Pio::new(MockInputPin);
+        let sensor = MockCurrentSensor::new(100);
+        let speed_sensor = MockSpeedSensor::new(0);
+        let mut controller = MotorController::new(tmc, sensor, speed_sensor);
+
+        // 1. Command low speed (1%): duty cycle must be 1 (not forced 100) to prevent coil overheating
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(1).unwrap()), None)
+            .await;
+        assert_eq!(controller.state(), MotorState::On);
+        assert_eq!(controller.target_commutation_step_ticks(), 100);
+        assert_eq!(
+            controller.commutation_interval_ticks(),
+            100,
+            "Low speed startup must begin at gentle 100-tick interval (50 RPM)"
+        );
+        let tick1: Result<(), model::types::PeripheralError> = controller.tick_motor().await;
+        assert!(tick1.is_ok());
+        assert_eq!(controller.motor.duty_cycle(), 1);
+        assert_eq!(controller.motor.effective_on_count(), 7); // minimum safe pulse width 520ns
+
+        // 2. Command moderate speed (50%): active duty cycle is preserved at 1 (not reset to bare minimum)
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(50).unwrap()), None)
+            .await;
+        let tick2: Result<(), model::types::PeripheralError> = controller.tick_motor().await;
+        assert!(tick2.is_ok());
+        assert_eq!(
+            controller.motor.duty_cycle(),
+            1,
+            "Speed change on running motor must preserve active duty cycle"
+        );
+
+        // 3. Regulate duty cycle to 50%
+        controller.motor.set_duty_cycle(50).unwrap();
+        assert_eq!(controller.motor.duty_cycle(), 50);
+        assert_eq!(controller.motor.effective_on_count(), 14);
+
+        // 4. Command full speed (100%): active duty cycle is preserved at 50%
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(100).unwrap()), None)
+            .await;
+        let tick3: Result<(), model::types::PeripheralError> = controller.tick_motor().await;
+        assert!(tick3.is_ok());
+        assert_eq!(
+            controller.motor.duty_cycle(),
+            50,
+            "Active duty cycle must be preserved across speed transition to 100%"
+        );
+
+        // 5. Stop motor: duty cycle must clear to 0
+        controller.handle_command(MotorCommand::Stop, None).await;
+        assert_eq!(controller.state(), MotorState::Off);
+        assert_eq!(controller.motor.duty_cycle(), 0);
+    });
+}
+
+#[test]
+fn test_worm_flexible_woodlouse_713_speed_reset_preserves_active_duty_cycle() {
+    futures::executor::block_on(async {
+        use peripheral::tmc6300::Tmc6300Pio;
+
+        struct MockInputPin;
+        impl embedded_hal::digital::ErrorType for MockInputPin {
+            type Error = core::convert::Infallible;
+        }
+        impl embedded_hal::digital::InputPin for MockInputPin {
+            fn is_high(&mut self) -> Result<bool, Self::Error> {
+                Ok(false)
+            }
+            fn is_low(&mut self) -> Result<bool, Self::Error> {
+                Ok(true)
+            }
+        }
+
+        let tmc = Tmc6300Pio::new(MockInputPin);
+        let sensor = MockCurrentSensor::new(100);
+        let speed_sensor = MockSpeedSensor::new(0);
+        let mut controller = MotorController::new(tmc, sensor, speed_sensor);
+
+        // 1. Start motor at 1% speed
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(1).unwrap()), None)
+            .await;
+        controller.tick_motor().await.unwrap();
+        assert_eq!(controller.motor.duty_cycle(), 1);
+
+        // 2. Closed-loop or explicit regulation elevates duty cycle to 45%
+        controller.motor.set_duty_cycle(45).unwrap();
+        assert_eq!(controller.motor.duty_cycle(), 45);
+
+        // 3. Command speed 2: active duty cycle must be preserved at 45% (not reset to bare minimum 2%)
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(2).unwrap()), None)
+            .await;
+        controller.tick_motor().await.unwrap();
+        assert_eq!(
+            controller.motor.duty_cycle(),
+            45,
+            "Resetting speed on running motor must not wipe out regulated duty cycle"
+        );
+
+        // 4. Command speed 10: active duty cycle must still be preserved
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(10).unwrap()), None)
+            .await;
+        controller.tick_motor().await.unwrap();
+        assert_eq!(
+            controller.motor.duty_cycle(),
+            45,
+            "Speed change to 10% must preserve active duty cycle"
+        );
+
+        // 5. Stopping the motor clears duty cycle to 0
+        controller.handle_command(MotorCommand::Stop, None).await;
+        assert_eq!(controller.motor.duty_cycle(), 0);
+        assert_eq!(controller.state(), MotorState::Off);
+    });
+}
+
+#[test]
+fn test_motor_closed_loop_current_regulation_boosts_duty_under_500ma() {
+    futures::executor::block_on(async {
+        let motor = MockMotor::new();
+        let sensor = MockCurrentSensor::new(400); // Below 500 mA floor
+        let speed_sensor = MockSpeedSensor::new(3000);
+        let mut controller = MotorController::new(NoTick::new(motor), sensor, speed_sensor);
+
+        // Configure limits with 800 mA ceiling
+        controller.set_current_limits(15, 800);
+
+        // Start motor at 50% speed (initial duty cycle = 50)
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(50).unwrap()), None)
+            .await;
+        assert_eq!(controller.state(), MotorState::On);
+        controller.tick_motor().await.unwrap();
+        assert_eq!(controller.motor.duty_cycle(), 50);
+
+        // Update 1: current is 400 mA (< 500 mA floor), duty cycle should boost by 5%
+        controller.update(None).await.unwrap();
+        assert_eq!(controller.motor.duty_cycle(), 55);
+        assert_eq!(controller.consecutive_overcurrent_samples(), 0);
+        assert_eq!(controller.state(), MotorState::On);
+
+        // Update 2: still below floor, duty cycle boosts to 60%
+        controller.update(None).await.unwrap();
+        assert_eq!(controller.motor.duty_cycle(), 60);
+
+        // Rapidly advance duty cycle near max
+        let _ = controller.motor.set_duty_cycle(98);
+        controller.update(None).await.unwrap();
+        assert_eq!(controller.motor.duty_cycle(), 100);
+
+        // Clamps at 100%, does not overflow
+        controller.update(None).await.unwrap();
+        assert_eq!(controller.motor.duty_cycle(), 100);
+        assert_eq!(controller.state(), MotorState::On);
+    });
+}
+
+#[test]
+fn test_motor_closed_loop_current_regulation_throttles_duty_above_800ma() {
+    futures::executor::block_on(async {
+        let motor = MockMotor::new();
+        let sensor = MockCurrentSensor::new(850); // Above 800 mA ceiling
+        let speed_sensor = MockSpeedSensor::new(3000);
+        let mut controller = MotorController::new(NoTick::new(motor), sensor, speed_sensor);
+
+        controller.set_current_limits(15, 800);
+
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(50).unwrap()), None)
+            .await;
+        assert_eq!(controller.state(), MotorState::On);
+        controller.tick_motor().await.unwrap();
+        assert_eq!(controller.motor.duty_cycle(), 50);
+
+        // Update 1: current > ceiling, duty cycle throttled by 10% (50 -> 40)
+        controller.update(None).await.unwrap();
+        assert_eq!(controller.motor.duty_cycle(), 40);
+        assert_eq!(controller.consecutive_overcurrent_samples(), 1);
+        assert_eq!(controller.state(), MotorState::On);
+
+        // Update 2: persists > ceiling, duty cycle throttled to 30%
+        controller.update(None).await.unwrap();
+        assert_eq!(controller.motor.duty_cycle(), 30);
+        assert_eq!(controller.consecutive_overcurrent_samples(), 2);
+        assert_eq!(controller.state(), MotorState::On);
+
+        // Now simulate current dropping into normal operating band (500 mA)
+        controller.current_sensor.current_ma = 500;
+        controller.update(None).await.unwrap();
+        // Overcurrent counter resets to 0, duty cycle stays at 30 in deadband
+        assert_eq!(controller.consecutive_overcurrent_samples(), 0);
+        assert_eq!(controller.motor.duty_cycle(), 30);
+        assert_eq!(controller.state(), MotorState::On);
+    });
+}
+
+#[test]
+fn test_motor_stall_trips_only_after_persistent_overcurrent() {
+    futures::executor::block_on(async {
+        let motor = MockMotor::new();
+        let sensor = MockCurrentSensor::new(850); // Above 800 mA ceiling
+        let speed_sensor = MockSpeedSensor::new(3000);
+        let mut controller = MotorController::new(NoTick::new(motor), sensor, speed_sensor);
+
+        controller.set_current_limits(15, 800);
+
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(50).unwrap()), None)
+            .await;
+        assert_eq!(controller.state(), MotorState::On);
+        controller.tick_motor().await.unwrap();
+        controller.bypass_startup_blanking();
+
+        // Sample 1: overcurrent sample 1 -> throttled, not stopped
+        controller.update(None).await.unwrap();
+        assert_eq!(controller.consecutive_overcurrent_samples(), 1);
+        assert_eq!(controller.state(), MotorState::On);
+
+        // Sample 2: overcurrent sample 2 -> throttled, not stopped
+        controller.update(None).await.unwrap();
+        assert_eq!(controller.consecutive_overcurrent_samples(), 2);
+        assert_eq!(controller.state(), MotorState::On);
+
+        // Sample 3: persistent overcurrent (sample 3) -> trips stall shutdown!
+        controller.update(None).await.unwrap();
+        assert_eq!(controller.state(), MotorState::Off);
+        assert_eq!(controller.consecutive_overcurrent_samples(), 0);
+        assert_eq!(controller.motor.speed, 0);
+    });
+}
+
+#[test]
+fn test_worm_supple_segment_373_tight_500ma_regulation_prevents_overheating() {
+    futures::executor::block_on(async {
+        let motor = MockMotor::new();
+        // Simulate 740 mA current draw (the exact current observed in WORM-SUPPLE-SEGMENT-373 before DIAG trip)
+        let sensor = MockCurrentSensor::new(740);
+        let speed_sensor = MockSpeedSensor::new(2000);
+        let mut controller = MotorController::new(NoTick::new(motor), sensor, speed_sensor);
+
+        controller.set_current_limits(15, 800);
+
+        // Command speed 25 (as in WORM-SUPPLE-SEGMENT-373)
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(25).unwrap()), None)
+            .await;
+        assert_eq!(controller.state(), MotorState::On);
+        controller.tick_motor().await.unwrap();
+        assert_eq!(controller.motor.duty_cycle(), 25);
+
+        // In the prior code, 740 mA was below the 800 mA ceiling, so duty cycle was never throttled,
+        // running continuously at ~760 mA for 240s and tripping thermal DIAG shutdown.
+        // With tight regulation (ceiling 550 mA), 740 mA > 550 mA actively throttles duty cycle down.
+        controller.update(None).await.unwrap();
+        assert_eq!(controller.motor.duty_cycle(), 20); // 25 -> 20 (-5%)
+        assert_eq!(controller.consecutive_overcurrent_samples(), 0); // Not a stall fault (>800mA)
+
+        controller.update(None).await.unwrap();
+        assert_eq!(controller.motor.duty_cycle(), 15); // 20 -> 15 (-5%)
+
+        // Now current stabilizes in target operating band (450..=550 mA)
+        controller.current_sensor.current_ma = 490;
+        controller.update(None).await.unwrap();
+        // Duty cycle stays at 15% in normal operating band
+        assert_eq!(controller.motor.duty_cycle(), 15);
+        assert_eq!(controller.state(), MotorState::On);
+    });
+}
+
+#[test]
+fn test_worm_subterranean_earthworm_231_start_at_50_speed_begins_with_breakaway_alignment() {
+    futures::executor::block_on(async {
+        use model::types::MotorConfig;
+
+        let motor = MockTickableMotor::new();
+        let sensor = MockCurrentSensor::new(200);
+        let speed_sensor = MockSpeedSensor::new(0);
+        let mut controller = MotorController::new(motor, sensor, speed_sensor);
+
+        // Configure target board motor parameters from board.toml
+        let config = MotorConfig {
+            startup_blanking_ticks: 50,
+            default_max_current_ma: 800,
+            startup_commutation_step_ticks: 100,
+            commutation_speed_divisor: 200,
+            min_commutation_step_ticks: 2,
+            max_commutation_step_ticks: 200,
+        };
+        controller.set_config(config);
+
+        // Command speed 50% from standstill (as in WORM-SUBTERRANEAN-EARTHWORM-231)
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(50).unwrap()), None)
+            .await;
+        assert_eq!(controller.state(), MotorState::On);
+        assert_eq!(controller.motor_telemetry().speed.get(), 50);
+
+        // Breakaway alignment must start at 100 ticks (50 RPM) rather than jumping to 500 RPM,
+        // allowing stationary rotor to align with stator field without pole-slipping.
+        assert_eq!(
+            controller.commutation_interval_ticks(),
+            100,
+            "Initial start at speed 50 must begin at startup breakaway interval (100 ticks)"
+        );
+        // Target interval is 4 ticks (200 / 50 = 4 ticks = 1,250 RPM)
+        assert_eq!(controller.target_commutation_step_ticks(), 4);
+        assert!(controller.in_startup_ramp());
+
+        // Step through soft-start ramp until reaching target interval
+        let mut steps = 0;
+        while controller.in_startup_ramp() && steps < 10_000 {
+            assert!(controller.tick_motor().await.is_ok());
+            steps += 1;
+        }
+
+        assert_eq!(controller.commutation_interval_ticks(), 4);
+        assert!(!controller.in_startup_ramp());
+        assert_eq!(controller.state(), MotorState::On);
+    });
+}
+
+#[test]
+fn test_worm_silken_tubeworm_979_and_round_polychaete_84_smooth_speed_scaling_prevents_stall() {
+    use model::types::MotorConfig;
+
+    let config = MotorConfig {
+        startup_blanking_ticks: 50,
+        default_max_current_ma: 800,
+        startup_commutation_step_ticks: 100,
+        commutation_speed_divisor: 200,
+        min_commutation_step_ticks: 2,
+        max_commutation_step_ticks: 200,
+    };
+
+    // Verify speed 35 (WORM-SILKEN-TUBEWORM-979) scales to 5 ticks (1,000 RPM)
+    assert_eq!(config.calculate_commutation_step_ticks(35), 5);
+
+    // Verify speed 50 (WORM-ROUND-POLYCHAETE-84) scales to 4 ticks (1,250 RPM)
+    assert_eq!(config.calculate_commutation_step_ticks(50), 4);
+
+    // Verify speed 51 steps smoothly to 3 ticks (1,666 RPM) without jumping to 1 tick (5,000 RPM)
+    assert_eq!(config.calculate_commutation_step_ticks(51), 3);
+
+    // Verify speed 100 scales to 2 ticks (2,500 RPM)
+    assert_eq!(config.calculate_commutation_step_ticks(100), 2);
+
+    // Verify that across all speeds 1..=100:
+    // 1. Ticks is never less than min_commutation_step_ticks (2 ticks)
+    // 2. Ticks is monotonically non-increasing
+    let mut prev_ticks = u32::MAX;
+    for speed in 1..=100 {
+        let ticks = config.calculate_commutation_step_ticks(speed);
+        assert!(
+            ticks >= 2,
+            "Ticks at speed {speed} must be >= 2 (got {ticks}) to prevent 5,000 RPM stall"
+        );
+        assert!(
+            ticks <= prev_ticks,
+            "Ticks at speed {speed} ({ticks}) must be <= previous ticks ({prev_ticks})"
+        );
+        prev_ticks = ticks;
+    }
 }

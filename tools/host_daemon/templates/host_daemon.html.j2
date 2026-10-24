@@ -1361,6 +1361,9 @@
       lastLogCount = 0;
       lastCliCount = 0;
       lastFsCount = 0;
+      lastLogId = 0;
+      lastCliId = 0;
+      lastFsId = 0;
       const logView = document.getElementById("logView");
       if (logView) logView.innerHTML = "";
       const cliView = document.getElementById("cliView");
@@ -1617,6 +1620,9 @@
     let lastLogCount = 0;
     let lastCliCount = 0;
     let lastFsCount = 0;
+    let lastLogId = 0;
+    let lastCliId = 0;
+    let lastFsId = 0;
 
     function isSelectionInside(element) {
       if (!element) return false;
@@ -1786,27 +1792,41 @@
         if (logResp.ok) {
           const logs = await logResp.json();
           const logView = document.getElementById("logView");
-          if (logView && !isSelectionInside(logView)) {
-            if (logs.length < lastLogCount || lastLogCount === 0) {
-              logView.innerHTML = "";
-              logs.forEach(l => {
-                const d = document.createElement("div");
-                d.className = `log-line log-line-${l.level.toLowerCase()}`;
-                d.innerHTML = ansiToHtml(`[${l.channel}] ${l.message}`);
-                logView.appendChild(d);
-              });
-              lastLogCount = logs.length;
-              logView.scrollTop = logView.scrollHeight;
-            } else if (logs.length > lastLogCount) {
-              const newLogs = logs.slice(lastLogCount);
-              newLogs.forEach(l => {
-                const d = document.createElement("div");
-                d.className = `log-line log-line-${l.level.toLowerCase()}`;
-                d.innerHTML = ansiToHtml(`[${l.channel}] ${l.message}`);
-                logView.appendChild(d);
-              });
-              lastLogCount = logs.length;
-              logView.scrollTop = logView.scrollHeight;
+          if (logView && !isSelectionInside(logView) && Array.isArray(logs)) {
+            if (logs.length === 0) {
+              if (lastLogId !== 0) {
+                logView.innerHTML = "";
+                lastLogId = 0;
+                lastLogCount = 0;
+              }
+            } else {
+              const firstId = logs[0].id ?? 0;
+              const lastItem = logs[logs.length - 1];
+              const lastId = lastItem.id ?? logs.length;
+
+              if (lastLogId === 0 || firstId > lastLogId) {
+                logView.innerHTML = "";
+                logs.forEach(l => {
+                  const d = document.createElement("div");
+                  d.className = `log-line log-line-${(l.level || 'info').toLowerCase()}`;
+                  d.innerHTML = ansiToHtml(`[${l.channel}] ${l.message}`);
+                  logView.appendChild(d);
+                });
+                lastLogId = lastId;
+                lastLogCount = logs.length;
+                logView.scrollTop = logView.scrollHeight;
+              } else if (lastId > lastLogId) {
+                const newLogs = logs.filter(l => (l.id ?? 0) > lastLogId);
+                newLogs.forEach(l => {
+                  const d = document.createElement("div");
+                  d.className = `log-line log-line-${(l.level || 'info').toLowerCase()}`;
+                  d.innerHTML = ansiToHtml(`[${l.channel}] ${l.message}`);
+                  logView.appendChild(d);
+                });
+                lastLogId = lastId;
+                lastLogCount = logs.length;
+                logView.scrollTop = logView.scrollHeight;
+              }
             }
           }
         }
@@ -1815,27 +1835,41 @@
         if (cliResp.ok) {
           const lines = await cliResp.json();
           const cliView = document.getElementById("cliView");
-          if (cliView && !isSelectionInside(cliView)) {
-            if (lines.length < lastCliCount || lastCliCount === 0) {
-              cliView.innerHTML = "";
-              lines.forEach(line => {
-                const d = document.createElement("div");
-                d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
-                d.innerHTML = ansiToHtml(line.text);
-                cliView.appendChild(d);
-              });
-              lastCliCount = lines.length;
-              cliView.scrollTop = cliView.scrollHeight;
-            } else if (lines.length > lastCliCount) {
-              const newLines = lines.slice(lastCliCount);
-              newLines.forEach(line => {
-                const d = document.createElement("div");
-                d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
-                d.innerHTML = ansiToHtml(line.text);
-                cliView.appendChild(d);
-              });
-              lastCliCount = lines.length;
-              cliView.scrollTop = cliView.scrollHeight;
+          if (cliView && !isSelectionInside(cliView) && Array.isArray(lines)) {
+            if (lines.length === 0) {
+              if (lastCliId !== 0) {
+                cliView.innerHTML = "";
+                lastCliId = 0;
+                lastCliCount = 0;
+              }
+            } else {
+              const firstId = lines[0].id ?? 0;
+              const lastItem = lines[lines.length - 1];
+              const lastId = lastItem.id ?? lines.length;
+
+              if (lastCliId === 0 || firstId > lastCliId) {
+                cliView.innerHTML = "";
+                lines.forEach(line => {
+                  const d = document.createElement("div");
+                  d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+                  d.innerHTML = ansiToHtml(line.text);
+                  cliView.appendChild(d);
+                });
+                lastCliId = lastId;
+                lastCliCount = lines.length;
+                cliView.scrollTop = cliView.scrollHeight;
+              } else if (lastId > lastCliId) {
+                const newLines = lines.filter(line => (line.id ?? 0) > lastCliId);
+                newLines.forEach(line => {
+                  const d = document.createElement("div");
+                  d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+                  d.innerHTML = ansiToHtml(line.text);
+                  cliView.appendChild(d);
+                });
+                lastCliId = lastId;
+                lastCliCount = lines.length;
+                cliView.scrollTop = cliView.scrollHeight;
+              }
             }
           }
         }
@@ -1844,27 +1878,41 @@
         if (fsResp.ok) {
           const lines = await fsResp.json();
           const fsView = document.getElementById("fsView");
-          if (fsView && !isSelectionInside(fsView)) {
-            if (lines.length < lastFsCount || lastFsCount === 0) {
-              fsView.innerHTML = "";
-              lines.forEach(line => {
-                const d = document.createElement("div");
-                d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
-                d.innerHTML = ansiToHtml(line.text);
-                fsView.appendChild(d);
-              });
-              lastFsCount = lines.length;
-              fsView.scrollTop = fsView.scrollHeight;
-            } else if (lines.length > lastFsCount) {
-              const newLines = lines.slice(lastFsCount);
-              newLines.forEach(line => {
-                const d = document.createElement("div");
-                d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
-                d.innerHTML = ansiToHtml(line.text);
-                fsView.appendChild(d);
-              });
-              lastFsCount = lines.length;
-              fsView.scrollTop = fsView.scrollHeight;
+          if (fsView && !isSelectionInside(fsView) && Array.isArray(lines)) {
+            if (lines.length === 0) {
+              if (lastFsId !== 0) {
+                fsView.innerHTML = "";
+                lastFsId = 0;
+                lastFsCount = 0;
+              }
+            } else {
+              const firstId = lines[0].id ?? 0;
+              const lastItem = lines[lines.length - 1];
+              const lastId = lastItem.id ?? lines.length;
+
+              if (lastFsId === 0 || firstId > lastFsId) {
+                fsView.innerHTML = "";
+                lines.forEach(line => {
+                  const d = document.createElement("div");
+                  d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+                  d.innerHTML = ansiToHtml(line.text);
+                  fsView.appendChild(d);
+                });
+                lastFsId = lastId;
+                lastFsCount = lines.length;
+                fsView.scrollTop = fsView.scrollHeight;
+              } else if (lastId > lastFsId) {
+                const newLines = lines.filter(line => (line.id ?? 0) > lastFsId);
+                newLines.forEach(line => {
+                  const d = document.createElement("div");
+                  d.className = line.is_input ? "log-line cli-line-input" : "log-line cli-line-output";
+                  d.innerHTML = ansiToHtml(line.text);
+                  fsView.appendChild(d);
+                });
+                lastFsId = lastId;
+                lastFsCount = lines.length;
+                fsView.scrollTop = fsView.scrollHeight;
+              }
             }
           }
         }

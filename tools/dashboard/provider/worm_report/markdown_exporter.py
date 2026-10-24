@@ -75,7 +75,11 @@ class MarkdownWormExporter:
             output_path.write_text(md_text, encoding="utf-8")
         else:
             try:
-                if output_path.read_text(encoding="utf-8") != md_text:
+                existing_text = output_path.read_text(encoding="utf-8")
+                # Elide rewrite if content is identical (ignoring volatile Report Date header)
+                content_existing = re.sub(r"\|\s*\*\*Report Date\*\*\s*\|\s*`[^`]+`\s*\|", "", existing_text)
+                content_new = re.sub(r"\|\s*\*\*Report Date\*\*\s*\|\s*`[^`]+`\s*\|", "", md_text)
+                if content_existing != content_new:
                     output_path.write_text(md_text, encoding="utf-8")
             except OSError:
                 output_path.write_text(md_text, encoding="utf-8")

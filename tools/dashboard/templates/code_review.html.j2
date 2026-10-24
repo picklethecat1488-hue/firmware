@@ -1681,7 +1681,12 @@
       <div class="pane-header">
         <div class="pane-title-row">
           <span id="filesCountHeader">Changed Files (0)</span>
-          <button class="quake-btn quake-btn-default" style="padding: 2px 6px;" onclick="togglePane('files')" title="Collapse Pane (Shortcut: ])">◀</button>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <label style="font-size: 10px; color: var(--quake-text-dim); display: flex; align-items: center; gap: 3px; cursor: pointer; user-select: none;" title="Hide attachments in code review">
+              <input type="checkbox" id="hideAttachmentsCb" checked onchange="renderFilesList()"> Hide Attachments
+            </label>
+            <button class="quake-btn quake-btn-default" style="padding: 2px 6px;" onclick="togglePane('files')" title="Collapse Pane (Shortcut: ])">◀</button>
+          </div>
         </div>
         <input type="text" id="fileSearchInput" placeholder="Filter files by name..." oninput="filterFiles()">
       </div>
@@ -2350,12 +2355,20 @@
         `).join("");
         return;
       }
-      document.getElementById("filesCountHeader").innerText = `Changed Files (${state.files.length})`;
+      const hideAttachments = document.getElementById("hideAttachmentsCb") ? document.getElementById("hideAttachmentsCb").checked : true;
+      const visibleFiles = state.files.filter(f => {
+        if (hideAttachments && (f.path.startsWith('attachments/') || f.path.startsWith('target/attachments/') || f.path.startsWith('build/attachments/') || f.path.startsWith('feedback/attachments/'))) {
+          return false;
+        }
+        return true;
+      });
+
+      document.getElementById("filesCountHeader").innerText = `Changed Files (${visibleFiles.length})`;
       listEl.innerHTML = "";
 
       const filter = (document.getElementById("fileSearchInput").value || "").toLowerCase();
 
-      state.files.forEach(f => {
+      visibleFiles.forEach(f => {
         if (filter && !f.path.toLowerCase().includes(filter)) return;
 
         const comments = (state.session?.comments || []).filter(c => c.file_path === f.path);

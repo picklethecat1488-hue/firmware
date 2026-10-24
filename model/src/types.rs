@@ -141,50 +141,86 @@ impl TryFrom<i8> for MotorSpeed {
     }
 }
 
+/// Physical characteristics and specifications of the motor.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub struct MotorInfo {
+    /// Number of magnetic pole pairs (9N12P = 6 pole pairs).
+    pub pole_pairs: u8,
+    /// Number of 6-step commutation steps per mechanical revolution (6 pole pairs * 6 steps = 36 steps).
+    pub commutation_steps_per_rev: u32,
+    /// Motor torque constant Kt in micro-Newton-meters per Ampere (682 µN·m/A = 0.682 µN·m/mA).
+    pub kt_unm_per_a: u32,
+    /// Motor phase winding inductance in microhenries (10 µH).
+    pub phase_inductance_uh: u32,
+    /// Nominal motor bus voltage in millivolts (4000 mV = 4.0 V for 1S battery / VBUS).
+    pub nominal_voltage_mv: u32,
+}
+
+impl Default for MotorInfo {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl MotorInfo {
+    /// Canonical default motor specifications for the BetaFPV 1102 motor.
+    pub const DEFAULT: Self = Self {
+        pole_pairs: 6,
+        commutation_steps_per_rev: 36,
+        kt_unm_per_a: 682,
+        phase_inductance_uh: 10,
+        nominal_voltage_mv: 4000,
+    };
+}
+
+/// Canonical default motor info specifications.
+pub const MOTOR_INFO: MotorInfo = MotorInfo::DEFAULT;
+
 /// Number of magnetic pole pairs for the BetaFPV 1102 brushless motor (9N12P = 6 pole pairs).
-pub const MOTOR_POLE_PAIRS: u8 = 6;
+pub const MOTOR_POLE_PAIRS: u8 = MOTOR_INFO.pole_pairs;
 /// Number of 6-step commutation steps per mechanical revolution (6 pole pairs * 6 steps = 36 steps).
-pub const MOTOR_COMMUTATION_STEPS_PER_REV: u32 = (MOTOR_POLE_PAIRS as u32) * 6;
+pub const MOTOR_COMMUTATION_STEPS_PER_REV: u32 = MOTOR_INFO.commutation_steps_per_rev;
 /// Motor torque constant Kt in micro-Newton-meters per Ampere (682 µN·m/A = 0.682 µN·m/mA).
-pub const MOTOR_KT_UNM_PER_A: u32 = 682;
+pub const MOTOR_KT_UNM_PER_A: u32 = MOTOR_INFO.kt_unm_per_a;
 /// Motor phase winding inductance in microhenries (10 µH).
-pub const MOTOR_PHASE_INDUCTANCE_UH: u32 = 10;
+pub const MOTOR_PHASE_INDUCTANCE_UH: u32 = MOTOR_INFO.phase_inductance_uh;
 /// Nominal motor bus voltage in millivolts (4000 mV = 4.0 V for 1S battery / VBUS).
-pub const MOTOR_NOMINAL_VOLTAGE_MV: u32 = 4000;
+pub const MOTOR_NOMINAL_VOLTAGE_MV: u32 = MOTOR_INFO.nominal_voltage_mv;
 
 /// Calculates the modeled/estimated rotational speed in mechanical RPM from the commutation step period in microseconds.
 ///
-/// Formula: RPM = (60 * 1,000,000) / (36 * step_period_us) = 5,000,000 / (3 * step_period_us).
+/// Formula: RPM = (60 * 1,000,000) / (commutation_steps_per_rev * step_period_us).
 pub const fn calculate_estimated_rpm(step_period_us: u32) -> u32 {
     if step_period_us == 0 {
         0
     } else {
-        5_000_000 / (3 * step_period_us)
+        (60 * 1_000_000) / (MOTOR_INFO.commutation_steps_per_rev * step_period_us)
     }
 }
 
 /// Calculates the modeled electromagnetic torque in micro-Newton-meters (µN·m) from the measured current in mA.
 ///
-/// Formula: τ = Kt * I = (682 µN·m/A * I_mA) / 1000 = (682 * I_mA) / 1000.
+/// Formula: τ = Kt * I = (kt_unm_per_a * I_mA) / 1000.
 pub const fn calculate_modeled_torque_unm(current_ma: i32) -> u32 {
     if current_ma <= 0 {
         0
     } else {
-        ((current_ma as u64 * (MOTOR_KT_UNM_PER_A as u64)) / 1000) as u32
+        ((current_ma as u64 * (MOTOR_INFO.kt_unm_per_a as u64)) / 1000) as u32
     }
 }
 
 /// Calculates the modeled peak switching current in mA given average DC current and PWM ON-time in nanoseconds.
 ///
-/// Formula: ΔI_ripple = (V_bus / L) * t_on = (4000 mV / 10 µH) * t_on_ns / 1,000,000.
+/// Formula: ΔI_ripple = (nominal_voltage_mv / phase_inductance_uh) * t_on_ns / 1,000,000.
 /// In CCM: I_peak = I_avg + ΔI_ripple / 2.
 /// In DCM: I_peak = max(I_avg + ΔI_ripple / 2, ΔI_ripple).
 pub const fn calculate_modeled_peak_current_ma(current_ma: i32, on_time_ns: u32) -> i32 {
     if on_time_ns == 0 {
         0
     } else {
-        let ripple_ma = ((MOTOR_NOMINAL_VOLTAGE_MV as u64 * on_time_ns as u64)
-            / ((MOTOR_PHASE_INDUCTANCE_UH as u64) * 1000)) as i32;
+        let ripple_ma = ((MOTOR_INFO.nominal_voltage_mv as u64 * on_time_ns as u64)
+            / ((MOTOR_INFO.phase_inductance_uh as u64) * 1000)) as i32;
         let ccm_peak = current_ma.saturating_add(ripple_ma / 2);
         if ccm_peak > ripple_ma {
             ccm_peak

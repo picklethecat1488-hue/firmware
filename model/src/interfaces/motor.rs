@@ -14,4 +14,15 @@ pub trait Motor {
 
     /// Stops the motor completely.
     fn stop(&mut self) -> Result<(), Self::Error>;
+
+    /// Sets the motor PWM duty cycle percentage (0..=100).
+    fn set_duty_cycle(&mut self, duty_cycle: u8) -> Result<(), Self::Error> {
+        let _ = duty_cycle;
+        Ok(())
+    }
+
+    /// Returns the active motor PWM duty cycle percentage (0..=100).
+    fn duty_cycle(&self) -> u8 {
+        100
+    }
 }

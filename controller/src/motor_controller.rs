@@ -44,6 +44,18 @@ pub const MAX_COMMUTATION_STEP_TICKS: u32 = MotorConfig::DEFAULT.max_commutation
 /// Default physical maximum RPM for the freewheeling motor at 100% speed.
 pub const DEFAULT_MAX_RPM: u32 = peripheral::tmc6300::TARGET_FREEWHEELING_MAX_RPM;
 
+/// Target closed-loop operating current floor in milliamperes (450 mA).
+pub const CLOSED_LOOP_CURRENT_FLOOR_MA: i32 = 450;
+
+/// Target closed-loop operating current regulation ceiling in milliamperes (550 mA).
+pub const CLOSED_LOOP_REGULATION_CEILING_MA: i32 = 550;
+
+/// Target closed-loop maximum current ceiling in milliamperes (800 mA).
+pub const CLOSED_LOOP_CURRENT_CEILING_MA: i32 = 800;
+
+/// Minimum safe PWM duty cycle percentage to maintain driver operation.
+pub const MIN_SAFE_DUTY_CYCLE: u8 = 10;
+
 /// Computes the target commutation step interval in controller ticks for a given commanded speed percentage (1..=100).
 #[cfg_attr(
     all(target_arch = "arm", feature = "motor-core"),
@@ -111,6 +123,8 @@ pub struct MotorController<M, C, S> {
     config: MotorConfig,
     /// Indicates whether the motor is actively in its startup breakaway torque and deceleration ramp.
     in_startup_ramp: bool,
+    /// Tracks consecutive overcurrent samples observed during closed-loop regulation.
+    consecutive_overcurrent_samples: u8,
 }
 
 /// The filename of the motor calibration file.
@@ -241,6 +255,7 @@ where
             commutation_interval_ticks: 0,
             config,
             in_startup_ramp: false,
+            consecutive_overcurrent_samples: 0,
         }
     }
 
@@ -251,7 +266,15 @@ where
 
     /// Updates the active [`MotorConfig`].
     pub fn set_config(&mut self, config: MotorConfig) {
+        self.limits.max_current_ma = config
+            .default_max_current_ma
+            .min(self.max_hardware_current_ma);
         self.config = config;
+    }
+
+    /// Returns the number of consecutive overcurrent samples observed during closed-loop regulation.
+    pub fn consecutive_overcurrent_samples(&self) -> u8 {
+        self.consecutive_overcurrent_samples
     }
 
     /// Gets the current operating state of the motor.
@@ -405,6 +428,64 @@ where
         Ok(current)
     }
 
+    /// Regulates the motor PWM duty cycle using closed-loop current feedback:
+    /// - Dynamically boosts duty cycle toward 100% when current is below [`CLOSED_LOOP_CURRENT_FLOOR_MA`] (450 mA).
+    /// - Actively throttles duty cycle downward when current exceeds [`CLOSED_LOOP_REGULATION_CEILING_MA`] (550 mA) to prevent thermal overload.
+    /// - Throttles faster and tracks consecutive overcurrent samples when current exceeds the configured emergency stall ceiling (`max_current_ma` / 800 mA).
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    #[tracing::instrument(core1 = "core1", level = "trace")]
+    pub fn regulate_current_closed_loop(&mut self, current_ma: i32) {
+        if self.state != MotorState::On || self.speed == MotorSpeed::ZERO {
+            self.consecutive_overcurrent_samples = 0;
+        } else {
+            let hard_ceiling = self.limits.max_current_ma;
+            let reg_ceiling = CLOSED_LOOP_REGULATION_CEILING_MA;
+            let floor = CLOSED_LOOP_CURRENT_FLOOR_MA;
+
+            if current_ma > hard_ceiling {
+                self.consecutive_overcurrent_samples =
+                    self.consecutive_overcurrent_samples.saturating_add(1);
+                let current_duty = self.motor.duty_cycle();
+                let new_duty = current_duty.saturating_sub(10).max(MIN_SAFE_DUTY_CYCLE);
+                if new_duty != current_duty {
+                    let _ = self.motor.set_duty_cycle(new_duty);
+                    #[cfg(all(target_arch = "arm", target_os = "none"))]
+                    defmt::warn!(
+                        "Current {} mA > hard ceiling {} mA, throttling duty cycle to {}%",
+                        current_ma,
+                        hard_ceiling,
+                        new_duty
+                    );
+                }
+            } else {
+                self.consecutive_overcurrent_samples = 0;
+                if current_ma > reg_ceiling {
+                    let current_duty = self.motor.duty_cycle();
+                    let new_duty = current_duty.saturating_sub(5).max(MIN_SAFE_DUTY_CYCLE);
+                    if new_duty != current_duty {
+                        let _ = self.motor.set_duty_cycle(new_duty);
+                        #[cfg(all(target_arch = "arm", target_os = "none"))]
+                        defmt::info!(
+                            "Current {} mA > regulation ceiling {} mA, throttling duty cycle to {}%",
+                            current_ma,
+                            reg_ceiling,
+                            new_duty
+                        );
+                    }
+                } else if current_ma < floor {
+                    let current_duty = self.motor.duty_cycle();
+                    if current_duty < 100 {
+                        let new_duty = current_duty.saturating_add(5).min(100);
+                        let _ = self.motor.set_duty_cycle(new_duty);
+                    }
+                }
+            }
+        }
+    }
+
     /// Ticks the control loop, reading current sensor input and updating safety states.
     #[cfg_attr(
         all(target_arch = "arm", feature = "motor-core"),
@@ -434,6 +515,11 @@ where
             self.last_measured_rpm = rpm;
         }
 
+        // Closed-loop current regulation when running
+        if is_running {
+            self.regulate_current_closed_loop(current);
+        }
+
         // If the motor is running, verify safety limits (RPM and load torque)
         if !self.safety_bypass
             && self.state == MotorState::On
@@ -460,13 +546,17 @@ where
                     );
                 }
                 MotorSafetyStatus::Stall(_current_val) => {
-                    self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut())
-                        .await;
-                    #[cfg(all(target_arch = "arm", target_os = "none"))]
-                    defmt::error!(
-                        "Motor stall detected (current: {} mA). Stopped motor.",
-                        _current_val
-                    );
+                    // Trigger emergency stall shutdown only if overcurrent persists after throttling
+                    if self.consecutive_overcurrent_samples >= 3 {
+                        self.handle_command(MotorCommand::Stop, telemetry_client.as_deref_mut())
+                            .await;
+                        #[cfg(all(target_arch = "arm", target_os = "none"))]
+                        defmt::error!(
+                            "Motor stall detected (current: {} mA persists > limit {} mA). Stopped motor.",
+                            _current_val,
+                            self.limits.max_current_ma
+                        );
+                    }
                 }
                 MotorSafetyStatus::Ok => {
                     // Physical stall check via Hall sensor is disabled while Hall sensor support is temporarily removed [WORM-UNDULATING-SERPULA-688]
@@ -496,7 +586,14 @@ where
             if self.state == MotorState::Off {
                 self.startup_ticks = 0;
                 self.in_startup_ramp = true;
-                self.commutation_interval_ticks = self.config.startup_commutation_step_ticks;
+                self.consecutive_overcurrent_samples = 0;
+                let target_interval = self
+                    .config
+                    .calculate_commutation_step_ticks(self.speed.get().unsigned_abs());
+                self.commutation_interval_ticks = self
+                    .config
+                    .startup_commutation_step_ticks
+                    .max(target_interval);
                 self.step_tick_counter = 0;
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 defmt::info!("Starting motor...");
@@ -513,6 +610,7 @@ where
             }
             self.state = MotorState::Off;
             self.in_startup_ramp = false;
+            self.consecutive_overcurrent_samples = 0;
             self.active_speed = MotorSpeed::ZERO;
             self.speed = MotorSpeed::ZERO;
             self.last_measured_rpm = 0;
@@ -554,12 +652,12 @@ where
                             "Warning, calibration is not present! Running with fallback limits."
                         );
                     }
+                    self.speed = speed;
                     if let Err(e) = self.set_running_state(true).await {
                         if let Some(ref client) = telemetry_client {
                             client.report_error(e);
                         }
                     }
-                    self.speed = speed;
                 } else {
                     self.speed = MotorSpeed::ZERO;
                     self.active_speed = MotorSpeed::ZERO;
@@ -675,6 +773,7 @@ where
             self.startup_ticks = self.startup_ticks.saturating_add(1);
             let effective_speed = speed;
             if active_speed != effective_speed {
+                let prior_duty = self.motor.duty_cycle();
                 active_speed = effective_speed;
                 self.active_speed = active_speed;
                 if active_speed == MotorSpeed::ZERO && speed == MotorSpeed::ZERO {
@@ -687,6 +786,8 @@ where
                 } else if let Err(e) = self.motor.set_speed(active_speed) {
                     let _ = self.set_running_state(false).await;
                     tick_result = Err(e.to_peripheral_error());
+                } else if prior_duty > 0 {
+                    let _ = self.motor.set_duty_cycle(prior_duty);
                 }
             }
         } else if active_speed.get() != 0 {
