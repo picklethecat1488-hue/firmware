@@ -18,6 +18,8 @@ def test_worm_subterranean_wireworm_439_duty_cycle_scaling_algorithm():
     clk_divider = 5
     cycle_period_ns = (clk_divider * 1_000_000_000) / sys_clk_hz  # 40 ns
 
+    min_off_count = 4
+
     def calculate_pwm_counts(duty_cycle: int):
         if duty_cycle == 0:
             return 0, 100
@@ -30,7 +32,7 @@ def test_worm_subterranean_wireworm_439_duty_cycle_scaling_algorithm():
         on = max_on_count
         duty = min(duty_cycle, 100)
         off = ((100 - duty) * on + (duty // 2)) // duty
-        off = 1 if off == 0 else off
+        off = min_off_count if off < min_off_count else off
         return on, off
 
     # 1. Verify 0% duty cycle
@@ -53,9 +55,9 @@ def test_worm_subterranean_wireworm_439_duty_cycle_scaling_algorithm():
     # 4. Verify 100% duty cycle
     on100, off100 = calculate_pwm_counts(100)
     assert on100 == 14
-    assert off100 == 1
+    assert off100 == 4
     effective_duty_100 = on100 / (on100 + off100)
-    assert effective_duty_100 > 0.90, f"Expected >90% duty cycle at 100% speed, got {effective_duty_100:.2%}"
+    assert effective_duty_100 >= 0.70, f"Expected >=70% duty cycle at 100% speed, got {effective_duty_100:.2%}"
 
     # 5. Across all duty cycles 1..=100:
     for duty in range(1, 101):
@@ -63,5 +65,5 @@ def test_worm_subterranean_wireworm_439_duty_cycle_scaling_algorithm():
         # Pulse duration must stay strictly in [500 ns, 800 ns]
         pulse_ns = (on + 6) * cycle_period_ns
         assert 500 <= pulse_ns <= 800, f"Duty {duty}% pulse {pulse_ns} ns outside [500, 800] ns"
-        # Off count must be >= 1 cycle to prevent pure DC and reset comparator
-        assert off >= 1, f"Duty {duty}% off_count must be >= 1, got {off}"
+        # Off count must be >= min_off_count cycles to reset comparator and prevent thermal/short DIAG trip
+        assert off >= min_off_count, f"Duty {duty}% off_count must be >= {min_off_count}, got {off}"

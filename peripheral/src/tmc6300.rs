@@ -111,11 +111,17 @@ pub const fn clamp_on_count_short_protection(duty_cycle: u8) -> u8 {
     }
 }
 
+/// Minimum PIO off_count loop cycles ensuring TMC6300 FETs fully turn off and the
+/// short-circuit detection comparator resets between pulses without tripping DIAG.
+///
+/// Total OFF cycles = off_count + 3 overhead instructions: (4 + 3) * 40 ns = 280 ns.
+pub const SHORT_PROTECTION_MIN_OFF_COUNT: u8 = 4;
+
 /// Calculates the PIO PWM on_count and off_count cycles for a given commanded duty cycle percentage (0..=100).
 ///
 /// For duty cycles up to [`SHORT_PROTECTION_MAX_ON_COUNT`] (14%), modulates on_count with a fixed period of 100 cycles (4 µs).
 /// For duty cycles above 14%, holds on_count at the maximum safe limit (14 cycles = 800 ns, staying strictly below the
-/// 1.0 µs TMC6300 short-circuit threshold t_S2G) while modulating off_count downward from 86 cycles down to 1 cycle.
+/// 1.0 µs TMC6300 short-circuit threshold t_S2G) while modulating off_count downward from 86 cycles down to [`SHORT_PROTECTION_MIN_OFF_COUNT`] (4 cycles).
 /// This delivers smooth, full torque scaling up to 100% duty cycle while guaranteeing individual FET conduction pulses never trip DIAG.
 pub const fn calculate_pwm_counts(duty_cycle: u8) -> (u8, u8) {
     if duty_cycle == 0 {
@@ -136,7 +142,11 @@ pub const fn calculate_pwm_counts(duty_cycle: u8) -> (u8, u8) {
             duty_cycle as u32
         };
         let off = (((100 - duty) * (on as u32) + (duty / 2)) / duty) as u8;
-        let off = if off == 0 { 1 } else { off };
+        let off = if off < SHORT_PROTECTION_MIN_OFF_COUNT {
+            SHORT_PROTECTION_MIN_OFF_COUNT
+        } else {
+            off
+        };
         (on, off)
     }
 }

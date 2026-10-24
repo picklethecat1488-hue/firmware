@@ -57,6 +57,7 @@ impl Register {
 pub struct Ina219<I> {
     i2c: I,
     address: u8,
+    mode: PowerMeasurementMode,
 }
 
 impl<I: I2c> Ina219<I> {
@@ -65,6 +66,7 @@ impl<I: I2c> Ina219<I> {
         Self {
             i2c,
             address: DEFAULT_I2C_ADDRESS,
+            mode: PowerMeasurementMode::PowerDown,
         }
     }
 
@@ -136,7 +138,9 @@ impl<I: I2c> PowerSensor for Ina219<I> {
     )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
     async fn read_current_ma(&mut self) -> Result<i32, Self::Error> {
-        self.wait_for_measurement().await?;
+        if !matches!(self.mode, PowerMeasurementMode::Continuous(_, _)) {
+            self.wait_for_measurement().await?;
+        }
         let res = self.read_register(Register::CURRENT).await;
         if let Err(ref _e) = res {
             log_warn!(
@@ -169,7 +173,9 @@ impl<I: I2c> PowerSensor for Ina219<I> {
     )]
     #[tracing::instrument(core1 = "core1", level = "trace")]
     async fn read_voltage_mv(&mut self) -> Result<u32, Self::Error> {
-        self.wait_for_measurement().await?;
+        if !matches!(self.mode, PowerMeasurementMode::Continuous(_, _)) {
+            self.wait_for_measurement().await?;
+        }
         let res = self.read_register(Register::BUS_VOLTAGE).await;
         if let Err(ref _e) = res {
             log_warn!(
@@ -192,6 +198,7 @@ impl<I: I2c> PowerSensor for Ina219<I> {
         &mut self,
         mode: PowerMeasurementMode,
     ) -> Result<(), Self::Error> {
+        self.mode = mode;
         let config = self.read_register(Register::CONFIG).await?;
         let mode_val = match mode {
             PowerMeasurementMode::PowerDown => 0,

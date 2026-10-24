@@ -523,6 +523,7 @@ where
         // If the motor is running, verify safety limits (RPM and load torque)
         if !self.safety_bypass
             && self.state == MotorState::On
+            && !self.in_startup_ramp
             && self.startup_ticks > self.config.startup_blanking_ticks
         {
             let rpm = self.current_rpm();
@@ -918,6 +919,7 @@ where
     /// Bypasses the startup blanking period immediately (primarily for testing).
     pub fn bypass_startup_blanking(&mut self) {
         self.startup_ticks = self.config.startup_blanking_ticks + 1;
+        self.in_startup_ramp = false;
     }
 
     /// Update the calibration parameters in RAM (Core 1).

@@ -1351,7 +1351,7 @@ fn test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm() {
         assert_eq!(motor.duty_cycle(), 100);
         let w100 = motor.last_word();
         assert_eq!((w100 >> 8) & 0xFF, 14);
-        assert_eq!((w100 >> 16) & 0xFF, 1);
+        assert_eq!((w100 >> 16) & 0xFF, 4);
 
         // Stop motor: duty cycle and mask go to 0
         assert!(motor.stop().is_ok());
@@ -1574,7 +1574,7 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
             let off_count = ((word >> 16) & 0xFF) as u8;
 
             assert_eq!(on_count, 14);
-            assert_eq!(off_count, 1);
+            assert_eq!(off_count, 4);
             assert_eq!(mask, expected_forward_masks[next_step as usize]);
         }
 
@@ -1941,7 +1941,7 @@ fn test_worm_gliding_larva_522_pin_mapping_and_forward_commutation_progression()
             );
             assert_eq!(
                 word,
-                make_pwm_word(expected_masks[expected_step as usize], 14, 1),
+                make_pwm_word(expected_masks[expected_step as usize], 14, 4),
                 "PWM word mismatch at tick {tick}"
             );
 
@@ -2273,7 +2273,7 @@ fn test_worm_slithering_lumbricus_809_tmc6300_short_protection_pulse_invariants(
         assert_eq!(pio_motor.pulse_duration_ns(), 800);
         let eff_word100 = pio_motor.effective_word();
         assert_eq!((eff_word100 >> 8) & 0xFF, 14);
-        assert_eq!((eff_word100 >> 16) & 0xFF, 1);
+        assert_eq!((eff_word100 >> 16) & 0xFF, 4);
 
         // Advance commutation tick
         assert!(pio_motor.tick().await.is_ok());
@@ -2392,4 +2392,78 @@ fn test_target_freewheeling_speed_and_tick_interval_constants() {
         DEFAULT_TICK_INTERVAL,
         embassy_time::Duration::from_micros(333)
     );
+}
+
+#[test]
+fn test_ina219_continuous_mode_immediate_read_no_cnvr_wait() {
+    run_test!(async {
+        use model::interfaces::{PowerMeasurementMode, PowerSensor};
+        use peripheral::ina219::Ina219;
+
+        // When in continuous mode, read_current_ma must NOT read register 0x02 (Bus Voltage / CNVR)
+        // to wait for conversion; it must directly read register 0x04 (Current).
+        let mut reads = std::collections::VecDeque::new();
+        // 1. Initial config read for set_measurement_mode
+        reads.push_back(vec![0x39, 0x98]);
+        // 2. Direct read of current register only (no bus voltage read in between!)
+        reads.push_back(vec![0x01, 0xF4]); // 500 (50 mA)
+
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+
+        dev.set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
+            .await
+            .unwrap();
+
+        let current = dev.read_current_ma().await.unwrap();
+        assert_eq!(current, 50);
+
+        // Verify the only register read requested after mode configuration was register 0x04 (Current)
+        let written = writes.lock().unwrap();
+        assert_eq!(
+            written.last(),
+            Some(&vec![0x04]),
+            "read_current_ma in Continuous mode must directly query Current register 0x04 without CNVR polling"
+        );
+    });
+}
+
+#[test]
+fn test_worm_annelidic_nematode_26_tmc6300_safe_off_pulse_at_full_speed() {
+    run_test!(async {
+        use peripheral::tmc6300::{
+            calculate_pwm_counts, SHORT_PROTECTION_MAX_ON_COUNT, SHORT_PROTECTION_MIN_OFF_COUNT,
+            SHORT_PROTECTION_MIN_ON_COUNT,
+        };
+
+        // 1. Constant invariants
+        assert_eq!(SHORT_PROTECTION_MIN_OFF_COUNT, 4);
+        assert_eq!(SHORT_PROTECTION_MAX_ON_COUNT, 14);
+        assert_eq!(SHORT_PROTECTION_MIN_ON_COUNT, 7);
+
+        // 2. Speed 100% (WORM-ANNELIDIC-NEMATODE-26 reproduction):
+        // Previously returned off = 1 (160 ns), causing continuous FET conduction, 1620 mA current,
+        // and triggering TMC6300 short-circuit/thermal DIAG trip.
+        // Fixed: off_count is constrained to SHORT_PROTECTION_MIN_OFF_COUNT (4 cycles = 280 ns off time),
+        // guaranteeing the comparator resets on every pulse and prevents driver fault.
+        let (on100, off100) = calculate_pwm_counts(100);
+        assert_eq!(on100, SHORT_PROTECTION_MAX_ON_COUNT);
+        assert_eq!(
+            off100, SHORT_PROTECTION_MIN_OFF_COUNT,
+            "off_count at 100% duty cycle must equal SHORT_PROTECTION_MIN_OFF_COUNT (4)"
+        );
+
+        // 3. Across all duty cycles (1..=100), off_count must NEVER drop below SHORT_PROTECTION_MIN_OFF_COUNT
+        for duty in 1..=100 {
+            let (_on, off) = calculate_pwm_counts(duty);
+            assert!(
+                off >= SHORT_PROTECTION_MIN_OFF_COUNT,
+                "Duty {duty}% off_count {off} is below safe minimum {SHORT_PROTECTION_MIN_OFF_COUNT}"
+            );
+        }
+    });
 }
