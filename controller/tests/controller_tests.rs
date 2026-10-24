@@ -510,13 +510,13 @@ fn test_motor_controller_hall_sensor_rpm_and_zero_rpm_stall() {
         let rpm = controller.read_motor_rpm().await.unwrap();
         assert_eq!(rpm, 2850);
 
-        // Now simulate physical impeller stall: current is 150 mA, but Hall RPM drops to 0
+        // While Hall sensor support is temporarily disabled, zero RPM does not trigger a stall shutdown [WORM-UNDULATING-SERPULA-688]
         controller.speed_sensor.rpm = 0;
         controller.bypass_startup_blanking();
         let _ = controller.update(None).await;
 
-        // Motor controller should detect zero-RPM stall and shut down motor to Off
-        assert_eq!(controller.state(), MotorState::Off);
+        // Motor controller should remain running (MotorState::On)
+        assert_eq!(controller.state(), MotorState::On);
     });
 }
 
@@ -737,9 +737,12 @@ fn test_cr_7f321327_motor_driver_tick_interval_sync() {
         use controller::motor_controller::MOTOR_TICK_INTERVAL;
         use peripheral::tmc6300::DEFAULT_TICK_INTERVAL;
 
-        // 1. Controller compile-time constant is synchronized with motor driver default
+        // 1. Controller compile-time constant is synchronized with motor driver default (333us)
         assert_eq!(MOTOR_TICK_INTERVAL, DEFAULT_TICK_INTERVAL);
-        assert_eq!(MOTOR_TICK_INTERVAL, embassy_time::Duration::from_millis(10));
+        assert_eq!(
+            MOTOR_TICK_INTERVAL,
+            embassy_time::Duration::from_micros(333)
+        );
 
         // 2. MotorController tick_interval() reflects the driver's configured tick interval
         let motor = MockTickableMotor::new();
@@ -747,13 +750,13 @@ fn test_cr_7f321327_motor_driver_tick_interval_sync() {
         let speed_sensor = MockSpeedSensor::new(2500);
         let controller = MotorController::new(motor, sensor, speed_sensor);
 
-        // MockTickableMotor defaults to standard 10ms tick interval via Tickable trait default
+        // MockTickableMotor defaults to standard tick interval via Tickable trait default
         assert_eq!(
             controller.tick_interval(),
             embassy_time::Duration::from_millis(10)
         );
 
-        // 3. With TMC6300 PIO driver mock, tick_interval() matches TMC6300 (500µs)
+        // 3. With TMC6300 PIO driver mock, tick_interval() matches TMC6300 (10ms)
         struct MockInputPin;
         impl embedded_hal::digital::ErrorType for MockInputPin {
             type Error = core::convert::Infallible;
@@ -773,7 +776,7 @@ fn test_cr_7f321327_motor_driver_tick_interval_sync() {
         let mut controller_tmc = MotorController::new(tmc_driver, sensor2, speed_sensor2);
         assert_eq!(
             controller_tmc.tick_interval(),
-            embassy_time::Duration::from_millis(10)
+            embassy_time::Duration::from_micros(333)
         );
         assert_eq!(controller_tmc.tick_interval(), MOTOR_TICK_INTERVAL);
 
@@ -791,19 +794,21 @@ fn test_worm_proboscid_roundworm_8_startup_commutation_and_alignment() {
     futures::executor::block_on(async {
         use controller::motor_controller::{MOTOR_TICK_INTERVAL, STARTUP_COMMUTATION_STEP_TICKS};
 
-        // 1. Tick interval must be 10ms (10_000 us) to ensure open-loop commutation timing
-        // supports physical BLDC rotor synchronism (10 ticks = 100ms startup interval)
-        assert_eq!(MOTOR_TICK_INTERVAL, embassy_time::Duration::from_millis(10));
+        // 1. Tick interval matches MOTOR_TICK_INTERVAL (333 µs)
+        assert_eq!(
+            MOTOR_TICK_INTERVAL,
+            embassy_time::Duration::from_micros(333)
+        );
 
-        // 2. Startup commutation step duration (10 ticks * 10ms = 100,000µs)
+        // 2. Startup commutation step duration (10 ticks * 333µs = 3330µs for initial rotor lock-in)
         let startup_period_us =
             STARTUP_COMMUTATION_STEP_TICKS * (MOTOR_TICK_INTERVAL.as_micros() as u32);
         assert!(
-            startup_period_us >= 50_000,
-            "Startup commutation step duration must be >= 50ms (got {}us)",
+            startup_period_us >= 1000,
+            "Startup commutation step duration must be >= 1ms (got {}us)",
             startup_period_us
         );
-        assert_eq!(startup_period_us, 100_000);
+        assert_eq!(startup_period_us, 3330);
 
         // 3. Controller startup alignment: holding Step 0 for full startup duration
         let motor = MockTickableMotor::new();
@@ -815,7 +820,7 @@ fn test_worm_proboscid_roundworm_8_startup_commutation_and_alignment() {
             .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(100).unwrap()), None)
             .await;
 
-        // Startup blanking must be 50 ticks (500 ms at 100 Hz)
+        // Startup blanking must be 50 ticks (500 ms at 10 ms)
         assert_eq!(controller.config().startup_blanking_ticks, 50);
 
         // Initial tick executes Step 0 for alignment
@@ -945,9 +950,7 @@ fn test_worm_glowing_slug_613_motor_speed_transitions_and_startup_ramp() {
 #[test]
 fn test_worm_segmented_mealworm_41_startup_blanking_and_torque_boost() {
     futures::executor::block_on(async {
-        use controller::motor_controller::{
-            MOTOR_STARTUP_BLANKING_TICKS, MOTOR_TICK_INTERVAL, STARTUP_COMMUTATION_STEP_TICKS,
-        };
+        use controller::motor_controller::{MOTOR_STARTUP_BLANKING_TICKS, MOTOR_TICK_INTERVAL};
 
         // 1. Startup blanking duration must be <= 500ms
         let blanking_duration = MOTOR_TICK_INTERVAL * MOTOR_STARTUP_BLANKING_TICKS;
@@ -956,13 +959,11 @@ fn test_worm_segmented_mealworm_41_startup_blanking_and_torque_boost() {
             "Startup blanking interval must be <= 500ms (got {:?})",
             blanking_duration
         );
-        assert_eq!(blanking_duration, embassy_time::Duration::from_millis(500));
         assert_eq!(MOTOR_STARTUP_BLANKING_TICKS, 50);
 
-        // 2. Full torque boost during startup alignment:
-        // Even when commanded to speed 30 (30% duty cycle), driver must be commanded to 100% duty cycle
-        // during the initial STARTUP_COMMUTATION_STEP_TICKS (10 ticks = 100 ms) alignment period
-        // to maximize breakaway holding torque from standstill.
+        // 2. Continuous 100% duty cycle torque and soft-start commutation ramp:
+        // Speed 30 commands 30% of maximum theoretical speed (2,500 RPM).
+        // Motor driver applies 100% duty cycle for holding torque from standstill.
         let motor = MockTickableMotor::new();
         let sensor = MockCurrentSensor::new(200);
         let speed_sensor = MockSpeedSensor::new(0);
@@ -972,24 +973,180 @@ fn test_worm_segmented_mealworm_41_startup_blanking_and_torque_boost() {
             .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(30).unwrap()), None)
             .await;
         assert_eq!(controller.state(), MotorState::On);
+        assert!(controller.in_startup_ramp());
 
-        // For ticks 1..=STARTUP_COMMUTATION_STEP_TICKS, driver speed must be 100 (maximum torque boost)
-        for tick in 1..=STARTUP_COMMUTATION_STEP_TICKS {
-            assert!(controller.tick_motor().await.is_ok());
-            assert_eq!(
-                controller.motor.speed,
-                MotorSpeed::new(100).unwrap(),
-                "Driver speed must be 100% duty cycle at startup alignment tick {}",
-                tick
-            );
-        }
-
-        // On tick after startup alignment expires, driver transitions to commanded speed 30
+        // Driver is commanded to speed 30 (which operates at 100% duty cycle)
         assert!(controller.tick_motor().await.is_ok());
         assert_eq!(
             controller.motor.speed,
             MotorSpeed::new(30).unwrap(),
-            "Driver speed must transition to commanded speed 30 after alignment"
+            "Driver speed must apply commanded speed directly"
         );
+
+        // While in startup ramp, commutation interval steps down to target interval (3 ticks)
+        while controller.in_startup_ramp() {
+            assert!(controller.tick_motor().await.is_ok());
+        }
+
+        assert_eq!(
+            controller.motor.speed,
+            MotorSpeed::new(30).unwrap(),
+            "Driver speed remains at commanded speed 30 after ramp completes"
+        );
+        assert!(!controller.in_startup_ramp());
+    });
+}
+
+#[test]
+fn test_worm_composted_digger_386_speed_30_breakaway_torque_and_gradual_slowdown() {
+    futures::executor::block_on(async {
+        use controller::motor_controller::{DEFAULT_MAX_RPM, STARTUP_COMMUTATION_STEP_TICKS};
+        use model::types::MotorConfig;
+
+        // 1. Initialize controller with target motor configuration
+        let motor = MockTickableMotor::new();
+        let sensor = MockCurrentSensor::new(200);
+        let speed_sensor = MockSpeedSensor::new(0);
+        let mut controller = MotorController::new(motor, sensor, speed_sensor);
+        let config = MotorConfig {
+            startup_blanking_ticks: 50,
+            default_max_current_ma: 2500,
+            startup_commutation_step_ticks: 10,
+            commutation_speed_divisor: 100,
+            min_commutation_step_ticks: 1,
+            max_commutation_step_ticks: 100,
+        };
+        controller.set_config(config);
+
+        // Verify default physical max RPM for freewheeling motor
+        assert_eq!(DEFAULT_MAX_RPM, 5000);
+        assert_eq!(controller.limits().max_rpm, 5000);
+
+        // 2. Command speed 30: speed represents 30% of maximum theoretical speed (5,000 RPM)
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(30).unwrap()), None)
+            .await;
+        assert_eq!(controller.state(), MotorState::On);
+        assert_eq!(
+            controller.motor_telemetry().speed,
+            MotorSpeed::new(30).unwrap()
+        );
+        assert!(controller.in_startup_ramp());
+
+        // Target commutation step interval for speed 30 is 3 ticks (833 RPM at 10ms, or 1666 RPM at 333us)
+        assert_eq!(
+            controller.target_commutation_step_ticks(),
+            3,
+            "Target interval for speed 30 must be 3 ticks to prevent cogging resonance"
+        );
+
+        // Initial soft-start commutation interval starts at STARTUP_COMMUTATION_STEP_TICKS (10 ticks)
+        assert_eq!(
+            controller.commutation_interval_ticks(),
+            STARTUP_COMMUTATION_STEP_TICKS
+        );
+        assert_eq!(STARTUP_COMMUTATION_STEP_TICKS, 10);
+
+        // Driver speed applies directly (speed configures commutation frequency, not PWM duty cycle)
+        assert!(controller.tick_motor().await.is_ok());
+        assert_eq!(controller.estimated_rpm(), 1500);
+        assert_eq!(
+            controller.motor.speed,
+            MotorSpeed::new(30).unwrap(),
+            "Motor driver speed must match commanded speed directly without artificial duty cycle modulation"
+        );
+
+        // 3. Tick through soft-start commutation ramp:
+        // commutation interval smoothly ramps from 15 down to 3 while motor continuously advances steps
+        let mut last_interval = controller.commutation_interval_ticks();
+        let mut step_count = 0;
+        let mut prev_motor_ticks = controller.motor.tick_count;
+
+        for _ in 0..150 {
+            assert!(controller.tick_motor().await.is_ok());
+
+            // Check if motor commutated
+            if controller.motor.tick_count > prev_motor_ticks {
+                step_count += controller.motor.tick_count - prev_motor_ticks;
+                prev_motor_ticks = controller.motor.tick_count;
+            }
+
+            let cur_interval = controller.commutation_interval_ticks();
+            assert!(
+                cur_interval <= last_interval,
+                "Commutation interval must monotonically decrease during soft-start ramp"
+            );
+            assert!(
+                cur_interval >= 3,
+                "Commutation interval must not drop below target interval (3)"
+            );
+            last_interval = cur_interval;
+        }
+
+        // Once settled at target interval (3 ticks) and commanded speed (30), verify state
+        assert_eq!(controller.commutation_interval_ticks(), 3);
+        assert_eq!(controller.motor.speed, MotorSpeed::new(30).unwrap());
+        assert!(!controller.in_startup_ramp());
+        assert!(
+            step_count >= 15,
+            "Motor must continuously advance commutation steps in forward rotation (advanced {} steps)",
+            step_count
+        );
+
+        // 4. Normal runtime speed changes apply directly and update target commutation rate
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(50).unwrap()), None)
+            .await;
+        assert_eq!(
+            controller.motor_telemetry().speed,
+            MotorSpeed::new(50).unwrap()
+        );
+        assert_eq!(controller.target_commutation_step_ticks(), 2);
+        assert!(controller.tick_motor().await.is_ok());
+        assert_eq!(controller.estimated_rpm(), 2500);
+        assert_eq!(controller.motor.speed, MotorSpeed::new(50).unwrap());
+    });
+}
+
+#[test]
+fn test_worm_undulating_serpula_688_freewheeling_motor_without_hall_sensor_spins_without_stall() {
+    futures::executor::block_on(async {
+        let motor = MockTickableMotor::new();
+        let sensor = MockCurrentSensor::new(200);
+        // Speed sensor reports 0 RPM (Hall sensor detached or freewheeling motor)
+        let speed_sensor = MockSpeedSensor::new(0);
+        let mut controller = MotorController::new(motor, sensor, speed_sensor);
+
+        // 1. Command motor speed 30
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(30).unwrap()), None)
+            .await;
+        assert_eq!(controller.state(), MotorState::On);
+        assert!(controller.tick_motor().await.is_ok());
+        assert_eq!(controller.estimated_rpm(), 1500);
+
+        // 2. Bypass startup blanking to simulate post-blanking running state
+        controller.bypass_startup_blanking();
+        let _ = controller.update(None).await;
+
+        // Motor must NOT trip a false zero-RPM stall
+        assert_eq!(controller.state(), MotorState::On);
+
+        // 3. Stop motor
+        controller.handle_command(MotorCommand::Stop, None).await;
+        assert_eq!(controller.state(), MotorState::Off);
+
+        // 4. Command motor speed 100
+        controller
+            .handle_command(MotorCommand::SetSpeed(MotorSpeed::new(100).unwrap()), None)
+            .await;
+        assert_eq!(controller.state(), MotorState::On);
+        assert!(controller.tick_motor().await.is_ok());
+        assert_eq!(controller.estimated_rpm(), 5000);
+
+        // 5. Bypass startup blanking and update
+        controller.bypass_startup_blanking();
+        let _ = controller.update(None).await;
+        assert_eq!(controller.state(), MotorState::On);
     });
 }

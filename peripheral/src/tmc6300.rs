@@ -16,10 +16,13 @@ pub const PWM_DUTY_CYCLE_DIVISOR: u8 = 10;
 /// Maximum rated peak current for the TMC6300 driver in milliamperes (2A).
 pub const MAX_TMC6300_CURRENT_MA: i32 = 2000;
 
-/// Default motor controller tick interval in microseconds for the TMC6300 driver (10,000µs / 10ms for stable open-loop BLDC commutation).
-pub const DEFAULT_TICK_INTERVAL_US: u32 = 10_000;
+/// Target mechanical rotational speed in RPM for the freewheeling motor at 100% speed.
+pub const TARGET_FREEWHEELING_MAX_RPM: u32 = 5000;
 
-/// Default motor controller tick interval as an embassy Duration (10ms).
+/// Default motor controller tick interval in microseconds for the TMC6300 driver (333µs for 5,000 RPM BLDC commutation).
+pub const DEFAULT_TICK_INTERVAL_US: u32 = 333;
+
+/// Default motor controller tick interval as an embassy Duration (333µs).
 pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration =
     embassy_time::Duration::from_micros(DEFAULT_TICK_INTERVAL_US as u64);
 
@@ -259,7 +262,7 @@ where
     PWL::Error: core::fmt::Debug,
     PD::Error: core::fmt::Debug,
 {
-    /// Default tick interval for the TMC6300 motor driver (10ms).
+    /// Default tick interval for the TMC6300 motor driver (333µs).
     pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration = DEFAULT_TICK_INTERVAL;
 
     /// Creates a new TMC6300 motor driver instance with 6-PWM phase pins and diagnostic pin.
@@ -621,22 +624,8 @@ where
                     embassy_time::Timer::after_micros(self.freewheel_us as u64).await;
                 }
 
-                // Advance commutation step
                 self.commutation_step = (self.commutation_step + 1) % (COMMUTATION_STEPS as u8);
-
-                // Apply PWM duty cycle modulation via tick counter
-                if abs_speed >= 100 {
-                    self.apply_commutation()?;
-                } else {
-                    self.tick_counter = (self.tick_counter + 1) % PWM_DUTY_CYCLE_DIVISOR;
-                    let threshold = (abs_speed / 10) as u8;
-                    if self.tick_counter < threshold {
-                        self.apply_commutation()?;
-                    } else {
-                        // Low duty cycle window: de-energize phases (Float)
-                        self.set_phases(PhaseState::Float, PhaseState::Float, PhaseState::Float)?;
-                    }
-                }
+                self.apply_commutation()?;
             }
             Ok(())
         }
@@ -814,7 +803,7 @@ impl<'d, PD: InputPin> Tmc6300Pio<'d, embassy_rp::peripherals::PIO1, 0, PD>
 where
     PD::Error: core::fmt::Debug,
 {
-    /// Default tick interval for the TMC6300 PIO motor driver (10ms).
+    /// Default tick interval for the TMC6300 PIO motor driver (333µs).
     pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration = DEFAULT_TICK_INTERVAL;
     /// Creates and configures the TMC6300 PIO driver using PIO1 and state machine 0.
     #[allow(static_mut_refs, clippy::missing_transmute_annotations)]
@@ -1032,7 +1021,7 @@ where
         let speed_raw = speed.get();
         self.speed = speed_raw;
         if speed_raw != 0 {
-            self.duty_cycle = speed_raw.unsigned_abs().min(100);
+            self.duty_cycle = 100;
         } else {
             self.stop()?;
         }
@@ -1125,7 +1114,7 @@ impl<PD: InputPin> Tmc6300Pio<PD>
 where
     PD::Error: core::fmt::Debug,
 {
-    /// Default tick interval for the TMC6300 PIO motor driver (10ms).
+    /// Default tick interval for the TMC6300 PIO motor driver (333µs).
     pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration = DEFAULT_TICK_INTERVAL;
 
     /// Creates a new mock TMC6300 PIO driver with diagnostic pin.
@@ -1263,7 +1252,7 @@ where
         let raw = speed.get();
         self.speed = raw;
         if raw != 0 {
-            self.duty_cycle = raw.unsigned_abs().min(100);
+            self.duty_cycle = 100;
             let mask = phase_mask(self.speed, self.commutation_step);
             self.last_word =
                 make_pwm_word(mask, self.duty_cycle, PWM_PERIOD_CYCLES - self.duty_cycle);
@@ -1317,8 +1306,9 @@ where
 
                 self.commutation_step = (self.commutation_step + 1) % (COMMUTATION_STEPS as u8);
                 let mask = phase_mask(raw, self.commutation_step);
-                self.last_word =
+                let word =
                     make_pwm_word(mask, self.duty_cycle, PWM_PERIOD_CYCLES - self.duty_cycle);
+                self.last_word = word;
             }
             Ok(())
         }
