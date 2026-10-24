@@ -75,6 +75,13 @@ def test_all_markdown_mermaid_blocks_compile_with_mmdc() -> None:
                     text=True,
                     capture_output=True,
                 )
+                if proc.returncode != 0 and "ProtocolError" in proc.stderr:
+                    proc = subprocess.run(
+                        [npx_bin, "@mermaid-js/mermaid-cli", "-i", "-", "-o", str(tmp_out)],
+                        input=block,
+                        text=True,
+                        capture_output=True,
+                    )
                 assert proc.returncode == 0, (
                     f"Mermaid syntax error in {md_file.relative_to(WORKSPACE_ROOT)} (block {idx}):\n{proc.stderr}"
                 )

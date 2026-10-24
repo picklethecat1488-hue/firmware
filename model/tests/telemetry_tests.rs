@@ -55,7 +55,14 @@ fn test_telemetry_records_size_bounds() {
             BatteryState::Critical,
             u32::MAX,
         )),
-        TelemetryRecord::Motor(MotorStatus::Running(MotorSpeed::MAX, i32::MAX)),
+        TelemetryRecord::Motor(MotorStatus::Running(MotorTelemetry::new(
+            MotorSpeed::MAX,
+            3000,
+            3000,
+            i32::MAX,
+            i32::MAX,
+            1000,
+        ))),
         TelemetryRecord::Motor(MotorStatus::Brake),
         TelemetryRecord::Thermal(ThermalStatus::TempOverheating(i32::MAX, true)),
         TelemetryRecord::System(SystemStatus::Active),
@@ -119,4 +126,56 @@ fn test_backwards_compatibility() {
     let (ts, decoded_rec) = decoded.unwrap();
     assert_eq!(ts, 12345);
     assert_eq!(decoded_rec, rec);
+}
+
+#[test]
+fn test_motor_telemetry_modeling() {
+    use model::types::{
+        calculate_estimated_rpm, calculate_modeled_peak_current_ma, calculate_modeled_torque_unm,
+        MotorSpeed, MotorTelemetry, MOTOR_COMMUTATION_STEPS_PER_REV, MOTOR_KT_UNM_PER_A,
+        MOTOR_PHASE_INDUCTANCE_UH, MOTOR_POLE_PAIRS,
+    };
+
+    // 1. Motor constants
+    assert_eq!(MOTOR_POLE_PAIRS, 6);
+    assert_eq!(MOTOR_COMMUTATION_STEPS_PER_REV, 36);
+    assert_eq!(MOTOR_KT_UNM_PER_A, 682);
+    assert_eq!(MOTOR_PHASE_INDUCTANCE_UH, 10);
+
+    // 2. Estimated RPM from commutation step period
+    // At 500 µs step period (2,000 Hz step rate): 5,000,000 / (3 * 500) = 3333 RPM
+    assert_eq!(calculate_estimated_rpm(500), 3333);
+    // At 1,000 µs step period (1,000 Hz): 5,000,000 / (3 * 1000) = 1666 RPM
+    assert_eq!(calculate_estimated_rpm(1000), 1666);
+    // At 10,000 µs step period (100 Hz): 5,000,000 / (3 * 10000) = 166 RPM
+    assert_eq!(calculate_estimated_rpm(10_000), 166);
+    // Stopped
+    assert_eq!(calculate_estimated_rpm(0), 0);
+
+    // 3. Modeled torque from current: τ = (682 * I_mA) / 1000
+    // At 1000 mA (1.0 A): 682 µN·m
+    assert_eq!(calculate_modeled_torque_unm(1000), 682);
+    // At 1420 mA (full speed current): (1420 * 682) / 1000 = 968 µN·m
+    assert_eq!(calculate_modeled_torque_unm(1420), 968);
+    // At 0 mA or negative: 0 µN·m
+    assert_eq!(calculate_modeled_torque_unm(0), 0);
+    assert_eq!(calculate_modeled_torque_unm(-50), 0);
+
+    // 4. Modeled peak current from average current and ON time (800 ns = 14 cycles)
+    // ΔI_ripple = (4000 * 800) / (10 * 1000) = 320 mA
+    // At I_avg = 500 mA (CCM): 500 + 160 = 660 mA
+    assert_eq!(calculate_modeled_peak_current_ma(500, 800), 660);
+    // At I_avg = 0 mA: max(0 + 160, 320) = 320 mA
+    assert_eq!(calculate_modeled_peak_current_ma(0, 800), 320);
+    // Stopped (on_time_ns = 0): 0 mA
+    assert_eq!(calculate_modeled_peak_current_ma(0, 0), 0);
+
+    // 5. MotorTelemetry struct instantiation and field checks
+    let telem = MotorTelemetry::new(MotorSpeed::new(50).unwrap(), 1600, 1666, 450, 610, 306);
+    assert_eq!(telem.speed.get(), 50);
+    assert_eq!(telem.measured_rpm, 1600);
+    assert_eq!(telem.estimated_rpm, 1666);
+    assert_eq!(telem.current_ma, 450);
+    assert_eq!(telem.modeled_peak_current_ma, 610);
+    assert_eq!(telem.modeled_torque_unm, 306);
 }

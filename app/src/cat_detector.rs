@@ -93,12 +93,15 @@ pub async fn init_controllers(
         );
     sensor_west.bind_command_tx(SENSOR_WEST_CHANNEL.sender());
 
-    let motor = controller::motor_controller::MotorController::new_with_max_current(
+    let mut motor = controller::motor_controller::MotorController::new_with_max_current(
         peripherals.motor,
         peripherals.current_sensor,
         peripherals.speed_sensor,
         MOTOR_MAX_CURRENT_MA,
     );
+    let mut motor_config = Board::MOTOR_CONFIG;
+    motor_config.default_max_current_ma = MOTOR_MAX_CURRENT_MA;
+    motor.set_config(motor_config);
 
     let motor_proxy = controller::motor_controller::MotorChannelSender::new(MOTOR_CHANNEL.sender());
 
