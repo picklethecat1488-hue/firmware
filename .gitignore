@@ -37,6 +37,9 @@ __pycache__/
 coverage.xml
 htmlcov/
 
+# License compliance reports
+scancode-report.json
+
 # Virtual Environments
 .venv/
 venv/

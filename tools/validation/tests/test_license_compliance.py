@@ -114,3 +114,45 @@ def test_run_scancode_not_found(mock_which):
         assert False, "Should have exited"
     except SystemExit as e:
         assert e.code == 1
+
+
+@patch("shutil.which")
+@patch("subprocess.run")
+def test_run_scancode_failure_surfaces_stderr(mock_run, mock_which, capsys):
+    """Verify run_scancode prints stderr and exits with code 1 on subprocess failure."""
+    import subprocess
+
+    mock_which.return_value = "/usr/local/bin/scancode"
+    mock_run.side_effect = subprocess.CalledProcessError(
+        returncode=1,
+        cmd=["scancode"],
+        output="stdout details",
+        stderr="ValueError: did not find any pre_scan hooks in module",
+    )
+
+    try:
+        license_compliance.run_scancode(".", "report.json")
+        assert False, "Should have exited with code 1"
+    except SystemExit as e:
+        assert e.code == 1
+
+    captured = capsys.readouterr()
+    assert "ValueError: did not find any pre_scan hooks" in captured.err
+
+
+def test_code_scan_pins_pluggy_compatible_version():
+    """Verify workflow and environment pin pluggy < 1.7.0 to prevent scancode plugin loader failures."""
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parent.parent.parent.parent
+    workflow_path = repo_root / ".github" / "workflows" / "license-compliance.yml"
+    env_path = repo_root / "environment.yml"
+
+    assert workflow_path.exists(), "license-compliance.yml workflow missing"
+    assert env_path.exists(), "environment.yml missing"
+
+    workflow_text = workflow_path.read_text(encoding="utf-8")
+    env_text = env_path.read_text(encoding="utf-8")
+
+    assert "pluggy<1.7.0" in workflow_text, "Workflow must pin pluggy<1.7.0 for scancode-toolkit compatibility"
+    assert "pluggy<1.7.0" in env_text, "environment.yml must pin pluggy<1.7.0 for scancode-toolkit compatibility"
