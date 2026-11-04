@@ -11,6 +11,10 @@
 
 - `a1b2c3d`
 
+#### Review Tasks & Functional Checklist
+
+- [ ] Firmware Step | `echo test` <!-- id:d7b4a017 -->
+
 #### Rejection Feedback
 
 CLI rejected

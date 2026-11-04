@@ -21,9 +21,17 @@
       "commit_ids": [
         "a1b2c3d"
       ],
-      "review_tasks": [],
+      "review_tasks": [
+        {
+          "id": "d7b4a017",
+          "title": "Firmware Step",
+          "command": "echo test",
+          "status": "PENDING",
+          "notes": ""
+        }
+      ],
       "created_at": "2026-11-04 15:04:57 UTC",
-      "updated_at": "2026-11-04 15:04:57 UTC",
+      "updated_at": "2026-11-04 15:04:59 UTC",
       "resolved_at": null,
       "resolution_notes": "",
       "rejection_notes": "CLI rejected",
@@ -31,5 +39,5 @@
       "rejected_at": null
     }
   ],
-  "updated_at": "2026-11-04 15:04:57 UTC"
+  "updated_at": "2026-11-04 15:04:59 UTC"
 }
