@@ -17,4 +17,4 @@
 
 #### Rejection Feedback
 
-CLI rejected
+CLI rejected firmware fix

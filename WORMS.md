@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-04 15:05:01 UTC` |
+| **Report Date** | `2026-11-04 15:05:04 UTC` |
 | **Total Issues** | `1` |
 | **Open Issues** | `1` |
 | **Resolved / Closed** | `0 (0%)` |
@@ -59,6 +59,6 @@
 
 #### Rejection Feedback
 
-CLI rejected
+CLI rejected firmware fix
 
 ---
