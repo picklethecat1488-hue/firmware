@@ -13,7 +13,7 @@
 
 #### Review Tasks & Functional Checklist
 
-- [ ] Firmware Step | `echo test` <!-- id:d7b4a017 -->
+- [x] Firmware Step | `echo test` <!-- id:d7b4a017 -->
 
 #### Rejection Feedback
 
