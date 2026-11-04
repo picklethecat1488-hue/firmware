@@ -13,4 +13,4 @@
 
 #### Review Tasks & Functional Checklist
 
-- [ ] Firmware Step | `echo test` <!-- id:fd4da27a -->
+- [x] Firmware Step | `echo test` <!-- id:fd4da27a -->
