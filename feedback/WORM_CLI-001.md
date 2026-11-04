@@ -5,7 +5,12 @@
 - **Status**: `RESOLVED`
 - **Severity**: `HIGH`
 - **Category**: `CONTROLLER`
+- **Created**: `2026-11-04 15:04:10 UTC`
 
 #### Attached Commits
 
 - `a1b2c3d`
+
+#### Review Tasks & Functional Checklist
+
+- [ ] Firmware Step | `echo test` <!-- id:fd4da27a -->
