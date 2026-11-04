@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-04 14:46:14 UTC` |
+| **Report Date** | `2026-11-04 14:46:16 UTC` |
 | **Total Issues** | `1` |
 | **Open Issues** | `0` |
 | **Resolved / Closed** | `1 (100%)` |
@@ -47,9 +47,14 @@
 - **Status**: `RESOLVED`
 - **Severity**: `HIGH`
 - **Category**: `CONTROLLER`
+- **Created**: `2026-11-04 14:46:16 UTC`
 
 #### Attached Commits
 
 - `a1b2c3d`
+
+#### Review Tasks & Functional Checklist
+
+- [ ] Firmware Step | `echo test` <!-- id:58fb6728 -->
 
 ---
