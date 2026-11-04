@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-04 15:04:14 UTC` |
+| **Report Date** | `2026-11-04 15:04:49 UTC` |
 | **Total Issues** | `1` |
 | **Open Issues** | `1` |
 | **Resolved / Closed** | `0 (0%)` |
@@ -43,22 +43,13 @@
 
 ### <a id="worm-cli-001"></a> 🔴 `[WORM-CLI-001]` CLI Review Worm
 
-- **UUID**: `6f65a185-0fbd-4272-a83d-66ac5bf5397a`
+- **UUID**: `79187714-67b2-419c-960b-bfa4095d9e19`
 - **Status**: `OPEN`
 - **Severity**: `HIGH`
 - **Category**: `CONTROLLER`
-- **Created**: `2026-11-04 15:04:10 UTC`
-
-#### Attached Commits
-
-- `a1b2c3d`
-
-#### Review Tasks & Functional Checklist
-
-- [x] Firmware Step | `echo test` <!-- id:fd4da27a -->
 
 #### Rejection Feedback
 
-CLI rejected firmware fix
+CLI rejected
 
 ---

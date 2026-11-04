@@ -5,7 +5,7 @@
   "worms": [
     {
       "id": "WORM-CLI-001",
-      "uuid": "6f65a185-0fbd-4272-a83d-66ac5bf5397a",
+      "uuid": "79187714-67b2-419c-960b-bfa4095d9e19",
       "title": "CLI Review Worm",
       "status": "OPEN",
       "severity": "HIGH",
@@ -18,26 +18,16 @@
       "logs": "",
       "attachments": [],
       "custom_sections": [],
-      "commit_ids": [
-        "a1b2c3d"
-      ],
-      "review_tasks": [
-        {
-          "id": "fd4da27a",
-          "title": "Firmware Step",
-          "command": "echo test",
-          "status": "COMPLETED",
-          "notes": ""
-        }
-      ],
-      "created_at": "2026-11-04 15:04:10 UTC",
-      "updated_at": "2026-11-04 15:04:14 UTC",
+      "commit_ids": [],
+      "review_tasks": [],
+      "created_at": "",
+      "updated_at": "2026-11-04 15:04:49 UTC",
       "resolved_at": null,
       "resolution_notes": "",
-      "rejection_notes": "CLI rejected firmware fix",
+      "rejection_notes": "CLI rejected",
       "accepted_at": null,
-      "rejected_at": "2026-11-04 15:04:14 UTC"
+      "rejected_at": "2026-11-04 15:04:49 UTC"
     }
   ],
-  "updated_at": "2026-11-04 15:04:14 UTC"
+  "updated_at": "2026-11-04 15:04:49 UTC"
 }
