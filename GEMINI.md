@@ -7,12 +7,36 @@ Before finalizing any task, committing changes, or proposing modifications to th
 ```
 
 ## Validation Guidelines
-1. **Execution**: Always run `./tools/verify.sh` from the repository root.
+1. **Execution**: Always run `./tools/verify.sh` from the repository root. Heavy test suites, linters, and verification runs may also be offloaded to the `anvil` cloud server via `bin/anvil verify` or `bin/anvil pytest` to conserve local compute.
 2. **Outcome Verification**: Confirm the script exits successfully and outputs `Verification PASSED`.
 3. **Resolution**: If any component fails (such as Cargo tests, Python tests, formatting, or firmware builds), you must address the failure and re-run `./tools/verify.sh` until it passes before concluding your work.
-4. **Process Management & Rerun Hygiene**: When restarting or re-running test suites (`./tools/verify.sh`, `pytest`, `cargo test`, `cargo nextest`, etc.), you MUST explicitly terminate/kill any preceding running instances of that test or task before launching a new execution. Never allow multiple overlapping runs of the same test command.
+4. **Process Management & Rerun Hygiene**: When restarting or re-running test suites (`./tools/verify.sh`, `pytest`, `cargo test`, `cargo nextest`, `bin/anvil pytest`, `bin/anvil verify`, etc.), you MUST explicitly terminate/kill any preceding running instances of that test or task before launching a new execution. Never allow multiple overlapping runs of the same test command.
 5. **GitHub CI Monitoring & Local Stack Remediation**: When commits have been pushed to a remote feature branch or when instructed to inspect CI, you may inspect GitHub Actions CI workflow results (e.g. via `gh run list --limit 5`, `gh pr checks`, or `gh run view <run-id> --log-failed`) and resolve any reported failures. However, the agent MUST NOT autonomously create pull requests (`gh pr create`) or merge pull requests (`gh pr merge`). All pull request creation, peer code reviews, and PR merges MUST be performed manually by the user.
 6. **Host Daemon Firmware Synchronization**: When updating or re-flashing target firmware during iterative development, debugging, or test bringup, do NOT terminate or restart the running `host.py` daemon. Instead, execute `python tools/host.py sync` (or invoke `POST http://127.0.0.1:8899/api/sync`) to trigger incremental compilation, flashing via `probe-rs`, and RTT reconnection while preserving the running workstation and HTTP server session.
+
+---
+
+## Remote Cloud Server (`anvil`)
+
+For resource-intensive workloads, parameter sweeps, long-running test suites, simulation analysis, and remote verification, the `anvil` cloud server is available:
+
+```ssh-config
+Host anvil
+  HostName <anvil-ip>
+  User ubuntu
+  IdentityFile "~/.ssh/FLINT'S KEY.pem"
+  IdentitiesOnly yes
+  ServerAliveInterval 30
+  ServerAliveCountMax 10
+  TCPKeepAlive yes
+  StrictHostKeyChecking accept-new
+```
+
+### Usage Guidelines
+1. **Remote Execution**: Use `bin/anvil run "<command>"` or SSH targeting `ubuntu@anvil` (or `ssh anvil`) to run full test suites (`bin/anvil pytest`), pre-commit verification (`bin/anvil verify`), and cargo checks (`bin/anvil cargo`).
+2. **Conda Environment & Binaries**: On `anvil`, Python commands execute within the remote conda environment (`firmware-env` or `cq`) using `conda run -n <env> --no-capture-output <command>`.
+3. **Preceding Run Cancellation**: Before initiating a new remote execution or verification run on `anvil`, ensure any active or stale background runs of the same command are cancelled or terminated (`bin/anvil stop`) to avoid cloud resource contention and duplicate processing.
+4. **Artifact Synchronization**: Use `bin/anvil pull <remote_path> [local_dest]` or `bin/anvil recordings` to download generated logs, waveforms, and inspection figures into the local workspace.
 
 ---
 

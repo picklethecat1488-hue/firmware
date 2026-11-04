@@ -64,8 +64,16 @@ class SQLiteWormStore:
         if "uuid" not in cols:
             self._init_schema_with_conn(conn)
             return
-        if "custom_sections" not in cols:
-            conn.execute("ALTER TABLE worms ADD COLUMN custom_sections TEXT NOT NULL DEFAULT '[]'")
+        for col_name, col_def in [
+            ("commit_ids", "TEXT NOT NULL DEFAULT '[]'"),
+            ("review_tasks", "TEXT NOT NULL DEFAULT '[]'"),
+            ("rejection_notes", "TEXT NOT NULL DEFAULT ''"),
+            ("accepted_at", "TEXT"),
+            ("rejected_at", "TEXT"),
+            ("custom_sections", "TEXT NOT NULL DEFAULT '[]'"),
+        ]:
+            if col_name not in cols:
+                conn.execute(f"ALTER TABLE worms ADD COLUMN {col_name} {col_def}")
         cursor = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='file_mtimes'")
         if not cursor.fetchone():
             conn.execute("CREATE TABLE IF NOT EXISTS file_mtimes (filename TEXT PRIMARY KEY, mtime REAL NOT NULL)")
@@ -97,10 +105,15 @@ class SQLiteWormStore:
                 expected_behavior TEXT NOT NULL DEFAULT '',
                 actual_behavior TEXT NOT NULL DEFAULT '',
                 logs TEXT NOT NULL DEFAULT '',
+                commit_ids TEXT NOT NULL DEFAULT '[]',
+                review_tasks TEXT NOT NULL DEFAULT '[]',
                 created_at TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL DEFAULT '',
                 resolved_at TEXT,
                 resolution_notes TEXT NOT NULL DEFAULT '',
+                rejection_notes TEXT NOT NULL DEFAULT '',
+                accepted_at TEXT,
+                rejected_at TEXT,
                 custom_sections TEXT NOT NULL DEFAULT '[]'
             );
 
@@ -131,6 +144,16 @@ class SQLiteWormStore:
         cols = [row["name"] for row in cursor.fetchall()]
         if "uuid" not in cols:
             conn.execute("ALTER TABLE worms ADD COLUMN uuid TEXT")
+        if "commit_ids" not in cols:
+            conn.execute("ALTER TABLE worms ADD COLUMN commit_ids TEXT DEFAULT '[]'")
+        if "review_tasks" not in cols:
+            conn.execute("ALTER TABLE worms ADD COLUMN review_tasks TEXT DEFAULT '[]'")
+        if "rejection_notes" not in cols:
+            conn.execute("ALTER TABLE worms ADD COLUMN rejection_notes TEXT DEFAULT ''")
+        if "accepted_at" not in cols:
+            conn.execute("ALTER TABLE worms ADD COLUMN accepted_at TEXT")
+        if "rejected_at" not in cols:
+            conn.execute("ALTER TABLE worms ADD COLUMN rejected_at TEXT")
 
         # Backfill any missing UUIDs
         null_uuid_rows = conn.execute("SELECT id FROM worms WHERE uuid IS NULL OR uuid = ''").fetchall()
@@ -172,10 +195,12 @@ class SQLiteWormStore:
                 attachments_by_bug.setdefault(row["worm_id"], []).append(att)
 
             # Load bugs
+            # Load worms
             bug_rows = conn.execute(
                 "SELECT id, uuid, title, status, severity, category, component, description, "
-                "reproduction_steps, expected_behavior, actual_behavior, logs, created_at, "
-                "updated_at, resolved_at, resolution_notes, custom_sections FROM worms"
+                "reproduction_steps, expected_behavior, actual_behavior, logs, commit_ids, review_tasks, "
+                "created_at, updated_at, resolved_at, resolution_notes, rejection_notes, accepted_at, rejected_at, "
+                "custom_sections FROM worms"
             ).fetchall()
 
             def _sort_key(r: sqlite3.Row) -> tuple[str, int, str]:
@@ -194,7 +219,26 @@ class SQLiteWormStore:
                 except (json.JSONDecodeError, TypeError):
                     steps = []
 
-                custom_raw = row["custom_sections"] if ("custom_sections" in row.keys() and row["custom_sections"]) else "[]"
+                commit_ids_raw = row["commit_ids"] if "commit_ids" in row.keys() else "[]"
+                try:
+                    commit_ids = json.loads(commit_ids_raw) if commit_ids_raw else []
+                except (json.JSONDecodeError, TypeError):
+                    commit_ids = []
+
+                tasks_raw = row["review_tasks"] if "review_tasks" in row.keys() else "[]"
+                try:
+                    tasks_data = json.loads(tasks_raw) if tasks_raw else []
+                    review_tasks = [WormReviewTaskModel.model_validate(t) for t in tasks_data]
+                except Exception:
+                    review_tasks = []
+
+                rej_notes = row["rejection_notes"] if "rejection_notes" in row.keys() and row["rejection_notes"] else ""
+                acc_at = row["accepted_at"] if "accepted_at" in row.keys() else None
+                rej_at = row["rejected_at"] if "rejected_at" in row.keys() else None
+
+                custom_raw = (
+                    row["custom_sections"] if ("custom_sections" in row.keys() and row["custom_sections"]) else "[]"
+                )
                 try:
                     custom_list = json.loads(custom_raw) if custom_raw else []
                     custom_sections = [WormSectionModel.model_validate(c) for c in custom_list]
@@ -221,10 +265,15 @@ class SQLiteWormStore:
                     logs=row["logs"] or "",
                     attachments=attachments_by_bug.get(row["id"], []),
                     custom_sections=custom_sections,
+                    commit_ids=commit_ids,
+                    review_tasks=review_tasks,
                     created_at=row["created_at"] or "",
                     updated_at=row["updated_at"] or "",
                     resolved_at=row["resolved_at"],
                     resolution_notes=row["resolution_notes"] or "",
+                    rejection_notes=rej_notes,
+                    accepted_at=acc_at,
+                    rejected_at=rej_at,
                 )
                 worms.append(bug)
 
@@ -281,8 +330,11 @@ class SQLiteWormStore:
         actual_clean = elide_personal_info(bug.actual_behavior)
         logs_clean = elide_personal_info(bug.logs)
         notes_clean = elide_personal_info(bug.resolution_notes)
+        rejection_clean = elide_personal_info(bug.rejection_notes)
         steps_clean = [elide_personal_info(s) for s in bug.reproduction_steps]
         steps_json = json.dumps(steps_clean)
+        commit_ids_json = json.dumps(bug.commit_ids)
+        review_tasks_json = json.dumps([t.model_dump(mode="json") for t in bug.review_tasks])
         custom_clean = [
             {"title": elide_personal_info(s.title), "content": elide_personal_info(s.content)}
             for s in bug.custom_sections
@@ -294,8 +346,9 @@ class SQLiteWormStore:
             INSERT INTO worms (
                 id, uuid, title, status, severity, category, component, description,
                 reproduction_steps, expected_behavior, actual_behavior, logs,
-                created_at, updated_at, resolved_at, resolution_notes, custom_sections
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                commit_ids, review_tasks, created_at, updated_at, resolved_at,
+                resolution_notes, rejection_notes, accepted_at, rejected_at, custom_sections
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 uuid=COALESCE(excluded.uuid, worms.uuid),
                 title=excluded.title,
@@ -308,10 +361,15 @@ class SQLiteWormStore:
                 expected_behavior=excluded.expected_behavior,
                 actual_behavior=excluded.actual_behavior,
                 logs=excluded.logs,
+                commit_ids=excluded.commit_ids,
+                review_tasks=excluded.review_tasks,
                 created_at=excluded.created_at,
                 updated_at=excluded.updated_at,
                 resolved_at=excluded.resolved_at,
                 resolution_notes=excluded.resolution_notes,
+                rejection_notes=excluded.rejection_notes,
+                accepted_at=excluded.accepted_at,
+                rejected_at=excluded.rejected_at,
                 custom_sections=excluded.custom_sections
             """,
             (
@@ -327,10 +385,15 @@ class SQLiteWormStore:
                 expected_clean,
                 actual_clean,
                 logs_clean,
+                commit_ids_json,
+                review_tasks_json,
                 bug.created_at,
                 bug.updated_at,
                 bug.resolved_at,
                 notes_clean,
+                rejection_clean,
+                bug.accepted_at,
+                bug.rejected_at,
                 custom_json,
             ),
         )

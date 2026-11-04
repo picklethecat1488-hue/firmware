@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Helper script for remote execution and synchronization with cloud server anvil
+# Usage:
+#   bin/anvil sync                     # Sync local workspace to anvil
+#   bin/anvil pull <file...>           # Download generated files/directories from anvil to local
+#   bin/anvil fetch <file...>          # Alias for pull
+#   bin/anvil recordings [dir]         # Download all preview / recordings / artifacts from anvil
+#   bin/anvil stages [dir]             # Alias for recordings
+#   bin/anvil verify [args...]         # Sync and run pre-commit verification on anvil
+#   bin/anvil pytest [args...]         # Sync and run pytest on anvil
+#   bin/anvil cargo [args...]          # Sync and run cargo on anvil
+#   bin/anvil simulate [args...]       # Run simulation/waveform generation on anvil and auto-download artifacts
+#   bin/anvil run <command...>         # Sync and run arbitrary command on anvil
+#   bin/anvil stop                     # Terminate running processes on anvil
+# ==============================================================================
+
+set -e
+
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REMOTE_HOST="${REMOTE_HOST:-anvil}"
+REMOTE_DIR="${REMOTE_DIR:-/home/ubuntu/firmware}"
+REMOTE_CONDA="source /home/ubuntu/miniforge3/etc/profile.d/conda.sh && ENV_NAME=\$(conda env list | grep -q '^firmware-env ' && echo 'firmware-env' || echo 'cq') && conda run -n \"\$ENV_NAME\" --no-capture-output"
+REMOTE_CARGO_PATH="export PATH=\"/home/ubuntu/.cargo/bin:\$PATH\""
+SSH_OPTS="-o ServerAliveInterval=30 -o ServerAliveCountMax=120 -o TCPKeepAlive=yes"
+
+sync_code() {
+    echo "📦 Syncing repository to ${REMOTE_HOST}:${REMOTE_DIR}..."
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "mkdir -p ${REMOTE_DIR}"
+    rsync -az --delete \
+        --exclude '.git' \
+        --exclude 'target' \
+        --exclude 'build' \
+        --exclude 'build_temp' \
+        --exclude 'build_test_tmp' \
+        --exclude 'tmp' \
+        --exclude '__pycache__' \
+        --exclude '*.pyc' \
+        --exclude '.pytest_cache' \
+        --exclude '.ruff_cache' \
+        --exclude '.venv' \
+        --exclude 'venv' \
+        --exclude '*.rrd' \
+        --exclude '*.mp4' \
+        --exclude '*.MOV' \
+        --exclude '*.mov' \
+        --exclude 'attachments' \
+        --exclude 'feedback/attachments' \
+        "${REPO_DIR}/" "${REMOTE_HOST}:${REMOTE_DIR}/"
+}
+
+pull_file() {
+    local remote_path="$1"
+    local local_dest="${2:-$1}"
+    local local_dir
+    local_dir="$(dirname "${REPO_DIR}/${local_dest}")"
+    mkdir -p "${local_dir}"
+    if ssh ${SSH_OPTS} "${REMOTE_HOST}" "[ -e '${REMOTE_DIR}/${remote_path}' ]" 2>/dev/null; then
+        echo "📥 Downloading ${REMOTE_HOST}:${REMOTE_DIR}/${remote_path} -> ${REPO_DIR}/${local_dest}..."
+        rsync -avz "${REMOTE_HOST}:${REMOTE_DIR}/${remote_path}" "${REPO_DIR}/${local_dest}"
+        echo "✅ Download complete."
+    else
+        echo "⚠️ Remote path ${remote_path} was not found on ${REMOTE_HOST}."
+    fi
+}
+
+pull_recordings() {
+    local target_dir="${1:-recordings}"
+    mkdir -p "${REPO_DIR}/${target_dir}"
+    echo "📥 Syncing all preview artifacts and recordings from ${REMOTE_HOST}:${REMOTE_DIR}/${target_dir}/..."
+    rsync -avz "${REMOTE_HOST}:${REMOTE_DIR}/${target_dir}/" "${REPO_DIR}/${target_dir}/"
+    echo "✅ Recordings synced."
+}
+
+auto_download_artifacts() {
+    for arg in "$@"; do
+        local file_path="${arg#*=}"
+        if [[ "$file_path" == *.rrd ]] || [[ "$file_path" == *.mp4 ]] || [[ "$file_path" == *.svg ]] || [[ "$file_path" == *.png ]] || [[ "$file_path" == *.json ]]; then
+            echo "📥 Auto-downloading generated artifact: ${file_path}..."
+            pull_file "${file_path}"
+        fi
+    done
+}
+
+kill_remote_pytest() {
+    echo "🛑 Terminating preceding pytest runs on ${REMOTE_HOST}..."
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "pkill -9 -f 'pytest' 2>/dev/null || true" 2>/dev/null || true
+}
+
+kill_remote_verify() {
+    echo "🛑 Terminating preceding verification runs on ${REMOTE_HOST}..."
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "pkill -9 -f 'verify.sh|validate_all.py|cargo-nextest|cargo test' 2>/dev/null || true" 2>/dev/null || true
+}
+
+kill_remote_daemon() {
+    echo "🛑 Terminating host daemon and simulation processes on ${REMOTE_HOST}..."
+    ssh ${SSH_OPTS} "${REMOTE_HOST}" "pkill -9 -f 'host.py|dashboard.py|motor_stress.py' 2>/dev/null || true" 2>/dev/null || true
+}
+
+case "$1" in
+    sync|push)
+        sync_code
+        echo "✅ Sync complete."
+        ;;
+    pull|fetch|get|download)
+        shift
+        if [ $# -eq 0 ]; then
+            echo "Usage: bin/anvil pull <remote_path> [local_dest]"
+            exit 1
+        fi
+        pull_file "$1" "$2"
+        ;;
+    recordings|previews|stages|checkpoints)
+        shift
+        pull_recordings "$1"
+        ;;
+    kill|stop)
+        kill_remote_pytest
+        kill_remote_verify
+        kill_remote_daemon
+        echo "✅ Remote processes cleaned up on ${REMOTE_HOST}."
+        ;;
+    pytest)
+        shift
+        kill_remote_pytest
+        sync_code
+        echo "🧪 Running pytest on ${REMOTE_HOST}..."
+        trap kill_remote_pytest INT TERM
+        if [ $# -gt 0 ]; then
+            cmd_args=$(printf ' %q' "$@")
+        else
+            cmd_args=""
+        fi
+        ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd ${REMOTE_DIR} && ${REMOTE_CARGO_PATH} && ${REMOTE_CONDA} pytest${cmd_args}"
+        trap - INT TERM
+        ;;
+    verify)
+        shift
+        kill_remote_verify
+        sync_code
+        echo "🔍 Running pre-commit verification on ${REMOTE_HOST}..."
+        trap kill_remote_verify INT TERM
+        ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd ${REMOTE_DIR} && ${REMOTE_CARGO_PATH} && ./tools/verify.sh $*"
+        trap - INT TERM
+        ;;
+    cargo)
+        shift
+        sync_code
+        echo "🦀 Running cargo on ${REMOTE_HOST}: cargo $*"
+        ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd ${REMOTE_DIR} && ${REMOTE_CARGO_PATH} && cargo $*"
+        ;;
+    simulate)
+        shift
+        kill_remote_daemon
+        sync_code
+        echo "🌊 Running simulation/analysis on ${REMOTE_HOST}..."
+        trap kill_remote_daemon INT TERM
+        ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd ${REMOTE_DIR} && ${REMOTE_CARGO_PATH} && ${REMOTE_CONDA} $*"
+        trap - INT TERM
+        auto_download_artifacts "$@"
+        ;;
+    run|exec)
+        shift
+        sync_code
+        echo "⚡ Executing command on ${REMOTE_HOST}: $*"
+        ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd ${REMOTE_DIR} && ${REMOTE_CARGO_PATH} && ${REMOTE_CONDA} $*"
+        ;;
+    *)
+        if [ $# -eq 0 ]; then
+            echo "Usage: bin/anvil {sync|pull|recordings|verify|pytest|cargo|simulate|run|stop} [args...]"
+            exit 1
+        fi
+        sync_code
+        echo "⚡ Executing command on ${REMOTE_HOST}: $*"
+        ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd ${REMOTE_DIR} && ${REMOTE_CARGO_PATH} && ${REMOTE_CONDA} $*"
+        ;;
+esac
