@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-04 15:04:49 UTC` |
+| **Report Date** | `2026-11-04 15:04:57 UTC` |
 | **Total Issues** | `1` |
 | **Open Issues** | `1` |
 | **Resolved / Closed** | `0 (0%)` |
@@ -47,6 +47,11 @@
 - **Status**: `OPEN`
 - **Severity**: `HIGH`
 - **Category**: `CONTROLLER`
+- **Created**: `2026-11-04 15:04:57 UTC`
+
+#### Attached Commits
+
+- `a1b2c3d`
 
 #### Rejection Feedback
 

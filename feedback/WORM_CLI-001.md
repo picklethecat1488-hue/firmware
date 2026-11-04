@@ -5,6 +5,11 @@
 - **Status**: `OPEN`
 - **Severity**: `HIGH`
 - **Category**: `CONTROLLER`
+- **Created**: `2026-11-04 15:04:57 UTC`
+
+#### Attached Commits
+
+- `a1b2c3d`
 
 #### Rejection Feedback
 
