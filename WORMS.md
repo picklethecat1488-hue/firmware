@@ -6,10 +6,10 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-04 15:04:12 UTC` |
+| **Report Date** | `2026-11-04 15:04:14 UTC` |
 | **Total Issues** | `1` |
-| **Open Issues** | `0` |
-| **Resolved / Closed** | `1 (100%)` |
+| **Open Issues** | `1` |
+| **Resolved / Closed** | `0 (0%)` |
 
 ## Issues by Severity
 
@@ -37,14 +37,14 @@
 
 ## Issue Checklist
 
-- [x] **`[HIGH]`** [#WORM-CLI-001](#worm-cli-001): CLI Review Worm (`RESOLVED`)
+- [ ] **`[HIGH]`** [#WORM-CLI-001](#worm-cli-001): CLI Review Worm (`OPEN`)
 
 ## Detailed Issue Log
 
-### <a id="worm-cli-001"></a> 🟢 `[WORM-CLI-001]` CLI Review Worm
+### <a id="worm-cli-001"></a> 🔴 `[WORM-CLI-001]` CLI Review Worm
 
 - **UUID**: `6f65a185-0fbd-4272-a83d-66ac5bf5397a`
-- **Status**: `RESOLVED`
+- **Status**: `OPEN`
 - **Severity**: `HIGH`
 - **Category**: `CONTROLLER`
 - **Created**: `2026-11-04 15:04:10 UTC`
@@ -56,5 +56,9 @@
 #### Review Tasks & Functional Checklist
 
 - [x] Firmware Step | `echo test` <!-- id:fd4da27a -->
+
+#### Rejection Feedback
+
+CLI rejected firmware fix
 
 ---
