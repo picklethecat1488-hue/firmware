@@ -74,12 +74,6 @@
 [] [target] [INFO] shell> 17.166758 INFO [36m[controller::motor_controller][0m Stopping motor...
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-SEGMENTED-SIPUNCULID-504.log](attachments/WORM-SEGMENTED-SIPUNCULID-504/target_system_logs_WORM-SEGMENTED-SIPUNCULID-504.log) | Target system and defmt logs from host daemon session |
-
 #### Resolution Notes
 
 Fixed HallSensor RPM window collapse with 500ms timeout persistence, updated MotorCommand::ReadRpm to sample speed sensor, and scaled MotorController tick interval to 500us for 3333 RPM nominal operation.

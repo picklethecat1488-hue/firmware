@@ -13,12 +13,6 @@
 
 Attached below, both dashboard UI icons appear corrupted
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `screenshot` | [image.png](attachments/WORM-024/image.png) | Uploaded screenshot image.png |
-
 #### Resolution Notes
 
 Rasterize SVG icons at full resolution with alpha transparency, proper centered coordinates, and generate high-res multi-resolution app.icns up to 1024x1024 for Retina macOS Dock and taskbar

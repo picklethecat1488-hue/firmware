@@ -76,13 +76,6 @@
 [] [target] [INFO] 10.746303 INFO [36m[controller::shell_controller][0m command execution succeeded
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-HUMIC-SANDWORM-365.log](attachments/WORM-HUMIC-SANDWORM-365/target_system_logs_WORM-HUMIC-SANDWORM-365.log) | Target system and defmt logs from host daemon session |
-| `reference` | [target_telemetry_WORM-HUMIC-SANDWORM-365.json](attachments/WORM-HUMIC-SANDWORM-365/target_telemetry_WORM-HUMIC-SANDWORM-365.json) | Target telemetry export retrieved via host_fs |
-
 #### Resolution Notes
 
 Resolved by eliminating TMC6300 FET turn-off timing violations with SHORT_PROTECTION_MIN_OFF_COUNT = 4 and removing blocking CNVR wait during periodic telemetry. Verified on target: motor runs at speed 50 stably without tripping DIAG.

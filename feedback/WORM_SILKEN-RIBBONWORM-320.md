@@ -77,13 +77,6 @@ This is a battery powered device and the trip in DIAG coincides with a drop in i
 [] [target] [INFO] 12.173827 INFO [36m[controller::motor_controller][0m Stopping motor...
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-SILKEN-RIBBONWORM-320.log](attachments/WORM-SILKEN-RIBBONWORM-320/target_system_logs_WORM-SILKEN-RIBBONWORM-320.log) | Target system and defmt logs from host daemon session |
-| `document` | [digital.csv](attachments/WORM-SILKEN-RIBBONWORM-320/digital.csv) | Attached document (digital.csv) |
-
 #### Resolution Notes
 
 Disabled motor speed ramping in MotorController so target speed applies directly on command/tick. Implemented adjustable freewheeling window (default 500 us) with LowSide and Float decay modes in TMC6300 driver to recirculate and drain coil energy between commutation steps and prevent voltage drop DIAG trips. Added dedicated regression unit tests in peripheral/tests/integration.rs.

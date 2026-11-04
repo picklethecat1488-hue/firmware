@@ -76,14 +76,6 @@ The motor spins for a half cycle, during which the motor duty cycle is 100%. Aft
 [] [target] [INFO] 22.787425 INFO [36m[controller::motor_controller][0m Stopping motor...
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-COMPOSTED-DIGGER-386.log](attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log) | Target system and defmt logs from host daemon session |
-| `reference` | [target_telemetry_WORM-COMPOSTED-DIGGER-386.json](attachments/WORM-COMPOSTED-DIGGER-386/target_telemetry_WORM-COMPOSTED-DIGGER-386.json) | Target telemetry export retrieved via host_fs |
-| `reference` | [IMG_0202.MOV](attachments/WORM-COMPOSTED-DIGGER-386/IMG_0202.MOV) | Uploaded reference IMG_0202.MOV |
-
 #### Resolution Notes
 
 Configured max_commutation_step_ticks = 2 in board.toml to guarantee open-loop commutation step rate remains >= 50 Hz, avoiding the 22-35 Hz cogging detent resonance band that caused rotor ticking at speed 30. Implemented 100% duty cycle breakaway torque boost during startup alignment with gradual slowdown (2% per tick) down to commanded speed. Added dedicated regression unit tests in controller_tests.rs.

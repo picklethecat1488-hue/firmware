@@ -101,13 +101,6 @@ Connecting to host daemon at http://127.0.0.1:8899...
 [] [target] [INFO] 57.402755 INFO [36m[controller::motor_controller][0m Stopping motor...
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-SUBTERRANEAN-EARTHWORM-231.log](attachments/WORM-SUBTERRANEAN-EARTHWORM-231/target_system_logs_WORM-SUBTERRANEAN-EARTHWORM-231.log) | Target system and defmt logs from host daemon session |
-| `reference` | [target_telemetry_WORM-SUBTERRANEAN-EARTHWORM-231.json](attachments/WORM-SUBTERRANEAN-EARTHWORM-231/target_telemetry_WORM-SUBTERRANEAN-EARTHWORM-231.json) | Target telemetry export retrieved via host_fs |
-
 #### Resolution Notes
 
 Resolved standstill pole-slip stall when starting motor at 50% speed. Configured startup_commutation_step_ticks = 100 in board.toml, ensuring that regardless of commanded speed, initial motor breakaway begins at 100 ticks (33.3 ms per step = 50 RPM) so the stationary rotor locks to the stator field, after which the soft-start ramp smoothly accelerates to target speed (4 ticks = 1,250 RPM). Verified on live target hardware with 50% start passing cleanly without stall.

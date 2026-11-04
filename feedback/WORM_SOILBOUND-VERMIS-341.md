@@ -76,13 +76,6 @@
 [] [target] [INFO] 538.942796 INFO [36m[controller::shell_controller][0m command execution succeeded
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-SOILBOUND-VERMIS-341.log](attachments/WORM-SOILBOUND-VERMIS-341/target_system_logs_WORM-SOILBOUND-VERMIS-341.log) | Target system and defmt logs from host daemon session |
-| `reference` | [target_telemetry_WORM-SOILBOUND-VERMIS-341.json](attachments/WORM-SOILBOUND-VERMIS-341/target_telemetry_WORM-SOILBOUND-VERMIS-341.json) | Target telemetry export retrieved via host_fs |
-
 #### Resolution Notes
 
 Resolved CLI and system log console freeze when circular buffer reaches maxlen (5,000 entries). DaemonRunner now assigns monotonic sequence IDs to log, cli_outputs, and fs_outputs entries. host_daemon.html.j2 tracks sequence IDs (lastCliId, lastLogId, lastFsId) to incrementally append new items and handle wrap-arounds even when total array length remains capped at 5000.

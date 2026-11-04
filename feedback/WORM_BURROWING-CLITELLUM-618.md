@@ -76,12 +76,6 @@
 [] [target] [INFO] 46.977625 INFO [36m[controller::shell_controller][0m command execution succeeded
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-BURROWING-CLITELLUM-618.log](attachments/WORM-BURROWING-CLITELLUM-618/target_system_logs_WORM-BURROWING-CLITELLUM-618.log) | Target system and defmt logs from host daemon session |
-
 #### Resolution Notes
 
 Restored canonical 10ms commutation tick interval in tmc6300 and types to ensure open-loop commutation step timing supports physical BLDC rotor synchronism from standstill. Validated on target hardware and automated test suites.

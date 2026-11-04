@@ -72,12 +72,6 @@ FYR, pls take a look at this trace with motor detached.
 [] [target] [INFO] 21.035286 WARN [36m[controller::motor_controller][0m Low load / dry detected (current: 8 mA). Stopped motor.
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-VERMIFORM-ANNELID-135.log](attachments/WORM-VERMIFORM-ANNELID-135/target_system_logs_WORM-VERMIFORM-ANNELID-135.log) | Target system and defmt logs from host daemon session |
-
 #### Resolution Notes
 
 Resolved in conjunction with WORM-GLIDING-LARVA-522. Confirmed that trace with motor detached ran for 3 seconds without hardware driver fault due to absence of motor stator coil current / rotor stall, stopping solely on expected low-load dry-run detection (8 mA). Restored canonical pin assignments and forward commutation progression.

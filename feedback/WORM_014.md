@@ -13,12 +13,6 @@
 
 I see these two unresolved worms in the VCS UI which seem to be an artifact of porting changes over from the hardware repo
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `screenshot` | [pasted_screenshot_1791340187710.png](attachments/WORM-014/pasted_screenshot_1791340187710.png) | Pasted screenshot |
-
 #### Resolution Notes
 
 Prevent phantom OPEN worm tags in VCS UI for non-existent bug IDs ported from external repositories

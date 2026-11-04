@@ -75,15 +75,6 @@ The RTT and system log don’t appear when I open the app. When I click the Targ
 [] [target] [INFO] 0.021985 INFO [36m[platform::core_monitor::configure_mpu_stack_guard][0m MPU stack guard configured at 0x2000c500
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-ANNELIDIC-MAGGOT-775.log](attachments/WORM-ANNELIDIC-MAGGOT-775/target_system_logs_WORM-ANNELIDIC-MAGGOT-775.log) | Target system and defmt logs from host daemon session |
-| `log` | [target_crash_log_WORM-ANNELIDIC-MAGGOT-775.log](attachments/WORM-ANNELIDIC-MAGGOT-775/target_crash_log_WORM-ANNELIDIC-MAGGOT-775.log) | Target crash log retrieved via host_fs |
-| `reference` | [target_telemetry_WORM-ANNELIDIC-MAGGOT-775.json](attachments/WORM-ANNELIDIC-MAGGOT-775/target_telemetry_WORM-ANNELIDIC-MAGGOT-775.json) | Target telemetry export retrieved via host_fs |
-| `screenshot` | [screenshot_paste_1792279314613_97e6l.png](attachments/WORM-ANNELIDIC-MAGGOT-775/screenshot_paste_1792279314613_97e6l.png) | Pasted screenshot screenshot_paste_1792279314613_97e6l.png |
-
 #### Resolution Notes
 
 Closed unclosed <div> in targetBugModal automatic attachments container in tools/host_daemon/templates/host_daemon.html.j2 so workspace-body is no longer nested in targetBugModal.

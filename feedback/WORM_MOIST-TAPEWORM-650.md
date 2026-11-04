@@ -73,12 +73,6 @@ Caused by:
 [] [target] [INFO] 0.021683 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-MOIST-TAPEWORM-650.log](attachments/WORM-MOIST-TAPEWORM-650/target_system_logs_WORM-MOIST-TAPEWORM-650.log) | Target system and defmt logs from host daemon session |
-
 #### Resolution Notes
 
 Configured single-click highlight and text selection across CLI text controls, prompt label, input bar, and interactive terminal command links to focus and select the CLI text control without unintended immediate execution.

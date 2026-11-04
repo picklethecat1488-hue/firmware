@@ -118,12 +118,6 @@ Some additional context here:
 [] [target] [INFO] 53.583980 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-DAMP-MEALWORM-592.log](attachments/WORM-DAMP-MEALWORM-592/target_system_logs_WORM-DAMP-MEALWORM-592.log) | Target system and defmt logs from host daemon session |
-
 #### Resolution Notes
 
 Set TMC6300 tick interval to 500us (2000 Hz commutation rate) and restored canonical calculate_pwm_counts with FET on-pulse duration clamping <= 800ns (<1.0us t_S2G threshold). Commutation step advances reliably without pole slipping or 5-degree oscillation at speed 30. Verified on hardware and codified regression test in test_worm_damp_mealworm_592_motor_commutation.py.

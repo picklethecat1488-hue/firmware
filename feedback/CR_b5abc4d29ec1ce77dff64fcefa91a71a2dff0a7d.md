@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Review Date** | `2026-11-04 14:30:30 UTC` |
+| **Review Date** | `2026-10-15 22:16:27 UTC` |
 | **Revisions** | `b5abc4d29ec1ce77dff64fcefa91a71a2dff0a7d` |
 | **Overall Verdict** | **`CHANGES_REQUESTED`** |
 | **Review Progress** | `0/7 files reviewed (0%)` |
@@ -45,4 +45,4 @@ simulate)
 
 ## Action Items Checklist
 
-- [ ] **[MUST FIX]** [`bin/anvil:L152-L161`](file:///Users/<username>/gh/firmware/bin/anvil#L152-L161): I don’t think we need this one, but a way to reverse proxy a host cli command from anvil to the local host.py backend might be nice <!-- uuid:5f7acce9-89e4-4bec-ab9a-55ded2468e95 -->
+- [x] **[MUST FIX]** [`bin/anvil:L152-L161`](file:///Users/<username>/gh/firmware/bin/anvil#L152-L161): I don’t think we need this one, but a way to reverse proxy a host cli command from anvil to the local host.py backend might be nice <!-- uuid:5f7acce9-89e4-4bec-ab9a-55ded2468e95 -->

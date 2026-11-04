@@ -90,13 +90,6 @@ The DIAG light is still popping on. It looks like we still cannot escape commuta
 [] [target] [INFO] 38.057971 INFO [36m[controller::motor_controller][0m Stopping motor...
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-GLIDING-LARVA-522.log](attachments/WORM-GLIDING-LARVA-522/target_system_logs_WORM-GLIDING-LARVA-522.log) | Target system and defmt logs from host daemon session |
-| `document` | [digital.csv](attachments/WORM-GLIDING-LARVA-522/digital.csv) | Attached document (digital.csv) |
-
 #### Resolution Notes
 
 Root cause identified: Inverted TMC6300 pin mapping and phase masks from commit 1a7ef379 caused firmware to energize UL and WH in Step 0 and VL and WH in Step 1, creating reverse magnetic fields that locked the rotor, causing stall overcurrent and tripping TMC6300 DIAG fault pin at t = 20 ms. Restored canonical pin assignments (UH=16, UL=17, VH=18, VL=19, WH=20, WL=21) and canonical 6-step trapezoidal commutation masks across board, peripheral driver, and codegen. Added waveform comparison preview under recordings/previews/waveform_gliding_larva_522.svg and codified regression unit tests in peripheral/tests/integration.rs and tools/tests/test_worm_gliding_larva_522_commutation_phase_progression.py.
