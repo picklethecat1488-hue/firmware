@@ -58,11 +58,22 @@ def run_scancode(workspace_root: str, report_path: str):
             env = os.environ.copy()
             env["PYTHONWARNINGS"] = "ignore"
             try:
-                subprocess.run(cmd, check=True, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                proc = subprocess.run(
+                    cmd,
+                    check=True,
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
                 spinner.succeed(f"Scan completed successfully. Report saved to {report_path}")
                 return
             except subprocess.CalledProcessError as e:
                 spinner.fail(f"Error running scancode command: {e}")
+                if e.stderr:
+                    print(f"\n{Fore.RED}scancode stderr:{Style.RESET_ALL}\n{e.stderr}", file=sys.stderr)
+                if e.stdout:
+                    print(f"\n{Fore.RED}scancode stdout:{Style.RESET_ALL}\n{e.stdout}", file=sys.stderr)
                 sys.exit(1)
 
     print("Error: 'scancode' executable not found on host.", file=sys.stderr)
