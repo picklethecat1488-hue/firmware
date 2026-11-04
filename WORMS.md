@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-04 14:35:23 UTC` |
+| **Report Date** | `2026-11-04 14:35:35 UTC` |
 | **Total Issues** | `107` |
 | **Open Issues** | `0` |
 | **Resolved / Closed** | `107 (100%)` |
@@ -66,84 +66,84 @@
 - [x] **`[MEDIUM]`** [#WORM-027](#worm-027): Apply dashboard theme to Window UI `[dashboard]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-028](#worm-028): Create separate firwmware architecture docs `[cat_fountain, carrier_board]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-029](#worm-029): Replace integer ID’s with Docker-pattern ID's `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-BOOKWORM-399](#worm-annelidic-bookworm-399): Cleanup host_cli/host_fs when closing host daemon `[host_daemon]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-ANNELIDIC-CATERPILLAR-258](#worm-annelidic-caterpillar-258): Please highlight the selected commit in VCS UI `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-MAGGOT-775](#worm-annelidic-maggot-775): The RTT and system log view don’t appear when I open the App `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-NEMATODE-26](#worm-annelidic-nematode-26): motor speed 100 tripped DIAG `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-BRISTLY-BURROWER-873](#worm-bristly-burrower-873): Current sensor does not appear to be workign right. `[cat_fountain]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-BRISTLY-GLOWWORM-390](#worm-bristly-glowworm-390): Please add the “Attachments & Screenshots” UI to the host bug reporter page `[Host]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-BURROWING-CLITELLUM-618](#worm-burrowing-clitellum-618): Motor is stationary :-( `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-CHITINOUS-PALOLO-159](#worm-chitinous-palolo-159): Disable CLI while running a command `[host_daemon, dashboard]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-CHITINOUS-SERPULA-541](#worm-chitinous-serpula-541): Update docs (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-COILING-CASTING-220](#worm-coiling-casting-220): Add RESET button to host daemon `[host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-COMPOSTED-CLITELLUM-469](#worm-composted-clitellum-469): Corrupted CLI output `[dashboard, host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-COMPOSTED-DIGGER-386](#worm-composted-digger-386): Motor spins half cycle, then starts ticking `[cat_detector]` (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-COMPOSTED-PALOLO-725](#worm-composted-palolo-725): Not able to flash a new app with host daemon `[host_daemon]` (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-CREEPING-LARVA-820](#worm-creeping-larva-820): Regression tests are not useful (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-CREEPING-TAPEWORM-173](#worm-creeping-tapeworm-173): New Worm Report (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-CREEPING-WRIGGLER-223](#worm-creeping-wriggler-223): VL not asserting `[cat_fountain]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-DAMP-MEALWORM-592](#worm-damp-mealworm-592): Motor oscillates at speed 30 `[target]` (`RESOLVED`)
+- [x] **`[HIGH]`** [#WORM-TRANSLUCENT-TAPEWORM-953](#worm-translucent-tapeworm-953): Dashboard stuck at 20% on launch `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-LOAMY-BRISTLE-455](#worm-loamy-bristle-455): Elide physical address and personal email in privacy sanitizer `[sanitizer]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-UNDULATING-REDWORM-56](#worm-undulating-redworm-56): README.md is broken (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-EARTHEN-NYMPH-383](#worm-earthen-nymph-383): SensorController: Periodic read failed. (`RESOLVED`)
+- [x] **`[HIGH]`** [#WORM-GLIDING-BRISTLE-252](#worm-gliding-bristle-252): Update TMC6300 to 6-PWM control and drop SENSE pin support `[tmc6300]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-GROUNDED-PLANARIAN-948](#worm-grounded-planarian-948): GP26 is logic high- measuing .29V on multimeter (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-RIBBONWORM-582](#worm-subterranean-ribbonworm-582): Remove feedback/WORMS.md from repo `[dashboard]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-DEEP-FIREWORM-942](#worm-deep-fireworm-942): Add GPIO set CLI command for hardware debugging `[platform]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-BRISTLY-BURROWER-873](#worm-bristly-burrower-873): Current sensor does not appear to be workign right. `[cat_fountain]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-WRITHING-TUBEWORM-652](#worm-writhing-tubeworm-652): Limit max TMC6300 current to 2A (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SLITHERING-EARTHWORM-854](#worm-slithering-earthworm-854): Bootloop- (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SLICK-BURROWER-70](#worm-slick-burrower-70): We should log when DIAG pin gets asserted. `[cat_fountain]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-EMBEDDED-LEECH-268](#worm-embedded-leech-268): Motor does not spin `[cat_fountain]` (`RESOLVED`)
 - [x] **`[CRITICAL]`** [#WORM-DEEP-PLANARIAN-943](#worm-deep-planarian-943): GPIO pin states do not persist `[cat_fountain]` (`RESOLVED`)
 - [x] **`[CRITICAL]`** [#WORM-DIRT-RIBBONWORM-196](#worm-dirt-ribbonworm-196): Motor speed 100- no GPIO activity `[cat_fountain]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-EARTHEN-NYMPH-383](#worm-earthen-nymph-383): SensorController: Periodic read failed. (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-EMBEDDED-LEECH-268](#worm-embedded-leech-268): Motor does not spin `[cat_fountain]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-FLEXIBLE-WOODLOUSE-713](#worm-flexible-woodlouse-713): When motor speed is reset, the duty cycle resets `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-FOSSORIAL-COMPOSTER-481](#worm-fossorial-composter-481): RTT logs showing up in CLI view `[target]` (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-GLIDING-BRISTLE-252](#worm-gliding-bristle-252): Update TMC6300 to 6-PWM control and drop SENSE pin support `[tmc6300]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SUPPLE-PUPA-464](#worm-supple-pupa-464): Create host_daemon tool `[host_daemon]` (`RESOLVED`)
+- [x] **`[LOW]`** [#WORM-SETOSE-SETAE-521](#worm-setose-setae-521): Add fuzzy history search to CLI control `[dashboard, host_daemon]` (`RESOLVED`)
+- [x] **`[LOW]`** [#WORM-TUNNELING-SILKWORM-860](#worm-tunneling-silkworm-860): Add terminal format and coloration support `[dashboard, host_daemon]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-GLIDING-BRISTLEWORM-4](#worm-gliding-bristleworm-4): Add colorized console output to ⚡ TARGET SYNC & FLASH MATRIX `[host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-GLIDING-LARVA-522](#worm-gliding-larva-522): Motor fails, DIAG light pops on `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-GLOWING-SLUG-613](#worm-glowing-slug-613): Motor fails to spin, but moves `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-GROUNDED-PLANARIAN-948](#worm-grounded-planarian-948): GP26 is logic high- measuing .29V on multimeter (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-HUMIC-COCOON-243](#worm-humic-cocoon-243): Sorting by ID no longer works as intended `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-HUMIC-SANDWORM-365](#worm-humic-sandworm-365): motor speed 50 tripped DIAG `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-INCHING-BEETLE-546](#worm-inching-beetle-546): Creating a bug with a large attachment may crash the dashboard `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-LOAMY-BRISTLE-455](#worm-loamy-bristle-455): Elide physical address and personal email in privacy sanitizer `[sanitizer]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-LOAMY-CATERPILLAR-738](#worm-loamy-caterpillar-738): Add motor telemetry `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-LOAMY-LUGWORM-536](#worm-loamy-lugworm-536): Add Target Bug pointer to host tool `[host]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-LUMINESCENT-PALOLO-130](#worm-luminescent-palolo-130): Rename Host Daemon to Host `[host_daemon]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-LUMINESCENT-WOODLOUSE-435](#worm-luminescent-woodlouse-435): Parse ANSI OSC 8 hyperlink escape sequences in terminal and CLI console `[host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-LUSTROUS-FLATWORM-473](#worm-lustrous-flatworm-473): Tons of untracked files under recordings/ and dashboard is slow to respond `[dashboard]` (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-MOIST-MILLIPEDE-488](#worm-moist-millipede-488): Host flashes cat_detector_app instead of shell due to session contamination `[host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-MOIST-TAPEWORM-650](#worm-moist-tapeworm-650): Single clicking on any text control should highlight the CLI text control `[target]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-COILING-CASTING-220](#worm-coiling-casting-220): Add RESET button to host daemon `[host_daemon]` (`RESOLVED`)
+- [x] **`[HIGH]`** [#WORM-SLIMY-SNAIL-582](#worm-slimy-snail-582): host_daemon.py-pywebkit window didn’t pop up `[host_daemon]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-TUNNELING-INCHWORM-510](#worm-tunneling-inchworm-510): FS doesn’t work `[host_daemon]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-VERMICULAR-CATERPILLAR-419](#worm-vermicular-caterpillar-419): Add vertical handle gripper to logging monitor to permit resizing `[host_daemon]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-NOCTURNAL-BURROWER-260](#worm-nocturnal-burrower-260): Add copy icons to logging monitor and command workstations `[host_daemon]` (`RESOLVED`)
+- [x] **`[HIGH]`** [#WORM-COMPOSTED-PALOLO-725](#worm-composted-palolo-725): Not able to flash a new app with host daemon `[host_daemon]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-CREEPING-TAPEWORM-173](#worm-creeping-tapeworm-173): New Worm Report (`RESOLVED`)
+- [x] **`[LOW]`** [#WORM-LUMINESCENT-WOODLOUSE-435](#worm-luminescent-woodlouse-435): Parse ANSI OSC 8 hyperlink escape sequences in terminal and CLI console `[host_daemon]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-COMPOSTED-CLITELLUM-469](#worm-composted-clitellum-469): Corrupted CLI output `[dashboard, host_daemon]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-CHITINOUS-PALOLO-159](#worm-chitinous-palolo-159): Disable CLI while running a command `[host_daemon, dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-BOOKWORM-399](#worm-annelidic-bookworm-399): Cleanup host_cli/host_fs when closing host daemon `[host_daemon]` (`RESOLVED`)
+- [x] **`[LOW]`** [#WORM-LUMINESCENT-PALOLO-130](#worm-luminescent-palolo-130): Rename Host Daemon to Host `[host_daemon]` (`RESOLVED`)
+- [x] **`[LOW]`** [#WORM-ANNELIDIC-CATERPILLAR-258](#worm-annelidic-caterpillar-258): Please highlight the selected commit in VCS UI `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-LOAMY-LUGWORM-536](#worm-loamy-lugworm-536): Add Target Bug pointer to host tool `[host]` (`RESOLVED`)
+- [x] **`[LOW]`** [#WORM-SERPENTINE-PUPA-18](#worm-serpentine-pupa-18): Integrate bringup.py with host `[host, bringup]` (`RESOLVED`)
+- [x] **`[LOW]`** [#WORM-CHITINOUS-SERPULA-541](#worm-chitinous-serpula-541): Update docs (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-MAGGOT-775](#worm-annelidic-maggot-775): The RTT and system log view don’t appear when I open the App `[target]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-PEATY-BOBBIT-630](#worm-peaty-bobbit-630): Motor speed 100 fails-DIAG light pops on (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-BRISTLY-GLOWWORM-390](#worm-bristly-glowworm-390): Please add the “Attachments & Screenshots” UI to the host bug reporter page `[Host]` (`RESOLVED`)
+- [x] **`[LOW]`** [#WORM-ROOTED-CLITELLUM-453](#worm-rooted-clitellum-453): Parse the target function namespace intelligently `[host_cli]` (`RESOLVED`)
+- [x] **`[HIGH]`** [#WORM-CREEPING-WRIGGLER-223](#worm-creeping-wriggler-223): VL not asserting `[cat_fountain]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SLICK-FIREWORM-677](#worm-slick-fireworm-677): Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer) RTT connected. Active channels: `[target]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-GLIDING-LARVA-522](#worm-gliding-larva-522): Motor fails, DIAG light pops on `[target]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-VERMIFORM-ANNELID-135](#worm-vermiform-annelid-135): Providing scope trace with motor detached `[target]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-FOSSORIAL-COMPOSTER-481](#worm-fossorial-composter-481): RTT logs showing up in CLI view `[target]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SILKEN-RIBBONWORM-320](#worm-silken-ribbonworm-320): DIAG trip coincides with drop in input voltage `[target]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-MOIST-TAPEWORM-650](#worm-moist-tapeworm-650): Single clicking on any text control should highlight the CLI text control `[target]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SLIMY-PLANARIAN-761](#worm-slimy-planarian-761): When calling host.py with no arguments, the UI should present a modal configuration window `[host]` (`RESOLVED`)
+- [x] **`[CRITICAL]`** [#WORM-SLITHERING-LUMBRICUS-809](#worm-slithering-lumbricus-809): TMC6300-Short protection fault on startup `[cat_fountain]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SLICK-ANNELID-908](#worm-slick-annelid-908): When calling host.py with no args, it gets stuck at the initial flashing UI `[host]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SETOSE-TUBEWORM-177](#worm-setose-tubeworm-177): Motor vibrates, does not spin (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-INCHING-BEETLE-546](#worm-inching-beetle-546): Creating a bug with a large attachment may crash the dashboard `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-HUMIC-COCOON-243](#worm-humic-cocoon-243): Sorting by ID no longer works as intended `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-WIREWORM-439](#worm-subterranean-wireworm-439): Motor vibrates, does not spin & 92 mA current cap `[cat_fountain]` (`RESOLVED`)
+- [x] **`[HIGH]`** [#WORM-MOIST-MILLIPEDE-488](#worm-moist-millipede-488): Host flashes cat_detector_app instead of shell due to session contamination `[host_daemon]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SEGMENTED-SIPUNCULID-504](#worm-segmented-sipunculid-504): Motor RPM reads as 0 RPM at 100% speed `[cat_detector]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-PROBOSCID-ROUNDWORM-8](#worm-proboscid-roundworm-8): Motor does not spin at full duty cycle `[cat_detector]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-NOCTURNAL-CATERPILLAR-808](#worm-nocturnal-caterpillar-808): Motor rotor ticks back and forth instead of spinning `[cat_detector]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-ORGANIC-FIREWORM-553](#worm-organic-fireworm-553): Motor oscillates back and forth `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-PEATY-BOBBIT-630](#worm-peaty-bobbit-630): Motor speed 100 fails-DIAG light pops on (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-PROBOSCID-ROUNDWORM-8](#worm-proboscid-roundworm-8): Motor does not spin at full duty cycle `[cat_detector]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-ROOTED-CLITELLUM-453](#worm-rooted-clitellum-453): Parse the target function namespace intelligently `[host_cli]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-ROUND-POLYCHAETE-84](#worm-round-polychaete-84): The motor seemed to stop spinning around speed 50 here `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SEGMENTED-MEALWORM-41](#worm-segmented-mealworm-41): Startup blanking `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SEGMENTED-SIPUNCULID-504](#worm-segmented-sipunculid-504): Motor RPM reads as 0 RPM at 100% speed `[cat_detector]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-SERPENTINE-PUPA-18](#worm-serpentine-pupa-18): Integrate bringup.py with host `[host, bringup]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-SETOSE-SETAE-521](#worm-setose-setae-521): Add fuzzy history search to CLI control `[dashboard, host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SETOSE-TUBEWORM-177](#worm-setose-tubeworm-177): Motor vibrates, does not spin (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SILKEN-RIBBONWORM-320](#worm-silken-ribbonworm-320): DIAG trip coincides with drop in input voltage `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SILKEN-TUBEWORM-979](#worm-silken-tubeworm-979): Motor stalled out at 35% speed `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SLICK-ANNELID-908](#worm-slick-annelid-908): When calling host.py with no args, it gets stuck at the initial flashing UI `[host]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SLICK-BURROWER-70](#worm-slick-burrower-70): We should log when DIAG pin gets asserted. `[cat_fountain]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SLICK-FIREWORM-677](#worm-slick-fireworm-677): Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer) RTT connected. Active channels: `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SLIMY-PLANARIAN-761](#worm-slimy-planarian-761): When calling host.py with no arguments, the UI should present a modal configuration window `[host]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SLIMY-ROOTER-821](#worm-slimy-rooter-821): Can we hide system logs by default? `[Host]` (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-SLIMY-SNAIL-582](#worm-slimy-snail-582): host_daemon.py-pywebkit window didn’t pop up `[host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SLITHERING-EARTHWORM-854](#worm-slithering-earthworm-854): Bootloop- (`RESOLVED`)
-- [x] **`[CRITICAL]`** [#WORM-SLITHERING-LUMBRICUS-809](#worm-slithering-lumbricus-809): TMC6300-Short protection fault on startup `[cat_fountain]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SOILBOUND-VERMIS-341](#worm-soilbound-vermis-341): The CLI console is broken and not updating `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-EARTHWORM-231](#worm-subterranean-earthworm-231): Cannot start motor stress at 50% speed `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-PUPA-423](#worm-subterranean-pupa-423): Repro steps doesn’t update `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-RIBBONWORM-582](#worm-subterranean-ribbonworm-582): Remove feedback/WORMS.md from repo `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-WIREWORM-439](#worm-subterranean-wireworm-439): Motor vibrates, does not spin & 92 mA current cap `[cat_fountain]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SUPPLE-PUPA-464](#worm-supple-pupa-464): Create host_daemon tool `[host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SUPPLE-SEGMENT-373](#worm-supple-segment-373): DIAG tripped after 260s `[cat_detector]` (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-TRANSLUCENT-TAPEWORM-953](#worm-translucent-tapeworm-953): Dashboard stuck at 20% on launch `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-TUNNELING-INCHWORM-510](#worm-tunneling-inchworm-510): FS doesn’t work `[host_daemon]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-TUNNELING-SILKWORM-860](#worm-tunneling-silkworm-860): Add terminal format and coloration support `[dashboard, host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-UNDULATING-REDWORM-56](#worm-undulating-redworm-56): README.md is broken (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-UNDULATING-SERPULA-688](#worm-undulating-serpula-688): Temporarily remove hall sensor support `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-VERMICULAR-CATERPILLAR-419](#worm-vermicular-caterpillar-419): Add vertical handle gripper to logging monitor to permit resizing `[host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-VERMIFORM-ANNELID-135](#worm-vermiform-annelid-135): Providing scope trace with motor detached `[target]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-DAMP-MEALWORM-592](#worm-damp-mealworm-592): Motor oscillates at speed 30 `[target]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-LUSTROUS-FLATWORM-473](#worm-lustrous-flatworm-473): Tons of untracked files under recordings/ and dashboard is slow to respond `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-LOAMY-CATERPILLAR-738](#worm-loamy-caterpillar-738): Add motor telemetry `[cat_detector]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-VERMIFORM-REDWORM-38](#worm-vermiform-redworm-38): I see some extra output in the logs here `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-WRITHING-TUBEWORM-652](#worm-writhing-tubeworm-652): Limit max TMC6300 current to 2A (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SLIMY-ROOTER-821](#worm-slimy-rooter-821): Can we hide system logs by default? `[Host]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-GLOWING-SLUG-613](#worm-glowing-slug-613): Motor fails to spin, but moves `[cat_detector]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-PUPA-423](#worm-subterranean-pupa-423): Repro steps doesn’t update `[cat_detector]` (`RESOLVED`)
+- [x] **`[HIGH]`** [#WORM-CREEPING-LARVA-820](#worm-creeping-larva-820): Regression tests are not useful (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-BURROWING-CLITELLUM-618](#worm-burrowing-clitellum-618): Motor is stationary :-( `[target]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SEGMENTED-MEALWORM-41](#worm-segmented-mealworm-41): Startup blanking `[target]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-COMPOSTED-DIGGER-386](#worm-composted-digger-386): Motor spins half cycle, then starts ticking `[cat_detector]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-UNDULATING-SERPULA-688](#worm-undulating-serpula-688): Temporarily remove hall sensor support `[cat_detector]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-FLEXIBLE-WOODLOUSE-713](#worm-flexible-woodlouse-713): When motor speed is reset, the duty cycle resets `[cat_detector]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-ROUND-POLYCHAETE-84](#worm-round-polychaete-84): The motor seemed to stop spinning around speed 50 here `[cat_detector]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SILKEN-TUBEWORM-979](#worm-silken-tubeworm-979): Motor stalled out at 35% speed `[cat_detector]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SUPPLE-SEGMENT-373](#worm-supple-segment-373): DIAG tripped after 260s `[cat_detector]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-EARTHWORM-231](#worm-subterranean-earthworm-231): Cannot start motor stress at 50% speed `[cat_detector]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-SOILBOUND-VERMIS-341](#worm-soilbound-vermis-341): The CLI console is broken and not updating `[cat_detector]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-NEMATODE-26](#worm-annelidic-nematode-26): motor speed 100 tripped DIAG `[target]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-HUMIC-SANDWORM-365](#worm-humic-sandworm-365): motor speed 50 tripped DIAG `[target]` (`RESOLVED`)
 
 ## Detailed Issue Log
 
@@ -10795,241 +10795,240 @@ Replaced integer-based issue IDs with Docker-pattern IDs generated via CRNG with
 
 ---
 
-### <a id="worm-annelidic-bookworm-399"></a> 🟢 `[WORM-ANNELIDIC-BOOKWORM-399]` Cleanup host_cli/host_fs when closing host daemon
+### <a id="worm-translucent-tapeworm-953"></a> 🟢 `[WORM-TRANSLUCENT-TAPEWORM-953]` Dashboard stuck at 20% on launch
 
-- **UUID**: `6293b901-13c6-4b18-8721-204fd7bd0bdb`
+- **UUID**: `3e17a613-50d8-4c90-9e62-24e63b8f13fe`
 - **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `host_daemon`
-- **Created**: `2026-10-17 02:59:21 UTC`
-- **Resolved**: `2026-10-17 05:45:44 UTC`
-
-#### Description
-
-Please clean up the host_cli and host_fs tools when the main host daemon window is closed. I had to kill host_cli to start a new daemon instance
-
-#### Execution / Console Logs
-
-```text
-<username> at THE-HEARTH-NODE in ~/gh/firmware (main) 
-$ PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
-➜ Host daemon running at http://127.0.0.1:8899 (PID 22338).
-➜ Detached from terminal.
-(firmware-env) 
-<username> at THE-HEARTH-NODE in ~/gh/firmware (main) 
-$ PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
-➜ Host daemon running at http://127.0.0.1:8899 (PID 23134).
-➜ Detached from terminal.
-(firmware-env) 
-<username> at THE-HEARTH-NODE in ~/gh/firmware (main) 
-$ killall host_cli
-(firmware-env) 
-<username> at THE-HEARTH-NODE in ~/gh/firmware (main) 
-$ PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
-➜ Host daemon is running (PID 23134 on port 8899).
-➜ Reconfiguring and flashing target: cat_detector (cat_detector_shell) [release]...
-➜ Target synchronization and flash started.
-Workstation URL: ht
-```
-
-#### Resolution Notes
-
-Terminated both rtt_process (host_cli) and _active_sync_process in runner.stop(), and hooked runner.stop() into _on_app_close(), atexit, and SIGTERM/SIGINT handlers.
-
----
-
-### <a id="worm-annelidic-caterpillar-258"></a> 🟢 `[WORM-ANNELIDIC-CATERPILLAR-258]` Please highlight the selected commit in VCS UI
-
-- **UUID**: `4ea086cc-542f-4a87-b4c1-d7faea8bd5a8`
-- **Status**: `RESOLVED`
-- **Severity**: `LOW`
+- **Severity**: `HIGH`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
-- **Created**: `2026-10-17 03:11:10 UTC`
-- **Resolved**: `2026-10-17 05:00:52 UTC`
+- **Created**: `2026-10-15 00:32:11 UTC`
+- **Resolved**: `2026-10-15 00:32:17 UTC`
 
 #### Description
 
-Can you make this change in the hardware and firmware repos, and run rleevant pre-commit testing in both.
+Upon launching or restarting the dashboard workstation, the UI was stuck displaying the feedback database synchronization modal at 20% progress. Inspection revealed a JavaScript `SyntaxError: Unexpected token ')'` in `diff_view.html.j2:1705` within the `sanitizeAuthor()` function introduced during privacy sanitization hardening. Because the script failed to parse, `initDiffView()` and `performInitialSync()` never ran, leaving the modal stuck at its initial 20% HTML state.
 
 #### Resolution Notes
 
-Added .smartlog-node.selected styling and synchronized selection classes across SSR and client-side DAG interactions in both firmware and hardware repos.
+1. Pruned dangling closing parenthesis in `sanitizeAuthor()` condition in `tools/dashboard/templates/diff_view.html.j2`.
+2. Hardened workstation initialization lifecycle so `initDiffView()` fires immediately if `document.readyState !== 'loading'`, eliminating dependency on potentially pre-fired `DOMContentLoaded` events.
+3. Added comprehensive regression test `test_regression_bug_translucent_tapeworm_953_dashboard_js_syntax_and_sync_screen` in `tools/tests/test_dashboard.py` verifying balanced syntax and executing `node -c` across extracted `<script>` blocks in all dashboard templates (`diff_view.html.j2`, `code_review.html.j2`, `worm_report.html.j2`).
 
 ---
 
-### <a id="worm-annelidic-maggot-775"></a> 🟢 `[WORM-ANNELIDIC-MAGGOT-775]` The RTT and system log view don’t appear when I open the App
+### <a id="worm-loamy-bristle-455"></a> 🟢 `[WORM-LOAMY-BRISTLE-455]` Elide physical address and personal email in privacy sanitizer
 
-- **UUID**: `72adfd2a-91d8-4c82-bcec-3d7c8ebf6f7e`
+- **UUID**: `09c3136e-35c6-442e-9708-46ac711fa0ed`
 - **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
-- **Component**: `target`
-- **Created**: `2026-10-17 23:20:51 UTC`
-- **Resolved**: `2026-10-17 23:25:24 UTC`
+- **Component**: `sanitizer`
+- **Created**: `2026-10-15 00:37:10 UTC`
+- **Resolved**: `2026-10-15 00:37:11 UTC`
 
 #### Description
 
-The RTT and system log don’t appear when I open the app. When I click the Target Bug button, both panels appear, but the formatting is off
+Extend the zero-dependency personal privacy and identity sanitizer (`tools/dashboard/provider/sanitizer.py`) to systematically redact physical addresses (street names, numbers, suite/apt/unit designators, P.O. Boxes, and postal/ZIP codes) and personal email addresses (user handles, consumer email domains like `@gmail.com`, `@me.com`, etc.) across developer feedback, bug reports, and logs. Additionally, update VCS engine commit author and email mapping to redact user author identities to `User` and `user@workspace`.
 
-#### Reproduction Steps
+#### Resolution Notes
 
-1. 1. Connect target device via probe-rs / RTT
-2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. 3. Execute target CLI/FS commands
-4. 4. Observe defect/failure on target
+1. Added physical street address, unit/suite, and P.O. Box regex redaction to `<address>` and `<zip>` in `elide_personal_info()`, using pure regex matching without requiring an engineering whitelist or supplier address preservation.
+2. Dynamically discovered user emails, handles, and system usernames to map all personal identifiers and consumer email domains to `<email>`.
+3. Updated `elide_commit_author()` and `elide_commit_email()` in `tools/dashboard/provider/sanitizer.py` to map user author identities and commit emails to `User` and `user@workspace` via dynamic discovery.
+4. Updated VCS workstation frontend `sanitizeAuthor()` in `diff_view.html.j2` and `code_review.html.j2` to read the author blacklist dynamically from the backend session.
+5. Added dedicated regression unit tests in `tools/tests/test_privacy_and_relative_paths.py`.
+
+---
+
+### <a id="worm-undulating-redworm-56"></a> 🟢 `[WORM-UNDULATING-REDWORM-56]` README.md is broken
+
+- **UUID**: `dc740603-beaa-4db2-b995-bcaa130a0ba2`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `GENERAL`
+- **Created**: `2026-10-15 03:35:22 UTC`
+- **Resolved**: `2026-10-15 03:38:54 UTC`
+
+#### Description
+
+See the error below
 
 #### Execution / Console Logs
 
 ```text
-[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
-[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
-[] [flash] [INFO]      '---''(_/--'  `-'\_)  
-[] [flash] [INFO] Type 'help' to print usage.
-[] [flash] [INFO] shell> Draining buffered defmt logs:
-[] [flash] [INFO] 0.001522 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.022043 [32mINFO[0m MPU stack guard configured at 0x2000c500
-[] [flash] [INFO] Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
-[] [daemon] [INFO] Flash download succeeded via cargo run
-[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001498 INFO [36m[platform::core_monitor::configure_mpu_stack_guard][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021990 INFO [36m[platform::core_monitor::configure_mpu_stack_guard][0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] [Sync] Compiling target firmware...
-[] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.22s
-[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
-[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
-[] [daemon] [INFO] Building host utilities: host_cli and host_fs
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.23s
-[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
-[] [daemon] [INFO] RTT stream disconnected
-[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
-[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.07s
-[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.10s
-[] [flash] [INFO]      [1;32mFinished[0m in 7.43s
-[] [flash] [INFO] RTT connected. Active channels:
-[] [flash] [INFO]   - Up Channel: "defmt" (logs)
-[] [flash] [INFO]   - Up Channel: "cli" (raw output)
-[] [flash] [INFO]   - Down Channel: "cli" (raw input)
-[] [flash] [INFO] shell> 
-[] [flash] [INFO] [2K
-[] [flash] [INFO]        |\      _,,,---,,_
-[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
-[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
-[] [flash] [INFO]      '---''(_/--'  `-'\_)  
-[] [flash] [INFO] Type 'help' to print usage.
-[] [flash] [INFO] shell> Draining buffered defmt logs:
-[] [flash] [INFO] 0.001517 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.022047 [32mINFO[0m MPU stack guard configured at 0x2000c500
-[] [flash] [INFO] Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
-[] [daemon] [INFO] Flash download succeeded via cargo run
-[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001465 INFO [36m[platform::core_monitor::configure_mpu_stack_guard][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021985 INFO [36m[platform::core_monitor::configure_mpu_stack_guard][0m MPU stack guard configured at 0x2000c500
+Unable to render rich display
+
+Parse error on line 32:
+...s tasks| Controller Layer ShellBin -
+-----------------------^
+Expecting 'SEMI', 'NEWLINE', 'EOF', 'AMP', 'START_LINK', 'LINK', 'LINK_ID', got 'NODE_STRING'
+
+For more information, see https://docs.github.com/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams#creating-mermaid-diagrams
 ```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-ANNELIDIC-MAGGOT-775.log](attachments/WORM-ANNELIDIC-MAGGOT-775/target_system_logs_WORM-ANNELIDIC-MAGGOT-775.log) | Target system and defmt logs from host daemon session |
-| `log` | [target_crash_log_WORM-ANNELIDIC-MAGGOT-775.log](attachments/WORM-ANNELIDIC-MAGGOT-775/target_crash_log_WORM-ANNELIDIC-MAGGOT-775.log) | Target crash log retrieved via host_fs |
-| `reference` | [target_telemetry_WORM-ANNELIDIC-MAGGOT-775.json](attachments/WORM-ANNELIDIC-MAGGOT-775/target_telemetry_WORM-ANNELIDIC-MAGGOT-775.json) | Target telemetry export retrieved via host_fs |
-| `screenshot` | [screenshot_paste_1792279314613_97e6l.png](attachments/WORM-ANNELIDIC-MAGGOT-775/screenshot_paste_1792279314613_97e6l.png) | Pasted screenshot screenshot_paste_1792279314613_97e6l.png |
 
 #### Resolution Notes
 
-Closed unclosed <div> in targetBugModal automatic attachments container in tools/host_daemon/templates/host_daemon.html.j2 so workspace-body is no longer nested in targetBugModal.
+Fixed syntax error in README.md Mermaid diagram by replacing unquoted space-separated subgraph identifiers with valid quoted titles and identifiers, updated edge targets, and added regression tests in tools/tests/test_worm_undulating_redworm_56_mermaid_syntax.py.
 
 ---
 
-### <a id="worm-annelidic-nematode-26"></a> 🟢 `[WORM-ANNELIDIC-NEMATODE-26]` motor speed 100 tripped DIAG
+### <a id="worm-earthen-nymph-383"></a> 🟢 `[WORM-EARTHEN-NYMPH-383]` SensorController: Periodic read failed.
 
-- **UUID**: `7340fe94-6993-45f2-b119-41a91487de7a`
+- **UUID**: `a177e2b9-941f-4bd8-85ad-bc66c2789e13`
 - **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
-- **Component**: `target`
-- **Created**: `2026-10-24 02:09:15 UTC`
-- **Resolved**: `2026-10-24 02:21:26 UTC`
+- **Created**: `2026-10-15 20:53:09 UTC`
+- **Resolved**: `2026-10-15 21:20:04 UTC`
+
+#### Description
+
+I see a warning message from SEnsorController when I run `GpioStatus`
 
 #### Reproduction Steps
 
-1. Connect target device via probe-rs / RTT
-2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. Execute command 'motor speed 100'
-4. Execute command 'motor stop'
-5. Execute command 'motor speed 50'
-6. Execute command 'motor stop'
-7. Execute command 'motor speed 50'
-8. Execute command 'motor stop'
-9. Observe defect/failure on target
+1. 1. flash shell app
+2. 2. run `gpio status`
 
 #### Execution / Console Logs
 
 ```text
-[] [target] [INFO] 0.022415 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] [Sync] Compiling target firmware...
-[] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
-[] [build] [INFO] [1m[92m   Compiling[0m controller v0.1.0 (/Users/<username>/gh/firmware/controller)
-[] [build] [INFO] [1m[92m   Compiling[0m peripheral v0.1.0 (/Users/<username>/gh/firmware/peripheral)
-[] [build] [INFO] [1m[92m   Compiling[0m board v0.1.0 (/Users/<username>/gh/firmware/board)
-[] [build] [INFO] [1m[92m   Compiling[0m cat_detector v0.1.0 (/Users/<username>/gh/firmware/app)
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 8.79s
-[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
-[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
-[] [daemon] [INFO] Building host utilities: host_cli and host_fs
-[] [build] [INFO] [1m[92m   Compiling[0m controller v0.1.0 (/Users/<username>/gh/firmware/controller)
-[] [build] [INFO] [1m[92m   Compiling[0m peripheral v0.1.0 (/Users/<username>/gh/firmware/peripheral)
-[] [build] [INFO] [1m[92m   Compiling[0m board v0.1.0 (/Users/<username>/gh/firmware/board)
-[] [build] [INFO] [1m[92m   Compiling[0m host_fs v0.1.0 (/Users/<username>/gh/firmware/tools/host_fs)
-[] [target] [INFO] 43.395366 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 43.395672 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 43.399953 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 43.400002 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 21.13s
-[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
-[] [daemon] [INFO] RTT stream disconnected
-[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
-[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.19s
-[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.22s
-[] [host_cli] [ERROR] Target CLI is not available (RTT console is not connected). Please synchronize target.
-[] [flash] [INFO]      [1;32mFinished[0m in 9.00s
-[] [flash] [INFO] RTT connected. Active channels:
-[] [flash] [INFO]   - Up Channel: "defmt" (logs)
-[] [flash] [INFO]   - Up Channel: "cli" (raw output)
-[] [flash] [INFO]   - Down Channel: "cli" (raw input)
-[] [flash] [INFO] shell> 
-[] [flash] [INFO] [2K
-[] [flash] [INFO]        |\      _,,,---,,_
-[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
-[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
-[] [flash] [INFO]      '---''(_/--'  `-'\_)  
-[] [flash] [INFO] Type 'help' to print usage.
-[] [flash] [INFO] shell> 
-[] [flash] [INFO] Draining buffered defmt logs:
-[] [flash] [INFO] 0.001511 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.021789 [32mINFO[0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] Flash download succeeded via cargo run
-[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001502 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021777 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+gpio status
+g372.454013 INFO [controller::shell_controller::log_command] received command "Gpio { subcommand: Some(Status), pin: None }"
+372.454165 INFO [controller::shell_controller::log_success] command execution succeeded
+GPIO Pin Status (0..29):
+Pin   Level
+-----------
+GP0   Low  (0)
+GP1   Low  (0)
+GP2   Low  (0)
+GP3   Low  (0)
+GP4   Hih (1)
+GP5   High (1)
+GP6   High (1)
+GP7   Low  (0)
+GP8   Low  (0)
+GP9   High (1)
+GP10  High (1)
+GP11  Low  (0)
+GP12  Low  (0)
+GP13  High (1)
+GP14  High (1)
+GP15  High (1)
+GP16  High (1)
+GP17  Low  (0)
+GP18  Low  (0)
+GP19  Low  (0)
+GP20  High (1)
+GP21  Low  (0)
+GP22  Low  (0)
+GP23  Low  (0)
+GP24  Low  (0)
+GP25  Low  (0)
+GP26  High (1)
+GP27  Low  (0)
+GP28  High (1)
+GP29  High (1)
+
+shell> 372.458954 WARN [controller::sensor_controller::{impl#11}::run::{async_fn#0}] SensorController: Periodic read failed.
+372.509120 WARN [controller::sensor_controller::{impl#11}::run::{async_fn#0}] SensorController: Periodic read failed.
 ```
 
 #### Resolution Notes
 
-Enforce SHORT_PROTECTION_MIN_OFF_COUNT = 4 (280 ns off time) in calculate_pwm_counts to ensure flyback diode and FET turn-off recovery time, preventing short circuit current detection and TMC6300 DIAG fault pin latch-up.
+Replaced destructive pin stealing in handle_gpio_cli with direct non-invasive rp_pac::SIO.gpio_in read, preserving FUNCSEL and active I2C peripheral operation.
+
+---
+
+### <a id="worm-gliding-bristle-252"></a> 🟢 `[WORM-GLIDING-BRISTLE-252]` Update TMC6300 to 6-PWM control and drop SENSE pin support
+
+- **UUID**: `7e4bd5e7-82e8-44b4-bce7-6b05b7cfbc56`
+- **Status**: `RESOLVED`
+- **Severity**: `HIGH`
+- **Category**: `FIRMWARE`
+- **Component**: `tmc6300`
+- **Created**: `2026-10-15 20:53:40 UTC`
+- **Resolved**: `2026-10-15 21:11:59 UTC`
+
+#### Description
+
+TMC6300 3-phase BLDC driver requires 6 independent PWM/GPIO inputs (UH, UL, VH, VL, WH, WL) for proper 3-phase commutation. Remove bridged inputs, adopt 6-pin control (Option A), implement 6-step trapezoidal commutation, and drop support for the SENSE pin in favor of the dedicated INA219 current monitor.
+
+#### Resolution Notes
+
+Updated TMC6300 driver to 6-PWM control across GP16-GP21 (UH, UL, VH, VL, WH, WL) plus DIAG on GP22. Dropped EN and SENSE pins from driver and BSP. Implemented 6-step trapezoidal commutation with software break-before-make and PhaseState (Float, High, Low). Added dedicated unit tests and regression assertions guarding against shoot-through and ensuring independent low-side conduction.
+
+---
+
+### <a id="worm-grounded-planarian-948"></a> 🟢 `[WORM-GROUNDED-PLANARIAN-948]` GP26 is logic high- measuing .29V on multimeter
+
+- **UUID**: `b35796e6-ef70-447d-8c21-e66a767d203f`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Created**: `2026-10-15 21:00:30 UTC`
+- **Resolved**: `2026-10-15 21:28:14 UTC`
+
+#### Description
+
+GP26  High (1)
+
+#### Reproduction Steps
+
+1. 1. flash shell firmware
+2. 2. run gpio status command
+
+#### Resolution Notes
+
+Configured early Pull::Up on SPEED_SENSE_PIN (GP26) in Board::init alongside non-destructive SIO register reads in handle_gpio_cli, preventing open-drain Hall sensor line from floating or dropping to 0.29V.
+
+---
+
+### <a id="worm-subterranean-ribbonworm-582"></a> 🟢 `[WORM-SUBTERRANEAN-RIBBONWORM-582]` Remove feedback/WORMS.md from repo
+
+- **UUID**: `f3be9766-fdfa-48be-97c0-8fa9c6dabb78`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-15 21:03:33 UTC`
+- **Resolved**: `2026-10-15 21:30:53 UTC`
+
+#### Resolution Notes
+
+Removed monolithic feedback/WORMS.md from git tracking, keeping only granular WORM_<id>.md files in feedback/ and generating matrix overview in target/WORMS.md.
+
+---
+
+### <a id="worm-deep-fireworm-942"></a> 🟢 `[WORM-DEEP-FIREWORM-942]` Add GPIO set CLI command for hardware debugging
+
+- **UUID**: `55a47316-0497-4228-a27e-b8a318c5b8b0`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `platform`
+- **Created**: `2026-10-15 22:17:35 UTC`
+- **Resolved**: `2026-10-15 23:33:52 UTC`
+
+#### Description
+
+Motor driver trips DIAG fault when motor is connected during commutation; need GPIO set subcommand in CLI shell to test individual pins and commutator states directly on hardware.
+
+#### Reproduction Steps
+
+1. 1. Flash cat_detector_shell
+2. 2. Run gpio set 16 1 to drive GP16 high
+3. 3. Observe unrecognized subcommand or missing set handler
+
+#### Behavior Comparison
+
+- **Expected**: gpio set <pin> <0|1> configures pin as output and drives logic high or low.
+- **Actual**: gpio CLI only supports status and read subcommands.
+
+#### Resolution Notes
+
+Added GpioSubcommand::Set variant to platform/src/io/gpio.rs with pin validation and logic level control. Configured positional pin and value CLI arguments in controller/shell.toml. Added dedicated unit tests and Python regression tests.
 
 ---
 
@@ -11095,644 +11094,242 @@ Fixed INA219 current sensor scaling from raw 0.1 mA counts to integer mA (dividi
 
 ---
 
-### <a id="worm-bristly-glowworm-390"></a> 🟢 `[WORM-BRISTLY-GLOWWORM-390]` Please add the “Attachments & Screenshots” UI to the host bug reporter page
+### <a id="worm-writhing-tubeworm-652"></a> 🟢 `[WORM-WRITHING-TUBEWORM-652]` Limit max TMC6300 current to 2A
 
-- **UUID**: `953d25f6-47e6-4f48-a63b-40ee57ceccde`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `Host`
-- **Created**: `2026-10-17 23:33:41 UTC`
-- **Resolved**: `2026-10-18 00:09:31 UTC`
-
-#### Description
-
-Please add the “Attachments & Screenshots” section to the host tool target bug page, that way I can include additional context when opening bugs.
-
-#### Resolution Notes
-
-Added the Attachments & Screenshots UI section to the host tool target bug page (host_daemon.html.j2), including drag-and-drop dropzone, file input, attachments grid, clipboard pasting for screenshots/text, Git LFS notice, and /api/target_bug backend support for saving manual attachments to disk and worm reports.
-
----
-
-### <a id="worm-burrowing-clitellum-618"></a> 🟢 `[WORM-BURROWING-CLITELLUM-618]` Motor is stationary :-(
-
-- **UUID**: `3a6dfbe5-6077-4e84-bfe7-cf60c552740b`
+- **UUID**: `fb11dc60-30a2-4880-989f-6de052beea64`
 - **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
-- **Component**: `target`
-- **Created**: `2026-10-23 01:46:55 UTC`
-- **Resolved**: `2026-10-23 02:09:08 UTC`
+- **Created**: `2026-10-15 23:43:21 UTC`
+- **Resolved**: `2026-10-16 00:19:19 UTC`
+
+#### Description
+
+With a BetaFPV 1102 motor, at a full duty cycle, the current level will spike to 25A on the first commutation phase after 10ms. The method of toggling GPIOs we use appears too slow. We should switch to a PIO or PWM-based duty cycling program.
 
 #### Reproduction Steps
 
-1. Connect target device via probe-rs / RTT
-2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. Execute command 'motor speed 10'
-4. Execute command 'motor speed 30'
-5. Execute command 'motor speed 50'
-6. Execute command 'motor speed 60'
-7. Execute command 'motor speed 100'
-8. Execute command 'motor current'
-9. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
-[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
-[] [daemon] [INFO] Building host utilities: host_cli and host_fs
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.28s
-[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
-[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
-[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.07s
-[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.11s
-[] [flash] [INFO]      [1;32mFinished[0m in 9.03s
-[] [flash] [INFO] RTT connected. Active channels:
-[] [flash] [INFO]   - Up Channel: "defmt" (logs)
-[] [flash] [INFO]   - Up Channel: "cli" (raw output)
-[] [flash] [INFO]   - Down Channel: "cli" (raw input)
-[] [flash] [INFO] shell> 
-[] [flash] [INFO] [2K
-[] [flash] [INFO]        |\      _,,,---,,_
-[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
-[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
-[] [flash] [INFO]      '---''(_/--'  `-'\_)  
-[] [flash] [INFO] Type 'help' to print usage.
-[] [flash] [INFO] shell> 
-[] [flash] [INFO] Draining buffered defmt logs:
-[] [flash] [INFO] 0.001493 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.021843 [32mINFO[0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] Flash download succeeded via cargo run
-[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001471 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021801 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 12.507959 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 12.508270 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 12.512091 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 12.512125 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 18.132487 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 18.132814 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 18.137203 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 21.519085 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 21.519392 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 21.522695 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 34.763342 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 34.763580 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 34.768187 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 37.184421 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 37.184702 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 37.189193 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 46.977417 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 46.977625 INFO [36m[controller::shell_controller][0m command execution succeeded
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-BURROWING-CLITELLUM-618.log](attachments/WORM-BURROWING-CLITELLUM-618/target_system_logs_WORM-BURROWING-CLITELLUM-618.log) | Target system and defmt logs from host daemon session |
-
-#### Resolution Notes
-
-Restored canonical 10ms commutation tick interval in tmc6300 and types to ensure open-loop commutation step timing supports physical BLDC rotor synchronism from standstill. Validated on target hardware and automated test suites.
-
----
-
-### <a id="worm-chitinous-palolo-159"></a> 🟢 `[WORM-CHITINOUS-PALOLO-159]` Disable CLI while running a command
-
-- **UUID**: `2cbea987-58db-49c3-9adc-d5e41e0ee9ab`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `host_daemon, dashboard`
-- **Created**: `2026-10-17 02:56:38 UTC`
-- **Resolved**: `2026-10-17 03:07:16 UTC`
-
-#### Description
-
-We should disable the CLI input window while a command is running. I was able to call “fs ls” twice, and generate the below execution log.
-
-#### Reproduction Steps
-
-1. 0. PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
-2. 1. Fs ls
-3. 2. fs ls
-
-#### Execution / Console Logs
-
-```text
-[host_fs] Error: Custom { kind: Other, error: "Failed to open probe: Usb(Custom { kind: Other, error: \"error while taking control over USB device: could not open interface for exclusive access (error 0xe00002c5)\" })" }
-[host_fs] Error: Custom { kind: Other, error: "Failed to open probe: Usb(Custom { kind: Other, error: \"error while taking control over USB device: could not open interface for exclusive access (error 0xe00002c5)\" })" }
-[host_fs] No files found (directory empty).
-```
-
-#### Resolution Notes
-
-Disabled CLI and FS command input windows and buttons in host_daemon and code_review workstations while a command is actively executing. Added _fs_lock and sync check to DaemonRunner.execute_fs to serialize hardware probe access and prevent USB exclusive access errors when commands are invoked consecutively.
-
----
-
-### <a id="worm-chitinous-serpula-541"></a> 🟢 `[WORM-CHITINOUS-SERPULA-541]` Update docs
-
-- **UUID**: `5e8a0f5c-4a32-427f-9275-97eb203e6cb9`
-- **Status**: `RESOLVED`
-- **Severity**: `LOW`
-- **Category**: `GENERAL`
-- **Created**: `2026-10-17 20:43:56 UTC`
-- **Resolved**: `2026-10-17 21:51:05 UTC`
-
-#### Description
-
-Update docs-README.md, CONTRIBUTING.md on some of the latest updates
-
----
-
-### <a id="worm-coiling-casting-220"></a> 🟢 `[WORM-COILING-CASTING-220]` Add RESET button to host daemon
-
-- **UUID**: `aa2ef55c-a6b3-4c69-89ff-1fa2c9985890`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `host_daemon`
-- **Created**: `2026-10-17 01:30:56 UTC`
-- **Resolved**: `2026-10-17 01:47:23 UTC`
-
-#### Description
-
-Please add a way to system reset the target using host daemon
-
-#### Resolution Notes
-
-Added target microcontroller reset support via probe-rs, exposed /api/reset POST endpoint, added Reset button in workstation UI header, and added 'reset' CLI subcommand.
-
----
-
-### <a id="worm-composted-clitellum-469"></a> 🟢 `[WORM-COMPOSTED-CLITELLUM-469]` Corrupted CLI output
-
-- **UUID**: `99ddf751-bef5-4af7-934c-d451cfe78363`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `dashboard, host_daemon`
-- **Created**: `2026-10-17 02:52:14 UTC`
-- **Resolved**: `2026-10-17 03:01:00 UTC`
-
-#### Description
-
-See attached screenshot below
-
-#### Reproduction Steps
-
-1. $ PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_app --release
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `screenshot` | [screenshot_paste_1792205540950_hs7gc.png](attachments/WORM-COMPOSTED-CLITELLUM-469/screenshot_paste_1792205540950_hs7gc.png) | Pasted screenshot screenshot_paste_1792205540950_hs7gc.png |
-
-#### Resolution Notes
-
-Resolved CLI output corruption by fixing two root causes: (1) Added ANSI OSC 8 hyperlink escape sequence tokenization and orphaned 8;; URL normalization to terminal.py, host_daemon.html.j2, and code_review.html.j2 so hyperlink escapes are rendered as HTML anchors rather than leaking raw '8;;' strings; (2) Corrected #cliView and #fsView container display property from 'flex' to 'block' and added 'flex-direction: column' to .panel-content so log lines stack vertically rather than being rendered side-by-side in horizontal flex columns.
-
----
-
-### <a id="worm-composted-digger-386"></a> 🟢 `[WORM-COMPOSTED-DIGGER-386]` Motor spins half cycle, then starts ticking
-
-- **UUID**: `6dde94f7-181b-42f0-b5da-d9e1ed4c5df5`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `cat_detector`
-- **Created**: `2026-10-23 21:37:59 UTC`
-- **Resolved**: `2026-10-23 21:59:58 UTC`
-
-#### Description
-
-The motor spins for a half cycle, during which the motor duty cycle is 100%. After which, it starts ticking. The motor is freewheeling, so it should easily be able to spin.
-
-#### Reproduction Steps
-
-1. Connect target device via probe-rs / RTT
-2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. Execute command 'motor speed 30'
-4. Execute command 'motor stop'
-5. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [daemon] [INFO] [Sync] Compiling target firmware...
-[] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.28s
-[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
-[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
-[] [daemon] [INFO] Building host utilities: host_cli and host_fs
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.30s
-[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
-[] [daemon] [INFO] RTT stream disconnected
-[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
-[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.06s
-[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.10s
-[] [flash] [INFO]      [1;32mFinished[0m in 9.04s
-[] [flash] [INFO] RTT connected. Active channels:
-[] [flash] [INFO]   - Up Channel: "defmt" (logs)
-[] [flash] [INFO]   - Up Channel: "cli" (raw output)
-[] [flash] [INFO]   - Down Channel: "cli" (raw input)
-[] [flash] [INFO] shell> 
-[] [flash] [INFO] [2K
-[] [flash] [INFO]        |\      _,,,---,,_
-[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
-[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
-[] [flash] [INFO]      '---''(_/--'  `-'\_)  
-[] [flash] [INFO] Type 'help' to print usage.
-[] [flash] [INFO] shell> 
-[] [flash] [INFO] Draining buffered defmt logs:
-[] [flash] [INFO] 0.001465 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.021943 [32mINFO[0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] Flash download succeeded via cargo run
-[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001511 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021962 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 15.171041 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 15.171341 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 15.174620 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 15.174649 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 18.608212 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 18.608440 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 18.617265 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 20.430521 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 20.430773 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 20.434952 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 20.434976 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 22.781054 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 22.781263 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 22.787425 INFO [36m[controller::motor_controller][0m Stopping motor...
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-COMPOSTED-DIGGER-386.log](attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log) | Target system and defmt logs from host daemon session |
-| `reference` | [target_telemetry_WORM-COMPOSTED-DIGGER-386.json](attachments/WORM-COMPOSTED-DIGGER-386/target_telemetry_WORM-COMPOSTED-DIGGER-386.json) | Target telemetry export retrieved via host_fs |
-| `reference` | [IMG_0202.MOV](attachments/WORM-COMPOSTED-DIGGER-386/IMG_0202.MOV) | Uploaded reference IMG_0202.MOV |
-
-#### Resolution Notes
-
-Configured max_commutation_step_ticks = 2 in board.toml to guarantee open-loop commutation step rate remains >= 50 Hz, avoiding the 22-35 Hz cogging detent resonance band that caused rotor ticking at speed 30. Implemented 100% duty cycle breakaway torque boost during startup alignment with gradual slowdown (2% per tick) down to commanded speed. Added dedicated regression unit tests in controller_tests.rs.
-
----
-
-### <a id="worm-composted-palolo-725"></a> 🟢 `[WORM-COMPOSTED-PALOLO-725]` Not able to flash a new app with host daemon
-
-- **UUID**: `abe0e38f-f71e-41f9-99c4-a45784148233`
-- **Status**: `RESOLVED`
-- **Severity**: `HIGH`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `host_daemon`
-- **Created**: `2026-10-17 01:45:50 UTC`
-- **Resolved**: `2026-10-17 01:49:42 UTC`
-
-#### Description
-
-Not able to flash a new app with host daemon due to the associated execution error
-
-#### Execution / Console Logs
-
-```text
-$ PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_app --release 
-Host daemon is already running (PID 95651 on port 8899).
-Workstation URL: http://127.0.0.1:8899
-(firmware-env)
-```
-
-#### Resolution Notes
-
-Added dynamic runner reconfiguration via /api/sync and CLI forwarding when target/bin changes, added --restart CLI flag, and added sync/flash subcommands.
-
----
-
-### <a id="worm-creeping-larva-820"></a> 🟢 `[WORM-CREEPING-LARVA-820]` Regression tests are not useful
-
-- **UUID**: `c9679ffa-7211-4f3f-bea5-a57be3bc91a4`
-- **Status**: `RESOLVED`
-- **Severity**: `HIGH`
-- **Category**: `GENERAL`
-- **Created**: `2026-10-23 00:51:04 UTC`
-- **Resolved**: `2026-10-23 01:03:28 UTC`
-
-#### Description
-
-I noticed some regression tests are silly and not useful, and only wrap other test cases. If a test case that a bug is meant to fix does not check for the bug, can we instead update the original test case directly if possible? If not possible to unit test a regression fix, it is preferable to omit a regression test if it does not do anything new. Can we please remove these types of useless regression tests in both hardware and firmware repos, as well as update learnings about regression test best practices.
-
-#### Execution / Console Logs
-
-```text
-42
-+
-def test_worm_organic_fireworm_553_short_protection_and_diag():
-43
-+
-    """Verify short protection pulse bounds and DIAG fault handling in integration test suites."""
-44
-+
-    cmd_pulse = [
-45
-+
-        "cargo",
-46
-+
-        "test",
-47
-+
-        "--package",
-48
-+
-        "peripheral",
-49
-+
-        "--test",
-50
-+
-        "integration",
-51
-+
-        "test_worm_slithering_lumbricus_809_tmc6300_short_protection_pulse_invariants",
-52
-+
-        "--",
-53
-+
-        "--nocapture",
-54
-+
-    ]
-55
-+
-    proc_pulse = subprocess.run(cmd_pulse, cwd=REPO_ROOT, capture_output=True, text=True, check=False)
-56
-+
-    assert proc_pulse.returncode == 0, f"peripheral pulse test failed:\n{proc_pulse.stdout}\n{proc_pulse.stderr}"
-57
-+
-58
-+
-    cmd_fault = [
-59
-+
-        "cargo",
-60
-+
-        "test",
-61
-+
-        "--package",
-62
-+
-        "controller",
-63
-+
-        "--test",
-64
-+
-        "controller_tests",
-65
-+
-        "test_worm_peaty_bobbit_630_motor_tick_driver_fault_stops_ticking",
-66
-+
-        "--",
-67
-+
-        "--nocapture",
-68
-+
-    ]
-69
-+
-    proc_fault = subprocess.run(cmd_fault, cwd=REPO_ROOT, capture_output=True, text=True, check=False)
-70
-+
-    assert proc_fault.returncode == 0, f"controller fault test failed:\n{proc_fault.stdout}\n{proc_fault.stderr}"
-```
-
-#### Resolution Notes
-
-Removed redundant and useless shallow regression test wrappers that only wrapped other test suites or cargo tests. Codified regression test best practice rules in GEMINI.md across firmware and hardware repos, prohibiting shallow test wrappers, requiring direct updates to original test cases, and preferring omission when logical invariants are already verified.
-
----
-
-### <a id="worm-creeping-tapeworm-173"></a> 🟢 `[WORM-CREEPING-TAPEWORM-173]` New Worm Report
-
-- **UUID**: `9261aeb5-10e1-4f81-b709-eeec67440ac4`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Created**: `2026-10-17 01:49:59 UTC`
-- **Resolved**: `2026-10-17 02:08:37 UTC`
-
-#### Resolution Notes
-
-Empty template placeholder without defect description; resolved and verified associated review comments and host daemon features.
-
----
-
-### <a id="worm-creeping-wriggler-223"></a> 🟢 `[WORM-CREEPING-WRIGGLER-223]` VL not asserting
-
-- **UUID**: `f73dcd72-2efa-4e89-b6f4-2b39c9b1f9dd`
-- **Status**: `RESOLVED`
-- **Severity**: `HIGH`
-- **Category**: `FIRMWARE`
-- **Component**: `cat_fountain`
-- **Created**: `2026-10-17 23:41:41 UTC`
-- **Resolved**: `2026-10-18 00:02:49 UTC`
-
-#### Description
-
-The PIO program is not asserting VL. This is causing an overcurrent condition which asserts the DIAG pin. See attached trace
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `document` | [digital.csv](attachments/WORM-CREEPING-WRIGGLER-223/digital.csv) | Uploaded document digital.csv |
-
-#### Resolution Notes
-
-Corrected TMC6300 pin mapping and 6-step trapezoidal commutation masks to match physical SparkFun TMC6300 J1 header pinout (UL, UH, VL, VH, WL, WH mapped to GP16..GP21). VL (bit 2 / GP18) now properly asserts in steps 0 and 5.
-
----
-
-### <a id="worm-damp-mealworm-592"></a> 🟢 `[WORM-DAMP-MEALWORM-592]` Motor oscillates at speed 30
-
-- **UUID**: `1f9d77de-2617-4812-868f-38f5d858609d`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `target`
-- **Created**: `2026-10-23 00:03:42 UTC`
-- **Resolved**: `2026-10-23 00:33:25 UTC`
-
-#### Description
-
-Some additional context here:
-
-  ### Remediation Plan
-
-  1. **Torque Floor & Duty Scaling in calculate_pwm_counts**:
-      • Modulate OFF-count within a window that sustains sufficient inductive current to overcome physical cogging detents (> 150 mA)
-      while preserving individual FET ON-pulse clamping (t_{ON} ≤ 800 ns) so the TMC6300 t_{S2G} comparator never trips.
-  2. **Commutation Step Scaling & Soft-Start Ramp in MotorController**:
-      • Align calculate_commutation_step_ticks and the soft-start acceleration ramp so the motor starts reliably and scales smoothly into
-      continuous rotation without pole slipping.
-  3. Hardware Verification:
-      • Re-flash target via python tools/host.py sync and confirm smooth rotation at speeds 10, 30, 50, and 100 via interactive CLI.
-
-  ### 3. Core 1 Concurrency Risks at 500 μs Ticks & Mitigations
-
-  Core 1 executes the following tasks under Embassy's cooperative executor:
-  • controllers.core1.motor (MotorController)
-  • controllers.core1.sensor_north, sensor_east, sensor_west (VL53L0X ToF distance sensors)
-  • core1_command_task (command routing from Core 0)
-  • core_monitor (MPU stack guard & watchdog)
-
-   Potential Risk                  | Root Cause Mechanism                             | Verified Mitigation in Codebase
-  ---------------------------------|--------------------------------------------------|---------------------------------------------------
-   I2C Bus Contention & Starvation | INA219 and the 3 VL53L0X distance sensors share  | Fast tick is 100% I2C-free: The 500 μs
-                                   | SHARED_I2C via mutex. An I2C transaction takes   | commutation tick tick_motor() only pushes a 32-
-                                   | 100--400 μs. If MotorController polled I2C every | bit word to the PIO TX FIFO and samples the GPIO
-                                   | 500 μs, the distance sensors would starve and    | pin. Execution takes < 50 CPU cycles (≈ 350 ns,
-                                   | the motor tick deadline would overrun.           | or 0.07% CPU load). All I2C current reads and
-                                   |                                                  | safety limit checks are strictly quarantined to
-                                   |                                                  | the 1.0-second slow telemetry tick
-                                   |                                                  | (MOTOR_INACTIVE_TICK_INTERVAL).
-   Cooperative Executor Starvation | Tasks only yield at .await points. If the motor  | Bounded non-blocking channel drain + explicit
-                                   | task looped or blocked, other Core 1 tasks would | .await yield: The active loop drains pending
-                                   | hang.                                            | commands non-blockingly via while let Ok(cmd) =
-                                   |                                                  | command_rx.try_receive() (bounded to channel
-                                   |                                                  | capacity 4), executes tick_motor(), and
-                                   |                                                  | immediately yields to the executor via
-                                   |                                                  | ticker.next().await.
-   Idle CPU Burn                   | Running a 500 μs ticker when the motor is        | Dynamic Ticker Lifecycle: When stopped, the 500
-                                   | stopped would waste CPU cycles and battery       | μs ticker is dropped. MotorController waits on
-                                   | power.                                           | command_rx.receive() with a 1.0-second timeout,
-                                   |                                                  | consuming 0 CPU cycles when idle.
-
-#### Reproduction Steps
-
-1. 1. Connect target device via probe-rs / RTT
-2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. 3. Execute command 'motor speed 50'
-4. 4. Execute command 'motor speed 100'
-5. 5. Execute command 'motor speed 30'
-6. 6. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [daemon] [INFO] Building host utilities: host_cli and host_fs
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.23s
-[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
-[] [daemon] [INFO] RTT stream disconnected
-[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
-[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.07s
-[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.10s
-[] [flash] [INFO]      [1;32mFinished[0m in 9.02s
-[] [flash] [INFO] RTT connected. Active channels:
-[] [flash] [INFO]   - Up Channel: "defmt" (logs)
-[] [flash] [INFO]   - Up Channel: "cli" (raw output)
-[] [flash] [INFO]   - Down Channel: "cli" (raw input)
-[] [flash] [INFO] shell> 
-[] [flash] [INFO] [2K
-[] [flash] [INFO]        |\      _,,,---,,_
-[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
-[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
-[] [flash] [INFO]      '---''(_/--'  `-'\_)  
-[] [flash] [INFO] Type 'help' to print usage.
-[] [flash] [INFO] shell> Draining buffered defmt logs:
-[] [flash] [INFO] 0.001506 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.021895 [32mINFO[0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] Flash download succeeded via cargo run
-[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001495 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021896 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] motor speed 105.976777 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 5.977098 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 5.981394 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 5.981435 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] shell> motor current10.812830 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 10.813060 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor speed 3020.793343 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 20.793586 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 20.803978 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 26.778474 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 26.778680 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 37.182346 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 37.182574 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 37.193973 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] shell> motor speed 1047.828116 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 47.828335 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 47.833991 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] shell> motor speed 3053.571346 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 53.571567 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 53.583980 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-DAMP-MEALWORM-592.log](attachments/WORM-DAMP-MEALWORM-592/target_system_logs_WORM-DAMP-MEALWORM-592.log) | Target system and defmt logs from host daemon session |
-
-#### Resolution Notes
-
-Set TMC6300 tick interval to 500us (2000 Hz commutation rate) and restored canonical calculate_pwm_counts with FET on-pulse duration clamping <= 800ns (<1.0us t_S2G threshold). Commutation step advances reliably without pole slipping or 5-degree oscillation at speed 30. Verified on hardware and codified regression test in test_worm_damp_mealworm_592_motor_commutation.py.
-
----
-
-### <a id="worm-deep-fireworm-942"></a> 🟢 `[WORM-DEEP-FIREWORM-942]` Add GPIO set CLI command for hardware debugging
-
-- **UUID**: `55a47316-0497-4228-a27e-b8a318c5b8b0`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `platform`
-- **Created**: `2026-10-15 22:17:35 UTC`
-- **Resolved**: `2026-10-15 23:33:52 UTC`
-
-#### Description
-
-Motor driver trips DIAG fault when motor is connected during commutation; need GPIO set subcommand in CLI shell to test individual pins and commutator states directly on hardware.
-
-#### Reproduction Steps
-
-1. 1. Flash cat_detector_shell
-2. 2. Run gpio set 16 1 to drive GP16 high
-3. 3. Observe unrecognized subcommand or missing set handler
+1. 1. motor speed 100
 
 #### Behavior Comparison
 
-- **Expected**: gpio set <pin> <0|1> configures pin as output and drives logic high or low.
-- **Actual**: gpio CLI only supports status and read subcommands.
+- **Expected**: DIAG light pops on
+- **Actual**: motor speed should ramp up to a full duty cycle without tripping DIAG
 
 #### Resolution Notes
 
-Added GpioSubcommand::Set variant to platform/src/io/gpio.rs with pin validation and logic level control. Configured positional pin and value CLI arguments in controller/shell.toml. Added dedicated unit tests and Python regression tests.
+Implemented RP2040 PIO-based 25 kHz PWM duty cycling state machine on PIO1 for GP16..GP21 with zero shoot-through, and clamped max current limits to 2000 mA.
+
+---
+
+### <a id="worm-slithering-earthworm-854"></a> 🟢 `[WORM-SLITHERING-EARTHWORM-854]` Bootloop-
+
+- **UUID**: `919eccfe-37b7-4464-9733-fb87345157e2`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Created**: `2026-10-16 01:08:14 UTC`
+- **Resolved**: `2026-10-16 01:12:32 UTC`
+
+#### Description
+
+See execution logs
+
+#### Execution / Console Logs
+
+```text
+========================================================
+🔥 TARGET DEVICE CRASH DETECTED 🔥
+========================================================
+UUID: bd2d32b6-bf9a-4788-8b75-e643bb6f09cc
+Revision Hash: da4881c
+
+--------------------------------------------------------
+CPU Core: Core 0
+Panicked: true
+Registers:
+  R0: 0x20024088
+  R1: 0x0000000E
+  R2: 0x20024088
+  R3: 0x0000000E
+  SP: 0x20041A68
+  LR: 0x10020D5F
+  PC: 0x100119C8
+
+Backtrace:
+  Raw PCs: [0, 1001195a, 1001193c, 10000204, 10019cee, 10019d24, 1001af9e, 10009f42, 1001aff2, 1001aff2, 1001aff2, 1001aff2, 1001aff2, 1001aff2, 1001afc0, 10008c44, 1001b028, 10008cfc, 10008d5a, 10011338, 100001e6]
+  0x1001AF9E - __defmt_default_panic (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/defmt-1.1.1/src/lib.rs:385)
+  0x10009F42 - cat_detector_shell::____embassy_main_task::{{closure}} (/Users/<username>/gh/firmware/app/src/cat_detector_shell.rs:0)
+  0x1001AFF2 - _critical_section_1_0_release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:305)
+  0x1001AFF2 - critical_section::release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:219)
+  0x1001AFF2 - critical_section::with (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:249)
+  0x1001AFF2 - _critical_section_1_0_release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:305)
+  0x1001AFF2 - critical_section::release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:219)
+  0x1001AFF2 - critical_section::with (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:249)
+  0x1001AFF2 - _critical_section_1_0_release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:305)
+  0x1001AFF2 - critical_section::release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:219)
+  0x1001AFF2 - critical_section::with (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:249)
+  0x1001AFF2 - _critical_section_1_0_release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:305)
+  0x1001AFF2 - critical_section::release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:219)
+  0x1001AFF2 - critical_section::with (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:249)
+  0x1001AFF2 - _critical_section_1_0_release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:305)
+  0x1001AFF2 - critical_section::release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:219)
+  0x1001AFF2 - critical_section::with (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:249)
+  0x1001AFF2 - _critical_section_1_0_release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:305)
+  0x1001AFF2 - critical_section::release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:219)
+  0x1001AFF2 - critical_section::with (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:249)
+  0x10008D5A - cat_detector_shell::__cortex_m_rt_main (/Users/<username>/gh/firmware/app/src/cat_detector_shell.rs:53)
+  0x10011338 - main (/Users/<username>/gh/firmware/app/src/cat_detector_shell.rs:53)
+  0x100001E6 - (no symbol found)
+
+--------------------------------------------------------
+CPU Core: Core 1
+Panicked: false
+Registers:
+  R0: 0x00000000
+  R1: 0x00000000
+  R2: 0x00000000
+  R3: 0x00000000
+  SP: 0x00000000
+  LR: 0x00000000
+  PC: 0x00000000
+
+Backtrace:
+  (No backtrace frames captured. Check compiler optimization or stack pointer alignment)
+
+Crash Context System Logs:
+  0.000328 INFO MPU stack guard configured at 0x2003c000
+  0.019401 ERROR panicked at 'assertion failed: pins.len() <= 5'
+  0.019524 ERROR --- PANIC DETECTED ---
+  0.019562 ERROR Core 0: SP=20041a68 PC=100119c8 LR=10020d5f
+  0.019641 ERROR   Message: explicit panic
+========================================================
+```
+
+#### Resolution Notes
+
+Removed erroneous cfg.set_set_pins call on the 6 PWM pins in Tmc6300Pio::new. RP2040 PIO SET instructions only support up to 5 pins (assertion failed: pins.len() <= 5), and the driver only uses OUT and MOV PINS, NULL instructions.
+
+---
+
+### <a id="worm-slick-burrower-70"></a> 🟢 `[WORM-SLICK-BURROWER-70]` We should log when DIAG pin gets asserted.
+
+- **UUID**: `9f820909-e867-4252-83b9-92fde8e4a3c7`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `cat_fountain`
+- **Created**: `2026-10-16 01:23:33 UTC`
+- **Resolved**: `2026-10-16 01:36:22 UTC`
+
+#### Description
+
+We should log when the DIAG pin gets asserted in the TMC6300 driver tick call.
+
+#### Resolution Notes
+
+Instrumented TMC6300 driver tick calls (standard GPIO and PIO drivers) with structured error logging when DIAG pin is asserted high.
+
+---
+
+### <a id="worm-embedded-leech-268"></a> 🟢 `[WORM-EMBEDDED-LEECH-268]` Motor does not spin
+
+- **UUID**: `f7f59f93-5829-427e-b5ec-301b2de7486b`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `cat_fountain`
+- **Created**: `2026-10-16 01:24:25 UTC`
+- **Resolved**: `2026-10-17 20:54:50 UTC`
+
+#### Description
+
+Motor does not spin, current readings are constant at 7 mA. See tracebacks below
+
+#### Behavior Comparison
+
+- **Expected**: During motor operation, the 6-PWM bridge outputs continuous 25 kHz PWM switching across commutating phase pairs (U, V, W) at the proper electrical commutation angle (6-step trapezoidal commutation) to generate a rotating stator magnetic field. When commanded to speed 100%, the driver continuously energizes the phases according to the rotating commutation sequence.
+- **Actual**: In the attached logic analyzer capture (`digital.csv`), when commanded to `motor speed 100`, only Phase U High (`UH`) and Phase V Low (`VL`) exhibit activity, pulsing briefly for 2.88 to 40 microseconds on each 10 ms (100 Hz) `motor_controller` tick. Phases UL, VH, WL, and WH remain completely unasserted (logic 0.0V) across the entire capture. The commutation sequence never advances beyond initial step 0 (`UH=1, VL=1`), failing to generate a rotating stator magnetic field, which leaves the motor stationary. Consequently, motor current consumption remains flat at standby (7 mA), and upon expiration of the 3-second startup blanking window, the controller triggers a low load / dry detection fault and halts the motor.
+
+#### Trace Analysis (`digital.csv`)
+
+1. **Pulse Timing & Periodicity**:
+   - Pulses occur at exact ~10.0 ms intervals (e.g., $t=15.143874$, $15.153815$, $15.163800$, $15.173784$, etc.), which precisely corresponds to the 100 Hz tick rate of `motor_controller::tick_motor`.
+   - Each pulse duration spans only 2.88 µs to ~40 µs before instantly returning all outputs to zero. Continuous 25 kHz PWM modulation is absent between ticks.
+2. **Channel Distribution**:
+   - Channel 2 (`UH`) and Channel 3 (`VL`) toggle together on every 10 ms pulse (`0,1,1,0,0,0`).
+   - Channel 1 (`UL`), Channel 4 (`VH`), Channel 5 (`WL`), and Channel 6 (`WH`) remain constant 0.
+   - Initial commutation step 0 uses mask `0b001001` (UH=1, VL=1). The lack of commutation advance indicates either the state machine word recycling drops on non-blocking pull, or `commutation_step` is continually reset or overridden before phase progression can occur.
+3. **Current & Fault Telemetry Correlation**:
+   - Standby current: 7 mA (measured by INA219).
+   - Startup blanking duration: 3.0 seconds (300 ticks). At $t \approx 3.2$ s after start command, `update()` flags `Low load / dry detected (current: 7 mA)` and stops the motor.
+4. **Status**:
+   - Issue remains **OPEN** per user direction pending definitive hardware/gate-driver bench validation and commutation sequencer root-cause resolution.
+
+#### Execution / Console Logs
+
+```text
+6.821608 INFO [controller::shell_controller::log_success] command execution succeeded
+6.824300 WARN [controller::motor_controller::{impl#5}::handle_command::{async_fn#0}] Motor Controller: Warning, calibration is not present! Running with fallback limits.
+6.824331 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Starting motor...
+
+Motor current: 7 mA
+
+shell> motor10.027180 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Stopping motor...
+10.027651 WARN [controller::motor_controller::{impl#5}::update::{async_fn#0}] Motor Controller: Low load / dry detected (current: 7 mA). Stopped motor.
+motor speed 10
+Unknown command: 'motormotor'
+
+shell> motor speed 10
+21.639727 INFO [controller::shell_controller::log_command] received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
+21.639977 INFO [controller::shell_controller::log_success] command execution succeeded
+21.644206 WARN [controller::motor_controller::{impl#5}::handle_command::{async_fn#0}] Motor Controller: Warning, calibration is not present! Running with fallback limits.
+21.644233 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Starting motor...
+
+Motor current: 7 mA
+
+shell> 25.047018 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Stopping motor...
+25.047488 WARN [controller::motor_controller::{impl#5}::update::{async_fn#0}] Motor Controller: Low load / dry detected (current: 7 mA). Stopped motor.
+motor speed 100
+28.233725 INFO [controller::shell_controller::log_command] received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+28.233986 INFO [controller::shell_controller::log_success] command execution succeeded
+28.238202 WARN [controller::motor_controller::{impl#5}::handle_command::{async_fn#0}] Motor Controller: Warning, calibration is not present! Running with fallback limits.
+28.238227 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Starting motor...
+
+Motor current: 7 mA
+
+shell> 32.061002 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Stopping motor...
+32.061470 WARN [controller::motor_controller::{impl#5}::update::{async_fn#0}] Motor Controller: Low load / dry detected (current: 7 mA). Stopped motor.
+motor stop
+45.277803 INFO [controller::shell_controller::log_command] received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+45.278027 INFO [controller::shell_controller::log_success] command execution succeeded
+
+shell> motor speed 100
+47.888373 INFO [controller::shell_controller::log_command] received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+47.888620 INFO [controller::shell_controller::log_success] command execution succeeded
+
+Motor current: 7 mA
+
+shell> 47.892833 WARN [controller::motor_controller::{impl#5}::handle_command::{async_fn#0}] Motor Controller: Warning, calibration is not present! Running with fallback limits.
+47.892858 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Starting motor...
+51.075608 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Stopping motor...
+51.076074 WARN [controller::motor_controller::{impl#5}::update::{async_fn#0}] Motor Controller: Low load / dry detected (current: 7 mA). Stopped motor.
+motor stop
+53.563057 INFO [controller::shell_controller::log_command] received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+53.563289 INFO [controller::shell_controller::log_success] command execution succeeded
+
+shell>
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `document` | [digital.csv](attachments/WORM-EMBEDDED-LEECH-268/digital.csv) | Uploaded document digital.csv |
+
+#### Resolution Notes
+
+Decoupled set_speed from sm.tx push in Tmc6300Pio, ensuring tick exclusively drives 6-step trapezoidal commutation advancement and non-blocking 25 kHz PIO PWM word recycling without FIFO overflow.
 
 ---
 
@@ -11872,374 +11469,66 @@ Resolved out-of-bounds jump in PIO assembler program when off_count is 0 (100% d
 
 ---
 
-### <a id="worm-earthen-nymph-383"></a> 🟢 `[WORM-EARTHEN-NYMPH-383]` SensorController: Periodic read failed.
+### <a id="worm-supple-pupa-464"></a> 🟢 `[WORM-SUPPLE-PUPA-464]` Create host_daemon tool
 
-- **UUID**: `a177e2b9-941f-4bd8-85ad-bc66c2789e13`
+- **UUID**: `3024e952-f8f5-4cdf-83e8-7d9889343c52`
 - **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Created**: `2026-10-15 20:53:09 UTC`
-- **Resolved**: `2026-10-15 21:20:04 UTC`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `host_daemon`
+- **Created**: `2026-10-17 00:32:33 UTC`
+- **Resolved**: `2026-10-17 01:00:46 UTC`
 
 #### Description
 
-I see a warning message from SEnsorController when I run `GpioStatus`
+Can you please create a host daemon tool that wraps host_cli and host_fs tools based on the UI framework the dashboard uses? The idea is that host daemon will compile host tools and flash the target on startup, detach from the terminal, and supports any host_cli or host_fs command through a native CLI similar to the code review CLI. There should be a dropdown box to select the active UI mode-CLI or FS, as well as separate logging and CLI output view panels
 
 #### Reproduction Steps
 
-1. 1. flash shell app
-2. 2. run `gpio status`
-
-#### Execution / Console Logs
-
-```text
-gpio status
-g372.454013 INFO [controller::shell_controller::log_command] received command "Gpio { subcommand: Some(Status), pin: None }"
-372.454165 INFO [controller::shell_controller::log_success] command execution succeeded
-GPIO Pin Status (0..29):
-Pin   Level
------------
-GP0   Low  (0)
-GP1   Low  (0)
-GP2   Low  (0)
-GP3   Low  (0)
-GP4   Hih (1)
-GP5   High (1)
-GP6   High (1)
-GP7   Low  (0)
-GP8   Low  (0)
-GP9   High (1)
-GP10  High (1)
-GP11  Low  (0)
-GP12  Low  (0)
-GP13  High (1)
-GP14  High (1)
-GP15  High (1)
-GP16  High (1)
-GP17  Low  (0)
-GP18  Low  (0)
-GP19  Low  (0)
-GP20  High (1)
-GP21  Low  (0)
-GP22  Low  (0)
-GP23  Low  (0)
-GP24  Low  (0)
-GP25  Low  (0)
-GP26  High (1)
-GP27  Low  (0)
-GP28  High (1)
-GP29  High (1)
-
-shell> 372.458954 WARN [controller::sensor_controller::{impl#11}::run::{async_fn#0}] SensorController: Periodic read failed.
-372.509120 WARN [controller::sensor_controller::{impl#11}::run::{async_fn#0}] SensorController: Periodic read failed.
-```
-
-#### Resolution Notes
-
-Replaced destructive pin stealing in handle_gpio_cli with direct non-invasive rp_pac::SIO.gpio_in read, preserving FUNCSEL and active I2C peripheral operation.
-
----
-
-### <a id="worm-embedded-leech-268"></a> 🟢 `[WORM-EMBEDDED-LEECH-268]` Motor does not spin
-
-- **UUID**: `f7f59f93-5829-427e-b5ec-301b2de7486b`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `cat_fountain`
-- **Created**: `2026-10-16 01:24:25 UTC`
-- **Resolved**: `2026-10-17 20:54:50 UTC`
-
-#### Description
-
-Motor does not spin, current readings are constant at 7 mA. See tracebacks below
+1. PROBE_RS_SPEED=4000 python tools/host_daemon.py --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
 
 #### Behavior Comparison
 
-- **Expected**: During motor operation, the 6-PWM bridge outputs continuous 25 kHz PWM switching across commutating phase pairs (U, V, W) at the proper electrical commutation angle (6-step trapezoidal commutation) to generate a rotating stator magnetic field. When commanded to speed 100%, the driver continuously energizes the phases according to the rotating commutation sequence.
-- **Actual**: In the attached logic analyzer capture (`digital.csv`), when commanded to `motor speed 100`, only Phase U High (`UH`) and Phase V Low (`VL`) exhibit activity, pulsing briefly for 2.88 to 40 microseconds on each 10 ms (100 Hz) `motor_controller` tick. Phases UL, VH, WL, and WH remain completely unasserted (logic 0.0V) across the entire capture. The commutation sequence never advances beyond initial step 0 (`UH=1, VL=1`), failing to generate a rotating stator magnetic field, which leaves the motor stationary. Consequently, motor current consumption remains flat at standby (7 mA), and upon expiration of the 3-second startup blanking window, the controller triggers a low load / dry detection fault and halts the motor.
+- **Expected**: 1. Attach to target
+- **Actual**: _Not specified_
 
-#### Trace Analysis (`digital.csv`)
+---
 
-1. **Pulse Timing & Periodicity**:
-   - Pulses occur at exact ~10.0 ms intervals (e.g., $t=15.143874$, $15.153815$, $15.163800$, $15.173784$, etc.), which precisely corresponds to the 100 Hz tick rate of `motor_controller::tick_motor`.
-   - Each pulse duration spans only 2.88 µs to ~40 µs before instantly returning all outputs to zero. Continuous 25 kHz PWM modulation is absent between ticks.
-2. **Channel Distribution**:
-   - Channel 2 (`UH`) and Channel 3 (`VL`) toggle together on every 10 ms pulse (`0,1,1,0,0,0`).
-   - Channel 1 (`UL`), Channel 4 (`VH`), Channel 5 (`WL`), and Channel 6 (`WH`) remain constant 0.
-   - Initial commutation step 0 uses mask `0b001001` (UH=1, VL=1). The lack of commutation advance indicates either the state machine word recycling drops on non-blocking pull, or `commutation_step` is continually reset or overridden before phase progression can occur.
-3. **Current & Fault Telemetry Correlation**:
-   - Standby current: 7 mA (measured by INA219).
-   - Startup blanking duration: 3.0 seconds (300 ticks). At $t \approx 3.2$ s after start command, `update()` flags `Low load / dry detected (current: 7 mA)` and stops the motor.
-4. **Status**:
-   - Issue remains **OPEN** per user direction pending definitive hardware/gate-driver bench validation and commutation sequencer root-cause resolution.
+### <a id="worm-setose-setae-521"></a> 🟢 `[WORM-SETOSE-SETAE-521]` Add fuzzy history search to CLI control
 
-#### Execution / Console Logs
+- **UUID**: `baa8996a-3ef7-490f-8234-b15467135419`
+- **Status**: `RESOLVED`
+- **Severity**: `LOW`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard, host_daemon`
+- **Created**: `2026-10-17 00:38:18 UTC`
+- **Resolved**: `2026-10-17 01:04:49 UTC`
 
-```text
-6.821608 INFO [controller::shell_controller::log_success] command execution succeeded
-6.824300 WARN [controller::motor_controller::{impl#5}::handle_command::{async_fn#0}] Motor Controller: Warning, calibration is not present! Running with fallback limits.
-6.824331 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Starting motor...
+#### Description
 
-Motor current: 7 mA
+Can you please add a fuzzy history search (shortcut; CTRL-R on the shell) to invoke a fuzzy history command selector to the CLI tool that host_daemon and dashboard’s code review tool uses.
 
-shell> motor10.027180 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Stopping motor...
-10.027651 WARN [controller::motor_controller::{impl#5}::update::{async_fn#0}] Motor Controller: Low load / dry detected (current: 7 mA). Stopped motor.
-motor speed 10
-Unknown command: 'motormotor'
+---
 
-shell> motor speed 10
-21.639727 INFO [controller::shell_controller::log_command] received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
-21.639977 INFO [controller::shell_controller::log_success] command execution succeeded
-21.644206 WARN [controller::motor_controller::{impl#5}::handle_command::{async_fn#0}] Motor Controller: Warning, calibration is not present! Running with fallback limits.
-21.644233 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Starting motor...
+### <a id="worm-tunneling-silkworm-860"></a> 🟢 `[WORM-TUNNELING-SILKWORM-860]` Add terminal format and coloration support
 
-Motor current: 7 mA
+- **UUID**: `ef3a84a4-ea9b-456f-a279-02947840682f`
+- **Status**: `RESOLVED`
+- **Severity**: `LOW`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard, host_daemon`
+- **Created**: `2026-10-17 00:40:03 UTC`
+- **Resolved**: `2026-10-17 01:09:44 UTC`
 
-shell> 25.047018 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Stopping motor...
-25.047488 WARN [controller::motor_controller::{impl#5}::update::{async_fn#0}] Motor Controller: Low load / dry detected (current: 7 mA). Stopped motor.
-motor speed 100
-28.233725 INFO [controller::shell_controller::log_command] received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-28.233986 INFO [controller::shell_controller::log_success] command execution succeeded
-28.238202 WARN [controller::motor_controller::{impl#5}::handle_command::{async_fn#0}] Motor Controller: Warning, calibration is not present! Running with fallback limits.
-28.238227 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Starting motor...
+#### Description
 
-Motor current: 7 mA
-
-shell> 32.061002 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Stopping motor...
-32.061470 WARN [controller::motor_controller::{impl#5}::update::{async_fn#0}] Motor Controller: Low load / dry detected (current: 7 mA). Stopped motor.
-motor stop
-45.277803 INFO [controller::shell_controller::log_command] received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-45.278027 INFO [controller::shell_controller::log_success] command execution succeeded
-
-shell> motor speed 100
-47.888373 INFO [controller::shell_controller::log_command] received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-47.888620 INFO [controller::shell_controller::log_success] command execution succeeded
-
-Motor current: 7 mA
-
-shell> 47.892833 WARN [controller::motor_controller::{impl#5}::handle_command::{async_fn#0}] Motor Controller: Warning, calibration is not present! Running with fallback limits.
-47.892858 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Starting motor...
-51.075608 INFO [controller::motor_controller::{impl#5}::set_running_state::{async_fn#0}] Motor Controller: Stopping motor...
-51.076074 WARN [controller::motor_controller::{impl#5}::update::{async_fn#0}] Motor Controller: Low load / dry detected (current: 7 mA). Stopped motor.
-motor stop
-53.563057 INFO [controller::shell_controller::log_command] received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-53.563289 INFO [controller::shell_controller::log_success] command execution succeeded
-
-shell>
-```
+We need to support terminal formatting and coloration similar to the vscode terminal in the dashboard and host_daemon CLI. This includes stuff like different colors, font weights, and links. See attached screenshot for example.
 
 #### Attachments & References
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
-| `document` | [digital.csv](attachments/WORM-EMBEDDED-LEECH-268/digital.csv) | Uploaded document digital.csv |
-
-#### Resolution Notes
-
-Decoupled set_speed from sm.tx push in Tmc6300Pio, ensuring tick exclusively drives 6-step trapezoidal commutation advancement and non-blocking 25 kHz PIO PWM word recycling without FIFO overflow.
-
----
-
-### <a id="worm-flexible-woodlouse-713"></a> 🟢 `[WORM-FLEXIBLE-WOODLOUSE-713]` When motor speed is reset, the duty cycle resets
-
-- **UUID**: `e80e1e2c-1bc4-4a77-a893-77cc6d0c3d39`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `cat_detector`
-- **Created**: `2026-10-24 00:47:14 UTC`
-- **Resolved**: `2026-10-24 00:52:25 UTC`
-
-#### Description
-
-When motor speed is reset, the current duty cycle seems to spike and reset to bare minimum. This causes the motor not to ramp up smoothly during the stress test.
-
-#### Reproduction Steps
-
-1. Connect target device via probe-rs / RTT
-2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. Execute command 'motor current'
-4. Execute command 'motor speed 2'
-5. Execute command 'motor current'
-6. Execute command 'motor current'
-7. Execute command 'motor current'
-8. Execute command 'motor current'
-9. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [target] [INFO] 512.399895 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 512.404154 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 512.581040 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 512.581237 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 513.427741 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"8\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 513.427998 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 513.430490 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 513.548653 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 513.548876 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 514.395350 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"9\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 514.395616 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 514.398483 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 514.510200 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 514.510420 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 514.514711 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 566.162677 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"1\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 566.162903 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 566.167086 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 566.167136 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 568.400444 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 568.400693 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 569.609870 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 569.610054 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 570.577436 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 570.577659 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 571.666010 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 571.666234 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 573.238399 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 573.238629 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 575.234069 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 575.234285 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 577.350788 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 577.350977 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 578.439340 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 578.439546 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 585.212633 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 585.212852 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 587.752602 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 587.752805 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 595.312202 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"2\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 595.312466 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 595.316732 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 597.126403 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 597.126640 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 598.093995 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 598.094189 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 598.880126 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 598.880337 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 599.908251 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 599.908469 INFO [36m[controller::shell_controller][0m command execution succeeded
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-FLEXIBLE-WOODLOUSE-713.log](attachments/WORM-FLEXIBLE-WOODLOUSE-713/target_system_logs_WORM-FLEXIBLE-WOODLOUSE-713.log) | Target system and defmt logs from host daemon session |
-| `reference` | [target_telemetry_WORM-FLEXIBLE-WOODLOUSE-713.json](attachments/WORM-FLEXIBLE-WOODLOUSE-713/target_telemetry_WORM-FLEXIBLE-WOODLOUSE-713.json) | Target telemetry export retrieved via host_fs |
-
-#### Resolution Notes
-
-Preserve active regulated duty cycle across running speed changes in MotorController tick_motor, preventing duty cycle collapse and current spikes during speed transitions. Validated on hardware with 1% to 50% ramp over 25s completing with zero DIAG faults and peak current capped at 765 mA.
-
----
-
-### <a id="worm-fossorial-composter-481"></a> 🟢 `[WORM-FOSSORIAL-COMPOSTER-481]` RTT logs showing up in CLI view
-
-- **UUID**: `71aed942-1a62-45c4-ae7b-f07bfae5cf55`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `target`
-- **Created**: `2026-10-18 01:04:48 UTC`
-- **Resolved**: `2026-10-18 01:14:52 UTC`
-
-#### Description
-
-There is some extra output showing up in the RTT CLI view:
-
-shell> Draining buffered defmt logs:
-0.001497 INFO MPU stack guard configured at 0x2003c000
-0.021760 INFO MPU stack guard configured at 0x2000c500
-
-#### Reproduction Steps
-
-1. 1. Connect target device via probe-rs / RTT
-2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. 3. Execute command 'core status'
-4. 4. Execute command 'led blink-four'
-5. 5. Execute command 'led blink-four'
-6. 6. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [daemon] [INFO] [Sync] Compiling target firmware...
-[] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.32s
-[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
-[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
-[] [daemon] [INFO] Building host utilities: host_cli and host_fs
-[] [build] [INFO] [1m[92m   Compiling[0m host_cli v0.1.0 (/Users/<username>/gh/firmware/tools/host_cli)
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 22.61s
-[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
-[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
-[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.21s
-[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
-[] [flash] [INFO] [1m[92m   Compiling[0m host_cli v0.1.0 (/Users/<username>/gh/firmware/tools/host_cli)
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 22.33s
-[] [flash] [INFO]      [1;32mFinished[0m in 7.45s
-[] [flash] [INFO] RTT connected. Active channels:
-[] [flash] [INFO]   - Up Channel: "defmt" (logs)
-[] [flash] [INFO]   - Up Channel: "cli" (raw output)
-[] [flash] [INFO]   - Down Channel: "cli" (raw input)
-[] [flash] [INFO] shell> 
-[] [flash] [INFO] [2K
-[] [flash] [INFO]        |\      _,,,---,,_
-[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
-[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
-[] [flash] [INFO]      '---''(_/--'  `-'\_)  
-[] [flash] [INFO] Type 'help' to print usage.
-[] [flash] [INFO] shell> Draining buffered defmt logs:
-[] [flash] [INFO] 0.001497 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.021760 [32mINFO[0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] Flash download succeeded via cargo run
-[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001454 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021750 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] shell> core statu57.314486 INFO [36m[controller::shell_controller][0m received command "Core { subcommand: Some(Status), arg1: None }"
-[] [target] [INFO] shell> 57.315143 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] led blink-four89.554177 INFO [36m[controller::shell_controller][0m received command "Led { subcommand: Some(BlinkFour), arg1: None }"
-[] [target] [INFO] 89.554281 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 89.558392 INFO [36m[controller::led_controller][0m Playing animation BlinksRedFourTimes
-[] [target] [INFO] shell> led blink-fou104.975500 INFO [36m[controller::shell_controller][0m received command "Led { subcommand: Some(BlinkFour), arg1: None }"
-[] [target] [INFO] 104.975601 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 104.979663 INFO [36m[controller::led_controller][0m Playing animation BlinksRedFourTimes
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-FOSSORIAL-COMPOSTER-481.log](attachments/WORM-FOSSORIAL-COMPOSTER-481/target_system_logs_WORM-FOSSORIAL-COMPOSTER-481.log) | Target system and defmt logs from host daemon session |
-
-#### Resolution Notes
-
-Set log_to_cli=False in flash_target and run_probe_rs, and filtered out 'Draining buffered defmt logs' from CLI stream in DaemonRunner._stream_worker so defmt logs and flash output do not leak into the CLI console view.
-
----
-
-### <a id="worm-gliding-bristle-252"></a> 🟢 `[WORM-GLIDING-BRISTLE-252]` Update TMC6300 to 6-PWM control and drop SENSE pin support
-
-- **UUID**: `7e4bd5e7-82e8-44b4-bce7-6b05b7cfbc56`
-- **Status**: `RESOLVED`
-- **Severity**: `HIGH`
-- **Category**: `FIRMWARE`
-- **Component**: `tmc6300`
-- **Created**: `2026-10-15 20:53:40 UTC`
-- **Resolved**: `2026-10-15 21:11:59 UTC`
-
-#### Description
-
-TMC6300 3-phase BLDC driver requires 6 independent PWM/GPIO inputs (UH, UL, VH, VL, WH, WL) for proper 3-phase commutation. Remove bridged inputs, adopt 6-pin control (Option A), implement 6-step trapezoidal commutation, and drop support for the SENSE pin in favor of the dedicated INA219 current monitor.
-
-#### Resolution Notes
-
-Updated TMC6300 driver to 6-PWM control across GP16-GP21 (UH, UL, VH, VL, WH, WL) plus DIAG on GP22. Dropped EN and SENSE pins from driver and BSP. Implemented 6-step trapezoidal commutation with software break-before-make and PhaseState (Float, High, Low). Added dedicated unit tests and regression assertions guarding against shoot-through and ensuring independent low-side conduction.
+| `screenshot` | [screenshot_paste_1792197679374_lcr30.png](attachments/WORM-TUNNELING-SILKWORM-860/screenshot_paste_1792197679374_lcr30.png) | Pasted screenshot screenshot_paste_1792197679374_lcr30.png |
 
 ---
 
@@ -12263,597 +11552,227 @@ Enlarged sync modal with colorized streaming console output, added cancellation 
 
 ---
 
-### <a id="worm-gliding-larva-522"></a> 🟢 `[WORM-GLIDING-LARVA-522]` Motor fails, DIAG light pops on
+### <a id="worm-coiling-casting-220"></a> 🟢 `[WORM-COILING-CASTING-220]` Add RESET button to host daemon
 
-- **UUID**: `e023aead-8cae-4353-8468-bbebaad4385d`
+- **UUID**: `aa2ef55c-a6b3-4c69-89ff-1fa2c9985890`
 - **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `target`
-- **Created**: `2026-10-18 00:37:14 UTC`
-- **Resolved**: `2026-10-18 01:10:06 UTC`
-
-#### Description
-
-The DIAG light is still popping on. It looks like we still cannot escape commutation phase 1. Please see attached scope trace.
-
-#### Reproduction Steps
-
-1. motor speed 100
-
-#### Waveform Analysis & Scope Comparison
-
-![TMC6300 Commutation Waveform Comparison](../recordings/previews/waveform_gliding_larva_522.svg)
-
-##### 1. Observed Output Waveform (`attachments/WORM-GLIDING-LARVA-522/digital.csv`)
-- **Step 0 ($t = 0.00\,\text{ms} \to 10.00\,\text{ms}$)**: Firmware energized **UL** (GP17) and **WH** (GP20).
-- **Step 1 ($t = 10.00\,\text{ms} \to 19.89\,\text{ms}$)**: Firmware energized **VL** (GP19) and **WH** (GP20).
-- **Fault ($t \approx 20\,\text{ms}$)**: High-side driver held WH continuously across both steps while switching low sides in reverse polarity. The resultant reverse magnetic stator flux locked the rotor against permanent magnets, driving coil current into saturation and asserting the hardware `DIAG` fault pin (GP22). The motor controller caught the fault, transitioned state to `MotorState::Off`, and de-energized all gates.
-
-##### 2. Expected Canonical Waveform (6-Step Trapezoidal BLDC)
-- **Step 0 ($t = 0 \to 10\,\text{ms}$)**: **UH** (GP16) & **VL** (GP19) active; Phase W floating.
-- **Step 1 ($t = 10 \to 20\,\text{ms}$)**: **UH** (GP16) & **WL** (GP21) active; Phase V floating.
-- **Step 2 ($t = 20 \to 30\,\text{ms}$)**: **VH** (GP18) & **WL** (GP21) active; Phase U floating.
-- **Step 3 ($t = 30 \to 40\,\text{ms}$)**: **VH** (GP18) & **UL** (GP17) active; Phase W floating.
-- **Step 4 ($t = 40 \to 50\,\text{ms}$)**: **WH** (GP20) & **UL** (GP17) active; Phase V floating.
-- **Step 5 ($t = 50 \to 60\,\text{ms}$)**: **WH** (GP20) & **VL** (GP19) active; Phase U floating.
-- **DIAG (GP22)**: Remains low throughout operation; motor accelerates smoothly with continuous commutation.
-
-#### Execution / Console Logs
-
-```text
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001520 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021760 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 0.001606 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.019319 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
-[] [target] [INFO] 0.022348 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] [Sync] Compiling target firmware...
-[] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.25s
-[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
-[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
-[] [daemon] [INFO] Building host utilities: host_cli and host_fs
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.26s
-[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
-[] [daemon] [INFO] RTT stream disconnected
-[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
-[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.08s
-[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.18s
-[] [flash] [INFO]      [1;32mFinished[0m in 7.48s
-[] [flash] [INFO] RTT connected. Active channels:
-[] [flash] [INFO]   - Up Channel: "defmt" (logs)
-[] [flash] [INFO]   - Up Channel: "cli" (raw output)
-[] [flash] [INFO]   - Down Channel: "cli" (raw input)
-[] [flash] [INFO] shell> 
-[] [flash] [INFO] [2K
-[] [flash] [INFO]        |\      _,,,---,,_
-[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
-[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
-[] [flash] [INFO]      '---''(_/--'  `-'\_)  
-[] [flash] [INFO] Type 'help' to print usage.
-[] [flash] [INFO] shell> Draining buffered defmt logs:
-[] [flash] [INFO] 0.001490 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.021743 [32mINFO[0m MPU stack guard configured at 0x2000c500
-[] [flash] [INFO] Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
-[] [daemon] [INFO] Flash download succeeded via cargo run
-[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001468 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021734 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] Target bug created: WORM-SLICK-FIREWORM-677 (Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer) RTT connected. Active channels:) with 1 attachments
-[] [target] [INFO] motor speed 1038.030879 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 38.031166 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 38.035467 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 38.035511 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] shell> 38.057941 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
-[] [target] [INFO] 38.057971 INFO [36m[controller::motor_controller][0m Stopping motor...
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-GLIDING-LARVA-522.log](attachments/WORM-GLIDING-LARVA-522/target_system_logs_WORM-GLIDING-LARVA-522.log) | Target system and defmt logs from host daemon session |
-| `document` | [digital.csv](attachments/WORM-GLIDING-LARVA-522/digital.csv) | Attached document (digital.csv) |
-
-#### Resolution Notes
-
-Root cause identified: Inverted TMC6300 pin mapping and phase masks from commit 1a7ef379 caused firmware to energize UL and WH in Step 0 and VL and WH in Step 1, creating reverse magnetic fields that locked the rotor, causing stall overcurrent and tripping TMC6300 DIAG fault pin at t = 20 ms. Restored canonical pin assignments (UH=16, UL=17, VH=18, VL=19, WH=20, WL=21) and canonical 6-step trapezoidal commutation masks across board, peripheral driver, and codegen. Added waveform comparison preview under recordings/previews/waveform_gliding_larva_522.svg and codified regression unit tests in peripheral/tests/integration.rs and tools/tests/test_worm_gliding_larva_522_commutation_phase_progression.py.
-
----
-
-### <a id="worm-glowing-slug-613"></a> 🟢 `[WORM-GLOWING-SLUG-613]` Motor fails to spin, but moves
-
-- **UUID**: `f4cd4549-4887-4b9c-9a44-c019e055dc65`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `cat_detector`
-- **Created**: `2026-10-23 00:49:05 UTC`
-- **Resolved**: `2026-10-23 01:26:40 UTC`
-
-#### Description
-
-The motor fails to spin at all, but moves when I command diff motor speeds. See the attached video.
-
-#### Reproduction Steps
-
-1. 1. Connect target device via probe-rs / RTT
-2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. 3. Execute command 'motor speed 60'
-4. 4. Execute command 'motor speed 50'
-5. 5. Execute command 'motor speed 60'
-6. 6. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [target] [INFO] 20.128691 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 20.133321 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 30.411250 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 30.411556 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 30.414815 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 42.927767 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"20\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 42.928073 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 42.932319 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 47.947246 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 47.947540 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 47.951809 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 51.938630 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 51.938919 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 51.943312 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 58.167636 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 58.167920 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 58.172315 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 63.731461 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 63.731702 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 63.734315 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 68.146172 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 68.146457 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 68.149312 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 78.064220 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 78.064516 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 78.066813 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 108.604581 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 108.604881 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 108.608313 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 110.963120 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 110.963420 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 110.967808 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 112.172625 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 112.172915 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 112.177310 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 113.926449 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 113.926698 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 113.931316 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 115.801176 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 115.801469 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 115.804313 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 117.373586 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 117.373874 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 117.378311 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 118.643579 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 118.643870 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 118.648315 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 125.952968 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 125.953175 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 125.957379 INFO [36m[controller::motor_controller][0m Stopping motor...
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-GLOWING-SLUG-613.log](attachments/WORM-GLOWING-SLUG-613/target_system_logs_WORM-GLOWING-SLUG-613.log) | Target system and defmt logs from host daemon session |
-| `reference` | [target_telemetry_WORM-GLOWING-SLUG-613.json](attachments/WORM-GLOWING-SLUG-613/target_telemetry_WORM-GLOWING-SLUG-613.json) | Target telemetry export retrieved via host_fs |
-| `document` | [IMG_0201.MOV](attachments/WORM-GLOWING-SLUG-613/IMG_0201.MOV) | Attached document (IMG_0201.MOV) |
-
-#### Resolution Notes
-
-1. Fixed TMC6300 PIO assembler to shift exactly 6 bits to OUT pins followed by 2 null bits, preventing RP2040 out_count modulo wrapping from overwriting GP16 (UH) and GP17 (UL) with zeros and deadlocking Phase U. 2. Scaled open-loop startup commutation interval to 60 ticks (30ms) for smooth open-loop acceleration without rotor pole-slipping. 3. Preserved commutation step interval and state across running speed changes in motor_controller. 4. Added regression tests in controller_tests and integration.rs. 5. Redacted personal paths in system log attachments.
-
----
-
-### <a id="worm-grounded-planarian-948"></a> 🟢 `[WORM-GROUNDED-PLANARIAN-948]` GP26 is logic high- measuing .29V on multimeter
-
-- **UUID**: `b35796e6-ef70-447d-8c21-e66a767d203f`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Created**: `2026-10-15 21:00:30 UTC`
-- **Resolved**: `2026-10-15 21:28:14 UTC`
-
-#### Description
-
-GP26  High (1)
-
-#### Reproduction Steps
-
-1. 1. flash shell firmware
-2. 2. run gpio status command
-
-#### Resolution Notes
-
-Configured early Pull::Up on SPEED_SENSE_PIN (GP26) in Board::init alongside non-destructive SIO register reads in handle_gpio_cli, preventing open-drain Hall sensor line from floating or dropping to 0.29V.
-
----
-
-### <a id="worm-humic-cocoon-243"></a> 🟢 `[WORM-HUMIC-COCOON-243]` Sorting by ID no longer works as intended
-
-- **UUID**: `4ffd9e1f-863d-43ec-9fa2-8e92aaae68a2`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `dashboard`
-- **Created**: `2026-10-22 00:00:15 UTC`
-- **Resolved**: `2026-10-22 00:24:46 UTC`
-
-#### Description
-
-Sorting all bugs by the ID no longer works as intended-it no longer lists the newest to oldest bugs or vice versa. Please fix this in the dashboard of both hardware and firmware repos.
-
-#### Resolution Notes
-
-Sorted bugs chronologically by created_at with fallback to numeric ID sequence across SQLite backing store and dashboard UI in both firmware and hardware repositories.
-
----
-
-### <a id="worm-humic-sandworm-365"></a> 🟢 `[WORM-HUMIC-SANDWORM-365]` motor speed 50 tripped DIAG
-
-- **UUID**: `18a14b2a-76fb-4cbc-8536-8fc431b8fa60`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `target`
-- **Created**: `2026-10-24 02:10:03 UTC`
-- **Resolved**: `2026-10-24 02:21:31 UTC`
-
-#### Reproduction Steps
-
-1. Connect target device via probe-rs / RTT
-2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. Execute command 'motor speed 50'
-4. Execute command 'motor stop'
-5. Execute command 'motor speed 50'
-6. Execute command 'motor stop'
-7. Execute command 'motor speed 50'
-8. Execute command 'motor stop'
-9. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001502 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021777 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] Target bug created: WORM-ANNELIDIC-NEMATODE-26 (motor speed 100 tripped DIAG) with 1 attachments
-[] [daemon] [INFO] [Sync] Compiling target firmware...
-[] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.08s
-[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
-[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
-[] [daemon] [INFO] Building host utilities: host_cli and host_fs
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.12s
-[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
-[] [daemon] [INFO] RTT stream disconnected
-[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
-[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.07s
-[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.10s
-[] [flash] [INFO]      [1;32mFinished[0m in 8.99s
-[] [flash] [INFO] RTT connected. Active channels:
-[] [flash] [INFO]   - Up Channel: "defmt" (logs)
-[] [flash] [INFO]   - Up Channel: "cli" (raw output)
-[] [flash] [INFO]   - Down Channel: "cli" (raw input)
-[] [flash] [INFO] shell> 
-[] [flash] [INFO] [2K
-[] [flash] [INFO]        |\      _,,,---,,_
-[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
-[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
-[] [flash] [INFO]      '---''(_/--'  `-'\_)  
-[] [flash] [INFO] Type 'help' to print usage.
-[] [flash] [INFO] shell> 
-[] [flash] [INFO] Draining buffered defmt logs:
-[] [flash] [INFO] 0.001510 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.021763 [32mINFO[0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] Flash download succeeded via cargo run
-[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001468 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021760 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 5.311384 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 5.311688 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 5.315660 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 5.315711 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 6.023451 WARN [36m[controller::motor_controller][0m Current 1380 mA > hard ceiling 800 mA, throttling duty cycle to 90%
-[] [target] [INFO] 7.023758 WARN [36m[controller::motor_controller][0m Current 1365 mA > hard ceiling 800 mA, throttling duty cycle to 80%
-[] [target] [INFO] 7.043470 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
-[] [target] [INFO] 7.043503 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 10.746090 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 10.746303 INFO [36m[controller::shell_controller][0m command execution succeeded
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-HUMIC-SANDWORM-365.log](attachments/WORM-HUMIC-SANDWORM-365/target_system_logs_WORM-HUMIC-SANDWORM-365.log) | Target system and defmt logs from host daemon session |
-| `reference` | [target_telemetry_WORM-HUMIC-SANDWORM-365.json](attachments/WORM-HUMIC-SANDWORM-365/target_telemetry_WORM-HUMIC-SANDWORM-365.json) | Target telemetry export retrieved via host_fs |
-
-#### Resolution Notes
-
-Resolved by eliminating TMC6300 FET turn-off timing violations with SHORT_PROTECTION_MIN_OFF_COUNT = 4 and removing blocking CNVR wait during periodic telemetry. Verified on target: motor runs at speed 50 stably without tripping DIAG.
-
----
-
-### <a id="worm-inching-beetle-546"></a> 🟢 `[WORM-INCHING-BEETLE-546]` Creating a bug with a large attachment may crash the dashboard
-
-- **UUID**: `198ffd38-695e-4360-b783-99f5f1a5fb48`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `dashboard`
-- **Created**: `2026-10-21 23:58:47 UTC`
-- **Resolved**: `2026-10-22 00:31:44 UTC`
-
-#### Description
-
-Creatign a bug with a very large attatchment (>=2GB) may crash the dashboard. Please fix this one in the hardware and firmware repos.
-
-#### Resolution Notes
-
-Guarded against requests and attachments >= 2GB (GitHub LFS limit) with HTTP 413 and client-side size checks, and streamed file downloads in 64 KiB chunks across firmware and hardware dashboards.
-
----
-
-### <a id="worm-loamy-bristle-455"></a> 🟢 `[WORM-LOAMY-BRISTLE-455]` Elide physical address and personal email in privacy sanitizer
-
-- **UUID**: `09c3136e-35c6-442e-9708-46ac711fa0ed`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `sanitizer`
-- **Created**: `2026-10-15 00:37:10 UTC`
-- **Resolved**: `2026-10-15 00:37:11 UTC`
-
-#### Description
-
-Extend the zero-dependency personal privacy and identity sanitizer (`tools/dashboard/provider/sanitizer.py`) to systematically redact physical addresses (street names, numbers, suite/apt/unit designators, P.O. Boxes, and postal/ZIP codes) and personal email addresses (user handles, consumer email domains like `@gmail.com`, `@me.com`, etc.) across developer feedback, bug reports, and logs. Additionally, update VCS engine commit author and email mapping to redact user author identities to `User` and `user@workspace`.
-
-#### Resolution Notes
-
-1. Added physical street address, unit/suite, and P.O. Box regex redaction to `<address>` and `<zip>` in `elide_personal_info()`, using pure regex matching without requiring an engineering whitelist or supplier address preservation.
-2. Dynamically discovered user emails, handles, and system usernames to map all personal identifiers and consumer email domains to `<email>`.
-3. Updated `elide_commit_author()` and `elide_commit_email()` in `tools/dashboard/provider/sanitizer.py` to map user author identities and commit emails to `User` and `user@workspace` via dynamic discovery.
-4. Updated VCS workstation frontend `sanitizeAuthor()` in `diff_view.html.j2` and `code_review.html.j2` to read the author blacklist dynamically from the backend session.
-5. Added dedicated regression unit tests in `tools/tests/test_privacy_and_relative_paths.py`.
-
----
-
-### <a id="worm-loamy-caterpillar-738"></a> 🟢 `[WORM-LOAMY-CATERPILLAR-738]` Add motor telemetry
-
-- **UUID**: `55993acb-1f3a-4436-a773-64b924983be3`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `cat_detector`
-- **Created**: `2026-10-23 00:07:50 UTC`
-- **Resolved**: `2026-10-23 00:13:54 UTC`
-
-#### Description
-
-Can you please add the motor telemetry we had discussed:
-
-    #[derive(Copy, Clone, Debug, PartialEq, Eq, defmt::Format)]
-    #[cfg_attr(feature = "cbor", derive(minicbor::Encode, minicbor::Decode))]
-    #[cfg_attr(feature = "cbor", cbor(array))]
-    pub struct MotorTelemetry {
-        #[cfg_attr(feature = "cbor", n(0))]
-        pub speed: MotorSpeed,
-        #[cfg_attr(feature = "cbor", n(1))]
-        pub measured_rpm: u32,
-        #[cfg_attr(feature = "cbor", n(2))]
-        pub estimated_rpm: u32,
-        #[cfg_attr(feature = "cbor", n(3))]
-        pub current_ma: i32,
-        #[cfg_attr(feature = "cbor", n(4))]
-        pub modeled_peak_current_ma: i32,
-        #[cfg_attr(feature = "cbor", n(5))]
-        pub modeled_torque_unm: u32,
-    }
-
-#### Resolution Notes
-
-Added MotorTelemetry struct in model::types with speed, measured_rpm, estimated_rpm, current_ma, modeled_peak_current_ma, and modeled_torque_unm. Integrated into MotorStatus::Running, updated downstream telemetry pipelines, and added regression unit tests in model/tests/telemetry_tests.rs and tools/tests/test_worm_loamy_caterpillar_738_motor_telemetry.py.
-
----
-
-### <a id="worm-loamy-lugworm-536"></a> 🟢 `[WORM-LOAMY-LUGWORM-536]` Add Target Bug pointer to host tool
-
-- **UUID**: `3f007724-d826-429a-bbc0-d0ee46a40167`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `host`
-- **Created**: `2026-10-17 19:31:59 UTC`
-- **Resolved**: `2026-10-17 21:42:52 UTC`
-
-#### Description
-
-Please add a Target Bug button to each host tool window (similar to how Target Bug works in the SSD repo) to allow easy creation of bug reports from the host tool. Automatically attach relevant system logs and populate the reproduction steps. Also add options to attach target files- crash logs, telemetry, etc. from target automatically (if selected)
-
-#### Resolution Notes
-
-Added Target Bug button to host tool header with dedicated defect modal, pre-filled reproduction steps, and automatic collection of system logs, target crash logs, telemetry exports, and filesystem metadata into worm attachments.
-
----
-
-### <a id="worm-luminescent-palolo-130"></a> 🟢 `[WORM-LUMINESCENT-PALOLO-130]` Rename Host Daemon to Host
-
-- **UUID**: `f1d5fb50-25ab-4152-884d-2ca609df1f74`
-- **Status**: `RESOLVED`
-- **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
-- **Created**: `2026-10-17 03:08:31 UTC`
-- **Resolved**: `2026-10-17 05:47:36 UTC`
+- **Created**: `2026-10-17 01:30:56 UTC`
+- **Resolved**: `2026-10-17 01:47:23 UTC`
 
 #### Description
 
-Rename host_daemon.py to host.py
+Please add a way to system reset the target using host daemon
 
 #### Resolution Notes
 
-Renamed tools/host_daemon.py to tools/host.py and updated all caller references.
+Added target microcontroller reset support via probe-rs, exposed /api/reset POST endpoint, added Reset button in workstation UI header, and added 'reset' CLI subcommand.
 
 ---
 
-### <a id="worm-luminescent-woodlouse-435"></a> 🟢 `[WORM-LUMINESCENT-WOODLOUSE-435]` Parse ANSI OSC 8 hyperlink escape sequences in terminal and CLI console
+### <a id="worm-slimy-snail-582"></a> 🟢 `[WORM-SLIMY-SNAIL-582]` host_daemon.py-pywebkit window didn’t pop up
 
-- **UUID**: `69aec711-3219-44b5-8810-6ab0a59d1138`
-- **Status**: `RESOLVED`
-- **Severity**: `LOW`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `host_daemon`
-- **Created**: `2026-10-17 02:52:08 UTC`
-- **Resolved**: `2026-10-17 02:56:45 UTC`
-
-#### Description
-
-Cargo and CLI utilities emit ANSI OSC 8 hyperlink sequences (\x1b]8;;<url>\x1b\ or \x1b]8;;<url>\x07). Terminal formatters in dashboard and host_daemon do not recognize OSC 8 escapes, causing raw '8;;https://...' text to be rendered in the CLI console.
-
-#### Resolution Notes
-
-Parsed ANSI OSC 8 hyperlink escape sequences (\x1b]8;;url\x1b\text\x1b]8;;\x1b\ as well as BEL-terminated and orphaned 8;; sequences) into styled HTML anchor tags across terminal.py, code_review.html.j2, and host_daemon.html.j2, preventing raw '8;;' from rendering in the CLI console.
-
----
-
-### <a id="worm-lustrous-flatworm-473"></a> 🟢 `[WORM-LUSTROUS-FLATWORM-473]` Tons of untracked files under recordings/ and dashboard is slow to respond
-
-- **UUID**: `85f9dc39-75f5-4b0d-bbd4-1e09c39ad127`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `dashboard`
-- **Created**: `2026-10-23 00:06:57 UTC`
-- **Resolved**: `2026-10-23 00:15:00 UTC`
-
-#### Resolution Notes
-
-Removed hundreds of untracked temporary frame extraction directories and audio files from recordings/previews/ and updated .gitignore with patterns for temporary recording artifacts so workspace git scans and dashboard remain fast.
-
----
-
-### <a id="worm-moist-millipede-488"></a> 🟢 `[WORM-MOIST-MILLIPEDE-488]` Host flashes cat_detector_app instead of shell due to session contamination
-
-- **UUID**: `fce239b7-1b59-46e6-931e-0a1d7d0c0bce`
+- **UUID**: `f039a786-2d34-430a-a840-034538f47df3`
 - **Status**: `RESOLVED`
 - **Severity**: `HIGH`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
-- **Created**: `2026-10-22 01:38:41 UTC`
-- **Resolved**: `2026-10-22 01:42:18 UTC`
+- **Created**: `2026-10-17 01:31:37 UTC`
+- **Resolved**: `2026-10-17 01:44:25 UTC`
 
 #### Description
 
-When flashing or running host daemon without explicit target arguments, cat_detector_app gets flashed instead of cat_detector_shell. Root cause: test_worm_composted_palolo_725 overwrites target/host_session.json with cat_detector_app during pytest runs, discover_target_packages defaults to first binary in Cargo.toml, and app/Cargo.toml lacks default-run.
+See logs below. The app window didn’t open for me. I had to open the page from the Workstation URL instead. Also, can we remove this banner:
 
-#### Resolution Notes
-
-Configured default-run = 'cat_detector_shell' and prioritized shell binaries in target discovery. Isolated test sessions with tmp_path and guarded save_last_session against PYTEST_CURRENT_TEST to prevent test suites from polluting the developer's live workspace host session.
-
----
-
-### <a id="worm-moist-tapeworm-650"></a> 🟢 `[WORM-MOIST-TAPEWORM-650]` Single clicking on any text control should highlight the CLI text control
-
-- **UUID**: `8c693602-b5cb-4601-97ee-c3094a5a68c7`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `target`
-- **Created**: `2026-10-19 01:47:23 UTC`
-- **Resolved**: `2026-10-21 23:25:59 UTC`
-
-#### Reproduction Steps
-
-1. 1. Connect target device via probe-rs / RTT
-2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. 3. Execute command 'motor speed 1'
-4. 4. Execute command 'motor speed 1'
-5. 5. Execute command 'help'
-6. 6. Observe defect/failure on target
+======================================================================
+  ⚡ SYSTEM SHOCK 2 // XERXES HOST DAEMON WORKSTATION
+======================================================================
+  Target:    thumbv6m-none-eabi
+  Package:   cat_detector (cat_detector_shell)
+  Profile:   release
+  Speed:     4000 kHz
+  Port:      8899
 
 #### Execution / Console Logs
 
 ```text
-[] [target] [INFO] 7.247221 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 0.001592 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.019267 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
-[] [target] [INFO] 0.022279 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] motor speed 17.527010 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"1\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 7.527302 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 7.531566 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 7.531589 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] shell> 7.544049 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
-[] [target] [INFO] 7.544091 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 0.001578 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021747 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 0.001596 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.019342 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
-[] [target] [INFO] 0.022369 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] motor speed 18.736613 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"1\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 8.736904 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 8.741173 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 8.741195 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 8.743728 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
-[] [target] [INFO] 8.743816 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 0.001605 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021795 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 0.001577 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021786 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 0.001587 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021826 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 0.001570 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.019258 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
-[] [target] [INFO] 0.022282 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 0.001574 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.019254 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
-[] [target] [INFO] 0.022271 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [system] [INFO] Resetting target microcontroller...
-[] [daemon] [INFO] RTT stream disconnected
-[] [probe-rs] [INFO] [33m WARN[0m [2mprobe_rs::probe::jlink[0m[2m:[0m J-Link: Target voltage (VTref) is 0.00 V. Is your target device powered?
-[] [probe-rs] [INFO] Error: Connecting to the chip was unsuccessful.
-[] [probe-rs] [INFO] Caused by:
-[] [probe-rs] [INFO]     0: An ARM specific error occurred.
-[] [probe-rs] [INFO]     1: An error occurred in the communication with an access port or debug port.
-[] [probe-rs] [INFO]     2: Target device did not respond to request.
-[] [daemon] [WARN] probe-rs reset returned 1: [33m WARN[0m [2mprobe_rs::probe::jlink[0m[2m:[0m J-Link: Target voltage (VTref) is 0.00 V. Is your target device powered?
-Error: Connecting to the chip was unsuccessful.
-Caused by:
-    0: An ARM specific error occurred.
-    1: An error occurred in the communication with an access port or debug port.
-    2: Target device did not respond to request.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001481 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021683 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+$ PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
+======================================================================
+  ⚡ SYSTEM SHOCK 2 // XERXES HOST DAEMON WORKSTATION
+======================================================================
+  Target:    thumbv6m-none-eabi
+  Package:   cat_detector (cat_detector_shell)
+  Profile:   release
+  Speed:     4000 kHz
+  Port:      8899
+  Workstation URL: http://127.0.0.1:8899 (PID 95651)
+➜ Detached from terminal.
+(firmware-env) 
+<username> at THE-HEARTH-NODE in ~/gh/firmware (main) 
+$ PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
+Host daemon is already running (PID 95651 on port 8899).
+Workstation URL: http://127.0.0.1:8899
+(firmware-env)
+```
+
+#### Resolution Notes
+
+Added repo root to sys.path in host_daemon launcher and cli to fix native webview/eel launcher imports without PYTHONPATH, and removed ASCII box banner from host_daemon startup.
+
+---
+
+### <a id="worm-tunneling-inchworm-510"></a> 🟢 `[WORM-TUNNELING-INCHWORM-510]` FS doesn’t work
+
+- **UUID**: `392a47ce-f137-404d-94cb-3f7af58334bc`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `host_daemon`
+- **Created**: `2026-10-17 01:34:30 UTC`
+- **Resolved**: `2026-10-17 01:54:29 UTC`
+
+#### Description
+
+The FS workstation does not work and the example command usage is wrong (see screenshot below), when opening the FS view, we should wait until the host_cli process is terminated and probe is available, and vice versa for opening the host_fs view. Additionally, host_fs and host_cli views should have entirely separate command workstations; right now, CLI output is interleaved with FS output (see traceback below)
+
+#### Execution / Console Logs
+
+```text
+Finished 8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles`release` profile [optimized + debuginfo]8;; target(s) in 0.07s
+     Running `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
+    Finished 8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles`release` profile [optimized + debuginfo]8;; target(s) in 0.11s
+     Finished in 7.45s
+RTT connected. Active channels:
+  - Up Channel: "defmt" (logs)
+  - Up Channel: "cli" (raw output)
+  - Down Channel: "cli" (raw input)
+shell> 
+       |\      _,,,---,,_
+ Zzz   /,`.-'`'    -.  ;-;;,_
+      |,4-  ) )-,_. ,\ (  `'-'
+     '---''(_/--'  `-'\_)  
+Type 'help' to print usage.
+shell> Draining buffered defmt logs:
+0.001471 INFO MPU stack guard configured at 0x2003c000
+0.021860 INFO MPU stack guard configured at 0x2000c500
+Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
+RTT connected. Active channels:
+  - Up Channel: "defmt" (logs)
+  - Up Channel: "cli" (raw output)
+  - Down Channel: "cli" (raw input)
+shell> 
+       |\      _,,,---,,_
+ Zzz   /,`.-'`'    -.  ;-;;,_
+      |,4-  ) )-,_. ,\ (  `'-'
+     '---''(_/--'  `-'\_)  
+Type 'help' to print usage.
+shell> 
+RTT Session Started (Press Ctrl+C to exit):
+Interactive RTT console active. Type commands and press Enter.
+shell> help
+help
+Commands:
+  battery  Battery commands (battery status, battery test-alert)
+  thermal  Thermal commands (thermal status, thermal mcu)
+  motor    Motor commands (motor speed, motor rpm-speed, motor stop, motor current, motor rpm, motor calibrate, motor safety-bypass)
+  sensor   Sensor commands (sensor status, sensor cal_near, sensor cal_far, sensor cal_xtalk)
+  fs       Filesystem commands (fs format, fs ls)
+  system   System commands (system activity)
+  i2c      I2C commands (i2c scan)
+  gpio     GPIO commands (gpio status, gpio read, gpio set)
+  led      LED commands (led off, led green, led blue, led yellow, led orange, led blink-four, led blink-slow, led brightness)
+  core     Core monitor commands (core status, core crash)
+shell> fs ls
+Listing directory...
+No files found (directory empty).
+shell> 
+    Finished 8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles`release` profile [optimized + debuginfo]8;; target(s) in 0.09s
+     Running `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
+    Finished 8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles`release` profile [optimized + debuginfo]8;; target(s) in 0.12s
+     Finished in 7.45s
+RTT connected. Active channels:
+  - Up Channel: "defmt" (logs)
+  - Up Channel: "cli" (raw output)
+  - Down Channel: "cli" (raw input)
+shell> 
+       |\      _,,,---,,_
+ Zzz   /,`.-'`'    -.  ;-;;,_
+      |,4-  ) )-,_. ,\ (  `'-'
+     '---''(_/--'  `-'\_)  
+Type 'help' to print usage.
+shell> Draining buffered defmt logs:
+0.001458 INFO MPU stack guard configured at 0x2003c000
+0.021853 INFO MPU stack guard configured at 0x2000c500
+Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
+RTT connected. Active channels:
+  - Up Channel: "defmt" (logs)
+  - Up Channel: "cli" (raw output)
+  - Down Channel: "cli" (raw input)
+shell> 
+       |\      _,,,---,,_
+ Zzz   /,`.-'`'    -.  ;-;;,_
+      |,4-  ) )-,_. ,\ (  `'-'
+     '---''(_/--'  `-'\_)  
+Type 'help' to print usage.
+shell> 
+RTT Session Started (Press Ctrl+C to exit):
+Interactive RTT console active. Type commands and press Enter.
+fs> help 
+Host utility for querying sequential-storage filesystem dumps from RP2040
+Usage: host_fs [OPTIONS] <COMMAND>
+Commands:
+  ls                List all files in the partition along with their data types
+  cat               Print file contents
+  export-telemetry  Export telemetry.rrd to a CSV file for plotting or visualization (e.g. in Rerun)
+  crash-log         Read and decode all stored crash dumps into human-readable backtraces
+  cp                Copy a file to or from the device flash partition
+  rm                Remove a file or multiple files from the partition (defaults to '*' which clears all files)
+  format            Erase and format the sequential-storage partition on the device
+  help              Print this message or the help of the given subcommand(s)
+Options:
+  -d, --dump <DUMP>                  Path to the binary flash dump file (e.g. flash_dump.bin). If not specified, direct attachment to the device via probe-rs is used
+  -e, --elf <ELF>                    Path to the ELF binary containing project metadata and symbols
+      --offset <OFFSET>              Force a specific flash partition offset in bytes (e.g. "0x1C0000" or "1835008")
+      --size <SIZE>                  Force a specific flash partition size in bytes (e.g. 262144)
+  -o, --openocd-host <OPENOCD_HOST>  Connect to an existing OpenOCD GDB server session (e.g. "localhost:3333" or "127.0.0.1")
+  -h, --help                         Print help
+  -V, --version                      Print version
+fs> ls 
+Error: Custom { kind: Other, error: "Failed to open probe: Usb(Custom { kind: Other, error: \"error while taking control over USB device: could not open interface for exclusive access (error 0xe00002c5)\" })" }
+fs>
 ```
 
 #### Attachments & References
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-MOIST-TAPEWORM-650.log](attachments/WORM-MOIST-TAPEWORM-650/target_system_logs_WORM-MOIST-TAPEWORM-650.log) | Target system and defmt logs from host daemon session |
+| `screenshot` | [screenshot_paste_1792200935540_x027h.png](attachments/WORM-TUNNELING-INCHWORM-510/screenshot_paste_1792200935540_x027h.png) | Pasted screenshot screenshot_paste_1792200935540_x027h.png |
 
 #### Resolution Notes
 
-Configured single-click highlight and text selection across CLI text controls, prompt label, input bar, and interactive terminal command links to focus and select the CLI text control without unintended immediate execution.
+Guaranteed probe exclusivity by stopping RTT streaming before FS commands and on switching to FS mode, separated CLI and FS output queues and terminal DOM views, and updated command placeholders.
+
+---
+
+### <a id="worm-vermicular-caterpillar-419"></a> 🟢 `[WORM-VERMICULAR-CATERPILLAR-419]` Add vertical handle gripper to logging monitor to permit resizing
+
+- **UUID**: `2039f33f-ef54-4bb0-8e2e-00104fb473e9`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `host_daemon`
+- **Created**: `2026-10-17 01:37:50 UTC`
+- **Resolved**: `2026-10-17 02:03:25 UTC`
+
+#### Description
+
+Add vertical handle gripper to logging daemon to permit resizing, and allow the logging monitor to be totally hidden from view.
+
+#### Resolution Notes
+
+Added resizable vertical splitter handle with Xerxes cyan gripper between logging monitor and workstation panels, implemented drag resizing, and added hide/show toggle buttons to totally hide the logging monitor from view.
 
 ---
 
@@ -12877,120 +11796,357 @@ Added copy buttons to logging monitor and command workstations with clipboard fa
 
 ---
 
-### <a id="worm-nocturnal-caterpillar-808"></a> 🟢 `[WORM-NOCTURNAL-CATERPILLAR-808]` Motor rotor ticks back and forth instead of spinning
+### <a id="worm-composted-palolo-725"></a> 🟢 `[WORM-COMPOSTED-PALOLO-725]` Not able to flash a new app with host daemon
 
-- **UUID**: `fab2b9fc-f963-47ef-8baf-8811c4dae6eb`
+- **UUID**: `abe0e38f-f71e-41f9-99c4-a45784148233`
 - **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `cat_detector`
-- **Created**: `2026-10-22 04:00:06 UTC`
-- **Resolved**: `2026-10-23 00:33:29 UTC`
+- **Severity**: `HIGH`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `host_daemon`
+- **Created**: `2026-10-17 01:45:50 UTC`
+- **Resolved**: `2026-10-17 01:49:42 UTC`
 
 #### Description
 
-When commanding motor speed 30, the rotor ticks back and forth rather than rotating smoothly in continuous forward motion.
+Not able to flash a new app with host daemon due to the associated execution error
+
+#### Execution / Console Logs
+
+```text
+$ PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_app --release 
+Host daemon is already running (PID 95651 on port 8899).
+Workstation URL: http://127.0.0.1:8899
+(firmware-env)
+```
 
 #### Resolution Notes
 
-Resolved motor rotor ticking back and forth by configuring 500us commutation tick interval. At speed 30, commutation rate is 667 Hz (1111 RPM), providing sufficient rotor momentum to cross 9N12P cogging detents smoothly in continuous forward rotation. Codified regression test in test_worm_nocturnal_caterpillar_808_motor_oscillation.py.
+Added dynamic runner reconfiguration via /api/sync and CLI forwarding when target/bin changes, added --restart CLI flag, and added sync/flash subcommands.
 
 ---
 
-### <a id="worm-organic-fireworm-553"></a> 🟢 `[WORM-ORGANIC-FIREWORM-553]` Motor oscillates back and forth
+### <a id="worm-creeping-tapeworm-173"></a> 🟢 `[WORM-CREEPING-TAPEWORM-173]` New Worm Report
 
-- **UUID**: `be4d32c9-30f4-4e1b-8780-630daf5bebc5`
+- **UUID**: `9261aeb5-10e1-4f81-b709-eeec67440ac4`
 - **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
-- **Component**: `target`
-- **Created**: `2026-10-22 04:19:58 UTC`
-- **Resolved**: `2026-10-23 00:33:35 UTC`
+- **Created**: `2026-10-17 01:49:59 UTC`
+- **Resolved**: `2026-10-17 02:08:37 UTC`
+
+#### Resolution Notes
+
+Empty template placeholder without defect description; resolved and verified associated review comments and host daemon features.
+
+---
+
+### <a id="worm-luminescent-woodlouse-435"></a> 🟢 `[WORM-LUMINESCENT-WOODLOUSE-435]` Parse ANSI OSC 8 hyperlink escape sequences in terminal and CLI console
+
+- **UUID**: `69aec711-3219-44b5-8810-6ab0a59d1138`
+- **Status**: `RESOLVED`
+- **Severity**: `LOW`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `host_daemon`
+- **Created**: `2026-10-17 02:52:08 UTC`
+- **Resolved**: `2026-10-17 02:56:45 UTC`
 
 #### Description
 
-motor speed 10-oscillating
-motor speed 30-oscillating
-motor speed 50-oscillating
-motor speed 100-rotates slowly, and eventually trips drag
+Cargo and CLI utilities emit ANSI OSC 8 hyperlink sequences (\x1b]8;;<url>\x1b\ or \x1b]8;;<url>\x07). Terminal formatters in dashboard and host_daemon do not recognize OSC 8 escapes, causing raw '8;;https://...' text to be rendered in the CLI console.
+
+#### Resolution Notes
+
+Parsed ANSI OSC 8 hyperlink escape sequences (\x1b]8;;url\x1b\text\x1b]8;;\x1b\ as well as BEL-terminated and orphaned 8;; sequences) into styled HTML anchor tags across terminal.py, code_review.html.j2, and host_daemon.html.j2, preventing raw '8;;' from rendering in the CLI console.
+
+---
+
+### <a id="worm-composted-clitellum-469"></a> 🟢 `[WORM-COMPOSTED-CLITELLUM-469]` Corrupted CLI output
+
+- **UUID**: `99ddf751-bef5-4af7-934c-d451cfe78363`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard, host_daemon`
+- **Created**: `2026-10-17 02:52:14 UTC`
+- **Resolved**: `2026-10-17 03:01:00 UTC`
+
+#### Description
+
+See attached screenshot below
+
+#### Reproduction Steps
+
+1. $ PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_app --release
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `screenshot` | [screenshot_paste_1792205540950_hs7gc.png](attachments/WORM-COMPOSTED-CLITELLUM-469/screenshot_paste_1792205540950_hs7gc.png) | Pasted screenshot screenshot_paste_1792205540950_hs7gc.png |
+
+#### Resolution Notes
+
+Resolved CLI output corruption by fixing two root causes: (1) Added ANSI OSC 8 hyperlink escape sequence tokenization and orphaned 8;; URL normalization to terminal.py, host_daemon.html.j2, and code_review.html.j2 so hyperlink escapes are rendered as HTML anchors rather than leaking raw '8;;' strings; (2) Corrected #cliView and #fsView container display property from 'flex' to 'block' and added 'flex-direction: column' to .panel-content so log lines stack vertically rather than being rendered side-by-side in horizontal flex columns.
+
+---
+
+### <a id="worm-chitinous-palolo-159"></a> 🟢 `[WORM-CHITINOUS-PALOLO-159]` Disable CLI while running a command
+
+- **UUID**: `2cbea987-58db-49c3-9adc-d5e41e0ee9ab`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `host_daemon, dashboard`
+- **Created**: `2026-10-17 02:56:38 UTC`
+- **Resolved**: `2026-10-17 03:07:16 UTC`
+
+#### Description
+
+We should disable the CLI input window while a command is running. I was able to call “fs ls” twice, and generate the below execution log.
+
+#### Reproduction Steps
+
+1. 0. PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
+2. 1. Fs ls
+3. 2. fs ls
+
+#### Execution / Console Logs
+
+```text
+[host_fs] Error: Custom { kind: Other, error: "Failed to open probe: Usb(Custom { kind: Other, error: \"error while taking control over USB device: could not open interface for exclusive access (error 0xe00002c5)\" })" }
+[host_fs] Error: Custom { kind: Other, error: "Failed to open probe: Usb(Custom { kind: Other, error: \"error while taking control over USB device: could not open interface for exclusive access (error 0xe00002c5)\" })" }
+[host_fs] No files found (directory empty).
+```
+
+#### Resolution Notes
+
+Disabled CLI and FS command input windows and buttons in host_daemon and code_review workstations while a command is actively executing. Added _fs_lock and sync check to DaemonRunner.execute_fs to serialize hardware probe access and prevent USB exclusive access errors when commands are invoked consecutively.
+
+---
+
+### <a id="worm-annelidic-bookworm-399"></a> 🟢 `[WORM-ANNELIDIC-BOOKWORM-399]` Cleanup host_cli/host_fs when closing host daemon
+
+- **UUID**: `6293b901-13c6-4b18-8721-204fd7bd0bdb`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `host_daemon`
+- **Created**: `2026-10-17 02:59:21 UTC`
+- **Resolved**: `2026-10-17 05:45:44 UTC`
+
+#### Description
+
+Please clean up the host_cli and host_fs tools when the main host daemon window is closed. I had to kill host_cli to start a new daemon instance
+
+#### Execution / Console Logs
+
+```text
+<username> at THE-HEARTH-NODE in ~/gh/firmware (main) 
+$ PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
+➜ Host daemon running at http://127.0.0.1:8899 (PID 22338).
+➜ Detached from terminal.
+(firmware-env) 
+<username> at THE-HEARTH-NODE in ~/gh/firmware (main) 
+$ PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
+➜ Host daemon running at http://127.0.0.1:8899 (PID 23134).
+➜ Detached from terminal.
+(firmware-env) 
+<username> at THE-HEARTH-NODE in ~/gh/firmware (main) 
+$ killall host_cli
+(firmware-env) 
+<username> at THE-HEARTH-NODE in ~/gh/firmware (main) 
+$ PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
+➜ Host daemon is running (PID 23134 on port 8899).
+➜ Reconfiguring and flashing target: cat_detector (cat_detector_shell) [release]...
+➜ Target synchronization and flash started.
+Workstation URL: ht
+```
+
+#### Resolution Notes
+
+Terminated both rtt_process (host_cli) and _active_sync_process in runner.stop(), and hooked runner.stop() into _on_app_close(), atexit, and SIGTERM/SIGINT handlers.
+
+---
+
+### <a id="worm-luminescent-palolo-130"></a> 🟢 `[WORM-LUMINESCENT-PALOLO-130]` Rename Host Daemon to Host
+
+- **UUID**: `f1d5fb50-25ab-4152-884d-2ca609df1f74`
+- **Status**: `RESOLVED`
+- **Severity**: `LOW`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `host_daemon`
+- **Created**: `2026-10-17 03:08:31 UTC`
+- **Resolved**: `2026-10-17 05:47:36 UTC`
+
+#### Description
+
+Rename host_daemon.py to host.py
+
+#### Resolution Notes
+
+Renamed tools/host_daemon.py to tools/host.py and updated all caller references.
+
+---
+
+### <a id="worm-annelidic-caterpillar-258"></a> 🟢 `[WORM-ANNELIDIC-CATERPILLAR-258]` Please highlight the selected commit in VCS UI
+
+- **UUID**: `4ea086cc-542f-4a87-b4c1-d7faea8bd5a8`
+- **Status**: `RESOLVED`
+- **Severity**: `LOW`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-17 03:11:10 UTC`
+- **Resolved**: `2026-10-17 05:00:52 UTC`
+
+#### Description
+
+Can you make this change in the hardware and firmware repos, and run rleevant pre-commit testing in both.
+
+#### Resolution Notes
+
+Added .smartlog-node.selected styling and synchronized selection classes across SSR and client-side DAG interactions in both firmware and hardware repos.
+
+---
+
+### <a id="worm-loamy-lugworm-536"></a> 🟢 `[WORM-LOAMY-LUGWORM-536]` Add Target Bug pointer to host tool
+
+- **UUID**: `3f007724-d826-429a-bbc0-d0ee46a40167`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `host`
+- **Created**: `2026-10-17 19:31:59 UTC`
+- **Resolved**: `2026-10-17 21:42:52 UTC`
+
+#### Description
+
+Please add a Target Bug button to each host tool window (similar to how Target Bug works in the SSD repo) to allow easy creation of bug reports from the host tool. Automatically attach relevant system logs and populate the reproduction steps. Also add options to attach target files- crash logs, telemetry, etc. from target automatically (if selected)
+
+#### Resolution Notes
+
+Added Target Bug button to host tool header with dedicated defect modal, pre-filled reproduction steps, and automatic collection of system logs, target crash logs, telemetry exports, and filesystem metadata into worm attachments.
+
+---
+
+### <a id="worm-serpentine-pupa-18"></a> 🟢 `[WORM-SERPENTINE-PUPA-18]` Integrate bringup.py with host
+
+- **UUID**: `ca867715-3521-49ac-b103-a48314db3f37`
+- **Status**: `RESOLVED`
+- **Severity**: `LOW`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `host, bringup`
+- **Created**: `2026-10-17 19:32:52 UTC`
+- **Resolved**: `2026-10-17 21:49:23 UTC`
+
+#### Description
+
+Pls integrate the bringup.py functionality (./tools/helpers/bringup.py) into tools/host.py; add a separate Bringup script view which supports the bringup YAML schema, as well as a bringup subcommand which allows bringup scripts to be parsed and loaded. Allow different bringup scripts to be loaded from the bringup script view. The bringup script view should show CLI output, as well as present interactive prompt and detailed bringup status.
+
+---
+
+### <a id="worm-chitinous-serpula-541"></a> 🟢 `[WORM-CHITINOUS-SERPULA-541]` Update docs
+
+- **UUID**: `5e8a0f5c-4a32-427f-9275-97eb203e6cb9`
+- **Status**: `RESOLVED`
+- **Severity**: `LOW`
+- **Category**: `GENERAL`
+- **Created**: `2026-10-17 20:43:56 UTC`
+- **Resolved**: `2026-10-17 21:51:05 UTC`
+
+#### Description
+
+Update docs-README.md, CONTRIBUTING.md on some of the latest updates
+
+---
+
+### <a id="worm-annelidic-maggot-775"></a> 🟢 `[WORM-ANNELIDIC-MAGGOT-775]` The RTT and system log view don’t appear when I open the App
+
+- **UUID**: `72adfd2a-91d8-4c82-bcec-3d7c8ebf6f7e`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `target`
+- **Created**: `2026-10-17 23:20:51 UTC`
+- **Resolved**: `2026-10-17 23:25:24 UTC`
+
+#### Description
+
+The RTT and system log don’t appear when I open the app. When I click the Target Bug button, both panels appear, but the formatting is off
 
 #### Reproduction Steps
 
 1. 1. Connect target device via probe-rs / RTT
 2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. 3. Execute command 'motor speed 20'
-4. 4. Execute command 'motor current'
-5. 5. Execute command 'help'
-6. 6. Observe defect/failure on target
+3. 3. Execute target CLI/FS commands
+4. 4. Observe defect/failure on target
 
 #### Execution / Console Logs
 
 ```text
-[] [target] [INFO] shell> motor curren166.538159 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 166.538357 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> gpio read 26167.564282 INFO [36m[controller::shell_controller][0m received command "Gpio { subcommand: Some(Read), pin: Some(26), value: None }"
-[] [target] [INFO] 167.564476 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 168.594361 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 168.594565 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor stop169.555882 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 169.556071 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> 169.567348 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] shell> motor speed 3518.812294 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 518.812556 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> 518.816747 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 518.816775 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] motor curren525.160374 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 525.160584 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor rpm529.325034 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 529.325241 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor stop533.378964 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 533.379157 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> 533.389201 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] motor speed 100632.750985 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 632.751221 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 632.755420 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 632.755444 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] shell> motor rpm635.702208 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 635.702420 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor stop640.239891 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 640.240088 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> 640.247849 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 1012.279178 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 1012.279419 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 1012.282834 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 1012.282862 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 1073.904214 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 1073.904456 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 1073.915259 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 1080.131206 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 1080.131425 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 1135.045349 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 1135.045583 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> 1135.055263 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 1172.965759 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 1172.966001 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> 1172.975274 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 1189.471612 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 1189.471815 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> 1214.715253 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
-[] [target] [INFO] 1214.715313 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 1226.960627 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 1226.960824 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
+[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
+[] [flash] [INFO]      '---''(_/--'  `-'\_)  
+[] [flash] [INFO] Type 'help' to print usage.
+[] [flash] [INFO] shell> Draining buffered defmt logs:
+[] [flash] [INFO] 0.001522 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.022043 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [flash] [INFO] Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
+[] [daemon] [INFO] Flash download succeeded via cargo run
+[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001498 INFO [36m[platform::core_monitor::configure_mpu_stack_guard][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021990 INFO [36m[platform::core_monitor::configure_mpu_stack_guard][0m MPU stack guard configured at 0x2000c500
+[] [daemon] [INFO] [Sync] Compiling target firmware...
+[] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.22s
+[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
+[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
+[] [daemon] [INFO] Building host utilities: host_cli and host_fs
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.23s
+[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
+[] [daemon] [INFO] RTT stream disconnected
+[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
+[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.07s
+[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.10s
+[] [flash] [INFO]      [1;32mFinished[0m in 7.43s
+[] [flash] [INFO] RTT connected. Active channels:
+[] [flash] [INFO]   - Up Channel: "defmt" (logs)
+[] [flash] [INFO]   - Up Channel: "cli" (raw output)
+[] [flash] [INFO]   - Down Channel: "cli" (raw input)
+[] [flash] [INFO] shell> 
+[] [flash] [INFO] [2K
+[] [flash] [INFO]        |\      _,,,---,,_
+[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
+[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
+[] [flash] [INFO]      '---''(_/--'  `-'\_)  
+[] [flash] [INFO] Type 'help' to print usage.
+[] [flash] [INFO] shell> Draining buffered defmt logs:
+[] [flash] [INFO] 0.001517 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.022047 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [flash] [INFO] Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
+[] [daemon] [INFO] Flash download succeeded via cargo run
+[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001465 INFO [36m[platform::core_monitor::configure_mpu_stack_guard][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021985 INFO [36m[platform::core_monitor::configure_mpu_stack_guard][0m MPU stack guard configured at 0x2000c500
 ```
 
 #### Attachments & References
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
-| `document` | [motor_speed_30.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV) | Attached document (motor_speed_30.MOV) |
-| `document` | [motor_speed_100.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV) | Attached document (motor_speed_100.MOV) |
-| `document` | [motor_speed_50.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV) | Attached document (motor_speed_50.MOV) |
-| `log` | [target_system_logs_WORM-ORGANIC-FIREWORM-553.log](attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log) | Target system and defmt logs from host daemon session |
-| `document` | [motor_speed_10.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV) | Attached document (motor_speed_10.MOV) |
+| `log` | [target_system_logs_WORM-ANNELIDIC-MAGGOT-775.log](attachments/WORM-ANNELIDIC-MAGGOT-775/target_system_logs_WORM-ANNELIDIC-MAGGOT-775.log) | Target system and defmt logs from host daemon session |
+| `log` | [target_crash_log_WORM-ANNELIDIC-MAGGOT-775.log](attachments/WORM-ANNELIDIC-MAGGOT-775/target_crash_log_WORM-ANNELIDIC-MAGGOT-775.log) | Target crash log retrieved via host_fs |
+| `reference` | [target_telemetry_WORM-ANNELIDIC-MAGGOT-775.json](attachments/WORM-ANNELIDIC-MAGGOT-775/target_telemetry_WORM-ANNELIDIC-MAGGOT-775.json) | Target telemetry export retrieved via host_fs |
+| `screenshot` | [screenshot_paste_1792279314613_97e6l.png](attachments/WORM-ANNELIDIC-MAGGOT-775/screenshot_paste_1792279314613_97e6l.png) | Pasted screenshot screenshot_paste_1792279314613_97e6l.png |
 
 #### Resolution Notes
 
-Eliminated low-frequency detent oscillations across speeds 10, 30, and 50 and eliminated thermal DIAG trip at speed 100 by running at 500us ticks with canonical PWM frequency modulation. Verified on target hardware across all speed commands. Codified regression test in test_worm_organic_fireworm_553_motor_speeds_and_diag.py.
+Closed unclosed <div> in targetBugModal automatic attachments container in tools/host_daemon/templates/host_daemon.html.j2 so workspace-body is no longer nested in targetBugModal.
 
 ---
 
@@ -13759,90 +12915,23 @@ Transition MotorController to MotorState::Off and stop motor ticking upon hardwa
 
 ---
 
-### <a id="worm-proboscid-roundworm-8"></a> 🟢 `[WORM-PROBOSCID-ROUNDWORM-8]` Motor does not spin at full duty cycle
+### <a id="worm-bristly-glowworm-390"></a> 🟢 `[WORM-BRISTLY-GLOWWORM-390]` Please add the “Attachments & Screenshots” UI to the host bug reporter page
 
-- **UUID**: `9d3fb9e3-2e4a-449e-aa56-bf9c01c87256`
+- **UUID**: `953d25f6-47e6-4f48-a63b-40ee57ceccde`
 - **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `cat_detector`
-- **Created**: `2026-10-22 02:53:29 UTC`
-- **Resolved**: `2026-10-22 03:26:59 UTC`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `Host`
+- **Created**: `2026-10-17 23:33:41 UTC`
+- **Resolved**: `2026-10-18 00:09:31 UTC`
 
-#### Reproduction Steps
+#### Description
 
-1. 1. Connect target device via probe-rs / RTT
-2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. 3. Execute command 'motor speed 100'
-4. 4. Execute command 'motor current'
-5. 5. Execute command 'motor rpm'
-6. 6. Execute command 'motor stop'
-7. 7. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [flash] [INFO] RTT connected. Active channels:
-[] [flash] [INFO]   - Up Channel: "defmt" (logs)
-[] [flash] [INFO]   - Up Channel: "cli" (raw output)
-[] [flash] [INFO]   - Down Channel: "cli" (raw input)
-[] [flash] [INFO] shell> 
-[] [flash] [INFO] [2K
-[] [flash] [INFO]        |\      _,,,---,,_
-[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
-[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
-[] [flash] [INFO]      '---''(_/--'  `-'\_)  
-[] [flash] [INFO] Type 'help' to print usage.
-[] [flash] [INFO] shell> Draining buffered defmt logs:
-[] [flash] [INFO] 0.001468 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.021595 [32mINFO[0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] Flash download succeeded via cargo run
-[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001511 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021607 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 5.795045 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 5.795342 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 5.797855 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 5.797896 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 26.112976 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 26.113193 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor speed 100121.547964 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 121.548195 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> 121.552399 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 137.751502 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 137.751690 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 140.950579 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 140.950744 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 140.954946 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] shell> motor speed 100154.809601 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 154.809806 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] Motor current: 154.814002 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 154.814031 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] shell> motor curren181.777986 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 181.778179 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor stop183.767560 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 183.767742 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> 183.771953 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] motor speed 100252.599128 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 252.599360 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 252.603571 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 252.603601 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 286.879001 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 286.879235 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 286.882073 INFO [36m[controller::motor_controller][0m Stopping motor...
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-PROBOSCID-ROUNDWORM-8.log](attachments/WORM-PROBOSCID-ROUNDWORM-8/target_system_logs_WORM-PROBOSCID-ROUNDWORM-8.log) | Target system and defmt logs from host daemon session |
+Please add the “Attachments & Screenshots” section to the host tool target bug page, that way I can include additional context when opening bugs.
 
 #### Resolution Notes
 
-Restored DEFAULT_TICK_INTERVAL_US to 10,000 us (10 ms) and startup_blanking_ticks to 300 (3s) to maintain open-loop BLDC motor synchronism and torque at startup. Fixed calculate_clock_divider clippy::manual_checked_ops using checked_div. Codified dedicated regression unit tests in controller_tests.rs, integration.rs, and test_worm_proboscid_roundworm_8_motor_spin.py.
+Added the Attachments & Screenshots UI section to the host tool target bug page (host_daemon.html.j2), including drag-and-drop dropzone, file input, attachments grid, clipboard pasting for screenshots/text, Git LFS notice, and /api/target_bug backend support for saving manual attachments to disk and worm reports.
 
 ---
 
@@ -13889,224 +12978,85 @@ Implemented intelligent target namespace formatting in host_cli (format_target_n
 
 ---
 
-### <a id="worm-round-polychaete-84"></a> 🟢 `[WORM-ROUND-POLYCHAETE-84]` The motor seemed to stop spinning around speed 50 here
+### <a id="worm-creeping-wriggler-223"></a> 🟢 `[WORM-CREEPING-WRIGGLER-223]` VL not asserting
 
-- **UUID**: `1bba7e85-1263-4f27-b7dd-b6bd8738872b`
+- **UUID**: `f73dcd72-2efa-4e89-b6f4-2b39c9b1f9dd`
 - **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
+- **Severity**: `HIGH`
 - **Category**: `FIRMWARE`
-- **Component**: `cat_detector`
-- **Created**: `2026-10-24 00:56:38 UTC`
-- **Resolved**: `2026-10-24 01:39:26 UTC`
-
-#### Reproduction Steps
-
-1. Connect target device via probe-rs / RTT
-2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. Execute command 'motor current'
-4. Execute command 'motor speed 59'
-5. Execute command 'motor current'
-6. Execute command 'motor speed 60'
-7. Execute command 'motor current'
-8. Execute command 'motor stop'
-9. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [target] [INFO] 102.735808 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 102.736032 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 103.584575 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"52\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 103.584852 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 103.589045 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 103.703443 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 103.703670 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 104.552200 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"53\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 104.552453 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 104.556700 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 104.731546 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 104.731766 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 105.580268 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"54\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 105.580542 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 105.582676 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 105.699136 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 105.699359 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 106.547885 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"55\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 106.548138 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 106.552366 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 106.727268 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 106.727458 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 107.575971 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"56\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 107.576241 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 107.580674 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 107.755314 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 107.755535 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 108.543585 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"57\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 108.543848 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 108.548055 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 108.722975 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 108.723189 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 109.571688 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"58\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 109.571957 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 109.576343 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 109.751015 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 109.751218 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 110.599783 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"59\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 110.600059 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 110.602686 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 110.718672 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 110.718889 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 111.567409 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 111.567668 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 111.572009 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 111.746720 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 111.746927 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 112.103545 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 112.103745 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 112.108151 INFO [36m[controller::motor_controller][0m Stopping motor...
-```
-
-#### Resolution Notes
-
-Resolved motor stall at speed 50. Eliminated single-tick (5,000 RPM) discontinuity by setting commutation_speed_divisor = 200, which maps speed 50 to 4 ticks (1,250 RPM) and speed 51 to 3 ticks (1,666 RPM). Verified on live target hardware across entire 1% to 100% speed sweep.
-
----
-
-### <a id="worm-segmented-mealworm-41"></a> 🟢 `[WORM-SEGMENTED-MEALWORM-41]` Startup blanking
-
-- **UUID**: `1a765883-3cb7-43b4-b646-f4c6b9965a06`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `target`
-- **Created**: `2026-10-23 01:53:50 UTC`
-- **Resolved**: `2026-10-23 16:29:28 UTC`
+- **Component**: `cat_fountain`
+- **Created**: `2026-10-17 23:41:41 UTC`
+- **Resolved**: `2026-10-18 00:02:49 UTC`
 
 #### Description
 
-Can we please configure the motor driver and motor controller in board.toml to perform an ideal startup blanking interval in <= 500ms in a way which maximizes torque during that interval? That way we know for sure the code is starting the motor correctly.
-
-#### Reproduction Steps
-
-1. Connect target device via probe-rs / RTT
-2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. Execute command 'motor current'
-4. Execute command 'motor rpm'
-5. Execute command 'motor speed 30'
-6. Execute command 'motor current'
-7. Execute command 'motor rpm'
-8. Execute command 'motor stop'
-9. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
-[] [flash] [INFO]      '---''(_/--'  `-'\_)  
-[] [flash] [INFO] Type 'help' to print usage.
-[] [flash] [INFO] shell> 
-[] [flash] [INFO] Draining buffered defmt logs:
-[] [flash] [INFO] 0.001493 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.021843 [32mINFO[0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] Flash download succeeded via cargo run
-[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001471 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021801 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 12.507959 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 12.508270 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 12.512091 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 12.512125 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 18.132487 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 18.132814 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 18.137203 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 21.519085 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 21.519392 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 21.522695 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 34.763342 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 34.763580 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 34.768187 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 37.184421 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 37.184702 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 37.189193 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 46.977417 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 46.977625 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [daemon] [INFO] Target bug created: WORM-BURROWING-CLITELLUM-618 (Motor is stationary :-() with 1 attachments
-[] [target] [INFO] 63.904602 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 63.904846 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 63.907251 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 99.772730 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 99.772944 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 182.314173 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 182.314360 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 189.279047 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 189.279258 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 189.283400 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 189.283427 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 190.426286 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 190.426561 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 190.478606 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 190.478813 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 196.467755 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 196.468008 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 196.472372 INFO [36m[controller::motor_controller][0m Stopping motor...
-```
+The PIO program is not asserting VL. This is causing an overcurrent condition which asserts the DIAG pin. See attached trace
 
 #### Attachments & References
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-SEGMENTED-MEALWORM-41.log](attachments/WORM-SEGMENTED-MEALWORM-41/target_system_logs_WORM-SEGMENTED-MEALWORM-41.log) | Target system and defmt logs from host daemon session |
+| `document` | [digital.csv](attachments/WORM-CREEPING-WRIGGLER-223/digital.csv) | Uploaded document digital.csv |
 
 #### Resolution Notes
 
-Configured startup_blanking_ticks = 50 (500 ms at 100 Hz) in board.toml, model types, and code_gen. Wired Board::MOTOR_CONFIG into cat_detector.rs. Implemented startup alignment full torque boost (100% duty cycle on Step 0 alignment) in MotorController to maximize breakaway torque before transitioning to commanded speed. Codified regression test in controller_tests.rs.
+Corrected TMC6300 pin mapping and 6-step trapezoidal commutation masks to match physical SparkFun TMC6300 J1 header pinout (UL, UH, VL, VH, WL, WH mapped to GP16..GP21). VL (bit 2 / GP18) now properly asserts in steps 0 and 5.
 
 ---
 
-### <a id="worm-segmented-sipunculid-504"></a> 🟢 `[WORM-SEGMENTED-SIPUNCULID-504]` Motor RPM reads as 0 RPM at 100% speed
+### <a id="worm-slick-fireworm-677"></a> 🟢 `[WORM-SLICK-FIREWORM-677]` Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer) RTT connected. Active channels:
 
-- **UUID**: `05658f02-3c1d-456c-ba10-7349ae64966d`
+- **UUID**: `b483d0fc-8e08-4363-b479-5509f99f4a71`
 - **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
-- **Component**: `cat_detector`
-- **Created**: `2026-10-22 01:59:36 UTC`
-- **Resolved**: `2026-10-22 02:44:35 UTC`
+- **Component**: `target`
+- **Created**: `2026-10-18 00:34:54 UTC`
+- **Resolved**: `2026-10-18 00:43:25 UTC`
+
+#### Description
+
+Can you please figure out what’s causing this log print to occur
 
 #### Reproduction Steps
 
 1. 1. Connect target device via probe-rs / RTT
 2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. 3. Execute command 'motor speed 100'
-4. 4. Execute command 'motor current'
-5. 5. Execute command 'motor rpm'
-6. 6. Execute command 'motor stop'
-7. 7. Observe defect/failure on target
+3. 3. Execute target CLI/FS commands
+4. 4. Observe defect/failure on target
 
 #### Execution / Console Logs
 
 ```text
-[] [target] [INFO] 13.059552 INFO [36m[controller::telemetry_controller][0m Thermal Controller: Temp is 22355 mC, State: Normal
-[] [target] [INFO] 14.059929 INFO [36m[controller::telemetry_controller][0m Thermal Controller: Temp is 20951 mC, State: Normal
-[] [target] [INFO] 16.060567 INFO [36m[controller::telemetry_controller][0m Thermal Controller: Temp is 22355 mC, State: Normal
-[] [daemon] [INFO] Updated configuration: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, profile=release, speed=4000
+[] [flash] [INFO] Type 'help' to print usage.
+[] [flash] [INFO] shell> Draining buffered defmt logs:
+[] [flash] [INFO] 0.001467 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.021703 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [flash] [INFO] Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
+[] [daemon] [INFO] Flash download succeeded via cargo run
+[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001520 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021760 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 0.001606 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.019319 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
+[] [target] [INFO] 0.022348 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
 [] [daemon] [INFO] [Sync] Compiling target firmware...
 [] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.21s
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.25s
 [] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
 [] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
 [] [daemon] [INFO] Building host utilities: host_cli and host_fs
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.21s
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.26s
 [] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
 [] [daemon] [INFO] RTT stream disconnected
 [] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
 [] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.06s
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.08s
 [] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.12s
-[] [flash] [INFO]      [1;32mFinished[0m in 8.96s
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.18s
+[] [flash] [INFO]      [1;32mFinished[0m in 7.48s
 [] [flash] [INFO] RTT connected. Active channels:
 [] [flash] [INFO]   - Up Channel: "defmt" (logs)
 [] [flash] [INFO]   - Up Channel: "cli" (raw output)
@@ -14119,68 +13069,552 @@ Configured startup_blanking_ticks = 50 (500 ms at 100 Hz) in board.toml, model t
 [] [flash] [INFO]      '---''(_/--'  `-'\_)  
 [] [flash] [INFO] Type 'help' to print usage.
 [] [flash] [INFO] shell> Draining buffered defmt logs:
-[] [flash] [INFO] 0.001483 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.021793 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [flash] [INFO] 0.001490 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.021743 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [flash] [INFO] Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
 [] [daemon] [INFO] Flash download succeeded via cargo run
 [] [daemon] [INFO] [Sync] Starting RTT streaming channels...
 [] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
 [] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001512 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021810 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] motor speed 1009.909637 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 9.909928 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 9.914207 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 9.914234 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] shell> motor current13.292189 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 13.292411 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor rp14.493571 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 14.493739 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor stop17.156514 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 17.156690 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> 17.166758 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 0.001468 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021734 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
 ```
 
 #### Attachments & References
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-SEGMENTED-SIPUNCULID-504.log](attachments/WORM-SEGMENTED-SIPUNCULID-504/target_system_logs_WORM-SEGMENTED-SIPUNCULID-504.log) | Target system and defmt logs from host daemon session |
+| `log` | [target_system_logs_WORM-SLICK-FIREWORM-677.log](attachments/WORM-SLICK-FIREWORM-677/target_system_logs_WORM-SLICK-FIREWORM-677.log) | Target system and defmt logs from host daemon session |
 
 #### Resolution Notes
 
-Fixed HallSensor RPM window collapse with 500ms timeout persistence, updated MotorCommand::ReadRpm to sample speed sensor, and scaled MotorController tick interval to 500us for 3333 RPM nominal operation.
+Eliminated spurious UnexpectedEof error log during defmt buffer drain in dump_logs and stream_logs.
 
 ---
 
-### <a id="worm-serpentine-pupa-18"></a> 🟢 `[WORM-SERPENTINE-PUPA-18]` Integrate bringup.py with host
+### <a id="worm-gliding-larva-522"></a> 🟢 `[WORM-GLIDING-LARVA-522]` Motor fails, DIAG light pops on
 
-- **UUID**: `ca867715-3521-49ac-b103-a48314db3f37`
+- **UUID**: `e023aead-8cae-4353-8468-bbebaad4385d`
 - **Status**: `RESOLVED`
-- **Severity**: `LOW`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `host, bringup`
-- **Created**: `2026-10-17 19:32:52 UTC`
-- **Resolved**: `2026-10-17 21:49:23 UTC`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `target`
+- **Created**: `2026-10-18 00:37:14 UTC`
+- **Resolved**: `2026-10-18 01:10:06 UTC`
 
 #### Description
 
-Pls integrate the bringup.py functionality (./tools/helpers/bringup.py) into tools/host.py; add a separate Bringup script view which supports the bringup YAML schema, as well as a bringup subcommand which allows bringup scripts to be parsed and loaded. Allow different bringup scripts to be loaded from the bringup script view. The bringup script view should show CLI output, as well as present interactive prompt and detailed bringup status.
+The DIAG light is still popping on. It looks like we still cannot escape commutation phase 1. Please see attached scope trace.
+
+#### Reproduction Steps
+
+1. motor speed 100
+
+#### Waveform Analysis & Scope Comparison
+
+![TMC6300 Commutation Waveform Comparison](../recordings/previews/waveform_gliding_larva_522.svg)
+
+##### 1. Observed Output Waveform (`attachments/WORM-GLIDING-LARVA-522/digital.csv`)
+- **Step 0 ($t = 0.00\,\text{ms} \to 10.00\,\text{ms}$)**: Firmware energized **UL** (GP17) and **WH** (GP20).
+- **Step 1 ($t = 10.00\,\text{ms} \to 19.89\,\text{ms}$)**: Firmware energized **VL** (GP19) and **WH** (GP20).
+- **Fault ($t \approx 20\,\text{ms}$)**: High-side driver held WH continuously across both steps while switching low sides in reverse polarity. The resultant reverse magnetic stator flux locked the rotor against permanent magnets, driving coil current into saturation and asserting the hardware `DIAG` fault pin (GP22). The motor controller caught the fault, transitioned state to `MotorState::Off`, and de-energized all gates.
+
+##### 2. Expected Canonical Waveform (6-Step Trapezoidal BLDC)
+- **Step 0 ($t = 0 \to 10\,\text{ms}$)**: **UH** (GP16) & **VL** (GP19) active; Phase W floating.
+- **Step 1 ($t = 10 \to 20\,\text{ms}$)**: **UH** (GP16) & **WL** (GP21) active; Phase V floating.
+- **Step 2 ($t = 20 \to 30\,\text{ms}$)**: **VH** (GP18) & **WL** (GP21) active; Phase U floating.
+- **Step 3 ($t = 30 \to 40\,\text{ms}$)**: **VH** (GP18) & **UL** (GP17) active; Phase W floating.
+- **Step 4 ($t = 40 \to 50\,\text{ms}$)**: **WH** (GP20) & **UL** (GP17) active; Phase V floating.
+- **Step 5 ($t = 50 \to 60\,\text{ms}$)**: **WH** (GP20) & **VL** (GP19) active; Phase U floating.
+- **DIAG (GP22)**: Remains low throughout operation; motor accelerates smoothly with continuous commutation.
+
+#### Execution / Console Logs
+
+```text
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001520 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021760 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 0.001606 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.019319 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
+[] [target] [INFO] 0.022348 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [daemon] [INFO] [Sync] Compiling target firmware...
+[] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.25s
+[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
+[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
+[] [daemon] [INFO] Building host utilities: host_cli and host_fs
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.26s
+[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
+[] [daemon] [INFO] RTT stream disconnected
+[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
+[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.08s
+[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.18s
+[] [flash] [INFO]      [1;32mFinished[0m in 7.48s
+[] [flash] [INFO] RTT connected. Active channels:
+[] [flash] [INFO]   - Up Channel: "defmt" (logs)
+[] [flash] [INFO]   - Up Channel: "cli" (raw output)
+[] [flash] [INFO]   - Down Channel: "cli" (raw input)
+[] [flash] [INFO] shell> 
+[] [flash] [INFO] [2K
+[] [flash] [INFO]        |\      _,,,---,,_
+[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
+[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
+[] [flash] [INFO]      '---''(_/--'  `-'\_)  
+[] [flash] [INFO] Type 'help' to print usage.
+[] [flash] [INFO] shell> Draining buffered defmt logs:
+[] [flash] [INFO] 0.001490 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.021743 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [flash] [INFO] Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
+[] [daemon] [INFO] Flash download succeeded via cargo run
+[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001468 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021734 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [daemon] [INFO] Target bug created: WORM-SLICK-FIREWORM-677 (Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer) RTT connected. Active channels:) with 1 attachments
+[] [target] [INFO] motor speed 1038.030879 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 38.031166 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 38.035467 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 38.035511 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] shell> 38.057941 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
+[] [target] [INFO] 38.057971 INFO [36m[controller::motor_controller][0m Stopping motor...
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-GLIDING-LARVA-522.log](attachments/WORM-GLIDING-LARVA-522/target_system_logs_WORM-GLIDING-LARVA-522.log) | Target system and defmt logs from host daemon session |
+| `document` | [digital.csv](attachments/WORM-GLIDING-LARVA-522/digital.csv) | Attached document (digital.csv) |
+
+#### Resolution Notes
+
+Root cause identified: Inverted TMC6300 pin mapping and phase masks from commit 1a7ef379 caused firmware to energize UL and WH in Step 0 and VL and WH in Step 1, creating reverse magnetic fields that locked the rotor, causing stall overcurrent and tripping TMC6300 DIAG fault pin at t = 20 ms. Restored canonical pin assignments (UH=16, UL=17, VH=18, VL=19, WH=20, WL=21) and canonical 6-step trapezoidal commutation masks across board, peripheral driver, and codegen. Added waveform comparison preview under recordings/previews/waveform_gliding_larva_522.svg and codified regression unit tests in peripheral/tests/integration.rs and tools/tests/test_worm_gliding_larva_522_commutation_phase_progression.py.
 
 ---
 
-### <a id="worm-setose-setae-521"></a> 🟢 `[WORM-SETOSE-SETAE-521]` Add fuzzy history search to CLI control
+### <a id="worm-vermiform-annelid-135"></a> 🟢 `[WORM-VERMIFORM-ANNELID-135]` Providing scope trace with motor detached
 
-- **UUID**: `baa8996a-3ef7-490f-8234-b15467135419`
+- **UUID**: `493795b8-c629-422d-9147-b8b24aa575a7`
 - **Status**: `RESOLVED`
-- **Severity**: `LOW`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `dashboard, host_daemon`
-- **Created**: `2026-10-17 00:38:18 UTC`
-- **Resolved**: `2026-10-17 01:04:49 UTC`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `target`
+- **Created**: `2026-10-18 00:39:31 UTC`
+- **Resolved**: `2026-10-18 01:10:11 UTC`
 
 #### Description
 
-Can you please add a fuzzy history search (shortcut; CTRL-R on the shell) to invoke a fuzzy history command selector to the CLI tool that host_daemon and dashboard’s code review tool uses.
+FYR, pls take a look at this trace with motor detached.
+
+#### Reproduction Steps
+
+1. motor speed 100
+
+#### Execution / Console Logs
+
+```text
+[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
+[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
+[] [daemon] [INFO] Building host utilities: host_cli and host_fs
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.26s
+[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
+[] [daemon] [INFO] RTT stream disconnected
+[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
+[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.08s
+[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.18s
+[] [flash] [INFO]      [1;32mFinished[0m in 7.48s
+[] [flash] [INFO] RTT connected. Active channels:
+[] [flash] [INFO]   - Up Channel: "defmt" (logs)
+[] [flash] [INFO]   - Up Channel: "cli" (raw output)
+[] [flash] [INFO]   - Down Channel: "cli" (raw input)
+[] [flash] [INFO] shell> 
+[] [flash] [INFO] [2K
+[] [flash] [INFO]        |\      _,,,---,,_
+[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
+[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
+[] [flash] [INFO]      '---''(_/--'  `-'\_)  
+[] [flash] [INFO] Type 'help' to print usage.
+[] [flash] [INFO] shell> Draining buffered defmt logs:
+[] [flash] [INFO] 0.001490 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.021743 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [flash] [INFO] Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
+[] [daemon] [INFO] Flash download succeeded via cargo run
+[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001468 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021734 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [daemon] [INFO] Target bug created: WORM-SLICK-FIREWORM-677 (Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer) RTT connected. Active channels:) with 1 attachments
+[] [target] [INFO] motor speed 1038.030879 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 38.031166 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 38.035467 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 38.035511 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] shell> 38.057941 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
+[] [target] [INFO] 38.057971 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [daemon] [INFO] Target bug created: WORM-GLIDING-LARVA-522 (Motor fails, DIAG light pops on) with 2 attachments
+[] [target] [INFO] 0.001591 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.019365 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
+[] [target] [INFO] 0.022414 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] shell> motor speed 10017.997383 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 17.997669 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 18.001941 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 18.001966 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] shell> 21.034827 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 21.035286 WARN [36m[controller::motor_controller][0m Low load / dry detected (current: 8 mA). Stopped motor.
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-VERMIFORM-ANNELID-135.log](attachments/WORM-VERMIFORM-ANNELID-135/target_system_logs_WORM-VERMIFORM-ANNELID-135.log) | Target system and defmt logs from host daemon session |
+
+#### Resolution Notes
+
+Resolved in conjunction with WORM-GLIDING-LARVA-522. Confirmed that trace with motor detached ran for 3 seconds without hardware driver fault due to absence of motor stator coil current / rotor stall, stopping solely on expected low-load dry-run detection (8 mA). Restored canonical pin assignments and forward commutation progression.
+
+---
+
+### <a id="worm-fossorial-composter-481"></a> 🟢 `[WORM-FOSSORIAL-COMPOSTER-481]` RTT logs showing up in CLI view
+
+- **UUID**: `71aed942-1a62-45c4-ae7b-f07bfae5cf55`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `target`
+- **Created**: `2026-10-18 01:04:48 UTC`
+- **Resolved**: `2026-10-18 01:14:52 UTC`
+
+#### Description
+
+There is some extra output showing up in the RTT CLI view:
+
+shell> Draining buffered defmt logs:
+0.001497 INFO MPU stack guard configured at 0x2003c000
+0.021760 INFO MPU stack guard configured at 0x2000c500
+
+#### Reproduction Steps
+
+1. 1. Connect target device via probe-rs / RTT
+2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. 3. Execute command 'core status'
+4. 4. Execute command 'led blink-four'
+5. 5. Execute command 'led blink-four'
+6. 6. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [daemon] [INFO] [Sync] Compiling target firmware...
+[] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.32s
+[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
+[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
+[] [daemon] [INFO] Building host utilities: host_cli and host_fs
+[] [build] [INFO] [1m[92m   Compiling[0m host_cli v0.1.0 (/Users/<username>/gh/firmware/tools/host_cli)
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 22.61s
+[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
+[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
+[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.21s
+[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
+[] [flash] [INFO] [1m[92m   Compiling[0m host_cli v0.1.0 (/Users/<username>/gh/firmware/tools/host_cli)
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 22.33s
+[] [flash] [INFO]      [1;32mFinished[0m in 7.45s
+[] [flash] [INFO] RTT connected. Active channels:
+[] [flash] [INFO]   - Up Channel: "defmt" (logs)
+[] [flash] [INFO]   - Up Channel: "cli" (raw output)
+[] [flash] [INFO]   - Down Channel: "cli" (raw input)
+[] [flash] [INFO] shell> 
+[] [flash] [INFO] [2K
+[] [flash] [INFO]        |\      _,,,---,,_
+[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
+[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
+[] [flash] [INFO]      '---''(_/--'  `-'\_)  
+[] [flash] [INFO] Type 'help' to print usage.
+[] [flash] [INFO] shell> Draining buffered defmt logs:
+[] [flash] [INFO] 0.001497 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.021760 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [daemon] [INFO] Flash download succeeded via cargo run
+[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001454 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021750 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] shell> core statu57.314486 INFO [36m[controller::shell_controller][0m received command "Core { subcommand: Some(Status), arg1: None }"
+[] [target] [INFO] shell> 57.315143 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] led blink-four89.554177 INFO [36m[controller::shell_controller][0m received command "Led { subcommand: Some(BlinkFour), arg1: None }"
+[] [target] [INFO] 89.554281 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 89.558392 INFO [36m[controller::led_controller][0m Playing animation BlinksRedFourTimes
+[] [target] [INFO] shell> led blink-fou104.975500 INFO [36m[controller::shell_controller][0m received command "Led { subcommand: Some(BlinkFour), arg1: None }"
+[] [target] [INFO] 104.975601 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 104.979663 INFO [36m[controller::led_controller][0m Playing animation BlinksRedFourTimes
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-FOSSORIAL-COMPOSTER-481.log](attachments/WORM-FOSSORIAL-COMPOSTER-481/target_system_logs_WORM-FOSSORIAL-COMPOSTER-481.log) | Target system and defmt logs from host daemon session |
+
+#### Resolution Notes
+
+Set log_to_cli=False in flash_target and run_probe_rs, and filtered out 'Draining buffered defmt logs' from CLI stream in DaemonRunner._stream_worker so defmt logs and flash output do not leak into the CLI console view.
+
+---
+
+### <a id="worm-silken-ribbonworm-320"></a> 🟢 `[WORM-SILKEN-RIBBONWORM-320]` DIAG trip coincides with drop in input voltage
+
+- **UUID**: `d5d7326e-9066-4d4f-8b70-92c496789c10`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `target`
+- **Created**: `2026-10-18 02:04:57 UTC`
+- **Resolved**: `2026-10-18 02:14:15 UTC`
+
+#### Description
+
+This is a battery powered device and the trip in DIAG coincides with a drop in input voltage.
+
+#### Reproduction Steps
+
+1. 1. Connect target device via probe-rs / RTT
+2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. 3. Execute command 'help'
+4. 4. Execute command 'motor speed 100'
+5. 5. Execute command 'motor speed 100'
+6. 6. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [target] [INFO] shell> motor speed 1070.990169 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 70.990390 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 70.994574 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 70.994591 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 70.996974 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
+[] [target] [INFO] 70.997041 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 0.000617 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.018368 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
+[] [target] [INFO] 0.027418 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [system] [INFO] Resetting target microcontroller...
+[] [daemon] [INFO] RTT stream disconnected
+[] [probe-rs] [INFO] [33m WARN[0m [2mprobe_rs::architecture::arm::communication_interface[0m[2m:[0m Failed to switch to DP Multidrop(11002927): An error occurred in the communication with an access port or debug port.
+[] [probe-rs] [INFO] [33m WARN[0m [2mprobe_rs::architecture::arm::core::armv6m[0m[2m:[0m Expected core to be halted, but core is running
+[] [system] [INFO] Target reset successfully via probe-rs
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001481 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021707 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] shell> motor speed 107.732316 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 7.732603 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 7.736873 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 7.736903 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] shell> 7.759379 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
+[] [target] [INFO] 7.759414 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 0.001409 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.019189 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
+[] [target] [INFO] 0.028233 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [system] [INFO] Resetting target microcontroller...
+[] [daemon] [INFO] RTT stream disconnected
+[] [probe-rs] [INFO] [33m WARN[0m [2mprobe_rs::architecture::arm::communication_interface[0m[2m:[0m Failed to switch to DP Multidrop(11002927): An error occurred in the communication with an access port or debug port.
+[] [system] [INFO] Target reset successfully via probe-rs
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001476 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021736 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [system] [INFO] Resetting target microcontroller...
+[] [daemon] [INFO] RTT stream disconnected
+[] [probe-rs] [INFO] [33m WARN[0m [2mprobe_rs::architecture::arm::communication_interface[0m[2m:[0m Failed to switch to DP Multidrop(11002927): An error occurred in the communication with an access port or debug port.
+[] [probe-rs] [INFO] [33m WARN[0m [2mprobe_rs::architecture::arm::core::armv6m[0m[2m:[0m Expected core to be halted, but core is running
+[] [probe-rs] [INFO] [33m WARN[0m [2mprobe_rs::session[0m[2m:[0m Could not clear all hardware breakpoints: An ARM specific error occurred.
+[] [probe-rs] [INFO] Caused by:
+[] [probe-rs] [INFO]     A timeout occurred during an operation.
+[] [system] [INFO] Target reset successfully via probe-rs
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001507 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021766 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 12.147252 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 12.147532 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 12.151299 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 12.151327 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] shell> 12.173789 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
+[] [target] [INFO] 12.173827 INFO [36m[controller::motor_controller][0m Stopping motor...
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-SILKEN-RIBBONWORM-320.log](attachments/WORM-SILKEN-RIBBONWORM-320/target_system_logs_WORM-SILKEN-RIBBONWORM-320.log) | Target system and defmt logs from host daemon session |
+| `document` | [digital.csv](attachments/WORM-SILKEN-RIBBONWORM-320/digital.csv) | Attached document (digital.csv) |
+
+#### Resolution Notes
+
+Disabled motor speed ramping in MotorController so target speed applies directly on command/tick. Implemented adjustable freewheeling window (default 500 us) with LowSide and Float decay modes in TMC6300 driver to recirculate and drain coil energy between commutation steps and prevent voltage drop DIAG trips. Added dedicated regression unit tests in peripheral/tests/integration.rs.
+
+---
+
+### <a id="worm-moist-tapeworm-650"></a> 🟢 `[WORM-MOIST-TAPEWORM-650]` Single clicking on any text control should highlight the CLI text control
+
+- **UUID**: `8c693602-b5cb-4601-97ee-c3094a5a68c7`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `target`
+- **Created**: `2026-10-19 01:47:23 UTC`
+- **Resolved**: `2026-10-21 23:25:59 UTC`
+
+#### Reproduction Steps
+
+1. 1. Connect target device via probe-rs / RTT
+2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. 3. Execute command 'motor speed 1'
+4. 4. Execute command 'motor speed 1'
+5. 5. Execute command 'help'
+6. 6. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [target] [INFO] 7.247221 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 0.001592 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.019267 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
+[] [target] [INFO] 0.022279 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] motor speed 17.527010 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"1\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 7.527302 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 7.531566 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 7.531589 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] shell> 7.544049 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
+[] [target] [INFO] 7.544091 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 0.001578 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021747 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 0.001596 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.019342 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
+[] [target] [INFO] 0.022369 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] motor speed 18.736613 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"1\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 8.736904 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 8.741173 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 8.741195 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 8.743728 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
+[] [target] [INFO] 8.743816 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 0.001605 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021795 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 0.001577 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021786 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 0.001587 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021826 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 0.001570 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.019258 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
+[] [target] [INFO] 0.022282 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 0.001574 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.019254 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
+[] [target] [INFO] 0.022271 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [system] [INFO] Resetting target microcontroller...
+[] [daemon] [INFO] RTT stream disconnected
+[] [probe-rs] [INFO] [33m WARN[0m [2mprobe_rs::probe::jlink[0m[2m:[0m J-Link: Target voltage (VTref) is 0.00 V. Is your target device powered?
+[] [probe-rs] [INFO] Error: Connecting to the chip was unsuccessful.
+[] [probe-rs] [INFO] Caused by:
+[] [probe-rs] [INFO]     0: An ARM specific error occurred.
+[] [probe-rs] [INFO]     1: An error occurred in the communication with an access port or debug port.
+[] [probe-rs] [INFO]     2: Target device did not respond to request.
+[] [daemon] [WARN] probe-rs reset returned 1: [33m WARN[0m [2mprobe_rs::probe::jlink[0m[2m:[0m J-Link: Target voltage (VTref) is 0.00 V. Is your target device powered?
+Error: Connecting to the chip was unsuccessful.
+Caused by:
+    0: An ARM specific error occurred.
+    1: An error occurred in the communication with an access port or debug port.
+    2: Target device did not respond to request.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001481 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021683 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-MOIST-TAPEWORM-650.log](attachments/WORM-MOIST-TAPEWORM-650/target_system_logs_WORM-MOIST-TAPEWORM-650.log) | Target system and defmt logs from host daemon session |
+
+#### Resolution Notes
+
+Configured single-click highlight and text selection across CLI text controls, prompt label, input bar, and interactive terminal command links to focus and select the CLI text control without unintended immediate execution.
+
+---
+
+### <a id="worm-slimy-planarian-761"></a> 🟢 `[WORM-SLIMY-PLANARIAN-761]` When calling host.py with no arguments, the UI should present a modal configuration window
+
+- **UUID**: `177ea503-4efb-4aee-aed2-521a095f482c`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `host`
+- **Created**: `2026-10-21 22:50:07 UTC`
+- **Resolved**: `2026-10-21 23:22:52 UTC`
+
+#### Description
+
+When calling host.py with no arguments, the UI should open a package selection mode which allows you to pick a target package and binary, whether or not you’re building for release, and automatically infer the target ARM architecture. The tool should remember your target selection from the last connected session.
+
+#### Resolution Notes
+
+Implemented package selection mode and modal configuration window (targetConfigModal) when host.py is invoked without explicit arguments, enabling interactive selection of target package and binary, build profile, and automatic target ARM architecture inference with persistent session recall.
+
+---
+
+### <a id="worm-slithering-lumbricus-809"></a> 🟢 `[WORM-SLITHERING-LUMBRICUS-809]` TMC6300-Short protection fault on startup
+
+- **UUID**: `96bf370a-4dde-42d3-a00f-e6399fc7d737`
+- **Status**: `RESOLVED`
+- **Severity**: `CRITICAL`
+- **Category**: `FIRMWARE`
+- **Component**: `cat_fountain`
+- **Created**: `2026-10-21 22:51:40 UTC`
+- **Resolved**: `2026-10-21 23:16:18 UTC`
+
+#### Description
+
+The short protection circuit of the TMC6300 motor driver will prevent motor communication and assert the DIAG pin if it detects a short between any FET for more than 1 uS in order to prevent overheating. The winding resistance of the motor is 0.5 Ohm; so we must make sure to connect each winding for less than 1 uS (ideally 0.5us to 0.8us) in order to commutate the motor. We have previously (in another session) verified power is good with a battery connected during motor startup, so this was the next thing we needed to invesgitate and fix with the motor driver.
+
+#### Reproduction Steps
+
+1. 1. $ PROBE_RS_SPEED=4000 cargo run --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell —release
+2. 2. motor speed 10
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `document` | [digital.csv](attachments/WORM-SLITHERING-LUMBRICUS-809/digital.csv) | Uploaded document digital.csv |
+| `screenshot` | [screenshot_paste_1792623504516_fkls0.png](attachments/WORM-SLITHERING-LUMBRICUS-809/screenshot_paste_1792623504516_fkls0.png) | Pasted screenshot screenshot_paste_1792623504516_fkls0.png |
+
+#### Resolution Notes
+
+Configured TMC6300 PIO clock divider to 5 (25 MHz) and clamped active duty cycle on-count to 7..=14 cycles, ensuring commutation winding connection pulses strictly stay between 520 ns and 800 ns (< 1.0 us t_S2G short protection delay) across all motor speeds to eliminate short-circuit trips on startup.
+
+---
+
+### <a id="worm-slick-annelid-908"></a> 🟢 `[WORM-SLICK-ANNELID-908]` When calling host.py with no args, it gets stuck at the initial flashing UI
+
+- **UUID**: `a75fd6e7-5113-4316-ad45-66c67f310f98`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `host`
+- **Created**: `2026-10-21 23:50:31 UTC`
+- **Resolved**: `2026-10-21 23:54:49 UTC`
+
+#### Description
+
+When host.py is invoked without arguments, confirming the target package configuration modal displays the flashing matrix modal (syncModal) but fails to initiate progress polling (startSyncPolling), leaving the UI permanently frozen at 0% with "Synchronizing target firmware...". Furthermore, invoking host.py with no arguments while a daemon is running with different build profile flags erroneously treats default CLI options as a configuration change and starts background sync without bringing forward the UI.
+
+#### Resolution Notes
+
+Fixed submitTargetConfig in host_daemon.html.j2 to trigger startSyncPolling() and initialize UI progress indicators. Synchronously set active state in runner.sync_async() to avoid polling race conditions. Guarded config_changed in cli.py with is_explicit so invoking host.py with no args against a running daemon preserves configuration.
 
 ---
 
@@ -14280,94 +13714,1588 @@ Scaled open-loop commutation step rate with commanded speed and implemented soft
 
 ---
 
-### <a id="worm-silken-ribbonworm-320"></a> 🟢 `[WORM-SILKEN-RIBBONWORM-320]` DIAG trip coincides with drop in input voltage
+### <a id="worm-inching-beetle-546"></a> 🟢 `[WORM-INCHING-BEETLE-546]` Creating a bug with a large attachment may crash the dashboard
 
-- **UUID**: `d5d7326e-9066-4d4f-8b70-92c496789c10`
+- **UUID**: `198ffd38-695e-4360-b783-99f5f1a5fb48`
 - **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `target`
-- **Created**: `2026-10-18 02:04:57 UTC`
-- **Resolved**: `2026-10-18 02:14:15 UTC`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-21 23:58:47 UTC`
+- **Resolved**: `2026-10-22 00:31:44 UTC`
 
 #### Description
 
-This is a battery powered device and the trip in DIAG coincides with a drop in input voltage.
+Creatign a bug with a very large attatchment (>=2GB) may crash the dashboard. Please fix this one in the hardware and firmware repos.
+
+#### Resolution Notes
+
+Guarded against requests and attachments >= 2GB (GitHub LFS limit) with HTTP 413 and client-side size checks, and streamed file downloads in 64 KiB chunks across firmware and hardware dashboards.
+
+---
+
+### <a id="worm-humic-cocoon-243"></a> 🟢 `[WORM-HUMIC-COCOON-243]` Sorting by ID no longer works as intended
+
+- **UUID**: `4ffd9e1f-863d-43ec-9fa2-8e92aaae68a2`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-22 00:00:15 UTC`
+- **Resolved**: `2026-10-22 00:24:46 UTC`
+
+#### Description
+
+Sorting all bugs by the ID no longer works as intended-it no longer lists the newest to oldest bugs or vice versa. Please fix this in the dashboard of both hardware and firmware repos.
+
+#### Resolution Notes
+
+Sorted bugs chronologically by created_at with fallback to numeric ID sequence across SQLite backing store and dashboard UI in both firmware and hardware repositories.
+
+---
+
+### <a id="worm-subterranean-wireworm-439"></a> 🟢 `[WORM-SUBTERRANEAN-WIREWORM-439]` Motor vibrates, does not spin & 92 mA current cap
+
+- **UUID**: `e45bbc3c-2306-43f2-b163-187c8974c275`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `cat_fountain`
+- **Created**: `2026-10-22 00:47:32 UTC`
+- **Resolved**: `2026-10-22 01:24:07 UTC`
+
+#### Description
+
+The motor vibrates and only pulls ~92-94 mA at 100% commanded speed. The motor RPM is reported as 0, and the motor only vibrates rather than spinning even when running freely unloaded.
+
+#### Root Cause Analysis
+
+1. **92 mA Current Cap & 14% Duty Cycle Clamp**:
+   In `peripheral/src/tmc6300.rs`, `clamp_on_count_short_protection` clamped the PIO duty cycle `on_count` to `SHORT_PROTECTION_MAX_ON_COUNT = 14` out of 100 cycles ($4\,\mu\text{s}$ at 250 kHz). Consequently, the effective PWM duty cycle was clamped to ~14% even when commanded to 100%, causing the ~92 mA current draw and lack of torque to overcome detent/cogging torque and fluid friction.
+2. **Frequency Modulation Solution**:
+   To deliver full torque without violating the TMC6300 $t_{\text{S2G}} = 1.0\,\mu\text{s}$ short-circuit delay, implemented `calculate_pwm_counts`:
+   - For $D \le 14\%$: fixed 100-cycle period ($4\,\mu\text{s}$), $T_{\text{on}} = D$, $T_{\text{off}} = 100 - D$.
+   - For $D > 14\%$: hold $T_{\text{on}} = 14$ cycles ($800\,\text{ns} < 1.0\,\mu\text{s}$) and modulate $T_{\text{off}}$ downward to 1 cycle.
+   - At $D = 100\%$: $T_{\text{on}} = 14, T_{\text{off}} = 1$, yielding ~93.3% duty cycle with a 160 ns de-energization window that resets the driver short-circuit comparator on every pulse without tripping DIAG.
+3. **Motor Configuration Architecture**:
+   Decoupled motor controller parameters into a dedicated `MotorConfig` struct in `model::types` and configured `[boards.cat_detector.motor]` in `board.toml` with code generation support, resolving code review finding `f6f27e52`.
+
+#### Resolution Notes
+
+Resolved 92 mA current draw cap by implementing frequency-modulated duty cycle scaling in calculate_pwm_counts, delivering ~93.3% effective duty cycle up to 1.57A current while strictly constraining FET conduction pulses to <= 800 ns (< 1.0 us t_S2G). Power-cycled hardware to clear latched DIAG fault and verified motor draws 356 mA at speed 50 and 1572 mA at speed 100 with GP22 remaining 0.
+
+---
+
+### <a id="worm-moist-millipede-488"></a> 🟢 `[WORM-MOIST-MILLIPEDE-488]` Host flashes cat_detector_app instead of shell due to session contamination
+
+- **UUID**: `fce239b7-1b59-46e6-931e-0a1d7d0c0bce`
+- **Status**: `RESOLVED`
+- **Severity**: `HIGH`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `host_daemon`
+- **Created**: `2026-10-22 01:38:41 UTC`
+- **Resolved**: `2026-10-22 01:42:18 UTC`
+
+#### Description
+
+When flashing or running host daemon without explicit target arguments, cat_detector_app gets flashed instead of cat_detector_shell. Root cause: test_worm_composted_palolo_725 overwrites target/host_session.json with cat_detector_app during pytest runs, discover_target_packages defaults to first binary in Cargo.toml, and app/Cargo.toml lacks default-run.
+
+#### Resolution Notes
+
+Configured default-run = 'cat_detector_shell' and prioritized shell binaries in target discovery. Isolated test sessions with tmp_path and guarded save_last_session against PYTEST_CURRENT_TEST to prevent test suites from polluting the developer's live workspace host session.
+
+---
+
+### <a id="worm-segmented-sipunculid-504"></a> 🟢 `[WORM-SEGMENTED-SIPUNCULID-504]` Motor RPM reads as 0 RPM at 100% speed
+
+- **UUID**: `05658f02-3c1d-456c-ba10-7349ae64966d`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `cat_detector`
+- **Created**: `2026-10-22 01:59:36 UTC`
+- **Resolved**: `2026-10-22 02:44:35 UTC`
 
 #### Reproduction Steps
 
 1. 1. Connect target device via probe-rs / RTT
 2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. 3. Execute command 'help'
-4. 4. Execute command 'motor speed 100'
-5. 5. Execute command 'motor speed 100'
-6. 6. Observe defect/failure on target
+3. 3. Execute command 'motor speed 100'
+4. 4. Execute command 'motor current'
+5. 5. Execute command 'motor rpm'
+6. 6. Execute command 'motor stop'
+7. 7. Observe defect/failure on target
 
 #### Execution / Console Logs
 
 ```text
-[] [target] [INFO] shell> motor speed 1070.990169 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 70.990390 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 70.994574 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 70.994591 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 70.996974 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
-[] [target] [INFO] 70.997041 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 0.000617 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.018368 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
-[] [target] [INFO] 0.027418 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [system] [INFO] Resetting target microcontroller...
+[] [target] [INFO] 13.059552 INFO [36m[controller::telemetry_controller][0m Thermal Controller: Temp is 22355 mC, State: Normal
+[] [target] [INFO] 14.059929 INFO [36m[controller::telemetry_controller][0m Thermal Controller: Temp is 20951 mC, State: Normal
+[] [target] [INFO] 16.060567 INFO [36m[controller::telemetry_controller][0m Thermal Controller: Temp is 22355 mC, State: Normal
+[] [daemon] [INFO] Updated configuration: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, profile=release, speed=4000
+[] [daemon] [INFO] [Sync] Compiling target firmware...
+[] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.21s
+[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
+[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
+[] [daemon] [INFO] Building host utilities: host_cli and host_fs
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.21s
+[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
 [] [daemon] [INFO] RTT stream disconnected
-[] [probe-rs] [INFO] [33m WARN[0m [2mprobe_rs::architecture::arm::communication_interface[0m[2m:[0m Failed to switch to DP Multidrop(11002927): An error occurred in the communication with an access port or debug port.
-[] [probe-rs] [INFO] [33m WARN[0m [2mprobe_rs::architecture::arm::core::armv6m[0m[2m:[0m Expected core to be halted, but core is running
-[] [system] [INFO] Target reset successfully via probe-rs
+[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
+[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.06s
+[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.12s
+[] [flash] [INFO]      [1;32mFinished[0m in 8.96s
+[] [flash] [INFO] RTT connected. Active channels:
+[] [flash] [INFO]   - Up Channel: "defmt" (logs)
+[] [flash] [INFO]   - Up Channel: "cli" (raw output)
+[] [flash] [INFO]   - Down Channel: "cli" (raw input)
+[] [flash] [INFO] shell> 
+[] [flash] [INFO] [2K
+[] [flash] [INFO]        |\      _,,,---,,_
+[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
+[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
+[] [flash] [INFO]      '---''(_/--'  `-'\_)  
+[] [flash] [INFO] Type 'help' to print usage.
+[] [flash] [INFO] shell> Draining buffered defmt logs:
+[] [flash] [INFO] 0.001483 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.021793 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [daemon] [INFO] Flash download succeeded via cargo run
+[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
 [] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001481 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021707 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] shell> motor speed 107.732316 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 7.732603 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 7.736873 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 7.736903 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] shell> 7.759379 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
-[] [target] [INFO] 7.759414 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 0.001409 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.019189 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
-[] [target] [INFO] 0.028233 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [system] [INFO] Resetting target microcontroller...
-[] [daemon] [INFO] RTT stream disconnected
-[] [probe-rs] [INFO] [33m WARN[0m [2mprobe_rs::architecture::arm::communication_interface[0m[2m:[0m Failed to switch to DP Multidrop(11002927): An error occurred in the communication with an access port or debug port.
-[] [system] [INFO] Target reset successfully via probe-rs
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001476 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021736 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [system] [INFO] Resetting target microcontroller...
-[] [daemon] [INFO] RTT stream disconnected
-[] [probe-rs] [INFO] [33m WARN[0m [2mprobe_rs::architecture::arm::communication_interface[0m[2m:[0m Failed to switch to DP Multidrop(11002927): An error occurred in the communication with an access port or debug port.
-[] [probe-rs] [INFO] [33m WARN[0m [2mprobe_rs::architecture::arm::core::armv6m[0m[2m:[0m Expected core to be halted, but core is running
-[] [probe-rs] [INFO] [33m WARN[0m [2mprobe_rs::session[0m[2m:[0m Could not clear all hardware breakpoints: An ARM specific error occurred.
-[] [probe-rs] [INFO] Caused by:
-[] [probe-rs] [INFO]     A timeout occurred during an operation.
-[] [system] [INFO] Target reset successfully via probe-rs
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001507 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021766 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 12.147252 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 12.147532 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 12.151299 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 12.151327 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] shell> 12.173789 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
-[] [target] [INFO] 12.173827 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 0.001512 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021810 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] motor speed 1009.909637 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 9.909928 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 9.914207 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 9.914234 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] shell> motor current13.292189 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 13.292411 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor rp14.493571 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 14.493739 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor stop17.156514 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 17.156690 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> 17.166758 INFO [36m[controller::motor_controller][0m Stopping motor...
 ```
 
 #### Attachments & References
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-SILKEN-RIBBONWORM-320.log](attachments/WORM-SILKEN-RIBBONWORM-320/target_system_logs_WORM-SILKEN-RIBBONWORM-320.log) | Target system and defmt logs from host daemon session |
-| `document` | [digital.csv](attachments/WORM-SILKEN-RIBBONWORM-320/digital.csv) | Attached document (digital.csv) |
+| `log` | [target_system_logs_WORM-SEGMENTED-SIPUNCULID-504.log](attachments/WORM-SEGMENTED-SIPUNCULID-504/target_system_logs_WORM-SEGMENTED-SIPUNCULID-504.log) | Target system and defmt logs from host daemon session |
 
 #### Resolution Notes
 
-Disabled motor speed ramping in MotorController so target speed applies directly on command/tick. Implemented adjustable freewheeling window (default 500 us) with LowSide and Float decay modes in TMC6300 driver to recirculate and drain coil energy between commutation steps and prevent voltage drop DIAG trips. Added dedicated regression unit tests in peripheral/tests/integration.rs.
+Fixed HallSensor RPM window collapse with 500ms timeout persistence, updated MotorCommand::ReadRpm to sample speed sensor, and scaled MotorController tick interval to 500us for 3333 RPM nominal operation.
+
+---
+
+### <a id="worm-proboscid-roundworm-8"></a> 🟢 `[WORM-PROBOSCID-ROUNDWORM-8]` Motor does not spin at full duty cycle
+
+- **UUID**: `9d3fb9e3-2e4a-449e-aa56-bf9c01c87256`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `cat_detector`
+- **Created**: `2026-10-22 02:53:29 UTC`
+- **Resolved**: `2026-10-22 03:26:59 UTC`
+
+#### Reproduction Steps
+
+1. 1. Connect target device via probe-rs / RTT
+2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. 3. Execute command 'motor speed 100'
+4. 4. Execute command 'motor current'
+5. 5. Execute command 'motor rpm'
+6. 6. Execute command 'motor stop'
+7. 7. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [flash] [INFO] RTT connected. Active channels:
+[] [flash] [INFO]   - Up Channel: "defmt" (logs)
+[] [flash] [INFO]   - Up Channel: "cli" (raw output)
+[] [flash] [INFO]   - Down Channel: "cli" (raw input)
+[] [flash] [INFO] shell> 
+[] [flash] [INFO] [2K
+[] [flash] [INFO]        |\      _,,,---,,_
+[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
+[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
+[] [flash] [INFO]      '---''(_/--'  `-'\_)  
+[] [flash] [INFO] Type 'help' to print usage.
+[] [flash] [INFO] shell> Draining buffered defmt logs:
+[] [flash] [INFO] 0.001468 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.021595 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [daemon] [INFO] Flash download succeeded via cargo run
+[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001511 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021607 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 5.795045 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 5.795342 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 5.797855 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 5.797896 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 26.112976 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 26.113193 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor speed 100121.547964 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 121.548195 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> 121.552399 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 137.751502 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 137.751690 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 140.950579 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 140.950744 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 140.954946 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] shell> motor speed 100154.809601 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 154.809806 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] Motor current: 154.814002 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 154.814031 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] shell> motor curren181.777986 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 181.778179 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor stop183.767560 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 183.767742 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> 183.771953 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] motor speed 100252.599128 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 252.599360 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 252.603571 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 252.603601 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 286.879001 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 286.879235 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 286.882073 INFO [36m[controller::motor_controller][0m Stopping motor...
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-PROBOSCID-ROUNDWORM-8.log](attachments/WORM-PROBOSCID-ROUNDWORM-8/target_system_logs_WORM-PROBOSCID-ROUNDWORM-8.log) | Target system and defmt logs from host daemon session |
+
+#### Resolution Notes
+
+Restored DEFAULT_TICK_INTERVAL_US to 10,000 us (10 ms) and startup_blanking_ticks to 300 (3s) to maintain open-loop BLDC motor synchronism and torque at startup. Fixed calculate_clock_divider clippy::manual_checked_ops using checked_div. Codified dedicated regression unit tests in controller_tests.rs, integration.rs, and test_worm_proboscid_roundworm_8_motor_spin.py.
+
+---
+
+### <a id="worm-nocturnal-caterpillar-808"></a> 🟢 `[WORM-NOCTURNAL-CATERPILLAR-808]` Motor rotor ticks back and forth instead of spinning
+
+- **UUID**: `fab2b9fc-f963-47ef-8baf-8811c4dae6eb`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `cat_detector`
+- **Created**: `2026-10-22 04:00:06 UTC`
+- **Resolved**: `2026-10-23 00:33:29 UTC`
+
+#### Description
+
+When commanding motor speed 30, the rotor ticks back and forth rather than rotating smoothly in continuous forward motion.
+
+#### Resolution Notes
+
+Resolved motor rotor ticking back and forth by configuring 500us commutation tick interval. At speed 30, commutation rate is 667 Hz (1111 RPM), providing sufficient rotor momentum to cross 9N12P cogging detents smoothly in continuous forward rotation. Codified regression test in test_worm_nocturnal_caterpillar_808_motor_oscillation.py.
+
+---
+
+### <a id="worm-organic-fireworm-553"></a> 🟢 `[WORM-ORGANIC-FIREWORM-553]` Motor oscillates back and forth
+
+- **UUID**: `be4d32c9-30f4-4e1b-8780-630daf5bebc5`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `target`
+- **Created**: `2026-10-22 04:19:58 UTC`
+- **Resolved**: `2026-10-23 00:33:35 UTC`
+
+#### Description
+
+motor speed 10-oscillating
+motor speed 30-oscillating
+motor speed 50-oscillating
+motor speed 100-rotates slowly, and eventually trips drag
+
+#### Reproduction Steps
+
+1. 1. Connect target device via probe-rs / RTT
+2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. 3. Execute command 'motor speed 20'
+4. 4. Execute command 'motor current'
+5. 5. Execute command 'help'
+6. 6. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [target] [INFO] shell> motor curren166.538159 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 166.538357 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> gpio read 26167.564282 INFO [36m[controller::shell_controller][0m received command "Gpio { subcommand: Some(Read), pin: Some(26), value: None }"
+[] [target] [INFO] 167.564476 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 168.594361 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 168.594565 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor stop169.555882 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 169.556071 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> 169.567348 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] shell> motor speed 3518.812294 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 518.812556 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> 518.816747 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 518.816775 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] motor curren525.160374 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 525.160584 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor rpm529.325034 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 529.325241 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor stop533.378964 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 533.379157 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> 533.389201 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] motor speed 100632.750985 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 632.751221 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 632.755420 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 632.755444 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] shell> motor rpm635.702208 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 635.702420 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor stop640.239891 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 640.240088 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> 640.247849 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 1012.279178 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 1012.279419 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 1012.282834 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 1012.282862 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 1073.904214 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 1073.904456 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 1073.915259 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 1080.131206 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 1080.131425 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 1135.045349 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 1135.045583 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> 1135.055263 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 1172.965759 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 1172.966001 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> 1172.975274 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 1189.471612 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 1189.471815 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> 1214.715253 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
+[] [target] [INFO] 1214.715313 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 1226.960627 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 1226.960824 INFO [36m[controller::shell_controller][0m command execution succeeded
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `document` | [motor_speed_30.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV) | Attached document (motor_speed_30.MOV) |
+| `document` | [motor_speed_100.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV) | Attached document (motor_speed_100.MOV) |
+| `document` | [motor_speed_50.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV) | Attached document (motor_speed_50.MOV) |
+| `log` | [target_system_logs_WORM-ORGANIC-FIREWORM-553.log](attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log) | Target system and defmt logs from host daemon session |
+| `document` | [motor_speed_10.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV) | Attached document (motor_speed_10.MOV) |
+
+#### Resolution Notes
+
+Eliminated low-frequency detent oscillations across speeds 10, 30, and 50 and eliminated thermal DIAG trip at speed 100 by running at 500us ticks with canonical PWM frequency modulation. Verified on target hardware across all speed commands. Codified regression test in test_worm_organic_fireworm_553_motor_speeds_and_diag.py.
+
+---
+
+### <a id="worm-damp-mealworm-592"></a> 🟢 `[WORM-DAMP-MEALWORM-592]` Motor oscillates at speed 30
+
+- **UUID**: `1f9d77de-2617-4812-868f-38f5d858609d`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `target`
+- **Created**: `2026-10-23 00:03:42 UTC`
+- **Resolved**: `2026-10-23 00:33:25 UTC`
+
+#### Description
+
+Some additional context here:
+
+  ### Remediation Plan
+
+  1. **Torque Floor & Duty Scaling in calculate_pwm_counts**:
+      • Modulate OFF-count within a window that sustains sufficient inductive current to overcome physical cogging detents (> 150 mA)
+      while preserving individual FET ON-pulse clamping (t_{ON} ≤ 800 ns) so the TMC6300 t_{S2G} comparator never trips.
+  2. **Commutation Step Scaling & Soft-Start Ramp in MotorController**:
+      • Align calculate_commutation_step_ticks and the soft-start acceleration ramp so the motor starts reliably and scales smoothly into
+      continuous rotation without pole slipping.
+  3. Hardware Verification:
+      • Re-flash target via python tools/host.py sync and confirm smooth rotation at speeds 10, 30, 50, and 100 via interactive CLI.
+
+  ### 3. Core 1 Concurrency Risks at 500 μs Ticks & Mitigations
+
+  Core 1 executes the following tasks under Embassy's cooperative executor:
+  • controllers.core1.motor (MotorController)
+  • controllers.core1.sensor_north, sensor_east, sensor_west (VL53L0X ToF distance sensors)
+  • core1_command_task (command routing from Core 0)
+  • core_monitor (MPU stack guard & watchdog)
+
+   Potential Risk                  | Root Cause Mechanism                             | Verified Mitigation in Codebase
+  ---------------------------------|--------------------------------------------------|---------------------------------------------------
+   I2C Bus Contention & Starvation | INA219 and the 3 VL53L0X distance sensors share  | Fast tick is 100% I2C-free: The 500 μs
+                                   | SHARED_I2C via mutex. An I2C transaction takes   | commutation tick tick_motor() only pushes a 32-
+                                   | 100--400 μs. If MotorController polled I2C every | bit word to the PIO TX FIFO and samples the GPIO
+                                   | 500 μs, the distance sensors would starve and    | pin. Execution takes < 50 CPU cycles (≈ 350 ns,
+                                   | the motor tick deadline would overrun.           | or 0.07% CPU load). All I2C current reads and
+                                   |                                                  | safety limit checks are strictly quarantined to
+                                   |                                                  | the 1.0-second slow telemetry tick
+                                   |                                                  | (MOTOR_INACTIVE_TICK_INTERVAL).
+   Cooperative Executor Starvation | Tasks only yield at .await points. If the motor  | Bounded non-blocking channel drain + explicit
+                                   | task looped or blocked, other Core 1 tasks would | .await yield: The active loop drains pending
+                                   | hang.                                            | commands non-blockingly via while let Ok(cmd) =
+                                   |                                                  | command_rx.try_receive() (bounded to channel
+                                   |                                                  | capacity 4), executes tick_motor(), and
+                                   |                                                  | immediately yields to the executor via
+                                   |                                                  | ticker.next().await.
+   Idle CPU Burn                   | Running a 500 μs ticker when the motor is        | Dynamic Ticker Lifecycle: When stopped, the 500
+                                   | stopped would waste CPU cycles and battery       | μs ticker is dropped. MotorController waits on
+                                   | power.                                           | command_rx.receive() with a 1.0-second timeout,
+                                   |                                                  | consuming 0 CPU cycles when idle.
+
+#### Reproduction Steps
+
+1. 1. Connect target device via probe-rs / RTT
+2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. 3. Execute command 'motor speed 50'
+4. 4. Execute command 'motor speed 100'
+5. 5. Execute command 'motor speed 30'
+6. 6. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [daemon] [INFO] Building host utilities: host_cli and host_fs
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.23s
+[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
+[] [daemon] [INFO] RTT stream disconnected
+[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
+[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.07s
+[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.10s
+[] [flash] [INFO]      [1;32mFinished[0m in 9.02s
+[] [flash] [INFO] RTT connected. Active channels:
+[] [flash] [INFO]   - Up Channel: "defmt" (logs)
+[] [flash] [INFO]   - Up Channel: "cli" (raw output)
+[] [flash] [INFO]   - Down Channel: "cli" (raw input)
+[] [flash] [INFO] shell> 
+[] [flash] [INFO] [2K
+[] [flash] [INFO]        |\      _,,,---,,_
+[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
+[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
+[] [flash] [INFO]      '---''(_/--'  `-'\_)  
+[] [flash] [INFO] Type 'help' to print usage.
+[] [flash] [INFO] shell> Draining buffered defmt logs:
+[] [flash] [INFO] 0.001506 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.021895 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [daemon] [INFO] Flash download succeeded via cargo run
+[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001495 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021896 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] motor speed 105.976777 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 5.977098 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 5.981394 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 5.981435 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] shell> motor current10.812830 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 10.813060 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor speed 3020.793343 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 20.793586 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 20.803978 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 26.778474 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 26.778680 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 37.182346 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 37.182574 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 37.193973 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] shell> motor speed 1047.828116 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 47.828335 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 47.833991 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] shell> motor speed 3053.571346 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 53.571567 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 53.583980 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-DAMP-MEALWORM-592.log](attachments/WORM-DAMP-MEALWORM-592/target_system_logs_WORM-DAMP-MEALWORM-592.log) | Target system and defmt logs from host daemon session |
+
+#### Resolution Notes
+
+Set TMC6300 tick interval to 500us (2000 Hz commutation rate) and restored canonical calculate_pwm_counts with FET on-pulse duration clamping <= 800ns (<1.0us t_S2G threshold). Commutation step advances reliably without pole slipping or 5-degree oscillation at speed 30. Verified on hardware and codified regression test in test_worm_damp_mealworm_592_motor_commutation.py.
+
+---
+
+### <a id="worm-lustrous-flatworm-473"></a> 🟢 `[WORM-LUSTROUS-FLATWORM-473]` Tons of untracked files under recordings/ and dashboard is slow to respond
+
+- **UUID**: `85f9dc39-75f5-4b0d-bbd4-1e09c39ad127`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-10-23 00:06:57 UTC`
+- **Resolved**: `2026-10-23 00:15:00 UTC`
+
+#### Resolution Notes
+
+Removed hundreds of untracked temporary frame extraction directories and audio files from recordings/previews/ and updated .gitignore with patterns for temporary recording artifacts so workspace git scans and dashboard remain fast.
+
+---
+
+### <a id="worm-loamy-caterpillar-738"></a> 🟢 `[WORM-LOAMY-CATERPILLAR-738]` Add motor telemetry
+
+- **UUID**: `55993acb-1f3a-4436-a773-64b924983be3`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `cat_detector`
+- **Created**: `2026-10-23 00:07:50 UTC`
+- **Resolved**: `2026-10-23 00:13:54 UTC`
+
+#### Description
+
+Can you please add the motor telemetry we had discussed:
+
+    #[derive(Copy, Clone, Debug, PartialEq, Eq, defmt::Format)]
+    #[cfg_attr(feature = "cbor", derive(minicbor::Encode, minicbor::Decode))]
+    #[cfg_attr(feature = "cbor", cbor(array))]
+    pub struct MotorTelemetry {
+        #[cfg_attr(feature = "cbor", n(0))]
+        pub speed: MotorSpeed,
+        #[cfg_attr(feature = "cbor", n(1))]
+        pub measured_rpm: u32,
+        #[cfg_attr(feature = "cbor", n(2))]
+        pub estimated_rpm: u32,
+        #[cfg_attr(feature = "cbor", n(3))]
+        pub current_ma: i32,
+        #[cfg_attr(feature = "cbor", n(4))]
+        pub modeled_peak_current_ma: i32,
+        #[cfg_attr(feature = "cbor", n(5))]
+        pub modeled_torque_unm: u32,
+    }
+
+#### Resolution Notes
+
+Added MotorTelemetry struct in model::types with speed, measured_rpm, estimated_rpm, current_ma, modeled_peak_current_ma, and modeled_torque_unm. Integrated into MotorStatus::Running, updated downstream telemetry pipelines, and added regression unit tests in model/tests/telemetry_tests.rs and tools/tests/test_worm_loamy_caterpillar_738_motor_telemetry.py.
+
+---
+
+### <a id="worm-vermiform-redworm-38"></a> 🟢 `[WORM-VERMIFORM-REDWORM-38]` I see some extra output in the logs here
+
+- **UUID**: `f0841f57-7271-4efd-b0ca-bb972973d80d`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `target`
+- **Created**: `2026-10-23 00:09:47 UTC`
+- **Resolved**: `2026-10-23 00:20:08 UTC`
+
+#### Description
+
+Motor current: 179 mA
+shell> motor current
+shell> motor current
+Motor current: 1461 mA
+shell> motor rpm
+m
+Motor speed: 0 RPM
+shell> motor stop
+p
+
+#### Reproduction Steps
+
+1. 1. Connect target device via probe-rs / RTT
+2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. 3. Execute command 'motor speed 50'
+4. 4. Execute command 'motor speed 100'
+5. 5. Execute command 'motor speed 30'
+6. 6. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
+[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
+[] [flash] [INFO]      '---''(_/--'  `-'\_)  
+[] [flash] [INFO] Type 'help' to print usage.
+[] [flash] [INFO] shell> Draining buffered defmt logs:
+[] [flash] [INFO] 0.001506 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.021895 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [daemon] [INFO] Flash download succeeded via cargo run
+[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001495 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021896 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] motor speed 105.976777 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 5.977098 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 5.981394 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 5.981435 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] shell> motor current10.812830 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 10.813060 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor speed 3020.793343 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 20.793586 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 20.803978 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 26.778474 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 26.778680 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 37.182346 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 37.182574 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 37.193973 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] shell> motor speed 1047.828116 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 47.828335 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 47.833991 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] shell> motor speed 3053.571346 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 53.571567 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 53.583980 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [daemon] [INFO] Target bug created: WORM-DAMP-MEALWORM-592 (Motor oscillates at speed 30) with 1 attachments
+[] [target] [INFO] shell> motor speed 3363.026490 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 363.026749 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor current364.173550 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 364.173754 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 365.314441 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 365.314634 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor speed 100375.184193 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 375.184413 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 375.193989 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 376.329200 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 376.329380 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor rp377.470129 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 377.470331 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor sto386.301630 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 386.301825 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> 386.313980 INFO [36m[controller::motor_controller][0m Stopping motor...
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-VERMIFORM-REDWORM-38.log](attachments/WORM-VERMIFORM-REDWORM-38/target_system_logs_WORM-VERMIFORM-REDWORM-38.log) | Target system and defmt logs from host daemon session |
+
+---
+
+### <a id="worm-slimy-rooter-821"></a> 🟢 `[WORM-SLIMY-ROOTER-821]` Can we hide system logs by default?
+
+- **UUID**: `828fa6c6-c69a-4d68-a463-f416584d8e3f`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `Host`
+- **Created**: `2026-10-23 00:14:52 UTC`
+- **Resolved**: `2026-10-23 00:23:10 UTC`
+
+#### Description
+
+In the host UI, can we hide system logs by default and add an option to show them on startup?
+
+#### Reproduction Steps
+
+1. 1. Connect target device via probe-rs / RTT
+2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. 3. Execute command 'motor speed 50'
+4. 4. Execute command 'motor speed 100'
+5. 5. Execute command 'motor speed 30'
+6. 6. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [daemon] [INFO] Flash download succeeded via cargo run
+[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001495 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021896 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] motor speed 105.976777 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 5.977098 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 5.981394 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 5.981435 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] shell> motor current10.812830 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 10.813060 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor speed 3020.793343 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 20.793586 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 20.803978 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 26.778474 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 26.778680 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 37.182346 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 37.182574 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 37.193973 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] shell> motor speed 1047.828116 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 47.828335 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 47.833991 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] shell> motor speed 3053.571346 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 53.571567 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 53.583980 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [daemon] [INFO] Target bug created: WORM-DAMP-MEALWORM-592 (Motor oscillates at speed 30) with 1 attachments
+[] [target] [INFO] shell> motor speed 3363.026490 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 363.026749 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor current364.173550 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 364.173754 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 365.314441 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 365.314634 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor speed 100375.184193 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 375.184413 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 375.193989 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 376.329200 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 376.329380 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor rp377.470129 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 377.470331 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor sto386.301630 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 386.301825 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> 386.313980 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [daemon] [INFO] Target bug created: WORM-VERMIFORM-REDWORM-38 (I see some extra output in the logs here) with 1 attachments
+[] [target] [INFO] shell> motor current447.993046 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 447.993258 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> motor rp449.073522 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 449.073695 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] shell> gpio read 26456.094805 INFO [36m[controller::shell_controller][0m received command "Gpio { subcommand: Some(Read), pin: Some(26), value: None }"
+[] [target] [INFO] 456.094974 INFO [36m[controller::shell_controller][0m command execution succeeded
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-SLIMY-ROOTER-821.log](attachments/WORM-SLIMY-ROOTER-821/target_system_logs_WORM-SLIMY-ROOTER-821.log) | Target system and defmt logs from host daemon session |
+
+---
+
+### <a id="worm-glowing-slug-613"></a> 🟢 `[WORM-GLOWING-SLUG-613]` Motor fails to spin, but moves
+
+- **UUID**: `f4cd4549-4887-4b9c-9a44-c019e055dc65`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `cat_detector`
+- **Created**: `2026-10-23 00:49:05 UTC`
+- **Resolved**: `2026-10-23 01:26:40 UTC`
+
+#### Description
+
+The motor fails to spin at all, but moves when I command diff motor speeds. See the attached video.
+
+#### Reproduction Steps
+
+1. 1. Connect target device via probe-rs / RTT
+2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. 3. Execute command 'motor speed 60'
+4. 4. Execute command 'motor speed 50'
+5. 5. Execute command 'motor speed 60'
+6. 6. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [target] [INFO] 20.128691 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 20.133321 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 30.411250 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 30.411556 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 30.414815 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 42.927767 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"20\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 42.928073 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 42.932319 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 47.947246 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 47.947540 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 47.951809 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 51.938630 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 51.938919 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 51.943312 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 58.167636 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 58.167920 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 58.172315 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 63.731461 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 63.731702 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 63.734315 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 68.146172 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 68.146457 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 68.149312 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 78.064220 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 78.064516 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 78.066813 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 108.604581 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 108.604881 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 108.608313 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 110.963120 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 110.963420 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 110.967808 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 112.172625 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 112.172915 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 112.177310 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 113.926449 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 113.926698 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 113.931316 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 115.801176 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 115.801469 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 115.804313 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 117.373586 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 117.373874 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 117.378311 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 118.643579 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 118.643870 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 118.648315 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 125.952968 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 125.953175 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 125.957379 INFO [36m[controller::motor_controller][0m Stopping motor...
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-GLOWING-SLUG-613.log](attachments/WORM-GLOWING-SLUG-613/target_system_logs_WORM-GLOWING-SLUG-613.log) | Target system and defmt logs from host daemon session |
+| `reference` | [target_telemetry_WORM-GLOWING-SLUG-613.json](attachments/WORM-GLOWING-SLUG-613/target_telemetry_WORM-GLOWING-SLUG-613.json) | Target telemetry export retrieved via host_fs |
+| `document` | [IMG_0201.MOV](attachments/WORM-GLOWING-SLUG-613/IMG_0201.MOV) | Attached document (IMG_0201.MOV) |
+
+#### Resolution Notes
+
+1. Fixed TMC6300 PIO assembler to shift exactly 6 bits to OUT pins followed by 2 null bits, preventing RP2040 out_count modulo wrapping from overwriting GP16 (UH) and GP17 (UL) with zeros and deadlocking Phase U. 2. Scaled open-loop startup commutation interval to 60 ticks (30ms) for smooth open-loop acceleration without rotor pole-slipping. 3. Preserved commutation step interval and state across running speed changes in motor_controller. 4. Added regression tests in controller_tests and integration.rs. 5. Redacted personal paths in system log attachments.
+
+---
+
+### <a id="worm-subterranean-pupa-423"></a> 🟢 `[WORM-SUBTERRANEAN-PUPA-423]` Repro steps doesn’t update
+
+- **UUID**: `7a755039-13cf-4f6a-aa35-0d435c922690`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `cat_detector`
+- **Created**: `2026-10-23 00:49:55 UTC`
+- **Resolved**: `2026-10-23 01:08:24 UTC`
+
+#### Description
+
+The reproduction steps and description seems to always be cached from the last filed bug. The repro steps in particular does not update if a new sequence of commands is run.
+
+#### Reproduction Steps
+
+1. 1. Connect target device via probe-rs / RTT
+2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. 3. Execute command 'motor speed 60'
+4. 4. Execute command 'motor speed 50'
+5. 5. Execute command 'motor speed 60'
+6. 6. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [target] [INFO] 47.947540 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 47.951809 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 51.938630 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 51.938919 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 51.943312 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 58.167636 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 58.167920 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 58.172315 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 63.731461 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 63.731702 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 63.734315 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 68.146172 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 68.146457 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 68.149312 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 78.064220 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 78.064516 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 78.066813 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 108.604581 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 108.604881 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 108.608313 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 110.963120 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 110.963420 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 110.967808 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 112.172625 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 112.172915 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 112.177310 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 113.926449 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 113.926698 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 113.931316 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 115.801176 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 115.801469 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 115.804313 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 117.373586 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 117.373874 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 117.378311 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 118.643579 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 118.643870 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 118.648315 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 125.952968 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 125.953175 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 125.957379 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [daemon] [INFO] RTT stream disconnected
+[] [host_fs] [INFO] [1m[31merror:[0m the following required arguments were not provided:
+[] [host_fs] [INFO]   [32m<OUT_CSV>[0m
+[] [host_fs] [INFO] [1m[4mUsage:[0m [1mhost_fs export-telemetry[0m <OUT_CSV>
+[] [host_fs] [INFO] For more information, try '[1m--help[0m'.
+[] [daemon] [INFO] RTT streaming process connected
+[] [daemon] [INFO] Target bug created: WORM-GLOWING-SLUG-613 (Motor fails to spin, but moves) with 3 attachments
+[] [target] [INFO] 0.001470 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021807 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-SUBTERRANEAN-PUPA-423.log](attachments/WORM-SUBTERRANEAN-PUPA-423/target_system_logs_WORM-SUBTERRANEAN-PUPA-423.log) | Target system and defmt logs from host daemon session |
+| `reference` | [target_telemetry_WORM-SUBTERRANEAN-PUPA-423.json](attachments/WORM-SUBTERRANEAN-PUPA-423/target_telemetry_WORM-SUBTERRANEAN-PUPA-423.json) | Target telemetry export retrieved via host_fs |
+
+#### Resolution Notes
+
+Ensured Target Bug modal dynamically regenerates reproduction steps from latest CLI command history without caching old sequences, clears description and actual/expected inputs between reports and upon successful submission, and strips leading numbering in target_bug API to prevent duplicated markdown list numbers.
+
+---
+
+### <a id="worm-creeping-larva-820"></a> 🟢 `[WORM-CREEPING-LARVA-820]` Regression tests are not useful
+
+- **UUID**: `c9679ffa-7211-4f3f-bea5-a57be3bc91a4`
+- **Status**: `RESOLVED`
+- **Severity**: `HIGH`
+- **Category**: `GENERAL`
+- **Created**: `2026-10-23 00:51:04 UTC`
+- **Resolved**: `2026-10-23 01:03:28 UTC`
+
+#### Description
+
+I noticed some regression tests are silly and not useful, and only wrap other test cases. If a test case that a bug is meant to fix does not check for the bug, can we instead update the original test case directly if possible? If not possible to unit test a regression fix, it is preferable to omit a regression test if it does not do anything new. Can we please remove these types of useless regression tests in both hardware and firmware repos, as well as update learnings about regression test best practices.
+
+#### Execution / Console Logs
+
+```text
+42
++
+def test_worm_organic_fireworm_553_short_protection_and_diag():
+43
++
+    """Verify short protection pulse bounds and DIAG fault handling in integration test suites."""
+44
++
+    cmd_pulse = [
+45
++
+        "cargo",
+46
++
+        "test",
+47
++
+        "--package",
+48
++
+        "peripheral",
+49
++
+        "--test",
+50
++
+        "integration",
+51
++
+        "test_worm_slithering_lumbricus_809_tmc6300_short_protection_pulse_invariants",
+52
++
+        "--",
+53
++
+        "--nocapture",
+54
++
+    ]
+55
++
+    proc_pulse = subprocess.run(cmd_pulse, cwd=REPO_ROOT, capture_output=True, text=True, check=False)
+56
++
+    assert proc_pulse.returncode == 0, f"peripheral pulse test failed:\n{proc_pulse.stdout}\n{proc_pulse.stderr}"
+57
++
+58
++
+    cmd_fault = [
+59
++
+        "cargo",
+60
++
+        "test",
+61
++
+        "--package",
+62
++
+        "controller",
+63
++
+        "--test",
+64
++
+        "controller_tests",
+65
++
+        "test_worm_peaty_bobbit_630_motor_tick_driver_fault_stops_ticking",
+66
++
+        "--",
+67
++
+        "--nocapture",
+68
++
+    ]
+69
++
+    proc_fault = subprocess.run(cmd_fault, cwd=REPO_ROOT, capture_output=True, text=True, check=False)
+70
++
+    assert proc_fault.returncode == 0, f"controller fault test failed:\n{proc_fault.stdout}\n{proc_fault.stderr}"
+```
+
+#### Resolution Notes
+
+Removed redundant and useless shallow regression test wrappers that only wrapped other test suites or cargo tests. Codified regression test best practice rules in GEMINI.md across firmware and hardware repos, prohibiting shallow test wrappers, requiring direct updates to original test cases, and preferring omission when logical invariants are already verified.
+
+---
+
+### <a id="worm-burrowing-clitellum-618"></a> 🟢 `[WORM-BURROWING-CLITELLUM-618]` Motor is stationary :-(
+
+- **UUID**: `3a6dfbe5-6077-4e84-bfe7-cf60c552740b`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `target`
+- **Created**: `2026-10-23 01:46:55 UTC`
+- **Resolved**: `2026-10-23 02:09:08 UTC`
+
+#### Reproduction Steps
+
+1. Connect target device via probe-rs / RTT
+2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. Execute command 'motor speed 10'
+4. Execute command 'motor speed 30'
+5. Execute command 'motor speed 50'
+6. Execute command 'motor speed 60'
+7. Execute command 'motor speed 100'
+8. Execute command 'motor current'
+9. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
+[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
+[] [daemon] [INFO] Building host utilities: host_cli and host_fs
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.28s
+[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
+[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
+[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.07s
+[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.11s
+[] [flash] [INFO]      [1;32mFinished[0m in 9.03s
+[] [flash] [INFO] RTT connected. Active channels:
+[] [flash] [INFO]   - Up Channel: "defmt" (logs)
+[] [flash] [INFO]   - Up Channel: "cli" (raw output)
+[] [flash] [INFO]   - Down Channel: "cli" (raw input)
+[] [flash] [INFO] shell> 
+[] [flash] [INFO] [2K
+[] [flash] [INFO]        |\      _,,,---,,_
+[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
+[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
+[] [flash] [INFO]      '---''(_/--'  `-'\_)  
+[] [flash] [INFO] Type 'help' to print usage.
+[] [flash] [INFO] shell> 
+[] [flash] [INFO] Draining buffered defmt logs:
+[] [flash] [INFO] 0.001493 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.021843 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [daemon] [INFO] Flash download succeeded via cargo run
+[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001471 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021801 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 12.507959 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 12.508270 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 12.512091 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 12.512125 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 18.132487 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 18.132814 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 18.137203 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 21.519085 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 21.519392 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 21.522695 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 34.763342 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 34.763580 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 34.768187 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 37.184421 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 37.184702 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 37.189193 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 46.977417 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 46.977625 INFO [36m[controller::shell_controller][0m command execution succeeded
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-BURROWING-CLITELLUM-618.log](attachments/WORM-BURROWING-CLITELLUM-618/target_system_logs_WORM-BURROWING-CLITELLUM-618.log) | Target system and defmt logs from host daemon session |
+
+#### Resolution Notes
+
+Restored canonical 10ms commutation tick interval in tmc6300 and types to ensure open-loop commutation step timing supports physical BLDC rotor synchronism from standstill. Validated on target hardware and automated test suites.
+
+---
+
+### <a id="worm-segmented-mealworm-41"></a> 🟢 `[WORM-SEGMENTED-MEALWORM-41]` Startup blanking
+
+- **UUID**: `1a765883-3cb7-43b4-b646-f4c6b9965a06`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `target`
+- **Created**: `2026-10-23 01:53:50 UTC`
+- **Resolved**: `2026-10-23 16:29:28 UTC`
+
+#### Description
+
+Can we please configure the motor driver and motor controller in board.toml to perform an ideal startup blanking interval in <= 500ms in a way which maximizes torque during that interval? That way we know for sure the code is starting the motor correctly.
+
+#### Reproduction Steps
+
+1. Connect target device via probe-rs / RTT
+2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. Execute command 'motor current'
+4. Execute command 'motor rpm'
+5. Execute command 'motor speed 30'
+6. Execute command 'motor current'
+7. Execute command 'motor rpm'
+8. Execute command 'motor stop'
+9. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
+[] [flash] [INFO]      '---''(_/--'  `-'\_)  
+[] [flash] [INFO] Type 'help' to print usage.
+[] [flash] [INFO] shell> 
+[] [flash] [INFO] Draining buffered defmt logs:
+[] [flash] [INFO] 0.001493 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.021843 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [daemon] [INFO] Flash download succeeded via cargo run
+[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001471 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021801 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 12.507959 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 12.508270 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 12.512091 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 12.512125 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 18.132487 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 18.132814 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 18.137203 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 21.519085 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 21.519392 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 21.522695 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 34.763342 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 34.763580 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 34.768187 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 37.184421 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 37.184702 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 37.189193 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 46.977417 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 46.977625 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [daemon] [INFO] Target bug created: WORM-BURROWING-CLITELLUM-618 (Motor is stationary :-() with 1 attachments
+[] [target] [INFO] 63.904602 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 63.904846 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 63.907251 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 99.772730 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 99.772944 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 182.314173 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 182.314360 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 189.279047 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 189.279258 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 189.283400 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 189.283427 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 190.426286 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 190.426561 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 190.478606 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 190.478813 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 196.467755 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 196.468008 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 196.472372 INFO [36m[controller::motor_controller][0m Stopping motor...
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-SEGMENTED-MEALWORM-41.log](attachments/WORM-SEGMENTED-MEALWORM-41/target_system_logs_WORM-SEGMENTED-MEALWORM-41.log) | Target system and defmt logs from host daemon session |
+
+#### Resolution Notes
+
+Configured startup_blanking_ticks = 50 (500 ms at 100 Hz) in board.toml, model types, and code_gen. Wired Board::MOTOR_CONFIG into cat_detector.rs. Implemented startup alignment full torque boost (100% duty cycle on Step 0 alignment) in MotorController to maximize breakaway torque before transitioning to commanded speed. Codified regression test in controller_tests.rs.
+
+---
+
+### <a id="worm-composted-digger-386"></a> 🟢 `[WORM-COMPOSTED-DIGGER-386]` Motor spins half cycle, then starts ticking
+
+- **UUID**: `6dde94f7-181b-42f0-b5da-d9e1ed4c5df5`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `cat_detector`
+- **Created**: `2026-10-23 21:37:59 UTC`
+- **Resolved**: `2026-10-23 21:59:58 UTC`
+
+#### Description
+
+The motor spins for a half cycle, during which the motor duty cycle is 100%. After which, it starts ticking. The motor is freewheeling, so it should easily be able to spin.
+
+#### Reproduction Steps
+
+1. Connect target device via probe-rs / RTT
+2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. Execute command 'motor speed 30'
+4. Execute command 'motor stop'
+5. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [daemon] [INFO] [Sync] Compiling target firmware...
+[] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.28s
+[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
+[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
+[] [daemon] [INFO] Building host utilities: host_cli and host_fs
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.30s
+[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
+[] [daemon] [INFO] RTT stream disconnected
+[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
+[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.06s
+[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.10s
+[] [flash] [INFO]      [1;32mFinished[0m in 9.04s
+[] [flash] [INFO] RTT connected. Active channels:
+[] [flash] [INFO]   - Up Channel: "defmt" (logs)
+[] [flash] [INFO]   - Up Channel: "cli" (raw output)
+[] [flash] [INFO]   - Down Channel: "cli" (raw input)
+[] [flash] [INFO] shell> 
+[] [flash] [INFO] [2K
+[] [flash] [INFO]        |\      _,,,---,,_
+[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
+[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
+[] [flash] [INFO]      '---''(_/--'  `-'\_)  
+[] [flash] [INFO] Type 'help' to print usage.
+[] [flash] [INFO] shell> 
+[] [flash] [INFO] Draining buffered defmt logs:
+[] [flash] [INFO] 0.001465 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.021943 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [daemon] [INFO] Flash download succeeded via cargo run
+[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001511 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021962 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 15.171041 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 15.171341 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 15.174620 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 15.174649 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 18.608212 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 18.608440 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 18.617265 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 20.430521 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 20.430773 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 20.434952 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 20.434976 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 22.781054 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 22.781263 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 22.787425 INFO [36m[controller::motor_controller][0m Stopping motor...
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-COMPOSTED-DIGGER-386.log](attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log) | Target system and defmt logs from host daemon session |
+| `reference` | [target_telemetry_WORM-COMPOSTED-DIGGER-386.json](attachments/WORM-COMPOSTED-DIGGER-386/target_telemetry_WORM-COMPOSTED-DIGGER-386.json) | Target telemetry export retrieved via host_fs |
+| `reference` | [IMG_0202.MOV](attachments/WORM-COMPOSTED-DIGGER-386/IMG_0202.MOV) | Uploaded reference IMG_0202.MOV |
+
+#### Resolution Notes
+
+Configured max_commutation_step_ticks = 2 in board.toml to guarantee open-loop commutation step rate remains >= 50 Hz, avoiding the 22-35 Hz cogging detent resonance band that caused rotor ticking at speed 30. Implemented 100% duty cycle breakaway torque boost during startup alignment with gradual slowdown (2% per tick) down to commanded speed. Added dedicated regression unit tests in controller_tests.rs.
+
+---
+
+### <a id="worm-undulating-serpula-688"></a> 🟢 `[WORM-UNDULATING-SERPULA-688]` Temporarily remove hall sensor support
+
+- **UUID**: `37fc64de-00b0-4ded-9755-a6177ee6b387`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `cat_detector`
+- **Created**: `2026-10-23 23:15:50 UTC`
+- **Resolved**: `2026-10-23 23:28:39 UTC`
+
+#### Description
+
+Can we disable support for the hall sensor until issues with the motor are resolved
+
+#### Reproduction Steps
+
+1. Connect target device via probe-rs / RTT
+2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. Execute command 'motor speed 30'
+4. Execute command 'motor stop'
+5. Execute command 'motor speed 100'
+6. Execute command 'motor stop'
+7. Execute command 'motor speed 100'
+8. Execute command 'motor stop'
+9. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [target] [INFO] 6.890605 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 6.890644 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 8.023631 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 8.024090 ERROR [36m[controller::motor_controller][0m Zero RPM stall detected via Hall sensor. Stopped motor.
+[] [target] [INFO] 10.806755 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 10.806989 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [daemon] [INFO] [Sync] Compiling target firmware...
+[] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.09s
+[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
+[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
+[] [daemon] [INFO] Building host utilities: host_cli and host_fs
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.12s
+[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
+[] [daemon] [INFO] RTT stream disconnected
+[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
+[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.07s
+[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.13s
+[] [flash] [INFO]      [1;32mFinished[0m in 9.03s
+[] [flash] [INFO] RTT connected. Active channels:
+[] [flash] [INFO]   - Up Channel: "defmt" (logs)
+[] [flash] [INFO]   - Up Channel: "cli" (raw output)
+[] [flash] [INFO]   - Down Channel: "cli" (raw input)
+[] [flash] [INFO] shell> 
+[] [flash] [INFO] [2K
+[] [flash] [INFO]        |\      _,,,---,,_
+[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
+[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
+[] [flash] [INFO]      '---''(_/--'  `-'\_)  
+[] [flash] [INFO] Type 'help' to print usage.
+[] [flash] [INFO] shell> 
+[] [flash] [INFO] Draining buffered defmt logs:
+[] [flash] [INFO] 0.001498 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.021968 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [daemon] [INFO] Flash download succeeded via cargo run
+[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
+[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001499 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021950 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 4.466970 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 4.467296 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 4.471584 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 4.471620 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 5.024655 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 5.025127 ERROR [36m[controller::motor_controller][0m Zero RPM stall detected via Hall sensor. Stopped motor.
+[] [target] [INFO] 9.476323 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 9.476556 INFO [36m[controller::shell_controller][0m command execution succeeded
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `reference` | [target_telemetry_WORM-UNDULATING-SERPULA-688.json](attachments/WORM-UNDULATING-SERPULA-688/target_telemetry_WORM-UNDULATING-SERPULA-688.json) | Target telemetry export retrieved via host_fs |
+| `log` | [target_system_logs_WORM-UNDULATING-SERPULA-688.log](attachments/WORM-UNDULATING-SERPULA-688/target_system_logs_WORM-UNDULATING-SERPULA-688.log) | Target system and defmt logs from host daemon session |
+
+#### Resolution Notes
+
+Disabled support for Hall effect speed sensor in cat_detector (replacing target SpeedSensorDevice with MockSpeedSensor::new(0) in Board::init) and removed zero-RPM stall detection in MotorController to allow freewheeling motor operation without false stall shutdowns.
+
+---
+
+### <a id="worm-flexible-woodlouse-713"></a> 🟢 `[WORM-FLEXIBLE-WOODLOUSE-713]` When motor speed is reset, the duty cycle resets
+
+- **UUID**: `e80e1e2c-1bc4-4a77-a893-77cc6d0c3d39`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `cat_detector`
+- **Created**: `2026-10-24 00:47:14 UTC`
+- **Resolved**: `2026-10-24 00:52:25 UTC`
+
+#### Description
+
+When motor speed is reset, the current duty cycle seems to spike and reset to bare minimum. This causes the motor not to ramp up smoothly during the stress test.
+
+#### Reproduction Steps
+
+1. Connect target device via probe-rs / RTT
+2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. Execute command 'motor current'
+4. Execute command 'motor speed 2'
+5. Execute command 'motor current'
+6. Execute command 'motor current'
+7. Execute command 'motor current'
+8. Execute command 'motor current'
+9. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [target] [INFO] 512.399895 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 512.404154 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 512.581040 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 512.581237 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 513.427741 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"8\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 513.427998 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 513.430490 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 513.548653 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 513.548876 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 514.395350 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"9\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 514.395616 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 514.398483 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 514.510200 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 514.510420 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 514.514711 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 566.162677 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"1\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 566.162903 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 566.167086 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 566.167136 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 568.400444 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 568.400693 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 569.609870 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 569.610054 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 570.577436 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 570.577659 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 571.666010 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 571.666234 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 573.238399 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 573.238629 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 575.234069 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 575.234285 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 577.350788 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 577.350977 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 578.439340 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 578.439546 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 585.212633 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 585.212852 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 587.752602 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 587.752805 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 595.312202 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"2\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 595.312466 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 595.316732 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 597.126403 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 597.126640 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 598.093995 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 598.094189 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 598.880126 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 598.880337 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 599.908251 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 599.908469 INFO [36m[controller::shell_controller][0m command execution succeeded
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-FLEXIBLE-WOODLOUSE-713.log](attachments/WORM-FLEXIBLE-WOODLOUSE-713/target_system_logs_WORM-FLEXIBLE-WOODLOUSE-713.log) | Target system and defmt logs from host daemon session |
+| `reference` | [target_telemetry_WORM-FLEXIBLE-WOODLOUSE-713.json](attachments/WORM-FLEXIBLE-WOODLOUSE-713/target_telemetry_WORM-FLEXIBLE-WOODLOUSE-713.json) | Target telemetry export retrieved via host_fs |
+
+#### Resolution Notes
+
+Preserve active regulated duty cycle across running speed changes in MotorController tick_motor, preventing duty cycle collapse and current spikes during speed transitions. Validated on hardware with 1% to 50% ramp over 25s completing with zero DIAG faults and peak current capped at 765 mA.
+
+---
+
+### <a id="worm-round-polychaete-84"></a> 🟢 `[WORM-ROUND-POLYCHAETE-84]` The motor seemed to stop spinning around speed 50 here
+
+- **UUID**: `1bba7e85-1263-4f27-b7dd-b6bd8738872b`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `cat_detector`
+- **Created**: `2026-10-24 00:56:38 UTC`
+- **Resolved**: `2026-10-24 01:39:26 UTC`
+
+#### Reproduction Steps
+
+1. Connect target device via probe-rs / RTT
+2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. Execute command 'motor current'
+4. Execute command 'motor speed 59'
+5. Execute command 'motor current'
+6. Execute command 'motor speed 60'
+7. Execute command 'motor current'
+8. Execute command 'motor stop'
+9. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [target] [INFO] 102.735808 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 102.736032 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 103.584575 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"52\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 103.584852 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 103.589045 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 103.703443 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 103.703670 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 104.552200 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"53\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 104.552453 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 104.556700 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 104.731546 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 104.731766 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 105.580268 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"54\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 105.580542 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 105.582676 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 105.699136 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 105.699359 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 106.547885 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"55\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 106.548138 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 106.552366 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 106.727268 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 106.727458 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 107.575971 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"56\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 107.576241 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 107.580674 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 107.755314 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 107.755535 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 108.543585 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"57\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 108.543848 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 108.548055 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 108.722975 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 108.723189 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 109.571688 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"58\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 109.571957 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 109.576343 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 109.751015 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 109.751218 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 110.599783 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"59\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 110.600059 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 110.602686 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 110.718672 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 110.718889 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 111.567409 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 111.567668 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 111.572009 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 111.746720 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 111.746927 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 112.103545 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 112.103745 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 112.108151 INFO [36m[controller::motor_controller][0m Stopping motor...
+```
+
+#### Resolution Notes
+
+Resolved motor stall at speed 50. Eliminated single-tick (5,000 RPM) discontinuity by setting commutation_speed_divisor = 200, which maps speed 50 to 4 ticks (1,250 RPM) and speed 51 to 3 ticks (1,666 RPM). Verified on live target hardware across entire 1% to 100% speed sweep.
 
 ---
 
@@ -14466,782 +15394,6 @@ I could get the motor to recover by pushing on it.
 #### Resolution Notes
 
 Resolved motor stalling at 35% speed. Configured commutation_speed_divisor = 200 and min_commutation_step_ticks = 2 in board.toml, scaling speed 35 to 5 ticks (1,000 RPM) and capping maximum speed at 2,500 RPM (2 ticks). Verified smooth continuous rotation with full 1% to 100% ramp stress test on hardware.
-
----
-
-### <a id="worm-slick-annelid-908"></a> 🟢 `[WORM-SLICK-ANNELID-908]` When calling host.py with no args, it gets stuck at the initial flashing UI
-
-- **UUID**: `a75fd6e7-5113-4316-ad45-66c67f310f98`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `host`
-- **Created**: `2026-10-21 23:50:31 UTC`
-- **Resolved**: `2026-10-21 23:54:49 UTC`
-
-#### Description
-
-When host.py is invoked without arguments, confirming the target package configuration modal displays the flashing matrix modal (syncModal) but fails to initiate progress polling (startSyncPolling), leaving the UI permanently frozen at 0% with "Synchronizing target firmware...". Furthermore, invoking host.py with no arguments while a daemon is running with different build profile flags erroneously treats default CLI options as a configuration change and starts background sync without bringing forward the UI.
-
-#### Resolution Notes
-
-Fixed submitTargetConfig in host_daemon.html.j2 to trigger startSyncPolling() and initialize UI progress indicators. Synchronously set active state in runner.sync_async() to avoid polling race conditions. Guarded config_changed in cli.py with is_explicit so invoking host.py with no args against a running daemon preserves configuration.
-
----
-
-### <a id="worm-slick-burrower-70"></a> 🟢 `[WORM-SLICK-BURROWER-70]` We should log when DIAG pin gets asserted.
-
-- **UUID**: `9f820909-e867-4252-83b9-92fde8e4a3c7`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `cat_fountain`
-- **Created**: `2026-10-16 01:23:33 UTC`
-- **Resolved**: `2026-10-16 01:36:22 UTC`
-
-#### Description
-
-We should log when the DIAG pin gets asserted in the TMC6300 driver tick call.
-
-#### Resolution Notes
-
-Instrumented TMC6300 driver tick calls (standard GPIO and PIO drivers) with structured error logging when DIAG pin is asserted high.
-
----
-
-### <a id="worm-slick-fireworm-677"></a> 🟢 `[WORM-SLICK-FIREWORM-677]` Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer) RTT connected. Active channels:
-
-- **UUID**: `b483d0fc-8e08-4363-b479-5509f99f4a71`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `target`
-- **Created**: `2026-10-18 00:34:54 UTC`
-- **Resolved**: `2026-10-18 00:43:25 UTC`
-
-#### Description
-
-Can you please figure out what’s causing this log print to occur
-
-#### Reproduction Steps
-
-1. 1. Connect target device via probe-rs / RTT
-2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. 3. Execute target CLI/FS commands
-4. 4. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [flash] [INFO] Type 'help' to print usage.
-[] [flash] [INFO] shell> Draining buffered defmt logs:
-[] [flash] [INFO] 0.001467 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.021703 [32mINFO[0m MPU stack guard configured at 0x2000c500
-[] [flash] [INFO] Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
-[] [daemon] [INFO] Flash download succeeded via cargo run
-[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001520 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021760 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 0.001606 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.019319 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
-[] [target] [INFO] 0.022348 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] [Sync] Compiling target firmware...
-[] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.25s
-[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
-[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
-[] [daemon] [INFO] Building host utilities: host_cli and host_fs
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.26s
-[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
-[] [daemon] [INFO] RTT stream disconnected
-[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
-[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.08s
-[] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.18s
-[] [flash] [INFO]      [1;32mFinished[0m in 7.48s
-[] [flash] [INFO] RTT connected. Active channels:
-[] [flash] [INFO]   - Up Channel: "defmt" (logs)
-[] [flash] [INFO]   - Up Channel: "cli" (raw output)
-[] [flash] [INFO]   - Down Channel: "cli" (raw input)
-[] [flash] [INFO] shell> 
-[] [flash] [INFO] [2K
-[] [flash] [INFO]        |\      _,,,---,,_
-[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
-[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
-[] [flash] [INFO]      '---''(_/--'  `-'\_)  
-[] [flash] [INFO] Type 'help' to print usage.
-[] [flash] [INFO] shell> Draining buffered defmt logs:
-[] [flash] [INFO] 0.001490 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.021743 [32mINFO[0m MPU stack guard configured at 0x2000c500
-[] [flash] [INFO] Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
-[] [daemon] [INFO] Flash download succeeded via cargo run
-[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001468 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021734 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-SLICK-FIREWORM-677.log](attachments/WORM-SLICK-FIREWORM-677/target_system_logs_WORM-SLICK-FIREWORM-677.log) | Target system and defmt logs from host daemon session |
-
-#### Resolution Notes
-
-Eliminated spurious UnexpectedEof error log during defmt buffer drain in dump_logs and stream_logs.
-
----
-
-### <a id="worm-slimy-planarian-761"></a> 🟢 `[WORM-SLIMY-PLANARIAN-761]` When calling host.py with no arguments, the UI should present a modal configuration window
-
-- **UUID**: `177ea503-4efb-4aee-aed2-521a095f482c`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `host`
-- **Created**: `2026-10-21 22:50:07 UTC`
-- **Resolved**: `2026-10-21 23:22:52 UTC`
-
-#### Description
-
-When calling host.py with no arguments, the UI should open a package selection mode which allows you to pick a target package and binary, whether or not you’re building for release, and automatically infer the target ARM architecture. The tool should remember your target selection from the last connected session.
-
-#### Resolution Notes
-
-Implemented package selection mode and modal configuration window (targetConfigModal) when host.py is invoked without explicit arguments, enabling interactive selection of target package and binary, build profile, and automatic target ARM architecture inference with persistent session recall.
-
----
-
-### <a id="worm-slimy-rooter-821"></a> 🟢 `[WORM-SLIMY-ROOTER-821]` Can we hide system logs by default?
-
-- **UUID**: `828fa6c6-c69a-4d68-a463-f416584d8e3f`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `Host`
-- **Created**: `2026-10-23 00:14:52 UTC`
-- **Resolved**: `2026-10-23 00:23:10 UTC`
-
-#### Description
-
-In the host UI, can we hide system logs by default and add an option to show them on startup?
-
-#### Reproduction Steps
-
-1. 1. Connect target device via probe-rs / RTT
-2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. 3. Execute command 'motor speed 50'
-4. 4. Execute command 'motor speed 100'
-5. 5. Execute command 'motor speed 30'
-6. 6. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [daemon] [INFO] Flash download succeeded via cargo run
-[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001495 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021896 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] motor speed 105.976777 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 5.977098 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 5.981394 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 5.981435 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] shell> motor current10.812830 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 10.813060 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor speed 3020.793343 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 20.793586 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 20.803978 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 26.778474 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 26.778680 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 37.182346 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 37.182574 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 37.193973 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] shell> motor speed 1047.828116 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 47.828335 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 47.833991 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] shell> motor speed 3053.571346 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 53.571567 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 53.583980 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [daemon] [INFO] Target bug created: WORM-DAMP-MEALWORM-592 (Motor oscillates at speed 30) with 1 attachments
-[] [target] [INFO] shell> motor speed 3363.026490 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 363.026749 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor current364.173550 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 364.173754 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 365.314441 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 365.314634 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor speed 100375.184193 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 375.184413 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 375.193989 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 376.329200 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 376.329380 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor rp377.470129 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 377.470331 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor sto386.301630 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 386.301825 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> 386.313980 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [daemon] [INFO] Target bug created: WORM-VERMIFORM-REDWORM-38 (I see some extra output in the logs here) with 1 attachments
-[] [target] [INFO] shell> motor current447.993046 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 447.993258 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor rp449.073522 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 449.073695 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> gpio read 26456.094805 INFO [36m[controller::shell_controller][0m received command "Gpio { subcommand: Some(Read), pin: Some(26), value: None }"
-[] [target] [INFO] 456.094974 INFO [36m[controller::shell_controller][0m command execution succeeded
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-SLIMY-ROOTER-821.log](attachments/WORM-SLIMY-ROOTER-821/target_system_logs_WORM-SLIMY-ROOTER-821.log) | Target system and defmt logs from host daemon session |
-
----
-
-### <a id="worm-slimy-snail-582"></a> 🟢 `[WORM-SLIMY-SNAIL-582]` host_daemon.py-pywebkit window didn’t pop up
-
-- **UUID**: `f039a786-2d34-430a-a840-034538f47df3`
-- **Status**: `RESOLVED`
-- **Severity**: `HIGH`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `host_daemon`
-- **Created**: `2026-10-17 01:31:37 UTC`
-- **Resolved**: `2026-10-17 01:44:25 UTC`
-
-#### Description
-
-See logs below. The app window didn’t open for me. I had to open the page from the Workstation URL instead. Also, can we remove this banner:
-
-======================================================================
-  ⚡ SYSTEM SHOCK 2 // XERXES HOST DAEMON WORKSTATION
-======================================================================
-  Target:    thumbv6m-none-eabi
-  Package:   cat_detector (cat_detector_shell)
-  Profile:   release
-  Speed:     4000 kHz
-  Port:      8899
-
-#### Execution / Console Logs
-
-```text
-$ PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
-======================================================================
-  ⚡ SYSTEM SHOCK 2 // XERXES HOST DAEMON WORKSTATION
-======================================================================
-  Target:    thumbv6m-none-eabi
-  Package:   cat_detector (cat_detector_shell)
-  Profile:   release
-  Speed:     4000 kHz
-  Port:      8899
-  Workstation URL: http://127.0.0.1:8899 (PID 95651)
-➜ Detached from terminal.
-(firmware-env) 
-<username> at THE-HEARTH-NODE in ~/gh/firmware (main) 
-$ PROBE_RS_SPEED=4000 python tools/host_daemon.py  --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
-Host daemon is already running (PID 95651 on port 8899).
-Workstation URL: http://127.0.0.1:8899
-(firmware-env)
-```
-
-#### Resolution Notes
-
-Added repo root to sys.path in host_daemon launcher and cli to fix native webview/eel launcher imports without PYTHONPATH, and removed ASCII box banner from host_daemon startup.
-
----
-
-### <a id="worm-slithering-earthworm-854"></a> 🟢 `[WORM-SLITHERING-EARTHWORM-854]` Bootloop-
-
-- **UUID**: `919eccfe-37b7-4464-9733-fb87345157e2`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Created**: `2026-10-16 01:08:14 UTC`
-- **Resolved**: `2026-10-16 01:12:32 UTC`
-
-#### Description
-
-See execution logs
-
-#### Execution / Console Logs
-
-```text
-========================================================
-🔥 TARGET DEVICE CRASH DETECTED 🔥
-========================================================
-UUID: bd2d32b6-bf9a-4788-8b75-e643bb6f09cc
-Revision Hash: da4881c
-
---------------------------------------------------------
-CPU Core: Core 0
-Panicked: true
-Registers:
-  R0: 0x20024088
-  R1: 0x0000000E
-  R2: 0x20024088
-  R3: 0x0000000E
-  SP: 0x20041A68
-  LR: 0x10020D5F
-  PC: 0x100119C8
-
-Backtrace:
-  Raw PCs: [0, 1001195a, 1001193c, 10000204, 10019cee, 10019d24, 1001af9e, 10009f42, 1001aff2, 1001aff2, 1001aff2, 1001aff2, 1001aff2, 1001aff2, 1001afc0, 10008c44, 1001b028, 10008cfc, 10008d5a, 10011338, 100001e6]
-  0x1001AF9E - __defmt_default_panic (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/defmt-1.1.1/src/lib.rs:385)
-  0x10009F42 - cat_detector_shell::____embassy_main_task::{{closure}} (/Users/<username>/gh/firmware/app/src/cat_detector_shell.rs:0)
-  0x1001AFF2 - _critical_section_1_0_release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:305)
-  0x1001AFF2 - critical_section::release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:219)
-  0x1001AFF2 - critical_section::with (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:249)
-  0x1001AFF2 - _critical_section_1_0_release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:305)
-  0x1001AFF2 - critical_section::release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:219)
-  0x1001AFF2 - critical_section::with (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:249)
-  0x1001AFF2 - _critical_section_1_0_release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:305)
-  0x1001AFF2 - critical_section::release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:219)
-  0x1001AFF2 - critical_section::with (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:249)
-  0x1001AFF2 - _critical_section_1_0_release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:305)
-  0x1001AFF2 - critical_section::release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:219)
-  0x1001AFF2 - critical_section::with (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:249)
-  0x1001AFF2 - _critical_section_1_0_release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:305)
-  0x1001AFF2 - critical_section::release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:219)
-  0x1001AFF2 - critical_section::with (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:249)
-  0x1001AFF2 - _critical_section_1_0_release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:305)
-  0x1001AFF2 - critical_section::release (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:219)
-  0x1001AFF2 - critical_section::with (/Users/<username>/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/critical-section-1.2.0/src/lib.rs:249)
-  0x10008D5A - cat_detector_shell::__cortex_m_rt_main (/Users/<username>/gh/firmware/app/src/cat_detector_shell.rs:53)
-  0x10011338 - main (/Users/<username>/gh/firmware/app/src/cat_detector_shell.rs:53)
-  0x100001E6 - (no symbol found)
-
---------------------------------------------------------
-CPU Core: Core 1
-Panicked: false
-Registers:
-  R0: 0x00000000
-  R1: 0x00000000
-  R2: 0x00000000
-  R3: 0x00000000
-  SP: 0x00000000
-  LR: 0x00000000
-  PC: 0x00000000
-
-Backtrace:
-  (No backtrace frames captured. Check compiler optimization or stack pointer alignment)
-
-Crash Context System Logs:
-  0.000328 INFO MPU stack guard configured at 0x2003c000
-  0.019401 ERROR panicked at 'assertion failed: pins.len() <= 5'
-  0.019524 ERROR --- PANIC DETECTED ---
-  0.019562 ERROR Core 0: SP=20041a68 PC=100119c8 LR=10020d5f
-  0.019641 ERROR   Message: explicit panic
-========================================================
-```
-
-#### Resolution Notes
-
-Removed erroneous cfg.set_set_pins call on the 6 PWM pins in Tmc6300Pio::new. RP2040 PIO SET instructions only support up to 5 pins (assertion failed: pins.len() <= 5), and the driver only uses OUT and MOV PINS, NULL instructions.
-
----
-
-### <a id="worm-slithering-lumbricus-809"></a> 🟢 `[WORM-SLITHERING-LUMBRICUS-809]` TMC6300-Short protection fault on startup
-
-- **UUID**: `96bf370a-4dde-42d3-a00f-e6399fc7d737`
-- **Status**: `RESOLVED`
-- **Severity**: `CRITICAL`
-- **Category**: `FIRMWARE`
-- **Component**: `cat_fountain`
-- **Created**: `2026-10-21 22:51:40 UTC`
-- **Resolved**: `2026-10-21 23:16:18 UTC`
-
-#### Description
-
-The short protection circuit of the TMC6300 motor driver will prevent motor communication and assert the DIAG pin if it detects a short between any FET for more than 1 uS in order to prevent overheating. The winding resistance of the motor is 0.5 Ohm; so we must make sure to connect each winding for less than 1 uS (ideally 0.5us to 0.8us) in order to commutate the motor. We have previously (in another session) verified power is good with a battery connected during motor startup, so this was the next thing we needed to invesgitate and fix with the motor driver.
-
-#### Reproduction Steps
-
-1. 1. $ PROBE_RS_SPEED=4000 cargo run --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell —release
-2. 2. motor speed 10
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `document` | [digital.csv](attachments/WORM-SLITHERING-LUMBRICUS-809/digital.csv) | Uploaded document digital.csv |
-| `screenshot` | [screenshot_paste_1792623504516_fkls0.png](attachments/WORM-SLITHERING-LUMBRICUS-809/screenshot_paste_1792623504516_fkls0.png) | Pasted screenshot screenshot_paste_1792623504516_fkls0.png |
-
-#### Resolution Notes
-
-Configured TMC6300 PIO clock divider to 5 (25 MHz) and clamped active duty cycle on-count to 7..=14 cycles, ensuring commutation winding connection pulses strictly stay between 520 ns and 800 ns (< 1.0 us t_S2G short protection delay) across all motor speeds to eliminate short-circuit trips on startup.
-
----
-
-### <a id="worm-soilbound-vermis-341"></a> 🟢 `[WORM-SOILBOUND-VERMIS-341]` The CLI console is broken and not updating
-
-- **UUID**: `d6d2ea37-4767-4a13-a69c-9e83855837b6`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `cat_detector`
-- **Created**: `2026-10-24 01:26:49 UTC`
-- **Resolved**: `2026-10-24 01:30:39 UTC`
-
-#### Reproduction Steps
-
-1. Connect target device via probe-rs / RTT
-2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. Execute command 'motor stop'
-4. Execute command 'motor stop'
-5. Execute command 'motor speed 10'
-6. Execute command 'motor current'
-7. Execute command 'motor stop'
-8. Execute command 'motor stop'
-9. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [target] [INFO] 437.593200 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"38\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 437.593479 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 437.597775 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 437.712100 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 437.712313 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 447.571711 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"39\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 447.571966 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 447.574455 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 447.751070 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 447.751289 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 457.610700 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"40\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 457.610979 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 457.615405 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 457.850572 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 457.850763 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 467.589241 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"41\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 467.589509 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 467.593754 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 467.768620 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 467.768834 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 468.972057 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 468.972272 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 468.976041 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 477.567736 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"42\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 477.567981 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 477.571651 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 477.571692 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 477.747172 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 477.747420 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 487.606798 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"43\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 487.607067 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 487.611396 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 487.786101 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 487.786334 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 501.870961 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 501.871204 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 501.875459 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 503.019922 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 503.020118 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 506.414716 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 506.414943 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 506.417289 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 506.417336 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 520.806057 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 520.806313 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 525.154176 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 525.154406 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 525.158696 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 538.942621 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 538.942796 INFO [36m[controller::shell_controller][0m command execution succeeded
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-SOILBOUND-VERMIS-341.log](attachments/WORM-SOILBOUND-VERMIS-341/target_system_logs_WORM-SOILBOUND-VERMIS-341.log) | Target system and defmt logs from host daemon session |
-| `reference` | [target_telemetry_WORM-SOILBOUND-VERMIS-341.json](attachments/WORM-SOILBOUND-VERMIS-341/target_telemetry_WORM-SOILBOUND-VERMIS-341.json) | Target telemetry export retrieved via host_fs |
-
-#### Resolution Notes
-
-Resolved CLI and system log console freeze when circular buffer reaches maxlen (5,000 entries). DaemonRunner now assigns monotonic sequence IDs to log, cli_outputs, and fs_outputs entries. host_daemon.html.j2 tracks sequence IDs (lastCliId, lastLogId, lastFsId) to incrementally append new items and handle wrap-arounds even when total array length remains capped at 5000.
-
----
-
-### <a id="worm-subterranean-earthworm-231"></a> 🟢 `[WORM-SUBTERRANEAN-EARTHWORM-231]` Cannot start motor stress at 50% speed
-
-- **UUID**: `70d98201-eed9-49ff-bd57-5370e97df642`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `cat_detector`
-- **Created**: `2026-10-24 01:05:39 UTC`
-- **Resolved**: `2026-10-24 01:39:03 UTC`
-
-#### Description
-
-The motor stalls at 50% speed, see below:
-
-$  python tools/motor_stress.py --start 50 --end 100 --duration 500
-Starting motor ramp stress test: 50% -> 100% over 500.0s
-Connecting to host daemon at http://127.0.0.1:8899...
-[  1/51] (  9.8s) Speed:  50% | Current:  489 mA | DIAG: OK
-[  2/51] ( 19.6s) Speed:  51% | Current:  757 mA | DIAG: OK
-^CSent motor stop command.
-
-======================================================================
-  MOTOR RAMP STRESS TEST REPORT: FAIL
-======================================================================
-  Speed Range       : 50% -> 100%
-  Duration Target   : 500.0 s
-  Completed Steps   : 2 / 51
-  DIAG Fault Active : NO (HEALTHY)
-  Peak Current      : 757 mA
-  Min Current       : 489 mA
-  Average Current   : 623.0 mA
-  Failure Detail    : Stress test cancelled by user interrupt.
-======================================================================
-(firmware-env)
-
-#### Reproduction Steps
-
-1. Connect target device via probe-rs / RTT
-2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. Execute command 'motor stop'
-4. Execute command 'motor speed 50'
-5. Execute command 'motor current'
-6. Execute command 'motor speed 51'
-7. Execute command 'motor current'
-8. Execute command 'motor stop'
-9. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [target] [INFO] 370.869509 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 370.869710 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 375.153480 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
-[] [target] [INFO] 375.153541 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 380.729130 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"26\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 380.729382 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 380.733583 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 380.733627 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 380.736072 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
-[] [target] [INFO] 380.736129 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 380.847999 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 380.848189 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 380.962790 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 380.962950 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [daemon] [INFO] RTT stream disconnected
-[] [host_fs] [INFO] [1m[31merror:[0m the following required arguments were not provided:
-[] [host_fs] [INFO]   [32m<OUT_CSV>[0m
-[] [host_fs] [INFO] [1m[4mUsage:[0m [1mhost_fs export-telemetry[0m <OUT_CSV>
-[] [host_fs] [INFO] For more information, try '[1m--help[0m'.
-[] [daemon] [INFO] RTT streaming process connected
-[] [daemon] [INFO] Target bug created: WORM-SILKEN-TUBEWORM-979 (Motor stalls at 35% speed) with 2 attachments
-[] [target] [INFO] 0.001455 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021476 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] RTT stream disconnected
-[] [host_fs] [INFO] [1m[31merror:[0m the following required arguments were not provided:
-[] [host_fs] [INFO]   [32m<OUT_CSV>[0m
-[] [host_fs] [INFO] [1m[4mUsage:[0m [1mhost_fs export-telemetry[0m <OUT_CSV>
-[] [host_fs] [INFO] For more information, try '[1m--help[0m'.
-[] [daemon] [INFO] RTT streaming process connected
-[] [daemon] [INFO] Target bug created: WORM-SUPPLE-SEGMENT-373 (DIAG tripped after 260s) with 2 attachments
-[] [target] [INFO] 0.001480 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021509 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 0.001568 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021574 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 40.706921 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 40.707188 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 40.956825 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 40.957068 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 40.961283 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 40.961332 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 41.075845 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 41.076083 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 50.753946 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"51\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 50.754226 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 50.758447 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 50.933379 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 50.933576 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 57.398254 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 57.398476 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 57.402755 INFO [36m[controller::motor_controller][0m Stopping motor...
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-SUBTERRANEAN-EARTHWORM-231.log](attachments/WORM-SUBTERRANEAN-EARTHWORM-231/target_system_logs_WORM-SUBTERRANEAN-EARTHWORM-231.log) | Target system and defmt logs from host daemon session |
-| `reference` | [target_telemetry_WORM-SUBTERRANEAN-EARTHWORM-231.json](attachments/WORM-SUBTERRANEAN-EARTHWORM-231/target_telemetry_WORM-SUBTERRANEAN-EARTHWORM-231.json) | Target telemetry export retrieved via host_fs |
-
-#### Resolution Notes
-
-Resolved standstill pole-slip stall when starting motor at 50% speed. Configured startup_commutation_step_ticks = 100 in board.toml, ensuring that regardless of commanded speed, initial motor breakaway begins at 100 ticks (33.3 ms per step = 50 RPM) so the stationary rotor locks to the stator field, after which the soft-start ramp smoothly accelerates to target speed (4 ticks = 1,250 RPM). Verified on live target hardware with 50% start passing cleanly without stall.
-
----
-
-### <a id="worm-subterranean-pupa-423"></a> 🟢 `[WORM-SUBTERRANEAN-PUPA-423]` Repro steps doesn’t update
-
-- **UUID**: `7a755039-13cf-4f6a-aa35-0d435c922690`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `cat_detector`
-- **Created**: `2026-10-23 00:49:55 UTC`
-- **Resolved**: `2026-10-23 01:08:24 UTC`
-
-#### Description
-
-The reproduction steps and description seems to always be cached from the last filed bug. The repro steps in particular does not update if a new sequence of commands is run.
-
-#### Reproduction Steps
-
-1. 1. Connect target device via probe-rs / RTT
-2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. 3. Execute command 'motor speed 60'
-4. 4. Execute command 'motor speed 50'
-5. 5. Execute command 'motor speed 60'
-6. 6. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [target] [INFO] 47.947540 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 47.951809 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 51.938630 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 51.938919 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 51.943312 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 58.167636 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 58.167920 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 58.172315 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 63.731461 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 63.731702 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 63.734315 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 68.146172 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 68.146457 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 68.149312 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 78.064220 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 78.064516 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 78.066813 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 108.604581 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 108.604881 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 108.608313 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 110.963120 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 110.963420 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 110.967808 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 112.172625 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 112.172915 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 112.177310 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 113.926449 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 113.926698 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 113.931316 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 115.801176 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 115.801469 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 115.804313 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 117.373586 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 117.373874 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 117.378311 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 118.643579 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"60\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 118.643870 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 118.648315 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 125.952968 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 125.953175 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 125.957379 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [daemon] [INFO] RTT stream disconnected
-[] [host_fs] [INFO] [1m[31merror:[0m the following required arguments were not provided:
-[] [host_fs] [INFO]   [32m<OUT_CSV>[0m
-[] [host_fs] [INFO] [1m[4mUsage:[0m [1mhost_fs export-telemetry[0m <OUT_CSV>
-[] [host_fs] [INFO] For more information, try '[1m--help[0m'.
-[] [daemon] [INFO] RTT streaming process connected
-[] [daemon] [INFO] Target bug created: WORM-GLOWING-SLUG-613 (Motor fails to spin, but moves) with 3 attachments
-[] [target] [INFO] 0.001470 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021807 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-SUBTERRANEAN-PUPA-423.log](attachments/WORM-SUBTERRANEAN-PUPA-423/target_system_logs_WORM-SUBTERRANEAN-PUPA-423.log) | Target system and defmt logs from host daemon session |
-| `reference` | [target_telemetry_WORM-SUBTERRANEAN-PUPA-423.json](attachments/WORM-SUBTERRANEAN-PUPA-423/target_telemetry_WORM-SUBTERRANEAN-PUPA-423.json) | Target telemetry export retrieved via host_fs |
-
-#### Resolution Notes
-
-Ensured Target Bug modal dynamically regenerates reproduction steps from latest CLI command history without caching old sequences, clears description and actual/expected inputs between reports and upon successful submission, and strips leading numbering in target_bug API to prevent duplicated markdown list numbers.
-
----
-
-### <a id="worm-subterranean-ribbonworm-582"></a> 🟢 `[WORM-SUBTERRANEAN-RIBBONWORM-582]` Remove feedback/WORMS.md from repo
-
-- **UUID**: `f3be9766-fdfa-48be-97c0-8fa9c6dabb78`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `dashboard`
-- **Created**: `2026-10-15 21:03:33 UTC`
-- **Resolved**: `2026-10-15 21:30:53 UTC`
-
-#### Resolution Notes
-
-Removed monolithic feedback/WORMS.md from git tracking, keeping only granular WORM_<id>.md files in feedback/ and generating matrix overview in target/WORMS.md.
-
----
-
-### <a id="worm-subterranean-wireworm-439"></a> 🟢 `[WORM-SUBTERRANEAN-WIREWORM-439]` Motor vibrates, does not spin & 92 mA current cap
-
-- **UUID**: `e45bbc3c-2306-43f2-b163-187c8974c275`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `cat_fountain`
-- **Created**: `2026-10-22 00:47:32 UTC`
-- **Resolved**: `2026-10-22 01:24:07 UTC`
-
-#### Description
-
-The motor vibrates and only pulls ~92-94 mA at 100% commanded speed. The motor RPM is reported as 0, and the motor only vibrates rather than spinning even when running freely unloaded.
-
-#### Root Cause Analysis
-
-1. **92 mA Current Cap & 14% Duty Cycle Clamp**:
-   In `peripheral/src/tmc6300.rs`, `clamp_on_count_short_protection` clamped the PIO duty cycle `on_count` to `SHORT_PROTECTION_MAX_ON_COUNT = 14` out of 100 cycles ($4\,\mu\text{s}$ at 250 kHz). Consequently, the effective PWM duty cycle was clamped to ~14% even when commanded to 100%, causing the ~92 mA current draw and lack of torque to overcome detent/cogging torque and fluid friction.
-2. **Frequency Modulation Solution**:
-   To deliver full torque without violating the TMC6300 $t_{\text{S2G}} = 1.0\,\mu\text{s}$ short-circuit delay, implemented `calculate_pwm_counts`:
-   - For $D \le 14\%$: fixed 100-cycle period ($4\,\mu\text{s}$), $T_{\text{on}} = D$, $T_{\text{off}} = 100 - D$.
-   - For $D > 14\%$: hold $T_{\text{on}} = 14$ cycles ($800\,\text{ns} < 1.0\,\mu\text{s}$) and modulate $T_{\text{off}}$ downward to 1 cycle.
-   - At $D = 100\%$: $T_{\text{on}} = 14, T_{\text{off}} = 1$, yielding ~93.3% duty cycle with a 160 ns de-energization window that resets the driver short-circuit comparator on every pulse without tripping DIAG.
-3. **Motor Configuration Architecture**:
-   Decoupled motor controller parameters into a dedicated `MotorConfig` struct in `model::types` and configured `[boards.cat_detector.motor]` in `board.toml` with code generation support, resolving code review finding `f6f27e52`.
-
-#### Resolution Notes
-
-Resolved 92 mA current draw cap by implementing frequency-modulated duty cycle scaling in calculate_pwm_counts, delivering ~93.3% effective duty cycle up to 1.57A current while strictly constraining FET conduction pulses to <= 800 ns (< 1.0 us t_S2G). Power-cycled hardware to clear latched DIAG fault and verified motor draws 356 mA at speed 50 and 1572 mA at speed 100 with GP22 remaining 0.
-
----
-
-### <a id="worm-supple-pupa-464"></a> 🟢 `[WORM-SUPPLE-PUPA-464]` Create host_daemon tool
-
-- **UUID**: `3024e952-f8f5-4cdf-83e8-7d9889343c52`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `host_daemon`
-- **Created**: `2026-10-17 00:32:33 UTC`
-- **Resolved**: `2026-10-17 01:00:46 UTC`
-
-#### Description
-
-Can you please create a host daemon tool that wraps host_cli and host_fs tools based on the UI framework the dashboard uses? The idea is that host daemon will compile host tools and flash the target on startup, detach from the terminal, and supports any host_cli or host_fs command through a native CLI similar to the code review CLI. There should be a dropdown box to select the active UI mode-CLI or FS, as well as separate logging and CLI output view panels
-
-#### Reproduction Steps
-
-1. PROBE_RS_SPEED=4000 python tools/host_daemon.py --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell --release
-
-#### Behavior Comparison
-
-- **Expected**: 1. Attach to target
-- **Actual**: _Not specified_
 
 ---
 
@@ -15384,265 +15536,265 @@ Resolved thermal DIAG tripping during extended ramp stress tests. Tightened clos
 
 ---
 
-### <a id="worm-translucent-tapeworm-953"></a> 🟢 `[WORM-TRANSLUCENT-TAPEWORM-953]` Dashboard stuck at 20% on launch
+### <a id="worm-subterranean-earthworm-231"></a> 🟢 `[WORM-SUBTERRANEAN-EARTHWORM-231]` Cannot start motor stress at 50% speed
 
-- **UUID**: `3e17a613-50d8-4c90-9e62-24e63b8f13fe`
-- **Status**: `RESOLVED`
-- **Severity**: `HIGH`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `dashboard`
-- **Created**: `2026-10-15 00:32:11 UTC`
-- **Resolved**: `2026-10-15 00:32:17 UTC`
-
-#### Description
-
-Upon launching or restarting the dashboard workstation, the UI was stuck displaying the feedback database synchronization modal at 20% progress. Inspection revealed a JavaScript `SyntaxError: Unexpected token ')'` in `diff_view.html.j2:1705` within the `sanitizeAuthor()` function introduced during privacy sanitization hardening. Because the script failed to parse, `initDiffView()` and `performInitialSync()` never ran, leaving the modal stuck at its initial 20% HTML state.
-
-#### Resolution Notes
-
-1. Pruned dangling closing parenthesis in `sanitizeAuthor()` condition in `tools/dashboard/templates/diff_view.html.j2`.
-2. Hardened workstation initialization lifecycle so `initDiffView()` fires immediately if `document.readyState !== 'loading'`, eliminating dependency on potentially pre-fired `DOMContentLoaded` events.
-3. Added comprehensive regression test `test_regression_bug_translucent_tapeworm_953_dashboard_js_syntax_and_sync_screen` in `tools/tests/test_dashboard.py` verifying balanced syntax and executing `node -c` across extracted `<script>` blocks in all dashboard templates (`diff_view.html.j2`, `code_review.html.j2`, `worm_report.html.j2`).
-
----
-
-### <a id="worm-tunneling-inchworm-510"></a> 🟢 `[WORM-TUNNELING-INCHWORM-510]` FS doesn’t work
-
-- **UUID**: `392a47ce-f137-404d-94cb-3f7af58334bc`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `host_daemon`
-- **Created**: `2026-10-17 01:34:30 UTC`
-- **Resolved**: `2026-10-17 01:54:29 UTC`
-
-#### Description
-
-The FS workstation does not work and the example command usage is wrong (see screenshot below), when opening the FS view, we should wait until the host_cli process is terminated and probe is available, and vice versa for opening the host_fs view. Additionally, host_fs and host_cli views should have entirely separate command workstations; right now, CLI output is interleaved with FS output (see traceback below)
-
-#### Execution / Console Logs
-
-```text
-Finished 8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles`release` profile [optimized + debuginfo]8;; target(s) in 0.07s
-     Running `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
-    Finished 8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles`release` profile [optimized + debuginfo]8;; target(s) in 0.11s
-     Finished in 7.45s
-RTT connected. Active channels:
-  - Up Channel: "defmt" (logs)
-  - Up Channel: "cli" (raw output)
-  - Down Channel: "cli" (raw input)
-shell> 
-       |\      _,,,---,,_
- Zzz   /,`.-'`'    -.  ;-;;,_
-      |,4-  ) )-,_. ,\ (  `'-'
-     '---''(_/--'  `-'\_)  
-Type 'help' to print usage.
-shell> Draining buffered defmt logs:
-0.001471 INFO MPU stack guard configured at 0x2003c000
-0.021860 INFO MPU stack guard configured at 0x2000c500
-Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
-RTT connected. Active channels:
-  - Up Channel: "defmt" (logs)
-  - Up Channel: "cli" (raw output)
-  - Down Channel: "cli" (raw input)
-shell> 
-       |\      _,,,---,,_
- Zzz   /,`.-'`'    -.  ;-;;,_
-      |,4-  ) )-,_. ,\ (  `'-'
-     '---''(_/--'  `-'\_)  
-Type 'help' to print usage.
-shell> 
-RTT Session Started (Press Ctrl+C to exit):
-Interactive RTT console active. Type commands and press Enter.
-shell> help
-help
-Commands:
-  battery  Battery commands (battery status, battery test-alert)
-  thermal  Thermal commands (thermal status, thermal mcu)
-  motor    Motor commands (motor speed, motor rpm-speed, motor stop, motor current, motor rpm, motor calibrate, motor safety-bypass)
-  sensor   Sensor commands (sensor status, sensor cal_near, sensor cal_far, sensor cal_xtalk)
-  fs       Filesystem commands (fs format, fs ls)
-  system   System commands (system activity)
-  i2c      I2C commands (i2c scan)
-  gpio     GPIO commands (gpio status, gpio read, gpio set)
-  led      LED commands (led off, led green, led blue, led yellow, led orange, led blink-four, led blink-slow, led brightness)
-  core     Core monitor commands (core status, core crash)
-shell> fs ls
-Listing directory...
-No files found (directory empty).
-shell> 
-    Finished 8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles`release` profile [optimized + debuginfo]8;; target(s) in 0.09s
-     Running `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
-    Finished 8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles`release` profile [optimized + debuginfo]8;; target(s) in 0.12s
-     Finished in 7.45s
-RTT connected. Active channels:
-  - Up Channel: "defmt" (logs)
-  - Up Channel: "cli" (raw output)
-  - Down Channel: "cli" (raw input)
-shell> 
-       |\      _,,,---,,_
- Zzz   /,`.-'`'    -.  ;-;;,_
-      |,4-  ) )-,_. ,\ (  `'-'
-     '---''(_/--'  `-'\_)  
-Type 'help' to print usage.
-shell> Draining buffered defmt logs:
-0.001458 INFO MPU stack guard configured at 0x2003c000
-0.021853 INFO MPU stack guard configured at 0x2000c500
-Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
-RTT connected. Active channels:
-  - Up Channel: "defmt" (logs)
-  - Up Channel: "cli" (raw output)
-  - Down Channel: "cli" (raw input)
-shell> 
-       |\      _,,,---,,_
- Zzz   /,`.-'`'    -.  ;-;;,_
-      |,4-  ) )-,_. ,\ (  `'-'
-     '---''(_/--'  `-'\_)  
-Type 'help' to print usage.
-shell> 
-RTT Session Started (Press Ctrl+C to exit):
-Interactive RTT console active. Type commands and press Enter.
-fs> help 
-Host utility for querying sequential-storage filesystem dumps from RP2040
-Usage: host_fs [OPTIONS] <COMMAND>
-Commands:
-  ls                List all files in the partition along with their data types
-  cat               Print file contents
-  export-telemetry  Export telemetry.rrd to a CSV file for plotting or visualization (e.g. in Rerun)
-  crash-log         Read and decode all stored crash dumps into human-readable backtraces
-  cp                Copy a file to or from the device flash partition
-  rm                Remove a file or multiple files from the partition (defaults to '*' which clears all files)
-  format            Erase and format the sequential-storage partition on the device
-  help              Print this message or the help of the given subcommand(s)
-Options:
-  -d, --dump <DUMP>                  Path to the binary flash dump file (e.g. flash_dump.bin). If not specified, direct attachment to the device via probe-rs is used
-  -e, --elf <ELF>                    Path to the ELF binary containing project metadata and symbols
-      --offset <OFFSET>              Force a specific flash partition offset in bytes (e.g. "0x1C0000" or "1835008")
-      --size <SIZE>                  Force a specific flash partition size in bytes (e.g. 262144)
-  -o, --openocd-host <OPENOCD_HOST>  Connect to an existing OpenOCD GDB server session (e.g. "localhost:3333" or "127.0.0.1")
-  -h, --help                         Print help
-  -V, --version                      Print version
-fs> ls 
-Error: Custom { kind: Other, error: "Failed to open probe: Usb(Custom { kind: Other, error: \"error while taking control over USB device: could not open interface for exclusive access (error 0xe00002c5)\" })" }
-fs>
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `screenshot` | [screenshot_paste_1792200935540_x027h.png](attachments/WORM-TUNNELING-INCHWORM-510/screenshot_paste_1792200935540_x027h.png) | Pasted screenshot screenshot_paste_1792200935540_x027h.png |
-
-#### Resolution Notes
-
-Guaranteed probe exclusivity by stopping RTT streaming before FS commands and on switching to FS mode, separated CLI and FS output queues and terminal DOM views, and updated command placeholders.
-
----
-
-### <a id="worm-tunneling-silkworm-860"></a> 🟢 `[WORM-TUNNELING-SILKWORM-860]` Add terminal format and coloration support
-
-- **UUID**: `ef3a84a4-ea9b-456f-a279-02947840682f`
-- **Status**: `RESOLVED`
-- **Severity**: `LOW`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `dashboard, host_daemon`
-- **Created**: `2026-10-17 00:40:03 UTC`
-- **Resolved**: `2026-10-17 01:09:44 UTC`
-
-#### Description
-
-We need to support terminal formatting and coloration similar to the vscode terminal in the dashboard and host_daemon CLI. This includes stuff like different colors, font weights, and links. See attached screenshot for example.
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `screenshot` | [screenshot_paste_1792197679374_lcr30.png](attachments/WORM-TUNNELING-SILKWORM-860/screenshot_paste_1792197679374_lcr30.png) | Pasted screenshot screenshot_paste_1792197679374_lcr30.png |
-
----
-
-### <a id="worm-undulating-redworm-56"></a> 🟢 `[WORM-UNDULATING-REDWORM-56]` README.md is broken
-
-- **UUID**: `dc740603-beaa-4db2-b995-bcaa130a0ba2`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `GENERAL`
-- **Created**: `2026-10-15 03:35:22 UTC`
-- **Resolved**: `2026-10-15 03:38:54 UTC`
-
-#### Description
-
-See the error below
-
-#### Execution / Console Logs
-
-```text
-Unable to render rich display
-
-Parse error on line 32:
-...s tasks| Controller Layer ShellBin -
------------------------^
-Expecting 'SEMI', 'NEWLINE', 'EOF', 'AMP', 'START_LINK', 'LINK', 'LINK_ID', got 'NODE_STRING'
-
-For more information, see https://docs.github.com/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams#creating-mermaid-diagrams
-```
-
-#### Resolution Notes
-
-Fixed syntax error in README.md Mermaid diagram by replacing unquoted space-separated subgraph identifiers with valid quoted titles and identifiers, updated edge targets, and added regression tests in tools/tests/test_worm_undulating_redworm_56_mermaid_syntax.py.
-
----
-
-### <a id="worm-undulating-serpula-688"></a> 🟢 `[WORM-UNDULATING-SERPULA-688]` Temporarily remove hall sensor support
-
-- **UUID**: `37fc64de-00b0-4ded-9755-a6177ee6b387`
+- **UUID**: `70d98201-eed9-49ff-bd57-5370e97df642`
 - **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
-- **Created**: `2026-10-23 23:15:50 UTC`
-- **Resolved**: `2026-10-23 23:28:39 UTC`
+- **Created**: `2026-10-24 01:05:39 UTC`
+- **Resolved**: `2026-10-24 01:39:03 UTC`
 
 #### Description
 
-Can we disable support for the hall sensor until issues with the motor are resolved
+The motor stalls at 50% speed, see below:
+
+$  python tools/motor_stress.py --start 50 --end 100 --duration 500
+Starting motor ramp stress test: 50% -> 100% over 500.0s
+Connecting to host daemon at http://127.0.0.1:8899...
+[  1/51] (  9.8s) Speed:  50% | Current:  489 mA | DIAG: OK
+[  2/51] ( 19.6s) Speed:  51% | Current:  757 mA | DIAG: OK
+^CSent motor stop command.
+
+======================================================================
+  MOTOR RAMP STRESS TEST REPORT: FAIL
+======================================================================
+  Speed Range       : 50% -> 100%
+  Duration Target   : 500.0 s
+  Completed Steps   : 2 / 51
+  DIAG Fault Active : NO (HEALTHY)
+  Peak Current      : 757 mA
+  Min Current       : 489 mA
+  Average Current   : 623.0 mA
+  Failure Detail    : Stress test cancelled by user interrupt.
+======================================================================
+(firmware-env)
 
 #### Reproduction Steps
 
 1. Connect target device via probe-rs / RTT
 2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. Execute command 'motor speed 30'
-4. Execute command 'motor stop'
-5. Execute command 'motor speed 100'
-6. Execute command 'motor stop'
-7. Execute command 'motor speed 100'
+3. Execute command 'motor stop'
+4. Execute command 'motor speed 50'
+5. Execute command 'motor current'
+6. Execute command 'motor speed 51'
+7. Execute command 'motor current'
 8. Execute command 'motor stop'
 9. Observe defect/failure on target
 
 #### Execution / Console Logs
 
 ```text
-[] [target] [INFO] 6.890605 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 6.890644 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 8.023631 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 8.024090 ERROR [36m[controller::motor_controller][0m Zero RPM stall detected via Hall sensor. Stopped motor.
-[] [target] [INFO] 10.806755 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 10.806989 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 370.869509 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 370.869710 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 375.153480 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
+[] [target] [INFO] 375.153541 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 380.729130 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"26\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 380.729382 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 380.733583 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 380.733627 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 380.736072 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
+[] [target] [INFO] 380.736129 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 380.847999 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 380.848189 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 380.962790 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 380.962950 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [daemon] [INFO] RTT stream disconnected
+[] [host_fs] [INFO] [1m[31merror:[0m the following required arguments were not provided:
+[] [host_fs] [INFO]   [32m<OUT_CSV>[0m
+[] [host_fs] [INFO] [1m[4mUsage:[0m [1mhost_fs export-telemetry[0m <OUT_CSV>
+[] [host_fs] [INFO] For more information, try '[1m--help[0m'.
+[] [daemon] [INFO] RTT streaming process connected
+[] [daemon] [INFO] Target bug created: WORM-SILKEN-TUBEWORM-979 (Motor stalls at 35% speed) with 2 attachments
+[] [target] [INFO] 0.001455 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021476 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [daemon] [INFO] RTT stream disconnected
+[] [host_fs] [INFO] [1m[31merror:[0m the following required arguments were not provided:
+[] [host_fs] [INFO]   [32m<OUT_CSV>[0m
+[] [host_fs] [INFO] [1m[4mUsage:[0m [1mhost_fs export-telemetry[0m <OUT_CSV>
+[] [host_fs] [INFO] For more information, try '[1m--help[0m'.
+[] [daemon] [INFO] RTT streaming process connected
+[] [daemon] [INFO] Target bug created: WORM-SUPPLE-SEGMENT-373 (DIAG tripped after 260s) with 2 attachments
+[] [target] [INFO] 0.001480 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021509 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 0.001568 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021574 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 40.706921 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 40.707188 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 40.956825 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 40.957068 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 40.961283 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 40.961332 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 41.075845 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 41.076083 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 50.753946 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"51\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 50.754226 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 50.758447 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 50.933379 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 50.933576 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 57.398254 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 57.398476 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 57.402755 INFO [36m[controller::motor_controller][0m Stopping motor...
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-SUBTERRANEAN-EARTHWORM-231.log](attachments/WORM-SUBTERRANEAN-EARTHWORM-231/target_system_logs_WORM-SUBTERRANEAN-EARTHWORM-231.log) | Target system and defmt logs from host daemon session |
+| `reference` | [target_telemetry_WORM-SUBTERRANEAN-EARTHWORM-231.json](attachments/WORM-SUBTERRANEAN-EARTHWORM-231/target_telemetry_WORM-SUBTERRANEAN-EARTHWORM-231.json) | Target telemetry export retrieved via host_fs |
+
+#### Resolution Notes
+
+Resolved standstill pole-slip stall when starting motor at 50% speed. Configured startup_commutation_step_ticks = 100 in board.toml, ensuring that regardless of commanded speed, initial motor breakaway begins at 100 ticks (33.3 ms per step = 50 RPM) so the stationary rotor locks to the stator field, after which the soft-start ramp smoothly accelerates to target speed (4 ticks = 1,250 RPM). Verified on live target hardware with 50% start passing cleanly without stall.
+
+---
+
+### <a id="worm-soilbound-vermis-341"></a> 🟢 `[WORM-SOILBOUND-VERMIS-341]` The CLI console is broken and not updating
+
+- **UUID**: `d6d2ea37-4767-4a13-a69c-9e83855837b6`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `cat_detector`
+- **Created**: `2026-10-24 01:26:49 UTC`
+- **Resolved**: `2026-10-24 01:30:39 UTC`
+
+#### Reproduction Steps
+
+1. Connect target device via probe-rs / RTT
+2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. Execute command 'motor stop'
+4. Execute command 'motor stop'
+5. Execute command 'motor speed 10'
+6. Execute command 'motor current'
+7. Execute command 'motor stop'
+8. Execute command 'motor stop'
+9. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [target] [INFO] 437.593200 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"38\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 437.593479 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 437.597775 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 437.712100 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 437.712313 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 447.571711 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"39\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 447.571966 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 447.574455 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 447.751070 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 447.751289 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 457.610700 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"40\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 457.610979 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 457.615405 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 457.850572 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 457.850763 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 467.589241 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"41\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 467.589509 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 467.593754 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 467.768620 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 467.768834 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 468.972057 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 468.972272 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 468.976041 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 477.567736 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"42\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 477.567981 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 477.571651 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 477.571692 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 477.747172 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 477.747420 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 487.606798 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"43\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 487.607067 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 487.611396 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 487.786101 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 487.786334 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 501.870961 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 501.871204 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 501.875459 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 503.019922 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 503.020118 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 506.414716 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 506.414943 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 506.417289 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 506.417336 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 520.806057 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 520.806313 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 525.154176 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 525.154406 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 525.158696 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 538.942621 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 538.942796 INFO [36m[controller::shell_controller][0m command execution succeeded
+```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-SOILBOUND-VERMIS-341.log](attachments/WORM-SOILBOUND-VERMIS-341/target_system_logs_WORM-SOILBOUND-VERMIS-341.log) | Target system and defmt logs from host daemon session |
+| `reference` | [target_telemetry_WORM-SOILBOUND-VERMIS-341.json](attachments/WORM-SOILBOUND-VERMIS-341/target_telemetry_WORM-SOILBOUND-VERMIS-341.json) | Target telemetry export retrieved via host_fs |
+
+#### Resolution Notes
+
+Resolved CLI and system log console freeze when circular buffer reaches maxlen (5,000 entries). DaemonRunner now assigns monotonic sequence IDs to log, cli_outputs, and fs_outputs entries. host_daemon.html.j2 tracks sequence IDs (lastCliId, lastLogId, lastFsId) to incrementally append new items and handle wrap-arounds even when total array length remains capped at 5000.
+
+---
+
+### <a id="worm-annelidic-nematode-26"></a> 🟢 `[WORM-ANNELIDIC-NEMATODE-26]` motor speed 100 tripped DIAG
+
+- **UUID**: `7340fe94-6993-45f2-b119-41a91487de7a`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `FIRMWARE`
+- **Component**: `target`
+- **Created**: `2026-10-24 02:09:15 UTC`
+- **Resolved**: `2026-10-24 02:21:26 UTC`
+
+#### Reproduction Steps
+
+1. Connect target device via probe-rs / RTT
+2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. Execute command 'motor speed 100'
+4. Execute command 'motor stop'
+5. Execute command 'motor speed 50'
+6. Execute command 'motor stop'
+7. Execute command 'motor speed 50'
+8. Execute command 'motor stop'
+9. Observe defect/failure on target
+
+#### Execution / Console Logs
+
+```text
+[] [target] [INFO] 0.022415 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
 [] [daemon] [INFO] [Sync] Compiling target firmware...
 [] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.09s
+[] [build] [INFO] [1m[92m   Compiling[0m controller v0.1.0 (/Users/<username>/gh/firmware/controller)
+[] [build] [INFO] [1m[92m   Compiling[0m peripheral v0.1.0 (/Users/<username>/gh/firmware/peripheral)
+[] [build] [INFO] [1m[92m   Compiling[0m board v0.1.0 (/Users/<username>/gh/firmware/board)
+[] [build] [INFO] [1m[92m   Compiling[0m cat_detector v0.1.0 (/Users/<username>/gh/firmware/app)
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 8.79s
 [] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
 [] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
 [] [daemon] [INFO] Building host utilities: host_cli and host_fs
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.12s
+[] [build] [INFO] [1m[92m   Compiling[0m controller v0.1.0 (/Users/<username>/gh/firmware/controller)
+[] [build] [INFO] [1m[92m   Compiling[0m peripheral v0.1.0 (/Users/<username>/gh/firmware/peripheral)
+[] [build] [INFO] [1m[92m   Compiling[0m board v0.1.0 (/Users/<username>/gh/firmware/board)
+[] [build] [INFO] [1m[92m   Compiling[0m host_fs v0.1.0 (/Users/<username>/gh/firmware/tools/host_fs)
+[] [target] [INFO] 43.395366 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 43.395672 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 43.399953 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 43.400002 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 21.13s
 [] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
 [] [daemon] [INFO] RTT stream disconnected
 [] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
 [] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.07s
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.19s
 [] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.13s
-[] [flash] [INFO]      [1;32mFinished[0m in 9.03s
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.22s
+[] [host_cli] [ERROR] Target CLI is not available (RTT console is not connected). Please synchronize target.
+[] [flash] [INFO]      [1;32mFinished[0m in 9.00s
 [] [flash] [INFO] RTT connected. Active channels:
 [] [flash] [INFO]   - Up Channel: "defmt" (logs)
 [] [flash] [INFO]   - Up Channel: "cli" (raw output)
@@ -15656,90 +15808,66 @@ Can we disable support for the hall sensor until issues with the motor are resol
 [] [flash] [INFO] Type 'help' to print usage.
 [] [flash] [INFO] shell> 
 [] [flash] [INFO] Draining buffered defmt logs:
-[] [flash] [INFO] 0.001498 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.021968 [32mINFO[0m MPU stack guard configured at 0x2000c500
+[] [flash] [INFO] 0.001511 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.021789 [32mINFO[0m MPU stack guard configured at 0x2000c500
 [] [daemon] [INFO] Flash download succeeded via cargo run
 [] [daemon] [INFO] [Sync] Starting RTT streaming channels...
 [] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
 [] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001499 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021950 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] 4.466970 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 4.467296 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 4.471584 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 4.471620 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 5.024655 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 5.025127 ERROR [36m[controller::motor_controller][0m Zero RPM stall detected via Hall sensor. Stopped motor.
-[] [target] [INFO] 9.476323 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 9.476556 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 0.001502 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021777 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-UNDULATING-SERPULA-688.log](attachments/WORM-UNDULATING-SERPULA-688/target_system_logs_WORM-UNDULATING-SERPULA-688.log) | Target system and defmt logs from host daemon session |
-| `reference` | [target_telemetry_WORM-UNDULATING-SERPULA-688.json](attachments/WORM-UNDULATING-SERPULA-688/target_telemetry_WORM-UNDULATING-SERPULA-688.json) | Target telemetry export retrieved via host_fs |
-
 #### Resolution Notes
 
-Disabled support for Hall effect speed sensor in cat_detector (replacing target SpeedSensorDevice with MockSpeedSensor::new(0) in Board::init) and removed zero-RPM stall detection in MotorController to allow freewheeling motor operation without false stall shutdowns.
+Enforce SHORT_PROTECTION_MIN_OFF_COUNT = 4 (280 ns off time) in calculate_pwm_counts to ensure flyback diode and FET turn-off recovery time, preventing short circuit current detection and TMC6300 DIAG fault pin latch-up.
 
 ---
 
-### <a id="worm-vermicular-caterpillar-419"></a> 🟢 `[WORM-VERMICULAR-CATERPILLAR-419]` Add vertical handle gripper to logging monitor to permit resizing
+### <a id="worm-humic-sandworm-365"></a> 🟢 `[WORM-HUMIC-SANDWORM-365]` motor speed 50 tripped DIAG
 
-- **UUID**: `2039f33f-ef54-4bb0-8e2e-00104fb473e9`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `INFRASTRUCTURE`
-- **Component**: `host_daemon`
-- **Created**: `2026-10-17 01:37:50 UTC`
-- **Resolved**: `2026-10-17 02:03:25 UTC`
-
-#### Description
-
-Add vertical handle gripper to logging daemon to permit resizing, and allow the logging monitor to be totally hidden from view.
-
-#### Resolution Notes
-
-Added resizable vertical splitter handle with Xerxes cyan gripper between logging monitor and workstation panels, implemented drag resizing, and added hide/show toggle buttons to totally hide the logging monitor from view.
-
----
-
-### <a id="worm-vermiform-annelid-135"></a> 🟢 `[WORM-VERMIFORM-ANNELID-135]` Providing scope trace with motor detached
-
-- **UUID**: `493795b8-c629-422d-9147-b8b24aa575a7`
+- **UUID**: `18a14b2a-76fb-4cbc-8536-8fc431b8fa60`
 - **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
-- **Created**: `2026-10-18 00:39:31 UTC`
-- **Resolved**: `2026-10-18 01:10:11 UTC`
-
-#### Description
-
-FYR, pls take a look at this trace with motor detached.
+- **Created**: `2026-10-24 02:10:03 UTC`
+- **Resolved**: `2026-10-24 02:21:31 UTC`
 
 #### Reproduction Steps
 
-1. motor speed 100
+1. Connect target device via probe-rs / RTT
+2. Synchronize firmware: package cat_detector (cat_detector_shell)
+3. Execute command 'motor speed 50'
+4. Execute command 'motor stop'
+5. Execute command 'motor speed 50'
+6. Execute command 'motor stop'
+7. Execute command 'motor speed 50'
+8. Execute command 'motor stop'
+9. Observe defect/failure on target
 
 #### Execution / Console Logs
 
 ```text
+[] [daemon] [INFO] RTT streaming process connected
+[] [target] [INFO] 0.001502 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
+[] [target] [INFO] 0.021777 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [daemon] [INFO] Target bug created: WORM-ANNELIDIC-NEMATODE-26 (motor speed 100 tripped DIAG) with 1 attachments
+[] [daemon] [INFO] [Sync] Compiling target firmware...
+[] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.08s
 [] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell
 [] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...
 [] [daemon] [INFO] Building host utilities: host_cli and host_fs
-[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.26s
+[] [build] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.12s
 [] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs
 [] [daemon] [INFO] RTT stream disconnected
 [] [daemon] [INFO] [Sync] Flashing target device via probe-rs...
 [] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.08s
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.07s
 [] [flash] [INFO] [1m[92m     Running[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`
-[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.18s
-[] [flash] [INFO]      [1;32mFinished[0m in 7.48s
+[] [flash] [INFO] [1m[92m    Finished[0m ]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\`release` profile [optimized + debuginfo]]8;;\ target(s) in 0.10s
+[] [flash] [INFO]      [1;32mFinished[0m in 8.99s
 [] [flash] [INFO] RTT connected. Active channels:
 [] [flash] [INFO]   - Up Channel: "defmt" (logs)
 [] [flash] [INFO]   - Up Channel: "cli" (raw output)
@@ -15751,165 +15879,37 @@ FYR, pls take a look at this trace with motor detached.
 [] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
 [] [flash] [INFO]      '---''(_/--'  `-'\_)  
 [] [flash] [INFO] Type 'help' to print usage.
-[] [flash] [INFO] shell> Draining buffered defmt logs:
-[] [flash] [INFO] 0.001490 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.021743 [32mINFO[0m MPU stack guard configured at 0x2000c500
-[] [flash] [INFO] Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer)
+[] [flash] [INFO] shell> 
+[] [flash] [INFO] Draining buffered defmt logs:
+[] [flash] [INFO] 0.001510 [32mINFO[0m MPU stack guard configured at 0x2003c000
+[] [flash] [INFO] 0.021763 [32mINFO[0m MPU stack guard configured at 0x2000c500
 [] [daemon] [INFO] Flash download succeeded via cargo run
 [] [daemon] [INFO] [Sync] Starting RTT streaming channels...
 [] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
 [] [daemon] [INFO] RTT streaming process connected
 [] [target] [INFO] 0.001468 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021734 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] Target bug created: WORM-SLICK-FIREWORM-677 (Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer) RTT connected. Active channels:) with 1 attachments
-[] [target] [INFO] motor speed 1038.030879 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 38.031166 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 38.035467 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 38.035511 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] shell> 38.057941 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
-[] [target] [INFO] 38.057971 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [daemon] [INFO] Target bug created: WORM-GLIDING-LARVA-522 (Motor fails, DIAG light pops on) with 2 attachments
-[] [target] [INFO] 0.001591 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.019365 INFO [36m[peripheral::max17048][0m Reset detected (RI set). Initializing ModelGauge and triggering Quick-Start.
-[] [target] [INFO] 0.022414 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] shell> motor speed 10017.997383 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 17.997669 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 18.001941 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 18.001966 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] shell> 21.034827 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 21.035286 WARN [36m[controller::motor_controller][0m Low load / dry detected (current: 8 mA). Stopped motor.
+[] [target] [INFO] 0.021760 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
+[] [target] [INFO] 5.311384 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 5.311688 INFO [36m[controller::shell_controller][0m command execution succeeded
+[] [target] [INFO] 5.315660 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
+[] [target] [INFO] 5.315711 INFO [36m[controller::motor_controller][0m Starting motor...
+[] [target] [INFO] 6.023451 WARN [36m[controller::motor_controller][0m Current 1380 mA > hard ceiling 800 mA, throttling duty cycle to 90%
+[] [target] [INFO] 7.023758 WARN [36m[controller::motor_controller][0m Current 1365 mA > hard ceiling 800 mA, throttling duty cycle to 80%
+[] [target] [INFO] 7.043470 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
+[] [target] [INFO] 7.043503 INFO [36m[controller::motor_controller][0m Stopping motor...
+[] [target] [INFO] 10.746090 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
+[] [target] [INFO] 10.746303 INFO [36m[controller::shell_controller][0m command execution succeeded
 ```
 
 #### Attachments & References
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-VERMIFORM-ANNELID-135.log](attachments/WORM-VERMIFORM-ANNELID-135/target_system_logs_WORM-VERMIFORM-ANNELID-135.log) | Target system and defmt logs from host daemon session |
+| `log` | [target_system_logs_WORM-HUMIC-SANDWORM-365.log](attachments/WORM-HUMIC-SANDWORM-365/target_system_logs_WORM-HUMIC-SANDWORM-365.log) | Target system and defmt logs from host daemon session |
+| `reference` | [target_telemetry_WORM-HUMIC-SANDWORM-365.json](attachments/WORM-HUMIC-SANDWORM-365/target_telemetry_WORM-HUMIC-SANDWORM-365.json) | Target telemetry export retrieved via host_fs |
 
 #### Resolution Notes
 
-Resolved in conjunction with WORM-GLIDING-LARVA-522. Confirmed that trace with motor detached ran for 3 seconds without hardware driver fault due to absence of motor stator coil current / rotor stall, stopping solely on expected low-load dry-run detection (8 mA). Restored canonical pin assignments and forward commutation progression.
-
----
-
-### <a id="worm-vermiform-redworm-38"></a> 🟢 `[WORM-VERMIFORM-REDWORM-38]` I see some extra output in the logs here
-
-- **UUID**: `f0841f57-7271-4efd-b0ca-bb972973d80d`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Component**: `target`
-- **Created**: `2026-10-23 00:09:47 UTC`
-- **Resolved**: `2026-10-23 00:20:08 UTC`
-
-#### Description
-
-Motor current: 179 mA
-shell> motor current
-shell> motor current
-Motor current: 1461 mA
-shell> motor rpm
-m
-Motor speed: 0 RPM
-shell> motor stop
-p
-
-#### Reproduction Steps
-
-1. 1. Connect target device via probe-rs / RTT
-2. 2. Synchronize firmware: package cat_detector (cat_detector_shell)
-3. 3. Execute command 'motor speed 50'
-4. 4. Execute command 'motor speed 100'
-5. 5. Execute command 'motor speed 30'
-6. 6. Observe defect/failure on target
-
-#### Execution / Console Logs
-
-```text
-[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_
-[] [flash] [INFO]       |,4-  ) )-,_. ,\ (  `'-'
-[] [flash] [INFO]      '---''(_/--'  `-'\_)  
-[] [flash] [INFO] Type 'help' to print usage.
-[] [flash] [INFO] shell> Draining buffered defmt logs:
-[] [flash] [INFO] 0.001506 [32mINFO[0m MPU stack guard configured at 0x2003c000
-[] [flash] [INFO] 0.021895 [32mINFO[0m MPU stack guard configured at 0x2000c500
-[] [daemon] [INFO] Flash download succeeded via cargo run
-[] [daemon] [INFO] [Sync] Starting RTT streaming channels...
-[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.001495 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.021896 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
-[] [target] [INFO] motor speed 105.976777 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"10\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 5.977098 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 5.981394 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 5.981435 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] shell> motor current10.812830 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 10.813060 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor speed 3020.793343 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 20.793586 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 20.803978 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 26.778474 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 26.778680 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 37.182346 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 37.182574 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 37.193973 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] shell> motor speed 1047.828116 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 47.828335 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 47.833991 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] shell> motor speed 3053.571346 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 53.571567 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 53.583980 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [daemon] [INFO] Target bug created: WORM-DAMP-MEALWORM-592 (Motor oscillates at speed 30) with 1 attachments
-[] [target] [INFO] shell> motor speed 3363.026490 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"30\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 363.026749 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor current364.173550 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 364.173754 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 365.314441 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 365.314634 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor speed 100375.184193 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"100\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 375.184413 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 375.193989 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 376.329200 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 376.329380 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor rp377.470129 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 377.470331 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> motor sto386.301630 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 386.301825 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] shell> 386.313980 INFO [36m[controller::motor_controller][0m Stopping motor...
-```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-VERMIFORM-REDWORM-38.log](attachments/WORM-VERMIFORM-REDWORM-38/target_system_logs_WORM-VERMIFORM-REDWORM-38.log) | Target system and defmt logs from host daemon session |
-
----
-
-### <a id="worm-writhing-tubeworm-652"></a> 🟢 `[WORM-WRITHING-TUBEWORM-652]` Limit max TMC6300 current to 2A
-
-- **UUID**: `fb11dc60-30a2-4880-989f-6de052beea64`
-- **Status**: `RESOLVED`
-- **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
-- **Created**: `2026-10-15 23:43:21 UTC`
-- **Resolved**: `2026-10-16 00:19:19 UTC`
-
-#### Description
-
-With a BetaFPV 1102 motor, at a full duty cycle, the current level will spike to 25A on the first commutation phase after 10ms. The method of toggling GPIOs we use appears too slow. We should switch to a PIO or PWM-based duty cycling program.
-
-#### Reproduction Steps
-
-1. 1. motor speed 100
-
-#### Behavior Comparison
-
-- **Expected**: DIAG light pops on
-- **Actual**: motor speed should ramp up to a full duty cycle without tripping DIAG
-
-#### Resolution Notes
-
-Implemented RP2040 PIO-based 25 kHz PWM duty cycling state machine on PIO1 for GP16..GP21 with zero shoot-through, and clamped max current limits to 2000 mA.
+Resolved by eliminating TMC6300 FET turn-off timing violations with SHORT_PROTECTION_MIN_OFF_COUNT = 4 and removing blocking CNVR wait during periodic telemetry. Verified on target: motor runs at speed 50 stably without tripping DIAG.
 
 ---
