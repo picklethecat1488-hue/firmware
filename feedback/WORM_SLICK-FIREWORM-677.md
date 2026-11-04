@@ -75,6 +75,12 @@ Can you please figure out what’s causing this log print to occur
 [] [target] [INFO] 0.021734 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
 ```
 
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-SLICK-FIREWORM-677.log](attachments/WORM-SLICK-FIREWORM-677/target_system_logs_WORM-SLICK-FIREWORM-677.log) | Target system and defmt logs from host daemon session |
+
 #### Resolution Notes
 
 Eliminated spurious UnexpectedEof error log during defmt buffer drain in dump_logs and stream_logs.

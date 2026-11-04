@@ -76,3 +76,9 @@ In the host UI, can we hide system logs by default and add an option to show the
 [] [target] [INFO] shell> gpio read 26456.094805 INFO [36m[controller::shell_controller][0m received command "Gpio { subcommand: Some(Read), pin: Some(26), value: None }"
 [] [target] [INFO] 456.094974 INFO [36m[controller::shell_controller][0m command execution succeeded
 ```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-SLIMY-ROOTER-821.log](attachments/WORM-SLIMY-ROOTER-821/target_system_logs_WORM-SLIMY-ROOTER-821.log) | Target system and defmt logs from host daemon session |

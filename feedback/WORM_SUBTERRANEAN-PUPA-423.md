@@ -77,6 +77,13 @@ The reproduction steps and description seems to always be cached from the last f
 [] [target] [INFO] 0.021807 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
 ```
 
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-SUBTERRANEAN-PUPA-423.log](attachments/WORM-SUBTERRANEAN-PUPA-423/target_system_logs_WORM-SUBTERRANEAN-PUPA-423.log) | Target system and defmt logs from host daemon session |
+| `reference` | [target_telemetry_WORM-SUBTERRANEAN-PUPA-423.json](attachments/WORM-SUBTERRANEAN-PUPA-423/target_telemetry_WORM-SUBTERRANEAN-PUPA-423.json) | Target telemetry export retrieved via host_fs |
+
 #### Resolution Notes
 
 Ensured Target Bug modal dynamically regenerates reproduction steps from latest CLI command history without caching old sequences, clears description and actual/expected inputs between reports and upon successful submission, and strips leading numbering in target_bug API to prevent duplicated markdown list numbers.

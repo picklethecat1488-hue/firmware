@@ -80,6 +80,13 @@ When motor speed is reset, the current duty cycle seems to spike and reset to ba
 [] [target] [INFO] 599.908469 INFO [36m[controller::shell_controller][0m command execution succeeded
 ```
 
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-FLEXIBLE-WOODLOUSE-713.log](attachments/WORM-FLEXIBLE-WOODLOUSE-713/target_system_logs_WORM-FLEXIBLE-WOODLOUSE-713.log) | Target system and defmt logs from host daemon session |
+| `reference` | [target_telemetry_WORM-FLEXIBLE-WOODLOUSE-713.json](attachments/WORM-FLEXIBLE-WOODLOUSE-713/target_telemetry_WORM-FLEXIBLE-WOODLOUSE-713.json) | Target telemetry export retrieved via host_fs |
+
 #### Resolution Notes
 
 Preserve active regulated duty cycle across running speed changes in MotorController tick_motor, preventing duty cycle collapse and current spikes during speed transitions. Validated on hardware with 1% to 50% ramp over 25s completing with zero DIAG faults and peak current capped at 765 mA.

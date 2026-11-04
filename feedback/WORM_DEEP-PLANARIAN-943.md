@@ -55,3 +55,10 @@ shell> gpio set 21 1
 42.078705 INFO [controller::shell_controller::log_success] command execution succeeded
 GP21 set to High (1)
 ```
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `screenshot` | [screenshot_paste_1792196789832_c62x7.png](attachments/WORM-DEEP-PLANARIAN-943/screenshot_paste_1792196789832_c62x7.png) | Pasted screenshot screenshot_paste_1792196789832_c62x7.png |
+| `screenshot` | [screenshot_paste_1792196806704_olcff.png](attachments/WORM-DEEP-PLANARIAN-943/screenshot_paste_1792196806704_olcff.png) | Pasted screenshot screenshot_paste_1792196806704_olcff.png |

@@ -13,6 +13,12 @@
 
 The PIO program is not asserting VL. This is causing an overcurrent condition which asserts the DIAG pin. See attached trace
 
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `document` | [digital.csv](attachments/WORM-CREEPING-WRIGGLER-223/digital.csv) | Uploaded document digital.csv |
+
 #### Resolution Notes
 
 Corrected TMC6300 pin mapping and 6-step trapezoidal commutation masks to match physical SparkFun TMC6300 J1 header pinout (UL, UH, VL, VH, WL, WH mapped to GP16..GP21). VL (bit 2 / GP18) now properly asserts in steps 0 and 5.

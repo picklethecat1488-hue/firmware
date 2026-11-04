@@ -18,6 +18,13 @@ The short protection circuit of the TMC6300 motor driver will prevent motor comm
 1. 1. $ PROBE_RS_SPEED=4000 cargo run --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell —release
 2. 2. motor speed 10
 
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `document` | [digital.csv](attachments/WORM-SLITHERING-LUMBRICUS-809/digital.csv) | Uploaded document digital.csv |
+| `screenshot` | [screenshot_paste_1792623504516_fkls0.png](attachments/WORM-SLITHERING-LUMBRICUS-809/screenshot_paste_1792623504516_fkls0.png) | Pasted screenshot screenshot_paste_1792623504516_fkls0.png |
+
 #### Resolution Notes
 
 Configured TMC6300 PIO clock divider to 5 (25 MHz) and clamped active duty cycle on-count to 7..=14 cycles, ensuring commutation winding connection pulses strictly stay between 520 ns and 800 ns (< 1.0 us t_S2G short protection delay) across all motor speeds to eliminate short-circuit trips on startup.

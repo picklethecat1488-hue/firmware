@@ -75,6 +75,12 @@ shell> Draining buffered defmt logs:
 [] [target] [INFO] 104.979663 INFO [36m[controller::led_controller][0m Playing animation BlinksRedFourTimes
 ```
 
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-FOSSORIAL-COMPOSTER-481.log](attachments/WORM-FOSSORIAL-COMPOSTER-481/target_system_logs_WORM-FOSSORIAL-COMPOSTER-481.log) | Target system and defmt logs from host daemon session |
+
 #### Resolution Notes
 
 Set log_to_cli=False in flash_target and run_probe_rs, and filtered out 'Draining buffered defmt logs' from CLI stream in DaemonRunner._stream_worker so defmt logs and flash output do not leak into the CLI console view.

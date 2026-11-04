@@ -120,6 +120,12 @@ Error: Custom { kind: Other, error: "Failed to open probe: Usb(Custom { kind: Ot
 fs>
 ```
 
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `screenshot` | [screenshot_paste_1792200935540_x027h.png](attachments/WORM-TUNNELING-INCHWORM-510/screenshot_paste_1792200935540_x027h.png) | Pasted screenshot screenshot_paste_1792200935540_x027h.png |
+
 #### Resolution Notes
 
 Guaranteed probe exclusivity by stopping RTT streaming before FS commands and on switching to FS mode, separated CLI and FS output queues and terminal DOM views, and updated command placeholders.

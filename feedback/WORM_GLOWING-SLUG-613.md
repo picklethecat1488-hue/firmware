@@ -77,6 +77,14 @@ The motor fails to spin at all, but moves when I command diff motor speeds. See 
 [] [target] [INFO] 125.957379 INFO [36m[controller::motor_controller][0m Stopping motor...
 ```
 
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-GLOWING-SLUG-613.log](attachments/WORM-GLOWING-SLUG-613/target_system_logs_WORM-GLOWING-SLUG-613.log) | Target system and defmt logs from host daemon session |
+| `reference` | [target_telemetry_WORM-GLOWING-SLUG-613.json](attachments/WORM-GLOWING-SLUG-613/target_telemetry_WORM-GLOWING-SLUG-613.json) | Target telemetry export retrieved via host_fs |
+| `document` | [IMG_0201.MOV](attachments/WORM-GLOWING-SLUG-613/IMG_0201.MOV) | Attached document (IMG_0201.MOV) |
+
 #### Resolution Notes
 
 1. Fixed TMC6300 PIO assembler to shift exactly 6 bits to OUT pins followed by 2 null bits, preventing RP2040 out_count modulo wrapping from overwriting GP16 (UH) and GP17 (UL) with zeros and deadlocking Phase U. 2. Scaled open-loop startup commutation interval to 60 ticks (30ms) for smooth open-loop acceleration without rotor pole-slipping. 3. Preserved commutation step interval and state across running speed changes in motor_controller. 4. Added regression tests in controller_tests and integration.rs. 5. Redacted personal paths in system log attachments.

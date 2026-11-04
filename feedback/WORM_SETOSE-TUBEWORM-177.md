@@ -83,6 +83,12 @@ shell> 14.450792 INFO [controller::motor_controller] Stopping motor...
 (firmware-env)
 ```
 
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `document` | [digital.csv](attachments/WORM-SETOSE-TUBEWORM-177/digital.csv) | Uploaded document digital.csv |
+
 #### Resolution Notes
 
 Scaled open-loop commutation step rate with commanded speed and implemented soft-start acceleration ramp. Updated HallSensor to periodically compute live RPM.

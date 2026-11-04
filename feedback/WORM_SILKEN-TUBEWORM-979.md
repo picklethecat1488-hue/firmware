@@ -84,6 +84,13 @@ I could get the motor to recover by pushing on it.
 [] [target] [INFO] 380.962950 INFO [36m[controller::shell_controller][0m command execution succeeded
 ```
 
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-SILKEN-TUBEWORM-979.log](attachments/WORM-SILKEN-TUBEWORM-979/target_system_logs_WORM-SILKEN-TUBEWORM-979.log) | Target system and defmt logs from host daemon session |
+| `reference` | [target_telemetry_WORM-SILKEN-TUBEWORM-979.json](attachments/WORM-SILKEN-TUBEWORM-979/target_telemetry_WORM-SILKEN-TUBEWORM-979.json) | Target telemetry export retrieved via host_fs |
+
 #### Resolution Notes
 
 Resolved motor stalling at 35% speed. Configured commutation_speed_divisor = 200 and min_commutation_step_ticks = 2 in board.toml, scaling speed 35 to 5 ticks (1,000 RPM) and capping maximum speed at 2,500 RPM (2 ticks). Verified smooth continuous rotation with full 1% to 100% ramp stress test on hardware.

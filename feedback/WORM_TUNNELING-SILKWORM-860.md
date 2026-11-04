@@ -12,3 +12,9 @@
 #### Description
 
 We need to support terminal formatting and coloration similar to the vscode terminal in the dashboard and host_daemon CLI. This includes stuff like different colors, font weights, and links. See attached screenshot for example.
+
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `screenshot` | [screenshot_paste_1792197679374_lcr30.png](attachments/WORM-TUNNELING-SILKWORM-860/screenshot_paste_1792197679374_lcr30.png) | Pasted screenshot screenshot_paste_1792197679374_lcr30.png |

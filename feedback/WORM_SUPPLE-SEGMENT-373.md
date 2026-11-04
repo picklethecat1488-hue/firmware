@@ -125,6 +125,13 @@ Sent motor stop command.
 [] [target] [INFO] 0.021476 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000c500
 ```
 
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-SUPPLE-SEGMENT-373.log](attachments/WORM-SUPPLE-SEGMENT-373/target_system_logs_WORM-SUPPLE-SEGMENT-373.log) | Target system and defmt logs from host daemon session |
+| `reference` | [target_telemetry_WORM-SUPPLE-SEGMENT-373.json](attachments/WORM-SUPPLE-SEGMENT-373/target_telemetry_WORM-SUPPLE-SEGMENT-373.json) | Target telemetry export retrieved via host_fs |
+
 #### Resolution Notes
 
 Resolved thermal DIAG tripping during extended ramp stress tests. Tightened closed-loop current regulation to regulate within 450..=550 mA (nominal 500 mA) with CLOSED_LOOP_REGULATION_CEILING_MA = 550. When current exceeds 550 mA under load, duty cycle is actively throttled down by 5% per cycle, preventing sustained ~760 mA coil current and keeping driver temperature well below the 150°C thermal shutdown threshold.

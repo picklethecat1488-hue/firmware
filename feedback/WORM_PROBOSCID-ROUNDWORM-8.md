@@ -74,6 +74,12 @@
 [] [target] [INFO] 286.882073 INFO [36m[controller::motor_controller][0m Stopping motor...
 ```
 
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-PROBOSCID-ROUNDWORM-8.log](attachments/WORM-PROBOSCID-ROUNDWORM-8/target_system_logs_WORM-PROBOSCID-ROUNDWORM-8.log) | Target system and defmt logs from host daemon session |
+
 #### Resolution Notes
 
 Restored DEFAULT_TICK_INTERVAL_US to 10,000 us (10 ms) and startup_blanking_ticks to 300 (3s) to maintain open-loop BLDC motor synchronism and torque at startup. Fixed calculate_clock_divider clippy::manual_checked_ops using checked_div. Codified dedicated regression unit tests in controller_tests.rs, integration.rs, and test_worm_proboscid_roundworm_8_motor_spin.py.

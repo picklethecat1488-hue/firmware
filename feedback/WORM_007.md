@@ -13,6 +13,12 @@
 
 When I turn on word wrap in the dashboard tool, text still seems to be unwrapped
 
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `screenshot` | [pasted_screenshot_1791067074636.png](attachments/WORM-007/pasted_screenshot_1791067074636.png) | Pasted screenshot |
+
 #### Resolution Notes
 
 Fix word wrap CSS rules for unified and side-by-side diff views in code review and diff component

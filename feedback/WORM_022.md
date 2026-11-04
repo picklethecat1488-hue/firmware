@@ -13,6 +13,12 @@
 
 The dashboard icons show up as ugly Chrome icons in the taskbar. Please ensure the correct themed PWA app icon shows up in the taskbar.
 
+#### Attachments & References
+
+| Type | Filename | Description |
+| :--- | :--- | :--- |
+| `screenshot` | [pasted_screenshot_1791493684556.png](attachments/WORM-022/pasted_screenshot_1791493684556.png) | Pasted screenshot |
+
 #### Resolution Notes
 
 Added pregenerated app.icns, updated manifest.json display_override, and implemented ensure_macos_app_bundle in launcher.py to launch standalone window via signed macOS .app shim displaying themed icon in Dock and dark title bar.
