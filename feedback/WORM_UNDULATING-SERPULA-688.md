@@ -84,8 +84,8 @@ Can we disable support for the hall sensor until issues with the motor are resol
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
-| `reference` | [target_telemetry_WORM-UNDULATING-SERPULA-688.json](attachments/WORM-UNDULATING-SERPULA-688/target_telemetry_WORM-UNDULATING-SERPULA-688.json) | Target telemetry export retrieved via host_fs |
 | `log` | [target_system_logs_WORM-UNDULATING-SERPULA-688.log](attachments/WORM-UNDULATING-SERPULA-688/target_system_logs_WORM-UNDULATING-SERPULA-688.log) | Target system and defmt logs from host daemon session |
+| `reference` | [target_telemetry_WORM-UNDULATING-SERPULA-688.json](attachments/WORM-UNDULATING-SERPULA-688/target_telemetry_WORM-UNDULATING-SERPULA-688.json) | Target telemetry export retrieved via host_fs |
 
 #### Resolution Notes
 
