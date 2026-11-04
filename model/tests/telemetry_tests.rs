@@ -132,15 +132,23 @@ fn test_backwards_compatibility() {
 fn test_motor_telemetry_modeling() {
     use model::types::{
         calculate_estimated_rpm, calculate_modeled_peak_current_ma, calculate_modeled_torque_unm,
-        MotorSpeed, MotorTelemetry, MOTOR_COMMUTATION_STEPS_PER_REV, MOTOR_KT_UNM_PER_A,
-        MOTOR_PHASE_INDUCTANCE_UH, MOTOR_POLE_PAIRS,
+        MotorInfo, MotorSpeed, MotorTelemetry, MOTOR_COMMUTATION_STEPS_PER_REV, MOTOR_INFO,
+        MOTOR_KT_UNM_PER_A, MOTOR_NOMINAL_VOLTAGE_MV, MOTOR_PHASE_INDUCTANCE_UH, MOTOR_POLE_PAIRS,
     };
 
-    // 1. Motor constants
+    // 1. Motor constants and MotorInfo struct
+    assert_eq!(MOTOR_INFO.pole_pairs, 6);
+    assert_eq!(MOTOR_INFO.commutation_steps_per_rev, 36);
+    assert_eq!(MOTOR_INFO.kt_unm_per_a, 682);
+    assert_eq!(MOTOR_INFO.phase_inductance_uh, 10);
+    assert_eq!(MOTOR_INFO.nominal_voltage_mv, 4000);
+    assert_eq!(MotorInfo::default(), MotorInfo::DEFAULT);
+
     assert_eq!(MOTOR_POLE_PAIRS, 6);
     assert_eq!(MOTOR_COMMUTATION_STEPS_PER_REV, 36);
     assert_eq!(MOTOR_KT_UNM_PER_A, 682);
     assert_eq!(MOTOR_PHASE_INDUCTANCE_UH, 10);
+    assert_eq!(MOTOR_NOMINAL_VOLTAGE_MV, 4000);
 
     // 2. Estimated RPM from commutation step period
     // At 500 µs step period (2,000 Hz step rate): 5,000,000 / (3 * 500) = 3333 RPM

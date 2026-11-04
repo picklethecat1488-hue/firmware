@@ -59,6 +59,16 @@ impl<T: super::motor::Motor> super::motor::Motor for NoTick<T> {
     fn stop(&mut self) -> Result<(), Self::Error> {
         self.0.stop()
     }
+
+    /// Delegates duty cycle configuration to the inner motor driver.
+    fn set_duty_cycle(&mut self, duty_cycle: u8) -> Result<(), Self::Error> {
+        self.0.set_duty_cycle(duty_cycle)
+    }
+
+    /// Delegates active duty cycle query to the inner motor driver.
+    fn duty_cycle(&self) -> u8 {
+        self.0.duty_cycle()
+    }
 }
 
 impl<T: super::speed_sensor::SpeedSensor> super::speed_sensor::SpeedSensor for NoTick<T> {
