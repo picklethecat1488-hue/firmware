@@ -140,6 +140,8 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
                 self._handle_run_command(data)
             case "/api/worms/delete" | "/api/bugs/delete":
                 self._handle_delete_worm(data)
+            case "/api/worms/migrate_legacy" | "/api/bugs/migrate_legacy":
+                self._handle_migrate_legacy(data)
             case "/api/upload":
                 self._handle_file_upload(data)
             case "/api/export":
@@ -374,6 +376,56 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
         worm.updated_at = now_str
         self.server.save_and_sync()
         self._send_json({"status": "ok", "worm": worm.model_dump(mode="json")})
+
+    def _handle_migrate_legacy(self, data: Dict[str, Any]) -> None:
+        """Handle migrating legacy resolved worms to CLOSED status."""
+        before_ts = data.get("before", "2026-11-05 14:00:00 UTC")
+        migrate_all = bool(data.get("all", False))
+        exclude_raw = data.get("exclude", [])
+        exclude_ids = set(exclude_raw if isinstance(exclude_raw, list) else str(exclude_raw).split(","))
+        dry_run = bool(data.get("dry_run", False))
+
+        candidates = []
+        for w in self.server.database.worms:
+            if w.status == WormStatus.RESOLVED and not w.accepted_at:
+                if w.id.upper() in {x.upper().strip() for x in exclude_ids if x.strip()}:
+                    continue
+                if not migrate_all and before_ts:
+                    check_ts = w.resolved_at or w.updated_at or w.created_at
+                    if check_ts and check_ts > before_ts:
+                        continue
+                candidates.append(w)
+
+        if dry_run:
+            self._send_json(
+                {
+                    "status": "ok",
+                    "dry_run": True,
+                    "count": len(candidates),
+                    "migrated_ids": [w.id for w in candidates],
+                }
+            )
+            return
+
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        migrated_ids = []
+        for w in candidates:
+            w.status = WormStatus.CLOSED
+            w.accepted_at = w.resolved_at or w.updated_at or w.created_at or now_str
+            w.updated_at = now_str
+            migrated_ids.append(w.id)
+
+        if migrated_ids:
+            self.server.save_and_sync()
+
+        self._send_json(
+            {
+                "status": "ok",
+                "dry_run": False,
+                "count": len(migrated_ids),
+                "migrated_ids": migrated_ids,
+            }
+        )
 
     def _handle_attach_commit(self, data: Dict[str, Any]) -> None:
         """Attach a commit hash to a worm report."""

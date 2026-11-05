@@ -2,12 +2,13 @@
 
 - **UUID**: `493795b8-c629-422d-9147-b8b24aa575a7`
 - **ID**: `WORM-VERMIFORM-ANNELID-135`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-18 00:39:31 UTC`
 - **Resolved**: `2026-10-18 01:10:11 UTC`
+- **Accepted**: `2026-10-18 01:10:11 UTC`
 
 #### Description
 

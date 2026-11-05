@@ -2,12 +2,13 @@
 
 - **UUID**: `2039f33f-ef54-4bb0-8e2e-00104fb473e9`
 - **ID**: `WORM-VERMICULAR-CATERPILLAR-419`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 01:37:50 UTC`
 - **Resolved**: `2026-10-17 02:03:25 UTC`
+- **Accepted**: `2026-10-17 02:03:25 UTC`
 
 #### Description
 

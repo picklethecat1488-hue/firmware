@@ -2,12 +2,13 @@
 
 - **UUID**: `2cbea987-58db-49c3-9adc-d5e41e0ee9ab`
 - **ID**: `WORM-CHITINOUS-PALOLO-159`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon, dashboard`
 - **Created**: `2026-10-17 02:56:38 UTC`
 - **Resolved**: `2026-10-17 03:07:16 UTC`
+- **Accepted**: `2026-10-17 03:07:16 UTC`
 
 #### Description
 

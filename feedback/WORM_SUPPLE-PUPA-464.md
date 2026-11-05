@@ -2,12 +2,13 @@
 
 - **UUID**: `3024e952-f8f5-4cdf-83e8-7d9889343c52`
 - **ID**: `WORM-SUPPLE-PUPA-464`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 00:32:33 UTC`
 - **Resolved**: `2026-10-17 01:00:46 UTC`
+- **Accepted**: `2026-10-17 01:00:46 UTC`
 
 #### Description
 

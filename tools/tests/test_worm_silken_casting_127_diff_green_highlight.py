@@ -37,9 +37,7 @@ def test_diff_component_green_highlight_css() -> None:
     ), "SBS .row-replace td.new-code must use green background rgba(34, 197, 94, 0.22)"
 
     # 3. SBS row-add should also be supported
-    assert ".diff-sbs-row.row-add" in content, (
-        "SBS view must support .diff-sbs-row.row-add selector"
-    )
+    assert ".diff-sbs-row.row-add" in content, "SBS view must support .diff-sbs-row.row-add selector"
 
     # 4. Unified diff rows for additions must match .row-add, .add, .insert, .row-insert
     # and apply green background rgba(34, 197, 94, 0.22)

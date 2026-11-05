@@ -2,11 +2,12 @@
 
 - **UUID**: `53d3ceb2-8a2f-4117-8fa7-f1c9c2160daa`
 - **ID**: `WORM-018`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Created**: `2026-10-07 23:27:07 UTC`
 - **Resolved**: `2026-10-08 02:49:15 UTC`
+- **Accepted**: `2026-10-08 02:49:15 UTC`
 
 #### Description
 

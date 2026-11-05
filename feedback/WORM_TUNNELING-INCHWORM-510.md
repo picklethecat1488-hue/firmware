@@ -2,12 +2,13 @@
 
 - **UUID**: `392a47ce-f137-404d-94cb-3f7af58334bc`
 - **ID**: `WORM-TUNNELING-INCHWORM-510`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 01:34:30 UTC`
 - **Resolved**: `2026-10-17 01:54:29 UTC`
+- **Accepted**: `2026-10-17 01:54:29 UTC`
 
 #### Description
 

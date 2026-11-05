@@ -657,6 +657,9 @@ class MarkdownWormExporter:
                     and not (md_bug.rejection_notes and md_bug.rejection_notes.strip())
                 ):
                     pass
+                elif existing.status == WormStatus.CLOSED and md_bug.status == WormStatus.RESOLVED:
+                    # Worm was already accepted/closed in database; protect from stale markdown without acceptance
+                    pass
                 elif md_bug.status != existing.status:
                     existing.status = md_bug.status
                     if md_bug.status in (WormStatus.RESOLVED, WormStatus.CLOSED):
@@ -1229,6 +1232,9 @@ class MarkdownWormExporter:
                     and not (md_bug.rejection_notes and md_bug.rejection_notes.strip())
                     and not md_bug.resolution_notes.strip()
                 ):
+                    pass
+                elif existing_by_uuid.status == WormStatus.CLOSED and md_bug.status == WormStatus.RESOLVED:
+                    # Worm was already accepted/closed in database; do not regress to RESOLVED from stale markdown
                     pass
                 else:
                     database.add_or_update(md_bug)

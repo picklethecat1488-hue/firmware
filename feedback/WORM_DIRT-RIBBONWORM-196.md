@@ -2,12 +2,13 @@
 
 - **UUID**: `5195ac5b-7e6d-4b01-b4f1-7261dd111e21`
 - **ID**: `WORM-DIRT-RIBBONWORM-196`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `CRITICAL`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-17 00:29:58 UTC`
 - **Resolved**: `2026-10-17 02:37:40 UTC`
+- **Accepted**: `2026-10-17 02:37:40 UTC`
 
 #### Description
 

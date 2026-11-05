@@ -2,12 +2,13 @@
 
 - **UUID**: `2912e28f-e587-4b0f-8cc2-5642a1042e48`
 - **ID**: `WORM-CREEPING-TAPEWORM-215`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `UI`
 - **Component**: `dashboard`
 - **Created**: `2026-11-05 13:32:56 UTC`
 - **Resolved**: `2026-11-05 13:34:38 UTC`
+- **Accepted**: `2026-11-05 13:34:38 UTC`
 
 #### Description
 

@@ -2,12 +2,13 @@
 
 - **UUID**: `55a47316-0497-4228-a27e-b8a318c5b8b0`
 - **ID**: `WORM-DEEP-FIREWORM-942`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `platform`
 - **Created**: `2026-10-15 22:17:35 UTC`
 - **Resolved**: `2026-10-15 23:33:52 UTC`
+- **Accepted**: `2026-10-15 23:33:52 UTC`
 
 #### Description
 

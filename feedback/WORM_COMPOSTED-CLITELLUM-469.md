@@ -2,12 +2,13 @@
 
 - **UUID**: `99ddf751-bef5-4af7-934c-d451cfe78363`
 - **ID**: `WORM-COMPOSTED-CLITELLUM-469`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard, host_daemon`
 - **Created**: `2026-10-17 02:52:14 UTC`
 - **Resolved**: `2026-10-17 03:01:00 UTC`
+- **Accepted**: `2026-10-17 03:01:00 UTC`
 
 #### Description
 

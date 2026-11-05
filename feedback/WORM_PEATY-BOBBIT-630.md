@@ -2,11 +2,12 @@
 
 - **UUID**: `f0cd6a77-7f49-45d5-922e-9f8daf27df2e`
 - **ID**: `WORM-PEATY-BOBBIT-630`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-17 23:27:35 UTC`
 - **Resolved**: `2026-10-17 23:40:07 UTC`
+- **Accepted**: `2026-10-17 23:40:07 UTC`
 
 #### Description
 

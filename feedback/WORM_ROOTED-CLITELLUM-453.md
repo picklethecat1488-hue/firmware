@@ -2,12 +2,13 @@
 
 - **UUID**: `f0c204b3-311b-4b82-bf7f-9589d85ce805`
 - **ID**: `WORM-ROOTED-CLITELLUM-453`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_cli`
 - **Created**: `2026-10-17 23:35:15 UTC`
 - **Resolved**: `2026-10-18 00:21:26 UTC`
+- **Accepted**: `2026-10-18 00:21:26 UTC`
 
 #### Description
 

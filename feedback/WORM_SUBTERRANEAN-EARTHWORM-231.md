@@ -2,12 +2,13 @@
 
 - **UUID**: `70d98201-eed9-49ff-bd57-5370e97df642`
 - **ID**: `WORM-SUBTERRANEAN-EARTHWORM-231`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-24 01:05:39 UTC`
 - **Resolved**: `2026-10-24 01:39:03 UTC`
+- **Accepted**: `2026-10-24 01:39:03 UTC`
 
 #### Description
 

@@ -2,12 +2,13 @@
 
 - **UUID**: `7e4bd5e7-82e8-44b4-bce7-6b05b7cfbc56`
 - **ID**: `WORM-GLIDING-BRISTLE-252`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `FIRMWARE`
 - **Component**: `tmc6300`
 - **Created**: `2026-10-15 20:53:40 UTC`
 - **Resolved**: `2026-10-15 21:11:59 UTC`
+- **Accepted**: `2026-10-15 21:11:59 UTC`
 
 #### Description
 

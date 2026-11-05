@@ -513,3 +513,212 @@ def test_cli_functional_review_subcommands(
     cli_main(["--db-file", str(db_file), "list-worms", "--open"])
     captured = capsys.readouterr()
     assert "WORM-CLI-001" not in captured.out
+
+
+def test_migrate_resolved_worms_cli(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    """Verify migrate-resolved-worms CLI handles dry-run, timestamp filtering, exclude, and --all."""
+    db_file = tmp_path / "test_worms.sqlite"
+    store = SQLiteWormStore(db_path=db_file)
+
+    w_old = WormReportModel(
+        id="WORM-LEGACY-001",
+        title="Legacy resolved worm",
+        status=WormStatus.RESOLVED,
+        severity=WormSeverity.MEDIUM,
+        category=WormCategory.FIRMWARE,
+        created_at="2026-09-01 10:00:00 UTC",
+        resolved_at="2026-09-01 12:00:00 UTC",
+        accepted_at=None,
+    )
+    w_recent = WormReportModel(
+        id="WORM-RECENT-002",
+        title="Recently resolved worm awaiting review",
+        status=WormStatus.RESOLVED,
+        severity=WormSeverity.HIGH,
+        category=WormCategory.UI,
+        created_at="2026-11-05 14:15:00 UTC",
+        resolved_at="2026-11-05 14:20:00 UTC",
+        accepted_at=None,
+    )
+    w_open = WormReportModel(
+        id="WORM-OPEN-003",
+        title="Open defect",
+        status=WormStatus.OPEN,
+        severity=WormSeverity.LOW,
+        category=WormCategory.FIRMWARE,
+    )
+
+    store.save_worm(w_old)
+    store.save_worm(w_recent)
+    store.save_worm(w_open)
+
+    # 1. Dry run
+    capsys.readouterr()
+    cli_main(["--db-file", str(db_file), "migrate-resolved-worms", "--dry-run"])
+    captured = capsys.readouterr()
+    assert "[DRY-RUN]" in captured.out
+    assert "WORM-LEGACY-001" in captured.out
+    assert "WORM-RECENT-002" not in captured.out
+
+    # Status must not change after dry-run
+    assert store.get_worm("WORM-LEGACY-001").status == WormStatus.RESOLVED
+
+    # 2. Exclude flag
+    capsys.readouterr()
+    cli_main(
+        [
+            "--db-file",
+            str(db_file),
+            "migrate-resolved-worms",
+            "--all",
+            "--exclude",
+            "WORM-RECENT-002",
+            "--dry-run",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert "WORM-LEGACY-001" in captured.out
+    assert "WORM-RECENT-002" not in captured.out
+
+    # 3. Default migration (migrates worms resolved <= 2026-11-05 14:00:00 UTC)
+    cli_main(["--db-file", str(db_file), "migrate-resolved-worms"])
+    updated_old = store.get_worm("WORM-LEGACY-001")
+    updated_recent = store.get_worm("WORM-RECENT-002")
+    updated_open = store.get_worm("WORM-OPEN-003")
+
+    assert updated_old.status == WormStatus.CLOSED
+    assert updated_old.accepted_at == "2026-09-01 12:00:00 UTC"
+    assert updated_recent.status == WormStatus.RESOLVED
+    assert updated_recent.accepted_at is None
+    assert updated_open.status == WormStatus.OPEN
+
+    # 4. Migrate remaining with --all
+    cli_main(["--db-file", str(db_file), "migrate-resolved-worms", "--all"])
+    updated_recent_all = store.get_worm("WORM-RECENT-002")
+    assert updated_recent_all.status == WormStatus.CLOSED
+    assert updated_recent_all.accepted_at is not None
+
+
+def test_sqlite_store_auto_migration_and_markdown_protection(tmp_path: Path) -> None:
+    """Verify SQLiteWormStore schema migration of legacy resolved worms and markdown merge protection."""
+    db_file = tmp_path / "legacy_test.sqlite"
+
+    # Seed legacy worms directly into SQLite without metadata flag
+    conn = sqlite3.connect(str(db_file))
+    conn.execute(
+        """
+        CREATE TABLE worms (
+            id TEXT PRIMARY KEY, uuid TEXT, title TEXT NOT NULL, status TEXT NOT NULL,
+            severity TEXT NOT NULL, category TEXT NOT NULL, component TEXT DEFAULT '',
+            description TEXT DEFAULT '', reproduction_steps TEXT DEFAULT '[]',
+            expected_behavior TEXT DEFAULT '', actual_behavior TEXT DEFAULT '',
+            logs TEXT DEFAULT '', commit_ids TEXT DEFAULT '[]', review_tasks TEXT DEFAULT '[]',
+            created_at TEXT DEFAULT '', updated_at TEXT DEFAULT '', resolved_at TEXT,
+            resolution_notes TEXT DEFAULT '', rejection_notes TEXT DEFAULT '',
+            accepted_at TEXT, rejected_at TEXT, custom_sections TEXT DEFAULT '[]'
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO worms (id, uuid, title, status, severity, category, resolved_at)
+        VALUES ('WORM-SEED-001', 'u-seed-1', 'Legacy seed worm', 'RESOLVED', 'MEDIUM', 'FIRMWARE', '2026-09-10 12:00:00 UTC')
+        """
+    )
+    conn.commit()
+    conn.close()
+
+    # Initializing SQLiteWormStore runs _ensure_schema and auto-migrates
+    store = SQLiteWormStore(db_path=db_file)
+    worm = store.get_worm("WORM-SEED-001")
+    assert worm is not None
+    assert worm.status == WormStatus.CLOSED
+    assert worm.accepted_at == "2026-09-10 12:00:00 UTC"
+
+    # Verify metadata flag is recorded
+    with store._get_connection() as c:
+        row = c.execute("SELECT value FROM metadata WHERE key = 'legacy_resolved_migrated'").fetchone()
+        assert row is not None and row["value"] == "1"
+
+    # Test Markdown merge protection: stale markdown with RESOLVED must not regress CLOSED worm
+    exporter = MarkdownWormExporter(repo_root=tmp_path)
+    base_db = WormDatabaseModel(worms=[worm])
+    stale_md_db = WormDatabaseModel(
+        worms=[
+            WormReportModel(
+                id="WORM-SEED-001",
+                uuid="u-seed-1",
+                title="Legacy seed worm",
+                status=WormStatus.RESOLVED,
+                severity=WormSeverity.MEDIUM,
+                category=WormCategory.FIRMWARE,
+                resolved_at="2026-09-10 12:00:00 UTC",
+                accepted_at=None,
+            )
+        ]
+    )
+    merged = exporter.merge_databases(base_db, stale_md_db)
+    merged_worm = merged.get_worm("WORM-SEED-001")
+    assert merged_worm.status == WormStatus.CLOSED
+    assert merged_worm.accepted_at == "2026-09-10 12:00:00 UTC"
+
+
+def test_api_migrate_legacy_worms(tmp_path: Path) -> None:
+    """Verify REST API endpoint POST /api/worms/migrate_legacy."""
+    db_file = tmp_path / "api_test.sqlite"
+    server = WormReportServer(
+        host="127.0.0.1",
+        port=0,
+        repo_root=tmp_path,
+        sqlite_file=db_file,
+        bind_and_activate=True,
+    )
+
+    t = threading.Thread(target=server.serve_forever, daemon=True)
+    t.start()
+
+    try:
+        url = server.get_url()
+
+        # Add a legacy resolved worm directly to server database
+        server.database.worms.append(
+            WormReportModel(
+                id="WORM-API-001",
+                title="API legacy worm",
+                status=WormStatus.RESOLVED,
+                severity=WormSeverity.LOW,
+                category=WormCategory.FIRMWARE,
+                resolved_at="2026-09-15 10:00:00 UTC",
+                accepted_at=None,
+            )
+        )
+        server.sqlite_store.save_database(server.database)
+
+        # POST /api/worms/migrate_legacy
+        req = urllib.request.Request(
+            f"{url}/api/worms/migrate_legacy",
+            data=json.dumps({"all": True}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            assert data["status"] == "ok"
+            assert data["count"] >= 1
+            assert "WORM-API-001" in data["migrated_ids"]
+
+        migrated_worm = server.database.get_worm("WORM-API-001")
+        assert migrated_worm.status == WormStatus.CLOSED
+        assert migrated_worm.accepted_at == "2026-09-15 10:00:00 UTC"
+    finally:
+        server.server_close()
+        server.shutdown()
+        t.join(timeout=2.0)

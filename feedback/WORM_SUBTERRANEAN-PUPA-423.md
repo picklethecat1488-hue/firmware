@@ -2,12 +2,13 @@
 
 - **UUID**: `7a755039-13cf-4f6a-aa35-0d435c922690`
 - **ID**: `WORM-SUBTERRANEAN-PUPA-423`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-23 00:49:55 UTC`
 - **Resolved**: `2026-10-23 01:08:24 UTC`
+- **Accepted**: `2026-10-23 01:08:24 UTC`
 
 #### Description
 

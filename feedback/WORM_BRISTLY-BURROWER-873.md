@@ -2,12 +2,13 @@
 
 - **UUID**: `72775417-f6f4-4d42-8d88-9c376d796de5`
 - **ID**: `WORM-BRISTLY-BURROWER-873`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-15 23:41:18 UTC`
 - **Resolved**: `2026-10-15 23:57:55 UTC`
+- **Accepted**: `2026-10-15 23:57:55 UTC`
 
 #### Description
 

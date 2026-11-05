@@ -2,11 +2,12 @@
 
 - **UUID**: `dc740603-beaa-4db2-b995-bcaa130a0ba2`
 - **ID**: `WORM-UNDULATING-REDWORM-56`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `GENERAL`
 - **Created**: `2026-10-15 03:35:22 UTC`
 - **Resolved**: `2026-10-15 03:38:54 UTC`
+- **Accepted**: `2026-10-15 03:38:54 UTC`
 
 #### Description
 

@@ -2,12 +2,13 @@
 
 - **UUID**: `e45bbc3c-2306-43f2-b163-187c8974c275`
 - **ID**: `WORM-SUBTERRANEAN-WIREWORM-439`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-22 00:47:32 UTC`
 - **Resolved**: `2026-10-22 01:24:07 UTC`
+- **Accepted**: `2026-10-22 01:24:07 UTC`
 
 #### Description
 
