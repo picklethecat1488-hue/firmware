@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-05 14:43:02 UTC` |
+| **Report Date** | `2026-11-05 14:48:08 UTC` |
 | **Total Issues** | `3` |
 | **Open Issues** | `1` |
 | **Resolved / Closed** | `2 (66%)` |
@@ -39,23 +39,22 @@
 
 - [ ] **`[LOW]`** [#WORM-OPEN-003](#worm-open-003): Open defect (`OPEN`)
 - [x] **`[MEDIUM]`** [#WORM-LEGACY-001](#worm-legacy-001): Legacy resolved worm (`CLOSED`)
-- [x] **`[HIGH]`** [#WORM-RECENT-002](#worm-recent-002): Recently resolved worm awaiting review (`CLOSED`)
+- [x] **`[HIGH]`** [#WORM-RECENT-002](#worm-recent-002): Recently resolved worm awaiting review (`RESOLVED`)
 
 ## Detailed Issue Log
 
 ### <a id="worm-open-003"></a> 🔴 `[WORM-OPEN-003]` Open defect
 
-- **UUID**: `342f4bab-1d3d-4f8b-bd3d-b1f955758cc0`
+- **UUID**: `b686fbfb-26ce-4df1-b24f-fea81e4132a5`
 - **Status**: `OPEN`
 - **Severity**: `LOW`
 - **Category**: `FIRMWARE`
-- **Created**: `2026-11-05 14:42:13 UTC`
 
 ---
 
 ### <a id="worm-legacy-001"></a> 🟢 `[WORM-LEGACY-001]` Legacy resolved worm
 
-- **UUID**: `4851ab58-28d2-4337-95f9-9502dea4a4e9`
+- **UUID**: `3f27597f-9262-4546-996e-052c1912a5e2`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
@@ -67,12 +66,11 @@
 
 ### <a id="worm-recent-002"></a> 🟢 `[WORM-RECENT-002]` Recently resolved worm awaiting review
 
-- **UUID**: `b91677a9-4fcd-4980-bc54-69c374788721`
-- **Status**: `CLOSED`
+- **UUID**: `8386d3ec-fc2e-4296-a70e-808137e69c77`
+- **Status**: `RESOLVED`
 - **Severity**: `HIGH`
 - **Category**: `UI`
 - **Created**: `2026-11-05 14:15:00 UTC`
 - **Resolved**: `2026-11-05 14:20:00 UTC`
-- **Accepted**: `2026-11-05 14:20:00 UTC`
 
 ---
