@@ -66,7 +66,7 @@ def test_worm_vermiform_redworm_38_defmt_logs_routed_to_target():
     )
 
     test_lines = [
-        "364.173550 INFO [controller::shell_controller] received command \"Motor { subcommand: Some(Current) }\"",
+        '364.173550 INFO [controller::shell_controller] received command "Motor { subcommand: Some(Current) }"',
         "Motor current: 1461 mA",
         "364.173754 INFO [controller::shell_controller] command execution succeeded",
     ]

@@ -598,6 +598,7 @@
           <option value="150%">150%</option>
         </select>
       </div>
+      <span class="quake-badge" style="background:#040d12; border:1px solid var(--quake-gold); color:var(--quake-gold); font-size:9.5px; padding:3px 8px;">Branch: <strong>worms</strong></span>
       <button class="quake-btn quake-btn-default" onclick="syncFeedback()">🔄 Sync Feedback</button>
       <button class="quake-btn quake-btn-default" onclick="newWorm()">+ New Worm</button>
       <button class="quake-btn quake-btn-gold" id="btn-save-exit" onclick="saveAndExit()">💾 Save and Exit</button>
@@ -666,6 +667,32 @@
 
     <!-- Content Area -->
     <div class="content-area">
+      <!-- Functional Review Action Banner -->
+      <div id="review-action-banner" class="form-section quake-card review-banner" style="display:none; border:2px solid var(--quake-gold); background:rgba(0,229,255,0.08); margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+          <div>
+            <div style="font-size:12px; font-weight:700; color:var(--quake-gold); letter-spacing:1px; display:flex; align-items:center; gap:8px;">
+              <span>⚡ FUNCTIONAL REVIEW REQUIRED</span>
+              <span style="font-size:9.5px; background:var(--quake-gold); color:#000; padding:2px 6px; border-radius:2px; font-weight:800;">AWAITING EVALUATION</span>
+            </div>
+            <div style="font-size:11px; color:#ddd; margin-top:4px;">
+              Verify functionality, run demo commands below, and inspect device telemetry before accepting fix.
+            </div>
+          </div>
+          <div style="display:flex; gap:10px;">
+            <button class="quake-btn quake-btn-green" style="font-weight:700; padding:6px 16px; font-size:10px;" onclick="acceptActiveWorm()">✔ ACCEPT FIX</button>
+            <button class="quake-btn quake-btn-red" style="font-weight:700; padding:6px 16px; font-size:10px;" onclick="rejectActiveWorm()">✖ REJECT FIX</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Rejection Feedback Card -->
+      <div id="rejection-feedback-card" class="form-section quake-card rejection-banner" style="display:none; border:2px solid #ff4444; background:rgba(255,68,68,0.12); margin-bottom:12px;">
+        <div class="section-title" style="color:#ff6666;">
+          <span>⚠ REJECTION FEEDBACK - FIX REJECTED BY REVIEWER</span>
+        </div>
+        <div id="rejection-feedback-text" style="color:#fff; font-size:11px; white-space:pre-wrap; line-height:1.5;"></div>
+      </div>
       <!-- Worm Identity Section -->
       <div class="form-section quake-card">
         <div class="section-title">
@@ -792,6 +819,31 @@
           <label>Fix Description & Root Cause</label>
           <textarea id="worm-resolution" placeholder="Detailed notes explaining how the defect was remediated..."></textarea>
         </div>
+      </div>
+
+      <!-- Attached Commits Section -->
+      <div class="form-section quake-card" id="attached-commits-section">
+        <div class="section-title">
+          <span>Attached Commits</span>
+        </div>
+        <div style="display:flex; gap:8px; margin-bottom:10px;">
+          <input type="text" id="input-attach-commit" placeholder="Git commit SHA (e.g. 7f3b89a)..." style="flex:1;">
+          <button class="quake-btn quake-btn-default" onclick="attachCommitToActiveWorm()">+ Attach Commit</button>
+        </div>
+        <div id="attached-commits-list" class="commits-list" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+      </div>
+
+      <!-- Functional Review Checklist & Demo Commands -->
+      <div class="form-section quake-card" id="review-tasks-section">
+        <div class="section-title">
+          <span>Review Tasks & Functional Checklist</span>
+        </div>
+        <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+          <input type="text" id="input-task-title" placeholder="Task title / verification requirement..." style="flex:2; min-width:200px;">
+          <input type="text" id="input-task-command" placeholder="Demo command (e.g. python tools/host.py cli ping)..." style="flex:3; min-width:250px; font-family:var(--font-mono);">
+          <button class="quake-btn quake-btn-default" onclick="addTaskToActiveWorm()">+ Add Task</button>
+        </div>
+        <div id="review-tasks-list" class="tasks-list"></div>
       </div>
     </div>
   </div>
@@ -985,7 +1037,7 @@
       const query = (searchInput ? searchInput.value || "" : "").toLowerCase();
       let list = (db.worms || []).filter(worm => {
         const isResolved = (worm.status === "RESOLVED" || worm.status === "CLOSED");
-        if (currentFilter === "open" && (isResolved || worm.status === "PLANNED")) return false;
+        if (currentFilter === "open" && (worm.status === "CLOSED" || worm.status === "PLANNED")) return false;
         if (currentFilter === "planned" && worm.status !== "PLANNED") return false;
         if (currentFilter === "resolved" && !isResolved) return false;
         if (currentCategoryFilter && currentCategoryFilter !== "ALL" && worm.category !== currentCategoryFilter) return false;
@@ -1077,7 +1129,11 @@
         else if (worm.severity === "LOW") sevBadgeClass = "quake-badge quake-badge-muted";
 
         let stBadgeClass = "quake-badge quake-badge-amber";
-        if (worm.status === "RESOLVED" || worm.status === "CLOSED") {
+        let stDisplay = worm.status;
+        if (worm.status === "RESOLVED") {
+          stBadgeClass = "quake-badge quake-badge-gold";
+          stDisplay = "AWAITING REVIEW";
+        } else if (worm.status === "CLOSED") {
           stBadgeClass = "quake-badge quake-badge-green";
         } else if (worm.status === "PLANNED") {
           stBadgeClass = "quake-badge quake-badge-muted";
@@ -1087,7 +1143,7 @@
           <div class="worm-item-top bug-item-top">
             <span class="worm-id bug-id">🪱 ${worm.id} <button class="copy-icon-btn copy-badge-btn" onclick="event.stopPropagation(); copyText('${worm.id}')" title="Copy Worm ID ${worm.id}">📋</button></span>
             <span class="${sevBadgeClass}">${worm.severity}</span>
-            <span class="${stBadgeClass}">${worm.status}</span>
+            <span class="${stBadgeClass}">${stDisplay}</span>
           </div>
           <div class="worm-item-title bug-item-title">${worm.title || "Untitled Worm"}</div>
         `;
@@ -1110,6 +1166,25 @@
       if (wormIdDisp) wormIdDisp.textContent = `[${worm.id}]`;
       if (btnCopyActiveWorm) btnCopyActiveWorm.style.display = "inline-flex";
 
+      // Functional Review Action Banner
+      const reviewBanner = document.getElementById("review-action-banner");
+      if (reviewBanner) {
+        reviewBanner.style.display = (worm.status === "RESOLVED") ? "block" : "none";
+      }
+
+      // Rejection Feedback Alert
+      const rejCard = document.getElementById("rejection-feedback-card");
+      const rejText = document.getElementById("rejection-feedback-text");
+      if (rejCard && rejText) {
+        if (worm.rejection_notes && worm.rejection_notes.trim()) {
+          rejCard.style.display = "block";
+          const rejTime = worm.rejected_at ? `[${worm.rejected_at}]\n` : "";
+          rejText.textContent = `${rejTime}${worm.rejection_notes}`;
+        } else {
+          rejCard.style.display = "none";
+        }
+      }
+
       document.getElementById("worm-title").value = worm.title || "";
       document.getElementById("worm-severity").value = worm.severity || "MEDIUM";
       document.getElementById("worm-status").value = worm.status || "OPEN";
@@ -1123,6 +1198,8 @@
       document.getElementById("worm-resolution").value = worm.resolution_notes || "";
 
       renderAttachments(worm.attachments || []);
+      renderAttachedCommits(worm.commit_ids || []);
+      renderReviewTasks(worm.review_tasks || []);
       autoResizeAllTextareas();
     }
 
@@ -1332,6 +1409,236 @@
       showToast("Deleted worm & updated WORMS.md");
     }
     const deleteActiveBug = deleteActiveWorm;
+
+    async function acceptActiveWorm() {
+      if (!activeWormId) return;
+      const notes = prompt("Optional acceptance notes (leave blank if none):", "");
+      if (notes === null) return;
+      try {
+        const res = await fetch("/api/worms/accept", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: activeWormId, notes: notes.trim() })
+        });
+        const data = await res.json();
+        if (data.status === "ok") {
+          const worm = db.worms.find(w => w.id === activeWormId);
+          if (worm) {
+            worm.status = "CLOSED";
+            worm.accepted_at = data.worm.accepted_at;
+            if (data.worm.resolution_notes) worm.resolution_notes = data.worm.resolution_notes;
+          }
+          loadActiveWorm();
+          renderWormList();
+          updateMetrics();
+          showToast(`Worm [${activeWormId}] accepted and closed.`);
+        } else {
+          showToast(data.error || "Failed to accept worm");
+        }
+      } catch (err) {
+        showToast("Error accepting worm: " + err);
+      }
+    }
+    const acceptActiveBug = acceptActiveWorm;
+
+    async function rejectActiveWorm() {
+      if (!activeWormId) return;
+      const notes = prompt("Enter rejection feedback (explain why the fix failed validation):", "");
+      if (!notes || !notes.trim()) {
+        alert("Rejection feedback is required to reject a fix.");
+        return;
+      }
+      try {
+        const res = await fetch("/api/worms/reject", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: activeWormId, notes: notes.trim() })
+        });
+        const data = await res.json();
+        if (data.status === "ok") {
+          const worm = db.worms.find(w => w.id === activeWormId);
+          if (worm) {
+            worm.status = "OPEN";
+            worm.rejected_at = data.worm.rejected_at;
+            worm.rejection_notes = data.worm.rejection_notes;
+          }
+          loadActiveWorm();
+          renderWormList();
+          updateMetrics();
+          showToast(`Worm [${activeWormId}] rejected and reopened.`);
+        } else {
+          showToast(data.error || "Failed to reject worm");
+        }
+      } catch (err) {
+        showToast("Error rejecting worm: " + err);
+      }
+    }
+    const rejectActiveBug = rejectActiveWorm;
+
+    async function attachCommitToActiveWorm() {
+      if (!activeWormId) return;
+      const input = document.getElementById("input-attach-commit");
+      const commitSha = (input ? input.value : "").trim();
+      if (!commitSha) {
+        showToast("Please enter a commit SHA");
+        return;
+      }
+      try {
+        const res = await fetch("/api/worms/attach_commit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: activeWormId, commit_id: commitSha })
+        });
+        const data = await res.json();
+        if (data.status === "ok") {
+          const worm = db.worms.find(w => w.id === activeWormId);
+          if (worm) worm.commit_ids = data.worm.commit_ids || [];
+          input.value = "";
+          renderAttachedCommits(worm.commit_ids || []);
+          showToast(`Attached commit ${commitSha}`);
+        } else {
+          showToast(data.error || "Failed to attach commit");
+        }
+      } catch (err) {
+        showToast("Error attaching commit: " + err);
+      }
+    }
+    const attachCommitToActiveBug = attachCommitToActiveWorm;
+
+    function renderAttachedCommits(commitIds) {
+      const container = document.getElementById("attached-commits-list");
+      if (!container) return;
+      container.innerHTML = "";
+      if (!commitIds || !commitIds.length) {
+        container.innerHTML = '<span style="font-size:10px; color:var(--quake-text-dim);">No commits attached yet.</span>';
+        return;
+      }
+      commitIds.forEach(cid => {
+        const chip = document.createElement("div");
+        chip.style.cssText = "display:inline-flex; align-items:center; gap:6px; background:#1b120c; border:1px solid var(--quake-gold); border-radius:3px; padding:4px 8px; font-family:var(--font-mono); font-size:10px;";
+        chip.innerHTML = `
+          <a href="/?commit=${encodeURIComponent(cid)}" target="_blank" style="color:var(--quake-gold); text-decoration:none; font-weight:700;">🔍 ${cid.slice(0, 10)}</a>
+          <button class="copy-icon-btn copy-badge-btn" onclick="copyText('${cid}')" title="Copy commit SHA">📋</button>
+        `;
+        container.appendChild(chip);
+      });
+    }
+
+    async function addTaskToActiveWorm() {
+      if (!activeWormId) return;
+      const titleInput = document.getElementById("input-task-title");
+      const cmdInput = document.getElementById("input-task-command");
+      const title = (titleInput ? titleInput.value : "").trim();
+      const cmd = (cmdInput ? cmdInput.value : "").trim();
+      if (!title) {
+        showToast("Task title is required");
+        return;
+      }
+      try {
+        const res = await fetch("/api/worms/add_task", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: activeWormId, title: title, command: cmd })
+        });
+        const data = await res.json();
+        if (data.status === "ok") {
+          const worm = db.worms.find(w => w.id === activeWormId);
+          if (worm) worm.review_tasks = data.worm.review_tasks || [];
+          if (titleInput) titleInput.value = "";
+          if (cmdInput) cmdInput.value = "";
+          renderReviewTasks(worm.review_tasks || []);
+          showToast("Task added.");
+        } else {
+          showToast(data.error || "Failed to add task");
+        }
+      } catch (err) {
+        showToast("Error adding task: " + err);
+      }
+    }
+    const addTaskToActiveBug = addTaskToActiveWorm;
+
+    async function toggleTaskStatus(taskId, currentStatus) {
+      if (!activeWormId) return;
+      const newStatus = (currentStatus === "COMPLETED") ? "PENDING" : "COMPLETED";
+      try {
+        const res = await fetch("/api/worms/update_task", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: activeWormId, task_id: taskId, status: newStatus })
+        });
+        const data = await res.json();
+        if (data.status === "ok") {
+          const worm = db.worms.find(w => w.id === activeWormId);
+          if (worm) worm.review_tasks = data.worm.review_tasks || [];
+          renderReviewTasks(worm.review_tasks || []);
+        }
+      } catch (err) {
+        showToast("Error updating task: " + err);
+      }
+    }
+
+    async function runTaskCommand(taskId, command) {
+      const outBox = document.getElementById(`task-output-${taskId}`);
+      if (outBox) {
+        outBox.style.display = "block";
+        outBox.textContent = "▶ Executing command (verifying target flash status)...";
+      }
+      try {
+        const res = await fetch("/api/worms/run_command", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: activeWormId, command: command })
+        });
+        const data = await res.json();
+        if (outBox) {
+          const text = (data.stdout || "") + (data.stderr ? "\n[STDERR]\n" + data.stderr : "");
+          outBox.textContent = `[Exit Code ${data.exit_code}]\n` + (text || "(No output)");
+        }
+        if (data.status === "ok") {
+          showToast("Command succeeded.");
+        } else {
+          showToast(data.error || "Command completed with error.");
+        }
+      } catch (err) {
+        if (outBox) outBox.textContent = "Error executing command: " + err;
+        showToast("Execution failed: " + err);
+      }
+    }
+
+    function renderReviewTasks(tasks) {
+      const container = document.getElementById("review-tasks-list");
+      if (!container) return;
+      container.innerHTML = "";
+      if (!tasks || !tasks.length) {
+        container.innerHTML = '<span style="font-size:10px; color:var(--quake-text-dim);">No review tasks defined yet.</span>';
+        return;
+      }
+      tasks.forEach(task => {
+        const isDone = task.status === "COMPLETED";
+        const item = document.createElement("div");
+        item.style.cssText = "background:#120a05; border:1px solid #331f0f; border-radius:3px; padding:8px 10px; margin-bottom:8px;";
+        const cmdPart = task.command ? `
+          <div style="display:flex; align-items:center; gap:8px; margin-top:6px; background:#000; border:1px solid #222; border-radius:2px; padding:4px 8px;">
+            <code style="font-family:var(--font-mono); font-size:10px; color:var(--quake-gold); flex:1; overflow-x:auto;">${task.command}</code>
+            <button class="quake-btn quake-btn-default" style="font-size:9px; padding:2px 8px;" onclick="copyText('${task.command.replace(/'/g, "\\'")}')">Copy</button>
+            <button class="quake-btn quake-btn-green" style="font-size:9px; padding:2px 8px;" onclick="runTaskCommand('${task.id}', '${task.command.replace(/'/g, "\\'")}')">▶ Run Demo</button>
+          </div>
+          <pre id="task-output-${task.id}" style="display:none; margin-top:6px; background:#080503; border:1px solid #331f0f; padding:6px; font-family:var(--font-mono); font-size:9.5px; color:#ccc; max-height:160px; overflow-y:auto; white-space:pre-wrap;"></pre>
+        ` : '';
+
+        item.innerHTML = `
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:11px; margin:0; text-transform:none;">
+              <input type="checkbox" ${isDone ? "checked" : ""} onchange="toggleTaskStatus('${task.id}', '${task.status}')" style="accent-color:var(--quake-gold);">
+              <span style="${isDone ? 'text-decoration:line-through; color:var(--quake-text-dim);' : 'color:#fff; font-weight:600;'}">${task.title}</span>
+            </label>
+            <span class="quake-badge ${isDone ? 'quake-badge-green' : 'quake-badge-muted'}" style="font-size:8.5px;">${task.status}</span>
+          </div>
+          ${cmdPart}
+        `;
+        container.appendChild(item);
+      });
+    }
 
     function returnToDashboard(e) {
       if (e && e.preventDefault) e.preventDefault();

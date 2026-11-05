@@ -51,10 +51,7 @@ def test_worm_dirt_ribbonworm_196_pump_diag_not_pullup():
     assert "pump_diag.set_pull(Pull::Up);" not in content, (
         "board/src/cat_detector.rs must not set Pull::Up on pump_diag (active-high fault indicator)."
     )
-    assert (
-        "pump_diag.set_pull(Pull::Down);" in content
-        or "pump_diag.set_pull(Pull::None);" in content
-    ), (
+    assert "pump_diag.set_pull(Pull::Down);" in content or "pump_diag.set_pull(Pull::None);" in content, (
         "board/src/cat_detector.rs must set Pull::Down or Pull::None on pump_diag."
     )
 
@@ -77,9 +74,7 @@ def test_worm_dirt_ribbonworm_196_pio_no_out_of_bounds_skip_off():
     assert "a.jmp(pio::JmpCondition::YIsZero, &mut wrap_target);" in content, (
         "peripheral/src/tmc6300.rs must jump to wrap_target on YIsZero when off_count is 0."
     )
-    assert "skip_off" not in content, (
-        "skip_off label must be removed to avoid jumping out of bounds past wrap_source."
-    )
+    assert "skip_off" not in content, "skip_off label must be removed to avoid jumping out of bounds past wrap_source."
 
 
 def test_worm_dirt_ribbonworm_196_duty_cycle_100_pins_never_cleared_to_null():
@@ -104,4 +99,3 @@ def test_worm_dirt_ribbonworm_196_duty_cycle_100_pins_never_cleared_to_null():
         "off_count must be tested and jumped to wrap_target BEFORE mov pins, null, "
         "ensuring pins are never de-energized at 100% duty cycle."
     )
-

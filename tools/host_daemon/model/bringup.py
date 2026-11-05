@@ -223,12 +223,14 @@ def discover_bringup_scripts(repo_root: Path) -> List[Dict[str, Any]]:
             try:
                 cfg = load_bringup_yaml(yaml_file)
                 rel_path = yaml_file.relative_to(repo_root)
-                scripts.append({
-                    "name": cfg.project_name,
-                    "path": str(rel_path),
-                    "chip": cfg.device_chip,
-                    "steps_count": len(cfg.steps),
-                })
+                scripts.append(
+                    {
+                        "name": cfg.project_name,
+                        "path": str(rel_path),
+                        "chip": cfg.device_chip,
+                        "steps_count": len(cfg.steps),
+                    }
+                )
             except Exception:
                 continue
 

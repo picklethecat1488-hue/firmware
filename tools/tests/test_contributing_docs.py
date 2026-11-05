@@ -31,3 +31,15 @@ def test_contributing_contains_dashboard_documentation() -> None:
     # Persistence & sync
     assert "target/code_review.sqlite" in content or "target/worms.sqlite" in content or "SQLite" in content
     assert "feedback/" in content
+
+
+def test_contributing_contains_anvil_documentation() -> None:
+    """Verify CONTRIBUTING.md documents bin/anvil remote execution commands."""
+    contributing_path = WORKSPACE_ROOT / "CONTRIBUTING.md"
+    content = contributing_path.read_text(encoding="utf-8")
+
+    assert "bin/anvil" in content
+    assert "bin/anvil sync" in content
+    assert "bin/anvil verify" in content
+    assert "bin/anvil pytest" in content
+    assert "bin/anvil cli" in content

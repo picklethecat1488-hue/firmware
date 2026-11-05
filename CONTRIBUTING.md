@@ -424,7 +424,25 @@ To verify code formatting, static tracing assertions, clippy rules, host unit/in
 ```
 This script executes formatting/tracing checks in parallel, runs target compilation checks, and compiles host tools in debug mode (reusing the test compiler cache) to complete all verification checks in under 30 seconds.
 
-#### 2. Cargo Check Aliases
+#### 2. Remote Cloud Execution (`bin/anvil` / Vast.ai)
+For offloading heavy test suites, verification, and cargo builds to the Vast.ai cloud server to conserve local compute:
+```bash
+bin/anvil provision                # Rent Vast.ai Ubuntu instance and configure ~/.anvil.env
+bin/anvil bootstrap                # Install build tools, Rust, Miniforge, and Conda on remote VM
+bin/anvil status                   # Check instance health, IP/port, GPU, and lock state
+bin/anvil sync                     # Sync repository to cloud container (/workspace/firmware)
+bin/anvil verify                   # Run ./tools/verify.sh remotely
+bin/anvil pytest [args...]         # Run pytest remotely on anvil
+bin/anvil cargo [args...]          # Run cargo checks/tests remotely on anvil
+bin/anvil cli <command...>         # Reverse proxy host CLI command to local host.py daemon
+bin/anvil pull <remote_path>       # Download generated artifacts/recordings
+bin/anvil auto-release             # Release instance if idle or past Close of Business (COB)
+bin/anvil release                  # Destroy rented instance and clean up ~/.anvil.env
+bin/anvil stop                     # Clean up remote processes on anvil
+```
+
+
+#### 3. Cargo Check Aliases
 If you want to quickly run compilation checks on demand, you can use these configured cargo aliases:
 * **Check Host Crate Targets** (libraries, binaries, tests, and examples):
   ```bash
@@ -435,7 +453,7 @@ If you want to quickly run compilation checks on demand, you can use these confi
   cargo check-mcu
   ```
 
-#### 3. Full MCU Target Build
+#### 4. Full MCU Target Build
 To build the final target MCU firmware image manually:
 ```bash
 ./tools/build/build_firmware.sh

@@ -1,4 +1,5 @@
-"""Reproduction and regression test for WORM-LOAMY-LUGWORM-536:
+"""Reproduction and regression test for WORM-LOAMY-LUGWORM-536.
+
 Add Target Bug button and automated bug reporting to host tool.
 """
 
@@ -115,7 +116,9 @@ def test_target_bug_server_api_creates_worm_with_attachments() -> None:
 
         handler.do_POST()
 
-        assert handler._send_json.called, f"Expected _send_json to be called, got send_error: {handler.send_error.call_args}"
+        assert handler._send_json.called, (
+            f"Expected _send_json to be called, got send_error: {handler.send_error.call_args}"
+        )
         res_data = handler._send_json.call_args[0][0]
         assert res_data.get("success") is True
         worm_id = res_data.get("worm_id")

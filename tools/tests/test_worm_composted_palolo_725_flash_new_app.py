@@ -84,10 +84,12 @@ def test_cli_forwards_new_app_when_daemon_running():
         "target": "thumbv6m-none-eabi",
     }
 
-    with patch("host_daemon.cli.get_lock_data", return_value=mock_lock), \
-         patch("host_daemon.cli.is_pid_alive", return_value=True), \
-         patch("host_daemon.cli.save_last_session"), \
-         patch("host_daemon.cli.send_daemon_request") as mock_send:
+    with (
+        patch("host_daemon.cli.get_lock_data", return_value=mock_lock),
+        patch("host_daemon.cli.is_pid_alive", return_value=True),
+        patch("host_daemon.cli.save_last_session"),
+        patch("host_daemon.cli.send_daemon_request") as mock_send,
+    ):
         mock_send.return_value = {"success": True}
         ret = main(["--package", "cat_detector", "--bin", "cat_detector_app", "--release"])
         assert ret == 0

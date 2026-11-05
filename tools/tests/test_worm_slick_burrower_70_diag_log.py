@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Reproduction test for WORM-SLICK-BURROWER-70:
+"""Reproduction test for WORM-SLICK-BURROWER-70.
+
 We should log when DIAG pin gets asserted in the TMC6300 driver tick call.
 """
 

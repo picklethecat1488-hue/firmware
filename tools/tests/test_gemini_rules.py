@@ -27,6 +27,9 @@ def test_gemini_markdown_core_skills_and_back_compat_mandate() -> None:
     # 1. Verification & Process hygiene
     assert "./tools/verify.sh" in content
     assert "Process Management & Rerun Hygiene" in content
+    assert "Remote Cloud Server (`anvil`)" in content
+    assert "bin/anvil" in content
+    assert "Host CLI Reverse Proxying" in content
 
     # 2. Regression unit testing mandate
     assert "Regression Unit Testing Mandate" in content
@@ -47,6 +50,7 @@ def test_gemini_markdown_core_skills_and_back_compat_mandate() -> None:
     assert "Worm Tracker" in content
     assert "Single-Bug Focus" in content
     assert "User-Managed Code Review & Autonomous PR Prohibition" in content
+    assert "Bidirectional Dashboard & Script Cross-Patching Mandate" in content
 
     # 6. Modular Subsystem Guides section
     assert "## Modular Subsystem & Domain Architecture Guides" in content
@@ -66,6 +70,7 @@ def test_modular_subsystem_guides_exist_and_linked_in_gemini() -> None:
         "docs/logging_tracing.md",
         "docs/hardware_firmware_codesign.md",
         "docs/vcs_code_review.md",
+        "docs/remote_cloud_runner.md",
     ]
 
     for guide_rel in expected_guides:

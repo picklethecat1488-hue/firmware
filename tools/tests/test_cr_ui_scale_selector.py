@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 
 
-
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
 HOST_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "host_daemon" / "templates"
 
@@ -75,7 +74,7 @@ def test_commit_selection_parity_in_code_review() -> None:
 
     # JS renderCommitsList logic
     assert "isSelected" in content, "renderCommitsList must determine isSelected status"
-    assert 'selected' in content, "renderCommitsList must apply selected class"
+    assert "selected" in content, "renderCommitsList must apply selected class"
 
 
 def test_templates_js_syntax_validation() -> None:
@@ -130,7 +129,9 @@ def test_regression_cr_finding_a2ee1118_iframe_scale_isolation() -> None:
 def test_common_stylesheet_linkage_and_presence() -> None:
     """Verify common.css stylesheet exists in static assets and is linked across all UI templates."""
     # 1. Static asset existence
-    dashboard_static_css = Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "common.css"
+    dashboard_static_css = (
+        Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "common.css"
+    )
     host_static_css = Path(__file__).resolve().parent.parent / "host_daemon" / "static" / "common.css"
 
     assert dashboard_static_css.is_file(), "static/common.css missing in dashboard code_review static directory"
@@ -152,6 +153,5 @@ def test_common_stylesheet_linkage_and_presence() -> None:
     for file_path in files_to_check:
         content = file_path.read_text(encoding="utf-8")
         assert '<link rel="stylesheet" href="/static/common.css">' in content, (
-            f"{file_path.name} missing <link rel=\"stylesheet\" href=\"/static/common.css\">"
+            f'{file_path.name} missing <link rel="stylesheet" href="/static/common.css">'
         )
-

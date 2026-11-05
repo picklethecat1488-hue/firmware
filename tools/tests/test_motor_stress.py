@@ -120,9 +120,11 @@ def test_motor_stress_runner_run_ramp_happy_path(tmp_path: Path):
     runner = MotorStressRunner(host="127.0.0.1", port=8899)
     out_file = tmp_path / "motor_stress.json"
 
-    with patch.object(runner, "execute_cli") as mock_exec, patch.object(
-        runner, "read_current_ma", return_value=120
-    ), patch.object(runner, "check_diag_trip", return_value=(False, None)):
+    with (
+        patch.object(runner, "execute_cli") as mock_exec,
+        patch.object(runner, "read_current_ma", return_value=120),
+        patch.object(runner, "check_diag_trip", return_value=(False, None)),
+    ):
         report = runner.run_ramp(
             start_speed=1,
             end_speed=5,
@@ -150,15 +152,17 @@ def test_motor_stress_runner_run_ramp_diag_trip_aborts():
     """Verify ramp immediately halts motor and aborts if DIAG trips."""
     runner = MotorStressRunner(host="127.0.0.1", port=8899)
 
-    with patch.object(runner, "execute_cli") as mock_exec, patch.object(
-        runner, "read_current_ma", return_value=1450
-    ), patch.object(
-        runner,
-        "check_diag_trip",
-        side_effect=[
-            (False, None),  # Speed 1
-            (True, "TMC6300 PIO DIAG pin asserted: driver fault detected"),  # Speed 2
-        ],
+    with (
+        patch.object(runner, "execute_cli") as mock_exec,
+        patch.object(runner, "read_current_ma", return_value=1450),
+        patch.object(
+            runner,
+            "check_diag_trip",
+            side_effect=[
+                (False, None),  # Speed 1
+                (True, "TMC6300 PIO DIAG pin asserted: driver fault detected"),  # Speed 2
+            ],
+        ),
     ):
         report = runner.run_ramp(
             start_speed=1,
