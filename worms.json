@@ -3317,7 +3317,7 @@
       "logs": "[] [target] [INFO] shell> motor curren166.538159 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 166.538357 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] shell> gpio read 26167.564282 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Gpio { subcommand: Some(Read), pin: Some(26), value: None }\"\n[] [target] [INFO] 167.564476 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] 168.594361 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 168.594565 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] shell> motor stop169.555882 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 169.556071 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] shell> 169.567348 INFO \u001b[36m[controller::motor_controller]\u001b[0m Stopping motor...\n[] [target] [INFO] shell> motor speed 3518.812294 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Speed), arg1: Some(\\\"30\\\"), arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 518.812556 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] shell> 518.816747 WARN \u001b[36m[controller::motor_controller]\u001b[0m Warning, calibration is not present! Running with fallback limits.\n[] [target] [INFO] 518.816775 INFO \u001b[36m[controller::motor_controller]\u001b[0m Starting motor...\n[] [target] [INFO] motor curren525.160374 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 525.160584 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] shell> motor rpm529.325034 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 529.325241 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] shell> motor stop533.378964 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 533.379157 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] shell> 533.389201 INFO \u001b[36m[controller::motor_controller]\u001b[0m Stopping motor...\n[] [target] [INFO] motor speed 100632.750985 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Speed), arg1: Some(\\\"100\\\"), arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 632.751221 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] 632.755420 WARN \u001b[36m[controller::motor_controller]\u001b[0m Warning, calibration is not present! Running with fallback limits.\n[] [target] [INFO] 632.755444 INFO \u001b[36m[controller::motor_controller]\u001b[0m Starting motor...\n[] [target] [INFO] shell> motor rpm635.702208 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 635.702420 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] shell> motor stop640.239891 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 640.240088 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] shell> 640.247849 INFO \u001b[36m[controller::motor_controller]\u001b[0m Stopping motor...\n[] [target] [INFO] 1012.279178 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Speed), arg1: Some(\\\"10\\\"), arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 1012.279419 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] 1012.282834 WARN \u001b[36m[controller::motor_controller]\u001b[0m Warning, calibration is not present! Running with fallback limits.\n[] [target] [INFO] 1012.282862 INFO \u001b[36m[controller::motor_controller]\u001b[0m Starting motor...\n[] [target] [INFO] 1073.904214 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Speed), arg1: Some(\\\"30\\\"), arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 1073.904456 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] 1073.915259 WARN \u001b[36m[controller::motor_controller]\u001b[0m Warning, calibration is not present! Running with fallback limits.\n[] [target] [INFO] 1080.131206 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 1080.131425 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] 1135.045349 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Speed), arg1: Some(\\\"50\\\"), arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 1135.045583 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] shell> 1135.055263 WARN \u001b[36m[controller::motor_controller]\u001b[0m Warning, calibration is not present! Running with fallback limits.\n[] [target] [INFO] 1172.965759 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Speed), arg1: Some(\\\"100\\\"), arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 1172.966001 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] shell> 1172.975274 WARN \u001b[36m[controller::motor_controller]\u001b[0m Warning, calibration is not present! Running with fallback limits.\n[] [target] [INFO] 1189.471612 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 1189.471815 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] shell> 1214.715253 ERROR \u001b[36m[peripheral::tmc6300]\u001b[0m TMC6300 PIO DIAG pin asserted: driver fault detected\n[] [target] [INFO] 1214.715313 INFO \u001b[36m[controller::motor_controller]\u001b[0m Stopping motor...\n[] [target] [INFO] 1226.960627 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 1226.960824 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded",
       "attachments": [
         {
-          "id": "att-4",
+          "id": "att-1",
           "filename": "motor_speed_100.MOV",
           "file_type": "document",
           "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV",
@@ -3326,7 +3326,7 @@
           "created_at": ""
         },
         {
-          "id": "att-5",
+          "id": "att-2",
           "filename": "motor_speed_50.MOV",
           "file_type": "document",
           "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV",
@@ -3335,7 +3335,7 @@
           "created_at": ""
         },
         {
-          "id": "att-1",
+          "id": "att-3",
           "filename": "target_system_logs_WORM-ORGANIC-FIREWORM-553.log",
           "file_type": "log",
           "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log",
@@ -3344,7 +3344,7 @@
           "created_at": ""
         },
         {
-          "id": "att-2",
+          "id": "att-4",
           "filename": "motor_speed_10.MOV",
           "file_type": "document",
           "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV",
@@ -3353,7 +3353,7 @@
           "created_at": ""
         },
         {
-          "id": "att-3",
+          "id": "att-5",
           "filename": "motor_speed_30.MOV",
           "file_type": "document",
           "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV",
@@ -3796,7 +3796,7 @@
       "logs": "[] [daemon] [INFO] [Sync] Compiling target firmware...\n[] [daemon] [INFO] Building target firmware: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi, release=True\n[] [build] [INFO] \u001b[1m\u001b[92m    Finished\u001b[0m \u001b]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\u001b\\`release` profile [optimized + debuginfo]\u001b]8;;\u001b\\ target(s) in 0.28s\n[] [daemon] [INFO] Target binary built successfully: /Users/<username>/gh/firmware/target/thumbv6m-none-eabi/release/cat_detector_shell\n[] [daemon] [INFO] [Sync] Compiling host utilities (host_cli, host_fs)...\n[] [daemon] [INFO] Building host utilities: host_cli and host_fs\n[] [build] [INFO] \u001b[1m\u001b[92m    Finished\u001b[0m \u001b]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\u001b\\`release` profile [optimized + debuginfo]\u001b]8;;\u001b\\ target(s) in 0.30s\n[] [daemon] [INFO] Host tools ready: cli=/Users/<username>/gh/firmware/target/release/host_cli, fs=/Users/<username>/gh/firmware/target/release/host_fs\n[] [daemon] [INFO] RTT stream disconnected\n[] [daemon] [INFO] [Sync] Flashing target device via probe-rs...\n[] [daemon] [INFO] Flashing target via cargo run: package=cat_detector, bin=cat_detector_shell, target=thumbv6m-none-eabi\n[] [flash] [INFO] \u001b[1m\u001b[92m    Finished\u001b[0m \u001b]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\u001b\\`release` profile [optimized + debuginfo]\u001b]8;;\u001b\\ target(s) in 0.06s\n[] [flash] [INFO] \u001b[1m\u001b[92m     Running\u001b[0m `/Users/<username>/gh/firmware/tools/runner.sh target/thumbv6m-none-eabi/release/cat_detector_shell --dump`\n[] [flash] [INFO] \u001b[1m\u001b[92m    Finished\u001b[0m \u001b]8;;https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles\u001b\\`release` profile [optimized + debuginfo]\u001b]8;;\u001b\\ target(s) in 0.10s\n[] [flash] [INFO]      \u001b[1;32mFinished\u001b[0m in 9.04s\n[] [flash] [INFO] RTT connected. Active channels:\n[] [flash] [INFO]   - Up Channel: \"defmt\" (logs)\n[] [flash] [INFO]   - Up Channel: \"cli\" (raw output)\n[] [flash] [INFO]   - Down Channel: \"cli\" (raw input)\n[] [flash] [INFO] shell> \n[] [flash] [INFO] \u001b[2K\n[] [flash] [INFO]        |\\      _,,,---,,_\n[] [flash] [INFO]  Zzz   /,`.-'`'    -.  ;-;;,_\n[] [flash] [INFO]       |,4-  ) )-,_. ,\\ (  `'-'\n[] [flash] [INFO]      '---''(_/--'  `-'\\_)  \n[] [flash] [INFO] Type 'help' to print usage.\n[] [flash] [INFO] shell> \n[] [flash] [INFO] Draining buffered defmt logs:\n[] [flash] [INFO] 0.001465 \u001b[32mINFO\u001b[0m MPU stack guard configured at 0x2003c000\n[] [flash] [INFO] 0.021943 \u001b[32mINFO\u001b[0m MPU stack guard configured at 0x2000c500\n[] [daemon] [INFO] Flash download succeeded via cargo run\n[] [daemon] [INFO] [Sync] Starting RTT streaming channels...\n[] [daemon] [INFO] [Sync] Target synchronized & RTT connected successfully.\n[] [daemon] [INFO] RTT streaming process connected\n[] [target] [INFO] 0.001511 INFO \u001b[36m[platform::core_monitor]\u001b[0m MPU stack guard configured at 0x2003c000\n[] [target] [INFO] 0.021962 INFO \u001b[36m[platform::core_monitor]\u001b[0m MPU stack guard configured at 0x2000c500\n[] [target] [INFO] 15.171041 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Speed), arg1: Some(\\\"100\\\"), arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 15.171341 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] 15.174620 WARN \u001b[36m[controller::motor_controller]\u001b[0m Warning, calibration is not present! Running with fallback limits.\n[] [target] [INFO] 15.174649 INFO \u001b[36m[controller::motor_controller]\u001b[0m Starting motor...\n[] [target] [INFO] 18.608212 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 18.608440 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] 18.617265 INFO \u001b[36m[controller::motor_controller]\u001b[0m Stopping motor...\n[] [target] [INFO] 20.430521 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Speed), arg1: Some(\\\"30\\\"), arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 20.430773 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] 20.434952 WARN \u001b[36m[controller::motor_controller]\u001b[0m Warning, calibration is not present! Running with fallback limits.\n[] [target] [INFO] 20.434976 INFO \u001b[36m[controller::motor_controller]\u001b[0m Starting motor...\n[] [target] [INFO] 22.781054 INFO \u001b[36m[controller::shell_controller]\u001b[0m received command \"Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }\"\n[] [target] [INFO] 22.781263 INFO \u001b[36m[controller::shell_controller]\u001b[0m command execution succeeded\n[] [target] [INFO] 22.787425 INFO \u001b[36m[controller::motor_controller]\u001b[0m Stopping motor...",
       "attachments": [
         {
-          "id": "att-3",
+          "id": "att-1",
           "filename": "target_telemetry_WORM-COMPOSTED-DIGGER-386.json",
           "file_type": "reference",
           "file_path": "attachments/WORM-COMPOSTED-DIGGER-386/target_telemetry_WORM-COMPOSTED-DIGGER-386.json",
@@ -3805,7 +3805,7 @@
           "created_at": ""
         },
         {
-          "id": "att-1",
+          "id": "att-2",
           "filename": "IMG_0202.MOV",
           "file_type": "reference",
           "file_path": "attachments/WORM-COMPOSTED-DIGGER-386/IMG_0202.MOV",
@@ -3814,7 +3814,7 @@
           "created_at": ""
         },
         {
-          "id": "att-2",
+          "id": "att-3",
           "filename": "target_system_logs_WORM-COMPOSTED-DIGGER-386.log",
           "file_type": "log",
           "file_path": "attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log",
@@ -4299,7 +4299,7 @@
       "custom_sections": [],
       "commit_ids": [],
       "review_tasks": [],
-      "created_at": "",
+      "created_at": "2026-11-05 13:32:56 UTC",
       "updated_at": "",
       "resolved_at": null,
       "resolution_notes": "",
@@ -4308,5 +4308,5 @@
       "rejected_at": null
     }
   ],
-  "updated_at": "2026-11-05 13:29:24 UTC"
+  "updated_at": "2026-11-05 13:32:56 UTC"
 }
