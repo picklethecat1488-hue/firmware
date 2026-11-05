@@ -5,6 +5,7 @@ into a clean GitHub-flavored Markdown document (build/WORMS.md) with overview me
 action checklists, and embedded references.
 """
 
+from collections.abc import Collection
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -44,6 +45,7 @@ class MarkdownWormExporter:
         output_path: Path,
         store: Optional[Any] = None,
         feedback_dir: Optional[Path] = None,
+        dirty_bug_ids: Optional[Collection[str]] = None,
     ) -> Path:
         """Generate and save WORMS.md markdown document and individual WORM_<id>.md files.
 
@@ -52,6 +54,8 @@ class MarkdownWormExporter:
             output_path: Destination path for WORMS.md file.
             store: Optional SQLiteWormStore to synchronize duplicate ID updates.
             feedback_dir: Optional destination directory for individual WORM_<id>.md files.
+            dirty_bug_ids: Optional collection of worm IDs that were modified. If provided,
+                only individual files for these worms are updated.
 
         Returns:
             Resolved Path where markdown was saved.
@@ -88,7 +92,13 @@ class MarkdownWormExporter:
 
         # Export individual WORM_<id>.md files into feedback/ (or custom feedback_dir)
         target_feedback_dir = feedback_dir or (self.repo_root / "feedback")
-        self.export_all_individual_worms(database, target_feedback_dir)
+        if dirty_bug_ids is not None:
+            dirty_set = set(dirty_bug_ids)
+            for bug in database.worms:
+                if bug.id in dirty_set:
+                    self.export_individual_worm(bug, target_feedback_dir)
+        else:
+            self.export_all_individual_worms(database, target_feedback_dir)
 
         return output_path
 

@@ -5,6 +5,7 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import threading
+import time
 import urllib.request
 import pytest
 
@@ -722,3 +723,71 @@ def test_api_migrate_legacy_worms(tmp_path: Path) -> None:
         server.server_close()
         server.shutdown()
         t.join(timeout=2.0)
+
+
+def test_worm_server_fast_incremental_save_regression(tmp_path: Path) -> None:
+    """Verify incremental dirty worm save and detached branch commits execute in sub-second time.
+
+    Guards against regression where saving took >10s due to per-worm subprocess spawning.
+    """
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "User"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "user@workspace"], cwd=repo_dir, check=True)
+    (repo_dir / "README.md").write_text("# Test Repo\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo_dir, check=True, capture_output=True)
+
+    feedback_dir = repo_dir / "feedback"
+    feedback_dir.mkdir(parents=True, exist_ok=True)
+    db_file = repo_dir / "worms.sqlite"
+
+    # Populate 50 test worms
+    worms = [
+        WormReportModel(
+            id=f"WORM-FAST-{i:03d}",
+            title=f"Fast Worm {i}",
+            status=WormStatus.OPEN,
+            severity=WormSeverity.LOW,
+            category=WormCategory.FIRMWARE,
+        )
+        for i in range(50)
+    ]
+    db = WormDatabaseModel(title="Bench DB", worms=worms)
+    store = SQLiteWormStore(db_path=db_file)
+    store.save_database(db)
+
+    server = WormReportServer(
+        host="127.0.0.1",
+        port=0,
+        repo_root=repo_dir,
+        feedback_dir=feedback_dir,
+        sqlite_file=db_file,
+    )
+    # Initial full save
+    server.save_and_sync()
+
+    # Now modify one worm and test incremental dirty save performance
+    target_worm = server.database.get_worm("WORM-FAST-010")
+    target_worm.status = WormStatus.RESOLVED
+    target_worm.resolution_notes = "Fixed performance regression"
+
+    t0 = time.perf_counter()
+    server.save_and_sync(dirty_bug_ids=[target_worm.id])
+    elapsed = time.perf_counter() - t0
+
+    assert elapsed < 3.0, f"Incremental save took {elapsed:.2f}s, expected < 3.0s"
+
+    # Verify updated worm is saved in SQLite, markdown, and detached branch
+    reloaded_worm = server.sqlite_store.get_worm("WORM-FAST-010")
+    assert reloaded_worm is not None
+    assert reloaded_worm.status == WormStatus.RESOLVED
+    assert reloaded_worm.resolution_notes == "Fixed performance regression"
+
+    detached_store = DetachedBranchWormStore(repo_dir)
+    loaded_detached = detached_store.load_database()
+    assert loaded_detached is not None
+    detached_target = loaded_detached.get_worm("WORM-FAST-010")
+    assert detached_target is not None
+    assert detached_target.status == WormStatus.RESOLVED
