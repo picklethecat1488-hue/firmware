@@ -3318,33 +3318,6 @@
       "attachments": [
         {
           "id": "att-1",
-          "filename": "motor_speed_100.MOV",
-          "file_type": "document",
-          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV",
-          "size_bytes": 0,
-          "description": "Attached document (motor_speed_100.MOV)",
-          "created_at": ""
-        },
-        {
-          "id": "att-2",
-          "filename": "motor_speed_50.MOV",
-          "file_type": "document",
-          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV",
-          "size_bytes": 0,
-          "description": "Attached document (motor_speed_50.MOV)",
-          "created_at": ""
-        },
-        {
-          "id": "att-3",
-          "filename": "target_system_logs_WORM-ORGANIC-FIREWORM-553.log",
-          "file_type": "log",
-          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log",
-          "size_bytes": 0,
-          "description": "Target system and defmt logs from host daemon session",
-          "created_at": ""
-        },
-        {
-          "id": "att-4",
           "filename": "motor_speed_10.MOV",
           "file_type": "document",
           "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV",
@@ -3353,12 +3326,39 @@
           "created_at": ""
         },
         {
-          "id": "att-5",
+          "id": "att-2",
           "filename": "motor_speed_30.MOV",
           "file_type": "document",
           "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV",
           "size_bytes": 0,
           "description": "Attached document (motor_speed_30.MOV)",
+          "created_at": ""
+        },
+        {
+          "id": "att-3",
+          "filename": "motor_speed_100.MOV",
+          "file_type": "document",
+          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV",
+          "size_bytes": 0,
+          "description": "Attached document (motor_speed_100.MOV)",
+          "created_at": ""
+        },
+        {
+          "id": "att-4",
+          "filename": "motor_speed_50.MOV",
+          "file_type": "document",
+          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV",
+          "size_bytes": 0,
+          "description": "Attached document (motor_speed_50.MOV)",
+          "created_at": ""
+        },
+        {
+          "id": "att-5",
+          "filename": "target_system_logs_WORM-ORGANIC-FIREWORM-553.log",
+          "file_type": "log",
+          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log",
+          "size_bytes": 0,
+          "description": "Target system and defmt logs from host daemon session",
           "created_at": ""
         }
       ],
@@ -3797,6 +3797,15 @@
       "attachments": [
         {
           "id": "att-1",
+          "filename": "target_system_logs_WORM-COMPOSTED-DIGGER-386.log",
+          "file_type": "log",
+          "file_path": "attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log",
+          "size_bytes": 0,
+          "description": "Target system and defmt logs from host daemon session",
+          "created_at": ""
+        },
+        {
+          "id": "att-2",
           "filename": "target_telemetry_WORM-COMPOSTED-DIGGER-386.json",
           "file_type": "reference",
           "file_path": "attachments/WORM-COMPOSTED-DIGGER-386/target_telemetry_WORM-COMPOSTED-DIGGER-386.json",
@@ -3805,21 +3814,12 @@
           "created_at": ""
         },
         {
-          "id": "att-2",
+          "id": "att-3",
           "filename": "IMG_0202.MOV",
           "file_type": "reference",
           "file_path": "attachments/WORM-COMPOSTED-DIGGER-386/IMG_0202.MOV",
           "size_bytes": 0,
           "description": "Uploaded reference IMG_0202.MOV",
-          "created_at": ""
-        },
-        {
-          "id": "att-3",
-          "filename": "target_system_logs_WORM-COMPOSTED-DIGGER-386.log",
-          "file_type": "log",
-          "file_path": "attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log",
-          "size_bytes": 0,
-          "description": "Target system and defmt logs from host daemon session",
           "created_at": ""
         }
       ],
@@ -4286,7 +4286,7 @@
       "id": "WORM-CREEPING-TAPEWORM-215",
       "uuid": "2912e28f-e587-4b0f-8cc2-5642a1042e48",
       "title": "Only first commit in smartlog tree gets highlighted",
-      "status": "OPEN",
+      "status": "RESOLVED",
       "severity": "MEDIUM",
       "category": "UI",
       "component": "dashboard",
@@ -4299,14 +4299,14 @@
       "custom_sections": [],
       "commit_ids": [],
       "review_tasks": [],
-      "created_at": "2026-11-05 13:33:41 UTC",
+      "created_at": "2026-11-05 13:32:56 UTC",
       "updated_at": "",
-      "resolved_at": null,
-      "resolution_notes": "",
+      "resolved_at": "2026-11-05 13:34:38 UTC",
+      "resolution_notes": "Fixed selectCommit in diff_view.html.j2 across firmware and hardware repositories. Replaced fragile slice(0, 7) element lookups with event.currentTarget and data-hash attribute matching (exact and prefix), supporting arbitrary-length git abbreviated hashes (e.g. 8-char SHAs). Added data-hash='working' to working tree node and updated dynamic renderSmartlogList to preserve active class across selection transitions. Added dedicated regression unit tests in tools/tests/test_worm_creeping_tapeworm_215_smartlog_highlight.py and hardware tests.",
       "rejection_notes": "",
       "accepted_at": null,
       "rejected_at": null
     }
   ],
-  "updated_at": "2026-11-05 13:34:17 UTC"
+  "updated_at": "2026-11-05 13:34:44 UTC"
 }

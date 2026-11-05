@@ -6,10 +6,10 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-05 13:34:19 UTC` |
+| **Report Date** | `2026-11-05 13:34:46 UTC` |
 | **Total Issues** | `108` |
-| **Open Issues** | `1` |
-| **Resolved / Closed** | `107 (99%)` |
+| **Open Issues** | `0` |
+| **Resolved / Closed** | `108 (100%)` |
 
 ## Issues by Severity
 
@@ -144,7 +144,7 @@
 - [x] **`[MEDIUM]`** [#WORM-SOILBOUND-VERMIS-341](#worm-soilbound-vermis-341): The CLI console is broken and not updating `[cat_detector]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-NEMATODE-26](#worm-annelidic-nematode-26): motor speed 100 tripped DIAG `[target]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-HUMIC-SANDWORM-365](#worm-humic-sandworm-365): motor speed 50 tripped DIAG `[target]` (`RESOLVED`)
-- [ ] **`[MEDIUM]`** [#WORM-CREEPING-TAPEWORM-215](#worm-creeping-tapeworm-215): Only first commit in smartlog tree gets highlighted `[dashboard]` (`OPEN`)
+- [x] **`[MEDIUM]`** [#WORM-CREEPING-TAPEWORM-215](#worm-creeping-tapeworm-215): Only first commit in smartlog tree gets highlighted `[dashboard]` (`RESOLVED`)
 
 ## Detailed Issue Log
 
@@ -14086,11 +14086,11 @@ motor speed 100-rotates slowly, and eventually trips drag
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
+| `document` | [motor_speed_10.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV) | Attached document (motor_speed_10.MOV) |
+| `document` | [motor_speed_30.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV) | Attached document (motor_speed_30.MOV) |
 | `document` | [motor_speed_100.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV) | Attached document (motor_speed_100.MOV) |
 | `document` | [motor_speed_50.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV) | Attached document (motor_speed_50.MOV) |
 | `log` | [target_system_logs_WORM-ORGANIC-FIREWORM-553.log](attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log) | Target system and defmt logs from host daemon session |
-| `document` | [motor_speed_10.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV) | Attached document (motor_speed_10.MOV) |
-| `document` | [motor_speed_30.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV) | Attached document (motor_speed_30.MOV) |
 
 #### Resolution Notes
 
@@ -15019,9 +15019,9 @@ The motor spins for a half cycle, during which the motor duty cycle is 100%. Aft
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-COMPOSTED-DIGGER-386.log](attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log) | Target system and defmt logs from host daemon session |
 | `reference` | [target_telemetry_WORM-COMPOSTED-DIGGER-386.json](attachments/WORM-COMPOSTED-DIGGER-386/target_telemetry_WORM-COMPOSTED-DIGGER-386.json) | Target telemetry export retrieved via host_fs |
 | `reference` | [IMG_0202.MOV](attachments/WORM-COMPOSTED-DIGGER-386/IMG_0202.MOV) | Uploaded reference IMG_0202.MOV |
-| `log` | [target_system_logs_WORM-COMPOSTED-DIGGER-386.log](attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log) | Target system and defmt logs from host daemon session |
 
 #### Resolution Notes
 
@@ -15915,17 +15915,22 @@ Resolved by eliminating TMC6300 FET turn-off timing violations with SHORT_PROTEC
 
 ---
 
-### <a id="worm-creeping-tapeworm-215"></a> 🔴 `[WORM-CREEPING-TAPEWORM-215]` Only first commit in smartlog tree gets highlighted
+### <a id="worm-creeping-tapeworm-215"></a> 🟢 `[WORM-CREEPING-TAPEWORM-215]` Only first commit in smartlog tree gets highlighted
 
 - **UUID**: `2912e28f-e587-4b0f-8cc2-5642a1042e48`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `UI`
 - **Component**: `dashboard`
-- **Created**: `2026-11-05 13:33:41 UTC`
+- **Created**: `2026-11-05 13:32:56 UTC`
+- **Resolved**: `2026-11-05 13:34:38 UTC`
 
 #### Description
 
 In diff_view.html.j2, selectCommit attempts to find active commit elements via document.getElementById('node-' + commitHash.slice(0, 7)). When git abbreviations exceed 7 characters (e.g. 8-char short SHAs), element lookup returns null, causing commit selection highlights to fail on click.
+
+#### Resolution Notes
+
+Fixed selectCommit in diff_view.html.j2 across firmware and hardware repositories. Replaced fragile slice(0, 7) element lookups with event.currentTarget and data-hash attribute matching (exact and prefix), supporting arbitrary-length git abbreviated hashes (e.g. 8-char SHAs). Added data-hash='working' to working tree node and updated dynamic renderSmartlogList to preserve active class across selection transitions. Added dedicated regression unit tests in tools/tests/test_worm_creeping_tapeworm_215_smartlog_highlight.py and hardware tests.
 
 ---
