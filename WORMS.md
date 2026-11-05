@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-05 13:32:59 UTC` |
+| **Report Date** | `2026-11-05 13:33:14 UTC` |
 | **Total Issues** | `108` |
 | **Open Issues** | `1` |
 | **Resolved / Closed** | `107 (99%)` |
@@ -15922,7 +15922,6 @@ Resolved by eliminating TMC6300 FET turn-off timing violations with SHORT_PROTEC
 - **Severity**: `MEDIUM`
 - **Category**: `UI`
 - **Component**: `dashboard`
-- **Created**: `2026-11-05 13:32:56 UTC`
 
 #### Description
 

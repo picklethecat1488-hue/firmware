@@ -6,7 +6,6 @@
 - **Severity**: `MEDIUM`
 - **Category**: `UI`
 - **Component**: `dashboard`
-- **Created**: `2026-11-05 13:32:56 UTC`
 
 #### Description
 
