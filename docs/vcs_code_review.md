@@ -24,7 +24,11 @@ To document the design patterns, template hierarchies, and persistence protocols
   - `list-worms [--open] [--planned] [--severity <sev>] [--category <cat>]`
   - `add-worm "<title>" [--severity <sev>] [--category <cat>]`
   - `resolve-worm <id> --notes "<notes>"`
+  - `add-task --id <id> --title "<Step>" [--command "<cmd>"]`
+  - `attach-commit --id <id> --commit <hash>`
+  - `accept-worm <id>`, `reject-worm <id>`
   - `sync`, `list-commits`, `commit [-m "<msg>"]`
+* **Verification Checklist Mandate on Resolution**: When transitioning any defect to `RESOLVED`, the author MUST update the worm's review tasks and functional checklist (`review_tasks`) with concise verification steps—including exact commands to run wherever possible (using `python tools/dashboard.py add-task --id <ID> --title "<Step>" --command "<cmd>"`). This ensures peer reviewers have an immediate, repeatable checklist to independently verify the fix prior to acceptance (`accept-worm`).
 * **Commit Author & Privacy Redaction**: Personal usernames, personal email addresses, and author identities (such as user nicknames and personal email domains) MUST be automatically elided and sanitized in the VCS engine (`GitEngine`), smartlog DAG models, commit info summaries, API responses, and web workstation UI templates (`code_review.html.j2`, `diff_view.html.j2`) into generic labels (`User`, `user@workspace`). Never leak the user's real or personal names in commit logs, smartlog displays, code review sessions, or git-tracked documentation.
 
 ### 4. Bidirectional Dashboard & Script Cross-Patching Mandate
