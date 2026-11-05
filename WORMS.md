@@ -49,6 +49,7 @@
 - **Status**: `OPEN`
 - **Severity**: `LOW`
 - **Category**: `FIRMWARE`
+- **Created**: `2026-11-05 15:26:23 UTC`
 
 ---
 
