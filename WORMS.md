@@ -6,10 +6,10 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-05 14:27:55 UTC` |
+| **Report Date** | `2026-11-05 14:30:54 UTC` |
 | **Total Issues** | `109` |
-| **Open Issues** | `1` |
-| **Resolved / Closed** | `108 (99%)` |
+| **Open Issues** | `0` |
+| **Resolved / Closed** | `109 (100%)` |
 
 ## Issues by Severity
 
@@ -37,6 +37,7 @@
 
 ## Issue Checklist
 
+- [x] **`[LOW]`** [#WORM-SILKEN-CASTING-127](#worm-silken-casting-127): Diff viewer missing green highlight for line additions in side-by-side and unified views `[dashboard]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-001](#worm-001): Remove hardware-specific categories from the dashboard `[dashboard]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-002](#worm-002): Update BUG to WORM `[dashboard]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-003](#worm-003): GEMINI.md should be core agent skills only `[dashboard]` (`RESOLVED`)
@@ -145,9 +146,28 @@
 - [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-NEMATODE-26](#worm-annelidic-nematode-26): motor speed 100 tripped DIAG `[target]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-HUMIC-SANDWORM-365](#worm-humic-sandworm-365): motor speed 50 tripped DIAG `[target]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-CREEPING-TAPEWORM-215](#worm-creeping-tapeworm-215): Only first commit in smartlog tree gets highlighted `[dashboard]` (`RESOLVED`)
-- [ ] **`[LOW]`** [#WORM-SILKEN-CASTING-127](#worm-silken-casting-127): Diff viewer missing green highlight for line additions in side-by-side and unified views `[dashboard]` (`OPEN`)
 
 ## Detailed Issue Log
+
+### <a id="worm-silken-casting-127"></a> 🟢 `[WORM-SILKEN-CASTING-127]` Diff viewer missing green highlight for line additions in side-by-side and unified views
+
+- **UUID**: `b2ab3811-057b-4884-b0cf-df9a0f781f3e`
+- **Status**: `RESOLVED`
+- **Severity**: `LOW`
+- **Category**: `UI`
+- **Component**: `dashboard`
+- **Created**: `2026-11-05 14:30:52 UTC`
+- **Resolved**: `2026-11-05 14:30:53 UTC`
+
+#### Description
+
+In the VCS diff view (diff_component.html.j2), line additions and inserted lines do not have the green background highlight. Unified diff lines use row-add / add / insert classes which are not targeted by the CSS rules (which only targeted row-insert), and the background color used teal instead of standard green.
+
+#### Resolution Notes
+
+Updated diff_component.html.j2 and code_review.html.j2 to use green highlight rgba(34, 197, 94, 0.22) and #22c55e for line additions in side-by-side and unified views. Added comprehensive support for .row-add, .add, .insert, and .row-insert classes. Cross-patched matching selectors into hardware repository.
+
+---
 
 ### <a id="worm-001"></a> 🟢 `[WORM-001]` Remove hardware-specific categories from the dashboard
 
@@ -15933,19 +15953,5 @@ In diff_view.html.j2, selectCommit attempts to find active commit elements via d
 #### Resolution Notes
 
 Fixed selectCommit in diff_view.html.j2 across firmware and hardware repositories. Replaced fragile slice(0, 7) element lookups with event.currentTarget and data-hash attribute matching (exact and prefix), supporting arbitrary-length git abbreviated hashes (e.g. 8-char SHAs). Added data-hash='working' to working tree node and updated dynamic renderSmartlogList to preserve active class across selection transitions. Added dedicated regression unit tests in tools/tests/test_worm_creeping_tapeworm_215_smartlog_highlight.py and hardware tests.
-
----
-
-### <a id="worm-silken-casting-127"></a> 🔴 `[WORM-SILKEN-CASTING-127]` Diff viewer missing green highlight for line additions in side-by-side and unified views
-
-- **UUID**: `b2ab3811-057b-4884-b0cf-df9a0f781f3e`
-- **Status**: `OPEN`
-- **Severity**: `LOW`
-- **Category**: `UI`
-- **Component**: `dashboard`
-
-#### Description
-
-In the VCS diff view (diff_component.html.j2), line additions and inserted lines do not have the green background highlight. Unified diff lines use row-add / add / insert classes which are not targeted by the CSS rules (which only targeted row-insert), and the background color used teal instead of standard green.
 
 ---
