@@ -3614,7 +3614,7 @@ def test_regression_worm_annelidic_caterpillar_258_smartlog_node_selected_highli
     assert "{% if node.commit_hash in session.selected_commits %}selected{% endif %}" in tpl_text
 
     # 3. Dynamic renderSmartlogList must apply selected class when commit is checked/selected
-    assert "${isSelected}" in tpl_text or "node.classList.toggle(\"selected\"" in tpl_text
+    assert "${isSelected}" in tpl_text or 'node.classList.toggle("selected"' in tpl_text
 
 
 def test_diff_view_optimizations_polling_and_file_priority() -> None:
@@ -3630,5 +3630,7 @@ def test_diff_view_optimizations_polling_and_file_priority() -> None:
     assert "const first = regular[0]?.path || lfs[0]?.path || feedback[0]?.path;" in tpl_text
 
     # renderWorkingTreeFiles must auto-select staged/unstaged/untracked before LFS files
-    assert "conflicts[0]?.path || staged[0]?.path || unstaged[0]?.path || untracked[0]?.path || lfs[0]?.path || feedback[0]?.path;" in tpl_text
-
+    assert (
+        "conflicts[0]?.path || staged[0]?.path || unstaged[0]?.path || untracked[0]?.path || lfs[0]?.path || feedback[0]?.path;"
+        in tpl_text
+    )

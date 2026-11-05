@@ -34,9 +34,5 @@ def test_worm_lustrous_flatworm_473_recordings_untracked():
         check=False,
     )
     assert proc.returncode == 0
-    untracked_recordings = [
-        line for line in proc.stdout.splitlines() if line.startswith("?? recordings/")
-    ]
-    assert (
-        not untracked_recordings
-    ), f"Found untracked artifacts under recordings/: {untracked_recordings}"
+    untracked_recordings = [line for line in proc.stdout.splitlines() if line.startswith("?? recordings/")]
+    assert not untracked_recordings, f"Found untracked artifacts under recordings/: {untracked_recordings}"

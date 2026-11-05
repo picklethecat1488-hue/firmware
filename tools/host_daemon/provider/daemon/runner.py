@@ -65,6 +65,7 @@ class DaemonRunner:
         self.is_sync_cancelled: bool = False
         self._active_sync_process: Optional[subprocess.Popen] = None
 
+        self.flashed_commit: Optional[str] = None
         self.sync_status: Dict[str, Any] = {
             "active": False,
             "step": "idle",
@@ -77,6 +78,7 @@ class DaemonRunner:
             "bin": self.bin_name,
             "profile": "release" if self.release else "debug",
             "speed": self.speed,
+            "flashed_commit": None,
             "error": None,
             "console": [],
         }
@@ -131,6 +133,7 @@ class DaemonRunner:
                     "bin": self.bin_name,
                     "profile": "release" if self.release else "debug",
                     "speed": self.speed,
+                    "flashed_commit": self.flashed_commit,
                     "error": error,
                     "console": list(self.sync_logs),
                 }
@@ -223,6 +226,23 @@ class DaemonRunner:
             self._update_sync("flashing_target", 3, 75, "Flashing target device via probe-rs...")
             if not self.flash_target():
                 raise RuntimeError(self.status_message or "Flash target failed")
+
+            head_commit = None
+            try:
+                proc = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=str(self.repo_root),
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if proc.returncode == 0:
+                    head_commit = proc.stdout.strip()
+            except Exception:
+                pass
+            self.flashed_commit = head_commit
+            with self._lock:
+                self.sync_status["flashed_commit"] = head_commit
 
             # 4. Start RTT streaming
             if self.is_sync_cancelled:

@@ -18,6 +18,8 @@ from model.worm_report import (
     WormCategory,
     WormDatabaseModel,
     WormReportModel,
+    WormReviewTaskModel,
+    WormReviewTaskStatus,
     WormSectionModel,
     WormSeverity,
     WormStatus,
@@ -330,7 +332,7 @@ class SQLiteWormStore:
         actual_clean = elide_personal_info(bug.actual_behavior)
         logs_clean = elide_personal_info(bug.logs)
         notes_clean = elide_personal_info(bug.resolution_notes)
-        rejection_clean = elide_personal_info(bug.rejection_notes)
+        rejection_clean = elide_personal_info(bug.rejection_notes or "")
         steps_clean = [elide_personal_info(s) for s in bug.reproduction_steps]
         steps_json = json.dumps(steps_clean)
         commit_ids_json = json.dumps(bug.commit_ids)
@@ -472,20 +474,23 @@ class SQLiteWormStore:
             return generate_docker_pattern_id(prefix="WORM", existing_ids=existing_ids)
 
     def get_worm_by_uuid(self, worm_uuid: str) -> Optional[WormReportModel]:
-        """Find a bug in SQLite by its unique UUID."""
+        """Find a worm in SQLite by its unique UUID."""
         with self._get_connection() as conn:
-            row = conn.execute(
-                "SELECT id, uuid, title, status, severity, category, component, description, "
-                "reproduction_steps, expected_behavior, actual_behavior, logs, created_at, "
-                "updated_at, resolved_at, resolution_notes FROM worms WHERE uuid = ?",
-                (worm_uuid,),
-            ).fetchone()
+            row = conn.execute("SELECT id FROM worms WHERE uuid = ?", (worm_uuid,)).fetchone()
+            if not row:
+                return None
+            return self.get_worm(row["id"])
+
+    def get_worm(self, worm_id: str) -> Optional[WormReportModel]:
+        """Fetch a single worm report by human-readable worm ID."""
+        with self._get_connection() as conn:
+            row = conn.execute("SELECT * FROM worms WHERE id = ?", (worm_id,)).fetchone()
             if not row:
                 return None
             att_rows = conn.execute(
                 "SELECT id, filename, file_type, file_path, size_bytes, description, created_at "
                 "FROM worm_attachments WHERE worm_id = ? ORDER BY created_at ASC",
-                (row["id"],),
+                (worm_id,),
             ).fetchall()
             attachments = [
                 WormAttachmentModel(
@@ -493,9 +498,9 @@ class SQLiteWormStore:
                     filename=ar["filename"],
                     file_type=ar["file_type"],
                     file_path=ar["file_path"],
-                    size_bytes=ar["size_bytes"],
-                    description=ar["description"],
-                    created_at=ar["created_at"],
+                    size_bytes=ar["size_bytes"] or 0,
+                    description=ar["description"] or "",
+                    created_at=ar["created_at"] or "",
                 )
                 for ar in att_rows
             ]
@@ -508,9 +513,28 @@ class SQLiteWormStore:
                 category_val = WormCategory(row["category"])
             except ValueError:
                 category_val = WormCategory.GENERAL
+
+            commit_ids_raw = row["commit_ids"] if "commit_ids" in row.keys() else "[]"
+            try:
+                commit_ids = json.loads(commit_ids_raw) if commit_ids_raw else []
+            except (json.JSONDecodeError, TypeError):
+                commit_ids = []
+
+            tasks_raw = row["review_tasks"] if "review_tasks" in row.keys() else "[]"
+            try:
+                tasks_data = json.loads(tasks_raw) if tasks_raw else []
+                review_tasks = [WormReviewTaskModel.model_validate(t) for t in tasks_data]
+            except Exception:
+                review_tasks = []
+
+            rej_notes = row["rejection_notes"] if "rejection_notes" in row.keys() and row["rejection_notes"] else None
+            acc_at = row["accepted_at"] if "accepted_at" in row.keys() else None
+            rej_at = row["rejected_at"] if "rejected_at" in row.keys() else None
+            w_uuid = row["uuid"] if ("uuid" in row.keys() and row["uuid"]) else str(uuid_pkg.uuid4())
+
             return WormReportModel(
                 id=row["id"],
-                uuid=row["uuid"] or worm_uuid,
+                uuid=w_uuid,
                 title=row["title"],
                 status=WormStatus(row["status"]),
                 severity=WormSeverity(row["severity"]),
@@ -522,11 +546,18 @@ class SQLiteWormStore:
                 actual_behavior=row["actual_behavior"] or "",
                 logs=row["logs"] or "",
                 attachments=attachments,
+                commit_ids=commit_ids,
+                review_tasks=review_tasks,
                 created_at=row["created_at"] or "",
                 updated_at=row["updated_at"] or "",
                 resolved_at=row["resolved_at"],
                 resolution_notes=row["resolution_notes"] or "",
+                rejection_notes=rej_notes,
+                accepted_at=acc_at,
+                rejected_at=rej_at,
             )
+
+    get_bug = get_worm
 
     def update_worm_id(self, worm_uuid: str, new_id: str) -> None:
         """Update bug ID for an existing bug matching its unique UUID.

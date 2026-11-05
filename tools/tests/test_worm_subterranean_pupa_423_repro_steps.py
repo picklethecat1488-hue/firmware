@@ -131,9 +131,11 @@ def test_worm_subterranean_pupa_423_template_modal_clears_description_and_refres
 
     # 1. openTargetBugModal must clear targetBugDescription so previous descriptions don't persist
     assert "targetBugDescription" in content
-    assert 'descInput.value = "";' in content or 'getElementById("targetBugDescription").value = "";' in content or 'descInput.value = ""' in content, (
-        "openTargetBugModal must reset description input value"
-    )
+    assert (
+        'descInput.value = "";' in content
+        or 'getElementById("targetBugDescription").value = "";' in content
+        or 'descInput.value = ""' in content
+    ), "openTargetBugModal must reset description input value"
 
     # 2. openTargetBugModal must NOT guard steps update with '!stepsInput.value' (which prevented updates)
     assert "!stepsInput.value" not in content, (

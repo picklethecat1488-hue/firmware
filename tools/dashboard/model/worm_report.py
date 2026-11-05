@@ -47,6 +47,14 @@ class WormCategory(str, Enum):
     GENERAL = "GENERAL"
 
 
+class WormReviewTaskStatus(str, Enum):
+    """Lifecycle status for a functional review task."""
+
+    PENDING = "PENDING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
 class WormAttachmentModel(BaseModel):
     """File attachment (log, screenshot, artifact, reference) associated with a worm."""
 
@@ -57,6 +65,16 @@ class WormAttachmentModel(BaseModel):
     size_bytes: int = 0
     description: str = ""
     created_at: str = ""
+
+
+class WormReviewTaskModel(BaseModel):
+    """A functional verification or review task for a worm report."""
+
+    id: str = Field(default_factory=lambda: str(uuid_pkg.uuid4())[:8])
+    title: str
+    command: str = ""  # Shell command or visualization action to demo functionality
+    status: WormReviewTaskStatus = WormReviewTaskStatus.PENDING
+    notes: str = ""
 
 
 class WormSectionModel(BaseModel):
@@ -83,10 +101,15 @@ class WormReportModel(BaseModel):
     logs: str = ""
     attachments: List[WormAttachmentModel] = Field(default_factory=list)
     custom_sections: List[WormSectionModel] = Field(default_factory=list)
+    commit_ids: List[str] = Field(default_factory=list)
+    review_tasks: List[WormReviewTaskModel] = Field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
     resolved_at: Optional[str] = None
     resolution_notes: str = ""
+    rejection_notes: Optional[str] = ""
+    accepted_at: Optional[str] = None
+    rejected_at: Optional[str] = None
 
 
 class WormDatabaseModel(BaseModel):

@@ -42,3 +42,4 @@ def test_contributing_contains_anvil_documentation() -> None:
     assert "bin/anvil sync" in content
     assert "bin/anvil verify" in content
     assert "bin/anvil pytest" in content
+    assert "bin/anvil cli" in content

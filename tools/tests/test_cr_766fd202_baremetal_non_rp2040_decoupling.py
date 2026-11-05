@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression unit test for code review findings:
+"""Regression unit test for code review findings.
 
 1. CR-766fd202: Decouple bare-metal non-RP2040 targets from RP2040-specific crates.
    peripheral/build.rs must not output errors for non-RP2040 baremetal targets.
@@ -23,13 +23,15 @@ def test_cr_766fd202_baremetal_non_rp2040_target_decoupling():
     build_code = build_rs.read_text(encoding="utf-8")
     assert 'println!("cargo:rustc-cfg=target_has_embassy_rp");' in build_code
     assert 'eprintln!("Error:' not in build_code
-    assert "target.contains(\"none\")" not in build_code
+    assert 'target.contains("none")' not in build_code
 
     cargo_text = cargo_toml.read_text(encoding="utf-8")
     assert "[target.thumbv6m-none-eabi.dependencies]" in cargo_text
     assert 'embassy-rp = { version = "0.3.0"' in cargo_text
     # embassy-rp and pio must NOT be in generic all(target_arch = "arm", target_os = "none") dependencies
-    arm_none_section = cargo_text.split('[target.\'cfg(all(target_arch = "arm", target_os = "none"))\'.dependencies]')[1].split("[target.")[0]
+    arm_none_section = cargo_text.split('[target.\'cfg(all(target_arch = "arm", target_os = "none"))\'.dependencies]')[
+        1
+    ].split("[target.")[0]
     assert "embassy-rp" not in arm_none_section
     assert "pio" not in arm_none_section
 

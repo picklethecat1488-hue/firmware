@@ -165,7 +165,7 @@ def send_daemon_request(
     req_host = host if host is not None else (lock.get("host", "127.0.0.1") if lock else "127.0.0.1")
     pid = lock.get("pid", 0) if lock else 0
 
-    if not lock and port is None:
+    if not lock and port is None and not is_port_in_use(req_port, req_host):
         raise RuntimeError("No active host daemon detected (lock file /tmp/xerxes_host_daemon.lock not found).")
 
     if lock and not is_pid_alive(pid) and not is_port_in_use(req_port, req_host):

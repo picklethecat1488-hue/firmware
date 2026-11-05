@@ -47,6 +47,30 @@ def test_anvil_runner_pull_requires_path() -> None:
     )
 
 
+def test_anvil_runner_cli_requires_command() -> None:
+    """Verify bin/anvil cli requires a command argument."""
+    repo_root = get_repo_root()
+    script_path = repo_root / "bin" / "anvil"
+
+    result = subprocess.run([str(script_path), "cli"], capture_output=True, text=True)
+    assert result.returncode == 1
+    assert "Usage: bin/anvil cli <command...>" in result.stdout or (
+        "Usage: bin/anvil cli <command...>" in result.stderr
+    )
+
+
+def test_anvil_runner_host_requires_subcommand() -> None:
+    """Verify bin/anvil host requires a subcommand argument."""
+    repo_root = get_repo_root()
+    script_path = repo_root / "bin" / "anvil"
+
+    result = subprocess.run([str(script_path), "host"], capture_output=True, text=True)
+    assert result.returncode == 1
+    assert "Usage: bin/anvil host <subcommand...> [args...]" in result.stdout or (
+        "Usage: bin/anvil host <subcommand...> [args...]" in result.stderr
+    )
+
+
 def test_anvil_runner_sync_and_pytest_mocked(tmp_path: Path) -> None:
     """Verify bin/anvil sync and pytest dispatch appropriate rsync and ssh commands with proper exclusions."""
     repo_root = get_repo_root()
@@ -100,7 +124,19 @@ exit 0
     res_verify = subprocess.run([str(script_path), "verify"], env=env, capture_output=True, text=True)
     assert res_verify.returncode == 0
 
-    # Test 4: bin/anvil stop
+    # Test 4: bin/anvil cli
+    res_cli = subprocess.run(
+        [str(script_path), "cli", "motor", "speed", "100"], env=env, capture_output=True, text=True
+    )
+    assert res_cli.returncode == 0
+    assert "Reverse proxying host CLI to local daemon" in res_cli.stdout
+
+    # Test 5: bin/anvil host
+    res_host = subprocess.run([str(script_path), "host", "status"], env=env, capture_output=True, text=True)
+    assert res_host.returncode == 0
+    assert "Reverse proxying host command to local daemon" in res_host.stdout
+
+    # Test 6: bin/anvil stop
     res_stop = subprocess.run([str(script_path), "stop"], env=env, capture_output=True, text=True)
     assert res_stop.returncode == 0
     assert "Remote processes cleaned up" in res_stop.stdout
@@ -113,4 +149,7 @@ exit 0
     assert "MOCK_SSH:" in calls
     assert "pytest" in calls
     assert "verify.sh" in calls
+    assert "-R 8899:127.0.0.1:8899" in calls
+    assert "python tools/host.py cli motor speed 100" in calls
+    assert "python tools/host.py status" in calls
     assert "pkill" in calls

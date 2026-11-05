@@ -46,9 +46,7 @@ def test_worm_bristly_burrower_873_constants_and_scaling_defined():
     assert "Register::SHUNT_VOLTAGE" in content, (
         "peripheral/src/ina219.rs must check Register::SHUNT_VOLTAGE as fallback."
     )
-    assert "DEFAULT_CALIBRATION" in content, (
-        "peripheral/src/ina219.rs must restore DEFAULT_CALIBRATION."
-    )
+    assert "DEFAULT_CALIBRATION" in content, "peripheral/src/ina219.rs must restore DEFAULT_CALIBRATION."
 
 
 def test_worm_bristly_burrower_873_set_measurement_mode_restores_calibration():

@@ -184,8 +184,14 @@ def test_host_daemon_no_cache_headers_and_compact_font_sizes():
     tmpl_content = tmpl_path.read_text(encoding="utf-8")
     # Verify compact font sizes matching dashboard aesthetic
     assert ".header-title {\n      font-size: 10.5px;" in tmpl_content
-    assert ".panel-header {\n      background: rgba(10, 28, 36, 0.85);\n      border-bottom: 1px solid var(--xerxes-border-mid);\n      padding: 5px 10px;\n      font-size: 9px;" in tmpl_content
-    assert ".panel-content {\n      display: block;\n      flex: 1;\n      flex-direction: column;\n      overflow-y: auto;\n      padding: 6px 8px;\n      font-size: 9.5px;" in tmpl_content
+    assert (
+        ".panel-header {\n      background: rgba(10, 28, 36, 0.85);\n      border-bottom: 1px solid var(--xerxes-border-mid);\n      padding: 5px 10px;\n      font-size: 9px;"
+        in tmpl_content
+    )
+    assert (
+        ".panel-content {\n      display: block;\n      flex: 1;\n      flex-direction: column;\n      overflow-y: auto;\n      padding: 6px 8px;\n      font-size: 9.5px;"
+        in tmpl_content
+    )
 
     runner = DaemonRunner(
         repo_root=workspace_root,
@@ -210,5 +216,3 @@ def test_host_daemon_no_cache_headers_and_compact_font_sizes():
     finally:
         server.shutdown()
         server_thread.join(timeout=2)
-
-

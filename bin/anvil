@@ -10,7 +10,8 @@
 #   bin/anvil verify [args...]         # Sync and run pre-commit verification on anvil
 #   bin/anvil pytest [args...]         # Sync and run pytest on anvil
 #   bin/anvil cargo [args...]          # Sync and run cargo on anvil
-#   bin/anvil simulate [args...]       # Run simulation/waveform generation on anvil and auto-download artifacts
+#   bin/anvil cli <command...>         # Reverse proxy host CLI command from anvil to local host.py daemon
+#   bin/anvil host <subcmd...>         # Reverse proxy host.py command from anvil to local host.py daemon
 #   bin/anvil run <command...>         # Sync and run arbitrary command on anvil
 #   bin/anvil stop                     # Terminate running processes on anvil
 # ==============================================================================
@@ -70,16 +71,6 @@ pull_recordings() {
     echo "📥 Syncing all preview artifacts and recordings from ${REMOTE_HOST}:${REMOTE_DIR}/${target_dir}/..."
     rsync -avz "${REMOTE_HOST}:${REMOTE_DIR}/${target_dir}/" "${REPO_DIR}/${target_dir}/"
     echo "✅ Recordings synced."
-}
-
-auto_download_artifacts() {
-    for arg in "$@"; do
-        local file_path="${arg#*=}"
-        if [[ "$file_path" == *.rrd ]] || [[ "$file_path" == *.mp4 ]] || [[ "$file_path" == *.svg ]] || [[ "$file_path" == *.png ]] || [[ "$file_path" == *.json ]]; then
-            echo "📥 Auto-downloading generated artifact: ${file_path}..."
-            pull_file "${file_path}"
-        fi
-    done
 }
 
 kill_remote_pytest() {
@@ -149,15 +140,27 @@ case "$1" in
         echo "🦀 Running cargo on ${REMOTE_HOST}: cargo $*"
         ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd ${REMOTE_DIR} && ${REMOTE_CARGO_PATH} && cargo $*"
         ;;
-    simulate)
+    cli)
         shift
-        kill_remote_daemon
+        if [ $# -eq 0 ]; then
+            echo "Usage: bin/anvil cli <command...>"
+            exit 1
+        fi
         sync_code
-        echo "🌊 Running simulation/analysis on ${REMOTE_HOST}..."
-        trap kill_remote_daemon INT TERM
-        ssh ${SSH_OPTS} "${REMOTE_HOST}" "cd ${REMOTE_DIR} && ${REMOTE_CARGO_PATH} && ${REMOTE_CONDA} $*"
-        trap - INT TERM
-        auto_download_artifacts "$@"
+        echo "🔌 Reverse proxying host CLI to local daemon (127.0.0.1:8899) and executing on ${REMOTE_HOST}..."
+        cmd_args=$(printf ' %q' "$@")
+        ssh ${SSH_OPTS} -R 8899:127.0.0.1:8899 "${REMOTE_HOST}" "cd ${REMOTE_DIR} && ${REMOTE_CARGO_PATH} && ${REMOTE_CONDA} python tools/host.py cli${cmd_args}"
+        ;;
+    host)
+        shift
+        if [ $# -eq 0 ]; then
+            echo "Usage: bin/anvil host <subcommand...> [args...]"
+            exit 1
+        fi
+        sync_code
+        echo "🔌 Reverse proxying host command to local daemon (127.0.0.1:8899) and executing on ${REMOTE_HOST}..."
+        cmd_args=$(printf ' %q' "$@")
+        ssh ${SSH_OPTS} -R 8899:127.0.0.1:8899 "${REMOTE_HOST}" "cd ${REMOTE_DIR} && ${REMOTE_CARGO_PATH} && ${REMOTE_CONDA} python tools/host.py${cmd_args}"
         ;;
     run|exec)
         shift
@@ -167,7 +170,7 @@ case "$1" in
         ;;
     *)
         if [ $# -eq 0 ]; then
-            echo "Usage: bin/anvil {sync|pull|recordings|verify|pytest|cargo|simulate|run|stop} [args...]"
+            echo "Usage: bin/anvil {sync|pull|recordings|verify|pytest|cargo|cli|host|run|stop} [args...]"
             exit 1
         fi
         sync_code

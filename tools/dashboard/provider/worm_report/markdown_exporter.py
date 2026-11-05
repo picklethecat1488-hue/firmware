@@ -17,6 +17,8 @@ from model.worm_report import (
     WormCategory,
     WormDatabaseModel,
     WormReportModel,
+    WormReviewTaskModel,
+    WormReviewTaskStatus,
     WormSectionModel,
     WormSeverity,
     WormStatus,
@@ -224,6 +226,10 @@ class MarkdownWormExporter:
                 lines.append(f"- **Created**: `{b.created_at}`")
             if b.resolved_at:
                 lines.append(f"- **Resolved**: `{b.resolved_at}`")
+            if b.accepted_at:
+                lines.append(f"- **Accepted**: `{b.accepted_at}`")
+            if b.rejected_at:
+                lines.append(f"- **Rejected**: `{b.rejected_at}`")
             lines.append("")
 
             if b.description.strip():
@@ -289,12 +295,33 @@ class MarkdownWormExporter:
                     )
                 lines.append("")
 
+            if b.commit_ids:
+                lines.extend(["#### Attached Commits", ""] + [f"- `{c}`" for c in b.commit_ids] + [""])
+
+            if b.review_tasks:
+                lines.extend(["#### Review Tasks & Functional Checklist", ""])
+                for t in b.review_tasks:
+                    chk = "x" if t.status == WormReviewTaskStatus.COMPLETED else " "
+                    cmd_part = f" | `{t.command}`" if t.command else ""
+                    lines.append(f"- [{chk}] {t.title}{cmd_part} <!-- id:{t.id} -->")
+                lines.append("")
+
             if b.resolution_notes.strip():
                 lines.extend(
                     [
                         "#### Resolution Notes",
                         "",
                         b.resolution_notes.strip(),
+                        "",
+                    ]
+                )
+
+            if b.rejection_notes and b.rejection_notes.strip():
+                lines.extend(
+                    [
+                        "#### Rejection Feedback",
+                        "",
+                        b.rejection_notes.strip(),
                         "",
                     ]
                 )
@@ -444,6 +471,16 @@ class MarkdownWormExporter:
             if m_resolved:
                 resolved_val = m_resolved.group(1).strip()
 
+            accepted_val = None
+            m_accepted = re.search(r"-\s+\*\*Accepted\*\*:\s*`?([^\n`*]+)`?", sec_clean)
+            if m_accepted:
+                accepted_val = m_accepted.group(1).strip()
+
+            rejected_val = None
+            m_rejected = re.search(r"-\s+\*\*Rejected\*\*:\s*`?([^\n`*]+)`?", sec_clean)
+            if m_rejected:
+                rejected_val = m_rejected.group(1).strip()
+
             # Parse subsections: ####
             subsections = re.split(r"\n(?=####\s+)", sec_clean)
             desc = ""
@@ -452,6 +489,9 @@ class MarkdownWormExporter:
             actual = ""
             logs = ""
             res_notes = ""
+            rej_notes = ""
+            commit_ids: List[str] = []
+            review_tasks: List[WormReviewTaskModel] = []
             attachments: List[WormAttachmentModel] = []
             custom_sections: List[WormSectionModel] = []
 
@@ -478,6 +518,41 @@ class MarkdownWormExporter:
                                 steps.append(step_m.group(1).strip())
                             elif step_line.strip().startswith("-"):
                                 steps.append(step_line.strip().lstrip("-").strip())
+                    case "attached commits":
+                        for c_line in sub_body.splitlines():
+                            c_m = re.search(r"`([0-9a-fA-F]+)`", c_line)
+                            if c_m:
+                                commit_ids.append(c_m.group(1).strip())
+                            elif c_line.strip().startswith("-"):
+                                commit_ids.append(c_line.strip().lstrip("-").strip())
+                    case "review tasks & functional checklist" | "review tasks" | "functional checklist":
+                        for t_line in sub_body.splitlines():
+                            t_m = re.match(r"^-\s+\[([ xX])\]\s*(.*?)$", t_line.strip())
+                            if t_m:
+                                is_done = t_m.group(1).lower() == "x"
+                                rest = t_m.group(2).strip()
+                                task_id_m = re.search(r"<!--\s*(?:id|uuid):([a-zA-Z0-9_-]+)\s*-->", rest)
+                                task_id = task_id_m.group(1).strip() if task_id_m else str(uuid_pkg.uuid4())[:8]
+                                rest = re.sub(r"<!--.*?-->", "", rest).strip()
+                                cmd = ""
+                                if "|" in rest:
+                                    parts = rest.split("|", 1)
+                                    title_part = parts[0].strip()
+                                    cmd_raw = parts[1].strip()
+                                    cmd_m = re.search(r"`([^`]+)`", cmd_raw)
+                                    cmd = cmd_m.group(1).strip() if cmd_m else cmd_raw
+                                else:
+                                    title_part = rest
+                                review_tasks.append(
+                                    WormReviewTaskModel(
+                                        id=task_id,
+                                        title=title_part,
+                                        command=cmd,
+                                        status=WormReviewTaskStatus.COMPLETED
+                                        if is_done
+                                        else WormReviewTaskStatus.PENDING,
+                                    )
+                                )
                     case "behavior comparison":
                         exp_m = re.search(r"-\s+\*\*Expected\*\*:\s*(.*?)$", sub_body, re.MULTILINE)
                         act_m = re.search(r"-\s+\*\*Actual\*\*:\s*(.*?)$", sub_body, re.MULTILINE)
@@ -500,6 +575,8 @@ class MarkdownWormExporter:
                         logs = cleaned_logs.strip()
                     case "resolution notes" | "resolution":
                         res_notes = sub_body
+                    case "rejection feedback" | "rejection notes":
+                        rej_notes = sub_body
                     case "attachments & references" | "attachments":
                         for att_line in sub_body.splitlines():
                             att_m = re.match(
@@ -542,7 +619,12 @@ class MarkdownWormExporter:
                 logs=logs,
                 attachments=attachments,
                 custom_sections=custom_sections,
+                commit_ids=commit_ids,
+                review_tasks=review_tasks,
                 resolution_notes=res_notes,
+                rejection_notes=rej_notes,
+                accepted_at=accepted_val,
+                rejected_at=rejected_val,
             )
             db.add_or_update(bug)
 
@@ -572,6 +654,7 @@ class MarkdownWormExporter:
                     existing.status in (WormStatus.RESOLVED, WormStatus.CLOSED)
                     and md_bug.status == WormStatus.OPEN
                     and not md_bug.resolution_notes.strip()
+                    and not (md_bug.rejection_notes and md_bug.rejection_notes.strip())
                 ):
                     pass
                 elif md_bug.status != existing.status:
@@ -583,6 +666,12 @@ class MarkdownWormExporter:
                             )
                     else:
                         existing.resolved_at = None
+
+                # Acceptance and Rejection timestamps
+                if md_bug.accepted_at and md_bug.accepted_at != existing.accepted_at:
+                    existing.accepted_at = md_bug.accepted_at
+                if md_bug.rejected_at and md_bug.rejected_at != existing.rejected_at:
+                    existing.rejected_at = md_bug.rejected_at
 
                 # Non-empty title / severity / category / component updates
                 if md_bug.title and md_bug.title != existing.title:
@@ -632,6 +721,41 @@ class MarkdownWormExporter:
                         existing.attachments.append(att)
                         existing_paths.add(att.file_path)
 
+                # Commit IDs: merge unique
+                for cid in md_bug.commit_ids:
+                    if cid not in existing.commit_ids:
+                        existing.commit_ids.append(cid)
+
+                # Review tasks: merge preserving IDs
+                if md_bug.review_tasks:
+                    existing_by_id = {t.id: t for t in existing.review_tasks}
+                    existing_by_title = {t.title: t for t in existing.review_tasks}
+                    merged_tasks = []
+                    for t in md_bug.review_tasks:
+                        if t.id in existing_by_id:
+                            orig = existing_by_id[t.id]
+                            t.notes = t.notes or orig.notes
+                            merged_tasks.append(t)
+                        elif t.title in existing_by_title:
+                            orig = existing_by_title[t.title]
+                            t.id = orig.id
+                            t.notes = t.notes or orig.notes
+                            merged_tasks.append(t)
+                        else:
+                            merged_tasks.append(t)
+                    existing.review_tasks = merged_tasks
+
+                # Rejection notes
+                if (
+                    md_bug.rejection_notes
+                    and md_bug.rejection_notes.strip()
+                    and (
+                        not existing.rejection_notes
+                        or md_bug.rejection_notes.strip() != existing.rejection_notes.strip()
+                    )
+                ):
+                    existing.rejection_notes = md_bug.rejection_notes
+
         return base_db
 
     def render_worm_markdown(self, bug: WormReportModel) -> str:
@@ -663,6 +787,10 @@ class MarkdownWormExporter:
             lines.append(f"- **Created**: `{bug.created_at}`")
         if bug.resolved_at:
             lines.append(f"- **Resolved**: `{bug.resolved_at}`")
+        if bug.accepted_at:
+            lines.append(f"- **Accepted**: `{bug.accepted_at}`")
+        if bug.rejected_at:
+            lines.append(f"- **Rejected**: `{bug.rejected_at}`")
         lines.append("")
 
         if bug.description.strip():
@@ -707,8 +835,22 @@ class MarkdownWormExporter:
                 )
             lines.append("")
 
+        if bug.commit_ids:
+            lines.extend(["#### Attached Commits", ""] + [f"- `{c}`" for c in bug.commit_ids] + [""])
+
+        if bug.review_tasks:
+            lines.extend(["#### Review Tasks & Functional Checklist", ""])
+            for t in bug.review_tasks:
+                chk = "x" if t.status == WormReviewTaskStatus.COMPLETED else " "
+                cmd_part = f" | `{t.command}`" if t.command else ""
+                lines.append(f"- [{chk}] {t.title}{cmd_part} <!-- id:{t.id} -->")
+            lines.append("")
+
         if bug.resolution_notes.strip():
             lines.extend(["#### Resolution Notes", "", bug.resolution_notes.strip(), ""])
+
+        if bug.rejection_notes and bug.rejection_notes.strip():
+            lines.extend(["#### Rejection Feedback", "", bug.rejection_notes.strip(), ""])
 
         return elide_personal_info("\n".join(lines).strip() + "\n")
 
@@ -734,6 +876,7 @@ class MarkdownWormExporter:
                 # Protect resolved bug file on disk from being overwritten by un-noted OPEN bug
                 if (
                     bug.status == WormStatus.OPEN
+                    and not bug.rejection_notes
                     and not bug.resolution_notes.strip()
                     and "- **Status**: `RESOLVED`" in disk_content
                 ):
@@ -842,6 +985,16 @@ class MarkdownWormExporter:
             if m_resolved:
                 resolved_val = m_resolved.group(1).strip()
 
+            accepted_val = None
+            m_accepted = re.search(r"-\s+\*\*Accepted\*\*:\s*`?([^\n`*]+)`?", content)
+            if m_accepted:
+                accepted_val = m_accepted.group(1).strip()
+
+            rejected_val = None
+            m_rejected = re.search(r"-\s+\*\*Rejected\*\*:\s*`?([^\n`*]+)`?", content)
+            if m_rejected:
+                rejected_val = m_rejected.group(1).strip()
+
             subsections = re.split(r"\n(?=####\s+)", content)
             desc = ""
             steps: List[str] = []
@@ -849,6 +1002,9 @@ class MarkdownWormExporter:
             actual = ""
             logs = ""
             res_notes = ""
+            rej_notes = ""
+            commit_ids: List[str] = []
+            review_tasks: List[WormReviewTaskModel] = []
             attachments: List[WormAttachmentModel] = []
             custom_sections: List[WormSectionModel] = []
 
@@ -871,6 +1027,41 @@ class MarkdownWormExporter:
                                 steps.append(step_m.group(1).strip())
                             elif step_line.strip().startswith("-"):
                                 steps.append(step_line.strip().lstrip("-").strip())
+                    case "attached commits":
+                        for c_line in sub_body.splitlines():
+                            c_m = re.search(r"`([0-9a-fA-F]+)`", c_line)
+                            if c_m:
+                                commit_ids.append(c_m.group(1).strip())
+                            elif c_line.strip().startswith("-"):
+                                commit_ids.append(c_line.strip().lstrip("-").strip())
+                    case "review tasks & functional checklist" | "review tasks" | "functional checklist":
+                        for t_line in sub_body.splitlines():
+                            t_m = re.match(r"^-\s+\[([ xX])\]\s*(.*?)$", t_line.strip())
+                            if t_m:
+                                is_done = t_m.group(1).lower() == "x"
+                                rest = t_m.group(2).strip()
+                                task_id_m = re.search(r"<!--\s*(?:id|uuid):([a-zA-Z0-9_-]+)\s*-->", rest)
+                                task_id = task_id_m.group(1).strip() if task_id_m else str(uuid_pkg.uuid4())[:8]
+                                rest = re.sub(r"<!--.*?-->", "", rest).strip()
+                                cmd = ""
+                                if "|" in rest:
+                                    parts = rest.split("|", 1)
+                                    title_part = parts[0].strip()
+                                    cmd_raw = parts[1].strip()
+                                    cmd_m = re.search(r"`([^`]+)`", cmd_raw)
+                                    cmd = cmd_m.group(1).strip() if cmd_m else cmd_raw
+                                else:
+                                    title_part = rest
+                                review_tasks.append(
+                                    WormReviewTaskModel(
+                                        id=task_id,
+                                        title=title_part,
+                                        command=cmd,
+                                        status=WormReviewTaskStatus.COMPLETED
+                                        if is_done
+                                        else WormReviewTaskStatus.PENDING,
+                                    )
+                                )
                     case "behavior comparison":
                         exp_m = re.search(r"-\s+\*\*Expected\*\*:\s*(.*?)$", sub_body, re.MULTILINE)
                         act_m = re.search(r"-\s+\*\*Actual\*\*:\s*(.*?)$", sub_body, re.MULTILINE)
@@ -893,6 +1084,8 @@ class MarkdownWormExporter:
                         logs = cleaned.strip()
                     case "resolution notes" | "resolution":
                         res_notes = sub_body
+                    case "rejection feedback" | "rejection notes":
+                        rej_notes = sub_body
                     case "attachments & references" | "attachments":
                         for att_line in sub_body.splitlines():
                             att_m = re.match(
@@ -931,7 +1124,12 @@ class MarkdownWormExporter:
                 logs=logs,
                 attachments=attachments,
                 custom_sections=custom_sections,
+                commit_ids=commit_ids,
+                review_tasks=review_tasks,
                 resolution_notes=res_notes,
+                rejection_notes=rej_notes,
+                accepted_at=accepted_val,
+                rejected_at=rejected_val,
             )
         except Exception:
             return None
@@ -1028,6 +1226,7 @@ class MarkdownWormExporter:
                 if (
                     existing_by_uuid.status in (WormStatus.RESOLVED, WormStatus.CLOSED)
                     and md_bug.status == WormStatus.OPEN
+                    and not (md_bug.rejection_notes and md_bug.rejection_notes.strip())
                     and not md_bug.resolution_notes.strip()
                 ):
                     pass

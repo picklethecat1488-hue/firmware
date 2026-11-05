@@ -80,10 +80,34 @@ def test_template_sorting_functional_via_node():
 
     # Test dataset with mixed legacy and docker-pattern IDs and conflicting random suffixes
     mock_worms = [
-        {"id": "WORM-001", "created_at": "2026-10-03 19:26:02 UTC", "title": "Oldest", "severity": "LOW", "status": "RESOLVED"},
-        {"id": "WORM-TRANSLUCENT-TAPEWORM-953", "created_at": "2026-10-15 10:00:00 UTC", "title": "Middle High", "severity": "HIGH", "status": "RESOLVED"},
-        {"id": "WORM-SETOSE-TUBEWORM-177", "created_at": "2026-10-21 23:57:15 UTC", "title": "Newer Low", "severity": "MEDIUM", "status": "RESOLVED"},
-        {"id": "WORM-HUMIC-COCOON-243", "created_at": "2026-10-22 00:00:15 UTC", "title": "Newest", "severity": "MEDIUM", "status": "OPEN"},
+        {
+            "id": "WORM-001",
+            "created_at": "2026-10-03 19:26:02 UTC",
+            "title": "Oldest",
+            "severity": "LOW",
+            "status": "RESOLVED",
+        },
+        {
+            "id": "WORM-TRANSLUCENT-TAPEWORM-953",
+            "created_at": "2026-10-15 10:00:00 UTC",
+            "title": "Middle High",
+            "severity": "HIGH",
+            "status": "RESOLVED",
+        },
+        {
+            "id": "WORM-SETOSE-TUBEWORM-177",
+            "created_at": "2026-10-21 23:57:15 UTC",
+            "title": "Newer Low",
+            "severity": "MEDIUM",
+            "status": "RESOLVED",
+        },
+        {
+            "id": "WORM-HUMIC-COCOON-243",
+            "created_at": "2026-10-22 00:00:15 UTC",
+            "title": "Newest",
+            "severity": "MEDIUM",
+            "status": "OPEN",
+        },
     ]
 
     node_script = f"""
@@ -132,6 +156,4 @@ def test_template_sorting_functional_via_node():
         "WORM-SETOSE-TUBEWORM-177",
         "WORM-HUMIC-COCOON-243",
     ]
-    assert data["asc"] == expected_asc, (
-        f"id_asc must sort oldest to newest. Expected {expected_asc}, got {data['asc']}"
-    )
+    assert data["asc"] == expected_asc, f"id_asc must sort oldest to newest. Expected {expected_asc}, got {data['asc']}"

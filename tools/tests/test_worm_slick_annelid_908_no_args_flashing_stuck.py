@@ -131,4 +131,6 @@ def test_no_args_with_existing_daemon_does_not_trigger_unwanted_reflash():
         # Invariant: /api/sync MUST NOT be triggered when called with no explicit arguments
         for call_args in mock_send.call_args_list:
             endpoint = call_args[0][0] if call_args[0] else ""
-            assert endpoint != "/api/sync", "Invoking host.py with no args should not trigger /api/sync on running daemon"
+            assert endpoint != "/api/sync", (
+                "Invoking host.py with no args should not trigger /api/sync on running daemon"
+            )

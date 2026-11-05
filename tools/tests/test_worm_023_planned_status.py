@@ -66,7 +66,8 @@ def test_cli_list_worms_open_excludes_planned() -> None:
 
     assert "WORM-101" in output, "Open worm should be listed"
     assert "WORM-102" not in output, "Planned worm must be excluded when open_only=True"
-    assert "WORM-103" not in output, "Resolved worm must be excluded when open_only=True"
+    assert "WORM-103" in output, "Resolved worm awaiting review is listed in open/review view"
+    assert "AWAITING REVIEW" in output
 
 
 def test_cli_planned_argument() -> None:

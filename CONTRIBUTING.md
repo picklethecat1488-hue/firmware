@@ -431,6 +431,7 @@ bin/anvil sync                     # Sync repository to anvil
 bin/anvil verify                   # Run ./tools/verify.sh remotely
 bin/anvil pytest [args...]         # Run pytest remotely on anvil
 bin/anvil cargo [args...]          # Run cargo checks/tests remotely on anvil
+bin/anvil cli <command...>         # Reverse proxy host CLI command to local host.py daemon
 bin/anvil pull <remote_path>       # Download generated artifacts/recordings
 bin/anvil stop                     # Clean up remote processes on anvil
 ```

@@ -44,7 +44,14 @@ if str(_tools_dir) not in sys.path:
     sys.path.insert(0, str(_tools_dir))
 
 from model.code_review import CommentModel, ReviewSeverity, ReviewStatus
-from model.worm_report import WormCategory, WormReportModel, WormSeverity, WormStatus
+from model.worm_report import (
+    WormCategory,
+    WormReportModel,
+    WormReviewTaskModel,
+    WormReviewTaskStatus,
+    WormSeverity,
+    WormStatus,
+)
 from provider.dashboard.server import DashboardServer, ensure_high_fd_limit
 from provider.vcs.git_engine import GitEngine, extract_line_snippet, get_git_root
 
@@ -63,6 +70,13 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         "add-bug",
         "resolve-worm",
         "resolve-bug",
+        "accept-worm",
+        "accept-bug",
+        "reject-worm",
+        "reject-bug",
+        "attach-commit",
+        "add-task",
+        "resolve-task",
         "add-comment",
         "resolve-comment",
         "set-verdict",
@@ -369,10 +383,51 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     p_add_w.add_argument("--description", default="")
 
     # resolve-worm
-    p_res_w = subparsers.add_parser("resolve-worm", help="Mark a worm ID as RESOLVED.")
+    p_res_w = subparsers.add_parser("resolve-worm", aliases=["resolve-bug"], help="Mark a worm ID as RESOLVED.")
     p_res_w.add_argument("id", nargs="?", default="", help="Worm ID (e.g. WORM-001).")
     p_res_w.add_argument("--id", dest="worm_id", default="", help="Worm ID.")
     p_res_w.add_argument("--notes", default="", help="Resolution notes.")
+
+    # accept-worm
+    p_acc_w = subparsers.add_parser(
+        "accept-worm", aliases=["accept-bug"], help="Accept a resolved worm and transition to CLOSED."
+    )
+    p_acc_w.add_argument("id", nargs="?", default="", help="Worm ID to accept (e.g. WORM-001).")
+    p_acc_w.add_argument("--id", dest="worm_id", default="", help="Worm ID.")
+    p_acc_w.add_argument("--notes", default="", help="Optional acceptance note.")
+
+    # reject-worm
+    p_rej_w = subparsers.add_parser(
+        "reject-worm", aliases=["reject-bug"], help="Reject a resolved worm and reopen it with feedback."
+    )
+    p_rej_w.add_argument("id", nargs="?", default="", help="Worm ID to reject (e.g. WORM-001).")
+    p_rej_w.add_argument("--id", dest="worm_id", default="", help="Worm ID.")
+    p_rej_w.add_argument("--notes", default="", help="Rejection feedback explaining why the fix was rejected.")
+
+    # attach-commit
+    p_att_c = subparsers.add_parser("attach-commit", help="Attach a git commit hash to a worm report.")
+    p_att_c.add_argument("id", nargs="?", default="", help="Worm ID (e.g. WORM-001).")
+    p_att_c.add_argument("commit", nargs="?", default="", help="Commit hash to attach.")
+    p_att_c.add_argument("--id", dest="worm_id", default="", help="Worm ID.")
+    p_att_c.add_argument("--commit", dest="commit_id", default="", help="Commit hash to attach.")
+
+    # add-task
+    p_add_t = subparsers.add_parser("add-task", help="Add a review task or functional checklist item to a worm.")
+    p_add_t.add_argument("id", nargs="?", default="", help="Worm ID (e.g. WORM-001).")
+    p_add_t.add_argument("--id", dest="worm_id", default="", help="Worm ID.")
+    p_add_t.add_argument("--title", required=True, help="Task title / description.")
+    p_add_t.add_argument("--command", default="", help="Optional shell or demo command.")
+
+    # resolve-task
+    p_res_t = subparsers.add_parser("resolve-task", help="Update the status of a review task.")
+    p_res_t.add_argument("id", nargs="?", default="", help="Worm ID (e.g. WORM-001).")
+    p_res_t.add_argument("--id", dest="worm_id", default="", help="Worm ID.")
+    p_res_t.add_argument("--task-id", required=True, help="Task ID.")
+    p_res_t.add_argument(
+        "--status", choices=["PENDING", "COMPLETED", "FAILED"], default=None, help="Explicit target status."
+    )
+    p_res_t.add_argument("--failed", action="store_true", help="Mark task as FAILED instead of COMPLETED.")
+    p_res_t.add_argument("--notes", default="", help="Optional task execution notes.")
 
     # add-comment
     p_add_c = subparsers.add_parser("add-comment", help="Quickly add a review comment.")
@@ -693,7 +748,7 @@ def print_cli_worms(
     curr_user = engine.get_current_user() if engine else {"name": "", "email": ""}
     filtered = []
     for w in worms:
-        if open_only and w.status in (WormStatus.RESOLVED, WormStatus.CLOSED, WormStatus.PLANNED):
+        if open_only and w.status in (WormStatus.CLOSED, WormStatus.PLANNED):
             continue
         if planned_only and w.status != WormStatus.PLANNED:
             continue
@@ -718,15 +773,16 @@ def print_cli_worms(
         filtered.append(w)
 
     for w in filtered:
-        chk = "[X]" if w.status in (WormStatus.RESOLVED, WormStatus.CLOSED) else "[ ]"
+        chk = "[X]" if w.status == WormStatus.CLOSED else ("[?]" if w.status == WormStatus.RESOLVED else "[ ]")
         comp = f" ({w.component})" if w.component else ""
-        print(f"  {chk} 🪱 [{w.id}] [{w.severity.value}] [{w.category.value}] {w.title}{comp} -> {w.status.value}")
+        status_disp = "RESOLVED (AWAITING REVIEW)" if w.status == WormStatus.RESOLVED else w.status.value
+        print(f"  {chk} 🪱 [{w.id}] [{w.severity.value}] [{w.category.value}] {w.title}{comp} -> {status_disp}")
 
-    total_open = sum(
-        1 for w in filtered if w.status not in (WormStatus.RESOLVED, WormStatus.CLOSED, WormStatus.PLANNED)
-    )
+    total_open = sum(1 for w in filtered if w.status not in (WormStatus.CLOSED, WormStatus.PLANNED))
+    awaiting_review = sum(1 for w in filtered if w.status == WormStatus.RESOLVED)
     total_all = len(filtered)
-    print(f"\nShowing {len(filtered)} worms ({total_open} open, {total_all} total).\n")
+    review_info = f", {awaiting_review} awaiting review" if awaiting_review else ""
+    print(f"\nShowing {len(filtered)} worms ({total_open} open/review{review_info}, {total_all} total).\n")
 
 
 def print_cli_reviews(
@@ -865,7 +921,22 @@ def main(cli_args: Optional[List[str]] = None) -> None:
         or commits_arg
     )
     is_worm_cmd = bool(
-        subcmd in ("list-worms", "list-bugs", "add-worm", "add-bug", "resolve-worm", "resolve-bug")
+        subcmd
+        in (
+            "list-worms",
+            "list-bugs",
+            "add-worm",
+            "add-bug",
+            "resolve-worm",
+            "resolve-bug",
+            "accept-worm",
+            "accept-bug",
+            "reject-worm",
+            "reject-bug",
+            "attach-commit",
+            "add-task",
+            "resolve-task",
+        )
         or getattr(args, "worms", False)
         or getattr(args, "add_worm", None)
         or getattr(args, "resolve_worm", None)
@@ -1032,6 +1103,124 @@ def main(cli_args: Optional[List[str]] = None) -> None:
                 worm.resolution_notes = args.notes
             server.worm_server.save_and_sync()
             print(f"Resolved worm [{worm.id}]: {worm.title}")
+            return
+        case "accept-worm" | "accept-bug":
+            worm_id = getattr(args, "worm_id", "") or getattr(args, "bug_id", "") or getattr(args, "id", "")
+            if not worm_id:
+                print("Error: Worm ID is required.", file=sys.stderr)
+                sys.exit(1)
+            worm = server.worm_server.database.get_worm(worm_id)
+            if not worm:
+                print(f"Worm '{worm_id}' not found in database.", file=sys.stderr)
+                sys.exit(1)
+            worm.status = WormStatus.CLOSED
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            worm.accepted_at = now_str
+            notes = getattr(args, "notes", "").strip()
+            if notes:
+                if worm.resolution_notes:
+                    worm.resolution_notes += f"\n\n**Acceptance Note**: {notes}"
+                else:
+                    worm.resolution_notes = f"**Acceptance Note**: {notes}"
+            worm.updated_at = now_str
+            server.worm_server.save_and_sync()
+            print(f"Accepted and closed worm [{worm.id}]: {worm.title}")
+            return
+        case "reject-worm" | "reject-bug":
+            worm_id = getattr(args, "worm_id", "") or getattr(args, "bug_id", "") or getattr(args, "id", "")
+            if not worm_id:
+                print("Error: Worm ID is required.", file=sys.stderr)
+                sys.exit(1)
+            worm = server.worm_server.database.get_worm(worm_id)
+            if not worm:
+                print(f"Worm '{worm_id}' not found in database.", file=sys.stderr)
+                sys.exit(1)
+            notes = getattr(args, "notes", "").strip()
+            if not notes:
+                print("Error: Rejection notes are required (--notes).", file=sys.stderr)
+                sys.exit(1)
+            worm.status = WormStatus.OPEN
+            worm.resolved_at = None
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            worm.rejected_at = now_str
+            worm.rejection_notes = notes
+            worm.updated_at = now_str
+            server.worm_server.save_and_sync()
+            print(f"Rejected worm [{worm.id}], returned to OPEN: {worm.title}")
+            return
+        case "attach-commit":
+            worm_id = getattr(args, "worm_id", "") or getattr(args, "bug_id", "") or getattr(args, "id", "")
+            cid = getattr(args, "commit", "") or getattr(args, "commit_id", "")
+            if not worm_id:
+                print("Error: Worm ID is required.", file=sys.stderr)
+                sys.exit(1)
+            if not cid:
+                print("Error: Commit hash is required.", file=sys.stderr)
+                sys.exit(1)
+            worm = server.worm_server.database.get_worm(worm_id)
+            if not worm:
+                print(f"Worm '{worm_id}' not found in database.", file=sys.stderr)
+                sys.exit(1)
+            if cid not in worm.commit_ids:
+                worm.commit_ids.append(cid)
+            worm.updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            server.worm_server.save_and_sync()
+            print(f"Attached commit {cid} to [{worm.id}]. Total attached: {len(worm.commit_ids)}")
+            return
+        case "add-task":
+            worm_id = getattr(args, "worm_id", "") or getattr(args, "bug_id", "") or getattr(args, "id", "")
+            if not worm_id:
+                print("Error: Worm ID is required.", file=sys.stderr)
+                sys.exit(1)
+            title = getattr(args, "title", "").strip()
+            if not title:
+                print("Error: Task title is required (--title).", file=sys.stderr)
+                sys.exit(1)
+            worm = server.worm_server.database.get_worm(worm_id)
+            if not worm:
+                print(f"Worm '{worm_id}' not found in database.", file=sys.stderr)
+                sys.exit(1)
+            cmd = getattr(args, "command", "").strip()
+            task = WormReviewTaskModel(title=title, command=cmd)
+            worm.review_tasks.append(task)
+            worm.updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            server.worm_server.save_and_sync()
+            print(f"Added review task [{task.id}] to [{worm.id}]: {task.title}")
+            return
+        case "resolve-task":
+            worm_id = getattr(args, "worm_id", "") or getattr(args, "bug_id", "") or getattr(args, "id", "")
+            tid = getattr(args, "task_id", "").strip()
+            if not worm_id:
+                print("Error: Worm ID is required.", file=sys.stderr)
+                sys.exit(1)
+            if not tid:
+                print("Error: Task ID is required (--task-id).", file=sys.stderr)
+                sys.exit(1)
+            worm = server.worm_server.database.get_worm(worm_id)
+            if not worm:
+                print(f"Worm '{worm_id}' not found in database.", file=sys.stderr)
+                sys.exit(1)
+            target_task = None
+            for t in worm.review_tasks:
+                if t.id == tid:
+                    target_task = t
+                    break
+            if not target_task:
+                print(f"Task '{tid}' not found on worm [{worm.id}].", file=sys.stderr)
+                sys.exit(1)
+            target_status = getattr(args, "status", None)
+            if target_status:
+                target_task.status = WormReviewTaskStatus(target_status)
+            elif getattr(args, "failed", False):
+                target_task.status = WormReviewTaskStatus.FAILED
+            else:
+                target_task.status = WormReviewTaskStatus.COMPLETED
+            notes = getattr(args, "notes", "")
+            if notes:
+                target_task.notes = notes
+            worm.updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            server.worm_server.save_and_sync()
+            print(f"Updated task [{target_task.id}] on [{worm.id}] -> {target_task.status}")
             return
         case "add-comment":
             body = getattr(args, "comment_body", "") or getattr(args, "body", "")

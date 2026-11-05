@@ -277,16 +277,18 @@ class BringupManager:
             step.notes = notes
             step.timestamp = now_str
 
-            self.results.append({
-                "id": step.id,
-                "name": step.name,
-                "type": step.type.value,
-                "status": step.status.value,
-                "output_log": step.output_log,
-                "matched_line": step.matched_line,
-                "notes": notes,
-                "timestamp": now_str,
-            })
+            self.results.append(
+                {
+                    "id": step.id,
+                    "name": step.name,
+                    "type": step.type.value,
+                    "status": step.status.value,
+                    "output_log": step.output_log,
+                    "matched_line": step.matched_line,
+                    "notes": notes,
+                    "timestamp": now_str,
+                }
+            )
 
             self.active_prompt = None
             self.current_step_idx += 1

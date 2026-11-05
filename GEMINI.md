@@ -37,6 +37,7 @@ Host anvil
 2. **Conda Environment & Binaries**: On `anvil`, Python commands execute within the remote conda environment (`firmware-env` or `cq`) using `conda run -n <env> --no-capture-output <command>`.
 3. **Preceding Run Cancellation**: Before initiating a new remote execution or verification run on `anvil`, ensure any active or stale background runs of the same command are cancelled or terminated (`bin/anvil stop`) to avoid cloud resource contention and duplicate processing.
 4. **Artifact Synchronization**: Use `bin/anvil pull <remote_path> [local_dest]` or `bin/anvil recordings` to download generated logs, waveforms, and inspection figures into the local workspace.
+5. **Host CLI Reverse Proxying**: Use `bin/anvil cli <command...>` (or `bin/anvil host <subcmd...>`) to execute host commands remotely on `anvil` while reverse proxying port 8899 back to the developer's local workstation `host.py` daemon, allowing remote test scripts to interact with physically attached hardware targets.
 
 ---
 
