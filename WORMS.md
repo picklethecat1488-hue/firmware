@@ -6,10 +6,10 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-05 14:25:19 UTC` |
-| **Total Issues** | `108` |
-| **Open Issues** | `0` |
-| **Resolved / Closed** | `108 (100%)` |
+| **Report Date** | `2026-11-05 14:27:55 UTC` |
+| **Total Issues** | `109` |
+| **Open Issues** | `1` |
+| **Resolved / Closed** | `108 (99%)` |
 
 ## Issues by Severity
 
@@ -18,7 +18,7 @@
 | **`[CRITICAL]`** | 3 | System crashes, build failures, blockages, or electrical shorts. |
 | **`[HIGH]`** | 10 | Major functional defects, broken routing, DRC violations, or unphysical behavior. |
 | **`[MEDIUM]`** | 84 | Silkscreen collisions, layout sub-optimality, or visual clipping. |
-| **`[LOW]`** | 11 | Minor aesthetic imperfections or documentation notes. |
+| **`[LOW]`** | 12 | Minor aesthetic imperfections or documentation notes. |
 
 ## Issues by Category
 
@@ -32,7 +32,7 @@
 | **`MODEL`** | 0 | Domain data models, configurations, state definitions. |
 | **`SHELL`** | 0 | CLI interface, shell commands, debug console. |
 | **`INFRASTRUCTURE`** | 54 | Build tooling, compilers, test runners, headless tools. |
-| **`UI`** | 1 | Web dashboards, CLI viewers, review interfaces. |
+| **`UI`** | 2 | Web dashboards, CLI viewers, review interfaces. |
 | **`GENERAL`** | 4 | Unclassified or cross-cutting firmware issues. |
 
 ## Issue Checklist
@@ -145,6 +145,7 @@
 - [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-NEMATODE-26](#worm-annelidic-nematode-26): motor speed 100 tripped DIAG `[target]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-HUMIC-SANDWORM-365](#worm-humic-sandworm-365): motor speed 50 tripped DIAG `[target]` (`RESOLVED`)
 - [x] **`[MEDIUM]`** [#WORM-CREEPING-TAPEWORM-215](#worm-creeping-tapeworm-215): Only first commit in smartlog tree gets highlighted `[dashboard]` (`RESOLVED`)
+- [ ] **`[LOW]`** [#WORM-SILKEN-CASTING-127](#worm-silken-casting-127): Diff viewer missing green highlight for line additions in side-by-side and unified views `[dashboard]` (`OPEN`)
 
 ## Detailed Issue Log
 
@@ -14086,11 +14087,11 @@ motor speed 100-rotates slowly, and eventually trips drag
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-ORGANIC-FIREWORM-553.log](attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log) | Target system and defmt logs from host daemon session |
+| `document` | [motor_speed_10.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV) | Attached document (motor_speed_10.MOV) |
 | `document` | [motor_speed_30.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV) | Attached document (motor_speed_30.MOV) |
 | `document` | [motor_speed_100.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV) | Attached document (motor_speed_100.MOV) |
 | `document` | [motor_speed_50.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV) | Attached document (motor_speed_50.MOV) |
-| `log` | [target_system_logs_WORM-ORGANIC-FIREWORM-553.log](attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log) | Target system and defmt logs from host daemon session |
-| `document` | [motor_speed_10.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV) | Attached document (motor_speed_10.MOV) |
 
 #### Resolution Notes
 
@@ -15019,9 +15020,9 @@ The motor spins for a half cycle, during which the motor duty cycle is 100%. Aft
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-COMPOSTED-DIGGER-386.log](attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log) | Target system and defmt logs from host daemon session |
 | `reference` | [target_telemetry_WORM-COMPOSTED-DIGGER-386.json](attachments/WORM-COMPOSTED-DIGGER-386/target_telemetry_WORM-COMPOSTED-DIGGER-386.json) | Target telemetry export retrieved via host_fs |
 | `reference` | [IMG_0202.MOV](attachments/WORM-COMPOSTED-DIGGER-386/IMG_0202.MOV) | Uploaded reference IMG_0202.MOV |
-| `log` | [target_system_logs_WORM-COMPOSTED-DIGGER-386.log](attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log) | Target system and defmt logs from host daemon session |
 
 #### Resolution Notes
 
@@ -15932,5 +15933,19 @@ In diff_view.html.j2, selectCommit attempts to find active commit elements via d
 #### Resolution Notes
 
 Fixed selectCommit in diff_view.html.j2 across firmware and hardware repositories. Replaced fragile slice(0, 7) element lookups with event.currentTarget and data-hash attribute matching (exact and prefix), supporting arbitrary-length git abbreviated hashes (e.g. 8-char SHAs). Added data-hash='working' to working tree node and updated dynamic renderSmartlogList to preserve active class across selection transitions. Added dedicated regression unit tests in tools/tests/test_worm_creeping_tapeworm_215_smartlog_highlight.py and hardware tests.
+
+---
+
+### <a id="worm-silken-casting-127"></a> 🔴 `[WORM-SILKEN-CASTING-127]` Diff viewer missing green highlight for line additions in side-by-side and unified views
+
+- **UUID**: `b2ab3811-057b-4884-b0cf-df9a0f781f3e`
+- **Status**: `OPEN`
+- **Severity**: `LOW`
+- **Category**: `UI`
+- **Component**: `dashboard`
+
+#### Description
+
+In the VCS diff view (diff_component.html.j2), line additions and inserted lines do not have the green background highlight. Unified diff lines use row-add / add / insert classes which are not targeted by the CSS rules (which only targeted row-insert), and the background color used teal instead of standard green.
 
 ---

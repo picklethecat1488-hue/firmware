@@ -3318,33 +3318,6 @@
       "attachments": [
         {
           "id": "att-4",
-          "filename": "motor_speed_30.MOV",
-          "file_type": "document",
-          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV",
-          "size_bytes": 0,
-          "description": "Attached document (motor_speed_30.MOV)",
-          "created_at": ""
-        },
-        {
-          "id": "att-5",
-          "filename": "motor_speed_100.MOV",
-          "file_type": "document",
-          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV",
-          "size_bytes": 0,
-          "description": "Attached document (motor_speed_100.MOV)",
-          "created_at": ""
-        },
-        {
-          "id": "att-1",
-          "filename": "motor_speed_50.MOV",
-          "file_type": "document",
-          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV",
-          "size_bytes": 0,
-          "description": "Attached document (motor_speed_50.MOV)",
-          "created_at": ""
-        },
-        {
-          "id": "att-2",
           "filename": "target_system_logs_WORM-ORGANIC-FIREWORM-553.log",
           "file_type": "log",
           "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log",
@@ -3353,12 +3326,39 @@
           "created_at": ""
         },
         {
-          "id": "att-3",
+          "id": "att-5",
           "filename": "motor_speed_10.MOV",
           "file_type": "document",
           "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV",
           "size_bytes": 0,
           "description": "Attached document (motor_speed_10.MOV)",
+          "created_at": ""
+        },
+        {
+          "id": "att-1",
+          "filename": "motor_speed_30.MOV",
+          "file_type": "document",
+          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV",
+          "size_bytes": 0,
+          "description": "Attached document (motor_speed_30.MOV)",
+          "created_at": ""
+        },
+        {
+          "id": "att-2",
+          "filename": "motor_speed_100.MOV",
+          "file_type": "document",
+          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV",
+          "size_bytes": 0,
+          "description": "Attached document (motor_speed_100.MOV)",
+          "created_at": ""
+        },
+        {
+          "id": "att-3",
+          "filename": "motor_speed_50.MOV",
+          "file_type": "document",
+          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV",
+          "size_bytes": 0,
+          "description": "Attached document (motor_speed_50.MOV)",
           "created_at": ""
         }
       ],
@@ -3797,6 +3797,15 @@
       "attachments": [
         {
           "id": "att-3",
+          "filename": "target_system_logs_WORM-COMPOSTED-DIGGER-386.log",
+          "file_type": "log",
+          "file_path": "attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log",
+          "size_bytes": 0,
+          "description": "Target system and defmt logs from host daemon session",
+          "created_at": ""
+        },
+        {
+          "id": "att-1",
           "filename": "target_telemetry_WORM-COMPOSTED-DIGGER-386.json",
           "file_type": "reference",
           "file_path": "attachments/WORM-COMPOSTED-DIGGER-386/target_telemetry_WORM-COMPOSTED-DIGGER-386.json",
@@ -3805,21 +3814,12 @@
           "created_at": ""
         },
         {
-          "id": "att-1",
+          "id": "att-2",
           "filename": "IMG_0202.MOV",
           "file_type": "reference",
           "file_path": "attachments/WORM-COMPOSTED-DIGGER-386/IMG_0202.MOV",
           "size_bytes": 0,
           "description": "Uploaded reference IMG_0202.MOV",
-          "created_at": ""
-        },
-        {
-          "id": "att-2",
-          "filename": "target_system_logs_WORM-COMPOSTED-DIGGER-386.log",
-          "file_type": "log",
-          "file_path": "attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log",
-          "size_bytes": 0,
-          "description": "Target system and defmt logs from host daemon session",
           "created_at": ""
         }
       ],
@@ -4306,7 +4306,32 @@
       "rejection_notes": "",
       "accepted_at": null,
       "rejected_at": null
+    },
+    {
+      "id": "WORM-SILKEN-CASTING-127",
+      "uuid": "b2ab3811-057b-4884-b0cf-df9a0f781f3e",
+      "title": "Diff viewer missing green highlight for line additions in side-by-side and unified views",
+      "status": "OPEN",
+      "severity": "LOW",
+      "category": "UI",
+      "component": "dashboard",
+      "description": "In the VCS diff view (diff_component.html.j2), line additions and inserted lines do not have the green background highlight. Unified diff lines use row-add / add / insert classes which are not targeted by the CSS rules (which only targeted row-insert), and the background color used teal instead of standard green.",
+      "reproduction_steps": [],
+      "expected_behavior": "",
+      "actual_behavior": "",
+      "logs": "",
+      "attachments": [],
+      "custom_sections": [],
+      "commit_ids": [],
+      "review_tasks": [],
+      "created_at": "",
+      "updated_at": "",
+      "resolved_at": null,
+      "resolution_notes": "",
+      "rejection_notes": "",
+      "accepted_at": null,
+      "rejected_at": null
     }
   ],
-  "updated_at": "2026-11-05 14:25:18 UTC"
+  "updated_at": "2026-11-05 14:27:54 UTC"
 }
