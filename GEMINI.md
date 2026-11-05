@@ -18,26 +18,28 @@ Before finalizing any task, committing changes, or proposing modifications to th
 
 ## Remote Cloud Server (`anvil`)
 
-For resource-intensive workloads, parameter sweeps, long-running test suites, simulation analysis, and remote verification, the `anvil` cloud server is available:
+For resource-intensive workloads, parameter sweeps, long-running test suites, simulation analysis, and remote verification, cloud execution is available via Vast.ai instances orchestrated by `bin/anvil`:
 
 ```ssh-config
 Host anvil
-  HostName <anvil-ip>
-  User ubuntu
-  IdentityFile "~/.ssh/FLINT'S KEY.pem"
-  IdentitiesOnly yes
-  ServerAliveInterval 30
-  ServerAliveCountMax 10
-  TCPKeepAlive yes
+  HostName <vast-ssh-host>
+  Port <vast-ssh-port>
+  User root
+  IdentityFile "~/.ssh/id_rsa"
   StrictHostKeyChecking accept-new
 ```
 
-### Usage Guidelines
-1. **Remote Execution**: Use `bin/anvil run "<command>"` or SSH targeting `ubuntu@anvil` (or `ssh anvil`) to run full test suites (`bin/anvil pytest`), pre-commit verification (`bin/anvil verify`), and cargo checks (`bin/anvil cargo`).
-2. **Conda Environment & Binaries**: On `anvil`, Python commands execute within the remote conda environment (`firmware-env` or `cq`) using `conda run -n <env> --no-capture-output <command>`.
-3. **Preceding Run Cancellation**: Before initiating a new remote execution or verification run on `anvil`, ensure any active or stale background runs of the same command are cancelled or terminated (`bin/anvil stop`) to avoid cloud resource contention and duplicate processing.
-4. **Artifact Synchronization**: Use `bin/anvil pull <remote_path> [local_dest]` or `bin/anvil recordings` to download generated logs, waveforms, and inspection figures into the local workspace.
-5. **Host CLI Reverse Proxying**: Use `bin/anvil cli <command...>` (or `bin/anvil host <subcmd...>`) to execute host commands remotely on `anvil` while reverse proxying port 8899 back to the developer's local workstation `host.py` daemon, allowing remote test scripts to interact with physically attached hardware targets.
+### Usage Guidelines & Shared Workstation Configuration
+1. **Shared Cloud Runner & Configuration**: Cloud instances are provisioned on Vast.ai with the basic Ubuntu image (`ubuntu:22.04`) and shared across `firmware`, `hardware`, and `SSD` via the global runner script (`~/.local/bin/anvil`) and shared configuration (`~/.anvil.env` in `$HOME`). Remote repositories reside in `/workspace/<repo>` if `/workspace` is available, falling back to `$HOME/<repo>`.
+2. **Instance Provisioning & Release**: Use `bin/anvil provision` to automatically rent an instance, configure SSH port mapping, and update `~/.anvil.env`. Use `bin/anvil release` to destroy the instance and reset configuration.
+3. **Automated Remote Bootstrapping**: Newly provisioned instances automatically run `bin/anvil bootstrap` to install essential build toolchains (`build-essential`, `cmake`, `pkg-config`), Rust (`rustup` + `cargo-nextest`), and persistent Miniforge on `/workspace/miniforge3`.
+4. **Remote Execution**: Use `bin/anvil run "<command>"` or SSH targeting `anvil` to run full test suites (`bin/anvil pytest`), pre-commit verification (`bin/anvil verify`), and cargo checks (`bin/anvil cargo`).
+5. **Conda Environment & Binaries**: On `anvil`, Python commands execute within the remote conda environment (`firmware-env` or `cq`) using `conda run -n <env> --no-capture-output <command>`.
+6. **Preceding Run Cancellation**: Before initiating a new remote execution or verification run on `anvil`, ensure any active or stale background runs of the same command are cancelled or terminated (`bin/anvil stop`) to avoid cloud resource contention and duplicate processing.
+7. **Artifact Synchronization**: Use `bin/anvil pull <remote_path> [local_dest]` or `bin/anvil recordings` to download generated logs, waveforms, and inspection figures into the local workspace.
+8. **Host CLI Reverse Proxying**: Use `bin/anvil cli <command...>` (or `bin/anvil host <subcmd...>`) to execute host commands remotely on `anvil` while reverse proxying port 8899 back to the developer's local workstation `host.py` daemon, allowing remote test scripts to interact with physically attached hardware targets.
+9. **Lock File Tracking (`~/.anvil.lock`)**: All active remote commands automatically register execution in `~/.anvil.lock` in `$HOME` to signal active utilization.
+10. **Close of Business (COB) Auto-Release Mandate**: To prevent unnecessary cloud spend and accidental overnight charges, any rented Vast.ai instance claim MUST be automatically released at Close of Business (COB) or when idle if no processes are using it (`bin/anvil auto-release` or `bin/anvil release`). Never leave rented cloud GPU/container instances running overnight or unattended.
 
 ---
 
