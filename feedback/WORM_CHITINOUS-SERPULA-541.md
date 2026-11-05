@@ -2,11 +2,12 @@
 
 - **UUID**: `5e8a0f5c-4a32-427f-9275-97eb203e6cb9`
 - **ID**: `WORM-CHITINOUS-SERPULA-541`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `GENERAL`
 - **Created**: `2026-10-17 20:43:56 UTC`
 - **Resolved**: `2026-10-17 21:51:05 UTC`
+- **Accepted**: `2026-10-17 21:51:05 UTC`
 
 #### Description
 

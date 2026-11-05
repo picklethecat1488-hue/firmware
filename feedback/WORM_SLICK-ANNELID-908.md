@@ -2,12 +2,13 @@
 
 - **UUID**: `a75fd6e7-5113-4316-ad45-66c67f310f98`
 - **ID**: `WORM-SLICK-ANNELID-908`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host`
 - **Created**: `2026-10-21 23:50:31 UTC`
 - **Resolved**: `2026-10-21 23:54:49 UTC`
+- **Accepted**: `2026-10-21 23:54:49 UTC`
 
 #### Description
 

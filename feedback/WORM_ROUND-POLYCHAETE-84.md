@@ -2,12 +2,13 @@
 
 - **UUID**: `1bba7e85-1263-4f27-b7dd-b6bd8738872b`
 - **ID**: `WORM-ROUND-POLYCHAETE-84`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-24 00:56:38 UTC`
 - **Resolved**: `2026-10-24 01:39:26 UTC`
+- **Accepted**: `2026-10-24 01:39:26 UTC`
 
 #### Reproduction Steps
 

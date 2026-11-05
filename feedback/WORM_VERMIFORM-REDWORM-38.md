@@ -2,12 +2,13 @@
 
 - **UUID**: `f0841f57-7271-4efd-b0ca-bb972973d80d`
 - **ID**: `WORM-VERMIFORM-REDWORM-38`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-23 00:09:47 UTC`
 - **Resolved**: `2026-10-23 00:20:08 UTC`
+- **Accepted**: `2026-10-23 00:20:08 UTC`
 
 #### Description
 

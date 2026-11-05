@@ -2,12 +2,13 @@
 
 - **UUID**: `f4cd4549-4887-4b9c-9a44-c019e055dc65`
 - **ID**: `WORM-GLOWING-SLUG-613`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-23 00:49:05 UTC`
 - **Resolved**: `2026-10-23 01:26:40 UTC`
+- **Accepted**: `2026-10-23 01:26:40 UTC`
 
 #### Description
 

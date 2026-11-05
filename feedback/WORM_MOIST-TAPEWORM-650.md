@@ -2,12 +2,13 @@
 
 - **UUID**: `8c693602-b5cb-4601-97ee-c3094a5a68c7`
 - **ID**: `WORM-MOIST-TAPEWORM-650`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-19 01:47:23 UTC`
 - **Resolved**: `2026-10-21 23:25:59 UTC`
+- **Accepted**: `2026-10-21 23:25:59 UTC`
 
 #### Reproduction Steps
 

@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-05 14:32:19 UTC` |
+| **Report Date** | `2026-11-05 14:41:03 UTC` |
 | **Total Issues** | `109` |
 | **Open Issues** | `0` |
 | **Resolved / Closed** | `109 (100%)` |
@@ -37,147 +37,128 @@
 
 ## Issue Checklist
 
+- [x] **`[MEDIUM]`** [#WORM-001](#worm-001): Remove hardware-specific categories from the dashboard `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-002](#worm-002): Update BUG to WORM `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-003](#worm-003): GEMINI.md should be core agent skills only `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-004](#worm-004): Change Code Review Icon to a wrench `[dashboard]` (`CLOSED`)
+- [x] **`[LOW]`** [#WORM-005](#worm-005): carrier board 2.0-Create trivial "hello world" shell project `[carrier_board]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-006](#worm-006): Forgot to update the VCS UI (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-007](#worm-007): Word wrap doesn't seem to be working `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-008](#worm-008): Update Contributing.md with dashboard docs (`CLOSED`)
+- [x] **`[HIGH]`** [#WORM-009](#worm-009): Still seeing issues with multiple Diff Viewer windows being open after exiting from the Code Review and Bug Report windows (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-010](#worm-010): "Open in VSCode" didn't work (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-011](#worm-011): Traceback in dashboard `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-012](#worm-012): Rename audio controller to speaker controller `[carrier_board]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-013](#worm-013): Feedbacks about carrier_board.md `[carrier_board]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-014](#worm-014): Unresolved worms in VCS UI `[dashboard]` (`CLOSED`)
+- [x] **`[HIGH]`** [#WORM-015](#worm-015): Unable to open code review or worm report pages from VCS UI `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-016](#worm-016): Remove my username from tracked files (`CLOSED`)
+- [x] **`[HIGH]`** [#WORM-017](#worm-017): Working tree actions doesn't show up unless I click an older commit `[dashboard]` (`CLOSED`)
+- [x] **`[LOW]`** [#WORM-018](#worm-018): Populate component list (`CLOSED`)
+- [x] **`[LOW]`** [#WORM-019](#worm-019): Port dashboard to Eel `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-020](#worm-020): Reduce dashboard font sizes `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-021](#worm-021): Detach dashboard from terminal after opening `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-022](#worm-022): Dashboard App icons show up as Chrome icons `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-023](#worm-023): Add Planned status to worms `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-024](#worm-024): UI icons appear corrupted `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-025](#worm-025): Close the dashboard when closing the app `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-026](#worm-026): It doesn’t look like the dashboard is closing automatically :-( `[Das]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-027](#worm-027): Apply dashboard theme to Window UI `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-028](#worm-028): Create separate firwmware architecture docs `[cat_fountain, carrier_board]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-029](#worm-029): Replace integer ID’s with Docker-pattern ID's `[dashboard]` (`CLOSED`)
+- [x] **`[HIGH]`** [#WORM-TRANSLUCENT-TAPEWORM-953](#worm-translucent-tapeworm-953): Dashboard stuck at 20% on launch `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-LOAMY-BRISTLE-455](#worm-loamy-bristle-455): Elide physical address and personal email in privacy sanitizer `[sanitizer]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-UNDULATING-REDWORM-56](#worm-undulating-redworm-56): README.md is broken (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-EARTHEN-NYMPH-383](#worm-earthen-nymph-383): SensorController: Periodic read failed. (`CLOSED`)
+- [x] **`[HIGH]`** [#WORM-GLIDING-BRISTLE-252](#worm-gliding-bristle-252): Update TMC6300 to 6-PWM control and drop SENSE pin support `[tmc6300]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-GROUNDED-PLANARIAN-948](#worm-grounded-planarian-948): GP26 is logic high- measuing .29V on multimeter (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-RIBBONWORM-582](#worm-subterranean-ribbonworm-582): Remove feedback/WORMS.md from repo `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-DEEP-FIREWORM-942](#worm-deep-fireworm-942): Add GPIO set CLI command for hardware debugging `[platform]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-BRISTLY-BURROWER-873](#worm-bristly-burrower-873): Current sensor does not appear to be workign right. `[cat_fountain]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-WRITHING-TUBEWORM-652](#worm-writhing-tubeworm-652): Limit max TMC6300 current to 2A (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SLITHERING-EARTHWORM-854](#worm-slithering-earthworm-854): Bootloop- (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SLICK-BURROWER-70](#worm-slick-burrower-70): We should log when DIAG pin gets asserted. `[cat_fountain]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-EMBEDDED-LEECH-268](#worm-embedded-leech-268): Motor does not spin `[cat_fountain]` (`CLOSED`)
+- [x] **`[CRITICAL]`** [#WORM-DEEP-PLANARIAN-943](#worm-deep-planarian-943): GPIO pin states do not persist `[cat_fountain]` (`CLOSED`)
+- [x] **`[CRITICAL]`** [#WORM-DIRT-RIBBONWORM-196](#worm-dirt-ribbonworm-196): Motor speed 100- no GPIO activity `[cat_fountain]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SUPPLE-PUPA-464](#worm-supple-pupa-464): Create host_daemon tool `[host_daemon]` (`CLOSED`)
+- [x] **`[LOW]`** [#WORM-SETOSE-SETAE-521](#worm-setose-setae-521): Add fuzzy history search to CLI control `[dashboard, host_daemon]` (`CLOSED`)
+- [x] **`[LOW]`** [#WORM-TUNNELING-SILKWORM-860](#worm-tunneling-silkworm-860): Add terminal format and coloration support `[dashboard, host_daemon]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-GLIDING-BRISTLEWORM-4](#worm-gliding-bristleworm-4): Add colorized console output to ⚡ TARGET SYNC & FLASH MATRIX `[host_daemon]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-COILING-CASTING-220](#worm-coiling-casting-220): Add RESET button to host daemon `[host_daemon]` (`CLOSED`)
+- [x] **`[HIGH]`** [#WORM-SLIMY-SNAIL-582](#worm-slimy-snail-582): host_daemon.py-pywebkit window didn’t pop up `[host_daemon]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-TUNNELING-INCHWORM-510](#worm-tunneling-inchworm-510): FS doesn’t work `[host_daemon]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-VERMICULAR-CATERPILLAR-419](#worm-vermicular-caterpillar-419): Add vertical handle gripper to logging monitor to permit resizing `[host_daemon]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-NOCTURNAL-BURROWER-260](#worm-nocturnal-burrower-260): Add copy icons to logging monitor and command workstations `[host_daemon]` (`CLOSED`)
+- [x] **`[HIGH]`** [#WORM-COMPOSTED-PALOLO-725](#worm-composted-palolo-725): Not able to flash a new app with host daemon `[host_daemon]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-CREEPING-TAPEWORM-173](#worm-creeping-tapeworm-173): New Worm Report (`CLOSED`)
+- [x] **`[LOW]`** [#WORM-LUMINESCENT-WOODLOUSE-435](#worm-luminescent-woodlouse-435): Parse ANSI OSC 8 hyperlink escape sequences in terminal and CLI console `[host_daemon]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-COMPOSTED-CLITELLUM-469](#worm-composted-clitellum-469): Corrupted CLI output `[dashboard, host_daemon]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-CHITINOUS-PALOLO-159](#worm-chitinous-palolo-159): Disable CLI while running a command `[host_daemon, dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-BOOKWORM-399](#worm-annelidic-bookworm-399): Cleanup host_cli/host_fs when closing host daemon `[host_daemon]` (`CLOSED`)
+- [x] **`[LOW]`** [#WORM-LUMINESCENT-PALOLO-130](#worm-luminescent-palolo-130): Rename Host Daemon to Host `[host_daemon]` (`CLOSED`)
+- [x] **`[LOW]`** [#WORM-ANNELIDIC-CATERPILLAR-258](#worm-annelidic-caterpillar-258): Please highlight the selected commit in VCS UI `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-LOAMY-LUGWORM-536](#worm-loamy-lugworm-536): Add Target Bug pointer to host tool `[host]` (`CLOSED`)
+- [x] **`[LOW]`** [#WORM-SERPENTINE-PUPA-18](#worm-serpentine-pupa-18): Integrate bringup.py with host `[host, bringup]` (`CLOSED`)
+- [x] **`[LOW]`** [#WORM-CHITINOUS-SERPULA-541](#worm-chitinous-serpula-541): Update docs (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-MAGGOT-775](#worm-annelidic-maggot-775): The RTT and system log view don’t appear when I open the App `[target]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-PEATY-BOBBIT-630](#worm-peaty-bobbit-630): Motor speed 100 fails-DIAG light pops on (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-BRISTLY-GLOWWORM-390](#worm-bristly-glowworm-390): Please add the “Attachments & Screenshots” UI to the host bug reporter page `[Host]` (`CLOSED`)
+- [x] **`[LOW]`** [#WORM-ROOTED-CLITELLUM-453](#worm-rooted-clitellum-453): Parse the target function namespace intelligently `[host_cli]` (`CLOSED`)
+- [x] **`[HIGH]`** [#WORM-CREEPING-WRIGGLER-223](#worm-creeping-wriggler-223): VL not asserting `[cat_fountain]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SLICK-FIREWORM-677](#worm-slick-fireworm-677): Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer) RTT connected. Active channels: `[target]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-GLIDING-LARVA-522](#worm-gliding-larva-522): Motor fails, DIAG light pops on `[target]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-VERMIFORM-ANNELID-135](#worm-vermiform-annelid-135): Providing scope trace with motor detached `[target]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-FOSSORIAL-COMPOSTER-481](#worm-fossorial-composter-481): RTT logs showing up in CLI view `[target]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SILKEN-RIBBONWORM-320](#worm-silken-ribbonworm-320): DIAG trip coincides with drop in input voltage `[target]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-MOIST-TAPEWORM-650](#worm-moist-tapeworm-650): Single clicking on any text control should highlight the CLI text control `[target]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SLIMY-PLANARIAN-761](#worm-slimy-planarian-761): When calling host.py with no arguments, the UI should present a modal configuration window `[host]` (`CLOSED`)
+- [x] **`[CRITICAL]`** [#WORM-SLITHERING-LUMBRICUS-809](#worm-slithering-lumbricus-809): TMC6300-Short protection fault on startup `[cat_fountain]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SLICK-ANNELID-908](#worm-slick-annelid-908): When calling host.py with no args, it gets stuck at the initial flashing UI `[host]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SETOSE-TUBEWORM-177](#worm-setose-tubeworm-177): Motor vibrates, does not spin (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-INCHING-BEETLE-546](#worm-inching-beetle-546): Creating a bug with a large attachment may crash the dashboard `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-HUMIC-COCOON-243](#worm-humic-cocoon-243): Sorting by ID no longer works as intended `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-WIREWORM-439](#worm-subterranean-wireworm-439): Motor vibrates, does not spin & 92 mA current cap `[cat_fountain]` (`CLOSED`)
+- [x] **`[HIGH]`** [#WORM-MOIST-MILLIPEDE-488](#worm-moist-millipede-488): Host flashes cat_detector_app instead of shell due to session contamination `[host_daemon]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SEGMENTED-SIPUNCULID-504](#worm-segmented-sipunculid-504): Motor RPM reads as 0 RPM at 100% speed `[cat_detector]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-PROBOSCID-ROUNDWORM-8](#worm-proboscid-roundworm-8): Motor does not spin at full duty cycle `[cat_detector]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-NOCTURNAL-CATERPILLAR-808](#worm-nocturnal-caterpillar-808): Motor rotor ticks back and forth instead of spinning `[cat_detector]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-ORGANIC-FIREWORM-553](#worm-organic-fireworm-553): Motor oscillates back and forth `[target]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-DAMP-MEALWORM-592](#worm-damp-mealworm-592): Motor oscillates at speed 30 `[target]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-LUSTROUS-FLATWORM-473](#worm-lustrous-flatworm-473): Tons of untracked files under recordings/ and dashboard is slow to respond `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-LOAMY-CATERPILLAR-738](#worm-loamy-caterpillar-738): Add motor telemetry `[cat_detector]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-VERMIFORM-REDWORM-38](#worm-vermiform-redworm-38): I see some extra output in the logs here `[target]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SLIMY-ROOTER-821](#worm-slimy-rooter-821): Can we hide system logs by default? `[Host]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-GLOWING-SLUG-613](#worm-glowing-slug-613): Motor fails to spin, but moves `[cat_detector]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-PUPA-423](#worm-subterranean-pupa-423): Repro steps doesn’t update `[cat_detector]` (`CLOSED`)
+- [x] **`[HIGH]`** [#WORM-CREEPING-LARVA-820](#worm-creeping-larva-820): Regression tests are not useful (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-BURROWING-CLITELLUM-618](#worm-burrowing-clitellum-618): Motor is stationary :-( `[target]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SEGMENTED-MEALWORM-41](#worm-segmented-mealworm-41): Startup blanking `[target]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-COMPOSTED-DIGGER-386](#worm-composted-digger-386): Motor spins half cycle, then starts ticking `[cat_detector]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-UNDULATING-SERPULA-688](#worm-undulating-serpula-688): Temporarily remove hall sensor support `[cat_detector]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-FLEXIBLE-WOODLOUSE-713](#worm-flexible-woodlouse-713): When motor speed is reset, the duty cycle resets `[cat_detector]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-ROUND-POLYCHAETE-84](#worm-round-polychaete-84): The motor seemed to stop spinning around speed 50 here `[cat_detector]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SILKEN-TUBEWORM-979](#worm-silken-tubeworm-979): Motor stalled out at 35% speed `[cat_detector]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SUPPLE-SEGMENT-373](#worm-supple-segment-373): DIAG tripped after 260s `[cat_detector]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-EARTHWORM-231](#worm-subterranean-earthworm-231): Cannot start motor stress at 50% speed `[cat_detector]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-SOILBOUND-VERMIS-341](#worm-soilbound-vermis-341): The CLI console is broken and not updating `[cat_detector]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-NEMATODE-26](#worm-annelidic-nematode-26): motor speed 100 tripped DIAG `[target]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-HUMIC-SANDWORM-365](#worm-humic-sandworm-365): motor speed 50 tripped DIAG `[target]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-CREEPING-TAPEWORM-215](#worm-creeping-tapeworm-215): Only first commit in smartlog tree gets highlighted `[dashboard]` (`CLOSED`)
 - [x] **`[LOW]`** [#WORM-SILKEN-CASTING-127](#worm-silken-casting-127): Diff viewer missing green highlight for line additions in side-by-side and unified views `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-001](#worm-001): Remove hardware-specific categories from the dashboard `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-002](#worm-002): Update BUG to WORM `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-003](#worm-003): GEMINI.md should be core agent skills only `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-004](#worm-004): Change Code Review Icon to a wrench `[dashboard]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-005](#worm-005): carrier board 2.0-Create trivial "hello world" shell project `[carrier_board]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-006](#worm-006): Forgot to update the VCS UI (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-007](#worm-007): Word wrap doesn't seem to be working `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-008](#worm-008): Update Contributing.md with dashboard docs (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-009](#worm-009): Still seeing issues with multiple Diff Viewer windows being open after exiting from the Code Review and Bug Report windows (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-010](#worm-010): "Open in VSCode" didn't work (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-011](#worm-011): Traceback in dashboard `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-012](#worm-012): Rename audio controller to speaker controller `[carrier_board]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-013](#worm-013): Feedbacks about carrier_board.md `[carrier_board]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-014](#worm-014): Unresolved worms in VCS UI `[dashboard]` (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-015](#worm-015): Unable to open code review or worm report pages from VCS UI `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-016](#worm-016): Remove my username from tracked files (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-017](#worm-017): Working tree actions doesn't show up unless I click an older commit `[dashboard]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-018](#worm-018): Populate component list (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-019](#worm-019): Port dashboard to Eel `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-020](#worm-020): Reduce dashboard font sizes `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-021](#worm-021): Detach dashboard from terminal after opening `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-022](#worm-022): Dashboard App icons show up as Chrome icons `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-023](#worm-023): Add Planned status to worms `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-024](#worm-024): UI icons appear corrupted `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-025](#worm-025): Close the dashboard when closing the app `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-026](#worm-026): It doesn’t look like the dashboard is closing automatically :-( `[Das]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-027](#worm-027): Apply dashboard theme to Window UI `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-028](#worm-028): Create separate firwmware architecture docs `[cat_fountain, carrier_board]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-029](#worm-029): Replace integer ID’s with Docker-pattern ID's `[dashboard]` (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-TRANSLUCENT-TAPEWORM-953](#worm-translucent-tapeworm-953): Dashboard stuck at 20% on launch `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-LOAMY-BRISTLE-455](#worm-loamy-bristle-455): Elide physical address and personal email in privacy sanitizer `[sanitizer]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-UNDULATING-REDWORM-56](#worm-undulating-redworm-56): README.md is broken (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-EARTHEN-NYMPH-383](#worm-earthen-nymph-383): SensorController: Periodic read failed. (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-GLIDING-BRISTLE-252](#worm-gliding-bristle-252): Update TMC6300 to 6-PWM control and drop SENSE pin support `[tmc6300]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-GROUNDED-PLANARIAN-948](#worm-grounded-planarian-948): GP26 is logic high- measuing .29V on multimeter (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-RIBBONWORM-582](#worm-subterranean-ribbonworm-582): Remove feedback/WORMS.md from repo `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-DEEP-FIREWORM-942](#worm-deep-fireworm-942): Add GPIO set CLI command for hardware debugging `[platform]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-BRISTLY-BURROWER-873](#worm-bristly-burrower-873): Current sensor does not appear to be workign right. `[cat_fountain]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-WRITHING-TUBEWORM-652](#worm-writhing-tubeworm-652): Limit max TMC6300 current to 2A (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SLITHERING-EARTHWORM-854](#worm-slithering-earthworm-854): Bootloop- (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SLICK-BURROWER-70](#worm-slick-burrower-70): We should log when DIAG pin gets asserted. `[cat_fountain]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-EMBEDDED-LEECH-268](#worm-embedded-leech-268): Motor does not spin `[cat_fountain]` (`RESOLVED`)
-- [x] **`[CRITICAL]`** [#WORM-DEEP-PLANARIAN-943](#worm-deep-planarian-943): GPIO pin states do not persist `[cat_fountain]` (`RESOLVED`)
-- [x] **`[CRITICAL]`** [#WORM-DIRT-RIBBONWORM-196](#worm-dirt-ribbonworm-196): Motor speed 100- no GPIO activity `[cat_fountain]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SUPPLE-PUPA-464](#worm-supple-pupa-464): Create host_daemon tool `[host_daemon]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-SETOSE-SETAE-521](#worm-setose-setae-521): Add fuzzy history search to CLI control `[dashboard, host_daemon]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-TUNNELING-SILKWORM-860](#worm-tunneling-silkworm-860): Add terminal format and coloration support `[dashboard, host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-GLIDING-BRISTLEWORM-4](#worm-gliding-bristleworm-4): Add colorized console output to ⚡ TARGET SYNC & FLASH MATRIX `[host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-COILING-CASTING-220](#worm-coiling-casting-220): Add RESET button to host daemon `[host_daemon]` (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-SLIMY-SNAIL-582](#worm-slimy-snail-582): host_daemon.py-pywebkit window didn’t pop up `[host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-TUNNELING-INCHWORM-510](#worm-tunneling-inchworm-510): FS doesn’t work `[host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-VERMICULAR-CATERPILLAR-419](#worm-vermicular-caterpillar-419): Add vertical handle gripper to logging monitor to permit resizing `[host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-NOCTURNAL-BURROWER-260](#worm-nocturnal-burrower-260): Add copy icons to logging monitor and command workstations `[host_daemon]` (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-COMPOSTED-PALOLO-725](#worm-composted-palolo-725): Not able to flash a new app with host daemon `[host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-CREEPING-TAPEWORM-173](#worm-creeping-tapeworm-173): New Worm Report (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-LUMINESCENT-WOODLOUSE-435](#worm-luminescent-woodlouse-435): Parse ANSI OSC 8 hyperlink escape sequences in terminal and CLI console `[host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-COMPOSTED-CLITELLUM-469](#worm-composted-clitellum-469): Corrupted CLI output `[dashboard, host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-CHITINOUS-PALOLO-159](#worm-chitinous-palolo-159): Disable CLI while running a command `[host_daemon, dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-BOOKWORM-399](#worm-annelidic-bookworm-399): Cleanup host_cli/host_fs when closing host daemon `[host_daemon]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-LUMINESCENT-PALOLO-130](#worm-luminescent-palolo-130): Rename Host Daemon to Host `[host_daemon]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-ANNELIDIC-CATERPILLAR-258](#worm-annelidic-caterpillar-258): Please highlight the selected commit in VCS UI `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-LOAMY-LUGWORM-536](#worm-loamy-lugworm-536): Add Target Bug pointer to host tool `[host]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-SERPENTINE-PUPA-18](#worm-serpentine-pupa-18): Integrate bringup.py with host `[host, bringup]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-CHITINOUS-SERPULA-541](#worm-chitinous-serpula-541): Update docs (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-MAGGOT-775](#worm-annelidic-maggot-775): The RTT and system log view don’t appear when I open the App `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-PEATY-BOBBIT-630](#worm-peaty-bobbit-630): Motor speed 100 fails-DIAG light pops on (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-BRISTLY-GLOWWORM-390](#worm-bristly-glowworm-390): Please add the “Attachments & Screenshots” UI to the host bug reporter page `[Host]` (`RESOLVED`)
-- [x] **`[LOW]`** [#WORM-ROOTED-CLITELLUM-453](#worm-rooted-clitellum-453): Parse the target function namespace intelligently `[host_cli]` (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-CREEPING-WRIGGLER-223](#worm-creeping-wriggler-223): VL not asserting `[cat_fountain]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SLICK-FIREWORM-677](#worm-slick-fireworm-677): Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer) RTT connected. Active channels: `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-GLIDING-LARVA-522](#worm-gliding-larva-522): Motor fails, DIAG light pops on `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-VERMIFORM-ANNELID-135](#worm-vermiform-annelid-135): Providing scope trace with motor detached `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-FOSSORIAL-COMPOSTER-481](#worm-fossorial-composter-481): RTT logs showing up in CLI view `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SILKEN-RIBBONWORM-320](#worm-silken-ribbonworm-320): DIAG trip coincides with drop in input voltage `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-MOIST-TAPEWORM-650](#worm-moist-tapeworm-650): Single clicking on any text control should highlight the CLI text control `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SLIMY-PLANARIAN-761](#worm-slimy-planarian-761): When calling host.py with no arguments, the UI should present a modal configuration window `[host]` (`RESOLVED`)
-- [x] **`[CRITICAL]`** [#WORM-SLITHERING-LUMBRICUS-809](#worm-slithering-lumbricus-809): TMC6300-Short protection fault on startup `[cat_fountain]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SLICK-ANNELID-908](#worm-slick-annelid-908): When calling host.py with no args, it gets stuck at the initial flashing UI `[host]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SETOSE-TUBEWORM-177](#worm-setose-tubeworm-177): Motor vibrates, does not spin (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-INCHING-BEETLE-546](#worm-inching-beetle-546): Creating a bug with a large attachment may crash the dashboard `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-HUMIC-COCOON-243](#worm-humic-cocoon-243): Sorting by ID no longer works as intended `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-WIREWORM-439](#worm-subterranean-wireworm-439): Motor vibrates, does not spin & 92 mA current cap `[cat_fountain]` (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-MOIST-MILLIPEDE-488](#worm-moist-millipede-488): Host flashes cat_detector_app instead of shell due to session contamination `[host_daemon]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SEGMENTED-SIPUNCULID-504](#worm-segmented-sipunculid-504): Motor RPM reads as 0 RPM at 100% speed `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-PROBOSCID-ROUNDWORM-8](#worm-proboscid-roundworm-8): Motor does not spin at full duty cycle `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-NOCTURNAL-CATERPILLAR-808](#worm-nocturnal-caterpillar-808): Motor rotor ticks back and forth instead of spinning `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-ORGANIC-FIREWORM-553](#worm-organic-fireworm-553): Motor oscillates back and forth `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-DAMP-MEALWORM-592](#worm-damp-mealworm-592): Motor oscillates at speed 30 `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-LUSTROUS-FLATWORM-473](#worm-lustrous-flatworm-473): Tons of untracked files under recordings/ and dashboard is slow to respond `[dashboard]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-LOAMY-CATERPILLAR-738](#worm-loamy-caterpillar-738): Add motor telemetry `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-VERMIFORM-REDWORM-38](#worm-vermiform-redworm-38): I see some extra output in the logs here `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SLIMY-ROOTER-821](#worm-slimy-rooter-821): Can we hide system logs by default? `[Host]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-GLOWING-SLUG-613](#worm-glowing-slug-613): Motor fails to spin, but moves `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-PUPA-423](#worm-subterranean-pupa-423): Repro steps doesn’t update `[cat_detector]` (`RESOLVED`)
-- [x] **`[HIGH]`** [#WORM-CREEPING-LARVA-820](#worm-creeping-larva-820): Regression tests are not useful (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-BURROWING-CLITELLUM-618](#worm-burrowing-clitellum-618): Motor is stationary :-( `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SEGMENTED-MEALWORM-41](#worm-segmented-mealworm-41): Startup blanking `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-COMPOSTED-DIGGER-386](#worm-composted-digger-386): Motor spins half cycle, then starts ticking `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-UNDULATING-SERPULA-688](#worm-undulating-serpula-688): Temporarily remove hall sensor support `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-FLEXIBLE-WOODLOUSE-713](#worm-flexible-woodlouse-713): When motor speed is reset, the duty cycle resets `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-ROUND-POLYCHAETE-84](#worm-round-polychaete-84): The motor seemed to stop spinning around speed 50 here `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SILKEN-TUBEWORM-979](#worm-silken-tubeworm-979): Motor stalled out at 35% speed `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SUPPLE-SEGMENT-373](#worm-supple-segment-373): DIAG tripped after 260s `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SUBTERRANEAN-EARTHWORM-231](#worm-subterranean-earthworm-231): Cannot start motor stress at 50% speed `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-SOILBOUND-VERMIS-341](#worm-soilbound-vermis-341): The CLI console is broken and not updating `[cat_detector]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-NEMATODE-26](#worm-annelidic-nematode-26): motor speed 100 tripped DIAG `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-HUMIC-SANDWORM-365](#worm-humic-sandworm-365): motor speed 50 tripped DIAG `[target]` (`RESOLVED`)
-- [x] **`[MEDIUM]`** [#WORM-CREEPING-TAPEWORM-215](#worm-creeping-tapeworm-215): Only first commit in smartlog tree gets highlighted `[dashboard]` (`RESOLVED`)
 
 ## Detailed Issue Log
-
-### <a id="worm-silken-casting-127"></a> 🟢 `[WORM-SILKEN-CASTING-127]` Diff viewer missing green highlight for line additions in side-by-side and unified views
-
-- **UUID**: `b2ab3811-057b-4884-b0cf-df9a0f781f3e`
-- **Status**: `RESOLVED`
-- **Severity**: `LOW`
-- **Category**: `UI`
-- **Component**: `dashboard`
-- **Created**: `2026-11-05 14:30:52 UTC`
-- **Resolved**: `2026-11-05 14:30:53 UTC`
-
-#### Description
-
-In the VCS diff view (diff_component.html.j2), line additions and inserted lines do not have the green background highlight. Unified diff lines use row-add / add / insert classes which are not targeted by the CSS rules (which only targeted row-insert), and the background color used teal instead of standard green.
-
-#### Resolution Notes
-
-Updated diff_component.html.j2 and code_review.html.j2 to use green highlight rgba(34, 197, 94, 0.22) and #22c55e for line additions in side-by-side and unified views. Added comprehensive support for .row-add, .add, .insert, and .row-insert classes. Cross-patched matching selectors into hardware repository.
-
----
 
 ### <a id="worm-001"></a> 🟢 `[WORM-001]` Remove hardware-specific categories from the dashboard
 
 - **UUID**: `0afd22f6-361f-424d-a361-21ec90d4c818`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-03 19:26:02 UTC`
 - **Resolved**: `2026-10-03 19:43:19 UTC`
+- **Accepted**: `2026-10-03 19:43:19 UTC`
 
 #### Description
 
@@ -192,12 +173,13 @@ Removed hardware categories (PCB, CAD, SIMULATION) and replaced with firmware ca
 ### <a id="worm-002"></a> 🟢 `[WORM-002]` Update BUG to WORM
 
 - **UUID**: `d8280544-0a15-4a1b-8e9b-cf6be47ee55b`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-03 19:26:41 UTC`
 - **Resolved**: `2026-10-03 20:30:00 UTC`
+- **Accepted**: `2026-10-03 20:30:00 UTC`
 
 #### Description
 
@@ -212,12 +194,13 @@ Updated issue tracking nomenclature from BUG to WORM across all data models, SQL
 ### <a id="worm-003"></a> 🟢 `[WORM-003]` GEMINI.md should be core agent skills only
 
 - **UUID**: `45a673a6-ff51-4901-b831-230917b4e348`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-03 19:27:20 UTC`
 - **Resolved**: `2026-10-03 20:50:19 UTC`
+- **Accepted**: `2026-10-03 20:50:19 UTC`
 
 #### Description
 
@@ -232,12 +215,13 @@ Streamlined GEMINI.md to core agent skills, modularized subsystem guides into do
 ### <a id="worm-004"></a> 🟢 `[WORM-004]` Change Code Review Icon to a wrench
 
 - **UUID**: `5aad836e-d894-4ae3-8d9d-83f7923c8d3a`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-03 19:28:39 UTC`
 - **Resolved**: `2026-10-03 20:52:41 UTC`
+- **Accepted**: `2026-10-03 20:52:41 UTC`
 
 #### Description
 
@@ -252,12 +236,13 @@ Changed Code Review icon in UI from magnifying glass to wrench across diff_view 
 ### <a id="worm-005"></a> 🟢 `[WORM-005]` carrier board 2.0-Create trivial "hello world" shell project
 
 - **UUID**: `8bbf6a0f-de44-4b50-aa68-dd5b1452fcdb`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `BOARD`
 - **Component**: `carrier_board`
 - **Created**: `2026-10-03 19:29:54 UTC`
 - **Resolved**: `2026-10-03 21:33:17 UTC`
+- **Accepted**: `2026-10-03 21:33:17 UTC`
 
 #### Description
 
@@ -272,11 +257,12 @@ Created carrier board 2.0 shell crate with hello-world binary, tests, hardware c
 ### <a id="worm-006"></a> 🟢 `[WORM-006]` Forgot to update the VCS UI
 
 - **UUID**: `e06664ae-ef13-4658-b71f-1db435ab8e9e`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Created**: `2026-10-03 22:27:07 UTC`
 - **Resolved**: `2026-10-03 22:55:03 UTC`
+- **Accepted**: `2026-10-03 22:55:03 UTC`
 
 #### Description
 
@@ -299,12 +285,13 @@ Canonicalize commit worm tag IDs to WORM-xxx and query worms.sqlite without bein
 ### <a id="worm-007"></a> 🟢 `[WORM-007]` Word wrap doesn't seem to be working
 
 - **UUID**: `becde191-82f5-4ff3-bb35-02e41e4d971e`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-03 22:36:51 UTC`
 - **Resolved**: `2026-10-03 22:59:19 UTC`
+- **Accepted**: `2026-10-03 22:59:19 UTC`
 
 #### Description
 
@@ -325,11 +312,12 @@ Fix word wrap CSS rules for unified and side-by-side diff views in code review a
 ### <a id="worm-008"></a> 🟢 `[WORM-008]` Update Contributing.md with dashboard docs
 
 - **UUID**: `e187e841-c48f-4e9f-9c07-7eac80415538`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-03 23:51:07 UTC`
 - **Resolved**: `2026-10-03 23:56:31 UTC`
+- **Accepted**: `2026-10-03 23:56:31 UTC`
 
 #### Resolution Notes
 
@@ -340,11 +328,12 @@ Added comprehensive documentation to CONTRIBUTING.md covering the System Shock 2
 ### <a id="worm-009"></a> 🟢 `[WORM-009]` Still seeing issues with multiple Diff Viewer windows being open after exiting from the Code Review and Bug Report windows
 
 - **UUID**: `454cbbfa-94ce-4f56-8fa8-99fca7fc20de`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `INFRASTRUCTURE`
 - **Created**: `2026-10-04 00:20:04 UTC`
 - **Resolved**: `2026-10-04 00:31:49 UTC`
+- **Accepted**: `2026-10-04 00:31:49 UTC`
 
 #### Resolution Notes
 
@@ -355,11 +344,12 @@ Enforced window.name reuse on Diff Viewer, Code Review, and Worm Tracker; update
 ### <a id="worm-010"></a> 🟢 `[WORM-010]` "Open in VSCode" didn't work
 
 - **UUID**: `8e571b93-ae93-4737-b018-7a2c824c4aca`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-04 00:40:02 UTC`
 - **Resolved**: `2026-10-04 01:31:02 UTC`
+- **Accepted**: `2026-10-04 01:31:02 UTC`
 
 #### Description
 
@@ -380,12 +370,13 @@ Add server /api/open-vscode endpoint and editor launcher with CLI and URL scheme
 ### <a id="worm-011"></a> 🟢 `[WORM-011]` Traceback in dashboard
 
 - **UUID**: `e11627c9-9cf6-4ddf-9ca0-57959b0fedbe`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-04 16:43:17 UTC`
 - **Resolved**: `2026-10-04 16:57:36 UTC`
+- **Accepted**: `2026-10-04 16:57:36 UTC`
 
 #### Description
 
@@ -10355,12 +10346,13 @@ Resolved unclosed SQLite connections in build_session() and ensured immediate co
 ### <a id="worm-012"></a> 🟢 `[WORM-012]` Rename audio controller to speaker controller
 
 - **UUID**: `6dab9263-f0c5-499d-bc7b-aa0db863a03d`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `CONTROLLER`
 - **Component**: `carrier_board`
 - **Created**: `2026-10-04 16:43:43 UTC`
 - **Resolved**: `2026-10-04 16:54:31 UTC`
+- **Accepted**: `2026-10-04 16:54:31 UTC`
 
 #### Description
 
@@ -10375,12 +10367,13 @@ Renamed AudioController and controller::audio_controller to SpeakerController an
 ### <a id="worm-013"></a> 🟢 `[WORM-013]` Feedbacks about carrier_board.md
 
 - **UUID**: `6e2400a4-8fa5-46fd-938a-58996597f407`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `GENERAL`
 - **Component**: `carrier_board`
 - **Created**: `2026-10-04 16:50:42 UTC`
 - **Resolved**: `2026-10-04 17:11:10 UTC`
+- **Accepted**: `2026-10-04 17:11:10 UTC`
 
 #### Description
 
@@ -10401,12 +10394,13 @@ Updated app/carrier_board.md with all 6 architecture requirements: dev:eeprom ho
 ### <a id="worm-014"></a> 🟢 `[WORM-014]` Unresolved worms in VCS UI
 
 - **UUID**: `a9d4483b-b38d-4f56-bdef-7ef9e5b1be0a`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-07 02:29:34 UTC`
 - **Resolved**: `2026-10-07 02:38:05 UTC`
+- **Accepted**: `2026-10-07 02:38:05 UTC`
 
 #### Description
 
@@ -10427,12 +10421,13 @@ Prevent phantom OPEN worm tags in VCS UI for non-existent bug IDs ported from ex
 ### <a id="worm-015"></a> 🟢 `[WORM-015]` Unable to open code review or worm report pages from VCS UI
 
 - **UUID**: `5d358f8e-a5fa-4bfc-ba86-0231449f60e8`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-07 03:39:52 UTC`
 - **Resolved**: `2026-10-07 03:41:04 UTC`
+- **Accepted**: `2026-10-07 03:41:04 UTC`
 
 #### Description
 
@@ -10447,11 +10442,12 @@ Closed modalBranchPicker div properly so workstationModal is mounted directly un
 ### <a id="worm-016"></a> 🟢 `[WORM-016]` Remove my username from tracked files
 
 - **UUID**: `732d3b51-3220-448f-95a3-491046668c64`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-07 22:12:15 UTC`
 - **Resolved**: `2026-10-07 22:29:44 UTC`
+- **Accepted**: `2026-10-07 22:29:44 UTC`
 
 #### Description
 
@@ -10523,12 +10519,13 @@ Purged username from all git-tracked files across firmware and hardware reposito
 ### <a id="worm-017"></a> 🟢 `[WORM-017]` Working tree actions doesn't show up unless I click an older commit
 
 - **UUID**: `064fec38-c4a1-436a-ae12-26ea26844579`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-07 23:26:10 UTC`
 - **Resolved**: `2026-10-08 02:42:55 UTC`
+- **Accepted**: `2026-10-08 02:42:55 UTC`
 
 #### Description
 
@@ -10543,11 +10540,12 @@ Updated diff_view.html.j2 template to dynamically render workingTreeCommitArea w
 ### <a id="worm-018"></a> 🟢 `[WORM-018]` Populate component list
 
 - **UUID**: `53d3ceb2-8a2f-4117-8fa7-f1c9c2160daa`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Created**: `2026-10-07 23:27:07 UTC`
 - **Resolved**: `2026-10-08 02:49:15 UTC`
+- **Accepted**: `2026-10-08 02:49:15 UTC`
 
 #### Description
 
@@ -10562,12 +10560,13 @@ Added <datalist id="worm-component-list"> to worm_report.html.j2 connected to wo
 ### <a id="worm-019"></a> 🟢 `[WORM-019]` Port dashboard to Eel
 
 - **UUID**: `12787545-0734-473d-9ff2-6c2f38ee7191`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-08 19:50:38 UTC`
 - **Resolved**: `2026-10-08 20:01:42 UTC`
+- **Accepted**: `2026-10-08 20:01:42 UTC`
 
 #### Description
 
@@ -10582,12 +10581,13 @@ Integrated Eel standalone desktop window support with browser discovery, /eel.js
 ### <a id="worm-020"></a> 🟢 `[WORM-020]` Reduce dashboard font sizes
 
 - **UUID**: `680c7663-029b-47a5-9f21-9ccfa0d5c73a`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-08 21:05:29 UTC`
 - **Resolved**: `2026-10-08 21:13:25 UTC`
+- **Accepted**: `2026-10-08 21:13:25 UTC`
 
 #### Description
 
@@ -10598,12 +10598,13 @@ Please reduce the dashboard font sizes to about 80% of what they are now. They a
 ### <a id="worm-021"></a> 🟢 `[WORM-021]` Detach dashboard from terminal after opening
 
 - **UUID**: `61e94a99-68fb-4ea0-9c7b-f4f4d09bd59f`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-08 21:06:01 UTC`
 - **Resolved**: `2026-10-08 21:26:46 UTC`
+- **Accepted**: `2026-10-08 21:26:46 UTC`
 
 #### Description
 
@@ -10618,12 +10619,13 @@ Added single-instance check preventing duplicate dashboard processes using lock 
 ### <a id="worm-022"></a> 🟢 `[WORM-022]` Dashboard App icons show up as Chrome icons
 
 - **UUID**: `8fb06a58-7b19-4768-8ee9-bbf0b9b0187a`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-08 21:06:54 UTC`
 - **Resolved**: `2026-10-08 21:33:24 UTC`
+- **Accepted**: `2026-10-08 21:33:24 UTC`
 
 #### Description
 
@@ -10644,12 +10646,13 @@ Added pregenerated app.icns, updated manifest.json display_override, and impleme
 ### <a id="worm-023"></a> 🟢 `[WORM-023]` Add Planned status to worms
 
 - **UUID**: `be9303ee-9ed8-4d56-a20c-0974ab03587c`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-08 21:08:10 UTC`
 - **Resolved**: `2026-10-08 21:18:20 UTC`
+- **Accepted**: `2026-10-08 21:18:20 UTC`
 
 #### Description
 
@@ -10664,12 +10667,13 @@ Added PLANNED status to WormStatus enum, updated CLI to exclude PLANNED from --o
 ### <a id="worm-024"></a> 🟢 `[WORM-024]` UI icons appear corrupted
 
 - **UUID**: `c5a08be1-3c15-4624-8731-c5d5874bf55e`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-09 00:28:30 UTC`
 - **Resolved**: `2026-10-09 00:36:21 UTC`
+- **Accepted**: `2026-10-09 00:36:21 UTC`
 
 #### Description
 
@@ -10690,12 +10694,13 @@ Rasterize SVG icons at full resolution with alpha transparency, proper centered 
 ### <a id="worm-025"></a> 🟢 `[WORM-025]` Close the dashboard when closing the app
 
 - **UUID**: `04a45bbe-385d-4912-99b4-3363835f8632`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-09 00:32:10 UTC`
 - **Resolved**: `2026-10-09 00:48:41 UTC`
+- **Accepted**: `2026-10-09 00:48:41 UTC`
 
 #### Description
 
@@ -10715,12 +10720,13 @@ Register on_close callback in webview and eel launchers to cleanly terminate bac
 ### <a id="worm-026"></a> 🟢 `[WORM-026]` It doesn’t look like the dashboard is closing automatically :-(
 
 - **UUID**: `f863343e-01e3-4a38-a010-6dbb55320a05`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `Das`
 - **Created**: `2026-10-09 02:49:22 UTC`
 - **Resolved**: `2026-10-09 03:13:46 UTC`
+- **Accepted**: `2026-10-09 03:13:46 UTC`
 
 #### Description
 
@@ -10752,12 +10758,13 @@ Hook window closed event to terminate pywebview process cleanly on window exit, 
 ### <a id="worm-027"></a> 🟢 `[WORM-027]` Apply dashboard theme to Window UI
 
 - **UUID**: `5965947b-7974-4334-933d-7f00c32c6ac7`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-09 02:50:05 UTC`
 - **Resolved**: `2026-10-09 03:26:33 UTC`
+- **Accepted**: `2026-10-09 03:26:33 UTC`
 
 #### Description
 
@@ -10772,12 +10779,13 @@ Apply dashboard theme to native window UI with dark appearance and transparent t
 ### <a id="worm-028"></a> 🟢 `[WORM-028]` Create separate firwmware architecture docs
 
 - **UUID**: `7b3d890e-45a1-43b8-a232-037f0a818cd3`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `PLATFORM`
 - **Component**: `cat_fountain, carrier_board`
 - **Created**: `2026-10-09 20:18:18 UTC`
 - **Resolved**: `2026-10-09 20:25:32 UTC`
+- **Accepted**: `2026-10-09 20:25:32 UTC`
 
 #### Description
 
@@ -10792,12 +10800,13 @@ Created separate architecture docs docs/firmware_architecture.md, docs/cat_fount
 ### <a id="worm-029"></a> 🟢 `[WORM-029]` Replace integer ID’s with Docker-pattern ID's
 
 - **UUID**: `b52165bd-d3e5-409a-bb0c-2f3ff9284a27`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-09 20:51:32 UTC`
 - **Resolved**: `2026-10-09 21:02:49 UTC`
+- **Accepted**: `2026-10-09 21:02:49 UTC`
 
 #### Description
 
@@ -10820,12 +10829,13 @@ Replaced integer-based issue IDs with Docker-pattern IDs generated via CRNG with
 ### <a id="worm-translucent-tapeworm-953"></a> 🟢 `[WORM-TRANSLUCENT-TAPEWORM-953]` Dashboard stuck at 20% on launch
 
 - **UUID**: `3e17a613-50d8-4c90-9e62-24e63b8f13fe`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-15 00:32:11 UTC`
 - **Resolved**: `2026-10-15 00:32:17 UTC`
+- **Accepted**: `2026-10-15 00:32:17 UTC`
 
 #### Description
 
@@ -10842,12 +10852,13 @@ Upon launching or restarting the dashboard workstation, the UI was stuck display
 ### <a id="worm-loamy-bristle-455"></a> 🟢 `[WORM-LOAMY-BRISTLE-455]` Elide physical address and personal email in privacy sanitizer
 
 - **UUID**: `09c3136e-35c6-442e-9708-46ac711fa0ed`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `sanitizer`
 - **Created**: `2026-10-15 00:37:10 UTC`
 - **Resolved**: `2026-10-15 00:37:11 UTC`
+- **Accepted**: `2026-10-15 00:37:11 UTC`
 
 #### Description
 
@@ -10866,11 +10877,12 @@ Extend the zero-dependency personal privacy and identity sanitizer (`tools/dashb
 ### <a id="worm-undulating-redworm-56"></a> 🟢 `[WORM-UNDULATING-REDWORM-56]` README.md is broken
 
 - **UUID**: `dc740603-beaa-4db2-b995-bcaa130a0ba2`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `GENERAL`
 - **Created**: `2026-10-15 03:35:22 UTC`
 - **Resolved**: `2026-10-15 03:38:54 UTC`
+- **Accepted**: `2026-10-15 03:38:54 UTC`
 
 #### Description
 
@@ -10898,11 +10910,12 @@ Fixed syntax error in README.md Mermaid diagram by replacing unquoted space-sepa
 ### <a id="worm-earthen-nymph-383"></a> 🟢 `[WORM-EARTHEN-NYMPH-383]` SensorController: Periodic read failed.
 
 - **UUID**: `a177e2b9-941f-4bd8-85ad-bc66c2789e13`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-15 20:53:09 UTC`
 - **Resolved**: `2026-10-15 21:20:04 UTC`
+- **Accepted**: `2026-10-15 21:20:04 UTC`
 
 #### Description
 
@@ -10966,12 +10979,13 @@ Replaced destructive pin stealing in handle_gpio_cli with direct non-invasive rp
 ### <a id="worm-gliding-bristle-252"></a> 🟢 `[WORM-GLIDING-BRISTLE-252]` Update TMC6300 to 6-PWM control and drop SENSE pin support
 
 - **UUID**: `7e4bd5e7-82e8-44b4-bce7-6b05b7cfbc56`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `FIRMWARE`
 - **Component**: `tmc6300`
 - **Created**: `2026-10-15 20:53:40 UTC`
 - **Resolved**: `2026-10-15 21:11:59 UTC`
+- **Accepted**: `2026-10-15 21:11:59 UTC`
 
 #### Description
 
@@ -10986,11 +11000,12 @@ Updated TMC6300 driver to 6-PWM control across GP16-GP21 (UH, UL, VH, VL, WH, WL
 ### <a id="worm-grounded-planarian-948"></a> 🟢 `[WORM-GROUNDED-PLANARIAN-948]` GP26 is logic high- measuing .29V on multimeter
 
 - **UUID**: `b35796e6-ef70-447d-8c21-e66a767d203f`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-15 21:00:30 UTC`
 - **Resolved**: `2026-10-15 21:28:14 UTC`
+- **Accepted**: `2026-10-15 21:28:14 UTC`
 
 #### Description
 
@@ -11010,12 +11025,13 @@ Configured early Pull::Up on SPEED_SENSE_PIN (GP26) in Board::init alongside non
 ### <a id="worm-subterranean-ribbonworm-582"></a> 🟢 `[WORM-SUBTERRANEAN-RIBBONWORM-582]` Remove feedback/WORMS.md from repo
 
 - **UUID**: `f3be9766-fdfa-48be-97c0-8fa9c6dabb78`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-15 21:03:33 UTC`
 - **Resolved**: `2026-10-15 21:30:53 UTC`
+- **Accepted**: `2026-10-15 21:30:53 UTC`
 
 #### Resolution Notes
 
@@ -11026,12 +11042,13 @@ Removed monolithic feedback/WORMS.md from git tracking, keeping only granular WO
 ### <a id="worm-deep-fireworm-942"></a> 🟢 `[WORM-DEEP-FIREWORM-942]` Add GPIO set CLI command for hardware debugging
 
 - **UUID**: `55a47316-0497-4228-a27e-b8a318c5b8b0`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `platform`
 - **Created**: `2026-10-15 22:17:35 UTC`
 - **Resolved**: `2026-10-15 23:33:52 UTC`
+- **Accepted**: `2026-10-15 23:33:52 UTC`
 
 #### Description
 
@@ -11057,12 +11074,13 @@ Added GpioSubcommand::Set variant to platform/src/io/gpio.rs with pin validation
 ### <a id="worm-bristly-burrower-873"></a> 🟢 `[WORM-BRISTLY-BURROWER-873]` Current sensor does not appear to be workign right.
 
 - **UUID**: `72775417-f6f4-4d42-8d88-9c376d796de5`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-15 23:41:18 UTC`
 - **Resolved**: `2026-10-15 23:57:55 UTC`
+- **Accepted**: `2026-10-15 23:57:55 UTC`
 
 #### Description
 
@@ -11119,11 +11137,12 @@ Fixed INA219 current sensor scaling from raw 0.1 mA counts to integer mA (dividi
 ### <a id="worm-writhing-tubeworm-652"></a> 🟢 `[WORM-WRITHING-TUBEWORM-652]` Limit max TMC6300 current to 2A
 
 - **UUID**: `fb11dc60-30a2-4880-989f-6de052beea64`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-15 23:43:21 UTC`
 - **Resolved**: `2026-10-16 00:19:19 UTC`
+- **Accepted**: `2026-10-16 00:19:19 UTC`
 
 #### Description
 
@@ -11147,11 +11166,12 @@ Implemented RP2040 PIO-based 25 kHz PWM duty cycling state machine on PIO1 for G
 ### <a id="worm-slithering-earthworm-854"></a> 🟢 `[WORM-SLITHERING-EARTHWORM-854]` Bootloop-
 
 - **UUID**: `919eccfe-37b7-4464-9733-fb87345157e2`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-16 01:08:14 UTC`
 - **Resolved**: `2026-10-16 01:12:32 UTC`
+- **Accepted**: `2026-10-16 01:12:32 UTC`
 
 #### Description
 
@@ -11237,12 +11257,13 @@ Removed erroneous cfg.set_set_pins call on the 6 PWM pins in Tmc6300Pio::new. RP
 ### <a id="worm-slick-burrower-70"></a> 🟢 `[WORM-SLICK-BURROWER-70]` We should log when DIAG pin gets asserted.
 
 - **UUID**: `9f820909-e867-4252-83b9-92fde8e4a3c7`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-16 01:23:33 UTC`
 - **Resolved**: `2026-10-16 01:36:22 UTC`
+- **Accepted**: `2026-10-16 01:36:22 UTC`
 
 #### Description
 
@@ -11257,12 +11278,13 @@ Instrumented TMC6300 driver tick calls (standard GPIO and PIO drivers) with stru
 ### <a id="worm-embedded-leech-268"></a> 🟢 `[WORM-EMBEDDED-LEECH-268]` Motor does not spin
 
 - **UUID**: `f7f59f93-5829-427e-b5ec-301b2de7486b`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-16 01:24:25 UTC`
 - **Resolved**: `2026-10-17 20:54:50 UTC`
+- **Accepted**: `2026-10-17 20:54:50 UTC`
 
 #### Description
 
@@ -11358,12 +11380,13 @@ Decoupled set_speed from sm.tx push in Tmc6300Pio, ensuring tick exclusively dri
 ### <a id="worm-deep-planarian-943"></a> 🟢 `[WORM-DEEP-PLANARIAN-943]` GPIO pin states do not persist
 
 - **UUID**: `ae470e71-22f8-42bb-a6c1-edacde58492c`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `CRITICAL`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-17 00:24:41 UTC`
 - **Resolved**: `2026-10-17 00:50:39 UTC`
+- **Accepted**: `2026-10-17 00:50:39 UTC`
 
 #### Description
 
@@ -11424,12 +11447,13 @@ GP21 set to High (1)
 ### <a id="worm-dirt-ribbonworm-196"></a> 🟢 `[WORM-DIRT-RIBBONWORM-196]` Motor speed 100- no GPIO activity
 
 - **UUID**: `5195ac5b-7e6d-4b01-b4f1-7261dd111e21`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `CRITICAL`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-17 00:29:58 UTC`
 - **Resolved**: `2026-10-17 02:37:40 UTC`
+- **Accepted**: `2026-10-17 02:37:40 UTC`
 
 #### Description
 
@@ -11494,12 +11518,13 @@ Resolved out-of-bounds jump in PIO assembler program when off_count is 0 (100% d
 ### <a id="worm-supple-pupa-464"></a> 🟢 `[WORM-SUPPLE-PUPA-464]` Create host_daemon tool
 
 - **UUID**: `3024e952-f8f5-4cdf-83e8-7d9889343c52`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 00:32:33 UTC`
 - **Resolved**: `2026-10-17 01:00:46 UTC`
+- **Accepted**: `2026-10-17 01:00:46 UTC`
 
 #### Description
 
@@ -11519,12 +11544,13 @@ Can you please create a host daemon tool that wraps host_cli and host_fs tools b
 ### <a id="worm-setose-setae-521"></a> 🟢 `[WORM-SETOSE-SETAE-521]` Add fuzzy history search to CLI control
 
 - **UUID**: `baa8996a-3ef7-490f-8234-b15467135419`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard, host_daemon`
 - **Created**: `2026-10-17 00:38:18 UTC`
 - **Resolved**: `2026-10-17 01:04:49 UTC`
+- **Accepted**: `2026-10-17 01:04:49 UTC`
 
 #### Description
 
@@ -11535,12 +11561,13 @@ Can you please add a fuzzy history search (shortcut; CTRL-R on the shell) to inv
 ### <a id="worm-tunneling-silkworm-860"></a> 🟢 `[WORM-TUNNELING-SILKWORM-860]` Add terminal format and coloration support
 
 - **UUID**: `ef3a84a4-ea9b-456f-a279-02947840682f`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard, host_daemon`
 - **Created**: `2026-10-17 00:40:03 UTC`
 - **Resolved**: `2026-10-17 01:09:44 UTC`
+- **Accepted**: `2026-10-17 01:09:44 UTC`
 
 #### Description
 
@@ -11557,12 +11584,13 @@ We need to support terminal formatting and coloration similar to the vscode term
 ### <a id="worm-gliding-bristleworm-4"></a> 🟢 `[WORM-GLIDING-BRISTLEWORM-4]` Add colorized console output to ⚡ TARGET SYNC & FLASH MATRIX
 
 - **UUID**: `cefd82f1-78b6-4276-ae01-5de2795cc719`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 01:29:48 UTC`
 - **Resolved**: `2026-10-17 01:58:23 UTC`
+- **Accepted**: `2026-10-17 01:58:23 UTC`
 
 #### Description
 
@@ -11577,12 +11605,13 @@ Enlarged sync modal with colorized streaming console output, added cancellation 
 ### <a id="worm-coiling-casting-220"></a> 🟢 `[WORM-COILING-CASTING-220]` Add RESET button to host daemon
 
 - **UUID**: `aa2ef55c-a6b3-4c69-89ff-1fa2c9985890`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 01:30:56 UTC`
 - **Resolved**: `2026-10-17 01:47:23 UTC`
+- **Accepted**: `2026-10-17 01:47:23 UTC`
 
 #### Description
 
@@ -11597,12 +11626,13 @@ Added target microcontroller reset support via probe-rs, exposed /api/reset POST
 ### <a id="worm-slimy-snail-582"></a> 🟢 `[WORM-SLIMY-SNAIL-582]` host_daemon.py-pywebkit window didn’t pop up
 
 - **UUID**: `f039a786-2d34-430a-a840-034538f47df3`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 01:31:37 UTC`
 - **Resolved**: `2026-10-17 01:44:25 UTC`
+- **Accepted**: `2026-10-17 01:44:25 UTC`
 
 #### Description
 
@@ -11648,12 +11678,13 @@ Added repo root to sys.path in host_daemon launcher and cli to fix native webvie
 ### <a id="worm-tunneling-inchworm-510"></a> 🟢 `[WORM-TUNNELING-INCHWORM-510]` FS doesn’t work
 
 - **UUID**: `392a47ce-f137-404d-94cb-3f7af58334bc`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 01:34:30 UTC`
 - **Resolved**: `2026-10-17 01:54:29 UTC`
+- **Accepted**: `2026-10-17 01:54:29 UTC`
 
 #### Description
 
@@ -11781,12 +11812,13 @@ Guaranteed probe exclusivity by stopping RTT streaming before FS commands and on
 ### <a id="worm-vermicular-caterpillar-419"></a> 🟢 `[WORM-VERMICULAR-CATERPILLAR-419]` Add vertical handle gripper to logging monitor to permit resizing
 
 - **UUID**: `2039f33f-ef54-4bb0-8e2e-00104fb473e9`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 01:37:50 UTC`
 - **Resolved**: `2026-10-17 02:03:25 UTC`
+- **Accepted**: `2026-10-17 02:03:25 UTC`
 
 #### Description
 
@@ -11801,12 +11833,13 @@ Added resizable vertical splitter handle with Xerxes cyan gripper between loggin
 ### <a id="worm-nocturnal-burrower-260"></a> 🟢 `[WORM-NOCTURNAL-BURROWER-260]` Add copy icons to logging monitor and command workstations
 
 - **UUID**: `e3ee80a3-d589-4748-bfd8-1dc1dfab5dd5`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 01:38:53 UTC`
 - **Resolved**: `2026-10-17 02:00:27 UTC`
+- **Accepted**: `2026-10-17 02:00:27 UTC`
 
 #### Description
 
@@ -11821,12 +11854,13 @@ Added copy buttons to logging monitor and command workstations with clipboard fa
 ### <a id="worm-composted-palolo-725"></a> 🟢 `[WORM-COMPOSTED-PALOLO-725]` Not able to flash a new app with host daemon
 
 - **UUID**: `abe0e38f-f71e-41f9-99c4-a45784148233`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 01:45:50 UTC`
 - **Resolved**: `2026-10-17 01:49:42 UTC`
+- **Accepted**: `2026-10-17 01:49:42 UTC`
 
 #### Description
 
@@ -11850,11 +11884,12 @@ Added dynamic runner reconfiguration via /api/sync and CLI forwarding when targe
 ### <a id="worm-creeping-tapeworm-173"></a> 🟢 `[WORM-CREEPING-TAPEWORM-173]` New Worm Report
 
 - **UUID**: `9261aeb5-10e1-4f81-b709-eeec67440ac4`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-17 01:49:59 UTC`
 - **Resolved**: `2026-10-17 02:08:37 UTC`
+- **Accepted**: `2026-10-17 02:08:37 UTC`
 
 #### Resolution Notes
 
@@ -11865,12 +11900,13 @@ Empty template placeholder without defect description; resolved and verified ass
 ### <a id="worm-luminescent-woodlouse-435"></a> 🟢 `[WORM-LUMINESCENT-WOODLOUSE-435]` Parse ANSI OSC 8 hyperlink escape sequences in terminal and CLI console
 
 - **UUID**: `69aec711-3219-44b5-8810-6ab0a59d1138`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 02:52:08 UTC`
 - **Resolved**: `2026-10-17 02:56:45 UTC`
+- **Accepted**: `2026-10-17 02:56:45 UTC`
 
 #### Description
 
@@ -11885,12 +11921,13 @@ Parsed ANSI OSC 8 hyperlink escape sequences (\x1b]8;;url\x1b\text\x1b]8;;\x1b\ 
 ### <a id="worm-composted-clitellum-469"></a> 🟢 `[WORM-COMPOSTED-CLITELLUM-469]` Corrupted CLI output
 
 - **UUID**: `99ddf751-bef5-4af7-934c-d451cfe78363`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard, host_daemon`
 - **Created**: `2026-10-17 02:52:14 UTC`
 - **Resolved**: `2026-10-17 03:01:00 UTC`
+- **Accepted**: `2026-10-17 03:01:00 UTC`
 
 #### Description
 
@@ -11915,12 +11952,13 @@ Resolved CLI output corruption by fixing two root causes: (1) Added ANSI OSC 8 h
 ### <a id="worm-chitinous-palolo-159"></a> 🟢 `[WORM-CHITINOUS-PALOLO-159]` Disable CLI while running a command
 
 - **UUID**: `2cbea987-58db-49c3-9adc-d5e41e0ee9ab`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon, dashboard`
 - **Created**: `2026-10-17 02:56:38 UTC`
 - **Resolved**: `2026-10-17 03:07:16 UTC`
+- **Accepted**: `2026-10-17 03:07:16 UTC`
 
 #### Description
 
@@ -11949,12 +11987,13 @@ Disabled CLI and FS command input windows and buttons in host_daemon and code_re
 ### <a id="worm-annelidic-bookworm-399"></a> 🟢 `[WORM-ANNELIDIC-BOOKWORM-399]` Cleanup host_cli/host_fs when closing host daemon
 
 - **UUID**: `6293b901-13c6-4b18-8721-204fd7bd0bdb`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 02:59:21 UTC`
 - **Resolved**: `2026-10-17 05:45:44 UTC`
+- **Accepted**: `2026-10-17 05:45:44 UTC`
 
 #### Description
 
@@ -11993,12 +12032,13 @@ Terminated both rtt_process (host_cli) and _active_sync_process in runner.stop()
 ### <a id="worm-luminescent-palolo-130"></a> 🟢 `[WORM-LUMINESCENT-PALOLO-130]` Rename Host Daemon to Host
 
 - **UUID**: `f1d5fb50-25ab-4152-884d-2ca609df1f74`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 03:08:31 UTC`
 - **Resolved**: `2026-10-17 05:47:36 UTC`
+- **Accepted**: `2026-10-17 05:47:36 UTC`
 
 #### Description
 
@@ -12013,12 +12053,13 @@ Renamed tools/host_daemon.py to tools/host.py and updated all caller references.
 ### <a id="worm-annelidic-caterpillar-258"></a> 🟢 `[WORM-ANNELIDIC-CATERPILLAR-258]` Please highlight the selected commit in VCS UI
 
 - **UUID**: `4ea086cc-542f-4a87-b4c1-d7faea8bd5a8`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-17 03:11:10 UTC`
 - **Resolved**: `2026-10-17 05:00:52 UTC`
+- **Accepted**: `2026-10-17 05:00:52 UTC`
 
 #### Description
 
@@ -12033,12 +12074,13 @@ Added .smartlog-node.selected styling and synchronized selection classes across 
 ### <a id="worm-loamy-lugworm-536"></a> 🟢 `[WORM-LOAMY-LUGWORM-536]` Add Target Bug pointer to host tool
 
 - **UUID**: `3f007724-d826-429a-bbc0-d0ee46a40167`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host`
 - **Created**: `2026-10-17 19:31:59 UTC`
 - **Resolved**: `2026-10-17 21:42:52 UTC`
+- **Accepted**: `2026-10-17 21:42:52 UTC`
 
 #### Description
 
@@ -12053,12 +12095,13 @@ Added Target Bug button to host tool header with dedicated defect modal, pre-fil
 ### <a id="worm-serpentine-pupa-18"></a> 🟢 `[WORM-SERPENTINE-PUPA-18]` Integrate bringup.py with host
 
 - **UUID**: `ca867715-3521-49ac-b103-a48314db3f37`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host, bringup`
 - **Created**: `2026-10-17 19:32:52 UTC`
 - **Resolved**: `2026-10-17 21:49:23 UTC`
+- **Accepted**: `2026-10-17 21:49:23 UTC`
 
 #### Description
 
@@ -12069,11 +12112,12 @@ Pls integrate the bringup.py functionality (./tools/helpers/bringup.py) into too
 ### <a id="worm-chitinous-serpula-541"></a> 🟢 `[WORM-CHITINOUS-SERPULA-541]` Update docs
 
 - **UUID**: `5e8a0f5c-4a32-427f-9275-97eb203e6cb9`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `GENERAL`
 - **Created**: `2026-10-17 20:43:56 UTC`
 - **Resolved**: `2026-10-17 21:51:05 UTC`
+- **Accepted**: `2026-10-17 21:51:05 UTC`
 
 #### Description
 
@@ -12084,12 +12128,13 @@ Update docs-README.md, CONTRIBUTING.md on some of the latest updates
 ### <a id="worm-annelidic-maggot-775"></a> 🟢 `[WORM-ANNELIDIC-MAGGOT-775]` The RTT and system log view don’t appear when I open the App
 
 - **UUID**: `72adfd2a-91d8-4c82-bcec-3d7c8ebf6f7e`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `target`
 - **Created**: `2026-10-17 23:20:51 UTC`
 - **Resolved**: `2026-10-17 23:25:24 UTC`
+- **Accepted**: `2026-10-17 23:25:24 UTC`
 
 #### Description
 
@@ -12175,11 +12220,12 @@ Closed unclosed <div> in targetBugModal automatic attachments container in tools
 ### <a id="worm-peaty-bobbit-630"></a> 🟢 `[WORM-PEATY-BOBBIT-630]` Motor speed 100 fails-DIAG light pops on
 
 - **UUID**: `f0cd6a77-7f49-45d5-922e-9f8daf27df2e`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-17 23:27:35 UTC`
 - **Resolved**: `2026-10-17 23:40:07 UTC`
+- **Accepted**: `2026-10-17 23:40:07 UTC`
 
 #### Description
 
@@ -12940,12 +12986,13 @@ Transition MotorController to MotorState::Off and stop motor ticking upon hardwa
 ### <a id="worm-bristly-glowworm-390"></a> 🟢 `[WORM-BRISTLY-GLOWWORM-390]` Please add the “Attachments & Screenshots” UI to the host bug reporter page
 
 - **UUID**: `953d25f6-47e6-4f48-a63b-40ee57ceccde`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `Host`
 - **Created**: `2026-10-17 23:33:41 UTC`
 - **Resolved**: `2026-10-18 00:09:31 UTC`
+- **Accepted**: `2026-10-18 00:09:31 UTC`
 
 #### Description
 
@@ -12960,12 +13007,13 @@ Added the Attachments & Screenshots UI section to the host tool target bug page 
 ### <a id="worm-rooted-clitellum-453"></a> 🟢 `[WORM-ROOTED-CLITELLUM-453]` Parse the target function namespace intelligently
 
 - **UUID**: `f0c204b3-311b-4b82-bf7f-9589d85ce805`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_cli`
 - **Created**: `2026-10-17 23:35:15 UTC`
 - **Resolved**: `2026-10-18 00:21:26 UTC`
+- **Accepted**: `2026-10-18 00:21:26 UTC`
 
 #### Description
 
@@ -13003,12 +13051,13 @@ Implemented intelligent target namespace formatting in host_cli (format_target_n
 ### <a id="worm-creeping-wriggler-223"></a> 🟢 `[WORM-CREEPING-WRIGGLER-223]` VL not asserting
 
 - **UUID**: `f73dcd72-2efa-4e89-b6f4-2b39c9b1f9dd`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-17 23:41:41 UTC`
 - **Resolved**: `2026-10-18 00:02:49 UTC`
+- **Accepted**: `2026-10-18 00:02:49 UTC`
 
 #### Description
 
@@ -13029,12 +13078,13 @@ Corrected TMC6300 pin mapping and 6-step trapezoidal commutation masks to match 
 ### <a id="worm-slick-fireworm-677"></a> 🟢 `[WORM-SLICK-FIREWORM-677]` Error: unexpected EOF during frame decoding (possible target/ELF mismatch or truncated log buffer) RTT connected. Active channels:
 
 - **UUID**: `b483d0fc-8e08-4363-b479-5509f99f4a71`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-18 00:34:54 UTC`
 - **Resolved**: `2026-10-18 00:43:25 UTC`
+- **Accepted**: `2026-10-18 00:43:25 UTC`
 
 #### Description
 
@@ -13117,12 +13167,13 @@ Eliminated spurious UnexpectedEof error log during defmt buffer drain in dump_lo
 ### <a id="worm-gliding-larva-522"></a> 🟢 `[WORM-GLIDING-LARVA-522]` Motor fails, DIAG light pops on
 
 - **UUID**: `e023aead-8cae-4353-8468-bbebaad4385d`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-18 00:37:14 UTC`
 - **Resolved**: `2026-10-18 01:10:06 UTC`
+- **Accepted**: `2026-10-18 01:10:06 UTC`
 
 #### Description
 
@@ -13221,12 +13272,13 @@ Root cause identified: Inverted TMC6300 pin mapping and phase masks from commit 
 ### <a id="worm-vermiform-annelid-135"></a> 🟢 `[WORM-VERMIFORM-ANNELID-135]` Providing scope trace with motor detached
 
 - **UUID**: `493795b8-c629-422d-9147-b8b24aa575a7`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-18 00:39:31 UTC`
 - **Resolved**: `2026-10-18 01:10:11 UTC`
+- **Accepted**: `2026-10-18 01:10:11 UTC`
 
 #### Description
 
@@ -13306,12 +13358,13 @@ Resolved in conjunction with WORM-GLIDING-LARVA-522. Confirmed that trace with m
 ### <a id="worm-fossorial-composter-481"></a> 🟢 `[WORM-FOSSORIAL-COMPOSTER-481]` RTT logs showing up in CLI view
 
 - **UUID**: `71aed942-1a62-45c4-ae7b-f07bfae5cf55`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-18 01:04:48 UTC`
 - **Resolved**: `2026-10-18 01:14:52 UTC`
+- **Accepted**: `2026-10-18 01:14:52 UTC`
 
 #### Description
 
@@ -13394,12 +13447,13 @@ Set log_to_cli=False in flash_target and run_probe_rs, and filtered out 'Drainin
 ### <a id="worm-silken-ribbonworm-320"></a> 🟢 `[WORM-SILKEN-RIBBONWORM-320]` DIAG trip coincides with drop in input voltage
 
 - **UUID**: `d5d7326e-9066-4d4f-8b70-92c496789c10`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-18 02:04:57 UTC`
 - **Resolved**: `2026-10-18 02:14:15 UTC`
+- **Accepted**: `2026-10-18 02:14:15 UTC`
 
 #### Description
 
@@ -13485,12 +13539,13 @@ Disabled motor speed ramping in MotorController so target speed applies directly
 ### <a id="worm-moist-tapeworm-650"></a> 🟢 `[WORM-MOIST-TAPEWORM-650]` Single clicking on any text control should highlight the CLI text control
 
 - **UUID**: `8c693602-b5cb-4601-97ee-c3094a5a68c7`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-19 01:47:23 UTC`
 - **Resolved**: `2026-10-21 23:25:59 UTC`
+- **Accepted**: `2026-10-21 23:25:59 UTC`
 
 #### Reproduction Steps
 
@@ -13571,12 +13626,13 @@ Configured single-click highlight and text selection across CLI text controls, p
 ### <a id="worm-slimy-planarian-761"></a> 🟢 `[WORM-SLIMY-PLANARIAN-761]` When calling host.py with no arguments, the UI should present a modal configuration window
 
 - **UUID**: `177ea503-4efb-4aee-aed2-521a095f482c`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host`
 - **Created**: `2026-10-21 22:50:07 UTC`
 - **Resolved**: `2026-10-21 23:22:52 UTC`
+- **Accepted**: `2026-10-21 23:22:52 UTC`
 
 #### Description
 
@@ -13591,12 +13647,13 @@ Implemented package selection mode and modal configuration window (targetConfigM
 ### <a id="worm-slithering-lumbricus-809"></a> 🟢 `[WORM-SLITHERING-LUMBRICUS-809]` TMC6300-Short protection fault on startup
 
 - **UUID**: `96bf370a-4dde-42d3-a00f-e6399fc7d737`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `CRITICAL`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-21 22:51:40 UTC`
 - **Resolved**: `2026-10-21 23:16:18 UTC`
+- **Accepted**: `2026-10-21 23:16:18 UTC`
 
 #### Description
 
@@ -13623,12 +13680,13 @@ Configured TMC6300 PIO clock divider to 5 (25 MHz) and clamped active duty cycle
 ### <a id="worm-slick-annelid-908"></a> 🟢 `[WORM-SLICK-ANNELID-908]` When calling host.py with no args, it gets stuck at the initial flashing UI
 
 - **UUID**: `a75fd6e7-5113-4316-ad45-66c67f310f98`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host`
 - **Created**: `2026-10-21 23:50:31 UTC`
 - **Resolved**: `2026-10-21 23:54:49 UTC`
+- **Accepted**: `2026-10-21 23:54:49 UTC`
 
 #### Description
 
@@ -13643,11 +13701,12 @@ Fixed submitTargetConfig in host_daemon.html.j2 to trigger startSyncPolling() an
 ### <a id="worm-setose-tubeworm-177"></a> 🟢 `[WORM-SETOSE-TUBEWORM-177]` Motor vibrates, does not spin
 
 - **UUID**: `19a0571e-86b8-42e9-97bb-4b8ce6030007`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-21 23:57:15 UTC`
 - **Resolved**: `2026-10-22 00:18:42 UTC`
+- **Accepted**: `2026-10-22 00:18:42 UTC`
 
 #### Description
 
@@ -13739,12 +13798,13 @@ Scaled open-loop commutation step rate with commanded speed and implemented soft
 ### <a id="worm-inching-beetle-546"></a> 🟢 `[WORM-INCHING-BEETLE-546]` Creating a bug with a large attachment may crash the dashboard
 
 - **UUID**: `198ffd38-695e-4360-b783-99f5f1a5fb48`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-21 23:58:47 UTC`
 - **Resolved**: `2026-10-22 00:31:44 UTC`
+- **Accepted**: `2026-10-22 00:31:44 UTC`
 
 #### Description
 
@@ -13759,12 +13819,13 @@ Guarded against requests and attachments >= 2GB (GitHub LFS limit) with HTTP 413
 ### <a id="worm-humic-cocoon-243"></a> 🟢 `[WORM-HUMIC-COCOON-243]` Sorting by ID no longer works as intended
 
 - **UUID**: `4ffd9e1f-863d-43ec-9fa2-8e92aaae68a2`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-22 00:00:15 UTC`
 - **Resolved**: `2026-10-22 00:24:46 UTC`
+- **Accepted**: `2026-10-22 00:24:46 UTC`
 
 #### Description
 
@@ -13779,12 +13840,13 @@ Sorted bugs chronologically by created_at with fallback to numeric ID sequence a
 ### <a id="worm-subterranean-wireworm-439"></a> 🟢 `[WORM-SUBTERRANEAN-WIREWORM-439]` Motor vibrates, does not spin & 92 mA current cap
 
 - **UUID**: `e45bbc3c-2306-43f2-b163-187c8974c275`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-22 00:47:32 UTC`
 - **Resolved**: `2026-10-22 01:24:07 UTC`
+- **Accepted**: `2026-10-22 01:24:07 UTC`
 
 #### Description
 
@@ -13811,12 +13873,13 @@ Resolved 92 mA current draw cap by implementing frequency-modulated duty cycle s
 ### <a id="worm-moist-millipede-488"></a> 🟢 `[WORM-MOIST-MILLIPEDE-488]` Host flashes cat_detector_app instead of shell due to session contamination
 
 - **UUID**: `fce239b7-1b59-46e6-931e-0a1d7d0c0bce`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-22 01:38:41 UTC`
 - **Resolved**: `2026-10-22 01:42:18 UTC`
+- **Accepted**: `2026-10-22 01:42:18 UTC`
 
 #### Description
 
@@ -13831,12 +13894,13 @@ Configured default-run = 'cat_detector_shell' and prioritized shell binaries in 
 ### <a id="worm-segmented-sipunculid-504"></a> 🟢 `[WORM-SEGMENTED-SIPUNCULID-504]` Motor RPM reads as 0 RPM at 100% speed
 
 - **UUID**: `05658f02-3c1d-456c-ba10-7349ae64966d`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-22 01:59:36 UTC`
 - **Resolved**: `2026-10-22 02:44:35 UTC`
+- **Accepted**: `2026-10-22 02:44:35 UTC`
 
 #### Reproduction Steps
 
@@ -13918,12 +13982,13 @@ Fixed HallSensor RPM window collapse with 500ms timeout persistence, updated Mot
 ### <a id="worm-proboscid-roundworm-8"></a> 🟢 `[WORM-PROBOSCID-ROUNDWORM-8]` Motor does not spin at full duty cycle
 
 - **UUID**: `9d3fb9e3-2e4a-449e-aa56-bf9c01c87256`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-22 02:53:29 UTC`
 - **Resolved**: `2026-10-22 03:26:59 UTC`
+- **Accepted**: `2026-10-22 03:26:59 UTC`
 
 #### Reproduction Steps
 
@@ -14005,12 +14070,13 @@ Restored DEFAULT_TICK_INTERVAL_US to 10,000 us (10 ms) and startup_blanking_tick
 ### <a id="worm-nocturnal-caterpillar-808"></a> 🟢 `[WORM-NOCTURNAL-CATERPILLAR-808]` Motor rotor ticks back and forth instead of spinning
 
 - **UUID**: `fab2b9fc-f963-47ef-8baf-8811c4dae6eb`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-22 04:00:06 UTC`
 - **Resolved**: `2026-10-23 00:33:29 UTC`
+- **Accepted**: `2026-10-23 00:33:29 UTC`
 
 #### Description
 
@@ -14025,12 +14091,13 @@ Resolved motor rotor ticking back and forth by configuring 500us commutation tic
 ### <a id="worm-organic-fireworm-553"></a> 🟢 `[WORM-ORGANIC-FIREWORM-553]` Motor oscillates back and forth
 
 - **UUID**: `be4d32c9-30f4-4e1b-8780-630daf5bebc5`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-22 04:19:58 UTC`
 - **Resolved**: `2026-10-23 00:33:35 UTC`
+- **Accepted**: `2026-10-23 00:33:35 UTC`
 
 #### Description
 
@@ -14107,11 +14174,11 @@ motor speed 100-rotates slowly, and eventually trips drag
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
+| `document` | [motor_speed_100.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV) | Attached document (motor_speed_100.MOV) |
+| `document` | [motor_speed_50.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV) | Attached document (motor_speed_50.MOV) |
 | `log` | [target_system_logs_WORM-ORGANIC-FIREWORM-553.log](attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log) | Target system and defmt logs from host daemon session |
 | `document` | [motor_speed_10.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV) | Attached document (motor_speed_10.MOV) |
 | `document` | [motor_speed_30.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV) | Attached document (motor_speed_30.MOV) |
-| `document` | [motor_speed_100.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV) | Attached document (motor_speed_100.MOV) |
-| `document` | [motor_speed_50.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV) | Attached document (motor_speed_50.MOV) |
 
 #### Resolution Notes
 
@@ -14122,12 +14189,13 @@ Eliminated low-frequency detent oscillations across speeds 10, 30, and 50 and el
 ### <a id="worm-damp-mealworm-592"></a> 🟢 `[WORM-DAMP-MEALWORM-592]` Motor oscillates at speed 30
 
 - **UUID**: `1f9d77de-2617-4812-868f-38f5d858609d`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-23 00:03:42 UTC`
 - **Resolved**: `2026-10-23 00:33:25 UTC`
+- **Accepted**: `2026-10-23 00:33:25 UTC`
 
 #### Description
 
@@ -14253,12 +14321,13 @@ Set TMC6300 tick interval to 500us (2000 Hz commutation rate) and restored canon
 ### <a id="worm-lustrous-flatworm-473"></a> 🟢 `[WORM-LUSTROUS-FLATWORM-473]` Tons of untracked files under recordings/ and dashboard is slow to respond
 
 - **UUID**: `85f9dc39-75f5-4b0d-bbd4-1e09c39ad127`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-23 00:06:57 UTC`
 - **Resolved**: `2026-10-23 00:15:00 UTC`
+- **Accepted**: `2026-10-23 00:15:00 UTC`
 
 #### Resolution Notes
 
@@ -14269,12 +14338,13 @@ Removed hundreds of untracked temporary frame extraction directories and audio f
 ### <a id="worm-loamy-caterpillar-738"></a> 🟢 `[WORM-LOAMY-CATERPILLAR-738]` Add motor telemetry
 
 - **UUID**: `55993acb-1f3a-4436-a773-64b924983be3`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-23 00:07:50 UTC`
 - **Resolved**: `2026-10-23 00:13:54 UTC`
+- **Accepted**: `2026-10-23 00:13:54 UTC`
 
 #### Description
 
@@ -14307,12 +14377,13 @@ Added MotorTelemetry struct in model::types with speed, measured_rpm, estimated_
 ### <a id="worm-vermiform-redworm-38"></a> 🟢 `[WORM-VERMIFORM-REDWORM-38]` I see some extra output in the logs here
 
 - **UUID**: `f0841f57-7271-4efd-b0ca-bb972973d80d`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-23 00:09:47 UTC`
 - **Resolved**: `2026-10-23 00:20:08 UTC`
+- **Accepted**: `2026-10-23 00:20:08 UTC`
 
 #### Description
 
@@ -14401,12 +14472,13 @@ p
 ### <a id="worm-slimy-rooter-821"></a> 🟢 `[WORM-SLIMY-ROOTER-821]` Can we hide system logs by default?
 
 - **UUID**: `828fa6c6-c69a-4d68-a463-f416584d8e3f`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `Host`
 - **Created**: `2026-10-23 00:14:52 UTC`
 - **Resolved**: `2026-10-23 00:23:10 UTC`
+- **Accepted**: `2026-10-23 00:23:10 UTC`
 
 #### Description
 
@@ -14487,12 +14559,13 @@ In the host UI, can we hide system logs by default and add an option to show the
 ### <a id="worm-glowing-slug-613"></a> 🟢 `[WORM-GLOWING-SLUG-613]` Motor fails to spin, but moves
 
 - **UUID**: `f4cd4549-4887-4b9c-9a44-c019e055dc65`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-23 00:49:05 UTC`
 - **Resolved**: `2026-10-23 01:26:40 UTC`
+- **Accepted**: `2026-10-23 01:26:40 UTC`
 
 #### Description
 
@@ -14579,12 +14652,13 @@ The motor fails to spin at all, but moves when I command diff motor speeds. See 
 ### <a id="worm-subterranean-pupa-423"></a> 🟢 `[WORM-SUBTERRANEAN-PUPA-423]` Repro steps doesn’t update
 
 - **UUID**: `7a755039-13cf-4f6a-aa35-0d435c922690`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-23 00:49:55 UTC`
 - **Resolved**: `2026-10-23 01:08:24 UTC`
+- **Accepted**: `2026-10-23 01:08:24 UTC`
 
 #### Description
 
@@ -14670,11 +14744,12 @@ Ensured Target Bug modal dynamically regenerates reproduction steps from latest 
 ### <a id="worm-creeping-larva-820"></a> 🟢 `[WORM-CREEPING-LARVA-820]` Regression tests are not useful
 
 - **UUID**: `c9679ffa-7211-4f3f-bea5-a57be3bc91a4`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `GENERAL`
 - **Created**: `2026-10-23 00:51:04 UTC`
 - **Resolved**: `2026-10-23 01:03:28 UTC`
+- **Accepted**: `2026-10-23 01:03:28 UTC`
 
 #### Description
 
@@ -14780,12 +14855,13 @@ Removed redundant and useless shallow regression test wrappers that only wrapped
 ### <a id="worm-burrowing-clitellum-618"></a> 🟢 `[WORM-BURROWING-CLITELLUM-618]` Motor is stationary :-(
 
 - **UUID**: `3a6dfbe5-6077-4e84-bfe7-cf60c552740b`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-23 01:46:55 UTC`
 - **Resolved**: `2026-10-23 02:09:08 UTC`
+- **Accepted**: `2026-10-23 02:09:08 UTC`
 
 #### Reproduction Steps
 
@@ -14869,12 +14945,13 @@ Restored canonical 10ms commutation tick interval in tmc6300 and types to ensure
 ### <a id="worm-segmented-mealworm-41"></a> 🟢 `[WORM-SEGMENTED-MEALWORM-41]` Startup blanking
 
 - **UUID**: `1a765883-3cb7-43b4-b646-f4c6b9965a06`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-23 01:53:50 UTC`
 - **Resolved**: `2026-10-23 16:29:28 UTC`
+- **Accepted**: `2026-10-23 16:29:28 UTC`
 
 #### Description
 
@@ -14962,12 +15039,13 @@ Configured startup_blanking_ticks = 50 (500 ms at 100 Hz) in board.toml, model t
 ### <a id="worm-composted-digger-386"></a> 🟢 `[WORM-COMPOSTED-DIGGER-386]` Motor spins half cycle, then starts ticking
 
 - **UUID**: `6dde94f7-181b-42f0-b5da-d9e1ed4c5df5`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-23 21:37:59 UTC`
 - **Resolved**: `2026-10-23 21:59:58 UTC`
+- **Accepted**: `2026-10-23 21:59:58 UTC`
 
 #### Description
 
@@ -15040,9 +15118,9 @@ The motor spins for a half cycle, during which the motor duty cycle is 100%. Aft
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
+| `reference` | [IMG_0202.MOV](attachments/WORM-COMPOSTED-DIGGER-386/IMG_0202.MOV) | Uploaded reference IMG_0202.MOV |
 | `log` | [target_system_logs_WORM-COMPOSTED-DIGGER-386.log](attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log) | Target system and defmt logs from host daemon session |
 | `reference` | [target_telemetry_WORM-COMPOSTED-DIGGER-386.json](attachments/WORM-COMPOSTED-DIGGER-386/target_telemetry_WORM-COMPOSTED-DIGGER-386.json) | Target telemetry export retrieved via host_fs |
-| `reference` | [IMG_0202.MOV](attachments/WORM-COMPOSTED-DIGGER-386/IMG_0202.MOV) | Uploaded reference IMG_0202.MOV |
 
 #### Resolution Notes
 
@@ -15053,12 +15131,13 @@ Configured max_commutation_step_ticks = 2 in board.toml to guarantee open-loop c
 ### <a id="worm-undulating-serpula-688"></a> 🟢 `[WORM-UNDULATING-SERPULA-688]` Temporarily remove hall sensor support
 
 - **UUID**: `37fc64de-00b0-4ded-9755-a6177ee6b387`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-23 23:15:50 UTC`
 - **Resolved**: `2026-10-23 23:28:39 UTC`
+- **Accepted**: `2026-10-23 23:28:39 UTC`
 
 #### Description
 
@@ -15147,12 +15226,13 @@ Disabled support for Hall effect speed sensor in cat_detector (replacing target 
 ### <a id="worm-flexible-woodlouse-713"></a> 🟢 `[WORM-FLEXIBLE-WOODLOUSE-713]` When motor speed is reset, the duty cycle resets
 
 - **UUID**: `e80e1e2c-1bc4-4a77-a893-77cc6d0c3d39`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-24 00:47:14 UTC`
 - **Resolved**: `2026-10-24 00:52:25 UTC`
+- **Accepted**: `2026-10-24 00:52:25 UTC`
 
 #### Description
 
@@ -15241,12 +15321,13 @@ Preserve active regulated duty cycle across running speed changes in MotorContro
 ### <a id="worm-round-polychaete-84"></a> 🟢 `[WORM-ROUND-POLYCHAETE-84]` The motor seemed to stop spinning around speed 50 here
 
 - **UUID**: `1bba7e85-1263-4f27-b7dd-b6bd8738872b`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-24 00:56:38 UTC`
 - **Resolved**: `2026-10-24 01:39:26 UTC`
+- **Accepted**: `2026-10-24 01:39:26 UTC`
 
 #### Reproduction Steps
 
@@ -15324,12 +15405,13 @@ Resolved motor stall at speed 50. Eliminated single-tick (5,000 RPM) discontinui
 ### <a id="worm-silken-tubeworm-979"></a> 🟢 `[WORM-SILKEN-TUBEWORM-979]` Motor stalled out at 35% speed
 
 - **UUID**: `94be444c-f49e-4090-8774-8013b502b958`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-24 01:03:16 UTC`
 - **Resolved**: `2026-10-24 01:39:23 UTC`
+- **Accepted**: `2026-10-24 01:39:23 UTC`
 
 #### Description
 
@@ -15422,12 +15504,13 @@ Resolved motor stalling at 35% speed. Configured commutation_speed_divisor = 200
 ### <a id="worm-supple-segment-373"></a> 🟢 `[WORM-SUPPLE-SEGMENT-373]` DIAG tripped after 260s
 
 - **UUID**: `d8a043b6-7547-461e-b6ab-401576b60aff`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-24 01:03:39 UTC`
 - **Resolved**: `2026-10-24 01:30:50 UTC`
+- **Accepted**: `2026-10-24 01:30:50 UTC`
 
 #### Description
 
@@ -15561,12 +15644,13 @@ Resolved thermal DIAG tripping during extended ramp stress tests. Tightened clos
 ### <a id="worm-subterranean-earthworm-231"></a> 🟢 `[WORM-SUBTERRANEAN-EARTHWORM-231]` Cannot start motor stress at 50% speed
 
 - **UUID**: `70d98201-eed9-49ff-bd57-5370e97df642`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-24 01:05:39 UTC`
 - **Resolved**: `2026-10-24 01:39:03 UTC`
+- **Accepted**: `2026-10-24 01:39:03 UTC`
 
 #### Description
 
@@ -15676,12 +15760,13 @@ Resolved standstill pole-slip stall when starting motor at 50% speed. Configured
 ### <a id="worm-soilbound-vermis-341"></a> 🟢 `[WORM-SOILBOUND-VERMIS-341]` The CLI console is broken and not updating
 
 - **UUID**: `d6d2ea37-4767-4a13-a69c-9e83855837b6`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-24 01:26:49 UTC`
 - **Resolved**: `2026-10-24 01:30:39 UTC`
+- **Accepted**: `2026-10-24 01:30:39 UTC`
 
 #### Reproduction Steps
 
@@ -15766,12 +15851,13 @@ Resolved CLI and system log console freeze when circular buffer reaches maxlen (
 ### <a id="worm-annelidic-nematode-26"></a> 🟢 `[WORM-ANNELIDIC-NEMATODE-26]` motor speed 100 tripped DIAG
 
 - **UUID**: `7340fe94-6993-45f2-b119-41a91487de7a`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-24 02:09:15 UTC`
 - **Resolved**: `2026-10-24 02:21:26 UTC`
+- **Accepted**: `2026-10-24 02:21:26 UTC`
 
 #### Reproduction Steps
 
@@ -15849,12 +15935,13 @@ Enforce SHORT_PROTECTION_MIN_OFF_COUNT = 4 (280 ns off time) in calculate_pwm_co
 ### <a id="worm-humic-sandworm-365"></a> 🟢 `[WORM-HUMIC-SANDWORM-365]` motor speed 50 tripped DIAG
 
 - **UUID**: `18a14b2a-76fb-4cbc-8536-8fc431b8fa60`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-24 02:10:03 UTC`
 - **Resolved**: `2026-10-24 02:21:31 UTC`
+- **Accepted**: `2026-10-24 02:21:31 UTC`
 
 #### Reproduction Steps
 
@@ -15939,12 +16026,13 @@ Resolved by eliminating TMC6300 FET turn-off timing violations with SHORT_PROTEC
 ### <a id="worm-creeping-tapeworm-215"></a> 🟢 `[WORM-CREEPING-TAPEWORM-215]` Only first commit in smartlog tree gets highlighted
 
 - **UUID**: `2912e28f-e587-4b0f-8cc2-5642a1042e48`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `UI`
 - **Component**: `dashboard`
 - **Created**: `2026-11-05 13:32:56 UTC`
 - **Resolved**: `2026-11-05 13:34:38 UTC`
+- **Accepted**: `2026-11-05 13:34:38 UTC`
 
 #### Description
 
@@ -15953,5 +16041,25 @@ In diff_view.html.j2, selectCommit attempts to find active commit elements via d
 #### Resolution Notes
 
 Fixed selectCommit in diff_view.html.j2 across firmware and hardware repositories. Replaced fragile slice(0, 7) element lookups with event.currentTarget and data-hash attribute matching (exact and prefix), supporting arbitrary-length git abbreviated hashes (e.g. 8-char SHAs). Added data-hash='working' to working tree node and updated dynamic renderSmartlogList to preserve active class across selection transitions. Added dedicated regression unit tests in tools/tests/test_worm_creeping_tapeworm_215_smartlog_highlight.py and hardware tests.
+
+---
+
+### <a id="worm-silken-casting-127"></a> 🟢 `[WORM-SILKEN-CASTING-127]` Diff viewer missing green highlight for line additions in side-by-side and unified views
+
+- **UUID**: `b2ab3811-057b-4884-b0cf-df9a0f781f3e`
+- **Status**: `RESOLVED`
+- **Severity**: `LOW`
+- **Category**: `UI`
+- **Component**: `dashboard`
+- **Created**: `2026-11-05 14:30:52 UTC`
+- **Resolved**: `2026-11-05 14:30:53 UTC`
+
+#### Description
+
+In the VCS diff view (diff_component.html.j2), line additions and inserted lines do not have the green background highlight. Unified diff lines use row-add / add / insert classes which are not targeted by the CSS rules (which only targeted row-insert), and the background color used teal instead of standard green.
+
+#### Resolution Notes
+
+Updated diff_component.html.j2 and code_review.html.j2 to use green highlight rgba(34, 197, 94, 0.22) and #22c55e for line additions in side-by-side and unified views. Added comprehensive support for .row-add, .add, .insert, and .row-insert classes. Cross-patched matching selectors into hardware repository.
 
 ---

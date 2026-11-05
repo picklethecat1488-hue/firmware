@@ -2,12 +2,13 @@
 
 - **UUID**: `e80e1e2c-1bc4-4a77-a893-77cc6d0c3d39`
 - **ID**: `WORM-FLEXIBLE-WOODLOUSE-713`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-24 00:47:14 UTC`
 - **Resolved**: `2026-10-24 00:52:25 UTC`
+- **Accepted**: `2026-10-24 00:52:25 UTC`
 
 #### Description
 

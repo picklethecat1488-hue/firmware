@@ -2,12 +2,13 @@
 
 - **UUID**: `ae470e71-22f8-42bb-a6c1-edacde58492c`
 - **ID**: `WORM-DEEP-PLANARIAN-943`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `CRITICAL`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-17 00:24:41 UTC`
 - **Resolved**: `2026-10-17 00:50:39 UTC`
+- **Accepted**: `2026-10-17 00:50:39 UTC`
 
 #### Description
 

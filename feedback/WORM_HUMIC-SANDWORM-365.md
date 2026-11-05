@@ -2,12 +2,13 @@
 
 - **UUID**: `18a14b2a-76fb-4cbc-8536-8fc431b8fa60`
 - **ID**: `WORM-HUMIC-SANDWORM-365`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-24 02:10:03 UTC`
 - **Resolved**: `2026-10-24 02:21:31 UTC`
+- **Accepted**: `2026-10-24 02:21:31 UTC`
 
 #### Reproduction Steps
 

@@ -2,12 +2,13 @@
 
 - **UUID**: `9d3fb9e3-2e4a-449e-aa56-bf9c01c87256`
 - **ID**: `WORM-PROBOSCID-ROUNDWORM-8`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-22 02:53:29 UTC`
 - **Resolved**: `2026-10-22 03:26:59 UTC`
+- **Accepted**: `2026-10-22 03:26:59 UTC`
 
 #### Reproduction Steps
 

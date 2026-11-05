@@ -2,12 +2,13 @@
 
 - **UUID**: `f039a786-2d34-430a-a840-034538f47df3`
 - **ID**: `WORM-SLIMY-SNAIL-582`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 01:31:37 UTC`
 - **Resolved**: `2026-10-17 01:44:25 UTC`
+- **Accepted**: `2026-10-17 01:44:25 UTC`
 
 #### Description
 

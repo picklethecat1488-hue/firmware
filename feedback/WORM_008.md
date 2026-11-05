@@ -2,11 +2,12 @@
 
 - **UUID**: `e187e841-c48f-4e9f-9c07-7eac80415538`
 - **ID**: `WORM-008`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-03 23:51:07 UTC`
 - **Resolved**: `2026-10-03 23:56:31 UTC`
+- **Accepted**: `2026-10-03 23:56:31 UTC`
 
 #### Resolution Notes
 

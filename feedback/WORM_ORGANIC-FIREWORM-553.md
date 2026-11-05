@@ -2,12 +2,13 @@
 
 - **UUID**: `be4d32c9-30f4-4e1b-8780-630daf5bebc5`
 - **ID**: `WORM-ORGANIC-FIREWORM-553`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-22 04:19:58 UTC`
 - **Resolved**: `2026-10-23 00:33:35 UTC`
+- **Accepted**: `2026-10-23 00:33:35 UTC`
 
 #### Description
 
@@ -84,11 +85,11 @@ motor speed 100-rotates slowly, and eventually trips drag
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
+| `document` | [motor_speed_100.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV) | Attached document (motor_speed_100.MOV) |
+| `document` | [motor_speed_50.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV) | Attached document (motor_speed_50.MOV) |
 | `log` | [target_system_logs_WORM-ORGANIC-FIREWORM-553.log](attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log) | Target system and defmt logs from host daemon session |
 | `document` | [motor_speed_10.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV) | Attached document (motor_speed_10.MOV) |
 | `document` | [motor_speed_30.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV) | Attached document (motor_speed_30.MOV) |
-| `document` | [motor_speed_100.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV) | Attached document (motor_speed_100.MOV) |
-| `document` | [motor_speed_50.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV) | Attached document (motor_speed_50.MOV) |
 
 #### Resolution Notes
 

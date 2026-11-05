@@ -2,12 +2,13 @@
 
 - **UUID**: `baa8996a-3ef7-490f-8234-b15467135419`
 - **ID**: `WORM-SETOSE-SETAE-521`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard, host_daemon`
 - **Created**: `2026-10-17 00:38:18 UTC`
 - **Resolved**: `2026-10-17 01:04:49 UTC`
+- **Accepted**: `2026-10-17 01:04:49 UTC`
 
 #### Description
 

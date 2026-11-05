@@ -2,12 +2,13 @@
 
 - **UUID**: `d5d7326e-9066-4d4f-8b70-92c496789c10`
 - **ID**: `WORM-SILKEN-RIBBONWORM-320`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-18 02:04:57 UTC`
 - **Resolved**: `2026-10-18 02:14:15 UTC`
+- **Accepted**: `2026-10-18 02:14:15 UTC`
 
 #### Description
 

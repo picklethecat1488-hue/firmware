@@ -2,12 +2,13 @@
 
 - **UUID**: `55993acb-1f3a-4436-a773-64b924983be3`
 - **ID**: `WORM-LOAMY-CATERPILLAR-738`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-23 00:07:50 UTC`
 - **Resolved**: `2026-10-23 00:13:54 UTC`
+- **Accepted**: `2026-10-23 00:13:54 UTC`
 
 #### Description
 

@@ -2,12 +2,13 @@
 
 - **UUID**: `fab2b9fc-f963-47ef-8baf-8811c4dae6eb`
 - **ID**: `WORM-NOCTURNAL-CATERPILLAR-808`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-22 04:00:06 UTC`
 - **Resolved**: `2026-10-23 00:33:29 UTC`
+- **Accepted**: `2026-10-23 00:33:29 UTC`
 
 #### Description
 
