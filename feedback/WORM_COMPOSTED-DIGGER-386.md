@@ -2,12 +2,13 @@
 
 - **UUID**: `6dde94f7-181b-42f0-b5da-d9e1ed4c5df5`
 - **ID**: `WORM-COMPOSTED-DIGGER-386`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-23 21:37:59 UTC`
 - **Resolved**: `2026-10-23 21:59:58 UTC`
+- **Accepted**: `2026-10-23 21:59:58 UTC`
 
 #### Description
 

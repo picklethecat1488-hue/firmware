@@ -2,12 +2,13 @@
 
 - **UUID**: `3a6dfbe5-6077-4e84-bfe7-cf60c552740b`
 - **ID**: `WORM-BURROWING-CLITELLUM-618`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-23 01:46:55 UTC`
 - **Resolved**: `2026-10-23 02:09:08 UTC`
+- **Accepted**: `2026-10-23 02:09:08 UTC`
 
 #### Reproduction Steps
 

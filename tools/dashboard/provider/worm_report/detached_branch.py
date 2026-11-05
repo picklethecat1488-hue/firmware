@@ -7,12 +7,15 @@ git plumbing without modifying the active working tree, index, or HEAD.
 
 from __future__ import annotations
 
+from collections.abc import Collection
+import hashlib
 import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
 from typing import Any, Dict, List, Optional
+import zlib
 
 from model.worm_report import WormDatabaseModel
 from provider.sanitizer import elide_personal_info
@@ -61,6 +64,27 @@ class DetachedBranchWormStore:
             check=True,
         )
         return proc.stdout.decode("utf-8").strip()
+
+    def _git_blob_sha(self, data: bytes) -> str:
+        """Calculate Git blob SHA-1 hash for bytes in memory."""
+        return hashlib.sha1(f"blob {len(data)}\0".encode("ascii") + data).hexdigest()
+
+    def _ensure_blob_written(self, data: bytes, sha: str, objects_dir: Optional[Path] = None) -> None:
+        """Write git blob directly to objects dir if missing, falling back to git hash-object."""
+        if objects_dir:
+            obj_dir = objects_dir / sha[:2]
+            obj_file = obj_dir / sha[2:]
+            if obj_file.exists():
+                return
+            try:
+                obj_dir.mkdir(parents=True, exist_ok=True)
+                tmp_file = obj_dir / f".tmp_{sha[2:]}_{os.getpid()}"
+                tmp_file.write_bytes(zlib.compress(f"blob {len(data)}\0".encode("ascii") + data))
+                tmp_file.replace(obj_file)
+                return
+            except OSError:
+                pass
+        self._hash_object(data)
 
     def ref_exists(self) -> bool:
         """Check if the local detached branch reference exists.
@@ -142,6 +166,7 @@ class DetachedBranchWormStore:
         parents: Optional[List[str]] = None,
         extra_feedback_dir: Optional[Path] = None,
         sync_local_disk: bool = False,
+        dirty_bug_ids: Optional[Collection[str]] = None,
     ) -> Optional[str]:
         """Write worms.json, WORMS.md, and individual WORM_*.md files to the detached branch.
 
@@ -151,6 +176,8 @@ class DetachedBranchWormStore:
             parents: Optional list of parent commit hashes. If None, uses local ref commit.
             extra_feedback_dir: Optional directory to scan for additional feedback files (e.g. CR_*.md).
             sync_local_disk: If True, also writes exported files to local feedback/ directory.
+            dirty_bug_ids: Optional collection of bug IDs that were modified. If provided and
+                a parent commit exists, only dirty bugs and root metadata are regenerated.
 
         Returns:
             New commit SHA string or None if operation failed.
@@ -160,6 +187,20 @@ class DetachedBranchWormStore:
             if not curr_parent:
                 curr_parent = self.get_remote_ref_commit()
             parents = [curr_parent] if curr_parent else []
+
+        git_objects_dir: Optional[Path] = None
+        try:
+            res = subprocess.run(
+                ["git", "rev-parse", "--git-path", "objects"],
+                cwd=str(self.repo_root),
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            p = Path(res.stdout.strip())
+            git_objects_dir = p if p.is_absolute() else (self.repo_root / p)
+        except Exception:
+            git_objects_dir = None
 
         git_dir = self.repo_root / ".git"
         if git_dir.is_dir():
@@ -176,8 +217,11 @@ class DetachedBranchWormStore:
         env["GIT_AUTHOR_EMAIL"] = "user@workspace"
         env["GIT_COMMITTER_NAME"] = "User"
         env["GIT_COMMITTER_EMAIL"] = "user@workspace"
+
+        feedback_path = extra_feedback_dir or (self.repo_root / "feedback")
         try:
             # If a parent commit exists, initialize the isolated index from its tree
+            current_index: Dict[str, str] = {}
             if parents and parents[0]:
                 subprocess.run(
                     ["git", "read-tree", parents[0]],
@@ -185,87 +229,79 @@ class DetachedBranchWormStore:
                     env=env,
                     check=True,
                 )
+                ls_proc = subprocess.run(
+                    ["git", "ls-files", "-s"],
+                    cwd=str(self.repo_root),
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                for line in ls_proc.stdout.splitlines():
+                    parts = line.strip().split()
+                    if len(parts) >= 4:
+                        current_index[parts[3]] = parts[1]
 
+            target_files: Dict[str, bytes] = {}
             # 1. Store worms.json
-            data_json = database.model_dump_json(indent=2).encode("utf-8")
-            blob_json = self._hash_object(data_json)
-            subprocess.run(
-                [
-                    "git",
-                    "update-index",
-                    "--add",
-                    "--cacheinfo",
-                    FILE_MODE_STANDARD,
-                    blob_json,
-                    f"{self.branch_name}.json",
-                ],
-                cwd=str(self.repo_root),
-                env=env,
-                check=True,
-            )
+            target_files[f"{self.branch_name}.json"] = database.model_dump_json(indent=2).encode("utf-8")
 
             # 2. Store WORMS.md
-            data_md = self.exporter.render_markdown(database).encode("utf-8")
-            blob_md = self._hash_object(data_md)
-            subprocess.run(
-                [
-                    "git",
-                    "update-index",
-                    "--add",
-                    "--cacheinfo",
-                    FILE_MODE_STANDARD,
-                    blob_md,
-                    f"{self.branch_name.upper()}.md",
-                ],
-                cwd=str(self.repo_root),
-                env=env,
-                check=True,
-            )
+            target_files[f"{self.branch_name.upper()}.md"] = self.exporter.render_markdown(database).encode("utf-8")
 
             # 3. Store individual WORM_<id>.md files in feedback/
-            for bug in database.worms:
-                bug_md = self.exporter.render_worm_markdown(bug).encode("utf-8")
-                blob_bug = self._hash_object(bug_md)
-                clean_id = bug.id.removeprefix("WORM-").removeprefix("WORM_").removeprefix("BUG-").removeprefix("BUG_")
-                fn = f"feedback/WORM_{clean_id}.md"
+            prefix = "WORM" if self.branch_name == "worms" else "BUG"
+            if parents and parents[0] and dirty_bug_ids is not None:
+                dirty_set = set(dirty_bug_ids)
+                for bug in database.worms:
+                    if bug.id in dirty_set:
+                        bug_md = self.exporter.render_worm_markdown(bug).encode("utf-8")
+                        clean_id = (
+                            bug.id.removeprefix("WORM-").removeprefix("WORM_").removeprefix("BUG-").removeprefix("BUG_")
+                        )
+                        target_files[f"feedback/{prefix}_{clean_id}.md"] = bug_md
+            else:
+                for bug in database.worms:
+                    bug_md = self.exporter.render_worm_markdown(bug).encode("utf-8")
+                    clean_id = (
+                        bug.id.removeprefix("WORM-").removeprefix("WORM_").removeprefix("BUG-").removeprefix("BUG_")
+                    )
+                    target_files[f"feedback/{prefix}_{clean_id}.md"] = bug_md
+
+            # 4. Include existing CR_*.md or review files if available
+            if not (parents and parents[0] and dirty_bug_ids is not None):
+                if feedback_path.exists() and feedback_path.is_dir():
+                    for cr_file in feedback_path.glob("CR_*.md"):
+                        try:
+                            target_files[f"feedback/{cr_file.name}"] = cr_file.read_bytes()
+                        except OSError:
+                            continue
+
+            # Batch update index
+            index_updates: List[str] = []
+            for fn, data in target_files.items():
+                sha = self._git_blob_sha(data)
+                if current_index.get(fn) != sha:
+                    self._ensure_blob_written(data, sha, git_objects_dir)
+                    index_updates.append(f"{FILE_MODE_STANDARD} {sha} 0\t{fn}\n")
+
+            if dirty_bug_ids is None and current_index:
+                valid_bug_paths = {
+                    f"feedback/{prefix}_{b.id.removeprefix('WORM-').removeprefix('WORM_').removeprefix('BUG-').removeprefix('BUG_')}.md"
+                    for b in database.worms
+                }
+                for p in current_index:
+                    if p.startswith(f"feedback/{prefix}_") and p not in valid_bug_paths:
+                        index_updates.append(f"0 0000000000000000000000000000000000000000 0\t{p}\n")
+
+            if index_updates:
                 subprocess.run(
-                    [
-                        "git",
-                        "update-index",
-                        "--add",
-                        "--cacheinfo",
-                        FILE_MODE_STANDARD,
-                        blob_bug,
-                        fn,
-                    ],
+                    ["git", "update-index", "--index-info"],
+                    input="".join(index_updates).encode("utf-8"),
                     cwd=str(self.repo_root),
                     env=env,
                     check=True,
                 )
-
-            # 4. Include existing CR_*.md or review files if available
-            feedback_path = extra_feedback_dir or (self.repo_root / "feedback")
-            if feedback_path.exists() and feedback_path.is_dir():
-                for cr_file in feedback_path.glob("CR_*.md"):
-                    try:
-                        cr_bytes = cr_file.read_bytes()
-                        blob_cr = self._hash_object(cr_bytes)
-                        subprocess.run(
-                            [
-                                "git",
-                                "update-index",
-                                "--add",
-                                "--cacheinfo",
-                                FILE_MODE_STANDARD,
-                                blob_cr,
-                                f"feedback/{cr_file.name}",
-                            ],
-                            cwd=str(self.repo_root),
-                            env=env,
-                            check=True,
-                        )
-                    except OSError:
-                        continue
 
             # 5. Write index to tree object
             tree_proc = subprocess.run(

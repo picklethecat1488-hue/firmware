@@ -2,12 +2,13 @@
 
 - **UUID**: `1a765883-3cb7-43b4-b646-f4c6b9965a06`
 - **ID**: `WORM-SEGMENTED-MEALWORM-41`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-23 01:53:50 UTC`
 - **Resolved**: `2026-10-23 16:29:28 UTC`
+- **Accepted**: `2026-10-23 16:29:28 UTC`
 
 #### Description
 

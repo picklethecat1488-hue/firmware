@@ -2,12 +2,13 @@
 
 - **UUID**: `37fc64de-00b0-4ded-9755-a6177ee6b387`
 - **ID**: `WORM-UNDULATING-SERPULA-688`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-23 23:15:50 UTC`
 - **Resolved**: `2026-10-23 23:28:39 UTC`
+- **Accepted**: `2026-10-23 23:28:39 UTC`
 
 #### Description
 

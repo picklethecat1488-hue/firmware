@@ -2,11 +2,12 @@
 
 - **UUID**: `e06664ae-ef13-4658-b71f-1db435ab8e9e`
 - **ID**: `WORM-006`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Created**: `2026-10-03 22:27:07 UTC`
 - **Resolved**: `2026-10-03 22:55:03 UTC`
+- **Accepted**: `2026-10-03 22:55:03 UTC`
 
 #### Description
 

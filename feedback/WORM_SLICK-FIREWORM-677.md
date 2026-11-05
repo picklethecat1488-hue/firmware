@@ -2,12 +2,13 @@
 
 - **UUID**: `b483d0fc-8e08-4363-b479-5509f99f4a71`
 - **ID**: `WORM-SLICK-FIREWORM-677`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-18 00:34:54 UTC`
 - **Resolved**: `2026-10-18 00:43:25 UTC`
+- **Accepted**: `2026-10-18 00:43:25 UTC`
 
 #### Description
 

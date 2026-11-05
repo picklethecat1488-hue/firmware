@@ -2,12 +2,13 @@
 
 - **UUID**: `6293b901-13c6-4b18-8721-204fd7bd0bdb`
 - **ID**: `WORM-ANNELIDIC-BOOKWORM-399`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 02:59:21 UTC`
 - **Resolved**: `2026-10-17 05:45:44 UTC`
+- **Accepted**: `2026-10-17 05:45:44 UTC`
 
 #### Description
 

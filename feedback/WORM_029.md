@@ -2,12 +2,13 @@
 
 - **UUID**: `b52165bd-d3e5-409a-bb0c-2f3ff9284a27`
 - **ID**: `WORM-029`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-09 20:51:32 UTC`
 - **Resolved**: `2026-10-09 21:02:49 UTC`
+- **Accepted**: `2026-10-09 21:02:49 UTC`
 
 #### Description
 

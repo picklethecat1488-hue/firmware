@@ -77,6 +77,8 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         "attach-commit",
         "add-task",
         "resolve-task",
+        "migrate-resolved-worms",
+        "migrate-resolved-bugs",
         "add-comment",
         "resolve-comment",
         "set-verdict",
@@ -428,6 +430,29 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     )
     p_res_t.add_argument("--failed", action="store_true", help="Mark task as FAILED instead of COMPLETED.")
     p_res_t.add_argument("--notes", default="", help="Optional task execution notes.")
+
+    # migrate-resolved-worms
+    p_mig = subparsers.add_parser(
+        "migrate-resolved-worms",
+        aliases=["migrate-resolved-bugs"],
+        help="Migrate legacy resolved worms to CLOSED status.",
+    )
+    p_mig.add_argument(
+        "--dry-run", action="store_true", help="Preview worms to be migrated without modifying database."
+    )
+    p_mig.add_argument(
+        "--all",
+        action="store_true",
+        default=False,
+        help="Migrate all RESOLVED worms to CLOSED regardless of timestamp.",
+    )
+    p_mig.add_argument(
+        "--before",
+        type=str,
+        default="2026-11-05 14:00:00 UTC",
+        help="Only migrate worms resolved on or before this UTC timestamp.",
+    )
+    p_mig.add_argument("--exclude", type=str, default="", help="Comma-separated worm IDs to exclude from migration.")
 
     # add-comment
     p_add_c = subparsers.add_parser("add-comment", help="Quickly add a review comment.")
@@ -936,6 +961,8 @@ def main(cli_args: Optional[List[str]] = None) -> None:
             "attach-commit",
             "add-task",
             "resolve-task",
+            "migrate-resolved-worms",
+            "migrate-resolved-bugs",
         )
         or getattr(args, "worms", False)
         or getattr(args, "add_worm", None)
@@ -1085,7 +1112,7 @@ def main(cli_args: Optional[List[str]] = None) -> None:
                 description=args.description,
             )
             server.worm_server.database.add_or_update(worm)
-            server.worm_server.save_and_sync()
+            server.worm_server.save_and_sync(dirty_bug_ids=[worm.id])
             print(f"Registered worm [{worm.id}]: {worm.title} ({worm.severity.value})")
             return
         case "resolve-worm" | "resolve-bug":
@@ -1101,7 +1128,7 @@ def main(cli_args: Optional[List[str]] = None) -> None:
             worm.resolved_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
             if getattr(args, "notes", ""):
                 worm.resolution_notes = args.notes
-            server.worm_server.save_and_sync()
+            server.worm_server.save_and_sync(dirty_bug_ids=[worm.id])
             print(f"Resolved worm [{worm.id}]: {worm.title}")
             return
         case "accept-worm" | "accept-bug":
@@ -1123,7 +1150,7 @@ def main(cli_args: Optional[List[str]] = None) -> None:
                 else:
                     worm.resolution_notes = f"**Acceptance Note**: {notes}"
             worm.updated_at = now_str
-            server.worm_server.save_and_sync()
+            server.worm_server.save_and_sync(dirty_bug_ids=[worm.id])
             print(f"Accepted and closed worm [{worm.id}]: {worm.title}")
             return
         case "reject-worm" | "reject-bug":
@@ -1145,7 +1172,7 @@ def main(cli_args: Optional[List[str]] = None) -> None:
             worm.rejected_at = now_str
             worm.rejection_notes = notes
             worm.updated_at = now_str
-            server.worm_server.save_and_sync()
+            server.worm_server.save_and_sync(dirty_bug_ids=[worm.id])
             print(f"Rejected worm [{worm.id}], returned to OPEN: {worm.title}")
             return
         case "attach-commit":
@@ -1164,7 +1191,7 @@ def main(cli_args: Optional[List[str]] = None) -> None:
             if cid not in worm.commit_ids:
                 worm.commit_ids.append(cid)
             worm.updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-            server.worm_server.save_and_sync()
+            server.worm_server.save_and_sync(dirty_bug_ids=[worm.id])
             print(f"Attached commit {cid} to [{worm.id}]. Total attached: {len(worm.commit_ids)}")
             return
         case "add-task":
@@ -1184,7 +1211,7 @@ def main(cli_args: Optional[List[str]] = None) -> None:
             task = WormReviewTaskModel(title=title, command=cmd)
             worm.review_tasks.append(task)
             worm.updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-            server.worm_server.save_and_sync()
+            server.worm_server.save_and_sync(dirty_bug_ids=[worm.id])
             print(f"Added review task [{task.id}] to [{worm.id}]: {task.title}")
             return
         case "resolve-task":
@@ -1219,8 +1246,46 @@ def main(cli_args: Optional[List[str]] = None) -> None:
             if notes:
                 target_task.notes = notes
             worm.updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-            server.worm_server.save_and_sync()
+            server.worm_server.save_and_sync(dirty_bug_ids=[worm.id])
             print(f"Updated task [{target_task.id}] on [{worm.id}] -> {target_task.status}")
+            return
+        case "migrate-resolved-worms" | "migrate-resolved-bugs":
+            dry_run = getattr(args, "dry_run", False)
+            migrate_all = getattr(args, "all", False)
+            before_str = getattr(args, "before", None)
+            exclude_raw = getattr(args, "exclude", "")
+            exclude_ids = {x.strip().upper() for x in exclude_raw.split(",") if x.strip()}
+
+            candidates = []
+            for w in server.worm_server.database.worms:
+                if w.status == WormStatus.RESOLVED and not w.accepted_at:
+                    if w.id.upper() in exclude_ids:
+                        continue
+                    if not migrate_all and before_str:
+                        check_ts = w.resolved_at or w.updated_at or w.created_at
+                        if check_ts and check_ts > before_str:
+                            continue
+                    candidates.append(w)
+
+            if dry_run:
+                print(f"\n[DRY-RUN] Found {len(candidates)} legacy resolved worm(s) to migrate to CLOSED:")
+                for w in candidates:
+                    print(f"  - [{w.id}] {w.title} (resolved: {w.resolved_at or w.created_at})")
+                print()
+                return
+
+            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+            migrated_count = 0
+            for w in candidates:
+                w.status = WormStatus.CLOSED
+                w.accepted_at = w.resolved_at or w.updated_at or w.created_at or now_str
+                w.updated_at = now_str
+                migrated_count += 1
+
+            if migrated_count > 0:
+                server.worm_server.save_and_sync(dirty_bug_ids=[w.id for w in candidates])
+
+            print(f"\nSuccessfully migrated {migrated_count} legacy resolved worm(s) to CLOSED status.\n")
             return
         case "add-comment":
             body = getattr(args, "comment_body", "") or getattr(args, "body", "")

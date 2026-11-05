@@ -2,12 +2,13 @@
 
 - **UUID**: `1f9d77de-2617-4812-868f-38f5d858609d`
 - **ID**: `WORM-DAMP-MEALWORM-592`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-23 00:03:42 UTC`
 - **Resolved**: `2026-10-23 00:33:25 UTC`
+- **Accepted**: `2026-10-23 00:33:25 UTC`
 
 #### Description
 

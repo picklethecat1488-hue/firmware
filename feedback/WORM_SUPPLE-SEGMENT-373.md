@@ -2,12 +2,13 @@
 
 - **UUID**: `d8a043b6-7547-461e-b6ab-401576b60aff`
 - **ID**: `WORM-SUPPLE-SEGMENT-373`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-24 01:03:39 UTC`
 - **Resolved**: `2026-10-24 01:30:50 UTC`
+- **Accepted**: `2026-10-24 01:30:50 UTC`
 
 #### Description
 

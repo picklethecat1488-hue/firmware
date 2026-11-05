@@ -2,12 +2,13 @@
 
 - **UUID**: `cefd82f1-78b6-4276-ae01-5de2795cc719`
 - **ID**: `WORM-GLIDING-BRISTLEWORM-4`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 01:29:48 UTC`
 - **Resolved**: `2026-10-17 01:58:23 UTC`
+- **Accepted**: `2026-10-17 01:58:23 UTC`
 
 #### Description
 

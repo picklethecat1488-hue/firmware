@@ -2,12 +2,13 @@
 
 - **UUID**: `d6d2ea37-4767-4a13-a69c-9e83855837b6`
 - **ID**: `WORM-SOILBOUND-VERMIS-341`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-24 01:26:49 UTC`
 - **Resolved**: `2026-10-24 01:30:39 UTC`
+- **Accepted**: `2026-10-24 01:30:39 UTC`
 
 #### Reproduction Steps
 

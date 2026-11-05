@@ -2,11 +2,12 @@
 
 - **UUID**: `919eccfe-37b7-4464-9733-fb87345157e2`
 - **ID**: `WORM-SLITHERING-EARTHWORM-854`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-16 01:08:14 UTC`
 - **Resolved**: `2026-10-16 01:12:32 UTC`
+- **Accepted**: `2026-10-16 01:12:32 UTC`
 
 #### Description
 

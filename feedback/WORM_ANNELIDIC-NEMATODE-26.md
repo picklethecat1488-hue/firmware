@@ -2,12 +2,13 @@
 
 - **UUID**: `7340fe94-6993-45f2-b119-41a91487de7a`
 - **ID**: `WORM-ANNELIDIC-NEMATODE-26`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-24 02:09:15 UTC`
 - **Resolved**: `2026-10-24 02:21:26 UTC`
+- **Accepted**: `2026-10-24 02:21:26 UTC`
 
 #### Reproduction Steps
 

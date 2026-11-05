@@ -2,12 +2,13 @@
 
 - **UUID**: `953d25f6-47e6-4f48-a63b-40ee57ceccde`
 - **ID**: `WORM-BRISTLY-GLOWWORM-390`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `Host`
 - **Created**: `2026-10-17 23:33:41 UTC`
 - **Resolved**: `2026-10-18 00:09:31 UTC`
+- **Accepted**: `2026-10-18 00:09:31 UTC`
 
 #### Description
 

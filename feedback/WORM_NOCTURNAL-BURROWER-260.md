@@ -2,12 +2,13 @@
 
 - **UUID**: `e3ee80a3-d589-4748-bfd8-1dc1dfab5dd5`
 - **ID**: `WORM-NOCTURNAL-BURROWER-260`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 01:38:53 UTC`
 - **Resolved**: `2026-10-17 02:00:27 UTC`
+- **Accepted**: `2026-10-17 02:00:27 UTC`
 
 #### Description
 

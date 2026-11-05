@@ -6,6 +6,7 @@ and automated Markdown persistence (feedback/WORMS.md).
 """
 
 import base64
+from collections.abc import Collection
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -140,6 +141,8 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
                 self._handle_run_command(data)
             case "/api/worms/delete" | "/api/bugs/delete":
                 self._handle_delete_worm(data)
+            case "/api/worms/migrate_legacy" | "/api/bugs/migrate_legacy":
+                self._handle_migrate_legacy(data)
             case "/api/upload":
                 self._handle_file_upload(data)
             case "/api/export":
@@ -307,7 +310,7 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
         )
 
         self.server.database.add_or_update(worm)
-        self.server.save_and_sync()
+        self.server.save_and_sync(dirty_bug_ids=[worm.id])
         self._send_json(worm.model_dump(mode="json"))
 
     def _handle_update_status(self, data: Dict[str, Any]) -> None:
@@ -333,7 +336,7 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
             worm.resolution_notes = elide_personal_info(notes)
 
         worm.updated_at = now_str
-        self.server.save_and_sync()
+        self.server.save_and_sync(dirty_bug_ids=[worm.id])
         self._send_json(worm.model_dump(mode="json"))
 
     def _handle_accept_worm(self, data: Dict[str, Any]) -> None:
@@ -354,7 +357,7 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
             else:
                 worm.resolution_notes = f"**Acceptance Note**: {notes}"
         worm.updated_at = now_str
-        self.server.save_and_sync()
+        self.server.save_and_sync(dirty_bug_ids=[worm.id])
         self._send_json({"status": "ok", "worm": worm.model_dump(mode="json")})
 
     def _handle_reject_worm(self, data: Dict[str, Any]) -> None:
@@ -372,8 +375,58 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
         worm.rejected_at = now_str
         worm.rejection_notes = elide_personal_info(notes)
         worm.updated_at = now_str
-        self.server.save_and_sync()
+        self.server.save_and_sync(dirty_bug_ids=[worm.id])
         self._send_json({"status": "ok", "worm": worm.model_dump(mode="json")})
+
+    def _handle_migrate_legacy(self, data: Dict[str, Any]) -> None:
+        """Handle migrating legacy resolved worms to CLOSED status."""
+        before_ts = data.get("before", "2026-11-05 14:00:00 UTC")
+        migrate_all = bool(data.get("all", False))
+        exclude_raw = data.get("exclude", [])
+        exclude_ids = set(exclude_raw if isinstance(exclude_raw, list) else str(exclude_raw).split(","))
+        dry_run = bool(data.get("dry_run", False))
+
+        candidates = []
+        for w in self.server.database.worms:
+            if w.status == WormStatus.RESOLVED and not w.accepted_at:
+                if w.id.upper() in {x.upper().strip() for x in exclude_ids if x.strip()}:
+                    continue
+                if not migrate_all and before_ts:
+                    check_ts = w.resolved_at or w.updated_at or w.created_at
+                    if check_ts and check_ts > before_ts:
+                        continue
+                candidates.append(w)
+
+        if dry_run:
+            self._send_json(
+                {
+                    "status": "ok",
+                    "dry_run": True,
+                    "count": len(candidates),
+                    "migrated_ids": [w.id for w in candidates],
+                }
+            )
+            return
+
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        migrated_ids = []
+        for w in candidates:
+            w.status = WormStatus.CLOSED
+            w.accepted_at = w.resolved_at or w.updated_at or w.created_at or now_str
+            w.updated_at = now_str
+            migrated_ids.append(w.id)
+
+        if migrated_ids:
+            self.server.save_and_sync(dirty_bug_ids=migrated_ids)
+
+        self._send_json(
+            {
+                "status": "ok",
+                "dry_run": False,
+                "count": len(migrated_ids),
+                "migrated_ids": migrated_ids,
+            }
+        )
 
     def _handle_attach_commit(self, data: Dict[str, Any]) -> None:
         """Attach a commit hash to a worm report."""
@@ -391,7 +444,7 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
             worm.commit_ids.append(commit_id)
 
         worm.updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        self.server.save_and_sync()
+        self.server.save_and_sync(dirty_bug_ids=[worm.id])
         self._send_json({"status": "ok", "worm": worm.model_dump(mode="json")})
 
     def _handle_add_task(self, data: Dict[str, Any]) -> None:
@@ -410,7 +463,7 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
         task = WormReviewTaskModel(title=title, command=cmd)
         worm.review_tasks.append(task)
         worm.updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        self.server.save_and_sync()
+        self.server.save_and_sync(dirty_bug_ids=[worm.id])
         self._send_json({"status": "ok", "task": task.model_dump(mode="json"), "worm": worm.model_dump(mode="json")})
 
     def _handle_update_task(self, data: Dict[str, Any]) -> None:
@@ -443,7 +496,7 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
             target_task.notes = elide_personal_info(str(notes))
 
         worm.updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        self.server.save_and_sync()
+        self.server.save_and_sync(dirty_bug_ids=[worm.id])
         self._send_json(
             {"status": "ok", "task": target_task.model_dump(mode="json"), "worm": worm.model_dump(mode="json")}
         )
@@ -1006,19 +1059,32 @@ class WormReportServer(ThreadingHTTPServer):
             self.save_and_sync()
             return stats
 
-    def save_and_sync(self) -> Path:
+    def save_and_sync(self, dirty_bug_ids: Optional[Collection[str]] = None) -> Path:
         """Persist worm database to SQLite, JSON, WORMS.md, and individual WORM_<id>.md files."""
         with self._lock:
             self._is_internal_saving = True
             try:
                 self.database.updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-                self.sqlite_store.save_database(self.database)
+                if dirty_bug_ids is not None:
+                    dirty_set = set(dirty_bug_ids)
+                    for worm in self.database.worms:
+                        if worm.id in dirty_set:
+                            self.sqlite_store.save_worm(worm)
+                    with self.sqlite_store._get_connection() as conn:
+                        conn.execute(
+                            "INSERT INTO metadata (key, value) VALUES ('updated_at', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                            (self.database.updated_at,),
+                        )
+                else:
+                    self.sqlite_store.save_database(self.database)
+
                 self.exporter.export_state_json(self.database, self.state_file)
                 out = self.exporter.export_markdown(
                     self.database,
                     self.markdown_output,
                     feedback_dir=self.feedback_dir,
                     store=self.sqlite_store,
+                    dirty_bug_ids=dirty_bug_ids,
                 )
                 if self.markdown_output.exists():
                     self.markdown_mtime = self.markdown_output.stat().st_mtime
@@ -1032,6 +1098,7 @@ class WormReportServer(ThreadingHTTPServer):
                             self.database,
                             commit_message=f"Update worm database (v{self.db_version})",
                             sync_local_disk=False,
+                            dirty_bug_ids=dirty_bug_ids,
                         )
                     except Exception:
                         pass
@@ -1043,7 +1110,7 @@ class WormReportServer(ThreadingHTTPServer):
         """Save a single worm and sync to stores."""
         with self._lock:
             self.database.add_or_update(worm)
-            self.save_and_sync()
+            self.save_and_sync(dirty_bug_ids=[worm.id])
 
     def delete_worm(self, worm_id: str) -> bool:
         """Delete a worm from all stores."""

@@ -2,12 +2,13 @@
 
 - **UUID**: `94be444c-f49e-4090-8774-8013b502b958`
 - **ID**: `WORM-SILKEN-TUBEWORM-979`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-24 01:03:16 UTC`
 - **Resolved**: `2026-10-24 01:39:23 UTC`
+- **Accepted**: `2026-10-24 01:39:23 UTC`
 
 #### Description
 

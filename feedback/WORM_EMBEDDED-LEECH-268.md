@@ -2,12 +2,13 @@
 
 - **UUID**: `f7f59f93-5829-427e-b5ec-301b2de7486b`
 - **ID**: `WORM-EMBEDDED-LEECH-268`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-16 01:24:25 UTC`
 - **Resolved**: `2026-10-17 20:54:50 UTC`
+- **Accepted**: `2026-10-17 20:54:50 UTC`
 
 #### Description
 

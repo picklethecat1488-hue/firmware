@@ -2,12 +2,13 @@
 
 - **UUID**: `be4d32c9-30f4-4e1b-8780-630daf5bebc5`
 - **ID**: `WORM-ORGANIC-FIREWORM-553`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-22 04:19:58 UTC`
 - **Resolved**: `2026-10-23 00:33:35 UTC`
+- **Accepted**: `2026-10-23 00:33:35 UTC`
 
 #### Description
 

@@ -2,12 +2,13 @@
 
 - **UUID**: `828fa6c6-c69a-4d68-a463-f416584d8e3f`
 - **ID**: `WORM-SLIMY-ROOTER-821`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `Host`
 - **Created**: `2026-10-23 00:14:52 UTC`
 - **Resolved**: `2026-10-23 00:23:10 UTC`
+- **Accepted**: `2026-10-23 00:23:10 UTC`
 
 #### Description
 

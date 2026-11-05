@@ -2,12 +2,13 @@
 
 - **UUID**: `e023aead-8cae-4353-8468-bbebaad4385d`
 - **ID**: `WORM-GLIDING-LARVA-522`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-18 00:37:14 UTC`
 - **Resolved**: `2026-10-18 01:10:06 UTC`
+- **Accepted**: `2026-10-18 01:10:06 UTC`
 
 #### Description
 

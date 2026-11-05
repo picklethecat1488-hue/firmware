@@ -2,11 +2,12 @@
 
 - **UUID**: `fb11dc60-30a2-4880-989f-6de052beea64`
 - **ID**: `WORM-WRITHING-TUBEWORM-652`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-15 23:43:21 UTC`
 - **Resolved**: `2026-10-16 00:19:19 UTC`
+- **Accepted**: `2026-10-16 00:19:19 UTC`
 
 #### Description
 

@@ -2,11 +2,12 @@
 
 - **UUID**: `732d3b51-3220-448f-95a3-491046668c64`
 - **ID**: `WORM-016`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-07 22:12:15 UTC`
 - **Resolved**: `2026-10-07 22:29:44 UTC`
+- **Accepted**: `2026-10-07 22:29:44 UTC`
 
 #### Description
 
