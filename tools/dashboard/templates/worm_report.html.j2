@@ -1457,6 +1457,7 @@
     async function acceptActiveWorm() {
       if (!activeWormId) return;
       try {
+        await saveActiveWorm();
         const res = await fetch("/api/worms/accept", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1486,10 +1487,12 @@
     async function rejectActiveWorm() {
       if (!activeWormId) return;
       try {
+        const currentNotes = document.getElementById("worm-resolution") ? document.getElementById("worm-resolution").value.trim() : "";
+        await saveActiveWorm();
         const res = await fetch("/api/worms/reject", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: activeWormId, notes: "" })
+          body: JSON.stringify({ id: activeWormId, notes: currentNotes })
         });
         const data = await res.json();
         if (data.status === "ok") {
