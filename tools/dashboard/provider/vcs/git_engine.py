@@ -97,7 +97,7 @@ def is_file_ignored(file_path: str) -> bool:
     Returns:
         True if file is in IGNORED_REVIEW_FILES, in feedback/ or attachments/ directory, or matches ignored patterns.
     """
-    clean = file_path.replace("\\", "/").strip().lstrip("./")
+    clean = file_path.strip().strip('"').strip("'").replace("\\", "/").strip().lstrip("./")
     p = Path(clean)
     if "feedback" in p.parts:
         return True
@@ -1217,7 +1217,7 @@ class GitEngine:
             if " -> " in file_path:
                 file_path = file_path.split(" -> ")[1].strip()
 
-            clean_path = file_path.replace("\\", "/").strip().lstrip("./")
+            clean_path = file_path.strip().strip('"').strip("'").replace("\\", "/").strip().lstrip("./")
             is_feedback = (
                 clean_path.startswith("feedback/")
                 or clean_path in IGNORED_REVIEW_FILES
