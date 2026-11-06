@@ -18,6 +18,7 @@ from model.worm_report import (
     WormSeverity,
     WormStatus,
 )
+from provider.dashboard.server import DashboardServer
 from provider.worm_report.detached_branch import DetachedBranchWormStore
 from provider.worm_report.markdown_exporter import MarkdownWormExporter
 from provider.worm_report.server import WormReportServer
@@ -791,3 +792,141 @@ def test_worm_server_fast_incremental_save_regression(tmp_path: Path) -> None:
     detached_target = loaded_detached.get_worm("WORM-FAST-010")
     assert detached_target is not None
     assert detached_target.status == WormStatus.RESOLVED
+
+
+def test_dashboard_server_worm_lifecycle_api(tmp_path: Path) -> None:
+    """Verify DashboardServer REST endpoints for worm lifecycle: attach_commit, add_task, update_task, run_command, reject, accept."""
+    repo_dir = create_test_git_repo(tmp_path)
+    feedback_dir = repo_dir / "feedback"
+    feedback_dir.mkdir(parents=True, exist_ok=True)
+    db_file = repo_dir / "build" / "worms.sqlite"
+    db_file.parent.mkdir(parents=True, exist_ok=True)
+
+    store = SQLiteWormStore(db_path=db_file)
+    test_worm = WormReportModel(
+        id="WORM-DASH-001",
+        title="Dashboard API Worm",
+        status=WormStatus.RESOLVED,
+        severity=WormSeverity.MEDIUM,
+        category=WormCategory.FIRMWARE,
+    )
+    store.save_worm(test_worm)
+
+    server = DashboardServer(
+        host="127.0.0.1",
+        port=0,
+        repo_root=repo_dir,
+        bind_and_activate=True,
+    )
+    # Ensure worm_server loads from our sqlite db
+    server.worm_server.sqlite_file = db_file
+    server.worm_server.sqlite_store = store
+    server.worm_server.database.worms = [test_worm]
+
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = server.get_url()
+
+    try:
+        # 1. Attach commit
+        req = urllib.request.Request(
+            f"{base_url}/api/worms/attach_commit",
+            data=json.dumps({"id": "WORM-DASH-001", "commit_id": "def5678"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            assert data["status"] == "ok"
+            assert "def5678" in data["worm"]["commit_ids"]
+
+        # 2. Add review task
+        req = urllib.request.Request(
+            f"{base_url}/api/worms/add_task",
+            data=json.dumps(
+                {
+                    "id": "WORM-DASH-001",
+                    "title": "Run echo test",
+                    "command": "echo 'Hello from dashboard task'",
+                }
+            ).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            assert data["status"] == "ok"
+            tasks = data["worm"]["review_tasks"]
+            assert len(tasks) == 1
+            task_id = tasks[0]["id"]
+            assert tasks[0]["title"] == "Run echo test"
+
+        # 3. Update task status
+        req = urllib.request.Request(
+            f"{base_url}/api/worms/update_task",
+            data=json.dumps(
+                {
+                    "id": "WORM-DASH-001",
+                    "task_id": task_id,
+                    "status": "COMPLETED",
+                }
+            ).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            assert data["status"] == "ok"
+            assert data["worm"]["review_tasks"][0]["status"] == "COMPLETED"
+
+        # 4. Run task command
+        req = urllib.request.Request(
+            f"{base_url}/api/worms/run_command",
+            data=json.dumps(
+                {
+                    "id": "WORM-DASH-001",
+                    "command": "echo 'Dashboard command demo output'",
+                }
+            ).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            assert data["status"] == "ok"
+            assert "Dashboard command demo output" in data["stdout"]
+            assert data["exit_code"] == 0
+
+        # 5. Reject worm -> transitions RESOLVED to OPEN immediately (notes can be empty)
+        req = urllib.request.Request(
+            f"{base_url}/api/worms/reject",
+            data=json.dumps({"id": "WORM-DASH-001", "notes": ""}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            assert data["status"] == "ok"
+            assert data["worm"]["status"] == "OPEN"
+            assert data["worm"]["rejected_at"] is not None
+
+        # Re-resolve worm to test accept
+        worm_obj = server.worm_server.database.get_worm("WORM-DASH-001")
+        worm_obj.status = WormStatus.RESOLVED
+        server.worm_server.save_and_sync()
+
+        # 6. Accept worm -> transitions RESOLVED to CLOSED immediately without prompt notes
+        req = urllib.request.Request(
+            f"{base_url}/api/worms/accept",
+            data=json.dumps({"id": "WORM-DASH-001", "notes": ""}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            assert data["status"] == "ok"
+            assert data["worm"]["status"] == "CLOSED"
+            assert data["worm"]["accepted_at"] is not None
+
+    finally:
+        server.server_close()

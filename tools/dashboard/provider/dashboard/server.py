@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import socket
 import sqlite3
+import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 import urllib.parse
@@ -37,11 +38,13 @@ from model.worm_report import (
     WormCategory,
     WormDatabaseModel,
     WormReportModel,
+    WormReviewTaskModel,
+    WormReviewTaskStatus,
     WormSeverity,
     WormStatus,
 )
 from provider.code_review.server import ReviewServer
-from provider.sanitizer import get_author_blacklist
+from provider.sanitizer import elide_personal_info, get_author_blacklist
 from provider.vcs.editor import open_in_vscode
 from provider.vcs.git_engine import GitEngine, extract_line_snippet, get_git_root
 from provider.worm_report.server import WormReportServer
@@ -271,10 +274,10 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                     self.wfile.write(raw_bytes)
                 except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                     self.close_connection = True
-            case "/api/database" | "/api/worms":
+            case "/api/database" | "/api/worms" | "/api/bugs":
                 worm_db = self.server.worm_server.database
                 self._send_json(worm_db.model_dump(mode="json"))
-            case "/api/next_worm_id":
+            case "/api/next_worm_id" | "/api/next_bug_id":
                 worm_server = self.server.worm_server
                 next_id = worm_server.database.generate_worm_id()
                 self._send_json({"next_id": next_id, "id": next_id})
@@ -521,10 +524,36 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                 self._send_json({"status": "ok", "commit": commit})
             case "/api/commit_update":
                 self._handle_commit_update(data)
-            case "/api/worms" | "/api/worm/save":
+            case "/api/worms" | "/api/worm/save" | "/api/bugs" | "/api/bug/save":
                 self._handle_save_worm(data)
-            case "/api/worms/delete":
+            case "/api/worms/status" | "/api/bugs/status" | "/api/worm/status" | "/api/bug/status":
+                self._handle_update_status(data)
+            case "/api/worms/accept" | "/api/bugs/accept" | "/api/worm/accept" | "/api/bug/accept":
+                self._handle_accept_worm(data)
+            case "/api/worms/reject" | "/api/bugs/reject" | "/api/worm/reject" | "/api/bug/reject":
+                self._handle_reject_worm(data)
+            case (
+                "/api/worms/attach_commit"
+                | "/api/bugs/attach_commit"
+                | "/api/worm/attach_commit"
+                | "/api/bug/attach_commit"
+            ):
+                self._handle_attach_commit(data)
+            case "/api/worms/add_task" | "/api/bugs/add_task" | "/api/worm/add_task" | "/api/bug/add_task":
+                self._handle_add_task(data)
+            case "/api/worms/update_task" | "/api/bugs/update_task" | "/api/worm/update_task" | "/api/bug/update_task":
+                self._handle_update_task(data)
+            case "/api/worms/run_command" | "/api/bugs/run_command" | "/api/worm/run_command" | "/api/bug/run_command":
+                self._handle_run_command(data)
+            case "/api/worms/delete" | "/api/bugs/delete":
                 self._handle_delete_worm(data)
+            case (
+                "/api/worms/migrate_legacy"
+                | "/api/bugs/migrate_legacy"
+                | "/api/worm/migrate_legacy"
+                | "/api/bug/migrate_legacy"
+            ):
+                self._handle_migrate_legacy(data)
             case "/api/upload":
                 self._handle_file_upload(data)
             case "/api/open-vscode" | "/api/open_vscode":
@@ -990,6 +1019,217 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         self.server.worm_server.database.worms = [w for w in self.server.worm_server.database.worms if w.id != worm_id]
         self.server.worm_server.save_and_sync()
         self._send_json({"status": "deleted", "id": worm_id})
+
+    def _handle_update_status(self, data: Dict[str, Any]) -> None:
+        """Update lifecycle status and resolution notes for a worm."""
+        worm_id = data.get("id") or data.get("worm_id") or data.get("bug_id")
+        new_status_str = data.get("status")
+        notes = data.get("resolution_notes")
+
+        worm = self.server.worm_server.database.get_worm(worm_id) if worm_id else None
+        if not worm:
+            self._send_json({"error": f"Worm {worm_id} not found"}, status=404)
+            return
+
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        if new_status_str and new_status_str in [s.value for s in WormStatus]:
+            worm.status = WormStatus(new_status_str)
+            if worm.status in (WormStatus.RESOLVED, WormStatus.CLOSED):
+                worm.resolved_at = now_str
+            else:
+                worm.resolved_at = None
+
+        if notes is not None:
+            worm.resolution_notes = elide_personal_info(notes)
+
+        worm.updated_at = now_str
+        self.server.worm_server.save_and_sync(dirty_bug_ids=[worm.id])
+        self._send_json(worm.model_dump(mode="json"))
+
+    def _handle_accept_worm(self, data: Dict[str, Any]) -> None:
+        """Handle accepting a resolved worm and transitioning directly to CLOSED."""
+        worm_id = data.get("id") or data.get("worm_id") or data.get("bug_id")
+        notes = data.get("notes", "").strip()
+        worm = self.server.worm_server.database.get_worm(worm_id) if worm_id else None
+        if not worm:
+            self._send_json({"error": f"Worm {worm_id} not found"}, status=404)
+            return
+
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        worm.status = WormStatus.CLOSED
+        worm.accepted_at = now_str
+        if notes:
+            if worm.resolution_notes:
+                worm.resolution_notes += f"\n\n**Acceptance Note**: {notes}"
+            else:
+                worm.resolution_notes = f"**Acceptance Note**: {notes}"
+        worm.updated_at = now_str
+        self.server.worm_server.save_and_sync(dirty_bug_ids=[worm.id])
+        self._send_json({"status": "ok", "worm": worm.model_dump(mode="json")})
+
+    def _handle_reject_worm(self, data: Dict[str, Any]) -> None:
+        """Handle rejecting a resolved worm and transitioning directly back to OPEN."""
+        worm_id = data.get("id") or data.get("worm_id") or data.get("bug_id")
+        notes = data.get("notes", "").strip()
+        worm = self.server.worm_server.database.get_worm(worm_id) if worm_id else None
+        if not worm:
+            self._send_json({"error": f"Worm {worm_id} not found"}, status=404)
+            return
+
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        worm.status = WormStatus.OPEN
+        worm.resolved_at = None
+        worm.rejected_at = now_str
+        worm.rejection_notes = elide_personal_info(notes)
+        worm.updated_at = now_str
+        self.server.worm_server.save_and_sync(dirty_bug_ids=[worm.id])
+        self._send_json({"status": "ok", "worm": worm.model_dump(mode="json")})
+
+    def _handle_migrate_legacy(self, data: Dict[str, Any]) -> None:
+        """Handle migrating legacy resolved worms to CLOSED status."""
+        before_ts = data.get("before", "2026-11-05 14:00:00 UTC")
+        migrate_all = bool(data.get("all", False))
+        exclude_raw = data.get("exclude", [])
+        exclude_ids = set(exclude_raw if isinstance(exclude_raw, list) else str(exclude_raw).split(","))
+        dry_run = bool(data.get("dry_run", False))
+
+        candidates = []
+        for w in self.server.worm_server.database.worms:
+            if w.status == WormStatus.RESOLVED and not w.accepted_at:
+                if w.id.upper() in {x.upper().strip() for x in exclude_ids if x.strip()}:
+                    continue
+                if not migrate_all and before_ts:
+                    check_ts = w.resolved_at or w.updated_at or w.created_at
+                    if check_ts and check_ts > before_ts:
+                        continue
+                candidates.append(w)
+
+        if dry_run:
+            self._send_json(
+                {
+                    "status": "ok",
+                    "dry_run": True,
+                    "count": len(candidates),
+                    "migrated_ids": [w.id for w in candidates],
+                }
+            )
+            return
+
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        migrated_ids = []
+        for w in candidates:
+            w.status = WormStatus.CLOSED
+            w.accepted_at = w.resolved_at or w.updated_at or w.created_at or now_str
+            w.updated_at = now_str
+            migrated_ids.append(w.id)
+
+        if migrated_ids:
+            self.server.worm_server.save_and_sync(dirty_bug_ids=migrated_ids)
+
+        self._send_json(
+            {
+                "status": "ok",
+                "dry_run": False,
+                "count": len(migrated_ids),
+                "migrated_ids": migrated_ids,
+            }
+        )
+
+    def _handle_attach_commit(self, data: Dict[str, Any]) -> None:
+        """Attach a commit hash to a worm report."""
+        worm_id = data.get("id") or data.get("worm_id") or data.get("bug_id")
+        commit_id = data.get("commit_id", "").strip()
+        worm = self.server.worm_server.database.get_worm(worm_id) if worm_id else None
+        if not worm:
+            self._send_json({"error": f"Worm {worm_id} not found"}, status=404)
+            return
+        if not commit_id:
+            self._send_json({"error": "Missing commit_id"}, status=400)
+            return
+
+        if commit_id not in worm.commit_ids:
+            worm.commit_ids.append(commit_id)
+
+        worm.updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        self.server.worm_server.save_and_sync(dirty_bug_ids=[worm.id])
+        self._send_json({"status": "ok", "worm": worm.model_dump(mode="json")})
+
+    def _handle_add_task(self, data: Dict[str, Any]) -> None:
+        """Add a review task to a worm report."""
+        worm_id = data.get("id") or data.get("worm_id") or data.get("bug_id")
+        title = data.get("title", "").strip()
+        cmd = data.get("command", "").strip()
+        worm = self.server.worm_server.database.get_worm(worm_id) if worm_id else None
+        if not worm:
+            self._send_json({"error": f"Worm {worm_id} not found"}, status=404)
+            return
+        if not title:
+            self._send_json({"error": "Missing task title"}, status=400)
+            return
+
+        task = WormReviewTaskModel(title=title, command=cmd)
+        worm.review_tasks.append(task)
+        worm.updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        self.server.worm_server.save_and_sync(dirty_bug_ids=[worm.id])
+        self._send_json({"status": "ok", "task": task.model_dump(mode="json"), "worm": worm.model_dump(mode="json")})
+
+    def _handle_update_task(self, data: Dict[str, Any]) -> None:
+        """Update review task status or notes."""
+        worm_id = data.get("id") or data.get("worm_id") or data.get("bug_id")
+        task_id = data.get("task_id")
+        new_status = data.get("status")
+        notes = data.get("notes")
+        worm = self.server.worm_server.database.get_worm(worm_id) if worm_id else None
+        if not worm:
+            self._send_json({"error": f"Worm {worm_id} not found"}, status=404)
+            return
+
+        target_task = None
+        for t in worm.review_tasks:
+            if t.id == task_id:
+                target_task = t
+                break
+
+        if not target_task:
+            self._send_json({"error": f"Task {task_id} not found"}, status=404)
+            return
+
+        if new_status:
+            try:
+                target_task.status = WormReviewTaskStatus(str(new_status).upper())
+            except ValueError:
+                target_task.status = WormReviewTaskStatus.PENDING
+        if notes is not None:
+            target_task.notes = elide_personal_info(str(notes))
+
+        worm.updated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        self.server.worm_server.save_and_sync(dirty_bug_ids=[worm.id])
+        self._send_json(
+            {"status": "ok", "task": target_task.model_dump(mode="json"), "worm": worm.model_dump(mode="json")}
+        )
+
+    def _handle_run_command(self, data: Dict[str, Any]) -> None:
+        """Execute a review command and return output."""
+        cmd = data.get("command", "").strip()
+        if not cmd:
+            self._send_json({"error": "Empty command"}, status=400)
+            return
+
+        proc = subprocess.run(
+            cmd,
+            shell=True,
+            cwd=str(self.server.repo_root),
+            capture_output=True,
+            text=True,
+        )
+        self._send_json(
+            {
+                "status": "ok" if proc.returncode == 0 else "error",
+                "exit_code": proc.returncode,
+                "stdout": proc.stdout,
+                "stderr": proc.stderr,
+            }
+        )
 
     def _handle_file_upload(self, data: Dict[str, Any]) -> None:
         """Save base64 encoded file upload to attachments directory."""
