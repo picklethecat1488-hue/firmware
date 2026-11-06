@@ -87,7 +87,7 @@ def write_env_file(env_path: Path, updates: Dict[str, Optional[str]]) -> None:
 
     lines = [
         "# ==============================================================================",
-        "# Vast.ai Shared Instance Configuration (Managed by bin/anvil)",
+        "# Vast.ai Shared Instance Configuration (Managed by tools/anvil)",
         f"# Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         "# ==============================================================================",
     ]

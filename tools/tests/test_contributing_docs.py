@@ -34,12 +34,12 @@ def test_contributing_contains_dashboard_documentation() -> None:
 
 
 def test_contributing_contains_anvil_documentation() -> None:
-    """Verify CONTRIBUTING.md documents bin/anvil remote execution commands."""
+    """Verify CONTRIBUTING.md documents tools/anvil remote execution commands."""
     contributing_path = WORKSPACE_ROOT / "CONTRIBUTING.md"
     content = contributing_path.read_text(encoding="utf-8")
 
-    assert "bin/anvil" in content
-    assert "bin/anvil sync" in content
-    assert "bin/anvil verify" in content
-    assert "bin/anvil pytest" in content
-    assert "bin/anvil cli" in content
+    assert "tools/anvil" in content
+    assert "tools/anvil sync" in content
+    assert "tools/anvil verify" in content
+    assert "tools/anvil pytest" in content
+    assert "tools/anvil cli" in content

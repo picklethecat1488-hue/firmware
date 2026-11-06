@@ -28,8 +28,8 @@ fi
 
 echo "   Running Python tests..."
 NUM_CPUS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
-if [ "${NUM_CPUS}" -gt 16 ]; then
-    PYTEST_WORKERS=16
+if [ "${NUM_CPUS}" -gt 8 ]; then
+    PYTEST_WORKERS=8
 else
     PYTEST_WORKERS="${NUM_CPUS}"
 fi
