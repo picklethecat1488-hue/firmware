@@ -1615,6 +1615,12 @@
           <option value="150%">150%</option>
         </select>
       </div>
+      <button id="btnBackToBugsHeader" class="quake-btn quake-btn-gold" onclick="returnToBugReport()" title="Return to Defect Tracker" style="display:none; align-items:center; gap:4px; font-weight:700;">
+        ◀ Back to Defect Tracker
+      </button>
+      <button id="btnBugTracker" class="quake-btn quake-btn-default" onclick="openBugTracker()" title="Open Worm Defect Matrix">
+        <span>🪱 Worms</span>
+      </button>
       <button id="btnSyncFeedback" class="quake-btn quake-btn-default" onclick="syncFeedback()" title="Synchronize review feedback with feedback/ directory and merge commit feedback">
         🔄 Sync Feedback
       </button>
@@ -1633,6 +1639,9 @@
   <div class="diff-toolbar">
     <div class="diff-toolbar-left">
       <div style="display: flex; gap: 4px; flex-shrink: 0;">
+        <button id="btnBackToBugsToolbar" class="quake-btn quake-btn-gold quake-btn-sm" onclick="returnToBugReport()" title="Return to Defect Tracker" style="display:none; align-items:center; gap:4px; font-weight:700;">
+          ◀ Back to Defect Tracker
+        </button>
         <button id="btnToggleCommits" class="quake-btn quake-btn-default{% if not single_commit %} quake-btn-active{% endif %}" onclick="togglePane('commits')">📜 Stream</button>
         <button id="btnToggleFiles" class="quake-btn quake-btn-default" onclick="togglePane('files')">📁 Files</button>
         <button id="btnFocus" class="quake-btn quake-btn-default" onclick="toggleFocusMode()" title="Focus Mode (Shortcut: \)">⛶ Focus</button>
@@ -1810,7 +1819,84 @@
       closeWorkstation();
     }
 
+    function returnToBugReport() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const rawWormId = urlParams.get("worm_id") || urlParams.get("bug_id");
+      let wormHash = "";
+      if (rawWormId) {
+        const cleanId = rawWormId.toUpperCase().startsWith("WORM-") ? rawWormId.toUpperCase() : `WORM-${rawWormId.toUpperCase().replace(/^BUG-/, '')}`;
+        wormHash = `#${cleanId}`;
+      }
+      const targetUrl = `/worms${wormHash}`;
+      const targetName = "firmware_worm_tracker";
+
+      if (window.parent && window.parent !== window && typeof window.parent.openWorkstationModal === "function") {
+        window.parent.openWorkstationModal(targetUrl, targetName);
+      } else if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.location.href = targetUrl;
+          window.opener.focus();
+          window.close();
+          return;
+        } catch (e) {}
+        window.location.href = targetUrl;
+      } else {
+        window.location.href = targetUrl;
+      }
+    }
+
+    async function openBugTracker() {
+      const targetName = "firmware_worm_tracker";
+      try {
+        const resp = await fetch("/api/open_worm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        });
+        const res = await resp.json();
+        if (window.parent && window.parent !== window && typeof window.parent.openWorkstationModal === "function") {
+          window.parent.openWorkstationModal(res.url, targetName);
+        } else {
+          window.location.href = res.url || "/worms";
+        }
+      } catch (err) {
+        if (window.parent && window.parent !== window && typeof window.parent.openWorkstationModal === "function") {
+          window.parent.openWorkstationModal("/worms", targetName);
+        } else {
+          window.location.href = "/worms";
+        }
+      }
+    }
+
+    function initBugNavigation() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const fromParam = urlParams.get("from");
+      const defectId = urlParams.get("worm_id") || urlParams.get("bug_id");
+      const isFromBugs = fromParam === "worms" || fromParam === "bugs" || Boolean(defectId) || (document.referrer && (document.referrer.includes("/worms") || document.referrer.includes("/bugs")));
+      if (isFromBugs) {
+        const btnHeader = document.getElementById("btnBackToBugsHeader");
+        const btnToolbar = document.getElementById("btnBackToBugsToolbar");
+        const label = defectId ? `◀ Back to ${defectId.toUpperCase()}` : "◀ Back to Worms";
+        if (btnHeader) {
+          btnHeader.style.display = "inline-flex";
+          btnHeader.textContent = label;
+          btnHeader.title = `Return to ${defectId || 'Worms'}`;
+        }
+        if (btnToolbar) {
+          btnToolbar.style.display = "inline-flex";
+          btnToolbar.textContent = label;
+          btnToolbar.title = `Return to ${defectId || 'Worms'}`;
+        }
+      }
+    }
+
     function closeWorkstation() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const isFromBugs = urlParams.get("from") === "worms" || urlParams.get("from") === "bugs" || Boolean(urlParams.get("worm_id")) || Boolean(urlParams.get("bug_id"));
+      if (isFromBugs) {
+        returnToBugReport();
+        return;
+      }
       if (window.parent && window.parent !== window && typeof window.parent.closeWorkstationModal === "function") {
         window.parent.closeWorkstationModal();
         try {
@@ -2114,6 +2200,7 @@
     document.addEventListener("DOMContentLoaded", async () => {
       initUiScale();
       initWordWrap();
+      initBugNavigation();
       await loadSession();
       await loadCommits();
       initPanelResizers();
