@@ -3,7 +3,14 @@ set -euo pipefail
 
 START_TIME=$(date +%s)
 
-if [ -d "${HOME}/miniforge3/envs/firmware-env/bin" ]; then
+# Raise open file descriptor limit if possible
+ulimit -n 65536 2>/dev/null || true
+
+if [ -d "/workspace/miniforge3/envs/firmware-env/bin" ]; then
+    export PATH="/workspace/miniforge3/envs/firmware-env/bin:${PATH}"
+elif [ -d "/root/miniforge3/envs/firmware-env/bin" ]; then
+    export PATH="/root/miniforge3/envs/firmware-env/bin:${PATH}"
+elif [ -d "${HOME}/miniforge3/envs/firmware-env/bin" ]; then
     export PATH="${HOME}/miniforge3/envs/firmware-env/bin:${PATH}"
 fi
 
@@ -20,7 +27,13 @@ else
 fi
 
 echo "   Running Python tests..."
-pytest
+NUM_CPUS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+if [ "${NUM_CPUS}" -gt 16 ]; then
+    PYTEST_WORKERS=16
+else
+    PYTEST_WORKERS="${NUM_CPUS}"
+fi
+OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 OMP_NUM_THREADS=1 pytest -n "${PYTEST_WORKERS}"
 
 # Build debug firmware target and debug host tools
 echo "Building target binaries and host tools (Debug)..."

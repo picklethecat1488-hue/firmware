@@ -173,7 +173,7 @@ exit 0
     # Validate calls logged
     calls = log_file.read_text(encoding="utf-8")
     assert "MOCK_RSYNC:" in calls
-    assert "--exclude target" in calls
+    assert "--exclude /target" in calls
     assert "--exclude .git" in calls
     assert "--exclude .anvil.env*" in calls
     assert "MOCK_SSH:" in calls
@@ -318,6 +318,8 @@ def test_provision_instance_rejects_junk_and_overpriced_offers(monkeypatch, tmp_
     import tools.vast_manager as vm
 
     monkeypatch.setattr(vm, "get_api_key", lambda: "mock_api_key_12345")
+    monkeypatch.setattr(vm, "ensure_ssh_key_registered", lambda: True)
+    monkeypatch.setattr(vm, "probe_ssh_connection", lambda h, p, **kw: True)
     monkeypatch.setattr(vm, "api_request", lambda endpoint, **kwargs: {"offers": junk_offers})
 
     env_file = tmp_path / ".anvil.env"
@@ -335,6 +337,8 @@ def test_provision_instance_respects_config_and_writes_hardware_limits(monkeypat
     import tools.vast_manager as vm
 
     monkeypatch.setattr(vm, "get_api_key", lambda: "mock_api_key_12345")
+    monkeypatch.setattr(vm, "ensure_ssh_key_registered", lambda: True)
+    monkeypatch.setattr(vm, "probe_ssh_connection", lambda h, p, **kw: True)
     monkeypatch.setattr(
         vm,
         "api_request",
@@ -374,3 +378,183 @@ def test_provision_instance_respects_config_and_writes_hardware_limits(monkeypat
     assert loaded["REMOTE_PORT"] == "22222"
     assert loaded["MIN_TOPS"] == "60.0"
     assert loaded["MAX_COST"] == "1.20"
+
+
+def test_api_request_routes_instances_list_to_v1(monkeypatch) -> None:
+    """Verify api_request routes instances/ to v1 API and other endpoints to v0 API."""
+    import urllib.request
+    import tools.vast_manager as vm
+
+    captured_urls = []
+
+    class MockResponse:
+        def __init__(self, data=b"{}"):
+            self.data = data
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+        def read(self):
+            return self.data
+
+    def mock_urlopen(req, timeout=30):
+        captured_urls.append(req.full_url)
+        return MockResponse(b'{"success": true, "instances": []}')
+
+    monkeypatch.setattr(vm, "get_api_key", lambda: "mock_key")
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+
+    # 1. Instances listing -> v1
+    vm.api_request("instances/")
+    assert any("api/v1/instances" in u for u in captured_urls)
+
+    # 2. Single instance query -> v0
+    captured_urls.clear()
+    vm.api_request("instances/555/")
+    assert any("api/v0/instances/555" in u for u in captured_urls)
+
+    # 3. Bundles query -> v0
+    captured_urls.clear()
+    vm.api_request("bundles/?q=test")
+    assert any("api/v0/bundles" in u for u in captured_urls)
+
+
+def test_check_instance_failure_patterns() -> None:
+    """Verify check_instance_failure detects Docker daemon timeouts and fatal container states."""
+    from tools.vast_manager import check_instance_failure
+
+    # 1. User reported Docker registry timeout
+    user_err = (
+        'Error response from daemon: Head "https://registry-1.docker.io/v2/library/ubuntu/manifests/22.04": '
+        'Get "https://auth.docker.io/token?scope=repository%3Alibrary%2Fubuntu%3Apull&service=registry.docker.io": '
+        "net/http: request canceled while waiting for connection (Client.Timeout exceeded while awaiting headers)"
+    )
+    assert check_instance_failure({"actual_status": "loading", "status_msg": user_err}) == user_err
+
+    # 2. Fatal status
+    assert "offline" in str(check_instance_failure({"actual_status": "offline", "status_msg": "Host down"}))
+    assert "failed" in str(check_instance_failure({"actual_status": "failed", "status_msg": "Boot failed"}))
+
+    # 3. Healthy instance returns None
+    assert check_instance_failure({"actual_status": "running", "cur_state": "running", "status_msg": None}) is None
+
+
+def test_provision_instance_retries_and_cleans_up_on_daemon_error(monkeypatch, tmp_path: Path) -> None:
+    """Verify provision_instance auto-releases broken instances on daemon pull error and retries with next host."""
+    import tools.vast_manager as vm
+
+    offers = [
+        {"id": 1001, "machine_id": 133175, "gpu_name": "RTX 4090", "total_flops": 80.0, "dph_total": 0.30},
+        {"id": 1002, "machine_id": 144200, "gpu_name": "RTX 4090", "total_flops": 80.0, "dph_total": 0.35},
+    ]
+
+    deleted_instances = []
+    created_offers = []
+
+    def mock_api_request(endpoint, method="GET", data=None, **kwargs):
+        if method == "PUT" and "asks/" in endpoint:
+            oid = int(endpoint.split("/")[1])
+            created_offers.append(oid)
+            if oid == 1001:
+                return {"new_contract": 59343680}
+            else:
+                return {"new_contract": 59343681}
+        elif method == "DELETE" and "instances/" in endpoint:
+            iid = int(endpoint.split("/")[1])
+            deleted_instances.append(iid)
+            return {"success": True}
+        elif "instances" in endpoint:
+            # If asking about instance 59343680, report daemon timeout
+            # If asking about instance 59343681, report healthy running state
+            return {
+                "instances": [
+                    {
+                        "id": 59343680,
+                        "machine_id": 133175,
+                        "actual_status": "loading",
+                        "status_msg": 'Error response from daemon: Head "https://registry-1.docker.io/v2/": Client.Timeout exceeded',
+                    },
+                    {
+                        "id": 59343681,
+                        "machine_id": 144200,
+                        "actual_status": "running",
+                        "status_msg": None,
+                        "ssh_host": "ssh3.vast.ai",
+                        "ssh_port": 22233,
+                    },
+                ]
+            }
+        elif "bundles/" in endpoint:
+            return {"offers": offers}
+        return {}
+
+    monkeypatch.setattr(vm, "get_api_key", lambda: "mock_api_key")
+    monkeypatch.setattr(vm, "ensure_ssh_key_registered", lambda: True)
+    monkeypatch.setattr(vm, "probe_ssh_connection", lambda h, p, **kw: True)
+    monkeypatch.setattr(vm, "api_request", mock_api_request)
+    monkeypatch.setattr(time, "sleep", lambda s: None)
+
+    env_file = tmp_path / ".anvil.env"
+    res = provision_instance(min_tops=50.0, max_cost=1.50, env_file=env_file)
+
+    assert "error" not in res
+    assert res["instance_id"] == 59343681
+    assert 59343680 in deleted_instances, "Broken instance must be destroyed immediately"
+    assert created_offers == [1001, 1002], "Must try first offer, then retry with next offer"
+
+    saved_env = vm.load_env_file(env_file)
+    assert saved_env["VAST_INSTANCE_ID"] == "59343681"
+    assert saved_env["REMOTE_HOST"] == "ssh3.vast.ai"
+    assert saved_env["REMOTE_PORT"] == "22233"
+
+
+def test_release_instance_cleans_unreferenced_instances(monkeypatch, tmp_path: Path) -> None:
+    """Verify release_instance destroys orphaned account instances when ~/.anvil.env is unconfigured."""
+    import tools.vast_manager as vm
+
+    deleted_instances = []
+
+    def mock_api_request(endpoint, method="GET", **kwargs):
+        if method == "DELETE" and "instances/" in endpoint:
+            iid = int(endpoint.split("/")[1])
+            deleted_instances.append(iid)
+            return {"success": True}
+        elif "instances" in endpoint:
+            return {
+                "instances": [
+                    {"id": 88888, "actual_status": "loading"},
+                ]
+            }
+        return {}
+
+    monkeypatch.setattr(vm, "get_api_key", lambda: "mock_key")
+    monkeypatch.setattr(vm, "api_request", mock_api_request)
+
+    env_file = tmp_path / ".anvil.env"
+    assert not env_file.exists()
+
+    success = vm.release_instance(env_file=env_file)
+    assert success is True
+    assert 88888 in deleted_instances
+
+
+def test_probe_ssh_connection(monkeypatch) -> None:
+    """Verify probe_ssh_connection executes non-interactive test and validates output."""
+    import subprocess
+    import tools.vast_manager as vm
+
+    class MockResult:
+        def __init__(self, code, out):
+            self.returncode = code
+            self.stdout = out
+
+    # 1. Success case
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: MockResult(0, "READY\n"))
+    assert vm.probe_ssh_connection("ssh.vast.ai", 12345) is True
+
+    # 2. Failure case
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: MockResult(255, "Connection refused\n"))
+    assert vm.probe_ssh_connection("ssh.vast.ai", 12345) is False
