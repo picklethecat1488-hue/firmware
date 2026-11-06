@@ -2,12 +2,13 @@
 
 - **UUID**: `b2ab3811-057b-4884-b0cf-df9a0f781f3e`
 - **ID**: `WORM-SILKEN-CASTING-127`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `UI`
 - **Component**: `dashboard`
 - **Created**: `2026-11-05 14:30:52 UTC`
-- **Resolved**: `2026-11-05 14:30:53 UTC`
+- **Resolved**: `2026-11-06 23:55:52 UTC`
+- **Accepted**: `2026-11-06 23:55:51 UTC`
 
 #### Description
 
