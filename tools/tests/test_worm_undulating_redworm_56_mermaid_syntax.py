@@ -62,6 +62,8 @@ def test_all_markdown_mermaid_blocks_compile_with_mmdc() -> None:
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_out = Path(tmp_dir) / "out.svg"
+        puppeteer_config = Path(tmp_dir) / "puppeteer-config.json"
+        puppeteer_config.write_text('{"args": ["--no-sandbox", "--disable-setuid-sandbox"]}', encoding="utf-8")
         for md_file in md_files:
             content = md_file.read_text(encoding="utf-8", errors="ignore")
             if "```mermaid" not in content:
@@ -69,15 +71,16 @@ def test_all_markdown_mermaid_blocks_compile_with_mmdc() -> None:
 
             mermaid_blocks = re.findall(r"```mermaid\s*\n(.*?)```", content, re.DOTALL)
             for idx, block in enumerate(mermaid_blocks):
+                cmd = [npx_bin, "@mermaid-js/mermaid-cli", "-p", str(puppeteer_config), "-i", "-", "-o", str(tmp_out)]
                 proc = subprocess.run(
-                    [npx_bin, "@mermaid-js/mermaid-cli", "-i", "-", "-o", str(tmp_out)],
+                    cmd,
                     input=block,
                     text=True,
                     capture_output=True,
                 )
                 if proc.returncode != 0 and "ProtocolError" in proc.stderr:
                     proc = subprocess.run(
-                        [npx_bin, "@mermaid-js/mermaid-cli", "-i", "-", "-o", str(tmp_out)],
+                        cmd,
                         input=block,
                         text=True,
                         capture_output=True,
