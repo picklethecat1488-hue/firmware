@@ -16,6 +16,14 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
   <link rel="shortcut icon" href="/static/favicon.ico">
   <link rel="stylesheet" href="/static/common.css">
+  <script>
+    if (window.self !== window.top) {
+      document.documentElement.classList.add("in-iframe");
+      window.addEventListener("DOMContentLoaded", () => {
+        if (document.body) document.body.classList.add("in-iframe");
+      });
+    }
+  </script>
   <style>
     html {
       font-size: 80%;
@@ -89,6 +97,18 @@
       overflow: hidden;
       border: 2px solid var(--xerxes-border-mid);
       box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.2), 0 0 10px rgba(0, 240, 255, 0.1);
+    }
+
+    html.in-iframe,
+    html.in-iframe body,
+    body.in-iframe {
+      border: none !important;
+      box-shadow: none !important;
+    }
+    html.in-iframe .window-resize-gripper,
+    body.in-iframe .window-resize-gripper,
+    .in-iframe .window-resize-gripper {
+      display: none !important;
     }
 
     /* Window Resize Gripper (WORM-027) */
@@ -1436,13 +1456,12 @@
 
     async function acceptActiveWorm() {
       if (!activeWormId) return;
-      const notes = prompt("Optional acceptance notes (leave blank if none):", "");
-      if (notes === null) return;
       try {
+        await saveActiveWorm();
         const res = await fetch("/api/worms/accept", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: activeWormId, notes: notes.trim() })
+          body: JSON.stringify({ id: activeWormId, notes: "" })
         });
         const data = await res.json();
         if (data.status === "ok") {
@@ -1467,16 +1486,13 @@
 
     async function rejectActiveWorm() {
       if (!activeWormId) return;
-      const notes = prompt("Enter rejection feedback (explain why the fix failed validation):", "");
-      if (!notes || !notes.trim()) {
-        alert("Rejection feedback is required to reject a fix.");
-        return;
-      }
       try {
+        const currentNotes = document.getElementById("worm-resolution") ? document.getElementById("worm-resolution").value.trim() : "";
+        await saveActiveWorm();
         const res = await fetch("/api/worms/reject", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: activeWormId, notes: notes.trim() })
+          body: JSON.stringify({ id: activeWormId, notes: currentNotes })
         });
         const data = await res.json();
         if (data.status === "ok") {
@@ -1690,7 +1706,11 @@
         window.close();
         setTimeout(() => {
           if (!window.closed) {
-            window.location.href = "/";
+            if (window.top && window.top !== window) {
+        window.top.location.href = "/";
+      } else {
+        window.location.href = "/";
+      }
           }
         }, 300);
         return;
@@ -1702,13 +1722,21 @@
           window.close();
           setTimeout(() => {
             if (!window.closed) {
-              window.location.href = "/";
+              if (window.top && window.top !== window) {
+        window.top.location.href = "/";
+      } else {
+        window.location.href = "/";
+      }
             }
           }, 300);
           return;
         }
       } catch (err) {}
-      window.location.href = "/";
+      if (window.top && window.top !== window) {
+        window.top.location.href = "/";
+      } else {
+        window.location.href = "/";
+      }
     }
 
     // UI Scale Management (8715cab2)
