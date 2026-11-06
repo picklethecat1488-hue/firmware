@@ -949,6 +949,15 @@ if [ ! -f /usr/local/bin/blender ] || [ "$(/usr/local/bin/blender --version 2>/d
     ln -sf /opt/blender-4.2.3-linux-x64/blender /usr/local/bin/blender
 fi
 
+# Install KiCad 8 for declarative PCB exports (gerber/drill CAM generation)
+if ! command -v kicad-cli &>/dev/null; then
+    echo "📐 Installing KiCad 8..."
+    apt-get install -y --no-install-recommends software-properties-common
+    add-apt-repository --yes ppa:kicad/kicad-8.0-releases
+    apt-get update -qq
+    apt-get install -y --no-install-recommends kicad
+fi
+
 # 2. Rust & Cargo
 echo "🦀 [2/5] Configuring Rust & Cargo..."
 if ! command -v cargo &>/dev/null && [ ! -f "$HOME/.cargo/bin/cargo" ]; then
@@ -1039,7 +1048,7 @@ if [ "$TARGET" = "all" ] || [ "$TARGET" = "hardware" ] || [ "$TARGET" = "cq" ]; 
             ruff pytest pytest-xdist pytest-mock pytest-timeout \
             pydantic pydantic-settings pydantic-changedetect cbor2 rerun-sdk \
             opencv-python pybullet trimesh jinja2 jax jaxlib jax-md pyvista halo \
-            openpyxl eel pywebview matplotlib pyyaml requests ocp-vscode "pluggy<1.7.0" \
+            openpyxl xlrd eel pywebview matplotlib pyyaml requests ocp-vscode "pluggy<1.7.0" \
             scancode-toolkit typecode-libmagic
     else
         echo "cq environment already exists, ensuring required packages..."
@@ -1047,7 +1056,7 @@ if [ "$TARGET" = "all" ] || [ "$TARGET" = "hardware" ] || [ "$TARGET" = "cq" ]; 
             ruff pytest pytest-xdist pytest-mock pytest-timeout \
             pydantic pydantic-settings pydantic-changedetect cbor2 rerun-sdk \
             opencv-python pybullet trimesh jinja2 jax jaxlib jax-md pyvista halo \
-            openpyxl eel pywebview matplotlib pyyaml requests ocp-vscode "pluggy<1.7.0" \
+            openpyxl xlrd eel pywebview matplotlib pyyaml requests ocp-vscode "pluggy<1.7.0" \
             scancode-toolkit typecode-libmagic || true
     fi
 fi

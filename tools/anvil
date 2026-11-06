@@ -150,8 +150,6 @@ sync_code() {
         --exclude '*.mov' \
         --exclude '.anvil.env*' \
         --exclude '.anvil.lock*' \
-        --exclude 'attachments' \
-        --exclude 'feedback/attachments' \
         "${REPO_DIR}/" "${SSH_TARGET}:${REMOTE_DIR}/"
     if [ -f "${REPO_DIR}/target/host_session.json" ]; then
         ssh ${SSH_OPTS} "${SSH_TARGET}" "mkdir -p ${REMOTE_DIR}/target" 2>/dev/null || true
@@ -352,7 +350,7 @@ print(f'✅ Successfully merged {len(inputs)} recording(s) into {out}')
         if [[ "$*" != *"-n "* ]] && [[ "$*" != *"--numprocesses"* ]]; then
             worker_opt=" -n 8"
         fi
-        ssh ${SSH_OPTS} "${SSH_TARGET}" "cd ${REMOTE_DIR} && ${REMOTE_CARGO_PATH} && ${REMOTE_CONDA} pytest${worker_opt}${cmd_args}"
+        ssh ${SSH_OPTS} "${SSH_TARGET}" "cd ${REMOTE_DIR} && ${REMOTE_CARGO_PATH} && ${REMOTE_CONDA} taskset -c 0-7 pytest${worker_opt}${cmd_args}"
         ;;
     verify)
         shift
@@ -361,7 +359,7 @@ print(f'✅ Successfully merged {len(inputs)} recording(s) into {out}')
         kill_remote_verify
         sync_code
         echo "🔍 Running pre-commit verification on ${SSH_TARGET}..."
-        ssh ${SSH_OPTS} "${SSH_TARGET}" "cd ${REMOTE_DIR} && ${REMOTE_CARGO_PATH} && ./tools/verify.sh $*"
+        ssh ${SSH_OPTS} "${SSH_TARGET}" "cd ${REMOTE_DIR} && ${REMOTE_CARGO_PATH} && taskset -c 0-7 ./tools/verify.sh $*"
         ;;
     cargo)
         shift
