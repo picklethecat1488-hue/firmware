@@ -119,10 +119,10 @@ def test_template_planned_filter_and_default_open() -> None:
 
 
 def test_documentation_planned_worm_exemption() -> None:
-    """Verify GEMINI.md and SKILL.md state agents must not work on Planned worms by default."""
+    """Verify AGENTS.md and SKILL.md state agents must not work on Planned worms by default."""
     repo_root = Path(__file__).resolve().parent.parent.parent
-    gemini_path = repo_root / "GEMINI.md"
-    assert gemini_path.exists(), "GEMINI.md must exist"
-    gemini_content = gemini_path.read_text(encoding="utf-8")
-    assert "PLANNED" in gemini_content, "GEMINI.md must reference PLANNED worms"
-    assert "Planned Worm Exemption" in gemini_content or "planned" in gemini_content.lower()
+    agents_path = repo_root / "AGENTS.md"
+    assert agents_path.exists(), "AGENTS.md must exist"
+    agents_content = agents_path.read_text(encoding="utf-8")
+    assert "PLANNED" in agents_content, "AGENTS.md must reference PLANNED worms"
+    assert "Planned Worm Exemption" in agents_content or "planned" in agents_content.lower()

@@ -140,10 +140,10 @@ def test_skills_and_configs_use_relative_paths() -> None:
         assert u.lower() not in cargo_content.lower()
     assert 'runner = "tools/runner.sh"' in cargo_content
 
-    # 3. Contributing & Gemini docs
+    # 3. Contributing & Agent docs
     for doc_name in [
         "CONTRIBUTING.md",
-        "GEMINI.md",
+        "AGENTS.md",
         "app/carrier_board.md",
         "app/cat_detector.md",
         "docs/hardware_firmware_codesign.md",
