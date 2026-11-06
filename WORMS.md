@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-06 02:05:32 UTC` |
+| **Report Date** | `2026-11-06 03:26:26 UTC` |
 | **Total Issues** | `109` |
 | **Open Issues** | `0` |
 | **Resolved / Closed** | `109 (100%)` |
@@ -14174,11 +14174,11 @@ motor speed 100-rotates slowly, and eventually trips drag
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
+| `document` | [motor_speed_50.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV) | Attached document (motor_speed_50.MOV) |
+| `document` | [motor_speed_30.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV) | Attached document (motor_speed_30.MOV) |
 | `log` | [target_system_logs_WORM-ORGANIC-FIREWORM-553.log](attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log) | Target system and defmt logs from host daemon session |
 | `document` | [motor_speed_10.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV) | Attached document (motor_speed_10.MOV) |
 | `document` | [motor_speed_100.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV) | Attached document (motor_speed_100.MOV) |
-| `document` | [motor_speed_50.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV) | Attached document (motor_speed_50.MOV) |
-| `document` | [motor_speed_30.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV) | Attached document (motor_speed_30.MOV) |
 
 #### Resolution Notes
 
@@ -15118,9 +15118,9 @@ The motor spins for a half cycle, during which the motor duty cycle is 100%. Aft
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
+| `reference` | [target_telemetry_WORM-COMPOSTED-DIGGER-386.json](attachments/WORM-COMPOSTED-DIGGER-386/target_telemetry_WORM-COMPOSTED-DIGGER-386.json) | Target telemetry export retrieved via host_fs |
 | `log` | [target_system_logs_WORM-COMPOSTED-DIGGER-386.log](attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log) | Target system and defmt logs from host daemon session |
 | `reference` | [IMG_0202.MOV](attachments/WORM-COMPOSTED-DIGGER-386/IMG_0202.MOV) | Uploaded reference IMG_0202.MOV |
-| `reference` | [target_telemetry_WORM-COMPOSTED-DIGGER-386.json](attachments/WORM-COMPOSTED-DIGGER-386/target_telemetry_WORM-COMPOSTED-DIGGER-386.json) | Target telemetry export retrieved via host_fs |
 
 #### Resolution Notes
 
