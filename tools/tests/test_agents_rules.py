@@ -1,11 +1,11 @@
-"""Regression tests validating GEMINI.md modular structure and firmware back-compat mandate (BUG-003).
+"""Regression tests validating AGENTS.md modular structure and firmware back-compat mandate (BUG-003).
 
 Ensures:
-1. GEMINI.md contains core agent skills and workflow invariants only.
-2. GEMINI.md includes the firmware target back-compatibility mandate:
+1. AGENTS.md contains core agent skills and workflow invariants only.
+2. AGENTS.md includes the firmware target back-compatibility mandate:
    "Unless duly noted, any firmware code should apply to all firmware targets in the repository."
 3. Subsystem-specific architectural guides are modularized into dedicated documents under docs/.
-4. All subsystem guide links in GEMINI.md point to existing, non-empty files in docs/.
+4. All subsystem guide links in AGENTS.md point to existing, non-empty files in docs/.
 """
 
 from pathlib import Path
@@ -17,12 +17,12 @@ def get_repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def test_gemini_markdown_core_skills_and_back_compat_mandate() -> None:
-    """Verify GEMINI.md contains core agent rules and firmware back-compat mandate."""
+def test_agents_markdown_core_skills_and_back_compat_mandate() -> None:
+    """Verify AGENTS.md contains core agent rules and firmware back-compat mandate."""
     repo_root = get_repo_root()
-    gemini_path = repo_root / "GEMINI.md"
-    assert gemini_path.exists(), "GEMINI.md must exist in repository root"
-    content = gemini_path.read_text(encoding="utf-8")
+    agents_path = repo_root / "AGENTS.md"
+    assert agents_path.exists(), "AGENTS.md must exist in repository root"
+    content = agents_path.read_text(encoding="utf-8")
 
     # 1. Verification & Process hygiene
     assert "./tools/verify.sh" in content
@@ -38,7 +38,7 @@ def test_gemini_markdown_core_skills_and_back_compat_mandate() -> None:
     # 3. Firmware target back-compatibility mandate (BUG-003)
     mandate_phrase = "unless duly noted, any firmware code should apply to all firmware targets in the repository"
     assert mandate_phrase in content.lower(), (
-        f"Missing firmware target back-compatibility mandate in GEMINI.md: '{mandate_phrase}'"
+        f"Missing firmware target back-compatibility mandate in AGENTS.md: '{mandate_phrase}'"
     )
 
     # 4. Strict Code Cleanliness & Hygiene
@@ -56,12 +56,12 @@ def test_gemini_markdown_core_skills_and_back_compat_mandate() -> None:
     assert "## Modular Subsystem & Domain Architecture Guides" in content
 
 
-def test_modular_subsystem_guides_exist_and_linked_in_gemini() -> None:
-    """Verify domain-specific guides under docs/ exist, are non-empty, and are referenced in GEMINI.md."""
+def test_modular_subsystem_guides_exist_and_linked_in_agents() -> None:
+    """Verify domain-specific guides under docs/ exist, are non-empty, and are referenced in AGENTS.md."""
     repo_root = get_repo_root()
-    gemini_path = repo_root / "GEMINI.md"
-    assert gemini_path.exists()
-    content = gemini_path.read_text(encoding="utf-8")
+    agents_path = repo_root / "AGENTS.md"
+    assert agents_path.exists()
+    content = agents_path.read_text(encoding="utf-8")
 
     expected_guides = [
         "docs/mcu_decoupling.md",
@@ -78,16 +78,16 @@ def test_modular_subsystem_guides_exist_and_linked_in_gemini() -> None:
         assert guide_path.exists(), f"Subsystem guide {guide_rel} must exist under docs/"
         assert guide_path.stat().st_size > 100, f"Subsystem guide {guide_rel} must not be empty"
         assert guide_rel in content or guide_path.name in content, (
-            f"GEMINI.md must reference subsystem guide {guide_rel}"
+            f"AGENTS.md must reference subsystem guide {guide_rel}"
         )
 
 
-def test_gemini_documentation_style_uses_rust_syntax() -> None:
-    """Verify Section 4 of GEMINI.md uses canonical Rust syntax examples for coding style."""
+def test_agents_documentation_style_uses_rust_syntax() -> None:
+    """Verify Section 4 of AGENTS.md uses canonical Rust syntax examples for coding style."""
     repo_root = get_repo_root()
-    gemini_path = repo_root / "GEMINI.md"
-    assert gemini_path.exists()
-    content = gemini_path.read_text(encoding="utf-8")
+    agents_path = repo_root / "AGENTS.md"
+    assert agents_path.exists()
+    content = agents_path.read_text(encoding="utf-8")
 
     # Enums & Newtypes with Rust derive
     assert "Strongly Typed Enums & Newtypes" in content

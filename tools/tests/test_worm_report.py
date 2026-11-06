@@ -440,12 +440,12 @@ def test_regression_bug_169_git_lfs_tracking_and_policy() -> None:
     """Verify attachments are documented as tracked in GitHub LFS and non-confidential."""
     repo_root = Path(__file__).resolve().parent.parent.parent
 
-    # Check GEMINI.md
-    gemini_file = repo_root / "GEMINI.md"
-    assert gemini_file.exists()
-    gemini_text = gemini_file.read_text(encoding="utf-8")
-    assert "GitHub LFS" in gemini_text or "Git LFS" in gemini_text
-    assert "non-confidential" in gemini_text
+    # Check AGENTS.md
+    agents_file = repo_root / "AGENTS.md"
+    assert agents_file.exists()
+    agents_text = agents_file.read_text(encoding="utf-8")
+    assert "GitHub LFS" in agents_text or "Git LFS" in agents_text
+    assert "non-confidential" in agents_text
 
     # Check bug_report template
     template_file = repo_root / "tools" / "dashboard" / "templates" / "worm_report.html.j2"
