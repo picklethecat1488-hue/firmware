@@ -7,10 +7,10 @@ Before finalizing any task, committing changes, or proposing modifications to th
 ```
 
 ## Validation Guidelines
-1. **Execution**: Always run `./tools/verify.sh` from the repository root. Heavy test suites, linters, and verification runs may also be offloaded to the `anvil` cloud server via `bin/anvil verify` or `bin/anvil pytest` to conserve local compute.
+1. **Execution**: Always run `./tools/verify.sh` from the repository root. Heavy test suites, linters, and verification runs may also be offloaded to the `anvil` cloud server via `tools/anvil verify` or `tools/anvil pytest` to conserve local compute.
 2. **Outcome Verification**: Confirm the script exits successfully and outputs `Verification PASSED`.
 3. **Resolution**: If any component fails (such as Cargo tests, Python tests, formatting, or firmware builds), you must address the failure and re-run `./tools/verify.sh` until it passes before concluding your work.
-4. **Process Management & Rerun Hygiene**: When restarting or re-running test suites (`./tools/verify.sh`, `pytest`, `cargo test`, `cargo nextest`, `bin/anvil pytest`, `bin/anvil verify`, etc.), you MUST explicitly terminate/kill any preceding running instances of that test or task before launching a new execution. Never allow multiple overlapping runs of the same test command.
+4. **Process Management & Rerun Hygiene**: When restarting or re-running test suites (`./tools/verify.sh`, `pytest`, `cargo test`, `cargo nextest`, `tools/anvil pytest`, `tools/anvil verify`, etc.), you MUST explicitly terminate/kill any preceding running instances of that test or task before launching a new execution. Never allow multiple overlapping runs of the same test command.
 5. **GitHub CI Monitoring & Local Stack Remediation**: When commits have been pushed to a remote feature branch or when instructed to inspect CI, you may inspect GitHub Actions CI workflow results (e.g. via `gh run list --limit 5`, `gh pr checks`, or `gh run view <run-id> --log-failed`) and resolve any reported failures. However, the agent MUST NOT autonomously create pull requests (`gh pr create`) or merge pull requests (`gh pr merge`). All pull request creation, peer code reviews, and PR merges MUST be performed manually by the user.
 6. **Host Daemon Firmware Synchronization**: When updating or re-flashing target firmware during iterative development, debugging, or test bringup, do NOT terminate or restart the running `host.py` daemon. Instead, execute `python tools/host.py sync` (or invoke `POST http://127.0.0.1:8899/api/sync`) to trigger incremental compilation, flashing via `probe-rs`, and RTT reconnection while preserving the running workstation and HTTP server session.
 
@@ -18,7 +18,7 @@ Before finalizing any task, committing changes, or proposing modifications to th
 
 ## Remote Cloud Server (`anvil`)
 
-For resource-intensive workloads, parameter sweeps, long-running test suites, simulation analysis, and remote verification, cloud execution is available via Vast.ai instances orchestrated by `bin/anvil`:
+For resource-intensive workloads, parameter sweeps, long-running test suites, simulation analysis, and remote verification, cloud execution is available via Vast.ai instances orchestrated by `tools/anvil`:
 
 ```ssh-config
 Host anvil
@@ -30,11 +30,11 @@ Host anvil
 ```
 
 ### Usage Guidelines & Shared Workstation Configuration
-1. **Shared Configuration & Provisioning**: Cloud instances are provisioned on Vast.ai (`ubuntu:22.04`) via `bin/anvil provision` / `bin/anvil release` and shared across `firmware`, `hardware`, and `SSD` using `~/.anvil.env` in `$HOME`. Remote paths dynamically resolve to `/workspace/<repo>` (fallback `$HOME/<repo>`).
-2. **Automated Remote Bootstrapping**: `bin/anvil bootstrap` automatically installs build toolchains (`build-essential`, `cmake`, `pkg-config`), Rust (`rustup` + `cargo-nextest`), and persistent Miniforge on `/workspace/miniforge3` (creating the `firmware-env` conda environment).
-3. **Remote Execution & Host CLI Reverse Proxying**: Run test suites (`bin/anvil pytest`), verification (`bin/anvil verify`), or cargo checks (`bin/anvil cargo`). Use `bin/anvil cli <command...>` (or `bin/anvil host <subcmd...>`) to execute host commands while reverse proxying port 8899 to the developer's local `host.py` daemon.
-4. **Preceding Run Cancellation & Artifact Sync**: Ensure preceding runs of the same command are cancelled (`bin/anvil stop`) before initiating a new remote execution. Use `bin/anvil pull <remote_path> [local_dest]` or `bin/anvil recordings` to download artifacts.
-5. **Lock File Tracking & COB Auto-Release Mandate**: Track active execution in `~/.anvil.lock` in `$HOME`. Any rented Vast.ai instance claim MUST be automatically released at Close of Business (COB) or when idle if no processes are using it (`bin/anvil auto-release` or `bin/anvil release`). Never leave cloud instances running unattended or overnight. See [docs/remote_cloud_runner.md](docs/remote_cloud_runner.md) for full architecture and protocol specifications.
+1. **Shared Configuration & Provisioning**: Cloud instances are provisioned on Vast.ai (`ubuntu:22.04`) via `tools/anvil provision` / `tools/anvil release` and shared across `firmware`, `hardware`, and `SSD` using `~/.anvil.env` in `$HOME`. Remote paths dynamically resolve to `/workspace/<repo>` (fallback `$HOME/<repo>`).
+2. **Automated Remote Bootstrapping**: `tools/anvil bootstrap` automatically installs build toolchains (`build-essential`, `cmake`, `pkg-config`), Rust (`rustup` + `cargo-nextest`), and persistent Miniforge on `/workspace/miniforge3` (creating the `firmware-env` conda environment).
+3. **Remote Execution & Host CLI Reverse Proxying**: Run test suites (`tools/anvil pytest`), verification (`tools/anvil verify`), or cargo checks (`tools/anvil cargo`). Use `tools/anvil cli <command...>` (or `tools/anvil host <subcmd...>`) to execute host commands while reverse proxying port 8899 to the developer's local `host.py` daemon.
+4. **Preceding Run Cancellation & Artifact Sync**: Ensure preceding runs of the same command are cancelled (`tools/anvil stop`) before initiating a new remote execution. Use `tools/anvil pull <remote_path> [local_dest]` or `tools/anvil recordings` to download artifacts.
+5. **Lock File Tracking & COB Auto-Release Mandate**: Track active execution in `~/.anvil.lock` in `$HOME`. Any rented Vast.ai instance claim MUST be automatically released at Close of Business (COB) or when idle if no processes are using it (`tools/anvil auto-release` or `tools/anvil release`). Never leave cloud instances running unattended or overnight. See [docs/remote_cloud_runner.md](docs/remote_cloud_runner.md) for full architecture and protocol specifications.
 
 ---
 
@@ -104,7 +104,7 @@ Host anvil
 ### 6. Bidirectional Dashboard & Script Cross-Patching Mandate
 * **Automatic Cross-Repository Synchronization**: Any bug fix, feature enhancement, styling update, or refactoring applied to developer scripts, tooling, or dashboard components in one repository (`firmware` or `hardware`) that is applicable to the other repository MUST be automatically cross-patched and mirrored into that repository, and vice versa.
 * **Synchronized Subsystems**: This includes, but is not limited to:
-  - Remote cloud runner and lifecycle orchestration (`bin/anvil`, `tools/vast_manager.py`, `~/.anvil.env`, `~/.anvil.lock`).
+  - Remote cloud runner and lifecycle orchestration (`tools/anvil`, `tools/vast_manager.py`, `~/.anvil.env`, `~/.anvil.lock`).
   - VCS web workstation and dashboard backends (`tools/dashboard.py`, `provider/vcs/git_engine.py`, `provider/worm_report/`, `provider/bug_report/`).
   - Shared workstation templates (`diff_view.html.j2`, `diff_component.html.j2`, `code_review.html.j2`, `worm_report.html.j2`, `bug_report.html.j2`).
   - Smartlog DAG tree rendering, commit selection, node highlighting, and author identity sanitization.

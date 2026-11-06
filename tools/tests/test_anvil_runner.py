@@ -1,4 +1,4 @@
-"""Unit tests for bin/anvil remote execution, synchronization runner, and Vast.ai lifecycle."""
+"""Unit tests for tools/anvil remote execution, synchronization runner, and Vast.ai lifecycle."""
 
 import json
 import os
@@ -32,27 +32,27 @@ def get_repo_root() -> Path:
 
 
 def test_anvil_runner_executable_and_syntax() -> None:
-    """Verify bin/anvil exists, has executable permissions, and passes bash syntax validation."""
+    """Verify tools/anvil exists, has executable permissions, and passes bash syntax validation."""
     repo_root = get_repo_root()
-    script_path = repo_root / "bin" / "anvil"
-    assert script_path.exists(), "bin/anvil runner script must exist"
+    script_path = repo_root / "tools" / "anvil"
+    assert script_path.exists(), "tools/anvil runner script must exist"
 
     file_stat = script_path.stat()
-    assert bool(file_stat.st_mode & stat.S_IXUSR), "bin/anvil must be executable"
+    assert bool(file_stat.st_mode & stat.S_IXUSR), "tools/anvil must be executable"
 
-    # Bash syntax check (bash -n bin/anvil)
+    # Bash syntax check (bash -n tools/anvil)
     result = subprocess.run(["bash", "-n", str(script_path)], capture_output=True, text=True)
-    assert result.returncode == 0, f"bin/anvil syntax error: {result.stderr}"
+    assert result.returncode == 0, f"tools/anvil syntax error: {result.stderr}"
 
 
 def test_anvil_runner_usage_without_args() -> None:
-    """Verify bin/anvil without arguments prints usage instructions and exits with code 1."""
+    """Verify tools/anvil without arguments prints usage instructions and exits with code 1."""
     repo_root = get_repo_root()
-    script_path = repo_root / "bin" / "anvil"
+    script_path = repo_root / "tools" / "anvil"
 
     result = subprocess.run([str(script_path)], capture_output=True, text=True)
     assert result.returncode == 1
-    assert "Usage: bin/anvil" in result.stdout or "Usage: bin/anvil" in result.stderr
+    assert "Usage: tools/anvil" in result.stdout or "Usage: tools/anvil" in result.stderr
     assert "provision" in result.stdout
     assert "bootstrap" in result.stdout
     assert "release" in result.stdout
@@ -63,45 +63,45 @@ def test_anvil_runner_usage_without_args() -> None:
 
 
 def test_anvil_runner_pull_requires_path() -> None:
-    """Verify bin/anvil pull requires a remote path argument."""
+    """Verify tools/anvil pull requires a remote path argument."""
     repo_root = get_repo_root()
-    script_path = repo_root / "bin" / "anvil"
+    script_path = repo_root / "tools" / "anvil"
 
     result = subprocess.run([str(script_path), "pull"], capture_output=True, text=True)
     assert result.returncode == 1
-    assert "Usage: bin/anvil pull <remote_path> [local_dest]" in result.stdout or (
-        "Usage: bin/anvil pull <remote_path> [local_dest]" in result.stderr
+    assert "Usage: tools/anvil pull <remote_path> [local_dest]" in result.stdout or (
+        "Usage: tools/anvil pull <remote_path> [local_dest]" in result.stderr
     )
 
 
 def test_anvil_runner_cli_requires_command() -> None:
-    """Verify bin/anvil cli requires a command argument."""
+    """Verify tools/anvil cli requires a command argument."""
     repo_root = get_repo_root()
-    script_path = repo_root / "bin" / "anvil"
+    script_path = repo_root / "tools" / "anvil"
 
     result = subprocess.run([str(script_path), "cli"], capture_output=True, text=True)
     assert result.returncode == 1
-    assert "Usage: bin/anvil cli <command...>" in result.stdout or (
-        "Usage: bin/anvil cli <command...>" in result.stderr
+    assert "Usage: tools/anvil cli <command...>" in result.stdout or (
+        "Usage: tools/anvil cli <command...>" in result.stderr
     )
 
 
 def test_anvil_runner_host_requires_subcommand() -> None:
-    """Verify bin/anvil host requires a subcommand argument."""
+    """Verify tools/anvil host requires a subcommand argument."""
     repo_root = get_repo_root()
-    script_path = repo_root / "bin" / "anvil"
+    script_path = repo_root / "tools" / "anvil"
 
     result = subprocess.run([str(script_path), "host"], capture_output=True, text=True)
     assert result.returncode == 1
-    assert "Usage: bin/anvil host <subcommand...> [args...]" in result.stdout or (
-        "Usage: bin/anvil host <subcommand...> [args...]" in result.stderr
+    assert "Usage: tools/anvil host <subcommand...> [args...]" in result.stdout or (
+        "Usage: tools/anvil host <subcommand...> [args...]" in result.stderr
     )
 
 
 def test_anvil_runner_sync_and_pytest_mocked(tmp_path: Path) -> None:
-    """Verify bin/anvil sync and pytest dispatch appropriate rsync and ssh commands with proper exclusions."""
+    """Verify tools/anvil sync and pytest dispatch appropriate rsync and ssh commands with proper exclusions."""
     repo_root = get_repo_root()
-    script_path = repo_root / "bin" / "anvil"
+    script_path = repo_root / "tools" / "anvil"
 
     # Create mock ssh and rsync executables
     mock_bin_dir = tmp_path / "bin"
@@ -138,34 +138,34 @@ exit 0
     env["REMOTE_USER"] = "ubuntu"
     env["REMOTE_DIR"] = "/workspace/firmware"
 
-    # Test 1: bin/anvil sync
+    # Test 1: tools/anvil sync
     res_sync = subprocess.run([str(script_path), "sync"], env=env, capture_output=True, text=True)
     assert res_sync.returncode == 0
     assert "Sync complete" in res_sync.stdout
 
-    # Test 2: bin/anvil pytest
+    # Test 2: tools/anvil pytest
     res_pytest = subprocess.run(
         [str(script_path), "pytest", "-k", "test_mock"], env=env, capture_output=True, text=True
     )
     assert res_pytest.returncode == 0
 
-    # Test 3: bin/anvil verify
+    # Test 3: tools/anvil verify
     res_verify = subprocess.run([str(script_path), "verify"], env=env, capture_output=True, text=True)
     assert res_verify.returncode == 0
 
-    # Test 4: bin/anvil cli
+    # Test 4: tools/anvil cli
     res_cli = subprocess.run(
         [str(script_path), "cli", "motor", "speed", "100"], env=env, capture_output=True, text=True
     )
     assert res_cli.returncode == 0
     assert "Reverse proxying host CLI to local daemon" in res_cli.stdout
 
-    # Test 5: bin/anvil host
+    # Test 5: tools/anvil host
     res_host = subprocess.run([str(script_path), "host", "status"], env=env, capture_output=True, text=True)
     assert res_host.returncode == 0
     assert "Reverse proxying host command to local daemon" in res_host.stdout
 
-    # Test 6: bin/anvil stop
+    # Test 6: tools/anvil stop
     res_stop = subprocess.run([str(script_path), "stop"], env=env, capture_output=True, text=True)
     assert res_stop.returncode == 0
     assert "Remote processes cleaned up" in res_stop.stdout
@@ -186,9 +186,9 @@ exit 0
 
 
 def test_anvil_runner_vast_dynamic_port_and_rsync(tmp_path: Path) -> None:
-    """Verify bin/anvil handles dynamic Vast.ai port (-p 34567) and -e 'ssh ... -p 34567' for rsync."""
+    """Verify tools/anvil handles dynamic Vast.ai port (-p 34567) and -e 'ssh ... -p 34567' for rsync."""
     repo_root = get_repo_root()
-    script_path = repo_root / "bin" / "anvil"
+    script_path = repo_root / "tools" / "anvil"
 
     mock_bin_dir = tmp_path / "bin"
     mock_bin_dir.mkdir(parents=True, exist_ok=True)

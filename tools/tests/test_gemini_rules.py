@@ -28,7 +28,7 @@ def test_gemini_markdown_core_skills_and_back_compat_mandate() -> None:
     assert "./tools/verify.sh" in content
     assert "Process Management & Rerun Hygiene" in content
     assert "Remote Cloud Server (`anvil`)" in content
-    assert "bin/anvil" in content
+    assert "tools/anvil" in content
     assert "Host CLI Reverse Proxying" in content
 
     # 2. Regression unit testing mandate
