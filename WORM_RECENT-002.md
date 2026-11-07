@@ -1,6 +1,6 @@
 # 🟢 `[WORM-RECENT-002]` Recently resolved worm awaiting review
 
-- **UUID**: `735ed9ff-f1ef-4ae9-9bbc-2bfb9893ea64`
+- **UUID**: `0e5c2eb1-ff8d-48a7-8b17-b5f1a0e83de3`
 - **ID**: `WORM-RECENT-002`
 - **Status**: `CLOSED`
 - **Severity**: `HIGH`
