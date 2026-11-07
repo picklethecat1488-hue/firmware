@@ -5,7 +5,7 @@ Verifies that:
 1. tools/host.py and tools/host_daemon/cli.py ensure repo root is in sys.path
    so that native webview and eel launchers can be imported without 'No module named tools' error.
 2. The ASCII box banner is removed from host_daemon startup console output,
-   matching the compact output format of dashboard.py:
+   matching the compact output format of forge.py:
    '➜ Host daemon running at http://...'
    '➜ Detached from terminal.'
 """

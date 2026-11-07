@@ -58,4 +58,4 @@ To provide deterministic, zero-allocation structured telemetry on embedded targe
   # Execute automated target bringup suite:
   conda run -n firmware-env python tools/host.py bringup --script projects/cat_detector_bringup.yaml --run
   ```
-* **VCS Workstation & Issue Matrix (`tools/dashboard.py`)**: Smartlog DAG inspection, commit splitting/combining, code reviews, and worm tracking are conducted via `tools/dashboard.py` (System Shock 2 - Xerxes workstation). Launch via `python tools/dashboard.py` (native pywebview desktop window), `python tools/dashboard.py --eel` (Chromium app mode), or `python tools/dashboard.py --no-browser` (headless).
+* **VCS Workstation & Issue Matrix (`tools/forge.py`)**: Smartlog DAG inspection, commit splitting/combining, code reviews, and worm tracking are conducted via `tools/forge.py` (System Shock 2 - Xerxes workstation). Launch via `python tools/forge.py` (native pywebview desktop window), `python tools/forge.py --eel` (Chromium app mode), or `python tools/forge.py --no-browser` (headless).

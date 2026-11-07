@@ -71,8 +71,11 @@ recordings/previews/*.pdf
 # Worm and review tracking (decoupled to detached git branch 'worms')
 build/
 feedback/
+feedback
 attachments/
+attachments
 feedback/attachments/
+feedback/attachments
 WORMS.md
 BUGS.md
 CR.md

@@ -10,11 +10,13 @@ from collections.abc import Collection
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import threading
+import time
 from typing import Any, Dict, List, Optional
 import urllib.parse
 import uuid
@@ -51,7 +53,6 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         """Route GET requests for UI dashboard and data query endpoints."""
-        self.server.check_file_watch()
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
@@ -66,6 +67,11 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
         ):
             self._handle_serve_attachment(path)
             return
+
+        now = time.time()
+        if now - getattr(self.server, "_last_watch_check", 0.0) >= 2.0:
+            self.server._last_watch_check = now
+            self.server.check_file_watch()
 
         match path:
             case "/" | "/worms" | "/worms/":
@@ -104,7 +110,10 @@ class WormReportRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         """Route POST requests for worm creation, updates, uploads, and export."""
-        self.server.check_file_watch()
+        now = time.time()
+        if now - getattr(self.server, "_last_watch_check", 0.0) >= 2.0:
+            self.server._last_watch_check = now
+            self.server.check_file_watch()
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
 
@@ -859,8 +868,15 @@ class WormReportServer(ThreadingHTTPServer):
             self.feedback_dir = feedback_dir
         elif markdown_output is not None and markdown_output.parent.name not in ("build", "target"):
             self.feedback_dir = markdown_output.parent
+        elif sqlite_file is not None and sqlite_file.parent.name not in ("build", "target"):
+            self.feedback_dir = sqlite_file.parent / "feedback"
         else:
             self.feedback_dir = self.repo_root / "feedback"
+        if self.feedback_dir != self.repo_root / "feedback":
+            try:
+                self.feedback_dir.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass
         self.state_file = state_file or (self.repo_root / "target" / "worms_state.json")
 
         if sqlite_file:
@@ -917,13 +933,15 @@ class WormReportServer(ThreadingHTTPServer):
             return 0.0
         try:
             max_mtime = self.feedback_dir.stat().st_mtime
-            for p in sorted(self.feedback_dir.glob("WORM_*.md")) + sorted(self.feedback_dir.glob("BUG_*.md")):
-                try:
-                    m = p.stat().st_mtime
-                    if m > max_mtime:
-                        max_mtime = m
-                except OSError:
-                    pass
+            with os.scandir(self.feedback_dir) as it:
+                for entry in it:
+                    if entry.is_file() and (entry.name.startswith(("WORM_", "BUG_")) and entry.name.endswith(".md")):
+                        try:
+                            m = entry.stat().st_mtime
+                            if m > max_mtime:
+                                max_mtime = m
+                        except OSError:
+                            pass
             return max_mtime
         except OSError:
             return 0.0
@@ -1001,7 +1019,17 @@ class WormReportServer(ThreadingHTTPServer):
                 summary="Firmware engineering defects, driver anomalies, and reproduction tracking.",
             )
 
-        if not self.fresh and not db.worms and (self.repo_root / ".git").exists():
+        ws_root = self.repo_root.resolve()
+        try:
+            from provider.vcs.git_engine import get_git_root
+
+            ws_root = get_git_root().resolve()
+        except Exception:
+            pass
+        skip_detached = (self.repo_root.resolve() == ws_root) and (
+            self.sqlite_file.parent.name not in ("build", "target")
+        )
+        if not self.fresh and not db.worms and not skip_detached and (self.repo_root / ".git").exists():
             try:
                 from provider.worm_report.detached_branch import DetachedBranchWormStore
 
@@ -1011,7 +1039,7 @@ class WormReportServer(ThreadingHTTPServer):
             except Exception:
                 pass
 
-        if not self.fresh:
+        if not self.fresh and not db.worms:
             fallback_md = self.repo_root / "build" / "WORMS.md"
             md_to_read = (
                 self.markdown_output
@@ -1056,7 +1084,10 @@ class WormReportServer(ThreadingHTTPServer):
                 if md_db and md_db.worms:
                     self.database = self.exporter.merge_databases(self.database, md_db)
             stats = self.exporter.scan_and_sync_feedback_dir(self.feedback_dir, self.database, self.sqlite_store)
-            self.save_and_sync()
+            if stats.get("merged", 0) > 0 or stats.get("renamed", 0) > 0:
+                self.save_and_sync()
+            else:
+                self.feedback_mtime = self._get_feedback_dir_mtime()
             return stats
 
     def save_and_sync(self, dirty_bug_ids: Optional[Collection[str]] = None) -> Path:
@@ -1088,9 +1119,18 @@ class WormReportServer(ThreadingHTTPServer):
                 )
                 if self.markdown_output.exists():
                     self.markdown_mtime = self.markdown_output.stat().st_mtime
-                self.feedback_mtime = self._get_feedback_dir_mtime()
                 self.db_version += 1
-                if (self.repo_root / ".git").exists():
+                ws_root = self.repo_root.resolve()
+                try:
+                    from provider.vcs.git_engine import get_git_root
+
+                    ws_root = get_git_root().resolve()
+                except Exception:
+                    pass
+                skip_detached = (self.repo_root.resolve() == ws_root) and (
+                    self.sqlite_file.parent.name not in ("build", "target")
+                )
+                if not skip_detached and (self.repo_root / ".git").exists():
                     try:
                         from provider.worm_report.detached_branch import DetachedBranchWormStore
 
@@ -1102,6 +1142,8 @@ class WormReportServer(ThreadingHTTPServer):
                         )
                     except Exception:
                         pass
+                # Update feedback_mtime after commit_database completes so it reflects post-commit disk state
+                self.feedback_mtime = self._get_feedback_dir_mtime()
                 return out
             finally:
                 self._is_internal_saving = False

@@ -1,0 +1,212 @@
+"""Regression unit tests for Diff View performance optimization and granular progress bars.
+
+Verifies:
+1. GitEngine changed files caching for historical commits and invalidation behavior.
+2. GitEngine remote PR numbers local-first resolution without blocking network ls-remote calls.
+3. DashboardRequestHandler file-watch check debouncing and static asset bypass.
+4. Continuous asymptotic progress bar logic and descriptive contextual stage transitions in templates.
+"""
+
+from pathlib import Path
+import subprocess
+import time
+from unittest.mock import MagicMock, patch
+
+import jinja2
+import pytest
+
+from model.vcs import FileDiffModel
+from provider.dashboard.server import DashboardRequestHandler, DashboardServer
+from provider.vcs.git_engine import GitEngine
+
+
+def test_git_engine_commit_files_caching(tmp_path: Path) -> None:
+    """Verify GitEngine caches changed files for immutable commits and invalidates on clear_diff_cache."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "tester@example.com"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Tester"], cwd=repo, check=True, capture_output=True)
+
+    test_file = repo / "hello.txt"
+    test_file.write_text("Hello World\n")
+    subprocess.run(["git", "add", "hello.txt"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo, check=True, capture_output=True)
+
+    engine = GitEngine(repo_root=repo)
+    head_sha = engine.get_head_commit()
+    assert head_sha
+
+    # First call: populates cache
+    files_1 = engine.get_changed_files(head_sha)
+    assert len(files_1) == 1
+    assert files_1[0]["path"] == "hello.txt"
+    assert (head_sha, False) in engine._commit_files_cache
+
+    # Second call: served from cache without invoking diff-tree
+    with patch("provider.vcs.git_engine.run_git_command") as mock_git:
+        files_2 = engine.get_changed_files(head_sha)
+        assert files_2 == files_1
+        mock_git.assert_not_called()
+
+    # Working tree files should NOT be cached in _commit_files_cache
+    working_files = engine.get_changed_files("working")
+    assert ("working", False) not in engine._commit_files_cache
+
+    # clear_diff_cache flushes cache
+    engine.clear_diff_cache()
+    assert (head_sha, False) not in engine._commit_files_cache
+
+
+def test_git_engine_remote_prs_local_ref_resolution(tmp_path: Path) -> None:
+    """Verify GitEngine resolves remote PR numbers from local tracking refs without blocking ls-remote."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "tester@example.com"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "Tester"], cwd=repo, check=True, capture_output=True)
+
+    engine = GitEngine(repo_root=repo)
+
+    with patch("provider.vcs.git_engine.run_git_command") as mock_git:
+        mock_git.return_value = "refs/remotes/origin/pr/42\nrefs/remotes/origin/pr/108\nrefs/remotes/origin/main"
+        prs = engine.get_remote_pr_numbers(force_refresh=False)
+        assert prs == {42, 108}
+        # Assert ls-remote was not called
+        for call_args in mock_git.call_args_list:
+            args = call_args[0][0]
+            assert "ls-remote" not in args
+
+    # When force_refresh=True, verifies it can contact ls-remote
+    with patch.object(engine, "get_repo_web_url", return_value="https://github.com/workspace/firmware"):
+        with patch("provider.vcs.git_engine.run_git_command") as mock_git:
+            mock_git.return_value = "abc1234\trefs/pull/555/head\n"
+            prs_refresh = engine.get_remote_pr_numbers(force_refresh=True)
+            assert 555 in prs_refresh
+
+
+def test_dashboard_request_handler_throttling_and_static_bypass(tmp_path: Path) -> None:
+    """Verify DashboardRequestHandler skips check_file_watch on static assets and throttles on dynamic routes."""
+    mock_server = MagicMock()
+    mock_server.review_server = MagicMock()
+    mock_server.worm_server = MagicMock()
+    mock_server._last_file_watch_check = 0.0
+
+    handler = DashboardRequestHandler.__new__(DashboardRequestHandler)
+    handler.server = mock_server
+    handler._handle_serve_static = MagicMock()
+
+    # 1. Static asset request: check_file_watch must NOT be called
+    handler.path = "/static/css/quake.css"
+    handler._do_get_impl()
+    handler._handle_serve_static.assert_called_once_with("/static/css/quake.css")
+    mock_server.review_server.check_file_watch.assert_not_called()
+    mock_server.worm_server.check_file_watch.assert_not_called()
+
+    # Favicon request: check_file_watch must NOT be called
+    handler._handle_serve_static.reset_mock()
+    handler.path = "/favicon.ico"
+    handler._do_get_impl()
+    handler._handle_serve_static.assert_called_once_with("/static/favicon.ico")
+    mock_server.review_server.check_file_watch.assert_not_called()
+
+    # 2. Dynamic route request: check_file_watch is invoked on first call
+    handler._send_json = MagicMock()
+    handler.path = "/api/version"
+    handler._do_get_impl()
+    assert mock_server.review_server.check_file_watch.call_count == 1
+    assert mock_server.worm_server.check_file_watch.call_count == 1
+    first_check_time = mock_server._last_file_watch_check
+    assert first_check_time > 0
+
+    # 3. Immediate subsequent dynamic route request (< 2.5s): check_file_watch should be throttled
+    handler.path = "/api/version"
+    handler._do_get_impl()
+    # Call count should not increase
+    assert mock_server.review_server.check_file_watch.call_count == 1
+    assert mock_server.worm_server.check_file_watch.call_count == 1
+
+
+def test_template_progress_bar_granularity_and_stages() -> None:
+    """Verify template sources contain granular progress, asymptotic tail, and dynamic stage indicators."""
+    templates_dir = Path(__file__).resolve().parents[1] / "dashboard" / "templates"
+
+    # diff_view.html.j2 checks
+    diff_view = (templates_dir / "diff_view.html.j2").read_text(encoding="utf-8")
+    assert "syncProgressBar" in diff_view
+    assert "syncProgressPercent" in diff_view
+    assert "updateProgress" in diff_view
+    assert "getStageMessage" in diff_view
+    assert "actionProgressElapsed" in diff_view
+    assert "elapsedSec.toFixed(1)" in diff_view
+    assert "prSubmitProgressBar" in diff_view
+    assert "prSubmitProgressPercent" in diff_view
+
+    # worm_report.html.j2 checks
+    worm_report = (templates_dir / "worm_report.html.j2").read_text(encoding="utf-8")
+    assert "feedback-loading-modal" in worm_report
+    assert "loading-progress-bar" in worm_report
+    assert "loading-progress-percent" in worm_report
+    # Ensure static 30% width was removed in favor of dynamic animation
+    assert "width:30%" not in worm_report and "width: 30%" not in worm_report
+    assert "showFeedbackLoading" in worm_report
+    assert "hideFeedbackLoading" in worm_report
+
+
+def test_worm_server_isolation_with_temporary_sqlite(tmp_path: Path) -> None:
+    """Verify WormReportServer and DashboardServer with a test SQLite file isolate feedback to temp dir."""
+    from provider.worm_report.server import WormReportServer
+    from model.worm_report import WormReportModel, WormStatus, WormSeverity, WormCategory
+
+    db_file = tmp_path / "isolated_test_worms.sqlite"
+    server = WormReportServer(sqlite_file=db_file, bind_and_activate=False)
+
+    assert str(tmp_path) in str(server.feedback_dir)
+    assert server.feedback_dir != Path.cwd() / "feedback"
+
+    # Add a worm and save_and_sync
+    w = WormReportModel(
+        id="WORM-TEST-999",
+        title="Isolated Test Worm",
+        status=WormStatus.OPEN,
+        severity=WormSeverity.LOW,
+        category=WormCategory.UI,
+    )
+    server.save_worm(w)
+
+    # File should exist in temp dir feedback, NEVER in workspace feedback/
+    assert (server.feedback_dir / "WORM_TEST-999.md").exists()
+    assert not (Path.cwd() / "feedback" / "WORM_TEST-999.md").exists()
+
+
+def test_worm_server_feedback_mtime_synchronization(tmp_path: Path) -> None:
+    """Verify save_and_sync records post-commit feedback mtime, preventing false-positive check_file_watch."""
+    from provider.worm_report.server import WormReportServer
+    from model.worm_report import WormReportModel, WormStatus, WormSeverity, WormCategory
+
+    db_file = tmp_path / "test_mtime.sqlite"
+    server = WormReportServer(sqlite_file=db_file, bind_and_activate=False)
+
+    w = WormReportModel(
+        id="WORM-TEST-001",
+        title="Mtime sync worm",
+        status=WormStatus.OPEN,
+        severity=WormSeverity.LOW,
+        category=WormCategory.UI,
+    )
+    server.save_worm(w)
+
+    # Immediately after save_and_sync, check_file_watch must be False (no infinite loop)
+    assert not server.check_file_watch()
+
+
+def test_zero_open_worms_in_firmware_workspace() -> None:
+    """Verify live workspace reports exactly zero open or resolved worms awaiting review."""
+    from provider.worm_report.server import WormReportServer
+    from model.worm_report import WormStatus
+
+    server = WormReportServer(bind_and_activate=False)
+    open_worms = [
+        w for w in server.database.worms if w.status in (WormStatus.OPEN, WormStatus.IN_PROGRESS, WormStatus.RESOLVED)
+    ]
+    assert len(open_worms) == 0, f"Expected 0 open worms, found: {[w.id for w in open_worms]}"

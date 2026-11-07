@@ -347,14 +347,14 @@ def test_server_sqlite_integration(tmp_path: Path) -> None:
 
 
 def test_regression_bug_076_feedback_tools_sqlite_only():
-    """Verify references to markdown and state files are removed from dashboard.py CLI flags."""
-    res = subprocess.run([sys.executable, "tools/dashboard.py", "--help"], capture_output=True, text=True, check=True)
-    assert "--output" not in res.stdout, "dashboard.py should not have --output flag"
-    assert "--state-file" not in res.stdout, "dashboard.py should not have --state-file flag"
-    assert "WORMS.md" not in res.stdout, "dashboard.py should not reference WORMS.md"
-    assert "worms_state.json" not in res.stdout, "dashboard.py should not reference worms_state.json"
-    assert "CR.md" not in res.stdout, "dashboard.py should not reference CR.md"
-    assert "cr_feedback.json" not in res.stdout, "dashboard.py should not reference cr_feedback.json"
+    """Verify references to markdown and state files are removed from forge.py CLI flags."""
+    res = subprocess.run([sys.executable, "tools/forge.py", "--help"], capture_output=True, text=True, check=True)
+    assert "--output" not in res.stdout, "forge.py should not have --output flag"
+    assert "--state-file" not in res.stdout, "forge.py should not have --state-file flag"
+    assert "WORMS.md" not in res.stdout, "forge.py should not reference WORMS.md"
+    assert "worms_state.json" not in res.stdout, "forge.py should not reference worms_state.json"
+    assert "CR.md" not in res.stdout, "forge.py should not reference CR.md"
+    assert "cr_feedback.json" not in res.stdout, "forge.py should not reference cr_feedback.json"
 
 
 def test_regression_bug_079_no_duplicate_worm_ids_and_generator():

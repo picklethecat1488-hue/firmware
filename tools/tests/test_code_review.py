@@ -580,16 +580,16 @@ def test_launch_browser_and_webpage_title(tmp_path: Path) -> None:
             assert f"<title>Xerxes Code Review: {repo_root.name}</title>" in html
 
         # Test CLI arguments default to native webview standalone app window
-        with patch("sys.argv", ["dashboard.py"]):
+        with patch("sys.argv", ["forge.py"]):
             args = parse_arguments()
             assert args.browser == "webview"
             assert not args.no_browser
 
-        with patch("sys.argv", ["dashboard.py", "--no-browser"]):
+        with patch("sys.argv", ["forge.py", "--no-browser"]):
             args_no = parse_arguments()
             assert args_no.no_browser
 
-        with patch("sys.argv", ["dashboard.py", "--no-app"]):
+        with patch("sys.argv", ["forge.py", "--no-app"]):
             args_no_app = parse_arguments()
             assert args_no_app.no_browser
 
@@ -1214,7 +1214,7 @@ def test_review_server_sqlite_integration(tmp_path: Path) -> None:
 def test_code_review_cli_features(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
 ) -> None:
-    """Verify dashboard.py CLI commands for comment addition, resolution, and listing."""
+    """Verify forge.py CLI commands for comment addition, resolution, and listing."""
     db_file = tmp_path / "cli_test.sqlite"
 
     from dashboard import main
@@ -1223,13 +1223,13 @@ def test_code_review_cli_features(
     monkeypatch.setattr(
         "sys.argv",
         [
-            "dashboard.py",
+            "forge.py",
             "--db-file",
             str(db_file),
             "--add-comment",
             "Check crystal routing",
             "--file",
-            "tools/dashboard.py",
+            "tools/forge.py",
             "--line",
             "10",
             "--severity",
@@ -1244,7 +1244,7 @@ def test_code_review_cli_features(
     monkeypatch.setattr(
         "sys.argv",
         [
-            "dashboard.py",
+            "forge.py",
             "--db-file",
             str(db_file),
             "--list",
@@ -1266,7 +1266,7 @@ def test_code_review_cli_features(
     monkeypatch.setattr(
         "sys.argv",
         [
-            "dashboard.py",
+            "forge.py",
             "--db-file",
             str(db_file),
             "--resolve-comment",
@@ -1281,7 +1281,7 @@ def test_code_review_cli_features(
     monkeypatch.setattr(
         "sys.argv",
         [
-            "dashboard.py",
+            "forge.py",
             "--db-file",
             str(db_file),
             "--list",

@@ -478,7 +478,7 @@ def test_cli_smartlog_printer(tmp_path: Path, capsys: pytest.CaptureFixture[str]
 
 
 def test_regression_bug_178_unified_dashboard_and_no_standalone_tools(tmp_path: Path) -> None:
-    """Verify BUG-178: standalone bug_report/code_review tools are removed and integrated into dashboard.py."""
+    """Verify BUG-178: standalone bug_report/code_review tools are removed and integrated into forge.py."""
     repo_root = get_git_root()
 
     # 1. Standalone scripts MUST NOT exist
@@ -486,9 +486,9 @@ def test_regression_bug_178_unified_dashboard_and_no_standalone_tools(tmp_path: 
     assert not (repo_root / "tools" / "code_review.py").exists()
     assert not (repo_root / "tools" / "diff_view.py").exists()
 
-    # 2. Unified dashboard script MUST exist
-    dashboard_script = repo_root / "tools" / "dashboard.py"
-    assert dashboard_script.exists()
+    # 2. Unified forge script MUST exist
+    forge_script = repo_root / "tools" / "forge.py"
+    assert forge_script.exists()
 
     # 3. Test unified server on ephemeral port
     repo_dir, shas = create_isolated_git_repo(tmp_path)
@@ -3634,3 +3634,77 @@ def test_diff_view_optimizations_polling_and_file_priority() -> None:
         "conflicts[0]?.path || staged[0]?.path || unstaged[0]?.path || untracked[0]?.path || lfs[0]?.path || feedback[0]?.path;"
         in tpl_text
     )
+
+
+def test_ensure_feedback_worktree_migration(tmp_path: Path) -> None:
+    """Verify ensure_feedback_worktree automatically configures feedback/ worktree and preserves data."""
+    repo_dir = tmp_path / "repo"
+    repo_dir.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.name", "User"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "user@workspace"], cwd=repo_dir, check=True)
+    (repo_dir / ".gitignore").write_text("feedback\nfeedback/\nattachments\nattachments/\n", encoding="utf-8")
+    (repo_dir / "main.py").write_text("print('hello')\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo_dir, check=True)
+    subprocess.run(["git", "commit", "-m", "Initial commit"], cwd=repo_dir, check=True)
+
+    # Create worms branch with legacy nested feedback/ and attachments/
+    subprocess.run(["git", "checkout", "--orphan", "worms"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "rm", "-rf", "."], cwd=repo_dir, check=True)
+    (repo_dir / "feedback").mkdir()
+    (repo_dir / "feedback" / "WORM_001.md").write_text("# Worm 001\n", encoding="utf-8")
+    (repo_dir / "attachments" / "WORM-001").mkdir(parents=True)
+    (repo_dir / "attachments" / "WORM-001" / "log.txt").write_text("Log data\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo_dir, check=True)
+    subprocess.run(["git", "commit", "-m", "Initial worms branch"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "checkout", "main"], cwd=repo_dir, check=True)
+
+    # Create uncommitted local feedback and attachments on main
+    (repo_dir / "feedback").mkdir(exist_ok=True)
+    (repo_dir / "feedback" / "WORM_001.md").write_text("# Worm 001 with local edits\n", encoding="utf-8")
+    (repo_dir / "feedback" / "WORM_002.md").write_text("# Worm 002 uncommitted\n", encoding="utf-8")
+    (repo_dir / "attachments" / "WORM-002").mkdir(parents=True, exist_ok=True)
+    (repo_dir / "attachments" / "WORM-002" / "data.txt").write_text("Attachment data\n", encoding="utf-8")
+
+    # Mock provider/worm_report presence so it detects 'worms'
+    (repo_dir / "tools" / "dashboard" / "provider" / "worm_report").mkdir(parents=True)
+
+    engine = GitEngine(repo_root=repo_dir)
+    res = engine.ensure_feedback_worktree()
+    assert res is True
+
+    # 1. Verify worktree active (.git is a file)
+    assert (repo_dir / "feedback" / ".git").is_file()
+
+    # 2. Verify worktree branch is worms
+    wt_branch = subprocess.run(
+        ["git", "-C", "feedback", "branch", "--show-current"],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert wt_branch == "worms"
+
+    # 3. Verify local modifications and untracked files are preserved
+    assert (repo_dir / "feedback" / "WORM_001.md").read_text(encoding="utf-8") == "# Worm 001 with local edits\n"
+    assert (repo_dir / "feedback" / "WORM_002.md").read_text(encoding="utf-8") == "# Worm 002 uncommitted\n"
+
+    # 4. Verify attachments symlink and accessibility
+    assert (repo_dir / "attachments").is_symlink()
+    assert (repo_dir / "attachments" / "WORM-001" / "log.txt").read_text(encoding="utf-8") == "Log data\n"
+    assert (repo_dir / "attachments" / "WORM-002" / "data.txt").read_text(encoding="utf-8") == "Attachment data\n"
+
+    # 5. Verify root repository working tree remains clean on main
+    root_status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert root_status == ""
+
+    # 6. Verify idempotency
+    res_second = engine.ensure_feedback_worktree()
+    assert res_second is True

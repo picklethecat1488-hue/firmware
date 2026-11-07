@@ -966,8 +966,25 @@ class MarkdownWormExporter:
             return None
         try:
             content = file_path.read_text(encoding="utf-8")
+            return self.parse_worm_markdown_content(content, default_filename=file_path.name)
+        except Exception:
+            return None
+
+    def parse_worm_markdown_content(self, content: str, default_filename: str = "") -> Optional[WormReportModel]:
+        """Parse raw markdown text of an individual WORM_<id>.md report into a WormReportModel.
+
+        Args:
+            content: Raw markdown text content.
+            default_filename: Optional filename hint (e.g. WORM_001.md).
+
+        Returns:
+            WormReportModel if valid, else None.
+        """
+        try:
             m_header = re.search(r"^#\s+(?:[^\n\[]*?)?`\[(WORM-[^\]]+|[^\]]+)\]`\s*(.*?)$", content, re.MULTILINE)
-            m_fn = re.match(r"^(?:WORM|BUG)[_-](.+)\.md$", file_path.name, re.IGNORECASE)
+            m_fn = (
+                re.match(r"^(?:WORM|BUG)[_-](.+)\.md$", default_filename, re.IGNORECASE) if default_filename else None
+            )
             fn_id = ""
             if m_fn:
                 fn_part = m_fn.group(1)
@@ -1234,16 +1251,18 @@ class MarkdownWormExporter:
             file_name = bug_file.name
 
             # Determine ID implied by filename
-            m_fn = re.match(r"^(?:WORM|BUG)[_-](.+)\.md$", file_name, re.IGNORECASE)
+            m_fn = re.match(r"^(WORM|BUG)[_-](.+)\.md$", file_name, re.IGNORECASE)
             expected_id_from_fn = ""
+            fn_prefix = "WORM"
             if m_fn:
-                raw_part = m_fn.group(1)
+                fn_prefix = m_fn.group(1).upper()
+                raw_part = m_fn.group(2)
                 if raw_part.isdigit():
-                    expected_id_from_fn = f"WORM-{int(raw_part):03d}"
-                elif raw_part.startswith("WORM-"):
+                    expected_id_from_fn = f"{fn_prefix}-{int(raw_part):03d}"
+                elif raw_part.startswith(f"{fn_prefix}-"):
                     expected_id_from_fn = raw_part
                 else:
-                    expected_id_from_fn = f"WORM-{raw_part}"
+                    expected_id_from_fn = f"{fn_prefix}-{raw_part}"
 
             try:
                 curr_mtime = bug_file.stat().st_mtime
@@ -1268,12 +1287,27 @@ class MarkdownWormExporter:
             existing_by_uuid = database.get_worm_by_uuid(md_bug.uuid)
             if existing_by_uuid:
                 # File name rename detection!
+                old_id = existing_by_uuid.id or ""
+                norm_old = old_id.removeprefix("WORM-").removeprefix("BUG-")
+                old_file_exists = (feedback_dir / f"WORM_{norm_old}.md").exists() or (
+                    feedback_dir / f"BUG_{norm_old}.md"
+                ).exists()
                 if expected_id_from_fn and existing_by_uuid.id != expected_id_from_fn:
-                    existing_by_uuid.id = expected_id_from_fn
-                    md_bug.id = expected_id_from_fn
-                    if store and hasattr(store, "update_worm_id"):
-                        store.update_worm_id(existing_by_uuid.uuid, expected_id_from_fn)
-                    renamed += 1
+                    cand_by_id = database.get_worm(expected_id_from_fn)
+                    if cand_by_id and cand_by_id.uuid != existing_by_uuid.uuid:
+                        # Target ID is already claimed by another worm; treat as UUID collision
+                        md_bug.uuid = str(uuid_pkg.uuid4())
+                        self.export_individual_worm(md_bug, feedback_dir)
+                    elif not old_file_exists:
+                        existing_by_uuid.id = expected_id_from_fn
+                        md_bug.id = expected_id_from_fn
+                        if store and hasattr(store, "update_worm_id"):
+                            store.update_worm_id(existing_by_uuid.uuid, expected_id_from_fn)
+                        renamed += 1
+                    else:
+                        # Both files exist on disk simultaneously: UUID collision mitigation!
+                        md_bug.uuid = str(uuid_pkg.uuid4())
+                        self.export_individual_worm(md_bug, feedback_dir)
                 if (
                     existing_by_uuid.status in (WormStatus.RESOLVED, WormStatus.CLOSED)
                     and md_bug.status == WormStatus.OPEN
@@ -1300,6 +1334,11 @@ class MarkdownWormExporter:
                     if not md_bug.uuid:
                         md_bug.uuid = str(uuid_pkg.uuid4())
                     self.export_individual_worm(md_bug, feedback_dir)
+                    if bug_file.exists():
+                        try:
+                            bug_file.unlink()
+                        except OSError:
+                            pass
                 database.add_or_update(md_bug)
                 merged += 1
 
