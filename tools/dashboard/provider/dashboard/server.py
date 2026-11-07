@@ -1413,6 +1413,7 @@ class DashboardServer(ThreadingHTTPServer):
         ensure_high_fd_limit()
         self.repo_root = (repo_root or get_git_root()).resolve()
         self.git_engine = GitEngine(repo_root=self.repo_root)
+        self.git_engine.ensure_feedback_worktree()
         self.host = host
         self.port = port
         self.active_branch = initial_branch or self.git_engine.get_current_branch()
@@ -1420,12 +1421,15 @@ class DashboardServer(ThreadingHTTPServer):
         self.initial_sync_done: bool = False
 
         md_review = markdown_review_path
-        if md_review is None and sqlite_review_file and sqlite_review_file.parent.name not in ("build", "target"):
-            md_review = sqlite_review_file.parent / "CR.md"
-
         md_worms = markdown_worms_path
-        if md_worms is None and sqlite_worm_file and sqlite_worm_file.parent.name not in ("build", "target"):
-            md_worms = sqlite_worm_file.parent / "WORMS.md"
+
+        custom_fb_dir = None
+        if sqlite_review_file and sqlite_review_file.parent.name not in ("build", "target"):
+            custom_fb_dir = (
+                sqlite_review_file.parent / "feedback"
+                if (sqlite_review_file.parent / "feedback").exists()
+                else sqlite_review_file.parent
+            )
 
         review_state = sqlite_review_file.with_suffix(".json") if sqlite_review_file else None
         worm_state = sqlite_worm_file.with_suffix(".json") if sqlite_worm_file else None
@@ -1435,6 +1439,7 @@ class DashboardServer(ThreadingHTTPServer):
             host=host,
             port=port,
             repo_root=self.repo_root,
+            feedback_dir=custom_fb_dir,
             markdown_output=md_review,
             state_file=review_state,
             sqlite_file=sqlite_review_file,
@@ -1446,6 +1451,7 @@ class DashboardServer(ThreadingHTTPServer):
             host=host,
             port=port,
             repo_root=self.repo_root,
+            feedback_dir=custom_fb_dir,
             markdown_output=md_worms,
             state_file=worm_state,
             sqlite_file=sqlite_worm_file,
