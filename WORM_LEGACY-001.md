@@ -1,10 +1,10 @@
-# 🟢 `[WORM-LEGACY-001]` Legacy resolved worm
+# 🟢 `[WORM-LEGACY-001]` Legacy resolved bug
 
-- **UUID**: `62821755-76f2-494a-9ef2-536912fd7311`
+- **UUID**: `6cf417dc-2458-47fc-aea3-dda07c7142bd`
 - **ID**: `WORM-LEGACY-001`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Created**: `2026-09-01 10:00:00 UTC`
 - **Resolved**: `2026-09-01 12:00:00 UTC`
 - **Accepted**: `2026-09-01 12:00:00 UTC`
