@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression unit test for Host Daemon code review findings:
+"""Regression unit test for Host Daemon code review findings.
 
 1. CR-01b411f5: Subcommand wrappers for host_cli, host_fs, and probe-rs with real-time colorized streaming.
 2. CR-6783fe41: Strict chip detection without silent fallback; errors out if target lacks program metadata.
@@ -193,4 +193,3 @@ def test_cr_4bdad9c1_help_command_and_rtt_reset():
     mock_active.terminate.assert_called_once()
     assert runner.rtt_process is None
     assert runner.is_connected is False
-

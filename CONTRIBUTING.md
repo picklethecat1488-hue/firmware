@@ -424,7 +424,25 @@ To verify code formatting, static tracing assertions, clippy rules, host unit/in
 ```
 This script executes formatting/tracing checks in parallel, runs target compilation checks, and compiles host tools in debug mode (reusing the test compiler cache) to complete all verification checks in under 30 seconds.
 
-#### 2. Cargo Check Aliases
+#### 2. Remote Cloud Execution (`tools/anvil` / Vast.ai)
+For offloading heavy test suites, verification, and cargo builds to the Vast.ai cloud server to conserve local compute:
+```bash
+tools/anvil provision                # Rent Vast.ai Ubuntu instance and configure ~/.anvil.env
+tools/anvil bootstrap                # Install build tools, Rust, Miniforge, and Conda on remote VM
+tools/anvil status                   # Check instance health, IP/port, GPU, and lock state
+tools/anvil sync                     # Sync repository to cloud container (/workspace/firmware)
+tools/anvil verify                   # Run ./tools/verify.sh remotely
+tools/anvil pytest [args...]         # Run pytest remotely on anvil
+tools/anvil cargo [args...]          # Run cargo checks/tests remotely on anvil
+tools/anvil cli <command...>         # Reverse proxy host CLI command to local host.py daemon
+tools/anvil pull <remote_path>       # Download generated artifacts/recordings
+tools/anvil auto-release             # Release instance if idle or past Close of Business (COB)
+tools/anvil release                  # Destroy rented instance and clean up ~/.anvil.env
+tools/anvil stop                     # Clean up remote processes on anvil
+```
+
+
+#### 3. Cargo Check Aliases
 If you want to quickly run compilation checks on demand, you can use these configured cargo aliases:
 * **Check Host Crate Targets** (libraries, binaries, tests, and examples):
   ```bash
@@ -435,7 +453,7 @@ If you want to quickly run compilation checks on demand, you can use these confi
   cargo check-mcu
   ```
 
-#### 3. Full MCU Target Build
+#### 4. Full MCU Target Build
 To build the final target MCU firmware image manually:
 ```bash
 ./tools/build/build_firmware.sh

@@ -5,6 +5,7 @@ into a clean GitHub-flavored Markdown document (build/WORMS.md) with overview me
 action checklists, and embedded references.
 """
 
+from collections.abc import Collection
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -17,6 +18,8 @@ from model.worm_report import (
     WormCategory,
     WormDatabaseModel,
     WormReportModel,
+    WormReviewTaskModel,
+    WormReviewTaskStatus,
     WormSectionModel,
     WormSeverity,
     WormStatus,
@@ -34,6 +37,7 @@ class MarkdownWormExporter:
             repo_root: Base path of repository for file links.
         """
         self.repo_root = repo_root
+        self._file_mtimes: Dict[str, float] = {}
 
     def export_markdown(
         self,
@@ -41,6 +45,7 @@ class MarkdownWormExporter:
         output_path: Path,
         store: Optional[Any] = None,
         feedback_dir: Optional[Path] = None,
+        dirty_bug_ids: Optional[Collection[str]] = None,
     ) -> Path:
         """Generate and save WORMS.md markdown document and individual WORM_<id>.md files.
 
@@ -49,6 +54,8 @@ class MarkdownWormExporter:
             output_path: Destination path for WORMS.md file.
             store: Optional SQLiteWormStore to synchronize duplicate ID updates.
             feedback_dir: Optional destination directory for individual WORM_<id>.md files.
+            dirty_bug_ids: Optional collection of worm IDs that were modified. If provided,
+                only individual files for these worms are updated.
 
         Returns:
             Resolved Path where markdown was saved.
@@ -70,11 +77,28 @@ class MarkdownWormExporter:
             store.resolve_duplicate_ids()
 
         md_text = elide_personal_info(self.render_markdown(database))
-        output_path.write_text(md_text, encoding="utf-8")
+        if not output_path.exists():
+            output_path.write_text(md_text, encoding="utf-8")
+        else:
+            try:
+                existing_text = output_path.read_text(encoding="utf-8")
+                # Elide rewrite if content is identical (ignoring volatile Report Date header)
+                content_existing = re.sub(r"\|\s*\*\*Report Date\*\*\s*\|\s*`[^`]+`\s*\|", "", existing_text)
+                content_new = re.sub(r"\|\s*\*\*Report Date\*\*\s*\|\s*`[^`]+`\s*\|", "", md_text)
+                if content_existing != content_new:
+                    output_path.write_text(md_text, encoding="utf-8")
+            except OSError:
+                output_path.write_text(md_text, encoding="utf-8")
 
         # Export individual WORM_<id>.md files into feedback/ (or custom feedback_dir)
         target_feedback_dir = feedback_dir or (self.repo_root / "feedback")
-        self.export_all_individual_worms(database, target_feedback_dir)
+        if dirty_bug_ids is not None:
+            dirty_set = set(dirty_bug_ids)
+            for bug in database.worms:
+                if bug.id in dirty_set:
+                    self.export_individual_worm(bug, target_feedback_dir)
+        else:
+            self.export_all_individual_worms(database, target_feedback_dir)
 
         return output_path
 
@@ -212,6 +236,10 @@ class MarkdownWormExporter:
                 lines.append(f"- **Created**: `{b.created_at}`")
             if b.resolved_at:
                 lines.append(f"- **Resolved**: `{b.resolved_at}`")
+            if b.accepted_at:
+                lines.append(f"- **Accepted**: `{b.accepted_at}`")
+            if b.rejected_at:
+                lines.append(f"- **Rejected**: `{b.rejected_at}`")
             lines.append("")
 
             if b.description.strip():
@@ -277,12 +305,33 @@ class MarkdownWormExporter:
                     )
                 lines.append("")
 
+            if b.commit_ids:
+                lines.extend(["#### Attached Commits", ""] + [f"- `{c}`" for c in b.commit_ids] + [""])
+
+            if b.review_tasks:
+                lines.extend(["#### Review Tasks & Functional Checklist", ""])
+                for t in b.review_tasks:
+                    chk = "x" if t.status == WormReviewTaskStatus.COMPLETED else " "
+                    cmd_part = f" | `{t.command}`" if t.command else ""
+                    lines.append(f"- [{chk}] {t.title}{cmd_part} <!-- id:{t.id} -->")
+                lines.append("")
+
             if b.resolution_notes.strip():
                 lines.extend(
                     [
                         "#### Resolution Notes",
                         "",
                         b.resolution_notes.strip(),
+                        "",
+                    ]
+                )
+
+            if b.rejection_notes and b.rejection_notes.strip():
+                lines.extend(
+                    [
+                        "#### Rejection Feedback",
+                        "",
+                        b.rejection_notes.strip(),
                         "",
                     ]
                 )
@@ -432,6 +481,16 @@ class MarkdownWormExporter:
             if m_resolved:
                 resolved_val = m_resolved.group(1).strip()
 
+            accepted_val = None
+            m_accepted = re.search(r"-\s+\*\*Accepted\*\*:\s*`?([^\n`*]+)`?", sec_clean)
+            if m_accepted:
+                accepted_val = m_accepted.group(1).strip()
+
+            rejected_val = None
+            m_rejected = re.search(r"-\s+\*\*Rejected\*\*:\s*`?([^\n`*]+)`?", sec_clean)
+            if m_rejected:
+                rejected_val = m_rejected.group(1).strip()
+
             # Parse subsections: ####
             subsections = re.split(r"\n(?=####\s+)", sec_clean)
             desc = ""
@@ -440,6 +499,9 @@ class MarkdownWormExporter:
             actual = ""
             logs = ""
             res_notes = ""
+            rej_notes = ""
+            commit_ids: List[str] = []
+            review_tasks: List[WormReviewTaskModel] = []
             attachments: List[WormAttachmentModel] = []
             custom_sections: List[WormSectionModel] = []
 
@@ -466,6 +528,41 @@ class MarkdownWormExporter:
                                 steps.append(step_m.group(1).strip())
                             elif step_line.strip().startswith("-"):
                                 steps.append(step_line.strip().lstrip("-").strip())
+                    case "attached commits":
+                        for c_line in sub_body.splitlines():
+                            c_m = re.search(r"`([0-9a-fA-F]+)`", c_line)
+                            if c_m:
+                                commit_ids.append(c_m.group(1).strip())
+                            elif c_line.strip().startswith("-"):
+                                commit_ids.append(c_line.strip().lstrip("-").strip())
+                    case "review tasks & functional checklist" | "review tasks" | "functional checklist":
+                        for t_line in sub_body.splitlines():
+                            t_m = re.match(r"^-\s+\[([ xX])\]\s*(.*?)$", t_line.strip())
+                            if t_m:
+                                is_done = t_m.group(1).lower() == "x"
+                                rest = t_m.group(2).strip()
+                                task_id_m = re.search(r"<!--\s*(?:id|uuid):([a-zA-Z0-9_-]+)\s*-->", rest)
+                                task_id = task_id_m.group(1).strip() if task_id_m else str(uuid_pkg.uuid4())[:8]
+                                rest = re.sub(r"<!--.*?-->", "", rest).strip()
+                                cmd = ""
+                                if "|" in rest:
+                                    parts = rest.split("|", 1)
+                                    title_part = parts[0].strip()
+                                    cmd_raw = parts[1].strip()
+                                    cmd_m = re.search(r"`([^`]+)`", cmd_raw)
+                                    cmd = cmd_m.group(1).strip() if cmd_m else cmd_raw
+                                else:
+                                    title_part = rest
+                                review_tasks.append(
+                                    WormReviewTaskModel(
+                                        id=task_id,
+                                        title=title_part,
+                                        command=cmd,
+                                        status=WormReviewTaskStatus.COMPLETED
+                                        if is_done
+                                        else WormReviewTaskStatus.PENDING,
+                                    )
+                                )
                     case "behavior comparison":
                         exp_m = re.search(r"-\s+\*\*Expected\*\*:\s*(.*?)$", sub_body, re.MULTILINE)
                         act_m = re.search(r"-\s+\*\*Actual\*\*:\s*(.*?)$", sub_body, re.MULTILINE)
@@ -488,6 +585,8 @@ class MarkdownWormExporter:
                         logs = cleaned_logs.strip()
                     case "resolution notes" | "resolution":
                         res_notes = sub_body
+                    case "rejection feedback" | "rejection notes":
+                        rej_notes = sub_body
                     case "attachments & references" | "attachments":
                         for att_line in sub_body.splitlines():
                             att_m = re.match(
@@ -530,7 +629,12 @@ class MarkdownWormExporter:
                 logs=logs,
                 attachments=attachments,
                 custom_sections=custom_sections,
+                commit_ids=commit_ids,
+                review_tasks=review_tasks,
                 resolution_notes=res_notes,
+                rejection_notes=rej_notes,
+                accepted_at=accepted_val,
+                rejected_at=rejected_val,
             )
             db.add_or_update(bug)
 
@@ -539,28 +643,70 @@ class MarkdownWormExporter:
     def merge_databases(self, base_db: WormDatabaseModel, md_db: WormDatabaseModel) -> WormDatabaseModel:
         """Merge markdown database changes into base database using Read-Modify-Write rules.
 
+        Matches worms primarily by unique UUID. If an incoming worm shares an ID with an existing
+        worm but has a different UUID, collision mitigation generates a new unique ID for the incoming
+        worm so neither worm's content or state is clobbered.
+
         Args:
             base_db: Current base database model (e.g. from SQLite).
             md_db: Database model parsed from WORMS.md.
 
         Returns:
-            Updated base_db with all merged changes.
+            Updated base_db with all merged changes and disambiguated worms.
         """
-        existing_map = {b.id: b for b in base_db.worms}
+        existing_by_uuid = {b.uuid: b for b in base_db.worms if b.uuid}
+        existing_by_id = {b.id: b for b in base_db.worms}
+        all_ids = {b.id for b in base_db.worms} | {b.id for b in md_db.worms}
 
         for md_bug in md_db.worms:
-            if md_bug.id not in existing_map:
-                # Newly added bug in WORMS.md
+            existing = None
+            is_collision = False
+
+            if md_bug.uuid and md_bug.uuid in existing_by_uuid:
+                existing = existing_by_uuid[md_bug.uuid]
+            elif md_bug.id in existing_by_id:
+                cand = existing_by_id[md_bug.id]
+                if not md_bug.uuid and not cand.uuid and md_bug.title == cand.title:
+                    existing = cand
+                else:
+                    is_collision = True
+
+            if is_collision:
+                # Mitigate collision: assign new unique ID
+                new_id = base_db.generate_worm_id(existing_ids=all_ids)
+                all_ids.add(new_id)
+                md_bug.id = new_id
+                if not md_bug.uuid:
+                    md_bug.uuid = str(uuid_pkg.uuid4())
                 base_db.worms.append(md_bug)
-                existing_map[md_bug.id] = md_bug
+                existing_by_uuid[md_bug.uuid] = md_bug
+                existing_by_id[new_id] = md_bug
+                continue
+
+            if existing is None:
+                # Newly added bug in WORMS.md
+                if not md_bug.uuid:
+                    md_bug.uuid = str(uuid_pkg.uuid4())
+                base_db.worms.append(md_bug)
+                existing_by_uuid[md_bug.uuid] = md_bug
+                existing_by_id[md_bug.id] = md_bug
             else:
-                existing = existing_map[md_bug.id]
+                # Existing worm matched by UUID or legacy title match
+                if md_bug.id != existing.id:
+                    if md_bug.id not in existing_by_id or existing_by_id[md_bug.id] is existing:
+                        existing_by_id.pop(existing.id, None)
+                        existing.id = md_bug.id
+                        existing_by_id[existing.id] = existing
                 # Status update: protect resolved/closed bugs from being regressed to OPEN by stale markdown without notes
                 if (
                     existing.status in (WormStatus.RESOLVED, WormStatus.CLOSED)
                     and md_bug.status == WormStatus.OPEN
                     and not md_bug.resolution_notes.strip()
+                    and not (md_bug.rejection_notes and md_bug.rejection_notes.strip())
                 ):
+                    pass
+                elif existing.status == WormStatus.CLOSED and md_bug.status == WormStatus.RESOLVED:
+                    # Worm was already accepted/closed in database; protect from stale markdown without acceptance
                     pass
                 elif md_bug.status != existing.status:
                     existing.status = md_bug.status
@@ -571,6 +717,12 @@ class MarkdownWormExporter:
                             )
                     else:
                         existing.resolved_at = None
+
+                # Acceptance and Rejection timestamps
+                if md_bug.accepted_at and md_bug.accepted_at != existing.accepted_at:
+                    existing.accepted_at = md_bug.accepted_at
+                if md_bug.rejected_at and md_bug.rejected_at != existing.rejected_at:
+                    existing.rejected_at = md_bug.rejected_at
 
                 # Non-empty title / severity / category / component updates
                 if md_bug.title and md_bug.title != existing.title:
@@ -620,6 +772,41 @@ class MarkdownWormExporter:
                         existing.attachments.append(att)
                         existing_paths.add(att.file_path)
 
+                # Commit IDs: merge unique
+                for cid in md_bug.commit_ids:
+                    if cid not in existing.commit_ids:
+                        existing.commit_ids.append(cid)
+
+                # Review tasks: merge preserving IDs
+                if md_bug.review_tasks:
+                    existing_by_id = {t.id: t for t in existing.review_tasks}
+                    existing_by_title = {t.title: t for t in existing.review_tasks}
+                    merged_tasks = []
+                    for t in md_bug.review_tasks:
+                        if t.id in existing_by_id:
+                            orig = existing_by_id[t.id]
+                            t.notes = t.notes or orig.notes
+                            merged_tasks.append(t)
+                        elif t.title in existing_by_title:
+                            orig = existing_by_title[t.title]
+                            t.id = orig.id
+                            t.notes = t.notes or orig.notes
+                            merged_tasks.append(t)
+                        else:
+                            merged_tasks.append(t)
+                    existing.review_tasks = merged_tasks
+
+                # Rejection notes
+                if (
+                    md_bug.rejection_notes
+                    and md_bug.rejection_notes.strip()
+                    and (
+                        not existing.rejection_notes
+                        or md_bug.rejection_notes.strip() != existing.rejection_notes.strip()
+                    )
+                ):
+                    existing.rejection_notes = md_bug.rejection_notes
+
         return base_db
 
     def render_worm_markdown(self, bug: WormReportModel) -> str:
@@ -651,6 +838,10 @@ class MarkdownWormExporter:
             lines.append(f"- **Created**: `{bug.created_at}`")
         if bug.resolved_at:
             lines.append(f"- **Resolved**: `{bug.resolved_at}`")
+        if bug.accepted_at:
+            lines.append(f"- **Accepted**: `{bug.accepted_at}`")
+        if bug.rejected_at:
+            lines.append(f"- **Rejected**: `{bug.rejected_at}`")
         lines.append("")
 
         if bug.description.strip():
@@ -695,8 +886,22 @@ class MarkdownWormExporter:
                 )
             lines.append("")
 
+        if bug.commit_ids:
+            lines.extend(["#### Attached Commits", ""] + [f"- `{c}`" for c in bug.commit_ids] + [""])
+
+        if bug.review_tasks:
+            lines.extend(["#### Review Tasks & Functional Checklist", ""])
+            for t in bug.review_tasks:
+                chk = "x" if t.status == WormReviewTaskStatus.COMPLETED else " "
+                cmd_part = f" | `{t.command}`" if t.command else ""
+                lines.append(f"- [{chk}] {t.title}{cmd_part} <!-- id:{t.id} -->")
+            lines.append("")
+
         if bug.resolution_notes.strip():
             lines.extend(["#### Resolution Notes", "", bug.resolution_notes.strip(), ""])
+
+        if bug.rejection_notes and bug.rejection_notes.strip():
+            lines.extend(["#### Rejection Feedback", "", bug.rejection_notes.strip(), ""])
 
         return elide_personal_info("\n".join(lines).strip() + "\n")
 
@@ -722,6 +927,7 @@ class MarkdownWormExporter:
                 # Protect resolved bug file on disk from being overwritten by un-noted OPEN bug
                 if (
                     bug.status == WormStatus.OPEN
+                    and not bug.rejection_notes
                     and not bug.resolution_notes.strip()
                     and "- **Status**: `RESOLVED`" in disk_content
                 ):
@@ -830,6 +1036,16 @@ class MarkdownWormExporter:
             if m_resolved:
                 resolved_val = m_resolved.group(1).strip()
 
+            accepted_val = None
+            m_accepted = re.search(r"-\s+\*\*Accepted\*\*:\s*`?([^\n`*]+)`?", content)
+            if m_accepted:
+                accepted_val = m_accepted.group(1).strip()
+
+            rejected_val = None
+            m_rejected = re.search(r"-\s+\*\*Rejected\*\*:\s*`?([^\n`*]+)`?", content)
+            if m_rejected:
+                rejected_val = m_rejected.group(1).strip()
+
             subsections = re.split(r"\n(?=####\s+)", content)
             desc = ""
             steps: List[str] = []
@@ -837,6 +1053,9 @@ class MarkdownWormExporter:
             actual = ""
             logs = ""
             res_notes = ""
+            rej_notes = ""
+            commit_ids: List[str] = []
+            review_tasks: List[WormReviewTaskModel] = []
             attachments: List[WormAttachmentModel] = []
             custom_sections: List[WormSectionModel] = []
 
@@ -859,6 +1078,41 @@ class MarkdownWormExporter:
                                 steps.append(step_m.group(1).strip())
                             elif step_line.strip().startswith("-"):
                                 steps.append(step_line.strip().lstrip("-").strip())
+                    case "attached commits":
+                        for c_line in sub_body.splitlines():
+                            c_m = re.search(r"`([0-9a-fA-F]+)`", c_line)
+                            if c_m:
+                                commit_ids.append(c_m.group(1).strip())
+                            elif c_line.strip().startswith("-"):
+                                commit_ids.append(c_line.strip().lstrip("-").strip())
+                    case "review tasks & functional checklist" | "review tasks" | "functional checklist":
+                        for t_line in sub_body.splitlines():
+                            t_m = re.match(r"^-\s+\[([ xX])\]\s*(.*?)$", t_line.strip())
+                            if t_m:
+                                is_done = t_m.group(1).lower() == "x"
+                                rest = t_m.group(2).strip()
+                                task_id_m = re.search(r"<!--\s*(?:id|uuid):([a-zA-Z0-9_-]+)\s*-->", rest)
+                                task_id = task_id_m.group(1).strip() if task_id_m else str(uuid_pkg.uuid4())[:8]
+                                rest = re.sub(r"<!--.*?-->", "", rest).strip()
+                                cmd = ""
+                                if "|" in rest:
+                                    parts = rest.split("|", 1)
+                                    title_part = parts[0].strip()
+                                    cmd_raw = parts[1].strip()
+                                    cmd_m = re.search(r"`([^`]+)`", cmd_raw)
+                                    cmd = cmd_m.group(1).strip() if cmd_m else cmd_raw
+                                else:
+                                    title_part = rest
+                                review_tasks.append(
+                                    WormReviewTaskModel(
+                                        id=task_id,
+                                        title=title_part,
+                                        command=cmd,
+                                        status=WormReviewTaskStatus.COMPLETED
+                                        if is_done
+                                        else WormReviewTaskStatus.PENDING,
+                                    )
+                                )
                     case "behavior comparison":
                         exp_m = re.search(r"-\s+\*\*Expected\*\*:\s*(.*?)$", sub_body, re.MULTILINE)
                         act_m = re.search(r"-\s+\*\*Actual\*\*:\s*(.*?)$", sub_body, re.MULTILINE)
@@ -881,6 +1135,8 @@ class MarkdownWormExporter:
                         logs = cleaned.strip()
                     case "resolution notes" | "resolution":
                         res_notes = sub_body
+                    case "rejection feedback" | "rejection notes":
+                        rej_notes = sub_body
                     case "attachments & references" | "attachments":
                         for att_line in sub_body.splitlines():
                             att_m = re.match(
@@ -919,7 +1175,12 @@ class MarkdownWormExporter:
                 logs=logs,
                 attachments=attachments,
                 custom_sections=custom_sections,
+                commit_ids=commit_ids,
+                review_tasks=review_tasks,
                 resolution_notes=res_notes,
+                rejection_notes=rej_notes,
+                accepted_at=accepted_val,
+                rejected_at=rejected_val,
             )
         except Exception:
             return None
@@ -947,14 +1208,33 @@ class MarkdownWormExporter:
         renamed = 0
         merged = 0
 
+        # Load cached modification times from SQLite store or in-memory cache
+        known_mtimes: Dict[str, float] = {}
+        if store and hasattr(store, "get_file_mtimes"):
+            known_mtimes = store.get_file_mtimes()
+        if not known_mtimes and hasattr(self, "_file_mtimes"):
+            known_mtimes = dict(self._file_mtimes)
+
+        # Build in-memory lookup map of existing worms in database by canonical and raw ID
+        existing_by_id: Dict[str, WormReportModel] = {}
+        for w in database.worms:
+            existing_by_id[w.id] = w
+            num_clean = re.sub(r"^(?:WORM|BUG)[-_]", "", w.id, flags=re.IGNORECASE)
+            existing_by_id[f"WORM-{num_clean}"] = w
+            existing_by_id[f"BUG-{num_clean}"] = w
+            if num_clean.isdigit():
+                norm = f"{int(num_clean):03d}"
+                existing_by_id[f"WORM-{norm}"] = w
+                existing_by_id[f"BUG-{norm}"] = w
+
+        updated_mtimes: Dict[str, float] = {}
+
         for bug_file in sorted(list(feedback_dir.glob("WORM_*.md")) + list(feedback_dir.glob("BUG_*.md"))):
             scanned += 1
-            md_bug = self.parse_individual_worm_file(bug_file)
-            if not md_bug:
-                continue
+            file_name = bug_file.name
 
             # Determine ID implied by filename
-            m_fn = re.match(r"^(?:WORM|BUG)[_-](.+)\.md$", bug_file.name, re.IGNORECASE)
+            m_fn = re.match(r"^(?:WORM|BUG)[_-](.+)\.md$", file_name, re.IGNORECASE)
             expected_id_from_fn = ""
             if m_fn:
                 raw_part = m_fn.group(1)
@@ -964,6 +1244,25 @@ class MarkdownWormExporter:
                     expected_id_from_fn = raw_part
                 else:
                     expected_id_from_fn = f"WORM-{raw_part}"
+
+            try:
+                curr_mtime = bug_file.stat().st_mtime
+            except OSError:
+                curr_mtime = 0.0
+
+            # Incremental sync: If file mtime matches cached mtime and bug is already loaded in database, skip re-parsing!
+            if (
+                file_name in known_mtimes
+                and abs(known_mtimes[file_name] - curr_mtime) < 1e-4
+                and expected_id_from_fn in existing_by_id
+            ):
+                continue
+
+            md_bug = self.parse_individual_worm_file(bug_file)
+            if not md_bug:
+                continue
+
+            updated_mtimes[file_name] = curr_mtime
 
             # Check if this bug already exists by UUID
             existing_by_uuid = database.get_worm_by_uuid(md_bug.uuid)
@@ -978,8 +1277,12 @@ class MarkdownWormExporter:
                 if (
                     existing_by_uuid.status in (WormStatus.RESOLVED, WormStatus.CLOSED)
                     and md_bug.status == WormStatus.OPEN
+                    and not (md_bug.rejection_notes and md_bug.rejection_notes.strip())
                     and not md_bug.resolution_notes.strip()
                 ):
+                    pass
+                elif existing_by_uuid.status == WormStatus.CLOSED and md_bug.status == WormStatus.RESOLVED:
+                    # Worm was already accepted/closed in database; do not regress to RESOLVED from stale markdown
                     pass
                 else:
                     database.add_or_update(md_bug)
@@ -988,10 +1291,25 @@ class MarkdownWormExporter:
             else:
                 if expected_id_from_fn:
                     md_bug.id = expected_id_from_fn
+                # Check collision with existing worm ID
+                cand = database.get_worm(md_bug.id)
+                if cand and (not md_bug.uuid or cand.uuid != md_bug.uuid):
+                    # Duplicate ID collision detected: mitigate by reassigning unique ID
+                    new_id = database.generate_worm_id(existing_ids={w.id for w in database.worms})
+                    md_bug.id = new_id
+                    if not md_bug.uuid:
+                        md_bug.uuid = str(uuid_pkg.uuid4())
+                    self.export_individual_worm(md_bug, feedback_dir)
                 database.add_or_update(md_bug)
                 merged += 1
 
         if store and hasattr(store, "save_database") and (merged > 0 or renamed > 0):
             store.save_database(database)
+
+        if updated_mtimes:
+            if store and hasattr(store, "update_file_mtimes"):
+                store.update_file_mtimes(updated_mtimes)
+            if hasattr(self, "_file_mtimes"):
+                self._file_mtimes.update(updated_mtimes)
 
         return {"merged": merged, "renamed": renamed, "scanned": scanned}

@@ -2,12 +2,13 @@
 
 - **UUID**: `ef3a84a4-ea9b-456f-a279-02947840682f`
 - **ID**: `WORM-TUNNELING-SILKWORM-860`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard, host_daemon`
 - **Created**: `2026-10-17 00:40:03 UTC`
 - **Resolved**: `2026-10-17 01:09:44 UTC`
+- **Accepted**: `2026-10-17 01:09:44 UTC`
 
 #### Description
 

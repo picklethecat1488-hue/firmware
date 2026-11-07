@@ -13,7 +13,6 @@ from pathlib import Path
 import pytest
 
 
-
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
 HOST_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "host_daemon" / "templates"
 
@@ -75,7 +74,7 @@ def test_commit_selection_parity_in_code_review() -> None:
 
     # JS renderCommitsList logic
     assert "isSelected" in content, "renderCommitsList must determine isSelected status"
-    assert 'selected' in content, "renderCommitsList must apply selected class"
+    assert "selected" in content, "renderCommitsList must apply selected class"
 
 
 def test_templates_js_syntax_validation() -> None:
@@ -130,7 +129,9 @@ def test_regression_cr_finding_a2ee1118_iframe_scale_isolation() -> None:
 def test_common_stylesheet_linkage_and_presence() -> None:
     """Verify common.css stylesheet exists in static assets and is linked across all UI templates."""
     # 1. Static asset existence
-    dashboard_static_css = Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "common.css"
+    dashboard_static_css = (
+        Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "common.css"
+    )
     host_static_css = Path(__file__).resolve().parent.parent / "host_daemon" / "static" / "common.css"
 
     assert dashboard_static_css.is_file(), "static/common.css missing in dashboard code_review static directory"
@@ -152,6 +153,39 @@ def test_common_stylesheet_linkage_and_presence() -> None:
     for file_path in files_to_check:
         content = file_path.read_text(encoding="utf-8")
         assert '<link rel="stylesheet" href="/static/common.css">' in content, (
-            f"{file_path.name} missing <link rel=\"stylesheet\" href=\"/static/common.css\">"
+            f'{file_path.name} missing <link rel="stylesheet" href="/static/common.css">'
         )
 
+
+def test_regression_bug_barbed_midge_630_iframe_border_prevention() -> None:
+    """Verify BUG-BARBED-MIDGE-630: nested borders and resize grippers are suppressed when embedded in iframes."""
+    dashboard_static_css = (
+        Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "common.css"
+    )
+    css_content = dashboard_static_css.read_text(encoding="utf-8")
+    assert "html.in-iframe" in css_content
+    assert "body.in-iframe" in css_content
+    assert "border: none !important;" in css_content
+    assert "box-shadow: none !important;" in css_content
+    assert "display: none !important;" in css_content
+
+    for tmpl in ["diff_view.html.j2", "code_review.html.j2", "worm_report.html.j2"]:
+        content = (TEMPLATES_DIR / tmpl).read_text(encoding="utf-8")
+        assert "html.in-iframe" in content, f"{tmpl} missing html.in-iframe style rule"
+        assert "body.in-iframe" in content, f"{tmpl} missing body.in-iframe style rule"
+        assert 'document.documentElement.classList.add("in-iframe");' in content, (
+            f"{tmpl} missing iframe class detection script"
+        )
+
+    # Frame busting in diff_view.html.j2 to prevent multi-level nested diff views
+    diff_text = (TEMPLATES_DIR / "diff_view.html.j2").read_text(encoding="utf-8")
+    assert "if (window.top && window.top !== window)" in diff_text
+    assert "window.top.location.href = window.location.href;" in diff_text
+
+    # Top target navigation in code review and worm report close buttons
+    cr_text = (TEMPLATES_DIR / "code_review.html.j2").read_text(encoding="utf-8")
+    worm_text = (TEMPLATES_DIR / "worm_report.html.j2").read_text(encoding="utf-8")
+    assert 'target="firmware_vcs_diff_viewer"' in cr_text
+    assert 'target="firmware_vcs_diff_viewer"' in worm_text
+    assert "window.top.location.href = " in cr_text
+    assert "window.top.location.href = " in worm_text

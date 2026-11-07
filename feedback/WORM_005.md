@@ -2,12 +2,13 @@
 
 - **UUID**: `8bbf6a0f-de44-4b50-aa68-dd5b1452fcdb`
 - **ID**: `WORM-005`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `BOARD`
 - **Component**: `carrier_board`
 - **Created**: `2026-10-03 19:29:54 UTC`
 - **Resolved**: `2026-10-03 21:33:17 UTC`
+- **Accepted**: `2026-10-03 21:33:17 UTC`
 
 #### Description
 

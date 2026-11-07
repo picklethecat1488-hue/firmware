@@ -52,12 +52,12 @@ ANSI_BG_COLORS: Dict[int, str] = {
 # Regex to match ANSI SGR escapes, OSC 8 hyperlinks, other OSC sequences, and control characters
 ANSI_TOKEN_RE = re.compile(
     r"("
-    r"\x1b\[([0-9;]*)m"                                      # Group 2: CSI SGR codes
+    r"\x1b\[([0-9;]*)m"  # Group 2: CSI SGR codes
     r"|\x1b\]8;[^\x1b\x07]*;([^\x1b\x07]+)(?:\x1b\\|\x07)"  # Group 3: OSC 8 Hyperlink open (URL)
-    r"|\x1b\]8;[^\x1b\x07]*;(?:\x1b\\|\x07)"                # OSC 8 Hyperlink close
-    r"|\x1b\][^\x1b\x07]*(?:\x1b\\|\x07)"                    # Other OSC sequences (window title, etc.)
-    r"|\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])"               # Other CSI / Fe escape sequences
-    r"|[\x00-\x08\x0b-\x1a\x1c-\x1f]"                       # Other control characters (excluding \t, \n, \r)
+    r"|\x1b\]8;[^\x1b\x07]*;(?:\x1b\\|\x07)"  # OSC 8 Hyperlink close
+    r"|\x1b\][^\x1b\x07]*(?:\x1b\\|\x07)"  # Other OSC sequences (window title, etc.)
+    r"|\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])"  # Other CSI / Fe escape sequences
+    r"|[\x00-\x08\x0b-\x1a\x1c-\x1f]"  # Other control characters (excluding \t, \n, \r)
     r")"
 )
 
@@ -79,6 +79,7 @@ FILE_PATH_RE = re.compile(
 
 def _format_links(escaped_text: str) -> str:
     """Detect and convert URLs and file paths into styled clickable links."""
+
     # First convert web URLs
     def replace_url(match: re.Match) -> str:
         url = match.group(1)
@@ -132,7 +133,7 @@ def ansi_to_html(raw_text: str) -> str:
     last_idx = 0
 
     for m in ANSI_TOKEN_RE.finditer(raw_text):
-        chunk = raw_text[last_idx:m.start()]
+        chunk = raw_text[last_idx : m.start()]
         last_idx = m.end()
 
         if chunk:
@@ -224,4 +225,3 @@ def ansi_to_html(raw_text: str) -> str:
         out_chunks.append(content)
 
     return "".join(out_chunks)
-

@@ -14,6 +14,7 @@ Verifies that:
    limits and clamps configured / calibrated overload limits to 2A.
 7. Integration test test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm is present.
 """
+
 import re
 from pathlib import Path
 
@@ -38,20 +39,12 @@ def test_worm_writhing_tubeworm_652_tmc6300_constants_and_functions():
     )
 
     # Invariant 2: PIO word generator and phase mask functions
-    assert "pub const fn make_pwm_word(" in content, (
-        "peripheral/src/tmc6300.rs must define make_pwm_word function."
-    )
-    assert "pub fn phase_mask(" in content, (
-        "peripheral/src/tmc6300.rs must define phase_mask function."
-    )
+    assert "pub const fn make_pwm_word(" in content, "peripheral/src/tmc6300.rs must define make_pwm_word function."
+    assert "pub fn phase_mask(" in content, "peripheral/src/tmc6300.rs must define phase_mask function."
 
     # Invariant 3: Tmc6300Pio driver and error type
-    assert "pub struct Tmc6300Pio" in content, (
-        "peripheral/src/tmc6300.rs must define Tmc6300Pio driver struct."
-    )
-    assert "pub enum Tmc6300PioError" in content, (
-        "peripheral/src/tmc6300.rs must define Tmc6300PioError enum."
-    )
+    assert "pub struct Tmc6300Pio" in content, "peripheral/src/tmc6300.rs must define Tmc6300Pio driver struct."
+    assert "pub enum Tmc6300PioError" in content, "peripheral/src/tmc6300.rs must define Tmc6300PioError enum."
 
 
 def test_worm_writhing_tubeworm_652_phase_masks_zero_shoot_through():
@@ -124,9 +117,7 @@ def test_worm_writhing_tubeworm_652_board_pio1_motor_initialization():
     assert "peripheral::tmc6300::Tmc6300Pio::new_pio(" in content, (
         "board/src/cat_detector.rs must construct Tmc6300Pio::new_pio."
     )
-    assert "p.PIO1" in content, (
-        "board/src/cat_detector.rs must pass p.PIO1 to Tmc6300Pio."
-    )
+    assert "p.PIO1" in content, "board/src/cat_detector.rs must pass p.PIO1 to Tmc6300Pio."
     assert re.search(r"pub\s+type\s+MotorDevice\s*=\s*peripheral::tmc6300::Tmc6300Pio<", content) is not None, (
         "board/src/cat_detector.rs must set MotorDevice alias to Tmc6300Pio."
     )

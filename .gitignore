@@ -37,6 +37,9 @@ __pycache__/
 coverage.xml
 htmlcov/
 
+# License compliance reports
+scancode-report.json
+
 # Virtual Environments
 .venv/
 venv/
@@ -48,4 +51,29 @@ conda-bld/
 
 TODO.md
 
+# Temporary recordings and inspection artifacts
+recordings/previews/*/
+recordings/previews/frames_*/
+recordings/previews/motor_crops*/
+recordings/previews/video_samples_*/
+recordings/previews/*.wav
+recordings/previews/*.zip
+recordings/previews/*.sch
+recordings/previews/*.brd
+recordings/previews/*.pdf
+
+# Anvil Cloud Runner Environment & Lock Files
+.anvil.env
+.anvil.env.*
+!.anvil.env.example
+.anvil.lock*
+
+# Worm and review tracking (decoupled to detached git branch 'worms')
+build/
+feedback/
+attachments/
+feedback/attachments/
+WORMS.md
+BUGS.md
+CR.md
 

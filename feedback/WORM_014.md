@@ -2,12 +2,13 @@
 
 - **UUID**: `a9d4483b-b38d-4f56-bdef-7ef9e5b1be0a`
 - **ID**: `WORM-014`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-07 02:29:34 UTC`
 - **Resolved**: `2026-10-07 02:38:05 UTC`
+- **Accepted**: `2026-10-07 02:38:05 UTC`
 
 #### Description
 

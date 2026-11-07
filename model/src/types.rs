@@ -141,6 +141,142 @@ impl TryFrom<i8> for MotorSpeed {
     }
 }
 
+/// Physical characteristics and specifications of the motor.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+pub struct MotorInfo {
+    /// Number of magnetic pole pairs (9N12P = 6 pole pairs).
+    pub pole_pairs: u8,
+    /// Number of 6-step commutation steps per mechanical revolution (6 pole pairs * 6 steps = 36 steps).
+    pub commutation_steps_per_rev: u32,
+    /// Motor torque constant Kt in micro-Newton-meters per Ampere (682 µN·m/A = 0.682 µN·m/mA).
+    pub kt_unm_per_a: u32,
+    /// Motor phase winding inductance in microhenries (10 µH).
+    pub phase_inductance_uh: u32,
+    /// Nominal motor bus voltage in millivolts (4000 mV = 4.0 V for 1S battery / VBUS).
+    pub nominal_voltage_mv: u32,
+}
+
+impl Default for MotorInfo {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+impl MotorInfo {
+    /// Canonical default motor specifications for the BetaFPV 1102 motor.
+    pub const DEFAULT: Self = Self {
+        pole_pairs: 6,
+        commutation_steps_per_rev: 36,
+        kt_unm_per_a: 682,
+        phase_inductance_uh: 10,
+        nominal_voltage_mv: 4000,
+    };
+}
+
+/// Canonical default motor info specifications.
+pub const MOTOR_INFO: MotorInfo = MotorInfo::DEFAULT;
+
+/// Number of magnetic pole pairs for the BetaFPV 1102 brushless motor (9N12P = 6 pole pairs).
+pub const MOTOR_POLE_PAIRS: u8 = MOTOR_INFO.pole_pairs;
+/// Number of 6-step commutation steps per mechanical revolution (6 pole pairs * 6 steps = 36 steps).
+pub const MOTOR_COMMUTATION_STEPS_PER_REV: u32 = MOTOR_INFO.commutation_steps_per_rev;
+/// Motor torque constant Kt in micro-Newton-meters per Ampere (682 µN·m/A = 0.682 µN·m/mA).
+pub const MOTOR_KT_UNM_PER_A: u32 = MOTOR_INFO.kt_unm_per_a;
+/// Motor phase winding inductance in microhenries (10 µH).
+pub const MOTOR_PHASE_INDUCTANCE_UH: u32 = MOTOR_INFO.phase_inductance_uh;
+/// Nominal motor bus voltage in millivolts (4000 mV = 4.0 V for 1S battery / VBUS).
+pub const MOTOR_NOMINAL_VOLTAGE_MV: u32 = MOTOR_INFO.nominal_voltage_mv;
+
+/// Calculates the modeled/estimated rotational speed in mechanical RPM from the commutation step period in microseconds.
+///
+/// Formula: RPM = (60 * 1,000,000) / (commutation_steps_per_rev * step_period_us).
+pub const fn calculate_estimated_rpm(step_period_us: u32) -> u32 {
+    if step_period_us == 0 {
+        0
+    } else {
+        (60 * 1_000_000) / (MOTOR_INFO.commutation_steps_per_rev * step_period_us)
+    }
+}
+
+/// Calculates the modeled electromagnetic torque in micro-Newton-meters (µN·m) from the measured current in mA.
+///
+/// Formula: τ = Kt * I = (kt_unm_per_a * I_mA) / 1000.
+pub const fn calculate_modeled_torque_unm(current_ma: i32) -> u32 {
+    if current_ma <= 0 {
+        0
+    } else {
+        ((current_ma as u64 * (MOTOR_INFO.kt_unm_per_a as u64)) / 1000) as u32
+    }
+}
+
+/// Calculates the modeled peak switching current in mA given average DC current and PWM ON-time in nanoseconds.
+///
+/// Formula: ΔI_ripple = (nominal_voltage_mv / phase_inductance_uh) * t_on_ns / 1,000,000.
+/// In CCM: I_peak = I_avg + ΔI_ripple / 2.
+/// In DCM: I_peak = max(I_avg + ΔI_ripple / 2, ΔI_ripple).
+pub const fn calculate_modeled_peak_current_ma(current_ma: i32, on_time_ns: u32) -> i32 {
+    if on_time_ns == 0 {
+        0
+    } else {
+        let ripple_ma = ((MOTOR_INFO.nominal_voltage_mv as u64 * on_time_ns as u64)
+            / ((MOTOR_INFO.phase_inductance_uh as u64) * 1000)) as i32;
+        let ccm_peak = current_ma.saturating_add(ripple_ma / 2);
+        if ccm_peak > ripple_ma {
+            ccm_peak
+        } else {
+            ripple_ma
+        }
+    }
+}
+
+/// Telemetry data from the motor controller, including commanded speed, measured and estimated RPM,
+/// average current, modeled peak current, and modeled torque.
+#[derive(Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+#[cbor(array)]
+pub struct MotorTelemetry {
+    /// Commanded motor speed (-100..=100).
+    #[n(0)]
+    pub speed: MotorSpeed,
+    /// Measured rotational speed from the physical Hall sensor in RPM.
+    #[n(1)]
+    pub measured_rpm: u32,
+    /// Modeled/estimated rotational speed calculated from commutation step timing in RPM.
+    #[n(2)]
+    pub estimated_rpm: u32,
+    /// Average continuous DC winding current measured by INA219 in mA.
+    #[n(3)]
+    pub current_ma: i32,
+    /// Modeled peak switching current including inductive ripple in mA.
+    #[n(4)]
+    pub modeled_peak_current_ma: i32,
+    /// Modeled electromagnetic torque in micro-Newton-meters (µN·m) (τ = Kt * I).
+    #[n(5)]
+    pub modeled_torque_unm: u32,
+}
+
+impl MotorTelemetry {
+    /// Creates a new MotorTelemetry record.
+    pub const fn new(
+        speed: MotorSpeed,
+        measured_rpm: u32,
+        estimated_rpm: u32,
+        current_ma: i32,
+        modeled_peak_current_ma: i32,
+        modeled_torque_unm: u32,
+    ) -> Self {
+        Self {
+            speed,
+            measured_rpm,
+            estimated_rpm,
+            current_ma,
+            modeled_peak_current_ma,
+            modeled_torque_unm,
+        }
+    }
+}
+
 /// Telemetry status of the motor (pump) system.
 #[derive(Clone, Copy, PartialEq, Eq, Default, minicbor::Encode, minicbor::Decode)]
 #[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
@@ -149,9 +285,9 @@ pub enum MotorStatus {
     #[default]
     #[n(0)]
     Brake,
-    /// Motor is running at the specified speed (0-100) and current (mA).
+    /// Motor is running with telemetry data.
     #[n(1)]
-    Running(#[n(0)] MotorSpeed, #[n(1)] i32),
+    Running(#[n(0)] MotorTelemetry),
 }
 
 /// Configuration parameters for motor timing, safety blanking, and commutation scaling.
@@ -182,7 +318,7 @@ impl Default for MotorConfig {
 impl MotorConfig {
     /// Default canonical motor configuration.
     pub const DEFAULT: Self = Self {
-        startup_blanking_ticks: 300,
+        startup_blanking_ticks: 50,
         default_max_current_ma: 2500,
         startup_commutation_step_ticks: 10,
         commutation_speed_divisor: 100,
@@ -527,6 +663,7 @@ pub enum PeriodicInterval {
 dummy_debug!(BatteryStatus);
 dummy_debug!(BatteryState);
 dummy_debug!(MotorStatus);
+dummy_debug!(MotorTelemetry);
 dummy_debug!(ThermalStatus);
 dummy_debug!(SystemStatus);
 dummy_debug!(FuelGaugeTelemetry);

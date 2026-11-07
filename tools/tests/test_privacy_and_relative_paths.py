@@ -120,16 +120,17 @@ def test_skills_and_configs_use_relative_paths() -> None:
     """Verify skill files, cargo config, and documentation do not contain absolute file:///Users/ links."""
     usernames = [u for u in get_usernames_to_redact() if len(u) >= 4]
 
-    # 1. Skill file
-    skill_file = WORKSPACE_ROOT / ".agents" / "skills" / "cat-fountain-development" / "SKILL.md"
-    assert skill_file.exists(), "SKILL.md must exist"
-    skill_content = skill_file.read_text(encoding="utf-8")
-    assert "file:///Users/" not in skill_content
-    for u in usernames:
-        assert u.lower() not in skill_content.lower()
-    assert "[controller/controllers.toml](controller/controllers.toml)" in skill_content
-    assert "[shell.toml](shell.toml)" in skill_content
-    assert "Relative Paths & Privacy Hygiene Mandate" in skill_content
+    # 1. Controller & diagnostic docs
+    for doc_name in ["controller_design.md", "logging_tracing.md"]:
+        doc_file = WORKSPACE_ROOT / "docs" / doc_name
+        assert doc_file.exists(), f"docs/{doc_name} must exist"
+        doc_content = doc_file.read_text(encoding="utf-8")
+        assert "file:///Users/" not in doc_content
+        for u in usernames:
+            assert u.lower() not in doc_content.lower()
+    ctrl_doc = (WORKSPACE_ROOT / "docs" / "controller_design.md").read_text(encoding="utf-8")
+    assert "[controller/controllers.toml](controller/controllers.toml)" in ctrl_doc
+    assert "[shell.toml](shell.toml)" in ctrl_doc
 
     # 2. Cargo config
     cargo_config = WORKSPACE_ROOT / ".cargo" / "config.toml"
@@ -140,10 +141,10 @@ def test_skills_and_configs_use_relative_paths() -> None:
         assert u.lower() not in cargo_content.lower()
     assert 'runner = "tools/runner.sh"' in cargo_content
 
-    # 3. Contributing & Gemini docs
+    # 3. Contributing & Agent docs
     for doc_name in [
         "CONTRIBUTING.md",
-        "GEMINI.md",
+        "AGENTS.md",
         "app/carrier_board.md",
         "app/cat_detector.md",
         "docs/hardware_firmware_codesign.md",

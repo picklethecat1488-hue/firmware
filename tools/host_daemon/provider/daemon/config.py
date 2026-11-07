@@ -205,6 +205,8 @@ def has_explicit_target_args(args_list: Optional[List[str]] = None) -> bool:
         "--no-browser",
         "--no-app",
         "--restart",
+        "--show-system-logs",
+        "--show-logs",
     }
 
     idx = 0

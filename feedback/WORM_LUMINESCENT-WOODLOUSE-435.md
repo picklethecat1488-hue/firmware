@@ -2,12 +2,13 @@
 
 - **UUID**: `69aec711-3219-44b5-8810-6ab0a59d1138`
 - **ID**: `WORM-LUMINESCENT-WOODLOUSE-435`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 02:52:08 UTC`
 - **Resolved**: `2026-10-17 02:56:45 UTC`
+- **Accepted**: `2026-10-17 02:56:45 UTC`
 
 #### Description
 

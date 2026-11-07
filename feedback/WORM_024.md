@@ -2,12 +2,13 @@
 
 - **UUID**: `c5a08be1-3c15-4624-8731-c5d5874bf55e`
 - **ID**: `WORM-024`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-09 00:28:30 UTC`
 - **Resolved**: `2026-10-09 00:36:21 UTC`
+- **Accepted**: `2026-10-09 00:36:21 UTC`
 
 #### Description
 
@@ -17,7 +18,6 @@ Attached below, both dashboard UI icons appear corrupted
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
-| `screenshot` | [image.png](attachments/WORM-024/image.png) | Uploaded screenshot image.png |
 | `screenshot` | [image.png](attachments/WORM-024/image.png) | Uploaded screenshot image.png |
 
 #### Resolution Notes

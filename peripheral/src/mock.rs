@@ -9,6 +9,8 @@ use model::types::{MotorSpeed, PeripheralError, SensorReading};
 pub struct MockMotor {
     /// Currently configured speed of the mock motor.
     pub speed: i8,
+    /// Currently configured PWM duty cycle percentage of the mock motor.
+    pub duty_cycle: u8,
     /// Indicates if the mock motor is currently running.
     pub is_running: bool,
     /// Whether motor driver commands should fail.
@@ -26,9 +28,15 @@ impl MockMotor {
     pub const fn new() -> Self {
         Self {
             speed: 0,
+            duty_cycle: 0,
             is_running: false,
             should_fail: false,
         }
+    }
+
+    /// Returns the physical motor specification and characteristics.
+    pub const fn motor_info(&self) -> model::types::MotorInfo {
+        model::types::MotorInfo::DEFAULT
     }
 }
 
@@ -47,6 +55,7 @@ impl Motor for MockMotor {
         } else {
             let speed_raw = speed.get();
             self.speed = speed_raw;
+            self.duty_cycle = speed_raw.unsigned_abs().min(100);
             self.is_running = speed_raw != 0;
             Ok(())
         }
@@ -62,9 +71,23 @@ impl Motor for MockMotor {
             Err(())
         } else {
             self.speed = 0;
+            self.duty_cycle = 0;
             self.is_running = false;
             Ok(())
         }
+    }
+
+    fn set_duty_cycle(&mut self, duty_cycle: u8) -> Result<(), Self::Error> {
+        if self.should_fail {
+            Err(())
+        } else {
+            self.duty_cycle = duty_cycle.min(100);
+            Ok(())
+        }
+    }
+
+    fn duty_cycle(&self) -> u8 {
+        self.duty_cycle
     }
 }
 

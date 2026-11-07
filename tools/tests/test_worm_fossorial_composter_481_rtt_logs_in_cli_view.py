@@ -94,9 +94,7 @@ def test_worm_fossorial_composter_481_defmt_drain_not_appended_to_cli_outputs():
         assert "Draining buffered defmt logs" not in text, (
             f"CLI output should not contain defmt drain banner, found: {text}"
         )
-        assert "MPU stack guard" not in text, (
-            f"CLI output should not contain defmt log line, found: {text}"
-        )
+        assert "MPU stack guard" not in text, f"CLI output should not contain defmt log line, found: {text}"
 
     # Verify defmt logs and drain banner went to target logs
     target_logs = [log["message"] for log in runner.logs if log["channel"] == "target"]

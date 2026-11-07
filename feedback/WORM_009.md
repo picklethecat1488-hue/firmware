@@ -2,11 +2,12 @@
 
 - **UUID**: `454cbbfa-94ce-4f56-8fa8-99fca7fc20de`
 - **ID**: `WORM-009`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `INFRASTRUCTURE`
 - **Created**: `2026-10-04 00:20:04 UTC`
 - **Resolved**: `2026-10-04 00:31:49 UTC`
+- **Accepted**: `2026-10-04 00:31:49 UTC`
 
 #### Resolution Notes
 

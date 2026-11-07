@@ -11,12 +11,12 @@ core_monitor_timeout_ms = 10000
 core_monitor_warn_pct = 80
 
 [boards.cat_detector.motor]
-startup_blanking_ticks = 300
-default_max_current_ma = 2500
-startup_commutation_step_ticks = 10
-commutation_speed_divisor = 100
-min_commutation_step_ticks = 1
-max_commutation_step_ticks = 100
+startup_blanking_ticks = 50
+default_max_current_ma = 800
+startup_commutation_step_ticks = 100
+commutation_speed_divisor = 200
+min_commutation_step_ticks = 2
+max_commutation_step_ticks = 200
 
 [boards.cat_detector.pins]
 PUMP_UH_PIN = 16

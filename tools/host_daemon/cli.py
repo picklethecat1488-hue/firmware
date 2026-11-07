@@ -165,7 +165,7 @@ def send_daemon_request(
     req_host = host if host is not None else (lock.get("host", "127.0.0.1") if lock else "127.0.0.1")
     pid = lock.get("pid", 0) if lock else 0
 
-    if not lock and port is None:
+    if not lock and port is None and not is_port_in_use(req_port, req_host):
         raise RuntimeError("No active host daemon detected (lock file /tmp/xerxes_host_daemon.lock not found).")
 
     if lock and not is_pid_alive(pid) and not is_port_in_use(req_port, req_host):
@@ -289,6 +289,14 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         "--restart",
         action="store_true",
         help="Restart existing host daemon if already running.",
+    )
+    parser.add_argument(
+        "--show-system-logs",
+        "--show-logs",
+        dest="show_system_logs",
+        action="store_true",
+        default=False,
+        help="Show system logging monitor (defmt/RTT) by default on startup in the host UI.",
     )
 
     subparsers = parser.add_subparsers(dest="subcommand", help="Host daemon subcommands")
@@ -685,6 +693,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         speed=args.speed,
         chip=args.chip,
         package_selection_mode=package_selection_mode,
+        show_system_logs=getattr(args, "show_system_logs", False),
     )
     atexit.register(runner.stop)
     atexit.register(remove_lock_file)

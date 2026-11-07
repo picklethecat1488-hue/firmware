@@ -2,12 +2,13 @@
 
 - **UUID**: `3f007724-d826-429a-bbc0-d0ee46a40167`
 - **ID**: `WORM-LOAMY-LUGWORM-536`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host`
 - **Created**: `2026-10-17 19:31:59 UTC`
 - **Resolved**: `2026-10-17 21:42:52 UTC`
+- **Accepted**: `2026-10-17 21:42:52 UTC`
 
 #### Description
 

@@ -6,6 +6,7 @@ and UI synchronization states.
 """
 
 from pathlib import Path
+import time
 import uuid
 
 import pytest
@@ -390,3 +391,83 @@ def test_baseline_reports_default_to_target_and_preserve_feedback_granularity(tm
     assert (mock_repo / "target" / "WORMS.md").is_file()
     assert (mock_repo / "feedback" / "WORM_999.md").is_file()
     assert not (mock_repo / "feedback" / "WORMS.md").exists()
+
+
+def test_scan_and_sync_incremental_mtime_caching(tmp_path: Path) -> None:
+    """Verify scan_and_sync_feedback_dir skips unchanged files and caches mtimes in SQLite."""
+    feedback_dir = tmp_path / "feedback"
+    feedback_dir.mkdir(parents=True, exist_ok=True)
+    db_file = tmp_path / "worms.sqlite"
+    store = SQLiteWormStore(db_file)
+    exporter = MarkdownWormExporter(tmp_path)
+
+    worm1 = WormReportModel(
+        id="WORM-001",
+        uuid=str(uuid.uuid4()),
+        title="First Worm",
+        status=WormStatus.OPEN,
+        severity=WormSeverity.LOW,
+        category=WormCategory.DRIVER,
+    )
+    worm2 = WormReportModel(
+        id="WORM-002",
+        uuid=str(uuid.uuid4()),
+        title="Second Worm",
+        status=WormStatus.OPEN,
+        severity=WormSeverity.HIGH,
+        category=WormCategory.PLATFORM,
+    )
+    exporter.export_individual_worm(worm1, feedback_dir)
+    exporter.export_individual_worm(worm2, feedback_dir)
+
+    db = WormDatabaseModel(title="Test DB", summary="Test")
+
+    # 1. First scan: merges both files and updates SQLite store and cached mtimes
+    stats1 = exporter.scan_and_sync_feedback_dir(feedback_dir, db, store)
+    assert stats1["scanned"] == 2
+    assert stats1["merged"] == 2
+    assert stats1["renamed"] == 0
+
+    cached_mtimes = store.get_file_mtimes()
+    assert "WORM_001.md" in cached_mtimes
+    assert "WORM_002.md" in cached_mtimes
+
+    # 2. Second scan with no modifications: skips re-parsing, merged == 0
+    stats2 = exporter.scan_and_sync_feedback_dir(feedback_dir, db, store)
+    assert stats2["scanned"] == 2
+    assert stats2["merged"] == 0
+    assert stats2["renamed"] == 0
+
+    # 3. Modify one file: only that file is parsed and merged
+    time.sleep(0.01)
+    worm1.title = "First Worm Updated Title"
+    exporter.export_individual_worm(worm1, feedback_dir)
+
+    stats3 = exporter.scan_and_sync_feedback_dir(feedback_dir, db, store)
+    assert stats3["scanned"] == 2
+    assert stats3["merged"] == 1
+    assert stats3["renamed"] == 0
+
+    worm1_updated = db.get_worm("WORM-001")
+    assert worm1_updated is not None
+    assert worm1_updated.title == "First Worm Updated Title"
+
+
+def test_export_markdown_elides_unchanged_write(tmp_path: Path) -> None:
+    """Verify export_markdown does not rewrite WORMS.md if content is unchanged."""
+    exporter = MarkdownWormExporter(tmp_path)
+    output_path = tmp_path / "WORMS.md"
+    db = WormDatabaseModel(title="Test DB", summary="Summary")
+
+    # First export creates the file
+    exporter.export_markdown(db, output_path)
+    assert output_path.exists()
+    mtime1 = output_path.stat().st_mtime_ns
+
+    # Small delay to ensure timestamp resolution
+    time.sleep(0.01)
+
+    # Second export with identical content must not rewrite file
+    exporter.export_markdown(db, output_path)
+    mtime2 = output_path.stat().st_mtime_ns
+    assert mtime1 == mtime2, "export_markdown must elide rewriting identical WORMS.md content"

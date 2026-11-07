@@ -2,11 +2,12 @@
 
 - **UUID**: `19a0571e-86b8-42e9-97bb-4b8ce6030007`
 - **ID**: `WORM-SETOSE-TUBEWORM-177`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-21 23:57:15 UTC`
 - **Resolved**: `2026-10-22 00:18:42 UTC`
+- **Accepted**: `2026-10-22 00:18:42 UTC`
 
 #### Description
 

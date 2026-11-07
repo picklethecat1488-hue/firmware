@@ -353,8 +353,8 @@ mod target {
         pub motor: peripheral::tmc6300::Tmc6300Pio<'d, embassy_rp::peripherals::PIO1, 0, Flex<'d>>,
         /// Motor current sensor
         pub current_sensor: peripheral::ina219::Ina219<platform::i2c::SharedI2cWrapper<'static>>,
-        /// Motor speed sensor (Hall effect sensor)
-        pub speed_sensor: peripheral::hall_sensor::HallSensor<Flex<'d>>,
+        /// Motor speed sensor (mock speed sensor while Hall sensor is temporarily disabled)
+        pub speed_sensor: peripheral::mock::MockSpeedSensor,
         /// North proximity sensor
         pub tof_north: peripheral::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>,
         /// East proximity sensor
@@ -554,7 +554,7 @@ mod target {
                 pump_diag,
                 Irqs,
             );
-            let speed_sensor = peripheral::hall_sensor::HallSensor::new(speed_pin);
+            let speed_sensor = peripheral::mock::MockSpeedSensor::new(0);
 
             let fuel_gauge_alert_pin = gpio_pins[Board::FUEL_GAUGE_INT_PIN as usize]
                 .take()
@@ -743,8 +743,8 @@ mod target {
     /// The motor current sensor type.
     pub type CurrentSensorDevice =
         peripheral::ina219::Ina219<platform::i2c::SharedI2cWrapper<'static>>;
-    /// The motor speed sensor type.
-    pub type SpeedSensorDevice = peripheral::hall_sensor::HallSensor<Flex<'static>>;
+    /// The motor speed sensor type (mock speed sensor while Hall sensor is temporarily disabled).
+    pub type SpeedSensorDevice = peripheral::mock::MockSpeedSensor;
     /// The proximity sensor type.
     pub type ProximitySensorDevice =
         peripheral::vl53l0x::Vl53l0x<platform::i2c::SharedI2cWrapper<'static>>;

@@ -30,9 +30,9 @@ def test_osc8_canonical_hyperlink_parsing():
 
     assert "8;;" not in html, f"Raw '8;;' must not leak into HTML output: {html}"
     assert "\x1b" not in html, "Raw escape codes must not leak into HTML output"
-    assert (
-        '<a href="https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles"' in html
-    ), f"Hyperlink tag missing from output: {html}"
+    assert '<a href="https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles"' in html, (
+        f"Hyperlink tag missing from output: {html}"
+    )
     assert "`release` profile [optimized + debuginfo]" in html
     assert "target(s) in 0.19s" in html
     assert 'class="term-link"' in html
@@ -47,15 +47,15 @@ def test_osc8_orphaned_hyperlink_parsing():
     html = ansi_to_html(raw_sample)
 
     assert "8;;" not in html, f"Raw '8;;' must not leak into HTML output: {html}"
-    assert (
-        '<a href="https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles"' in html
-    ), f"Hyperlink tag missing from output: {html}"
+    assert '<a href="https://doc.rust-lang.org/cargo/reference/profiles.html#default-profiles"' in html, (
+        f"Hyperlink tag missing from output: {html}"
+    )
     assert "`release` profile [optimized + debuginfo]" in html
     assert "target(s) in 0.22s" in html
 
 
 def test_osc8_bel_terminator_parsing():
-    """Verify OSC 8 sequences terminated by \\x07 (BEL) are cleanly parsed."""
+    r"""Verify OSC 8 sequences terminated by \x07 (BEL) are cleanly parsed."""
     sample = "Docs: \x1b]8;;https://example.com/docs\x07Click Here\x1b]8;;\x07 for info"
     html = ansi_to_html(sample)
 
@@ -106,7 +106,7 @@ def test_host_daemon_template_cli_view_layout_invariants():
     assert 'fsView.style.display = "flex"' not in content
 
     # In CSS, .panel-content must include display: block and flex-direction: column
-    panel_content_re = re.search(r'\.panel-content\s*\{([^}]+)\}', content)
+    panel_content_re = re.search(r"\.panel-content\s*\{([^}]+)\}", content)
     assert panel_content_re is not None, ".panel-content CSS class definition not found"
     panel_css = panel_content_re.group(1)
     assert "display: block;" in panel_css, ".panel-content must specify display: block"

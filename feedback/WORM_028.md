@@ -2,12 +2,13 @@
 
 - **UUID**: `7b3d890e-45a1-43b8-a232-037f0a818cd3`
 - **ID**: `WORM-028`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `PLATFORM`
 - **Component**: `cat_fountain, carrier_board`
 - **Created**: `2026-10-09 20:18:18 UTC`
 - **Resolved**: `2026-10-09 20:25:32 UTC`
+- **Accepted**: `2026-10-09 20:25:32 UTC`
 
 #### Description
 

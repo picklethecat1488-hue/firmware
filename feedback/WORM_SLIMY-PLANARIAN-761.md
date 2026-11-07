@@ -2,12 +2,13 @@
 
 - **UUID**: `177ea503-4efb-4aee-aed2-521a095f482c`
 - **ID**: `WORM-SLIMY-PLANARIAN-761`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host`
 - **Created**: `2026-10-21 22:50:07 UTC`
 - **Resolved**: `2026-10-21 23:22:52 UTC`
+- **Accepted**: `2026-10-21 23:22:52 UTC`
 
 #### Description
 

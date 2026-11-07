@@ -2,12 +2,13 @@
 
 - **UUID**: `198ffd38-695e-4360-b783-99f5f1a5fb48`
 - **ID**: `WORM-INCHING-BEETLE-546`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-21 23:58:47 UTC`
 - **Resolved**: `2026-10-22 00:31:44 UTC`
+- **Accepted**: `2026-10-22 00:31:44 UTC`
 
 #### Description
 

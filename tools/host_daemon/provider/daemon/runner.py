@@ -27,6 +27,7 @@ class DaemonRunner:
         speed: int = 1000,
         chip: Optional[str] = None,
         package_selection_mode: bool = False,
+        show_system_logs: bool = False,
     ) -> None:
         """Initialize DaemonRunner with workspace configuration and build parameters."""
         self.repo_root = repo_root
@@ -37,6 +38,7 @@ class DaemonRunner:
         self.speed = speed
         self.chip = chip
         self.package_selection_mode = package_selection_mode
+        self.show_system_logs = show_system_logs
 
         self.elf_path: Optional[Path] = None
         self.host_cli_path: Optional[Path] = None
@@ -49,6 +51,10 @@ class DaemonRunner:
         self.logs: Deque[Dict[str, Any]] = deque(maxlen=5000)
         self.cli_outputs: Deque[Dict[str, Any]] = deque(maxlen=5000)
         self.fs_outputs: Deque[Dict[str, Any]] = deque(maxlen=5000)
+        self._log_seq: int = 0
+        self._cli_seq: int = 0
+        self._fs_seq: int = 0
+        self.command_history: List[str] = []
 
         self.rtt_process: Optional[subprocess.Popen] = None
         self._streaming_thread: Optional[threading.Thread] = None
@@ -59,6 +65,7 @@ class DaemonRunner:
         self.is_sync_cancelled: bool = False
         self._active_sync_process: Optional[subprocess.Popen] = None
 
+        self.flashed_commit: Optional[str] = None
         self.sync_status: Dict[str, Any] = {
             "active": False,
             "step": "idle",
@@ -71,6 +78,7 @@ class DaemonRunner:
             "bin": self.bin_name,
             "profile": "release" if self.release else "debug",
             "speed": self.speed,
+            "flashed_commit": None,
             "error": None,
             "console": [],
         }
@@ -125,6 +133,7 @@ class DaemonRunner:
                     "bin": self.bin_name,
                     "profile": "release" if self.release else "debug",
                     "speed": self.speed,
+                    "flashed_commit": self.flashed_commit,
                     "error": error,
                     "console": list(self.sync_logs),
                 }
@@ -139,6 +148,7 @@ class DaemonRunner:
         release: Optional[bool] = None,
         speed: Optional[int] = None,
         chip: Optional[str] = None,
+        show_system_logs: Optional[bool] = None,
     ) -> None:
         """Dynamically update runner configuration parameters and resolved paths."""
         with self._lock:
@@ -154,6 +164,8 @@ class DaemonRunner:
                 self.speed = speed
             if chip:
                 self.chip = chip
+            if show_system_logs is not None:
+                self.show_system_logs = show_system_logs
 
             profile_dir = "release" if self.release else "debug"
             elf = self.repo_root / "target" / self.target / profile_dir / self.bin_name
@@ -215,6 +227,23 @@ class DaemonRunner:
             if not self.flash_target():
                 raise RuntimeError(self.status_message or "Flash target failed")
 
+            head_commit = None
+            try:
+                proc = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=str(self.repo_root),
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if proc.returncode == 0:
+                    head_commit = proc.stdout.strip()
+            except Exception:
+                pass
+            self.flashed_commit = head_commit
+            with self._lock:
+                self.sync_status["flashed_commit"] = head_commit
+
             # 4. Start RTT streaming
             if self.is_sync_cancelled:
                 return dict(self.sync_status)
@@ -256,33 +285,39 @@ class DaemonRunner:
 
     def log(self, message: str, level: str = "INFO", channel: str = "daemon") -> None:
         """Append a log message to the thread-safe log buffer."""
-        entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "level": level,
-            "channel": channel,
-            "message": message,
-        }
         with self._lock:
+            self._log_seq += 1
+            entry = {
+                "id": self._log_seq,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "level": level,
+                "channel": channel,
+                "message": message,
+            }
             self.logs.append(entry)
 
     def log_cli(self, message: str, is_input: bool = False) -> None:
         """Append a line to the CLI console output buffer."""
-        entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "is_input": is_input,
-            "text": message,
-        }
         with self._lock:
+            self._cli_seq += 1
+            entry = {
+                "id": self._cli_seq,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "is_input": is_input,
+                "text": message,
+            }
             self.cli_outputs.append(entry)
 
     def log_fs(self, message: str, is_input: bool = False) -> None:
         """Append a line to the FS console output buffer."""
-        entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "is_input": is_input,
-            "text": message,
-        }
         with self._lock:
+            self._fs_seq += 1
+            entry = {
+                "id": self._fs_seq,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "is_input": is_input,
+                "text": message,
+            }
             self.fs_outputs.append(entry)
 
     def set_mode(self, mode: str) -> None:
@@ -638,6 +673,8 @@ class DaemonRunner:
                                 or "Draining buffered defmt logs" in stripped
                             ):
                                 self.log(stripped, channel="target")
+                            elif stripped in ("shell>", "shell> "):
+                                pass
                             else:
                                 self.log_cli(stripped)
             except Exception as e:
@@ -651,6 +688,10 @@ class DaemonRunner:
 
     def execute_cli(self, command: str) -> str:
         """Send command to the interactive CLI shell."""
+        clean_cmd = command.strip()
+        if clean_cmd:
+            with self._lock:
+                self.command_history.append(clean_cmd)
         self.log_cli(f"shell> {command}", is_input=True)
         # If RTT process is actively connected and taking stdin:
         if self.rtt_process and self.rtt_process.stdin and self.rtt_process.poll() is None:
@@ -670,6 +711,11 @@ class DaemonRunner:
 
     def execute_fs(self, command_or_subcommand: str, args: Optional[List[str]] = None) -> str:
         """Execute host_fs utility command by invoking cargo run."""
+        clean_subcmd = command_or_subcommand.strip()
+        if clean_subcmd:
+            full_fs_cmd = f"fs {clean_subcmd}" + (f" {' '.join(args)}" if args else "")
+            with self._lock:
+                self.command_history.append(full_fs_cmd)
         with self._lock:
             sync_active = bool(self._sync_thread and self._sync_thread.is_alive())
         if sync_active:

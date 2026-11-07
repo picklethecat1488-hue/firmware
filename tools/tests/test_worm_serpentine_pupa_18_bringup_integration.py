@@ -39,6 +39,7 @@ class TestBringupIntegration(unittest.TestCase):
     """Test bringup script integration with host and workstation."""
 
     def setUp(self):
+        """Set up test environment."""
         self.repo_root = Path(__file__).resolve().parent.parent.parent
         self.cat_detector_yaml = self.repo_root / "app" / "cat_detector_bringup.yaml"
         self.carrier_board_yaml = self.repo_root / "app" / "carrier_board_bringup.yaml"
@@ -79,7 +80,9 @@ class TestBringupIntegration(unittest.TestCase):
         """Verify BringupManager step execution, regex checking, and report generation."""
         mock_runner = MagicMock(spec=DaemonRunner)
         mock_runner.repo_root = self.repo_root
-        mock_runner.execute_cli.return_value = "Direct battery reading: 3950 mV, 85% state of charge\nCommand succeeded."
+        mock_runner.execute_cli.return_value = (
+            "Direct battery reading: 3950 mV, 85% state of charge\nCommand succeeded."
+        )
 
         manager = BringupManager(runner=mock_runner, repo_root=self.repo_root)
         cfg = manager.load_script(self.cat_detector_yaml)
@@ -169,7 +172,6 @@ class TestBringupIntegration(unittest.TestCase):
         self.assertIn('id="bringupPromptCard"', content)
         # Must have step list container
         self.assertIn('id="bringupStepList"', content)
-
 
     def test_bringup_step_types(self):
         """Verify hardware_check and host_command step execution in BringupManager."""

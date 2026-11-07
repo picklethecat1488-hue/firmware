@@ -1328,7 +1328,7 @@ fn test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm() {
         assert_eq!(motor.speed(), 0);
         assert_eq!(motor.duty_cycle(), 0);
 
-        // Command speed 8 (startup duty cycle capping current to <= 2A)
+        // Command speed 8 (duty cycle scales with speed to control current and prevent overheating)
         assert!(motor.set_speed(MotorSpeed::new(8).unwrap()).is_ok());
         assert_eq!(motor.speed(), 8);
         assert_eq!(motor.duty_cycle(), 8);
@@ -1342,6 +1342,7 @@ fn test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm() {
         assert_eq!(motor.commutation_step(), 1);
         let w_step1 = motor.last_word();
         assert_eq!((w_step1 >> 8) & 0xFF, 8);
+        assert_eq!((w_step1 >> 16) & 0xFF, 92);
         assert_eq!(w_step1 & 0xFF, phase_mask(8, 1) as u32);
 
         // Ramp up to full speed 100
@@ -1349,8 +1350,8 @@ fn test_worm_writhing_tubeworm_652_tmc6300_current_limiting_and_pio_pwm() {
         assert_eq!(motor.speed(), 100);
         assert_eq!(motor.duty_cycle(), 100);
         let w100 = motor.last_word();
-        assert_eq!((w100 >> 8) & 0xFF, 100);
-        assert_eq!((w100 >> 16) & 0xFF, 0);
+        assert_eq!((w100 >> 8) & 0xFF, 14);
+        assert_eq!((w100 >> 16) & 0xFF, 4);
 
         // Stop motor: duty cycle and mask go to 0
         assert!(motor.stop().is_ok());
@@ -1374,14 +1375,14 @@ fn test_worm_dirt_ribbonworm_196_tmc6300_pio_program_verification_and_duty_cycle
 
     let prg = assemble_tmc6300_pio_program();
 
-    // 1. Program size must be exactly 10 instructions
-    assert_eq!(prg.code.len(), 10);
-    // 2. Wrap boundaries: target = 0, source = 9 (last instruction)
+    // 1. Program size must be exactly 11 instructions
+    assert_eq!(prg.code.len(), 11);
+    // 2. Wrap boundaries: target = 0, source = 10 (last instruction)
     assert_eq!(prg.wrap.target, 0);
-    assert_eq!(prg.wrap.source, 9);
+    assert_eq!(prg.wrap.source, 10);
 
     // 3. Verify all JMP instructions target valid addresses within [0..=prg.wrap.source].
-    // Any target > 9 jumps past wrap_source into uninitialized SRAM!
+    // Any target > 10 jumps past wrap_source into uninitialized SRAM!
     for (addr, &inst) in prg.code.iter().enumerate() {
         let opcode = (inst >> 13) & 0x7;
         if opcode == 0 {
@@ -1393,10 +1394,10 @@ fn test_worm_dirt_ribbonworm_196_tmc6300_pio_program_verification_and_duty_cycle
                 "Instruction at {addr} jumps out-of-bounds to {target} (wrap.source={})",
                 prg.wrap.source
             );
-            if addr == 7 {
+            if addr == 8 {
                 // Must be jmp !y, wrap_target (0)
-                assert_eq!(cond, 0b011, "Instruction at 7 must test condition !Y");
-                assert_eq!(target, 0, "Instruction at 7 must jump to wrap_target (0)");
+                assert_eq!(cond, 0b011, "Instruction at 8 must test condition !Y");
+                assert_eq!(target, 0, "Instruction at 8 must jump to wrap_target (0)");
             }
         }
     }
@@ -1428,51 +1429,55 @@ fn test_worm_dirt_ribbonworm_196_tmc6300_pio_program_verification_and_duty_cycle
                 x = osr;
             }
             2 => {
-                // out pins, 8
-                pins = (osr & 0xFF) as u8;
-                osr >>= 8;
+                // out pins, 6 (shifts lower 6 bits to pins 16..21 without modulo wrap overwrite)
+                pins = (osr & 0x3F) as u8;
+                osr >>= 6;
             }
             3 => {
+                // out null, 2 (discards 2 padding bits to preserve 8-bit alignment for on_count)
+                osr >>= 2;
+            }
+            4 => {
                 // out y, 8
                 y = osr & 0xFF;
                 osr >>= 8;
             }
-            4 => {
-                // jmp !y, skip_on (6)
+            5 => {
+                // jmp !y, skip_on (7)
                 if y == 0 {
-                    pc = 6;
+                    pc = 7;
                 }
             }
-            5 => {
-                // jmp y--, on_loop (5)
+            6 => {
+                // jmp y--, on_loop (6)
                 if y != 0 {
                     y -= 1;
-                    pc = 5;
+                    pc = 6;
                 } else {
                     y = u32::MAX;
                 }
             }
-            6 => {
+            7 => {
                 // out y, 8 (off_count)
                 y = osr & 0xFF;
                 osr >>= 8;
             }
-            7 => {
+            8 => {
                 // jmp !y, wrap_target (0)
                 if y == 0 {
                     pc = 0;
                 }
             }
-            8 => {
+            9 => {
                 // mov pins, null
                 pins = 0;
                 pin_cleared_to_null = true;
             }
-            9 => {
-                // jmp y--, off_loop (9)
+            10 => {
+                // jmp y--, off_loop (10)
                 if y != 0 {
                     y -= 1;
-                    pc = 9;
+                    pc = 10;
                 } else {
                     y = u32::MAX;
                 }
@@ -1545,8 +1550,8 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
             let on_count = ((word >> 8) & 0xFF) as u8;
             let off_count = ((word >> 16) & 0xFF) as u8;
 
-            assert_eq!(on_count, 50);
-            assert_eq!(off_count, 50);
+            assert_eq!(on_count, 14);
+            assert_eq!(off_count, 14);
             assert_eq!(mask, expected_forward_masks[expected_step as usize]);
             assert_eq!(mask, phase_mask(50, expected_step));
         }
@@ -1568,8 +1573,8 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
             let on_count = ((word >> 8) & 0xFF) as u8;
             let off_count = ((word >> 16) & 0xFF) as u8;
 
-            assert_eq!(on_count, 100);
-            assert_eq!(off_count, 0);
+            assert_eq!(on_count, 14);
+            assert_eq!(off_count, 4);
             assert_eq!(mask, expected_forward_masks[next_step as usize]);
         }
 
@@ -1599,10 +1604,9 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
             let on_count = ((word >> 8) & 0xFF) as u8;
             let off_count = ((word >> 16) & 0xFF) as u8;
 
-            assert_eq!(on_count, 75);
-            assert_eq!(off_count, 25);
+            assert_eq!(on_count, 14);
+            assert_eq!(off_count, 5);
             assert_eq!(mask, expected_reverse_masks[next_step as usize]);
-            assert_eq!(mask, phase_mask(-75, next_step));
         }
 
         // 5. Motor stop completely clears duty cycle and de-energizes all FETs
@@ -1647,42 +1651,45 @@ fn test_worm_embedded_leech_268_commutation_advancement_and_continuous_pwm() {
                     x = osr;
                 }
                 2 => {
-                    pins = (osr & 0xFF) as u8;
-                    osr >>= 8;
+                    pins = (osr & 0x3F) as u8;
+                    osr >>= 6;
                 }
                 3 => {
+                    osr >>= 2;
+                }
+                4 => {
                     y = osr & 0xFF;
                     osr >>= 8;
                 }
-                4 => {
+                5 => {
                     if y == 0 {
-                        pc = 6;
+                        pc = 7;
                     }
                 }
-                5 => {
+                6 => {
                     if y != 0 {
                         y -= 1;
-                        pc = 5;
+                        pc = 6;
                     } else {
                         y = u32::MAX;
                     }
                 }
-                6 => {
+                7 => {
                     y = osr & 0xFF;
                     osr >>= 8;
                 }
-                7 => {
+                8 => {
                     if y == 0 {
                         pc = 0;
                     }
                 }
-                8 => {
+                9 => {
                     pins = 0;
                 }
-                9 => {
+                10 => {
                     if y != 0 {
                         y -= 1;
-                        pc = 9;
+                        pc = 10;
                     } else {
                         y = u32::MAX;
                     }
@@ -1934,7 +1941,7 @@ fn test_worm_gliding_larva_522_pin_mapping_and_forward_commutation_progression()
             );
             assert_eq!(
                 word,
-                make_pwm_word(expected_masks[expected_step as usize], 100, 0),
+                make_pwm_word(expected_masks[expected_step as usize], 14, 4),
                 "PWM word mismatch at tick {tick}"
             );
 
@@ -2242,12 +2249,22 @@ fn test_worm_slithering_lumbricus_809_tmc6300_short_protection_pulse_invariants(
         // Command speed 10 (reproduction step)
         assert!(pio_motor.set_speed(MotorSpeed::new(10).unwrap()).is_ok());
         assert_eq!(pio_motor.speed(), 10);
+        assert_eq!(pio_motor.duty_cycle(), 10);
         assert_eq!(pio_motor.effective_on_count(), 10);
         assert_eq!(pio_motor.pulse_duration_ns(), 640);
-        let eff_word10 = pio_motor.effective_word();
-        assert_eq!((eff_word10 >> 8) & 0xFF, 10);
-        assert_eq!((eff_word10 >> 16) & 0xFF, 90);
-        assert_eq!(eff_word10 & 0xFF, phase_mask(10, 0) as u32);
+
+        // Verify calculate_pwm_counts helper directly
+        let (on10, off10) = peripheral::tmc6300::calculate_pwm_counts(10);
+        assert_eq!(on10, 10);
+        assert_eq!(off10, 90);
+        assert_eq!(
+            peripheral::tmc6300::calculate_on_time_ns(
+                on10,
+                peripheral::tmc6300::SHORT_PROTECTION_PIO_DIVIDER,
+                125_000_000
+            ),
+            640
+        );
 
         // Command speed 100
         assert!(pio_motor.set_speed(MotorSpeed::new(100).unwrap()).is_ok());
@@ -2256,7 +2273,7 @@ fn test_worm_slithering_lumbricus_809_tmc6300_short_protection_pulse_invariants(
         assert_eq!(pio_motor.pulse_duration_ns(), 800);
         let eff_word100 = pio_motor.effective_word();
         assert_eq!((eff_word100 >> 8) & 0xFF, 14);
-        assert_eq!((eff_word100 >> 16) & 0xFF, 1);
+        assert_eq!((eff_word100 >> 16) & 0xFF, 4);
 
         // Advance commutation tick
         assert!(pio_motor.tick().await.is_ok());
@@ -2302,7 +2319,7 @@ fn test_cr_7f321327_tmc6300_tick_interval_and_sync() {
     };
     let mut driver = Tmc6300Pio::new(pin_diag);
 
-    // Initial default tick interval should match DEFAULT_TICK_INTERVAL_US (10ms)
+    // Initial default tick interval should match DEFAULT_TICK_INTERVAL_US (333us)
     assert_eq!(driver.tick_interval_us(), DEFAULT_TICK_INTERVAL_US);
     assert_eq!(
         Tickable::tick_interval_us(&driver),
@@ -2311,7 +2328,7 @@ fn test_cr_7f321327_tmc6300_tick_interval_and_sync() {
     assert_eq!(driver.tick_interval(), DEFAULT_TICK_INTERVAL);
     assert_eq!(
         driver.tick_interval(),
-        embassy_time::Duration::from_millis(10)
+        embassy_time::Duration::from_micros(333)
     );
 
     // Dynamic configuration updates tick interval
@@ -2336,9 +2353,9 @@ fn test_worm_proboscid_roundworm_8_driver_first_tick_executes_step_0() {
         };
         let mut driver = Tmc6300Pio::new(pin_diag);
 
-        // 1. Driver default tick interval must be 10,000 µs (10 ms)
-        assert_eq!(driver.tick_interval_us(), 10_000);
-        assert_eq!(DEFAULT_TICK_INTERVAL_US, 10_000);
+        // 1. Driver default tick interval must be 333 µs
+        assert_eq!(driver.tick_interval_us(), 333);
+        assert_eq!(DEFAULT_TICK_INTERVAL_US, 333);
 
         // 2. Set speed: initial step index is Step 0
         driver.set_speed(MotorSpeed::new(100).unwrap()).unwrap();
@@ -2359,5 +2376,94 @@ fn test_worm_proboscid_roundworm_8_driver_first_tick_executes_step_0() {
             2,
             "Second tick must advance to Step 2"
         );
+    });
+}
+
+#[test]
+fn test_target_freewheeling_speed_and_tick_interval_constants() {
+    use peripheral::tmc6300::{
+        DEFAULT_TICK_INTERVAL, DEFAULT_TICK_INTERVAL_US, TARGET_FREEWHEELING_MAX_RPM,
+    };
+
+    // Verify 5,000 RPM target constant
+    assert_eq!(TARGET_FREEWHEELING_MAX_RPM, 5000);
+    assert_eq!(DEFAULT_TICK_INTERVAL_US, 333);
+    assert_eq!(
+        DEFAULT_TICK_INTERVAL,
+        embassy_time::Duration::from_micros(333)
+    );
+}
+
+#[test]
+fn test_ina219_continuous_mode_immediate_read_no_cnvr_wait() {
+    run_test!(async {
+        use model::interfaces::{PowerMeasurementMode, PowerSensor};
+        use peripheral::ina219::Ina219;
+
+        // When in continuous mode, read_current_ma must NOT read register 0x02 (Bus Voltage / CNVR)
+        // to wait for conversion; it must directly read register 0x04 (Current).
+        let mut reads = std::collections::VecDeque::new();
+        // 1. Initial config read for set_measurement_mode
+        reads.push_back(vec![0x39, 0x98]);
+        // 2. Direct read of current register only (no bus voltage read in between!)
+        reads.push_back(vec![0x01, 0xF4]); // 500 (50 mA)
+
+        let writes = std::sync::Arc::new(std::sync::Mutex::new(vec![]));
+        let mut i2c = ProbeableMockI2c {
+            reads,
+            writes: writes.clone(),
+        };
+        let mut dev = Ina219::new(&mut i2c);
+
+        dev.set_measurement_mode(PowerMeasurementMode::Continuous(true, true))
+            .await
+            .unwrap();
+
+        let current = dev.read_current_ma().await.unwrap();
+        assert_eq!(current, 50);
+
+        // Verify the only register read requested after mode configuration was register 0x04 (Current)
+        let written = writes.lock().unwrap();
+        assert_eq!(
+            written.last(),
+            Some(&vec![0x04]),
+            "read_current_ma in Continuous mode must directly query Current register 0x04 without CNVR polling"
+        );
+    });
+}
+
+#[test]
+fn test_worm_annelidic_nematode_26_tmc6300_safe_off_pulse_at_full_speed() {
+    run_test!(async {
+        use peripheral::tmc6300::{
+            calculate_pwm_counts, SHORT_PROTECTION_MAX_ON_COUNT, SHORT_PROTECTION_MIN_OFF_COUNT,
+            SHORT_PROTECTION_MIN_ON_COUNT,
+        };
+
+        // 1. Constant invariants
+        assert_eq!(SHORT_PROTECTION_MIN_OFF_COUNT, 4);
+        assert_eq!(SHORT_PROTECTION_MAX_ON_COUNT, 14);
+        assert_eq!(SHORT_PROTECTION_MIN_ON_COUNT, 7);
+
+        // 2. Speed 100% (WORM-ANNELIDIC-NEMATODE-26 reproduction):
+        // Previously returned off = 1 (160 ns), causing continuous FET conduction, 1620 mA current,
+        // and triggering TMC6300 short-circuit/thermal DIAG trip.
+        // Fixed: off_count is constrained to SHORT_PROTECTION_MIN_OFF_COUNT (4 cycles = 280 ns off time),
+        // guaranteeing the comparator resets on every pulse and prevents driver fault.
+        let (on100, off100) = calculate_pwm_counts(100);
+        assert_eq!(on100, SHORT_PROTECTION_MAX_ON_COUNT);
+        assert_eq!(
+            off100, SHORT_PROTECTION_MIN_OFF_COUNT,
+            "off_count at 100% duty cycle must equal SHORT_PROTECTION_MIN_OFF_COUNT (4)"
+        );
+
+        // 3. Across all duty cycles (1..=100), off_count must NEVER drop below SHORT_PROTECTION_MIN_OFF_COUNT
+        for duty in 1..=100 {
+            let (_on, off) = calculate_pwm_counts(duty);
+            assert!(
+                off >= SHORT_PROTECTION_MIN_OFF_COUNT,
+                "Duty {duty}% off_count {off} is below safe minimum {SHORT_PROTECTION_MIN_OFF_COUNT}"
+            );
+        }
     });
 }

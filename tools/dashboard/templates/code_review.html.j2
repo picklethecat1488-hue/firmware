@@ -16,6 +16,14 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
   <link rel="shortcut icon" href="/static/favicon.ico">
   <link rel="stylesheet" href="/static/common.css">
+  <script>
+    if (window.self !== window.top) {
+      document.documentElement.classList.add("in-iframe");
+      window.addEventListener("DOMContentLoaded", () => {
+        if (document.body) document.body.classList.add("in-iframe");
+      });
+    }
+  </script>
   <style>
     html {
       font-size: 80%;
@@ -69,7 +77,7 @@
       --quake-text-dim: var(--xerxes-text-dim);
 
       --bg-diff-del: rgba(255, 42, 75, 0.22);
-      --bg-diff-add: rgba(20, 217, 196, 0.22);
+      --bg-diff-add: rgba(34, 197, 94, 0.22);
       --bg-diff-sel: rgba(0, 240, 255, 0.28);
       --border-diff-sel: #00f0ff;
 
@@ -94,6 +102,18 @@
       overflow: hidden;
       border: 2px solid var(--xerxes-border-mid);
       box-shadow: inset 0 0 0 1px rgba(0, 240, 255, 0.2), 0 0 10px rgba(0, 240, 255, 0.1);
+    }
+
+    html.in-iframe,
+    html.in-iframe body,
+    body.in-iframe {
+      border: none !important;
+      box-shadow: none !important;
+    }
+    html.in-iframe .window-resize-gripper,
+    body.in-iframe .window-resize-gripper,
+    .in-iframe .window-resize-gripper {
+      display: none !important;
     }
 
     /* Window Resize Gripper (WORM-027) */
@@ -1482,7 +1502,7 @@
     .fuzzy-prompt {
       color: var(--xerxes-amber, #ffb000);
       font-weight: bold;
-      font-size: 11px;
+      font-size: 8.5px;
       white-space: nowrap;
     }
     .fuzzy-search-input {
@@ -1491,8 +1511,8 @@
       border: 1px solid var(--xerxes-cyan-dim, #00a4b3);
       color: var(--xerxes-text-light, #e6f9ff);
       font-family: var(--font-mono);
-      font-size: 11px;
-      padding: 3px 8px;
+      font-size: 8.5px;
+      padding: 3px 6px;
       outline: none;
     }
     .fuzzy-results-list {
@@ -1500,8 +1520,8 @@
       max-height: 170px;
     }
     .fuzzy-item {
-      padding: 5px 12px;
-      font-size: 11px;
+      padding: 4px 10px;
+      font-size: 8.5px;
       font-family: var(--font-mono);
       cursor: pointer;
       display: flex;
@@ -1585,7 +1605,7 @@
       <!-- UI Scale Selector (8715cab2) -->
       <div style="display:flex;align-items:center;gap:4px;margin-right:4px;">
         <span style="font-size:8px;color:var(--quake-text-dim);">SCALE:</span>
-        <select id="uiScaleSelect" class="quake-select" onchange="onUiScaleChange(this.value)" title="UI Scale (Shortcuts: Cmd/Ctrl +/- or 0 to reset)" style="padding: 2px 4px; font-size: 9px; height: 22px;">
+        <select id="uiScaleSelect" class="quake-select" onchange="onUiScaleChange(this.value)" title="UI Scale (Shortcuts: Cmd/Ctrl +/- or 0 to reset)" style="padding: 2px 4px; font-size: 8.5px; height: 22px;">
           <option value="75%">75%</option>
           <option value="80%">80%</option>
           <option value="90%">90%</option>
@@ -1595,6 +1615,12 @@
           <option value="150%">150%</option>
         </select>
       </div>
+      <button id="btnBackToBugsHeader" class="quake-btn quake-btn-gold" onclick="returnToBugReport()" title="Return to Defect Tracker" style="display:none; align-items:center; gap:4px; font-weight:700;">
+        ◀ Back to Defect Tracker
+      </button>
+      <button id="btnBugTracker" class="quake-btn quake-btn-default" onclick="openBugTracker()" title="Open Worm Defect Matrix">
+        <span>🪱 Worms</span>
+      </button>
       <button id="btnSyncFeedback" class="quake-btn quake-btn-default" onclick="syncFeedback()" title="Synchronize review feedback with feedback/ directory and merge commit feedback">
         🔄 Sync Feedback
       </button>
@@ -1613,6 +1639,9 @@
   <div class="diff-toolbar">
     <div class="diff-toolbar-left">
       <div style="display: flex; gap: 4px; flex-shrink: 0;">
+        <button id="btnBackToBugsToolbar" class="quake-btn quake-btn-gold quake-btn-sm" onclick="returnToBugReport()" title="Return to Defect Tracker" style="display:none; align-items:center; gap:4px; font-weight:700;">
+          ◀ Back to Defect Tracker
+        </button>
         <button id="btnToggleCommits" class="quake-btn quake-btn-default{% if not single_commit %} quake-btn-active{% endif %}" onclick="togglePane('commits')">📜 Stream</button>
         <button id="btnToggleFiles" class="quake-btn quake-btn-default" onclick="togglePane('files')">📁 Files</button>
         <button id="btnFocus" class="quake-btn quake-btn-default" onclick="toggleFocusMode()" title="Focus Mode (Shortcut: \)">⛶ Focus</button>
@@ -1681,7 +1710,12 @@
       <div class="pane-header">
         <div class="pane-title-row">
           <span id="filesCountHeader">Changed Files (0)</span>
-          <button class="quake-btn quake-btn-default" style="padding: 2px 6px;" onclick="togglePane('files')" title="Collapse Pane (Shortcut: ])">◀</button>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <label style="font-size: 10px; color: var(--quake-text-dim); display: flex; align-items: center; gap: 3px; cursor: pointer; user-select: none;" title="Hide attachments in code review">
+              <input type="checkbox" id="hideAttachmentsCb" checked onchange="renderFilesList()"> Hide Attachments
+            </label>
+            <button class="quake-btn quake-btn-default" style="padding: 2px 6px;" onclick="togglePane('files')" title="Collapse Pane (Shortcut: ])">◀</button>
+          </div>
         </div>
         <input type="text" id="fileSearchInput" placeholder="Filter files by name..." oninput="filterFiles()">
       </div>
@@ -1735,7 +1769,7 @@
         <div class="fuzzy-header">
           <span class="fuzzy-prompt">(reverse-i-search)`':</span>
           <input type="text" id="fuzzySearchInput" class="fuzzy-search-input" placeholder="Search command history..." autocomplete="off">
-          <button class="quake-btn" style="padding: 1px 6px; font-size: 10px;" onclick="closeCliFuzzyHistory()">✕</button>
+          <button class="quake-btn" style="padding: 1px 6px; font-size: 8.5px;" onclick="closeCliFuzzyHistory()">✕</button>
         </div>
         <div id="fuzzyResultsList" class="fuzzy-results-list"></div>
       </div>
@@ -1785,7 +1819,84 @@
       closeWorkstation();
     }
 
+    function returnToBugReport() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const rawWormId = urlParams.get("worm_id") || urlParams.get("bug_id");
+      let wormHash = "";
+      if (rawWormId) {
+        const cleanId = rawWormId.toUpperCase().startsWith("WORM-") ? rawWormId.toUpperCase() : `WORM-${rawWormId.toUpperCase().replace(/^BUG-/, '')}`;
+        wormHash = `#${cleanId}`;
+      }
+      const targetUrl = `/worms${wormHash}`;
+      const targetName = "firmware_worm_tracker";
+
+      if (window.parent && window.parent !== window && typeof window.parent.openWorkstationModal === "function") {
+        window.parent.openWorkstationModal(targetUrl, targetName);
+      } else if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.location.href = targetUrl;
+          window.opener.focus();
+          window.close();
+          return;
+        } catch (e) {}
+        window.location.href = targetUrl;
+      } else {
+        window.location.href = targetUrl;
+      }
+    }
+
+    async function openBugTracker() {
+      const targetName = "firmware_worm_tracker";
+      try {
+        const resp = await fetch("/api/open_worm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({})
+        });
+        const res = await resp.json();
+        if (window.parent && window.parent !== window && typeof window.parent.openWorkstationModal === "function") {
+          window.parent.openWorkstationModal(res.url, targetName);
+        } else {
+          window.location.href = res.url || "/worms";
+        }
+      } catch (err) {
+        if (window.parent && window.parent !== window && typeof window.parent.openWorkstationModal === "function") {
+          window.parent.openWorkstationModal("/worms", targetName);
+        } else {
+          window.location.href = "/worms";
+        }
+      }
+    }
+
+    function initBugNavigation() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const fromParam = urlParams.get("from");
+      const defectId = urlParams.get("worm_id") || urlParams.get("bug_id");
+      const isFromBugs = fromParam === "worms" || fromParam === "bugs" || Boolean(defectId) || (document.referrer && (document.referrer.includes("/worms") || document.referrer.includes("/bugs")));
+      if (isFromBugs) {
+        const btnHeader = document.getElementById("btnBackToBugsHeader");
+        const btnToolbar = document.getElementById("btnBackToBugsToolbar");
+        const label = defectId ? `◀ Back to ${defectId.toUpperCase()}` : "◀ Back to Worms";
+        if (btnHeader) {
+          btnHeader.style.display = "inline-flex";
+          btnHeader.textContent = label;
+          btnHeader.title = `Return to ${defectId || 'Worms'}`;
+        }
+        if (btnToolbar) {
+          btnToolbar.style.display = "inline-flex";
+          btnToolbar.textContent = label;
+          btnToolbar.title = `Return to ${defectId || 'Worms'}`;
+        }
+      }
+    }
+
     function closeWorkstation() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const isFromBugs = urlParams.get("from") === "worms" || urlParams.get("from") === "bugs" || Boolean(urlParams.get("worm_id")) || Boolean(urlParams.get("bug_id"));
+      if (isFromBugs) {
+        returnToBugReport();
+        return;
+      }
       if (window.parent && window.parent !== window && typeof window.parent.closeWorkstationModal === "function") {
         window.parent.closeWorkstationModal();
         try {
@@ -1806,7 +1917,11 @@
         window.close();
         setTimeout(() => {
           if (!window.closed) {
-            window.location.href = "/";
+            if (window.top && window.top !== window) {
+        window.top.location.href = "/";
+      } else {
+        window.location.href = "/";
+      }
           }
         }, 300);
         return;
@@ -1818,13 +1933,21 @@
           window.close();
           setTimeout(() => {
             if (!window.closed) {
-              window.location.href = "/";
+              if (window.top && window.top !== window) {
+        window.top.location.href = "/";
+      } else {
+        window.location.href = "/";
+      }
             }
           }, 300);
           return;
         }
       } catch (err) {}
-      window.location.href = "/";
+      if (window.top && window.top !== window) {
+        window.top.location.href = "/";
+      } else {
+        window.location.href = "/";
+      }
     }
 
     window.addEventListener("keydown", (e) => {
@@ -2077,6 +2200,7 @@
     document.addEventListener("DOMContentLoaded", async () => {
       initUiScale();
       initWordWrap();
+      initBugNavigation();
       await loadSession();
       await loadCommits();
       initPanelResizers();
@@ -2350,12 +2474,20 @@
         `).join("");
         return;
       }
-      document.getElementById("filesCountHeader").innerText = `Changed Files (${state.files.length})`;
+      const hideAttachments = document.getElementById("hideAttachmentsCb") ? document.getElementById("hideAttachmentsCb").checked : true;
+      const visibleFiles = state.files.filter(f => {
+        if (hideAttachments && (f.path.startsWith('attachments/') || f.path.startsWith('target/attachments/') || f.path.startsWith('build/attachments/') || f.path.startsWith('feedback/attachments/'))) {
+          return false;
+        }
+        return true;
+      });
+
+      document.getElementById("filesCountHeader").innerText = `Changed Files (${visibleFiles.length})`;
       listEl.innerHTML = "";
 
       const filter = (document.getElementById("fileSearchInput").value || "").toLowerCase();
 
-      state.files.forEach(f => {
+      visibleFiles.forEach(f => {
         if (filter && !f.path.toLowerCase().includes(filter)) return;
 
         const comments = (state.session?.comments || []).filter(c => c.file_path === f.path);

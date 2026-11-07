@@ -38,7 +38,9 @@ def test_cr_a5bbb33b_host_daemon_library_structure():
     assert (hd_dir / "model").is_dir(), "tools/host_daemon/model directory must exist"
     assert (hd_dir / "model" / "bringup.py").is_file(), "tools/host_daemon/model/bringup.py must exist"
     assert (hd_dir / "provider").is_dir(), "tools/host_daemon/provider directory must exist"
-    assert (hd_dir / "provider" / "bringup" / "bringup_manager.py").is_file(), "bringup_manager.py must exist in provider/bringup/"
+    assert (hd_dir / "provider" / "bringup" / "bringup_manager.py").is_file(), (
+        "bringup_manager.py must exist in provider/bringup/"
+    )
     assert (hd_dir / "provider" / "daemon" / "runner.py").is_file(), "runner.py must exist in provider/daemon/"
     assert (hd_dir / "provider" / "daemon" / "server.py").is_file(), "server.py must exist in provider/daemon/"
     assert (hd_dir / "templates" / "host_daemon.html.j2").is_file(), "templates/host_daemon.html.j2 must exist"

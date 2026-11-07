@@ -75,8 +75,14 @@ fn write_csv_trace(out_path: &str, records: &[(u64, TelemetryRecord)]) -> io::Re
                 model::types::MotorStatus::Brake => {
                     writeln!(csv_file, "{},Motor,0,false,25000,", ts)?;
                 }
-                model::types::MotorStatus::Running(speed, current) => {
-                    writeln!(csv_file, "{},Motor,{},true,{},", ts, speed.get(), current)?;
+                model::types::MotorStatus::Running(telem) => {
+                    writeln!(
+                        csv_file,
+                        "{},Motor,{},true,{},",
+                        ts,
+                        telem.speed.get(),
+                        telem.current_ma
+                    )?;
                 }
             },
             TelemetryRecord::Thermal(t) => match t {

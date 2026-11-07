@@ -47,6 +47,14 @@ class WormCategory(str, Enum):
     GENERAL = "GENERAL"
 
 
+class WormReviewTaskStatus(str, Enum):
+    """Lifecycle status for a functional review task."""
+
+    PENDING = "PENDING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+
 class WormAttachmentModel(BaseModel):
     """File attachment (log, screenshot, artifact, reference) associated with a worm."""
 
@@ -57,6 +65,16 @@ class WormAttachmentModel(BaseModel):
     size_bytes: int = 0
     description: str = ""
     created_at: str = ""
+
+
+class WormReviewTaskModel(BaseModel):
+    """A functional verification or review task for a worm report."""
+
+    id: str = Field(default_factory=lambda: str(uuid_pkg.uuid4())[:8])
+    title: str
+    command: str = ""  # Shell command or visualization action to demo functionality
+    status: WormReviewTaskStatus = WormReviewTaskStatus.PENDING
+    notes: str = ""
 
 
 class WormSectionModel(BaseModel):
@@ -83,10 +101,15 @@ class WormReportModel(BaseModel):
     logs: str = ""
     attachments: List[WormAttachmentModel] = Field(default_factory=list)
     custom_sections: List[WormSectionModel] = Field(default_factory=list)
+    commit_ids: List[str] = Field(default_factory=list)
+    review_tasks: List[WormReviewTaskModel] = Field(default_factory=list)
     created_at: str = ""
     updated_at: str = ""
     resolved_at: Optional[str] = None
     resolution_notes: str = ""
+    rejection_notes: Optional[str] = ""
+    accepted_at: Optional[str] = None
+    rejected_at: Optional[str] = None
 
 
 class WormDatabaseModel(BaseModel):
@@ -121,13 +144,50 @@ class WormDatabaseModel(BaseModel):
                 return w
         return None
 
-    def add_or_update(self, worm: WormReportModel) -> None:
-        """Add a new worm or update an existing worm matching UUID or ID."""
+    def add_or_update(self, worm: WormReportModel) -> str:
+        """Add a new worm or update an existing worm matching UUID or ID.
+
+        Performs collision detection: If a worm arrives with an existing ID but a different
+        UUID, it is identified as a distinct entity and automatically assigned a new unique
+        ID to prevent data loss or clobbering.
+
+        Returns:
+            The canonical (possibly reassigned) worm ID.
+        """
+        existing_by_uuid_idx = None
+        existing_by_id_idx = None
         for idx, existing in enumerate(self.worms):
-            if existing.uuid == worm.uuid or existing.id == worm.id:
-                self.worms[idx] = worm
-                return
-        self.worms.append(worm)
+            if worm.uuid and existing.uuid == worm.uuid:
+                existing_by_uuid_idx = idx
+            if existing.id == worm.id:
+                existing_by_id_idx = idx
+
+        if existing_by_uuid_idx is not None and existing_by_id_idx is not None:
+            if existing_by_uuid_idx == existing_by_id_idx:
+                self.worms[existing_by_uuid_idx] = worm
+                return worm.id
+            else:
+                # UUID matches worm A, but requested ID is already held by worm B
+                known_ids = {w.id for w in self.worms}
+                worm.id = self.generate_worm_id(existing_ids=known_ids)
+                self.worms[existing_by_uuid_idx] = worm
+                return worm.id
+        elif existing_by_uuid_idx is not None:
+            self.worms[existing_by_uuid_idx] = worm
+            return worm.id
+        elif existing_by_id_idx is not None:
+            # Collision! Different UUID (or new worm) has an ID already taken by an existing worm
+            known_ids = {w.id for w in self.worms}
+            worm.id = self.generate_worm_id(existing_ids=known_ids)
+            if not worm.uuid:
+                worm.uuid = str(uuid_pkg.uuid4())
+            self.worms.append(worm)
+            return worm.id
+        else:
+            if not worm.uuid:
+                worm.uuid = str(uuid_pkg.uuid4())
+            self.worms.append(worm)
+            return worm.id
 
     def count_by_status(self) -> Dict[str, int]:
         """Tally worms grouped by lifecycle status."""

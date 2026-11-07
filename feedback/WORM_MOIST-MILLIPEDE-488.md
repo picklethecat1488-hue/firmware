@@ -2,12 +2,13 @@
 
 - **UUID**: `fce239b7-1b59-46e6-931e-0a1d7d0c0bce`
 - **ID**: `WORM-MOIST-MILLIPEDE-488`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-22 01:38:41 UTC`
 - **Resolved**: `2026-10-22 01:42:18 UTC`
+- **Accepted**: `2026-10-22 01:42:18 UTC`
 
 #### Description
 

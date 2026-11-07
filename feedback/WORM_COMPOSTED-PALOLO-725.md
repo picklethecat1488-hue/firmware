@@ -2,12 +2,13 @@
 
 - **UUID**: `abe0e38f-f71e-41f9-99c4-a45784148233`
 - **ID**: `WORM-COMPOSTED-PALOLO-725`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `HIGH`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 01:45:50 UTC`
 - **Resolved**: `2026-10-17 01:49:42 UTC`
+- **Accepted**: `2026-10-17 01:49:42 UTC`
 
 #### Description
 

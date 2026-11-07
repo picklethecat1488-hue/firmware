@@ -12,6 +12,7 @@ dependencies:
   - pyyaml
   - jinja2
   - pip:
+      - pluggy<1.7.0
       - pydantic
       - rerun-sdk
       - halo

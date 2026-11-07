@@ -54,5 +54,5 @@ def test_cli_on_app_close_calls_runner_stop():
     # Verify runner.stop() appears inside _on_app_close
     idx_app_close = cli_source.find("def _on_app_close")
     assert idx_app_close != -1, "_on_app_close definition not found"
-    app_close_block = cli_source[idx_app_close:idx_app_close + 400]
+    app_close_block = cli_source[idx_app_close : idx_app_close + 400]
     assert "runner.stop()" in app_close_block, "runner.stop() must be called inside _on_app_close"

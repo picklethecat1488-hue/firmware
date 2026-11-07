@@ -2,11 +2,12 @@
 
 - **UUID**: `a177e2b9-941f-4bd8-85ad-bc66c2789e13`
 - **ID**: `WORM-EARTHEN-NYMPH-383`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Created**: `2026-10-15 20:53:09 UTC`
 - **Resolved**: `2026-10-15 21:20:04 UTC`
+- **Accepted**: `2026-10-15 21:20:04 UTC`
 
 #### Description
 

@@ -48,3 +48,24 @@ pub fn stream_logs<S: DefmtLogSource, W: Write>(
     }
     Ok(())
 }
+
+/// Cancels echoed input characters from target RTT buffer against typed input buffer.
+///
+/// Strips matching characters and line-ending sequences from `rtt_bytes` when they match
+/// pending bytes in `sent_buffer`, preventing host-transmitted keystrokes from echoing back
+/// into the interactive console stream.
+pub fn cancel_echo(rtt_bytes: &[u8], sent_buffer: &mut Vec<u8>) -> Vec<u8> {
+    let mut write_buf = Vec::with_capacity(rtt_bytes.len());
+    for &b in rtt_bytes {
+        if !sent_buffer.is_empty()
+            && (sent_buffer[0] == b
+                || ((b == b'\r' || b == b'\n')
+                    && (sent_buffer[0] == b'\r' || sent_buffer[0] == b'\n')))
+        {
+            sent_buffer.remove(0);
+        } else {
+            write_buf.push(b);
+        }
+    }
+    write_buf
+}

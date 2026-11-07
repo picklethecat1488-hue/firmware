@@ -2,12 +2,13 @@
 
 - **UUID**: `71aed942-1a62-45c4-ae7b-f07bfae5cf55`
 - **ID**: `WORM-FOSSORIAL-COMPOSTER-481`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-18 01:04:48 UTC`
 - **Resolved**: `2026-10-18 01:14:52 UTC`
+- **Accepted**: `2026-10-18 01:14:52 UTC`
 
 #### Description
 

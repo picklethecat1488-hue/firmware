@@ -16,10 +16,16 @@ pub const PWM_DUTY_CYCLE_DIVISOR: u8 = 10;
 /// Maximum rated peak current for the TMC6300 driver in milliamperes (2A).
 pub const MAX_TMC6300_CURRENT_MA: i32 = 2000;
 
-/// Default motor controller tick interval in microseconds for the TMC6300 driver (10,000µs / 10ms for stable open-loop BLDC commutation).
-pub const DEFAULT_TICK_INTERVAL_US: u32 = 10_000;
+/// Target mechanical rotational speed in RPM for the freewheeling motor at 100% speed.
+pub const TARGET_FREEWHEELING_MAX_RPM: u32 = 5000;
 
-/// Default motor controller tick interval as an embassy Duration (10ms).
+/// Canonical motor specification and physical characteristics for the BetaFPV 1102 motor driven by TMC6300.
+pub const MOTOR_INFO: model::types::MotorInfo = model::types::MotorInfo::DEFAULT;
+
+/// Default motor controller tick interval in microseconds for the TMC6300 driver (333µs for 5,000 RPM BLDC commutation).
+pub const DEFAULT_TICK_INTERVAL_US: u32 = 333;
+
+/// Default motor controller tick interval as an embassy Duration (333µs).
 pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration =
     embassy_time::Duration::from_micros(DEFAULT_TICK_INTERVAL_US as u64);
 
@@ -105,11 +111,17 @@ pub const fn clamp_on_count_short_protection(duty_cycle: u8) -> u8 {
     }
 }
 
+/// Minimum PIO off_count loop cycles ensuring TMC6300 FETs fully turn off and the
+/// short-circuit detection comparator resets between pulses without tripping DIAG.
+///
+/// Total OFF cycles = off_count + 3 overhead instructions: (4 + 3) * 40 ns = 280 ns.
+pub const SHORT_PROTECTION_MIN_OFF_COUNT: u8 = 4;
+
 /// Calculates the PIO PWM on_count and off_count cycles for a given commanded duty cycle percentage (0..=100).
 ///
 /// For duty cycles up to [`SHORT_PROTECTION_MAX_ON_COUNT`] (14%), modulates on_count with a fixed period of 100 cycles (4 µs).
 /// For duty cycles above 14%, holds on_count at the maximum safe limit (14 cycles = 800 ns, staying strictly below the
-/// 1.0 µs TMC6300 short-circuit threshold t_S2G) while modulating off_count downward from 86 cycles down to 1 cycle.
+/// 1.0 µs TMC6300 short-circuit threshold t_S2G) while modulating off_count downward from 86 cycles down to [`SHORT_PROTECTION_MIN_OFF_COUNT`] (4 cycles).
 /// This delivers smooth, full torque scaling up to 100% duty cycle while guaranteeing individual FET conduction pulses never trip DIAG.
 pub const fn calculate_pwm_counts(duty_cycle: u8) -> (u8, u8) {
     if duty_cycle == 0 {
@@ -130,7 +142,11 @@ pub const fn calculate_pwm_counts(duty_cycle: u8) -> (u8, u8) {
             duty_cycle as u32
         };
         let off = (((100 - duty) * (on as u32) + (duty / 2)) / duty) as u8;
-        let off = if off == 0 { 1 } else { off };
+        let off = if off < SHORT_PROTECTION_MIN_OFF_COUNT {
+            SHORT_PROTECTION_MIN_OFF_COUNT
+        } else {
+            off
+        };
         (on, off)
     }
 }
@@ -259,7 +275,7 @@ where
     PWL::Error: core::fmt::Debug,
     PD::Error: core::fmt::Debug,
 {
-    /// Default tick interval for the TMC6300 motor driver (500µs / 2kHz).
+    /// Default tick interval for the TMC6300 motor driver (333µs).
     pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration = DEFAULT_TICK_INTERVAL;
 
     /// Creates a new TMC6300 motor driver instance with 6-PWM phase pins and diagnostic pin.
@@ -331,6 +347,11 @@ where
     /// Returns the freewheeling decay mode.
     pub fn freewheel_mode(&self) -> FreewheelMode {
         self.freewheel_mode
+    }
+
+    /// Returns the physical motor specification and characteristics.
+    pub const fn motor_info(&self) -> model::types::MotorInfo {
+        MOTOR_INFO
     }
 
     /// Sets the state of Phase U enforcing software break-before-make.
@@ -621,22 +642,8 @@ where
                     embassy_time::Timer::after_micros(self.freewheel_us as u64).await;
                 }
 
-                // Advance commutation step
                 self.commutation_step = (self.commutation_step + 1) % (COMMUTATION_STEPS as u8);
-
-                // Apply PWM duty cycle modulation via tick counter
-                if abs_speed >= 100 {
-                    self.apply_commutation()?;
-                } else {
-                    self.tick_counter = (self.tick_counter + 1) % PWM_DUTY_CYCLE_DIVISOR;
-                    let threshold = (abs_speed / 10) as u8;
-                    if self.tick_counter < threshold {
-                        self.apply_commutation()?;
-                    } else {
-                        // Low duty cycle window: de-energize phases (Float)
-                        self.set_phases(PhaseState::Float, PhaseState::Float, PhaseState::Float)?;
-                    }
-                }
+                self.apply_commutation()?;
             }
             Ok(())
         }
@@ -742,8 +749,12 @@ pub fn assemble_tmc6300_pio_program() -> pio::Program<32> {
         pio::MovOperation::None,
         pio::MovSource::OSR,
     );
-    // Shift lower 8 bits (6-bit phase mask) into output pins (GP16..GP21)
-    a.out(pio::OutDestination::PINS, 8);
+    // Shift lower 6 bits (6-bit phase mask) into output pins (GP16..GP21).
+    // Note: OUT_COUNT is 6. Shifting 8 bits would cause RP2040 PIO to wrap around modulo 6,
+    // overwriting pins 0 and 1 (GP16/UH and GP17/UL) with bits 6 and 7 (zeros) and disabling Phase U!
+    a.out(pio::OutDestination::PINS, 6);
+    // Discard 2 unused alignment bits so subsequent out reads on_count from bit 8
+    a.out(pio::OutDestination::NULL, 2);
     // Shift next 8 bits (on_count) into Y
     a.out(pio::OutDestination::Y, 8);
     // If on_count == 0, skip ON delay loop
@@ -810,7 +821,7 @@ impl<'d, PD: InputPin> Tmc6300Pio<'d, embassy_rp::peripherals::PIO1, 0, PD>
 where
     PD::Error: core::fmt::Debug,
 {
-    /// Default tick interval for the TMC6300 PIO motor driver (500µs / 2kHz).
+    /// Default tick interval for the TMC6300 PIO motor driver (333µs).
     pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration = DEFAULT_TICK_INTERVAL;
     /// Creates and configures the TMC6300 PIO driver using PIO1 and state machine 0.
     #[allow(static_mut_refs, clippy::missing_transmute_annotations)]
@@ -978,6 +989,11 @@ where
         self.freewheel_mode
     }
 
+    /// Returns the physical motor specification and characteristics.
+    pub const fn motor_info(&self) -> model::types::MotorInfo {
+        MOTOR_INFO
+    }
+
     /// Sets the active PWM frequency in Hz and dynamically reconfigures the PIO clock divider.
     pub fn set_pwm_frequency_hz(&mut self, freq_hz: u32) {
         let divider = compute_clock_divider(freq_hz);
@@ -1047,6 +1063,24 @@ where
         let word = make_pwm_word(0, 0, PWM_PERIOD_CYCLES);
         self.sm.tx().push(word);
         Ok(())
+    }
+
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    #[tracing::instrument(core1 = "core1", level = "trace", skip(duty_cycle))]
+    fn set_duty_cycle(&mut self, duty_cycle: u8) -> Result<(), Self::Error> {
+        self.duty_cycle = duty_cycle.min(100);
+        Ok(())
+    }
+
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "motor-core"),
+        link_section = ".data.core1_func"
+    )]
+    fn duty_cycle(&self) -> u8 {
+        self.duty_cycle
     }
 }
 
@@ -1121,7 +1155,7 @@ impl<PD: InputPin> Tmc6300Pio<PD>
 where
     PD::Error: core::fmt::Debug,
 {
-    /// Default tick interval for the TMC6300 PIO motor driver (500µs / 2kHz).
+    /// Default tick interval for the TMC6300 PIO motor driver (333µs).
     pub const DEFAULT_TICK_INTERVAL: embassy_time::Duration = DEFAULT_TICK_INTERVAL;
 
     /// Creates a new mock TMC6300 PIO driver with diagnostic pin.
@@ -1196,6 +1230,11 @@ where
         self.freewheel_mode
     }
 
+    /// Returns the physical motor specification and characteristics.
+    pub const fn motor_info(&self) -> model::types::MotorInfo {
+        MOTOR_INFO
+    }
+
     /// Returns the last freewheel PWM word pushed during freewheeling.
     pub fn last_freewheel_word(&self) -> u32 {
         self.last_freewheel_word
@@ -1261,8 +1300,8 @@ where
         if raw != 0 {
             self.duty_cycle = raw.unsigned_abs().min(100);
             let mask = phase_mask(self.speed, self.commutation_step);
-            self.last_word =
-                make_pwm_word(mask, self.duty_cycle, PWM_PERIOD_CYCLES - self.duty_cycle);
+            let (on, off) = calculate_pwm_counts(self.duty_cycle);
+            self.last_word = make_pwm_word(mask, on, off);
         } else {
             self.stop()?;
         }
@@ -1276,6 +1315,18 @@ where
         self.last_word = make_pwm_word(0, 0, PWM_PERIOD_CYCLES);
         self.last_freewheel_word = 0;
         Ok(())
+    }
+
+    fn set_duty_cycle(&mut self, duty_cycle: u8) -> Result<(), Self::Error> {
+        self.duty_cycle = duty_cycle.min(100);
+        let mask = phase_mask(self.speed, self.commutation_step);
+        let (on, off) = calculate_pwm_counts(self.duty_cycle);
+        self.last_word = make_pwm_word(mask, on, off);
+        Ok(())
+    }
+
+    fn duty_cycle(&self) -> u8 {
+        self.duty_cycle
     }
 }
 
@@ -1313,8 +1364,9 @@ where
 
                 self.commutation_step = (self.commutation_step + 1) % (COMMUTATION_STEPS as u8);
                 let mask = phase_mask(raw, self.commutation_step);
-                self.last_word =
-                    make_pwm_word(mask, self.duty_cycle, PWM_PERIOD_CYCLES - self.duty_cycle);
+                let (on, off) = calculate_pwm_counts(self.duty_cycle);
+                let word = make_pwm_word(mask, on, off);
+                self.last_word = word;
             }
             Ok(())
         }

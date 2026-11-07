@@ -2,12 +2,13 @@
 
 - **UUID**: `96bf370a-4dde-42d3-a00f-e6399fc7d737`
 - **ID**: `WORM-SLITHERING-LUMBRICUS-809`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `CRITICAL`
 - **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-21 22:51:40 UTC`
 - **Resolved**: `2026-10-21 23:16:18 UTC`
+- **Accepted**: `2026-10-21 23:16:18 UTC`
 
 #### Description
 

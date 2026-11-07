@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
+import re
 import sys
 import threading
 from typing import Any, List, Optional
@@ -24,6 +25,7 @@ from model.worm_report import (
     WormSeverity,
     WormStatus,
 )
+from provider.sanitizer import elide_personal_info
 from provider.worm_report.markdown_exporter import MarkdownWormExporter
 from provider.worm_report.sqlite_store import SQLiteWormStore
 
@@ -91,6 +93,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                         "target": runner.target,
                         "speed": runner.speed,
                         "chip": runner.chip,
+                        "show_system_logs": getattr(runner, "show_system_logs", False),
                     },
                     "package_selection_mode": getattr(runner, "package_selection_mode", False),
                 }
@@ -104,6 +107,9 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/cli/output":
             with runner._lock:
                 self._send_json(list(runner.cli_outputs))
+        elif path == "/api/cli/history":
+            with runner._lock:
+                self._send_json({"history": list(getattr(runner, "command_history", []))})
         elif path == "/api/fs/output":
             with runner._lock:
                 self._send_json(list(runner.fs_outputs))
@@ -224,6 +230,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             spd = payload.get("speed") or runner.speed
             chp = payload.get("chip") or runner.chip
             tgt = payload.get("target")
+            show_logs = payload.get("show_system_logs")
 
             if not tgt:
                 tgt = infer_arm_target(pkg, bin_name, chip=chp, repo_root=runner.repo_root)
@@ -235,6 +242,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 release=rel,
                 speed=spd,
                 chip=chp,
+                show_system_logs=show_logs,
             )
             runner.package_selection_mode = False
             save_last_session(
@@ -348,6 +356,8 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 steps = [s.strip() for s in raw_steps.splitlines() if s.strip()]
             else:
                 steps = [str(s).strip() for s in raw_steps if str(s).strip()]
+            steps = [re.sub(r"^\d+\.\s*", "", s).strip() for s in steps]
+            steps = [s for s in steps if s]
 
             expected = (payload.get("expected_behavior") or "").strip()
             actual = (payload.get("actual_behavior") or "").strip()
@@ -381,7 +391,8 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
 
                 log_filename = f"target_system_logs_{worm_id}.log"
                 log_file_path = worm_att_dir / log_filename
-                log_file_path.write_text(logs_content, encoding="utf-8")
+                sanitized_logs = elide_personal_info(logs_content)
+                log_file_path.write_text(sanitized_logs, encoding="utf-8")
 
                 rel_att_path = f"attachments/{worm_id}/{log_filename}"
                 attachments.append(
@@ -390,7 +401,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                         filename=log_filename,
                         file_type="log",
                         file_path=rel_att_path,
-                        size_bytes=len(logs_content.encode("utf-8")),
+                        size_bytes=len(sanitized_logs.encode("utf-8")),
                         description="Target system and defmt logs from host daemon session",
                         created_at=now_str,
                     )
@@ -404,14 +415,15 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     crash_out = f"Failed to retrieve crash log: {e}"
                 crash_filename = f"target_crash_log_{worm_id}.log"
                 crash_file_path = worm_att_dir / crash_filename
-                crash_file_path.write_text(crash_out, encoding="utf-8")
+                sanitized_crash = elide_personal_info(crash_out)
+                crash_file_path.write_text(sanitized_crash, encoding="utf-8")
                 attachments.append(
                     WormAttachmentModel(
                         id=f"att-{len(attachments) + 1}",
                         filename=crash_filename,
                         file_type="log",
                         file_path=f"attachments/{worm_id}/{crash_filename}",
-                        size_bytes=len(crash_out.encode("utf-8")),
+                        size_bytes=len(sanitized_crash.encode("utf-8")),
                         description="Target crash log retrieved via host_fs",
                         created_at=now_str,
                     )

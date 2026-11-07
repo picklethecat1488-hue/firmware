@@ -2,12 +2,13 @@
 
 - **UUID**: `72adfd2a-91d8-4c82-bcec-3d7c8ebf6f7e`
 - **ID**: `WORM-ANNELIDIC-MAGGOT-775`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `target`
 - **Created**: `2026-10-17 23:20:51 UTC`
 - **Resolved**: `2026-10-17 23:25:24 UTC`
+- **Accepted**: `2026-10-17 23:25:24 UTC`
 
 #### Description
 
