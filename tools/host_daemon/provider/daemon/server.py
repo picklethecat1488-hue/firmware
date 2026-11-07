@@ -550,13 +550,6 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             exporter = MarkdownWormExporter(repo_root=repo_root)
             exported_path = exporter.export_individual_worm(worm, feedback_dir=feedback_dir)
 
-            # Update aggregated feedback/WORMS.md
-            try:
-                full_db = store.load_all()
-                exporter.export_worm_report(full_db, output_path=feedback_dir / "WORMS.md")
-            except Exception:
-                pass
-
             runner.log(
                 f"Target bug created: {worm_id} ({title}) with {len(attachments)} attachments",
                 level="INFO",

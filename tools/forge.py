@@ -7,18 +7,18 @@ commit split/combine, merge conflict resolution, interactive line-by-line Code R
 and integrated Worm Tracker, all served under a single endpoint.
 
 Usage:
-    python tools/dashboard.py
-    python tools/dashboard.py --port 8877
-    python tools/dashboard.py --list
-    python tools/dashboard.py --branch main
-    python tools/dashboard.py --goto 75d5f92
-    python tools/dashboard.py --worms
-    python tools/dashboard.py --add-worm "Motor overrun in tick loop" --severity HIGH --category CONTROLLER
-    python tools/dashboard.py --resolve-worm WORM-001 --notes "Adjusted PID timing constants"
-    python tools/dashboard.py --reviews
-    python tools/dashboard.py --add-comment "Verify DMA buffer alignment" --file app/src/main.rs --line 42
-    python tools/dashboard.py --resolve-comment abc123
-    python tools/dashboard.py --verdict APPROVED
+    python tools/forge.py
+    python tools/forge.py --port 8877
+    python tools/forge.py --list
+    python tools/forge.py --branch main
+    python tools/forge.py --goto 75d5f92
+    python tools/forge.py --worms
+    python tools/forge.py --add-worm "Motor overrun in tick loop" --severity HIGH --category CONTROLLER
+    python tools/forge.py --resolve-worm WORM-001 --notes "Adjusted PID timing constants"
+    python tools/forge.py --reviews
+    python tools/forge.py --add-comment "Verify DMA buffer alignment" --file app/src/main.rs --line 42
+    python tools/forge.py --resolve-comment abc123
+    python tools/forge.py --verdict APPROVED
 """
 
 from pathlib import Path

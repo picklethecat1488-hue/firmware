@@ -36,15 +36,15 @@ def test_dashboard_lock_file_path(tmp_path: Path) -> None:
 
 def test_cli_detach_flags() -> None:
     """Verify parse_arguments handles --no-detach and --stop flags."""
-    with patch("sys.argv", ["dashboard.py", "--no-detach"]):
+    with patch("sys.argv", ["forge.py", "--no-detach"]):
         args = parse_arguments()
         assert getattr(args, "no_detach", False) is True
 
-    with patch("sys.argv", ["dashboard.py", "--foreground"]):
+    with patch("sys.argv", ["forge.py", "--foreground"]):
         args = parse_arguments()
         assert getattr(args, "no_detach", False) is True
 
-    with patch("sys.argv", ["dashboard.py", "--stop"]):
+    with patch("sys.argv", ["forge.py", "--stop"]):
         args = parse_arguments()
         assert getattr(args, "stop", False) is True
 
@@ -90,7 +90,7 @@ def test_second_instance_exits_cleanly(tmp_path: Path) -> None:
         patch("dashboard.cli.is_port_in_use", return_value=True),
         patch("dashboard.cli.launch_browser") as mock_launch,
         patch("sys.stdout", out),
-        patch("sys.argv", ["dashboard.py"]),
+        patch("sys.argv", ["forge.py"]),
     ):
         main()
 
@@ -113,7 +113,7 @@ def test_cli_stop_active_instance(tmp_path: Path) -> None:
         patch("dashboard.cli.is_pid_alive", return_value=False),
         patch("os.kill") as mock_kill,
         patch("sys.stdout", out),
-        patch("sys.argv", ["dashboard.py", "--stop"]),
+        patch("sys.argv", ["forge.py", "--stop"]),
     ):
         main()
 
@@ -133,7 +133,7 @@ def test_cli_stop_no_instance(tmp_path: Path) -> None:
         patch("dashboard.cli.get_dashboard_lock_file", return_value=lock_file),
         patch("dashboard.cli.check_existing_instance", return_value=None),
         patch("sys.stdout", out),
-        patch("sys.argv", ["dashboard.py", "--stop"]),
+        patch("sys.argv", ["forge.py", "--stop"]),
     ):
         main()
 
@@ -155,7 +155,7 @@ def test_cli_restart_active_instance(tmp_path: Path) -> None:
         patch("dashboard.cli.DashboardServer") as mock_server,
         patch("dashboard.cli.launch_browser"),
         patch("sys.stdout", out),
-        patch("sys.argv", ["dashboard.py", "--restart", "--no-detach", "--no-browser"]),
+        patch("sys.argv", ["forge.py", "--restart", "--no-detach", "--no-browser"]),
     ):
         mock_server.return_value.get_url.return_value = "http://127.0.0.1:8877"
         main()
@@ -179,7 +179,7 @@ def test_cli_restart_subcommand(tmp_path: Path) -> None:
         patch("dashboard.cli.DashboardServer") as mock_server,
         patch("dashboard.cli.launch_browser"),
         patch("sys.stdout", out),
-        patch("sys.argv", ["dashboard.py", "restart", "--no-detach", "--no-browser"]),
+        patch("sys.argv", ["forge.py", "restart", "--no-detach", "--no-browser"]),
     ):
         mock_server.return_value.get_url.return_value = "http://127.0.0.1:8877"
         main()

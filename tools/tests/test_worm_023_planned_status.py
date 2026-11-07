@@ -72,7 +72,7 @@ def test_cli_list_worms_open_excludes_planned() -> None:
 
 def test_cli_planned_argument() -> None:
     """Verify --planned CLI argument filters to PLANNED worms."""
-    with patch("sys.argv", ["dashboard.py", "--planned"]):
+    with patch("sys.argv", ["forge.py", "--planned"]):
         args = parse_arguments()
         assert getattr(args, "planned", False) is True
 
