@@ -252,9 +252,7 @@ class DetachedBranchWormStore:
             for bug in database.worms:
                 if dirty_set is not None and bug.id not in dirty_set:
                     continue
-                clean_id = (
-                    bug.id.removeprefix("WORM-").removeprefix("WORM_").removeprefix("BUG-").removeprefix("BUG_")
-                )
+                clean_id = bug.id.removeprefix("WORM-").removeprefix("WORM_").removeprefix("BUG-").removeprefix("BUG_")
                 md_content = self.exporter.render_worm_markdown(bug)
                 (fb_dir / f"{prefix}_{clean_id}.md").write_text(md_content, encoding="utf-8")
 
@@ -739,7 +737,14 @@ class DetachedBranchWormStore:
             env["GIT_COMMITTER_EMAIL"] = "user@workspace"
             if diff_proc.returncode != 0:
                 subprocess.run(
-                    ["git", "-C", str(fb_dir), "commit", "-m", "Sync local feedback and attachments to detached branch"],
+                    [
+                        "git",
+                        "-C",
+                        str(fb_dir),
+                        "commit",
+                        "-m",
+                        "Sync local feedback and attachments to detached branch",
+                    ],
                     cwd=str(self.repo_root),
                     env=env,
                     check=False,

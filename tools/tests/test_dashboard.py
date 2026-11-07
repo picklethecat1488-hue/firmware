@@ -3708,4 +3708,3 @@ def test_ensure_feedback_worktree_migration(tmp_path: Path) -> None:
     # 6. Verify idempotency
     res_second = engine.ensure_feedback_worktree()
     assert res_second is True
-
