@@ -1,6 +1,6 @@
 # 🔴 `[BUG-OPEN-003]` Open defect
 
-- **UUID**: `cfcff3a2-bd0a-4860-a1e1-5348264bae85`
+- **UUID**: `052da7a1-5114-4715-8dc6-ee29d21db087`
 - **ID**: `BUG-OPEN-003`
 - **Status**: `OPEN`
 - **Severity**: `LOW`
