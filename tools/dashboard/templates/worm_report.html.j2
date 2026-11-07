@@ -1526,7 +1526,7 @@
 
       return await runWithActionModal({
         title: "SAVING WORM REPORT",
-        description: `Persisting worm ${activeWormId || "record"} changes and syncing WORMS.md...`,
+        description: `Persisting worm ${activeWormId || "record"} changes and syncing feedback...`,
         stepText: `Saving ${activeWormId || "worm"}...`,
         icon: "💾"
       }, async () => {
@@ -1592,7 +1592,7 @@
         renderWormList();
         updateComponentDatalist();
         loadActiveWorm();
-        showToast("Saved worm " + (saved.id || worm.id) + " & synced WORMS.md");
+        showToast("Saved worm " + (saved.id || worm.id));
         return saved;
       });
     }
@@ -1602,7 +1602,7 @@
       if (!confirm("Are you sure you want to delete this worm report?")) return;
       return await runWithActionModal({
         title: "DELETING WORM REPORT",
-        description: `Deleting ${activeWormId} and updating WORMS.md...`,
+        description: `Deleting ${activeWormId}...`,
         stepText: `Deleting ${activeWormId}...`,
         icon: "🗑️"
       }, async () => {
@@ -1617,7 +1617,7 @@
         renderWormList();
         updateComponentDatalist();
         loadActiveWorm();
-        showToast("Deleted worm & updated WORMS.md");
+        showToast("Deleted worm");
       });
     }
     const deleteActiveBug = deleteActiveWorm;

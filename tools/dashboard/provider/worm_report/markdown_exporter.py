@@ -966,8 +966,25 @@ class MarkdownWormExporter:
             return None
         try:
             content = file_path.read_text(encoding="utf-8")
+            return self.parse_worm_markdown_content(content, default_filename=file_path.name)
+        except Exception:
+            return None
+
+    def parse_worm_markdown_content(self, content: str, default_filename: str = "") -> Optional[WormReportModel]:
+        """Parse raw markdown text of an individual WORM_<id>.md report into a WormReportModel.
+
+        Args:
+            content: Raw markdown text content.
+            default_filename: Optional filename hint (e.g. WORM_001.md).
+
+        Returns:
+            WormReportModel if valid, else None.
+        """
+        try:
             m_header = re.search(r"^#\s+(?:[^\n\[]*?)?`\[(WORM-[^\]]+|[^\]]+)\]`\s*(.*?)$", content, re.MULTILINE)
-            m_fn = re.match(r"^(?:WORM|BUG)[_-](.+)\.md$", file_path.name, re.IGNORECASE)
+            m_fn = (
+                re.match(r"^(?:WORM|BUG)[_-](.+)\.md$", default_filename, re.IGNORECASE) if default_filename else None
+            )
             fn_id = ""
             if m_fn:
                 fn_part = m_fn.group(1)

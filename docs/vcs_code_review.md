@@ -14,7 +14,7 @@ To document the design patterns, template hierarchies, and persistence protocols
 
 ### 2. Dual-Layer Persistence & R+M+W Markdown Synchronization
 * **SQLite Store as Primary Single Source of Truth**: Interactive mutations (review comments, file review statuses, worm creation, attachments, resolution notes) persist immediately to ACID SQLite databases (`target/code_review.sqlite`, `target/worms.sqlite`).
-* **Bidirectional Markdown Sync (Read-Modify-Write)**: The server continuously synchronizes with `feedback/` (`feedback/CR.md`, `feedback/CR_<commit>.md`, `feedback/WORMS.md`, `feedback/WORM_<id>.md`). When on-disk files are edited externally, changes are detected via file modification time and safely merged without clobbering resolved statuses or existing notes.
+* **Bidirectional Markdown Sync (Read-Modify-Write)**: The server continuously synchronizes with `feedback/` (`feedback/CR_<commit>.md`, `feedback/WORM_<id>.md`). When on-disk files are edited externally, changes are detected via file modification time and safely merged without clobbering resolved statuses or existing notes.
 
 ### 3. CLI Parity & Subcommand Structure
 * **Action-Topic Subcommands**: All workstation operations support corresponding CLI subcommands with consistent flags:
