@@ -1420,12 +1420,15 @@ class DashboardServer(ThreadingHTTPServer):
         self.initial_sync_done: bool = False
 
         md_review = markdown_review_path
-        if md_review is None and sqlite_review_file and sqlite_review_file.parent.name not in ("build", "target"):
-            md_review = sqlite_review_file.parent / "CR.md"
-
         md_worms = markdown_worms_path
-        if md_worms is None and sqlite_worm_file and sqlite_worm_file.parent.name not in ("build", "target"):
-            md_worms = sqlite_worm_file.parent / "WORMS.md"
+
+        custom_fb_dir = None
+        if sqlite_review_file and sqlite_review_file.parent.name not in ("build", "target"):
+            custom_fb_dir = (
+                sqlite_review_file.parent / "feedback"
+                if (sqlite_review_file.parent / "feedback").exists()
+                else sqlite_review_file.parent
+            )
 
         review_state = sqlite_review_file.with_suffix(".json") if sqlite_review_file else None
         worm_state = sqlite_worm_file.with_suffix(".json") if sqlite_worm_file else None
@@ -1435,6 +1438,7 @@ class DashboardServer(ThreadingHTTPServer):
             host=host,
             port=port,
             repo_root=self.repo_root,
+            feedback_dir=custom_fb_dir,
             markdown_output=md_review,
             state_file=review_state,
             sqlite_file=sqlite_review_file,
@@ -1446,6 +1450,7 @@ class DashboardServer(ThreadingHTTPServer):
             host=host,
             port=port,
             repo_root=self.repo_root,
+            feedback_dir=custom_fb_dir,
             markdown_output=md_worms,
             state_file=worm_state,
             sqlite_file=sqlite_worm_file,

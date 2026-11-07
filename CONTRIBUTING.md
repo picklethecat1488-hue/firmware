@@ -675,9 +675,7 @@ The workstation employs a dual-layer storage architecture combining ACID transac
    - `target/worms.sqlite`: Defect records, severity classifications, and resolution logs.
 2. **Bidirectional Markdown Synchronization (`feedback/`)**:
    - The server continuously monitors and synchronizes state with markdown reports in `feedback/`:
-     - `feedback/CR.md`: Primary aggregated code review report.
      - `feedback/CR_<commit>.md`: Revision-specific review findings with action item checkboxes (`- [ ]` / `- [x]`).
-     - `feedback/WORMS.md`: Primary aggregated defect matrix index.
      - `feedback/WORM_<id>.md`: Granular defect tickets.
    - External edits to markdown checkboxes or headers are automatically detected via modification timestamps and merged safely into the SQLite database without losing resolution history.
 3. **Git LFS Non-Confidential Attachments**:
