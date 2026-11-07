@@ -3318,33 +3318,6 @@
       "attachments": [
         {
           "id": "att-1",
-          "filename": "motor_speed_30.MOV",
-          "file_type": "document",
-          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV",
-          "size_bytes": 0,
-          "description": "Attached document (motor_speed_30.MOV)",
-          "created_at": ""
-        },
-        {
-          "id": "att-2",
-          "filename": "motor_speed_100.MOV",
-          "file_type": "document",
-          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV",
-          "size_bytes": 0,
-          "description": "Attached document (motor_speed_100.MOV)",
-          "created_at": ""
-        },
-        {
-          "id": "att-3",
-          "filename": "target_system_logs_WORM-ORGANIC-FIREWORM-553.log",
-          "file_type": "log",
-          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log",
-          "size_bytes": 0,
-          "description": "Target system and defmt logs from host daemon session",
-          "created_at": ""
-        },
-        {
-          "id": "att-4",
           "filename": "motor_speed_10.MOV",
           "file_type": "document",
           "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV",
@@ -3353,12 +3326,39 @@
           "created_at": ""
         },
         {
-          "id": "att-5",
+          "id": "att-2",
           "filename": "motor_speed_50.MOV",
           "file_type": "document",
           "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV",
           "size_bytes": 0,
           "description": "Attached document (motor_speed_50.MOV)",
+          "created_at": ""
+        },
+        {
+          "id": "att-3",
+          "filename": "motor_speed_30.MOV",
+          "file_type": "document",
+          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV",
+          "size_bytes": 0,
+          "description": "Attached document (motor_speed_30.MOV)",
+          "created_at": ""
+        },
+        {
+          "id": "att-4",
+          "filename": "motor_speed_100.MOV",
+          "file_type": "document",
+          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV",
+          "size_bytes": 0,
+          "description": "Attached document (motor_speed_100.MOV)",
+          "created_at": ""
+        },
+        {
+          "id": "att-5",
+          "filename": "target_system_logs_WORM-ORGANIC-FIREWORM-553.log",
+          "file_type": "log",
+          "file_path": "attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log",
+          "size_bytes": 0,
+          "description": "Target system and defmt logs from host daemon session",
           "created_at": ""
         }
       ],
@@ -3797,6 +3797,15 @@
       "attachments": [
         {
           "id": "att-1",
+          "filename": "target_system_logs_WORM-COMPOSTED-DIGGER-386.log",
+          "file_type": "log",
+          "file_path": "attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log",
+          "size_bytes": 0,
+          "description": "Target system and defmt logs from host daemon session",
+          "created_at": ""
+        },
+        {
+          "id": "att-2",
           "filename": "target_telemetry_WORM-COMPOSTED-DIGGER-386.json",
           "file_type": "reference",
           "file_path": "attachments/WORM-COMPOSTED-DIGGER-386/target_telemetry_WORM-COMPOSTED-DIGGER-386.json",
@@ -3805,21 +3814,12 @@
           "created_at": ""
         },
         {
-          "id": "att-2",
+          "id": "att-3",
           "filename": "IMG_0202.MOV",
           "file_type": "reference",
           "file_path": "attachments/WORM-COMPOSTED-DIGGER-386/IMG_0202.MOV",
           "size_bytes": 0,
           "description": "Uploaded reference IMG_0202.MOV",
-          "created_at": ""
-        },
-        {
-          "id": "att-3",
-          "filename": "target_system_logs_WORM-COMPOSTED-DIGGER-386.log",
-          "file_type": "log",
-          "file_path": "attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log",
-          "size_bytes": 0,
-          "description": "Target system and defmt logs from host daemon session",
           "created_at": ""
         }
       ],
@@ -4344,7 +4344,7 @@
       "id": "WORM-FLESHY-WOODLOUSE-266",
       "uuid": "f49f45d9-fb73-4558-a7dc-915a6288625a",
       "title": "Not abel to commit updated feedbacks through VCS UI",
-      "status": "RESOLVED",
+      "status": "CLOSED",
       "severity": "MEDIUM",
       "category": "INFRASTRUCTURE",
       "component": "dashboard",
@@ -4365,7 +4365,7 @@
           "id": "d2fc9bac",
           "title": "Verify git status on code branches is clean and does not show untracked feedback directory",
           "command": "git status",
-          "status": "PENDING",
+          "status": "COMPLETED",
           "notes": ""
         },
         {
@@ -4385,12 +4385,12 @@
       ],
       "created_at": "2026-11-06 23:58:59 UTC",
       "updated_at": "",
-      "resolved_at": "2026-11-07 00:22:38 UTC",
+      "resolved_at": "2026-11-07 01:18:33 UTC",
       "resolution_notes": "Restore feedback/ in .gitignore across firmware and hardware to decouple to detached branches; preserve GitEngine force-add fallback for UI staging and commits",
       "rejection_notes": "",
-      "accepted_at": null,
+      "accepted_at": "2026-11-07 01:18:35 UTC",
       "rejected_at": null
     }
   ],
-  "updated_at": "2026-11-07 01:18:03 UTC"
+  "updated_at": "2026-11-07 01:22:47 UTC"
 }

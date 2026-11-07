@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-07 01:18:09 UTC` |
+| **Report Date** | `2026-11-07 01:22:48 UTC` |
 | **Total Issues** | `110` |
 | **Open Issues** | `0` |
 | **Resolved / Closed** | `110 (100%)` |
@@ -146,7 +146,7 @@
 - [x] **`[MEDIUM]`** [#WORM-HUMIC-SANDWORM-365](#worm-humic-sandworm-365): motor speed 50 tripped DIAG `[target]` (`CLOSED`)
 - [x] **`[MEDIUM]`** [#WORM-CREEPING-TAPEWORM-215](#worm-creeping-tapeworm-215): Only first commit in smartlog tree gets highlighted `[dashboard]` (`CLOSED`)
 - [x] **`[LOW]`** [#WORM-SILKEN-CASTING-127](#worm-silken-casting-127): Diff viewer missing green highlight for line additions in side-by-side and unified views `[dashboard]` (`CLOSED`)
-- [x] **`[MEDIUM]`** [#WORM-FLESHY-WOODLOUSE-266](#worm-fleshy-woodlouse-266): Not abel to commit updated feedbacks through VCS UI `[dashboard]` (`RESOLVED`)
+- [x] **`[MEDIUM]`** [#WORM-FLESHY-WOODLOUSE-266](#worm-fleshy-woodlouse-266): Not abel to commit updated feedbacks through VCS UI `[dashboard]` (`CLOSED`)
 
 ## Detailed Issue Log
 
@@ -14175,11 +14175,11 @@ motor speed 100-rotates slowly, and eventually trips drag
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
+| `document` | [motor_speed_10.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV) | Attached document (motor_speed_10.MOV) |
+| `document` | [motor_speed_50.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV) | Attached document (motor_speed_50.MOV) |
 | `document` | [motor_speed_30.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV) | Attached document (motor_speed_30.MOV) |
 | `document` | [motor_speed_100.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV) | Attached document (motor_speed_100.MOV) |
 | `log` | [target_system_logs_WORM-ORGANIC-FIREWORM-553.log](attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log) | Target system and defmt logs from host daemon session |
-| `document` | [motor_speed_10.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV) | Attached document (motor_speed_10.MOV) |
-| `document` | [motor_speed_50.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV) | Attached document (motor_speed_50.MOV) |
 
 #### Resolution Notes
 
@@ -15119,9 +15119,9 @@ The motor spins for a half cycle, during which the motor duty cycle is 100%. Aft
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
+| `log` | [target_system_logs_WORM-COMPOSTED-DIGGER-386.log](attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log) | Target system and defmt logs from host daemon session |
 | `reference` | [target_telemetry_WORM-COMPOSTED-DIGGER-386.json](attachments/WORM-COMPOSTED-DIGGER-386/target_telemetry_WORM-COMPOSTED-DIGGER-386.json) | Target telemetry export retrieved via host_fs |
 | `reference` | [IMG_0202.MOV](attachments/WORM-COMPOSTED-DIGGER-386/IMG_0202.MOV) | Uploaded reference IMG_0202.MOV |
-| `log` | [target_system_logs_WORM-COMPOSTED-DIGGER-386.log](attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log) | Target system and defmt logs from host daemon session |
 
 #### Resolution Notes
 
@@ -16073,12 +16073,13 @@ Updated diff_component.html.j2 and code_review.html.j2 to use green highlight rg
 ### <a id="worm-fleshy-woodlouse-266"></a> 🟢 `[WORM-FLESHY-WOODLOUSE-266]` Not abel to commit updated feedbacks through VCS UI
 
 - **UUID**: `f49f45d9-fb73-4558-a7dc-915a6288625a`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-11-06 23:58:59 UTC`
-- **Resolved**: `2026-11-07 00:22:38 UTC`
+- **Resolved**: `2026-11-07 01:18:33 UTC`
+- **Accepted**: `2026-11-07 01:18:35 UTC`
 
 #### Description
 
@@ -16105,7 +16106,7 @@ $ git add -f feedback/WORM_ORGANIC-FIREWORM-553.md
 
 #### Review Tasks & Functional Checklist
 
-- [ ] Verify git status on code branches is clean and does not show untracked feedback directory | `git status` <!-- id:d2fc9bac -->
+- [x] Verify git status on code branches is clean and does not show untracked feedback directory | `git status` <!-- id:d2fc9bac -->
 - [ ] Verify .gitignore decouples feedback/ and attachments/ | `git check-ignore feedback/ attachments/` <!-- id:814a31c1 -->
 - [ ] Verify GitEngine stages and commits feedback files using force-add fallback without raising gitignore errors | `python -c 'from tools.dashboard.provider.vcs.git_engine import GitEngine; from pathlib import Path; GitEngine(Path(".")).stage_file("feedback/WORM_FLESHY-WOODLOUSE-266.md")'` <!-- id:57b289a0 -->
 
