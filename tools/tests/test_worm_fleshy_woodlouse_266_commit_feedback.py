@@ -1,13 +1,13 @@
 """Regression unit test for WORM-FLESHY-WOODLOUSE-266.
 
 Verifies:
-1. Feedback files in feedback/ (e.g. feedback/WORM_*.md, feedback/CR_*.md) are discovered
-   by GitEngine.get_working_tree_files() as feedback files (not ignored by git).
-2. GitEngine.stage_file() successfully stages untracked and modified feedback files into git index.
-3. GitEngine.commit_files() successfully commits feedback files to repository without gitignore errors.
-4. GitEngine.stage_file() and commit_files() provide force-add fallback if a file was gitignored,
-   honoring explicit user actions in the VCS UI.
-5. .gitignore does not ignore feedback/ directory while preserving attachments/ ignores.
+1. .gitignore contains feedback/, attachments/, and feedback/attachments/ to decouple
+   worm/bug and review tracking to dedicated detached branches (refs/heads/worms or refs/heads/bugs)
+   and keep code feature branches clean from untracked working tree pollution.
+2. GitEngine.stage_file() and commit_files() provide automatic force-add fallback when explicitly
+   staging or committing files that match .gitignore rules (such as feedback files), so users
+   can commit updated feedbacks through the VCS UI without being blocked by gitignore or
+   having to manually run 'git add -f' from the shell.
 """
 
 from pathlib import Path
@@ -37,56 +37,56 @@ def temp_repo(tmp_path: Path) -> GitEngine:
     return GitEngine(repo_dir)
 
 
-def test_gitignore_does_not_ignore_feedback_dir() -> None:
-    """Verify that root .gitignore does not ignore the feedback directory."""
+def test_gitignore_decouples_feedback_and_attachments() -> None:
+    """Verify that root .gitignore ignores feedback/ and attachments/ to decouple to detached branches."""
     repo_root = Path(__file__).resolve().parents[2]
     gitignore_path = repo_root / ".gitignore"
     assert gitignore_path.exists(), ".gitignore must exist"
 
-    lines = gitignore_path.read_text(encoding="utf-8").splitlines()
-    # feedback/ must not be present as an ignored line
-    assert "feedback/" not in [line.strip() for line in lines], (
-        "feedback/ must not be ignored in .gitignore, as review and worm markdown files are tracked in git."
+    lines = [line.strip() for line in gitignore_path.read_text(encoding="utf-8").splitlines()]
+    # feedback/ must be ignored on code branches to prevent untracked file pollution
+    assert "feedback/" in lines, (
+        "feedback/ must be ignored in .gitignore, as reviews and worms are decoupled to detached branches."
     )
     # Binary attachments must remain ignored
+    assert "attachments/" in lines or any("attachments/" in line for line in lines), (
+        "attachments/ must remain ignored in .gitignore."
+    )
     assert any("feedback/attachments/" in line for line in lines), (
         "feedback/attachments/ must remain ignored in .gitignore."
     )
 
 
-def test_untracked_feedback_file_discovered_in_working_tree(temp_repo: GitEngine) -> None:
-    """Verify that an untracked feedback file is discovered by get_working_tree_files()."""
-    feedback_dir = temp_repo.repo_root / "feedback"
-    feedback_dir.mkdir(parents=True, exist_ok=True)
+def test_stage_and_commit_feedback_file_with_gitignore_fallback(temp_repo: GitEngine) -> None:
+    """Verify GitEngine can stage and commit feedback files even when feedback/ is in .gitignore."""
+    # Write .gitignore ignoring feedback/ (matching repository configuration)
+    gitignore = temp_repo.repo_root / ".gitignore"
+    gitignore.write_text("feedback/\nattachments/\nfeedback/attachments/\n", encoding="utf-8")
+    run_git_command(["add", ".gitignore"], cwd=temp_repo.repo_root)
+    run_git_command(["commit", "-m", "Ignore feedback and attachments on code branch"], cwd=temp_repo.repo_root)
 
-    worm_file = feedback_dir / "WORM_TEST-SAMPLE-001.md"
-    worm_file.write_text("# Test Worm Report\nStatus: OPEN\n", encoding="utf-8")
-
-    working_files = temp_repo.get_working_tree_files()
-    found = [f for f in working_files if f.path == "feedback/WORM_TEST-SAMPLE-001.md"]
-    assert len(found) == 1, "Untracked feedback file must be discovered in working tree"
-    assert found[0].is_feedback is True
-    assert found[0].is_untracked is True
-    assert found[0].is_staged is False
-
-
-def test_stage_and_commit_feedback_file(temp_repo: GitEngine) -> None:
-    """Verify GitEngine can stage and commit an untracked feedback file without errors."""
     feedback_dir = temp_repo.repo_root / "feedback"
     feedback_dir.mkdir(parents=True, exist_ok=True)
 
     worm_file = feedback_dir / "WORM_TEST-SAMPLE-002.md"
     worm_file.write_text("# Test Worm Report\nStatus: OPEN\n", encoding="utf-8")
 
-    # Stage through GitEngine
+    # Regular git add fails on ignored path
+    res = subprocess.run(
+        ["git", "add", "--", "feedback/WORM_TEST-SAMPLE-002.md"],
+        cwd=str(temp_repo.repo_root),
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode != 0
+    assert "ignored by one of your .gitignore files" in res.stderr
+
+    # GitEngine stage_file must succeed via force-add fallback
     temp_repo.stage_file("feedback/WORM_TEST-SAMPLE-002.md")
+    diff_staged = run_git_command(["diff", "--cached", "--name-only"], cwd=temp_repo.repo_root).strip()
+    assert "feedback/WORM_TEST-SAMPLE-002.md" in diff_staged
 
-    working_files = temp_repo.get_working_tree_files()
-    staged = [f for f in working_files if f.path == "feedback/WORM_TEST-SAMPLE-002.md"]
-    assert len(staged) == 1
-    assert staged[0].is_staged is True
-
-    # Commit through GitEngine
+    # GitEngine commit_files must succeed via force-add fallback
     commit_sha = temp_repo.commit_files(
         message="feat(worm): register test worm",
         file_paths=["feedback/WORM_TEST-SAMPLE-002.md"],
@@ -99,30 +99,31 @@ def test_stage_and_commit_feedback_file(temp_repo: GitEngine) -> None:
 
 
 def test_stage_and_commit_ignored_file_fallback(temp_repo: GitEngine) -> None:
-    """Verify GitEngine provides force-add fallback when staging or committing an ignored file."""
-    # Write a .gitignore ignoring special_feedback/
+    """Verify GitEngine provides force-add fallback when staging or committing any ignored file."""
+    # Write a .gitignore ignoring special_dir/
     gitignore = temp_repo.repo_root / ".gitignore"
-    gitignore.write_text("special_feedback/\n", encoding="utf-8")
+    gitignore.write_text("special_dir/\n", encoding="utf-8")
     run_git_command(["add", ".gitignore"], cwd=temp_repo.repo_root)
     run_git_command(["commit", "-m", "Add gitignore"], cwd=temp_repo.repo_root)
 
-    special_dir = temp_repo.repo_root / "special_feedback"
+    special_dir = temp_repo.repo_root / "special_dir"
     special_dir.mkdir(parents=True, exist_ok=True)
-    special_file = special_dir / "WORM_SPECIAL-003.md"
-    special_file.write_text("# Special Worm\n", encoding="utf-8")
+    special_file = special_dir / "test_file.txt"
+    special_file.write_text("hello\n", encoding="utf-8")
 
     # Explicit stage_file must force-add without failing
-    temp_repo.stage_file("special_feedback/WORM_SPECIAL-003.md")
+    temp_repo.stage_file("special_dir/test_file.txt")
 
     # Verify staged
     diff_staged = run_git_command(["diff", "--cached", "--name-only"], cwd=temp_repo.repo_root).strip()
-    assert "special_feedback/WORM_SPECIAL-003.md" in diff_staged
+    assert "special_dir/test_file.txt" in diff_staged
 
     # Explicit commit_files must succeed
     commit_sha = temp_repo.commit_files(
-        message="feat: add special feedback",
-        file_paths=["special_feedback/WORM_SPECIAL-003.md"],
+        message="feat: add special file",
+        file_paths=["special_dir/test_file.txt"],
     )
     assert len(commit_sha) >= 7
     log_files = run_git_command(["show", "--name-only", "--format=", commit_sha], cwd=temp_repo.repo_root).strip()
-    assert "special_feedback/WORM_SPECIAL-003.md" in log_files
+    assert "special_dir/test_file.txt" in log_files
+

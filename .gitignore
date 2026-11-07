@@ -68,8 +68,9 @@ recordings/previews/*.pdf
 !.anvil.env.example
 .anvil.lock*
 
-# Worm and review attachments (decoupled to detached git branch 'worms')
+# Worm and review tracking (decoupled to detached git branch 'worms')
 build/
+feedback/
 attachments/
 feedback/attachments/
 
