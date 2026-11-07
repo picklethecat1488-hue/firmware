@@ -1,6 +1,6 @@
 # 🟢 `[WORM-LEGACY-001]` Legacy resolved worm
 
-- **UUID**: `6944b399-821e-4f91-a60c-500eff4d61f7`
+- **UUID**: `575bafaf-559e-4b69-b51e-1c33d98d3dbd`
 - **ID**: `WORM-LEGACY-001`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
