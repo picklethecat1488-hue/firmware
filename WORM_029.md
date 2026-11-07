@@ -4,7 +4,7 @@
 - **ID**: `WORM-029`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Component**: `dashboard`
 - **Created**: `2026-10-09 20:51:32 UTC`
 - **Resolved**: `2026-10-09 21:02:49 UTC`

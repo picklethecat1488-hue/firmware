@@ -4,7 +4,7 @@
 - **ID**: `WORM-SETOSE-TUBEWORM-177`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Created**: `2026-10-21 23:57:15 UTC`
 - **Resolved**: `2026-10-22 00:18:42 UTC`
 - **Accepted**: `2026-10-22 00:18:42 UTC`

@@ -4,5 +4,5 @@
 - **ID**: `WORM-INCHING-VELVETWORM-843`
 - **Status**: `OPEN`
 - **Severity**: `LOW`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Created**: `2026-11-07 04:06:37 UTC`

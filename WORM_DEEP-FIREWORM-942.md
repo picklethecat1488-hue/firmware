@@ -4,7 +4,7 @@
 - **ID**: `WORM-DEEP-FIREWORM-942`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Component**: `platform`
 - **Created**: `2026-10-15 22:17:35 UTC`
 - **Resolved**: `2026-10-15 23:33:52 UTC`
@@ -12,7 +12,7 @@
 
 #### Description
 
-Motor driver trips DIAG fault when motor is connected during commutation; need GPIO set subcommand in CLI shell to <username> individual pins and commutator states directly on hardware.
+Motor driver trips DIAG fault when motor is connected during commutation; need GPIO set subcommand in CLI shell to test individual pins and commutator states directly on hardware.
 
 #### Reproduction Steps
 

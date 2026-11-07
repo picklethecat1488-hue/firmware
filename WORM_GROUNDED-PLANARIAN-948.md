@@ -4,7 +4,7 @@
 - **ID**: `WORM-GROUNDED-PLANARIAN-948`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Created**: `2026-10-15 21:00:30 UTC`
 - **Resolved**: `2026-10-15 21:28:14 UTC`
 - **Accepted**: `2026-10-15 21:28:14 UTC`

@@ -4,7 +4,7 @@
 - **ID**: `WORM-SEGMENTED-SIPUNCULID-504`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-22 01:59:36 UTC`
 - **Resolved**: `2026-10-22 02:44:35 UTC`

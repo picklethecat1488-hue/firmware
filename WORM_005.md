@@ -4,7 +4,7 @@
 - **ID**: `WORM-005`
 - **Status**: `CLOSED`
 - **Severity**: `LOW`
-- **Category**: `GENERAL`
+- **Category**: `BOARD`
 - **Component**: `carrier_board`
 - **Created**: `2026-10-03 19:29:54 UTC`
 - **Resolved**: `2026-10-03 21:33:17 UTC`

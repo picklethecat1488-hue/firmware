@@ -4,7 +4,7 @@
 - **ID**: `WORM-SLICK-BURROWER-70`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-16 01:23:33 UTC`
 - **Resolved**: `2026-10-16 01:36:22 UTC`

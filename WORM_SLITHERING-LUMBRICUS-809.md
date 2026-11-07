@@ -4,7 +4,7 @@
 - **ID**: `WORM-SLITHERING-LUMBRICUS-809`
 - **Status**: `CLOSED`
 - **Severity**: `CRITICAL`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-21 22:51:40 UTC`
 - **Resolved**: `2026-10-21 23:16:18 UTC`

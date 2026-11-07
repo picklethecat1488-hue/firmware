@@ -4,7 +4,7 @@
 - **ID**: `WORM-GLIDING-BRISTLE-252`
 - **Status**: `CLOSED`
 - **Severity**: `HIGH`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Component**: `tmc6300`
 - **Created**: `2026-10-15 20:53:40 UTC`
 - **Resolved**: `2026-10-15 21:11:59 UTC`

@@ -4,7 +4,7 @@
 - **ID**: `WORM-FOSSORIAL-COMPOSTER-481`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-18 01:04:48 UTC`
 - **Resolved**: `2026-10-18 01:14:52 UTC`

@@ -4,7 +4,7 @@
 - **ID**: `WORM-SLITHERING-EARTHWORM-854`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Created**: `2026-10-16 01:08:14 UTC`
 - **Resolved**: `2026-10-16 01:12:32 UTC`
 - **Accepted**: `2026-10-16 01:12:32 UTC`

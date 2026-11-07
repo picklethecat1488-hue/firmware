@@ -4,5 +4,5 @@
 - **ID**: `WORM-EARTHEN-TUNNELER-261`
 - **Status**: `OPEN`
 - **Severity**: `LOW`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Created**: `2026-11-07 04:32:24 UTC`

@@ -4,7 +4,7 @@
 - **ID**: `WORM-HUMIC-SANDWORM-365`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-24 02:10:03 UTC`
 - **Resolved**: `2026-10-24 02:21:31 UTC`

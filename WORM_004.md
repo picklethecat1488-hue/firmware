@@ -16,4 +16,4 @@ Change the Code Review icon used in UI from a magnifying glass icon to a wrench 
 
 #### Resolution Notes
 
-Changed Code Review icon in UI from magnifying glass to wrench across diff_view and code_review templates, verified with dedicated <username>.
+Changed Code Review icon in UI from magnifying glass to wrench across diff_view and code_review templates, verified with dedicated test.

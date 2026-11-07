@@ -4,7 +4,7 @@
 - **ID**: `WORM-PROBOSCID-ROUNDWORM-8`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-22 02:53:29 UTC`
 - **Resolved**: `2026-10-22 03:26:59 UTC`

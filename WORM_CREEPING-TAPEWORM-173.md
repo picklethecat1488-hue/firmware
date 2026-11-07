@@ -4,7 +4,7 @@
 - **ID**: `WORM-CREEPING-TAPEWORM-173`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Created**: `2026-10-17 01:49:59 UTC`
 - **Resolved**: `2026-10-17 02:08:37 UTC`
 - **Accepted**: `2026-10-17 02:08:37 UTC`

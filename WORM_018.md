@@ -15,4 +15,4 @@ Populate the component textbox with an autocomplete list based off prior worm hi
 
 #### Resolution Notes
 
-Added <datalist id="worm-component-list"> to worm_report.html.j2 connected to worm-component input, dynamically populated and kept up to date via updateComponentDatalist() from prior worm history, with server-side extraction fallback. Added regression unit <username> test_regression_worm_018_component_autocomplete_datalist.
+Added <datalist id="worm-component-list"> to worm_report.html.j2 connected to worm-component input, dynamically populated and kept up to date via updateComponentDatalist() from prior worm history, with server-side extraction fallback. Added regression unit test test_regression_worm_018_component_autocomplete_datalist.

@@ -4,7 +4,7 @@
 - **ID**: `WORM-WRITHING-SANDWORM-320`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Created**: `2026-09-01 10:00:00 UTC`
 - **Resolved**: `2026-09-01 12:00:00 UTC`
 - **Accepted**: `2026-09-01 12:00:00 UTC`

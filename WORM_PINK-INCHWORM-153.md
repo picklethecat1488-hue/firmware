@@ -4,5 +4,5 @@
 - **ID**: `WORM-PINK-INCHWORM-153`
 - **Status**: `OPEN`
 - **Severity**: `LOW`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Created**: `2026-11-07 04:06:30 UTC`

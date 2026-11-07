@@ -4,7 +4,7 @@
 - **ID**: `WORM-EARTHEN-NYMPH-383`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Created**: `2026-10-15 20:53:09 UTC`
 - **Resolved**: `2026-10-15 21:20:04 UTC`
 - **Accepted**: `2026-10-15 21:20:04 UTC`

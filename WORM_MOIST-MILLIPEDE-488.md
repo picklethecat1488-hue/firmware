@@ -16,4 +16,4 @@ When flashing or running host daemon without explicit target arguments, cat_dete
 
 #### Resolution Notes
 
-Configured default-run = 'cat_detector_shell' and prioritized shell binaries in target discovery. Isolated <username> sessions with tmp_path and guarded save_last_session against PYTEST_CURRENT_TEST to prevent <username> suites from polluting the developer's live workspace host session.
+Configured default-run = 'cat_detector_shell' and prioritized shell binaries in target discovery. Isolated test sessions with tmp_path and guarded save_last_session against PYTEST_CURRENT_TEST to prevent test suites from polluting the developer's live workspace host session.

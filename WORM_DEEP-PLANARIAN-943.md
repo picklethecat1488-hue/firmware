@@ -4,7 +4,7 @@
 - **ID**: `WORM-DEEP-PLANARIAN-943`
 - **Status**: `CLOSED`
 - **Severity**: `CRITICAL`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-17 00:24:41 UTC`
 - **Resolved**: `2026-10-17 00:50:39 UTC`

@@ -4,7 +4,7 @@
 - **ID**: `WORM-GLIDING-LARVA-522`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `GENERAL`
+- **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-10-18 00:37:14 UTC`
 - **Resolved**: `2026-10-18 01:10:06 UTC`
@@ -17,6 +17,24 @@ The DIAG light is still popping on. It looks like we still cannot escape commuta
 #### Reproduction Steps
 
 1. motor speed 100
+
+#### Waveform Analysis & Scope Comparison
+
+![TMC6300 Commutation Waveform Comparison](../recordings/previews/waveform_gliding_larva_522.svg)
+
+##### 1. Observed Output Waveform (`attachments/WORM-GLIDING-LARVA-522/digital.csv`)
+- **Step 0 ($t = 0.00\,\text{ms} \to 10.00\,\text{ms}$)**: Firmware energized **UL** (GP17) and **WH** (GP20).
+- **Step 1 ($t = 10.00\,\text{ms} \to 19.89\,\text{ms}$)**: Firmware energized **VL** (GP19) and **WH** (GP20).
+- **Fault ($t \approx 20\,\text{ms}$)**: High-side driver held WH continuously across both steps while switching low sides in reverse polarity. The resultant reverse magnetic stator flux locked the rotor against permanent magnets, driving coil current into saturation and asserting the hardware `DIAG` fault pin (GP22). The motor controller caught the fault, transitioned state to `MotorState::Off`, and de-energized all gates.
+
+##### 2. Expected Canonical Waveform (6-Step Trapezoidal BLDC)
+- **Step 0 ($t = 0 \to 10\,\text{ms}$)**: **UH** (GP16) & **VL** (GP19) active; Phase W floating.
+- **Step 1 ($t = 10 \to 20\,\text{ms}$)**: **UH** (GP16) & **WL** (GP21) active; Phase V floating.
+- **Step 2 ($t = 20 \to 30\,\text{ms}$)**: **VH** (GP18) & **WL** (GP21) active; Phase U floating.
+- **Step 3 ($t = 30 \to 40\,\text{ms}$)**: **VH** (GP18) & **UL** (GP17) active; Phase W floating.
+- **Step 4 ($t = 40 \to 50\,\text{ms}$)**: **WH** (GP20) & **UL** (GP17) active; Phase V floating.
+- **Step 5 ($t = 50 \to 60\,\text{ms}$)**: **WH** (GP20) & **VL** (GP19) active; Phase U floating.
+- **DIAG (GP22)**: Remains low throughout operation; motor accelerates smoothly with continuous commutation.
 
 #### Execution / Console Logs
 
