@@ -159,15 +159,52 @@ class DetachedBranchWormStore:
         return None
 
     def load_database(self) -> Optional[WormDatabaseModel]:
-        """Load WormDatabaseModel from the detached branch worms.json state file.
+        """Load WormDatabaseModel from the individual WORM_*.md files on the detached branch.
 
-        Attempts to read worms.json from the local detached ref, then falls back
-        to the remote tracking ref.
+        Attempts to read individual feedback/ markdown files from the local detached ref,
+        then falls back to the remote tracking ref.
 
         Returns:
-            WormDatabaseModel if successfully read and validated, else None.
+            WormDatabaseModel if successfully read, else None.
         """
+        prefix = "WORM" if self.branch_name == "worms" else "BUG"
         for target_ref in [self.ref_name, self.remote_ref_name]:
+            try:
+                proc = subprocess.run(
+                    ["git", "ls-tree", "-r", "--name-only", target_ref],
+                    cwd=str(self.repo_root),
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                if proc.returncode == 0 and proc.stdout.strip():
+                    worms: List[WormReportModel] = []
+                    for line in proc.stdout.splitlines():
+                        path_str = line.strip()
+                        file_name = Path(path_str).name
+                        if not file_name.startswith(f"{prefix}_") or not file_name.endswith(".md"):
+                            continue
+                        show_proc = subprocess.run(
+                            ["git", "show", f"{target_ref}:{path_str}"],
+                            cwd=str(self.repo_root),
+                            capture_output=True,
+                            text=True,
+                            check=False,
+                        )
+                        if show_proc.returncode == 0 and show_proc.stdout.strip():
+                            worm = self.exporter.parse_worm_markdown_content(
+                                show_proc.stdout,
+                                default_filename=file_name,
+                            )
+                            if worm:
+                                worms.append(worm)
+                    if worms:
+                        worms.sort(key=lambda b: (b.created_at, b.id))
+                        return WormDatabaseModel(worms=worms)
+            except Exception:
+                continue
+
+            # Fallback for historical commits before state json removal
             try:
                 proc = subprocess.run(
                     ["git", "show", f"{target_ref}:{self.branch_name}.json"],
@@ -192,7 +229,7 @@ class DetachedBranchWormStore:
         sync_local_disk: bool = False,
         dirty_bug_ids: Optional[Collection[str]] = None,
     ) -> Optional[str]:
-        """Write worms.json, WORMS.md, and individual WORM_*.md files to the detached branch.
+        """Write individual WORM_*.md files to the detached branch.
 
         Args:
             database: Worm database model containing all worms to store.
@@ -206,6 +243,50 @@ class DetachedBranchWormStore:
         Returns:
             New commit SHA string or None if operation failed.
         """
+        fb_dir = extra_feedback_dir or (self.repo_root / "feedback")
+        is_wt = (fb_dir / ".git").is_file()
+        if is_wt:
+            prefix = "WORM" if self.branch_name == "worms" else "BUG"
+            fb_dir.mkdir(parents=True, exist_ok=True)
+            dirty_set = set(dirty_bug_ids) if (dirty_bug_ids is not None) else None
+            for bug in database.worms:
+                if dirty_set is not None and bug.id not in dirty_set:
+                    continue
+                clean_id = bug.id.removeprefix("WORM-").removeprefix("WORM_").removeprefix("BUG-").removeprefix("BUG_")
+                md_content = self.exporter.render_worm_markdown(bug)
+                (fb_dir / f"{prefix}_{clean_id}.md").write_text(md_content, encoding="utf-8")
+
+            try:
+                subprocess.run(["git", "-C", str(fb_dir), "add", "-A"], cwd=str(self.repo_root), check=True)
+                diff_proc = subprocess.run(
+                    ["git", "-C", str(fb_dir), "diff", "--cached", "--quiet"],
+                    cwd=str(self.repo_root),
+                    check=False,
+                )
+                env = os.environ.copy()
+                env["GIT_AUTHOR_NAME"] = "User"
+                env["GIT_AUTHOR_EMAIL"] = "user@workspace"
+                env["GIT_COMMITTER_NAME"] = "User"
+                env["GIT_COMMITTER_EMAIL"] = "user@workspace"
+                if diff_proc.returncode != 0:
+                    subprocess.run(
+                        ["git", "-C", str(fb_dir), "commit", "-m", commit_message],
+                        cwd=str(self.repo_root),
+                        env=env,
+                        check=True,
+                        capture_output=True,
+                    )
+                head_proc = subprocess.run(
+                    ["git", "-C", str(fb_dir), "rev-parse", "HEAD"],
+                    cwd=str(self.repo_root),
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                return head_proc.stdout.strip()
+            except Exception:
+                pass
+
         if parents is None:
             curr_parent = self.get_ref_commit()
             if not curr_parent:
@@ -267,14 +348,11 @@ class DetachedBranchWormStore:
                         current_index[parts[3]] = parts[1]
 
             target_files: Dict[str, bytes] = {}
-            # 1. Store worms.json
-            target_files[f"{self.branch_name}.json"] = database.model_dump_json(indent=2).encode("utf-8")
 
-            # 2. Store WORMS.md
-            target_files[f"{self.branch_name.upper()}.md"] = self.exporter.render_markdown(database).encode("utf-8")
-
-            # 3. Store individual WORM_<id>.md files in feedback/
+            # Store individual WORM_<id>.md files in feedback/
             prefix = "WORM" if self.branch_name == "worms" else "BUG"
+            is_nested = any(p.startswith("feedback/") for p in current_index.keys()) if current_index else False
+            path_pfx = "feedback/" if is_nested else ""
             if parents and parents[0] and dirty_bug_ids is not None:
                 dirty_set = set(dirty_bug_ids)
                 for bug in database.worms:
@@ -283,25 +361,28 @@ class DetachedBranchWormStore:
                         clean_id = (
                             bug.id.removeprefix("WORM-").removeprefix("WORM_").removeprefix("BUG-").removeprefix("BUG_")
                         )
-                        target_files[f"feedback/{prefix}_{clean_id}.md"] = bug_md
+                        target_files[f"{path_pfx}{prefix}_{clean_id}.md"] = bug_md
             else:
                 for bug in database.worms:
                     bug_md = self.exporter.render_worm_markdown(bug).encode("utf-8")
                     clean_id = (
                         bug.id.removeprefix("WORM-").removeprefix("WORM_").removeprefix("BUG-").removeprefix("BUG_")
                     )
-                    target_files[f"feedback/{prefix}_{clean_id}.md"] = bug_md
+                    target_files[f"{path_pfx}{prefix}_{clean_id}.md"] = bug_md
 
-            # 4. Include existing CR_*.md or review files if available
+            # Include existing CR_*.md review files if available (excluding CR.md)
             if not (parents and parents[0] and dirty_bug_ids is not None):
                 if feedback_path.exists() and feedback_path.is_dir():
-                    cr_candidates = list(feedback_path.glob("CR_*.md")) + [feedback_path / "CR.md"]
+                    cr_candidates = [
+                        cr_file
+                        for cr_file in feedback_path.glob("CR_*.md")
+                        if cr_file.is_file() and cr_file.name != "CR.md"
+                    ]
                     for cr_file in cr_candidates:
-                        if cr_file.is_file():
-                            try:
-                                target_files[f"feedback/{cr_file.name}"] = cr_file.read_bytes()
-                            except OSError:
-                                continue
+                        try:
+                            target_files[f"{path_pfx}{cr_file.name}"] = cr_file.read_bytes()
+                        except OSError:
+                            continue
 
             # 5. Include attachments from attachments/ and feedback/attachments/
             target_disk_files: Dict[str, Path] = {}
@@ -340,6 +421,27 @@ class DetachedBranchWormStore:
                     index_updates.append(f"{FILE_MODE_STANDARD} {sha} 0\t{fn}\n")
 
             if current_index:
+                # Explicitly untrack and prune all aggregated index and state files
+                forbidden_candidates = {
+                    f"{self.branch_name}.json",
+                    f"{self.branch_name.upper()}.json",
+                    f"{self.branch_name.upper()}.md",
+                    f"{self.branch_name}.md",
+                    "WORMS.md",
+                    "worms.json",
+                    "WORMS.json",
+                    "BUGS.md",
+                    "bugs.json",
+                    "BUGS.json",
+                    "CR.md",
+                    "feedback/WORMS.md",
+                    "feedback/BUGS.md",
+                    "feedback/CR.md",
+                }
+                for forbidden in forbidden_candidates:
+                    if forbidden in current_index:
+                        index_updates.append(f"0 0000000000000000000000000000000000000000 0\t{forbidden}\n")
+
                 valid_bug_paths = {
                     f"feedback/{prefix}_{b.id.removeprefix('WORM-').removeprefix('WORM_').removeprefix('BUG-').removeprefix('BUG_')}.md"
                     for b in database.worms
@@ -347,9 +449,6 @@ class DetachedBranchWormStore:
                 for p in current_index:
                     if dirty_bug_ids is None and p.startswith(f"feedback/{prefix}_") and p not in valid_bug_paths:
                         index_updates.append(f"0 0000000000000000000000000000000000000000 0\t{p}\n")
-                    elif p.startswith("attachments/") or p.startswith("feedback/attachments/"):
-                        if not (self.repo_root / p).is_file():
-                            index_updates.append(f"0 0000000000000000000000000000000000000000 0\t{p}\n")
 
             if index_updates:
                 subprocess.run(
@@ -459,7 +558,8 @@ class DetachedBranchWormStore:
             path_str = line.strip()
             if not (path_str.startswith("attachments/") or path_str.startswith("feedback/attachments/")):
                 continue
-            dest_file = self.repo_root / path_str
+            clean_rel = path_str[len("feedback/") :] if path_str.startswith("feedback/") else path_str
+            dest_file = self.repo_root / clean_rel
             if dest_file.exists():
                 continue
             dest_file.parent.mkdir(parents=True, exist_ok=True)
@@ -510,14 +610,30 @@ class DetachedBranchWormStore:
         restored: List[Path] = []
         for line in tree_proc.stdout.splitlines():
             path_str = line.strip()
-            # Explicitly exclude aggregated index files to prevent workspace conflicts
-            if path_str in ("WORMS.md", "BUGS.md", "CR.md", "feedback/WORMS.md", "feedback/BUGS.md", "feedback/CR.md"):
+            # Explicitly exclude aggregated index and state files to prevent workspace conflicts
+            if path_str in (
+                "WORMS.md",
+                "BUGS.md",
+                "CR.md",
+                "worms.json",
+                "WORMS.json",
+                "bugs.json",
+                "BUGS.json",
+                "feedback/WORMS.md",
+                "feedback/BUGS.md",
+                "feedback/CR.md",
+            ):
                 continue
-            if not path_str.startswith("feedback/"):
+            if path_str.startswith("feedback/attachments/") or path_str.startswith("attachments/"):
                 continue
-            if path_str.startswith("feedback/attachments/"):
+            prefix = "WORM" if self.branch_name == "worms" else "BUG"
+            if path_str.startswith("feedback/"):
+                clean_rel = path_str[len("feedback/") :]
+            elif path_str.startswith(f"{prefix}_") or path_str.startswith("CR_"):
+                clean_rel = path_str
+            else:
                 continue
-            dest_file = self.repo_root / path_str
+            dest_file = self.repo_root / "feedback" / clean_rel
             dest_file.parent.mkdir(parents=True, exist_ok=True)
             try:
                 raw_bytes = subprocess.run(
@@ -532,8 +648,15 @@ class DetachedBranchWormStore:
             except (subprocess.CalledProcessError, OSError):
                 pass
 
-        # Ensure index files never linger in feedback directory
+        # Ensure index and state files never linger on disk
         for unwanted in (
+            self.repo_root / "WORMS.md",
+            self.repo_root / "BUGS.md",
+            self.repo_root / "CR.md",
+            self.repo_root / "worms.json",
+            self.repo_root / "WORMS.json",
+            self.repo_root / "bugs.json",
+            self.repo_root / "BUGS.json",
             self.repo_root / "feedback" / "WORMS.md",
             self.repo_root / "feedback" / "BUGS.md",
             self.repo_root / "feedback" / "CR.md",
@@ -598,6 +721,84 @@ class DetachedBranchWormStore:
         Returns:
             Dictionary with synchronization status, branch, commit details, and push status.
         """
+        fb_dir = self.repo_root / "feedback"
+        is_wt = (fb_dir / ".git").is_file()
+        if is_wt:
+            subprocess.run(["git", "-C", str(fb_dir), "add", "-A"], cwd=str(self.repo_root), check=False)
+            diff_proc = subprocess.run(
+                ["git", "-C", str(fb_dir), "diff", "--cached", "--quiet"],
+                cwd=str(self.repo_root),
+                check=False,
+            )
+            env = os.environ.copy()
+            env["GIT_AUTHOR_NAME"] = "User"
+            env["GIT_AUTHOR_EMAIL"] = "user@workspace"
+            env["GIT_COMMITTER_NAME"] = "User"
+            env["GIT_COMMITTER_EMAIL"] = "user@workspace"
+            if diff_proc.returncode != 0:
+                subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(fb_dir),
+                        "commit",
+                        "-m",
+                        "Sync local feedback and attachments to detached branch",
+                    ],
+                    cwd=str(self.repo_root),
+                    env=env,
+                    check=False,
+                    capture_output=True,
+                )
+
+            has_remote = False
+            try:
+                remotes_proc = subprocess.run(
+                    ["git", "remote"],
+                    cwd=str(self.repo_root),
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                has_remote = "origin" in [r.strip() for r in remotes_proc.stdout.splitlines()]
+            except Exception:
+                has_remote = False
+
+            if has_remote:
+                subprocess.run(
+                    ["git", "-C", str(fb_dir), "pull", "--rebase", "origin", self.branch_name],
+                    cwd=str(self.repo_root),
+                    capture_output=True,
+                    check=False,
+                )
+
+            pushed = False
+            if has_remote and push:
+                push_proc = subprocess.run(
+                    ["git", "-C", str(fb_dir), "push", "origin", self.branch_name],
+                    cwd=str(self.repo_root),
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                pushed = push_proc.returncode == 0
+
+            head_commit = subprocess.run(
+                ["git", "-C", str(fb_dir), "rev-parse", "HEAD"],
+                cwd=str(self.repo_root),
+                capture_output=True,
+                text=True,
+                check=False,
+            ).stdout.strip()
+
+            return {
+                "status": "ok",
+                "branch": self.branch_name,
+                "commit": head_commit,
+                "pushed": pushed,
+                "reconciled": True,
+            }
+
         # 1. Commit local workspace database, feedback markdown, and attachments to detached branch
         local_db = self.load_database()
         if not local_db or not local_db.worms:

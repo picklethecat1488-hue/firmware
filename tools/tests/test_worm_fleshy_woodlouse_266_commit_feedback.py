@@ -126,4 +126,3 @@ def test_stage_and_commit_ignored_file_fallback(temp_repo: GitEngine) -> None:
     assert len(commit_sha) >= 7
     log_files = run_git_command(["show", "--name-only", "--format=", commit_sha], cwd=temp_repo.repo_root).strip()
     assert "special_dir/test_file.txt" in log_files
-

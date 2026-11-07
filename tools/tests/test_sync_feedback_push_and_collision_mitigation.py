@@ -260,11 +260,12 @@ def test_sync_branch_pushes_feedback_and_attachments(repo_with_remote) -> None:
     remote_worm_commit = run_git(["rev-parse", "refs/heads/worms"], cwd=remote_dir).stdout.strip()
     assert remote_worm_commit == res["commit"]
 
-    # Verify remote has worms.json, feedback file, and attachment
+    # Verify remote has feedback file and attachment, but explicitly NO worms.json or WORMS.md
     ls_remote = run_git(["ls-tree", "-r", "--name-only", "refs/heads/worms"], cwd=remote_dir).stdout
-    assert "worms.json" in ls_remote
-    assert "WORMS.md" in ls_remote
-    assert f"feedback/WORM_{worm_id.removeprefix('WORM-')}.md" in ls_remote
+    assert "worms.json" not in ls_remote
+    assert "WORMS.md" not in ls_remote
+    assert "WORMS.json" not in ls_remote
+    assert any(line.endswith(f"WORM_{worm_id.removeprefix('WORM-')}.md") for line in ls_remote.splitlines())
     assert f"attachments/{worm_id}/sample.log" in ls_remote
 
 

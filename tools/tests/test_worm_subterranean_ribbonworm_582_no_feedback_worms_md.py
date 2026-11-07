@@ -34,12 +34,12 @@ def test_worm_subterranean_ribbonworm_582_no_feedback_worms_md_in_repo():
 
 
 def test_worm_subterranean_ribbonworm_582_dashboard_list_worms_works_without_feedback_worms_md():
-    """Verify tools/dashboard.py list-worms functions properly without feedback/WORMS.md."""
+    """Verify tools/forge.py list-worms functions properly without feedback/WORMS.md."""
     workspace_root = Path(__file__).resolve().parent.parent.parent
-    cmd = [sys.executable, str(workspace_root / "tools" / "dashboard.py"), "list-worms"]
+    cmd = [sys.executable, str(workspace_root / "tools" / "forge.py"), "list-worms"]
 
     res = subprocess.run(cmd, cwd=workspace_root, capture_output=True, text=True, check=False)
-    assert res.returncode == 0, f"dashboard.py list-worms failed: {res.stderr}"
+    assert res.returncode == 0, f"forge.py list-worms failed: {res.stderr}"
     assert "SYSTEM SHOCK 2 // XERXES WORM MATRIX" in res.stdout
 
     # Verify running list-worms did NOT recreate feedback/WORMS.md
