@@ -6,10 +6,10 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-06 04:14:51 UTC` |
-| **Total Issues** | `109` |
+| **Report Date** | `2026-11-07 01:18:05 UTC` |
+| **Total Issues** | `110` |
 | **Open Issues** | `0` |
-| **Resolved / Closed** | `109 (100%)` |
+| **Resolved / Closed** | `110 (100%)` |
 
 ## Issues by Severity
 
@@ -17,7 +17,7 @@
 | :--- | :---: | :--- |
 | **`[CRITICAL]`** | 3 | System crashes, build failures, blockages, or electrical shorts. |
 | **`[HIGH]`** | 10 | Major functional defects, broken routing, DRC violations, or unphysical behavior. |
-| **`[MEDIUM]`** | 84 | Silkscreen collisions, layout sub-optimality, or visual clipping. |
+| **`[MEDIUM]`** | 85 | Silkscreen collisions, layout sub-optimality, or visual clipping. |
 | **`[LOW]`** | 12 | Minor aesthetic imperfections or documentation notes. |
 
 ## Issues by Category
@@ -31,7 +31,7 @@
 | **`BOARD`** | 1 | Board support packages (BSP), pinmux, boards. |
 | **`MODEL`** | 0 | Domain data models, configurations, state definitions. |
 | **`SHELL`** | 0 | CLI interface, shell commands, debug console. |
-| **`INFRASTRUCTURE`** | 54 | Build tooling, compilers, test runners, headless tools. |
+| **`INFRASTRUCTURE`** | 55 | Build tooling, compilers, test runners, headless tools. |
 | **`UI`** | 2 | Web dashboards, CLI viewers, review interfaces. |
 | **`GENERAL`** | 4 | Unclassified or cross-cutting firmware issues. |
 
@@ -145,7 +145,8 @@
 - [x] **`[MEDIUM]`** [#WORM-ANNELIDIC-NEMATODE-26](#worm-annelidic-nematode-26): motor speed 100 tripped DIAG `[target]` (`CLOSED`)
 - [x] **`[MEDIUM]`** [#WORM-HUMIC-SANDWORM-365](#worm-humic-sandworm-365): motor speed 50 tripped DIAG `[target]` (`CLOSED`)
 - [x] **`[MEDIUM]`** [#WORM-CREEPING-TAPEWORM-215](#worm-creeping-tapeworm-215): Only first commit in smartlog tree gets highlighted `[dashboard]` (`CLOSED`)
-- [x] **`[LOW]`** [#WORM-SILKEN-CASTING-127](#worm-silken-casting-127): Diff viewer missing green highlight for line additions in side-by-side and unified views `[dashboard]` (`RESOLVED`)
+- [x] **`[LOW]`** [#WORM-SILKEN-CASTING-127](#worm-silken-casting-127): Diff viewer missing green highlight for line additions in side-by-side and unified views `[dashboard]` (`CLOSED`)
+- [x] **`[MEDIUM]`** [#WORM-FLESHY-WOODLOUSE-266](#worm-fleshy-woodlouse-266): Not abel to commit updated feedbacks through VCS UI `[dashboard]` (`RESOLVED`)
 
 ## Detailed Issue Log
 
@@ -14174,11 +14175,11 @@ motor speed 100-rotates slowly, and eventually trips drag
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
+| `document` | [motor_speed_30.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV) | Attached document (motor_speed_30.MOV) |
+| `document` | [motor_speed_100.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV) | Attached document (motor_speed_100.MOV) |
 | `log` | [target_system_logs_WORM-ORGANIC-FIREWORM-553.log](attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log) | Target system and defmt logs from host daemon session |
 | `document` | [motor_speed_10.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV) | Attached document (motor_speed_10.MOV) |
 | `document` | [motor_speed_50.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV) | Attached document (motor_speed_50.MOV) |
-| `document` | [motor_speed_30.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV) | Attached document (motor_speed_30.MOV) |
-| `document` | [motor_speed_100.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV) | Attached document (motor_speed_100.MOV) |
 
 #### Resolution Notes
 
@@ -15118,9 +15119,9 @@ The motor spins for a half cycle, during which the motor duty cycle is 100%. Aft
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-COMPOSTED-DIGGER-386.log](attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log) | Target system and defmt logs from host daemon session |
 | `reference` | [target_telemetry_WORM-COMPOSTED-DIGGER-386.json](attachments/WORM-COMPOSTED-DIGGER-386/target_telemetry_WORM-COMPOSTED-DIGGER-386.json) | Target telemetry export retrieved via host_fs |
 | `reference` | [IMG_0202.MOV](attachments/WORM-COMPOSTED-DIGGER-386/IMG_0202.MOV) | Uploaded reference IMG_0202.MOV |
+| `log` | [target_system_logs_WORM-COMPOSTED-DIGGER-386.log](attachments/WORM-COMPOSTED-DIGGER-386/target_system_logs_WORM-COMPOSTED-DIGGER-386.log) | Target system and defmt logs from host daemon session |
 
 #### Resolution Notes
 
@@ -16047,12 +16048,13 @@ Fixed selectCommit in diff_view.html.j2 across firmware and hardware repositorie
 ### <a id="worm-silken-casting-127"></a> 🟢 `[WORM-SILKEN-CASTING-127]` Diff viewer missing green highlight for line additions in side-by-side and unified views
 
 - **UUID**: `b2ab3811-057b-4884-b0cf-df9a0f781f3e`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `UI`
 - **Component**: `dashboard`
 - **Created**: `2026-11-05 14:30:52 UTC`
-- **Resolved**: `2026-11-05 14:30:53 UTC`
+- **Resolved**: `2026-11-06 23:55:52 UTC`
+- **Accepted**: `2026-11-06 23:55:51 UTC`
 
 #### Description
 
@@ -16065,5 +16067,50 @@ In the VCS diff view (diff_component.html.j2), line additions and inserted lines
 #### Resolution Notes
 
 Updated diff_component.html.j2 and code_review.html.j2 to use green highlight rgba(34, 197, 94, 0.22) and #22c55e for line additions in side-by-side and unified views. Added comprehensive support for .row-add, .add, .insert, and .row-insert classes. Cross-patched matching selectors into hardware repository.
+
+---
+
+### <a id="worm-fleshy-woodlouse-266"></a> 🟢 `[WORM-FLESHY-WOODLOUSE-266]` Not abel to commit updated feedbacks through VCS UI
+
+- **UUID**: `f49f45d9-fb73-4558-a7dc-915a6288625a`
+- **Status**: `RESOLVED`
+- **Severity**: `MEDIUM`
+- **Category**: `INFRASTRUCTURE`
+- **Component**: `dashboard`
+- **Created**: `2026-11-06 23:58:59 UTC`
+- **Resolved**: `2026-11-07 00:22:38 UTC`
+
+#### Description
+
+I was not able to commit updated feedbacks through the VCS UI, instead I had to git on the shell with the ‘-f’ flag to add them to the repo.
+
+#### Execution / Console Logs
+
+```text
+$ git add feedback/WORM_ORGANIC-FIREWORM-553.md
+The following paths are ignored by one of your .gitignore files:
+feedback
+hint: Use -f if you really want to add them.
+hint: Disable this message with "git config set advice.addIgnoredFile false"
+(firmware-env) 
+$ git add -f feedback/WORM_ORGANIC-FIREWORM-553.md
+(firmware-env)
+```
+
+#### Attached Commits
+
+- `02cf15ed07efd9c105ad04ae238719bc01a4dbfa`
+- `2e4061fbdfb35122ea541e21b068202d0be9f935`
+- `032ab77c020b1a4bda7c34175d9cdcebf9f66816`
+
+#### Review Tasks & Functional Checklist
+
+- [ ] Verify git status on code branches is clean and does not show untracked feedback directory | `git status` <!-- id:d2fc9bac -->
+- [ ] Verify .gitignore decouples feedback/ and attachments/ | `git check-ignore feedback/ attachments/` <!-- id:814a31c1 -->
+- [ ] Verify GitEngine stages and commits feedback files using force-add fallback without raising gitignore errors | `python -c 'from tools.dashboard.provider.vcs.git_engine import GitEngine; from pathlib import Path; GitEngine(Path(".")).stage_file("feedback/WORM_FLESHY-WOODLOUSE-266.md")'` <!-- id:57b289a0 -->
+
+#### Resolution Notes
+
+Restore feedback/ in .gitignore across firmware and hardware to decouple to detached branches; preserve GitEngine force-add fallback for UI staging and commits
 
 ---
