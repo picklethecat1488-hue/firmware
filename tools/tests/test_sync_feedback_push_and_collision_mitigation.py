@@ -310,3 +310,42 @@ def test_git_engine_sync_repo_pushes_detached_branch(repo_with_remote) -> None:
     remote_main_after = run_git(["rev-parse", "main"], cwd=remote_dir).stdout.strip()
     assert remote_main_after == remote_main_before
     assert remote_main_after != local_main_sha
+
+
+def test_stage_feedback_files_tracks_worms_crs_and_excludes_index_files(repo_with_remote) -> None:
+    """Verify GitEngine.stage_feedback_files stages WORM_*.md, CR_*.md and explicitly excludes index files."""
+    local_dir, _ = repo_with_remote
+    engine = GitEngine(local_dir)
+
+    feedback_dir = local_dir / "feedback"
+    feedback_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create individual worm and CR files
+    worm_file = feedback_dir / "WORM_TEST-101.md"
+    worm_file.write_text("# Worm 101\n", encoding="utf-8")
+    cr_file = feedback_dir / "CR_1234567.md"
+    cr_file.write_text("# CR 1234567\n", encoding="utf-8")
+
+    # Create index files that MUST NOT be staged/tracked
+    worms_idx = feedback_dir / "WORMS.md"
+    worms_idx.write_text("# WORMS Index\n", encoding="utf-8")
+    cr_idx = feedback_dir / "CR.md"
+    cr_idx.write_text("# CR Index\n", encoding="utf-8")
+    root_worms_idx = local_dir / "WORMS.md"
+    root_worms_idx.write_text("# Root WORMS Index\n", encoding="utf-8")
+
+    # Call stage_feedback_files
+    staged = engine.stage_feedback_files()
+    assert "feedback/WORM_TEST-101.md" in staged
+    assert "feedback/CR_1234567.md" in staged
+    assert "feedback/WORMS.md" not in staged
+    assert "feedback/CR.md" not in staged
+    assert "WORMS.md" not in staged
+
+    # Verify git index via diff --cached
+    staged_in_git = run_git(["diff", "--cached", "--name-only"], cwd=local_dir).stdout.splitlines()
+    assert "feedback/WORM_TEST-101.md" in staged_in_git
+    assert "feedback/CR_1234567.md" in staged_in_git
+    assert "feedback/WORMS.md" not in staged_in_git
+    assert "feedback/CR.md" not in staged_in_git
+    assert "WORMS.md" not in staged_in_git
