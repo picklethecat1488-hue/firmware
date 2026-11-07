@@ -4,7 +4,7 @@
 - **ID**: `WORM-MOIST-TAPEWORM-650`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `target`
 - **Created**: `2026-10-19 01:47:23 UTC`
 - **Resolved**: `2026-10-21 23:25:59 UTC`

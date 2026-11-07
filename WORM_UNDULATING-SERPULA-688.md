@@ -4,7 +4,7 @@
 - **ID**: `WORM-UNDULATING-SERPULA-688`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-23 23:15:50 UTC`
 - **Resolved**: `2026-10-23 23:28:39 UTC`

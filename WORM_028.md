@@ -4,7 +4,7 @@
 - **ID**: `WORM-028`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `PLATFORM`
+- **Category**: `GENERAL`
 - **Component**: `cat_fountain, carrier_board`
 - **Created**: `2026-10-09 20:18:18 UTC`
 - **Resolved**: `2026-10-09 20:25:32 UTC`

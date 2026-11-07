@@ -4,7 +4,7 @@
 - **ID**: `WORM-BRISTLY-BURROWER-873`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-15 23:41:18 UTC`
 - **Resolved**: `2026-10-15 23:57:55 UTC`

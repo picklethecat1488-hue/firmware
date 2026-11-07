@@ -4,7 +4,7 @@
 - **ID**: `WORM-016`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Created**: `2026-10-07 22:12:15 UTC`
 - **Resolved**: `2026-10-07 22:29:44 UTC`
 - **Accepted**: `2026-10-07 22:29:44 UTC`
@@ -67,9 +67,9 @@ Below is the sequence of bringup steps defined in [projects/cat_detector_bringup
 docs/hardware_firmware_codesign.md:11
 * **Bare-Metal Rust Specification**: The target runtime environment is bare-metal Rust (`no_std`, Embassy asynchronous executor, `embedded-hal` and `embedded-hal-async` driver abstractions, `defmt` structured logging, stack-based zero-allocation concurrency, and static memory analysis) as detailed in [CONTRIBUTING.md](file:///Users/<username>/gh/firmware/CONTRIBUTING.md).
 docs/hardware_firmware_codesign.md:14
-Component selection and pinmux topologies are governed by the Test Board Revision 2.0 Downselection Process documented in [docs/downselection_report.md](file:///Users/<username>/gh/firmware/docs/downselection_report.md):
+Component selection and pinmux topologies are governed by the <username> Board Revision 2.0 Downselection Process documented in [docs/downselection_report.md](file:///Users/<username>/gh/firmware/docs/downselection_report.md):
 ```
 
 #### Resolution Notes
 
-Purged username from all git-tracked files across firmware and hardware repositories, converted absolute links to relative paths, updated SKILL.md with relative paths and privacy mandate, implemented automatic personal info elision for bug/worm and code report feedback in both repos, and codified dedicated regression test suites.
+Purged username from all git-tracked files across firmware and hardware repositories, converted absolute links to relative paths, updated SKILL.md with relative paths and privacy mandate, implemented automatic personal info elision for bug/worm and code report feedback in both repos, and codified dedicated regression <username> suites.

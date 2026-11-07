@@ -4,7 +4,7 @@
 - **ID**: `WORM-008`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Created**: `2026-10-03 23:51:07 UTC`
 - **Resolved**: `2026-10-03 23:56:31 UTC`
 - **Accepted**: `2026-10-03 23:56:31 UTC`

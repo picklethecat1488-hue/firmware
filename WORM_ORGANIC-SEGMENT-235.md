@@ -4,5 +4,5 @@
 - **ID**: `WORM-ORGANIC-SEGMENT-235`
 - **Status**: `OPEN`
 - **Severity**: `LOW`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Created**: `2026-11-07 04:07:12 UTC`

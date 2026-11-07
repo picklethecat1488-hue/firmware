@@ -4,7 +4,7 @@
 - **ID**: `WORM-COMPOSTED-DIGGER-386`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-23 21:37:59 UTC`
 - **Resolved**: `2026-10-23 21:59:58 UTC`

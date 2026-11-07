@@ -4,7 +4,7 @@
 - **ID**: `WORM-SLICK-FIREWORM-677`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `target`
 - **Created**: `2026-10-18 00:34:54 UTC`
 - **Resolved**: `2026-10-18 00:43:25 UTC`

@@ -4,7 +4,7 @@
 - **ID**: `WORM-ROUND-POLYCHAETE-84`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-24 00:56:38 UTC`
 - **Resolved**: `2026-10-24 01:39:26 UTC`

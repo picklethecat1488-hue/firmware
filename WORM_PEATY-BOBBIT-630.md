@@ -4,7 +4,7 @@
 - **ID**: `WORM-PEATY-BOBBIT-630`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Created**: `2026-10-17 23:27:35 UTC`
 - **Resolved**: `2026-10-17 23:40:07 UTC`
 - **Accepted**: `2026-10-17 23:40:07 UTC`

@@ -4,7 +4,7 @@
 - **ID**: `WORM-CREEPING-WRIGGLER-223`
 - **Status**: `CLOSED`
 - **Severity**: `HIGH`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `cat_fountain`
 - **Created**: `2026-10-17 23:41:41 UTC`
 - **Resolved**: `2026-10-18 00:02:49 UTC`

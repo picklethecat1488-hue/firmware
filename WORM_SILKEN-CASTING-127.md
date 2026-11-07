@@ -16,7 +16,7 @@ In the VCS diff view (diff_component.html.j2), line additions and inserted lines
 
 #### Review Tasks & Functional Checklist
 
-- [ ] Verify green highlight styling on diff line additions in dashboard UI | `python tools/dashboard.py` <!-- id:2f3193c0 -->
+- [ ] <!-- task:35616c89 --> Verify green highlight styling on diff line additions in dashboard UI | `python tools/dashboard.py`
 
 #### Resolution Notes
 

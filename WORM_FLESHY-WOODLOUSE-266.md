@@ -35,9 +35,9 @@ $ git add -f feedback/WORM_ORGANIC-FIREWORM-553.md
 
 #### Review Tasks & Functional Checklist
 
-- [x] Verify git status on code branches is clean and does not show untracked feedback directory | `git status` <!-- id:d2fc9bac -->
-- [ ] Verify .gitignore decouples feedback/ and attachments/ | `git check-ignore feedback/ attachments/` <!-- id:814a31c1 -->
-- [ ] Verify GitEngine stages and commits feedback files using force-add fallback without raising gitignore errors | `python -c 'from tools.dashboard.provider.vcs.git_engine import GitEngine; from pathlib import Path; GitEngine(Path(".")).stage_file("feedback/WORM_FLESHY-WOODLOUSE-266.md")'` <!-- id:57b289a0 -->
+- [x] <!-- task:9d5e3126 --> Verify git status on code branches is clean and does not show untracked feedback directory | `git status`
+- [ ] <!-- task:94bea851 --> Verify .gitignore decouples feedback/ and attachments/ | `git check-ignore feedback/ attachments/`
+- [ ] <!-- task:974e2edd --> Verify GitEngine stages and commits feedback files using force-add fallback without raising gitignore errors | `python -c 'from tools.dashboard.provider.vcs.git_engine import GitEngine; from pathlib import Path; GitEngine(Path(".")).stage_file("feedback/WORM_FLESHY-WOODLOUSE-266.md")'`
 
 #### Resolution Notes
 

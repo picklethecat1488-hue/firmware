@@ -11,7 +11,7 @@
 
 #### Description
 
-I noticed some regression tests are silly and not useful, and only wrap other test cases. If a test case that a bug is meant to fix does not check for the bug, can we instead update the original test case directly if possible? If not possible to unit test a regression fix, it is preferable to omit a regression test if it does not do anything new. Can we please remove these types of useless regression tests in both hardware and firmware repos, as well as update learnings about regression test best practices.
+I noticed some regression tests are silly and not useful, and only wrap other <username> cases. If a <username> case that a bug is meant to fix does not check for the bug, can we instead update the original <username> case directly if possible? If not possible to unit <username> a regression fix, it is preferable to omit a regression <username> if it does not do anything new. Can we please remove these types of useless regression tests in both hardware and firmware repos, as well as update learnings about regression <username> best practices.
 
 #### Execution / Console Logs
 
@@ -21,7 +21,7 @@ I noticed some regression tests are silly and not useful, and only wrap other te
 def test_worm_organic_fireworm_553_short_protection_and_diag():
 43
 +
-    """Verify short protection pulse bounds and DIAG fault handling in integration test suites."""
+    """Verify short protection pulse bounds and DIAG fault handling in integration <username> suites."""
 44
 +
     cmd_pulse = [
@@ -30,7 +30,7 @@ def test_worm_organic_fireworm_553_short_protection_and_diag():
         "cargo",
 46
 +
-        "test",
+        "<username>",
 47
 +
         "--package",
@@ -39,7 +39,7 @@ def test_worm_organic_fireworm_553_short_protection_and_diag():
         "peripheral",
 49
 +
-        "--test",
+        "--<username>",
 50
 +
         "integration",
@@ -60,7 +60,7 @@ def test_worm_organic_fireworm_553_short_protection_and_diag():
     proc_pulse = subprocess.run(cmd_pulse, cwd=REPO_ROOT, capture_output=True, text=True, check=False)
 56
 +
-    assert proc_pulse.returncode == 0, f"peripheral pulse test failed:\n{proc_pulse.stdout}\n{proc_pulse.stderr}"
+    assert proc_pulse.returncode == 0, f"peripheral pulse <username> failed:\n{proc_pulse.stdout}\n{proc_pulse.stderr}"
 57
 +
 58
@@ -71,7 +71,7 @@ def test_worm_organic_fireworm_553_short_protection_and_diag():
         "cargo",
 60
 +
-        "test",
+        "<username>",
 61
 +
         "--package",
@@ -80,7 +80,7 @@ def test_worm_organic_fireworm_553_short_protection_and_diag():
         "controller",
 63
 +
-        "--test",
+        "--<username>",
 64
 +
         "controller_tests",
@@ -101,9 +101,9 @@ def test_worm_organic_fireworm_553_short_protection_and_diag():
     proc_fault = subprocess.run(cmd_fault, cwd=REPO_ROOT, capture_output=True, text=True, check=False)
 70
 +
-    assert proc_fault.returncode == 0, f"controller fault test failed:\n{proc_fault.stdout}\n{proc_fault.stderr}"
+    assert proc_fault.returncode == 0, f"controller fault <username> failed:\n{proc_fault.stdout}\n{proc_fault.stderr}"
 ```
 
 #### Resolution Notes
 
-Removed redundant and useless shallow regression test wrappers that only wrapped other test suites or cargo tests. Codified regression test best practice rules in GEMINI.md across firmware and hardware repos, prohibiting shallow test wrappers, requiring direct updates to original test cases, and preferring omission when logical invariants are already verified.
+Removed redundant and useless shallow regression <username> wrappers that only wrapped other <username> suites or cargo tests. Codified regression <username> best practice rules in GEMINI.md across firmware and hardware repos, prohibiting shallow <username> wrappers, requiring direct updates to original <username> cases, and preferring omission when logical invariants are already verified.

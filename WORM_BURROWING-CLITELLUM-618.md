@@ -4,7 +4,7 @@
 - **ID**: `WORM-BURROWING-CLITELLUM-618`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `target`
 - **Created**: `2026-10-23 01:46:55 UTC`
 - **Resolved**: `2026-10-23 02:09:08 UTC`
@@ -85,4 +85,4 @@
 
 #### Resolution Notes
 
-Restored canonical 10ms commutation tick interval in tmc6300 and types to ensure open-loop commutation step timing supports physical BLDC rotor synchronism from standstill. Validated on target hardware and automated test suites.
+Restored canonical 10ms commutation tick interval in tmc6300 and types to ensure open-loop commutation step timing supports physical BLDC rotor synchronism from standstill. Validated on target hardware and automated <username> suites.

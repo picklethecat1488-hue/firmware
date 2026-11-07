@@ -4,7 +4,7 @@
 - **ID**: `WORM-DAMP-MEALWORM-592`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `target`
 - **Created**: `2026-10-23 00:03:42 UTC`
 - **Resolved**: `2026-10-23 00:33:25 UTC`
@@ -127,4 +127,4 @@ Some additional context here:
 
 #### Resolution Notes
 
-Set TMC6300 tick interval to 500us (2000 Hz commutation rate) and restored canonical calculate_pwm_counts with FET on-pulse duration clamping <= 800ns (<1.0us t_S2G threshold). Commutation step advances reliably without pole slipping or 5-degree oscillation at speed 30. Verified on hardware and codified regression test in test_worm_damp_mealworm_592_motor_commutation.py.
+Set TMC6300 tick interval to 500us (2000 Hz commutation rate) and restored canonical calculate_pwm_counts with FET on-pulse duration clamping <= 800ns (<1.0us t_S2G threshold). Commutation step advances reliably without pole slipping or 5-degree oscillation at speed 30. Verified on hardware and codified regression <username> in test_worm_damp_mealworm_592_motor_commutation.py.

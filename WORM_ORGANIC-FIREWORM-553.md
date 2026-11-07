@@ -4,7 +4,7 @@
 - **ID**: `WORM-ORGANIC-FIREWORM-553`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `target`
 - **Created**: `2026-10-22 04:19:58 UTC`
 - **Resolved**: `2026-10-23 00:33:35 UTC`
@@ -93,4 +93,4 @@ motor speed 100-rotates slowly, and eventually trips drag
 
 #### Resolution Notes
 
-Eliminated low-frequency detent oscillations across speeds 10, 30, and 50 and eliminated thermal DIAG trip at speed 100 by running at 500us ticks with canonical PWM frequency modulation. Verified on target hardware across all speed commands. Codified regression test in test_worm_organic_fireworm_553_motor_speeds_and_diag.py.
+Eliminated low-frequency detent oscillations across speeds 10, 30, and 50 and eliminated thermal DIAG trip at speed 100 by running at 500us ticks with canonical PWM frequency modulation. Verified on target hardware across all speed commands. Codified regression <username> in test_worm_organic_fireworm_553_motor_speeds_and_diag.py.

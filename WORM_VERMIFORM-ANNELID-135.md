@@ -4,7 +4,7 @@
 - **ID**: `WORM-VERMIFORM-ANNELID-135`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `target`
 - **Created**: `2026-10-18 00:39:31 UTC`
 - **Resolved**: `2026-10-18 01:10:11 UTC`

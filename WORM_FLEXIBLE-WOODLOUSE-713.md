@@ -4,7 +4,7 @@
 - **ID**: `WORM-FLEXIBLE-WOODLOUSE-713`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-24 00:47:14 UTC`
 - **Resolved**: `2026-10-24 00:52:25 UTC`
@@ -12,7 +12,7 @@
 
 #### Description
 
-When motor speed is reset, the current duty cycle seems to spike and reset to bare minimum. This causes the motor not to ramp up smoothly during the stress test.
+When motor speed is reset, the current duty cycle seems to spike and reset to bare minimum. This causes the motor not to ramp up smoothly during the stress <username>.
 
 #### Reproduction Steps
 

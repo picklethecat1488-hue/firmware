@@ -4,7 +4,7 @@
 - **ID**: `WORM-LOAMY-CATERPILLAR-738`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-23 00:07:50 UTC`
 - **Resolved**: `2026-10-23 00:13:54 UTC`

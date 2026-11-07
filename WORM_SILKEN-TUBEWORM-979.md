@@ -4,7 +4,7 @@
 - **ID**: `WORM-SILKEN-TUBEWORM-979`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `cat_detector`
 - **Created**: `2026-10-24 01:03:16 UTC`
 - **Resolved**: `2026-10-24 01:39:23 UTC`
@@ -94,4 +94,4 @@ I could get the motor to recover by pushing on it.
 
 #### Resolution Notes
 
-Resolved motor stalling at 35% speed. Configured commutation_speed_divisor = 200 and min_commutation_step_ticks = 2 in board.toml, scaling speed 35 to 5 ticks (1,000 RPM) and capping maximum speed at 2,500 RPM (2 ticks). Verified smooth continuous rotation with full 1% to 100% ramp stress test on hardware.
+Resolved motor stalling at 35% speed. Configured commutation_speed_divisor = 200 and min_commutation_step_ticks = 2 in board.toml, scaling speed 35 to 5 ticks (1,000 RPM) and capping maximum speed at 2,500 RPM (2 ticks). Verified smooth continuous rotation with full 1% to 100% ramp stress <username> on hardware.

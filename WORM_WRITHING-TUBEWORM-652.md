@@ -4,7 +4,7 @@
 - **ID**: `WORM-WRITHING-TUBEWORM-652`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Created**: `2026-10-15 23:43:21 UTC`
 - **Resolved**: `2026-10-16 00:19:19 UTC`
 - **Accepted**: `2026-10-16 00:19:19 UTC`

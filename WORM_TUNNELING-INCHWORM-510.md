@@ -4,7 +4,7 @@
 - **ID**: `WORM-TUNNELING-INCHWORM-510`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `host_daemon`
 - **Created**: `2026-10-17 01:34:30 UTC`
 - **Resolved**: `2026-10-17 01:54:29 UTC`
@@ -51,7 +51,7 @@ Interactive RTT console active. Type commands and press Enter.
 shell> help
 help
 Commands:
-  battery  Battery commands (battery status, battery test-alert)
+  battery  Battery commands (battery status, battery <username>-alert)
   thermal  Thermal commands (thermal status, thermal mcu)
   motor    Motor commands (motor speed, motor rpm-speed, motor stop, motor current, motor rpm, motor calibrate, motor safety-bypass)
   sensor   Sensor commands (sensor status, sensor cal_near, sensor cal_far, sensor cal_xtalk)

@@ -4,7 +4,7 @@
 - **ID**: `WORM-ANNELIDIC-NEMATODE-26`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `target`
 - **Created**: `2026-10-24 02:09:15 UTC`
 - **Resolved**: `2026-10-24 02:21:26 UTC`

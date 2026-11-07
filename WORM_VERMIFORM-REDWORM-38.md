@@ -4,7 +4,7 @@
 - **ID**: `WORM-VERMIFORM-REDWORM-38`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
-- **Category**: `FIRMWARE`
+- **Category**: `GENERAL`
 - **Component**: `target`
 - **Created**: `2026-10-23 00:09:47 UTC`
 - **Resolved**: `2026-10-23 00:20:08 UTC`
