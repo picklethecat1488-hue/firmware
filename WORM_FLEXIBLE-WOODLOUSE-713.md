@@ -12,7 +12,7 @@
 
 #### Description
 
-When motor speed is reset, the current duty cycle seems to spike and reset to bare minimum. This causes the motor not to ramp up smoothly during the stress test.
+When motor speed is reset, the current duty cycle seems to spike and reset to bare minimum. This causes the motor not to ramp up smoothly during the stress <username>.
 
 #### Reproduction Steps
 

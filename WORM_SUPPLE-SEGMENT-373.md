@@ -15,7 +15,7 @@
 DIAG tripped after 260s, see below:
 
 $  python tools/motor_stress.py --start 1 --end 50 --duration 500
-Starting motor ramp stress test: 1% -> 50% over 500.0s
+Starting motor ramp stress <username>: 1% -> 50% over 500.0s
 Connecting to host daemon at http://127.0.0.1:8899...
 [  1/50] ( 10.0s) Speed:   1% | Current:   58 mA | DIAG: OK
 [  2/50] ( 20.0s) Speed:   2% | Current:  341 mA | DIAG: OK
@@ -46,7 +46,7 @@ Connecting to host daemon at http://127.0.0.1:8899...
 Sent motor stop command.
 
 ======================================================================
-  MOTOR RAMP STRESS TEST REPORT: FAIL
+  MOTOR RAMP STRESS <username> REPORT: FAIL
 ======================================================================
   Speed Range       : 1% -> 50%
   Duration Target   : 500.0 s

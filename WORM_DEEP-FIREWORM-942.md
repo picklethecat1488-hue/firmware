@@ -12,7 +12,7 @@
 
 #### Description
 
-Motor driver trips DIAG fault when motor is connected during commutation; need GPIO set subcommand in CLI shell to test individual pins and commutator states directly on hardware.
+Motor driver trips DIAG fault when motor is connected during commutation; need GPIO set subcommand in CLI shell to <username> individual pins and commutator states directly on hardware.
 
 #### Reproduction Steps
 

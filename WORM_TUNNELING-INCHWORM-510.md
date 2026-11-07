@@ -51,7 +51,7 @@ Interactive RTT console active. Type commands and press Enter.
 shell> help
 help
 Commands:
-  battery  Battery commands (battery status, battery test-alert)
+  battery  Battery commands (battery status, battery <username>-alert)
   thermal  Thermal commands (thermal status, thermal mcu)
   motor    Motor commands (motor speed, motor rpm-speed, motor stop, motor current, motor rpm, motor calibrate, motor safety-bypass)
   sensor   Sensor commands (sensor status, sensor cal_near, sensor cal_far, sensor cal_xtalk)

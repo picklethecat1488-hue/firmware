@@ -85,4 +85,4 @@
 
 #### Resolution Notes
 
-Restored canonical 10ms commutation tick interval in tmc6300 and types to ensure open-loop commutation step timing supports physical BLDC rotor synchronism from standstill. Validated on target hardware and automated test suites.
+Restored canonical 10ms commutation tick interval in tmc6300 and types to ensure open-loop commutation step timing supports physical BLDC rotor synchronism from standstill. Validated on target hardware and automated <username> suites.

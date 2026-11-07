@@ -85,12 +85,12 @@ motor speed 100-rotates slowly, and eventually trips drag
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-ORGANIC-FIREWORM-553.log](attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log) | Target system and defmt logs from host daemon session |
 | `document` | [motor_speed_10.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_10.MOV) | Attached document (motor_speed_10.MOV) |
 | `document` | [motor_speed_30.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_30.MOV) | Attached document (motor_speed_30.MOV) |
-| `document` | [motor_speed_100.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV) | Attached document (motor_speed_100.MOV) |
 | `document` | [motor_speed_50.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_50.MOV) | Attached document (motor_speed_50.MOV) |
+| `log` | [target_system_logs_WORM-ORGANIC-FIREWORM-553.log](attachments/WORM-ORGANIC-FIREWORM-553/target_system_logs_WORM-ORGANIC-FIREWORM-553.log) | Target system and defmt logs from host daemon session |
+| `document` | [motor_speed_100.MOV](attachments/WORM-ORGANIC-FIREWORM-553/motor_speed_100.MOV) | Attached document (motor_speed_100.MOV) |
 
 #### Resolution Notes
 
-Eliminated low-frequency detent oscillations across speeds 10, 30, and 50 and eliminated thermal DIAG trip at speed 100 by running at 500us ticks with canonical PWM frequency modulation. Verified on target hardware across all speed commands. Codified regression test in test_worm_organic_fireworm_553_motor_speeds_and_diag.py.
+Eliminated low-frequency detent oscillations across speeds 10, 30, and 50 and eliminated thermal DIAG trip at speed 100 by running at 500us ticks with canonical PWM frequency modulation. Verified on target hardware across all speed commands. Codified regression <username> in test_worm_organic_fireworm_553_motor_speeds_and_diag.py.

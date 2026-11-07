@@ -66,4 +66,4 @@ shell> 42.037927 INFO [controller::motor_controller::{impl#5}::set_running_state
 
 #### Resolution Notes
 
-Resolved out-of-bounds jump in PIO assembler program when off_count is 0 (100% duty cycle). Replaced out-of-bounds skip_off label at address 10 with direct jump to wrap_target at address 0, and evaluated off_count before turning pins off to keep phase pins energized without glitches. Added regression tests in peripheral integration tests and Python test suite.
+Resolved out-of-bounds jump in PIO assembler program when off_count is 0 (100% duty cycle). Replaced out-of-bounds skip_off label at address 10 with direct jump to wrap_target at address 0, and evaluated off_count before turning pins off to keep phase pins energized without glitches. Added regression tests in peripheral integration tests and Python <username> suite.

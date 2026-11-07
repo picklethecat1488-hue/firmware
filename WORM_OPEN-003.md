@@ -1,8 +1,8 @@
 # 🔴 `[WORM-OPEN-003]` Open defect
 
-- **UUID**: `052da7a1-5114-4715-8dc6-ee29d21db087`
+- **UUID**: `1a6dc02e-9c58-4d1c-8f91-16e9148e5f2c`
 - **ID**: `WORM-OPEN-003`
 - **Status**: `OPEN`
 - **Severity**: `LOW`
-- **Category**: `UI`
-- **Created**: `2026-11-07 04:40:47 UTC`
+- **Category**: `FIRMWARE`
+- **Created**: `2026-11-07 04:45:18 UTC`

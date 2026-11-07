@@ -16,4 +16,4 @@ Rename the AudioController definition in carrier_board.md to SpeakerController
 
 #### Resolution Notes
 
-Renamed AudioController and controller::audio_controller to SpeakerController and controller::speaker_controller in app/carrier_board.md and updated regression test in test_carrier_board_project.py.
+Renamed AudioController and controller::audio_controller to SpeakerController and controller::speaker_controller in app/carrier_board.md and updated regression <username> in test_carrier_board_project.py.

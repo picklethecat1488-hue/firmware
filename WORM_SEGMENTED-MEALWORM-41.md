@@ -89,4 +89,4 @@ Can we please configure the motor driver and motor controller in board.toml to p
 
 #### Resolution Notes
 
-Configured startup_blanking_ticks = 50 (500 ms at 100 Hz) in board.toml, model types, and code_gen. Wired Board::MOTOR_CONFIG into cat_detector.rs. Implemented startup alignment full torque boost (100% duty cycle on Step 0 alignment) in MotorController to maximize breakaway torque before transitioning to commanded speed. Codified regression test in controller_tests.rs.
+Configured startup_blanking_ticks = 50 (500 ms at 100 Hz) in board.toml, model types, and code_gen. Wired Board::MOTOR_CONFIG into cat_detector.rs. Implemented startup alignment full torque boost (100% duty cycle on Step 0 alignment) in MotorController to maximize breakaway torque before transitioning to commanded speed. Codified regression <username> in controller_tests.rs.

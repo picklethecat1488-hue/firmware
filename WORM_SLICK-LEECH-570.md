@@ -1,6 +1,6 @@
 # 🔴 `[WORM-SLICK-LEECH-570]` Open defect
 
-- **UUID**: `9aa4f9c3-a17f-4dc9-af6a-53d3336835e3`
+- **UUID**: `d27e95dc-f8cf-4b19-a6e8-98ceee5b48b7`
 - **ID**: `WORM-SLICK-LEECH-570`
 - **Status**: `OPEN`
 - **Severity**: `LOW`

@@ -18,4 +18,4 @@ Upon launching or restarting the dashboard workstation, the UI was stuck display
 
 1. Pruned dangling closing parenthesis in `sanitizeAuthor()` condition in `tools/dashboard/templates/diff_view.html.j2`.
 2. Hardened workstation initialization lifecycle so `initDiffView()` fires immediately if `document.readyState !== 'loading'`, eliminating dependency on potentially pre-fired `DOMContentLoaded` events.
-3. Added comprehensive regression test `test_regression_bug_translucent_tapeworm_953_dashboard_js_syntax_and_sync_screen` in `tools/tests/test_dashboard.py` verifying balanced syntax and executing `node -c` across extracted `<script>` blocks in all dashboard templates (`diff_view.html.j2`, `code_review.html.j2`, `worm_report.html.j2`).
+3. Added comprehensive regression <username> `test_regression_bug_translucent_tapeworm_953_dashboard_js_syntax_and_sync_screen` in `tools/tests/test_dashboard.py` verifying balanced syntax and executing `node -c` across extracted `<script>` blocks in all dashboard templates (`diff_view.html.j2`, `code_review.html.j2`, `worm_report.html.j2`).

@@ -15,14 +15,14 @@
 The motor stalls at 50% speed, see below:
 
 $  python tools/motor_stress.py --start 50 --end 100 --duration 500
-Starting motor ramp stress test: 50% -> 100% over 500.0s
+Starting motor ramp stress <username>: 50% -> 100% over 500.0s
 Connecting to host daemon at http://127.0.0.1:8899...
 [  1/51] (  9.8s) Speed:  50% | Current:  489 mA | DIAG: OK
 [  2/51] ( 19.6s) Speed:  51% | Current:  757 mA | DIAG: OK
 ^CSent motor stop command.
 
 ======================================================================
-  MOTOR RAMP STRESS TEST REPORT: FAIL
+  MOTOR RAMP STRESS <username> REPORT: FAIL
 ======================================================================
   Speed Range       : 50% -> 100%
   Duration Target   : 500.0 s
@@ -31,7 +31,7 @@ Connecting to host daemon at http://127.0.0.1:8899...
   Peak Current      : 757 mA
   Min Current       : 489 mA
   Average Current   : 623.0 mA
-  Failure Detail    : Stress test cancelled by user interrupt.
+  Failure Detail    : Stress <username> cancelled by user interrupt.
 ======================================================================
 (firmware-env)
 
