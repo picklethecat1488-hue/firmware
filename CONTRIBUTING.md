@@ -574,21 +574,21 @@ python tools/host.py stop
 
 ---
 
-## Unified VCS Dashboard, Code Review & Worm Workstation
+## Unified VCS Workstation, Code Review & Worm Matrix (`tools/forge.py`)
 
-The repository features an integrated web workstation and CLI suite (`tools/dashboard.py`) styled after the System Shock 2 - Xerxes terminal HUD aesthetic. It unifies commit diff inspection, code review audits, and defect (worm) tracking into a centralized local workflow.
+The repository features an integrated web workstation and CLI suite (`tools/forge.py`) styled after the System Shock 2 - Xerxes terminal HUD aesthetic. It unifies commit diff inspection, code review audits, and defect (worm) tracking into a centralized local workflow.
 
 ### 1. Launching the Web Workstation
 
 Launch the local workstation server in your browser:
 
 ```bash
-# Launch interactive dashboard (default port 8877)
-python tools/dashboard.py
+# Launch interactive forge workstation (default port 8877)
+python tools/forge.py
 
 # Specify custom port, host, or browser mode
-python tools/dashboard.py --port 8877 --browser vscode
-python tools/dashboard.py --no-browser
+python tools/forge.py --port 8877 --browser vscode
+python tools/forge.py --no-browser
 ```
 
 #### Core Workstation View Modes
@@ -617,51 +617,51 @@ All workstation capabilities are accessible headless via CLI subcommands for aut
 #### Code Review Management
 ```bash
 # List all active code review comments
-python tools/dashboard.py list-reviews
+python tools/forge.py list-reviews
 
 # List only open/unresolved review comments
-python tools/dashboard.py list-reviews --open
+python tools/forge.py list-reviews --open
 
 # Add an inline review comment
-python tools/dashboard.py add-comment --file app/carrier_board.md --line 42 --body "Use 1 Mb/s UART" --severity MUST_FIX
+python tools/forge.py add-comment --file app/carrier_board.md --line 42 --body "Use 1 Mb/s UART" --severity MUST_FIX
 
 # Mark a review comment as resolved
-python tools/dashboard.py resolve-comment <comment-uuid>
+python tools/forge.py resolve-comment <comment-uuid>
 
 # Set the overall review verdict
-python tools/dashboard.py set-verdict APPROVED
-python tools/dashboard.py set-verdict CHANGES_REQUESTED
+python tools/forge.py set-verdict APPROVED
+python tools/forge.py set-verdict CHANGES_REQUESTED
 ```
 
 #### Worm (Defect) Tracking
 ```bash
 # List all active worms
-python tools/dashboard.py list-worms
+python tools/forge.py list-worms
 
 # List only open worms
-python tools/dashboard.py list-worms --open
+python tools/forge.py list-worms --open
 
 # Quickly register a new defect
-python tools/dashboard.py add-worm "Update Contributing.md with dashboard docs" \
+python tools/forge.py add-worm "Update Contributing.md with dashboard docs" \
   --severity MEDIUM \
   --category FIRMWARE \
   --component "CONTRIBUTING.md" \
   --description "Document dashboard CLI and workstation features"
 
 # Mark a worm as resolved with resolution notes
-python tools/dashboard.py resolve-worm WORM-008 --notes "Added comprehensive dashboard docs to CONTRIBUTING.md"
+python tools/forge.py resolve-worm WORM-008 --notes "Added comprehensive dashboard docs to CONTRIBUTING.md"
 ```
 
 #### VCS & Smartlog Operations
 ```bash
 # View smartlog DAG commit tree
-python tools/dashboard.py list-commits
+python tools/forge.py list-commits
 
 # Synchronize with upstream remote
-python tools/dashboard.py sync
+python tools/forge.py sync
 
 # Commit staged or untracked changes
-python tools/dashboard.py commit -m "docs: update contributing guide"
+python tools/forge.py commit -m "docs: update contributing guide"
 ```
 
 ---
@@ -675,9 +675,7 @@ The workstation employs a dual-layer storage architecture combining ACID transac
    - `target/worms.sqlite`: Defect records, severity classifications, and resolution logs.
 2. **Bidirectional Markdown Synchronization (`feedback/`)**:
    - The server continuously monitors and synchronizes state with markdown reports in `feedback/`:
-     - `feedback/CR.md`: Primary aggregated code review report.
      - `feedback/CR_<commit>.md`: Revision-specific review findings with action item checkboxes (`- [ ]` / `- [x]`).
-     - `feedback/WORMS.md`: Primary aggregated defect matrix index.
      - `feedback/WORM_<id>.md`: Granular defect tickets.
    - External edits to markdown checkboxes or headers are automatically detected via modification timestamps and merged safely into the SQLite database without losing resolution history.
 3. **Git LFS Non-Confidential Attachments**:

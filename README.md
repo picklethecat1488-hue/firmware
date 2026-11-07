@@ -110,17 +110,17 @@ python tools/host.py status
 python tools/host.py stop
 ```
 
-### Unified VCS Dashboard, Code Review & Defect Tracker (`tools/dashboard.py`)
+### Unified VCS Workstation, Code Review & Defect Tracker (`tools/forge.py`)
 
 For local code reviews, smartlog DAG visualization, commit diffs, and defect (worm) tracking:
 
 ```bash
-# Launch dashboard workstation (default port 8877)
-python tools/dashboard.py
+# Launch forge workstation (default port 8877)
+python tools/forge.py
 
 # CLI inspection
-python tools/dashboard.py list-reviews --open
-python tools/dashboard.py list-worms --open
+python tools/forge.py list-reviews --open
+python tools/forge.py list-worms --open
 ```
 
 ### Python Utilities & Bringup Environment
