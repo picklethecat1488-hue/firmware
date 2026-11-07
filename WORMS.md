@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Report Date** | `2026-11-07 01:49:00 UTC` |
+| **Report Date** | `2026-11-07 01:49:06 UTC` |
 | **Total Issues** | `3` |
 | **Open Issues** | `1` |
 | **Resolved / Closed** | `2 (66%)` |
@@ -49,6 +49,7 @@
 - **Status**: `OPEN`
 - **Severity**: `LOW`
 - **Category**: `FIRMWARE`
+- **Created**: `2026-11-07 01:49:06 UTC`
 
 ---
 
