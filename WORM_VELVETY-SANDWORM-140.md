@@ -1,6 +1,6 @@
 # 🔴 `[WORM-VELVETY-SANDWORM-140]` Open defect
 
-- **UUID**: `dd683fac-a31a-4e71-be4d-288fbf2eb8c0`
+- **UUID**: `1a6dc02e-9c58-4d1c-8f91-16e9148e5f2c`
 - **ID**: `WORM-VELVETY-SANDWORM-140`
 - **Status**: `OPEN`
 - **Severity**: `LOW`
