@@ -144,13 +144,50 @@ class WormDatabaseModel(BaseModel):
                 return w
         return None
 
-    def add_or_update(self, worm: WormReportModel) -> None:
-        """Add a new worm or update an existing worm matching UUID or ID."""
+    def add_or_update(self, worm: WormReportModel) -> str:
+        """Add a new worm or update an existing worm matching UUID or ID.
+
+        Performs collision detection: If a worm arrives with an existing ID but a different
+        UUID, it is identified as a distinct entity and automatically assigned a new unique
+        ID to prevent data loss or clobbering.
+
+        Returns:
+            The canonical (possibly reassigned) worm ID.
+        """
+        existing_by_uuid_idx = None
+        existing_by_id_idx = None
         for idx, existing in enumerate(self.worms):
-            if existing.uuid == worm.uuid or existing.id == worm.id:
-                self.worms[idx] = worm
-                return
-        self.worms.append(worm)
+            if worm.uuid and existing.uuid == worm.uuid:
+                existing_by_uuid_idx = idx
+            if existing.id == worm.id:
+                existing_by_id_idx = idx
+
+        if existing_by_uuid_idx is not None and existing_by_id_idx is not None:
+            if existing_by_uuid_idx == existing_by_id_idx:
+                self.worms[existing_by_uuid_idx] = worm
+                return worm.id
+            else:
+                # UUID matches worm A, but requested ID is already held by worm B
+                known_ids = {w.id for w in self.worms}
+                worm.id = self.generate_worm_id(existing_ids=known_ids)
+                self.worms[existing_by_uuid_idx] = worm
+                return worm.id
+        elif existing_by_uuid_idx is not None:
+            self.worms[existing_by_uuid_idx] = worm
+            return worm.id
+        elif existing_by_id_idx is not None:
+            # Collision! Different UUID (or new worm) has an ID already taken by an existing worm
+            known_ids = {w.id for w in self.worms}
+            worm.id = self.generate_worm_id(existing_ids=known_ids)
+            if not worm.uuid:
+                worm.uuid = str(uuid_pkg.uuid4())
+            self.worms.append(worm)
+            return worm.id
+        else:
+            if not worm.uuid:
+                worm.uuid = str(uuid_pkg.uuid4())
+            self.worms.append(worm)
+            return worm.id
 
     def count_by_status(self) -> Dict[str, int]:
         """Tally worms grouped by lifecycle status."""

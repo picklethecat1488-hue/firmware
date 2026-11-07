@@ -643,22 +643,60 @@ class MarkdownWormExporter:
     def merge_databases(self, base_db: WormDatabaseModel, md_db: WormDatabaseModel) -> WormDatabaseModel:
         """Merge markdown database changes into base database using Read-Modify-Write rules.
 
+        Matches worms primarily by unique UUID. If an incoming worm shares an ID with an existing
+        worm but has a different UUID, collision mitigation generates a new unique ID for the incoming
+        worm so neither worm's content or state is clobbered.
+
         Args:
             base_db: Current base database model (e.g. from SQLite).
             md_db: Database model parsed from WORMS.md.
 
         Returns:
-            Updated base_db with all merged changes.
+            Updated base_db with all merged changes and disambiguated worms.
         """
-        existing_map = {b.id: b for b in base_db.worms}
+        existing_by_uuid = {b.uuid: b for b in base_db.worms if b.uuid}
+        existing_by_id = {b.id: b for b in base_db.worms}
+        all_ids = {b.id for b in base_db.worms} | {b.id for b in md_db.worms}
 
         for md_bug in md_db.worms:
-            if md_bug.id not in existing_map:
-                # Newly added bug in WORMS.md
+            existing = None
+            is_collision = False
+
+            if md_bug.uuid and md_bug.uuid in existing_by_uuid:
+                existing = existing_by_uuid[md_bug.uuid]
+            elif md_bug.id in existing_by_id:
+                cand = existing_by_id[md_bug.id]
+                if not md_bug.uuid and not cand.uuid and md_bug.title == cand.title:
+                    existing = cand
+                else:
+                    is_collision = True
+
+            if is_collision:
+                # Mitigate collision: assign new unique ID
+                new_id = base_db.generate_worm_id(existing_ids=all_ids)
+                all_ids.add(new_id)
+                md_bug.id = new_id
+                if not md_bug.uuid:
+                    md_bug.uuid = str(uuid_pkg.uuid4())
                 base_db.worms.append(md_bug)
-                existing_map[md_bug.id] = md_bug
+                existing_by_uuid[md_bug.uuid] = md_bug
+                existing_by_id[new_id] = md_bug
+                continue
+
+            if existing is None:
+                # Newly added bug in WORMS.md
+                if not md_bug.uuid:
+                    md_bug.uuid = str(uuid_pkg.uuid4())
+                base_db.worms.append(md_bug)
+                existing_by_uuid[md_bug.uuid] = md_bug
+                existing_by_id[md_bug.id] = md_bug
             else:
-                existing = existing_map[md_bug.id]
+                # Existing worm matched by UUID or legacy title match
+                if md_bug.id != existing.id:
+                    if md_bug.id not in existing_by_id or existing_by_id[md_bug.id] is existing:
+                        existing_by_id.pop(existing.id, None)
+                        existing.id = md_bug.id
+                        existing_by_id[existing.id] = existing
                 # Status update: protect resolved/closed bugs from being regressed to OPEN by stale markdown without notes
                 if (
                     existing.status in (WormStatus.RESOLVED, WormStatus.CLOSED)
@@ -1253,6 +1291,15 @@ class MarkdownWormExporter:
             else:
                 if expected_id_from_fn:
                     md_bug.id = expected_id_from_fn
+                # Check collision with existing worm ID
+                cand = database.get_worm(md_bug.id)
+                if cand and (not md_bug.uuid or cand.uuid != md_bug.uuid):
+                    # Duplicate ID collision detected: mitigate by reassigning unique ID
+                    new_id = database.generate_worm_id(existing_ids={w.id for w in database.worms})
+                    md_bug.id = new_id
+                    if not md_bug.uuid:
+                        md_bug.uuid = str(uuid_pkg.uuid4())
+                    self.export_individual_worm(md_bug, feedback_dir)
                 database.add_or_update(md_bug)
                 merged += 1
 
