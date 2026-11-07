@@ -17,8 +17,15 @@ To establish clean domain boundaries, lifecycle supervision, and automated boile
 
 ### 3. Automated Code Generation & Rinja Templates
 * **Configuration Files as Single Source of Truth**: Boilerplate controller setups, task runners, priority mappings, and CLI command groups are automatically generated using Rinja templates.
+  * **Controllers**: [controller/controllers.toml](controller/controllers.toml)
+  * **CLIs**: [shell.toml](shell.toml)
 * **Declarative Manifest Edits**: When modifying controllers, task runners, or CLI handlers, edit `controllers.toml`, `shell.toml`, or the template files in `controller/templates/` rather than manually editing generated files.
-* **Unified Codegen Tool**: When adding new code generators, execute them through the `tools/code_gen` host utility and adhere strictly to existing code generation design patterns.
+* **Unified Codegen Tool & Runbook**: When adding new code generators, listing existing definitions, or inspecting generated controller/CLI metadata, execute them through the `tools/code_gen` host utility:
+  ```bash
+  cargo run -p code_gen -- list-controllers
+  cargo run -p code_gen -- list-clis
+  cargo run -p code_gen -- cli-sample Motor
+  ```
 
 ### 4. Include Directives Placement
 * **Top-of-File Placement**: The `include!` macro directives that load generated topology or code structures (e.g., `include!(concat!(env!("OUT_DIR"), "/generated_app.rs"));` or `include!(concat!(env!("OUT_DIR"), "/generated_board.rs"));`) MUST be placed at the very beginning of the source file listing (i.e. the first line of code in a listing, immediately after module-level doc comments).
