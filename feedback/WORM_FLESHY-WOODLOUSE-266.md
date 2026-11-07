@@ -7,7 +7,7 @@
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `dashboard`
 - **Created**: `2026-11-06 23:58:59 UTC`
-- **Resolved**: `2026-11-07 00:11:59 UTC`
+- **Resolved**: `2026-11-07 00:22:38 UTC`
 
 #### Description
 
@@ -30,13 +30,14 @@ $ git add -f feedback/WORM_ORGANIC-FIREWORM-553.md
 
 - `02cf15ed07efd9c105ad04ae238719bc01a4dbfa`
 - `2e4061fbdfb35122ea541e21b068202d0be9f935`
+- `032ab77c020b1a4bda7c34175d9cdcebf9f66816`
 
 #### Review Tasks & Functional Checklist
 
-- [ ] Verify git status displays untracked/modified feedback files without being blocked by gitignore | `git status feedback/` <!-- id:d2fc9bac -->
-- [ ] Verify GitEngine stages and commits feedback files without requiring git add -f | `python -c 'from tools.dashboard.provider.vcs.git_engine import GitEngine; from pathlib import Path; GitEngine(Path(".")).stage_file("feedback/WORM_FLESHY-WOODLOUSE-266.md")'` <!-- id:814a31c1 -->
-- [ ] Inspect VCS web workstation working tree view to verify feedback files appear under Agent Feedback | `python tools/dashboard.py --list` <!-- id:57b289a0 -->
+- [ ] Verify git status on code branches is clean and does not show untracked feedback directory | `git status` <!-- id:d2fc9bac -->
+- [ ] Verify .gitignore decouples feedback/ and attachments/ | `git check-ignore feedback/ attachments/` <!-- id:814a31c1 -->
+- [ ] Verify GitEngine stages and commits feedback files using force-add fallback without raising gitignore errors | `python -c 'from tools.dashboard.provider.vcs.git_engine import GitEngine; from pathlib import Path; GitEngine(Path(".")).stage_file("feedback/WORM_FLESHY-WOODLOUSE-266.md")'` <!-- id:57b289a0 -->
 
 #### Resolution Notes
 
-Removed feedback/ directory from root .gitignore across firmware and hardware repositories to allow git tracking and VCS UI working tree discovery of code review and worm markdown reports, while preserving ignore rules for binary attachments (attachments/ and feedback/attachments/). Added defensive force-add fallback in GitEngine.stage_file and GitEngine.commit_files to transparently honor explicit user staging and commit actions even if a file pattern matches .gitignore.
+Restore feedback/ in .gitignore across firmware and hardware to decouple to detached branches; preserve GitEngine force-add fallback for UI staging and commits
