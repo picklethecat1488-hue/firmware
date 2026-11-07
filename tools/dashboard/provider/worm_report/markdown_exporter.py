@@ -1251,16 +1251,18 @@ class MarkdownWormExporter:
             file_name = bug_file.name
 
             # Determine ID implied by filename
-            m_fn = re.match(r"^(?:WORM|BUG)[_-](.+)\.md$", file_name, re.IGNORECASE)
+            m_fn = re.match(r"^(WORM|BUG)[_-](.+)\.md$", file_name, re.IGNORECASE)
             expected_id_from_fn = ""
+            fn_prefix = "WORM"
             if m_fn:
-                raw_part = m_fn.group(1)
+                fn_prefix = m_fn.group(1).upper()
+                raw_part = m_fn.group(2)
                 if raw_part.isdigit():
-                    expected_id_from_fn = f"WORM-{int(raw_part):03d}"
-                elif raw_part.startswith("WORM-"):
+                    expected_id_from_fn = f"{fn_prefix}-{int(raw_part):03d}"
+                elif raw_part.startswith(f"{fn_prefix}-"):
                     expected_id_from_fn = raw_part
                 else:
-                    expected_id_from_fn = f"WORM-{raw_part}"
+                    expected_id_from_fn = f"{fn_prefix}-{raw_part}"
 
             try:
                 curr_mtime = bug_file.stat().st_mtime
@@ -1287,10 +1289,9 @@ class MarkdownWormExporter:
                 # File name rename detection!
                 old_id = existing_by_uuid.id or ""
                 norm_old = old_id.removeprefix("WORM-").removeprefix("BUG-")
-                old_file_exists = (
-                    (feedback_dir / f"WORM_{norm_old}.md").exists()
-                    or (feedback_dir / f"BUG_{norm_old}.md").exists()
-                )
+                old_file_exists = (feedback_dir / f"WORM_{norm_old}.md").exists() or (
+                    feedback_dir / f"BUG_{norm_old}.md"
+                ).exists()
                 if expected_id_from_fn and existing_by_uuid.id != expected_id_from_fn:
                     cand_by_id = database.get_worm(expected_id_from_fn)
                     if cand_by_id and cand_by_id.uuid != existing_by_uuid.uuid:
@@ -1333,6 +1334,11 @@ class MarkdownWormExporter:
                     if not md_bug.uuid:
                         md_bug.uuid = str(uuid_pkg.uuid4())
                     self.export_individual_worm(md_bug, feedback_dir)
+                    if bug_file.exists():
+                        try:
+                            bug_file.unlink()
+                        except OSError:
+                            pass
                 database.add_or_update(md_bug)
                 merged += 1
 
