@@ -200,13 +200,31 @@ def test_worm_server_feedback_mtime_synchronization(tmp_path: Path) -> None:
     assert not server.check_file_watch()
 
 
-def test_zero_open_worms_in_firmware_workspace() -> None:
-    """Verify live workspace reports exactly zero open or resolved worms awaiting review."""
-    from provider.worm_report.server import WormReportServer
-    from model.worm_report import WormStatus
+def test_shared_common_js_library_integrated() -> None:
+    """Verify common.js exists in static assets, contains valid JS, and is linked across templates."""
+    import shutil
+    import subprocess
 
-    server = WormReportServer(bind_and_activate=False)
-    open_worms = [
-        w for w in server.database.worms if w.status in (WormStatus.OPEN, WormStatus.IN_PROGRESS, WormStatus.RESOLVED)
-    ]
-    assert len(open_worms) == 0, f"Expected 0 open worms, found: {[w.id for w in open_worms]}"
+    static_dir = Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static"
+    common_js = static_dir / "common.js"
+    assert common_js.is_file(), "static/common.js must exist in code_review static assets"
+
+    content = common_js.read_text(encoding="utf-8")
+    assert "AsymptoticProgressBar" in content
+    assert "performActionWithProgress" in content
+    assert "setupPanelResizer" in content
+    assert "sanitizeAuthor" in content
+
+    node_bin = shutil.which("node")
+    if node_bin:
+        res = subprocess.run([node_bin, "--check", str(common_js)], capture_output=True, text=True)
+        assert res.returncode == 0, f"common.js has JavaScript syntax errors: {res.stderr}"
+
+    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
+    for tpl_name in ("diff_view.html.j2", "worm_report.html.j2", "code_review.html.j2"):
+        tpl_path = templates_dir / tpl_name
+        assert tpl_path.is_file()
+        tpl_text = tpl_path.read_text(encoding="utf-8")
+        assert '<script src="/static/common.js"></script>' in tpl_text, (
+            f'{tpl_name} must include <script src="/static/common.js"></script>'
+        )

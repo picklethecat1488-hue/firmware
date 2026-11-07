@@ -863,21 +863,24 @@ class WormReportServer(ThreadingHTTPServer):
         self.host = host
         self.port = port
         self.repo_root = repo_root or Path.cwd()
-        self.markdown_output = markdown_output or (self.repo_root / "target" / "WORMS.md")
-        if feedback_dir is not None:
-            self.feedback_dir = feedback_dir
-        elif markdown_output is not None and markdown_output.parent.name not in ("build", "target"):
-            self.feedback_dir = markdown_output.parent
-        elif sqlite_file is not None and sqlite_file.parent.name not in ("build", "target"):
-            self.feedback_dir = sqlite_file.parent / "feedback"
+        if sqlite_file is not None and sqlite_file.parent.name not in ("build", "target"):
+            self.markdown_output = markdown_output or (sqlite_file.parent / "WORMS.md")
+            self.state_file = state_file or (sqlite_file.parent / "worms_state.json")
+            self.feedback_dir = feedback_dir or (sqlite_file.parent / "feedback")
         else:
-            self.feedback_dir = self.repo_root / "feedback"
+            self.markdown_output = markdown_output or (self.repo_root / "target" / "WORMS.md")
+            self.state_file = state_file or (self.repo_root / "target" / "worms_state.json")
+            if feedback_dir is not None:
+                self.feedback_dir = feedback_dir
+            elif markdown_output is not None and markdown_output.parent.name not in ("build", "target"):
+                self.feedback_dir = markdown_output.parent
+            else:
+                self.feedback_dir = self.repo_root / "feedback"
         if self.feedback_dir != self.repo_root / "feedback":
             try:
                 self.feedback_dir.mkdir(parents=True, exist_ok=True)
             except OSError:
                 pass
-        self.state_file = state_file or (self.repo_root / "target" / "worms_state.json")
 
         if sqlite_file:
             self.sqlite_file = sqlite_file
@@ -1026,9 +1029,9 @@ class WormReportServer(ThreadingHTTPServer):
             ws_root = get_git_root().resolve()
         except Exception:
             pass
-        skip_detached = (self.repo_root.resolve() == ws_root) and (
-            self.sqlite_file.parent.name not in ("build", "target")
-        )
+        is_workspace = self.repo_root.resolve() == ws_root
+        skip_detached = is_workspace and (self.sqlite_file.parent.name not in ("build", "target"))
+
         if not self.fresh and not db.worms and not skip_detached and (self.repo_root / ".git").exists():
             try:
                 from provider.worm_report.detached_branch import DetachedBranchWormStore
@@ -1038,19 +1041,6 @@ class WormReportServer(ThreadingHTTPServer):
                     db = detached_db
             except Exception:
                 pass
-
-        if not self.fresh and not db.worms:
-            fallback_md = self.repo_root / "build" / "WORMS.md"
-            md_to_read = (
-                self.markdown_output
-                if self.markdown_output.exists()
-                else (fallback_md if fallback_md.exists() else None)
-            )
-            if md_to_read and md_to_read.exists():
-                md_db = self.exporter.parse_markdown(md_to_read)
-                if md_db and md_db.worms:
-                    db = self.exporter.merge_databases(db, md_db)
-                self.markdown_mtime = md_to_read.stat().st_mtime
 
         if not self.fresh and self.feedback_dir.exists():
             self.exporter.scan_and_sync_feedback_dir(self.feedback_dir, db, self.sqlite_store)
@@ -1127,10 +1117,10 @@ class WormReportServer(ThreadingHTTPServer):
                     ws_root = get_git_root().resolve()
                 except Exception:
                     pass
-                skip_detached = (self.repo_root.resolve() == ws_root) and (
-                    self.sqlite_file.parent.name not in ("build", "target")
-                )
-                if not skip_detached and (self.repo_root / ".git").exists():
+                is_workspace = self.repo_root.resolve() == ws_root
+                skip_detached = is_workspace and (self.sqlite_file.parent.name not in ("build", "target"))
+
+                if not skip_detached and not self.fresh and (self.repo_root / ".git").exists():
                     try:
                         from provider.worm_report.detached_branch import DetachedBranchWormStore
 
