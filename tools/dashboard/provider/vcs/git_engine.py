@@ -1901,7 +1901,13 @@ class GitEngine:
 
     def stage_file(self, file_path: str) -> None:
         """Stage file modifications or untracked file into git index."""
-        run_git_command(["add", "--", file_path], cwd=self.repo_root)
+        try:
+            run_git_command(["add", "--", file_path], cwd=self.repo_root)
+        except RuntimeError as e:
+            if "ignored by one of your .gitignore files" in str(e):
+                run_git_command(["add", "-f", "--", file_path], cwd=self.repo_root)
+            else:
+                raise
 
     def unstage_file(self, file_path: str) -> None:
         """Remove file changes from git index while preserving working tree changes."""
@@ -2058,7 +2064,13 @@ class GitEngine:
                 pass
             self._ensure_lfs_tracking_for_attachments(file_paths)
             for fp in file_paths:
-                run_git_command(["add", "--", fp], cwd=self.repo_root)
+                try:
+                    run_git_command(["add", "--", fp], cwd=self.repo_root)
+                except RuntimeError as e:
+                    if "ignored by one of your .gitignore files" in str(e):
+                        run_git_command(["add", "-f", "--", fp], cwd=self.repo_root)
+                    else:
+                        raise
         else:
             self._ensure_lfs_tracking_for_attachments(None)
 
