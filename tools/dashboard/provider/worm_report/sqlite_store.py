@@ -415,6 +415,12 @@ class SQLiteWormStore:
         ]
         custom_json = json.dumps(custom_clean)
         b_uuid = bug.uuid or str(uuid_pkg.uuid4())
+        existing_with_uuid = conn.execute(
+            "SELECT id FROM worms WHERE uuid = ? AND id != ?", (b_uuid, bug.id)
+        ).fetchone()
+        if existing_with_uuid:
+            b_uuid = str(uuid_pkg.uuid4())
+            bug.uuid = b_uuid
         conn.execute(
             """
             INSERT INTO worms (
@@ -644,6 +650,10 @@ class SQLiteWormStore:
                 return
             old_id = row["id"]
             if old_id == new_id:
+                return
+            existing_target = conn.execute("SELECT uuid FROM worms WHERE id = ?", (new_id,)).fetchone()
+            if existing_target and existing_target["uuid"] != worm_uuid:
+                # Target ID already occupied in SQLite; do not crash on unique constraint
                 return
             conn.execute("PRAGMA foreign_keys = OFF")
             conn.execute("UPDATE worms SET id = ? WHERE uuid = ?", (new_id, worm_uuid))

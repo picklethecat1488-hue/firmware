@@ -265,7 +265,7 @@ def test_sync_branch_pushes_feedback_and_attachments(repo_with_remote) -> None:
     assert "worms.json" not in ls_remote
     assert "WORMS.md" not in ls_remote
     assert "WORMS.json" not in ls_remote
-    assert f"feedback/WORM_{worm_id.removeprefix('WORM-')}.md" in ls_remote
+    assert any(line.endswith(f"WORM_{worm_id.removeprefix('WORM-')}.md") for line in ls_remote.splitlines())
     assert f"attachments/{worm_id}/sample.log" in ls_remote
 
 

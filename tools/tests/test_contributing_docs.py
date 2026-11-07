@@ -13,10 +13,10 @@ def test_contributing_contains_dashboard_documentation() -> None:
     content = contributing_path.read_text(encoding="utf-8")
 
     # Section header
-    assert "Dashboard" in content or "dashboard.py" in content
+    assert "Workstation" in content or "forge.py" in content or "Dashboard" in content
 
     # Workstation launch & CLI commands
-    assert "tools/dashboard.py" in content
+    assert "tools/forge.py" in content
     assert "list-reviews" in content
     assert "list-worms" in content
     assert "add-worm" in content
