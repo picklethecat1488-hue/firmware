@@ -1,10 +1,10 @@
-# 🟢 `[WORM-RECENT-002]` Recently resolved bug awaiting review
+# 🟢 `[WORM-RECENT-002]` Recently resolved worm awaiting review
 
-- **UUID**: `983f6370-bf83-4ed1-9eb4-e52ee95a57d9`
+- **UUID**: `735ed9ff-f1ef-4ae9-9bbc-2bfb9893ea64`
 - **ID**: `WORM-RECENT-002`
 - **Status**: `CLOSED`
 - **Severity**: `HIGH`
-- **Category**: `GENERAL`
+- **Category**: `UI`
 - **Created**: `2026-11-05 14:15:00 UTC`
 - **Resolved**: `2026-11-05 14:20:00 UTC`
 - **Accepted**: `2026-11-05 14:20:00 UTC`
