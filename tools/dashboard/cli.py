@@ -194,6 +194,13 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Custom SQLite database file for review or worms.",
     )
     parser.add_argument(
+        "--feedback-dir",
+        dest="feedback_dir",
+        type=Path,
+        default=None,
+        help="Custom feedback directory for WORM_*.md and CR_*.md files (defaults to FEEDBACK_DIR env var or repo_root/feedback).",
+    )
+    parser.add_argument(
         "--fresh",
         action="store_true",
         help="Start a fresh tracking or review session.",
@@ -1031,6 +1038,7 @@ def main(cli_args: Optional[List[str]] = None) -> None:
         initial_commit=args.goto,
         sqlite_worm_file=worm_db,
         sqlite_review_file=review_db,
+        feedback_dir=getattr(args, "feedback_dir", None),
         revisions=commits_arg if commits_arg else None,
         fresh=args.fresh,
         bind_and_activate=not is_cli_only,
