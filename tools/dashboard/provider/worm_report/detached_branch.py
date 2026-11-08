@@ -243,7 +243,26 @@ class DetachedBranchWormStore:
         Returns:
             New commit SHA string or None if operation failed.
         """
-        fb_dir = extra_feedback_dir or (self.repo_root / "feedback")
+        ws_root = self.repo_root.resolve()
+        try:
+            from provider.vcs.git_engine import get_git_root
+
+            ws_root = get_git_root().resolve()
+        except Exception:
+            pass
+
+        if extra_feedback_dir is not None:
+            fb_dir = extra_feedback_dir
+        elif os.environ.get("FEEDBACK_DIR") and (self.repo_root.resolve() == ws_root):
+            fb_dir = Path(os.environ["FEEDBACK_DIR"]).resolve()
+        else:
+            fb_dir = self.repo_root / "feedback"
+
+        is_test = bool(os.environ.get("PYTEST_CURRENT_TEST"))
+        if is_test and not os.environ.get("ALLOW_PRODUCTION_FEEDBACK_MUTATION"):
+            if self.repo_root.resolve() == ws_root:
+                return None
+
         is_wt = (fb_dir / ".git").is_file()
         if is_wt:
             prefix = "WORM" if self.branch_name == "worms" else "BUG"
@@ -323,7 +342,7 @@ class DetachedBranchWormStore:
         env["GIT_COMMITTER_NAME"] = "User"
         env["GIT_COMMITTER_EMAIL"] = "user@workspace"
 
-        feedback_path = extra_feedback_dir or (self.repo_root / "feedback")
+        feedback_path = fb_dir
         try:
             # If a parent commit exists, initialize the isolated index from its tree
             current_index: Dict[str, str] = {}
