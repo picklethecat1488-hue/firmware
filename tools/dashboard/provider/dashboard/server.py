@@ -430,6 +430,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                     return
                 try:
                     sha = self.server.git_engine.commit_files(message=message, file_paths=files, amend=amend)
+                    if hasattr(self.server, "review_server") and self.server.review_server:
+                        self.server.review_server.update_commit_hash("working", sha)
                     self._send_json({"status": "ok", "commit_hash": sha})
                 except (RuntimeError, ValueError) as e:
                     self._send_json({"error": str(e)}, status=400)
@@ -443,6 +445,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                     return
                 try:
                     sha = self.server.git_engine.commit_files(message=message, file_paths=files, amend=True)
+                    if hasattr(self.server, "review_server") and self.server.review_server:
+                        self.server.review_server.update_commit_hash("working", sha)
                     self._send_json({"status": "ok", "commit_hash": sha})
                 except (RuntimeError, ValueError) as e:
                     self._send_json({"error": str(e)}, status=400)
@@ -808,7 +812,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             )
             return
 
-        commit_target = data.get("commit", "working")
+        commit_target = data.get("commit", data.get("commit_hash", "working"))
         snippet = extract_line_snippet(
             file_path=file_path,
             start_line=int(data.get("start_line", 1)),
