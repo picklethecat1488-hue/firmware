@@ -38,15 +38,3 @@ def test_worm_soilbound_vermis_341_monotonic_entry_ids_across_maxlen():
     assert len(runner.fs_outputs) == 5000
     assert runner.fs_outputs[0]["id"] == 11
     assert runner.fs_outputs[-1]["id"] == 5010
-
-
-def test_worm_soilbound_vermis_341_template_handles_circular_buffer_updates():
-    """Verify host_daemon.html.j2 tracks entry IDs rather than solely checking array length."""
-    template_path = REPO_ROOT / "tools" / "host_daemon" / "templates" / "host_daemon.html.j2"
-    assert template_path.exists(), "host_daemon.html.j2 not found"
-    content = template_path.read_text(encoding="utf-8")
-
-    # Verify tracking uses ID-based incremental update so that 5000-line full buffers continue updating
-    assert "lastCliId" in content, "host_daemon.html.j2 must track lastCliId for circular buffer support"
-    assert "lastLogId" in content, "host_daemon.html.j2 must track lastLogId for circular buffer support"
-    assert "lastFsId" in content, "host_daemon.html.j2 must track lastFsId for circular buffer support"

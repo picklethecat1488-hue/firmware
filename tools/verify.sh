@@ -26,13 +26,17 @@ else
     cargo test
 fi
 
-echo "   Running Python tests..."
 NUM_CPUS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 if [ "${NUM_CPUS}" -gt 8 ]; then
     PYTEST_WORKERS=8
 else
     PYTEST_WORKERS="${NUM_CPUS}"
 fi
+
+echo "   Running parallel JavaScript unit tests..."
+node --test --test-concurrency="${PYTEST_WORKERS}" tools/tests/js/*.test.mjs
+
+echo "   Running Python tests..."
 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1 OMP_NUM_THREADS=1 pytest -n "${PYTEST_WORKERS}"
 
 # Build debug firmware target and debug host tools

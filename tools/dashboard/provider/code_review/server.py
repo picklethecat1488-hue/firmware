@@ -53,7 +53,7 @@ class ReviewRequestHandler(BaseHTTPRequestHandler):
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)
 
-        if path.startswith("/static/"):
+        if path.startswith("/js/") or path.startswith("/static/"):
             self._handle_serve_static(path)
             return
 
@@ -89,8 +89,9 @@ class ReviewRequestHandler(BaseHTTPRequestHandler):
             case "/api/search":
                 q = query.get("q", [""])[0]
                 commit = query.get("commit", ["working"])[0]
-                results = self.server.git_engine.search_code(q, commit=commit)
-                self._send_json({"query": q, "commit": commit, "results": results})
+                current_file = query.get("file", [""])[0]
+                results = self.server.git_engine.search_code(q, commit=commit, current_file=current_file)
+                self._send_json({"query": q, "commit": commit, "current_file": current_file, "results": results})
             case "/api/raw":
                 commit = query.get("commit", ["working"])[0]
                 file_path = query.get("file", [""])[0]
@@ -200,28 +201,10 @@ class ReviewRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(encoded)
 
     def _handle_serve_static(self, path: str) -> None:
-        """Serve static files such as JavaScript vendor bundles and CSS."""
-        static_dir = Path(__file__).resolve().parent / "static"
-        filename = path.removeprefix("/static/").strip("/")
-        file_target = (static_dir / filename).resolve()
+        """Serve ES modules from tools/js/ and static assets from tools/js/static/."""
+        from provider.http_static import get_firmware_js_root, serve_static_asset
 
-        if not str(file_target).startswith(str(static_dir)) or not file_target.is_file():
-            self.send_error(404, "Static asset not found")
-            return
-
-        if file_target.suffix == ".js":
-            content_type = "application/javascript"
-        elif file_target.suffix == ".svg":
-            content_type = "image/svg+xml"
-        else:
-            content_type = "text/css"
-        data = file_target.read_bytes()
-        self.send_response(200)
-        self.send_header("Content-Type", f"{content_type}; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "public, max-age=86400")
-        self.end_headers()
-        self.wfile.write(data)
+        serve_static_asset(self, path, js_root=get_firmware_js_root(), cache_control="no-cache")
 
     def _handle_add_comment(self, data: dict) -> None:
         """Create and append a new line comment to the review session."""
@@ -620,6 +603,25 @@ class ReviewServer(ThreadingHTTPServer):
         self.save_and_sync()
         return {"status": "ok", "merged_files": merged_count, "total_comments": len(self.session.comments)}
 
+    def update_commit_hash(self, orig_commit: str, new_commit: str) -> None:
+        """Update review session and comments from orig_commit to new_commit.
+
+        Args:
+            orig_commit: Original commit hash or 'working'.
+            new_commit: New commit hash to re-key comments to.
+        """
+        with self._lock:
+            if self.session.commit_hash == orig_commit or (not self.session.commit_hash and orig_commit == "working"):
+                self.session.commit_hash = new_commit
+            if orig_commit in self.session.revisions:
+                self.session.revisions = [new_commit if r == orig_commit else r for r in self.session.revisions]
+            for comment in self.session.comments:
+                if comment.commit == orig_commit or (not comment.commit and orig_commit == "working"):
+                    comment.commit = new_commit
+            if self.sqlite_store:
+                self.sqlite_store.update_comment_commit_hash(orig_commit, new_commit)
+            self.save_and_sync()
+
     def save_and_sync(self) -> Path:
         """Persist session to SQLite, export JSON, and render updated Markdown report."""
         with self._lock:
@@ -645,13 +647,19 @@ class ReviewServer(ThreadingHTTPServer):
                             pass
                     res = self.markdown_output
 
-                # Export commit-specific CR_<commit>.md ONLY if there are comments for this commit
+                # Export commit-specific CR_<commit>.md for all relevant commits
+                commits_to_export = {c.commit for c in self.session.comments if c.commit}
                 commit_sha = self.session.commit_hash or self.git_engine.get_head_commit()
                 if commit_sha:
+                    commits_to_export.add(commit_sha)
+                if (self.feedback_dir / "CR_working.md").exists():
+                    commits_to_export.add("working")
+
+                for c_sha in commits_to_export:
                     try:
-                        commit_files = len(self.git_engine.get_changed_files(commit_sha))
+                        commit_files = len(self.git_engine.get_changed_files(c_sha))
                         self.exporter.export_commit_markdown(
-                            self.session, commit_sha, self.feedback_dir, total_repo_files=commit_files
+                            self.session, c_sha, self.feedback_dir, total_repo_files=commit_files
                         )
                     except OSError:
                         pass

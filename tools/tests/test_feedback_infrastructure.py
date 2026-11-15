@@ -260,22 +260,6 @@ def test_code_review_granular_markdown_export_and_auto_merge(tmp_path: Path) -> 
     assert merged.comments[0].body == "Consider using namedtuple or dataclass"
 
 
-def test_feedback_ui_elements_in_templates() -> None:
-    """Verify UI loading overlays and sync feedback buttons in Jinja2 templates."""
-    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-
-    worm_template = (templates_dir / "worm_report.html.j2").read_text(encoding="utf-8")
-    assert "feedback-loading-modal" in worm_template
-    assert "syncFeedback()" in worm_template
-    assert "/api/sync_feedback" in worm_template
-
-    cr_template = (templates_dir / "code_review.html.j2").read_text(encoding="utf-8")
-    assert "feedbackLoadingModal" in cr_template
-    assert "btnSyncFeedback" in cr_template
-    assert "syncFeedback()" in cr_template
-    assert "/api/sync_feedback" in cr_template
-
-
 def test_code_review_no_feedback_leaves_no_markdown_files(tmp_path: Path) -> None:
     """Verify that when a review has no comments, CR_<commit>.md and feedback/CR.md are not created."""
     feedback_dir = tmp_path / "feedback"
@@ -451,6 +435,60 @@ def test_scan_and_sync_incremental_mtime_caching(tmp_path: Path) -> None:
     worm1_updated = db.get_worm("WORM-001")
     assert worm1_updated is not None
     assert worm1_updated.title == "First Worm Updated Title"
+
+    # 4. Detached worktree commit_database must preserve WORM/BUG prefixes and elide unchanged mtimes
+    import subprocess
+
+    from provider.worm_report.detached_branch import DetachedBranchWormStore
+
+    repo_dir = tmp_path / "isolated_repo"
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init"], cwd=repo_dir, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "User"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "config", "user.email", "user@workspace"], cwd=repo_dir, check=True)
+    (repo_dir / "README.md").write_text("init\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo_dir, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo_dir, check=True, capture_output=True)
+    wt_dir = repo_dir / "feedback"
+    subprocess.run(
+        ["git", "worktree", "add", "--orphan", "-b", "worms", str(wt_dir)],
+        cwd=repo_dir,
+        check=True,
+        capture_output=True,
+    )
+
+    wt_store = SQLiteWormStore(repo_dir / "target" / "worms.sqlite")
+    cross_bug = WormReportModel(
+        id="BUG-CREEPING-LARVA-820",
+        title="Cross-repo bug record",
+        status=WormStatus.CLOSED,
+        severity=WormSeverity.MEDIUM,
+        category=WormCategory.GENERAL,
+    )
+    wt_db = WormDatabaseModel(worms=[worm1_updated, cross_bug])
+    exporter.export_individual_worm(worm1_updated, wt_dir)
+    exporter.export_individual_worm(cross_bug, wt_dir)
+    exporter.scan_and_sync_feedback_dir(wt_dir, wt_db, wt_store)
+
+    worm1_file = wt_dir / "WORM_001.md"
+    bug_file = wt_dir / "BUG_CREEPING-LARVA-820.md"
+    assert worm1_file.exists()
+    assert bug_file.exists()
+    mtime_before = worm1_file.stat().st_mtime_ns
+    time.sleep(0.02)
+
+    detached = DetachedBranchWormStore(repo_dir)
+    detached.commit_database(wt_db, commit_message="Sync worktree", extra_feedback_dir=wt_dir)
+
+    assert not (wt_dir / "WORM_CREEPING-LARVA-820.md").exists(), (
+        "commit_database must not write a cross-prefix WORM_ clone of a BUG- record"
+    )
+    assert worm1_file.stat().st_mtime_ns == mtime_before, (
+        "commit_database must not rewrite unchanged markdown files or invalidate cached mtimes"
+    )
+    stats_after = exporter.scan_and_sync_feedback_dir(wt_dir, wt_db, wt_store)
+    assert stats_after["merged"] == 0
+    assert len(wt_db.worms) == 2
 
 
 def test_export_markdown_elides_unchanged_write(tmp_path: Path) -> None:

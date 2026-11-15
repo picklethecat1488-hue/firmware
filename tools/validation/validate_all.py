@@ -28,6 +28,7 @@ from tools.validation.validate_multicore_support import validate_multicore_suppo
 from tools.validation.validate_debug_derive import validate_debug_derive
 from tools.validation.validate_controller_context import validate_controller_context
 from tools.validation.validate_constant_addresses import validate_constant_addresses
+from tools.validation.validate_js import validate_js
 
 # Globals for spinner control
 spinner = None
@@ -285,6 +286,28 @@ def main():
             "Constant Address Validator",
             run_python_validator,
             (validate_constant_addresses, output_file),
+        ),
+        (
+            "JavaScript Lint (Oxlint)",
+            run_python_validator,
+            (validate_js, output_file),
+        ),
+        (
+            "JavaScript Unit Tests",
+            run_cmd,
+            (
+                [
+                    "node",
+                    "--test",
+                    f"--test-concurrency={min(8, os.cpu_count() or 4)}",
+                    *sorted(
+                        os.path.relpath(os.path.join(workspace_root, "tools", "tests", "js", fname), workspace_root)
+                        for fname in os.listdir(os.path.join(workspace_root, "tools", "tests", "js"))
+                        if fname.endswith(".test.mjs")
+                    ),
+                ],
+                output_file,
+            ),
         ),
         (
             "Python Lint (Ruff)",

@@ -4,12 +4,16 @@ Verifies:
 1. a5bbb33b: host_daemon directory hierarchy mirrors tools/dashboard (model/, provider/, templates/, static/, cli.py).
 2. a5bbb33b: Canonical imports work cleanly from model and provider packages without legacy backward-compatibility shims.
 3. cfc27a10: format_clickable_choice formats interactive prompt choices with OSC 8 hyperlinks and ANSI colors.
-4. cfc27a10: host_daemon.html.j2 parses command/action hyperlinks and provides handleCliCommandClick callback.
+4. cfc27a10 / Component 4B: HostDaemonServer renders structured #app-boot-config JSON with zero inline HTML event handlers and serves /js/daemon/daemon_app.js ES module.
 """
 
+import json
 from pathlib import Path
-import re
 import sys
+import threading
+import urllib.request
+
+from bs4 import BeautifulSoup
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(REPO_ROOT) not in sys.path:
@@ -29,7 +33,7 @@ from host_daemon.model.bringup import (
 )
 from host_daemon.provider.bringup.bringup_manager import BringupManager
 from host_daemon.provider.daemon.runner import DaemonRunner
-from host_daemon.provider.daemon.server import HostDaemonRequestHandler, HostDaemonServer
+from host_daemon.provider.daemon.server import HostDaemonServer
 
 
 def test_cr_a5bbb33b_host_daemon_library_structure():
@@ -102,11 +106,57 @@ def test_cr_cfc27a10_format_clickable_choices():
     assert "\033[1;33m" in p_skip
 
 
-def test_cr_cfc27a10_template_command_link_handling():
-    """Verify host_daemon.html.j2 implements handleCliCommandClick and handles command:/action: URLs."""
-    template_path = REPO_ROOT / "tools" / "host_daemon" / "templates" / "host_daemon.html.j2"
-    content = template_path.read_text(encoding="utf-8")
+def test_host_daemon_renders_boot_config_json_and_serves_es_modules():
+    """Verify HostDaemonServer emits structured #app-boot-config JSON with zero inline handlers and serves /js/daemon/*."""
+    runner = DaemonRunner(
+        repo_root=REPO_ROOT,
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+        target="thumbv6m-none-eabi",
+        release=True,
+        speed=4000,
+    )
+    server = HostDaemonServer("127.0.0.1", 0, runner)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
 
-    assert "handleCliCommandClick" in content
-    assert 'currentUrl.startsWith("command:")' in content or "currentUrl.startsWith('command:')" in content
-    assert "term-cmd-link" in content
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=5) as resp:
+            assert resp.status == 200
+            html = resp.read().decode("utf-8")
+
+        soup = BeautifulSoup(html, "html.parser")
+        boot_el = soup.find("script", id="app-boot-config")
+        assert boot_el is not None, "Missing <script id='app-boot-config' type='application/json'>"
+        assert boot_el.get("type") == "application/json"
+
+        boot_cfg = json.loads(boot_el.text)
+        assert boot_cfg["package"] == "cat_detector"
+        assert boot_cfg["binName"] == "cat_detector_shell"
+        assert boot_cfg["target"] == "thumbv6m-none-eabi"
+        assert boot_cfg["release"] is True
+        assert boot_cfg["speed"] == 4000
+
+        module_script = soup.find("script", attrs={"type": "module", "src": "/js/daemon/daemon_app.js"})
+        assert module_script is not None, "Missing <script type='module' src='/js/daemon/daemon_app.js'>"
+        assert soup.find("script", attrs={"src": "/static/common.js"}) is None
+
+        for tag in soup.find_all(True):
+            inline_handlers = [attr for attr in tag.attrs if attr.lower().startswith("on")]
+            assert not inline_handlers, f"Found forbidden inline event handler {inline_handlers} on <{tag.name}>"
+
+        for mod_name in (
+            "daemon_app.js",
+            "rtt_stream.js",
+            "cli_console.js",
+            "bringup_runner.js",
+            "target_config.js",
+            "worm_reporter.js",
+        ):
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/js/daemon/{mod_name}", timeout=5) as mod_resp:
+                assert mod_resp.status == 200
+                assert "javascript" in (mod_resp.headers.get("Content-Type") or "")
+    finally:
+        server.shutdown()
+        server.server_close()

@@ -10,7 +10,8 @@ To maintain testability, reliability, and modularity, follow these core principl
 
 ### 1. File Structure Standards
 *   **Separation of Source Files**: Avoid grouping multiple interfaces and implementations into a single `lib.rs`. Keep each module in its own Rust listing (e.g., `model/src/state_machine.rs`). Expose them cleanly in `lib.rs` (e.g., `pub mod state_machine;`).
-*   **Test Isolation**: Keep tests completely isolated from implementation code. Do not mix unit tests inside the main module source files. All unit tests must be separated from module code and stored in a `tests/` subfolder at the crate root level (e.g., `model/tests/state_machine_tests.rs` or `peripherals/tests/integration.rs`).
+*   **Test Isolation**: Keep tests completely isolated from implementation code. Do not mix unit tests inside the main module source files. All unit tests must be separated from module code and stored in a `tests/` subfolder at the crate root level (e.g., `model/tests/state_machine_tests.rs` or `peripherals/tests/integration.rs`), `tools/tests/` for host Python tools, and `tools/tests/js/` (`*.test.mjs`) for JavaScript ES modules.
+*   **JavaScript Zero-Globals Architecture (`tools/js/`)**: All browser ES modules and static assets for `tools/forge.py` and `tools/host.py` live under the single canonical `tools/js/` directory, with zero inline JS or `on*` attributes in `.html.j2` templates and all browser globals isolated behind `tools/js/core/runtime_context.js` (see [docs/javascript_style_architecture.md](docs/javascript_style_architecture.md)).
 
 ### 2. Microcontroller Decoupling & Board Support Packages (BSPs)
 To keep peripheral logic target-independent and clean, we decouple hardware implementation from high-level code using traits and Board Support Packages:

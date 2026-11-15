@@ -104,20 +104,6 @@ def test_cli_planned_argument() -> None:
     assert "WORM-101" not in output, "Open worm must be excluded when planned_only=True"
 
 
-def test_template_planned_filter_and_default_open() -> None:
-    """Verify worm report template includes PLANNED filter and retains OPEN as default."""
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "worm_report.html.j2"
-    if not template_path.exists():
-        # Fallback for different repo structure if ported
-        template_path = Path(__file__).resolve().parent.parent / "provider" / "templates" / "bug_report.html.j2"
-    assert template_path.exists(), f"Template not found at {template_path}"
-    content = template_path.read_text(encoding="utf-8")
-
-    assert 'id="filter-planned"' in content, "Template must have filter-planned button"
-    assert "PLANNED" in content, "Template must reference PLANNED"
-    assert 'status: "OPEN"' in content, "Template new worm must default to OPEN status"
-
-
 def test_documentation_planned_worm_exemption() -> None:
     """Verify AGENTS.md and SKILL.md state agents must not work on Planned worms by default."""
     repo_root = Path(__file__).resolve().parent.parent.parent

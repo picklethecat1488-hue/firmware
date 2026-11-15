@@ -121,28 +121,3 @@ def test_worm_subterranean_pupa_423_target_bug_repro_steps_dedup_numbering():
         # Must contain single clean numbers
         assert "1. Connect target device via probe-rs / RTT" in md_text
         assert "3. Execute command 'motor speed 30'" in md_text
-
-
-def test_worm_subterranean_pupa_423_template_modal_clears_description_and_refreshes_steps():
-    """Verify host_daemon.html.j2 clears description and dynamically updates steps on modal open."""
-    template_path = TEMPLATES_DIR / "host_daemon.html.j2"
-    assert template_path.exists(), "host_daemon.html.j2 must exist"
-    content = template_path.read_text(encoding="utf-8")
-
-    # 1. openTargetBugModal must clear targetBugDescription so previous descriptions don't persist
-    assert "targetBugDescription" in content
-    assert (
-        'descInput.value = "";' in content
-        or 'getElementById("targetBugDescription").value = "";' in content
-        or 'descInput.value = ""' in content
-    ), "openTargetBugModal must reset description input value"
-
-    # 2. openTargetBugModal must NOT guard steps update with '!stepsInput.value' (which prevented updates)
-    assert "!stepsInput.value" not in content, (
-        "openTargetBugModal must not prevent updating steps with '!stepsInput.value' guard"
-    )
-
-    # 3. openTargetBugModal must query /api/cli/history or use latest commands
-    assert "/api/cli/history" in content or "buildReproSteps" in content, (
-        "openTargetBugModal must dynamically build reproduction steps from recent commands"
-    )

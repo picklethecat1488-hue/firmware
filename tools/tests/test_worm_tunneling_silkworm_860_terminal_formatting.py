@@ -68,24 +68,3 @@ def test_worm_tunneling_silkworm_860_html_escaping():
     assert "<script>" not in escaped
     assert "&lt;script&gt;" in escaped
     assert "&amp;" in escaped
-
-
-def test_worm_tunneling_silkworm_860_templates_contain_terminal_formatting():
-    """Verify code_review and host_daemon templates implement terminal formatting."""
-    workspace_root = Path(__file__).resolve().parent.parent.parent
-
-    # Check code_review.html.j2
-    cr_path = workspace_root / "tools" / "dashboard" / "templates" / "code_review.html.j2"
-    assert cr_path.exists()
-    cr_content = cr_path.read_text(encoding="utf-8")
-    assert "ansiToHtml" in cr_content or "ansitohtml" in cr_content.lower()
-    assert "term-link" in cr_content
-    assert "term-bold" in cr_content
-
-    # Check host_daemon.html.j2
-    daemon_path = workspace_root / "tools" / "host_daemon" / "templates" / "host_daemon.html.j2"
-    assert daemon_path.exists()
-    daemon_content = daemon_path.read_text(encoding="utf-8")
-    assert "ansiToHtml" in daemon_content or "ansitohtml" in daemon_content.lower()
-    assert "term-link" in daemon_content
-    assert "term-bold" in daemon_content

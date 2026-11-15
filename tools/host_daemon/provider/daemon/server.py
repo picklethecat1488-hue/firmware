@@ -121,31 +121,29 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             self._send_json(runner.bringup_manager.get_status())
         elif path == "/api/bringup/report":
             self._send_json({"success": True, "report": runner.bringup_manager.generate_report()})
-        elif path.startswith("/static/"):
-            rel_file = path[len("/static/") :]
-            static_dir = Path(__file__).resolve().parents[2] / "static"
-            file_path = static_dir / rel_file
-            if file_path.exists() and file_path.is_file():
-                ext = file_path.suffix.lower()
-                content_types = {
-                    ".ico": "image/x-icon",
-                    ".png": "image/png",
-                    ".svg": "image/svg+xml",
-                    ".json": "application/json",
-                    ".js": "application/javascript",
-                    ".css": "text/css",
-                    ".icns": "application/octet-stream",
-                }
-                ctype = content_types.get(ext, "application/octet-stream")
-                data = file_path.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", ctype)
-                self.send_header("Content-Length", str(len(data)))
-                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-                self.send_header("Pragma", "no-cache")
-                self.send_header("Expires", "0")
-                self.end_headers()
-                self.wfile.write(data)
+        elif (
+            path.startswith("/js/")
+            or path.startswith("/static/")
+            or path in ("/favicon.ico", "/favicon.svg", "/manifest.json")
+        ):
+            from provider.http_static import (
+                get_firmware_daemon_static_dir,
+                get_firmware_js_root,
+                get_firmware_static_dir,
+                serve_static_asset,
+            )
+
+            mapped_path = f"/static{path}" if path in ("/favicon.ico", "/favicon.svg", "/manifest.json") else path
+            serve_static_asset(
+                self,
+                mapped_path,
+                js_root=get_firmware_js_root(runner.repo_root),
+                static_dirs=[
+                    get_firmware_daemon_static_dir(runner.repo_root),
+                    get_firmware_static_dir(runner.repo_root),
+                ],
+                cache_control="no-cache, no-store, must-revalidate",
+            )
         elif path.startswith("/attachments/"):
             clean_path = path.lstrip("/")
             rel_name = clean_path[len("attachments/") :]

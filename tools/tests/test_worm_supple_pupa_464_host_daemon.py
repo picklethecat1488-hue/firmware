@@ -48,30 +48,6 @@ def test_worm_supple_pupa_464_host_daemon_exists():
     assert "fs" in proc.stdout
 
 
-def test_worm_supple_pupa_464_host_daemon_server_and_ui():
-    """Verify host_daemon server and UI template meet specification."""
-    workspace_root = Path(__file__).resolve().parent.parent.parent
-    daemon_dir = workspace_root / "tools" / "host_daemon"
-    template_path = daemon_dir / "templates" / "host_daemon.html.j2"
-
-    assert daemon_dir.exists(), f"Directory not found: {daemon_dir}"
-    assert template_path.exists(), f"File not found: {template_path}"
-
-    content = template_path.read_text(encoding="utf-8")
-
-    # Invariant: Dropdown selector for CLI and FS modes
-    assert "modeSelect" in content or "mode-select" in content, (
-        "UI template must contain a dropdown selector for active mode."
-    )
-    assert "CLI" in content and "FS" in content
-
-    # Invariant: Separate logging and CLI output view panels
-    assert "log-panel" in content or "logPanel" in content, "UI template must contain a logging view panel."
-    assert "cli-panel" in content or "cliPanel" in content or "console-panel" in content, (
-        "UI template must contain a CLI output view panel."
-    )
-
-
 def test_worm_supple_pupa_464_daemon_rest_endpoints():
     """Verify DaemonRunner and HostDaemonServer REST endpoints."""
     workspace_root = Path(__file__).resolve().parent.parent.parent
@@ -176,23 +152,8 @@ def test_worm_luminescent_palolo_130_host_py_rename():
 
 
 def test_host_daemon_no_cache_headers_and_compact_font_sizes():
-    """Verify host workstation sends Cache-Control: no-cache headers and uses compact font sizes."""
+    """Verify host workstation sends Cache-Control: no-cache headers."""
     workspace_root = Path(__file__).resolve().parent.parent.parent
-    tmpl_path = workspace_root / "tools" / "host_daemon" / "templates" / "host_daemon.html.j2"
-    assert tmpl_path.exists()
-
-    tmpl_content = tmpl_path.read_text(encoding="utf-8")
-    # Verify compact font sizes matching dashboard aesthetic
-    assert ".header-title {\n      font-size: 10.5px;" in tmpl_content
-    assert (
-        ".panel-header {\n      background: rgba(10, 28, 36, 0.85);\n      border-bottom: 1px solid var(--xerxes-border-mid);\n      padding: 5px 10px;\n      font-size: 9px;"
-        in tmpl_content
-    )
-    assert (
-        ".panel-content {\n      display: block;\n      flex: 1;\n      flex-direction: column;\n      overflow-y: auto;\n      padding: 6px 8px;\n      font-size: 9.5px;"
-        in tmpl_content
-    )
-
     runner = DaemonRunner(
         repo_root=workspace_root,
         target="thumbv6m-none-eabi",

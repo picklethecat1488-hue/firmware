@@ -358,23 +358,7 @@ def test_regression_bug_076_feedback_tools_sqlite_only():
 
 
 def test_regression_bug_079_no_duplicate_worm_ids_and_generator():
-    """Verify bug report workstation does not generate duplicate bug IDs using bugs.length."""
-    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    template_file = templates_dir / "worm_report.html.j2"
-    assert template_file.exists()
-    content = template_file.read_text(encoding="utf-8")
-
-    # 1. Frontend template must NOT generate bug ID using db.worms.length + 1
-    assert "db.worms.length + 1" not in content, (
-        "Frontend worm_report.html.j2 must not generate bug IDs from db.worms.length + 1 as missing IDs cause collisions"
-    )
-
-    # 2. Frontend must define generateNextWormId using max ID index
-    assert "generateNextWormId" in content, (
-        "Frontend worm_report.html.j2 must define generateNextWormId calculating max bug index"
-    )
-
-    # 3. Backend WormDatabaseModel must correctly skip to max + 1 when IDs are non-contiguous
+    """Verify WormDatabaseModel generates unique non-colliding Docker-pattern IDs."""
     db = WormDatabaseModel(title="Non-contiguous test")
     db.worms = [
         WormReportModel(
@@ -447,12 +431,6 @@ def test_regression_bug_169_git_lfs_tracking_and_policy() -> None:
     assert "GitHub LFS" in agents_text or "Git LFS" in agents_text
     assert "non-confidential" in agents_text
 
-    # Check bug_report template
-    template_file = repo_root / "tools" / "dashboard" / "templates" / "worm_report.html.j2"
-    tpl_text = template_file.read_text(encoding="utf-8")
-    assert "attachment-lfs-notice" in tpl_text
-    assert "GitHub LFS" in tpl_text
-
 
 def test_regression_bug_170_feedback_dir_watch_and_resolution_preservation(tmp_path: Path) -> None:
     """Verify Feedback directory watch detects external bug resolution and preserves resolution on Save."""
@@ -507,25 +485,6 @@ def test_regression_bug_170_feedback_dir_watch_and_resolution_preservation(tmp_p
     assert final_b166.status == WormStatus.RESOLVED
     assert "- **Status**: `RESOLVED`" in bug166_md.read_text(encoding="utf-8")
     assert server.sqlite_store.load_database().get_worm("WORM-166").status == WormStatus.RESOLVED
-
-
-def test_regression_bug_172_vertical_text_panel_and_cli_expansion() -> None:
-    """Verify text panels in bug report tool and CLI console in code review tool extend vertically."""
-    repo_root = Path(__file__).resolve().parent.parent.parent
-
-    # 1. Verify code_review.html.j2 has vertical CLI console resizing
-    cr_template = (repo_root / "tools" / "dashboard" / "templates" / "code_review.html.j2").read_text(encoding="utf-8")
-    assert "cli-resizer" in cr_template
-    assert "cliResizer" in cr_template
-    assert "setupCliResizer" in cr_template
-    assert "cursor: ns-resize" in cr_template
-
-    # 2. Verify worm_report.html.j2 has vertical text panel expansion
-    br_template = (repo_root / "tools" / "dashboard" / "templates" / "worm_report.html.j2").read_text(encoding="utf-8")
-    assert "panel-expand-btn" in br_template
-    assert "expanded-vertical" in br_template
-    assert "toggleExpandPanel" in br_template
-    assert "resize: both" in br_template or "resize: vertical" in br_template
 
 
 def test_regression_bug_181_no_file_descriptor_leak_in_sqlite_and_server(tmp_path: Path) -> None:
@@ -879,22 +838,6 @@ def test_worm_report_server_target_defaults_and_build_migration(tmp_path: Path) 
     assert any(b.id == "WORM-123" and b.title == "Migrated Bug" for b in db.worms)
 
 
-def test_worm_report_template_saves_and_updates_view_when_no_active_worm(tmp_path: Path) -> None:
-    """Verify worm_report.html.j2 creates bug model, unshifts to db, and calls loadActiveWorm() on save."""
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "worm_report.html.j2"
-    assert template_path.is_file()
-    content = template_path.read_text(encoding="utf-8")
-
-    # Verify saveActiveWorm handles when bug is null / activeWormId not found
-    assert "let worm = db.worms.find(w => w.id === activeWormId);" in content
-    assert "if (!worm) {" in content
-    assert "generateNextWormId()" in content
-    assert "db.worms.unshift(worm);" in content
-    assert "activeWormId = newId;" in content
-    # Verify loadActiveWorm() is called after saving to update header and active selection view
-    assert "loadActiveWorm();" in content
-
-
 def test_regression_bug_001_remove_hardware_categories(tmp_path: Path) -> None:
     """Verify hardware-specific categories (PCB, CAD, SIMULATION) are removed from WormCategory and dashboard."""
     from model.worm_report import WormCategory, WormDatabaseModel, WormReportModel, WormSeverity, WormStatus
@@ -954,55 +897,23 @@ def test_regression_bug_001_remove_hardware_categories(tmp_path: Path) -> None:
 
 
 def test_regression_bug_002_update_bug_to_worm(tmp_path: Path) -> None:
-    """Verify WORM-002: issue tracking terminology updated to WORM and icon updated to worm."""
+    """Verify WORM-002: issue tracking models use WORM naming and generate WORM- prefixes."""
     import model.worm_report as worm_mod
 
-    # 1. Models must use WORM naming and generate WORM- prefixes
     assert hasattr(worm_mod, "WormReportModel"), "WormReportModel must exist"
     assert hasattr(worm_mod, "WormDatabaseModel"), "WormDatabaseModel must exist"
     db = worm_mod.WormDatabaseModel(title="Xerxes Worm Tracker")
     assert db.generate_worm_id().startswith("WORM-")
 
-    # 2. UI templates must contain the worm icon 🪱 and WORM terminology
-    diff_tpl_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    diff_tpl = diff_tpl_path.read_text(encoding="utf-8")
-    assert "🪱" in diff_tpl, "diff_view.html.j2 must feature worm icon 🪱"
-    assert "Worm" in diff_tpl or "WORM" in diff_tpl, "diff_view.html.j2 must feature WORM terminology"
-
-    worm_tpl_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "worm_report.html.j2"
-    assert worm_tpl_path.is_file(), "worm_report.html.j2 must exist"
-    worm_tpl = worm_tpl_path.read_text(encoding="utf-8")
-    assert "WORM" in worm_tpl
-    assert "🪱" in worm_tpl or "Worm" in worm_tpl
-
 
 def test_regression_worm_018_component_autocomplete_datalist() -> None:
-    """Verify WORM-018: populate component textbox with autocomplete datalist from prior worm history."""
+    """Verify WORM-018: Jinja2 renders deduplicated component autocomplete datalist from prior worm history."""
     import jinja2
     from model.worm_report import WormCategory, WormDatabaseModel, WormReportModel, WormSeverity, WormStatus
 
     templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    tpl_path = templates_dir / "worm_report.html.j2"
-    assert tpl_path.is_file(), "worm_report.html.j2 must exist"
-    content = tpl_path.read_text(encoding="utf-8")
 
-    # 1. Component textbox must bind to datalist via list attribute
-    assert 'id="worm-component"' in content
-    assert 'list="worm-component-list"' in content or 'list="component-list"' in content, (
-        "worm-component input must have a list attribute referencing a datalist"
-    )
-
-    # 2. Datalist element must exist
-    assert '<datalist id="worm-component-list">' in content or '<datalist id="component-list">' in content, (
-        "worm_report.html.j2 must contain datalist for component autocomplete"
-    )
-
-    # 3. Dynamic JS updater must be present
-    assert "updateComponentDatalist" in content, (
-        "worm_report.html.j2 must define updateComponentDatalist to keep autocomplete in sync"
-    )
-
-    # 4. Jinja2 render with prior worm history renders unique option elements
+    # Jinja2 render with prior worm history renders unique option elements
     db = WormDatabaseModel(title="Autocomplete Test")
     db.worms = [
         WormReportModel(

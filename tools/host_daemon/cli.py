@@ -46,7 +46,7 @@ def format_clickable_choice(label: str, key: str, action: str, color_ansi: str) 
 
 def get_host_daemon_icon_path() -> Optional[Path]:
     """Resolve distinct host daemon application icon for native desktop window."""
-    static_dir = Path(__file__).resolve().parent / "static"
+    static_dir = Path(__file__).resolve().parents[1] / "js" / "static" / "daemon"
     if not static_dir.exists():
         return None
 
