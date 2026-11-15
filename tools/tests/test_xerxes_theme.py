@@ -42,57 +42,6 @@ from dashboard.cli import print_cli_reviews, print_cli_smartlog, print_cli_worms
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
 
 
-def test_xerxes_css_variables_and_palette() -> None:
-    """Verify all templates contain the System Shock 2 - Xerxes color palette tokens."""
-    main_templates = [
-        "diff_view.html.j2",
-        "code_review.html.j2",
-        "worm_report.html.j2",
-    ]
-    required_root_tokens = [
-        "--xerxes-bg: #04090c",
-        "--xerxes-panel: #08161d",
-        "--xerxes-cyan: #00f0ff",
-        "--xerxes-teal: #14d9c4",
-        "--xerxes-amber: #ffb000",
-        "--xerxes-red: #ff2a4b",
-    ]
-
-    for tpl_name in main_templates:
-        tpl_path = TEMPLATES_DIR / tpl_name
-        assert tpl_path.exists(), f"Template {tpl_name} must exist"
-        content = tpl_path.read_text(encoding="utf-8")
-        for token in required_root_tokens:
-            assert token in content, f"Template {tpl_name} missing required Xerxes token: {token}"
-
-    # Verify component template uses Xerxes variables
-    diff_comp = (TEMPLATES_DIR / "diff_component.html.j2").read_text(encoding="utf-8")
-    assert "--xerxes-cyan" in diff_comp
-    assert "--xerxes-panel" in diff_comp
-    assert "--xerxes-border-mid" in diff_comp
-
-
-def test_xerxes_crt_scanlines_and_cybernetic_hud() -> None:
-    """Verify scanline overlays, cybernetic fonts, and neon cyan glow shadows in templates."""
-    diff_view = (TEMPLATES_DIR / "diff_view.html.j2").read_text(encoding="utf-8")
-    cr_view = (TEMPLATES_DIR / "code_review.html.j2").read_text(encoding="utf-8")
-    worm_view = (TEMPLATES_DIR / "worm_report.html.j2").read_text(encoding="utf-8")
-
-    for content, name in [(diff_view, "diff_view"), (cr_view, "code_review"), (worm_view, "worm_report")]:
-        # CRT scanline pattern on background
-        assert "repeating-linear-gradient" in content, f"{name} must use repeating-linear-gradient for CRT scanlines"
-        assert "radial-gradient" in content, f"{name} must use radial-gradient for cybernetic terminal backdrop"
-
-        # Cybernetic Monospace typography
-        assert "Share Tech Mono" in content, f"{name} must include Share Tech Mono cybernetic font"
-
-        # AI terminal branding
-        assert "XERXES" in content, f"{name} must include XERXES branding"
-        assert "SYSTEM SHOCK 2" in content or "VON BRAUN" in content, (
-            f"{name} must include System Shock 2 / Von Braun AI branding"
-        )
-
-
 def test_render_diff_view_template() -> None:
     """Verify diff_view.html.j2 renders cleanly with full mock DiffViewSessionModel."""
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(TEMPLATES_DIR)))

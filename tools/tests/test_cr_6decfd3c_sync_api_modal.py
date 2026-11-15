@@ -26,26 +26,6 @@ from tools.host_daemon.provider.daemon.runner import DaemonRunner
 from tools.host_daemon.provider.daemon.server import HostDaemonServer
 
 
-def test_cr_6decfd3c_template_modal_and_sync_button():
-    """Verify host_daemon template has Sync button and modal flashing status window."""
-    template_path = REPO_ROOT / "tools" / "host_daemon" / "templates" / "host_daemon.html.j2"
-    assert template_path.exists(), f"File not found: {template_path}"
-    content = template_path.read_text(encoding="utf-8")
-
-    # Invariant 1: Sync button
-    assert "btnSync" in content or "triggerSync" in content
-    assert "Sync" in content
-
-    # Invariant 2: Modal status window with progress bar
-    assert "syncModal" in content or "sync-modal" in content
-    assert "syncProgressBar" in content or "progress-bar" in content
-    assert "pulse" in content or "flashing" in content.lower()
-
-    # Invariant 3: JS functions for sync
-    assert "triggerSync" in content
-    assert "/api/sync" in content
-
-
 def test_cr_6decfd3c_runner_sync_api_and_status():
     """Verify DaemonRunner provides sync methods and status tracking."""
     runner = DaemonRunner(

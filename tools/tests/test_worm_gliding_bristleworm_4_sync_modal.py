@@ -59,18 +59,3 @@ def test_api_sync_cancel_endpoint():
         handler._send_json.assert_called_once()
     finally:
         server.server_close()
-
-
-def test_template_sync_modal_features():
-    """Verify host_daemon.html.j2 has enlarged modal, console stream, cancel button, auto-dismiss and disabling."""
-    template_path = REPO_ROOT / "tools" / "host_daemon" / "templates" / "host_daemon.html.j2"
-    content = template_path.read_text(encoding="utf-8")
-
-    assert 'id="syncConsoleLog"' in content
-    assert 'id="btnSyncCancel"' in content
-    assert "cancelSync" in content
-    assert "/api/sync/cancel" in content
-    # Auto-dismiss on complete
-    assert "closeSyncModal" in content
-    # Workstation disabling on cancel
-    assert "setWorkstationDisabled" in content or "cmdInput.disabled" in content

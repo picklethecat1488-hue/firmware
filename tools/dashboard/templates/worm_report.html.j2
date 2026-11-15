@@ -16,15 +16,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
   <link rel="shortcut icon" href="/static/favicon.ico">
   <link rel="stylesheet" href="/static/common.css">
-  <script src="/static/common.js"></script>
-  <script>
-    if (window.self !== window.top) {
-      document.documentElement.classList.add("in-iframe");
-      window.addEventListener("DOMContentLoaded", () => {
-        if (document.body) document.body.classList.add("in-iframe");
-      });
-    }
-  </script>
+  <script src="/static/vendor/highlight/highlight.js"></script>
   <style>
     html {
       font-size: 80%;
@@ -631,6 +623,50 @@
       color: var(--xerxes-text-dim);
       margin-top: 4px;
     }
+    /* Markdown Preview Box */
+    .md-preview-box {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--quake-border-mid);
+      border-radius: 2px;
+      padding: 10px 12px;
+      min-height: 80px;
+      font-size: 11px;
+      line-height: 1.55;
+      color: var(--quake-text-light);
+      overflow-x: auto;
+    }
+    .md-preview-box h1, .md-preview-box h2, .md-preview-box h3, .md-preview-box h4 {
+      color: var(--quake-gold);
+      margin: 6px 0 4px 0;
+    }
+    .md-preview-box p, .md-preview-box ul, .md-preview-box ol, .md-preview-box blockquote {
+      margin: 4px 0 8px 0;
+    }
+    .md-preview-box ul, .md-preview-box ol {
+      padding-left: 18px;
+    }
+    .md-preview-box blockquote {
+      border-left: 3px solid var(--quake-gold);
+      padding-left: 8px;
+      color: var(--quake-text-muted);
+    }
+    .md-preview-box .md-code-block {
+      background: #080503;
+      border: 1px solid var(--quake-border-mid);
+      border-radius: 2px;
+      padding: 8px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      overflow-x: auto;
+      margin: 6px 0;
+    }
+    .md-preview-box .md-inline-code {
+      background: rgba(0, 0, 0, 0.5);
+      padding: 1px 4px;
+      border-radius: 2px;
+      font-family: var(--font-mono);
+      color: var(--quake-gold);
+    }
   </style>
 </head>
 <body>
@@ -649,7 +685,7 @@
       <!-- UI Scale Selector (8715cab2) -->
       <div style="display:flex;align-items:center;gap:4px;margin-right:4px;">
         <span style="font-size:8px;color:var(--quake-text-dim);">SCALE:</span>
-        <select id="uiScaleSelect" class="quake-select" onchange="onUiScaleChange(this.value)" title="UI Scale (Shortcuts: Cmd/Ctrl +/- or 0 to reset)" style="padding: 2px 4px; font-size: 8.5px; height: 22px;">
+        <select id="uiScaleSelect" class="quake-select" title="UI Scale (Shortcuts: Cmd/Ctrl +/- or 0 to reset)" style="padding: 2px 4px; font-size: 8.5px; height: 22px;">
           <option value="75%">75%</option>
           <option value="80%">80%</option>
           <option value="90%">90%</option>
@@ -660,10 +696,10 @@
         </select>
       </div>
       <span class="quake-badge" style="background:#040d12; border:1px solid var(--quake-gold); color:var(--quake-gold); font-size:9.5px; padding:3px 8px;">Branch: <strong>worms</strong></span>
-      <button class="quake-btn quake-btn-default" onclick="syncFeedback()">🔄 Sync Feedback</button>
-      <button class="quake-btn quake-btn-default" onclick="newWorm()">+ New Worm</button>
-      <button class="quake-btn quake-btn-gold" id="btn-save-exit" onclick="saveAndExit()">💾 Save and Exit</button>
-      <a href="/" target="firmware_vcs_diff_viewer" onclick="returnToDashboard(event)" class="quake-btn quake-btn-default modal-close-btn" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;padding:2px 10px;line-height:1;" title="Close workstation (Esc)">✕</a>
+      <button class="quake-btn quake-btn-default" data-action="sync-feedback">🔄 Sync Feedback</button>
+      <button class="quake-btn quake-btn-default" data-action="new-issue">+ New Worm</button>
+      <button class="quake-btn quake-btn-gold" id="btn-save-exit" data-action="save-exit">💾 Save and Exit</button>
+      <a href="/" target="firmware_vcs_diff_viewer" data-action="close-workstation" class="quake-btn quake-btn-default modal-close-btn" style="text-decoration:none;display:inline-flex;align-items:center;justify-content:center;font-weight:bold;font-size:13px;padding:2px 10px;line-height:1;" title="Close workstation (Esc)">✕</a>
     </div>
   </header>
 
@@ -712,17 +748,17 @@
     <!-- Sidebar -->
     <div class="sidebar">
       <div class="sidebar-header" style="flex-direction:column; gap:8px;">
-        <input type="text" id="search-input" class="sidebar-search" placeholder="Search worms..." oninput="renderWormList()">
+        <input type="text" id="search-input" class="sidebar-search" placeholder="Search worms...">
         <div class="filter-pills" style="display:flex; gap:6px; width:100%;">
-          <button id="filter-open" class="quake-btn quake-btn-default quake-btn-active" style="flex:1; padding:4px 6px; font-size:8px;" onclick="setWormFilter('open')">OPEN</button>
-          <button id="filter-planned" class="quake-btn quake-btn-default" style="flex:1; padding:4px 6px; font-size:8px;" onclick="setWormFilter('planned')">PLANNED</button>
-          <button id="filter-all" class="quake-btn quake-btn-default" style="flex:1; padding:4px 6px; font-size:8px;" onclick="setWormFilter('all')">ALL</button>
-          <button id="filter-resolved" class="quake-btn quake-btn-default" style="flex:1; padding:4px 6px; font-size:8px;" onclick="setWormFilter('resolved')">RESOLVED</button>
+          <button id="filter-open" class="quake-btn quake-btn-default quake-btn-active" style="flex:1; padding:4px 6px; font-size:8px;" data-action="set-filter" data-filter="open">OPEN</button>
+          <button id="filter-planned" class="quake-btn quake-btn-default" style="flex:1; padding:4px 6px; font-size:8px;" data-action="set-filter" data-filter="planned">PLANNED</button>
+          <button id="filter-all" class="quake-btn quake-btn-default" style="flex:1; padding:4px 6px; font-size:8px;" data-action="set-filter" data-filter="all">ALL</button>
+          <button id="filter-resolved" class="quake-btn quake-btn-default" style="flex:1; padding:4px 6px; font-size:8px;" data-action="set-filter" data-filter="resolved">RESOLVED</button>
         </div>
         <div style="display:flex; gap:6px; width:100%;">
           <div style="flex:1; display:flex; flex-direction:column; gap:2px;">
             <label style="font-size:7.5px;">Category</label>
-            <select id="select-filter-category" onchange="onFilterCategoryChanged(this.value)" style="width:100%; padding:4px; font-size:8px;">
+            <select id="select-filter-category" style="width:100%; padding:4px; font-size:8px;">
               <option value="ALL">ALL</option>
               {% for cat in categories %}
               <option value="{{ cat }}">{{ cat }}</option>
@@ -731,7 +767,7 @@
           </div>
           <div style="flex:1; display:flex; flex-direction:column; gap:2px;">
             <label style="font-size:7.5px;">Severity</label>
-            <select id="select-filter-severity" onchange="onFilterSeverityChanged(this.value)" style="width:100%; padding:4px; font-size:8px;">
+            <select id="select-filter-severity" style="width:100%; padding:4px; font-size:8px;">
               <option value="ALL">ALL</option>
               {% for sev in severities %}
               <option value="{{ sev }}">{{ sev }}</option>
@@ -741,7 +777,7 @@
         </div>
         <div style="display:flex; flex-direction:column; gap:2px; width:100%;">
           <label style="font-size:7.5px;">Sort By</label>
-          <select id="select-worm-sort" onchange="onWormSortChanged(this.value)" style="width:100%; padding:4px; font-size:8px;">
+          <select id="select-worm-sort" style="width:100%; padding:4px; font-size:8px;">
             <option value="id_desc">ID (Newest first)</option>
             <option value="id_asc">ID (Oldest first)</option>
             <option value="severity">Severity (Critical first)</option>
@@ -769,8 +805,8 @@
             </div>
           </div>
           <div style="display:flex; gap:10px;">
-            <button class="quake-btn quake-btn-green" style="font-weight:700; padding:6px 16px; font-size:10px;" onclick="acceptActiveWorm()">✔ ACCEPT FIX</button>
-            <button class="quake-btn quake-btn-red" style="font-weight:700; padding:6px 16px; font-size:10px;" onclick="rejectActiveWorm()">✖ REJECT FIX</button>
+            <button class="quake-btn quake-btn-green" style="font-weight:700; padding:6px 16px; font-size:10px;" data-action="accept-issue">✔ ACCEPT FIX</button>
+            <button class="quake-btn quake-btn-red" style="font-weight:700; padding:6px 16px; font-size:10px;" data-action="reject-issue">✖ REJECT FIX</button>
           </div>
         </div>
       </div>
@@ -799,11 +835,11 @@
             <span>🪱 Worm Identity</span>
             <span id="active-worm-id-display" class="active-bug-id-display" style="color:var(--quake-gold); font-size:10px;"></span>
             <span id="active-bug-id-display" style="display:none;"></span>
-            <button id="btn-copy-active-worm" class="copy-icon-btn copy-badge-btn btn-copy-active-bug" onclick="copyActiveWormId()" title="Copy active worm ID" style="display:none;">📋</button>
+            <button id="btn-copy-active-worm" class="copy-icon-btn copy-badge-btn btn-copy-active-bug" data-action="copy-active-id" title="Copy active worm ID" style="display:none;">📋</button>
           </span>
           <div style="display:flex; gap:8px;">
-            <button id="btn-save" class="quake-btn quake-btn-green" onclick="saveActiveWorm()">Save Worm</button>
-            <button id="btn-delete" class="quake-btn quake-btn-red" onclick="deleteActiveWorm()">Delete</button>
+            <button id="btn-save" class="quake-btn quake-btn-green" data-action="save-issue">Save Worm</button>
+            <button id="btn-delete" class="quake-btn quake-btn-red" data-action="delete-issue">Delete</button>
           </div>
         </div>
         <div class="row">
@@ -860,11 +896,15 @@
       <div class="form-section quake-card">
         <div class="section-title">
           <span>Description & Details</span>
-          <button class="panel-expand-btn quake-btn quake-btn-default" onclick="toggleExpandPanel(this)" title="Extend panel vertically">⤢ Expand</button>
+          <div style="display:flex; gap:6px;">
+            <button type="button" class="panel-expand-btn quake-btn quake-btn-default" data-action="toggle-md-preview" data-target-textarea="worm-description" data-target-preview="worm-description-preview" title="Toggle Markdown preview">👁 Preview</button>
+            <button type="button" class="panel-expand-btn quake-btn quake-btn-default" data-action="toggle-expand-panel" title="Extend panel vertically">⤢ Expand</button>
+          </div>
         </div>
         <div class="col">
           <label>Problem Description</label>
           <textarea id="worm-description" placeholder="Comprehensive explanation of defect or invariant failure..."></textarea>
+          <div id="worm-description-preview" class="md-preview-box" style="display:none;"></div>
         </div>
         <div class="col">
           <label>Reproduction Steps (one per line)</label>
@@ -886,7 +926,7 @@
       <div class="form-section quake-card">
         <div class="section-title">
           <span>Execution Logs & Tracebacks</span>
-          <button class="panel-expand-btn quake-btn quake-btn-default" onclick="toggleExpandPanel(this)" title="Extend panel vertically">⤢ Expand</button>
+          <button class="panel-expand-btn quake-btn quake-btn-default" data-action="toggle-expand-panel" title="Extend panel vertically">⤢ Expand</button>
         </div>
         <div class="col">
           <label>Console Output / Target Log</label>
@@ -898,14 +938,14 @@
       <div class="form-section quake-card" id="attachments-section">
         <div class="section-title">
           <span>Attachments & Trace Dumps</span>
-          <button class="quake-btn quake-btn-default" onclick="pasteFromClipboard()" style="font-size:8px; padding:3px 8px;">📋 Paste Clipboard</button>
+          <button class="quake-btn quake-btn-default" data-action="paste-clipboard" style="font-size:8px; padding:3px 8px;">📋 Paste Clipboard</button>
         </div>
-        <div id="dropzone" class="dropzone" onclick="document.getElementById('file-input').click()">
+        <div id="dropzone" class="dropzone">
           <div>📥 Drag & Drop Screenshots, Logs, or PDF Documents Here (or click to browse)</div>
           <div style="font-size:9.5px; margin-top:4px; color:var(--xerxes-text-dim);">Press ⌘V / Ctrl+V anywhere to paste images or logs</div>
           <div class="attachment-lfs-notice">Attachments are tracked in GitHub LFS and considered non-confidential.</div>
         </div>
-        <input type="file" id="file-input" style="display:none;" multiple onchange="handleFileUpload(this.files)">
+        <input type="file" id="file-input" style="display:none;" multiple>
         <div id="attachments-grid" class="attachments-grid"></div>
       </div>
 
@@ -913,10 +953,15 @@
       <div class="form-section quake-card">
         <div class="section-title">
           <span>Resolution Notes</span>
+          <div style="display:flex; gap:6px;">
+            <button type="button" class="panel-expand-btn quake-btn quake-btn-default" data-action="toggle-md-preview" data-target-textarea="worm-resolution" data-target-preview="worm-resolution-preview" title="Toggle Markdown preview">👁 Preview</button>
+            <button type="button" class="panel-expand-btn quake-btn quake-btn-default" data-action="toggle-expand-panel" title="Extend panel vertically">⤢ Expand</button>
+          </div>
         </div>
         <div class="col">
           <label>Fix Description & Root Cause</label>
           <textarea id="worm-resolution" placeholder="Detailed notes explaining how the defect was remediated..."></textarea>
+          <div id="worm-resolution-preview" class="md-preview-box" style="display:none;"></div>
         </div>
       </div>
 
@@ -927,7 +972,7 @@
         </div>
         <div style="display:flex; gap:8px; margin-bottom:10px;">
           <input type="text" id="input-attach-commit" placeholder="Git commit SHA (e.g. 7f3b89a)..." style="flex:1;">
-          <button class="quake-btn quake-btn-default" onclick="attachCommitToActiveWorm()">+ Attach Commit</button>
+          <button class="quake-btn quake-btn-default" data-action="attach-commit">+ Attach Commit</button>
         </div>
         <div id="attached-commits-list" class="commits-list" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
       </div>
@@ -940,7 +985,7 @@
         <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
           <input type="text" id="input-task-title" placeholder="Task title / verification requirement..." style="flex:2; min-width:200px;">
           <input type="text" id="input-task-command" placeholder="Demo command (e.g. python tools/host.py cli ping)..." style="flex:3; min-width:250px; font-family:var(--font-mono);">
-          <button class="quake-btn quake-btn-default" onclick="addTaskToActiveWorm()">+ Add Task</button>
+          <button class="quake-btn quake-btn-default" data-action="add-review-task">+ Add Task</button>
         </div>
         <div id="review-tasks-list" class="tasks-list"></div>
       </div>
@@ -949,1577 +994,30 @@
 
   <div id="toast" class="toast"></div>
 
-  <script>
-    window.name = "firmware_worm_tracker";
-    let db = {{ database_json | safe if database_json is defined else '{"title":"Firmware Engineering Worm Tracker","worms":[]}' }};
-    if (!db.worms && db.bugs) {
-      db.worms = db.bugs;
+  <script id="app-boot-config" type="application/json">
+    {
+      "repoName": "firmware",
+      "entityKind": "worm",
+      "entityLabel": "WORM",
+      "entityTitle": "Worm",
+      "collectionKey": "worms",
+      "fieldPrefix": "worm",
+      "apiBase": "/api/worms",
+      "databaseEndpoint": "/api/worms",
+      "nextIdEndpoint": "/api/next_worm_id",
+      "uploadEndpoint": "/api/upload",
+      "syncEndpoint": "/api/sync_feedback",
+      "exitEndpoint": "/api/exit",
+      "versionEndpoint": "/api/version",
+      "defaultCategory": "FIRMWARE",
+      "fileInputId": "file-input",
+      "itemIcon": "🪱 ",
+      "entityIdParam": "worm_id",
+      "reviewFromParam": "worms"
     }
-    if (!db.worms) db.worms = [];
-
-    let activeWormId = null;
-    let currentFilter = sessionStorage.getItem("worm_filter_status") || 'open';
-    let currentCategoryFilter = sessionStorage.getItem("worm_filter_category") || 'ALL';
-    let currentSeverityFilter = sessionStorage.getItem("worm_filter_severity") || 'ALL';
-    let currentWormSort = sessionStorage.getItem("worm_sort") || 'id_desc';
-
-    const severityOrder = { "CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3 };
-    const statusOrder = { "OPEN": 0, "IN_PROGRESS": 1, "PLANNED": 2, "RESOLVED": 3, "CLOSED": 4 };
-
-    // Feedback Loading Modal Management
-    let feedbackLoadingTracker = null;
-    let feedbackLoadingInterval = null;
-    function showFeedbackLoading(title, description, stepText) {
-      const modal = document.getElementById("feedback-loading-modal");
-      if (!modal) return;
-      const titleEl = modal.querySelector("h3");
-      const descEl = document.getElementById("loading-status-text");
-      const stepEl = document.getElementById("loading-step-text");
-      const barEl = document.getElementById("loading-progress-bar");
-      const pctEl = document.getElementById("loading-progress-percent");
-
-      if (titleEl && title) titleEl.textContent = title;
-      if (descEl && description) descEl.textContent = description;
-      if (stepEl && stepText) stepEl.textContent = stepText;
-
-      modal.style.display = "flex";
-
-      const stages = [
-        { at: 35, text: "Scanning feedback/ directory for WORM_*.md files..." },
-        { at: 65, text: "Parsing issue metadata and verification checklists..." },
-        { at: 85, text: "Reconciling SQLite database store and feedback worktree..." },
-        { at: 96, text: "Finalizing synchronized records..." },
-      ];
-
-      if (feedbackLoadingTracker) {
-        feedbackLoadingTracker.stop();
-      }
-
-      if (window.Forge && window.Forge.createProgressBar) {
-        feedbackLoadingTracker = window.Forge.createProgressBar({
-          barEl,
-          percentEl: pctEl,
-          statusEl: stepEl,
-          initialProgress: 14,
-          maxProgress: 95,
-          stages,
-        });
-        feedbackLoadingTracker.start();
-      }
-    }
-
-    function hideFeedbackLoading() {
-      const modal = document.getElementById("feedback-loading-modal");
-      if (feedbackLoadingTracker) {
-        feedbackLoadingTracker.finish("✓ Synchronized!", () => {
-          if (modal) modal.style.display = "none";
-        }, 250);
-        feedbackLoadingTracker = null;
-        return;
-      }
-      if (!modal) return;
-      const barEl = document.getElementById("loading-progress-bar");
-      const pctEl = document.getElementById("loading-progress-percent");
-      const stepEl = document.getElementById("loading-step-text");
-      if (barEl) barEl.style.width = "100%";
-      if (pctEl) pctEl.textContent = "100%";
-      if (stepEl) stepEl.textContent = "✓ Synchronized!";
-      setTimeout(() => {
-        modal.style.display = "none";
-      }, 250);
-    }
-
-    // Action Progress Modal Management (BUG-327)
-    let actionProgressDepth = 0;
-    let actionProgressTimer = null;
-    let actionProgressInterval = null;
-
-    async function runWithActionModal(options, asyncFn) {
-      if (window.Forge && window.Forge.performActionWithProgress) {
-        return await window.Forge.performActionWithProgress(asyncFn, options);
-      }
-      if (actionProgressDepth > 0) {
-        actionProgressDepth++;
-        try {
-          return await asyncFn();
-        } finally {
-          actionProgressDepth--;
-        }
-      }
-
-      actionProgressDepth = 1;
-      const thresholdMs = (options && options.delayMs !== undefined) ? options.delayMs : 1000;
-      const overlay = document.getElementById("actionProgressModalOverlay");
-      const titleEl = document.getElementById("actionProgressTitle");
-      const descEl = document.getElementById("actionProgressDescription");
-      const statusEl = document.getElementById("actionProgressStatus");
-      const elapsedEl = document.getElementById("actionProgressElapsed");
-      const barEl = document.getElementById("actionProgressBar");
-      const percentEl = document.getElementById("actionProgressPercent");
-      const iconEl = document.getElementById("actionProgressIcon");
-
-      let isModalVisible = false;
-      const startTime = Date.now();
-      let progress = 14;
-
-      if (actionProgressTimer) {
-        clearTimeout(actionProgressTimer);
-        actionProgressTimer = null;
-      }
-      if (actionProgressInterval) {
-        clearInterval(actionProgressInterval);
-        actionProgressInterval = null;
-      }
-
-      const getStageMessage = (pct) => {
-        if (options && options.stages && Array.isArray(options.stages)) {
-          for (const s of options.stages) {
-            if (pct <= s.at) return s.text;
-          }
-          return options.stages[options.stages.length - 1].text;
-        }
-
-        const titleUpper = ((options && options.title) || "").toUpperCase();
-        if (titleUpper.includes("SYNC") || titleUpper.includes("MERG")) {
-          if (pct < 30) return "Scanning feedback/ directory for issue markdown files...";
-          if (pct < 60) return "Parsing report fields, review tasks, and attachments...";
-          if (pct < 85) return "Reconciling SQLite database store and feedback worktree...";
-          return "Updating active worm views...";
-        } else if (titleUpper.includes("SAVE") || titleUpper.includes("PERSIST")) {
-          if (pct < 30) return "Validating issue schema and task invariants...";
-          if (pct < 65) return "Writing changes to SQLite store and feedback worktree...";
-          if (pct < 88) return "Regenerating markdown export reports...";
-          return "Finalizing persistent state...";
-        } else if (titleUpper.includes("DELETE") || titleUpper.includes("REJECT") || titleUpper.includes("ACCEPT")) {
-          if (pct < 40) return "Updating issue lifecycle status...";
-          if (pct < 80) return "Synchronizing changes across database...";
-          return "Refreshing workspace view...";
-        }
-
-        if (pct < 30) return (options && options.stepText) || "Initializing operation...";
-        if (pct < 60) return "Executing operation...";
-        if (pct < 85) return "Reconciling data models...";
-        return "Finalizing updates...";
-      };
-
-      actionProgressTimer = setTimeout(() => {
-        if (!overlay) return;
-        isModalVisible = true;
-        if (titleEl) titleEl.textContent = (options && options.title) || "PROCESSING ACTION";
-        if (descEl) descEl.textContent = (options && options.description) || "Please wait while the operation completes...";
-        if (statusEl) statusEl.textContent = (options && options.stepText) || getStageMessage(progress);
-        if (iconEl && options && options.icon) iconEl.textContent = options.icon;
-        if (barEl) barEl.style.width = "14%";
-        if (percentEl) percentEl.textContent = "14%";
-        if (elapsedEl) elapsedEl.textContent = "0.0s";
-        overlay.style.display = "flex";
-
-        actionProgressInterval = setInterval(() => {
-          const elapsedSec = (Date.now() - startTime) / 1000;
-          if (elapsedEl) elapsedEl.textContent = `${elapsedSec.toFixed(1)}s`;
-
-          // Continuous asymptotic progression
-          if (progress < 94) {
-            if (elapsedSec < 1.0) {
-              progress = 14 + (elapsedSec / 1.0) * 26; // 14% to 40%
-            } else if (elapsedSec < 3.0) {
-              progress = 40 + ((elapsedSec - 1.0) / 2.0) * 32; // 40% to 72%
-            } else if (elapsedSec < 7.0) {
-              progress = 72 + ((elapsedSec - 3.0) / 4.0) * 18; // 72% to 90%
-            } else {
-              progress += (96 - progress) * 0.015; // Asymptotic up to 96%
-            }
-          }
-          const pct = Math.min(96, Math.floor(progress));
-          if (barEl) barEl.style.width = `${pct}%`;
-          if (percentEl) percentEl.textContent = `${pct}%`;
-          if (statusEl) statusEl.textContent = getStageMessage(pct);
-        }, 50);
-      }, thresholdMs);
-
-      try {
-        const result = await asyncFn();
-        return result;
-      } finally {
-        actionProgressDepth--;
-        if (actionProgressTimer) {
-          clearTimeout(actionProgressTimer);
-          actionProgressTimer = null;
-        }
-        if (actionProgressInterval) {
-          clearInterval(actionProgressInterval);
-          actionProgressInterval = null;
-        }
-        if (isModalVisible && overlay) {
-          if (barEl) barEl.style.width = "100%";
-          if (percentEl) percentEl.textContent = "100%";
-          const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-          if (statusEl) statusEl.textContent = `✓ Complete in ${totalElapsed}s`;
-          setTimeout(() => {
-            overlay.style.display = "none";
-          }, 250);
-        }
-      }
-    }
-
-    function init() {
-      initUiScale();
-      const seenIds = new Set();
-      (db.worms || []).forEach(w => {
-        if (seenIds.has(w.id)) {
-          w.id = generateNextWormId();
-        }
-        seenIds.add(w.id);
-      });
-
-      const sortSel = document.getElementById("select-worm-sort");
-      if (sortSel) sortSel.value = currentWormSort;
-      const catSel = document.getElementById("select-filter-category");
-      if (catSel) catSel.value = currentCategoryFilter;
-      const sevSel = document.getElementById("select-filter-severity");
-      if (sevSel) sevSel.value = currentSeverityFilter;
-
-      const visibleWorms = getFilteredAndSortedWorms();
-      if (visibleWorms.length > 0) {
-        activeWormId = visibleWorms[0].id;
-      } else if (db.worms && db.worms.length > 0) {
-        activeWormId = db.worms[0].id;
-      }
-
-      if (window.location.hash) {
-        const hash = window.location.hash.substring(1);
-        if (hash.startsWith("new")) {
-          const matchCommit = hash.match(/commit=([a-f0-9]+)/i);
-          newWorm().then(() => {
-            if (matchCommit && document.getElementById("worm-description")) {
-              const commitSha = matchCommit[1];
-              document.getElementById("worm-description").value = `Affects commit: ${commitSha}\n\n`;
-              saveActiveWorm();
-            }
-          });
-        } else {
-          const targetId = hash.startsWith("WORM-") ? hash : (hash.startsWith("BUG-") ? hash.replace("BUG-", "WORM-") : ("WORM-" + hash));
-          if (db.worms && db.worms.some(w => w.id === targetId || w.id === hash)) {
-            activeWormId = db.worms.find(w => w.id === targetId || w.id === hash).id;
-          }
-        }
-      }
-
-      updateMetrics();
-      updateComponentDatalist();
-      setWormFilter(currentFilter);
-      loadActiveWorm();
-      autoResizeAllTextareas();
-      setupPasteDrop();
-    }
-
-    function onWormSortChanged(val) {
-      currentWormSort = val;
-      sessionStorage.setItem("worm_sort", val);
-      renderWormList();
-    }
-
-    function onFilterCategoryChanged(val) {
-      currentCategoryFilter = val;
-      sessionStorage.setItem("worm_filter_category", val);
-      renderWormList();
-      ensureActiveWormVisible();
-    }
-
-    function onFilterSeverityChanged(val) {
-      currentSeverityFilter = val;
-      sessionStorage.setItem("worm_filter_severity", val);
-      renderWormList();
-      ensureActiveWormVisible();
-    }
-
-    function ensureActiveWormVisible() {
-      const visibleWorms = getFilteredAndSortedWorms();
-      if (visibleWorms.length > 0 && !visibleWorms.some(w => w.id === activeWormId)) {
-        selectWorm(visibleWorms[0].id);
-      }
-    }
-
-    function setWormFilter(filter) {
-      currentFilter = filter;
-      sessionStorage.setItem("worm_filter_status", filter);
-      const btnOpen = document.getElementById("filter-open");
-      const btnPlanned = document.getElementById("filter-planned");
-      const btnAll = document.getElementById("filter-all");
-      const btnResolved = document.getElementById("filter-resolved");
-      if (btnOpen) btnOpen.classList.toggle("quake-btn-active", filter === "open");
-      if (btnPlanned) btnPlanned.classList.toggle("quake-btn-active", filter === "planned");
-      if (btnAll) btnAll.classList.toggle("quake-btn-active", filter === "all");
-      if (btnResolved) btnResolved.classList.toggle("quake-btn-active", filter === "resolved");
-      renderWormList();
-      ensureActiveWormVisible();
-    }
-
-    function showToast(msg) {
-      const t = document.getElementById("toast");
-      if (!t) return;
-      t.innerText = msg;
-      t.style.display = "block";
-      setTimeout(() => { t.style.display = "none"; }, 3500);
-    }
-
-    function copyText(text) {
-      if (!text) return;
-      if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(text).then(() => {
-          showToast(`Copied: ${text}`);
-        }).catch(() => fallbackCopy(text));
-      } else {
-        fallbackCopy(text);
-      }
-    }
-
-    function fallbackCopy(text) {
-      try {
-        const ta = document.createElement("textarea");
-        ta.value = text;
-        ta.style.position = "fixed";
-        ta.style.opacity = "0";
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-        showToast(`Copied: ${text}`);
-      } catch (err) {
-        console.error("Failed to copy", err);
-      }
-    }
-
-    function copyActiveWormId() {
-      if (activeWormId) {
-        copyText(activeWormId);
-      }
-    }
-    // Alias for backward compat with test assertions
-    const copyActiveBugId = copyActiveWormId;
-
-    function updateMetrics() {
-      const total = db.worms.length;
-      const open = db.worms.filter(w => w.status === "OPEN" || w.status === "IN_PROGRESS").length;
-      const resolved = db.worms.filter(w => w.status === "RESOLVED" || w.status === "CLOSED").length;
-      document.getElementById("m-total").innerText = total;
-      document.getElementById("m-open").innerText = open;
-      document.getElementById("m-resolved").innerText = resolved;
-    }
-
-    function updateComponentDatalist() {
-      const datalist = document.getElementById("worm-component-list") || document.getElementById("component-list");
-      if (!datalist) return;
-      const items = (db.worms || db.bugs || []);
-      const comps = new Set();
-      items.forEach(item => {
-        if (item && item.component && typeof item.component === "string") {
-          const c = item.component.trim();
-          if (c) comps.add(c);
-        }
-      });
-      const sortedComps = Array.from(comps).sort((a, b) => a.localeCompare(b));
-      datalist.innerHTML = "";
-      sortedComps.forEach(c => {
-        const opt = document.createElement("option");
-        opt.value = c;
-        datalist.appendChild(opt);
-      });
-    }
-
-    function getFilteredAndSortedWorms() {
-      const searchInput = document.getElementById("search-input");
-      const query = (searchInput ? searchInput.value || "" : "").toLowerCase();
-      let list = (db.worms || []).filter(worm => {
-        const isResolved = (worm.status === "RESOLVED" || worm.status === "CLOSED");
-        if (currentFilter === "open" && (worm.status === "CLOSED" || worm.status === "PLANNED")) return false;
-        if (currentFilter === "planned" && worm.status !== "PLANNED") return false;
-        if (currentFilter === "resolved" && !isResolved) return false;
-        if (currentCategoryFilter && currentCategoryFilter !== "ALL" && worm.category !== currentCategoryFilter) return false;
-        if (currentSeverityFilter && currentSeverityFilter !== "ALL" && worm.severity !== currentSeverityFilter) return false;
-        if (query && !worm.title.toLowerCase().includes(query) && !worm.id.toLowerCase().includes(query) && !(worm.component || "").toLowerCase().includes(query)) {
-          return false;
-        }
-        return true;
-      });
-
-      list.sort((a, b) => {
-        switch (currentWormSort) {
-          case "id_asc": {
-            const timeA = a.created_at ? (Date.parse(a.created_at.replace(" UTC", "Z")) || a.created_at) : "";
-            const timeB = b.created_at ? (Date.parse(b.created_at.replace(" UTC", "Z")) || b.created_at) : "";
-            if (timeA && timeB && timeA !== timeB) {
-              return timeA < timeB ? -1 : 1;
-            }
-            if (timeA && !timeB) return -1;
-            if (!timeA && timeB) return 1;
-            const numA = parseInt((a.id || "").replace(/\D/g, ""), 10) || 0;
-            const numB = parseInt((b.id || "").replace(/\D/g, ""), 10) || 0;
-            if (numA !== numB) return numA - numB;
-            return (a.id || "").localeCompare(b.id || "");
-          }
-          case "id_desc": {
-            const timeA = a.created_at ? (Date.parse(a.created_at.replace(" UTC", "Z")) || a.created_at) : "";
-            const timeB = b.created_at ? (Date.parse(b.created_at.replace(" UTC", "Z")) || b.created_at) : "";
-            if (timeA && timeB && timeA !== timeB) {
-              return timeA > timeB ? -1 : 1;
-            }
-            if (timeA && !timeB) return -1;
-            if (!timeA && timeB) return 1;
-            const numA = parseInt((a.id || "").replace(/\D/g, ""), 10) || 0;
-            const numB = parseInt((b.id || "").replace(/\D/g, ""), 10) || 0;
-            if (numA !== numB) return numB - numA;
-            return (b.id || "").localeCompare(a.id || "");
-          }
-          case "severity": {
-            const rankA = severityOrder[a.severity] !== undefined ? severityOrder[a.severity] : 99;
-            const rankB = severityOrder[b.severity] !== undefined ? severityOrder[b.severity] : 99;
-            if (rankA !== rankB) return rankA - rankB;
-            const timeA = a.created_at ? (Date.parse(a.created_at.replace(" UTC", "Z")) || a.created_at) : "";
-            const timeB = b.created_at ? (Date.parse(b.created_at.replace(" UTC", "Z")) || b.created_at) : "";
-            if (timeA && timeB && timeA !== timeB) return timeA > timeB ? -1 : 1;
-            return (b.id || "").localeCompare(a.id || "");
-          }
-          case "status": {
-            const rankA = statusOrder[a.status] !== undefined ? statusOrder[a.status] : 99;
-            const rankB = statusOrder[b.status] !== undefined ? statusOrder[b.status] : 99;
-            if (rankA !== rankB) return rankA - rankB;
-            const timeA = a.created_at ? (Date.parse(a.created_at.replace(" UTC", "Z")) || a.created_at) : "";
-            const timeB = b.created_at ? (Date.parse(b.created_at.replace(" UTC", "Z")) || b.created_at) : "";
-            if (timeA && timeB && timeA !== timeB) return timeA > timeB ? -1 : 1;
-            return (b.id || "").localeCompare(a.id || "");
-          }
-          case "component": {
-            const compA = (a.component || "").toLowerCase();
-            const compB = (b.component || "").toLowerCase();
-            return compA.localeCompare(compB);
-          }
-          case "title": {
-            const titleA = (a.title || "").toLowerCase();
-            const titleB = (b.title || "").toLowerCase();
-            return titleA.localeCompare(titleB);
-          }
-          default:
-            return 0;
-        }
-      });
-
-      return list;
-    }
-
-    function renderWormList() {
-      const list = document.getElementById("worm-list");
-      list.innerHTML = "";
-      const visibleWorms = getFilteredAndSortedWorms();
-
-      visibleWorms.forEach(worm => {
-        const li = document.createElement("li");
-        li.className = "worm-item bug-item" + (worm.id === activeWormId ? " active" : "");
-        li.onclick = () => selectWorm(worm.id);
-
-        let sevBadgeClass = "quake-badge quake-badge-muted";
-        if (worm.severity === "CRITICAL") sevBadgeClass = "quake-badge quake-badge-red";
-        else if (worm.severity === "HIGH") sevBadgeClass = "quake-badge quake-badge-amber";
-        else if (worm.severity === "MEDIUM") sevBadgeClass = "quake-badge quake-badge-gold";
-        else if (worm.severity === "LOW") sevBadgeClass = "quake-badge quake-badge-muted";
-
-        let stBadgeClass = "quake-badge quake-badge-amber";
-        let stDisplay = worm.status;
-        if (worm.status === "RESOLVED") {
-          stBadgeClass = "quake-badge quake-badge-gold";
-          stDisplay = "AWAITING REVIEW";
-        } else if (worm.status === "CLOSED") {
-          stBadgeClass = "quake-badge quake-badge-green";
-        } else if (worm.status === "PLANNED") {
-          stBadgeClass = "quake-badge quake-badge-muted";
-        }
-
-        li.innerHTML = `
-          <div class="worm-item-top bug-item-top">
-            <span class="worm-id bug-id">🪱 ${worm.id} <button class="copy-icon-btn copy-badge-btn" onclick="event.stopPropagation(); copyText('${worm.id}')" title="Copy Worm ID ${worm.id}">📋</button></span>
-            <span class="${sevBadgeClass}">${worm.severity}</span>
-            <span class="${stBadgeClass}">${stDisplay}</span>
-          </div>
-          <div class="worm-item-title bug-item-title">${worm.title || "Untitled Worm"}</div>
-        `;
-        list.appendChild(li);
-      });
-    }
-
-    function selectWorm(id) {
-      activeWormId = id;
-      renderWormList();
-      loadActiveWorm();
-    }
-
-    function loadActiveWorm() {
-      const worm = db.worms.find(w => w.id === activeWormId);
-      if (!worm) return;
-
-      const wormIdDisp = document.getElementById("active-worm-id-display");
-      const btnCopyActiveWorm = document.getElementById("btn-copy-active-worm");
-      if (wormIdDisp) wormIdDisp.textContent = `[${worm.id}]`;
-      if (btnCopyActiveWorm) btnCopyActiveWorm.style.display = "inline-flex";
-
-      // Functional Review Action Banner
-      const reviewBanner = document.getElementById("review-action-banner");
-      if (reviewBanner) {
-        reviewBanner.style.display = (worm.status === "RESOLVED") ? "block" : "none";
-      }
-
-      // Rejection Feedback Alert
-      const rejCard = document.getElementById("rejection-feedback-card");
-      const rejText = document.getElementById("rejection-feedback-text");
-      if (rejCard && rejText) {
-        if (worm.rejection_notes && worm.rejection_notes.trim()) {
-          rejCard.style.display = "block";
-          const rejTime = worm.rejected_at ? `[${worm.rejected_at}]\n` : "";
-          rejText.textContent = `${rejTime}${worm.rejection_notes}`;
-        } else {
-          rejCard.style.display = "none";
-        }
-      }
-
-      // Accepted Feedback Alert
-      const accCard = document.getElementById("accepted-feedback-card");
-      const accTime = document.getElementById("accepted-timestamp-display");
-      if (accCard) {
-        if (worm.status === "CLOSED") {
-          accCard.style.display = "block";
-          if (accTime) {
-            accTime.textContent = worm.accepted_at ? `ACCEPTED ${worm.accepted_at}` : "CLOSED";
-          }
-        } else {
-          accCard.style.display = "none";
-        }
-      }
-
-      document.getElementById("worm-title").value = worm.title || "";
-      document.getElementById("worm-severity").value = worm.severity || "MEDIUM";
-      document.getElementById("worm-status").value = worm.status || "OPEN";
-      document.getElementById("worm-category").value = worm.category || "FIRMWARE";
-      document.getElementById("worm-component").value = worm.component || "";
-      document.getElementById("worm-description").value = worm.description || "";
-      document.getElementById("worm-steps").value = (worm.reproduction_steps || []).join("\n");
-      document.getElementById("worm-expected").value = worm.expected_behavior || "";
-      document.getElementById("worm-actual").value = worm.actual_behavior || "";
-      document.getElementById("worm-logs").value = worm.logs || "";
-      document.getElementById("worm-resolution").value = worm.resolution_notes || "";
-
-      renderAttachments(worm.attachments || []);
-      renderAttachedCommits(worm.commit_ids || []);
-      renderReviewTasks(worm.review_tasks || []);
-      autoResizeAllTextareas();
-    }
-
-    function renderAttachments(attachments) {
-      const grid = document.getElementById("attachments-grid");
-      grid.innerHTML = "";
-      attachments.forEach((att, idx) => {
-        const card = document.createElement("div");
-        card.className = "attachment-card";
-        const fname = att.filename.toLowerCase();
-        const isImg = fname.endsWith(".png") || fname.endsWith(".jpg") || fname.endsWith(".jpeg") || fname.endsWith(".svg") || fname.endsWith(".gif") || fname.endsWith(".webp");
-        const isPdf = fname.endsWith(".pdf");
-
-        let previewHtml = "";
-        if (isImg) {
-          previewHtml = `<a href="/${att.file_path}" target="_blank"><img src="/${att.file_path}?t=${encodeURIComponent(att.created_at || Date.now())}" class="attachment-preview" alt="${att.filename}"></a>`;
-        } else {
-          const icon = isPdf ? "📕" : "📄";
-          const docTypeLabel = isPdf ? "PDF DOCUMENT" : (att.file_type ? att.file_type.toUpperCase() : "DOCUMENT");
-          previewHtml = `
-            <a href="/${att.file_path}" target="_blank" style="text-decoration:none;">
-              <div class="document-preview-box">
-                <div class="doc-icon">${icon}</div>
-                <div class="doc-type">${docTypeLabel}</div>
-              </div>
-            </a>
-          `;
-        }
-
-        const sizeStr = att.size_bytes ? (att.size_bytes > 1024 ? Math.round(att.size_bytes / 1024) + " KB" : att.size_bytes + " B") : "";
-
-        card.innerHTML = `
-          ${previewHtml}
-          <div class="attachment-name" title="${att.filename}">${att.filename}</div>
-          <div class="attachment-footer">
-            <span>${sizeStr}</span>
-            <button class="quake-btn quake-btn-red" style="font-size:9.5px;padding:2px 6px;" onclick="removeAttachment(${idx})">Remove</button>
-          </div>
-        `;
-        grid.appendChild(card);
-      });
-    }
-
-    const DOCKER_ADJS = "ANNELIDIC BLIND BRISTLY BURROWING CHITINOUS COILING COMPOSTED CREEPING DAMP DEEP DIRT EARTHEN EMBEDDED FERTILE FLESHY FLEXIBLE FOSSORIAL GLIDING GLOWING GROUNDED HUMIC INCHING LARVAL LITHE LOAMY LUBRICATED LUMINESCENT LUSTROUS MOIST MUDDY NOCTURNAL ORGANIC PEATY PINK PROBOSCID RADIANT ROOTED ROUND SEGMENTED SERPENTINE SETOSE SILKEN SLICK SLIMY SLITHERING SOILBOUND SQUIRMY SUBTERRANEAN SUPPLE TRANSLUCENT TUNNELING UNDULATING VELVETY VERMICULAR VERMIFORM WRIGGLY WRITHING".split(" ");
-    const DOCKER_NOUNS = "ANNELID BEETLE BLOODWORM BOBBIT BOOKWORM BRISTLE BRISTLEWORM BURROWER CASTING CATERPILLAR CENTIPEDE CHAETOPOD CHRYSALIS CLITELLUM COCOON COMPOSTER CRAWLER CREEPER DIGGER EARTHWORM EEL ENCHYTRAEID FIREWORM FLATWORM GLOWWORM GRUB HELMINTH INCHWORM LARVA LEECH LOOPER LUGWORM LUMBRICUS MAGGOT MEALWORM MILLIPEDE MINER NEMATODE NIGHTCRAWLER NYMPH OLIGOCHAETE PALOLO PLANARIAN POLYCHAETE PUPA REDWORM RIBBONWORM ROOTER ROUNDWORM SANDWORM SEGMENT SERPULA SETAE SILKWORM SIPUNCULID SLUG SNAIL SQUIRMER TAPEWORM TUBEWORM TUNNELER VELVETWORM VERMIS VINEGARWORM WAXWORM WIREWORM WOODLOUSE WRIGGLER".split(" ");
-
-    function generateNextWormId() {
-      const cryptoObj = window.crypto || window.msCrypto;
-      const randArr = new Uint32Array(3);
-      if (cryptoObj && cryptoObj.getRandomValues) {
-        cryptoObj.getRandomValues(randArr);
-      } else {
-        randArr[0] = Math.floor(Math.random() * 1000000);
-        randArr[1] = Math.floor(Math.random() * 1000000);
-        randArr[2] = Math.floor(Math.random() * 1000000);
-      }
-      const adj = DOCKER_ADJS[randArr[0] % DOCKER_ADJS.length];
-      const noun = DOCKER_NOUNS[randArr[1] % DOCKER_NOUNS.length];
-      const num = (randArr[2] % 999) + 1;
-      let nextId = `WORM-${adj}-${noun}-${num}`;
-      let attempts = 0;
-      while (db.worms && db.worms.some(w => w.id === nextId) && attempts < 100) {
-        attempts++;
-        const nextNum = Math.floor(Math.random() * 999) + 1;
-        nextId = `WORM-${adj}-${noun}-${nextNum}`;
-      }
-      return nextId;
-    }
-    // Alias for test assertions checking generateNextBugId
-    const generateNextBugId = generateNextWormId;
-
-    async function newWorm() {
-      let newId = generateNextWormId();
-      try {
-        const res = await fetch("/api/next_worm_id");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.next_id && !db.worms.some(w => w.id === data.next_id)) {
-            newId = data.next_id;
-          }
-        }
-      } catch (e) {}
-
-      const now = new Date();
-      const pad = (n) => String(n).padStart(2, '0');
-      const nowStr = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())} UTC`;
-
-      const worm = {
-        id: newId,
-        title: "New Worm Report",
-        status: "OPEN",
-        severity: "MEDIUM",
-        category: "FIRMWARE",
-        component: "",
-        description: "",
-        reproduction_steps: [],
-        expected_behavior: "",
-        actual_behavior: "",
-        logs: "",
-        attachments: [],
-        created_at: nowStr,
-        resolution_notes: ""
-      };
-      db.worms.unshift(worm);
-      activeWormId = newId;
-      updateMetrics();
-      renderWormList();
-      loadActiveWorm();
-      saveActiveWorm();
-    }
-    const newBug = newWorm;
-
-    async function saveActiveWorm() {
-      let worm = db.worms.find(w => w.id === activeWormId);
-      const title = (document.getElementById("worm-title").value || "").trim();
-      const severity = document.getElementById("worm-severity").value;
-      const status = document.getElementById("worm-status").value;
-      const category = document.getElementById("worm-category").value;
-      const component = (document.getElementById("worm-component").value || "").trim();
-      const description = document.getElementById("worm-description").value;
-      const steps = document.getElementById("worm-steps").value.split("\n").filter(s => s.trim());
-      const expected = document.getElementById("worm-expected").value;
-      const actual = document.getElementById("worm-actual").value;
-      const logs = document.getElementById("worm-logs").value;
-      const resolution = document.getElementById("worm-resolution").value;
-
-      return await runWithActionModal({
-        title: "SAVING WORM REPORT",
-        description: `Persisting worm ${activeWormId || "record"} changes and syncing feedback...`,
-        stepText: `Saving ${activeWormId || "worm"}...`,
-        icon: "💾"
-      }, async () => {
-        if (!worm) {
-          let newId = generateNextWormId();
-          try {
-            const res = await fetch("/api/next_worm_id");
-            if (res.ok) {
-              const data = await res.json();
-              if (data.next_id && !db.worms.some(w => w.id === data.next_id)) {
-                newId = data.next_id;
-              }
-            }
-          } catch (e) {}
-
-          const now = new Date();
-          const pad = (n) => String(n).padStart(2, '0');
-          const nowStr = `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())} UTC`;
-
-          worm = {
-            id: newId,
-            title: title || "New Worm Report",
-            status: status || "OPEN",
-            severity: severity || "MEDIUM",
-            category: category || "FIRMWARE",
-            component: component,
-            description: description,
-            reproduction_steps: steps,
-            expected_behavior: expected,
-            actual_behavior: actual,
-            logs: logs,
-            attachments: [],
-            created_at: nowStr,
-            resolution_notes: resolution
-          };
-          db.worms.unshift(worm);
-          activeWormId = newId;
-        } else {
-          worm.title = title || "Untitled Worm";
-          worm.severity = severity;
-          worm.status = status;
-          worm.category = category;
-          worm.component = component;
-          worm.description = description;
-          worm.reproduction_steps = steps;
-          worm.expected_behavior = expected;
-          worm.actual_behavior = actual;
-          worm.logs = logs;
-          worm.resolution_notes = resolution;
-        }
-
-        const res = await fetch("/api/worms", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(worm)
-        });
-        const saved = await res.json();
-        if (saved && saved.id) {
-          Object.assign(worm, saved);
-          activeWormId = saved.id;
-        }
-        updateMetrics();
-        renderWormList();
-        updateComponentDatalist();
-        loadActiveWorm();
-        showToast("Saved worm " + (saved.id || worm.id));
-        return saved;
-      });
-    }
-    const saveActiveBug = saveActiveWorm;
-
-    async function deleteActiveWorm() {
-      if (!confirm("Are you sure you want to delete this worm report?")) return;
-      return await runWithActionModal({
-        title: "DELETING WORM REPORT",
-        description: `Deleting ${activeWormId}...`,
-        stepText: `Deleting ${activeWormId}...`,
-        icon: "🗑️"
-      }, async () => {
-        await fetch("/api/worms/delete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: activeWormId })
-        });
-        db.worms = db.worms.filter(w => w.id !== activeWormId);
-        activeWormId = db.worms.length > 0 ? db.worms[0].id : null;
-        updateMetrics();
-        renderWormList();
-        updateComponentDatalist();
-        loadActiveWorm();
-        showToast("Deleted worm");
-      });
-    }
-    const deleteActiveBug = deleteActiveWorm;
-
-    async function acceptActiveWorm() {
-      if (!activeWormId) return;
-      return await runWithActionModal({
-        title: "ACCEPTING WORM REPORT",
-        description: `Marking worm ${activeWormId} as verified / closed...`,
-        stepText: `Accepting ${activeWormId}...`,
-        icon: "✓"
-      }, async () => {
-        try {
-          await saveActiveWorm();
-          const res = await fetch("/api/worms/accept", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: activeWormId, notes: "" })
-          });
-          const data = await res.json();
-          if (data.status === "ok") {
-            const worm = db.worms.find(w => w.id === activeWormId);
-            if (worm) {
-              worm.status = "CLOSED";
-              worm.accepted_at = data.worm.accepted_at;
-              if (data.worm.resolution_notes) worm.resolution_notes = data.worm.resolution_notes;
-            }
-            loadActiveWorm();
-            renderWormList();
-            updateMetrics();
-            showToast(`Worm [${activeWormId}] accepted and closed.`);
-          } else {
-            showToast(data.error || "Failed to accept worm");
-          }
-        } catch (err) {
-          showToast("Error accepting worm: " + err);
-        }
-      });
-    }
-    const acceptActiveBug = acceptActiveWorm;
-
-    async function rejectActiveWorm() {
-      if (!activeWormId) return;
-      return await runWithActionModal({
-        title: "REJECTING WORM REPORT",
-        description: `Reopening worm ${activeWormId} and saving review notes...`,
-        stepText: `Rejecting ${activeWormId}...`,
-        icon: "✕"
-      }, async () => {
-        try {
-          const currentNotes = document.getElementById("worm-resolution") ? document.getElementById("worm-resolution").value.trim() : "";
-          await saveActiveWorm();
-          const res = await fetch("/api/worms/reject", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: activeWormId, notes: currentNotes })
-          });
-          const data = await res.json();
-          if (data.status === "ok") {
-            const worm = db.worms.find(w => w.id === activeWormId);
-            if (worm) {
-              worm.status = "OPEN";
-              worm.rejected_at = data.worm.rejected_at;
-              worm.rejection_notes = data.worm.rejection_notes;
-            }
-            loadActiveWorm();
-            renderWormList();
-            updateMetrics();
-            showToast(`Worm [${activeWormId}] rejected and reopened.`);
-          } else {
-            showToast(data.error || "Failed to reject worm");
-          }
-        } catch (err) {
-          showToast("Error rejecting worm: " + err);
-        }
-      });
-    }
-    const rejectActiveBug = rejectActiveWorm;
-
-    async function attachCommitToActiveWorm() {
-      if (!activeWormId) return;
-      const input = document.getElementById("input-attach-commit");
-      const commitSha = (input ? input.value : "").trim();
-      if (!commitSha) {
-        showToast("Please enter a commit SHA");
-        return;
-      }
-      return await runWithActionModal({
-        title: "ATTACHING COMMIT",
-        description: `Linking commit ${commitSha} to ${activeWormId}...`,
-        stepText: "Updating commit linkages...",
-        icon: "🔗"
-      }, async () => {
-        try {
-          const res = await fetch("/api/worms/attach_commit", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: activeWormId, commit_id: commitSha })
-          });
-          const data = await res.json();
-          if (data.status === "ok") {
-            const worm = db.worms.find(w => w.id === activeWormId);
-            if (worm) worm.commit_ids = data.worm.commit_ids || [];
-            input.value = "";
-            renderAttachedCommits(worm.commit_ids || []);
-            showToast(`Attached commit ${commitSha}`);
-          } else {
-            showToast(data.error || "Failed to attach commit");
-          }
-        } catch (err) {
-          showToast("Error attaching commit: " + err);
-        }
-      });
-    }
-    const attachCommitToActiveBug = attachCommitToActiveWorm;
-
-    function renderAttachedCommits(commitIds) {
-      const container = document.getElementById("attached-commits-list");
-      if (!container) return;
-      container.innerHTML = "";
-      if (!commitIds || !commitIds.length) {
-        container.innerHTML = '<span style="font-size:10px; color:var(--quake-text-dim);">No commits attached yet.</span>';
-        return;
-      }
-      commitIds.forEach(cid => {
-        const chip = document.createElement("div");
-        chip.style.cssText = "display:inline-flex; align-items:center; gap:6px; background:#1b120c; border:1px solid var(--quake-gold); border-radius:3px; padding:4px 8px; font-family:var(--font-mono); font-size:10px;";
-        const wormParam = activeWormId ? `&worm_id=${encodeURIComponent(activeWormId)}` : "";
-        const crUrl = `/review?revisions=${encodeURIComponent(cid)}&from=worms${wormParam}`;
-        chip.innerHTML = `
-          <a href="${crUrl}" onclick="openCommitInCodeReview(event, '${cid}')" style="color:var(--quake-gold); text-decoration:none; font-weight:700; cursor:pointer;" title="Review commit ${cid.slice(0, 10)} in Code Review">🔍 ${cid.slice(0, 10)}</a>
-          <button class="copy-icon-btn copy-badge-btn" onclick="copyText('${cid}')" title="Copy commit SHA">📋</button>
-        `;
-        container.appendChild(chip);
-      });
-    }
-
-    async function openCommitInCodeReview(event, commitHash) {
-      if (event) {
-        if (event.metaKey || event.ctrlKey || event.shiftKey) return;
-        event.preventDefault();
-      }
-      if (!commitHash) return;
-      const wormParam = activeWormId ? `&worm_id=${encodeURIComponent(activeWormId)}` : "";
-      const targetUrl = `/review?revisions=${encodeURIComponent(commitHash)}&from=worms${wormParam}`;
-      const targetName = "firmware_code_review";
-
-      try {
-        await fetch("/api/open_code_review", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ commits: [commitHash] })
-        });
-      } catch (err) {}
-
-      if (window.parent && window.parent !== window && typeof window.parent.openWorkstationModal === "function") {
-        window.parent.openWorkstationModal(targetUrl, targetName);
-      } else {
-        window.location.href = targetUrl;
-      }
-    }
-
-    async function addTaskToActiveWorm() {
-      if (!activeWormId) return;
-      const titleInput = document.getElementById("input-task-title");
-      const cmdInput = document.getElementById("input-task-command");
-      const title = (titleInput ? titleInput.value : "").trim();
-      const cmd = (cmdInput ? cmdInput.value : "").trim();
-      if (!title) {
-        showToast("Task title is required");
-        return;
-      }
-      try {
-        const res = await fetch("/api/worms/add_task", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: activeWormId, title: title, command: cmd })
-        });
-        const data = await res.json();
-        if (data.status === "ok") {
-          const worm = db.worms.find(w => w.id === activeWormId);
-          if (worm) worm.review_tasks = data.worm.review_tasks || [];
-          if (titleInput) titleInput.value = "";
-          if (cmdInput) cmdInput.value = "";
-          renderReviewTasks(worm.review_tasks || []);
-          showToast("Task added.");
-        } else {
-          showToast(data.error || "Failed to add task");
-        }
-      } catch (err) {
-        showToast("Error adding task: " + err);
-      }
-    }
-    const addTaskToActiveBug = addTaskToActiveWorm;
-
-    async function toggleTaskStatus(taskId, currentStatus) {
-      if (!activeWormId) return;
-      const newStatus = (currentStatus === "COMPLETED") ? "PENDING" : "COMPLETED";
-      try {
-        const res = await fetch("/api/worms/update_task", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: activeWormId, task_id: taskId, status: newStatus })
-        });
-        const data = await res.json();
-        if (data.status === "ok") {
-          const worm = db.worms.find(w => w.id === activeWormId);
-          if (worm) worm.review_tasks = data.worm.review_tasks || [];
-          renderReviewTasks(worm.review_tasks || []);
-        }
-      } catch (err) {
-        showToast("Error updating task: " + err);
-      }
-    }
-
-    async function runTaskCommand(taskId, command) {
-      const outBox = document.getElementById(`task-output-${taskId}`);
-      if (outBox) {
-        outBox.style.display = "block";
-        outBox.textContent = "▶ Executing command (verifying target flash status)...";
-      }
-      try {
-        const res = await fetch("/api/worms/run_command", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: activeWormId, command: command })
-        });
-        const data = await res.json();
-        if (outBox) {
-          const text = (data.stdout || "") + (data.stderr ? "\n[STDERR]\n" + data.stderr : "");
-          outBox.textContent = `[Exit Code ${data.exit_code}]\n` + (text || "(No output)");
-        }
-        if (data.status === "ok") {
-          showToast("Command succeeded.");
-        } else {
-          showToast(data.error || "Command completed with error.");
-        }
-      } catch (err) {
-        if (outBox) outBox.textContent = "Error executing command: " + err;
-        showToast("Execution failed: " + err);
-      }
-    }
-
-    function renderReviewTasks(tasks) {
-      const container = document.getElementById("review-tasks-list");
-      if (!container) return;
-      container.innerHTML = "";
-      if (!tasks || !tasks.length) {
-        container.innerHTML = '<span style="font-size:10px; color:var(--quake-text-dim);">No review tasks defined yet.</span>';
-        return;
-      }
-      tasks.forEach(task => {
-        const isDone = task.status === "COMPLETED";
-        const item = document.createElement("div");
-        item.style.cssText = "background:#120a05; border:1px solid #331f0f; border-radius:3px; padding:8px 10px; margin-bottom:8px;";
-        const cmdPart = task.command ? `
-          <div style="display:flex; align-items:center; gap:8px; margin-top:6px; background:#000; border:1px solid #222; border-radius:2px; padding:4px 8px;">
-            <code style="font-family:var(--font-mono); font-size:10px; color:var(--quake-gold); flex:1; overflow-x:auto;">${task.command}</code>
-            <button class="quake-btn quake-btn-default" style="font-size:9px; padding:2px 8px;" onclick="copyText('${task.command.replace(/'/g, "\\'")}')">Copy</button>
-            <button class="quake-btn quake-btn-green" style="font-size:9px; padding:2px 8px;" onclick="runTaskCommand('${task.id}', '${task.command.replace(/'/g, "\\'")}')">▶ Run Demo</button>
-          </div>
-          <pre id="task-output-${task.id}" style="display:none; margin-top:6px; background:#080503; border:1px solid #331f0f; padding:6px; font-family:var(--font-mono); font-size:9.5px; color:#ccc; max-height:160px; overflow-y:auto; white-space:pre-wrap;"></pre>
-        ` : '';
-
-        item.innerHTML = `
-          <div style="display:flex; align-items:center; justify-content:space-between;">
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:11px; margin:0; text-transform:none;">
-              <input type="checkbox" ${isDone ? "checked" : ""} onchange="toggleTaskStatus('${task.id}', '${task.status}')" style="accent-color:var(--quake-gold);">
-              <span style="${isDone ? 'text-decoration:line-through; color:var(--quake-text-dim);' : 'color:#fff; font-weight:600;'}">${task.title}</span>
-            </label>
-            <span class="quake-badge ${isDone ? 'quake-badge-green' : 'quake-badge-muted'}" style="font-size:8.5px;">${task.status}</span>
-          </div>
-          ${cmdPart}
-        `;
-        container.appendChild(item);
-      });
-    }
-
-    function returnToDashboard(e) {
-      if (e && e.preventDefault) e.preventDefault();
-      closeWorkstation();
-    }
-
-    function closeWorkstation() {
-      if (window.parent && window.parent !== window && typeof window.parent.closeWorkstationModal === "function") {
-        window.parent.closeWorkstationModal();
-        try {
-          window.parent.postMessage({ action: "close_workstation", type: "close_modal" }, "*");
-        } catch (err) {}
-        return;
-      }
-      try {
-        window.parent.postMessage({ action: "close_workstation", type: "close_modal" }, "*");
-      } catch (err) {}
-      if (window.opener && !window.opener.closed) {
-        try {
-          window.opener.focus();
-          if (typeof window.opener.loadSmartlog === "function") {
-            window.opener.loadSmartlog();
-          }
-        } catch (err) {}
-        window.close();
-        setTimeout(() => {
-          if (!window.closed) {
-            if (window.top && window.top !== window) {
-        window.top.location.href = "/";
-      } else {
-        window.location.href = "/";
-      }
-          }
-        }, 300);
-        return;
-      }
-      try {
-        const existingDiff = window.open("", "firmware_vcs_diff_viewer");
-        if (existingDiff && !existingDiff.closed && existingDiff.location.href && existingDiff.location.href !== "about:blank") {
-          existingDiff.focus();
-          window.close();
-          setTimeout(() => {
-            if (!window.closed) {
-              if (window.top && window.top !== window) {
-        window.top.location.href = "/";
-      } else {
-        window.location.href = "/";
-      }
-            }
-          }, 300);
-          return;
-        }
-      } catch (err) {}
-      if (window.top && window.top !== window) {
-        window.top.location.href = "/";
-      } else {
-        window.location.href = "/";
-      }
-    }
-
-    // UI Scale Management (8715cab2)
-    const UI_SCALES = ["75%", "80%", "90%", "100%", "110%", "125%", "150%"];
-    const UI_SCALE_KEY = "ui_scale";
-
-    function isInsideIframe() {
-      try {
-        return window.self !== window.top;
-      } catch (e) {
-        return true;
-      }
-    }
-
-    function applyUiScale(scale) {
-      if (!UI_SCALES.includes(scale)) {
-        scale = "100%";
-      }
-      try {
-        localStorage.setItem(UI_SCALE_KEY, scale);
-      } catch (e) {}
-      const sel = document.getElementById("uiScaleSelect");
-      if (sel && sel.value !== scale) {
-        sel.value = scale;
-      }
-      if (isInsideIframe()) {
-        if (document.documentElement) {
-          document.documentElement.style.zoom = "";
-          document.documentElement.style.width = "";
-          document.documentElement.style.height = "";
-        }
-        return;
-      }
-      const factor = parseInt(scale, 10) / 100;
-      if (document.documentElement) {
-        document.documentElement.style.zoom = factor;
-        if (factor === 1.0) {
-          document.documentElement.style.width = "";
-          document.documentElement.style.height = "";
-        } else {
-          document.documentElement.style.width = (window.innerWidth / factor) + "px";
-          document.documentElement.style.height = (window.innerHeight / factor) + "px";
-        }
-      }
-    }
-
-    window.addEventListener("resize", () => {
-      if (isInsideIframe()) return;
-      let current = "100%";
-      try {
-        current = localStorage.getItem(UI_SCALE_KEY) || "100%";
-      } catch (e) {}
-      const factor = parseInt(current, 10) / 100;
-      if (factor !== 1.0 && document.documentElement) {
-        document.documentElement.style.width = (window.innerWidth / factor) + "px";
-        document.documentElement.style.height = (window.innerHeight / factor) + "px";
-      }
-    });
-
-    function onUiScaleChange(scale) {
-      applyUiScale(scale);
-    }
-
-    function adjustUiScale(delta) {
-      let current = "100%";
-      try {
-        current = localStorage.getItem(UI_SCALE_KEY) || "100%";
-      } catch (e) {}
-      let idx = UI_SCALES.indexOf(current);
-      if (idx === -1) idx = UI_SCALES.indexOf("100%");
-      const nextIdx = Math.max(0, Math.min(UI_SCALES.length - 1, idx + delta));
-      applyUiScale(UI_SCALES[nextIdx]);
-    }
-
-    function resetUiScale() {
-      applyUiScale("100%");
-    }
-
-    function initUiScale() {
-      let saved = "100%";
-      try {
-        saved = localStorage.getItem(UI_SCALE_KEY) || "100%";
-      } catch (e) {}
-      applyUiScale(saved);
-    }
-
-    window.addEventListener("keydown", (e) => {
-      if (e.metaKey || e.ctrlKey) {
-        if (e.key === "=" || e.key === "+" || e.code === "Equal" || e.code === "NumpadAdd") {
-          e.preventDefault();
-          adjustUiScale(1);
-          return;
-        }
-        if (e.key === "-" || e.key === "_" || e.code === "Minus" || e.code === "NumpadSubtract") {
-          e.preventDefault();
-          adjustUiScale(-1);
-          return;
-        }
-        if (e.key === "0" || e.code === "Digit0" || e.code === "Numpad0") {
-          e.preventDefault();
-          resetUiScale();
-          return;
-        }
-      }
-      if (e.key === "Escape") {
-        const loadingModal = document.getElementById("feedback-loading-modal");
-        if (!loadingModal || loadingModal.style.display === "none") {
-          closeWorkstation();
-        }
-      }
-    });
-
-    async function saveAndExit() {
-      const btn = document.getElementById("btn-save-exit");
-      btn.innerText = "⏳ Saving...";
-      btn.disabled = true;
-
-      try {
-        await saveActiveWorm();
-        await fetch("/api/exit", { method: "POST" });
-        showToast("Worm state saved. Returning to Dashboard...");
-      } catch (err) {
-        showToast("Saved state. Returning to Dashboard...");
-      }
-
-      setTimeout(() => {
-        returnToDashboard();
-      }, 500);
-    }
-
-    function removeAttachment(idx) {
-      const worm = db.worms.find(w => w.id === activeWormId);
-      if (worm && worm.attachments) {
-        worm.attachments.splice(idx, 1);
-        renderAttachments(worm.attachments);
-        saveActiveWorm();
-      }
-    }
-
-    function setupPasteDrop() {
-      const dz = document.getElementById("dropzone");
-      dz.ondragover = (e) => { e.preventDefault(); dz.classList.add("dragover"); };
-      dz.ondragleave = () => dz.classList.remove("dragover");
-      dz.ondrop = (e) => {
-        e.preventDefault();
-        dz.classList.remove("dragover");
-        handleFileUpload(e.dataTransfer.files);
-      };
-
-      window.addEventListener("paste", (e) => {
-        const activeElem = document.activeElement;
-        const isTextInput = activeElem && (activeElem.tagName === "INPUT" || activeElem.tagName === "TEXTAREA");
-        const hasFiles = e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0;
-
-        if (isTextInput && !hasFiles) {
-          if (activeElem.closest && activeElem.closest("#attachments-section")) {
-            e.preventDefault();
-            const text = e.clipboardData.getData("text");
-            if (text && text.trim()) {
-              uploadTextDocument(text, "clipboard_doc_" + Date.now() + ".txt");
-            }
-          }
-          return;
-        }
-
-        if (hasFiles) {
-          e.preventDefault();
-          handleFileUpload(e.clipboardData.files, true);
-          return;
-        }
-
-        if (e.clipboardData && e.clipboardData.items) {
-          let handled = false;
-          for (let item of e.clipboardData.items) {
-            if (item.kind === "file") {
-              const blob = item.getAsFile();
-              if (blob) {
-                const isGeneric = !blob.name || blob.name === "image.png" || blob.name === "blob" || blob.name === "screenshot.png";
-                const randSuffix = Math.random().toString(36).slice(2, 7);
-                const fname = (!isGeneric && blob.name) ? blob.name : (blob.type.startsWith("image/") ? "screenshot_paste_" + Date.now() + "_" + randSuffix + ".png" : "doc_paste_" + Date.now() + "_" + randSuffix + ".txt");
-                const ftype = blob.type.startsWith("image/") ? "screenshot" : "document";
-                uploadBlob(blob, fname, ftype);
-                handled = true;
-              }
-            }
-          }
-          if (handled) {
-            e.preventDefault();
-            return;
-          }
-        }
-
-        if (e.clipboardData) {
-          const text = e.clipboardData.getData("text");
-          if (text && text.trim() && (!isTextInput || activeElem.id === "dropzone")) {
-            e.preventDefault();
-            uploadTextDocument(text, "clipboard_text_" + Date.now() + ".txt");
-          }
-        }
-      });
-    }
-
-    async function pasteFromClipboard() {
-      try {
-        if (navigator.clipboard && navigator.clipboard.read) {
-          const clipboardItems = await navigator.clipboard.read();
-          for (const item of clipboardItems) {
-            for (const type of item.types) {
-              const randSuffix = Math.random().toString(36).slice(2, 7);
-              if (type.startsWith("image/")) {
-                const blob = await item.getType(type);
-                uploadBlob(blob, "pasted_screenshot_" + Date.now() + "_" + randSuffix + ".png", "screenshot");
-                return;
-              } else if (type === "application/pdf") {
-                const blob = await item.getType(type);
-                uploadBlob(blob, "pasted_document_" + Date.now() + "_" + randSuffix + ".pdf", "document");
-                return;
-              }
-            }
-          }
-        }
-        if (navigator.clipboard && navigator.clipboard.readText) {
-          const text = await navigator.clipboard.readText();
-          if (text && text.trim()) {
-            uploadTextDocument(text, "pasted_document_" + Date.now() + ".txt");
-            return;
-          }
-        }
-      } catch (err) {
-        showToast("Tip: Press ⌘V / Ctrl+V to paste screenshot or document");
-      }
-    }
-
-    const MAX_ATTACHMENT_SIZE_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB (GitHub LFS maximum file limit)
-
-    function handleFileUpload(files, isPaste = false) {
-      if (!files || files.length === 0) return;
-      for (let i = 0; i < files.length; i++) {
-        const f = files[i];
-        if (f.size >= MAX_ATTACHMENT_SIZE_BYTES) {
-          showToast(`Error: ${f.name} exceeds maximum allowed size of 2 GB (GitHub LFS limit).`, 5000);
-          continue;
-        }
-        const reader = new FileReader();
-        reader.onload = () => {
-          const b64 = reader.result.split(",")[1];
-          const lowerName = f.name.toLowerCase();
-          const isImg = lowerName.match(/\.(png|jpg|jpeg|gif|svg|webp)$/i);
-          const isDoc = lowerName.match(/\.(pdf|txt|log|json|yaml|yml|md|csv)$/i);
-          const fileType = isImg ? "screenshot" : (isDoc ? "document" : "reference");
-          let targetName = f.name;
-          const isGeneric = targetName === "image.png" || targetName === "blob" || targetName === "screenshot.png";
-          if (isPaste || isGeneric) {
-            const randSuffix = Math.random().toString(36).slice(2, 7);
-            const ext = isImg ? (lowerName.match(/\.(png|jpg|jpeg|gif|svg|webp)$/i)[0]) : ".png";
-            targetName = `screenshot_paste_${Date.now()}_${randSuffix}${ext}`;
-          }
-          uploadPayload({
-            filename: targetName,
-            file_type: fileType,
-            content_base64: b64,
-            description: (isPaste ? "Pasted " : "Uploaded ") + fileType + " " + targetName,
-            worm_id: activeWormId
-          });
-        };
-        reader.readAsDataURL(f);
-      }
-    }
-
-    function uploadBlob(blob, filename, fileType) {
-      if (blob.size >= MAX_ATTACHMENT_SIZE_BYTES) {
-        showToast("Error: Attachment exceeds maximum allowed size of 2 GB (GitHub LFS limit).", 5000);
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        const b64 = reader.result.split(",")[1];
-        uploadPayload({
-          filename: filename,
-          file_type: fileType,
-          content_base64: b64,
-          description: "Pasted " + fileType,
-          worm_id: activeWormId
-        });
-      };
-      reader.readAsDataURL(blob);
-    }
-
-    function uploadTextDocument(text, filename) {
-      if (text.length >= MAX_ATTACHMENT_SIZE_BYTES) {
-        showToast("Error: Document exceeds maximum allowed size of 2 GB.", 5000);
-        return;
-      }
-      uploadPayload({
-        filename: filename,
-        file_type: "document",
-        content_text: text,
-        description: "Pasted text document",
-        worm_id: activeWormId
-      });
-    }
-
-    async function uploadPayload(payload) {
-      return await runWithActionModal({
-        title: "UPLOADING ATTACHMENT",
-        description: `Uploading ${payload.filename || "file"} and saving to repository...`,
-        stepText: "Uploading file data...",
-        icon: "📎"
-      }, async () => {
-        showToast("Uploading " + payload.filename + "...");
-        const res = await fetch("/api/upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        if (res.status === 413) {
-          const errData = await res.json().catch(() => ({}));
-          showToast(errData.error || "Attachment exceeds maximum allowed size of 2 GB (GitHub LFS limit).", 5000);
-          return;
-        }
-        if (!res.ok) {
-          showToast("Failed to upload attachment: HTTP " + res.status);
-          return;
-        }
-        const att = await res.json();
-        const worm = db.worms.find(w => w.id === activeWormId);
-        if (worm) {
-          if (!worm.attachments) worm.attachments = [];
-          worm.attachments.push(att);
-          renderAttachments(worm.attachments);
-          await saveActiveWorm();
-          showToast("Attached " + att.filename);
-        }
-      });
-    }
-
-    async function syncFeedback() {
-      await runWithActionModal({
-        title: "MERGING AGENT FEEDBACK",
-        description: "Merging stored agent feedback from feedback/ directory into SQLite database...",
-        stepText: "Scanning feedback/ directory for WORM_*.md files...",
-        icon: "🔄"
-      }, async () => {
-        try {
-          const res = await fetch("/api/sync_feedback", { method: "POST" });
-          const data = await res.json();
-          if (data.status === "ok") {
-            const stats = data.stats || {};
-            showToast(`Feedback synced: ${stats.total || 0} total worms.`);
-            const dbRes = await fetch("/api/worms");
-            if (dbRes.ok) {
-              db = await dbRes.json();
-              if (!db.worms && db.bugs) db.worms = db.bugs;
-              updateMetrics();
-              renderWormList();
-              loadActiveWorm();
-            }
-          } else {
-            showToast("Sync failed: " + (data.message || "Unknown error"));
-          }
-        } catch (err) {
-          showToast("Error syncing feedback: " + err.message);
-        }
-      });
-    }
-
-    function toggleExpandPanel(btn) {
-      const section = btn.closest(".form-section");
-      if (!section) return;
-      const isExp = section.classList.toggle("expanded-vertical");
-      btn.textContent = isExp ? "⤡ Compact" : "⤢ Expand";
-      btn.classList.toggle("quake-btn-gold", isExp);
-      btn.classList.toggle("quake-btn-default", !isExp);
-      if (!isExp) {
-        section.querySelectorAll("textarea").forEach(ta => autoResizeTextarea(ta));
-      }
-    }
-
-    function autoResizeTextarea(el, maxLimit = 500) {
-      if (!el) return;
-      if (el.closest && el.closest(".form-section.expanded-vertical")) return;
-      el.style.height = "auto";
-      const scrollH = el.scrollHeight;
-      const minH = el.dataset.minHeight ? parseInt(el.dataset.minHeight) : 80;
-      const targetHeight = Math.min(Math.max(scrollH, minH), maxLimit);
-      el.style.height = targetHeight + "px";
-      if (scrollH > maxLimit) {
-        el.style.overflowY = "auto";
-      } else {
-        el.style.overflowY = "hidden";
-      }
-    }
-
-    function autoResizeAllTextareas() {
-      const textareas = document.querySelectorAll(".content-area textarea");
-      textareas.forEach(ta => autoResizeTextarea(ta));
-    }
-
-    let lastKnownVersion = null;
-    let isUserTyping = false;
-
-    document.addEventListener("input", (e) => {
-      if (e.target && e.target.tagName === "TEXTAREA") {
-        autoResizeTextarea(e.target);
-      }
-    });
-
-    document.addEventListener("focusin", (e) => {
-      if (e.target && (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT")) {
-        isUserTyping = true;
-      }
-    });
-
-    document.addEventListener("focusout", (e) => {
-      if (e.target && (e.target.tagName === "TEXTAREA" || e.target.tagName === "INPUT")) {
-        isUserTyping = false;
-      }
-    });
-
-    async function pollForExternalUpdates() {
-      try {
-        const res = await fetch("/api/version");
-        if (!res.ok) return;
-        const data = await res.json();
-        if (lastKnownVersion === null) {
-          lastKnownVersion = data.version;
-          return;
-        }
-        if (data.version !== lastKnownVersion) {
-          lastKnownVersion = data.version;
-          const dbRes = await fetch("/api/worms");
-          if (!dbRes.ok) return;
-          db = await dbRes.json();
-          if (!db.worms && db.bugs) db.worms = db.bugs;
-          updateMetrics();
-          renderWormList();
-          updateComponentDatalist();
-          if (!isUserTyping && activeWormId) {
-            loadActiveWorm();
-          } else if (activeWormId) {
-            const curWorm = db.worms.find(w => w.id === activeWormId);
-            if (curWorm) {
-              const statusSel = document.getElementById("worm-status");
-              if (statusSel && statusSel.value !== curWorm.status) {
-                statusSel.value = curWorm.status;
-              }
-            }
-          }
-        }
-      } catch (e) {}
-    }
-
-    setInterval(pollForExternalUpdates, 2000);
-
-    window.onload = init;
   </script>
+  <script id="initial-tracker-db" type="application/json">{{ database_json | safe if database_json is defined else '{"title":"Firmware Engineering Worm Tracker","worms":[]}' }}</script>
+  <script type="module" src="/js/tracker/tracker_app.js"></script>
   <div class="window-resize-gripper" title="Resize Window" aria-label="Resize Window"></div>
 </body>
 </html>

@@ -29,11 +29,7 @@ from provider.webview.launcher import (
 
 def test_manifest_theme_and_icons() -> None:
     """Verify manifest.json defines theme_color, display standalone, and icons."""
-    manifest_path = (
-        Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "manifest.json"
-    )
-    if not manifest_path.exists():
-        manifest_path = Path(__file__).resolve().parent.parent / "provider" / "code_review" / "static" / "manifest.json"
+    manifest_path = Path(__file__).resolve().parent.parent / "js" / "static" / "manifest.json"
     assert manifest_path.exists(), f"manifest.json not found at {manifest_path}"
 
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -45,20 +41,14 @@ def test_manifest_theme_and_icons() -> None:
 
 def test_static_app_icns_exists() -> None:
     """Verify pregenerated app.icns exists in static directory."""
-    icns_path = (
-        Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "app.icns"
-    )
-    if not icns_path.exists():
-        icns_path = Path(__file__).resolve().parent.parent / "provider" / "code_review" / "static" / "app.icns"
+    icns_path = Path(__file__).resolve().parent.parent / "js" / "static" / "app.icns"
     assert icns_path.exists(), f"app.icns not found at {icns_path}"
     assert icns_path.stat().st_size > 1000, "app.icns must not be empty"
 
 
 def test_get_app_icon_path_resolution() -> None:
     """Verify get_app_icon_path resolves platform-appropriate icon files."""
-    static_dir = Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static"
-    if not static_dir.exists():
-        static_dir = Path(__file__).resolve().parent.parent / "provider" / "code_review" / "static"
+    static_dir = Path(__file__).resolve().parent.parent / "js" / "static"
 
     with patch("sys.platform", "darwin"):
         icon = get_app_icon_path(static_dir)
