@@ -71,6 +71,7 @@ def test_modular_subsystem_guides_exist_and_linked_in_agents() -> None:
         "docs/hardware_firmware_codesign.md",
         "docs/vcs_code_review.md",
         "docs/remote_cloud_runner.md",
+        "docs/javascript_style_architecture.md",
     ]
 
     for guide_rel in expected_guides:

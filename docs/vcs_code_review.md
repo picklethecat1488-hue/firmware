@@ -8,7 +8,7 @@ To document the design patterns, template hierarchies, and persistence protocols
 ## Core Invariants
 
 ### 1. Template Structure & Error Guardrails
-* **Jinja2 Rendering**: All dashboard web interfaces (diff viewer, code review, worm matrix) are templated using Jinja2 in `tools/dashboard/templates/` (`diff_view.html.j2`, `diff_component.html.j2`, `code_review.html.j2`, `worm_report.html.j2`).
+* **Jinja2 Rendering & Zero Inline JS**: All dashboard web interfaces (diff viewer, code review, worm matrix) are templated using Jinja2 in `tools/dashboard/templates/` (`diff_view.html.j2`, `diff_component.html.j2`, `code_review.html.j2`, `worm_report.html.j2`). Workstation `.html.j2` templates MUST contain zero inline executable `<script>` blocks and zero inline HTML `on*="..."` attributes, passing server boot configuration via `<script id="app-boot-config" type="application/json">{{ boot_config | tojson }}</script>` and loading ES modules from `/js/*` (see [JavaScript Style, Zero-Globals & Workstation Architecture](javascript_style_architecture.md)).
 * **Tag Balancing & Overflow Containment**: Unified diff viewers must balance syntax highlighting tags across line breaks, pin diff text columns with `min-width: 0`, and enforce `white-space: nowrap !important` on top bar action buttons with `overflow-x: auto` on headers to prevent layout breakage.
 * **High-Contrast Scrollbars**: Scrollbars across all views must provide high-contrast styling with standard copper tracks (`#1e130b`), thumb background (`#965a25`), and hover states (`#ffb800`).
 
@@ -35,7 +35,8 @@ To document the design patterns, template hierarchies, and persistence protocols
 * **Automatic Cross-Repository Synchronization**: Any bug fix, feature enhancement, styling update, or refactoring applied to developer scripts, tooling, or dashboard components in one repository (`firmware` or `hardware`) that is applicable to the other repository MUST be automatically cross-patched and mirrored into that repository, and vice versa.
 * **Synchronized Subsystems**: This includes, but is not limited to:
   - Remote cloud runner and lifecycle orchestration (`tools/anvil`, `tools/vast_manager.py`, `~/.anvil.env`, `~/.anvil.lock`).
-  - VCS web workstation and dashboard backends (`tools/forge.py`, `provider/vcs/git_engine.py`, `provider/worm_report/`, `provider/bug_report/`).
+  - VCS web workstation and dashboard backends (`tools/forge.py`, `tools/dashboard/provider/http_static.py`, `tools/dashboard/provider/vcs/git_engine.py`, `tools/dashboard/provider/worm_report/`).
+  - Shared JavaScript ES modules and parallel unit tests (`tools/js/{core,diff,vcs,review,tracker}/` <-> `js/{core,diff,vcs,review,tracker}/` and `tools/tests/js/shared_*.test.mjs` <-> `tests/js/shared_*.test.mjs`), with zero `.js` exclusions in `GitEngine`.
   - Shared workstation templates (`diff_view.html.j2`, `diff_component.html.j2`, `code_review.html.j2`, `worm_report.html.j2`, `bug_report.html.j2`).
   - Smartlog DAG tree rendering, commit selection, node highlighting, and author identity sanitization.
 * **Zero Disparity**: Never allow dashboard bug fixes or tooling improvements (such as node highlighting, reverse-proxying, detached branch persistence, or SSH port handling) to remain isolated in one repository when the other repository shares the same architecture or template.
