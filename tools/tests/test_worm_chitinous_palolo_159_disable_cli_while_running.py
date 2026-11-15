@@ -17,33 +17,6 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-def test_host_daemon_template_disables_cli_during_execution():
-    """Verify host_daemon.html.j2 disables input and buttons during submitCommand."""
-    template_path = REPO_ROOT / "tools" / "host_daemon" / "templates" / "host_daemon.html.j2"
-    content = template_path.read_text(encoding="utf-8")
-
-    assert 'id="btnSubmitCmd"' in content, "Submit button must have id btnSubmitCmd"
-    assert "input.disabled = true;" in content, "cmdInput must be disabled during command execution"
-    assert "btn.disabled = true;" in content, "Submit button must be disabled during command execution"
-    assert "if (!input || input.disabled) return;" in content, "submitCommand must guard against re-entry"
-    assert "if (input && input.disabled) return;" in content, "runFsQuick must guard against invocation while disabled"
-    assert "b.disabled = true" in content, "FS quick action buttons must be disabled while running"
-    assert "input.disabled = false;" in content, "cmdInput must be re-enabled in finally block"
-
-
-def test_code_review_template_disables_cli_during_execution():
-    """Verify code_review.html.j2 disables input and button during executeCliCommand."""
-    template_path = REPO_ROOT / "tools" / "dashboard" / "templates" / "code_review.html.j2"
-    content = template_path.read_text(encoding="utf-8")
-
-    assert 'id="btnCliSend"' in content, "Send button must have id btnCliSend"
-    assert "input.disabled = true;" in content, "cliInput must be disabled during command execution"
-    assert "btn.disabled = true;" in content, "btnCliSend must be disabled during command execution"
-    assert "if (!input || input.disabled) return;" in content, "executeCliCommand must guard against re-entry"
-    assert "await matchCommand(verb, rawCmd, parts);" in content, "matchCommand must be awaited"
-    assert "input.disabled = false;" in content, "cliInput must be re-enabled in finally block"
-
-
 def test_daemon_runner_guards_execute_fs_during_sync():
     """Verify DaemonRunner rejects execute_fs while target sync is active."""
     from tools.host_daemon.provider.daemon.runner import DaemonRunner

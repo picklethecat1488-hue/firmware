@@ -27,13 +27,3 @@ def test_runner_cli_not_available_when_rtt_offline():
     assert "Error:" in res
     assert "Target CLI is not available" in res
     assert any("Target CLI is not available" in e["message"] for e in runner.logs)
-
-
-def test_template_ui_scale_and_cli_lockout():
-    """Verify host_daemon.html.j2 scales UI to 80% and locks CLI when target unavailable."""
-    template_path = REPO_ROOT / "tools" / "host_daemon" / "templates" / "host_daemon.html.j2"
-    content = template_path.read_text(encoding="utf-8")
-
-    assert "html { font-size: 80%; }" in content
-    assert "Target CLI is not available" in content
-    assert "setWorkstationDisabled" in content

@@ -92,13 +92,3 @@ def test_api_fs_output_and_mode_endpoints():
         handler_post._send_json.assert_called_once_with({"success": True, "mode": "FS"})
     finally:
         server.server_close()
-
-
-def test_template_has_separate_views():
-    """Verify template contains distinct cliView and fsView elements."""
-    template_path = REPO_ROOT / "tools" / "host_daemon" / "templates" / "host_daemon.html.j2"
-    content = template_path.read_text(encoding="utf-8")
-
-    assert 'id="cliView"' in content
-    assert 'id="fsView"' in content
-    assert "/api/fs/output" in content

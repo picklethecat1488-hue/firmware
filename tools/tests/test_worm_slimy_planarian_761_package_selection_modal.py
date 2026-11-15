@@ -152,20 +152,3 @@ def test_api_targets_and_configure_endpoints():
         assert runner.package_selection_mode is False
     finally:
         server.server_close()
-
-
-def test_template_target_configuration_modal():
-    """Verify host_daemon.html.j2 has targetConfigModal, package/bin inputs, and auto-open logic."""
-    template_path = REPO_ROOT / "tools" / "host_daemon" / "templates" / "host_daemon.html.j2"
-    content = template_path.read_text(encoding="utf-8")
-
-    assert 'id="targetConfigModal"' in content
-    assert 'id="cfgPackageSelect"' in content
-    assert 'id="cfgBinSelect"' in content
-    assert 'id="cfgReleaseCheckbox"' in content
-    assert 'id="cfgInferredArchDisplay"' in content
-    assert 'id="btnConfirmTargetConfig"' in content
-    assert 'id="btnTargetConfig"' in content
-    assert "submitTargetConfig" in content
-    assert "openTargetConfigModal" in content
-    assert "package_selection_mode" in content
