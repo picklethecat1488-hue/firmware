@@ -11,6 +11,7 @@ dependencies:
   - ruff
   - pyyaml
   - jinja2
+  - nodejs>=20
   - pip:
       - pluggy<1.7.0
       - pydantic
@@ -24,4 +25,5 @@ dependencies:
       - jinja-lsp
       - eel
       - pywebview
+      - oxlint
 

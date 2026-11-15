@@ -18,6 +18,7 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 from typing import Any, Dict, List, Optional
 import urllib.parse
@@ -129,7 +130,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         path = parsed.path
         query = urllib.parse.parse_qs(parsed.query)
 
-        if path.startswith("/static/"):
+        if path.startswith("/js/") or path.startswith("/static/"):
             self._handle_serve_static(path)
             return
 
@@ -255,8 +256,9 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             case "/api/search":
                 q = query.get("q", [""])[0]
                 commit = query.get("commit", ["working"])[0]
-                results = self.server.git_engine.search_code(q, commit=commit)
-                self._send_json({"query": q, "commit": commit, "results": results})
+                current_file = query.get("file", [""])[0]
+                results = self.server.git_engine.search_code(q, commit=commit, current_file=current_file)
+                self._send_json({"query": q, "commit": commit, "current_file": current_file, "results": results})
             case "/api/raw":
                 commit = query.get("commit", ["working"])[0]
                 file_path = query.get("file", [""])[0]
@@ -430,6 +432,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                     return
                 try:
                     sha = self.server.git_engine.commit_files(message=message, file_paths=files, amend=amend)
+                    if hasattr(self.server, "review_server") and self.server.review_server:
+                        self.server.review_server.update_commit_hash("working", sha)
                     self._send_json({"status": "ok", "commit_hash": sha})
                 except (RuntimeError, ValueError) as e:
                     self._send_json({"error": str(e)}, status=400)
@@ -443,6 +447,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                     return
                 try:
                     sha = self.server.git_engine.commit_files(message=message, file_paths=files, amend=True)
+                    if hasattr(self.server, "review_server") and self.server.review_server:
+                        self.server.review_server.update_commit_hash("working", sha)
                     self._send_json({"status": "ok", "commit_hash": sha})
                 except (RuntimeError, ValueError) as e:
                     self._send_json({"error": str(e)}, status=400)
@@ -701,44 +707,11 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self.close_connection = True
 
     def _handle_serve_static(self, path: str) -> None:
-        """Serve static files such as JavaScript vendor bundles and CSS."""
-        static_dir = Path(__file__).resolve().parent.parent / "code_review" / "static"
-        filename = path.removeprefix("/static/").strip("/")
-        file_target = (static_dir / filename).resolve()
-        if not str(file_target).startswith(str(static_dir)) or not file_target.is_file():
-            self.send_error(404, "Static asset not found")
-            return
-        if file_target.suffix == ".svg":
-            content_type = "image/svg+xml"
-        elif file_target.suffix == ".png":
-            content_type = "image/png"
-        elif file_target.suffix == ".ico":
-            content_type = "image/x-icon"
-        elif file_target.suffix == ".json":
-            content_type = "application/manifest+json" if filename.endswith("manifest.json") else "application/json"
-        elif file_target.suffix == ".js":
-            content_type = "application/javascript"
-        elif file_target.suffix == ".css":
-            content_type = "text/css"
-        else:
-            content_type = "application/octet-stream"
+        """Serve ES modules from tools/js/ and static assets from tools/js/static/."""
+        from provider.http_static import get_firmware_js_root, serve_static_asset
 
-        data = file_target.read_bytes()
-        try:
-            self.send_response(200)
-            if content_type.startswith("text/") or content_type.startswith("application/"):
-                self.send_header("Content-Type", f"{content_type}; charset=utf-8")
-            else:
-                self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(data)))
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Connection", "close")
-            self.end_headers()
-            self.wfile.write(data)
-        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-            self.close_connection = True
-        finally:
-            self.close_connection = True
+        repo_root = getattr(self.server, "repo_root", None)
+        serve_static_asset(self, path, js_root=get_firmware_js_root(repo_root), cache_control="no-cache")
 
     def _handle_serve_attachment(self, path: str) -> None:
         """Serve uploaded file attachments from attachments directory."""
@@ -808,7 +781,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             )
             return
 
-        commit_target = data.get("commit", "working")
+        commit_target = data.get("commit", data.get("commit_hash", "working"))
         snippet = extract_line_snippet(
             file_path=file_path,
             start_line=int(data.get("start_line", 1)),
@@ -1235,10 +1208,15 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "Empty command"}, status=400)
             return
 
+        env = os.environ.copy()
+        py_bin_dir = str(Path(sys.executable).resolve().parent)
+        env["PATH"] = f"{py_bin_dir}{os.pathsep}{env.get('PATH', '')}"
+
         proc = subprocess.run(
             cmd,
             shell=True,
             cwd=str(self.server.repo_root),
+            env=env,
             capture_output=True,
             text=True,
         )
@@ -1427,6 +1405,7 @@ class DashboardServer(ThreadingHTTPServer):
         self.active_branch = initial_branch or self.git_engine.get_current_branch()
         self.active_commit = initial_commit or "working"
         self.initial_sync_done: bool = False
+        self._sync_lock = threading.Lock()
 
         md_review = markdown_review_path
         md_worms = markdown_worms_path
@@ -1764,10 +1743,11 @@ class DashboardServer(ThreadingHTTPServer):
 
     def sync_feedback(self) -> Dict[str, Any]:
         """Synchronize review and worm report feedback from workspace feedback/ directory."""
-        review_res = self.review_server.sync_feedback()
-        worm_res = self.worm_server.sync_with_feedback_dir()
-        self.initial_sync_done = True
-        return {"status": "ok", "initial_sync_done": True, "review": review_res, "worms": worm_res}
+        with self._sync_lock:
+            review_res = self.review_server.sync_feedback()
+            worm_res = self.worm_server.sync_with_feedback_dir()
+            self.initial_sync_done = True
+            return {"status": "ok", "initial_sync_done": True, "review": review_res, "worms": worm_res}
 
     def server_close(self) -> None:
         """Close server sockets and cleanup sub-servers."""

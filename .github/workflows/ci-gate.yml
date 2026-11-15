@@ -42,7 +42,7 @@ jobs:
       - name: Install Python dependencies for validations
         run: |
           python -m pip install --upgrade pip
-          pip install tree-sitter==0.26.0 tree-sitter-rust==0.24.2 colorama halo ruff eel
+          pip install tree-sitter==0.26.0 tree-sitter-rust==0.24.2 colorama halo ruff eel jinja2 oxlint
 
       - name: Run Codebase Validations
         run: python tools/validation/validate_all.py
@@ -82,11 +82,13 @@ jobs:
           environment-file: environment.yml
           auto-activate-base: false
 
-      - name: Run Ruff Lints & Formatting Checks
+      - name: Run Ruff & JavaScript Lint Checks
         shell: bash -el {0}
         run: |
           ruff check tools/validation/ tools/helpers/
           ruff format --check tools/validation/ tools/helpers/
+          python tools/validation/validate_js.py
+          node --test --test-concurrency=4 tools/tests/js/*.test.mjs
 
       - name: Run Pytest
         shell: bash -el {0}

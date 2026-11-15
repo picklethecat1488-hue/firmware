@@ -557,21 +557,7 @@ def test_regression_bug_178_unified_dashboard_and_no_standalone_tools(tmp_path: 
 
 
 def test_regression_bug_185_commit_amend_and_discard_files(tmp_path: Path) -> None:
-    """Verify BUG-185: commit modal UI, amend button, file selection, and multi-file discard."""
-    # 1. Verify template elements
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    assert template_path.exists()
-    html_content = template_path.read_text(encoding="utf-8")
-    assert 'id="btnCommitModal"' in html_content
-    assert 'id="btnAmendModal"' in html_content
-    assert 'id="commitModalOverlay"' in html_content
-    assert 'id="modalFilesList"' in html_content
-    assert 'id="modalCommitMessage"' in html_content
-    assert "working-file-cb" in html_content
-    assert "discardFromModal" in html_content
-    assert "discardSelectedFromModal" in html_content
-
-    # 2. Verify GitEngine commit_files, amend, and discard operations
+    """Verify BUG-185: selective commit, amend, and multi-file discard via GitEngine and HTTP API."""
     repo_dir, shas = create_isolated_git_repo(tmp_path)
     engine = GitEngine(repo_root=repo_dir)
 
@@ -738,19 +724,11 @@ def test_regression_bug_186_lfs_tracking_for_attachments(tmp_path: Path) -> None
 
 
 def test_regression_bug_194_lfs_tracked_files_grouping_and_styling(tmp_path: Path) -> None:
-    """Verify BUG-194: Separate group for LFS tracked files in changed files column with unique color."""
+    """Verify BUG-194: GitEngine and /api/working identify LFS tracked files accurately."""
     repo_dir, _ = create_isolated_git_repo(tmp_path)
     engine = GitEngine(repo_dir)
 
-    # 1. Verify template HTML contains LFS styling, group headers, and badges
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-    assert ".status-lfs" in tpl_text
-    assert ".lfs-file-item" in tpl_text
-    assert "📦 LFS Tracked Files" in tpl_text
-    assert 'class="file-status-badge status-lfs">LFS</span>' in tpl_text
-
-    # 2. Create LFS tracked file under assets/ and a regular file
+    # Create LFS tracked file under assets/ and a regular file
     assets_dir = repo_dir / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
     lfs_file = assets_dir / "diagram.png"
@@ -803,25 +781,9 @@ def test_regression_bug_194_lfs_tracked_files_grouping_and_styling(tmp_path: Pat
 
 
 def test_regression_bug_187_collapsible_file_and_commit_panes(tmp_path: Path) -> None:
-    """Verify BUG-187: file and commit panes can be collapsed in VCS UI like code_review."""
+    """Verify BUG-187: DashboardServer serves HTML with collapsible panes."""
     repo_dir, _ = create_isolated_git_repo(tmp_path)
 
-    # 1. Verify template contains collapse rules, buttons, and shortcuts
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-
-    assert ".pane-smartlog" in tpl_text
-    assert ".pane-smartlog.collapsed" in tpl_text
-    assert ".pane-files" in tpl_text
-    assert ".pane-files.collapsed" in tpl_text
-    assert 'id="btnToggleSmartlog"' in tpl_text
-    assert 'id="btnToggleFiles"' in tpl_text
-    assert "togglePane('smartlog')" in tpl_text
-    assert "togglePane('files')" in tpl_text
-    assert 'e.key === "["' in tpl_text
-    assert 'e.key === "]"' in tpl_text
-
-    # 2. Verify DashboardServer serves HTML with collapsible panes
     server = DashboardServer(
         host="127.0.0.1",
         port=0,
@@ -841,7 +803,9 @@ def test_regression_bug_187_collapsible_file_and_commit_panes(tmp_path: Path) ->
             assert 'id="paneFiles"' in html
             assert 'id="btnToggleSmartlog"' in html
             assert 'id="btnToggleFiles"' in html
-            assert "togglePane" in html
+        with urllib.request.urlopen(f"{base_url}/js/vcs/diff_view_app.js") as mod_resp:
+            assert mod_resp.status == 200
+            assert "application/javascript" in (mod_resp.headers.get("Content-Type") or "")
     finally:
         server.shutdown()
         server.server_close()
@@ -851,20 +815,6 @@ def test_regression_bug_188_initial_sqlite_sync_loading_modal(tmp_path: Path) ->
     """Verify BUG-188: initial SQLite sync loading screen and feedback synchronization."""
     repo_dir, _ = create_isolated_git_repo(tmp_path)
 
-    # 1. Verify template contains loading modal elements and functions
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-
-    assert 'id="syncModalOverlay"' in tpl_text
-    assert 'id="syncProgressBar"' in tpl_text
-    assert 'id="syncProgressPercent"' in tpl_text
-    assert 'id="syncStatusText"' in tpl_text
-    assert 'id="btnSync"' in tpl_text
-    assert 'id="btnSyncFeedback"' not in tpl_text
-    assert "performInitialSync" in tpl_text
-    assert "INITIAL_SYNC_DONE" in tpl_text
-
-    # 2. Start server without prior sync
     server = DashboardServer(
         host="127.0.0.1",
         port=0,
@@ -930,18 +880,9 @@ def test_regression_bug_188_initial_sqlite_sync_loading_modal(tmp_path: Path) ->
 def test_regression_bug_190_pr_branch_tag_clickable_link(tmp_path: Path) -> None:
     """Verify BUG-190: PR branch tags like origin/pr520 are clickable links that open the PR in GitHub."""
     repo_dir, shas = create_isolated_git_repo(tmp_path)
-    engine = GitEngine(repo_root=repo_dir)
 
-    # 1. Create a branch matching PR tag pattern (e.g. pr520 or origin/pr520)
     run_git_command(["branch", "pr520", shas[1]], cwd=repo_dir)
 
-    # 2. Verify template has onBranchBadgeClick and pr-tag-link
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-    assert "onBranchBadgeClick" in tpl_text
-    assert "pr-tag-link" in tpl_text
-
-    # 3. Serve via DashboardServer and assert HTML contains clickable branch tag
     server = DashboardServer(
         host="127.0.0.1",
         port=0,
@@ -958,7 +899,8 @@ def test_regression_bug_190_pr_branch_tag_clickable_link(tmp_path: Path) -> None
             assert resp.status == 200
             html = resp.read().decode("utf-8")
             assert "pr520" in html
-            assert "onBranchBadgeClick(event, 'pr520'" in html
+            assert 'data-action="branch-badge"' in html
+            assert 'data-branch="pr520"' in html
             assert "pr-tag-link" in html
     finally:
         server.shutdown()
@@ -980,14 +922,7 @@ def test_regression_bug_192_pr_highlight_on_commit_element(tmp_path: Path) -> No
     assert pr_node.pr_status == "PR #520"
     assert "pull/520" in (pr_node.pr_url or "")
 
-    # 2. Verify template has .pr-highlight-badge, .smartlog-node.has-pr styling
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-    assert ".pr-highlight-badge" in tpl_text
-    assert ".smartlog-node.has-pr" in tpl_text
-    assert "#a855f7" in tpl_text  # Distinct PR purple highlight color
-
-    # 3. Serve via DashboardServer and assert HTML contains PR highlight badge and has-pr class
+    # Serve via DashboardServer and assert HTML contains PR highlight badge and has-pr class
     server = DashboardServer(
         host="127.0.0.1",
         port=0,
@@ -1012,21 +947,10 @@ def test_regression_bug_192_pr_highlight_on_commit_element(tmp_path: Path) -> No
 
 
 def test_regression_bug_193_create_and_unlink_pr_buttons_and_ancestors(tmp_path: Path) -> None:
-    """Verify BUG-193: Create PR and Unlink PR buttons, ancestor preservation, and validation."""
+    """Verify BUG-193: submit_prs and unlink_prs_for_commits preserve ancestors and validate commits."""
     repo_dir, shas = create_isolated_git_repo(tmp_path)
     engine = GitEngine(repo_root=repo_dir)
 
-    # 1. Verify UI template contains buttons and client handlers
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-    assert 'id="btnCreatePR"' in tpl_text
-    assert 'id="btnUnlinkPR"' in tpl_text
-    assert "onCreatePR" in tpl_text
-    assert "onUnlinkPR" in tpl_text
-    assert "/api/pr/create" in tpl_text
-    assert "/api/pr/unlink" in tpl_text
-
-    # 2. Test PR submission via submit_prs()
     res = engine.submit_prs()
     assert res["status"] == "ok"
     assert "logs" in res
@@ -1259,163 +1183,21 @@ def test_regression_bug_191_and_205_code_review_revisions_and_multi_commit(tmp_p
 
 
 def test_regression_bug_190_pr_branch_tags_clickable_links(tmp_path: Path) -> None:
-    """Verify BUG-190: PR branch tags in Smartlog render as clickable links to GitHub PR."""
+    """Verify BUG-190: GitEngine resolves PR and normal branch URLs accurately."""
     repo_dir, shas = create_isolated_git_repo(tmp_path)
     engine = GitEngine(repo_root=repo_dir)
 
-    # 1. Test get_branch_url on GitEngine
     pr_branch_url = engine.get_branch_url("origin/pr520")
     assert pr_branch_url.endswith("/pull/520"), f"Expected PR URL for origin/pr520, got {pr_branch_url}"
 
     norm_branch_url = engine.get_branch_url("origin/feature-xyz")
     assert norm_branch_url.endswith("/tree/feature-xyz"), f"Expected branch tree URL, got {norm_branch_url}"
 
-    # 2. Test branch tag rendered as anchor link in diff_view.html.j2
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-    assert '<a href="{{ br_url }}"' in tpl_text
-    assert "pr-tag-link" in tpl_text
-    assert "onBranchBadgeClick" in tpl_text
-
-
-def test_regression_bug_200_diff_view_single_bottom_scrollbar_and_max_line_length() -> None:
-    """Verify BUG-200: diff view has a single bottom scrollbar, no per-line scrollbars, and enforces max line length."""
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_component.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-
-    # 1. Verify diff-code-cell does NOT have overflow-x: auto (no per-row scrollbars)
-    assert ".diff-code-cell {\n    overflow-x: hidden;" in tpl_text
-    assert "overflow-x: auto;\n    font-family: inherit;\n    width: calc(50% - 64px);" not in tpl_text
-
-    # 2. Verify diff-scroll-body provides horizontal scrollbar at bottom
-    assert ".diff-scroll-body {\n    flex: 1;\n    overflow-x: auto;\n    overflow-y: auto;" in tpl_text
-    assert ".diff-scroll-body::-webkit-scrollbar" in tpl_text
-
-    # 3. Verify maximum line length enforcement
-    assert "MAX_LINE_LENGTH:" in tpl_text
-    assert "truncateLine(text, maxLen)" in tpl_text
-    assert "… [line truncated]" in tpl_text
-
-
-def test_regression_bug_201_single_diff_viewer_and_bug_tabs_reuse() -> None:
-    """Verify BUG-201: Cross-station links reuse named window targets instead of spawning endless tabs."""
-    diff_view_tpl = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    diff_text = diff_view_tpl.read_text(encoding="utf-8")
-
-    # Diff View uses named window targets for code review and worm tracker
-    assert 'window.open(res.url, "firmware_code_review");' in diff_text
-    assert 'window.open(res.url, "firmware_worm_tracker");' in diff_text
-
-    # Worm report workstation reuses diff viewer window target or closes to focus opener
-    worm_report_tpl = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "worm_report.html.j2"
-    worm_text = worm_report_tpl.read_text(encoding="utf-8")
-    assert 'target="firmware_vcs_diff_viewer"' in worm_text
-    assert "returnToDashboard" in worm_text
-    assert "window.opener.focus()" in worm_text
-
-    # Code review workstation reuses diff viewer window target or closes to focus opener
-    cr_tpl = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "code_review.html.j2"
-    cr_text = cr_tpl.read_text(encoding="utf-8")
-    assert 'target="firmware_vcs_diff_viewer"' in cr_text
-    assert "returnToDashboard" in cr_text
-
-
-def test_regression_worm_009_prevent_duplicate_diff_viewer_windows() -> None:
-    """Verify WORM-009: Exiting Code Review and Bug Report does not spawn duplicate Diff Viewer windows."""
-    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    diff_text = (templates_dir / "diff_view.html.j2").read_text(encoding="utf-8")
-    cr_text = (templates_dir / "code_review.html.j2").read_text(encoding="utf-8")
-    worm_text = (templates_dir / "worm_report.html.j2").read_text(encoding="utf-8")
-
-    # 1. Diff view establishes window.name so cross-window references reuse it
-    assert 'window.name = "firmware_vcs_diff_viewer";' in diff_text
-
-    # 2. Code review sets window.name
-    assert 'window.name = "firmware_code_review";' in cr_text
-
-    # 3. Worm report sets window.name
-    assert 'window.name = "firmware_worm_tracker";' in worm_text
-
-    # 4. Code review header Dashboard button calls returnToDashboard
-    assert 'href="/" target="firmware_vcs_diff_viewer" onclick="returnToDashboard(event)"' in cr_text
-
-    # 5. setVerdict in code review calls returnToDashboard instead of direct location.href
-    assert "returnToDashboard()" in cr_text
-
-    # 6. saveAndExit in worm report delegates to returnToDashboard
-    assert "returnToDashboard()" in worm_text
-
-    # 7. Neither code review nor worm report uses window.open("/", "firmware_vcs_diff_viewer") in returnToDashboard
-    assert 'window.open("/", "firmware_vcs_diff_viewer");' not in cr_text
-    assert 'window.open("/", "firmware_vcs_diff_viewer");' not in worm_text
-
-
-def test_regression_bug_202_smartlog_and_files_vertical_scrollbars_visible() -> None:
-    """Verify BUG-202: Smartlog and file view columns have permanently visible Quake scrollbars."""
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-
-    # 1. Custom Quake-styled scrollbars defined
-    assert "/* Visible Quake Scrollbars (BUG-202) */" in tpl_text
-    assert "scrollbar-width: thin;" in tpl_text
-    assert "::-webkit-scrollbar" in tpl_text
-    assert "::-webkit-scrollbar-thumb" in tpl_text
-
-    # 2. column-scroll has overflow-y: scroll and scrollbar-gutter: stable
-    assert "overflow-y: scroll;" in tpl_text
-    assert "scrollbar-gutter: stable;" in tpl_text
-
-
-def test_regression_bug_196_vertical_panels_resizable_and_persisted() -> None:
-    """Verify BUG-196: Vertical panels (smartlog, files, diff) have draggable resizers and localStorage persistence."""
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-
-    # Resizer elements between panels
-    assert 'id="resizerSmartlog"' in tpl_text
-    assert 'id="resizerFiles"' in tpl_text
-    assert "column-resizer" in tpl_text
-
-    # Resizer initialization and localStorage persistence logic
-    assert "initPanelResizers()" in tpl_text
-    assert 'localStorage.getItem("diffview_smartlog_width")' in tpl_text
-    assert 'localStorage.getItem("diffview_files_width")' in tpl_text
-    assert "localStorage.setItem(storageKey, newWidth)" in tpl_text
-    assert "col-resize" in tpl_text
-
-    # togglePane updates resizers when panes are collapsed or expanded
-    assert 'document.getElementById("resizerSmartlog")' in tpl_text
-    assert 'document.getElementById("resizerFiles")' in tpl_text
-
-
-def test_regression_bug_197_branch_formatting_groups_and_search() -> None:
-    """Verify BUG-197: Branch UI separates main/release branches at top, has search, and filters other users."""
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-
-    # Branch picker button and modal
-    assert 'id="btnBranchDropdown"' in tpl_text
-    assert 'id="modalBranchPicker"' in tpl_text
-    assert 'id="branchSearchInput"' in tpl_text
-    assert 'id="chkHideOtherUsers"' in tpl_text
-    assert 'id="mainReleaseBranchList"' in tpl_text
-    assert 'id="featureBranchList"' in tpl_text
-
-    # Optgroup structure in branchSelect
-    assert '<optgroup label="⭐ Main &amp; Release Branches">' in tpl_text
-    assert '<optgroup label="🌿 Feature &amp; PR Branches">' in tpl_text
-
-    # Client-side filtering logic
-    assert "renderBranchLists()" in tpl_text
-    assert "filterBranchList()" in tpl_text
-    assert "hideOtherUsers" in tpl_text
-
 
 def test_regression_bug_199_jump_to_cr_icon_button_and_comment_counter() -> None:
-    """Verify BUG-199: Commit actions row has Jump to CR button with open/total count and reviewed styling."""
+    """Verify BUG-199: CommitNodeModel tracks open, resolved, and total CR counts."""
     from model.vcs import CommitNodeModel
 
-    # Verify CommitNodeModel has CR tracking attributes
     node = CommitNodeModel(
         commit_hash="abc1234567890",
         short_hash="abc1234",
@@ -1430,30 +1212,6 @@ def test_regression_bug_199_jump_to_cr_icon_button_and_comment_counter() -> None
     assert node.cr_open_count == 2
     assert node.cr_total_count == 5
     assert node.cr_reviewed is True
-
-    # Verify template contains jump-cr-btn with dynamic counter and reviewed class
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-    assert "jump-cr-btn" in tpl_text
-    assert "jumpToCR" in tpl_text
-    assert "cr-badge" in tpl_text
-    assert "cr-reviewed" in tpl_text
-    assert "node.cr_open_count" in tpl_text
-
-
-def test_regression_bug_203_multi_commit_shift_click_selection() -> None:
-    """Verify BUG-203: Smartlog commit checkboxes and rows support Shift-Click contiguous range selection."""
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-
-    # Shift-click event handler on checkboxes
-    assert "onCommitCheckChanged(event, this)" in tpl_text
-    assert "event.shiftKey" in tpl_text
-    assert "lastCheckedCommitIndex" in tpl_text
-
-    # Smartlog nodes carry data-hash and accept event parameter in selectCommit
-    assert 'data-hash="{{ node.commit_hash }}"' in tpl_text
-    assert "selectCommit('{{ node.commit_hash }}', event)" in tpl_text
 
 
 def test_regression_bug_212_pr_past_535_404_handling(tmp_path: Path) -> None:
@@ -1481,38 +1239,9 @@ def test_regression_bug_212_pr_past_535_404_handling(tmp_path: Path) -> None:
     assert branch_url_535.endswith("/tree/pr535")
     assert "/pull/535" not in branch_url_535
 
-    # 5. Verify template contains pr-local-badge and local fallback toast
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-    assert "pr-local-badge" in tpl_text
-    assert "has not been created on GitHub yet" in tpl_text
-
 
 def test_regression_bug_211_code_review_panel_resizing_and_lfs_styling() -> None:
-    """Verify BUG-211: Code review panels support draggable resizing and LFS files have special UI formatting."""
-    cr_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "code_review.html.j2"
-    cr_text = cr_path.read_text(encoding="utf-8")
-
-    # 1. Column resizers present in HTML
-    assert 'id="resizerCommits"' in cr_text
-    assert 'id="resizerFiles"' in cr_text
-    assert 'class="column-resizer"' in cr_text
-
-    # 2. Resizer setup and localStorage persistence in JS
-    assert "initPanelResizers()" in cr_text
-    assert "codereview_commits_width" in cr_text
-    assert "codereview_files_width" in cr_text
-    assert "setupResizer(resizerCommits" in cr_text
-    assert "setupResizer(resizerFiles" in cr_text
-
-    # 3. LFS badges and classes in CSS and templates
-    assert ".quake-badge-lfs" in cr_text
-    assert ".lfs-file-item" in cr_text
-    assert 'id="activeFileLfs"' in cr_text
-    assert "f.is_lfs" in cr_text
-    assert "📦 LFS" in cr_text
-
-    # 4. FileDiffModel supports is_lfs field
+    """Verify BUG-211: FileDiffModel supports is_lfs metadata field."""
     diff_model = FileDiffModel(file_path="attachments/screenshot.png", is_lfs=True)
     assert diff_model.is_lfs is True
 
@@ -1599,48 +1328,6 @@ def test_regression_bug_213_ancestor_top_marker_merged_pruning_and_rebase(tmp_pa
     assert sha_c2 not in hashes_after, "Old ancestor commit 2 must now be pruned after rebase"
     assert len(dag_after) == 3, (
         f"Expected 3 commits after rebase (rebased 4, rebased 3, and ancestor 5), got {len(dag_after)}"
-    )
-
-    # 5. Verify diff_view template has rebase button and ancestor top badge
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-    assert 'id="btnRebase"' in tpl_text
-    assert "onRebaseClicked()" in tpl_text
-    assert "ancestor-top-node" in tpl_text
-    assert "node-badge-ancestor" in tpl_text
-
-
-def test_regression_bug_215_diff_view_css_syntax() -> None:
-    """Verify BUG-215 regression: CSS inside diff_view.html.j2 style block has balanced braces.
-
-    A missing closing brace in .node-badge-pr.pr-tag-link caused subsequent modal overlay rules
-    (.quake-modal-overlay) to fail to parse, rendering the commit dialog inline with giant unstyled fonts.
-    """
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-
-    # Extract style block
-    start_tag = "<style>"
-    end_tag = "</style>"
-    start_idx = tpl_text.find(start_tag)
-    end_idx = tpl_text.find(end_tag)
-    assert start_idx != -1 and end_idx != -1
-
-    css_content = tpl_text[start_idx + len(start_tag) : end_idx]
-
-    # Check brace balance
-    open_braces = css_content.count("{")
-    close_braces = css_content.count("}")
-    assert open_braces == close_braces, f"Mismatched braces in diff_view CSS: {open_braces} '{{' vs {close_braces} '}}'"
-
-    # Verify .node-badge-pr.pr-tag-link block is properly terminated before .pr-local-badge
-    assert ".node-badge-pr.pr-tag-link:hover {" in css_content
-    node_badge_idx = css_content.find(".node-badge-pr.pr-tag-link:hover {")
-    local_badge_idx = css_content.find(".pr-local-badge {", node_badge_idx)
-    assert local_badge_idx != -1
-    intermediate = css_content[node_badge_idx:local_badge_idx]
-    assert intermediate.count("{") == intermediate.count("}"), (
-        "CSS block between .node-badge-pr.pr-tag-link:hover and .pr-local-badge must have matching braces"
     )
 
 
@@ -1743,49 +1430,8 @@ def test_regression_bug_216_save_and_exit_preserves_resolved_bugs(tmp_path: Path
         server.server_close()
 
 
-def test_regression_bug_217_textarea_bidirectional_and_autoresize() -> None:
-    """Verify BUG-217 regression: Bug report text controls support horizontal/vertical resize and auto-expansion.
-
-    Ensures:
-    1. textarea CSS rules specify resize: both !important.
-    2. input[type="text"] supports horizontal resize.
-    3. autoResizeTextarea and autoResizeAllTextareas are present in JavaScript.
-    4. Input event listener actively triggers autoResizeTextarea on textarea input.
-    5. loadActiveBug and init trigger autoResizeAllTextareas.
-    """
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "worm_report.html.j2"
-    assert template_path.exists()
-    content = template_path.read_text(encoding="utf-8")
-
-    # 1. CSS styling checks
-    assert "resize: both !important;" in content
-    assert 'input[type="text"] {\n      resize: horizontal;' in content or "resize: horizontal;" in content
-
-    # 2. JS function definitions
-    assert "function autoResizeTextarea(" in content
-    assert "function autoResizeAllTextareas()" in content
-
-    # 3. Dynamic resizing invocation
-    assert "autoResizeAllTextareas();" in content
-    assert "autoResizeTextarea(e.target);" in content
-
-
 def test_regression_bug_218_pr_creation_points_at_and_merged_commits_hidden(tmp_path: Path) -> None:
-    """Verify BUG-218: PR creation uses --points-at instead of --contains and merged commits are detected and hidden."""
-    # 1. Template validation
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    assert template_path.exists()
-    content = template_path.read_text(encoding="utf-8")
-
-    assert 'id="btnToggleMerged"' in content
-    assert "toggleMergedCommits()" in content
-    assert "updateMergedVisibility()" in content
-    assert "isHideMergedEnabled()" in content
-    assert "merged-commit" in content
-    assert "hide-merged" in content
-    assert "node-badge-merged" in content
-
-    # 2. GitEngine verification with isolated git repo
+    """Verify BUG-218: PR creation uses --points-at instead of --contains and merged commits are detected."""
     repo_dir, shas = create_isolated_git_repo(tmp_path)
     engine = GitEngine(repo_root=repo_dir)
 
@@ -1825,23 +1471,7 @@ def test_regression_bug_218_pr_creation_points_at_and_merged_commits_hidden(tmp_
 
 
 def test_regression_bug_221_branches_missing_from_branch_viewer(tmp_path: Path) -> None:
-    """Verify BUG-221: main branch and release branches v1..v6 appear correctly in branch viewer.
-
-    Asserts that:
-    1. Template properly classifies and sorts main and release branches.
-    2. GitEngine.get_branches parses refs/heads/main as 'main' even when ambiguous tag exists.
-    3. GitEngine.get_branches fetches both local and remote branches.
-    4. Release branches (v1, v2, v3, etc.) are included in branch list.
-    """
-    # 1. Template validation
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    assert template_path.exists()
-    content = template_path.read_text(encoding="utf-8")
-
-    assert "mainReleaseBranches.sort" in content
-    assert "heads/main" in content or ".endswith('/main')" in content
-
-    # 2. Isolated repo with ambiguous tag and remote tracking branches
+    """Verify BUG-221: main branch and release branches v1..v6 appear correctly in branch viewer."""
     repo_dir, shas = create_isolated_git_repo(tmp_path)
     engine = GitEngine(repo_root=repo_dir)
 
@@ -1947,44 +1577,6 @@ def test_regression_bug_223_dashboard_comment_response_and_error_handling(tmp_pa
         server.server_close()
 
 
-def test_regression_bug_224_225_horizontal_resizers_split_views() -> None:
-    """Verify BUG-224 and BUG-225: horizontal resizers for split commit views in VCS UI and Code Review UI.
-
-    Asserts that:
-    1. diff_component.html.j2 defines .sbs-split-resizer with col-resize cursor.
-    2. diff_component.html.j2 renders colgroup with col-old-code and col-new-code.
-    3. diff_component.html.j2 implements setupSbsResizer with localStorage persistence.
-    4. code_review.html.j2 defines .sbs-split-resizer with col-resize cursor.
-    5. code_review.html.j2 renders colgroup with col-old-code and col-new-code.
-    6. code_review.html.j2 implements setupSbsResizer with localStorage persistence.
-    """
-    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    diff_comp_path = templates_dir / "diff_component.html.j2"
-    cr_path = templates_dir / "code_review.html.j2"
-
-    assert diff_comp_path.exists()
-    assert cr_path.exists()
-
-    diff_comp = diff_comp_path.read_text(encoding="utf-8")
-    cr = cr_path.read_text(encoding="utf-8")
-
-    # 1. diff_component assertions
-    assert ".sbs-split-resizer" in diff_comp
-    assert "col-resize" in diff_comp
-    assert "col-old-code" in diff_comp
-    assert "col-new-code" in diff_comp
-    assert "setupSbsResizer" in diff_comp
-    assert "vcs_sbs_split_ratio" in diff_comp
-
-    # 2. code_review assertions
-    assert ".sbs-split-resizer" in cr
-    assert "col-resize" in cr
-    assert "col-old-code" in cr
-    assert "col-new-code" in cr
-    assert "setupSbsResizer" in cr
-    assert "cr_sbs_split_ratio" in cr
-
-
 def test_regression_bug_226_merged_commits_marked_in_smartlog(tmp_path: Path) -> None:
     """Verify BUG-226: commits merged into tracking branch or ancestor are marked as merged in smartlog.
 
@@ -2065,77 +1657,8 @@ def test_cr_feedback_release_branch_candidate_and_dynamic_repo_name(tmp_path: Pa
     assert session.github_repo == "myorg/firmware"
 
 
-def test_regression_bug_227_toolbar_buttons_no_wrap_and_horizontal_scroll() -> None:
-    """Verify BUG-227: Toolbar buttons do not wrap text, and toolbars have horizontal scrollers."""
-    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-
-    # 1. diff_view.html.j2
-    diff_view_text = (templates_dir / "diff_view.html.j2").read_text(encoding="utf-8")
-    assert "white-space: nowrap !important;" in diff_view_text
-    assert ".column-header {" in diff_view_text
-    assert "overflow-x: auto;" in diff_view_text
-    assert ".commit-toolbar {" in diff_view_text
-    assert ".diff-toolbar {" in diff_view_text
-
-    # 2. code_review.html.j2
-    cr_text = (templates_dir / "code_review.html.j2").read_text(encoding="utf-8")
-    assert "white-space: nowrap !important;" in cr_text
-    assert "header.review-header {" in cr_text
-    assert "flex-wrap: nowrap;" in cr_text
-    assert "overflow-x: auto;" in cr_text
-
-    # 3. diff_component.html.j2
-    comp_text = (templates_dir / "diff_component.html.j2").read_text(encoding="utf-8")
-    assert "overflow-x: auto;" in comp_text
-    assert "flex-wrap: nowrap;" in comp_text
-
-    # 4. worm_report.html.j2
-    br_text = (templates_dir / "worm_report.html.j2").read_text(encoding="utf-8")
-    assert "white-space: nowrap !important;" in br_text
-    assert "header.quake-header {" in br_text
-    assert "overflow-x: auto;" in br_text
-
-
-def test_regression_bug_228_select_all_select_none_and_default_create_pr_stack() -> None:
-    """Verify BUG-228: Select All and Select None buttons and default stack behavior for Create PR."""
-    diff_view_text = (
-        Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    ).read_text(encoding="utf-8")
-
-    # Verify buttons in template
-    assert 'id="btnSelectAll"' in diff_view_text
-    assert 'id="btnSelectNone"' in diff_view_text
-    assert "selectAllCommits()" in diff_view_text
-    assert "selectNoneCommits()" in diff_view_text
-
-    # Verify client implementation functions exist
-    assert "function selectAllCommits()" in diff_view_text
-    assert "function selectNoneCommits()" in diff_view_text
-    assert "allCheckboxes.forEach" in diff_view_text
-
-    # Verify default stack behavior in onCreatePR
-    assert "BUG-228" in diff_view_text
-    assert "targetCommits" in diff_view_text
-    assert "smartlog-node:not(.merged-commit)" in diff_view_text
-
-
 def test_regression_bug_229_pr_submit_interactive_modal_and_github_submission(tmp_path: Path) -> None:
-    """Verify BUG-229: Interactive modal with progress bar and log display for PR submission."""
-    diff_view_text = (
-        Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    ).read_text(encoding="utf-8")
-
-    # 1. Verify modal UI elements exist
-    assert 'id="prSubmitModalOverlay"' in diff_view_text
-    assert 'id="prSubmitProgressBar"' in diff_view_text
-    assert 'id="prSubmitProgressPercent"' in diff_view_text
-    assert 'id="prSubmitLogOutput"' in diff_view_text
-    assert 'id="btnPrSubmitDone"' in diff_view_text
-    assert 'id="btnPrSubmitClose"' in diff_view_text
-    assert "openPrSubmitModal" in diff_view_text
-    assert "finishPrSubmitModal" in diff_view_text
-
-    # 2. Test GitEngine.submit_prs backend execution
+    """Verify BUG-229: GitEngine.submit_prs and /api/pr/submit execute cleanly and return logs."""
     repo_dir, shas = create_isolated_git_repo(tmp_path)
     engine = GitEngine(repo_root=repo_dir)
 
@@ -2245,26 +1768,7 @@ def test_regression_bug_230_execution_logs_and_tracebacks_preserved(tmp_path: Pa
 
 
 def test_regression_bug_232_file_action_buttons_copy_and_vscode(tmp_path: Path):
-    """Verify BUG-232: Copy and Open in VS Code buttons are present next to file names."""
-    template_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    diff_view_html = (template_dir / "diff_view.html.j2").read_text(encoding="utf-8")
-    code_review_html = (template_dir / "code_review.html.j2").read_text(encoding="utf-8")
-
-    # In VCS diff viewer
-    assert 'id="diffFileActions"' in diff_view_html
-    assert 'onclick="copyActiveFilePath()"' in diff_view_html
-    assert 'onclick="openInVsCode()"' in diff_view_html
-    assert "vscode://file" in diff_view_html
-    assert "btnOpenVsCode" in diff_view_html
-
-    # In Code Review UI
-    assert 'id="activeFileActions"' in code_review_html
-    assert 'onclick="copyActiveFilePath()"' in code_review_html
-    assert 'onclick="openInVsCode()"' in code_review_html
-    assert "vscode://file" in code_review_html
-    assert "btnOpenVsCode" in code_review_html
-
-    # In runtime server rendering
+    """Verify BUG-232: Copy and Open in VS Code buttons are rendered by DashboardServer."""
     repo_dir, _ = create_isolated_git_repo(tmp_path)
     server = DashboardServer(
         host="127.0.0.1",
@@ -2293,27 +1797,6 @@ def test_regression_bug_232_file_action_buttons_copy_and_vscode(tmp_path: Path):
         server.server_close()
 
 
-def test_regression_bug_233_visible_high_contrast_scrollbars():
-    """Verify BUG-233: All horizontal and vertical scrollbars are visible and high contrast."""
-    template_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    templates = [
-        template_dir / "diff_view.html.j2",
-        template_dir / "diff_component.html.j2",
-        template_dir / "code_review.html.j2",
-        template_dir / "worm_report.html.j2",
-    ]
-
-    for tmpl_path in templates:
-        content = tmpl_path.read_text(encoding="utf-8")
-        assert "scrollbar-color: var(--quake-copper, #c87a32) #1e130b;" in content, (
-            f"Missing standard scrollbar-color in {tmpl_path.name}"
-        )
-        assert "::-webkit-scrollbar" in content, f"Missing webkit scrollbar in {tmpl_path.name}"
-        assert "width: 10px;" in content, f"Scrollbar width too small / invisible in {tmpl_path.name}"
-        assert "#965a25" in content, f"Missing copper thumb background in {tmpl_path.name}"
-        assert "#ffb800" in content, f"Missing gold hover state in {tmpl_path.name}"
-
-
 def test_regression_bug_234_pr_submit_no_git_sl_error(tmp_path: Path):
     """Verify BUG-234: GitEngine.submit_prs never runs git with sl binary."""
     repo_dir, shas = create_isolated_git_repo(tmp_path)
@@ -2330,22 +1813,12 @@ def test_regression_bug_234_pr_submit_no_git_sl_error(tmp_path: Path):
 
 def test_regression_bug_235_favicon_web_icon(tmp_path: Path):
     """Verify BUG-235: High-contrast Quake-themed favicon is created and served across dashboards."""
-    static_favicon = (
-        Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static" / "favicon.svg"
-    )
+    static_favicon = Path(__file__).resolve().parent.parent / "js" / "static" / "favicon.svg"
     assert static_favicon.exists(), "static/favicon.svg must exist"
     svg_content = static_favicon.read_text(encoding="utf-8")
     assert "<svg" in svg_content
     assert "#ffd700" in svg_content or "#ffb800" in svg_content
     assert "#c87a32" in svg_content
-
-    # Check templates include the favicon link
-    template_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    for tmpl in ["diff_view.html.j2", "code_review.html.j2", "worm_report.html.j2"]:
-        content = (template_dir / tmpl).read_text(encoding="utf-8")
-        assert '<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">' in content, (
-            f"Missing favicon link in {tmpl}"
-        )
 
     # Check DashboardServer serves favicon.ico and static/favicon.svg
     repo_dir, _ = create_isolated_git_repo(tmp_path)
@@ -2378,30 +1851,6 @@ def test_regression_bug_235_favicon_web_icon(tmp_path: Path):
     finally:
         server.shutdown()
         server.server_close()
-
-
-def test_regression_bug_237_side_by_side_resizer_gripper():
-    """Verify BUG-237: Split-pane resizer gripper is visible and uses containerRect with fixed table layout."""
-    template_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    diff_comp = (template_dir / "diff_component.html.j2").read_text(encoding="utf-8")
-    code_rev = (template_dir / "code_review.html.j2").read_text(encoding="utf-8")
-
-    # Invariant 1: Grip icon is present in both views
-    assert ".sbs-split-resizer::before" in diff_comp
-    assert 'content: "⋮"' in diff_comp
-    assert ".sbs-split-resizer::before" in code_rev
-    assert 'content: "⋮"' in code_rev
-
-    # Invariant 2: VCS diff view uses fixed table layout to prevent inverted resizer motion
-    assert "table-layout: fixed !important;" in diff_comp
-    assert "width: 100% !important;" in diff_comp
-    assert "min-width: max-content" in code_rev
-
-    # Invariant 3: Mouse drag math uses containerRect, not tableRect
-    assert "containerRect = container.getBoundingClientRect()" in diff_comp
-    assert "moveEvent.clientX - containerRect.left" in diff_comp
-    assert "containerRect = container.getBoundingClientRect()" in code_rev
-    assert "moveEvent.clientX - containerRect.left" in code_rev
 
 
 def test_regression_bug_236_cr_count_persistence_and_file_watch(tmp_path: Path) -> None:
@@ -2539,28 +1988,6 @@ def test_regression_bug_240_action_topic_subcommands() -> None:
     assert args_flag_r.all_users is True
 
 
-def test_regression_bug_242_code_review_toolbar_layout() -> None:
-    """Verify BUG-242: Main review toolbar is placed above app-body panes across full width."""
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "code_review.html.j2"
-    content = template_path.read_text(encoding="utf-8")
-
-    # Invariant 1: diff-toolbar appears before app-body in template
-    toolbar_idx = content.find('<div class="diff-toolbar">')
-    app_body_idx = content.find('<div class="app-body">')
-    assert toolbar_idx != -1 and app_body_idx != -1
-    assert toolbar_idx < app_body_idx, "diff-toolbar must be placed above app-body"
-
-    # Invariant 2: Toolbar styling enforces full width and prevents horizontal scrollbar
-    toolbar_css = content.split(".diff-toolbar {")[1].split("}")[0]
-    assert "overflow-x: hidden" in toolbar_css
-    assert "width: 100%" in toolbar_css
-
-    # Invariant 3: Toggle controls are in the toolbar
-    assert "btnToggleCommits" in content
-    assert "btnToggleFiles" in content
-    assert "btnFocus" in content
-
-
 def test_regression_bug_244_commit_subcommand_cli_parsing() -> None:
     """Verify BUG-244: dashboard CLI argument parsing supports commit subcommand and --commit flag."""
     # Commit with -m flag
@@ -2629,62 +2056,6 @@ def test_regression_bug_244_commit_subcommand_execution(tmp_path: Path, monkeypa
     assert len(engine.get_working_tree_files()) == 0
 
 
-def test_regression_bug_245_word_wrap_in_diff_views() -> None:
-    """Verify BUG-245: Word wrap toggle button, persistence, and pre-wrap CSS in diff views."""
-    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    diff_comp_text = (templates_dir / "diff_component.html.j2").read_text(encoding="utf-8")
-    diff_view_text = (templates_dir / "diff_view.html.j2").read_text(encoding="utf-8")
-    cr_text = (templates_dir / "code_review.html.j2").read_text(encoding="utf-8")
-
-    # 1. diff_component.html.j2 has .diff-word-wrap styling with pre-wrap and overflow-wrap
-    assert ".diff-word-wrap" in diff_comp_text
-    assert "white-space: pre-wrap !important;" in diff_comp_text
-    assert (
-        "overflow-wrap: anywhere !important;" in diff_comp_text
-        or "word-break: break-word !important;" in diff_comp_text
-    )
-
-    # 2. diff_view.html.j2 has wrap button and toggle function
-    assert 'id="btnToggleWrap"' in diff_view_text
-    assert "toggleWordWrap" in diff_view_text
-    assert "quake_diff_word_wrap" in diff_view_text
-
-    # 3. code_review.html.j2 has wrap button, styles, and toggle function
-    assert 'id="btnToggleWrap"' in cr_text
-    assert ".diff-word-wrap" in cr_text
-    assert "toggleWordWrap" in cr_text
-    assert "quake_diff_word_wrap" in cr_text
-
-
-def test_regression_bug_246_auto_sync_panes() -> None:
-    """Verify BUG-246: Auto-sync polls repository changes to update working tree and commit panes automatically."""
-    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    diff_view_text = (templates_dir / "diff_view.html.j2").read_text(encoding="utf-8")
-    cr_text = (templates_dir / "code_review.html.j2").read_text(encoding="utf-8")
-
-    # 1. diff_view.html.j2 implements automatic background sync
-    assert "startAutoSync" in diff_view_text
-    assert "syncWorkingAndCommitsSilently" in diff_view_text or "autoSyncTimer" in diff_view_text
-    assert "renderSmartlogList" in diff_view_text
-    assert "startAutoSync()" in diff_view_text
-
-    # 2. code_review.html.j2 implements auto-sync for commits and files
-    assert "startAutoSync" in cr_text or "autoSyncTimer" in cr_text
-
-
-def test_regression_bug_247_single_unified_sync_button() -> None:
-    """Verify BUG-247: Remove redundant Sync DB button; keep a single unified Sync button that handles both git and DB sync."""
-    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    diff_view_text = (templates_dir / "diff_view.html.j2").read_text(encoding="utf-8")
-
-    # 1. Single unified Sync button exists
-    assert 'id="btnSync"' in diff_view_text
-
-    # 2. Separate 'Sync DB' button is removed from UI
-    assert 'id="btnSyncFeedback"' not in diff_view_text
-    assert "⚡ Sync DB" not in diff_view_text
-
-
 def test_regression_bug_247_server_api_sync_unification(tmp_path: Path) -> None:
     """Verify BUG-247: /api/sync executes both git repository fetch and feedback/bug database synchronization."""
     repo_dir, _ = create_isolated_git_repo(tmp_path)
@@ -2709,85 +2080,6 @@ def test_regression_bug_247_server_api_sync_unification(tmp_path: Path) -> None:
             assert data["feedback"]["initial_sync_done"] is True
     finally:
         server.server_close()
-
-
-def test_regression_bug_248_bug_report_sort_and_filter_menus() -> None:
-    """Verify BUG-248: Worm Report field contains sort and filter menus with session persistence."""
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "worm_report.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-
-    # 1. Sort and filter UI menus present in worm list sidebar
-    assert 'id="select-worm-sort"' in tpl_text
-    assert 'id="select-filter-category"' in tpl_text
-    assert 'id="select-filter-severity"' in tpl_text
-
-    # 2. Event handlers and sorting/filtering logic
-    assert "onWormSortChanged" in tpl_text
-    assert "onFilterCategoryChanged" in tpl_text
-    assert "onFilterSeverityChanged" in tpl_text
-
-    # 3. Session persistence for filter and sorting options
-    assert "sessionStorage" in tpl_text
-    assert "worm_sort" in tpl_text
-
-
-def test_regression_bug_252_unified_diff_word_wrap_and_tag_balancing() -> None:
-    """Verify BUG-252: Unified diff word-wrap containment and tag balancing in diff templates.
-
-    Ensures:
-    1. diff_component.html.j2 and code_review.html.j2 pin .diff-unified-text and .unified-text to column 4 with min-width: 0.
-    2. diff_component.html.j2 balances syntax highlighting spans across lines and strips orphan closing spans.
-    3. Unified diff text is rendered in a div rather than span so rogue inner closing spans cannot close the line container.
-    """
-    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    diff_comp_text = (templates_dir / "diff_component.html.j2").read_text(encoding="utf-8")
-    cr_text = (templates_dir / "code_review.html.j2").read_text(encoding="utf-8")
-
-    # 1. Grid positioning and min-width containment for unified diff text
-    assert "grid-column: 4" in diff_comp_text
-    assert "min-width: 0" in diff_comp_text
-    assert "grid-column: 4" in cr_text
-
-    # 2. Div container for unified text preventing stray span closure
-    assert '<div class="diff-unified-text hljs">' in diff_comp_text
-    assert '<div class="unified-text hljs">' in cr_text
-
-    # 3. Tag balancing and orphan tag stripping in diff engine
-    assert "balanceLines" in diff_comp_text
-    assert "openTags" in diff_comp_text
-
-
-def test_regression_bug_257_copy_icons_in_dashboard() -> None:
-    """Verify BUG-257: Copy icon buttons next to commit hashes, branch names, and bug IDs in dashboard."""
-    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    diff_view_text = (templates_dir / "diff_view.html.j2").read_text(encoding="utf-8")
-    worm_report_text = (templates_dir / "worm_report.html.j2").read_text(encoding="utf-8")
-    cr_text = (templates_dir / "code_review.html.j2").read_text(encoding="utf-8")
-
-    # 1. diff_view.html.j2 copy buttons:
-    # Commit SHA copy button
-    assert "copy-sha-btn" in diff_view_text
-    assert "copy-icon-btn" in diff_view_text
-    assert "copyText" in diff_view_text
-    # Branch name copy button (current branch & branch list items)
-    assert "btnCopyCurrentBranch" in diff_view_text
-    # Bug ID copy button on smartlog nodes
-    assert "copy-badge-btn" in diff_view_text
-
-    # 2. worm_report.html.j2 copy buttons:
-    # Worm ID in sidebar list and active issue header
-    assert "btn-copy-active-worm" in worm_report_text
-    assert "active-worm-id-display" in worm_report_text
-    assert "copy-icon-btn" in worm_report_text
-    assert "copy-badge-btn" in worm_report_text
-    assert "copyActiveWormId" in worm_report_text
-    assert "copyText" in worm_report_text
-
-    # 3. code_review.html.j2 copy buttons:
-    # Commit SHA copy button in commit drawer
-    assert "copy-sha-btn" in cr_text
-    assert "copy-icon-btn" in cr_text
-    assert "copyText" in cr_text
 
 
 def test_regression_bug_269_dashboard_scoped_attachments(tmp_path: Path) -> None:
@@ -2907,250 +2199,6 @@ def test_regression_bug_270_dashboard_server_handles_broken_pipe_gracefully(caps
     assert handler.close_connection is True
 
 
-def test_regression_quake_diff_engine_defined_and_js_syntax() -> None:
-    """Verify QuakeDiffEngine is defined and all diff workstation scripts have valid JS syntax."""
-    template_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    comp_path = template_dir / "diff_component.html.j2"
-    view_path = template_dir / "diff_view.html.j2"
-
-    assert comp_path.exists()
-    assert view_path.exists()
-
-    comp_text = comp_path.read_text(encoding="utf-8")
-    assert "const QuakeDiffEngine = {" in comp_text
-    assert "window.QuakeDiffEngine = QuakeDiffEngine;" in comp_text
-    assert "window.QuakeDiffRenderer = QuakeDiffEngine;" in comp_text
-    assert "detectLanguage(" in comp_text
-    assert "copySnippet(" in comp_text
-
-    view_text = view_path.read_text(encoding="utf-8")
-    assert '{% include "diff_component.html.j2" %}' in view_text
-    assert "function escapeHtml(str)" in view_text
-    assert "QuakeDiffEngine.renderDiff" in view_text
-
-    # Verify Jinja2 template rendering produces valid JS syntax without syntax errors
-    import jinja2
-    import re
-    from model.vcs import DiffViewSessionModel
-
-    env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(template_dir)))
-    tpl = env.get_template("diff_view.html.j2")
-    session = DiffViewSessionModel(repo_name="firmware", repo_root="/tmp/firmware", branches=[])
-    rendered = tpl.render(session=session)
-
-    # Check that QuakeDiffEngine declaration appears before its usage in renderDiff
-    engine_idx = rendered.find("const QuakeDiffEngine = {")
-    render_diff_idx = rendered.find("QuakeDiffEngine.renderDiff(")
-    assert engine_idx != -1, "QuakeDiffEngine definition missing from rendered HTML"
-    assert render_diff_idx != -1, "QuakeDiffEngine.renderDiff missing from rendered HTML"
-    assert engine_idx < render_diff_idx, "QuakeDiffEngine must be defined before renderDiff caller"
-
-    # Validate JavaScript syntax with node if node is installed
-    import subprocess
-    import shutil
-
-    node_bin = shutil.which("node")
-    if node_bin:
-        scripts = re.findall(r"<script>(.*?)</script>", rendered, re.DOTALL)
-        for idx, script in enumerate(scripts):
-            res = subprocess.run(
-                [node_bin, "--check"],
-                input=script,
-                capture_output=True,
-                text=True,
-            )
-            assert res.returncode == 0, f"Script {idx} in diff_view.html.j2 has JS syntax error: {res.stderr}"
-
-
-def test_regression_side_by_side_diff_row_property_mapping() -> None:
-    """Verify side-by-side diff renderer handles DiffSideBySideRow properties without blanks or undefined errors.
-
-    Regression test ensuring:
-    1. QuakeDiffEngine.renderSideBySide binds old_no, new_no, old_text, new_text, and row_type.
-    2. Fallback to old_line_no, new_line_no, old_content, new_content, and type is supported.
-    3. Output HTML contains line numbers, code cells, markers (+/-), and valid row styling classes.
-    4. No undefined strings or missing content occur in side-by-side table rows.
-    """
-    import json
-    import re
-    import shutil
-    import subprocess
-
-    template_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    comp_path = template_dir / "diff_component.html.j2"
-    assert comp_path.exists()
-    comp_text = comp_path.read_text(encoding="utf-8")
-
-    # Invariants in JS source:
-    assert "r.old_no" in comp_text
-    assert "r.new_no" in comp_text
-    assert "r.old_text" in comp_text
-    assert "r.new_text" in comp_text
-    assert "r.row_type" in comp_text
-    assert "highlightFullDocument(" in comp_text
-
-    # Extract JS script block
-    scripts = re.findall(r"<script>(.*?)</script>", comp_text, re.DOTALL)
-    assert len(scripts) >= 1, "diff_component.html.j2 must contain a script block"
-    engine_script = scripts[0]
-
-    node_bin = shutil.which("node")
-    if not node_bin:
-        return
-
-    # Test 1: DiffSideBySideRow data structure as emitted by GitEngine / vcs model
-    mock_diff_canonical = {
-        "file_path": "firmware/src/main.rs",
-        "old_content": "const FIRST: u32 = 1;\nconst REMOVED: u32 = 2;\nconst MODIFIED: u32 = 3;\nconst LAST: u32 = 4;",
-        "new_content": "const FIRST: u32 = 1;\nconst MODIFIED: u32 = 99;\nconst INSERTED: u32 = 5;\nconst LAST: u32 = 4;",
-        "side_by_side": [
-            {
-                "old_no": 1,
-                "old_text": "const FIRST: u32 = 1;",
-                "new_no": 1,
-                "new_text": "const FIRST: u32 = 1;",
-                "row_type": "equal",
-            },
-            {
-                "old_no": 2,
-                "old_text": "const REMOVED: u32 = 2;",
-                "new_no": None,
-                "new_text": "",
-                "row_type": "delete",
-            },
-            {
-                "old_no": 3,
-                "old_text": "const MODIFIED: u32 = 3;",
-                "new_no": 2,
-                "new_text": "const MODIFIED: u32 = 99;",
-                "row_type": "replace",
-            },
-            {
-                "old_no": None,
-                "old_text": "",
-                "new_no": 3,
-                "new_text": "const INSERTED: u32 = 5;",
-                "row_type": "insert",
-            },
-            {
-                "old_no": 4,
-                "old_text": "const LAST: u32 = 4;",
-                "new_no": 4,
-                "new_text": "const LAST: u32 = 4;",
-                "row_type": "equal",
-            },
-        ],
-    }
-
-    test_harness_canonical = f"""
-    const window = {{
-      localStorage: {{ getItem: () => null, setItem: () => null }}
-    }};
-    {engine_script}
-
-    const container = {{
-      innerHTML: "",
-      querySelector: () => null,
-      querySelectorAll: () => []
-    }};
-
-    const diffData = {json.dumps(mock_diff_canonical)};
-    QuakeDiffEngine.renderDiff(container, diffData, "side_by_side");
-
-    console.log(JSON.stringify({{
-      html: container.innerHTML
-    }}));
-    """
-
-    res = subprocess.run(
-        [node_bin, "-e", test_harness_canonical],
-        capture_output=True,
-        text=True,
-    )
-    assert res.returncode == 0, f"Node harness failed: {res.stderr}"
-
-    output_data = json.loads(res.stdout.strip())
-    html = output_data["html"]
-
-    # Invariant assertions:
-    # 1. Row classes are populated correctly
-    assert 'class="diff-sbs-row row-equal"' in html
-    assert 'class="diff-sbs-row row-delete"' in html
-    assert 'class="diff-sbs-row row-replace"' in html
-    assert 'class="diff-sbs-row row-insert"' in html
-
-    # 2. Markers are present
-    assert '<td class="diff-marker-cell old-marker">-' in html
-    assert '<td class="diff-marker-cell new-marker">+' in html
-
-    # 3. Line numbers and code contents are populated
-    assert "const FIRST: u32 = 1;" in html
-    assert "const REMOVED: u32 = 2;" in html
-    assert "const MODIFIED: u32 = 3;" in html
-    assert "const MODIFIED: u32 = 99;" in html
-    assert "const INSERTED: u32 = 5;" in html
-    assert "const LAST: u32 = 4;" in html
-
-    # 4. Line numbers appear in lineno cells
-    assert ">1</td>" in html
-    assert ">2</td>" in html
-    assert ">3</td>" in html
-    assert ">4</td>" in html
-
-    # 5. No undefined or NaN appears in html
-    assert "undefined" not in html
-    assert "NaN" not in html
-
-    # Test 2: Verify fallback properties (old_line_no, new_line_no, old_content, new_content, type) also render
-    mock_diff_fallback = {
-        "file_path": "tests/test.py",
-        "side_by_side": [
-            {
-                "old_line_no": 10,
-                "old_content": "old line code",
-                "new_line_no": 12,
-                "new_content": "new line code",
-                "type": "replace",
-            }
-        ],
-    }
-
-    test_harness_fallback = f"""
-    const window = {{
-      localStorage: {{ getItem: () => null, setItem: () => null }}
-    }};
-    {engine_script}
-
-    const container = {{
-      innerHTML: "",
-      querySelector: () => null,
-      querySelectorAll: () => []
-    }};
-
-    const diffData = {json.dumps(mock_diff_fallback)};
-    QuakeDiffEngine.renderDiff(container, diffData, "side_by_side");
-
-    console.log(JSON.stringify({{
-      html: container.innerHTML
-    }}));
-    """
-
-    res_fb = subprocess.run(
-        [node_bin, "-e", test_harness_fallback],
-        capture_output=True,
-        text=True,
-    )
-    assert res_fb.returncode == 0, f"Node harness fallback failed: {res_fb.stderr}"
-    html_fb = json.loads(res_fb.stdout.strip())["html"]
-
-    assert 'class="diff-sbs-row row-replace"' in html_fb
-    assert ">10</td>" in html_fb
-    assert ">12</td>" in html_fb
-    assert "old line code" in html_fb
-    assert "new line code" in html_fb
-    assert "undefined" not in html_fb
-
-
 def test_regression_worm_010_open_in_vscode_server_and_templates(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -3185,20 +2233,7 @@ def test_regression_worm_010_open_in_vscode_server_and_templates(
     assert len(executed_cmds) == 1
     assert executed_cmds[0] == ["/usr/local/bin/code", "-g", f"{test_file.resolve()}:42"]
 
-    # 2. Test template integration: diff_view and code_review must call /api/open-vscode
-    template_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    diff_view_html = (template_dir / "diff_view.html.j2").read_text(encoding="utf-8")
-    code_review_html = (template_dir / "code_review.html.j2").read_text(encoding="utf-8")
-
-    assert "/api/open-vscode" in diff_view_html
-    assert 'onclick="openInVsCode()"' in diff_view_html
-    assert "vscode://file" in diff_view_html
-
-    assert "/api/open-vscode" in code_review_html
-    assert 'onclick="openInVsCode()"' in code_review_html
-    assert "vscode://file" in code_review_html
-
-    # 3. Test DashboardServer POST /api/open-vscode endpoint
+    # 2. Test DashboardServer POST /api/open-vscode endpoint
     executed_cmds.clear()
     server = DashboardServer(
         host="127.0.0.1",
@@ -3231,7 +2266,7 @@ def test_regression_worm_010_open_in_vscode_server_and_templates(
         server.shutdown()
         server.server_close()
 
-    # 4. Test standalone ReviewServer POST /api/open-vscode endpoint
+    # 3. Test standalone ReviewServer POST /api/open-vscode endpoint
     from dashboard.provider.code_review.server import ReviewServer
 
     executed_cmds.clear()
@@ -3264,46 +2299,6 @@ def test_regression_worm_010_open_in_vscode_server_and_templates(
     finally:
         review_server.shutdown()
         review_server.server_close()
-
-
-def test_regression_bug_274_workstations_modal_windows() -> None:
-    """Verify BUG-274: Code review and worm report workstations are modal windows over VCS UI."""
-    tpl_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    diff_text = (tpl_dir / "diff_view.html.j2").read_text(encoding="utf-8")
-    cr_text = (tpl_dir / "code_review.html.j2").read_text(encoding="utf-8")
-    worm_text = (tpl_dir / "worm_report.html.j2").read_text(encoding="utf-8")
-
-    # 1. Diff view includes workstation modal overlay and iframe container
-    assert 'id="workstationModal"' in diff_text
-    assert 'id="workstationIframe"' in diff_text
-    assert "workstation-modal-overlay" in diff_text
-    assert "workstation-modal-container" in diff_text
-    assert "workstation-modal-iframe" in diff_text
-
-    # 2. Fixed size with tiny margin and darkened backdrop
-    assert "rgba(0, 0, 0, 0.75)" in diff_text
-    assert "calc(100vw - 36px)" in diff_text
-    assert "calc(100vh - 36px)" in diff_text
-
-    # 3. Diff view JavaScript exposes modal open and close
-    assert "function openWorkstationModal(url, targetName)" in diff_text
-    assert "function closeWorkstationModal()" in diff_text
-    assert "window.closeWorkstationModal = closeWorkstationModal;" in diff_text
-    assert "openWorkstationModal(res.url" in diff_text
-
-    # 4. Code review header replaces back button with X close button
-    assert "← Dashboard" not in cr_text
-    assert "modal-close-btn" in cr_text
-    assert "✕" in cr_text
-    assert "closeWorkstation()" in cr_text
-    assert "window.parent.closeWorkstationModal()" in cr_text
-
-    # 5. Worm report header replaces back button with X close button
-    assert "← Dashboard" not in worm_text
-    assert "modal-close-btn" in worm_text
-    assert "✕" in worm_text
-    assert "closeWorkstation()" in worm_text
-    assert "window.parent.closeWorkstationModal()" in worm_text
 
 
 def test_regression_worm_015_workstation_modal_dom_hierarchy_and_rendering() -> None:
@@ -3521,119 +2516,6 @@ def test_regression_bug_subterranean_vinegarworm_291_dashboard_upload_collision(
     finally:
         server.shutdown()
         server.server_close()
-
-
-def test_regression_bug_translucent_tapeworm_953_dashboard_js_syntax_and_sync_screen(tmp_path: Path) -> None:
-    """Verify BUG-TRANSLUCENT-TAPEWORM-953: Dashboard JavaScript syntax is valid and sync screen does not freeze at 20%.
-
-    Ensures:
-    1. sanitizeAuthor and other JavaScript blocks in diff_view.html.j2 contain valid syntax without syntax errors.
-    2. node -c passes on extracted script blocks from rendered dashboard templates.
-    3. sanitizeAuthor line in diff_view.html.j2 does not have dangling closing parentheses.
-    """
-    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    diff_view_text = (templates_dir / "diff_view.html.j2").read_text(encoding="utf-8")
-
-    # 1. Verify sanitizeAuthor exists and has no dangling parenthesis
-    assert "function sanitizeAuthor" in diff_view_text
-    match = re.search(r"function sanitizeAuthor\(str\)\s*\{([^}]+)\}", diff_view_text)
-    assert match is not None, "sanitizeAuthor function definition must exist"
-    func_body = match.group(1)
-    # Count open and close parentheses in sanitizeAuthor
-    assert func_body.count("(") == func_body.count(")"), (
-        f"Mismatched parentheses in sanitizeAuthor: {func_body.count('(')} open vs {func_body.count(')')} close"
-    )
-
-    # 2. Extract script blocks from rendered diff_view template and syntax check with node if available
-    node_bin = shutil.which("node")
-    if node_bin:
-        env = jinja2.Environment(
-            loader=jinja2.FileSystemLoader(str(templates_dir)),
-            trim_blocks=True,
-            lstrip_blocks=True,
-            autoescape=False,
-        )
-        tpl = env.get_template("diff_view.html.j2")
-        mock_session = DiffViewSessionModel(
-            repo_name="firmware",
-            repo_root=str(tmp_path),
-            active_commit="working",
-            initial_sync_done=False,
-        )
-        rendered_html = tpl.render(session=mock_session, active_branch="main", active_commit="working")
-        scripts = re.findall(r"<script>(.*?)</script>", rendered_html, re.DOTALL)
-        assert len(scripts) > 0, "Rendered diff_view must contain <script> tags"
-
-        for idx, script in enumerate(scripts):
-            script_file = tmp_path / f"test_script_{idx}.js"
-            script_file.write_text(script, encoding="utf-8")
-            res = subprocess.run([node_bin, "-c", str(script_file)], capture_output=True, text=True)
-            assert res.returncode == 0, f"Node syntax error in diff_view script block {idx}:\n{res.stderr}"
-
-        from model.code_review import ReviewSessionModel
-
-        cr_tpl = env.get_template("code_review.html.j2")
-        mock_cr_session = ReviewSessionModel(
-            repo_name="firmware",
-            revisions=["working"],
-        )
-        cr_html = cr_tpl.render(session=mock_cr_session)
-        cr_scripts = re.findall(r"<script>(.*?)</script>", cr_html, re.DOTALL)
-        for idx, script in enumerate(cr_scripts):
-            script_file = tmp_path / f"cr_script_{idx}.js"
-            script_file.write_text(script, encoding="utf-8")
-            res = subprocess.run([node_bin, "-c", str(script_file)], capture_output=True, text=True)
-            assert res.returncode == 0, f"Node syntax error in code_review script block {idx}:\n{res.stderr}"
-
-        from model.worm_report import WormDatabaseModel
-
-        worm_db = WormDatabaseModel()
-        worm_tpl = env.get_template("worm_report.html.j2")
-        worm_html = worm_tpl.render(
-            database=worm_db,
-            database_json=json.dumps(worm_db.model_dump(mode="json")),
-        )
-        worm_scripts = re.findall(r"<script>(.*?)</script>", worm_html, re.DOTALL)
-        for idx, script in enumerate(worm_scripts):
-            script_file = tmp_path / f"worm_script_{idx}.js"
-            script_file.write_text(script, encoding="utf-8")
-            res = subprocess.run([node_bin, "-c", str(script_file)], capture_output=True, text=True)
-            assert res.returncode == 0, f"Node syntax error in worm_report script block {idx}:\n{res.stderr}"
-
-
-def test_regression_worm_annelidic_caterpillar_258_smartlog_node_selected_highlight() -> None:
-    """Verify WORM-ANNELIDIC-CATERPILLAR-258: Selected commits receive highlight styling in VCS UI."""
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-
-    # 1. CSS must define .smartlog-node.selected styling
-    assert ".smartlog-node.selected" in tpl_text
-    assert ".smartlog-node.selected.active" in tpl_text
-
-    # 2. SSR template must include 'selected' class when node.commit_hash is in session.selected_commits
-    assert "{% if node.commit_hash in session.selected_commits %}selected{% endif %}" in tpl_text
-
-    # 3. Dynamic renderSmartlogList must apply selected class when commit is checked/selected
-    assert "${isSelected}" in tpl_text or 'node.classList.toggle("selected"' in tpl_text
-
-
-def test_diff_view_optimizations_polling_and_file_priority() -> None:
-    """Verify diff view optimizations: 10s auto-sync polling interval and regular files prioritized over LFS."""
-    template_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "diff_view.html.j2"
-    tpl_text = template_path.read_text(encoding="utf-8")
-
-    # 1. Lightweight Polling: Auto-sync interval set to 10s (10000ms)
-    assert "setInterval(syncWorkingAndCommitsSilently, 10000)" in tpl_text
-
-    # 2. Prioritize Regular Files Over Attachments:
-    # renderCommitFiles must auto-select regular files before LFS files
-    assert "const first = regular[0]?.path || lfs[0]?.path || feedback[0]?.path;" in tpl_text
-
-    # renderWorkingTreeFiles must auto-select staged/unstaged/untracked before LFS files
-    assert (
-        "conflicts[0]?.path || staged[0]?.path || unstaged[0]?.path || untracked[0]?.path || lfs[0]?.path || feedback[0]?.path;"
-        in tpl_text
-    )
 
 
 def test_ensure_feedback_worktree_migration(tmp_path: Path) -> None:

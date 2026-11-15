@@ -66,17 +66,6 @@ def test_api_reset_endpoint():
         server.server_close()
 
 
-def test_template_contains_reset_button():
-    """Verify host_daemon.html.j2 contains Reset button and triggerReset script."""
-    template_path = REPO_ROOT / "tools" / "host_daemon" / "templates" / "host_daemon.html.j2"
-    content = template_path.read_text(encoding="utf-8")
-
-    assert 'id="btnReset"' in content
-    assert "triggerReset" in content
-    assert "btn-amber" in content
-    assert "/api/reset" in content
-
-
 def test_cli_supports_reset_subcommand():
     """Verify CLI parser accepts 'reset' subcommand."""
     args = parse_arguments(["reset"])

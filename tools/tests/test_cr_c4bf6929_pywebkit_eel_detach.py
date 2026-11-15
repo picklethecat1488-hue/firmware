@@ -31,7 +31,7 @@ from tools.host_daemon.cli import (
 
 def test_cr_c4bf6929_dedicated_app_icons_exist():
     """Verify dedicated application icon assets exist for host daemon."""
-    static_dir = REPO_ROOT / "tools" / "host_daemon" / "static"
+    static_dir = REPO_ROOT / "tools" / "js" / "static" / "daemon"
     assert static_dir.exists(), f"Static directory not found: {static_dir}"
 
     icns_path = static_dir / "app.icns"
@@ -47,7 +47,7 @@ def test_cr_c4bf6929_dedicated_app_icons_exist():
     assert svg_path.exists(), f"favicon.svg missing at {svg_path}"
 
     # Verify that the icon is distinct from dashboard's icon
-    dashboard_icns = REPO_ROOT / "tools" / "dashboard" / "provider" / "code_review" / "static" / "app.icns"
+    dashboard_icns = REPO_ROOT / "tools" / "js" / "static" / "app.icns"
     if dashboard_icns.exists():
         assert icns_path.read_bytes() != dashboard_icns.read_bytes(), (
             "Host daemon must use a distinct application icon from dashboard."

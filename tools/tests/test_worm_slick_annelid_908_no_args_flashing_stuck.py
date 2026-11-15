@@ -31,59 +31,6 @@ from host_daemon.cli import has_explicit_target_args, main  # noqa: E402
 from host_daemon.provider.daemon.runner import DaemonRunner  # noqa: E402
 
 
-def _extract_js_function(content: str, signature: str) -> str:
-    """Extract full JavaScript function block by tracking brace depth."""
-    start_idx = content.find(signature)
-    assert start_idx != -1, f"Function signature '{signature}' not found"
-    open_brace = content.find("{", start_idx)
-    depth = 1
-    idx = open_brace + 1
-    while depth > 0 and idx < len(content):
-        if content[idx] == "{":
-            depth += 1
-        elif content[idx] == "}":
-            depth -= 1
-        idx += 1
-    return content[open_brace:idx]
-
-
-def test_submit_target_config_initiates_sync_polling():
-    """Verify submitTargetConfig in host_daemon.html.j2 calls startSyncPolling and resets UI."""
-    template_path = REPO_ROOT / "tools" / "host_daemon" / "templates" / "host_daemon.html.j2"
-    content = template_path.read_text(encoding="utf-8")
-
-    func_body = _extract_js_function(content, "async function submitTargetConfig()")
-
-    # Invariant: submitTargetConfig MUST call startSyncPolling()
-    assert "startSyncPolling()" in func_body, (
-        "submitTargetConfig() must call startSyncPolling() to prevent UI getting stuck at flashing modal."
-    )
-
-    # Invariant: submitTargetConfig MUST reset sync modal indicators so previous/initial state doesn't look stuck
-    assert "syncProgressMsg" in func_body or "syncStatusDot" in func_body, (
-        "submitTargetConfig() should reset progress indicators on submission."
-    )
-
-
-def test_sync_modal_info_elements_updated_dynamically():
-    """Verify sync modal information rows have identifiers and are updated by pollSyncStatus."""
-    template_path = REPO_ROOT / "tools" / "host_daemon" / "templates" / "host_daemon.html.j2"
-    content = template_path.read_text(encoding="utf-8")
-
-    # Invariant: syncModal info rows have target, package, profile, speed IDs
-    assert 'id="syncInfoTarget"' in content, "Missing #syncInfoTarget in syncModal"
-    assert 'id="syncInfoPackage"' in content, "Missing #syncInfoPackage in syncModal"
-    assert 'id="syncInfoProfile"' in content, "Missing #syncInfoProfile in syncModal"
-    assert 'id="syncInfoSpeed"' in content, "Missing #syncInfoSpeed in syncModal"
-
-    # Invariant: pollSyncStatus updates these elements dynamically
-    poll_body = _extract_js_function(content, "async function pollSyncStatus()")
-    assert "syncInfoTarget" in poll_body
-    assert "syncInfoPackage" in poll_body
-    assert "syncInfoProfile" in poll_body
-    assert "syncInfoSpeed" in poll_body
-
-
 def test_sync_async_synchronously_sets_active_status():
     """Verify sync_async immediately sets active=True and step='starting' to prevent polling race."""
     runner = DaemonRunner(repo_root=REPO_ROOT, package_selection_mode=True)

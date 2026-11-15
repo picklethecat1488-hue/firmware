@@ -22,36 +22,6 @@ from host_daemon.provider.daemon.runner import DaemonRunner
 from host_daemon.provider.daemon.server import HostDaemonRequestHandler, HostDaemonServer
 
 
-TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "host_daemon" / "templates"
-
-
-def test_worm_bristly_glowworm_390_attachments_ui_in_template() -> None:
-    """Verify Attachments & Screenshots UI elements exist in host_daemon.html.j2."""
-    template_path = TEMPLATES_DIR / "host_daemon.html.j2"
-    assert template_path.exists(), "host_daemon.html.j2 not found"
-    content = template_path.read_text(encoding="utf-8")
-
-    # 1. Section Header / Label
-    assert "Attachments &amp; Screenshots" in content or "Attachments & Screenshots" in content, (
-        "Missing 'Attachments & Screenshots' section in host_daemon.html.j2"
-    )
-
-    # 2. Dropzone & File Input
-    assert 'id="targetBugDropzone"' in content, "Missing #targetBugDropzone dropzone container"
-    assert 'id="targetBugFileInput"' in content, "Missing #targetBugFileInput file input"
-    assert 'id="targetBugAttachmentsGrid"' in content, "Missing #targetBugAttachmentsGrid grid"
-
-    # 3. Paste Clipboard button & handler functions
-    assert "pasteTargetBugClipboard" in content, "Missing pasteTargetBugClipboard function"
-    assert "handleTargetBugFileUpload" in content, "Missing handleTargetBugFileUpload function"
-    assert "removeTargetBugAttachment" in content, "Missing removeTargetBugAttachment function"
-
-    # 4. LFS non-confidential notice
-    assert "Attachments are tracked in GitHub LFS and considered non-confidential" in content, (
-        "Missing GitHub LFS non-confidentiality notice"
-    )
-
-
 def test_worm_bristly_glowworm_390_server_api_processes_manual_attachments() -> None:
     """Verify /api/target_bug persists manual screenshots/attachments to disk and markdown."""
     with tempfile.TemporaryDirectory() as tmp_dir:

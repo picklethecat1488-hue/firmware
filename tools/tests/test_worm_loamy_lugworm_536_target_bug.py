@@ -12,49 +12,6 @@ import pytest
 
 from host_daemon.provider.daemon.runner import DaemonRunner
 from host_daemon.provider.daemon.server import HostDaemonRequestHandler, HostDaemonServer
-from model.worm_report import WormCategory, WormSeverity, WormStatus
-
-
-TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "host_daemon" / "templates"
-
-
-def test_target_bug_ui_elements_in_template() -> None:
-    """Verify Target Bug button, modal, form fields, and attachment options exist in host_daemon.html.j2."""
-    template_path = TEMPLATES_DIR / "host_daemon.html.j2"
-    assert template_path.exists(), "host_daemon.html.j2 not found"
-    content = template_path.read_text(encoding="utf-8")
-
-    # 1. Target Bug button in header
-    assert 'id="btnTargetBug"' in content, "Missing #btnTargetBug button in header"
-    assert "openTargetBugModal()" in content, "Missing openTargetBugModal() onclick handler"
-
-    # 2. Target Bug modal and form inputs
-    assert 'id="targetBugModal"' in content, "Missing #targetBugModal container"
-    assert 'id="targetBugTitle"' in content, "Missing #targetBugTitle input"
-    assert 'id="targetBugSeverity"' in content, "Missing #targetBugSeverity select"
-    assert 'id="targetBugCategory"' in content, "Missing #targetBugCategory select"
-    assert 'id="targetBugComponent"' in content, "Missing #targetBugComponent input"
-    assert 'id="targetBugDescription"' in content, "Missing #targetBugDescription textarea"
-    assert 'id="targetBugSteps"' in content, "Missing #targetBugSteps textarea"
-    assert 'id="targetBugExpected"' in content, "Missing #targetBugExpected textarea"
-    assert 'id="targetBugActual"' in content, "Missing #targetBugActual textarea"
-
-    # 3. Attachment checkboxes
-    assert 'id="attachSystemLogs"' in content, "Missing #attachSystemLogs checkbox"
-    assert 'id="attachCrashLog"' in content, "Missing #attachCrashLog checkbox"
-    assert 'id="attachTelemetry"' in content, "Missing #attachTelemetry checkbox"
-    assert 'id="attachMetadata"' in content, "Missing #attachMetadata checkbox"
-
-    # 4. Submit button and handler
-    assert 'id="btnSubmitTargetBug"' in content, "Missing #btnSubmitTargetBug submit button"
-    assert "submitTargetBug()" in content, "Missing submitTargetBug() JavaScript function"
-
-    # 5. Progress bar modal UI elements (CR cd712274)
-    assert 'id="targetBugProgressContainer"' in content, "Missing #targetBugProgressContainer"
-    assert 'id="targetBugProgressBar"' in content, "Missing #targetBugProgressBar"
-    assert 'id="targetBugProgressMsg"' in content, "Missing #targetBugProgressMsg"
-    assert 'id="targetBugProgressPct"' in content, "Missing #targetBugProgressPct"
-    assert "updateBugProgress" in content, "Missing updateBugProgress helper function"
 
 
 def test_target_bug_server_api_creates_worm_with_attachments() -> None:

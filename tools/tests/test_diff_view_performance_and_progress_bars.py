@@ -127,32 +127,6 @@ def test_dashboard_request_handler_throttling_and_static_bypass(tmp_path: Path) 
     assert mock_server.worm_server.check_file_watch.call_count == 1
 
 
-def test_template_progress_bar_granularity_and_stages() -> None:
-    """Verify template sources contain granular progress, asymptotic tail, and dynamic stage indicators."""
-    templates_dir = Path(__file__).resolve().parents[1] / "dashboard" / "templates"
-
-    # diff_view.html.j2 checks
-    diff_view = (templates_dir / "diff_view.html.j2").read_text(encoding="utf-8")
-    assert "syncProgressBar" in diff_view
-    assert "syncProgressPercent" in diff_view
-    assert "updateProgress" in diff_view
-    assert "getStageMessage" in diff_view
-    assert "actionProgressElapsed" in diff_view
-    assert "elapsedSec.toFixed(1)" in diff_view
-    assert "prSubmitProgressBar" in diff_view
-    assert "prSubmitProgressPercent" in diff_view
-
-    # worm_report.html.j2 checks
-    worm_report = (templates_dir / "worm_report.html.j2").read_text(encoding="utf-8")
-    assert "feedback-loading-modal" in worm_report
-    assert "loading-progress-bar" in worm_report
-    assert "loading-progress-percent" in worm_report
-    # Ensure static 30% width was removed in favor of dynamic animation
-    assert "width:30%" not in worm_report and "width: 30%" not in worm_report
-    assert "showFeedbackLoading" in worm_report
-    assert "hideFeedbackLoading" in worm_report
-
-
 def test_worm_server_isolation_with_temporary_sqlite(tmp_path: Path) -> None:
     """Verify WormReportServer and DashboardServer with a test SQLite file isolate feedback to temp dir."""
     from provider.worm_report.server import WormReportServer
@@ -198,33 +172,3 @@ def test_worm_server_feedback_mtime_synchronization(tmp_path: Path) -> None:
 
     # Immediately after save_and_sync, check_file_watch must be False (no infinite loop)
     assert not server.check_file_watch()
-
-
-def test_shared_common_js_library_integrated() -> None:
-    """Verify common.js exists in static assets, contains valid JS, and is linked across templates."""
-    import shutil
-    import subprocess
-
-    static_dir = Path(__file__).resolve().parent.parent / "dashboard" / "provider" / "code_review" / "static"
-    common_js = static_dir / "common.js"
-    assert common_js.is_file(), "static/common.js must exist in code_review static assets"
-
-    content = common_js.read_text(encoding="utf-8")
-    assert "AsymptoticProgressBar" in content
-    assert "performActionWithProgress" in content
-    assert "setupPanelResizer" in content
-    assert "sanitizeAuthor" in content
-
-    node_bin = shutil.which("node")
-    if node_bin:
-        res = subprocess.run([node_bin, "--check", str(common_js)], capture_output=True, text=True)
-        assert res.returncode == 0, f"common.js has JavaScript syntax errors: {res.stderr}"
-
-    templates_dir = Path(__file__).resolve().parent.parent / "dashboard" / "templates"
-    for tpl_name in ("diff_view.html.j2", "worm_report.html.j2", "code_review.html.j2"):
-        tpl_path = templates_dir / tpl_name
-        assert tpl_path.is_file()
-        tpl_text = tpl_path.read_text(encoding="utf-8")
-        assert '<script src="/static/common.js"></script>' in tpl_text, (
-            f'{tpl_name} must include <script src="/static/common.js"></script>'
-        )

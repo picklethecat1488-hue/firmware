@@ -83,15 +83,6 @@ def test_serve_attachment_streams_in_chunks_without_read_bytes():
         assert handler.wfile.getvalue() == content
 
 
-def test_template_attachment_size_limit_check():
-    """Verify worm_report.html.j2 contains client-side checks for >= 2GB attachment limit."""
-    tpl_path = Path(__file__).resolve().parent.parent / "dashboard" / "templates" / "worm_report.html.j2"
-    tpl_content = tpl_path.read_text(encoding="utf-8")
-
-    assert "MAX_ATTACHMENT_SIZE_BYTES" in tpl_content, "Missing MAX_ATTACHMENT_SIZE_BYTES in worm_report.html.j2"
-    assert "2 * 1024 * 1024 * 1024" in tpl_content, "Expected 2GB limit definition in worm_report.html.j2"
-
-
 def test_handle_file_upload_rejects_oversized_base64():
     """Verify _handle_file_upload returns 413 for oversized base64 content."""
     with tempfile.TemporaryDirectory() as tmp_dir:

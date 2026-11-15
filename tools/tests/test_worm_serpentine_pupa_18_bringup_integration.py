@@ -156,23 +156,6 @@ class TestBringupIntegration(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(any("cat_detector" in str(s) for s in scripts))
 
-    def test_host_daemon_html_bringup_view(self):
-        """Verify template includes Bringup mode, script dropdown, interactive prompt card, and CLI view."""
-        template_file = self.repo_root / "tools" / "host_daemon" / "templates" / "host_daemon.html.j2"
-        content = template_file.read_text(encoding="utf-8")
-
-        # Must have BRINGUP mode option
-        self.assertIn('value="BRINGUP"', content)
-        # Must have Bringup toolbar / script selector
-        self.assertIn('id="bringupToolbar"', content)
-        self.assertIn('id="bringupScriptSelect"', content)
-        # Must have Bringup view container
-        self.assertIn('id="bringupView"', content)
-        # Must have interactive prompt container
-        self.assertIn('id="bringupPromptCard"', content)
-        # Must have step list container
-        self.assertIn('id="bringupStepList"', content)
-
     def test_bringup_step_types(self):
         """Verify hardware_check and host_command step execution in BringupManager."""
         mock_runner = MagicMock(spec=DaemonRunner)
