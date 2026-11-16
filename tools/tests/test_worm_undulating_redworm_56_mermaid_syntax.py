@@ -9,37 +9,42 @@ WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def test_readme_mermaid_syntax_structural() -> None:
-    """Verify that README.md mermaid diagram does not use space-separated unquoted identifiers for subgraphs or edges."""
+    """Verify documentation mermaid diagrams do not use space-separated unquoted identifiers for subgraphs or edges."""
     readme_path = WORKSPACE_ROOT / "README.md"
+    arch_doc_path = WORKSPACE_ROOT / "docs" / "firmware_architecture.md"
     assert readme_path.exists(), "README.md must exist in workspace root"
+    assert arch_doc_path.exists(), "docs/firmware_architecture.md must exist"
+    assert "```mermaid" in arch_doc_path.read_text(encoding="utf-8"), (
+        "docs/firmware_architecture.md must contain the workspace architecture mermaid diagrams"
+    )
 
-    content = readme_path.read_text(encoding="utf-8")
-    assert "```mermaid" in content, "README.md must contain a mermaid diagram"
+    md_files = [readme_path, *sorted((WORKSPACE_ROOT / "docs").glob("*.md"))]
+    total_blocks = 0
 
-    # Extract all mermaid blocks
-    mermaid_blocks = re.findall(r"```mermaid\s*\n(.*?)```", content, re.DOTALL)
-    assert len(mermaid_blocks) > 0, "At least one mermaid block should be found"
+    for md_path in md_files:
+        content = md_path.read_text(encoding="utf-8")
+        mermaid_blocks = re.findall(r"```mermaid\s*\n(.*?)```", content, re.DOTALL)
+        total_blocks += len(mermaid_blocks)
 
-    for block in mermaid_blocks:
-        lines = block.strip().splitlines()
-        for line in lines:
-            line_str = line.strip()
-            if not line_str or line_str.startswith("%%"):
-                continue
+        for block in mermaid_blocks:
+            lines = block.strip().splitlines()
+            for line in lines:
+                line_str = line.strip()
+                if not line_str or line_str.startswith("%%"):
+                    continue
 
-            # Subgraph syntax check: subgraph <id> [<title>]
-            if line_str.startswith("subgraph"):
-                # Subgraph ID cannot have raw spaces before '[' if brackets are used
-                # e.g. "subgraph Controller Layer [controller]" is invalid
-                match = re.match(r"^subgraph\s+([A-Za-z0-9_]+)\s*(\[.*\])?$", line_str)
-                assert match is not None, f"Invalid subgraph definition with space-separated tokens: {line_str}"
+                # Subgraph syntax check: subgraph <id> [<title>]
+                if line_str.startswith("subgraph"):
+                    match = re.match(r"^subgraph\s+([A-Za-z0-9_]+)\s*(\[.*\])?$", line_str)
+                    assert match is not None, (
+                        f"Invalid subgraph definition in {md_path.relative_to(WORKSPACE_ROOT)}: {line_str}"
+                    )
 
-            # Edge syntax check: ensure arrows don't point to multi-word unquoted identifiers
-            # e.g. "AppBin -->|Spawns tasks| Controller Layer"
-            arrow_match = re.search(r"-->(\|[^|]*\|)?\s*([A-Za-z0-9_]+(\s+[A-Za-z0-9_]+)+)$", line_str)
-            assert arrow_match is None, (
-                f"Invalid edge target with space-separated unquoted identifier in line: {line_str}"
-            )
+                # Edge syntax check: ensure arrows don't point to multi-word unquoted identifiers
+                arrow_match = re.search(r"-->(\|[^|]*\|)?\s*([A-Za-z0-9_]+(\s+[A-Za-z0-9_]+)+)$", line_str)
+                assert arrow_match is None, f"Invalid edge target in {md_path.relative_to(WORKSPACE_ROOT)}: {line_str}"
+
+    assert total_blocks > 0, "At least one mermaid block must be validated across documentation"
 
 
 def test_all_markdown_mermaid_blocks_compile_with_mmdc() -> None:
