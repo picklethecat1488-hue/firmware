@@ -6,17 +6,17 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Review Date** | `2026-10-04 22:47:53 UTC` |
+| **Review Date** | `2026-10-15 22:16:27 UTC` |
 | **Revisions** | `0e1f0ed0d4eca809dea4951c4fb3c5baafa34279` |
 | **Overall Verdict** | **`CHANGES_REQUESTED`** |
 | **Review Progress** | `0/2 files reviewed (0%)` |
-| **Total Comments** | `12 findings` |
+| **Total Comments** | `11 findings` |
 
 ## Findings by Severity
 
 | Severity | Count | Meaning |
 | :--- | :---: | :--- |
-| **[MUST FIX]** | 12 | Must be resolved before merge; bugs, defects, or safety regressions. |
+| **[MUST FIX]** | 11 | Must be resolved before merge; bugs, defects, or safety regressions. |
 | **[PROPOSAL]** | 0 | Architecture ideas, design proposals, or optional enhancements. |
 | **[NIT]** | 0 | Minor formatting, naming, or cosmetic cleanups. |
 
@@ -46,16 +46,6 @@
 
 #### **[MUST FIX]** [app/carrier_board.md:L833](file:///Users/<username>/gh/firmware/app/carrier_board.md#L833)
 <!-- comment-uuid: d678adc1-d8bb-4287-afa1-3bdff7e038d8 -->
-<!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
-
-```markdown
-- **100 Hz Async eDMA Ingestion**: Core 1 runs an Embassy task polling the IQS7222A over $\text{I}^2\text{C}$ at 100 Hz upon `CAP_INT` assertion.
-```
-
-> **Reviewer (Reviewer)**: core 0's sensor controller should be doing this. we just need to specialize it for cap touch devices. I don't see a reason to create a separate polling task for this
-
-#### **[MUST FIX]** [app/carrier_board.md:L833](file:///Users/<username>/gh/firmware/app/carrier_board.md#L833)
-<!-- comment-uuid: f9d898b7-8ca9-4c68-9e2d-adb50e719a7e -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
 
 ```markdown
@@ -187,8 +177,7 @@ flowchart TD
 
 - [x] **[MUST FIX]** [`app/carrier_board.md:L835`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L835): I think we should shoot for >=95% <!-- uuid:acea940c-10e4-4fc0-b758-6e3a281bcfd8 -->
 - [x] **[MUST FIX]** [`app/carrier_board.md:L836`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L836): let's use the same type safe enum gesture type we use for rp2040 <!-- uuid:2ee14223-c270-4375-aed5-d550368a84fb -->
-- [x] **[MUST FIX]** [`app/carrier_board.md:L833`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L833): core 0's sensor controller should be doing this. we just need to specialize it for cap touch devices. I don't see a reason to create a separate polling task for this <!-- uuid:d678adc1-d8bb-4287-afa1-3bdff7e038d8 -->
-- [x] **[MUST FIX]** [`app/carrier_board.md:L833`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L833): we have a FIFO on this chip. can we assume a 10-30Hz poll rate instead? <!-- uuid:f9d898b7-8ca9-4c68-9e2d-adb50e719a7e -->
+- [x] **[MUST FIX]** [`app/carrier_board.md:L833`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L833): we have a FIFO on this chip. can we assume a 10-30Hz poll rate instead? <!-- uuid:d678adc1-d8bb-4287-afa1-3bdff7e038d8 -->
 - [x] **[MUST FIX]** [`app/carrier_board.md:L837`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L837): I'm confused about this statement bcuz I thought core 1 was the "lower power" CPU that would run the system controller, and after boot, core 0 would be running sensor controller and doing all the ML inference and DSP operations because it had the FPU? <!-- uuid:77e5adf8-0009-46b2-9dfe-e13639e5fdc9 -->
 - [x] **[MUST FIX]** [`app/carrier_board.md:L849-L850`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L849-L850): let's swap these- 1F long extra long press initiates BLE pairing, and 1F long press initiates a power down <!-- uuid:445a0d81-1f2a-4531-95b9-3d9ccc62337f -->
 - [x] **[MUST FIX]** [`app/carrier_board.md:L845-L848`](file:///Users/<username>/gh/firmware/app/carrier_board.md#L845-L848): I think it's fine to have everything 1FLT and 1LLT do nothing but send BLE GATT notifications <!-- uuid:b0cbe13a-5c8c-450e-82f9-667279d9924e -->
