@@ -1,192 +1,59 @@
-# Firmware Repository
+# Embedded Rust Firmware & Host Bringup Workstation
 
-This repository contains the Rust-based firmware for our hardware projects, built on a modern, decoupled architecture designed for high testability on the host system and portable execution across microcontrollers.
+Bare-metal `#![no_std]` Rust firmware powered by the **Embassy** asynchronous executor, portable host-testable domain controllers & `embedded-hal` BSPs, and interactive System Shock 2 – Xerxes engineering workstations (**Host Daemon** & **Forge**).
 
-Embedded runtimes execute in bare-metal `#![no_std]` environments powered by the **Embassy** asynchronous framework.
+---
+
+## Featured Demo: Interactive Firmware Tools Walkthrough
+
+<div align="center">
+  <a href="https://www.youtube.com/watch?v=-B0owhFyFh4">
+    <img src="https://img.youtube.com/vi/-B0owhFyFh4/maxresdefault.jpg" alt="Watch the Firmware Tools Demo on YouTube" width="840" />
+  </a>
+  <p>
+    <a href="https://www.youtube.com/watch?v=-B0owhFyFh4"><strong>▶ Watch the Firmware Tools Demo on YouTube</strong></a>
+  </p>
+</div>
+
+The walkthrough showcases the end-to-end embedded firmware & hardware-in-the-loop bringup workflow:
+- **Xerxes Host Workstation & Daemon (`tools/host.py`)**: One-click target compilation & SWD/JTAG flashing (`⚡ Sync`), real-time Segger RTT `defmt` telemetry streaming, interactive embedded CLI console (`shell>`), sequential-storage flash filesystem & symbolicated crash-dump inspection (`fs>`), automated YAML hardware bringup checklists (`bringup>`), and one-click **Target Bug** (`WORM-*`) diagnostic capture.
+- **Forge Workstation (`tools/forge.py`)**: Unified **Smartlog DAG & Diff Viewer**, inline **Code Review**, and **Worm Defect Matrix** backed by dual-layer SQLite + detached-worktree Markdown synchronization and Git LFS attachments.
+
+---
+
+## Quick Start
+
+```bash
+conda env create -f environment.yml && conda activate firmware-env
+
+python tools/host.py           # Launch interactive Xerxes Host Bringup, RTT & Flash Workstation
+python tools/forge.py          # Launch VCS Diff / Smartlog / Code Review / Worm Matrix Workstation
+./tools/verify.sh              # Run parallel Rust, AST, Oxlint JS, Node & Pytest verification
+```
+
+For toolchain setup, flashing commands, `cargo nextest`, and full CLI subcommands, see **[CLI Tools, Flashing, Host Daemon & Verification Workflows](docs/cli_and_workflows.md)**.
 
 ---
 
 ## Supported Hardware Targets
 
-*   **[Cat Fountain / Cat Detector](docs/cat_fountain_architecture.md)**: An autonomous pet proximity detection, dual-sensor gesture recognition, and water pump system running on the **Raspberry Pi Pico (RP2040)**.
-    *   Architecture Specification: [`docs/cat_fountain_architecture.md`](docs/cat_fountain_architecture.md)
-    *   Bringup & Verification Guide: [`app/cat_detector.md`](app/cat_detector.md) (also available via [`app/cat_fountain.md`](app/cat_fountain.md))
-*   **[Carrier Board 2.0](docs/carrier_board_architecture.md)**: A modular sensor fusion, ML gesture classification, and bidirectional BLE workstation powered by the dual-core **NXP MCX N947** (Cortex-M33 with PowerQuad DSP and eIQ Neutron NPU).
-    *   Architecture Specification: [`docs/carrier_board_architecture.md`](docs/carrier_board_architecture.md)
-    *   Bringup & Verification Guide: [`app/carrier_board.md`](app/carrier_board.md)
+| Target Platform | MCU & Execution Model | Documentation |
+| :--- | :--- | :--- |
+| **[Cat Fountain / Cat Detector](docs/cat_fountain_architecture.md)** | **Raspberry Pi Pico (RP2040)** — Dual-core Cortex-M0+ proximity sensing, dual-ToF gesture detection, current-protected pump control, and flash telemetry. | [Architecture](docs/cat_fountain_architecture.md) · [Bringup Guide](app/cat_detector.md) ([`cat_fountain.md`](app/cat_fountain.md)) |
+| **[Carrier Board 2.0](docs/carrier_board_architecture.md)** | **NXP MCX N947** — Dual-core Cortex-M33 AMP (PowerQuad DSP + eIQ Neutron NPU), capacitive touch gesture fusion, FlexSPI NAND filesystem, and BLE GATT. | [Architecture](docs/carrier_board_architecture.md) · [Bringup Guide](app/carrier_board.md) |
 
 ---
 
-## Architectural Documentation
+## Documentation Index
 
-Comprehensive architectural guidelines and hardware-specific specifications are maintained under [`docs/`](docs):
-
-1.  **[Unified Firmware Architecture Guide](docs/firmware_architecture.md)**: Top-level repository architectural principles, layered crate demarcation, and cross-platform concurrency patterns.
-2.  **[Cat Fountain Architecture Guide](docs/cat_fountain_architecture.md)**: RP2040 dual-core task distribution, ToF data fusion, motor current protection, and MPU stack guards.
-3.  **[Carrier Board 2.0 Architecture Guide](docs/carrier_board_architecture.md)**: NXP MCX N947 dual-core Asymmetric Multiprocessing (AMP), inter-core IPC, FlexSPI SLC NAND filesystem, BLE GATT service endpoint, and power states.
-
-### Modular Subsystem Architecture Guides
-*   [Microcontroller Decoupling & BSPs](docs/mcu_decoupling.md)
-*   [Peripheral Sharing & Concurrency Patterns](docs/peripheral_sharing.md)
-*   [Domain Controller Design, Task Runners & Codegen](docs/controller_design.md)
-*   [Embedded Logging, Tracing & Host Tools](docs/logging_tracing.md)
-*   [Hardware-Firmware Co-Design Architecture](docs/hardware_firmware_codesign.md)
-
----
-
-## Getting Started
-
-### Prerequisites
-
-To build, test, and flash firmware targets, install the required toolchains and utilities:
-
-1.  **Rust Toolchain & Targets**:
-    ```bash
-    rustup target add thumbv6m-none-eabi   # Cortex-M0+ (RP2040)
-    rustup target add thumbv8m.main-none-eabihf  # Cortex-M33 (NXP MCX N947)
-    ```
-2.  **probe-rs** (for flashing, debugging, and RTT streaming):
-    ```bash
-    cargo install probe-rs-tools
-    ```
-
-### Running Tests (Host-Based Validation)
-
-Our decoupled architecture allows validating domain logic, state machines, and control loops directly on the host machine without hardware:
-
-```bash
-# Run tests using cargo-nextest (recommended)
-cargo nextest run
-
-# Or run standard cargo tests
-cargo test
-```
-
-### Building and Flashing
-
-To build and flash firmware to an attached target device:
-
-```bash
-# RP2040 Cat Detector Production App
-cargo run --target thumbv6m-none-eabi --package app --bin cat_detector_app
-
-# RP2040 Diagnostic Shell
-cargo run --target thumbv6m-none-eabi --package app --bin cat_detector_shell
-
-# NXP MCX N947 Carrier Board Diagnostic Shell
-cargo build --target thumbv8m.main-none-eabihf --package app --bin carrier_board_shell
-```
-
-For interactive diagnostic shell commands, host tools, and flash decoding, see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-### Interactive Host Workstation & Daemon (`tools/host.py`)
-
-The repository includes a unified System Shock 2 - Xerxes styled developer workstation and background daemon for flashing target firmware, streaming RTT defmt logs, issuing shell commands, managing the sequential-storage flash filesystem, and executing hardware bringup verification checklists:
-
-```bash
-# Launch interactive workstation (defaults to port 8899 in native desktop window)
-python tools/host.py
-
-# Run in background or headless mode
-python tools/host.py --no-browser --detach
-
-# Forward shell commands directly to running target
-python tools/host.py cli motor speed 100
-python tools/host.py cli battery status
-
-# Inspect or manipulate target sequential-storage flash filesystem
-python tools/host.py fs ls
-python tools/host.py fs cat metadata
-python tools/host.py fs crash-log
-
-# Parse and run hardware bringup verification checklists
-python tools/host.py bringup --list
-python tools/host.py bringup --script app/cat_detector_bringup.yaml --run
-
-# Trigger target compilation, flashing, and RTT synchronization
-python tools/host.py sync
-python tools/host.py reset
-python tools/host.py status
-python tools/host.py stop
-```
-
-### Unified VCS Workstation, Code Review & Defect Tracker (`tools/forge.py`)
-
-For local code reviews, smartlog DAG visualization, commit diffs, and defect (worm) tracking:
-
-```bash
-# Launch forge workstation (default port 8877)
-python tools/forge.py
-
-# CLI inspection
-python tools/forge.py list-reviews --open
-python tools/forge.py list-worms --open
-```
-
-### Python Utilities & Bringup Environment
-
-Hardware bringup scripts, host daemon utilities, and dashboard tooling rely on a dedicated Conda environment:
-
-```bash
-# Create and activate the conda environment
-conda env create -f environment.yml
-conda activate firmware-env
-
-# Run Python unit tests
-pytest tools/tests
-```
-
----
-
-## Workspace Architecture
-
-The workspace is organized into target-agnostic crates for logic/simulation, target-independent platform libraries, and target-specific project deployments:
-
-*   **[`model/`](model)**: Core platform-independent system models, state machines, protocols, and calculations (pure `#![no_std]`, zero external dependencies).
-*   **[`peripheral/`](peripheral)**: Drivers and wrappers implementing `embedded-hal` trait interfaces (e.g. `VL53L0X`, `INA219`, `MAX17048`, `LP5009`, `IQS7222A`), alongside mocks for host testing.
-*   **[`controller/`](controller)**: Hardware-agnostic domain controllers and state machine orchestrators consuming peripheral traits.
-*   **[`platform/`](platform)**: Target-independent firmware platform support, structured `defmt` logging, stack scanning, and crash log capturing.
-*   **[`board/`](board)**: Board Support Packages (BSPs) managing pinouts, clocks, bus routing, and `Board::init()`.
-*   **[`app/`](app)**: Target application binaries, diagnostic shells, and bringup verification definitions.
-
-### Layered Architecture Diagram
-
-```mermaid
-graph TD
-    subgraph Controller_Layer ["Controller Layer [controller]"]
-        SC["SystemController"]
-        MC["MotorController"]
-        BC["BatteryController"]
-        TC["ThermalController"]
-        SNC["SensorController"]
-        LC["LedController"]
-        FC["FilesystemController"]
-        TMC["TelemetryController"]
-        ShC["ShellController"]
-    end
-
-    subgraph Domain_Models ["Domain Models [model]"]
-        TM["Telemetry Types & States"]
-        TR["Peripheral Traits"]
-    end
-
-    subgraph Peripherals ["Peripherals [peripheral]"]
-        HAL["embedded-hal Drivers & Mocks"]
-    end
-
-    subgraph Board_Support ["Board Support [board]"]
-        BSP["Board::init (RP2040 / MCX N947)"]
-    end
-
-    subgraph Application_Binaries ["Application Binaries [app]"]
-        AppBin["cat_detector_app / carrier_board"]
-        ShellBin["cat_detector_shell / carrier_board_shell"]
-    end
-
-    AppBin -->|Spawns tasks| Controller_Layer
-    ShellBin -->|Executes| ShC
-    Controller_Layer -->|Queries & Updates| Domain_Models
-    Controller_Layer -->|Drives| Peripherals
-    Peripherals -->|Implements| TR
-    ShellBin -->|Resolves devices on| BSP
-```
+- **[CLI Tools, Flashing, Host Daemon & Verification Workflows](docs/cli_and_workflows.md)** — Rust/`probe-rs`/Conda setup, `cargo nextest`, target flashing, `tools/host.py`, `tools/forge.py`, and `./tools/verify.sh`.
+- **[Unified Firmware Architecture Guide](docs/firmware_architecture.md)** — Layered workspace crate demarcation (`model`, `peripheral`, `controller`, `platform`, `board`, `app`) and runtime task topology.
+- **[Microcontroller Decoupling & BSPs](docs/mcu_decoupling.md)** — `Board::init` hardware encapsulation, target-agnostic `embedded-hal` drivers, and host mock parity.
+- **[Peripheral Sharing & Concurrency Patterns](docs/peripheral_sharing.md)** — Zero-allocation Embassy actor channels vs diagnostic shell interior mutability.
+- **[Domain Controller Design, Task Runners & Codegen](docs/controller_design.md)** — `#[controller_context]` isolation and Rinja build-time code generation (`controllers.toml` / `shell.toml`).
+- **[Embedded Logging, Tracing & Host Tools](docs/logging_tracing.md)** — Structured `defmt` telemetry, zero-alloc `#[tracing::instrument]` Perfetto spans, `host_cli`, and `host_fs`.
+- **[JavaScript Style, Zero-Globals & Workstation UI Architecture](docs/javascript_style_architecture.md)** — Modular `tools/js/` ES modules for `host.py` & `forge.py`, strict `runtime_context.js` isolation, and parallel `node --test` suites.
+- **[VCS Workstation, Code Review & Xerxes HUD Templates](docs/vcs_code_review.md)** — `tools/forge.py` architecture, Smartlog DAG, dual-layer SQLite/Markdown sync, and Git LFS worm attachments.
+- **[Remote Cloud Runner (`anvil` / Vast.ai)](docs/remote_cloud_runner.md)** — Remote Rust/Python verification, cloud builds, and reverse-proxied local hardware CLI execution.
+- **[Hardware-Firmware Co-Design](docs/hardware_firmware_codesign.md)** & **[Component Downselection Report](docs/downselection_report.md)** — Bare-metal Rust component qualification, register maps, and power/sensor trade studies.
+- **[Contributing Guide](CONTRIBUTING.md)** — Coding conventions, `Cortex-Debug` / `probe-rs` debugging, compile-time RAM/flash profiling, and `board.toml` / `app.toml` schemas.
