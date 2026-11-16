@@ -13,7 +13,7 @@ The firmware is designed around three architectural pillars:
 
 ```mermaid
 graph TD
-    subgraph Architecture Crates
+    subgraph Architecture_Crates ["Architecture Crates"]
         M["model<br/>(Pure no_std Domain Models & Traits)"]
         P["peripheral<br/>(embedded-hal Drivers & Mocks)"]
         C["controller<br/>(Domain FSMs & Async Task Runners)"]
@@ -44,6 +44,48 @@ The repository workspace divides responsibilities across specialized, decoupled 
 | **[`platform`](../platform)** | Platform support utilities: structured logging, stack scanning, panic handlers. | Target-agnostic ARM Cortex-M and host utilities. | Synchronous panic capture, atomic ring buffers. |
 | **[`board`](../board)** | Board Support Packages (BSPs). Encapsulates pinouts, clocks, and peripheral bus setup. | Target-specific silicon bindings (RP2040, NXP MCX N947). | Hardware initialization routines (`Board::init`). |
 | **[`app`](../app)** | Application binaries (`main`), diagnostic shells, and bringup runners. | Target-specific deployment configurations. | Spawns Embassy executors and runs task loops. |
+
+### Layered Controller & Runtime Topology
+
+```mermaid
+graph TD
+    subgraph Controller_Layer ["Controller Layer [controller]"]
+        SC["SystemController"]
+        MC["MotorController"]
+        BC["BatteryController"]
+        TC["ThermalController"]
+        SNC["SensorController"]
+        LC["LedController"]
+        FC["FilesystemController"]
+        TMC["TelemetryController"]
+        ShC["ShellController"]
+    end
+
+    subgraph Domain_Models ["Domain Models [model]"]
+        TM["Telemetry Types & States"]
+        TR["Peripheral Traits"]
+    end
+
+    subgraph Peripherals ["Peripherals [peripheral]"]
+        HAL["embedded-hal Drivers & Mocks"]
+    end
+
+    subgraph Board_Support ["Board Support [board]"]
+        BSP["Board::init (RP2040 / MCX N947)"]
+    end
+
+    subgraph Application_Binaries ["Application Binaries [app]"]
+        AppBin["cat_detector_app / carrier_board"]
+        ShellBin["cat_detector_shell / carrier_board_shell"]
+    end
+
+    AppBin -->|Spawns tasks| Controller_Layer
+    ShellBin -->|Executes| ShC
+    Controller_Layer -->|Queries & Updates| Domain_Models
+    Controller_Layer -->|Drives| Peripherals
+    Peripherals -->|Implements| TR
+    ShellBin -->|Resolves devices on| BSP
+```
 
 ---
 
