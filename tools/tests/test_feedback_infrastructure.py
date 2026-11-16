@@ -509,3 +509,103 @@ def test_export_markdown_elides_unchanged_write(tmp_path: Path) -> None:
     exporter.export_markdown(db, output_path)
     mtime2 = output_path.stat().st_mtime_ns
     assert mtime1 == mtime2, "export_markdown must elide rewriting identical WORMS.md content"
+
+
+def test_feedback_environment_variable_isolation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify FEEDBACK_DIR environment variable isolates servers from workspace feedback/."""
+    from provider.worm_report.server import WormReportServer
+    from provider.code_review.server import ReviewServer
+    from provider.dashboard.server import DashboardServer
+
+    custom_fb = tmp_path / "custom_isolated_feedback"
+    custom_fb.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("FEEDBACK_DIR", str(custom_fb))
+
+    worm_server = WormReportServer(bind_and_activate=False)
+    assert worm_server.feedback_dir.resolve() == custom_fb.resolve()
+
+    cr_server = ReviewServer(bind_and_activate=False)
+    assert cr_server.feedback_dir.resolve() == custom_fb.resolve()
+
+    dash_server = DashboardServer(bind_and_activate=False)
+    assert dash_server.worm_server.feedback_dir.resolve() == custom_fb.resolve()
+    assert dash_server.review_server.feedback_dir.resolve() == custom_fb.resolve()
+
+
+def test_detached_branch_refuses_to_commit_to_production_worktree_in_tests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Verify DetachedBranchWormStore refuses to mutate production workspace feedback/ in test mode."""
+    import subprocess
+    from provider.worm_report.detached_branch import DetachedBranchWormStore
+    import provider.vcs.git_engine as git_engine
+
+    db = WormDatabaseModel(
+        worms=[
+            WormReportModel(
+                id="WORM-TEST-ISOLATION-001",
+                title="Isolation Guard Test",
+                status=WormStatus.OPEN,
+                severity=WormSeverity.LOW,
+                category=WormCategory.GENERAL,
+            )
+        ]
+    )
+
+    ws_root = git_engine.get_git_root()
+    prod_feedback = ws_root / "feedback"
+    store = DetachedBranchWormStore(repo_root=ws_root)
+    ref_before = store.get_ref_commit()
+
+    res = store.commit_database(db, commit_message="Attempted test commit to prod")
+    assert res is None
+    assert store.get_ref_commit() == ref_before
+    assert not (prod_feedback / "WORM_TEST-ISOLATION-001.md").exists()
+
+    sim_ws = tmp_path / "simulated_prod_ws"
+    sim_ws.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["git", "init"], cwd=sim_ws, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "User"], cwd=sim_ws, check=True)
+    subprocess.run(["git", "config", "user.email", "user@workspace"], cwd=sim_ws, check=True)
+    (sim_ws / "README.md").write_text("init\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=sim_ws, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=sim_ws, check=True, capture_output=True)
+    sim_fb = sim_ws / "feedback"
+    subprocess.run(
+        ["git", "worktree", "add", "--orphan", "-b", "worms", str(sim_fb)],
+        cwd=sim_ws,
+        check=True,
+        capture_output=True,
+    )
+    assert (sim_fb / ".git").is_file()
+
+    monkeypatch.setattr(git_engine, "get_git_root", lambda: sim_ws)
+    sim_store = DetachedBranchWormStore(repo_root=sim_ws)
+    assert sim_store.commit_database(db, commit_message="Attempted test commit to worktree") is None
+    assert not (sim_fb / "WORM_TEST-ISOLATION-001.md").exists()
+
+
+def test_forge_cli_custom_feedback_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Verify forge.py CLI supports --feedback-dir and properly configures isolated feedback directory."""
+    from forge import main
+
+    custom_fb = tmp_path / "cli_feedback"
+    custom_fb.mkdir(parents=True, exist_ok=True)
+    db_file = tmp_path / "cli_test.sqlite"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "forge.py",
+            "--db-file",
+            str(db_file),
+            "--feedback-dir",
+            str(custom_fb),
+            "--list-worms",
+        ],
+    )
+    main()
+    out = capsys.readouterr().out
+    assert "XERXES WORM MATRIX" in out
