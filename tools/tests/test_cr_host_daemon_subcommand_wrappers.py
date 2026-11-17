@@ -10,6 +10,8 @@
 from pathlib import Path
 import subprocess
 import sys
+import threading
+import time
 from unittest.mock import MagicMock, patch
 import pytest
 
@@ -184,12 +186,90 @@ def test_cr_4bdad9c1_help_command_and_rtt_reset():
             assert "--channel" in called_cmd
             assert "both" in called_cmd
 
-    # 3. Verify stop_rtt_streaming cleanly terminates rtt_process
+    # 3. Verify stop_rtt_streaming cleanly terminates rtt_process when still alive after stdin close
     mock_active = MagicMock()
     mock_active.poll.return_value = None
     runner.rtt_process = mock_active
     runner.is_connected = True
     runner.stop_rtt_streaming()
+    mock_active.stdin.close.assert_called_once()
     mock_active.terminate.assert_called_once()
     assert runner.rtt_process is None
     assert runner.is_connected is False
+
+
+def test_execute_cli_wait_for_output_and_graceful_probe_release():
+    """Verify execute_cli(wait_for_output=True) captures RTT lines and probe operations retry USB timeouts."""
+    runner = DaemonRunner(
+        repo_root=REPO_ROOT,
+        target="thumbv6m-none-eabi",
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+    )
+    fake_elf = REPO_ROOT / "target" / "thumbv6m-none-eabi" / "debug" / "cat_detector_shell"
+    runner.elf_path = fake_elf
+
+    # 1. Verify graceful stdin EOF exit in stop_rtt_streaming skips forced terminate()
+    exited = False
+    mock_graceful = MagicMock()
+    mock_graceful.poll.side_effect = lambda: 0 if exited else None
+
+    def _on_stdin_close():
+        nonlocal exited
+        exited = True
+
+    mock_graceful.stdin.close.side_effect = _on_stdin_close
+    runner.rtt_process = mock_graceful
+    runner.stop_rtt_streaming()
+    mock_graceful.stdin.close.assert_called_once()
+    mock_graceful.terminate.assert_not_called()
+
+    # 2. Verify execute_cli(..., wait_for_output=True) returns asynchronous target response lines cleanly
+    mock_rtt = MagicMock()
+    mock_rtt.poll.return_value = None
+
+    def _on_write(data: str) -> None:
+        if "sensor status" in data:
+
+            def _emit_async_sensor() -> None:
+                time.sleep(0.01)
+                runner.log("INFO [controller::shell_controller] command execution succeeded", channel="target")
+                runner.log_cli("north                                   east                                    west")
+                time.sleep(0.09)
+                runner.log_cli(
+                    "INVALID                                 INVALID                                 INVALID"
+                )
+
+            threading.Thread(target=_emit_async_sensor, daemon=True).start()
+        elif "battery status" in data:
+
+            def _emit() -> None:
+                time.sleep(0.02)
+                runner.log_cli("Battery Status:")
+                runner.log_cli("  Voltage: 4022 mV")
+                runner.log_cli("  SoC: 81%")
+                runner.log("INFO [controller::shell_controller] command execution succeeded", channel="target")
+
+            threading.Thread(target=_emit, daemon=True).start()
+
+    mock_rtt.stdin.write.side_effect = _on_write
+    runner.rtt_process = mock_rtt
+
+    cli_out = runner.execute_cli("battery status", wait_for_output=True, timeout=1.0)
+    assert cli_out == "Battery Status:\n  Voltage: 4022 mV\n  SoC: 81%"
+
+    sensor_out = runner.execute_cli("sensor status", wait_for_output=True, timeout=1.0)
+    assert "north" in sensor_out and "INVALID" in sensor_out
+    runner.rtt_process = None
+
+    # 3. Verify transient Segger J-Link bulk write timeout triggers retry in execute_fs
+    usb_timeout_err = 'Error: Failed to open probe: Usb(Custom { kind: TimedOut, error: "bulk write timed out" })'
+    with patch.object(Path, "exists", return_value=True), patch("time.sleep"):
+        with patch.object(
+            runner,
+            "run_host_fs",
+            side_effect=[(1, usb_timeout_err), (0, "metadata  64 bytes\ncrash_0.cbor  512 bytes")],
+        ) as mock_fs:
+            fs_out = runner.execute_fs("ls")
+            assert "metadata  64 bytes" in fs_out
+            assert mock_fs.call_count == 2

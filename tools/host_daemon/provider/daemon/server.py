@@ -29,7 +29,7 @@ from provider.sanitizer import elide_personal_info
 from provider.worm_report.markdown_exporter import MarkdownWormExporter
 from provider.worm_report.sqlite_store import SQLiteWormStore
 
-from host_daemon.provider.daemon.runner import DaemonRunner
+from host_daemon.provider.daemon.runner import DEFAULT_CLI_OUTPUT_TIMEOUT_SEC, DaemonRunner
 
 
 class HostDaemonRequestHandler(BaseHTTPRequestHandler):
@@ -287,7 +287,12 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             self._send_json(res)
         elif path == "/api/cli/execute":
             cmd = payload.get("command", "")
-            output = runner.execute_cli(cmd)
+            wait_for_output = bool(payload.get("wait_for_output", False))
+            if wait_for_output:
+                timeout = float(payload.get("timeout", DEFAULT_CLI_OUTPUT_TIMEOUT_SEC))
+                output = runner.execute_cli(cmd, wait_for_output=True, timeout=timeout)
+            else:
+                output = runner.execute_cli(cmd)
             self._send_json({"success": True, "output": output})
         elif path == "/api/fs/execute":
             cmd = payload.get("command", "")

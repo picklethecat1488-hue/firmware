@@ -80,19 +80,20 @@ class TestBringupIntegration(unittest.TestCase):
         """Verify BringupManager step execution, regex checking, and report generation."""
         mock_runner = MagicMock(spec=DaemonRunner)
         mock_runner.repo_root = self.repo_root
-        mock_runner.execute_cli.return_value = (
-            "Direct battery reading: 3950 mV, 85% state of charge\nCommand succeeded."
-        )
+        mock_runner.execute_cli.return_value = "Battery Status:\n  Voltage: 3950 mV\n  SoC: 85%"
 
         manager = BringupManager(runner=mock_runner, repo_root=self.repo_root)
         cfg = manager.load_script(self.cat_detector_yaml)
         self.assertIsNotNone(cfg)
         self.assertEqual(manager.status, "idle")
 
-        # Set step to step 2 (battery status)
+        # Set step to step 2 (battery status) and verify synchronous CLI output capture + regex auto_pass
         manager.current_step_idx = 1
         step_result = manager.step()
+        mock_runner.execute_cli.assert_called_with("battery status", wait_for_output=True)
         self.assertIn(step_result["status"], ("passed", "waiting_prompt"))
+        self.assertTrue(step_result["prompt"]["auto_pass"])
+        self.assertEqual(step_result["prompt"]["matched_line"], "Voltage: 3950 mV")
 
         # Test responding to a prompt / manual pass
         resp = manager.respond(action="pass", notes="Verified OK")
@@ -100,6 +101,23 @@ class TestBringupIntegration(unittest.TestCase):
         self.assertEqual(len(manager.results), 1)
         self.assertEqual(manager.results[0]["status"], "passed")
         self.assertEqual(manager.results[0]["notes"], "Verified OK")
+
+        # Verify step 4 (sensor status) tabular output auto-passes on valid mm/INVALID and fails on FAILED
+        manager.current_step_idx = 3
+        mock_runner.execute_cli.return_value = (
+            "north                                   east                                    west\n"
+            "124mm                                   INVALID                                 98mm (cal: 100mm)"
+        )
+        sensor_ok = manager.step()
+        self.assertTrue(sensor_ok["prompt"]["auto_pass"])
+
+        manager.current_step_idx = 3
+        mock_runner.execute_cli.return_value = (
+            "north                                   east                                    west\n"
+            "FAILED                                  INVALID                                 INVALID"
+        )
+        sensor_fail = manager.step()
+        self.assertFalse(sensor_fail["prompt"]["auto_pass"])
 
         # Test markdown report generation
         with tempfile.NamedTemporaryFile(suffix=".md", delete=False) as tf:
