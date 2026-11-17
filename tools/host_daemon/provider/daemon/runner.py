@@ -13,6 +13,33 @@ from typing import Any, Deque, Dict, List, Optional, Tuple
 from host_daemon.provider.bringup.bringup_manager import BringupManager
 from host_daemon.provider.daemon.config import infer_arm_target, load_last_session, save_last_session
 
+RTT_STDIN_SHUTDOWN_TIMEOUT_SEC: float = 2.5
+RTT_TERMINATE_TIMEOUT_SEC: float = 2.0
+RTT_STREAM_JOIN_TIMEOUT_SEC: float = 1.0
+RTT_STARTUP_EVENT_TIMEOUT_SEC: float = 0.3
+PROBE_RELEASE_SETTLE_SEC: float = 0.25
+PROBE_RETRY_BACKOFF_SEC: float = 0.6
+MAX_PROBE_OPEN_RETRIES: int = 2
+DEFAULT_CLI_OUTPUT_TIMEOUT_SEC: float = 2.5
+CLI_POLL_INTERVAL_SEC: float = 0.02
+CLI_QUIET_SETTLE_SEC: float = 0.30
+CLI_COMPLETION_SETTLE_SEC: float = 0.30
+ANSI_CLEAR_LINE_SEQ: str = "\x1b[2K"
+SHELL_PROMPT_PREFIX: str = "shell>"
+
+
+def _is_transient_probe_error(output: str) -> bool:
+    """Return True if subprocess output indicates a transient USB debug probe lock or timeout."""
+    lowered = output.lower()
+    return (
+        "bulk write timed out" in lowered
+        or "bulk read timed out" in lowered
+        or "failed to open probe" in lowered
+        or "usb(custom" in lowered
+        or "no debug probes connected" in lowered
+        or "no debug probes were found" in lowered
+    )
+
 
 class DaemonRunner:
     """Manages firmware compilation, device flashing, RTT streaming, and CLI/FS command execution."""
@@ -53,6 +80,7 @@ class DaemonRunner:
         self.fs_outputs: Deque[Dict[str, Any]] = deque(maxlen=5000)
         self._log_seq: int = 0
         self._cli_seq: int = 0
+        self._cli_clear_seq: int = 0
         self._fs_seq: int = 0
         self.command_history: List[str] = []
 
@@ -222,7 +250,10 @@ class DaemonRunner:
             # 3. Flash target device (release probe first)
             if self.is_sync_cancelled:
                 return dict(self.sync_status)
+            rtt_was_running = self.rtt_process is not None and self.rtt_process.poll() is None
             self.stop_rtt_streaming()
+            if rtt_was_running:
+                time.sleep(PROBE_RELEASE_SETTLE_SEC)
             self._update_sync("flashing_target", 3, 75, "Flashing target device via probe-rs...")
             if not self.flash_target():
                 raise RuntimeError(self.status_message or "Flash target failed")
@@ -556,7 +587,17 @@ class DaemonRunner:
                 cmd.append("--release")
             cmd.extend(["--", "--dump"])
 
-            ret, out = self._run_command_streaming(cmd, log_to_cli=False, log_channel="flash")
+            ret, out = 1, ""
+            for attempt in range(MAX_PROBE_OPEN_RETRIES + 1):
+                ret, out = self._run_command_streaming(cmd, log_to_cli=False, log_channel="flash")
+                if ret == 0 or not _is_transient_probe_error(out) or attempt >= MAX_PROBE_OPEN_RETRIES:
+                    break
+                self.log(
+                    f"Transient USB probe timeout during flash (attempt {attempt + 1}); retrying...",
+                    level="WARN",
+                )
+                time.sleep(PROBE_RETRY_BACKOFF_SEC)
+
             if ret == 0:
                 self.is_flashed = True
                 self.status_message = "Flashed & Running"
@@ -570,7 +611,17 @@ class DaemonRunner:
             chip = self.detect_chip()
             cmd_args = ["download", "--chip", chip, "--speed", str(self.speed), str(self.elf_path)]
             self.log(f"Flashing target via probe-rs: {' '.join(cmd_args)}")
-            ret, out = self.run_probe_rs(cmd_args)
+            ret, out = 1, ""
+            for attempt in range(MAX_PROBE_OPEN_RETRIES + 1):
+                ret, out = self.run_probe_rs(cmd_args)
+                if ret == 0 or not _is_transient_probe_error(out) or attempt >= MAX_PROBE_OPEN_RETRIES:
+                    break
+                self.log(
+                    f"Transient USB probe timeout during probe-rs download (attempt {attempt + 1}); retrying...",
+                    level="WARN",
+                )
+                time.sleep(PROBE_RETRY_BACKOFF_SEC)
+
             if ret == 0:
                 self.is_flashed = True
                 self.status_message = "Flashed & Running"
@@ -585,7 +636,7 @@ class DaemonRunner:
         """Reset the target microcontroller via debug probe and reconnect RTT streaming."""
         self.log("Resetting target microcontroller...", channel="system")
         self.stop_rtt_streaming()
-        time.sleep(0.15)
+        time.sleep(PROBE_RELEASE_SETTLE_SEC)
 
         chip_name = self.chip
         if not chip_name and self.elf_path and self.elf_path.exists():
@@ -600,14 +651,24 @@ class DaemonRunner:
         if self.speed:
             cmd_args.extend(["--speed", str(self.speed)])
 
-        ret, out = self.run_probe_rs(cmd_args)
+        ret, out = 1, ""
+        for attempt in range(MAX_PROBE_OPEN_RETRIES + 1):
+            ret, out = self.run_probe_rs(cmd_args)
+            if ret == 0 or not _is_transient_probe_error(out) or attempt >= MAX_PROBE_OPEN_RETRIES:
+                break
+            self.log(
+                f"Transient USB probe timeout during reset (attempt {attempt + 1}); retrying...",
+                level="WARN",
+            )
+            time.sleep(PROBE_RETRY_BACKOFF_SEC)
+
         reset_success = ret == 0
         if reset_success:
             self.log("Target reset successfully via probe-rs", channel="system")
         else:
             self.log(f"probe-rs reset returned {ret}: {out.strip()}", level="WARN")
 
-        time.sleep(0.15)
+        time.sleep(PROBE_RELEASE_SETTLE_SEC)
         self.start_rtt_streaming()
         return {
             "success": True,
@@ -617,17 +678,32 @@ class DaemonRunner:
         }
 
     def stop_rtt_streaming(self) -> None:
-        """Terminate active RTT streaming process to release the USB debug probe."""
-        if self.rtt_process and self.rtt_process.poll() is None:
-            try:
-                self.rtt_process.terminate()
-                self.rtt_process.wait(timeout=2)
-            except Exception:
+        """Gracefully stop active RTT streaming process to release the USB debug probe cleanly."""
+        proc = self.rtt_process
+        if proc and proc.poll() is None:
+            if proc.stdin:
                 try:
-                    self.rtt_process.kill()
+                    proc.stdin.close()
+                except OSError:
+                    pass
+                try:
+                    proc.wait(timeout=RTT_STDIN_SHUTDOWN_TIMEOUT_SEC)
                 except Exception:
                     pass
+            if proc.poll() is None:
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=RTT_TERMINATE_TIMEOUT_SEC)
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
         self.rtt_process = None
+        stream_thread = self._streaming_thread
+        if stream_thread and stream_thread.is_alive() and threading.current_thread() is not stream_thread:
+            stream_thread.join(timeout=RTT_STREAM_JOIN_TIMEOUT_SEC)
+        self._streaming_thread = None
         self.is_connected = False
 
     def start_rtt_streaming(self) -> None:
@@ -648,6 +724,8 @@ class DaemonRunner:
             "--reset",
         ]
 
+        started_event = threading.Event()
+
         def _stream_worker() -> None:
             try:
                 self.rtt_process = subprocess.Popen(
@@ -659,6 +737,7 @@ class DaemonRunner:
                     bufsize=1,
                 )
                 self.is_connected = True
+                started_event.set()
                 self.log("RTT streaming process connected")
                 if self.rtt_process.stdout:
                     for line in iter(self.rtt_process.stdout.readline, ""):
@@ -675,34 +754,145 @@ class DaemonRunner:
                                 self.log(stripped, channel="target")
                             elif stripped in ("shell>", "shell> "):
                                 pass
+                            elif stripped.replace(ANSI_CLEAR_LINE_SEQ, "").strip() in ("", "shell>"):
+                                if ANSI_CLEAR_LINE_SEQ in stripped:
+                                    with self._lock:
+                                        self._cli_clear_seq += 1
                             else:
-                                self.log_cli(stripped)
+                                if ANSI_CLEAR_LINE_SEQ in stripped:
+                                    with self._lock:
+                                        self._cli_clear_seq += 1
+                                cleaned_line = (
+                                    stripped.replace(ANSI_CLEAR_LINE_SEQ, "")
+                                    .removeprefix("shell> ")
+                                    .removeprefix(SHELL_PROMPT_PREFIX)
+                                )
+                                if cleaned_line:
+                                    self.log_cli(cleaned_line)
             except Exception as e:
+                started_event.set()
                 self.log(f"RTT stream error: {e}", level="WARN")
             finally:
+                started_event.set()
                 self.is_connected = False
                 self.log("RTT stream disconnected", level="INFO")
 
         self._streaming_thread = threading.Thread(target=_stream_worker, daemon=True)
         self._streaming_thread.start()
+        started_event.wait(timeout=RTT_STARTUP_EVENT_TIMEOUT_SEC)
 
-    def execute_cli(self, command: str) -> str:
-        """Send command to the interactive CLI shell."""
+    def _collect_cli_output(
+        self,
+        clean_cmd: str,
+        raw_cmd: str,
+        start_cli_seq: int,
+        start_log_seq: int,
+        start_clear_seq: int,
+        timeout: float,
+    ) -> str:
+        """Wait for and collect target CLI output lines emitted after a command dispatch."""
+        deadline = time.monotonic() + max(timeout, CLI_POLL_INTERVAL_SEC)
+        last_output_time: Optional[float] = None
+        done_seen_time: Optional[float] = None
+        prev_count = 0
+        new_cli: List[str] = []
+        new_logs: List[str] = []
+        prompt_seen = False
+
+        while time.monotonic() < deadline:
+            now = time.monotonic()
+            with self._lock:
+                new_cli = [
+                    str(entry["text"])
+                    for entry in self.cli_outputs
+                    if entry["id"] > start_cli_seq and not entry.get("is_input")
+                ]
+                new_logs = [str(entry["message"]) for entry in self.logs if entry["id"] > start_log_seq]
+                prompt_seen = self._cli_clear_seq > start_clear_seq or any(
+                    ANSI_CLEAR_LINE_SEQ in text for text in new_cli
+                )
+
+            meaningful_count = sum(
+                1 for text in new_cli if text.replace(ANSI_CLEAR_LINE_SEQ, "").strip() not in ("", "shell>")
+            )
+            if meaningful_count > prev_count:
+                prev_count = meaningful_count
+                last_output_time = now
+
+            cmd_done_log = any(
+                "command execution succeeded" in msg or "command execution failed" in msg for msg in new_logs
+            )
+            if (prompt_seen or cmd_done_log) and done_seen_time is None:
+                done_seen_time = now
+
+            if done_seen_time is not None:
+                anchor = max(done_seen_time, last_output_time or done_seen_time)
+                if (now - anchor) >= CLI_COMPLETION_SETTLE_SEC:
+                    break
+            elif last_output_time is not None and (now - last_output_time) >= CLI_QUIET_SETTLE_SEC:
+                break
+
+            if self.rtt_process is None or self.rtt_process.poll() is not None:
+                break
+
+            time.sleep(CLI_POLL_INTERVAL_SEC)
+
+        cleaned_lines: List[str] = []
+        for text in new_cli:
+            line = (
+                text.replace(ANSI_CLEAR_LINE_SEQ, "").rstrip().removeprefix("shell> ").removeprefix(SHELL_PROMPT_PREFIX)
+            )
+            if line.strip():
+                cleaned_lines.append(line)
+        if cleaned_lines:
+            return "\n".join(cleaned_lines)
+
+        for msg in new_logs:
+            if "command execution failed" in msg:
+                return f"Command failed: {clean_cmd}"
+
+        if prompt_seen or any("command execution succeeded" in msg for msg in new_logs):
+            return f"Executed: {clean_cmd}"
+
+        return f"Dispatched: {raw_cmd}"
+
+    def execute_cli(
+        self,
+        command: str,
+        wait_for_output: bool = False,
+        timeout: float = DEFAULT_CLI_OUTPUT_TIMEOUT_SEC,
+    ) -> str:
+        """Send command to the interactive CLI shell, optionally waiting for target response lines."""
         clean_cmd = command.strip()
         if clean_cmd:
             with self._lock:
                 self.command_history.append(clean_cmd)
         self.log_cli(f"shell> {command}", is_input=True)
+        with self._lock:
+            start_cli_seq = self._cli_seq
+            start_log_seq = self._log_seq
+            start_clear_seq = self._cli_clear_seq
+
         # If RTT process is actively connected and taking stdin:
         if self.rtt_process and self.rtt_process.stdin and self.rtt_process.poll() is None:
             try:
                 self.rtt_process.stdin.write(command + "\n")
                 self.rtt_process.stdin.flush()
-                return f"Dispatched: {command}"
-            except Exception as e:
+            except OSError as e:
                 err = f"Failed to send to RTT: {e}"
                 self.log_cli(err)
                 return err
+
+            if wait_for_output:
+                return self._collect_cli_output(
+                    clean_cmd=clean_cmd,
+                    raw_cmd=command,
+                    start_cli_seq=start_cli_seq,
+                    start_log_seq=start_log_seq,
+                    start_clear_seq=start_clear_seq,
+                    timeout=timeout,
+                )
+            return f"Dispatched: {command}"
 
         err = "Target CLI is not available (RTT console is not connected). Please synchronize target."
         self.log_cli(err)
@@ -735,11 +925,13 @@ class DaemonRunner:
 
             self.log_fs(f"fs> {subcmd} {' '.join(extra_args)}", is_input=True)
 
-            # Ensure probe is available by pausing RTT streaming if currently running
-            rtt_was_running = self.rtt_process is not None and self.rtt_process.poll() is None
+            # Ensure probe is available by pausing RTT streaming if currently running or starting
+            rtt_was_running = (self.rtt_process is not None and self.rtt_process.poll() is None) or (
+                self._streaming_thread is not None and self._streaming_thread.is_alive()
+            )
             if rtt_was_running:
                 self.stop_rtt_streaming()
-                time.sleep(0.15)
+                time.sleep(PROBE_RELEASE_SETTLE_SEC)
 
             fs_args: List[str] = []
             if self.elf_path and self.elf_path.exists():
@@ -748,7 +940,17 @@ class DaemonRunner:
             fs_args.extend(extra_args)
 
             try:
-                ret, out = self.run_host_fs(fs_args)
+                ret, out = 1, ""
+                for attempt in range(MAX_PROBE_OPEN_RETRIES + 1):
+                    ret, out = self.run_host_fs(fs_args)
+                    if ret == 0 or not _is_transient_probe_error(out) or attempt >= MAX_PROBE_OPEN_RETRIES:
+                        break
+                    self.log(
+                        f"Transient USB probe contention during host_fs '{subcmd}' (attempt {attempt + 1}); retrying...",
+                        level="WARN",
+                    )
+                    self.stop_rtt_streaming()
+                    time.sleep(PROBE_RETRY_BACKOFF_SEC)
                 out = out.strip() or f"Completed {subcmd} (exit code {ret})"
                 return out
             finally:

@@ -81,14 +81,14 @@ sequenceDiagram
 
 To ensure the hardware and firmware designs are fully validated and operating correctly, follow this ordered checklist of functional and system-level test procedures.
 
-The official, executable source of truth for these bringup steps is defined in [projects/cat_detector_bringup.yaml](../projects/cat_detector_bringup.yaml). You can run the interactive bringup checklist runner in `tools/host.py` to guide you through this checklist, compile/flash the correct target binaries automatically, and generate a markdown verification report:
+The official, executable source of truth for these bringup steps is defined in [cat_detector_bringup.yaml](cat_detector_bringup.yaml). You can run the interactive bringup checklist runner in `tools/host.py` to guide you through this checklist, compile/flash the correct target binaries automatically, and generate a markdown verification report:
 
 ```bash
-conda run -n firmware-env python tools/host.py bringup --script projects/cat_detector_bringup.yaml --run
+conda run -n firmware-env python tools/host.py bringup --script app/cat_detector_bringup.yaml --run
 ```
 
 ### 3.1. Verification Prerequisites
-1. Connect a debug probe (e.g. Raspberry Pi Debug Probe) to the RP2040 SWD header.
+1. Connect a debug probe (e.g. Raspberry Pi Debug Probe or Segger J-Link) to the RP2040 SWD header.
 2. Establish a UART/RTT serial connection. The bringup script automatically manages RTT connections during target-side shell commands.
 3. Ensure you have the `conda` environment configured:
    ```bash
@@ -99,7 +99,7 @@ conda run -n firmware-env python tools/host.py bringup --script projects/cat_det
 
 ### 3.2. Ordered Functional Test Checklist
 
-Below is the sequence of bringup steps defined in [projects/cat_detector_bringup.yaml](../projects/cat_detector_bringup.yaml). The bringup script compiles and downloads the required firmware automatically as indicated by `flash_before` directives.
+Below is the sequence of bringup steps defined in [cat_detector_bringup.yaml](cat_detector_bringup.yaml). The bringup script compiles and downloads the required firmware automatically as indicated by `flash_before` directives.
 
 #### Phase 1: Diagnostic Shell (`shell` binary)
 The checklist starts by flashing the diagnostic shell to run low-level hardware verification and calibration commands.
@@ -111,7 +111,7 @@ The checklist starts by flashing the diagnostic shell to run low-level hardware 
 *   **Step 1: Verify Fuel Gauge Communication**
     *   *Type*: Target Shell Command
     *   *Command*: `battery status`
-    *   *Expected Output*: Reports battery voltage and state-of-charge (e.g., `Direct battery reading: 3820 mV, 85% state of charge`).
+    *   *Expected Output*: Reports battery voltage and state-of-charge (e.g., `Battery Status:` with `Voltage: 3950 mV` and `SoC: 85%`).
 *   **Step 2: Verify Thermal Monitoring**
     *   *Type*: Target Shell Command
     *   *Command*: `thermal status`
@@ -119,7 +119,7 @@ The checklist starts by flashing the diagnostic shell to run low-level hardware 
 *   **Step 3: Verify Time-of-Flight (Proximity) Sensors**
     *   *Type*: Target Shell Command
     *   *Command*: `sensor status`
-    *   *Expected Output*: Reports distance readings from North, East, and West sensors (e.g., `Direct proximity readings: North = 100 mm, East = 200 mm, West = 300 mm`).
+    *   *Expected Output*: Reports tabular distance readings for `north`, `east`, and `west` ToF sensors (e.g., `120mm` or `INVALID` when out of range).
 *   **Step 4: Verify RP2040 Microcontroller Temperature**
     *   *Type*: Target Shell Command
     *   *Command*: `thermal mcu`

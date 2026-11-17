@@ -168,7 +168,7 @@ class BringupManager:
         if step.type == BringupStepType.SHELL_COMMAND:
             cmd = step.command or ""
             if self.runner and hasattr(self.runner, "execute_cli"):
-                output_log = self.runner.execute_cli(cmd)
+                output_log = self.runner.execute_cli(cmd, wait_for_output=True)
             else:
                 output_log = f"Simulated shell output for '{cmd}'"
 
