@@ -289,8 +289,16 @@ pub struct RttOptions<'a> {
     pub speed: u32,
 }
 
+/// Establish and run an RTT streaming session against the target device.
 pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
     let mut running = true;
+    let shutdown_requested = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    {
+        let shutdown_flag = std::sync::Arc::clone(&shutdown_requested);
+        let _ = ctrlc::set_handler(move || {
+            shutdown_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+    }
 
     let start_time = std::time::Instant::now();
 
@@ -353,6 +361,9 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut is_reconnecting = false;
     loop {
+        if shutdown_requested.load(std::sync::atomic::Ordering::SeqCst) {
+            running = false;
+        }
         if !running {
             break;
         }
@@ -772,33 +783,45 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // 3. Poll CLI input
-            if let Ok(input_bytes) = stdin_rx.try_recv() {
-                did_work = true;
-                if let Some(cli_down) = cli_down_channel {
-                    // Queue typed characters for echo cancellation
-                    for &b in &input_bytes {
-                        if b == b'\n' || b == b'\r' {
-                            sent_buffer.push(b'\r');
-                            sent_buffer.push(b'\n');
-                        } else {
-                            sent_buffer.push(b);
+            match stdin_rx.try_recv() {
+                Ok(input_bytes) => {
+                    did_work = true;
+                    if let Some(cli_down) = cli_down_channel {
+                        // Queue typed characters for echo cancellation
+                        for &b in &input_bytes {
+                            if b == b'\n' || b == b'\r' {
+                                sent_buffer.push(b'\r');
+                                sent_buffer.push(b'\n');
+                            } else {
+                                sent_buffer.push(b);
+                            }
                         }
-                    }
-                    if sent_buffer.len() > 1024 {
-                        sent_buffer.clear();
-                    }
+                        if sent_buffer.len() > 1024 {
+                            sent_buffer.clear();
+                        }
 
-                    let mut written = 0;
-                    while written < input_bytes.len() {
-                        match cli_down.write(target.as_mut(), &input_bytes[written..]) {
-                            Ok(n) => written += n,
-                            Err(e) => {
-                                run_error = Some(format!("CLI write error: {:?}", e));
-                                break;
+                        let mut written = 0;
+                        while written < input_bytes.len() {
+                            match cli_down.write(target.as_mut(), &input_bytes[written..]) {
+                                Ok(n) => written += n,
+                                Err(e) => {
+                                    run_error = Some(format!("CLI write error: {:?}", e));
+                                    break;
+                                }
                             }
                         }
                     }
                 }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    if stream_cli && !dump {
+                        running = false;
+                    }
+                }
+            }
+
+            if shutdown_requested.load(std::sync::atomic::Ordering::SeqCst) {
+                running = false;
             }
 
             if let Some(secs) = duration {
@@ -835,13 +858,18 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
+        // Explicitly drop core wrapper before probe-rs session to cleanly disconnect USB probe
+        drop(target);
+        drop(probe_rs_session_store);
+        drop(gdb_client_store);
+
         if let Some(err) = run_error {
-            if !running {
+            if !running || shutdown_requested.load(std::sync::atomic::Ordering::SeqCst) {
                 break;
             }
             eprintln!("\nConnection lost: {}. Reconnecting...", err);
             for _ in 0..10 {
-                if !running {
+                if !running || shutdown_requested.load(std::sync::atomic::Ordering::SeqCst) {
                     break;
                 }
                 std::thread::sleep(Duration::from_millis(100));

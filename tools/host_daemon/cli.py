@@ -27,6 +27,7 @@ if str(_tools_dir) not in sys.path:
     sys.path.insert(0, str(_tools_dir))
 
 LOCK_FILE: Path = Path("/tmp/xerxes_host_daemon.lock")
+DEFAULT_DAEMON_REQUEST_TIMEOUT_SEC: float = 45.0
 
 
 def format_clickable_choice(label: str, key: str, action: str, color_ansi: str) -> str:
@@ -178,7 +179,7 @@ def send_daemon_request(
     req = urllib.request.Request(url, data=data, headers=headers, method="POST" if payload is not None else "GET")
 
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=DEFAULT_DAEMON_REQUEST_TIMEOUT_SEC) as resp:
             content = resp.read().decode("utf-8")
             return json.loads(content) if content else {}
     except urllib.error.URLError as e:
@@ -383,7 +384,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             print("Error: Missing CLI command. Usage: host.py cli <command...>", file=sys.stderr)
             return 1
         try:
-            res = send_daemon_request("/api/cli/execute", {"command": cmd_str})
+            res = send_daemon_request("/api/cli/execute", {"command": cmd_str, "wait_for_output": True})
             output = res.get("output", "")
             print(output)
             return 0
@@ -484,7 +485,19 @@ def main(argv: Optional[List[str]] = None) -> int:
 
                 if args.step:
                     res = send_daemon_request("/api/bringup/step", {})
-                    print(f"Executed step on host daemon: {res}")
+                    prompt = res.get("prompt", {})
+                    step_info = res.get("step", {})
+                    print(f"Executed step [{step_info.get('id', '?')}] {step_info.get('name', '')}:")
+                    if prompt.get("output_log"):
+                        for line in str(prompt["output_log"]).strip().splitlines():
+                            print(f"  {line}")
+                    if prompt.get("auto_pass") is True:
+                        print(f"  ✔ Check passed: {prompt.get('matched_line') or 'OK'}")
+                    elif prompt.get("auto_pass") is False:
+                        print("  ✘ Check failed (expected pattern not matched)")
+                    return 0
+
+                if (args.script or args.reset) and not args.run:
                     return 0
             except Exception as e:
                 print(f"Host daemon interaction failed: {e}. Falling back to standalone mode.")

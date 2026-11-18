@@ -100,13 +100,13 @@ cargo test
 
 ```bash
 # RP2040 Cat Detector production application
-cargo run --target thumbv6m-none-eabi --package app --bin cat_detector_app
+cargo run --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_app
 
 # RP2040 interactive diagnostic shell
-cargo run --target thumbv6m-none-eabi --package app --bin cat_detector_shell
+cargo run --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_shell
 
 # NXP MCX N947 Carrier Board diagnostic shell
-cargo build --target thumbv8m.main-none-eabihf --package app --bin carrier_board_shell
+cargo build --target thumbv8m.main-none-eabihf --package cat_detector --bin carrier_board_shell
 
 # Build complete MCU firmware artifacts into target/out/
 ./tools/build/build_firmware.sh

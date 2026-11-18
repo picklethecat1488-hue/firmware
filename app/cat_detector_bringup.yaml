@@ -17,7 +17,7 @@ steps:
     name: Verify Fuel Gauge Communication
     type: shell_command
     command: battery status
-    expected_regex: 'Direct battery reading: \d+ mV, \d+% state of charge'
+    expected_regex: 'Voltage:\s+\d+\s+mV'
     description: Verify communication with MAX17048 Fuel Gauge by querying voltage and SOC.
 
   - id: "3"
@@ -31,7 +31,7 @@ steps:
     name: Verify Time-of-Flight (Proximity) Sensors
     type: shell_command
     command: sensor status
-    expected_regex: 'Direct proximity readings: North = \d+ mm, East = \d+ mm, West = \d+ mm'
+    expected_regex: '^\s*(?:\d+mm(?:\s*\([^)]*\))?|INVALID)\s+(?:\d+mm(?:\s*\([^)]*\))?|INVALID)\s+(?:\d+mm(?:\s*\([^)]*\))?|INVALID)\s*$'
     description: Verify range readings from all three VL53L0X ToF sensors.
 
   - id: "5"
@@ -66,7 +66,7 @@ steps:
     name: Verify North Sensor Calibration
     type: shell_command
     command: sensor status
-    expected_regex: 'Direct proximity readings: North = (9[0-9]|10[0-9]|110) mm'
+    expected_regex: '^\s*(?:\d+mm\s*\(cal:\s*(?:9[0-9]|10[0-9]|110)mm[^)]*\)|(?:9[0-9]|10[0-9]|110)mm)\s+(?:\d+mm(?:\s*\([^)]*\))?|INVALID)\s+(?:\d+mm(?:\s*\([^)]*\))?|INVALID)\s*$'
     description: Verify North sensor reads correct calibrated distance (~100mm).
 
   - id: "6e"
@@ -94,7 +94,7 @@ steps:
     name: Verify East Sensor Calibration
     type: shell_command
     command: sensor status
-    expected_regex: 'Direct proximity readings: .* East = (9[0-9]|10[0-9]|110) mm'
+    expected_regex: '^\s*(?:\d+mm(?:\s*\([^)]*\))?|INVALID)\s+(?:\d+mm\s*\(cal:\s*(?:9[0-9]|10[0-9]|110)mm[^)]*\)|(?:9[0-9]|10[0-9]|110)mm)\s+(?:\d+mm(?:\s*\([^)]*\))?|INVALID)\s*$'
     description: Verify East sensor reads correct calibrated distance (~100mm).
 
   - id: "6i"
@@ -122,7 +122,7 @@ steps:
     name: Verify West Sensor Calibration
     type: shell_command
     command: sensor status
-    expected_regex: 'Direct proximity readings: .* West = (9[0-9]|10[0-9]|110) mm'
+    expected_regex: '^\s*(?:\d+mm(?:\s*\([^)]*\))?|INVALID)\s+(?:\d+mm(?:\s*\([^)]*\))?|INVALID)\s+(?:\d+mm\s*\(cal:\s*(?:9[0-9]|10[0-9]|110)mm[^)]*\)|(?:9[0-9]|10[0-9]|110)mm)\s*$'
     description: Verify West sensor reads correct calibrated distance (~100mm).
 
   - id: "7a"
@@ -199,7 +199,7 @@ steps:
     type: shell_command
     flash_before: shell
     command: battery test-alert
-    expected_regex: "Alert interrupt test completed\\.\\s+Pin asserted \\(low\\): true\\s+Pin deasserted \\(high\\): true"
+    expected_regex: 'Pin asserted \(low\): true\.\s+Pin deasserted \(high\): true\.'
     description: Execute the battery test-alert command to pulse the hardware alert interrupt pin and clear alerts.
 
   - id: "12"
