@@ -30,7 +30,7 @@ conda activate firmware-env
 
 ## 2. Interactive Xerxes Host Workstation & Daemon (`tools/host.py`)
 
-`tools/host.py` provides a System Shock 2 – Xerxes styled desktop/web workstation and background daemon for target synchronization (`⚡ Sync`), real-time RTT `defmt` log streaming, bidirectional embedded shell commands (`shell>`), sequential-storage flash filesystem management (`fs>`), automated YAML hardware bringup checklists (`bringup>`), and one-click **Target Bug** (`WORM-*`) diagnostic packaging:
+`tools/host.py` provides a System Shock 2 – Xerxes styled desktop/web workstation and background daemon for target synchronization (`⚡ Sync`), real-time RTT `defmt` log streaming, bidirectional embedded shell commands (`CLI` mode), sequential-storage flash filesystem management (`FS` mode), interactive `@device_test` scanning/filtering/execution (`TEST` mode, superseding the legacy bringup UI), and one-click **Target Bug** (`WORM-*`) diagnostic packaging:
 
 ```bash
 # Launch interactive workstation (defaults to port 8899 in native desktop window)
@@ -53,8 +53,8 @@ python tools/host.py fs board-type
 python tools/host.py test --list
 python tools/host.py test --scenario smoke
 python tools/host.py test --scenario integration
-python tools/host.py test tools/device_tests/suites/test_cat_detector_bringup.py --interactive
-python tools/host.py test --script tools/device_tests/suites/test_carrier_board_bringup.py --interactive
+python tools/host.py test tools/device_tests/suites/test_cat_detector_bringup.py --manual
+python tools/host.py test --script tools/device_tests/suites/test_carrier_board_bringup.py --manual
 
 # Trigger target compilation, flashing, hardware reset, or daemon teardown
 python tools/host.py sync

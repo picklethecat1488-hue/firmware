@@ -14,6 +14,7 @@ import { applyUiScale } from "../core/ui_scale.js";
 import { createCliConsole, WORKSTATION_MODES } from "./cli_console.js";
 import { createRttStream } from "./rtt_stream.js";
 import { createTargetConfig } from "./target_config.js";
+import { createTestRunner } from "./test_runner.js";
 import { createWormReporter } from "./worm_reporter.js";
 
 export const UI_SCALES = Object.freeze([
@@ -55,8 +56,15 @@ export class DaemonApp {
       onCommandClick: (cmd) => this.cliConsole.handleCommandClick(cmd),
     });
 
+    this.testRunner = createTestRunner(ctx);
+
     this.cliConsole = createCliConsole(ctx, {
       initialMode,
+      onModeChange: async (mode) => {
+        if (mode === WORKSTATION_MODES.TEST) {
+          await this.testRunner.ensureInitialized();
+        }
+      },
     });
 
     this.targetConfig = createTargetConfig(ctx, {
@@ -120,7 +128,11 @@ export class DaemonApp {
     this._unsubscribers.push(cleanupResizer);
 
     this.wormReporter.init();
+    this.testRunner.init();
     await this.cliConsole.init();
+    if (this.cliConsole.getMode() === WORKSTATION_MODES.TEST) {
+      await this.testRunner.ensureInitialized();
+    }
     await this.targetConfig.init();
 
     await this.pollAll();
@@ -218,9 +230,15 @@ export class DaemonApp {
     bindClick(this.collapseLogBtn, handleToggleLogs);
     bindClick(this.clearOutputBtn, () => this.clearOutputs());
     bindClick(this.copyLogBtn, () => this.rttStream.copyLogs(this.copyLogBtn));
-    bindClick(this.copyWorkstationBtn, () =>
-      this.cliConsole.copyActiveOutput(this.copyWorkstationBtn),
-    );
+    bindClick(this.copyWorkstationBtn, () => {
+      if (this.cliConsole.getMode() === WORKSTATION_MODES.TEST) {
+        return this.testRunner.copyConsoleOutput(this.copyWorkstationBtn);
+      }
+      return this.cliConsole.copyActiveOutput(this.copyWorkstationBtn);
+    });
+    bindClick(this.manualPromptBanner, () => {
+      this.cliConsole.setMode(WORKSTATION_MODES.TEST);
+    });
 
     const onViewportKeyDown = (event) => this._handleGlobalKeyDown(event);
     this.ctx.addViewportListener("keydown", onViewportKeyDown);
@@ -302,6 +320,7 @@ export class DaemonApp {
   clearOutputs() {
     this.rttStream.clear();
     this.cliConsole.clear();
+    this.testRunner.clearConsole();
   }
 
   /**
@@ -310,34 +329,44 @@ export class DaemonApp {
    * @returns {Promise<void>}
    */
   async pollManualPrompt() {
-    if (!this.manualPromptBanner || !this.manualPromptSummary) {
-      return;
-    }
     try {
       const data = await this.ctx.fetchJson("/api/manual_prompt");
-      if (data && data.active) {
+      this.testRunner.renderManualPrompt(data);
+      if (!this.manualPromptBanner || !this.manualPromptSummary) {
+        return;
+      }
+      if (data && data.active && this.cliConsole.getMode() !== WORKSTATION_MODES.TEST) {
         this.manualPromptBanner.style.display = "flex";
-        this.manualPromptSummary.textContent = `[${data.project || "device"}] ${data.test_name}: ${data.procedure} — ${data.prompt}`;
+        this.manualPromptSummary.textContent = `[${data.project || "device"}] ${data.test_name}: ${data.procedure} — ${data.prompt} (Click to respond in TEST mode)`;
       } else {
         this.manualPromptBanner.style.display = "none";
         this.manualPromptSummary.textContent = "";
       }
     } catch {
-      this.manualPromptBanner.style.display = "none";
+      if (this.manualPromptBanner) {
+        this.manualPromptBanner.style.display = "none";
+      }
     }
   }
 
   /**
-   * Poll RTT system logs, CLI/FS outputs, and active manual prompt context once.
+   * Poll RTT system logs, CLI/FS outputs, Test Mode status, and active manual prompt context once.
    *
    * @returns {Promise<void>}
    */
   async pollAll() {
-    await Promise.all([
+    const tasks = [
       this.rttStream.pollLogs(),
       this.cliConsole.pollOutputs(),
       this.pollManualPrompt(),
-    ]);
+    ];
+    if (
+      this.cliConsole.getMode() === WORKSTATION_MODES.TEST ||
+      this.testRunner.isRunning
+    ) {
+      tasks.push(this.testRunner.pollStatus());
+    }
+    await Promise.all(tasks);
   }
 
   /**
@@ -354,6 +383,7 @@ export class DaemonApp {
     this._unsubscribers = [];
     this.rttStream.destroy();
     this.cliConsole.destroy();
+    this.testRunner.destroy();
     this.targetConfig.destroy();
     this.wormReporter.destroy();
   }

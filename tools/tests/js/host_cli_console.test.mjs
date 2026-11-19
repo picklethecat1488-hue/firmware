@@ -23,6 +23,7 @@ function buildCliDom(ctx) {
   });
   const cliView = createEl(ctx, "div", { id: "cliView", style: { display: "block" } });
   const fsView = createEl(ctx, "div", { id: "fsView", style: { display: "none" } });
+  const testView = createEl(ctx, "div", { id: "testView", style: { display: "none" } });
 
   const fuzzyCloseBtn = createEl(ctx, "button", { id: "btnCloseFuzzyHistory", text: "✕" });
   const fuzzySearchInput = createEl(ctx, "input", { id: "fuzzySearchInput" });
@@ -37,6 +38,7 @@ function buildCliDom(ctx) {
   const cmdInput = createEl(ctx, "input", { id: "cmdInput" });
   const submitBtn = createEl(ctx, "button", { id: "btnSubmitCmd", text: "Send [↵]" });
   const footer = createEl(ctx, "footer", {
+    id: "cliInputBar",
     className: "cli-input-bar",
     children: [fuzzyContainer, promptLabel, cmdInput, submitBtn],
   });
@@ -47,6 +49,7 @@ function buildCliDom(ctx) {
   doc.body.appendChild(fsToolbar);
   doc.body.appendChild(cliView);
   doc.body.appendChild(fsView);
+  doc.body.appendChild(testView);
   doc.body.appendChild(footer);
 
   return {
@@ -56,6 +59,8 @@ function buildCliDom(ctx) {
     fsToolbar,
     cliView,
     fsView,
+    testView,
+    footer,
     fuzzyContainer,
     fuzzySearchInput,
     fuzzyResultsList,
@@ -166,8 +171,20 @@ describe("Host Daemon Interactive CLI & Filesystem Console", () => {
     assert.ok(ctx.getCopiedText().includes("fs> ls"));
     assert.ok(ctx.getCopiedText().includes("telemetry.bin"));
 
+    // Switch to TEST mode -> shows #testView and hides CLI/FS views & command input bar
+    await cli.setMode(WORKSTATION_MODES.TEST);
+    assert.equal(cli.getMode(), WORKSTATION_MODES.TEST);
+    assert.equal(dom.testView.style.display, "flex");
+    assert.equal(dom.cliView.style.display, "none");
+    assert.equal(dom.fsView.style.display, "none");
+    assert.equal(dom.fsToolbar.style.display, "none");
+    assert.equal(dom.footer.style.display, "none");
+    assert.ok(dom.panelTitle.textContent.includes("TEST RUNNER"));
+
     // Switch back to CLI and verify target offline disables workstation
     await cli.setMode(WORKSTATION_MODES.CLI);
+    assert.equal(dom.testView.style.display, "none");
+    assert.equal(dom.footer.style.display, "flex");
     simulateOffline = true;
     await cli.submitCommand("help");
     assert.equal(dom.cmdInput.disabled, true);

@@ -85,6 +85,10 @@ function mountFullDaemonDom(ctx) {
     ["span", "manualPromptSummary"],
     ["div", "cliView"],
     ["div", "fsView"],
+    ["div", "testView"],
+    ["div", "testManualPromptCard"],
+    ["tbody", "testTableBody"],
+    ["div", "testConsoleOutput"],
     ["div", "cliFuzzyHistory"],
     ["input", "fuzzySearchInput"],
     ["button", "btnCloseFuzzyHistory"],
@@ -145,8 +149,22 @@ describe("Host Daemon Root Workstation Application (DaemonApp)", () => {
         "GET /api/fs/output": { status: 200, body: [] },
         "GET /api/cli/history": { status: 200, body: { history: ["help", "gpio status"] } },
         "GET /api/sync/status": { status: 200, body: { active: false, step: "idle", progress: 0 } },
-        "POST /api/mode": { status: 200, body: { success: true, mode: "FS" } },
+        "POST /api/mode": { status: 200, body: { success: true, mode: "TEST" } },
         "GET /api/manual_prompt": () => ({ status: 200, body: activePromptState }),
+        "POST /api/tests/scan": {
+          status: 200,
+          body: { success: true, tests: [], facets: {}, detected_board: null },
+        },
+        "GET /api/tests/status": () => ({
+          status: 200,
+          body: {
+            active: false,
+            step: "idle",
+            results_map: {},
+            console: [],
+            manual_prompt: activePromptState,
+          },
+        }),
       },
     });
 
@@ -205,6 +223,12 @@ describe("Host Daemon Root Workstation Application (DaemonApp)", () => {
     dom.btnClearOutput.click();
     assert.equal(dom.logView.children.length, 0);
     assert.equal(dom.cliView.children.length, 0);
+
+    // Clicking #manualPromptBanner transitions workstation directly into TEST mode
+    dom.manualPromptBanner.click();
+    await Promise.resolve();
+    assert.equal(app.cliConsole.getMode(), "TEST");
+    assert.equal(dom.testView.style.display, "flex");
 
     // Periodic 1000ms background poll fires while active and stops after destroy()
     const beforeTick = logsPollCount;

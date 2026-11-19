@@ -14,6 +14,7 @@ import { extractOscCommand, isSelectionInside, renderTerminalHtml } from "./rtt_
 export const WORKSTATION_MODES = Object.freeze({
   CLI: "CLI",
   FS: "FS",
+  TEST: "TEST",
 });
 
 const FOLLOWUP_POLL_SHORT_MS = 100;
@@ -63,7 +64,9 @@ export class CliConsoleController {
     this.modeSelect = resolveElement(ctx, options.modeSelect || "modeSelect");
     this.cliView = resolveElement(ctx, options.cliView || "cliView");
     this.fsView = resolveElement(ctx, options.fsView || "fsView");
+    this.testView = resolveElement(ctx, options.testView || "testView");
     this.fsToolbar = resolveElement(ctx, options.fsToolbar || "fsToolbar");
+    this.footerBar = resolveElement(ctx, options.footerBar || "cliInputBar");
     this.promptLabel = resolveElement(ctx, options.promptLabel || "promptLabel");
     this.cmdInput = resolveElement(ctx, options.cmdInput || "cmdInput");
     this.submitBtn = resolveElement(ctx, options.submitBtn || "btnSubmitCmd");
@@ -366,7 +369,25 @@ export class CliConsoleController {
       this.modeSelect.value = mode;
     }
 
+    const doc = this.ctx.getDocument();
+    const footerEl = this.footerBar || (doc ? doc.querySelector(".cli-input-bar") : null);
+
     let nextPlaceholder = DEFAULT_CLI_PLACEHOLDER;
+    if (mode === WORKSTATION_MODES.TEST) {
+      if (this.cliView) this.cliView.style.display = "none";
+      if (this.fsView) this.fsView.style.display = "none";
+      if (this.fsToolbar) this.fsToolbar.style.display = "none";
+      if (this.testView) this.testView.style.display = "flex";
+      if (footerEl) footerEl.style.display = "none";
+      if (this.panelTitle) {
+        this.panelTitle.textContent = "ON-DEVICE TEST RUNNER (device_tests)";
+      }
+      return;
+    }
+
+    if (this.testView) this.testView.style.display = "none";
+    if (footerEl) footerEl.style.display = "flex";
+
     if (mode === WORKSTATION_MODES.FS) {
       if (this.cliView) this.cliView.style.display = "none";
       if (this.fsView) this.fsView.style.display = "block";

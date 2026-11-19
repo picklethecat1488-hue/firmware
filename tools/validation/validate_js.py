@@ -491,6 +491,7 @@ def build_template_variants(template_path: Path, repo_root: Path) -> List[Templa
         sample_packages = [{"package": "cat_detector", "bins": ["app"]}]
         cli_runner = MockDaemonRunner(active_mode="CLI", release=False, show_system_logs=False)
         fs_runner = MockDaemonRunner(active_mode="FS", release=True, show_system_logs=True)
+        test_runner = MockDaemonRunner(active_mode="TEST", release=False, show_system_logs=True)
         return [
             TemplateVariant(
                 variant_name="cli_mode",
@@ -508,6 +509,15 @@ def build_template_variants(template_path: Path, repo_root: Path) -> List[Templa
                     "package_selection_mode": True,
                     "target_packages": sample_packages,
                     "last_session": {"package": "cat_detector", "bin_name": "app"},
+                },
+            ),
+            TemplateVariant(
+                variant_name="test_mode",
+                context={
+                    "runner": test_runner,
+                    "package_selection_mode": False,
+                    "target_packages": sample_packages,
+                    "last_session": None,
                 },
             ),
         ]
