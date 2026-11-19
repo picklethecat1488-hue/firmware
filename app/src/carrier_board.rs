@@ -1,10 +1,302 @@
 //! Carrier Board 2.0 Hardware Support Package & Bringup Library.
 //!
 //! Provides hardware constants, pinout mappings, memory configurations,
-//! and initial bringup shell diagnostic routines for the Carrier Board 2.0
-//! architecture powered by the NXP MCX N947 dual-core microcontroller.
+//! controller orchestration, and interactive bringup shell configuration for the
+//! Carrier Board 2.0 architecture powered by the NXP MCX N947 dual-core microcontroller.
 
 #![deny(missing_docs)]
+
+pub use board::carrier_board::{
+    get_boot_reason, AlertPinType, BatteryDevice, Board, BoardPeripherals, ChargerDevice,
+    FlashDevice, LedDevice, McxTempSensor, MutexRaw, TempSensorDevice,
+};
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+pub use board::carrier_board::handle_panic;
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Global `OnceLock` static holding the initialized Carrier Board 2.0 BSP.
+pub static BOARD: platform::OnceLock<Board<'static>> = platform::OnceLock::new();
+
+/// System command channel for Carrier Board 2.0.
+pub static SYSTEM_CHANNEL: controller::SystemChannel<MutexRaw, 16> =
+    controller::SystemChannel::new();
+/// Thermal controller command channel for Carrier Board 2.0.
+pub static THERMAL_CHANNEL: controller::ThermalChannel<MutexRaw, 4> =
+    controller::ThermalChannel::new();
+/// Thermal update action channel for Carrier Board 2.0.
+pub static THERMAL_ACTION_CHANNEL: embassy_sync::channel::Channel<
+    MutexRaw,
+    controller::types::ThermalUpdateAction,
+    4,
+> = embassy_sync::channel::Channel::new();
+/// Battery controller command channel for Carrier Board 2.0.
+pub static BATTERY_CHANNEL: controller::BatteryChannel<MutexRaw, 4> =
+    controller::BatteryChannel::new();
+/// LED controller command channel for Carrier Board 2.0.
+pub static LED_CHANNEL: controller::LedChannel<MutexRaw, 4> = controller::LedChannel::new();
+/// Telemetry event channel for Carrier Board 2.0.
+pub static TELEMETRY_CHANNEL: controller::TelemetryChannel<
+    MutexRaw,
+    { controller::telemetry_controller::CHANNEL_CAPACITY },
+> = controller::TelemetryChannel::new();
+
+/// Feature set implementing [`controller::SystemFeatureSet`] for Carrier Board 2.0.
+#[allow(clippy::type_complexity)]
+pub struct CarrierBoardFeatureSet {
+    /// Active system feature tuple (Battery, LED, Thermal).
+    pub features: (
+        controller::BatteryFeatureConfig<MutexRaw>,
+        controller::LedFeatureConfig<MutexRaw>,
+        controller::ThermalFeatureConfig<MutexRaw>,
+    ),
+}
+
+impl controller::SystemFeatureSet<MutexRaw, 3> for CarrierBoardFeatureSet {
+    type Features = (
+        controller::BatteryFeatureConfig<MutexRaw>,
+        controller::LedFeatureConfig<MutexRaw>,
+        controller::ThermalFeatureConfig<MutexRaw>,
+    );
+
+    fn features(&self) -> &Self::Features {
+        &self.features
+    }
+
+    fn inactivity_timeout_seconds(&self) -> u32 {
+        30
+    }
+}
+
+/// Create the default [`CarrierBoardFeatureSet`] bound to Carrier Board channels.
+pub fn create_default_feature_set() -> CarrierBoardFeatureSet {
+    let mut thermal_feat = controller::ThermalFeatureConfig::new(Some(THERMAL_CHANNEL.sender()));
+    thermal_feat.overheating_temp_milli_c = 70_000;
+    thermal_feat.critical_temp_milli_c = 85_000;
+    CarrierBoardFeatureSet {
+        features: (
+            controller::BatteryFeatureConfig::new(
+                Some(BATTERY_CHANNEL.sender()),
+                platform::BatteryManager::new(10, 5, 20, 50, 80),
+            ),
+            controller::LedFeatureConfig::new(Some(LED_CHANNEL.sender()), 50),
+            thermal_feat,
+        ),
+    }
+}
+
+/// Thermal controller type alias for Carrier Board 2.0.
+pub type ThermalControllerType =
+    controller::thermal_controller::ThermalController<'static, MutexRaw, TempSensorDevice>;
+/// Battery controller type alias for Carrier Board 2.0.
+pub type BatteryControllerType = controller::battery_controller::BatteryController<
+    'static,
+    MutexRaw,
+    BatteryDevice,
+    ChargerDevice,
+    AlertPinType,
+>;
+/// LED controller type alias for Carrier Board 2.0.
+pub type LedControllerType = controller::led_controller::LedController<LedDevice>;
+/// System controller type alias for Carrier Board 2.0.
+pub type SystemControllerType = controller::SystemController<MutexRaw, CarrierBoardFeatureSet, 3>;
+
+/// Collection of Core 0 controllers for Carrier Board 2.0.
+pub struct Core0Controllers {
+    /// On-die and ambient thermal controller.
+    pub thermal: ThermalControllerType,
+    /// Fuel gauge and charger battery controller.
+    pub battery: BatteryControllerType,
+    /// LP5009 RGB LED controller.
+    pub led: LedControllerType,
+    /// Top-level system lifecycle controller.
+    pub system: SystemControllerType,
+}
+
+/// Combined controller topology for Carrier Board 2.0.
+pub struct Controllers {
+    /// Core 0 controller set.
+    pub core0: Core0Controllers,
+}
+
+#[cfg(all(target_arch = "arm", target_os = "none"))]
+/// Initialize Carrier Board 2.0 subcontrollers from the initialized BSP and peripherals.
+pub async fn init_controllers(
+    board: &'static Board<'static>,
+    peripherals: BoardPeripherals,
+) -> Controllers {
+    let thermal = controller::thermal_controller::ThermalController::new_with_shutdown_and_trap(
+        &board.temp_sensor,
+        THERMAL_ACTION_CHANNEL.sender(),
+    );
+    let battery = controller::battery_controller::BatteryController::new_with_system_and_alert(
+        &board.battery,
+        &board.charger,
+        SYSTEM_CHANNEL.sender(),
+        peripherals.fuel_gauge_alert_pin,
+    );
+    let led = controller::led_controller::LedController::new(peripherals.led_driver);
+    let system = controller::SystemController::new(
+        create_default_feature_set(),
+        TELEMETRY_CHANNEL.sender(),
+        get_boot_reason(),
+    );
+
+    Controllers {
+        core0: Core0Controllers {
+            thermal,
+            battery,
+            led,
+            system,
+        },
+    }
+}
+
+/// Interactive bringup shell type configuration for Carrier Board 2.0.
+pub struct CarrierBoardShellConfig;
+
+controller::impl_shell_config! {
+    CarrierBoardShellConfig {
+        I2c = peripheral::mock::DummyI2c,
+        Motor = peripheral::mock::DummyMotor,
+        Flash = FlashDevice,
+        TempSensor = McxTempSensor,
+        ThermalCtrl = ThermalControllerType,
+        BatteryCtrl = BatteryControllerType,
+        SensorCtrl = crate::MockSensorController,
+        MotorCtrl = controller::motor_controller::MotorChannelSender,
+        SystemCtrl = SystemControllerType,
+        LedCtrl = LedControllerType,
+    }
+
+    fn trigger_core_panic(
+        _resolver: &controller::shell_controller::ShellController<'_, Self>,
+        core_id: u32,
+    ) -> Result<(), &'static str> {
+        platform::core_monitor::trigger_core_panic(core_id)
+    }
+}
+
+/// Configured layout and static buffer for Carrier Board filesystem partition diagnostics.
+pub struct FilesystemStorageConfig {
+    /// Partition range mapped for internal `sequential_storage::map` filesystem.
+    pub partition: controller::MapFilesystem,
+    /// Static mutable buffer for filesystem and panic log operations.
+    pub buffer: &'static mut [u8],
+}
+
+/// Return the Carrier Board 2.0 filesystem storage configuration from `board.toml`.
+pub fn get_filesystem_config() -> FilesystemStorageConfig {
+    FilesystemStorageConfig {
+        partition: controller::MapFilesystem(Board::FS_PARTITION_START..Board::FS_PARTITION_END),
+        buffer: Board::fs_buf(),
+    }
+}
+
+/// Bind interactive `ShellControllerPointers` for Carrier Board 2.0 bringup shell commands.
+#[macro_export]
+macro_rules! declare_carrier_board_shell_pointers {
+    ($fs_buffer:expr, $controllers:expr, $board:expr, $pointers_name:ident) => {
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        let temp_sensor_ptr = $board
+            .temp_sensor
+            .lock()
+            .await
+            .0
+            .as_mut()
+            .map(|sensor| sensor as *mut $crate::carrier_board::McxTempSensor)
+            .unwrap_or(core::ptr::null_mut());
+
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        let mut flash_dev = board::carrier_board::CarrierFlashDevice;
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        let flash_ptr = &mut flash_dev as *mut $crate::carrier_board::FlashDevice;
+
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        let flash_partitions = [
+            controller::NamedPartition {
+                name: "metadata",
+                partition: controller::FlashPartition {
+                    flash_ptr,
+                    start_address: $crate::carrier_board::Board::METADATA_PARTITION_START,
+                    end_address: $crate::carrier_board::Board::METADATA_PARTITION_END,
+                },
+                kind: controller::PartitionKind::Map,
+            },
+            controller::NamedPartition {
+                name: "panic",
+                partition: controller::FlashPartition {
+                    flash_ptr,
+                    start_address: $crate::carrier_board::Board::FS_PARTITION_START,
+                    end_address: $crate::carrier_board::Board::FS_PARTITION_END,
+                },
+                kind: controller::PartitionKind::Map,
+            },
+            controller::NamedPartition {
+                name: "telemetry",
+                partition: controller::FlashPartition {
+                    flash_ptr,
+                    start_address: $crate::carrier_board::Board::TELEMETRY_PARTITION_START,
+                    end_address: $crate::carrier_board::Board::TELEMETRY_PARTITION_END,
+                },
+                kind: controller::PartitionKind::Queue,
+            },
+        ];
+
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        let thermals = [controller::NamedDevice {
+            name: "default",
+            device: &mut $controllers.core0.thermal as *mut _,
+        }];
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        let batteries = [controller::NamedDevice {
+            name: "default",
+            device: &mut $controllers.core0.battery as *mut _,
+        }];
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        let leds = [controller::NamedDevice {
+            name: "default",
+            device: &mut $controllers.core0.led as *mut _,
+        }];
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        let system_ctrls = [controller::NamedDevice {
+            name: "default",
+            device: &mut $controllers.core0.system as *mut _,
+        }];
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        let temp_sensors_array = [controller::NamedDevice {
+            name: "cpu",
+            device: temp_sensor_ptr,
+        }];
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        let temp_sensors = if !temp_sensor_ptr.is_null() {
+            &temp_sensors_array[..]
+        } else {
+            &[]
+        };
+
+        #[cfg(all(target_arch = "arm", target_os = "none"))]
+        let $pointers_name = controller::shell_controller::ShellControllerPointers::<
+            $crate::carrier_board::CarrierBoardShellConfig,
+        > {
+            thermals: &thermals[..],
+            batteries: &batteries[..],
+            leds: &leds[..],
+            system_ctrls: &system_ctrls[..],
+            flash_partitions: &flash_partitions[..],
+            temp_sensors,
+            fs_buffer: $fs_buffer,
+            ..Default::default()
+        };
+
+        #[cfg(not(all(target_arch = "arm", target_os = "none")))]
+        let $pointers_name = controller::shell_controller::ShellControllerPointers::<
+            $crate::carrier_board::CarrierBoardShellConfig,
+        >::default();
+    };
+}
+
+pub use declare_carrier_board_shell_pointers as declare_shell_pointers;
 
 /// Canonical name of the carrier board hardware platform.
 pub const BOARD_NAME: &str = "Carrier Board 2.0";
