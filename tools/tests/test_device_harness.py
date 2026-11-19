@@ -1036,7 +1036,9 @@ def _count_white_pixels_in_png_region(
 
 def test_worm_inching_millipede_969_no_white_scrollbar_gutter_artifact(tmp_path: Path) -> None:
     """Verify the rendered `#testStackList` scrollbar edge in Headless Chrome has zero bright-white gutter pixels."""
+    import re
     import shutil
+    import urllib.request
 
     chrome_candidates = [
         Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
@@ -1055,18 +1057,60 @@ def test_worm_inching_millipede_969_no_white_scrollbar_gutter_artifact(tmp_path:
     runner.active_mode = "TEST"
     server, port = _start_ephemeral_daemon(runner)
     try:
+        base_url = f"http://127.0.0.1:{port}"
+        with urllib.request.urlopen(f"{base_url}/", timeout=5.0) as resp:
+            raw_html = resp.read().decode("utf-8")
+        scan_res = _http_json_sync(
+            f"{base_url}/api/tests/scan",
+            {"project": "cat_detector", "scenario": "all"},
+        )
+        scanned_tests = list(scan_res.get("tests") or [])
+        assert len(scanned_tests) >= 5
+
+        cards_html = "\n".join(
+            f'<div class="test-stack-node" style="padding:10px 12px; min-height:54px;">'
+            f'<div style="font-weight:bold; color:var(--xerxes-cyan);">{t["name"]} #{idx}</div>'
+            f'<div style="color:var(--xerxes-text-muted); font-size:9px;">{t.get("description", "")}</div>'
+            f"</div>"
+            for idx in range(3)
+            for t in scanned_tests
+        )
+        rendered_html = raw_html.replace(
+            'id="logPanel" style="display: none;"',
+            'id="logPanel" style="display: flex; flex: 0 0 50%;"',
+        ).replace(
+            '<div id="testStackList" class="test-stack-list"></div>',
+            f'<div id="testStackList" class="test-stack-list">{cards_html}</div>',
+        )
+        rendered_html = re.sub(r'<script\s+type="module"[^>]*></script>', "", rendered_html)
+        rendered_html = rendered_html.replace("<head>", f'<head><base href="{base_url}/">', 1)
+
+        snapshot_html = tmp_path / "test_stack_snapshot.html"
+        snapshot_html.write_text(rendered_html, encoding="utf-8")
         shot_path = tmp_path / "test_stack_render.png"
+        chrome_profile = tmp_path / "chrome_profile"
+        chrome_profile.mkdir(parents=True, exist_ok=True)
+        chrome_env = dict(os.environ)
+        chrome_env["DBUS_SESSION_BUS_ADDRESS"] = "/dev/null"
+
         subprocess.run(
             [
                 str(chrome_bin),
                 "--headless=new",
                 "--no-sandbox",
+                "--disable-dev-shm-usage",
                 "--disable-gpu",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-sync",
+                f"--user-data-dir={chrome_profile}",
                 "--window-size=1440,900",
-                "--virtual-time-budget=2500",
                 f"--screenshot={shot_path}",
-                f"http://127.0.0.1:{port}/",
+                snapshot_html.resolve().as_uri(),
             ],
+            env=chrome_env,
             check=True,
             capture_output=True,
             timeout=25.0,
@@ -1658,3 +1702,137 @@ def test_worm_loamy_clitellum_820_post_host_fs_delayed_rtt_boot_and_json_events(
         assert "System activity recorded." in out
     finally:
         runner.stop_rtt_streaming()
+
+
+def test_host_py_bug_cli_online_and_offline_reporting(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify `host.py bug` / `report-bug` files worm reports both via live daemon and offline fallback."""
+    import json
+
+    from host_daemon import cli as host_cli_mod
+    from host_daemon.provider.daemon.server import _get_test_manager
+
+    # 1. Online mode: live ephemeral daemon with command history, RTT logs, test console logs, and file attachment
+    online_root = tmp_path / "online_repo"
+    (online_root / "feedback").mkdir(parents=True, exist_ok=True)
+    (online_root / "attachments").mkdir(parents=True, exist_ok=True)
+    screenshot_file = tmp_path / "scope_trace.png"
+    screenshot_file.write_bytes(b"\x89PNG\r\n\x1a\nFAKEPNG")
+
+    runner = SimulatedTargetRunner(
+        online_root,
+        connected_board_type="rp2040_flash_2mb",
+        connected_chip="rp2040",
+    )
+    runner.package = "cat_detector"
+    runner.bin_name = "cat_detector_shell"
+    runner.command_history = ["motor speed 45", "sensor status"]
+    runner.logs.append({"time": "12:00:00", "channel": "rtt", "level": "ERROR", "message": "I2C bus NACK on 0x29"})
+    tm = _get_test_manager(runner)
+    tm._append_console("test_tof_proximity_array FAILED: NACK")
+
+    server, port = _start_ephemeral_daemon(runner)
+    try:
+        rc = host_cli_mod.main(
+            [
+                "--host",
+                "127.0.0.1",
+                "bug",
+                "ToF sensor NACK under motor load",
+                "--severity",
+                "high",
+                "--category",
+                "driver",
+                "--component",
+                "vl53l0x",
+                "--description",
+                "ToF sensor returns I2C NACK after motor speed 45.",
+                "--expected",
+                "Valid millimeter distance reading.",
+                "--actual",
+                "I2C NACK 0x29.",
+                "--attach-test-logs",
+                "--attach-crash-log",
+                "--attach",
+                str(screenshot_file),
+                "--host-port",
+                str(port),
+                "--json",
+            ]
+        )
+        assert rc == 0
+        online_res = json.loads(capsys.readouterr().out)
+        assert online_res["success"] is True
+        assert online_res["source"] == "daemon"
+        assert online_res["attachments_count"] == 4
+
+        online_md = Path(online_res["file_path"])
+        assert online_md.is_file()
+        md_text = online_md.read_text(encoding="utf-8")
+        assert "ToF sensor NACK under motor load" in md_text
+        assert "Execute command 'motor speed 45'" in md_text
+        assert "Execute command 'sensor status'" in md_text
+        assert "test_tof_proximity_array FAILED" in md_text
+
+        att_dir = online_root / "attachments" / online_res["worm_id"]
+        assert (att_dir / "scope_trace.png").read_bytes() == b"\x89PNG\r\n\x1a\nFAKEPNG"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    # 2. Offline mode (`report-bug` alias) when no daemon is running
+    offline_root = tmp_path / "offline_repo"
+    (offline_root / "feedback").mkdir(parents=True, exist_ok=True)
+    (offline_root / "attachments").mkdir(parents=True, exist_ok=True)
+    log_capture = tmp_path / "bench_capture.log"
+    log_capture.write_text("UART0 framing error at 115200 baud\n", encoding="utf-8")
+
+    rc_off = host_cli_mod.main(
+        [
+            "report-bug",
+            "--title",
+            "UART framing glitch on cold boot",
+            "--severity",
+            "MEDIUM",
+            "--category",
+            "PLATFORM",
+            "--step",
+            "1. Power-cycle bench supply",
+            "--step",
+            "2. Capture UART0 TX during first 10 ms",
+            "--attach",
+            str(log_capture),
+            "--no-system-logs",
+            "--repo-root",
+            str(offline_root),
+            "--json",
+        ]
+    )
+    assert rc_off == 0
+    offline_res = json.loads(capsys.readouterr().out)
+    assert offline_res["success"] is True
+    assert offline_res["source"] == "offline"
+    assert offline_res["attachments_count"] == 1
+    offline_md = Path(offline_res["file_path"]).read_text(encoding="utf-8")
+    assert "1. 1." not in offline_md
+    assert "Power-cycle bench supply" in offline_md
+
+    # 3. Sad cases: missing title -> exit 2, missing attachment file -> exit 1
+    assert host_cli_mod.main(["bug", "--repo-root", str(offline_root)]) == 2
+    capsys.readouterr()
+    assert (
+        host_cli_mod.main(
+            [
+                "bug",
+                "Missing file check",
+                "--attach",
+                str(tmp_path / "does_not_exist.png"),
+                "--repo-root",
+                str(offline_root),
+            ]
+        )
+        == 1
+    )
+    capsys.readouterr()
