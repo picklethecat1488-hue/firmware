@@ -1,12 +1,13 @@
-# 🔴 `[WORM-FOSSORIAL-NIGHTCRAWLER-861]` Overlapping text in the test mode
+# 🟢 `[WORM-FOSSORIAL-NIGHTCRAWLER-861]` Overlapping text in the test mode
 
 - **UUID**: `be04b6b2-67fc-4798-ac26-a2bf20cf3299`
 - **ID**: `WORM-FOSSORIAL-NIGHTCRAWLER-861`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `target`
 - **Created**: `2026-11-19 03:41:27 UTC`
+- **Resolved**: `2026-11-19 03:54:38 UTC`
 
 #### Reproduction Steps
 
@@ -72,3 +73,7 @@
 #### Review Tasks & Functional Checklist
 
 - [ ] Launch host.py in Test Mode and verify Mode/Scenarios and Status badges render as non-overlapping pills across full and split widths | `python tools/host.py --no-detach` <!-- id:bb45b342 -->
+
+#### Resolution Notes
+
+Converted .badge to inline-block with explicit line-height and nowrap, added table cell vertical-align/line-height spacing, and wrapped Mode/Scenarios and Status cells in .test-badge-group flex containers with discrete scenario pills.
