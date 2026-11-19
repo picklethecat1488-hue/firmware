@@ -85,3 +85,7 @@ collecting ... collected 1 item
 | Type | Filename | Description |
 | :--- | :--- | :--- |
 | `screenshot` | [image.png](attachments/WORM-INCHING-MILLIPEDE-969/image.png) | Pasted screenshot |
+
+#### Review Tasks & Functional Checklist
+
+- [ ] Open host.py in TEST mode and verify the right edge of the stacked Test Suite list renders with dark Xerxes scrollbars and zero white scrollbar-gutter bar | `python tools/host.py --mode test` <!-- id:6c74f2e5 -->
