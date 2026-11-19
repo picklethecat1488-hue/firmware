@@ -2,12 +2,13 @@
 
 - **UUID**: `be04b6b2-67fc-4798-ac26-a2bf20cf3299`
 - **ID**: `WORM-FOSSORIAL-NIGHTCRAWLER-861`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `LOW`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `target`
 - **Created**: `2026-11-19 03:41:27 UTC`
 - **Resolved**: `2026-11-19 16:01:43 UTC`
+- **Accepted**: `2026-11-19 16:01:45 UTC`
 
 #### Reproduction Steps
 
