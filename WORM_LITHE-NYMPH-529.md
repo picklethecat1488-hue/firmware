@@ -87,6 +87,7 @@ We should move the test list and filter menu to the left panel so that the manua
 Moved the @device_test filter bar, run controls, and test list into #testSidebarView inside #logPanel with a left-panel tab switcher (TEST SUITE vs SYSTEM LOGS), freeing the right panel for spacious manual prompt interactions.
 
 -Additionally, we should give the test execution list a stacked layout, similar to what is used for the VCS commit UI.
+-I also noticed the little “Play” button next to the test status doesn’t do anything
 
 #### Rejection Feedback
 
