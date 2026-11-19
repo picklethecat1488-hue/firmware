@@ -1,6 +1,6 @@
 # CLI Tools, Flashing, Host Daemon & Verification Workflows
 
-This guide covers toolchain prerequisites, host-based unit testing, embedded target flashing, the **Xerxes Host Workstation & Daemon** (`tools/host.py`), **Forge** VCS/review/worm tracking (`tools/forge.py`), and pre-commit verification (`./tools/verify.sh`).
+This guide covers toolchain prerequisites, host-based unit testing, embedded target flashing, the **Xerxes Host Workstation & Daemon** (`tools/host.py`), **Forge** VCS/review/worm tracking (`tools/forge.py`), and pre-commit verification (`./tools/verify.py`).
 
 ---
 
@@ -48,10 +48,13 @@ python tools/host.py fs ls
 python tools/host.py fs cat metadata
 python tools/host.py fs crash-log
 
-# Parse and run YAML hardware bringup verification checklists
-python tools/host.py bringup --list
-python tools/host.py bringup --script app/cat_detector_bringup.yaml --run
-python tools/host.py bringup --script app/carrier_board_bringup.yaml --step
+# Auto-discover board_type via host_fs and run async pytest device suites
+python tools/host.py fs board-type
+python tools/host.py test --list
+python tools/host.py test --scenario smoke
+python tools/host.py test --scenario integration
+python tools/host.py test tools/device_tests/suites/test_cat_detector_bringup.py --interactive
+python tools/host.py test --script tools/device_tests/suites/test_carrier_board_bringup.py --interactive
 
 # Trigger target compilation, flashing, hardware reset, or daemon teardown
 python tools/host.py sync
@@ -116,11 +119,11 @@ cargo build --target thumbv8m.main-none-eabihf --package cat_detector --bin carr
 
 ## 5. Pre-Commit Verification & Cloud Execution
 
-Always run `./tools/verify.sh` before committing changes to execute parallel Rust formatting, host & target MCU Clippy checks, custom AST architectural validators (tracing hierarchy, `#[controller_context]`, multicore safety, `Debug` derives, constant addresses), Oxlint zero-globals JavaScript linting, parallel `node --test` ES module suites, Python `pytest` suites, and target/host debug binary builds:
+Always run `./tools/verify.py` before committing changes to execute parallel Rust formatting, host & target MCU Clippy checks, custom AST architectural validators (tracing hierarchy, `#[controller_context]`, multicore safety, `Debug` derives, constant addresses), Oxlint zero-globals JavaScript linting, parallel `node --test` ES module suites, Python `pytest` suites, and target/host debug binary builds:
 
 ```bash
 # Complete local pre-commit verification
-./tools/verify.sh
+./tools/verify.py
 
 # Individual Python & JS test runners
 node --test --test-concurrency=4 tools/tests/js/*.test.mjs

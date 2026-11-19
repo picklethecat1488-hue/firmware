@@ -81,10 +81,11 @@ sequenceDiagram
 
 To ensure the hardware and firmware designs are fully validated and operating correctly, follow this ordered checklist of functional and system-level test procedures.
 
-The official, executable source of truth for these bringup steps is defined in [cat_detector_bringup.yaml](cat_detector_bringup.yaml). You can run the interactive bringup checklist runner in `tools/host.py` to guide you through this checklist, compile/flash the correct target binaries automatically, and generate a markdown verification report:
+The official, executable source of truth for these bringup, integration, and smoke steps is defined in [test_cat_detector_bringup.py](../tools/device_tests/suites/test_cat_detector_bringup.py). You can run automated smoke/integration suites or step interactively through full bringup via `python tools/host.py test` (and automatically via `./tools/verify.py`):
 
 ```bash
-conda run -n firmware-env python tools/host.py bringup --script app/cat_detector_bringup.yaml --run
+conda run -n firmware-env python tools/host.py test --board "rp2040*"
+conda run -n firmware-env python tools/host.py test --script tools/device_tests/suites/test_cat_detector_bringup.py --interactive
 ```
 
 ### 3.1. Verification Prerequisites
@@ -99,7 +100,7 @@ conda run -n firmware-env python tools/host.py bringup --script app/cat_detector
 
 ### 3.2. Ordered Functional Test Checklist
 
-Below is the sequence of bringup steps defined in [cat_detector_bringup.yaml](cat_detector_bringup.yaml). The bringup script compiles and downloads the required firmware automatically as indicated by `flash_before` directives.
+Below is the sequence of bringup steps defined in [test_cat_detector_bringup.py](../tools/device_tests/suites/test_cat_detector_bringup.py). The test harness compiles and downloads each step's declared `target_binary` automatically via `tools/host.py`.
 
 #### Phase 1: Diagnostic Shell (`shell` binary)
 The checklist starts by flashing the diagnostic shell to run low-level hardware verification and calibration commands.
