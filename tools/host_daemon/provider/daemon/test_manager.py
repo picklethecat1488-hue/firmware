@@ -302,6 +302,44 @@ class DeviceTestRunnerManager:
         worker.start()
         return self.get_status()
 
+    def is_active(self) -> bool:
+        """Return True when an on-device `pytest` run is currently active."""
+        with self._lock:
+            return self._active
+
+    def record_device_cli_line(self, text: str, *, is_input: bool, device_ts: str) -> None:
+        """Append a live CLI/FS command or response line tagged with its target `[device_ts]` to `_console`."""
+        cleaned = text.rstrip("\r\n")
+        if not cleaned.strip():
+            return
+        with self._lock:
+            if not self._active:
+                return
+            if is_input:
+                self._console.append(f"  [{device_ts}] {cleaned}")
+            else:
+                self._console.append(f"  [{device_ts}]   {cleaned}")
+
+    def record_cli_exchange(
+        self,
+        command: str,
+        output: str,
+        *,
+        device_ts: str,
+        prefix: str = "shell>",
+    ) -> None:
+        """Record a synchronous command and multiline output exchange with `[device_ts]` into `_console`."""
+        clean_cmd = command.strip()
+        with self._lock:
+            if not self._active:
+                return
+            if clean_cmd:
+                self._console.append(f"  [{device_ts}] {prefix} {clean_cmd}")
+            for raw_line in output.splitlines():
+                stripped = raw_line.rstrip()
+                if stripped:
+                    self._console.append(f"  [{device_ts}]   {stripped}")
+
     def _append_console(self, line: str) -> None:
         """Append a line to the test console buffer and update live per-test status on verbose lines."""
         match = PYTEST_VERBOSE_RESULT_RE.match(line.strip())

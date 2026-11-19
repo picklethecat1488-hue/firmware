@@ -1129,4 +1129,148 @@ def test_worm_annelidic_bristle_968_host_test_cli_keyword_filter(capsys: pytest.
         server.server_close()
 
 
+def test_worm_loamy_clitellum_820_concurrent_probe_lock_and_timestamped_cli_test_logs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Verify concurrent metadata probes never abort `sensor status` CLI reads and test execution logs include device-timestamped CLI I/O."""
+    import re
+    import subprocess as sp
+
+    from host_daemon.provider.daemon.runner import DaemonRunner
+
+    # Part 1: Verify concurrent `query_target_metadata()` cannot kill `rtt_process` mid-`execute_cli("sensor status")`
+    runner = DaemonRunner(
+        repo_root=WORKSPACE_ROOT,
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+        target="thumbv6m-none-eabi",
+        chip="rp2040",
+    )
+    fake_elf = tmp_path / "cat_detector_shell"
+    fake_elf.write_bytes(b"\x7fELF")
+    runner.elf_path = fake_elf
+    runner.is_flashed = True
+
+    mock_rtt_script = (
+        "import os, queue, sys, threading, time\n"
+        "q = queue.Queue()\n"
+        "def _stdin_reader():\n"
+        "    for line in sys.stdin:\n"
+        "        q.put(line.strip())\n"
+        "    os._exit(0)\n"
+        "threading.Thread(target=_stdin_reader, daemon=True).start()\n"
+        "print('RTT Session Started', flush=True)\n"
+        "print('0.023200 INFO [platform::core_monitor] MPU stack guard configured', flush=True)\n"
+        "while True:\n"
+        "    cmd = q.get()\n"
+        "    if cmd == 'sensor status':\n"
+        "        time.sleep(0.25)\n"
+        "        print('0.714500 INFO [controller::shell_controller] received command Sensor', flush=True)\n"
+        "        print('north                                   east                                    west', flush=True)\n"
+        "        print('1098mm                                  INVALID                                 546mm', flush=True)\n"
+        "        print('0.714900 INFO [controller::shell_controller] command execution succeeded', flush=True)\n"
+        "        print('\\x1b[2Kshell> ', flush=True)\n"
+    )
+    rtt_proc = sp.Popen(
+        [sys.executable, "-u", "-c", mock_rtt_script],
+        stdin=sp.PIPE,
+        stdout=sp.PIPE,
+        stderr=sp.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    runner.rtt_process = rtt_proc
+    runner.is_connected = True
+
+    def _pump_stdout() -> None:
+        assert rtt_proc.stdout is not None
+        for raw in iter(rtt_proc.stdout.readline, ""):
+            s = raw.rstrip("\r\n")
+            if not s:
+                continue
+            if "INFO" in s:
+                runner.log(s, channel="target")
+            elif "\x1b[2K" in s:
+                with runner._lock:
+                    runner._cli_clear_seq += 1
+            else:
+                runner.log_cli(s)
+
+    pump_thread = threading.Thread(target=_pump_stdout, daemon=True)
+    pump_thread.start()
+    time.sleep(0.08)
+
+    monkeypatch.setattr(
+        "host_daemon.provider.daemon.runner.probe_attached_target_metadata",
+        lambda *_a, **_kw: {
+            "connected": True,
+            "board_type": "rp2040_flash_2mb",
+            "chip": "rp2040",
+            "source": "program_metadata",
+            "checksum": "0x70D6",
+            "elf_checksum": "0x70D6",
+            "matches_target": True,
+        },
+    )
+    # Prevent start_rtt_streaming from spawning cargo/host_cli in this unit test
+    monkeypatch.setattr(runner, "start_rtt_streaming", lambda: None)
+
+    concurrent_meta_results: List[Dict[str, Any]] = []
+
+    def _concurrent_metadata_probe() -> None:
+        time.sleep(0.05)
+        concurrent_meta_results.append(runner.query_target_metadata())
+
+    probe_thread = threading.Thread(target=_concurrent_metadata_probe, daemon=True)
+    probe_thread.start()
+    try:
+        sensor_out = runner.execute_cli("sensor status", wait_for_output=True, timeout=2.5)
+        probe_thread.join(timeout=3.0)
+        assert "Dispatched:" not in sensor_out, f"Concurrent metadata probe aborted sensor status: {sensor_out!r}"
+        assert "1098mm" in sensor_out and "546mm" in sensor_out
+        assert concurrent_meta_results and concurrent_meta_results[0]["connected"] is True
+    finally:
+        rtt_proc.terminate()
+        rtt_proc.wait(timeout=2.0)
+
+    # Part 2: Verify Test Execution Logs include CLI commands & responses with device timestamps
+    sim_runner = SimulatedTargetRunner(
+        WORKSPACE_ROOT,
+        connected_board_type="rp2040_flash_2mb",
+        connected_chip="rp2040",
+        initial_bin="cat_detector_shell",
+    )
+    sim_runner.active_mode = "TEST"
+    server, port = _start_ephemeral_daemon(sim_runner)
+    base_url = f"http://127.0.0.1:{port}"
+    tof_node = "tools/device_tests/suites/test_cat_detector_smoke.py::test_tof_proximity_array_and_i2c_bus"
+    try:
+        run_res = _http_json_sync(
+            f"{base_url}/api/tests/run",
+            {"node_ids": [tof_node], "board": "auto", "enable_manual": False},
+        )
+        assert run_res["success"] is True
+
+        deadline = time.monotonic() + 25.0
+        final_st: Dict[str, Any] = {}
+        while time.monotonic() < deadline:
+            st = _http_json_sync(f"{base_url}/api/tests/status")
+            final_st = st
+            if not st.get("active") and st.get("step") in ("complete", "failed", "cancelled"):
+                break
+            time.sleep(0.08)
+
+        assert final_st.get("step") == "complete", f"Unexpected test run state: {final_st}"
+        joined_console = "\n".join(final_st.get("console") or [])
+        assert re.search(r"\[\d+\.\d+s\]\s+shell>\s+i2c scan", joined_console), joined_console
+        assert re.search(r"\[\d+\.\d+s\]\s+.*0x14", joined_console), joined_console
+        assert re.search(r"\[\d+\.\d+s\]\s+shell>\s+sensor status", joined_console), joined_console
+        assert re.search(r"\[\d+\.\d+s\]\s+.*north:\s*125 mm", joined_console), joined_console
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+
 

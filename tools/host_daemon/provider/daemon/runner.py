@@ -4,6 +4,7 @@ from collections import deque
 from datetime import datetime, timezone
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import threading
@@ -31,6 +32,8 @@ CLI_QUIET_TIMEOUT_RATIO: float = 0.45
 CLI_COMPLETION_SETTLE_SEC: float = 0.25
 ANSI_CLEAR_LINE_SEQ: str = "\x1b[2K"
 SHELL_PROMPT_PREFIX: str = "shell>"
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+DEFMT_DEVICE_TS_RE = re.compile(r"^\s*(\d+\.\d+)\s+(?:INFO|WARN|ERROR|DEBUG|TRACE)\b")
 RTT_SESSION_BANNER_PREFIXES: Tuple[str, ...] = (
     "RTT connected. Active channels:",
     "- Up Channel:",
@@ -38,6 +41,10 @@ RTT_SESSION_BANNER_PREFIXES: Tuple[str, ...] = (
     "RTT Session Started",
     "Interactive RTT console active.",
     "Type 'help' to print usage.",
+    "|\\      _,,,---,,_",
+    "Zzz   /",
+    "|,4-  )",
+    "'---''(_",
 )
 
 
@@ -109,10 +116,11 @@ class DaemonRunner:
         self.host_fs_path: Optional[Path] = None
         self.manual_prompt = ManualPromptState()
         self.test_manager = DeviceTestRunnerManager(self)
+        self._streams_live_cli: bool = True
 
         self.active_mode: str = "CLI"
         self._lock = threading.Lock()
-        self._fs_lock = threading.Lock()
+        self._fs_lock = threading.RLock()
         self.logs: Deque[Dict[str, Any]] = deque(maxlen=5000)
         self.cli_outputs: Deque[Dict[str, Any]] = deque(maxlen=5000)
         self.fs_outputs: Deque[Dict[str, Any]] = deque(maxlen=5000)
@@ -121,6 +129,11 @@ class DaemonRunner:
         self._cli_clear_seq: int = 0
         self._fs_seq: int = 0
         self.command_history: List[str] = []
+        self._boot_mono: float = time.monotonic()
+        self._last_device_ts_sec: Optional[float] = None
+        self._last_device_ts_mono: float = self._boot_mono
+        self._cached_metadata: Optional[Dict[str, Any]] = None
+        self._cached_metadata_elf: Optional[Path] = None
 
         self.rtt_process: Optional[subprocess.Popen] = None
         self._streaming_thread: Optional[threading.Thread] = None
@@ -181,6 +194,30 @@ class DaemonRunner:
         )
         self.log("Target synchronization cancelled by user", level="WARN")
         return {"success": True, "step": "cancelled"}
+
+    def _reset_device_clock(self) -> None:
+        """Reset synchronized target device uptime anchor upon MCU flash, reset, or RTT session start."""
+        now = time.monotonic()
+        with self._lock:
+            self._boot_mono = now
+            self._last_device_ts_sec = None
+            self._last_device_ts_mono = now
+
+    def _invalidate_metadata_cache(self) -> None:
+        """Clear cached `.program_metadata` verification state on target binary/config transitions."""
+        with self._lock:
+            self._cached_metadata = None
+            self._cached_metadata_elf = None
+
+    def get_device_timestamp_str(self) -> str:
+        """Return the current target MCU monotonic timestamp string (`e.g. '0.714500s'`) synchronized from `defmt`."""
+        now = time.monotonic()
+        with self._lock:
+            if self._last_device_ts_sec is not None:
+                est = self._last_device_ts_sec + max(0.0, now - self._last_device_ts_mono)
+            else:
+                est = max(0.0, now - self._boot_mono)
+        return f"{est:.6f}s"
 
     def _record_lifecycle(self, phase: str, detail: str, *, mark_recent: bool = True) -> None:
         """Record a thread-safe target lifecycle event (`flashing`, `mode_switch`, `rebooting`, `idle`)."""
@@ -291,6 +328,8 @@ class DaemonRunner:
             resolved_elf = self.resolve_current_elf_path()
             if resolved_elf is not None:
                 self.elf_path = resolved_elf
+            self._cached_metadata = None
+            self._cached_metadata_elf = None
 
             self.sync_status.update(
                 {
@@ -403,8 +442,19 @@ class DaemonRunner:
             self._sync_thread.start()
 
     def log(self, message: str, level: str = "INFO", channel: str = "daemon") -> None:
-        """Append a log message to the thread-safe log buffer."""
+        """Append a log message to the thread-safe log buffer and synchronize target `defmt` device timestamps."""
+        parsed_device_ts: Optional[float] = None
+        if channel == "target":
+            plain = ANSI_ESCAPE_RE.sub("", message)
+            match = DEFMT_DEVICE_TS_RE.match(plain)
+            if match:
+                parsed_device_ts = float(match.group(1))
+
+        now_mono = time.monotonic()
         with self._lock:
+            if parsed_device_ts is not None:
+                self._last_device_ts_sec = parsed_device_ts
+                self._last_device_ts_mono = now_mono
             self._log_seq += 1
             entry = {
                 "id": self._log_seq,
@@ -416,28 +466,39 @@ class DaemonRunner:
             self.logs.append(entry)
 
     def log_cli(self, message: str, is_input: bool = False) -> None:
-        """Append a line to the CLI console output buffer."""
+        """Append a line to the CLI console output buffer and stream device-timestamped lines to active test runs."""
+        device_ts = self.get_device_timestamp_str()
         with self._lock:
             self._cli_seq += 1
             entry = {
                 "id": self._cli_seq,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
+                "device_ts": device_ts,
                 "is_input": is_input,
                 "text": message,
             }
             self.cli_outputs.append(entry)
 
+        stripped_msg = message.replace(ANSI_CLEAR_LINE_SEQ, "").strip()
+        if stripped_msg and (is_input or not stripped_msg.startswith(RTT_SESSION_BANNER_PREFIXES)):
+            self.test_manager.record_device_cli_line(message, is_input=is_input, device_ts=device_ts)
+
     def log_fs(self, message: str, is_input: bool = False) -> None:
-        """Append a line to the FS console output buffer."""
+        """Append a line to the FS console output buffer and stream device-timestamped lines to active test runs."""
+        device_ts = self.get_device_timestamp_str()
         with self._lock:
             self._fs_seq += 1
             entry = {
                 "id": self._fs_seq,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
+                "device_ts": device_ts,
                 "is_input": is_input,
                 "text": message,
             }
             self.fs_outputs.append(entry)
+
+        if message.strip():
+            self.test_manager.record_device_cli_line(message, is_input=is_input, device_ts=device_ts)
 
     def set_mode(self, mode: str) -> None:
         """Switch active workstation mode among CLI, FS, and TEST, managing probe ownership."""
@@ -695,6 +756,9 @@ class DaemonRunner:
             self.log(err_msg, level="ERROR")
             raise FileNotFoundError(err_msg)
 
+        self._invalidate_metadata_cache()
+        self._reset_device_clock()
+
         if use_cargo_run:
             self.log(
                 f"Flashing target via cargo run: package={self.package}, bin={self.bin_name}, target={self.target}"
@@ -751,52 +815,59 @@ class DaemonRunner:
 
     def reset_target(self) -> Dict[str, Any]:
         """Reset the target microcontroller via debug probe and reconnect RTT streaming."""
-        self._record_lifecycle("rebooting", "Rebooting target MCU over SWD & reconnecting RTT...")
-        self.log("Resetting target microcontroller...", channel="system")
-        self.stop_rtt_streaming()
-        time.sleep(PROBE_RELEASE_SETTLE_SEC)
+        with self._fs_lock:
+            self._invalidate_metadata_cache()
+            self._reset_device_clock()
+            self._record_lifecycle("rebooting", "Rebooting target MCU over SWD & reconnecting RTT...")
+            self.log("Resetting target microcontroller...", channel="system")
+            self.stop_rtt_streaming()
+            time.sleep(PROBE_RELEASE_SETTLE_SEC)
 
-        chip_name = self.chip
-        if not chip_name and self.elf_path and self.elf_path.exists():
-            chip_name = self.detect_chip()
-        if not chip_name:
-            raise RuntimeError(
-                "Target chip could not be inferred for reset; configure target metadata or build target ELF first."
+            chip_name = self.chip
+            if not chip_name and self.elf_path and self.elf_path.exists():
+                chip_name = self.detect_chip()
+            if not chip_name:
+                raise RuntimeError(
+                    "Target chip could not be inferred for reset; configure target metadata or build target ELF first."
+                )
+
+            cmd_args = ["reset", "--chip", chip_name]
+            if self.speed:
+                cmd_args.extend(["--speed", str(self.speed)])
+
+            ret, out = 1, ""
+            for attempt in range(MAX_PROBE_OPEN_RETRIES + 1):
+                ret, out = self.run_probe_rs(cmd_args)
+                if ret == 0 or not _is_transient_probe_error(out) or attempt >= MAX_PROBE_OPEN_RETRIES:
+                    break
+                self.log(
+                    f"Transient USB probe timeout during reset (attempt {attempt + 1}); retrying...",
+                    level="WARN",
+                )
+                time.sleep(PROBE_RETRY_BACKOFF_SEC)
+
+            reset_success = ret == 0
+            if reset_success:
+                self.log("Target reset successfully via probe-rs", channel="system")
+            else:
+                self.log(f"probe-rs reset returned {ret}: {out.strip()}", level="WARN")
+
+            time.sleep(PROBE_RELEASE_SETTLE_SEC)
+            self.start_rtt_streaming()
+            with self._lock:
+                self.reboot_count += 1
+            msg = (
+                "Target reboot completed & RTT reconnected"
+                if reset_success
+                else "Target reboot attempted & RTT reconnected"
             )
-
-        cmd_args = ["reset", "--chip", chip_name]
-        if self.speed:
-            cmd_args.extend(["--speed", str(self.speed)])
-
-        ret, out = 1, ""
-        for attempt in range(MAX_PROBE_OPEN_RETRIES + 1):
-            ret, out = self.run_probe_rs(cmd_args)
-            if ret == 0 or not _is_transient_probe_error(out) or attempt >= MAX_PROBE_OPEN_RETRIES:
-                break
-            self.log(
-                f"Transient USB probe timeout during reset (attempt {attempt + 1}); retrying...",
-                level="WARN",
-            )
-            time.sleep(PROBE_RETRY_BACKOFF_SEC)
-
-        reset_success = ret == 0
-        if reset_success:
-            self.log("Target reset successfully via probe-rs", channel="system")
-        else:
-            self.log(f"probe-rs reset returned {ret}: {out.strip()}", level="WARN")
-
-        time.sleep(PROBE_RELEASE_SETTLE_SEC)
-        self.start_rtt_streaming()
-        with self._lock:
-            self.reboot_count += 1
-        msg = "Target reboot completed & RTT reconnected" if reset_success else "Target reboot attempted & RTT reconnected"
-        self._record_lifecycle("rebooting", msg)
-        return {
-            "success": True,
-            "probe_reset": reset_success,
-            "message": "Target reset completed" if reset_success else "Target reset attempted and RTT reconnected",
-            "output": out.strip() if out else "",
-        }
+            self._record_lifecycle("rebooting", msg)
+            return {
+                "success": True,
+                "probe_reset": reset_success,
+                "message": "Target reset completed" if reset_success else "Target reset attempted and RTT reconnected",
+                "output": out.strip() if out else "",
+            }
 
     def reboot_target(self) -> Dict[str, Any]:
         """Reboot the attached target MCU over SWD and re-attach RTT streaming."""
@@ -806,7 +877,12 @@ class DaemonRunner:
         )
         return res
 
-    def query_target_metadata(self, elf_path: Optional[Path] = None) -> Dict[str, Any]:
+    def query_target_metadata(
+        self,
+        elf_path: Optional[Path] = None,
+        *,
+        force_probe: bool = False,
+    ) -> Dict[str, Any]:
         """Query `.program_metadata` off the target via `host_fs query_metadata` and validate against target ELF."""
         with self._lock:
             sync_active = bool(self._sync_thread and self._sync_thread.is_alive())
@@ -818,6 +894,18 @@ class DaemonRunner:
             }
 
         with self._fs_lock:
+            target_elf = elf_path or self.elf_path or self.resolve_current_elf_path()
+            with self._lock:
+                if (
+                    not force_probe
+                    and self.is_connected
+                    and target_elf is not None
+                    and self._cached_metadata is not None
+                    and self._cached_metadata_elf == target_elf
+                    and bool(self._cached_metadata.get("matches_target"))
+                ):
+                    return dict(self._cached_metadata)
+
             self._record_lifecycle("mode_switch", "Probing target .program_metadata over SWD...")
             rtt_was_running = (self.rtt_process is not None and self.rtt_process.poll() is None) or (
                 self._streaming_thread is not None and self._streaming_thread.is_alive()
@@ -826,13 +914,17 @@ class DaemonRunner:
                 self.stop_rtt_streaming()
                 time.sleep(PROBE_RELEASE_SETTLE_SEC)
 
-            target_elf = elf_path or self.elf_path or self.resolve_current_elf_path()
             try:
-                return probe_attached_target_metadata(
+                res = probe_attached_target_metadata(
                     self.repo_root,
                     preferred_elf=target_elf,
                     host_fs_path=self.host_fs_path,
                 )
+                if res.get("connected") and res.get("matches_target") and target_elf is not None:
+                    with self._lock:
+                        self._cached_metadata = dict(res)
+                        self._cached_metadata_elf = target_elf
+                return res
             finally:
                 if rtt_was_running and self.active_mode in ("CLI", "TEST"):
                     self.start_rtt_streaming()
@@ -873,6 +965,7 @@ class DaemonRunner:
             return
 
         self.stop_rtt_streaming()
+        self._reset_device_clock()
 
         cmd = [
             str(self.host_cli_path),
@@ -906,6 +999,8 @@ class DaemonRunner:
                         stripped = line.rstrip("\r\n")
                         if stripped:
                             if "RTT Session Started" in stripped or "Interactive RTT console active" in stripped:
+                                if not session_ready:
+                                    self._reset_device_clock()
                                 session_ready = True
                                 started_event.set()
                             if (
@@ -1035,6 +1130,19 @@ class DaemonRunner:
         timeout: float = DEFAULT_CLI_OUTPUT_TIMEOUT_SEC,
     ) -> str:
         """Send command to the interactive CLI shell, optionally waiting for target response lines."""
+        if wait_for_output:
+            with self._fs_lock:
+                return self._execute_cli_unlocked(command, wait_for_output=True, timeout=timeout)
+        return self._execute_cli_unlocked(command, wait_for_output=False, timeout=timeout)
+
+    def _execute_cli_unlocked(
+        self,
+        command: str,
+        *,
+        wait_for_output: bool,
+        timeout: float,
+    ) -> str:
+        """Internal CLI dispatch helper; serialized via `self._fs_lock` when `wait_for_output=True`."""
         clean_cmd = command.strip()
         if clean_cmd:
             with self._lock:
@@ -1154,6 +1262,7 @@ class DaemonRunner:
     def stop(self) -> None:
         """Terminate active RTT processes, sync tasks, test runs, and release hardware debug probes."""
         self.is_sync_cancelled = True
+        self._invalidate_metadata_cache()
         self.test_manager.cancel_run(silent=True)
         self.stop_rtt_streaming()
         if self._active_sync_process and self._active_sync_process.poll() is None:

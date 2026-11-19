@@ -190,6 +190,7 @@ class AsyncHostSessionClient:
         self._reconfigured_existing_daemon = False
         self._cached_board: Optional[DetectedBoard] = None
         self._board_queried = False
+        self._verified_binary_key: Optional[Tuple[str, str, str]] = None
         self.last_boot_log_cursor: int = 0
         self.last_output_log: str = ""
 
@@ -407,6 +408,7 @@ class AsyncHostSessionClient:
 
         status = await self.get_status()
         desired_profile = "release" if spec.release else "debug"
+        bin_key = (spec.package, spec.bin_name, desired_profile)
         already_active = (
             not force
             and status.get("package") == spec.package
@@ -416,8 +418,19 @@ class AsyncHostSessionClient:
             and bool(status.get("connected"))
         )
         if already_active:
+            if self._verified_binary_key == bin_key:
+                return SyncOutcome(
+                    synced=False,
+                    reused_existing=True,
+                    package=spec.package,
+                    bin_name=spec.bin_name,
+                    arm_target=spec.arm_target,
+                    profile=desired_profile,
+                    boot_log_cursor=self.last_boot_log_cursor,
+                )
             board_check = await self.query_metadata(force_refresh=True)
             if board_check is None or board_check.matches_target:
+                self._verified_binary_key = bin_key
                 return SyncOutcome(
                     synced=False,
                     reused_existing=True,
@@ -428,6 +441,7 @@ class AsyncHostSessionClient:
                     boot_log_cursor=self.last_boot_log_cursor,
                 )
 
+        self._verified_binary_key = None
         pre_sync_cursor = await self.current_log_cursor()
         if not self.owns_daemon:
             self._reconfigured_existing_daemon = True
@@ -473,6 +487,7 @@ class AsyncHostSessionClient:
             )
 
         self._board_queried = False
+        self._verified_binary_key = bin_key
         self.last_boot_log_cursor = pre_sync_cursor
         return SyncOutcome(
             synced=True,
