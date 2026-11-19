@@ -76,3 +76,4 @@ We should move this console widget into a “test execution log” tab on the le
 #### Review Tasks & Functional Checklist
 
 - [ ] Open host.py in TEST mode, click '📋 TEST EXECUTION LOG' in the left panel tab bar, run a smoke test, and verify pytest execution output streams into the left panel with a working COPY button | `python tools/host.py --mode test` <!-- id:bf848b80 -->
+- [ ] Click '🐛 FILE TARGET BUG' while in TEST mode vs CLI/FS mode and verify 'Attach Test Execution Logs' is visible/enabled only in TEST mode and attaches target_test_execution_logs_<id>.log to the worm report | `python tools/forge.py list-worms --open` <!-- id:6b7ebe66 -->
