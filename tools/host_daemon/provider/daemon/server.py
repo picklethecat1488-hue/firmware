@@ -8,7 +8,9 @@ from pathlib import Path
 import re
 import sys
 import threading
-from typing import Any, List, Optional
+import time
+from typing import Any, Dict, List, Optional
+import urllib.parse
 import uuid as uuid_pkg
 
 import jinja2
@@ -30,6 +32,29 @@ from provider.worm_report.markdown_exporter import MarkdownWormExporter
 from provider.worm_report.sqlite_store import SQLiteWormStore
 
 from host_daemon.provider.daemon.runner import DEFAULT_CLI_OUTPUT_TIMEOUT_SEC, DaemonRunner
+from host_daemon.provider.daemon.test_manager import DeviceTestRunnerManager
+
+
+def _get_test_manager(runner: Any) -> DeviceTestRunnerManager:
+    """Return `runner.test_manager`, lazily attaching a `DeviceTestRunnerManager` for mock/test runners."""
+    existing = getattr(runner, "test_manager", None)
+    if isinstance(existing, DeviceTestRunnerManager):
+        return existing
+    created = DeviceTestRunnerManager(runner)
+    setattr(runner, "test_manager", created)
+    return created
+
+
+def _resolve_runner_device_ts(runner: Any) -> str:
+    """Return a target monotonic device timestamp string (`e.g. '0.412000s'`) for `runner`."""
+    if hasattr(runner, "get_device_timestamp_str"):
+        return str(runner.get_device_timestamp_str())
+    anchor = getattr(runner, "_sim_boot_mono", None)
+    now = time.monotonic()
+    if anchor is None:
+        anchor = now
+        setattr(runner, "_sim_boot_mono", anchor)
+    return f"{max(0.0, now - float(anchor)):.6f}s"
 
 
 class HostDaemonRequestHandler(BaseHTTPRequestHandler):
@@ -113,14 +138,32 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/fs/output":
             with runner._lock:
                 self._send_json(list(runner.fs_outputs))
-        elif path == "/api/bringup/scripts":
-            from host_daemon.model.bringup import discover_bringup_scripts
-
-            self._send_json(discover_bringup_scripts(runner.repo_root))
-        elif path == "/api/bringup/status":
-            self._send_json(runner.bringup_manager.get_status())
-        elif path == "/api/bringup/report":
-            self._send_json({"success": True, "report": runner.bringup_manager.generate_report()})
+        elif path == "/api/manual_prompt":
+            if hasattr(runner, "manual_prompt"):
+                with runner._lock:
+                    self._send_json(runner.manual_prompt.to_dict())
+            else:
+                self._send_json({"active": False})
+        elif path == "/api/metadata":
+            if hasattr(runner, "query_target_metadata"):
+                self._send_json(runner.query_target_metadata())
+            else:
+                self._send_json({"connected": False, "matches_target": False})
+        elif path == "/api/tests":
+            raw_qs = self.path.partition("?")[2]
+            qs = urllib.parse.parse_qs(raw_qs)
+            filters: Dict[str, Any] = {
+                "project": qs.get("project", [None])[0],
+                "scenario": qs.get("scenario", [None])[0] or qs.get("scenarios", [None])[0],
+                "board": qs.get("board", [None])[0],
+                "binary": qs.get("binary", [None])[0] or qs.get("target_binary", [None])[0],
+                "manual": qs.get("manual", [None])[0],
+                "query": qs.get("q", [None])[0] or qs.get("query", [None])[0],
+            }
+            probe_flag = str(qs.get("probe", ["0"])[0]).lower() in ("1", "true", "yes")
+            self._send_json(_get_test_manager(runner).scan_tests(filters, probe_board=probe_flag))
+        elif path == "/api/tests/status":
+            self._send_json(_get_test_manager(runner).get_status())
         elif (
             path.startswith("/js/")
             or path.startswith("/static/")
@@ -293,47 +336,85 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 output = runner.execute_cli(cmd, wait_for_output=True, timeout=timeout)
             else:
                 output = runner.execute_cli(cmd)
+            if not getattr(runner, "_streams_live_cli", False):
+                _get_test_manager(runner).record_cli_exchange(
+                    cmd,
+                    output if wait_for_output else "",
+                    device_ts=_resolve_runner_device_ts(runner),
+                    prefix="shell>",
+                )
             self._send_json({"success": True, "output": output})
         elif path == "/api/fs/execute":
             cmd = payload.get("command", "")
             subcmd = payload.get("subcommand", cmd)
             args = payload.get("args", [])
             output = runner.execute_fs(subcmd, args)
+            if not getattr(runner, "_streams_live_cli", False):
+                fs_cmd_label = f"{subcmd} {' '.join(str(a) for a in args)}".strip()
+                _get_test_manager(runner).record_cli_exchange(
+                    fs_cmd_label,
+                    output,
+                    device_ts=_resolve_runner_device_ts(runner),
+                    prefix="fs>",
+                )
             self._send_json({"success": True, "output": output})
         elif path == "/api/mode":
             mode = payload.get("mode", "CLI").upper()
-            if mode in ("CLI", "FS", "BRINGUP"):
+            if mode in ("CLI", "FS", "TEST"):
                 runner.set_mode(mode)
                 self._send_json({"success": True, "mode": mode})
             else:
-                self._send_json({"error": "Invalid mode. Expected: CLI, FS, BRINGUP"}, status=400)
+                self._send_json({"error": "Invalid mode. Expected: CLI, FS, TEST"}, status=400)
+        elif path == "/api/tests/scan":
+            probe_board = bool(payload.get("probe_board", True))
+            res = _get_test_manager(runner).scan_tests(payload, probe_board=probe_board)
+            self._send_json({"success": True, **res})
+        elif path == "/api/tests/run":
+            server_host = str(self.server.server_address[0] or "127.0.0.1")
+            if server_host in ("0.0.0.0", "::"):
+                server_host = "127.0.0.1"
+            server_port = int(self.server.server_address[1])
+            try:
+                status = _get_test_manager(runner).start_run(
+                    payload,
+                    daemon_host=server_host,
+                    daemon_port=server_port,
+                )
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, status=400)
+                return
+            self._send_json({"success": True, "status": status})
+        elif path == "/api/tests/cancel":
+            status = _get_test_manager(runner).cancel_run()
+            self._send_json({"success": True, "status": status})
         elif path == "/api/reset":
             res = runner.reset_target()
             self._send_json(res)
-        elif path == "/api/bringup/load":
-            script_path = payload.get("script_path") or payload.get("script") or "app/cat_detector_bringup.yaml"
+        elif path == "/api/reboot":
+            if hasattr(runner, "reboot_target"):
+                res = runner.reboot_target()
+            else:
+                res = runner.reset_target()
+            self._send_json(res)
+        elif path == "/api/manual_prompt":
+            if hasattr(runner, "update_manual_prompt"):
+                state = runner.update_manual_prompt(payload)
+            else:
+                state = {"active": bool(payload.get("active", False))}
+            self._send_json({"success": True, "manual_prompt": state})
+        elif path == "/api/manual_prompt/respond":
             try:
-                cfg = runner.bringup_manager.load_script(script_path)
-                self._send_json(
-                    {"success": True, "config": cfg.to_dict(), "status": runner.bringup_manager.get_status()}
-                )
-            except Exception as e:
-                self._send_json({"error": f"Failed to load bringup script: {e}"}, status=400)
-        elif path == "/api/bringup/step":
-            res = runner.bringup_manager.step()
-            self._send_json(res)
-        elif path == "/api/bringup/respond":
-            action = payload.get("action") or "pass"
-            notes = payload.get("notes") or ""
-            res = runner.bringup_manager.respond(action=action, notes=notes)
-            self._send_json(res)
-        elif path == "/api/bringup/reset":
-            res = runner.bringup_manager.reset()
-            self._send_json(res)
-        elif path == "/api/bringup/report":
-            output_path = payload.get("output_path") or "bringup_report.md"
-            report_text = runner.bringup_manager.generate_report(output_path)
-            self._send_json({"success": True, "output_path": str(output_path), "report": report_text})
+                if hasattr(runner, "respond_manual_prompt"):
+                    state = runner.respond_manual_prompt(payload)
+                elif hasattr(runner, "manual_prompt"):
+                    with runner._lock:
+                        state = runner.manual_prompt.submit_response(payload)
+                else:
+                    raise ValueError("Manual prompt responder is not supported on this runner")
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, status=400)
+                return
+            self._send_json({"success": True, "manual_prompt": state})
         elif path == "/api/target_bug":
             title = (payload.get("title") or "").strip()
             if not title:
@@ -406,6 +487,35 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                         file_path=rel_att_path,
                         size_bytes=len(sanitized_logs.encode("utf-8")),
                         description="Target system and defmt logs from host daemon session",
+                        created_at=now_str,
+                    )
+                )
+
+            # 1b. Attach test execution logs if filing from TEST mode (WORM-ROOTED-FIREWORM-570)
+            effective_mode = str(payload.get("mode") or getattr(runner, "active_mode", "CLI") or "CLI").upper()
+            test_exec_logs_content = ""
+            if effective_mode == "TEST" and bool(payload.get("attach_test_execution_logs", True)):
+                test_status = _get_test_manager(runner).get_status()
+                raw_test_console = test_status.get("console") or []
+                if raw_test_console:
+                    test_exec_logs_content = "\n".join(str(line) for line in raw_test_console)
+                else:
+                    test_exec_logs_content = (
+                        f"Host daemon Test Mode active at {now_str}. No test execution logs recorded yet."
+                    )
+
+                test_log_filename = f"target_test_execution_logs_{worm_id}.log"
+                test_log_path = worm_att_dir / test_log_filename
+                sanitized_test_logs = elide_personal_info(test_exec_logs_content)
+                test_log_path.write_text(sanitized_test_logs, encoding="utf-8")
+                attachments.append(
+                    WormAttachmentModel(
+                        id=f"att-{len(attachments) + 1}",
+                        filename=test_log_filename,
+                        file_type="log",
+                        file_path=f"attachments/{worm_id}/{test_log_filename}",
+                        size_bytes=len(sanitized_test_logs.encode("utf-8")),
+                        description="Test execution logs from host daemon Test Mode",
                         created_at=now_str,
                     )
                 )
@@ -523,6 +633,9 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             # Build WormReportModel
             log_lines = logs_content.strip().splitlines()
             log_summary = "\n".join(log_lines[-50:]) if len(log_lines) > 50 else logs_content
+            if test_exec_logs_content:
+                test_tail = "\n".join(elide_personal_info(test_exec_logs_content).strip().splitlines()[-30:])
+                log_summary = f"{log_summary}\n\n--- Test Execution Log ---\n{test_tail}".strip()
 
             worm = WormReportModel(
                 id=worm_id,
