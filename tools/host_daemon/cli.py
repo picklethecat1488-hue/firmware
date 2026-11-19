@@ -305,6 +305,13 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         default=False,
         help="Show system logging monitor (defmt/RTT) by default on startup in the host UI.",
     )
+    parser.add_argument(
+        "--stress-runs",
+        dest="stress_runs",
+        type=int,
+        default=1,
+        help="Number of sequential on-device test iterations to execute for `host.py test`.",
+    )
 
     subparsers = parser.add_subparsers(dest="subcommand", help="Host daemon subcommands")
 
@@ -419,6 +426,13 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         type=int,
         default=None,
         help="Optional explicit TCP port of a running host.py daemon.",
+    )
+    test_parser.add_argument(
+        "--stress-runs",
+        dest="test_stress_runs",
+        type=int,
+        default=None,
+        help="Execute the selected on-device test suite N times sequentially to stress-test target reliability.",
     )
 
     return parser.parse_args(args)
@@ -563,6 +577,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             matches_board_patterns,
         )
 
+        raw_test_stress = getattr(args, "test_stress_runs", None)
+        stress_runs: int = int(raw_test_stress if raw_test_stress is not None else getattr(args, "stress_runs", 1))
+        if stress_runs < 1:
+            print(
+                f"Error: --stress-runs must be >= 1 (got {stress_runs}).",
+                file=sys.stderr,
+            )
+            return 2
+
         target_script: Optional[str] = args.script or getattr(args, "script_pos", None)
         project_filter: str = (getattr(args, "project", None) or "all").strip().lower()
         keyword_expr: Optional[str] = (getattr(args, "keyword", None) or "").strip() or None
@@ -626,6 +649,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
 
         if detected_board is None:
+            if stress_runs > 1:
+                print(
+                    "Error: --stress-runs requires an attached physical target board, but none was detected.",
+                    file=sys.stderr,
+                )
+                return 1
             print("ℹ️  No physical target device detected — skipping on-device tests.")
             return 0
 
@@ -701,6 +730,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             pytest_cmd.extend(["--junitxml", args.junit_xml])
 
         env = dict(os.environ)
+        env["XERXES_REQUIRE_CONNECTED_TARGET"] = "1"
         py_paths = [
             str(repo_root / "tools"),
             str(repo_root / "tools" / "validation"),
@@ -711,8 +741,45 @@ def main(argv: Optional[List[str]] = None) -> int:
             py_paths.append(env["PYTHONPATH"])
         env["PYTHONPATH"] = os.pathsep.join(py_paths)
 
-        proc = subprocess.run(pytest_cmd, cwd=str(repo_root), env=env, check=False)
-        return 0 if proc.returncode in (0, 5) else proc.returncode
+        if stress_runs == 1:
+            proc = subprocess.run(pytest_cmd, cwd=str(repo_root), env=env, check=False)
+            return 0 if proc.returncode in (0, 5) else proc.returncode
+
+        stress_start = time.monotonic()
+        passed_runs = 0
+        for run_idx in range(1, stress_runs + 1):
+            print(
+                f"\n{'━' * 70}\n"
+                f"🔁 Stress Run [{run_idx}/{stress_runs}] — board '{detected_board.board_type}' ({detected_board.chip})\n"
+                f"{'━' * 70}",
+                flush=True,
+            )
+            iter_start = time.monotonic()
+            proc = subprocess.run(pytest_cmd, cwd=str(repo_root), env=env, check=False)
+            iter_elapsed = time.monotonic() - iter_start
+            if proc.returncode not in (0, 5):
+                total_elapsed = time.monotonic() - stress_start
+                print(
+                    f"\n❌ Stress Run [{run_idx}/{stress_runs}] FAILED after {iter_elapsed:.1f}s "
+                    f"(exit code {proc.returncode}; {passed_runs}/{stress_runs} runs passed in {total_elapsed:.1f}s).",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                return proc.returncode
+            passed_runs += 1
+            print(
+                f"✅ Stress Run [{run_idx}/{stress_runs}] PASSED in {iter_elapsed:.1f}s.",
+                flush=True,
+            )
+
+        total_elapsed = time.monotonic() - stress_start
+        print(
+            f"\n{'━' * 70}\n"
+            f"✅ Stress Test Summary: {passed_runs}/{stress_runs} runs PASSED in {total_elapsed:.1f}s\n"
+            f"{'━' * 70}",
+            flush=True,
+        )
+        return 0
 
     # Check if daemon already running
     existing = get_lock_data()

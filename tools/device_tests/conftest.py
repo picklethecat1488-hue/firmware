@@ -1,6 +1,7 @@
 """Pytest configuration, top-to-bottom source ordering, project/board filtering, and async fixtures."""
 
 import datetime
+import os
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 
@@ -212,6 +213,8 @@ async def _prepare_device_test(
 
     cli_board_filter = str(pytestconfig.getoption("--board") or "auto").strip()
     if detected_board is None:
+        if os.environ.get("XERXES_REQUIRE_CONNECTED_TARGET") == "1":
+            pytest.fail("Target hardware disconnected after discovery (host_fs query_metadata returned None)")
         if cli_board_filter.lower() != "auto":
             pytest.skip(f"No connected target matching --board='{cli_board_filter}'")
         pytest.skip("No physical target device detected via host_fs query_metadata")

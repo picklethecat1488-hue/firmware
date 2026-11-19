@@ -711,7 +711,9 @@ class DeviceTestRunnerManager:
                 dict(self._results_by_node_id[nid]) for nid in self._ordered_node_ids if nid in self._results_by_node_id
             ]
             current_rec = self._results_by_node_id.get(self._current_test or "") if self._current_test else None
-            current_name = str(current_rec.get("name")) if isinstance(current_rec, dict) and current_rec.get("name") else None
+            current_name = (
+                str(current_rec.get("name")) if isinstance(current_rec, dict) and current_rec.get("name") else None
+            )
             progress_pct = self._compute_progress_pct(
                 active=self._active,
                 step=self._step,
