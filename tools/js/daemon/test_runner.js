@@ -21,6 +21,11 @@ export const TEST_RUN_STEPS = Object.freeze({
   CANCELLED: "cancelled",
 });
 
+export const LEFT_PANEL_TABS = Object.freeze({
+  LOGS: "LOGS",
+  TESTS: "TESTS",
+});
+
 export const MANUAL_PROMPT_ACTIONS = Object.freeze({
   YES: "yes",
   NO: "no",
@@ -77,11 +82,19 @@ export class TestRunnerController {
     this.isRunning = false;
     this.activeStep = TEST_RUN_STEPS.IDLE;
     this.activePrompt = null;
+    this.isTestMode = false;
+    this.activeLeftTab = LEFT_PANEL_TABS.LOGS;
     this._lastPromptId = "";
     this._initializedScan = false;
     this._unsubscribers = [];
 
     this.viewEl = resolveElement(ctx, options.viewEl || "testView");
+    this.sidebarView = resolveElement(ctx, options.sidebarView || "testSidebarView");
+    this.logView = resolveElement(ctx, options.logView || "logView");
+    this.leftTabLogsBtn = resolveElement(ctx, options.leftTabLogsBtn || "btnLeftTabLogs");
+    this.leftTabTestsBtn = resolveElement(ctx, options.leftTabTestsBtn || "btnLeftTabTests");
+    this.leftLogTools = resolveElement(ctx, options.leftLogTools || "leftPanelLogTools");
+    this.leftTestTools = resolveElement(ctx, options.leftTestTools || "leftPanelTestTools");
     this.projectSelect = resolveElement(ctx, options.projectSelect || "testFilterProject");
     this.scenarioSelect = resolveElement(ctx, options.scenarioSelect || "testFilterScenario");
     this.boardInput = resolveElement(ctx, options.boardInput || "testFilterBoard");
@@ -151,6 +164,8 @@ export class TestRunnerController {
     bindClick(this.runSelectedBtn, () => this.runSelected());
     bindClick(this.runFilteredBtn, () => this.runFiltered());
     bindClick(this.cancelBtn, () => this.cancelRun());
+    bindClick(this.leftTabLogsBtn, () => this.setActiveLeftTab(LEFT_PANEL_TABS.LOGS));
+    bindClick(this.leftTabTestsBtn, () => this.setActiveLeftTab(LEFT_PANEL_TABS.TESTS));
 
     for (const sel of [this.projectSelect, this.scenarioSelect, this.binarySelect, this.manualSelect]) {
       bindChange(sel, () => this.scanTests({ probeBoard: false }));
@@ -219,7 +234,67 @@ export class TestRunnerController {
       );
     }
 
+    this._applyLeftTabDom();
     this._syncActionButtons();
+  }
+
+  /**
+   * Return the active tab key on the left panel (`"LOGS"` or `"TESTS"`).
+   *
+   * @returns {string}
+   */
+  getActiveLeftTab() {
+    return this.activeLeftTab;
+  }
+
+  /**
+   * Switch the active tab inside `#logPanel` between `"TESTS"` and `"LOGS"`.
+   *
+   * @param {string} tab - Target tab from `LEFT_PANEL_TABS`.
+   */
+  setActiveLeftTab(tab) {
+    const normalized =
+      tab === LEFT_PANEL_TABS.TESTS ? LEFT_PANEL_TABS.TESTS : LEFT_PANEL_TABS.LOGS;
+    this.activeLeftTab = normalized;
+    this._applyLeftTabDom();
+  }
+
+  /**
+   * Synchronize Test Mode tab visibility and default active tab when entering/leaving `TEST` mode.
+   *
+   * @param {boolean} active - True when workstation mode is `TEST`.
+   */
+  setTestModeActive(active) {
+    this.isTestMode = Boolean(active);
+    if (this.leftTabTestsBtn) {
+      this.leftTabTestsBtn.style.display = this.isTestMode ? "inline-flex" : "none";
+    }
+    this.setActiveLeftTab(this.isTestMode ? LEFT_PANEL_TABS.TESTS : LEFT_PANEL_TABS.LOGS);
+  }
+
+  /**
+   * Update left-panel tab buttons, content panes, and header tool groups.
+   */
+  _applyLeftTabDom() {
+    const showTests = this.activeLeftTab === LEFT_PANEL_TABS.TESTS;
+    if (this.leftTabLogsBtn) {
+      this.leftTabLogsBtn.classList.toggle("active", !showTests);
+    }
+    if (this.leftTabTestsBtn) {
+      this.leftTabTestsBtn.classList.toggle("active", showTests);
+    }
+    if (this.logView) {
+      this.logView.style.display = showTests ? "none" : "block";
+    }
+    if (this.sidebarView) {
+      this.sidebarView.style.display = showTests ? "flex" : "none";
+    }
+    if (this.leftLogTools) {
+      this.leftLogTools.style.display = showTests ? "none" : "inline-flex";
+    }
+    if (this.leftTestTools) {
+      this.leftTestTools.style.display = showTests ? "inline-flex" : "none";
+    }
   }
 
   /**
@@ -430,7 +505,7 @@ export class TestRunnerController {
         children: [
           createEl(this.ctx, "td", {
             text: "No @device_test cases match the active attribute filters.",
-            attrs: { colspan: "8" },
+            attrs: { colspan: "4" },
             style: {
               color: "var(--xerxes-text-dim)",
               textAlign: "center",
@@ -462,39 +537,6 @@ export class TestRunnerController {
       });
       rowCb.checked = isSelected;
 
-      const nameBlockChildren = [
-        createEl(this.ctx, "div", {
-          text: item.name,
-          style: { fontWeight: "bold", color: "var(--xerxes-cyan)" },
-        }),
-      ];
-      if (item.description) {
-        nameBlockChildren.push(
-          createEl(this.ctx, "div", {
-            text: item.description,
-            style: {
-              color: "var(--xerxes-text-muted)",
-              fontSize: "8px",
-              marginTop: "2px",
-              whiteSpace: "normal",
-            },
-          }),
-        );
-      }
-      if (runInfo && runInfo.detail) {
-        nameBlockChildren.push(
-          createEl(this.ctx, "div", {
-            text: runInfo.detail,
-            style: {
-              color: statusLabel === "FAILED" ? "var(--xerxes-red)" : "var(--xerxes-amber)",
-              fontSize: "8px",
-              marginTop: "2px",
-              whiteSpace: "normal",
-            },
-          }),
-        );
-      }
-
       const scenarioBadges = Array.isArray(item.scenarios)
         ? item.scenarios.map((scen) =>
             createEl(this.ctx, "span", {
@@ -509,6 +551,58 @@ export class TestRunnerController {
         className: item.manual ? "badge badge-amber" : "badge badge-cyan",
         text: item.manual ? "MANUAL" : "AUTO",
       });
+      const projBadge = createEl(this.ctx, "span", {
+        className: "badge",
+        text: item.project || "device",
+      });
+      const boardGlobBadge = createEl(this.ctx, "span", {
+        className: "badge",
+        text: boardsText,
+      });
+      const binBadge = createEl(this.ctx, "span", {
+        className: "badge",
+        text: `bin:${binText}`,
+      });
+
+      const nameBlockChildren = [
+        createEl(this.ctx, "div", {
+          text: item.name,
+          style: { fontWeight: "bold", color: "var(--xerxes-cyan)", wordBreak: "break-word" },
+        }),
+        createEl(this.ctx, "div", {
+          className: "test-badge-group",
+          style: { marginTop: "3px" },
+          children: [modeBadge, ...scenarioBadges, projBadge, boardGlobBadge, binBadge],
+        }),
+      ];
+      if (item.description) {
+        nameBlockChildren.push(
+          createEl(this.ctx, "div", {
+            text: item.description,
+            style: {
+              color: "var(--xerxes-text-muted)",
+              fontSize: "8px",
+              marginTop: "3px",
+              whiteSpace: "normal",
+              wordBreak: "break-word",
+            },
+          }),
+        );
+      }
+      if (runInfo && runInfo.detail) {
+        nameBlockChildren.push(
+          createEl(this.ctx, "div", {
+            text: runInfo.detail,
+            style: {
+              color: statusLabel === "FAILED" ? "var(--xerxes-red)" : "var(--xerxes-amber)",
+              fontSize: "8px",
+              marginTop: "3px",
+              whiteSpace: "normal",
+              wordBreak: "break-word",
+            },
+          }),
+        );
+      }
 
       const statusBadge = createEl(this.ctx, "span", {
         className: statusBadgeClass(statusLabel),
@@ -533,17 +627,6 @@ export class TestRunnerController {
           createEl(this.ctx, "td", { children: [rowCb] }),
           createEl(this.ctx, "td", { text: String(item.order || "") }),
           createEl(this.ctx, "td", { children: nameBlockChildren }),
-          createEl(this.ctx, "td", { text: item.project || "" }),
-          createEl(this.ctx, "td", {
-            children: [
-              createEl(this.ctx, "div", {
-                className: "test-badge-group",
-                children: [modeBadge, ...scenarioBadges],
-              }),
-            ],
-          }),
-          createEl(this.ctx, "td", { text: boardsText }),
-          createEl(this.ctx, "td", { text: binText }),
           createEl(this.ctx, "td", {
             children: [
               createEl(this.ctx, "div", {

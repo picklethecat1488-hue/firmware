@@ -5,6 +5,7 @@ import { createEl } from "../../js/core/dom.js";
 import { createMockRuntimeContext } from "../../js/core/runtime_context.js";
 import {
   createTestRunner,
+  LEFT_PANEL_TABS,
   MANUAL_PROMPT_ACTIONS,
   MANUAL_PROMPT_KINDS,
   statusBadgeClass,
@@ -12,6 +13,10 @@ import {
 
 function buildTestRunnerDom(ctx) {
   const doc = ctx.getDocument();
+  const leftTabLogsBtn = createEl(ctx, "button", { id: "btnLeftTabLogs", text: "SYSTEM LOGS" });
+  const leftTabTestsBtn = createEl(ctx, "button", { id: "btnLeftTabTests", text: "TEST SUITE" });
+  const logView = createEl(ctx, "div", { id: "logView", style: { display: "block" } });
+
   const projectSelect = createEl(ctx, "select", { id: "testFilterProject" });
   projectSelect.value = "all";
   const scenarioSelect = createEl(ctx, "select", { id: "testFilterScenario" });
@@ -88,9 +93,9 @@ function buildTestRunnerDom(ctx) {
     ],
   });
 
-  const viewEl = createEl(ctx, "div", {
-    id: "testView",
-    style: { display: "flex" },
+  const sidebarView = createEl(ctx, "div", {
+    id: "testSidebarView",
+    style: { display: "none" },
     children: [
       projectSelect,
       scenarioSelect,
@@ -106,14 +111,29 @@ function buildTestRunnerDom(ctx) {
       selectAllCb,
       boardBadge,
       summaryStats,
-      manualCard,
       tableBody,
+    ],
+  });
+
+  const viewEl = createEl(ctx, "div", {
+    id: "testView",
+    style: { display: "flex" },
+    children: [
+      manualCard,
       consoleOutput,
     ],
   });
+  doc.body.appendChild(leftTabLogsBtn);
+  doc.body.appendChild(leftTabTestsBtn);
+  doc.body.appendChild(logView);
+  doc.body.appendChild(sidebarView);
   doc.body.appendChild(viewEl);
 
   return {
+    leftTabLogsBtn,
+    leftTabTestsBtn,
+    logView,
+    sidebarView,
     viewEl,
     projectSelect,
     scenarioSelect,
@@ -264,13 +284,26 @@ describe("Host Daemon Test Mode UI Controller (TestRunnerController)", () => {
     assert.equal(dom.tableBody.children.length, 2);
     assert.equal(dom.projectSelect.children.length, 3); // All + 2 projects
 
-    // Regression WORM-FOSSORIAL-NIGHTCRAWLER-861: Mode / Scenarios cell uses flex-wrap badge group
-    // with discrete scenario badges so wrapped items never overlap badge borders.
+    // Regression WORM-LITHE-NYMPH-529: Left panel switches cleanly between TEST SUITE and SYSTEM LOGS tabs
+    controller.setTestModeActive(true);
+    assert.equal(controller.getActiveLeftTab(), LEFT_PANEL_TABS.TESTS);
+    assert.equal(dom.sidebarView.style.display, "flex");
+    assert.equal(dom.logView.style.display, "none");
+
+    dom.leftTabLogsBtn.click();
+    assert.equal(controller.getActiveLeftTab(), LEFT_PANEL_TABS.LOGS);
+    assert.equal(dom.sidebarView.style.display, "none");
+    assert.equal(dom.logView.style.display, "block");
+
+    dom.leftTabTestsBtn.click();
+    assert.equal(controller.getActiveLeftTab(), LEFT_PANEL_TABS.TESTS);
+    assert.equal(dom.sidebarView.style.display, "flex");
+
+    // Regression WORM-FOSSORIAL-NIGHTCRAWLER-861: Test cell uses flex-wrap .test-badge-group
+    // with discrete scenario/attribute pills so wrapped items never overlap badge borders.
     const firstRowCells = dom.tableBody.children[0].children;
-    const modeScenarioGroup = firstRowCells[4].children[0];
-    assert.ok(modeScenarioGroup, "Expected flex badge group wrapper inside Mode / Scenarios cell");
-    assert.equal(modeScenarioGroup.className, "test-badge-group");
-    assert.equal(modeScenarioGroup.children.length, 3); // AUTO + smoke + bringup
+    const modeScenarioGroup = firstRowCells[2].querySelector(".test-badge-group");
+    assert.ok(modeScenarioGroup, "Expected flex badge group wrapper inside left-panel Test cell");
     assert.equal(modeScenarioGroup.children[0].textContent, "AUTO");
     assert.equal(modeScenarioGroup.children[1].textContent, "smoke");
     assert.equal(modeScenarioGroup.children[2].textContent, "bringup");

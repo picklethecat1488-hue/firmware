@@ -14,7 +14,7 @@ import { applyUiScale } from "../core/ui_scale.js";
 import { createCliConsole, WORKSTATION_MODES } from "./cli_console.js";
 import { createRttStream } from "./rtt_stream.js";
 import { createTargetConfig } from "./target_config.js";
-import { createTestRunner } from "./test_runner.js";
+import { createTestRunner, LEFT_PANEL_TABS } from "./test_runner.js";
 import { createWormReporter } from "./worm_reporter.js";
 
 export const UI_SCALES = Object.freeze([
@@ -46,6 +46,7 @@ export class DaemonApp {
     this.ctx = ctx;
     this.bootConfig = ctx.getBootConfig();
     this.pollTimer = null;
+    this._openedLeftPanelForTestMode = false;
     this._unsubscribers = [];
 
     const initialMode = String(
@@ -61,9 +62,7 @@ export class DaemonApp {
     this.cliConsole = createCliConsole(ctx, {
       initialMode,
       onModeChange: async (mode) => {
-        if (mode === WORKSTATION_MODES.TEST) {
-          await this.testRunner.ensureInitialized();
-        }
+        await this._syncLeftPanelForMode(mode);
       },
     });
 
@@ -130,9 +129,7 @@ export class DaemonApp {
     this.wormReporter.init();
     this.testRunner.init();
     await this.cliConsole.init();
-    if (this.cliConsole.getMode() === WORKSTATION_MODES.TEST) {
-      await this.testRunner.ensureInitialized();
-    }
+    await this._syncLeftPanelForMode(this.cliConsole.getMode());
     await this.targetConfig.init();
 
     await this.pollAll();
@@ -208,6 +205,30 @@ export class DaemonApp {
   }
 
   /**
+   * Synchronize left-panel visibility and active tab (`TESTS` vs `LOGS`) when workstation mode changes.
+   *
+   * @param {string} mode - Active workstation mode (`"CLI"`, `"FS"`, or `"TEST"`).
+   * @returns {Promise<void>}
+   */
+  async _syncLeftPanelForMode(mode) {
+    if (mode === WORKSTATION_MODES.TEST) {
+      if (!this.rttStream.isPanelVisible()) {
+        this._openedLeftPanelForTestMode = true;
+        this.rttStream.togglePanel(true, { persist: false });
+      }
+      this.testRunner.setTestModeActive(true);
+      await this.testRunner.ensureInitialized();
+      return;
+    }
+
+    this.testRunner.setTestModeActive(false);
+    if (this._openedLeftPanelForTestMode) {
+      this._openedLeftPanelForTestMode = false;
+      this.rttStream.togglePanel(false, { persist: false });
+    }
+  }
+
+  /**
    * Bind top-bar buttons and global keyboard shortcuts (`Cmd/Ctrl +/-/0`, `Ctrl+R`, `Escape`).
    */
   _bindGlobalControls() {
@@ -220,6 +241,15 @@ export class DaemonApp {
     };
 
     const handleToggleLogs = () => {
+      if (
+        this.cliConsole.getMode() === WORKSTATION_MODES.TEST &&
+        this.rttStream.isPanelVisible() &&
+        this.testRunner.getActiveLeftTab() === LEFT_PANEL_TABS.TESTS
+      ) {
+        this.testRunner.setActiveLeftTab(LEFT_PANEL_TABS.LOGS);
+        return;
+      }
+      this._openedLeftPanelForTestMode = false;
       const visible = this.rttStream.togglePanel();
       if (this.targetConfig.cfgShowLogsCheckbox) {
         this.targetConfig.cfgShowLogsCheckbox.checked = visible;

@@ -73,10 +73,15 @@ function mountFullDaemonDom(ctx) {
     ["button", "btnCancelTargetConfig"],
     ["button", "btnConfirmTargetConfig"],
     ["div", "logPanel"],
+    ["button", "btnLeftTabTests"],
+    ["button", "btnLeftTabLogs"],
+    ["span", "leftPanelTestTools"],
+    ["span", "leftPanelLogTools"],
     ["button", "btnCopyLog"],
     ["button", "btnCollapseLog"],
     ["span", "logAutoScrollBadge"],
     ["div", "logView"],
+    ["div", "testSidebarView"],
     ["div", "vSplitter"],
     ["span", "cliPanelTitle"],
     ["button", "btnCopyWorkstation"],
@@ -224,11 +229,15 @@ describe("Host Daemon Root Workstation Application (DaemonApp)", () => {
     assert.equal(dom.logView.children.length, 0);
     assert.equal(dom.cliView.children.length, 0);
 
-    // Clicking #manualPromptBanner transitions workstation directly into TEST mode
+    // Clicking #manualPromptBanner transitions workstation directly into TEST mode and opens left TEST SUITE tab
     dom.manualPromptBanner.click();
+    await Promise.resolve();
     await Promise.resolve();
     assert.equal(app.cliConsole.getMode(), "TEST");
     assert.equal(dom.testView.style.display, "flex");
+    assert.equal(app.rttStream.isPanelVisible(), true);
+    assert.equal(app.testRunner.getActiveLeftTab(), "TESTS");
+    assert.equal(dom.testSidebarView.style.display, "flex");
 
     // Periodic 1000ms background poll fires while active and stops after destroy()
     const beforeTick = logsPollCount;
