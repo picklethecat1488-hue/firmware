@@ -1,12 +1,13 @@
-# 🔴 `[WORM-HUMIC-BRISTLE-14]` Transient INA219 current spike during 50% BLDC pump spin-up
+# 🟢 `[WORM-HUMIC-BRISTLE-14]` Transient INA219 current spike during 50% BLDC pump spin-up
 
 - **UUID**: `c0fa6176-b4b1-4a4a-ae17-93df5f72bd0a`
 - **ID**: `WORM-HUMIC-BRISTLE-14`
-- **Status**: `OPEN`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `CONTROLLER`
 - **Component**: `target`
 - **Created**: `2026-11-16 03:03:07 UTC`
+- **Resolved**: `2026-11-19 16:01:57 UTC`
 
 #### Description
 
