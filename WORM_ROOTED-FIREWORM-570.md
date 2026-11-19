@@ -69,12 +69,6 @@ We should move this console widget into a “test execution log” tab on the le
 [] [daemon] [INFO] RTT streaming process connected
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `screenshot` | [image.png](attachments/WORM-ROOTED-FIREWORM-570/image.png) | Pasted screenshot |
-
 #### Attached Commits
 
 - `f83911e3`

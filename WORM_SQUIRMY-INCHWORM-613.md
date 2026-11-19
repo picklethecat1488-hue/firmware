@@ -84,4 +84,3 @@ Observed brief 184 mA startup transient on TMC6300 phase engagement prior to ste
 | Type | Filename | Description |
 | :--- | :--- | :--- |
 | `reference` | [target_metadata_WORM-SQUIRMY-INCHWORM-613.txt](attachments/WORM-SQUIRMY-INCHWORM-613/target_metadata_WORM-SQUIRMY-INCHWORM-613.txt) | Filesystem metadata retrieved via host_fs |
-| `reference` | [target_telemetry_WORM-SQUIRMY-INCHWORM-613.json](attachments/WORM-SQUIRMY-INCHWORM-613/target_telemetry_WORM-SQUIRMY-INCHWORM-613.json) | Target telemetry export retrieved via host_fs |

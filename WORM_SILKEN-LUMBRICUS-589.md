@@ -75,12 +75,6 @@ We should add a test progress and status indicator to the right panel to be show
 [] [daemon] [INFO] RTT streaming process connected
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-SILKEN-LUMBRICUS-589.log](attachments/WORM-SILKEN-LUMBRICUS-589/target_system_logs_WORM-SILKEN-LUMBRICUS-589.log) | Target system and defmt logs from host daemon session |
-
 #### Attached Commits
 
 - `2e02dd3d`
