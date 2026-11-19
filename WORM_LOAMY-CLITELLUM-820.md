@@ -120,6 +120,10 @@ FAILED tools/device_tests/suites/test_cat_detector_smoke.py::test_tof_proximity_
 | `log` | [target_system_logs_WORM-LOAMY-CLITELLUM-820.log](attachments/WORM-LOAMY-CLITELLUM-820/target_system_logs_WORM-LOAMY-CLITELLUM-820.log) | Target system and defmt logs from host daemon session |
 | `log` | [target_test_execution_logs_WORM-LOAMY-CLITELLUM-820.log](attachments/WORM-LOAMY-CLITELLUM-820/target_test_execution_logs_WORM-LOAMY-CLITELLUM-820.log) | Test execution logs from host daemon Test Mode |
 
+#### Attached Commits
+
+- `f6832b10`
+
 #### Review Tasks & Functional Checklist
 
 - [ ] Run test_tof_proximity_array_and_i2c_bus on target via host.py test -k tof_proximity and verify both i2c scan and sensor status succeed cleanly | `python tools/host.py test -k tof_proximity` <!-- id:5adc0393 -->
