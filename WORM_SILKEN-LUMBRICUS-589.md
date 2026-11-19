@@ -82,3 +82,4 @@ We should add a test progress and status indicator to the right panel to be show
 #### Review Tasks & Functional Checklist
 
 - [ ] Launch host.py in TEST mode, run a multi-binary suite (e.g. cat_detector smoke + integration), and verify the right-panel Test Progress & Target Status card updates percentage, target flashing, mode switches, reboots, and active test queue in real time | `python tools/host.py --mode test` <!-- id:b9340829 -->
+- [ ] Run a manual bringup test with 'Prompt Manual' checked and verify the right panel transitions from the Progress Card to the Manual Benchtop Prompt card while awaiting input, then returns to the Progress Card upon submission | `python tools/host.py test --project cat_detector --scenario bringup --manual` <!-- id:3735ec5f -->
