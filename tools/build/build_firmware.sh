@@ -24,6 +24,7 @@ MCU_RUSTFLAGS=(
 )
 
 export CARGO_TARGET_THUMBV6M_NONE_EABI_RUSTFLAGS="${MCU_RUSTFLAGS[*]}"
+export CARGO_TARGET_THUMBV8M_MAIN_NONE_EABIHF_RUSTFLAGS="${MCU_RUSTFLAGS[*]}"
 
 
 # Find all tool packages to exclude from target build, and include in host build

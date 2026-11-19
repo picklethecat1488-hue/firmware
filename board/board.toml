@@ -1,5 +1,7 @@
 [boards.cat_detector]
 chip = "rp2040"
+board_type = "rp2040_flash_2mb"
+program_metadata_addr = 0x101AF000
 flash_base = 0x10000000
 flash_size = 0x00200000         # 2 MB
 sram_size = 0x00042000          # 264 KB
@@ -62,8 +64,12 @@ DEFAULT_NEAR_THRESHOLD_MM = { value = 100, type = "u16" }
 MAX_CRASH_LOGS = { value = 10, type = "u32" }
 
 [boards.cat_detector.partitions.storage]
-start = 0x001C0000
+start = 0x001B0000
 end = 0x00200000
+
+[boards.cat_detector.partitions.metadata]
+start = 0x001B0000
+end = 0x001C0000
 
 [boards.cat_detector.partitions.fs]
 start = 0x001C0000
@@ -71,4 +77,62 @@ end = 0x001D0000
 
 [boards.cat_detector.partitions.telemetry]
 start = 0x001D0000
+end = 0x00200000
+
+[boards.carrier_board]
+chip = "MCXN947"
+board_type = "carrier_board"
+program_metadata_addr = 0x001DF000
+flash_base = 0x00000000
+flash_size = 0x00200000         # 2 MB internal dual-bank NOR flash
+flash_write_size = 128          # 128 B phrase program
+flash_erase_size = 8192         # 8 KB sector erase
+sram_size = 0x00080000          # 512 KB ECC SRAM
+core0_stack_size = 24576        # 24 KB
+core1_stack_size = 16384        # 16 KB
+stack_top = 0x20080000
+core0_stack_bottom = 0x2007A000
+core_monitor_timeout_ms = 10000
+core_monitor_warn_pct = 80
+
+[boards.carrier_board.pins]
+I2C0_SDA_PIN = 0
+I2C0_SCL_PIN = 1
+I2C1_SDA_PIN = 2
+I2C1_SCL_PIN = 3
+UART0_TX_PIN = 4
+UART0_RX_PIN = 5
+FUEL_GAUGE_INT_PIN = 6
+CAP_TOUCH_INT_PIN = 7
+PIEZO_PWM_PIN = 8
+
+[boards.carrier_board.buses.i2c]
+sda = "I2C0_SDA_PIN"
+scl = "I2C0_SCL_PIN"
+frequency = 400000
+
+[boards.carrier_board.buses.uart]
+tx = "UART0_TX_PIN"
+rx = "UART0_RX_PIN"
+
+[boards.carrier_board.hardware_resources]
+FUEL_GAUGE_I2C_ADDR = { value = 0x36, type = "u8" }
+LED_DRIVER_I2C_ADDR = { value = 0x14, type = "u8" }
+TOUCH_CTRL_I2C_ADDR = { value = 0x44, type = "u8" }
+MAX_CRASH_LOGS = { value = 10, type = "u32" }
+
+[boards.carrier_board.partitions.storage]
+start = 0x001E0000
+end = 0x00200000
+
+[boards.carrier_board.partitions.metadata]
+start = 0x001E0000
+end = 0x001E8000
+
+[boards.carrier_board.partitions.fs]
+start = 0x001E8000
+end = 0x001F0000
+
+[boards.carrier_board.partitions.telemetry]
+start = 0x001F0000
 end = 0x00200000

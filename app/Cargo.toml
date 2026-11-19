@@ -28,6 +28,21 @@ path = "src/carrier_board_shell.rs"
 test = true
 bench = false
 
+[package.metadata.binaries.cat_detector_shell]
+board = "cat_detector"
+chip = "rp2040"
+target = "thumbv6m-none-eabi"
+
+[package.metadata.binaries.cat_detector_app]
+board = "cat_detector"
+chip = "rp2040"
+target = "thumbv6m-none-eabi"
+
+[package.metadata.binaries.carrier_board_shell]
+board = "carrier_board"
+chip = "MCXN947"
+target = "thumbv6m-none-eabi"
+
 [dependencies]
 model = { path = "../model" }
 platform = { path = "../platform", features = ["dual-core"] }
