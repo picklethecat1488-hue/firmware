@@ -12,7 +12,12 @@ import threading
 from typing import Any, Deque, Dict, List, Optional, Sequence
 import xml.etree.ElementTree as ET
 
-from device_tests.model import DetectedBoard, ScenarioTier, discover_device_tests
+from device_tests.model import (
+    DetectedBoard,
+    ScenarioTier,
+    discover_device_tests,
+    resolve_binary_board_type,
+)
 
 MAX_TEST_CONSOLE_LINES: int = 3000
 SUBPROCESS_TERMINATE_TIMEOUT_SEC: float = 2.0
@@ -105,6 +110,15 @@ class DeviceTestRunnerManager:
             self._cached_board = board
         return board
 
+    def _resolve_active_board_type(self, detected_board: Optional[DetectedBoard]) -> Optional[str]:
+        """Resolve the active target `board_type` from physical probe metadata or the configured target binary."""
+        if detected_board is not None and detected_board.board_type:
+            return detected_board.board_type
+        if getattr(self.runner, "package_selection_mode", False):
+            return None
+        configured_bin = getattr(self.runner, "bin_name", None)
+        return resolve_binary_board_type(configured_bin, self.runner.repo_root)
+
     def scan_tests(
         self,
         filters: Optional[Dict[str, Any]] = None,
@@ -120,29 +134,53 @@ class DeviceTestRunnerManager:
                 detected_board = self._cached_board
 
         detected_bt = detected_board.board_type if detected_board is not None else None
+        active_board_type = self._resolve_active_board_type(detected_board)
         repo_root: Path = self.runner.repo_root
-
-        all_tests = discover_device_tests(repo_root, detected_board_type=detected_bt)
-        projects = sorted({str(item["project"]) for item in all_tests if item.get("project")})
-        binaries = sorted({str(item.get("target_binary") or "none") for item in all_tests})
-        boards = sorted({str(pat) for item in all_tests for pat in item.get("boards", []) if pat})
 
         scenarios_filter = _parse_scenarios_filter(flt.get("scenarios") or flt.get("scenario"))
         manual_filter = _parse_manual_filter(flt.get("manual"))
-        board_filter = str(flt.get("board") or "").strip() or None
-        binary_filter = str(flt.get("target_binary") or flt.get("binary") or "").strip() or None
+        raw_board_filter = str(flt.get("board") or "").strip() or None
+        raw_binary_filter = str(flt.get("target_binary") or flt.get("binary") or "").strip()
+        binary_filter = (
+            raw_binary_filter if raw_binary_filter and raw_binary_filter.lower() not in ("all", "*") else None
+        )
         project_filter = str(flt.get("project") or "").strip() or None
         query_filter = str(flt.get("query") or flt.get("q") or "").strip() or None
+
+        is_explicit_board_override = raw_board_filter is not None and raw_board_filter.lower() not in (
+            "*",
+            "all",
+            "any",
+            "auto",
+        )
+
+        # When 'All Binaries' is selected (binary_filter is None) and the user hasn't explicitly overridden
+        # the board glob to a different board, exclude tests and binary facets targeting a different board_type.
+        facet_board_scope = raw_board_filter if is_explicit_board_override else active_board_type
+        effective_board_filter = (
+            raw_board_filter
+            if is_explicit_board_override
+            else (active_board_type if binary_filter is None else raw_board_filter)
+        )
+
+        all_tests = discover_device_tests(
+            repo_root,
+            board=facet_board_scope,
+            detected_board_type=detected_bt or active_board_type,
+        )
+        projects = sorted({str(item["project"]) for item in all_tests if item.get("project")})
+        binaries = sorted({str(item.get("target_binary") or "none") for item in all_tests})
+        boards = sorted({str(pat) for item in all_tests for pat in item.get("boards", []) if pat})
 
         filtered_tests = discover_device_tests(
             repo_root,
             project=project_filter,
             scenarios=scenarios_filter,
-            board=board_filter,
+            board=effective_board_filter,
             target_binary=binary_filter,
             manual=manual_filter,
             query=query_filter,
-            detected_board_type=detected_bt,
+            detected_board_type=detected_bt or active_board_type,
         )
 
         with self._lock:

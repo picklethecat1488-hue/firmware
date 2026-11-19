@@ -1,10 +1,13 @@
 """Full hardware bringup, calibration, fault-injection, and manual benchtop tests for Cat Detector."""
 
+import asyncio
 import re
 
 from device_tests.client import AsyncHostSessionClient
 from device_tests.manual import ManualTestHelper
 from device_tests.model import ScenarioTier, device_test
+
+FS_FORMAT_REBOOT_SETTLE_SEC: float = 2.5
 
 
 @device_test(
@@ -17,6 +20,10 @@ async def test_flash_filesystem_format_and_recovery(host: AsyncHostSessionClient
     """Format the `sequential-storage` flash filesystem (`fs format`) and verify clean directory state."""
     fmt = await host.cli("fs format", timeout=15.0)
     assert re.search(r"(Format|formatted|success|OK)", fmt, re.IGNORECASE), fmt
+
+    # `fs format` schedules an `SCB::sys_reset()` after 2s on target; wait and re-attach RTT cleanly.
+    await asyncio.sleep(FS_FORMAT_REBOOT_SETTLE_SEC)
+    await host.reboot()
 
     ls_out = await host.cli("fs ls")
     assert re.search(r"(No files found|Listing directory|empty)", ls_out, re.IGNORECASE), ls_out

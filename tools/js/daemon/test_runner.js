@@ -244,7 +244,7 @@ export class TestRunnerController {
     return {
       project: (this.projectSelect && this.projectSelect.value) || "all",
       scenario: (this.scenarioSelect && this.scenarioSelect.value) || "all",
-      board: ((this.boardInput && this.boardInput.value) || "*").trim() || "*",
+      board: ((this.boardInput && this.boardInput.value) || "auto").trim() || "auto",
       binary: (this.binarySelect && this.binarySelect.value) || "all",
       manual: (this.manualSelect && this.manualSelect.value) || "all",
       query: ((this.searchInput && this.searchInput.value) || "").trim(),
