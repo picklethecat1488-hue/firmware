@@ -959,3 +959,133 @@ def test_worm_silken_lumbricus_589_progress_and_target_lifecycle_status(monkeypa
         server.shutdown()
         server.server_close()
 
+
+def _count_white_pixels_in_png_region(
+    png_path: Path,
+    *,
+    x_min_frac: float,
+    x_max_frac: float,
+    y_min_frac: float,
+    y_max_frac: float,
+) -> int:
+    """Decode an RGB/RGBA PNG using pure stdlib `zlib`/`struct` and count `#ebebeb+` white pixels in fractional `[x, y]` bounds."""
+    import struct
+    import zlib
+
+    raw = png_path.read_bytes()
+    assert raw[:8] == b"\x89PNG\r\n\x1a\n"
+    pos = 8
+    width = height = color_type = 0
+    idat_parts: List[bytes] = []
+    while pos < len(raw):
+        (length,) = struct.unpack(">I", raw[pos : pos + 4])
+        chunk_type = raw[pos + 4 : pos + 8]
+        chunk_data = raw[pos + 8 : pos + 8 + length]
+        pos += 12 + length
+        if chunk_type == b"IHDR":
+            width, height, bit_depth, color_type, _, _, _ = struct.unpack(">IIBBBBB", chunk_data)
+            assert bit_depth == 8 and color_type in (2, 6)
+        elif chunk_type == b"IDAT":
+            idat_parts.append(chunk_data)
+        elif chunk_type == b"IEND":
+            break
+
+    x_min = int(width * x_min_frac)
+    x_max = int(width * x_max_frac)
+    y_min = int(height * y_min_frac)
+    y_max = int(height * y_max_frac)
+
+    bpp = 4 if color_type == 6 else 3
+    stride = width * bpp
+    decompressed = zlib.decompress(b"".join(idat_parts))
+    prev_row = bytearray(stride)
+    white_count = 0
+    offset = 0
+    for y in range(height):
+        ftype = decompressed[offset]
+        offset += 1
+        cur = bytearray(decompressed[offset : offset + stride])
+        offset += stride
+        if ftype == 1:  # Sub
+            for i in range(bpp, stride):
+                cur[i] = (cur[i] + cur[i - bpp]) & 0xFF
+        elif ftype == 2:  # Up
+            for i in range(stride):
+                cur[i] = (cur[i] + prev_row[i]) & 0xFF
+        elif ftype == 3:  # Average
+            for i in range(stride):
+                left = cur[i - bpp] if i >= bpp else 0
+                cur[i] = (cur[i] + ((left + prev_row[i]) >> 1)) & 0xFF
+        elif ftype == 4:  # Paeth
+            for i in range(stride):
+                a = cur[i - bpp] if i >= bpp else 0
+                b = prev_row[i]
+                c = prev_row[i - bpp] if i >= bpp else 0
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                pr = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
+                cur[i] = (cur[i] + pr) & 0xFF
+        prev_row = cur
+        if y_min <= y <= y_max:
+            for x in range(max(0, x_min), min(width, x_max + 1)):
+                px = x * bpp
+                if cur[px] >= 235 and cur[px + 1] >= 235 and cur[px + 2] >= 235:
+                    white_count += 1
+    return white_count
+
+
+def test_worm_inching_millipede_969_no_white_scrollbar_gutter_artifact(tmp_path: Path) -> None:
+    """Verify the rendered `#testStackList` scrollbar edge in Headless Chrome has zero bright-white gutter pixels."""
+    import shutil
+
+    chrome_candidates = [
+        Path("/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+        *(Path(p) for name in ("google-chrome", "chromium", "chromium-browser") if (p := shutil.which(name))),
+    ]
+    chrome_bin = next((c for c in chrome_candidates if c.is_file()), None)
+    if chrome_bin is None:
+        pytest.skip("Headless Chrome/Chromium not installed in this environment")
+
+    runner = SimulatedTargetRunner(
+        WORKSPACE_ROOT,
+        connected_board_type="rp2040_flash_2mb",
+        connected_chip="rp2040",
+        initial_bin="cat_detector_shell",
+    )
+    runner.active_mode = "TEST"
+    server, port = _start_ephemeral_daemon(runner)
+    try:
+        shot_path = tmp_path / "test_stack_render.png"
+        subprocess.run(
+            [
+                str(chrome_bin),
+                "--headless=new",
+                "--no-sandbox",
+                "--disable-gpu",
+                "--window-size=1440,900",
+                "--virtual-time-budget=2500",
+                f"--screenshot={shot_path}",
+                f"http://127.0.0.1:{port}/",
+            ],
+            check=True,
+            capture_output=True,
+            timeout=25.0,
+        )
+        assert shot_path.is_file()
+        # Right edge of left-panel `#testStackList` (around x=660..715, y=260..860 on a 1440x900 50% split)
+        white_pixels = _count_white_pixels_in_png_region(
+            shot_path,
+            x_min_frac=0.44,
+            x_max_frac=0.51,
+            y_min_frac=0.28,
+            y_max_frac=0.94,
+        )
+        assert white_pixels == 0, (
+            f"Found {white_pixels} bright white pixels along the right edge of #testStackList "
+            "(light-mode scrollbar gutter artifact from WORM-INCHING-MILLIPEDE-969)"
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
