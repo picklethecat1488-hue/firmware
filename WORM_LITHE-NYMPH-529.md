@@ -2,12 +2,13 @@
 
 - **UUID**: `31aa2d4b-786e-4189-8bb0-ef76a8675378`
 - **ID**: `WORM-LITHE-NYMPH-529`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `target`
 - **Created**: `2026-11-19 03:43:19 UTC`
 - **Resolved**: `2026-11-19 18:37:04 UTC`
+- **Accepted**: `2026-11-19 18:37:07 UTC`
 - **Rejected**: `2026-11-19 16:02:14 UTC`
 
 #### Description
