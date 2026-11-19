@@ -82,6 +82,7 @@ We should move the test list and filter menu to the left panel so that the manua
 
 - [ ] Switch host.py ACTIVE MODE to TEST and verify the left panel opens on the TEST SUITE tab with tab switching to SYSTEM LOGS and spacious right-panel manual prompt layout | `python tools/host.py --no-detach` <!-- id:a5c70ced -->
 - [ ] Open host.py in TEST mode and verify the left-panel TEST SUITE tab renders VCS-style stacked .test-stack-node cards with accent borders, card-click selection toggle, and attribute tags | `python tools/host.py --mode test` <!-- id:5d5f1f8b -->
+- [ ] Click the per-card ▶ Play button next to any test status badge and verify it immediately transitions that card to RUNNING, updates the right-panel progress bar, and executes only that test | `python tools/host.py --mode test` <!-- id:19e222b8 -->
 
 #### Resolution Notes
 
