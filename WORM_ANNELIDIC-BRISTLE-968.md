@@ -1,12 +1,13 @@
-# 🔴 `[WORM-ANNELIDIC-BRISTLE-968]` Add test name filter to  host.py test cmd line
+# 🟢 `[WORM-ANNELIDIC-BRISTLE-968]` Add test name filter to  host.py test cmd line
 
 - **UUID**: `4c9af3c3-00b4-41a1-bdbd-b73b67e47f0b`
 - **ID**: `WORM-ANNELIDIC-BRISTLE-968`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-19 18:33:25 UTC`
+- **Resolved**: `2026-11-19 19:00:10 UTC`
 
 #### Description
 
@@ -100,3 +101,7 @@ tools/device_tests/suites/test_cat_detector_smoke.py::test_tof_proximity_array_a
 
 - [ ] Run host.py test --list-tests -k 'tof and not calibration' and verify only matching @device_test entries are listed | `python tools/host.py test --list-tests -k 'tof and not calibration'` <!-- id:1d29c161 -->
 - [ ] Run a single filtered on-device test via host.py test -k battery_fuel_gauge and verify only that test executes on target | `python tools/host.py test -k battery_fuel_gauge` <!-- id:06394688 -->
+
+#### Resolution Notes
+
+Added -k / --keyword / --filter to python tools/host.py test (and tools/verify.py) mirroring pytest -k boolean keyword expressions across both --list-tests discovery and on-device pytest execution.
