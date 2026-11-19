@@ -21,7 +21,7 @@ for p in (str(WORKSPACE_ROOT), str(TOOLS_DIR), str(DASHBOARD_DIR)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from device_tests.client import AsyncHostSessionClient
+from device_tests.client import AsyncHostSessionClient, _http_json_sync
 from device_tests.manual import ManualPromptAction, ManualTestHelper
 from device_tests.model import (
     BoardType,
@@ -693,6 +693,88 @@ def test_host_test_optional_script_and_scenario_inference(tmp_path: Path) -> Non
         rc = host_cli_main(["--port", str(port), "test", "--script", str(smoke_script), "--host-port", str(port)])
         assert rc == 0
         assert "battery status" in runner.executed_cli_commands
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_host_test_mode_ui_scan_filter_run_and_manual_measurement_responses() -> None:
+    """Verify `host.py` Test Mode UI APIs (`/api/tests*` & `/api/manual_prompt/respond`) end-to-end."""
+    runner = SimulatedTargetRunner(
+        WORKSPACE_ROOT,
+        connected_board_type="carrier_board",
+        connected_chip="MCXN947",
+    )
+    server, port = _start_ephemeral_daemon(runner)
+    base_url = f"http://127.0.0.1:{port}"
+    try:
+        mode_res = _http_json_sync(f"{base_url}/api/mode", {"mode": "TEST"})
+        assert mode_res["success"] is True
+        assert runner.active_mode == "TEST"
+
+        scan_res = _http_json_sync(
+            f"{base_url}/api/tests/scan",
+            {
+                "project": "carrier_board",
+                "scenario": "bringup",
+                "manual": "manual",
+                "probe_board": True,
+            },
+        )
+        assert scan_res["success"] is True
+        assert scan_res["detected_board"]["board_type"] == "carrier_board"
+        node_ids = [item["node_id"] for item in scan_res["tests"]]
+        rails_node = "tools/device_tests/suites/test_carrier_board_bringup.py::test_power_rails_and_protection"
+        assert rails_node in node_ids
+
+        # Execute `test_power_rails_and_protection` via Test Mode UI and feed measurements over HTTP!
+        run_res = _http_json_sync(
+            f"{base_url}/api/tests/run",
+            {"node_ids": [rails_node], "enable_manual": True},
+        )
+        assert run_res["success"] is True
+
+        scripted_measurements = {
+            "TP1": "5.01",
+            "TP2": "3.31",
+            "TP3": "1.10",
+            "TP4": "3.95",
+            "quiescent": "22.4",
+        }
+        answered_prompt_ids: set[str] = set()
+        deadline = time.monotonic() + 25.0
+        final_status: Dict[str, Any] = {}
+
+        while time.monotonic() < deadline:
+            st = _http_json_sync(f"{base_url}/api/tests/status")
+            final_status = st
+            prompt_info = st.get("manual_prompt") or {}
+            if prompt_info.get("active") and prompt_info.get("prompt_id") not in answered_prompt_ids:
+                pid = str(prompt_info["prompt_id"])
+                answered_prompt_ids.add(pid)
+                if prompt_info.get("kind") == "measurement":
+                    prompt_text = str(prompt_info.get("prompt", ""))
+                    chosen = next(
+                        (val for key, val in scripted_measurements.items() if key.lower() in prompt_text.lower()),
+                        "5.00",
+                    )
+                    _http_json_sync(
+                        f"{base_url}/api/manual_prompt/respond",
+                        {"prompt_id": pid, "action": "measurement", "value": chosen},
+                    )
+                else:
+                    _http_json_sync(
+                        f"{base_url}/api/manual_prompt/respond",
+                        {"prompt_id": pid, "action": "yes"},
+                    )
+            if not st.get("active") and st.get("step") in ("complete", "failed", "cancelled"):
+                break
+            time.sleep(0.08)
+
+        assert final_status.get("step") == "complete", f"Unexpected final status: {final_status}"
+        assert final_status.get("passed") == 1
+        assert final_status["results_map"][rails_node]["status"] == "PASSED"
+        assert len(answered_prompt_ids) == 6
     finally:
         server.shutdown()
         server.server_close()
