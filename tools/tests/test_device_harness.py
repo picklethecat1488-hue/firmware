@@ -869,3 +869,93 @@ def test_worm_rooted_fireworm_570_test_execution_logs_attached_in_test_mode_only
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_worm_silken_lumbricus_589_progress_and_target_lifecycle_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify `/api/tests/status` reports `progress_pct` and real-time target flashing, mode switch, reboot, and test execution states."""
+    from host_daemon.provider.daemon.runner import DaemonRunner
+
+    runner = DaemonRunner(
+        repo_root=WORKSPACE_ROOT,
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+        target="thumbv6m-none-eabi",
+        chip="rp2040",
+    )
+    monkeypatch.setattr(runner, "start_rtt_streaming", lambda: None)
+    monkeypatch.setattr(runner, "stop_rtt_streaming", lambda: None)
+    monkeypatch.setattr(runner, "run_probe_rs", lambda _args, **_kw: (0, "Reset complete"))
+
+    server, port = _start_ephemeral_daemon(runner)
+    base_url = f"http://127.0.0.1:{port}"
+    try:
+        # 1. Idle baseline status
+        idle_st = _http_json_sync(f"{base_url}/api/tests/status")
+        assert idle_st["progress_pct"] == 0
+        assert idle_st["target_activity"]["phase"] == "idle"
+
+        # 2. Simulate active test run (1 of 4 completed, 2nd running)
+        tm = runner.test_manager
+        with tm._lock:
+            tm._active = True
+            tm._step = tm._step.__class__("running")
+            tm._total = 4
+            tm._completed = 1
+            tm._passed = 1
+            tm._ordered_node_ids = [
+                "suite.py::test_one",
+                "suite.py::test_two",
+                "suite.py::test_three",
+                "suite.py::test_four",
+            ]
+            tm._current_test = "suite.py::test_two"
+            tm._results_by_node_id = {
+                "suite.py::test_one": {"node_id": "suite.py::test_one", "name": "test_one", "status": "PASSED"},
+                "suite.py::test_two": {"node_id": "suite.py::test_two", "name": "test_two", "status": "RUNNING"},
+            }
+
+        exec_st = _http_json_sync(f"{base_url}/api/tests/status")
+        assert 25 < exec_st["progress_pct"] < 60
+        assert exec_st["target_activity"]["phase"] == "executing_test"
+        assert "test_two" in exec_st["target_activity"]["headline"]
+
+        # 3. Target flashing phase while test run is active
+        runner._update_sync("flashing_target", 3, 75, "Flashing target device via probe-rs...", active=True)
+        flash_st = _http_json_sync(f"{base_url}/api/tests/status")
+        assert flash_st["target_activity"]["phase"] == "flashing"
+        assert flash_st["target_activity"]["sync_active"] is True
+        assert flash_st["target_activity"]["sync_progress"] == 75
+        assert "Flashing" in flash_st["target_activity"]["headline"]
+        runner._update_sync("complete", 4, 100, "Target synchronized & RTT connected successfully.", active=False)
+
+        # 4. Target mode switch phase
+        runner.set_mode("FS")
+        mode_st = _http_json_sync(f"{base_url}/api/tests/status")
+        assert mode_st["target_activity"]["phase"] == "mode_switch"
+        assert mode_st["target_activity"]["mode"] == "FS"
+        assert mode_st["target_activity"]["mode_switch_count"] >= 1
+        assert "FS" in mode_st["target_activity"]["headline"]
+
+        # 5. Target reboot phase
+        runner.reboot_target()
+        reboot_st = _http_json_sync(f"{base_url}/api/tests/status")
+        assert reboot_st["target_activity"]["phase"] == "rebooting"
+        assert reboot_st["target_activity"]["reboot_count"] == 1
+        assert "reboot" in reboot_st["target_activity"]["headline"].lower()
+
+        # 6. Suite completion -> 100%
+        with tm._lock:
+            tm._active = False
+            tm._step = tm._step.__class__("complete")
+            tm._completed = 4
+            tm._passed = 4
+            tm._current_test = None
+        # Clear recent lifecycle window so completion state takes precedence
+        runner._lifecycle_updated_at = 0.0
+        done_st = _http_json_sync(f"{base_url}/api/tests/status")
+        assert done_st["progress_pct"] == 100
+        assert done_st["target_activity"]["phase"] == "complete"
+    finally:
+        server.shutdown()
+        server.server_close()
+

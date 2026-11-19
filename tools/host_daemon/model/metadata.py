@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 ATTACHED_INVALID_META_RE = re.compile(r"AttachedTargetMetadataInvalid\s*\(([^)]+)\)")
 BUILD_PROFILES: tuple[str, ...] = ("debug", "release")
+DEFAULT_QUERY_METADATA_TIMEOUT_SEC: float = 30.0
 _CARGO_TARGET_DIR_CACHE: Dict[Path, Path] = {}
 
 
@@ -170,7 +171,7 @@ def run_host_fs_query_metadata(
     *,
     elf_only: bool = False,
     host_fs_path: Optional[Path] = None,
-    timeout: float = 15.0,
+    timeout: float = DEFAULT_QUERY_METADATA_TIMEOUT_SEC,
 ) -> tuple[int, str]:
     """Invoke `host_fs --elf <elf_path> query_metadata [--elf-only] --json` and return `(rc, output)`."""
     cmd = _resolve_host_fs_cmd_prefix(repo_root, host_fs_path) + [

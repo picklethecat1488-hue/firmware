@@ -42,10 +42,10 @@ async def test_battery_alert_pin_assertion(host: AsyncHostSessionClient) -> None
 )
 async def test_tof_proximity_array_and_i2c_bus(host: AsyncHostSessionClient) -> None:
     """Scan I2C0 and verify North, East, and West VL53L0X ToF channels report valid distance or INVALID."""
-    scan = await host.cli("i2c scan")
+    scan = await host.cli("i2c scan", timeout=10.0)
     assert re.search(r"(Scanning I2C bus|[0-9a-f]{2}:|0x[0-9a-fA-F]{2})", scan), scan
 
-    sensor = await host.cli("sensor status")
+    sensor = await host.cli("sensor status", timeout=12.0)
     assert re.search(r"(\d+\s*mm|INVALID)", sensor), sensor
     assert "FAILED" not in sensor, sensor
 
@@ -58,10 +58,10 @@ async def test_tof_proximity_array_and_i2c_bus(host: AsyncHostSessionClient) -> 
 )
 async def test_thermal_and_mcu_die_temperature(host: AsyncHostSessionClient) -> None:
     """Verify ThermalController and RP2040 on-die ADC temperature sensors report plausible ambient values."""
-    therm = await host.cli("thermal status")
+    therm = await host.cli("thermal status", timeout=10.0)
     assert re.search(r"([1-5]\d(\.\d+)?\s*C|Thermal)", therm), therm
 
-    mcu = await host.cli("thermal mcu")
+    mcu = await host.cli("thermal mcu", timeout=10.0)
     assert re.search(r"([1-6]\d(\.\d+)?\s*C|RP2040)", mcu), mcu
 
 

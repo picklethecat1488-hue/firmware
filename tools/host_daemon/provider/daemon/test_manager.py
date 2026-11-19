@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from typing import Any, Deque, Dict, List, Optional, Sequence
 import xml.etree.ElementTree as ET
 
@@ -21,6 +22,12 @@ from device_tests.model import (
 
 MAX_TEST_CONSOLE_LINES: int = 3000
 SUBPROCESS_TERMINATE_TIMEOUT_SEC: float = 2.0
+RECENT_LIFECYCLE_WINDOW_SEC: float = 2.5
+RUNNING_SYNC_INTRA_WEIGHT: float = 0.65
+RUNNING_DEFAULT_INTRA_WEIGHT: float = 0.35
+MIN_RUNNING_PROGRESS_PCT: int = 5
+MAX_RUNNING_PROGRESS_PCT: int = 99
+COMPLETE_PROGRESS_PCT: int = 100
 PYTEST_VERBOSE_RESULT_RE = re.compile(r"^(\S+::\S+)\s+(PASSED|FAILED|SKIPPED|ERROR)\b")
 
 
@@ -29,6 +36,19 @@ class TestRunStep(str, Enum):
 
     IDLE = "idle"
     RUNNING = "running"
+    COMPLETE = "complete"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class TargetLifecyclePhase(str, Enum):
+    """Granular target hardware & test execution phases surfaced in the right-panel status card."""
+
+    IDLE = "idle"
+    FLASHING = "flashing"
+    MODE_SWITCH = "mode_switch"
+    REBOOTING = "rebooting"
+    EXECUTING_TEST = "executing_test"
     COMPLETE = "complete"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -510,15 +530,171 @@ class DeviceTestRunnerManager:
 
         return self.get_status()
 
+    def _extract_runner_activity(self) -> Dict[str, Any]:
+        """Extract raw target synchronization, mode, reboot, and command telemetry from `self.runner`."""
+        if hasattr(self.runner, "get_target_activity"):
+            return dict(self.runner.get_target_activity())
+
+        sync_st = getattr(self.runner, "sync_status", None) or {}
+        history = getattr(self.runner, "command_history", None) or []
+        return {
+            "phase": "flashing" if sync_st.get("active") else "idle",
+            "detail": str(sync_st.get("message", "Ready")),
+            "updated_at": 0.0,
+            "mode": str(getattr(self.runner, "active_mode", "TEST")),
+            "mode_switch_count": int(getattr(self.runner, "mode_switch_count", 0)),
+            "reboot_count": int(getattr(self.runner, "reboot_count", 0)),
+            "last_command": str(history[-1]) if history else "",
+            "sync_active": bool(sync_st.get("active", False)),
+            "sync_step": str(sync_st.get("step", "idle")),
+            "sync_progress": int(sync_st.get("progress", 0)),
+            "sync_message": str(sync_st.get("message", "")),
+            "target_bin": getattr(self.runner, "bin_name", None),
+            "target_package": getattr(self.runner, "package", None),
+            "connected": bool(getattr(self.runner, "is_connected", False)),
+            "flashed": bool(getattr(self.runner, "is_flashed", False)),
+        }
+
+    def _compute_progress_pct(
+        self,
+        *,
+        active: bool,
+        step: TestRunStep,
+        total: int,
+        completed: int,
+        sync_active: bool,
+        sync_progress: int,
+    ) -> int:
+        """Compute an interactive `[0..100]` progress percentage across suite and flash stages."""
+        if step == TestRunStep.IDLE or total <= 0:
+            return 0
+        if step == TestRunStep.COMPLETE:
+            return COMPLETE_PROGRESS_PCT
+        if not active:
+            return min(COMPLETE_PROGRESS_PCT, round((completed / total) * COMPLETE_PROGRESS_PCT))
+
+        intra = (
+            (max(MIN_RUNNING_PROGRESS_PCT, sync_progress) / float(COMPLETE_PROGRESS_PCT)) * RUNNING_SYNC_INTRA_WEIGHT
+            if sync_active
+            else RUNNING_DEFAULT_INTRA_WEIGHT
+        )
+        raw_pct = round(((completed + intra) / total) * COMPLETE_PROGRESS_PCT)
+        return max(MIN_RUNNING_PROGRESS_PCT, min(MAX_RUNNING_PROGRESS_PCT, raw_pct))
+
+    def _build_target_activity(
+        self,
+        *,
+        raw_activity: Dict[str, Any],
+        active: bool,
+        step: TestRunStep,
+        total: int,
+        completed: int,
+        passed: int,
+        failed: int,
+        skipped: int,
+        current_test: Optional[str],
+        current_name: Optional[str],
+        error: Optional[str],
+    ) -> Dict[str, Any]:
+        """Resolve human-readable phase, label, headline, and detail for the right-panel status card."""
+        now = time.monotonic()
+        sync_active = bool(raw_activity.get("sync_active", False))
+        sync_step = str(raw_activity.get("sync_step") or "idle")
+        sync_progress = int(raw_activity.get("sync_progress", 0))
+        sync_message = str(raw_activity.get("sync_message") or "")
+        raw_phase = str(raw_activity.get("phase") or "idle")
+        raw_detail = str(raw_activity.get("detail") or "")
+        updated_at = float(raw_activity.get("updated_at") or 0.0)
+        is_recent_event = updated_at > 0.0 and (now - updated_at) <= RECENT_LIFECYCLE_WINDOW_SEC
+
+        target_bin = str(raw_activity.get("target_bin") or "none")
+        mode = str(raw_activity.get("mode") or "TEST")
+        last_command = str(raw_activity.get("last_command") or "")
+
+        if sync_active or raw_phase == TargetLifecyclePhase.FLASHING.value:
+            phase = TargetLifecyclePhase.FLASHING.value
+            label = "FLASHING TARGET"
+            headline = sync_message or raw_detail or f"Flashing {target_bin}..."
+            detail = f"[{sync_step}] {target_bin} ({sync_progress}%)"
+        elif raw_phase == TargetLifecyclePhase.REBOOTING.value and is_recent_event:
+            phase = TargetLifecyclePhase.REBOOTING.value
+            label = "TARGET REBOOT"
+            headline = raw_detail or "Rebooting target MCU over SWD..."
+            detail = f"Target: {target_bin} • Reboots: {raw_activity.get('reboot_count', 0)}"
+        elif raw_phase == TargetLifecyclePhase.MODE_SWITCH.value and is_recent_event:
+            phase = TargetLifecyclePhase.MODE_SWITCH.value
+            label = "MODE SWITCH"
+            headline = raw_detail or f"Target mode switched to {mode}"
+            detail = last_command or f"Active mode: {mode} • Target: {target_bin}"
+        elif active:
+            phase = TargetLifecyclePhase.EXECUTING_TEST.value
+            label = "RUNNING TEST"
+            index = min(completed + 1, max(1, total))
+            short_name = current_name or (current_test.split("::")[-1] if current_test else "suite")
+            headline = f"[{index}/{total}] Running {short_name}"
+            detail = last_command or f"Target binary: {target_bin} • Mode: {mode}"
+        elif step == TestRunStep.COMPLETE:
+            phase = TargetLifecyclePhase.COMPLETE.value
+            label = "SUITE COMPLETE"
+            headline = f"Completed {total}/{total} tests ({passed} passed, {skipped} skipped)"
+            detail = f"Target binary: {target_bin} • Mode: {mode}"
+        elif step == TestRunStep.FAILED:
+            phase = TargetLifecyclePhase.FAILED.value
+            label = "SUITE FAILED"
+            headline = error or f"Test run failed ({failed} failed of {total})"
+            detail = last_command or f"Target binary: {target_bin} • Mode: {mode}"
+        elif step == TestRunStep.CANCELLED:
+            phase = TargetLifecyclePhase.CANCELLED.value
+            label = "RUN CANCELLED"
+            headline = f"Cancelled after {completed}/{total} tests"
+            detail = f"Target binary: {target_bin} • Mode: {mode}"
+        else:
+            phase = TargetLifecyclePhase.IDLE.value
+            label = "READY"
+            headline = "Ready to execute on-device @device_test suites"
+            detail = f"Target binary: {target_bin} • Mode: {mode}"
+
+        return {
+            **raw_activity,
+            "phase": phase,
+            "label": label,
+            "headline": headline,
+            "detail": detail,
+        }
+
     def get_status(self) -> Dict[str, Any]:
         """Return a thread-safe snapshot of the current or most recent Test Mode UI run."""
         manual_dict = (
             self.runner.manual_prompt.to_dict() if hasattr(self.runner, "manual_prompt") else {"active": False}
         )
+        raw_activity = self._extract_runner_activity()
         with self._lock:
             ordered_results = [
                 dict(self._results_by_node_id[nid]) for nid in self._ordered_node_ids if nid in self._results_by_node_id
             ]
+            current_rec = self._results_by_node_id.get(self._current_test or "") if self._current_test else None
+            current_name = str(current_rec.get("name")) if isinstance(current_rec, dict) and current_rec.get("name") else None
+            progress_pct = self._compute_progress_pct(
+                active=self._active,
+                step=self._step,
+                total=self._total,
+                completed=self._completed,
+                sync_active=bool(raw_activity.get("sync_active", False)),
+                sync_progress=int(raw_activity.get("sync_progress", 0)),
+            )
+            target_activity = self._build_target_activity(
+                raw_activity=raw_activity,
+                active=self._active,
+                step=self._step,
+                total=self._total,
+                completed=self._completed,
+                passed=self._passed,
+                failed=self._failed,
+                skipped=self._skipped,
+                current_test=self._current_test,
+                current_name=current_name,
+                error=self._error,
+            )
             return {
                 "active": self._active,
                 "step": self._step.value,
@@ -527,11 +703,13 @@ class DeviceTestRunnerManager:
                 "passed": self._passed,
                 "failed": self._failed,
                 "skipped": self._skipped,
+                "progress_pct": progress_pct,
                 "current_test": self._current_test,
                 "error": self._error,
                 "results": ordered_results,
                 "results_map": {k: dict(v) for k, v in self._results_by_node_id.items()},
                 "console": list(self._console),
                 "manual_prompt": manual_dict,
+                "target_activity": target_activity,
                 "detected_board": self._cached_board.to_dict() if self._cached_board is not None else None,
             }

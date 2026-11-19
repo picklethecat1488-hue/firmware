@@ -97,6 +97,35 @@ function buildTestRunnerDom(ctx) {
     ],
   });
 
+  const progressDot = createEl(ctx, "span", { id: "testProgressDot", className: "sync-status-dot" });
+  const phaseBadge = createEl(ctx, "span", { id: "testPhaseBadge", text: "READY" });
+  const progressPct = createEl(ctx, "span", { id: "testProgressPct", text: "0%" });
+  const progressBar = createEl(ctx, "div", { id: "testProgressBar", style: { width: "0%" } });
+  const activityHeadline = createEl(ctx, "div", { id: "testActivityHeadline" });
+  const activityDetail = createEl(ctx, "div", { id: "testActivityDetail" });
+  const telemetryMode = createEl(ctx, "div", { id: "testTelemetryMode" });
+  const telemetryFlash = createEl(ctx, "div", { id: "testTelemetryFlash" });
+  const telemetryReboots = createEl(ctx, "div", { id: "testTelemetryReboots" });
+  const telemetryCounts = createEl(ctx, "div", { id: "testTelemetryCounts" });
+  const runFeedList = createEl(ctx, "div", { id: "testRunFeedList" });
+  const progressCard = createEl(ctx, "div", {
+    id: "testProgressCard",
+    style: { display: "none" },
+    children: [
+      progressDot,
+      phaseBadge,
+      progressPct,
+      progressBar,
+      activityHeadline,
+      activityDetail,
+      telemetryMode,
+      telemetryFlash,
+      telemetryReboots,
+      telemetryCounts,
+      runFeedList,
+    ],
+  });
+
   const sidebarView = createEl(ctx, "div", {
     id: "testSidebarView",
     style: { display: "none" },
@@ -122,7 +151,7 @@ function buildTestRunnerDom(ctx) {
   const viewEl = createEl(ctx, "div", {
     id: "testView",
     style: { display: "flex" },
-    children: [manualCard],
+    children: [progressCard, manualCard],
   });
   doc.body.appendChild(leftTabLogsBtn);
   doc.body.appendChild(leftTabTestsBtn);
@@ -155,6 +184,18 @@ function buildTestRunnerDom(ctx) {
     summaryStats,
     tableBody,
     consoleOutput,
+    progressCard,
+    progressDot,
+    phaseBadge,
+    progressPct,
+    progressBar,
+    activityHeadline,
+    activityDetail,
+    telemetryMode,
+    telemetryFlash,
+    telemetryReboots,
+    telemetryCounts,
+    runFeedList,
     manualCard,
     manualTitle,
     manualProcedure,
@@ -451,6 +492,136 @@ describe("Host Daemon Test Mode UI Controller (TestRunnerController)", () => {
     await Promise.resolve();
     assert.equal(submittedResponses.length, 3);
     assert.equal(submittedResponses[2].action, "yes");
+
+    controller.destroy();
+  });
+
+  it("renders right-panel progress bar and target lifecycle status when manual prompt is inactive (WORM-SILKEN-LUMBRICUS-589)", async () => {
+    let currentSnapshot = {
+      active: true,
+      step: "running",
+      total: 4,
+      completed: 1,
+      passed: 1,
+      failed: 0,
+      skipped: 0,
+      progress_pct: 41,
+      current_test: "suite.py::test_two",
+      results: [
+        { node_id: "suite.py::test_one", name: "test_one", status: "PASSED", duration_s: 0.42 },
+        { node_id: "suite.py::test_two", name: "test_two", status: "RUNNING", duration_s: null },
+      ],
+      results_map: {},
+      console: [],
+      manual_prompt: { active: false },
+      target_activity: {
+        phase: "flashing",
+        label: "FLASHING TARGET",
+        headline: "Flashing target device via probe-rs...",
+        detail: "[flashing_target] cat_detector_app (75%)",
+        mode: "TEST",
+        mode_switch_count: 1,
+        reboot_count: 0,
+        last_command: "",
+        sync_active: true,
+        sync_step: "flashing_target",
+        sync_progress: 75,
+        target_bin: "cat_detector_app",
+        connected: false,
+        flashed: false,
+      },
+    };
+
+    const ctx = createMockRuntimeContext({
+      fetchRoutes: {
+        "GET /api/tests/status": () => ({ status: 200, body: currentSnapshot }),
+      },
+    });
+
+    const dom = buildTestRunnerDom(ctx);
+    const controller = createTestRunner(ctx);
+    controller.init();
+
+    // Initially before polling, progressCard should be visible (manual prompt is inactive)
+    assert.equal(dom.progressCard.style.display, "flex");
+    assert.equal(dom.manualCard.style.display, "none");
+
+    // 1. Poll during target flashing
+    await controller.pollStatus();
+    assert.equal(dom.progressCard.style.display, "flex");
+    assert.equal(dom.progressBar.style.width, "41%");
+    assert.equal(dom.progressPct.textContent, "41%");
+    assert.ok(dom.phaseBadge.textContent.includes("FLASHING"));
+    assert.ok(dom.activityHeadline.textContent.includes("Flashing target device"));
+    assert.ok(dom.telemetryFlash.textContent.includes("75%"));
+
+    // 2. When a manual prompt becomes active, progressCard hides so manualCard fills the right panel
+    currentSnapshot = {
+      ...currentSnapshot,
+      manual_prompt: {
+        active: true,
+        prompt_id: "mp-1",
+        kind: MANUAL_PROMPT_KINDS.YES_NO,
+        project: "cat_detector",
+        test_name: "test_two",
+        procedure: "Check LED.",
+        prompt: "Is LED green?",
+      },
+    };
+    await controller.pollStatus();
+    assert.equal(dom.manualCard.style.display, "flex");
+    assert.equal(dom.progressCard.style.display, "none");
+
+    // 3. Manual prompt answered -> target reboots & switches mode -> progressCard returns
+    currentSnapshot = {
+      ...currentSnapshot,
+      completed: 2,
+      passed: 2,
+      progress_pct: 68,
+      manual_prompt: { active: false },
+      target_activity: {
+        ...currentSnapshot.target_activity,
+        phase: "rebooting",
+        label: "TARGET REBOOT",
+        headline: "Target reboot completed & RTT reconnected",
+        detail: "Probe switched from FS -> TEST",
+        mode: "TEST",
+        mode_switch_count: 2,
+        reboot_count: 1,
+        sync_active: false,
+        sync_progress: 100,
+        connected: true,
+        flashed: true,
+      },
+    };
+    await controller.pollStatus();
+    assert.equal(dom.manualCard.style.display, "none");
+    assert.equal(dom.progressCard.style.display, "flex");
+    assert.equal(dom.progressBar.style.width, "68%");
+    assert.ok(dom.phaseBadge.textContent.includes("REBOOT"));
+    assert.ok(dom.telemetryReboots.textContent.includes("1"));
+    assert.ok(dom.telemetryMode.textContent.includes("TEST"));
+
+    // 4. Suite completes -> 100% and COMPLETE badge
+    currentSnapshot = {
+      ...currentSnapshot,
+      active: false,
+      step: "complete",
+      completed: 4,
+      passed: 4,
+      progress_pct: 100,
+      target_activity: {
+        ...currentSnapshot.target_activity,
+        phase: "complete",
+        label: "SUITE COMPLETE",
+        headline: "Completed 4/4 tests (4 passed, 0 skipped)",
+      },
+    };
+    await controller.pollStatus();
+    assert.equal(dom.progressBar.style.width, "100%");
+    assert.equal(dom.progressPct.textContent, "100%");
+    assert.ok(dom.phaseBadge.textContent.includes("COMPLETE"));
+    assert.ok(dom.progressDot.className.includes("success"));
 
     controller.destroy();
   });

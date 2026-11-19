@@ -77,6 +77,7 @@ export class TargetConfigController {
     this.onWorkstationDisabledChange = options.onWorkstationDisabledChange || null;
     this.onShowSystemLogsChange = options.onShowSystemLogsChange || null;
     this.onSyncComplete = options.onSyncComplete || null;
+    this.shouldSuppressAutoSyncModal = options.shouldSuppressAutoSyncModal || null;
 
     this.syncPollTimer = null;
     this.syncAutoDismissTimer = null;
@@ -740,7 +741,12 @@ export class TargetConfigController {
     try {
       const data = await this.ctx.fetchJson("/api/sync/status");
       if (data && (data.active || (data.progress > 0 && data.progress < 100))) {
-        this.openSyncModal();
+        const suppressModal =
+          typeof this.shouldSuppressAutoSyncModal === "function" &&
+          Boolean(this.shouldSuppressAutoSyncModal());
+        if (!suppressModal) {
+          this.openSyncModal();
+        }
         this.startSyncPolling();
       }
     } catch {
