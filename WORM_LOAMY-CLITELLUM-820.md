@@ -3,7 +3,7 @@
 - **UUID**: `84515a48-b63e-482f-95f5-f34dd28638b5`
 - **ID**: `WORM-LOAMY-CLITELLUM-820`
 - **Status**: `OPEN`
-- **Severity**: `MEDIUM`
+- **Severity**: `HIGH`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-19 18:35:51 UTC`
@@ -11,106 +11,82 @@
 
 #### Description
 
-test_tof_proximity_array_and_i2c_bus appears to be failing on HEAD
-
-we should also integrate CLI commands and output into the test execution logs with device timestamps
+investigate stress test failures on device
 
 #### Reproduction Steps
 
-1. Launch host daemon & synchronize firmware: python tools/host.py --package cat_detector --bin cat_detector_shell
-2. Execute command: python tools/host.py cli led off
-3. Execute command: python tools/host.py cli motor current
-4. Execute command: python tools/host.py cli motor speed 50
-5. Execute command: python tools/host.py cli motor current
-6. Execute command: python tools/host.py cli motor rpm
-7. Execute command: python tools/host.py cli motor stop
-8. Observe defect/failure on target
+1. python tools/host.py test --stress-runs=10
+
+#### Behavior Comparison
+
+- **Expected**: python tools/host.py test --stress-runs=10 passes with no test failures
+- **Actual**: python tools/host.py test --stress-runs=10 fails
 
 #### Execution / Console Logs
 
 ```text
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.002154 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.023191 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000cf00
-[] [target] [INFO] 0.353751 INFO [36m[controller::shell_controller][0m received command "Thermal { subcommand: Some(Status) }"
-[] [target] [INFO] 0.354012 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 0.710391 INFO [36m[controller::shell_controller][0m received command "Thermal { subcommand: Some(Mcu) }"
-[] [target] [INFO] 0.710547 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [daemon] [INFO] RTT stream disconnected
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.002198 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.029274 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000cf00
-[] [target] [INFO] 0.281156 INFO [36m[controller::shell_controller][0m received command "Fs { subcommand: Some(Ls), target: None, partition: None }"
-[] [target] [INFO] 0.281488 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [daemon] [INFO] RTT stream disconnected
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.002197 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.023259 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000cf00
-[] [target] [INFO] 0.343713 INFO [36m[controller::shell_controller][0m received command "Led { subcommand: Some(Green), arg1: None }"
-[] [target] [INFO] 0.344001 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 0.347782 INFO [36m[controller::led_controller][0m Playing animation SolidGreen
-[] [target] [INFO] 0.885796 INFO [36m[controller::shell_controller][0m received command "Led { subcommand: Some(Blue), arg1: None }"
-[] [target] [INFO] 0.885980 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 0.889850 INFO [36m[controller::led_controller][0m Playing animation SolidBlue
-[] [target] [INFO] 1.266858 INFO [36m[controller::shell_controller][0m received command "Led { subcommand: Some(Brightness), arg1: Some(\"50\") }"
-[] [target] [INFO] 1.267107 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 1.609459 INFO [36m[controller::shell_controller][0m received command "Led { subcommand: Some(Off), arg1: None }"
-[] [target] [INFO] 1.609620 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 1.612848 INFO [36m[controller::led_controller][0m Playing animation Off
-[] [daemon] [INFO] RTT stream disconnected
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.002194 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.023278 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000cf00
-[] [target] [INFO] 0.351832 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 0.352223 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 0.716538 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Speed), arg1: Some(\"50\"), arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 0.716893 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 0.720794 WARN [36m[controller::motor_controller][0m Warning, calibration is not present! Running with fallback limits.
-[] [target] [INFO] 0.720849 INFO [36m[controller::motor_controller][0m Starting motor...
-[] [target] [INFO] 0.722480 ERROR [36m[peripheral::tmc6300][0m TMC6300 PIO DIAG pin asserted: driver fault detected
-[] [target] [INFO] 0.722590 INFO [36m[controller::motor_controller][0m Stopping motor...
-[] [target] [INFO] 1.077453 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Current), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 1.077768 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 1.432123 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Rpm), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 1.432406 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [target] [INFO] 1.797002 INFO [36m[controller::shell_controller][0m received command "Motor { subcommand: Some(Stop), arg1: None, arg2: None, arg3: None, partition: None }"
-[] [target] [INFO] 1.797276 INFO [36m[controller::shell_controller][0m command execution succeeded
-[] [daemon] [INFO] RTT stream disconnected
-[] [daemon] [INFO] RTT streaming process connected
-[] [target] [INFO] 0.002225 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2003c000
-[] [target] [INFO] 0.023267 INFO [36m[platform::core_monitor][0m MPU stack guard configured at 0x2000cf00
+$ python tools/host.py test --stress-runs=10
+🔌 Discovered target board 'rp2040_flash_2mb' (rp2040) — running on-device pytest suites (scenario: smoke or integration)...
 
---- Test Execution Log ---
-tools/device_tests/suites/test_cat_detector_smoke.py::test_tof_proximity_array_and_i2c_bus FAILED [ 63%]
-tools/device_tests/suites/test_cat_detector_smoke.py::test_thermal_and_mcu_die_temperature PASSED [ 72%]
-tools/device_tests/suites/test_cat_detector_smoke.py::test_flash_filesystem_listing PASSED [ 81%]
-tools/device_tests/suites/test_cat_detector_smoke.py::test_ws2812_status_led_actuator PASSED [ 90%]
-tools/device_tests/suites/test_cat_detector_smoke.py::test_bldc_pump_and_current_telemetry PASSED [100%]
-=================================== FAILURES ===================================
-_____________________ test_tof_proximity_array_and_i2c_bus _____________________
-host = <device_tests.client.AsyncHostSessionClient object at 0x1057a2680>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔁 Stress Run [1/10] — board 'rp2040_flash_2mb' (rp2040)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+====================================================== test session starts =======================================================
+platform darwin -- Python 3.10.20, pytest-8.4.2, pluggy-1.6.0 -- /Users/<username>/miniforge3/envs/firmware-env/bin/python
+cachedir: .pytest_cache
+rootdir: /Users/<username>/gh/firmware
+configfile: pyproject.toml
+plugins: xdist-3.8.0, asyncio-1.5.0
+asyncio: mode=auto, debug=False, asyncio_default_fixture_loop_scope=session, asyncio_default_test_loop_scope=function
+collected 30 items / 8 deselected / 22 selected                                                                                  
+
+tools/device_tests/suites/test_carrier_board_integration.py::test_pmic_charger_and_fuel_gauge SKIPPED (Target board 'r...) [  4%]
+tools/device_tests/suites/test_carrier_board_integration.py::test_iqs7222a_touch_controller_baseline SKIPPED (Target b...) [  9%]
+tools/device_tests/suites/test_carrier_board_integration.py::test_w25n01gv_qspi_nand_flash_rw SKIPPED (Target board 'r...) [ 13%]
+tools/device_tests/suites/test_carrier_board_integration.py::test_expansion_card_fault_isolation SKIPPED (Target board...) [ 18%]
+tools/device_tests/suites/test_carrier_board_integration.py::test_dual_core_sramx_ipc_ping SKIPPED (Target board 'rp20...) [ 22%]
+tools/device_tests/suites/test_carrier_board_integration.py::test_armv8m_mpu_and_stack_guard_status SKIPPED (Target bo...) [ 27%]
+tools/device_tests/suites/test_carrier_board_smoke.py::test_mcxn947_dual_core_boot_info SKIPPED (Target board 'rp2040_...) [ 31%]
+tools/device_tests/suites/test_carrier_board_smoke.py::test_i3c_and_i2c_bus_enumeration SKIPPED (Target board 'rp2040_...) [ 36%]
+tools/device_tests/suites/test_carrier_board_smoke.py::test_lp5009_rgb_led_driver_sweep SKIPPED (Target board 'rp2040_...) [ 40%]
+tools/device_tests/suites/test_carrier_board_smoke.py::test_audio_amplifier_and_piezo_chime SKIPPED (Target board 'rp2...) [ 45%]
+tools/device_tests/suites/test_carrier_board_smoke.py::test_nina_b312_ble_transceiver_link SKIPPED (Target board 'rp20...) [ 50%]
+tools/device_tests/suites/test_cat_detector_integration.py::test_gpio_matrix_and_dual_core_monitor PASSED                  [ 54%]
+tools/device_tests/suites/test_cat_detector_integration.py::test_host_fs_transfer_and_metadata_checksum PASSED             [ 59%]
+tools/device_tests/suites/test_cat_detector_integration.py::test_system_activity_async_log_watcher FAILED                  [ 63%]
+
+============================================================ FAILURES ============================================================
+_____________________________________________ test_system_activity_async_log_watcher _____________________________________________
+
+host = <device_tests.client.AsyncHostSessionClient object at 0x106e37250>
+
     @device_test(
         project="cat_detector",
         boards=("rp2040*",),
-        scenarios=(ScenarioTier.SMOKE, ScenarioTier.BRINGUP),
+        scenarios=(ScenarioTier.INTEGRATION, ScenarioTier.BRINGUP),
         target_binary="cat_detector_shell",
     )
-    async def test_tof_proximity_array_and_i2c_bus(host: AsyncHostSessionClient) -> None:
-        """Scan I2C0 and verify North, East, and West VL53L0X ToF channels report valid distance or INVALID."""
-        scan = await host.cli("i2c scan", timeout=10.0)
-        assert re.search(r"(Scanning I2C bus|[0-9a-f]{2}:|0x[0-9a-fA-F]{2})", scan), scan
-    
-        sensor = await host.cli("sensor status", timeout=12.0)
->       assert re.search(r"(\d+\s*mm|INVALID)", sensor), sensor
-E       AssertionError: Dispatched: sensor status
-E       assert None
-E        +  where None = <function search at 0x10325e440>('(\\d+\\s*mm|INVALID)', 'Dispatched: sensor status')
-E        +    where <function search at 0x10325e440> = re.search
-tools/device_tests/suites/test_cat_detector_smoke.py:49: AssertionError
-- generated xml file: /var/folders/s8/x_s2ynw13ld7cjss4rrkj4xw0000gn/T/xerxes_ui_device_tests_r4ox7de8.xml -
-=========================== short test summary info ============================
-FAILED tools/device_tests/suites/test_cat_detector_smoke.py::test_tof_proximity_array_and_i2c_bus
-=================== 1 failed, 10 passed in 251.32s (0:04:11) ===================
+    async def test_system_activity_async_log_watcher(host: AsyncHostSessionClient) -> None:
+        """Await target `defmt` RTT logs emitted concurrently while dispatching `system activity`."""
+        async with host.watch_logs(
+            r"(command execution succeeded|Activity|System|INFO)",
+            timeout=6.0,
+        ) as watcher:
+            out = await host.cli("system activity")
+>           assert re.search(r"(Executed:\s*system activity|System controller|OK)", out), out
+E           AssertionError: Dispatched: system activity
+E           assert None
+E            +  where None = <function search at 0x104a89bd0>('(Executed:\\s*system activity|System controller|OK)', 'Dispatched:system activity')
+E            +    where <function search at 0x104a89bd0> = re.search
+
+tools/device_tests/suites/test_cat_detector_integration.py:80: AssertionError
+==================================================== short test summary info =====================================================
+FAILED tools/device_tests/suites/test_cat_detector_integration.py::test_system_activity_async_log_watcher - AssertionError: Dispatched: system activity
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+=============================== 1 failed, 2 passed, 11 skipped, 8 deselected in 118.05s (0:01:58) ================================
+
+❌ Stress Run [1/10] FAILED after 118.3s (exit code 1; 0/10 runs passed in 118.3s).
+(firmware-env)
 ```
 
 #### Attachments & References
