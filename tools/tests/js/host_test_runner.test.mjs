@@ -15,6 +15,10 @@ function buildTestRunnerDom(ctx) {
   const doc = ctx.getDocument();
   const leftTabLogsBtn = createEl(ctx, "button", { id: "btnLeftTabLogs", text: "SYSTEM LOGS" });
   const leftTabTestsBtn = createEl(ctx, "button", { id: "btnLeftTabTests", text: "TEST SUITE" });
+  const leftTabTestLogBtn = createEl(ctx, "button", {
+    id: "btnLeftTabTestLog",
+    text: "TEST EXECUTION LOG",
+  });
   const logView = createEl(ctx, "div", { id: "logView", style: { display: "block" } });
 
   const projectSelect = createEl(ctx, "select", { id: "testFilterProject" });
@@ -118,20 +122,20 @@ function buildTestRunnerDom(ctx) {
   const viewEl = createEl(ctx, "div", {
     id: "testView",
     style: { display: "flex" },
-    children: [
-      manualCard,
-      consoleOutput,
-    ],
+    children: [manualCard],
   });
   doc.body.appendChild(leftTabLogsBtn);
   doc.body.appendChild(leftTabTestsBtn);
+  doc.body.appendChild(leftTabTestLogBtn);
   doc.body.appendChild(logView);
   doc.body.appendChild(sidebarView);
+  doc.body.appendChild(consoleOutput);
   doc.body.appendChild(viewEl);
 
   return {
     leftTabLogsBtn,
     leftTabTestsBtn,
+    leftTabTestLogBtn,
     logView,
     sidebarView,
     viewEl,
@@ -293,11 +297,20 @@ describe("Host Daemon Test Mode UI Controller (TestRunnerController)", () => {
     dom.leftTabLogsBtn.click();
     assert.equal(controller.getActiveLeftTab(), LEFT_PANEL_TABS.LOGS);
     assert.equal(dom.sidebarView.style.display, "none");
+    assert.equal(dom.consoleOutput.style.display, "none");
     assert.equal(dom.logView.style.display, "block");
+
+    // Regression WORM-ROOTED-FIREWORM-570: Left panel switches to TEST EXECUTION LOG tab
+    dom.leftTabTestLogBtn.click();
+    assert.equal(controller.getActiveLeftTab(), LEFT_PANEL_TABS.TEST_LOG);
+    assert.equal(dom.sidebarView.style.display, "none");
+    assert.equal(dom.logView.style.display, "none");
+    assert.equal(dom.consoleOutput.style.display, "block");
 
     dom.leftTabTestsBtn.click();
     assert.equal(controller.getActiveLeftTab(), LEFT_PANEL_TABS.TESTS);
     assert.equal(dom.sidebarView.style.display, "flex");
+    assert.equal(dom.consoleOutput.style.display, "none");
 
     // Regression WORM-FOSSORIAL-NIGHTCRAWLER-861: Test cell uses flex-wrap .test-badge-group
     // with discrete scenario/attribute pills so wrapped items never overlap badge borders.

@@ -24,6 +24,7 @@ export const TEST_RUN_STEPS = Object.freeze({
 export const LEFT_PANEL_TABS = Object.freeze({
   LOGS: "LOGS",
   TESTS: "TESTS",
+  TEST_LOG: "TEST_LOG",
 });
 
 export const MANUAL_PROMPT_ACTIONS = Object.freeze({
@@ -93,8 +94,17 @@ export class TestRunnerController {
     this.logView = resolveElement(ctx, options.logView || "logView");
     this.leftTabLogsBtn = resolveElement(ctx, options.leftTabLogsBtn || "btnLeftTabLogs");
     this.leftTabTestsBtn = resolveElement(ctx, options.leftTabTestsBtn || "btnLeftTabTests");
+    this.leftTabTestLogBtn = resolveElement(
+      ctx,
+      options.leftTabTestLogBtn || "btnLeftTabTestLog",
+    );
     this.leftLogTools = resolveElement(ctx, options.leftLogTools || "leftPanelLogTools");
     this.leftTestTools = resolveElement(ctx, options.leftTestTools || "leftPanelTestTools");
+    this.leftTestLogTools = resolveElement(
+      ctx,
+      options.leftTestLogTools || "leftPanelTestLogTools",
+    );
+    this.copyTestLogBtn = resolveElement(ctx, options.copyTestLogBtn || "btnCopyTestLog");
     this.projectSelect = resolveElement(ctx, options.projectSelect || "testFilterProject");
     this.scenarioSelect = resolveElement(ctx, options.scenarioSelect || "testFilterScenario");
     this.boardInput = resolveElement(ctx, options.boardInput || "testFilterBoard");
@@ -166,6 +176,8 @@ export class TestRunnerController {
     bindClick(this.cancelBtn, () => this.cancelRun());
     bindClick(this.leftTabLogsBtn, () => this.setActiveLeftTab(LEFT_PANEL_TABS.LOGS));
     bindClick(this.leftTabTestsBtn, () => this.setActiveLeftTab(LEFT_PANEL_TABS.TESTS));
+    bindClick(this.leftTabTestLogBtn, () => this.setActiveLeftTab(LEFT_PANEL_TABS.TEST_LOG));
+    bindClick(this.copyTestLogBtn, () => this.copyConsoleOutput(this.copyTestLogBtn));
 
     for (const sel of [this.projectSelect, this.scenarioSelect, this.binarySelect, this.manualSelect]) {
       bindChange(sel, () => this.scanTests({ probeBoard: false }));
@@ -253,8 +265,12 @@ export class TestRunnerController {
    * @param {string} tab - Target tab from `LEFT_PANEL_TABS`.
    */
   setActiveLeftTab(tab) {
-    const normalized =
-      tab === LEFT_PANEL_TABS.TESTS ? LEFT_PANEL_TABS.TESTS : LEFT_PANEL_TABS.LOGS;
+    let normalized = LEFT_PANEL_TABS.LOGS;
+    if (tab === LEFT_PANEL_TABS.TESTS) {
+      normalized = LEFT_PANEL_TABS.TESTS;
+    } else if (tab === LEFT_PANEL_TABS.TEST_LOG) {
+      normalized = LEFT_PANEL_TABS.TEST_LOG;
+    }
     this.activeLeftTab = normalized;
     this._applyLeftTabDom();
   }
@@ -269,6 +285,9 @@ export class TestRunnerController {
     if (this.leftTabTestsBtn) {
       this.leftTabTestsBtn.style.display = this.isTestMode ? "inline-flex" : "none";
     }
+    if (this.leftTabTestLogBtn) {
+      this.leftTabTestLogBtn.style.display = this.isTestMode ? "inline-flex" : "none";
+    }
     this.setActiveLeftTab(this.isTestMode ? LEFT_PANEL_TABS.TESTS : LEFT_PANEL_TABS.LOGS);
   }
 
@@ -276,24 +295,36 @@ export class TestRunnerController {
    * Update left-panel tab buttons, content panes, and header tool groups.
    */
   _applyLeftTabDom() {
-    const showTests = this.activeLeftTab === LEFT_PANEL_TABS.TESTS;
+    const isTests = this.activeLeftTab === LEFT_PANEL_TABS.TESTS;
+    const isTestLog = this.activeLeftTab === LEFT_PANEL_TABS.TEST_LOG;
+    const isSysLogs = !isTests && !isTestLog;
+
     if (this.leftTabLogsBtn) {
-      this.leftTabLogsBtn.classList.toggle("active", !showTests);
+      this.leftTabLogsBtn.classList.toggle("active", isSysLogs);
     }
     if (this.leftTabTestsBtn) {
-      this.leftTabTestsBtn.classList.toggle("active", showTests);
+      this.leftTabTestsBtn.classList.toggle("active", isTests);
+    }
+    if (this.leftTabTestLogBtn) {
+      this.leftTabTestLogBtn.classList.toggle("active", isTestLog);
     }
     if (this.logView) {
-      this.logView.style.display = showTests ? "none" : "block";
+      this.logView.style.display = isSysLogs ? "block" : "none";
     }
     if (this.sidebarView) {
-      this.sidebarView.style.display = showTests ? "flex" : "none";
+      this.sidebarView.style.display = isTests ? "flex" : "none";
+    }
+    if (this.consoleOutput) {
+      this.consoleOutput.style.display = isTestLog ? "block" : "none";
     }
     if (this.leftLogTools) {
-      this.leftLogTools.style.display = showTests ? "none" : "inline-flex";
+      this.leftLogTools.style.display = isSysLogs ? "inline-flex" : "none";
     }
     if (this.leftTestTools) {
-      this.leftTestTools.style.display = showTests ? "inline-flex" : "none";
+      this.leftTestTools.style.display = isTests ? "inline-flex" : "none";
+    }
+    if (this.leftTestLogTools) {
+      this.leftTestLogTools.style.display = isTestLog ? "inline-flex" : "none";
     }
   }
 

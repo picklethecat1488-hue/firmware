@@ -867,6 +867,10 @@
               <input type="checkbox" id="attachSystemLogs" checked>
               <span>Attach recent system logs (defmt / RTT output from session)</span>
             </label>
+            <label id="attachTestExecLogsRow" style="display:none; align-items:center; gap:6px; cursor:pointer;">
+              <input type="checkbox" id="attachTestExecutionLogs" checked>
+              <span>Attach test execution logs (pytest output from Test Mode)</span>
+            </label>
             <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
               <input type="checkbox" id="attachCrashLog">
               <span>Fetch &amp; attach target crash log (host_fs crash-log)</span>
@@ -1003,12 +1007,16 @@
       <div class="panel-header" style="gap: 8px; flex-wrap: wrap;">
         <div class="left-panel-tabs">
           <button type="button" class="left-panel-tab {% if runner.active_mode == 'TEST' %}active{% endif %}" id="btnLeftTabTests" style="display: {% if runner.active_mode == 'TEST' %}inline-flex{% else %}none{% endif %};">🧪 TEST SUITE</button>
+          <button type="button" class="left-panel-tab" id="btnLeftTabTestLog" style="display: {% if runner.active_mode == 'TEST' %}inline-flex{% else %}none{% endif %};">📋 TEST EXECUTION LOG</button>
           <button type="button" class="left-panel-tab {% if runner.active_mode != 'TEST' %}active{% endif %}" id="btnLeftTabLogs">📜 SYSTEM LOGS (defmt / RTT)</button>
         </div>
         <div style="display: flex; align-items: center; gap: 6px;">
           <span id="leftPanelTestTools" style="display: {% if runner.active_mode == 'TEST' %}inline-flex{% else %}none{% endif %}; align-items: center; gap: 6px;">
             <span id="testDetectedBoardBadge" class="badge badge-amber">BOARD: NOT SCANNED</span>
             <button type="button" class="btn btn-cyan" id="btnTestScan" style="padding: 2px 6px;">🔄 Scan</button>
+          </span>
+          <span id="leftPanelTestLogTools" style="display: none; align-items: center; gap: 6px;">
+            <button type="button" class="btn btn-copy" id="btnCopyTestLog" title="Copy test execution log">📋 Copy</button>
           </span>
           <span id="leftPanelLogTools" style="display: {% if runner.active_mode == 'TEST' %}none{% else %}inline-flex{% endif %}; align-items: center; gap: 6px;">
             <button class="btn btn-copy" id="btnCopyLog" title="Copy log output">📋 Copy</button>
@@ -1020,6 +1028,10 @@
 
       <div class="panel-content" id="logView" style="display: {% if runner.active_mode == 'TEST' %}none{% else %}block{% endif %};">
         <div class="log-line log-line-info">&gt; Host daemon online. Attached to {{ runner.package }}.</div>
+      </div>
+
+      <div class="panel-content" id="testConsoleOutput" style="display: none;">
+        <span class="term-dim">&gt; Select tests in TEST SUITE and click ▶ Run Selected or ▶ Run Filtered to stream pytest output here.</span>
       </div>
 
       <div id="testSidebarView" class="test-sidebar-view" style="display: {% if runner.active_mode == 'TEST' %}flex{% else %}none{% endif %};">
@@ -1147,10 +1159,6 @@
             <button type="button" class="btn btn-amber" id="btnManualCancel" style="padding: 5px 10px;">Cancel Test</button>
           </div>
           <div id="testManualErrorMsg" style="display: none; font-size: 9px; color: var(--xerxes-red);"></div>
-        </div>
-
-        <div class="test-console-box" id="testConsoleOutput">
-          <span class="term-dim">&gt; Select tests in the left TEST SUITE panel and click ▶ Run Selected or ▶ Run Filtered.</span>
         </div>
       </div>
     </div>

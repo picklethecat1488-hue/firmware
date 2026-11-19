@@ -826,3 +826,46 @@ def test_worm_translucent_planarian_439_all_binaries_excludes_other_board_types(
     finally:
         cb_server.shutdown()
         cb_server.server_close()
+
+
+def test_worm_rooted_fireworm_570_test_execution_logs_attached_in_test_mode_only(tmp_path: Path) -> None:
+    """Verify `/api/target_bug` attaches test execution logs ONLY when filing bugs in `TEST` mode."""
+    (tmp_path / "feedback").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "attachments").mkdir(parents=True, exist_ok=True)
+    runner = SimulatedTargetRunner(
+        tmp_path,
+        connected_board_type="rp2040_flash_2mb",
+        connected_chip="rp2040",
+    )
+    server, port = _start_ephemeral_daemon(runner)
+    base_url = f"http://127.0.0.1:{port}"
+    try:
+        from host_daemon.provider.daemon.server import _get_test_manager
+
+        tm = _get_test_manager(runner)
+        tm._append_console("tools/device_tests/suites/test_cat_detector_smoke.py::test_battery PASSED")
+
+        # 1. Filing bug in CLI mode -> must NOT include target_test_execution_logs_*.log
+        runner.active_mode = "CLI"
+        cli_bug = _http_json_sync(
+            f"{base_url}/api/target_bug",
+            {"title": "CLI mode bug check", "mode": "CLI", "attach_system_logs": True},
+        )
+        assert cli_bug["success"] is True
+        cli_att_dir = tmp_path / "attachments" / cli_bug["worm_id"]
+        assert not list(cli_att_dir.glob("target_test_execution_logs_*.log"))
+
+        # 2. Filing bug in TEST mode -> MUST include target_test_execution_logs_*.log with pytest output
+        runner.active_mode = "TEST"
+        test_bug = _http_json_sync(
+            f"{base_url}/api/target_bug",
+            {"title": "Test mode bug check", "mode": "TEST", "attach_system_logs": True},
+        )
+        assert test_bug["success"] is True
+        test_att_dir = tmp_path / "attachments" / test_bug["worm_id"]
+        exec_logs = list(test_att_dir.glob("target_test_execution_logs_*.log"))
+        assert len(exec_logs) == 1
+        assert "test_battery PASSED" in exec_logs[0].read_text(encoding="utf-8")
+    finally:
+        server.shutdown()
+        server.server_close()
