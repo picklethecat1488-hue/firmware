@@ -1,12 +1,13 @@
-# 🔴 `[WORM-LITHE-NYMPH-529]` We should move the test list to the left panel
+# 🟢 `[WORM-LITHE-NYMPH-529]` We should move the test list to the left panel
 
 - **UUID**: `31aa2d4b-786e-4189-8bb0-ef76a8675378`
 - **ID**: `WORM-LITHE-NYMPH-529`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `target`
 - **Created**: `2026-11-19 03:43:19 UTC`
+- **Resolved**: `2026-11-19 16:28:38 UTC`
 - **Rejected**: `2026-11-19 16:02:14 UTC`
 
 #### Description
@@ -86,10 +87,7 @@ We should move the test list and filter menu to the left panel so that the manua
 
 #### Resolution Notes
 
-Moved the @device_test filter bar, run controls, and test list into #testSidebarView inside #logPanel with a left-panel tab switcher (TEST SUITE vs SYSTEM LOGS), freeing the right panel for spacious manual prompt interactions.
-
--Additionally, we should give the test execution list a stacked layout, similar to what is used for the VCS commit UI.
--I also noticed the little “Play” button next to the test status doesn’t do anything
+Replaced the 4-column test table with a VCS-style stacked card layout (#testStackList / .test-stack-node) matching Smartlog commit cards, updated 1s status polling to mutate existing card refs in-place instead of detaching button nodes mid-click, and bound direct + Text-node-safe click handlers on each card's ▶ Play button with immediate optimistic progress feedback.
 
 #### Rejection Feedback
 
