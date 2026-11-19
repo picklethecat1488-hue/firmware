@@ -1272,5 +1272,140 @@ def test_worm_loamy_clitellum_820_concurrent_probe_lock_and_timestamped_cli_test
         server.server_close()
 
 
+def test_host_test_stress_runs_and_async_cli_prompt_completion(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    """Verify `--stress-runs` executes N sequential passes, rejects invalid counts, and guards slow async CLI reads & transient USB metadata probes."""
+    import subprocess as sp
 
+    from host_daemon import cli as host_cli
+    from host_daemon.model import metadata as host_meta
+    from host_daemon.provider.daemon.runner import DaemonRunner
 
+    # 1. Invalid `--stress-runs 0` exits cleanly with error code 2
+    rc_bad = host_cli.main(["test", "--stress-runs", "0"])
+    assert rc_bad == 2
+    assert "--stress-runs must be >= 1" in capsys.readouterr().err
+
+    # 2. Both `host.py test --stress-runs 3` and `host.py --stress-runs 2 test` execute N passes
+    sim_runner = SimulatedTargetRunner(
+        WORKSPACE_ROOT,
+        connected_board_type="rp2040_flash_2mb",
+        connected_chip="rp2040",
+        initial_bin="cat_detector_shell",
+    )
+    server, port = _start_ephemeral_daemon(sim_runner)
+    try:
+        rc_sub = host_cli.main(
+            [
+                "test",
+                "--project",
+                "cat_detector",
+                "--host-port",
+                str(port),
+                "-k",
+                "battery_fuel_gauge",
+                "--stress-runs",
+                "3",
+            ]
+        )
+        assert rc_sub == 0
+        out_sub = capsys.readouterr().out
+        assert "Stress Run [1/3]" in out_sub
+        assert "Stress Run [3/3]" in out_sub
+        assert "3/3" in out_sub
+        assert sim_runner.executed_cli_commands == [
+            "battery status",
+            "battery status",
+            "battery status",
+        ]
+
+        sim_runner.executed_cli_commands.clear()
+        rc_top = host_cli.main(
+            [
+                "--stress-runs",
+                "2",
+                "test",
+                "--project",
+                "cat_detector",
+                "--host-port",
+                str(port),
+                "-k",
+                "battery_fuel_gauge",
+            ]
+        )
+        assert rc_top == 0
+        assert sim_runner.executed_cli_commands == ["battery status", "battery status"]
+        capsys.readouterr()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    # 3. Empty `\x1b[2K` (`cli.set_prompt("")` at async command start) must NOT abort a 450ms command at 250ms
+    runner = DaemonRunner(
+        repo_root=WORKSPACE_ROOT,
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+        target="thumbv6m-none-eabi",
+        chip="rp2040",
+    )
+    fake_cli = tmp_path / "host_cli_mock"
+    fake_elf = tmp_path / "cat_detector_shell"
+    fake_elf.write_bytes(b"\x7fELF")
+    mock_rtt_py = tmp_path / "mock_rtt.py"
+    mock_rtt_py.write_text(
+        "import os, queue, sys, threading, time\n"
+        "q = queue.Queue()\n"
+        "def _reader():\n"
+        "    for line in sys.stdin:\n"
+        "        q.put(line.strip())\n"
+        "    os._exit(0)\n"
+        "threading.Thread(target=_reader, daemon=True).start()\n"
+        "print('RTT Session Started', flush=True)\n"
+        "while True:\n"
+        "    cmd = q.get()\n"
+        "    if cmd == 'thermal status':\n"
+        "        print('\\x1b[2K', flush=True)\n"
+        "        time.sleep(0.45)\n"
+        "        print('Thermal: 24.8 C', flush=True)\n"
+        "        print('0.950000 INFO [controller::shell_controller] command execution succeeded', flush=True)\n"
+        "        print('\\x1b[2Kshell> ', flush=True)\n",
+        encoding="utf-8",
+    )
+    fake_cli.write_text(
+        f"#!/bin/sh\nexec '{sys.executable}' -u '{mock_rtt_py}'\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+    runner.host_cli_path = fake_cli
+    runner.elf_path = fake_elf
+    runner.start_rtt_streaming()
+    try:
+        therm_out = runner.execute_cli("thermal status", wait_for_output=True, timeout=3.0)
+        assert "Thermal: 24.8 C" in therm_out, f"Async CLI read aborted prematurely on empty \\x1b[2K: {therm_out!r}"
+    finally:
+        runner.stop_rtt_streaming()
+
+    # 4. `run_host_fs_query_metadata(..., elf_only=False)` retries transient USB probe timeout errors
+    probe_attempts: List[int] = []
+
+    def _flaky_probe_run(cmd: List[str], **_kwargs: Any) -> sp.CompletedProcess[str]:
+        probe_attempts.append(len(probe_attempts) + 1)
+        if len(probe_attempts) == 1:
+            return sp.CompletedProcess(cmd, 1, stdout="", stderr='Error: USB(Custom("bulk write timed out"))')
+        return sp.CompletedProcess(
+            cmd,
+            0,
+            stdout='{"board_type":"rp2040_flash_2mb","chip":"rp2040","checksum":"0x70D6","source":"program_metadata"}\n',
+            stderr="",
+        )
+
+    monkeypatch.setattr(host_meta.subprocess, "run", _flaky_probe_run)
+    monkeypatch.setattr(host_meta, "_resolve_host_fs_cmd_prefix", lambda *_a, **_kw: ["mock_host_fs"])
+    monkeypatch.setattr(host_meta, "METADATA_PROBE_RETRY_BACKOFF_SEC", 0.01, raising=False)
+    rc_meta, out_meta = host_meta.run_host_fs_query_metadata(WORKSPACE_ROOT, fake_elf, elf_only=False)
+    assert rc_meta == 0
+    assert len(probe_attempts) == 2
+    assert '"rp2040_flash_2mb"' in out_meta

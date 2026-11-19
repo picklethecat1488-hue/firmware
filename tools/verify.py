@@ -104,6 +104,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="Enable operator prompts for @device_test(manual=True) bringup steps.",
     )
+    parser.add_argument(
+        "--stress-runs",
+        type=int,
+        default=1,
+        help="Number of sequential on-device `host.py test` iterations to execute.",
+    )
     return parser.parse_args(argv)
 
 
@@ -159,6 +165,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             device_cmd.extend(["-k", args.keyword])
         if args.manual:
             device_cmd.append("--manual")
+        if args.stress_runs != 1:
+            device_cmd.extend(["--stress-runs", str(args.stress_runs)])
         run_step(device_cmd, cwd=repo_root, env=env)
     else:
         print("ℹ️  Skipping on-device test discovery (--skip-device-tests).")

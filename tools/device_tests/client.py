@@ -29,6 +29,8 @@ DEFAULT_SYNC_TIMEOUT_SEC: float = 180.0
 LOG_POLL_INTERVAL_SEC: float = 0.04
 SYNC_POLL_INTERVAL_SEC: float = 0.10
 DAEMON_BOOT_TIMEOUT_SEC: float = 8.0
+DAEMON_STOP_WAIT_TIMEOUT_SEC: float = 4.0
+DAEMON_TERMINATE_WAIT_TIMEOUT_SEC: float = 2.0
 POST_REBOOT_SETTLE_SEC: float = 0.25
 
 
@@ -613,16 +615,25 @@ class AsyncHostSessionClient:
         if self._runner is not None:
             return
         if self.owns_daemon:
+            stop_requested = False
             try:
                 await self._request("/api/stop", {}, timeout=5.0)
+                stop_requested = True
             except (OSError, RuntimeError):
                 pass
             if self._spawned_proc is not None and self._spawned_proc.poll() is None:
-                self._spawned_proc.terminate()
-                try:
-                    await asyncio.to_thread(self._spawned_proc.wait, 3.0)
-                except subprocess.TimeoutExpired:
-                    self._spawned_proc.kill()
+                if stop_requested:
+                    try:
+                        await asyncio.to_thread(self._spawned_proc.wait, DAEMON_STOP_WAIT_TIMEOUT_SEC)
+                    except subprocess.TimeoutExpired:
+                        pass
+                if self._spawned_proc.poll() is None:
+                    self._spawned_proc.terminate()
+                    try:
+                        await asyncio.to_thread(self._spawned_proc.wait, DAEMON_TERMINATE_WAIT_TIMEOUT_SEC)
+                    except subprocess.TimeoutExpired:
+                        self._spawned_proc.kill()
+            await asyncio.sleep(POST_REBOOT_SETTLE_SEC)
             return
 
         if self._reconfigured_existing_daemon and self._prior_target_config:
