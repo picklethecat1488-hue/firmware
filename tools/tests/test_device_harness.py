@@ -1658,3 +1658,137 @@ def test_worm_loamy_clitellum_820_post_host_fs_delayed_rtt_boot_and_json_events(
         assert "System activity recorded." in out
     finally:
         runner.stop_rtt_streaming()
+
+
+def test_host_py_bug_cli_online_and_offline_reporting(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify `host.py bug` / `report-bug` files worm reports both via live daemon and offline fallback."""
+    import json
+
+    from host_daemon import cli as host_cli_mod
+    from host_daemon.provider.daemon.server import _get_test_manager
+
+    # 1. Online mode: live ephemeral daemon with command history, RTT logs, test console logs, and file attachment
+    online_root = tmp_path / "online_repo"
+    (online_root / "feedback").mkdir(parents=True, exist_ok=True)
+    (online_root / "attachments").mkdir(parents=True, exist_ok=True)
+    screenshot_file = tmp_path / "scope_trace.png"
+    screenshot_file.write_bytes(b"\x89PNG\r\n\x1a\nFAKEPNG")
+
+    runner = SimulatedTargetRunner(
+        online_root,
+        connected_board_type="rp2040_flash_2mb",
+        connected_chip="rp2040",
+    )
+    runner.package = "cat_detector"
+    runner.bin_name = "cat_detector_shell"
+    runner.command_history = ["motor speed 45", "sensor status"]
+    runner.logs.append({"time": "12:00:00", "channel": "rtt", "level": "ERROR", "message": "I2C bus NACK on 0x29"})
+    tm = _get_test_manager(runner)
+    tm._append_console("test_tof_proximity_array FAILED: NACK")
+
+    server, port = _start_ephemeral_daemon(runner)
+    try:
+        rc = host_cli_mod.main(
+            [
+                "--host",
+                "127.0.0.1",
+                "bug",
+                "ToF sensor NACK under motor load",
+                "--severity",
+                "high",
+                "--category",
+                "driver",
+                "--component",
+                "vl53l0x",
+                "--description",
+                "ToF sensor returns I2C NACK after motor speed 45.",
+                "--expected",
+                "Valid millimeter distance reading.",
+                "--actual",
+                "I2C NACK 0x29.",
+                "--attach-test-logs",
+                "--attach-crash-log",
+                "--attach",
+                str(screenshot_file),
+                "--host-port",
+                str(port),
+                "--json",
+            ]
+        )
+        assert rc == 0
+        online_res = json.loads(capsys.readouterr().out)
+        assert online_res["success"] is True
+        assert online_res["source"] == "daemon"
+        assert online_res["attachments_count"] == 4
+
+        online_md = Path(online_res["file_path"])
+        assert online_md.is_file()
+        md_text = online_md.read_text(encoding="utf-8")
+        assert "ToF sensor NACK under motor load" in md_text
+        assert "Execute command 'motor speed 45'" in md_text
+        assert "Execute command 'sensor status'" in md_text
+        assert "test_tof_proximity_array FAILED" in md_text
+
+        att_dir = online_root / "attachments" / online_res["worm_id"]
+        assert (att_dir / "scope_trace.png").read_bytes() == b"\x89PNG\r\n\x1a\nFAKEPNG"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    # 2. Offline mode (`report-bug` alias) when no daemon is running
+    offline_root = tmp_path / "offline_repo"
+    (offline_root / "feedback").mkdir(parents=True, exist_ok=True)
+    (offline_root / "attachments").mkdir(parents=True, exist_ok=True)
+    log_capture = tmp_path / "bench_capture.log"
+    log_capture.write_text("UART0 framing error at 115200 baud\n", encoding="utf-8")
+
+    rc_off = host_cli_mod.main(
+        [
+            "report-bug",
+            "--title",
+            "UART framing glitch on cold boot",
+            "--severity",
+            "MEDIUM",
+            "--category",
+            "PLATFORM",
+            "--step",
+            "1. Power-cycle bench supply",
+            "--step",
+            "2. Capture UART0 TX during first 10 ms",
+            "--attach",
+            str(log_capture),
+            "--no-system-logs",
+            "--repo-root",
+            str(offline_root),
+            "--json",
+        ]
+    )
+    assert rc_off == 0
+    offline_res = json.loads(capsys.readouterr().out)
+    assert offline_res["success"] is True
+    assert offline_res["source"] == "offline"
+    assert offline_res["attachments_count"] == 1
+    offline_md = Path(offline_res["file_path"]).read_text(encoding="utf-8")
+    assert "1. 1." not in offline_md
+    assert "Power-cycle bench supply" in offline_md
+
+    # 3. Sad cases: missing title -> exit 2, missing attachment file -> exit 1
+    assert host_cli_mod.main(["bug", "--repo-root", str(offline_root)]) == 2
+    capsys.readouterr()
+    assert (
+        host_cli_mod.main(
+            [
+                "bug",
+                "Missing file check",
+                "--attach",
+                str(tmp_path / "does_not_exist.png"),
+                "--repo-root",
+                str(offline_root),
+            ]
+        )
+        == 1
+    )
+    capsys.readouterr()

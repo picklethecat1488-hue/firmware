@@ -1,17 +1,13 @@
 """HTTP server and REST API for Xerxes Host Daemon workstation."""
 
-import base64
-from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
-import re
 import sys
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 import urllib.parse
-import uuid as uuid_pkg
 
 import jinja2
 
@@ -19,18 +15,7 @@ dashboard_dir = Path(__file__).resolve().parents[3] / "dashboard"
 if str(dashboard_dir) not in sys.path:
     sys.path.insert(0, str(dashboard_dir))
 
-from model.id_generator import generate_docker_pattern_id
-from model.worm_report import (
-    WormAttachmentModel,
-    WormCategory,
-    WormReportModel,
-    WormSeverity,
-    WormStatus,
-)
-from provider.sanitizer import elide_personal_info
-from provider.worm_report.markdown_exporter import MarkdownWormExporter
-from provider.worm_report.sqlite_store import SQLiteWormStore
-
+from host_daemon.provider.daemon.bug_report_service import create_target_worm_report
 from host_daemon.provider.daemon.runner import DEFAULT_CLI_OUTPUT_TIMEOUT_SEC, DaemonRunner
 from host_daemon.provider.daemon.test_manager import DeviceTestRunnerManager
 
@@ -416,270 +401,17 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 return
             self._send_json({"success": True, "manual_prompt": state})
         elif path == "/api/target_bug":
-            title = (payload.get("title") or "").strip()
+            title = str(payload.get("title") or "").strip()
             if not title:
                 self._send_json({"error": "Bug title is required"}, status=400)
                 return
-
-            severity_str = (payload.get("severity") or "MEDIUM").upper()
-            try:
-                severity = WormSeverity(severity_str)
-            except Exception:
-                severity = WormSeverity.MEDIUM
-
-            category_str = (payload.get("category") or "FIRMWARE").upper()
-            try:
-                category = WormCategory(category_str)
-            except Exception:
-                category = WormCategory.FIRMWARE
-
-            component = (payload.get("component") or "target").strip()
-            description = (payload.get("description") or "").strip()
-            raw_steps = payload.get("reproduction_steps") or []
-            if isinstance(raw_steps, str):
-                steps = [s.strip() for s in raw_steps.splitlines() if s.strip()]
-            else:
-                steps = [str(s).strip() for s in raw_steps if str(s).strip()]
-            steps = [re.sub(r"^\d+\.\s*", "", s).strip() for s in steps]
-            steps = [s for s in steps if s]
-
-            expected = (payload.get("expected_behavior") or "").strip()
-            actual = (payload.get("actual_behavior") or "").strip()
-
-            worm_id = generate_docker_pattern_id("WORM")
-
-            # Determine repo directories
-            repo_root = runner.repo_root
-            attachments_dir = repo_root / "attachments"
-            if not attachments_dir.exists() and (repo_root / "feedback" / "attachments").exists():
-                attachments_dir = repo_root / "feedback" / "attachments"
-            worm_att_dir = attachments_dir / worm_id
-            worm_att_dir.mkdir(parents=True, exist_ok=True)
-
-            attachments: List[WormAttachmentModel] = []
-            now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-
-            # 1. Attach relevant system logs if requested
-            logs_content = ""
-            if payload.get("attach_system_logs", True):
-                with runner._lock:
-                    log_entries = list(runner.logs)
-                if log_entries:
-                    lines = [
-                        f"[{e.get('time', '')}] [{e.get('channel', 'daemon')}] [{e.get('level', 'INFO')}] {e.get('message', '')}"
-                        for e in log_entries
-                    ]
-                    logs_content = "\n".join(lines)
-                else:
-                    logs_content = f"Host daemon session initialized at {now_str}. No logs recorded yet."
-
-                log_filename = f"target_system_logs_{worm_id}.log"
-                log_file_path = worm_att_dir / log_filename
-                sanitized_logs = elide_personal_info(logs_content)
-                log_file_path.write_text(sanitized_logs, encoding="utf-8")
-
-                rel_att_path = f"attachments/{worm_id}/{log_filename}"
-                attachments.append(
-                    WormAttachmentModel(
-                        id=f"att-{len(attachments) + 1}",
-                        filename=log_filename,
-                        file_type="log",
-                        file_path=rel_att_path,
-                        size_bytes=len(sanitized_logs.encode("utf-8")),
-                        description="Target system and defmt logs from host daemon session",
-                        created_at=now_str,
-                    )
-                )
-
-            # 1b. Attach test execution logs if filing from TEST mode (WORM-ROOTED-FIREWORM-570)
-            effective_mode = str(payload.get("mode") or getattr(runner, "active_mode", "CLI") or "CLI").upper()
-            test_exec_logs_content = ""
-            if effective_mode == "TEST" and bool(payload.get("attach_test_execution_logs", True)):
-                test_status = _get_test_manager(runner).get_status()
-                raw_test_console = test_status.get("console") or []
-                if raw_test_console:
-                    test_exec_logs_content = "\n".join(str(line) for line in raw_test_console)
-                else:
-                    test_exec_logs_content = (
-                        f"Host daemon Test Mode active at {now_str}. No test execution logs recorded yet."
-                    )
-
-                test_log_filename = f"target_test_execution_logs_{worm_id}.log"
-                test_log_path = worm_att_dir / test_log_filename
-                sanitized_test_logs = elide_personal_info(test_exec_logs_content)
-                test_log_path.write_text(sanitized_test_logs, encoding="utf-8")
-                attachments.append(
-                    WormAttachmentModel(
-                        id=f"att-{len(attachments) + 1}",
-                        filename=test_log_filename,
-                        file_type="log",
-                        file_path=f"attachments/{worm_id}/{test_log_filename}",
-                        size_bytes=len(sanitized_test_logs.encode("utf-8")),
-                        description="Test execution logs from host daemon Test Mode",
-                        created_at=now_str,
-                    )
-                )
-
-            # 2. Attach target crash-log if selected
-            if payload.get("attach_crash_log"):
-                try:
-                    crash_out = runner.execute_fs("crash-log")
-                except Exception as e:
-                    crash_out = f"Failed to retrieve crash log: {e}"
-                crash_filename = f"target_crash_log_{worm_id}.log"
-                crash_file_path = worm_att_dir / crash_filename
-                sanitized_crash = elide_personal_info(crash_out)
-                crash_file_path.write_text(sanitized_crash, encoding="utf-8")
-                attachments.append(
-                    WormAttachmentModel(
-                        id=f"att-{len(attachments) + 1}",
-                        filename=crash_filename,
-                        file_type="log",
-                        file_path=f"attachments/{worm_id}/{crash_filename}",
-                        size_bytes=len(sanitized_crash.encode("utf-8")),
-                        description="Target crash log retrieved via host_fs",
-                        created_at=now_str,
-                    )
-                )
-
-            # 3. Attach target telemetry if selected
-            if payload.get("attach_telemetry"):
-                try:
-                    telem_out = runner.execute_fs("export-telemetry")
-                except Exception as e:
-                    telem_out = f"Failed to retrieve telemetry: {e}"
-                telem_filename = f"target_telemetry_{worm_id}.json"
-                telem_file_path = worm_att_dir / telem_filename
-                telem_file_path.write_text(telem_out, encoding="utf-8")
-                attachments.append(
-                    WormAttachmentModel(
-                        id=f"att-{len(attachments) + 1}",
-                        filename=telem_filename,
-                        file_type="reference",
-                        file_path=f"attachments/{worm_id}/{telem_filename}",
-                        size_bytes=len(telem_out.encode("utf-8")),
-                        description="Target telemetry export retrieved via host_fs",
-                        created_at=now_str,
-                    )
-                )
-
-            # 4. Attach target filesystem metadata if selected
-            if payload.get("attach_metadata"):
-                try:
-                    meta_out = runner.execute_fs("cat metadata")
-                except Exception as e:
-                    meta_out = f"Failed to retrieve metadata: {e}"
-                meta_filename = f"target_metadata_{worm_id}.txt"
-                meta_file_path = worm_att_dir / meta_filename
-                meta_file_path.write_text(meta_out, encoding="utf-8")
-                attachments.append(
-                    WormAttachmentModel(
-                        id=f"att-{len(attachments) + 1}",
-                        filename=meta_filename,
-                        file_type="reference",
-                        file_path=f"attachments/{worm_id}/{meta_filename}",
-                        size_bytes=len(meta_out.encode("utf-8")),
-                        description="Filesystem metadata retrieved via host_fs",
-                        created_at=now_str,
-                    )
-                )
-
-            # 5. Attach manual attachments and screenshots if provided (WORM-BRISTLY-GLOWWORM-390)
-            manual_atts = payload.get("manual_attachments") or payload.get("attachments") or []
-            for att_data in manual_atts:
-                if not isinstance(att_data, dict):
-                    continue
-                fname = Path(att_data.get("filename") or f"attachment_{uuid_pkg.uuid4().hex[:8]}.bin").name
-                ftype = att_data.get("file_type") or "reference"
-                desc = att_data.get("description") or "Target bug attachment"
-                b64 = att_data.get("content_base64") or ""
-                text = att_data.get("content_text") or ""
-
-                dest_path = worm_att_dir / fname
-                if dest_path.exists():
-                    stem = dest_path.stem
-                    suf = dest_path.suffix
-                    c = 1
-                    while (worm_att_dir / f"{stem}_{c}{suf}").exists():
-                        c += 1
-                    fname = f"{stem}_{c}{suf}"
-                    dest_path = worm_att_dir / fname
-
-                if b64:
-                    if "," in b64:
-                        b64 = b64.split(",", 1)[1]
-                    raw_bytes = base64.b64decode(b64)
-                    dest_path.write_bytes(raw_bytes)
-                elif text:
-                    raw_bytes = text.encode("utf-8")
-                    dest_path.write_bytes(raw_bytes)
-                else:
-                    raw_bytes = b""
-                    dest_path.write_bytes(raw_bytes)
-
-                rel_att_path = f"attachments/{worm_id}/{fname}"
-                attachments.append(
-                    WormAttachmentModel(
-                        id=f"att-{len(attachments) + 1}",
-                        filename=fname,
-                        file_type=ftype,
-                        file_path=rel_att_path,
-                        size_bytes=len(raw_bytes),
-                        description=desc,
-                        created_at=now_str,
-                    )
-                )
-
-            # Build WormReportModel
-            log_lines = logs_content.strip().splitlines()
-            log_summary = "\n".join(log_lines[-50:]) if len(log_lines) > 50 else logs_content
-            if test_exec_logs_content:
-                test_tail = "\n".join(elide_personal_info(test_exec_logs_content).strip().splitlines()[-30:])
-                log_summary = f"{log_summary}\n\n--- Test Execution Log ---\n{test_tail}".strip()
-
-            worm = WormReportModel(
-                id=worm_id,
-                uuid=str(uuid_pkg.uuid4()),
-                title=title,
-                status=WormStatus.OPEN,
-                severity=severity,
-                category=category,
-                component=component,
-                description=description,
-                reproduction_steps=steps,
-                expected_behavior=expected,
-                actual_behavior=actual,
-                logs=log_summary,
-                attachments=attachments,
-                created_at=now_str,
-                updated_at=now_str,
+            result = create_target_worm_report(
+                runner.repo_root,
+                payload,
+                runner=runner,
+                test_manager_getter=_get_test_manager,
             )
-
-            # Persist to SQLite
-            db_file = repo_root / "target" / "worms.sqlite"
-            db_file.parent.mkdir(parents=True, exist_ok=True)
-            store = SQLiteWormStore(db_file)
-            store.save_worm(worm)
-
-            # Export to feedback/ markdown
-            feedback_dir = repo_root / "feedback"
-            exporter = MarkdownWormExporter(repo_root=repo_root)
-            exported_path = exporter.export_individual_worm(worm, feedback_dir=feedback_dir)
-
-            runner.log(
-                f"Target bug created: {worm_id} ({title}) with {len(attachments)} attachments",
-                level="INFO",
-                channel="daemon",
-            )
-
-            self._send_json(
-                {
-                    "success": True,
-                    "worm_id": worm_id,
-                    "file_path": str(exported_path),
-                    "attachments_count": len(attachments),
-                }
-            )
+            self._send_json(result)
         elif path == "/api/stop":
             self._send_json({"success": True, "message": "Stopping host daemon"})
 

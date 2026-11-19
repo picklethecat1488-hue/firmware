@@ -341,6 +341,137 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     # Stop
     subparsers.add_parser("stop", help="Stop running host daemon")
 
+    # Target bug / worm report filing
+    bug_parser = subparsers.add_parser(
+        "bug",
+        aliases=["report-bug"],
+        help="File a structured target worm report bundling live RTT/test logs, host_fs dumps, and attachments",
+    )
+    bug_parser.add_argument(
+        "title_pos",
+        nargs="?",
+        metavar="title",
+        default=None,
+        help="Concise defect title (may also be supplied via --title).",
+    )
+    bug_parser.add_argument(
+        "--title",
+        "-t",
+        dest="title_opt",
+        type=str,
+        default=None,
+        help="Concise defect title.",
+    )
+    bug_parser.add_argument(
+        "--severity",
+        "-s",
+        type=str.upper,
+        choices=["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+        default="MEDIUM",
+        help="Defect severity rating.",
+    )
+    bug_parser.add_argument(
+        "--category",
+        "-c",
+        type=str.upper,
+        choices=[
+            "FIRMWARE",
+            "CONTROLLER",
+            "DRIVER",
+            "PLATFORM",
+            "BOARD",
+            "MODEL",
+            "SHELL",
+            "INFRASTRUCTURE",
+            "UI",
+            "GENERAL",
+        ],
+        default="FIRMWARE",
+        help="Subsystem category classification.",
+    )
+    bug_parser.add_argument(
+        "--component",
+        type=str,
+        default="target",
+        help="Affected component or module name.",
+    )
+    bug_parser.add_argument(
+        "--description",
+        "-d",
+        type=str,
+        default="",
+        help="Detailed defect description and context.",
+    )
+    bug_parser.add_argument(
+        "--step",
+        dest="steps",
+        action="append",
+        default=[],
+        help="Reproduction step (repeatable; auto-synthesized from daemon command history when omitted).",
+    )
+    bug_parser.add_argument(
+        "--expected",
+        type=str,
+        default="",
+        help="Expected target behavior.",
+    )
+    bug_parser.add_argument(
+        "--actual",
+        type=str,
+        default="",
+        help="Actual observed target behavior.",
+    )
+    bug_parser.add_argument(
+        "--attach-crash-log",
+        action="store_true",
+        help="Retrieve and attach target crash-log via host_fs.",
+    )
+    bug_parser.add_argument(
+        "--attach-telemetry",
+        action="store_true",
+        help="Retrieve and attach target telemetry export via host_fs.",
+    )
+    bug_parser.add_argument(
+        "--attach-metadata",
+        action="store_true",
+        help="Retrieve and attach target filesystem metadata via host_fs.",
+    )
+    bug_parser.add_argument(
+        "--attach-test-logs",
+        action="store_true",
+        help="Attach Test Mode execution console logs from active host daemon.",
+    )
+    bug_parser.add_argument(
+        "--no-system-logs",
+        action="store_true",
+        help="Do not attach system/defmt logs.",
+    )
+    bug_parser.add_argument(
+        "--attach",
+        "-a",
+        dest="attachments",
+        action="append",
+        default=[],
+        help="Local file path (screenshot, log, capture) to attach to the worm report (repeatable).",
+    )
+    bug_parser.add_argument(
+        "--host-port",
+        type=int,
+        default=None,
+        help="Optional explicit TCP port of a running host.py daemon.",
+    )
+    bug_parser.add_argument(
+        "--repo-root",
+        type=str,
+        default=None,
+        help="Optional workspace repository root override for offline worm report storage.",
+    )
+    bug_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Format created worm report metadata as JSON.",
+    )
+
     # On-device pytest test runner
     test_parser = subparsers.add_parser(
         "test",
@@ -581,6 +712,73 @@ def main(argv: Optional[List[str]] = None) -> int:
         except Exception as e:
             print(f"Could not stop daemon: {e}", file=sys.stderr)
             return 1
+
+    if args.subcommand in ("bug", "report-bug"):
+        from host_daemon.provider.daemon.bug_report_service import (
+            build_manual_attachment_payload,
+            create_target_worm_report,
+        )
+
+        bug_title = str(getattr(args, "title_opt", None) or getattr(args, "title_pos", None) or "").strip()
+        if not bug_title:
+            print("Error: Bug title is required. Usage: host.py bug <title> [options]", file=sys.stderr)
+            return 2
+
+        manual_attachments: List[Dict[str, Any]] = []
+        for raw_att_path in getattr(args, "attachments", None) or []:
+            try:
+                manual_attachments.append(build_manual_attachment_payload(Path(raw_att_path)))
+            except OSError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
+
+        bug_payload: Dict[str, Any] = {
+            "title": bug_title,
+            "severity": args.severity,
+            "category": args.category,
+            "component": args.component,
+            "description": args.description,
+            "reproduction_steps": list(getattr(args, "steps", None) or []),
+            "expected_behavior": args.expected,
+            "actual_behavior": args.actual,
+            "attach_system_logs": not bool(args.no_system_logs),
+            "attach_crash_log": bool(args.attach_crash_log),
+            "attach_telemetry": bool(args.attach_telemetry),
+            "attach_metadata": bool(args.attach_metadata),
+            "force_attach_test_execution_logs": bool(args.attach_test_logs),
+            "manual_attachments": manual_attachments,
+        }
+
+        effective_repo_root = Path(args.repo_root).resolve() if getattr(args, "repo_root", None) else repo_root
+        report_source = "offline"
+        res_bug: Optional[Dict[str, Any]] = None
+        if args.host_port is not None or getattr(args, "repo_root", None) is None:
+            try:
+                res_bug = send_daemon_request(
+                    "/api/target_bug",
+                    bug_payload,
+                    port=args.host_port,
+                    host=args.host,
+                )
+                report_source = "daemon"
+            except RuntimeError:
+                res_bug = None
+
+        if res_bug is None:
+            res_bug = create_target_worm_report(effective_repo_root, bug_payload, runner=None)
+            report_source = "offline"
+
+        out_payload = dict(res_bug)
+        out_payload["source"] = report_source
+        if args.json:
+            print(json.dumps(out_payload, indent=2))
+        else:
+            print(
+                f"🐞 Created target worm report {out_payload.get('worm_id')} "
+                f"({out_payload.get('attachments_count', 0)} attachments, source={report_source})\n"
+                f"   File: {out_payload.get('file_path')}"
+            )
+        return 0 if out_payload.get("success") else 1
 
     if args.subcommand == "test":
         from device_tests.client import query_metadata_standalone
