@@ -2,12 +2,13 @@
 
 - **UUID**: `41761a6c-1ba4-41e7-a106-13cac9a81bb2`
 - **ID**: `WORM-SILKEN-LUMBRICUS-589`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `target`
 - **Created**: `2026-11-19 03:45:39 UTC`
 - **Resolved**: `2026-11-19 16:01:34 UTC`
+- **Accepted**: `2026-11-19 16:01:37 UTC`
 
 #### Description
 
