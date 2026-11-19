@@ -7,7 +7,7 @@
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-19 18:35:51 UTC`
-- **Resolved**: `2026-11-19 19:14:54 UTC`
+- **Resolved**: `2026-11-19 19:40:47 UTC`
 
 #### Description
 
@@ -132,3 +132,5 @@ FAILED tools/device_tests/suites/test_cat_detector_smoke.py::test_tof_proximity_
 #### Resolution Notes
 
 Serialized execute_cli(wait_for_output=True) with _fs_lock and cached verified .program_metadata per connected ELF so concurrent metadata probes and consecutive same-binary tests never tear down RTT mid-command, and integrated real-time [device_ts]-prefixed CLI/FS commands and outputs into Test Execution Logs.
+
+-I can still repro this
