@@ -12,6 +12,8 @@
 
 test_tof_proximity_array_and_i2c_bus appears to be failing on HEAD
 
+we should also integrate CLI commands and output into the test execution logs with device timestamps
+
 #### Reproduction Steps
 
 1. Launch host daemon & synchronize firmware: python tools/host.py --package cat_detector --bin cat_detector_shell
