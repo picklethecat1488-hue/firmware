@@ -2,12 +2,13 @@
 
 - **UUID**: `4c1a0a02-df57-47ae-915a-bd318ddf9011`
 - **ID**: `WORM-TRANSLUCENT-PLANARIAN-439`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `tools/host_daemon/provider/daemon/test_manager.py`
 - **Created**: `2026-11-19 03:49:45 UTC`
 - **Resolved**: `2026-11-19 16:01:02 UTC`
+- **Accepted**: `2026-11-19 16:01:04 UTC`
 
 #### Description
 
