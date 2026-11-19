@@ -317,25 +317,93 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     subparsers.add_parser("sync", help="Trigger target compilation, flash, and RTT sync on running daemon")
     subparsers.add_parser("flash", help="Trigger target compilation, flash, and RTT sync on running daemon")
 
-    # Reset
+    # Reset / Reboot / Metadata
     subparsers.add_parser("reset", help="Reset the target device via active host daemon")
+    subparsers.add_parser("reboot", help="Reboot the target device and re-attach RTT via active host daemon")
+    subparsers.add_parser("metadata", help="Query target .program_metadata and validate against target ELF")
 
     # Stop
     subparsers.add_parser("stop", help="Stop running host daemon")
 
-    # Bringup
-    bringup_parser = subparsers.add_parser("bringup", help="Parse and run bringup verification scripts")
-    bringup_parser.add_argument("--script", "-s", type=str, default=None, help="Path to bringup YAML script")
-    bringup_parser.add_argument("--list", action="store_true", help="List discovered bringup scripts in repository")
-    bringup_parser.add_argument("--status", action="store_true", help="Show current bringup checklist status")
-    bringup_parser.add_argument("--run", action="store_true", help="Execute bringup checklist steps")
-    bringup_parser.add_argument("--step", action="store_true", help="Execute single bringup step")
-    bringup_parser.add_argument("--reset", action="store_true", help="Reset bringup checklist execution")
-    bringup_parser.add_argument(
-        "--output", "-o", type=str, default="bringup_report.md", help="Path to output markdown report"
+    # On-device pytest test runner
+    test_parser = subparsers.add_parser(
+        "test",
+        help="Auto-discover attached target board via host_fs and execute async pytest device suites",
     )
-    bringup_parser.add_argument(
-        "--manual", action="store_true", help="Run in manual prompt mode without hardware probe"
+    test_parser.add_argument(
+        "script_pos",
+        nargs="?",
+        metavar="script",
+        default=None,
+        help="Optional path (or pytest node ID) to a @device_test script to execute.",
+    )
+    test_parser.add_argument(
+        "--script",
+        "-s",
+        type=str,
+        default=None,
+        help="Optional path (or pytest node ID) to a @device_test script; infers scenario when --scenario is omitted.",
+    )
+    test_parser.add_argument(
+        "--project",
+        "-p",
+        type=str,
+        default="all",
+        help="Target firmware project filter matching @device_test(project=...) (e.g. cat_detector, carrier_board).",
+    )
+    test_parser.add_argument(
+        "--scenario",
+        "-m",
+        type=str,
+        default=None,
+        help="Scenario expression: smoke, integration, bringup, default (smoke or integration), or all.",
+    )
+    test_parser.add_argument(
+        "--board",
+        "-b",
+        type=str,
+        default="auto",
+        help="Target board_type or glob filter (e.g. auto, rp2040*, rp2040_flash_2mb, carrier_board*).",
+    )
+    test_parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Enable interactive operator prompts for manual/benchtop bringup steps.",
+    )
+    test_parser.add_argument(
+        "--list-devices",
+        action="store_true",
+        help="Query connected target board via host_fs board-type and exit.",
+    )
+    test_parser.add_argument(
+        "--list-tests",
+        "--list",
+        dest="list_tests",
+        action="store_true",
+        help="List registered @device_test cases with scenarios, boards, target_binary, and description.",
+    )
+    test_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Format --list-devices or --list-tests output as JSON.",
+    )
+    test_parser.add_argument(
+        "--report-md",
+        type=str,
+        default=None,
+        help="Optional path to write Markdown verification report.",
+    )
+    test_parser.add_argument(
+        "--junit-xml",
+        type=str,
+        default=None,
+        help="Optional path to write JUnit XML verification report.",
+    )
+    test_parser.add_argument(
+        "--host-port",
+        type=int,
+        default=None,
+        help="Optional explicit TCP port of a running host.py daemon.",
     )
 
     return parser.parse_args(args)
@@ -432,6 +500,27 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"Could not reset target: {e}", file=sys.stderr)
             return 1
 
+    if args.subcommand == "reboot":
+        try:
+            res = send_daemon_request("/api/reboot", {})
+            print(res.get("message", "Target reboot completed."))
+            return 0
+        except Exception as e:
+            print(f"Could not reboot target: {e}", file=sys.stderr)
+            return 1
+
+    if args.subcommand == "metadata":
+        try:
+            res = send_daemon_request("/api/metadata")
+            print(json.dumps(res, indent=2))
+            return 0
+        except Exception:
+            from host_daemon.model.metadata import probe_attached_target_metadata
+
+            res = probe_attached_target_metadata(repo_root)
+            print(json.dumps(res, indent=2))
+            return 0 if res.get("connected") else 1
+
     if args.subcommand == "stop":
         try:
             res = send_daemon_request("/api/stop", {})
@@ -442,155 +531,157 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"Could not stop daemon: {e}", file=sys.stderr)
             return 1
 
-    if args.subcommand == "bringup":
-        from host_daemon.model.bringup import discover_bringup_scripts
-        from host_daemon.provider.bringup.bringup_manager import BringupManager
-
-        # 1. List scripts if requested
-        if args.list:
-            scripts = discover_bringup_scripts(repo_root)
-            print("Available Bringup Checklist Scripts:")
-            for s in scripts:
-                print(f"  • {s['name']:<25} ({s['chip']}) - {s['path']} [{s['steps_count']} steps]")
-            return 0
-
-        # 2. Check if active host daemon can handle the request
-        daemon_alive = False
-        try:
-            lock_data = get_lock_data()
-            if lock_data and is_pid_alive(lock_data.get("pid", 0)):
-                daemon_alive = True
-        except Exception:
-            daemon_alive = False
-
-        if daemon_alive and not args.manual:
-            try:
-                if args.script:
-                    send_daemon_request("/api/bringup/load", {"script_path": args.script})
-                    print(f"Loaded bringup script '{args.script}' into host daemon.")
-
-                if args.reset:
-                    send_daemon_request("/api/bringup/reset", {})
-                    print("Bringup checklist reset to beginning on host daemon.")
-
-                if args.status:
-                    st = send_daemon_request("/api/bringup/status")
-                    print(f"Bringup Checklist Status: {st.get('script_name', 'None')} ({st.get('status', 'unknown')})")
-                    print(f"  Current Step: {st.get('current_step_idx', 0) + 1} / {st.get('total_steps', 0)}")
-                    summary = st.get("summary", {})
-                    print(
-                        f"  Passed: {summary.get('passed', 0)}, Failed: {summary.get('failed', 0)}, Skipped: {summary.get('skipped', 0)}, Pending: {summary.get('pending', 0)}"
-                    )
-                    return 0
-
-                if args.step:
-                    res = send_daemon_request("/api/bringup/step", {})
-                    prompt = res.get("prompt", {})
-                    step_info = res.get("step", {})
-                    print(f"Executed step [{step_info.get('id', '?')}] {step_info.get('name', '')}:")
-                    if prompt.get("output_log"):
-                        for line in str(prompt["output_log"]).strip().splitlines():
-                            print(f"  {line}")
-                    if prompt.get("auto_pass") is True:
-                        print(f"  ✔ Check passed: {prompt.get('matched_line') or 'OK'}")
-                    elif prompt.get("auto_pass") is False:
-                        print("  ✘ Check failed (expected pattern not matched)")
-                    return 0
-
-                if (args.script or args.reset) and not args.run:
-                    return 0
-            except Exception as e:
-                print(f"Host daemon interaction failed: {e}. Falling back to standalone mode.")
-                daemon_alive = False
-
-        # 3. Standalone Bringup Execution
-        script_path = args.script
-        if not script_path:
-            discovered = discover_bringup_scripts(repo_root)
-            if discovered:
-                script_path = discovered[0]["path"]
-            else:
-                print("Error: No bringup script specified and none found in repository.", file=sys.stderr)
-                return 1
-
-        resolved_script = repo_root / script_path if not Path(script_path).is_absolute() else Path(script_path)
-        if not resolved_script.exists():
-            print(f"Error: Bringup script not found: {resolved_script}", file=sys.stderr)
-            return 1
-
-        manager = BringupManager(repo_root=repo_root)
-        try:
-            cfg = manager.load_script(resolved_script)
-        except Exception as e:
-            print(f"Error loading bringup YAML: {e}", file=sys.stderr)
-            return 1
-
-        if args.status:
-            print(f"Bringup Checklist: {cfg.project_name} ({cfg.device_chip})")
-            print(f"  Total Steps: {len(cfg.steps)}")
-            for s in cfg.steps:
-                print(f"  [{s.id}] {s.name:<40} ({s.type.value}) - {s.status.value.upper()}")
-            return 0
-
-        # Execute checklist interactively
-        print("=" * 60)
-        print(f"BRINGUP CHECKLIST ASSISTANT: {cfg.project_name} ({cfg.device_chip})")
-        rel_disp = (
-            resolved_script.relative_to(repo_root) if resolved_script.is_relative_to(repo_root) else resolved_script
+    if args.subcommand == "test":
+        from device_tests.client import query_metadata_standalone
+        from device_tests.model import (
+            DetectedBoard,
+            discover_device_tests,
+            infer_scenario_from_script,
+            matches_board_patterns,
         )
-        print(f"Script: {rel_disp}")
-        print(f"Total Steps: {len(cfg.steps)}")
-        print("=" * 60)
 
-        for idx, step in enumerate(cfg.steps):
-            print(f"\n--- STEP {idx + 1}/{len(cfg.steps)}: {step.name} (ID: {step.id}) [{step.type.value.upper()}] ---")
-            if step.description:
-                print(f"  Description: {step.description}")
-            if step.procedure:
-                print(f"  Procedure: {step.procedure}")
-            if step.expected:
-                print(f"  Expected: {step.expected}")
-            if step.test_points:
-                print("  Test Points:")
-                for tp, val in step.test_points.items():
-                    print(f"    • {tp}: {val}")
-            if step.control_pins:
-                print("  Control Pins:")
-                for cp, val in step.control_pins.items():
-                    print(f"    • {cp}: {val}")
+        target_script: Optional[str] = args.script or getattr(args, "script_pos", None)
+        project_filter: str = (getattr(args, "project", None) or "all").strip().lower()
+        resolved_pytest_target = str(repo_root / "tools" / "device_tests" / "suites")
+        if target_script:
+            file_part, sep, node_part = target_script.partition("::")
+            candidate_file = Path(file_part) if Path(file_part).is_absolute() else (repo_root / file_part)
+            if not candidate_file.exists():
+                print(f"Error: Device test script not found: {candidate_file}", file=sys.stderr)
+                return 1
+            resolved_pytest_target = f"{candidate_file}{sep}{node_part}" if sep else str(candidate_file)
 
-            res = manager.step()
-            prompt = res.get("prompt", {})
-            auto_pass = prompt.get("auto_pass")
-            def_status = prompt.get("default_status", "passed")
+        if args.list_tests:
+            entries = discover_device_tests(
+                repo_root,
+                project=project_filter,
+                script=target_script,
+            )
+            if args.json:
+                print(json.dumps(entries, indent=2))
+            else:
+                for entry in entries:
+                    bin_tag = entry["target_binary"] or "none"
+                    scen_tag = ",".join(entry["scenarios"])
+                    print(
+                        f"  [{entry['order']:>2}] [{entry['project']}] {entry['name']:<44} ({scen_tag}) [bin={bin_tag}]"
+                    )
+                    if entry.get("description"):
+                        print(f"       {entry['description']}")
+            return 0
 
-            if step.output_log:
-                print(f"  Output:\n{step.output_log.strip()}")
+        detected_board = None
+        try:
+            meta_res = send_daemon_request(
+                "/api/metadata",
+                None,
+                port=args.host_port,
+                host=args.host,
+            )
+            if isinstance(meta_res, dict) and meta_res.get("connected") and meta_res.get("board_type"):
+                detected_board = DetectedBoard.from_metadata_response(meta_res)
+        except Exception:
+            detected_board = query_metadata_standalone(repo_root)
 
-            if auto_pass is True:
-                print(f"  ✔ Check passed: {step.matched_line or 'OK'}")
-            elif auto_pass is False:
-                print(f"  ✘ Check failed (expected pattern not matched)")
+        if args.list_devices:
+            if args.json:
+                print(
+                    json.dumps(
+                        {"detected": detected_board.to_dict() if detected_board else None},
+                        indent=2,
+                    )
+                )
+            elif detected_board is not None:
+                print(
+                    f"Connected Target Board: {detected_board.board_type} "
+                    f"(chip={detected_board.chip}, source={detected_board.source})"
+                )
+            else:
+                print("No physical target devices detected.")
+            return 0
 
-            try:
-                pass_choice = format_clickable_choice("Pass", "P", "pass", "\033[1;32m")
-                fail_choice = format_clickable_choice("Fail", "F", "fail", "\033[1;31m")
-                skip_choice = format_clickable_choice("Skip", "S", "skip", "\033[1;33m")
-                prompt_str = f"Status {pass_choice}, {fail_choice}, {skip_choice} (default: {def_status.upper()}): "
-                choice = input(prompt_str).strip().lower()
-                if not choice:
-                    choice = def_status
-                notes = input("Notes (optional): ").strip()
-                manager.respond(action=choice, notes=notes)
-            except (KeyboardInterrupt, EOFError):
-                print("\nChecklist run interrupted by user.")
-                break
+        if detected_board is None:
+            print("ℹ️  No physical target device detected — skipping on-device tests.")
+            return 0
 
-        # Generate markdown report
-        report_path = repo_root / args.output if not Path(args.output).is_absolute() else Path(args.output)
-        manager.generate_report(output_path=report_path)
-        print(f"\nBringup report generated: {report_path}")
-        return 0
+        board_filter = (args.board or "auto").strip()
+        if board_filter.lower() != "auto" and not matches_board_patterns(detected_board.board_type, [board_filter]):
+            print(
+                f"ℹ️  Connected board '{detected_board.board_type}' does not match "
+                f"--board='{board_filter}' — skipping on-device tests."
+            )
+            return 0
+
+        if args.scenario is not None and args.scenario.strip():
+            raw_scenario = args.scenario.strip()
+            if raw_scenario.lower() == "default":
+                marker_expr = "smoke or integration"
+            elif raw_scenario.lower() == "all":
+                marker_expr = ""
+            elif "," in raw_scenario:
+                marker_expr = " or ".join(part.strip() for part in raw_scenario.split(",") if part.strip())
+            else:
+                marker_expr = raw_scenario
+        elif target_script:
+            marker_expr = infer_scenario_from_script(target_script, repo_root)
+        else:
+            marker_expr = "smoke or integration"
+
+        print(
+            f"🔌 Discovered target board '{detected_board.board_type}' ({detected_board.chip}) — "
+            f"running on-device pytest suites (scenario: {marker_expr or 'all'})..."
+        )
+        pytest_cmd: List[str] = [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-c",
+            str(repo_root / "pyproject.toml"),
+            "--rootdir",
+            str(repo_root),
+            "-o",
+            "addopts=",
+            "-v",
+            "--maxfail=1",
+        ]
+        target_file_resolved = Path(resolved_pytest_target.partition("::")[0]).resolve()
+        if not target_file_resolved.is_relative_to((repo_root / "tools" / "device_tests").resolve()):
+            pytest_cmd.extend(["-p", "device_tests.conftest"])
+        pytest_cmd.extend(
+            [
+                resolved_pytest_target,
+                "--project",
+                project_filter,
+                "--board",
+                board_filter,
+                "--host-addr",
+                args.host,
+            ]
+        )
+        if marker_expr:
+            pytest_cmd.extend(["-m", marker_expr])
+        if args.host_port is not None:
+            pytest_cmd.extend(["--host-port", str(args.host_port)])
+        if args.interactive:
+            pytest_cmd.append("--interactive")
+        if args.report_md:
+            pytest_cmd.extend(["--report-md", args.report_md])
+        if args.junit_xml:
+            pytest_cmd.extend(["--junitxml", args.junit_xml])
+
+        env = dict(os.environ)
+        py_paths = [
+            str(repo_root / "tools"),
+            str(repo_root / "tools" / "validation"),
+            str(repo_root / "tools" / "helpers"),
+            str(repo_root / "tools" / "dashboard"),
+        ]
+        if env.get("PYTHONPATH"):
+            py_paths.append(env["PYTHONPATH"])
+        env["PYTHONPATH"] = os.pathsep.join(py_paths)
+
+        proc = subprocess.run(pytest_cmd, cwd=str(repo_root), env=env, check=False)
+        return 0 if proc.returncode in (0, 5) else proc.returncode
 
     # Check if daemon already running
     existing = get_lock_data()

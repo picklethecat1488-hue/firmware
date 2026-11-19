@@ -46,3 +46,25 @@ fn test_carrier_board_hello_world() {
 fn test_carrier_board_self_test() {
     assert!(run_bringup_self_test());
 }
+
+#[test]
+fn test_carrier_board_bsp_and_shell_topology() {
+    use cat_detector::carrier_board::{create_default_feature_set, get_filesystem_config, Board};
+    use controller::SystemFeatureSet as _;
+
+    let mut board = Board::init();
+    assert_eq!(Board::BOARD_TYPE, "carrier_board");
+    assert_eq!(Board::PROGRAM_METADATA_ADDR, 0x001D_F000);
+    assert_eq!(Board::FLASH_WRITE_SIZE, 128);
+    assert_eq!(Board::FLASH_ERASE_SIZE, 8192);
+    assert_eq!(Board::METADATA_PARTITION_START, 0x001E_0000);
+    assert_eq!(Board::FS_PARTITION_START, 0x001E_8000);
+    assert_eq!(Board::TELEMETRY_PARTITION_START, 0x001F_0000);
+
+    let _periph = board.take_peripherals();
+    let fs_cfg = get_filesystem_config();
+    assert_eq!(fs_cfg.buffer.len(), Board::FS_BUF_SIZE);
+
+    let feature_set = create_default_feature_set();
+    assert_eq!(feature_set.inactivity_timeout_seconds(), 30);
+}

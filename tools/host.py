@@ -23,9 +23,10 @@ _repo_root = _tools_dir.parent
 _daemon_dir = _tools_dir / "host_daemon"
 _dashboard_dir = _tools_dir / "dashboard"
 
-for p in (str(_repo_root), str(_tools_dir), str(_daemon_dir), str(_dashboard_dir)):
-    if p not in sys.path:
-        sys.path.insert(0, p)
+for p in (str(_repo_root), str(_tools_dir), str(_dashboard_dir)):
+    if p in sys.path:
+        sys.path.remove(p)
+    sys.path.insert(0, p)
 
 from host_daemon.cli import main
 

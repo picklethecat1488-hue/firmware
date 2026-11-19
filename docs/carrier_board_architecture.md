@@ -2,7 +2,7 @@
 
 This document specifies the dual-core firmware architecture, inter-core IPC protocol, storage partition layouts, peripheral integration models, and security boundaries for the **Carrier Board 2.0** powered by the **NXP MCX N947** dual-core Arm Cortex-M33 microcontroller.
 
-For top-level repository standards, see the [Unified Firmware Architecture Guide](firmware_architecture.md). For hardware bringup steps and test scripts, see [`app/carrier_board.md`](../app/carrier_board.md) and [`app/carrier_board_bringup.yaml`](../app/carrier_board_bringup.yaml).
+For top-level repository standards, see the [Unified Firmware Architecture Guide](firmware_architecture.md). For hardware bringup steps and async pytest device suites, see [`app/carrier_board.md`](../app/carrier_board.md) and [`tools/device_tests/suites/test_carrier_board_bringup.py`](../tools/device_tests/suites/test_carrier_board_bringup.py).
 
 ---
 
