@@ -372,6 +372,15 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Target board_type or glob filter (e.g. auto, rp2040*, rp2040_flash_2mb, carrier_board*).",
     )
     test_parser.add_argument(
+        "-k",
+        "--keyword",
+        "--filter",
+        dest="keyword",
+        type=str,
+        default=None,
+        help="Filter tests by name/keyword expression mirroring pytest -k (e.g. -k tof or -k 'tof and not calibration').",
+    )
+    test_parser.add_argument(
         "--manual",
         action="store_true",
         help="Enable operator prompts for @device_test(manual=True) benchtop steps.",
@@ -556,6 +565,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         target_script: Optional[str] = args.script or getattr(args, "script_pos", None)
         project_filter: str = (getattr(args, "project", None) or "all").strip().lower()
+        keyword_expr: Optional[str] = (getattr(args, "keyword", None) or "").strip() or None
         resolved_pytest_target = str(repo_root / "tools" / "device_tests" / "suites")
         if target_script:
             file_part, sep, node_part = target_script.partition("::")
@@ -570,6 +580,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 repo_root,
                 project=project_filter,
                 script=target_script,
+                keyword=keyword_expr,
             )
             if args.json:
                 print(json.dumps(entries, indent=2))
@@ -678,6 +689,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
         if marker_expr:
             pytest_cmd.extend(["-m", marker_expr])
+        if keyword_expr:
+            pytest_cmd.extend(["-k", keyword_expr])
         if args.host_port is not None:
             pytest_cmd.extend(["--host-port", str(args.host_port)])
         if args.manual:

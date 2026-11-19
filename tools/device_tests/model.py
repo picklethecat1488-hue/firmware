@@ -426,6 +426,72 @@ def _board_filter_matches_test(board_filter: str, test_board_patterns: Sequence[
     return any(fnmatch.fnmatchcase(pat.strip().lower(), filt) for pat in test_board_patterns)
 
 
+KEYWORD_TOKEN_RE = re.compile(r"\(|\)|'[^']*'|\"[^\"]*\"|\S+")
+
+
+def matches_keyword_expression(target_text: str, expression: str) -> bool:
+    """Evaluate a `pytest -k` style boolean substring expression (`and`, `or`, `not`, parentheses) against `target_text`."""
+    cleaned_expr = expression.strip()
+    if not cleaned_expr:
+        return True
+
+    haystack = target_text.lower()
+    raw_tokens = KEYWORD_TOKEN_RE.findall(cleaned_expr)
+    if not raw_tokens:
+        return True
+
+    idx = 0
+
+    def _parse_or() -> bool:
+        nonlocal idx
+        result = _parse_and()
+        while idx < len(raw_tokens) and raw_tokens[idx].lower() == "or":
+            idx += 1
+            rhs = _parse_and()
+            result = result or rhs
+        return result
+
+    def _parse_and() -> bool:
+        nonlocal idx
+        result = _parse_not()
+        while idx < len(raw_tokens) and raw_tokens[idx].lower() == "and":
+            idx += 1
+            rhs = _parse_not()
+            result = result and rhs
+        return result
+
+    def _parse_not() -> bool:
+        nonlocal idx
+        if idx < len(raw_tokens) and raw_tokens[idx].lower() == "not":
+            idx += 1
+            return not _parse_not()
+        return _parse_atom()
+
+    def _parse_atom() -> bool:
+        nonlocal idx
+        if idx >= len(raw_tokens):
+            return True
+        tok = raw_tokens[idx]
+        if tok == "(":
+            idx += 1
+            val = _parse_or()
+            if idx < len(raw_tokens) and raw_tokens[idx] == ")":
+                idx += 1
+            return val
+        idx += 1
+        if len(tok) >= 2 and ((tok[0] == "'" and tok[-1] == "'") or (tok[0] == '"' and tok[-1] == '"')):
+            tok = tok[1:-1]
+        return tok.lower() in haystack
+
+    result = _parse_or()
+    while idx < len(raw_tokens):
+        extra = raw_tokens[idx].strip("'\"()").lower()
+        idx += 1
+        if extra and extra not in ("and", "or", "not"):
+            result = result and (extra in haystack)
+    return result
+
+
 def discover_device_tests(
     repo_root: Path,
     *,
@@ -436,6 +502,7 @@ def discover_device_tests(
     target_binary: Optional[str] = None,
     manual: Optional[bool] = None,
     query: Optional[str] = None,
+    keyword: Optional[str] = None,
     detected_board_type: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Discover `@device_test` functions across `tools/device_tests/suites/` with attribute filtering."""
@@ -449,7 +516,8 @@ def discover_device_tests(
     if board_norm and board_norm.lower() == "auto":
         board_norm = detected_board_type
     binary_norm = target_binary.strip() if target_binary and target_binary.strip().lower() not in ("all", "*") else None
-    query_norm = query.strip().lower() if query and query.strip() else None
+    query_norm = query.strip() if query and query.strip() else None
+    keyword_norm = keyword.strip() if keyword and keyword.strip() else None
 
     if script is not None:
         file_part = str(script).partition("::")[0]
@@ -481,15 +549,18 @@ def discover_device_tests(
                     continue
             if manual is not None and bool(meta.manual) != bool(manual):
                 continue
+            node_id = f"{rel_path}::{meta.name}"
+            if keyword_norm and not matches_keyword_expression(node_id, keyword_norm):
+                continue
             if query_norm:
-                haystack = f"{meta.name} {meta.project} {meta.description} {rel_path}".lower()
-                if query_norm not in haystack:
+                haystack = f"{meta.name} {meta.project} {meta.description} {rel_path}"
+                if not matches_keyword_expression(haystack, query_norm):
                     continue
 
             order_counter += 1
             entry = meta.to_dict(order_index=order_counter)
             entry["file_path"] = rel_path
-            entry["node_id"] = f"{rel_path}::{meta.name}"
+            entry["node_id"] = node_id
             entry["board_compatible"] = (
                 matches_board_patterns(detected_board_type, meta.boards) if detected_board_type else None
             )
