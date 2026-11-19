@@ -69,9 +69,6 @@
 [] [manual_test] [INFO] [MANUAL TEST: test_motor_calibration_routine] Procedure: Ensure fountain reservoir is filled above minimum waterline before starting calibration. | Expected: Is the reservoir filled and clear of obstructions?
 ```
 
-#### Attachments & References
+#### Review Tasks & Functional Checklist
 
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-FOSSORIAL-NIGHTCRAWLER-861.log](attachments/WORM-FOSSORIAL-NIGHTCRAWLER-861/target_system_logs_WORM-FOSSORIAL-NIGHTCRAWLER-861.log) | Target system and defmt logs from host daemon session |
-| `screenshot` | [image.png](attachments/WORM-FOSSORIAL-NIGHTCRAWLER-861/image.png) | Pasted screenshot |
+- [ ] Launch host.py in Test Mode and verify Mode/Scenarios and Status badges render as non-overlapping pills across full and split widths | `python tools/host.py --no-detach` <!-- id:bb45b342 -->
