@@ -99,3 +99,4 @@ tools/device_tests/suites/test_cat_detector_smoke.py::test_tof_proximity_array_a
 #### Review Tasks & Functional Checklist
 
 - [ ] Run host.py test --list-tests -k 'tof and not calibration' and verify only matching @device_test entries are listed | `python tools/host.py test --list-tests -k 'tof and not calibration'` <!-- id:1d29c161 -->
+- [ ] Run a single filtered on-device test via host.py test -k battery_fuel_gauge and verify only that test executes on target | `python tools/host.py test -k battery_fuel_gauge` <!-- id:06394688 -->
