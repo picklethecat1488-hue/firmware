@@ -8,7 +8,7 @@
 - **Component**: `target`
 - **Created**: `2026-11-19 18:29:11 UTC`
 - **Resolved**: `2026-11-19 19:40:30 UTC`
-- **Accepted**: `2026-11-19 19:40:32 UTC`
+- **Accepted**: `2026-11-19 19:40:33 UTC`
 
 #### Reproduction Steps
 
