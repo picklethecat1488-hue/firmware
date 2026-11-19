@@ -25,6 +25,8 @@ fn panic(info: &core::panic::PanicInfo) -> ! {
     app::handle_panic(info);
 }
 
+board::emit_project_metadata!();
+
 #[cfg(all(target_arch = "arm", target_os = "none"))]
 #[platform::tracing::instrument(name = "boot", level = "info", skip(spawner, p))]
 #[embassy_executor::task]
