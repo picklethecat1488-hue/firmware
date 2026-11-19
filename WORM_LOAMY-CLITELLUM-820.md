@@ -1,12 +1,13 @@
-# 🔴 `[WORM-LOAMY-CLITELLUM-820]` investigate test failures
+# 🟢 `[WORM-LOAMY-CLITELLUM-820]` investigate test failures
 
 - **UUID**: `84515a48-b63e-482f-95f5-f34dd28638b5`
 - **ID**: `WORM-LOAMY-CLITELLUM-820`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `HIGH`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-19 18:35:51 UTC`
+- **Resolved**: `2026-11-19 23:41:24 UTC`
 - **Rejected**: `2026-11-19 19:40:49 UTC`
 
 #### Description
@@ -108,9 +109,7 @@ FAILED tools/device_tests/suites/test_cat_detector_integration.py::test_system_a
 
 #### Resolution Notes
 
-Serialized execute_cli(wait_for_output=True) with _fs_lock and cached verified .program_metadata per connected ELF so concurrent metadata probes and consecutive same-binary tests never tear down RTT mid-command, and integrated real-time [device_ts]-prefixed CLI/FS commands and outputs into Test Execution Logs.
-
--I can still repro this
+Added structured NDJSON event streaming (--json-events) to host_cli with deterministic session_started, cli_prompt, and command_completed events, explicit 'System activity recorded.' output on system activity, and post-reset boot/prompt readiness gating in DaemonRunner.start_rtt_streaming().
 
 #### Rejection Feedback
 
