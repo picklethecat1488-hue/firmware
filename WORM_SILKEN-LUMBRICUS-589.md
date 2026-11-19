@@ -1,12 +1,13 @@
-# 🔴 `[WORM-SILKEN-LUMBRICUS-589]` Add progress bar to right panel
+# 🟢 `[WORM-SILKEN-LUMBRICUS-589]` Add progress bar to right panel
 
 - **UUID**: `41761a6c-1ba4-41e7-a106-13cac9a81bb2`
 - **ID**: `WORM-SILKEN-LUMBRICUS-589`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `target`
 - **Created**: `2026-11-19 03:45:39 UTC`
+- **Resolved**: `2026-11-19 06:54:20 UTC`
 
 #### Description
 
@@ -83,3 +84,7 @@ We should add a test progress and status indicator to the right panel to be show
 
 - [ ] Launch host.py in TEST mode, run a multi-binary suite (e.g. cat_detector smoke + integration), and verify the right-panel Test Progress & Target Status card updates percentage, target flashing, mode switches, reboots, and active test queue in real time | `python tools/host.py --mode test` <!-- id:b9340829 -->
 - [ ] Run a manual bringup test with 'Prompt Manual' checked and verify the right panel transitions from the Progress Card to the Manual Benchtop Prompt card while awaiting input, then returns to the Progress Card upon submission | `python tools/host.py test --project cat_detector --scenario bringup --manual` <!-- id:3735ec5f -->
+
+#### Resolution Notes
+
+Added the right-panel Test Progress & Target Lifecycle Status card (#testProgressCard) displayed whenever a manual prompt is inactive, surfacing live percentage progress, target flashing, mode switches, SWD reboots, active CLI/FS commands, and per-test queue status.
