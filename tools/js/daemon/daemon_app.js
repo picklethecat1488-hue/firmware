@@ -11,10 +11,10 @@ import { applyIframeContextClass, resolveElement } from "../core/dom.js";
 import { setupPanelResizer } from "../core/resizer.js";
 import { getRuntimeContext } from "../core/runtime_context.js";
 import { applyUiScale } from "../core/ui_scale.js";
-import { createBringupRunner } from "./bringup_runner.js";
 import { createCliConsole, WORKSTATION_MODES } from "./cli_console.js";
 import { createRttStream } from "./rtt_stream.js";
 import { createTargetConfig } from "./target_config.js";
+import { createTestRunner, LEFT_PANEL_TABS } from "./test_runner.js";
 import { createWormReporter } from "./worm_reporter.js";
 
 export const UI_SCALES = Object.freeze([
@@ -46,6 +46,7 @@ export class DaemonApp {
     this.ctx = ctx;
     this.bootConfig = ctx.getBootConfig();
     this.pollTimer = null;
+    this._openedLeftPanelForTestMode = false;
     this._unsubscribers = [];
 
     const initialMode = String(
@@ -56,17 +57,13 @@ export class DaemonApp {
       onCommandClick: (cmd) => this.cliConsole.handleCommandClick(cmd),
     });
 
-    this.bringupRunner = createBringupRunner(ctx);
+    this.testRunner = createTestRunner(ctx);
 
     this.cliConsole = createCliConsole(ctx, {
       initialMode,
       onModeChange: async (mode) => {
-        if (mode === WORKSTATION_MODES.BRINGUP) {
-          await this.bringupRunner.loadScripts();
-          await this.bringupRunner.pollStatus();
-        }
+        await this._syncLeftPanelForMode(mode);
       },
-      onBringupAction: (action) => this.bringupRunner.respond(action),
     });
 
     this.targetConfig = createTargetConfig(ctx, {
@@ -95,6 +92,8 @@ export class DaemonApp {
     this.clearOutputBtn = resolveElement(ctx, "btnClearOutput");
     this.copyLogBtn = resolveElement(ctx, "btnCopyLog");
     this.copyWorkstationBtn = resolveElement(ctx, "btnCopyWorkstation");
+    this.manualPromptBanner = resolveElement(ctx, "manualPromptBanner");
+    this.manualPromptSummary = resolveElement(ctx, "manualPromptSummary");
   }
 
   /**
@@ -127,16 +126,13 @@ export class DaemonApp {
     );
     this._unsubscribers.push(cleanupResizer);
 
-    this.bringupRunner.init();
     this.wormReporter.init();
+    this.testRunner.init();
     await this.cliConsole.init();
+    await this._syncLeftPanelForMode(this.cliConsole.getMode());
     await this.targetConfig.init();
 
     await this.pollAll();
-    if (this.cliConsole.getMode() === WORKSTATION_MODES.BRINGUP) {
-      await this.bringupRunner.loadScripts();
-      await this.bringupRunner.pollStatus();
-    }
 
     this.pollTimer = this.ctx.setInterval(() => {
       this.pollAll();
@@ -209,6 +205,30 @@ export class DaemonApp {
   }
 
   /**
+   * Synchronize left-panel visibility and active tab (`TESTS` vs `LOGS`) when workstation mode changes.
+   *
+   * @param {string} mode - Active workstation mode (`"CLI"`, `"FS"`, or `"TEST"`).
+   * @returns {Promise<void>}
+   */
+  async _syncLeftPanelForMode(mode) {
+    if (mode === WORKSTATION_MODES.TEST) {
+      if (!this.rttStream.isPanelVisible()) {
+        this._openedLeftPanelForTestMode = true;
+        this.rttStream.togglePanel(true, { persist: false });
+      }
+      this.testRunner.setTestModeActive(true);
+      await this.testRunner.ensureInitialized();
+      return;
+    }
+
+    this.testRunner.setTestModeActive(false);
+    if (this._openedLeftPanelForTestMode) {
+      this._openedLeftPanelForTestMode = false;
+      this.rttStream.togglePanel(false, { persist: false });
+    }
+  }
+
+  /**
    * Bind top-bar buttons and global keyboard shortcuts (`Cmd/Ctrl +/-/0`, `Ctrl+R`, `Escape`).
    */
   _bindGlobalControls() {
@@ -221,6 +241,15 @@ export class DaemonApp {
     };
 
     const handleToggleLogs = () => {
+      if (
+        this.cliConsole.getMode() === WORKSTATION_MODES.TEST &&
+        this.rttStream.isPanelVisible() &&
+        this.testRunner.getActiveLeftTab() === LEFT_PANEL_TABS.TESTS
+      ) {
+        this.testRunner.setActiveLeftTab(LEFT_PANEL_TABS.LOGS);
+        return;
+      }
+      this._openedLeftPanelForTestMode = false;
       const visible = this.rttStream.togglePanel();
       if (this.targetConfig.cfgShowLogsCheckbox) {
         this.targetConfig.cfgShowLogsCheckbox.checked = visible;
@@ -231,9 +260,15 @@ export class DaemonApp {
     bindClick(this.collapseLogBtn, handleToggleLogs);
     bindClick(this.clearOutputBtn, () => this.clearOutputs());
     bindClick(this.copyLogBtn, () => this.rttStream.copyLogs(this.copyLogBtn));
-    bindClick(this.copyWorkstationBtn, () =>
-      this.cliConsole.copyActiveOutput(this.copyWorkstationBtn),
-    );
+    bindClick(this.copyWorkstationBtn, () => {
+      if (this.cliConsole.getMode() === WORKSTATION_MODES.TEST) {
+        return this.testRunner.copyConsoleOutput(this.copyWorkstationBtn);
+      }
+      return this.cliConsole.copyActiveOutput(this.copyWorkstationBtn);
+    });
+    bindClick(this.manualPromptBanner, () => {
+      this.cliConsole.setMode(WORKSTATION_MODES.TEST);
+    });
 
     const onViewportKeyDown = (event) => this._handleGlobalKeyDown(event);
     this.ctx.addViewportListener("keydown", onViewportKeyDown);
@@ -315,21 +350,53 @@ export class DaemonApp {
   clearOutputs() {
     this.rttStream.clear();
     this.cliConsole.clear();
+    this.testRunner.clearConsole();
   }
 
   /**
-   * Poll RTT system logs, CLI/FS outputs, and (when active) Bringup status once.
+   * Poll `/api/manual_prompt` to display active manual pytest procedure & prompt context.
+   *
+   * @returns {Promise<void>}
+   */
+  async pollManualPrompt() {
+    try {
+      const data = await this.ctx.fetchJson("/api/manual_prompt");
+      this.testRunner.renderManualPrompt(data);
+      if (!this.manualPromptBanner || !this.manualPromptSummary) {
+        return;
+      }
+      if (data && data.active && this.cliConsole.getMode() !== WORKSTATION_MODES.TEST) {
+        this.manualPromptBanner.style.display = "flex";
+        this.manualPromptSummary.textContent = `[${data.project || "device"}] ${data.test_name}: ${data.procedure} — ${data.prompt} (Click to respond in TEST mode)`;
+      } else {
+        this.manualPromptBanner.style.display = "none";
+        this.manualPromptSummary.textContent = "";
+      }
+    } catch {
+      if (this.manualPromptBanner) {
+        this.manualPromptBanner.style.display = "none";
+      }
+    }
+  }
+
+  /**
+   * Poll RTT system logs, CLI/FS outputs, Test Mode status, and active manual prompt context once.
    *
    * @returns {Promise<void>}
    */
   async pollAll() {
-    await Promise.all([
+    const tasks = [
       this.rttStream.pollLogs(),
       this.cliConsole.pollOutputs(),
-      this.cliConsole.getMode() === WORKSTATION_MODES.BRINGUP
-        ? this.bringupRunner.pollStatus()
-        : Promise.resolve(),
-    ]);
+      this.pollManualPrompt(),
+    ];
+    if (
+      this.cliConsole.getMode() === WORKSTATION_MODES.TEST ||
+      this.testRunner.isRunning
+    ) {
+      tasks.push(this.testRunner.pollStatus());
+    }
+    await Promise.all(tasks);
   }
 
   /**
@@ -346,7 +413,7 @@ export class DaemonApp {
     this._unsubscribers = [];
     this.rttStream.destroy();
     this.cliConsole.destroy();
-    this.bringupRunner.destroy();
+    this.testRunner.destroy();
     this.targetConfig.destroy();
     this.wormReporter.destroy();
   }
