@@ -46,7 +46,7 @@ For toolchain setup, flashing commands, `cargo nextest`, and full CLI subcommand
 
 ## Documentation Index
 
-- **[CLI Tools, Flashing, Host Daemon & Verification Workflows](docs/cli_and_workflows.md)** — Rust/`probe-rs`/Conda setup, `cargo nextest`, target flashing, `tools/host.py`, `tools/forge.py`, and `./tools/verify.py`.
+- **[CLI Tools, Flashing, Host Daemon & Verification Workflows](docs/cli_and_workflows.md)** — Rust/`probe-rs`/Conda setup, `cargo nextest`, target flashing, `tools/host.py`, `tools/forge.py`, `./tools/verify.py`, and VS Code interactive symbolic test & target debugging.
 - **[Unified Firmware Architecture Guide](docs/firmware_architecture.md)** — Layered workspace crate demarcation (`model`, `peripheral`, `controller`, `platform`, `board`, `app`) and runtime task topology.
 - **[Microcontroller Decoupling & BSPs](docs/mcu_decoupling.md)** — `Board::init` hardware encapsulation, target-agnostic `embedded-hal` drivers, and host mock parity.
 - **[Peripheral Sharing & Concurrency Patterns](docs/peripheral_sharing.md)** — Zero-allocation Embassy actor channels vs diagnostic shell interior mutability.

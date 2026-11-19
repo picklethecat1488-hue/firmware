@@ -51,5 +51,6 @@ opt-level = "s"            # Optimize for size to reduce async/embassy code size
 debug = 2                  # Full debug info (allows inspecting local variables in debugger)
 
 [profile.test]
+opt-level = 0        # Disable optimizations in host tests for exact symbolic stepping and local variable inspection
 debug = 2            # Full debug info (allows inspecting local variables in debugger)
 

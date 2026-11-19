@@ -43,6 +43,9 @@ def test_environment_yml_and_workflows_support_async_device_harness() -> None:
     assert any(p.startswith("pytest-asyncio") for p in pip_deps), (
         f"environment.yml must include pytest-asyncio in pip dependencies, got: {pip_deps}"
     )
+    assert any(p.startswith("debugpy") for p in pip_deps), (
+        f"environment.yml must include debugpy in pip dependencies, got: {pip_deps}"
+    )
     assert any(p.startswith("pluggy<1.7.0") for p in pip_deps)
 
     for wf_name in ("ci-gate.yml", "nightly.yml"):

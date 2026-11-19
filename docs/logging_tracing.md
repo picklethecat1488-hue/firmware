@@ -55,8 +55,11 @@ To provide deterministic, zero-allocation structured telemetry on embedded targe
   # Flash production application:
   cargo run --target thumbv6m-none-eabi --package cat_detector --bin cat_detector_app
 
-  # Execute automated target device test & bringup suites:
+  # Execute automated target device test & bringup suites (or --debug for VS Code debugpy attach):
   conda run -n firmware-env python tools/host.py test
+  conda run -n firmware-env python tools/host.py test --stress-runs 10
+  conda run -n firmware-env python tools/host.py test -k tof_proximity --debug
   conda run -n firmware-env python tools/host.py test --script tools/device_tests/suites/test_cat_detector_bringup.py --manual
   ```
+  See [CLI Tools, Flashing, Host Daemon & Verification Workflows](cli_and_workflows.md#6-interactive-symbolic-test--target-debugging-vs-code) for full VS Code `debugpy`, `CodeLLDB`, `node --test`, `probe-rs`, and `Cortex-Debug` symbolic debugging configurations.
 * **VCS Workstation & Issue Matrix (`tools/forge.py`)**: Smartlog DAG inspection, commit splitting/combining, code reviews, and worm tracking are conducted via `tools/forge.py` (System Shock 2 - Xerxes workstation). Launch via `python tools/forge.py` (native pywebview desktop window), `python tools/forge.py --eel` (Chromium app mode), or `python tools/forge.py --no-browser` (headless).

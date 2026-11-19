@@ -1409,3 +1409,186 @@ def test_host_test_stress_runs_and_async_cli_prompt_completion(
     assert rc_meta == 0
     assert len(probe_attempts) == 2
     assert '"rp2040_flash_2mb"' in out_meta
+
+
+def test_symbolic_test_debugging_dap_breakpoint_and_vscode_config(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Verify `host.py test --debug` hits symbolic breakpoints via DAP and `.vscode/` configs resolve cleanly."""
+    import json
+    import socket
+
+    from device_tests.client import _find_free_local_port
+    from host_daemon import cli as host_cli
+
+    # 1. Invalid `--debug-port 0` fails cleanly with exit status 2
+    rc_bad_port = host_cli.main(["test", "--debug", "--debug-port", "0"])
+    assert rc_bad_port == 2
+    assert "--debug-port must be between" in capsys.readouterr().err
+
+    # 2. Validate `.vscode/{launch,settings,tasks,extensions}.json` integrity & task cross-references
+    vscode_dir = WORKSPACE_ROOT / ".vscode"
+    launch_cfg = json.loads((vscode_dir / "launch.json").read_text(encoding="utf-8"))
+    settings_cfg = json.loads((vscode_dir / "settings.json").read_text(encoding="utf-8"))
+    tasks_cfg = json.loads((vscode_dir / "tasks.json").read_text(encoding="utf-8"))
+    ext_cfg = json.loads((vscode_dir / "extensions.json").read_text(encoding="utf-8"))
+
+    assert "rust-analyzer.cargo.target" not in settings_cfg, (
+        "rust-analyzer.cargo.target must not be locked to an MCU triple so host #[test] CodeLens debugging works"
+    )
+    pytest_args = settings_cfg.get("python.testing.pytestArgs", [])
+    assert "-o" in pytest_args and any(str(a).startswith("addopts=") for a in pytest_args)
+    assert "tools/device_tests/suites" in pytest_args
+
+    defined_tasks = {t["label"] for t in tasks_cfg.get("tasks", [])}
+    config_names = {c["name"] for c in launch_cfg.get("configurations", [])}
+    for cfg in launch_cfg.get("configurations", []):
+        pre_task = cfg.get("preLaunchTask")
+        if pre_task:
+            assert pre_task in defined_tasks, f"Missing preLaunchTask {pre_task!r} in .vscode/tasks.json"
+    for comp in launch_cfg.get("compounds", []):
+        for ref_name in comp.get("configurations", []):
+            assert ref_name in config_names, f"Compound {comp['name']!r} references missing config {ref_name!r}"
+    assert "ms-python.debugpy" in ext_cfg.get("recommendations", [])
+    assert "vadimcn.vscode-lldb" in ext_cfg.get("recommendations", [])
+
+    # 3. End-to-end symbolic breakpoint test over live Debug Adapter Protocol (`debugpy` + `host.py test --debug`)
+    smoke_file = (WORKSPACE_ROOT / "tools" / "device_tests" / "suites" / "test_cat_detector_smoke.py").resolve()
+    smoke_lines = smoke_file.read_text(encoding="utf-8").splitlines()
+    bp_line = next(idx for idx, line in enumerate(smoke_lines, start=1) if 'await host.cli("battery status")' in line)
+
+    sim_runner = SimulatedTargetRunner(
+        WORKSPACE_ROOT,
+        connected_board_type="rp2040_flash_2mb",
+        connected_chip="rp2040",
+        initial_bin="cat_detector_shell",
+    )
+    server, daemon_port = _start_ephemeral_daemon(sim_runner)
+    debug_port = _find_free_local_port("127.0.0.1")
+    run_rc: List[int] = []
+
+    def _run_debug_cli() -> None:
+        rc = host_cli.main(
+            [
+                "test",
+                "--project",
+                "cat_detector",
+                "--host-port",
+                str(daemon_port),
+                "-k",
+                "battery_fuel_gauge",
+                "--debug",
+                "--debug-port",
+                str(debug_port),
+            ]
+        )
+        run_rc.append(rc)
+
+    def _send_dap(sock: socket.socket, seq: int, command: str, arguments: Dict[str, Any]) -> None:
+        body = json.dumps({"seq": seq, "type": "request", "command": command, "arguments": arguments}).encode("utf-8")
+        header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
+        sock.sendall(header + body)
+
+    def _recv_dap(sock: socket.socket, buf: bytearray) -> Dict[str, Any]:
+        while True:
+            sep_idx = buf.find(b"\r\n\r\n")
+            if sep_idx != -1:
+                hdr_text = bytes(buf[:sep_idx]).decode("ascii")
+                content_len = 0
+                for hdr_line in hdr_text.split("\r\n"):
+                    if hdr_line.lower().startswith("content-length:"):
+                        content_len = int(hdr_line.split(":", 1)[1].strip())
+                total_needed = sep_idx + 4 + content_len
+                if len(buf) >= total_needed:
+                    payload_bytes = bytes(buf[sep_idx + 4 : total_needed])
+                    del buf[:total_needed]
+                    return json.loads(payload_bytes.decode("utf-8"))
+            chunk = sock.recv(4096)
+            if not chunk:
+                raise EOFError("DAP socket closed before complete message")
+            buf.extend(chunk)
+
+    cli_thread = threading.Thread(target=_run_debug_cli, daemon=True)
+    cli_thread.start()
+    try:
+        dap_sock: Optional[socket.socket] = None
+        deadline = time.monotonic() + 12.0
+        while time.monotonic() < deadline:
+            cand = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            cand.settimeout(1.0)
+            try:
+                cand.connect(("127.0.0.1", debug_port))
+                dap_sock = cand
+                break
+            except OSError:
+                cand.close()
+                time.sleep(0.08)
+
+        assert dap_sock is not None, f"Timed out waiting for debugpy listener on 127.0.0.1:{debug_port}"
+        dap_sock.settimeout(15.0)
+        rx_buf = bytearray()
+        try:
+            _send_dap(
+                dap_sock,
+                1,
+                "initialize",
+                {
+                    "adapterID": "python",
+                    "linesStartAt1": True,
+                    "columnsStartAt1": True,
+                    "pathFormat": "path",
+                },
+            )
+            _send_dap(dap_sock, 2, "attach", {"justMyCode": False})
+            initialized_seen = False
+            while not initialized_seen:
+                msg = _recv_dap(dap_sock, rx_buf)
+                if msg.get("type") == "event" and msg.get("event") == "initialized":
+                    initialized_seen = True
+
+            _send_dap(
+                dap_sock,
+                3,
+                "setBreakpoints",
+                {
+                    "source": {"path": str(smoke_file)},
+                    "breakpoints": [{"line": bp_line}],
+                },
+            )
+            _send_dap(dap_sock, 4, "configurationDone", {})
+
+            stopped_thread_id: Optional[int] = None
+            while stopped_thread_id is None:
+                msg = _recv_dap(dap_sock, rx_buf)
+                if msg.get("type") == "event" and msg.get("event") == "stopped":
+                    if msg.get("body", {}).get("reason") == "breakpoint":
+                        stopped_thread_id = int(msg["body"]["threadId"])
+
+            _send_dap(
+                dap_sock,
+                5,
+                "stackTrace",
+                {"threadId": stopped_thread_id, "startFrame": 0, "levels": 5},
+            )
+            top_frame: Optional[Dict[str, Any]] = None
+            while top_frame is None:
+                msg = _recv_dap(dap_sock, rx_buf)
+                if msg.get("type") == "response" and msg.get("command") == "stackTrace":
+                    frames = msg.get("body", {}).get("stackFrames", [])
+                    assert frames, f"Expected symbolic stack frames at breakpoint, got: {msg}"
+                    top_frame = frames[0]
+
+            assert top_frame["name"] == "test_battery_fuel_gauge_status"
+            assert int(top_frame["line"]) == bp_line
+
+            _send_dap(dap_sock, 6, "continue", {"threadId": stopped_thread_id})
+            _send_dap(dap_sock, 7, "disconnect", {"terminateDebuggee": False})
+        finally:
+            dap_sock.close()
+
+        cli_thread.join(timeout=15.0)
+        assert run_rc == [0], f"Expected debugged test run to exit 0, got {run_rc}"
+        assert sim_runner.executed_cli_commands == ["battery status"]
+    finally:
+        server.shutdown()
+        server.server_close()

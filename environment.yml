@@ -15,6 +15,7 @@ dependencies:
   - pip:
       - pluggy<1.7.0
       - pytest-asyncio>=1.0.0
+      - debugpy
       - pydantic
       - rerun-sdk
       - halo

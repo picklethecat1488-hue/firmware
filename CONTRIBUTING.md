@@ -318,31 +318,43 @@ cargo test
 
 ### Debugging Workflows
 
-For interactive debugging of tests on the host and bare-metal binaries on the target device, configure VS Code as follows:
+For interactive symbolic debugging of Python `@device_test` & host suites, Rust host unit/integration tests, JavaScript `node --test` suites, and bare-metal target binaries, accept the workspace extension recommendations in [`.vscode/extensions.json`](.vscode/extensions.json) and use the configurations in [`.vscode/launch.json`](.vscode/launch.json) and [`.vscode/settings.json`](.vscode/settings.json):
 
-#### 1. Host Test Debugging
-For the most reliable breakpoint debugging experience using the VS Code **"Debug"** CodeLens buttons:
-1. Ensure the **CodeLLDB** extension is installed in VS Code.
-2. Ensure you do **not** override the test run command in `.vscode/settings.json`. By letting VS Code default to standard `cargo test` when debugging, CodeLLDB attaches directly to the test process, allowing your breakpoints to be hit out of the box.
-3. If you specifically want to debug a test under nextest using the terminal, install the `codelldb-launch` helper and run:
+#### 1. Python Host & On-Device `@device_test` Symbolic Debugging (`debugpy`)
+1. **VS Code Testing Sidebar & Editor Gutter**: `.vscode/settings.json` configures `python.testing.pytestArgs` (`-o addopts="-v --maxfail=1"`) across `tools/device_tests/suites`, `tools/tests`, and `tools/validation/tests` so clicking **Debug Test** next to any sync or `async def test_*` runs single-process under `debugpy` without `pytest-xdist` (`-n auto`) probe contention.
+2. **Run and Debug (`Cmd+Shift+D` / `Ctrl+Shift+D`)**:
+   - **`Python: Debug Current Test File (Pytest)`**: Debugs the currently open Python host or `@device_test` file with `justMyCode: false`.
+   - **`Python: Debug Device Test (-k Filter)`**: Prompts for a `-k` keyword filter (e.g. `tof_proximity`) and runs `tools/host.py test -k <expr>` with automatic child-process `debugpy` attachment (`subProcess: true`).
+   - **`Python: Debug Manual Bringup Suite (--manual)`**: Prompts for `cat_detector` or `carrier_board` and debugs interactive `--manual` bringup suites.
+   - **`Python: Attach to host.py test --debug (Port 5678)`**: Attaches to a terminal run started with:
+     ```bash
+     python tools/host.py test -k tof_proximity --debug
+     ```
+
+#### 2. Rust Host Unit & Integration Test Debugging (`CodeLLDB`)
+`[profile.test]` in `Cargo.toml` sets `opt-level = 0` and `debug = 2` so local variables are never optimized out when stepping through `<crate>/tests/*.rs`:
+1. Ensure the **CodeLLDB** (`vadimcn.vscode-lldb`) and **rust-analyzer** extensions are installed, and keep `rust-analyzer.cargo.target` unset on the host so inline **`Run Test | Debug`** CodeLens buttons appear above every `#[test]`.
+2. In **Run and Debug**, use **`Rust: Debug Tests in Current File (CodeLLDB)`**, **`Rust: Debug Single Test by Name (CodeLLDB)`**, or **`Rust: Debug Host Tool (host_cli / host_fs)`**.
+3. To debug a test under `cargo-nextest` from the terminal, install `codelldb-launch` and run:
    ```bash
    cargo install --locked --git https://github.com/vadimcn/codelldb codelldb-launch
    cargo nextest run --debugger codelldb-launch <test_name>
    ```
 
-#### 2. Target Device Debugging (probe-rs & Cortex-Debug)
-To flash and debug firmware binaries directly on the target RP2040 microcontroller, use the VS Code **Run and Debug** view (`Ctrl+Shift+D` / `Cmd+Shift+D`) and select one of the following configurations:
-*   **Cortex-Debug (Recommended - Highly Stable)**: Uses GDB connected to a J-Link server or OpenOCD in the background. It is highly robust at resolving source files on your local disk.
-    - **Debug App (Cortex-Debug J-Link)**: Debugs the main `cat_detector_app` using a J-Link probe.
-    - **Debug Shell (Cortex-Debug J-Link)**: Debugs the diagnostic `cat_detector_shell` bringup utility using a J-Link probe.
-    - **Debug App (Cortex-Debug Pico Probe)**: Debugs the main `cat_detector_app` using a Raspberry Pi Debug Probe (CMSIS-DAP over OpenOCD).
-    - **Debug Shell (Cortex-Debug Pico Probe)**: Debugs the diagnostic `cat_detector_shell` bringup utility using a Raspberry Pi Debug Probe (CMSIS-DAP over OpenOCD).
-*   **probe-rs-debug (Experimental)**: Uses the `Debugger for probe-rs` extension.
-    - **Debug Firmware (probe-rs)**: Flashes and debugs the main `cat_detector_app`.
-    - **Debug Shell (probe-rs)**: Flashes and debugs the diagnostic `cat_detector_shell` bringup utility.
-Code execution will automatically halt at the entry point (`main`), allowing you to step through hardware initialization.
+#### 3. JavaScript ES Module Test Debugging (`node --test`)
+Open any `tools/tests/js/*.test.mjs` test file or `tools/js/` ES module, set a breakpoint, and launch **`JS: Debug Current Test File (node --test)`**.
 
-#### 3. Log Output Streaming and Interactive Console (host_cli)
+#### 4. Target Device Symbolic Debugging (`probe-rs` & `Cortex-Debug`)
+Stop any background `host.py` daemon first (`python tools/host.py stop` or task **`host: stop host.py daemon (release USB probe)`**) so the USB SWD probe is free, then select one of the **Run and Debug** configurations:
+*   **Cortex-Debug (Segger J-Link & CMSIS-DAP Pico Probe)**: Automatically builds the target ELF via `preLaunchTask` and maps DWARF paths via `sourceFileMap` (`"firmware": "${workspaceFolder}"`).
+    - **Debug App Core 0 (J-Link)** / **Debug Shell Core 0 (J-Link)** (plus **Debug App Dual-Core (J-Link)** and **Debug Shell Dual-Core (J-Link)** compounds for simultaneous Core 0 + Core 1 inspection on RP2040).
+    - **Debug Carrier Board Shell (J-Link MCXN947)**: Debugs `carrier_board_shell` on NXP MCX N947.
+    - **Debug App (Cortex-Debug Pico Probe)** / **Debug Shell (Cortex-Debug Pico Probe)**: Debugs via CMSIS-DAP over OpenOCD.
+*   **probe-rs-debug (`probe-rs.probe-rs-debug`)**: Flashes, halts at `main`, decodes RTT Channel 0 (`Defmt`), and exposes RTT Channel 1 (`String` `shell>`) directly in VS Code.
+    - **Debug Shell (probe-rs RP2040)** / **Debug Firmware (probe-rs RP2040)** / **Debug Carrier Board Shell (probe-rs MCXN947)**.
+Code execution automatically halts at `main`, allowing you to step through hardware initialization and controller handlers.
+
+#### 5. Log Output Streaming and Interactive Console (host_cli)
 We provide a host command-line utility, `host_cli`, to stream and decode plaintext `defmt` logs and run an interactive diagnostic command console via RTT.
 First, build the tool:
 ```bash
@@ -371,15 +383,15 @@ cargo build -p host_cli --release
     > [!NOTE]
     > If the debugger or connection drops, `host_cli` automatically attempts to reconnect in the background. On reconnection, it will attach directly to the running state without resetting the target CPU.
 
-#### 4. Flashing the Interactive Bringup Shell
+#### 6. Flashing the Interactive Bringup Shell
 To build and flash the interactive bringup shell onto the target:
 ```bash
 # Flash the shell binary directly to the microcontroller
 probe-rs download target/thumbv6m-none-eabi/debug/cat_detector_shell --chip RP2040
 ```
-Once flashed, connect to the target using `host_cli` (as documented in Section 3) to interact with the diagnostic console.
+Once flashed, connect to the target using `host_cli` (as documented in Section 5) to interact with the diagnostic console.
 
-#### 5. Host Flash Filesystem Tool (`host_fs`)
+#### 7. Host Flash Filesystem Tool (`host_fs`)
 We provide a host command-line utility, `host_fs`, to inspect, query, and decode flash memory contents from the microcontroller's sequential-storage partition.
 First, build the tool:
 ```bash
@@ -423,7 +435,7 @@ cargo build -p host_fs --release
       cargo run -p host_fs -- --dump flash_dump.bin crash-log --elf target/thumbv6m-none-eabi/release/cat_detector_app
       ```
 
-#### 6. Raw Flash Extraction Fallback
+#### 8. Raw Flash Extraction Fallback
 If you prefer to extract the raw binary flash memory partition manually from the target Pico using `probe-rs`:
 ```bash
 probe-rs read b8 0x101C0000 262144 -f binary -o flash_dump.bin --chip RP2040
@@ -572,11 +584,14 @@ python tools/host.py fs ls
 python tools/host.py fs cat metadata
 python tools/host.py fs crash-log
 
-# On-device pytest suites & interactive bringup operations
+# On-device pytest suites, stress testing, & interactive symbolic debugging
 python tools/host.py fs board-type
 python tools/host.py test --list
 python tools/host.py test --scenario smoke --board "rp2040*"
 python tools/host.py test --scenario integration
+python tools/host.py test -k "tof_proximity or battery"
+python tools/host.py test --stress-runs 10
+python tools/host.py test -k tof_proximity --debug
 python tools/host.py test tools/device_tests/suites/test_cat_detector_bringup.py --manual
 python tools/host.py test --script tools/device_tests/suites/test_carrier_board_bringup.py --manual
 

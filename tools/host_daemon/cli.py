@@ -34,6 +34,9 @@ if str(_tools_dir) not in sys.path:
 
 LOCK_FILE: Path = Path("/tmp/xerxes_host_daemon.lock")
 DEFAULT_DAEMON_REQUEST_TIMEOUT_SEC: float = 45.0
+DEFAULT_DEBUGPY_PORT: int = 5678
+MIN_TCP_PORT: int = 1
+MAX_TCP_PORT: int = 65535
 
 
 def format_clickable_choice(label: str, key: str, action: str, color_ansi: str) -> str:
@@ -434,6 +437,17 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         default=None,
         help="Execute the selected on-device test suite N times sequentially to stress-test target reliability.",
     )
+    test_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Launch pytest under debugpy and wait for a VS Code symbolic debugger to attach.",
+    )
+    test_parser.add_argument(
+        "--debug-port",
+        type=int,
+        default=DEFAULT_DEBUGPY_PORT,
+        help="TCP loopback port for debugpy symbolic debugger attachment when --debug is enabled.",
+    )
 
     return parser.parse_args(args)
 
@@ -586,6 +600,15 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
             return 2
 
+        debug_enabled: bool = bool(getattr(args, "debug", False))
+        debug_port: int = int(getattr(args, "debug_port", DEFAULT_DEBUGPY_PORT))
+        if debug_enabled and not (MIN_TCP_PORT <= debug_port <= MAX_TCP_PORT):
+            print(
+                f"Error: --debug-port must be between {MIN_TCP_PORT} and {MAX_TCP_PORT} (got {debug_port}).",
+                file=sys.stderr,
+            )
+            return 2
+
         target_script: Optional[str] = args.script or getattr(args, "script_pos", None)
         project_filter: str = (getattr(args, "project", None) or "all").strip().lower()
         keyword_expr: Optional[str] = (getattr(args, "keyword", None) or "").strip() or None
@@ -689,10 +712,27 @@ def main(argv: Optional[List[str]] = None) -> int:
             f"🔌 Discovered target board '{detected_board.board_type}' ({detected_board.chip}) — "
             f"running on-device pytest suites (scenario: {marker_expr or 'all'})..."
         )
+        if debug_enabled:
+            print(
+                f"🐞 Waiting for VS Code symbolic debugger (debugpy) to attach on 127.0.0.1:{debug_port} ...\n"
+                f"   Select 'Python: Attach to host.py test --debug (Port {debug_port})' in VS Code Run & Debug.",
+                flush=True,
+            )
+            pytest_prefix: List[str] = [
+                sys.executable,
+                "-m",
+                "debugpy",
+                "--listen",
+                f"127.0.0.1:{debug_port}",
+                "--wait-for-client",
+                "-m",
+                "pytest",
+            ]
+        else:
+            pytest_prefix = [sys.executable, "-m", "pytest"]
+
         pytest_cmd: List[str] = [
-            sys.executable,
-            "-m",
-            "pytest",
+            *pytest_prefix,
             "-c",
             str(repo_root / "pyproject.toml"),
             "--rootdir",
@@ -702,6 +742,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             "-v",
             "--maxfail=1",
         ]
+        if debug_enabled:
+            pytest_cmd.append("-s")
         target_file_resolved = Path(resolved_pytest_target.partition("::")[0]).resolve()
         if not target_file_resolved.is_relative_to((repo_root / "tools" / "device_tests").resolve()):
             pytest_cmd.extend(["-p", "device_tests.conftest"])

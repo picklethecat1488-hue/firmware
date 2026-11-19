@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "rust-lang.rust-analyzer",
+    "vadimcn.vscode-lldb",
+    "marus25.cortex-debug",
+    "probe-rs.probe-rs-debug",
+    "ms-python.python",
+    "ms-python.debugpy"
+  ]
+}
