@@ -8,9 +8,9 @@
 - **Component**: `target`
 - **Created**: `2026-11-19 03:47:29 UTC`
 
-#### Reproduction Steps
+#### Description
 
-1. We should move this console widget into a “test execution log” tab on the left panel, and include test execution logs in bug reports
+We should move this console widget into a “test execution log” tab on the left panel, and include test execution logs in bug reports, for test mode only
 
 #### Execution / Console Logs
 
