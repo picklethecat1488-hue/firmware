@@ -10,7 +10,7 @@
 
 #### Description
 
-We should move the test list and filter menu to the left panel so that the manual prompt has more space. The left panel should have way to select the active tab (test execution or system logging)
+We should move the test list and filter menu to the left panel so that the manual prompt has more space. The left panel should have way to select the active tab (test execution or system logging). Additionally, we should give the test execution list a stacked layout, similar to what is used for the VCS commit UI.
 
 #### Reproduction Steps
 
