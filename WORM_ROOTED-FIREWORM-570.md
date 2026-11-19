@@ -71,5 +71,8 @@ We should move this console widget into a “test execution log” tab on the le
 
 | Type | Filename | Description |
 | :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-ROOTED-FIREWORM-570.log](attachments/WORM-ROOTED-FIREWORM-570/target_system_logs_WORM-ROOTED-FIREWORM-570.log) | Target system and defmt logs from host daemon session |
 | `screenshot` | [image.png](attachments/WORM-ROOTED-FIREWORM-570/image.png) | Pasted screenshot |
+
+#### Review Tasks & Functional Checklist
+
+- [ ] Open host.py in TEST mode, click '📋 TEST EXECUTION LOG' in the left panel tab bar, run a smoke test, and verify pytest execution output streams into the left panel with a working COPY button | `python tools/host.py --mode test` <!-- id:bf848b80 -->
