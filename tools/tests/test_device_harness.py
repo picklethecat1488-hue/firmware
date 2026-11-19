@@ -1592,3 +1592,69 @@ def test_symbolic_test_debugging_dap_breakpoint_and_vscode_config(
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_worm_loamy_clitellum_820_post_host_fs_delayed_rtt_boot_and_json_events(
+    tmp_path: Path,
+) -> None:
+    """Verify `start_rtt_streaming()` awaits structured JSON boot/prompt readiness after `host_fs` and never drops `system activity`."""
+    import json
+
+    from host_daemon.provider.daemon.runner import DaemonRunner
+
+    runner = DaemonRunner(
+        repo_root=WORKSPACE_ROOT,
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+        target="thumbv6m-none-eabi",
+        chip="rp2040",
+    )
+    fake_elf = tmp_path / "cat_detector_shell"
+    fake_elf.write_bytes(b"\x7fELF")
+    fake_cli = tmp_path / "host_cli_json_mock"
+    mock_script = tmp_path / "mock_json_rtt.py"
+
+    # Simulate a 0.6s USB reconnect + 0.35s Board::init() boot where any stdin sent BEFORE
+    # `session_started` + `cli_prompt` is wiped by `core.reset()`, matching WORM-LOAMY-CLITELLUM-820!
+    mock_script.write_text(
+        "import json, os, queue, sys, threading, time\n"
+        "assert '--json-events' in sys.argv, f'Expected --json-events in {sys.argv}'\n"
+        "q = queue.Queue()\n"
+        "def _reader():\n"
+        "    for line in sys.stdin:\n"
+        "        q.put(line.strip())\n"
+        "    os._exit(0)\n"
+        "threading.Thread(target=_reader, daemon=True).start()\n"
+        "time.sleep(0.60)\n"
+        "# Hardware reset wipes any stdin commands sent prematurely before RTT session started!\n"
+        "while not q.empty():\n"
+        "    q.get_nowait()\n"
+        "print(json.dumps({'event': 'session_started', 'chip': 'rp2040', 'defmt': True, 'cli_up': True, 'cli_down': True}), flush=True)\n"
+        "time.sleep(0.30)\n"
+        "print(json.dumps({'event': 'defmt', 'level': 'INFO', 'module': 'platform::core_monitor', 'device_ts': 0.023, 'message': 'MPU stack guard configured', 'formatted': '0.023000 INFO [platform::core_monitor] MPU stack guard configured'}), flush=True)\n"
+        "print(json.dumps({'event': 'cli_prompt'}), flush=True)\n"
+        "while True:\n"
+        "    cmd = q.get()\n"
+        "    if cmd == 'system activity':\n"
+        "        print(json.dumps({'event': 'defmt', 'level': 'INFO', 'module': 'controller::shell_controller', 'device_ts': 0.412, 'message': 'received command System', 'formatted': '0.412000 INFO [controller::shell_controller] received command System'}), flush=True)\n"
+        "        print(json.dumps({'event': 'cli_output', 'text': 'System activity recorded.'}), flush=True)\n"
+        "        print(json.dumps({'event': 'command_completed', 'success': True, 'error': None, 'device_ts': 0.413}), flush=True)\n"
+        "        print(json.dumps({'event': 'cli_prompt'}), flush=True)\n",
+        encoding="utf-8",
+    )
+    fake_cli.write_text(
+        f"#!/bin/sh\nexec '{sys.executable}' -u '{mock_script}' \"$@\"\n",
+        encoding="utf-8",
+    )
+    fake_cli.chmod(0o755)
+
+    runner.host_cli_path = fake_cli
+    runner.elf_path = fake_elf
+    runner.start_rtt_streaming()
+    try:
+        assert runner.is_connected is True
+        out = runner.execute_cli("system activity", wait_for_output=True, timeout=2.0)
+        assert "Dispatched:" not in out, f"Premature CLI dispatch before RTT boot readiness: {out!r}"
+        assert "System activity recorded." in out
+    finally:
+        runner.stop_rtt_streaming()

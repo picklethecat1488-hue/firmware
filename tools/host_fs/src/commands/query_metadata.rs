@@ -270,18 +270,18 @@ pub async fn query_from_dump_bytes(
 /// Read and decode `.program_metadata` (and optional `metadata` override) from a live target using ELF geometry.
 pub async fn query_from_target(
     elf_info: &ProjectInfo,
-    openocd_host: Option<&str>,
+    gdb_bridge: Option<&str>,
 ) -> Result<QueriedProgramMetadata, String> {
     let prog_read_len = elf_info.program_metadata_size;
     if prog_read_len == 0 {
         return Err("ELF .program_metadata section size is zero".to_string());
     }
 
-    if let Some(host) = openocd_host {
+    if let Some(host) = gdb_bridge {
         let addr = if host.contains(':') {
             host.to_string()
         } else {
-            format!("{}:3333", host)
+            format!("{}:50000", host)
         };
         let mut gdb = tool_common::GdbClient::connect(&addr)?;
         let mut meta_buf = vec![0u8; prog_read_len];
@@ -379,7 +379,7 @@ pub async fn query_from_target(
 pub async fn run(
     explicit_elf: Option<&Path>,
     dump_path: Option<&str>,
-    openocd_host: Option<&str>,
+    gdb_bridge: Option<&str>,
     elf_only: bool,
     json: bool,
     spinner: &indicatif::ProgressBar,
@@ -420,7 +420,7 @@ pub async fn run(
                 "Direct target query_metadata requires --elf to resolve .program_metadata address and size.",
             )
         })?;
-        query_from_target(info, openocd_host).await
+        query_from_target(info, gdb_bridge).await
     };
 
     spinner.finish_and_clear();

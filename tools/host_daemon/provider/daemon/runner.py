@@ -2,6 +2,7 @@
 
 from collections import deque
 from datetime import datetime, timezone
+import json
 import os
 from pathlib import Path
 import re
@@ -19,7 +20,8 @@ from host_daemon.provider.daemon.test_manager import DeviceTestRunnerManager
 RTT_STDIN_SHUTDOWN_TIMEOUT_SEC: float = 2.5
 RTT_TERMINATE_TIMEOUT_SEC: float = 2.0
 RTT_STREAM_JOIN_TIMEOUT_SEC: float = 1.0
-RTT_STARTUP_EVENT_TIMEOUT_SEC: float = 4.0
+RTT_STARTUP_EVENT_TIMEOUT_SEC: float = 8.0
+RTT_BOOT_READY_TIMEOUT_SEC: float = 2.0
 RTT_CONSOLE_READY_SETTLE_SEC: float = 0.20
 PROBE_RELEASE_SETTLE_SEC: float = 0.25
 PROBE_RETRY_BACKOFF_SEC: float = 0.6
@@ -127,6 +129,8 @@ class DaemonRunner:
         self._log_seq: int = 0
         self._cli_seq: int = 0
         self._cli_clear_seq: int = 0
+        self._cmd_done_seq: int = 0
+        self._last_cmd_error: Optional[str] = None
         self._fs_seq: int = 0
         self.command_history: List[str] = []
         self._boot_mono: float = time.monotonic()
@@ -581,9 +585,9 @@ class DaemonRunner:
         return elf
 
     def build_host_tools(self) -> Tuple[Path, Path]:
-        """Compile host CLI and FS tools into Cargo's single target_directory."""
-        self.log("Building host utilities: host_cli and host_fs")
-        cmd = ["cargo", "build", "-p", "host_cli", "-p", "host_fs"]
+        """Compile host utilities into Cargo's single target_directory via `cargo build-host-tools`."""
+        self.log("Building host utilities via cargo build-host-tools")
+        cmd = ["cargo", "build-host-tools"]
         if self.release:
             cmd.append("--release")
 
@@ -630,7 +634,16 @@ class DaemonRunner:
     ) -> Tuple[int, str]:
         """Execute a subprocess command while streaming colorized output line-by-line in real time."""
         run_env = os.environ.copy()
-        if "cargo" in cmd[0] and "-p" in cmd and ("host_cli" in cmd or "host_fs" in cmd):
+        is_host_cargo_alias = len(cmd) >= 2 and cmd[1] in (
+            "build-host-tools",
+            "host-cli",
+            "host-fs",
+            "host-debug",
+            "code-gen",
+        )
+        if "cargo" in cmd[0] and (
+            is_host_cargo_alias or ("-p" in cmd and any(t in cmd for t in ("host_cli", "host_fs", "host_debug")))
+        ):
             run_env.pop("CARGO_BUILD_TARGET", None)
             run_env.pop("CARGO_ENCODED_RUSTFLAGS", None)
         if env:
@@ -688,7 +701,7 @@ class DaemonRunner:
         if not use_cargo_run and self.host_cli_path and self.host_cli_path.exists():
             cmd = [str(self.host_cli_path)] + args
         else:
-            cmd = ["cargo", "run", "-q", "-p", "host_cli", "--"] + args
+            cmd = ["cargo", "host-cli"] + args
         return self._run_command_streaming(cmd, env=env, timeout=timeout, log_to_cli=True, log_channel="host_cli")
 
     def run_host_fs(
@@ -697,8 +710,8 @@ class DaemonRunner:
         env: Optional[Dict[str, str]] = None,
         timeout: Optional[float] = None,
     ) -> Tuple[int, str]:
-        """Subcommand wrapper for host_fs by invoking cargo run, streaming colorized output in real time."""
-        cmd = ["cargo", "run", "-q", "-p", "host_fs", "--"] + args
+        """Subcommand wrapper for host_fs via the `cargo host-fs` alias, streaming colorized output in real time."""
+        cmd = ["cargo", "host-fs"] + args
         return self._run_command_streaming(
             cmd, env=env, timeout=timeout, log_to_cli=False, log_to_fs=True, log_channel="host_fs"
         )
@@ -728,7 +741,7 @@ class DaemonRunner:
         if self.host_cli_path and self.host_cli_path.exists():
             cmd = [str(self.host_cli_path), "--elf", str(self.elf_path), "--print-chip"]
         else:
-            cmd = ["cargo", "run", "-q", "-p", "host_cli", "--", "--elf", str(self.elf_path), "--print-chip"]
+            cmd = ["cargo", "host-cli", "--elf", str(self.elf_path), "--print-chip"]
 
         env = os.environ.copy()
         env.pop("CARGO_BUILD_TARGET", None)
@@ -976,10 +989,56 @@ class DaemonRunner:
             "--channel",
             "both",
             "--reset",
+            "--json-events",
         ]
 
         started_event = threading.Event()
+        boot_ready_event = threading.Event()
         session_ready = False
+
+        def _handle_json_event(ev_obj: Dict[str, Any]) -> None:
+            nonlocal session_ready
+            ev_type = str(ev_obj.get("event") or "")
+            dev_ts_val = ev_obj.get("device_ts")
+            if isinstance(dev_ts_val, (int, float)) and float(dev_ts_val) >= 0.0:
+                with self._lock:
+                    self._last_device_ts_sec = float(dev_ts_val)
+                    self._last_device_ts_mono = time.monotonic()
+
+            if ev_type == "session_started":
+                if not session_ready:
+                    self._reset_device_clock()
+                session_ready = True
+                self.is_connected = True
+                self.log("RTT streaming process connected")
+                started_event.set()
+                if not bool(ev_obj.get("cli_up", True)):
+                    boot_ready_event.set()
+            elif ev_type == "defmt":
+                level_str = str(ev_obj.get("level") or "INFO").upper()
+                formatted = str(ev_obj.get("formatted") or ev_obj.get("message") or "")
+                if formatted:
+                    self.log(formatted, level=level_str, channel="target")
+                if "MPU stack guard configured" in formatted:
+                    boot_ready_event.set()
+            elif ev_type == "cli_output":
+                text_line = str(ev_obj.get("text") or "")
+                if "Type 'help' to print usage." in text_line:
+                    boot_ready_event.set()
+                if text_line and not text_line.strip().startswith(RTT_SESSION_BANNER_PREFIXES):
+                    self.log_cli(text_line)
+            elif ev_type == "cli_prompt":
+                with self._lock:
+                    self._cli_clear_seq += 1
+                boot_ready_event.set()
+            elif ev_type == "command_completed":
+                ok = bool(ev_obj.get("success", True))
+                err_msg = ev_obj.get("error")
+                with self._lock:
+                    self._cmd_done_seq += 1
+                    self._last_cmd_error = str(err_msg) if (not ok and err_msg) else (None if ok else "Command failed")
+            elif ev_type == "session_disconnected":
+                self.is_connected = False
 
         def _stream_worker() -> None:
             nonlocal session_ready
@@ -992,46 +1051,62 @@ class DaemonRunner:
                     text=True,
                     bufsize=1,
                 )
-                self.is_connected = True
-                self.log("RTT streaming process connected")
                 if self.rtt_process.stdout:
                     for line in iter(self.rtt_process.stdout.readline, ""):
                         stripped = line.rstrip("\r\n")
-                        if stripped:
-                            if "RTT Session Started" in stripped or "Interactive RTT console active" in stripped:
-                                if not session_ready:
-                                    self._reset_device_clock()
-                                session_ready = True
-                                started_event.set()
-                            if (
-                                "INFO" in stripped
-                                or "WARN" in stripped
-                                or "ERROR" in stripped
-                                or "DEBUG" in stripped
-                                or "TRACE" in stripped
-                                or "Draining buffered defmt logs" in stripped
-                            ):
-                                self.log(stripped, channel="target")
-                            elif stripped.replace(ANSI_CLEAR_LINE_SEQ, "").strip() == "":
-                                pass
-                            elif stripped in ("shell>", "shell> ") or (
-                                stripped.replace(ANSI_CLEAR_LINE_SEQ, "").strip() == "shell>"
-                            ):
+                        if not stripped:
+                            continue
+                        if stripped.startswith("{") and stripped.endswith("}"):
+                            try:
+                                parsed_ev = json.loads(stripped)
+                            except json.JSONDecodeError:
+                                parsed_ev = None
+                            if isinstance(parsed_ev, dict) and "event" in parsed_ev:
+                                _handle_json_event(parsed_ev)
+                                continue
+
+                        if "RTT Session Started" in stripped or "Interactive RTT console active" in stripped:
+                            if not session_ready:
+                                self._reset_device_clock()
+                            session_ready = True
+                            self.is_connected = True
+                            self.log("RTT streaming process connected")
+                            started_event.set()
+                        if "Type 'help' to print usage." in stripped or "MPU stack guard configured" in stripped:
+                            boot_ready_event.set()
+                        if (
+                            "INFO" in stripped
+                            or "WARN" in stripped
+                            or "ERROR" in stripped
+                            or "DEBUG" in stripped
+                            or "TRACE" in stripped
+                            or "Draining buffered defmt logs" in stripped
+                        ):
+                            self.log(stripped, channel="target")
+                        elif stripped.replace(ANSI_CLEAR_LINE_SEQ, "").strip() == "":
+                            pass
+                        elif stripped in ("shell>", "shell> ") or (
+                            stripped.replace(ANSI_CLEAR_LINE_SEQ, "").strip() == "shell>"
+                        ):
+                            with self._lock:
+                                self._cli_clear_seq += 1
+                            boot_ready_event.set()
+                        else:
+                            unescaped = stripped.replace(ANSI_CLEAR_LINE_SEQ, "")
+                            if unescaped.lstrip().startswith(SHELL_PROMPT_PREFIX):
                                 with self._lock:
                                     self._cli_clear_seq += 1
-                            else:
-                                unescaped = stripped.replace(ANSI_CLEAR_LINE_SEQ, "")
-                                if unescaped.lstrip().startswith(SHELL_PROMPT_PREFIX):
-                                    with self._lock:
-                                        self._cli_clear_seq += 1
-                                cleaned_line = unescaped.removeprefix("shell> ").removeprefix(SHELL_PROMPT_PREFIX)
-                                if cleaned_line:
-                                    self.log_cli(cleaned_line)
+                                boot_ready_event.set()
+                            cleaned_line = unescaped.removeprefix("shell> ").removeprefix(SHELL_PROMPT_PREFIX)
+                            if cleaned_line:
+                                self.log_cli(cleaned_line)
             except Exception as e:
                 started_event.set()
+                boot_ready_event.set()
                 self.log(f"RTT stream error: {e}", level="WARN")
             finally:
                 started_event.set()
+                boot_ready_event.set()
                 self.is_connected = False
                 self.log("RTT stream disconnected", level="INFO")
 
@@ -1039,6 +1114,7 @@ class DaemonRunner:
         self._streaming_thread.start()
         started_event.wait(timeout=RTT_STARTUP_EVENT_TIMEOUT_SEC)
         if session_ready and self.rtt_process is not None and self.rtt_process.poll() is None:
+            boot_ready_event.wait(timeout=RTT_BOOT_READY_TIMEOUT_SEC)
             time.sleep(RTT_CONSOLE_READY_SETTLE_SEC)
 
     def _collect_cli_output(
@@ -1048,6 +1124,7 @@ class DaemonRunner:
         start_cli_seq: int,
         start_log_seq: int,
         start_clear_seq: int,
+        start_done_seq: int,
         timeout: float,
     ) -> str:
         """Wait for and collect target CLI output lines emitted after a command dispatch."""
@@ -1058,6 +1135,8 @@ class DaemonRunner:
         new_cli: List[str] = []
         new_logs: List[str] = []
         prompt_seen = False
+        structured_done = False
+        structured_err: Optional[str] = None
 
         while time.monotonic() < deadline:
             now = time.monotonic()
@@ -1071,6 +1150,8 @@ class DaemonRunner:
                 prompt_seen = self._cli_clear_seq > start_clear_seq or any(
                     ANSI_CLEAR_LINE_SEQ in text for text in new_cli
                 )
+                structured_done = self._cmd_done_seq > start_done_seq
+                structured_err = self._last_cmd_error if structured_done else None
 
             meaningful_count = sum(
                 1
@@ -1082,13 +1163,15 @@ class DaemonRunner:
                 prev_count = meaningful_count
                 last_output_time = now
 
-            cmd_done_log = any(
+            cmd_done_log = structured_done or any(
                 "command execution succeeded" in msg or "command execution failed" in msg for msg in new_logs
             )
             if (prompt_seen or cmd_done_log) and done_seen_time is None:
                 done_seen_time = now
 
             if done_seen_time is not None:
+                if structured_done and prompt_seen:
+                    break
                 anchor = max(done_seen_time, last_output_time or done_seen_time)
                 if (now - anchor) >= CLI_COMPLETION_SETTLE_SEC:
                     break
@@ -1114,11 +1197,10 @@ class DaemonRunner:
         if cleaned_lines:
             return "\n".join(cleaned_lines)
 
-        for msg in new_logs:
-            if "command execution failed" in msg:
-                return f"Command failed: {clean_cmd}"
+        if structured_err is not None or any("command execution failed" in msg for msg in new_logs):
+            return f"Command failed: {clean_cmd}"
 
-        if prompt_seen or any("command execution succeeded" in msg for msg in new_logs):
+        if prompt_seen or structured_done or any("command execution succeeded" in msg for msg in new_logs):
             return f"Executed: {clean_cmd}"
 
         return f"Dispatched: {raw_cmd}"
@@ -1153,6 +1235,7 @@ class DaemonRunner:
             start_cli_seq = self._cli_seq
             start_log_seq = self._log_seq
             start_clear_seq = self._cli_clear_seq
+            start_done_seq = self._cmd_done_seq
 
         # If RTT process is actively connected and taking stdin:
         if self.rtt_process and self.rtt_process.stdin and self.rtt_process.poll() is None:
@@ -1171,6 +1254,7 @@ class DaemonRunner:
                     start_cli_seq=start_cli_seq,
                     start_log_seq=start_log_seq,
                     start_clear_seq=start_clear_seq,
+                    start_done_seq=start_done_seq,
                     timeout=timeout,
                 )
             return f"Dispatched: {command}"

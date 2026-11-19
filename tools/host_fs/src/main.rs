@@ -26,7 +26,7 @@ fn main() -> io::Result<()> {
         return futures::executor::block_on(host_fs::commands::query_metadata::run(
             explicit_elf,
             cli.dump.as_deref(),
-            cli.openocd_host.as_deref(),
+            cli.gdb_bridge.as_deref(),
             *elf_only,
             *json,
             &spinner,
@@ -165,14 +165,14 @@ fn main() -> io::Result<()> {
                 ));
             }
 
-            if let Some(host) = &cli.openocd_host {
+            if let Some(host) = &cli.gdb_bridge {
                 let addr = if host.contains(':') {
                     host.clone()
                 } else {
-                    format!("{}:3333", host)
+                    format!("{}:50000", host)
                 };
                 spinner.set_message(format!(
-                    "Connecting to device at {} (address: 0x{:08X}) via OpenOCD GDB...",
+                    "Connecting to device at {} (address: 0x{:08X}) via GDB bridge...",
                     addr,
                     partition_offset + info.flash_start
                 ));

@@ -77,7 +77,10 @@ async def test_system_activity_async_log_watcher(host: AsyncHostSessionClient) -
         timeout=6.0,
     ) as watcher:
         out = await host.cli("system activity")
-        assert re.search(r"(Executed:\s*system activity|System controller|OK)", out), out
+        assert re.search(
+            r"(Executed:\s*system activity|System activity recorded|System controller|OK)",
+            out,
+        ), out
     matched = await watcher.matched()
     assert len(matched) >= 1
 

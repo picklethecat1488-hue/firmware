@@ -81,9 +81,9 @@ pub struct Cli {
     #[arg(long)]
     pub size: Option<usize>,
 
-    /// Connect to an existing OpenOCD GDB server session (e.g. "localhost:3333" or "127.0.0.1")
-    #[arg(short = 'o', long)]
-    pub openocd_host: Option<String>,
+    /// Connect via a `host_debug` GDB RSP memory bridge (e.g. "127.0.0.1:50000")
+    #[arg(short = 'b', long)]
+    pub gdb_bridge: Option<String>,
 
     /// Subcommand to run against the dump
     #[command(subcommand)]
