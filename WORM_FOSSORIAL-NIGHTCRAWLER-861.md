@@ -7,7 +7,7 @@
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `target`
 - **Created**: `2026-11-19 03:41:27 UTC`
-- **Resolved**: `2026-11-19 03:54:38 UTC`
+- **Resolved**: `2026-11-19 16:01:43 UTC`
 
 #### Reproduction Steps
 
