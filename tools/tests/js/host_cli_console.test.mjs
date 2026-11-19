@@ -21,11 +21,8 @@ function buildCliDom(ctx) {
       createEl(ctx, "button", { className: "btn", dataset: { fsCmd: "crash-log" }, text: "crash-log" }),
     ],
   });
-  const bringupToolbar = createEl(ctx, "div", { id: "bringupToolbar", style: { display: "none" } });
-
   const cliView = createEl(ctx, "div", { id: "cliView", style: { display: "block" } });
   const fsView = createEl(ctx, "div", { id: "fsView", style: { display: "none" } });
-  const bringupView = createEl(ctx, "div", { id: "bringupView", style: { display: "none" } });
 
   const fuzzyCloseBtn = createEl(ctx, "button", { id: "btnCloseFuzzyHistory", text: "✕" });
   const fuzzySearchInput = createEl(ctx, "input", { id: "fuzzySearchInput" });
@@ -48,10 +45,8 @@ function buildCliDom(ctx) {
   doc.body.appendChild(panelTitle);
   doc.body.appendChild(copyBtn);
   doc.body.appendChild(fsToolbar);
-  doc.body.appendChild(bringupToolbar);
   doc.body.appendChild(cliView);
   doc.body.appendChild(fsView);
-  doc.body.appendChild(bringupView);
   doc.body.appendChild(footer);
 
   return {
@@ -59,10 +54,8 @@ function buildCliDom(ctx) {
     panelTitle,
     copyBtn,
     fsToolbar,
-    bringupToolbar,
     cliView,
     fsView,
-    bringupView,
     fuzzyContainer,
     fuzzySearchInput,
     fuzzyResultsList,
@@ -128,10 +121,8 @@ describe("Host Daemon Interactive CLI & Filesystem Console", () => {
     });
 
     const dom = buildCliDom(ctx);
-    const bringupActions = [];
     const cli = createCliConsole(ctx, {
       initialMode: WORKSTATION_MODES.CLI,
-      onBringupAction: (act) => bringupActions.push(act),
     });
     await cli.init();
 
@@ -188,9 +179,9 @@ describe("Host Daemon Interactive CLI & Filesystem Console", () => {
     assert.equal(dom.cmdInput.disabled, false);
     assert.equal(dom.submitBtn.disabled, false);
 
-    // OSC-8 clickable bringup choice forwards to onBringupAction
-    cli.handleCommandClick("pass");
-    assert.deepEqual(bringupActions, ["pass"]);
+    // Clickable command populates cmdInput
+    cli.handleCommandClick("battery status");
+    assert.equal(dom.cmdInput.value, "battery status");
 
     cli.destroy();
   });
