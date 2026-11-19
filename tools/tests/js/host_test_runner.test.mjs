@@ -50,7 +50,7 @@ function buildTestRunnerDom(ctx) {
 
   const boardBadge = createEl(ctx, "span", { id: "testDetectedBoardBadge" });
   const summaryStats = createEl(ctx, "span", { id: "testSummaryStats" });
-  const tableBody = createEl(ctx, "tbody", { id: "testTableBody" });
+  const stackList = createEl(ctx, "div", { id: "testStackList" });
   const consoleOutput = createEl(ctx, "div", { id: "testConsoleOutput" });
 
   const manualTitle = createEl(ctx, "strong", { id: "testManualTitle" });
@@ -144,7 +144,7 @@ function buildTestRunnerDom(ctx) {
       selectAllCb,
       boardBadge,
       summaryStats,
-      tableBody,
+      stackList,
     ],
   });
 
@@ -182,7 +182,7 @@ function buildTestRunnerDom(ctx) {
     selectAllCb,
     boardBadge,
     summaryStats,
-    tableBody,
+    stackList,
     consoleOutput,
     progressCard,
     progressDot,
@@ -326,7 +326,7 @@ describe("Host Daemon Test Mode UI Controller (TestRunnerController)", () => {
     await controller.ensureInitialized();
 
     assert.equal(dom.boardBadge.textContent, "BOARD: rp2040_flash_2mb (rp2040)");
-    assert.equal(dom.tableBody.children.length, 2);
+    assert.equal(dom.stackList.children.length, 2);
     assert.equal(dom.projectSelect.children.length, 3); // All + 2 projects
 
     // Regression WORM-LITHE-NYMPH-529: Left panel switches cleanly between TEST SUITE and SYSTEM LOGS tabs
@@ -353,14 +353,38 @@ describe("Host Daemon Test Mode UI Controller (TestRunnerController)", () => {
     assert.equal(dom.sidebarView.style.display, "flex");
     assert.equal(dom.consoleOutput.style.display, "none");
 
-    // Regression WORM-FOSSORIAL-NIGHTCRAWLER-861: Test cell uses flex-wrap .test-badge-group
-    // with discrete scenario/attribute pills so wrapped items never overlap badge borders.
-    const firstRowCells = dom.tableBody.children[0].children;
-    const modeScenarioGroup = firstRowCells[2].querySelector(".test-badge-group");
-    assert.ok(modeScenarioGroup, "Expected flex badge group wrapper inside left-panel Test cell");
+    // Regression WORM-LITHE-NYMPH-529 & WORM-FOSSORIAL-NIGHTCRAWLER-861:
+    // Stacked VCS-style .test-stack-node cards with header row, subject, and flex .test-badge-group tags row.
+    const firstCard = dom.stackList.children[0];
+    assert.ok(firstCard.classList.contains("test-stack-node"));
+    assert.ok(firstCard.querySelector(".test-node-header-row"));
+    assert.ok(firstCard.querySelector(".test-node-subject"));
+    const modeScenarioGroup = firstCard.querySelector(".test-badge-group");
+    assert.ok(modeScenarioGroup, "Expected flex badge group wrapper inside stacked test card");
     assert.equal(modeScenarioGroup.children[0].textContent, "AUTO");
     assert.equal(modeScenarioGroup.children[1].textContent, "smoke");
     assert.equal(modeScenarioGroup.children[2].textContent, "bringup");
+
+    // Clicking the card body toggles .selected without detaching DOM nodes across pollStatus()
+    firstCard.click();
+    assert.equal(controller.selectedNodeIds.has(sampleTests[0].node_id), true);
+    assert.equal(firstCard.classList.contains("selected"), true);
+    await controller.pollStatus();
+    assert.equal(dom.stackList.children[0], firstCard, "pollStatus() must update stacked cards in-place without destroying button nodes");
+
+    // Clicking the per-card Play button (▶) executes ONLY that test and does NOT toggle card selection
+    const secondCard = dom.stackList.children[1];
+    const secondPlayBtn = secondCard.querySelector("[data-test-run-one]");
+    assert.ok(secondPlayBtn, "Expected per-card Play button");
+    secondPlayBtn.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(runPayloads.length, 1);
+    assert.deepEqual(runPayloads[0].node_ids, [sampleTests[1].node_id]);
+    assert.equal(controller.selectedNodeIds.has(sampleTests[1].node_id), false);
+    assert.equal(secondCard.classList.contains("running"), true);
+    await controller.cancelRun();
+    assert.equal(cancelCalls, 1);
 
     // Select all visible tests and execute `runSelected()`
     dom.selectAllCb.checked = true;
@@ -369,18 +393,18 @@ describe("Host Daemon Test Mode UI Controller (TestRunnerController)", () => {
     assert.equal(dom.runSelectedBtn.textContent, "▶ Run Selected (2)");
 
     await controller.runSelected();
-    assert.equal(runPayloads.length, 1);
-    assert.deepEqual(runPayloads[0].node_ids, [
+    assert.equal(runPayloads.length, 2);
+    assert.deepEqual(runPayloads[1].node_ids, [
       sampleTests[0].node_id,
       sampleTests[1].node_id,
     ]);
-    assert.equal(runPayloads[0].enable_manual, true);
+    assert.equal(runPayloads[1].enable_manual, true);
     assert.equal(controller.isRunning, true);
     assert.ok(dom.consoleOutput.innerHTML.includes("collected 1 item"));
 
     // Cancel active run
     await controller.cancelRun();
-    assert.equal(cancelCalls, 1);
+    assert.equal(cancelCalls, 2);
     assert.equal(controller.isRunning, false);
     assert.equal(controller.activeStep, "cancelled");
 
@@ -389,7 +413,7 @@ describe("Host Daemon Test Mode UI Controller (TestRunnerController)", () => {
     await controller.scanTests({ probeBoard: false });
     assert.equal(scanPayloads[scanPayloads.length - 1].project, "cat_detector");
     assert.equal(scanPayloads[scanPayloads.length - 1].probe_board, false);
-    assert.equal(dom.tableBody.children.length, 1);
+    assert.equal(dom.stackList.children.length, 1);
     assert.equal(controller.selectedNodeIds.size, 1);
 
     controller.destroy();

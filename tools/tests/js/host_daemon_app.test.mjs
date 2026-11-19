@@ -92,7 +92,7 @@ function mountFullDaemonDom(ctx) {
     ["div", "fsView"],
     ["div", "testView"],
     ["div", "testManualPromptCard"],
-    ["tbody", "testTableBody"],
+    ["div", "testStackList"],
     ["div", "testConsoleOutput"],
     ["div", "cliFuzzyHistory"],
     ["input", "fuzzySearchInput"],

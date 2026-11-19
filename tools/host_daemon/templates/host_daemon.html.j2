@@ -153,26 +153,109 @@
       gap: 10px;
       padding: 10px 12px;
     }
-    .test-table-scroll {
+    .test-stack-list {
       flex: 1;
       min-height: 150px;
-      overflow-y: auto;
+      overflow-y: scroll;
       overflow-x: hidden;
+      scrollbar-gutter: stable;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
       border: 1px solid var(--xerxes-border-mid);
-      background: rgba(4, 9, 12, 0.6);
+      border-radius: 3px;
+      background: rgba(4, 9, 12, 0.65);
     }
-    .test-console-box {
-      flex: 1;
-      min-height: 140px;
-      background: var(--xerxes-bg);
-      border: 1px solid var(--xerxes-border-mid);
-      border-radius: 2px;
-      overflow-y: auto;
+    .test-stack-node {
+      background: var(--xerxes-panel, #08161d);
+      border: 1px solid var(--xerxes-border-mid, #0b5966);
+      border-left: 4px solid transparent;
+      border-radius: 3px;
       padding: 8px 10px;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      position: relative;
+    }
+    .test-stack-node:hover {
+      background: var(--xerxes-panel-hover, #0e242f);
+      border-color: var(--xerxes-teal, #14d9c4);
+    }
+    .test-stack-node.selected {
+      background: linear-gradient(90deg, rgba(0, 240, 255, 0.16) 0%, rgba(20, 217, 196, 0.10) 50%, rgba(8, 22, 29, 0.90) 100%) !important;
+      border-left: 4px solid var(--xerxes-teal, #14d9c4) !important;
+      border-top: 1px solid rgba(0, 240, 255, 0.25) !important;
+      border-bottom: 1px solid rgba(0, 240, 255, 0.25) !important;
+      box-shadow: inset 3px 0 0 var(--xerxes-teal, #14d9c4), 0 0 8px rgba(20, 217, 196, 0.25) !important;
+    }
+    .test-stack-node.running {
+      background: linear-gradient(90deg, rgba(0, 240, 255, 0.24) 0%, rgba(8, 22, 29, 0.88) 100%) !important;
+      border-left: 4px solid var(--xerxes-cyan, #00f0ff) !important;
+      box-shadow: inset 3px 0 0 var(--xerxes-cyan, #00f0ff), 0 0 12px rgba(0, 240, 255, 0.3) !important;
+    }
+    .test-stack-node.passed {
+      border-left: 4px solid var(--xerxes-green, #00ff66);
+    }
+    .test-stack-node.failed {
+      border-left: 4px solid var(--xerxes-red, #ff2a4b);
+      background: linear-gradient(90deg, rgba(255, 42, 75, 0.12) 0%, var(--xerxes-panel, #08161d) 60%);
+    }
+    .test-stack-node.skipped {
+      border-left: 4px solid var(--xerxes-amber, #ffb000);
+    }
+    .test-node-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
       font-size: 9px;
-      line-height: 1.45;
-      white-space: pre-wrap;
-      word-break: break-all;
+      min-width: 0;
+    }
+    .test-node-order {
+      color: var(--xerxes-amber, #ffb000);
+      font-weight: bold;
+      font-size: 8.5px;
+      flex-shrink: 0;
+    }
+    .test-node-title {
+      color: var(--xerxes-cyan, #00f0ff);
+      font-weight: bold;
+      font-size: 9.5px;
+      word-break: break-word;
+      line-height: 1.3;
+    }
+    .test-stack-node.selected .test-node-title,
+    .test-stack-node.running .test-node-title {
+      color: #ffffff;
+      text-shadow: 0 0 6px rgba(0, 240, 255, 0.5);
+    }
+    .test-node-subject {
+      font-size: 8.5px;
+      color: var(--xerxes-text-light, #e0f8ff);
+      opacity: 0.85;
+      line-height: 1.35;
+      word-break: break-word;
+    }
+    .test-node-detail {
+      font-size: 8px;
+      line-height: 1.35;
+      padding: 4px 6px;
+      border-radius: 2px;
+      background: rgba(4, 9, 12, 0.65);
+      border: 1px solid var(--xerxes-border-dark);
+      word-break: break-word;
+      white-space: normal;
+    }
+    .test-run-one-btn {
+      padding: 2px 7px;
+      font-size: 8.5px;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
     }
     .select-dropdown {
       background: var(--xerxes-panel);
@@ -1120,8 +1203,14 @@
           <input type="text" id="testFilterSearch" class="cmd-input" placeholder="Search tests..." style="min-width: 120px; flex: 1; padding: 3px 6px; font-size: 8.5px;">
         </div>
 
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; padding: 0 2px;">
-          <span id="testSummaryStats" style="font-size: 8.5px; color: var(--xerxes-text-muted);">0 Shown | 0 Selected | 0 Passed • 0 Failed • 0 Skipped [IDLE]</span>
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; padding: 4px 8px; background: rgba(4, 9, 12, 0.7); border: 1px solid var(--xerxes-border-mid); border-radius: 2px;">
+          <div style="display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 8.5px; color: var(--xerxes-cyan); font-weight: bold; cursor: pointer;" title="Select all filtered tests">
+              <input type="checkbox" id="testSelectAllCb">
+              <span>ALL</span>
+            </label>
+            <span id="testSummaryStats" style="font-size: 8.5px; color: var(--xerxes-text-muted);">0 Shown | 0 Selected | 0 Passed • 0 Failed • 0 Skipped [IDLE]</span>
+          </div>
           <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
             <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 8.5px; color: var(--xerxes-text-muted); cursor: pointer;">
               <input type="checkbox" id="testEnableManualCb" checked>
@@ -1133,19 +1222,7 @@
           </div>
         </div>
 
-        <div class="test-table-scroll">
-          <table class="bringup-table" style="margin-top: 0; table-layout: fixed;">
-            <thead>
-              <tr>
-                <th style="width: 28px;"><input type="checkbox" id="testSelectAllCb" title="Select all filtered tests"></th>
-                <th style="width: 30px;">#</th>
-                <th>Test, Attributes &amp; Description</th>
-                <th style="width: 122px;">Status</th>
-              </tr>
-            </thead>
-            <tbody id="testTableBody"></tbody>
-          </table>
-        </div>
+        <div id="testStackList" class="test-stack-list"></div>
       </div>
     </div>
 

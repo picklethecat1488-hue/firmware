@@ -818,6 +818,7 @@ class DaemonRunner:
             }
 
         with self._fs_lock:
+            self._record_lifecycle("mode_switch", "Probing target .program_metadata over SWD...")
             rtt_was_running = (self.rtt_process is not None and self.rtt_process.poll() is None) or (
                 self._streaming_thread is not None and self._streaming_thread.is_alive()
             )
@@ -835,6 +836,7 @@ class DaemonRunner:
             finally:
                 if rtt_was_running and self.active_mode in ("CLI", "TEST"):
                     self.start_rtt_streaming()
+                self._record_lifecycle("idle", "Target metadata probe complete", mark_recent=False)
 
     def stop_rtt_streaming(self) -> None:
         """Gracefully stop active RTT streaming process to release the USB debug probe cleanly."""
