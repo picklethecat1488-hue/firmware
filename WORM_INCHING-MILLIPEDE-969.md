@@ -2,12 +2,13 @@
 
 - **UUID**: `74318aac-d97f-48e5-bdd9-9a09197ce735`
 - **ID**: `WORM-INCHING-MILLIPEDE-969`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-19 18:29:11 UTC`
 - **Resolved**: `2026-11-19 19:40:30 UTC`
+- **Accepted**: `2026-11-19 19:40:32 UTC`
 
 #### Reproduction Steps
 
