@@ -778,3 +778,51 @@ def test_host_test_mode_ui_scan_filter_run_and_manual_measurement_responses() ->
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_worm_translucent_planarian_439_all_binaries_excludes_other_board_types() -> None:
+    """Verify 'All Binaries' excludes tests and binary facets targeting a different board type."""
+    # 1. Connected rp2040_flash_2mb board with binary='all' and board='*' -> must exclude carrier_board* tests
+    rp_runner = SimulatedTargetRunner(
+        WORKSPACE_ROOT,
+        connected_board_type="rp2040_flash_2mb",
+        connected_chip="rp2040",
+        initial_bin="cat_detector_shell",
+    )
+    rp_server, rp_port = _start_ephemeral_daemon(rp_runner)
+    try:
+        rp_scan = _http_json_sync(
+            f"http://127.0.0.1:{rp_port}/api/tests/scan",
+            {"project": "all", "scenario": "all", "board": "*", "binary": "all", "probe_board": True},
+        )
+        assert rp_scan["success"] is True
+        rp_projects = {item["project"] for item in rp_scan["tests"]}
+        assert rp_projects == {"cat_detector"}, f"Unexpected non-RP2040 projects in All Binaries: {rp_projects}"
+        assert "carrier_board_shell" not in rp_scan["facets"]["binaries"]
+        assert "cat_detector_shell" in rp_scan["facets"]["binaries"]
+        assert "cat_detector_app" in rp_scan["facets"]["binaries"]
+    finally:
+        rp_server.shutdown()
+        rp_server.server_close()
+
+    # 2. Offline probe (connected_board_type=None) configured for carrier_board_shell -> excludes rp2040* tests
+    cb_runner = SimulatedTargetRunner(
+        WORKSPACE_ROOT,
+        connected_board_type=None,
+        connected_chip="MCXN947",
+        initial_bin="carrier_board_shell",
+    )
+    cb_server, cb_port = _start_ephemeral_daemon(cb_runner)
+    try:
+        cb_scan = _http_json_sync(
+            f"http://127.0.0.1:{cb_port}/api/tests/scan",
+            {"project": "all", "scenario": "all", "board": "auto", "binary": "all", "probe_board": True},
+        )
+        assert cb_scan["success"] is True
+        cb_projects = {item["project"] for item in cb_scan["tests"]}
+        assert cb_projects == {"carrier_board"}, f"Unexpected non-carrier_board projects in All Binaries: {cb_projects}"
+        assert "cat_detector_shell" not in cb_scan["facets"]["binaries"]
+        assert "carrier_board_shell" in cb_scan["facets"]["binaries"]
+    finally:
+        cb_server.shutdown()
+        cb_server.server_close()

@@ -61,6 +61,7 @@ class TargetBinarySpec:
     arm_target: Optional[str] = DEFAULT_ARM_TARGET
     chip: Optional[str] = DEFAULT_CHIP
     release: bool = False
+    board_type: Optional[str] = None
 
     def __post_init__(self) -> None:
         """Fail fast if package, binary name, ARM target, or chip cannot be inferred."""
@@ -72,6 +73,9 @@ class TargetBinarySpec:
                     "explicit binary metadata in app/Cargo.toml without fallbacks."
                 )
             object.__setattr__(self, attr_name, str(raw).strip())
+        if self.board_type is not None:
+            cleaned_bt = str(self.board_type).strip()
+            object.__setattr__(self, "board_type", None if _is_unset_target_field(cleaned_bt) else cleaned_bt)
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize target binary specification to a JSON-compatible dictionary."""
@@ -82,15 +86,24 @@ class TargetBinarySpec:
             "chip": self.chip,
             "release": self.release,
             "profile": "release" if self.release else "debug",
+            "board_type": self.board_type,
         }
 
 
 def discover_app_binaries(repo_root: Optional[Path] = None) -> Dict[str, TargetBinarySpec]:
-    """Parse target binary specifications directly from `app/Cargo.toml` without fallbacks."""
+    """Parse target binary specifications directly from `app/Cargo.toml` and `board/board.toml` without fallbacks."""
     root = (repo_root or REPO_ROOT_DEFAULT).resolve()
     cargo_toml_path = root / "app" / "Cargo.toml"
     if not cargo_toml_path.is_file():
         raise FileNotFoundError(f"Application manifest not found at {cargo_toml_path}")
+
+    board_type_by_board_key: Dict[str, str] = {}
+    board_toml_path = root / "board" / "board.toml"
+    if board_toml_path.is_file():
+        boards_manifest = tomllib.loads(board_toml_path.read_text(encoding="utf-8"))
+        for board_key, board_cfg in (boards_manifest.get("boards") or {}).items():
+            if isinstance(board_cfg, dict) and board_cfg.get("board_type"):
+                board_type_by_board_key[str(board_key).strip()] = str(board_cfg["board_type"]).strip()
 
     manifest = tomllib.loads(cargo_toml_path.read_text(encoding="utf-8"))
     pkg_table = manifest.get("package") or {}
@@ -114,14 +127,30 @@ def discover_app_binaries(repo_root: Optional[Path] = None) -> Dict[str, TargetB
                 f"Binary '{bin_name}' in {cargo_toml_path} is missing "
                 f"[package.metadata.binaries.{bin_name}] target/chip metadata"
             )
+        board_key = str(bin_meta.get("board") or "").strip()
+        inferred_board_type = board_type_by_board_key.get(board_key) or (board_key or None)
         specs[bin_name] = TargetBinarySpec(
             package=package_name,
             bin_name=bin_name,
             arm_target=bin_meta.get("target"),
             chip=bin_meta.get("chip"),
             release=bool(bin_meta.get("release", False)),
+            board_type=inferred_board_type,
         )
     return specs
+
+
+def resolve_binary_board_type(bin_name: Optional[str], repo_root: Optional[Path] = None) -> Optional[str]:
+    """Return the canonical `board_type` associated with `bin_name` in `app/Cargo.toml` & `board/board.toml`."""
+    if _is_unset_target_field(bin_name):
+        return None
+    assert bin_name is not None
+    try:
+        known = discover_app_binaries(repo_root)
+    except (OSError, ValueError):
+        return None
+    spec = known.get(bin_name.strip())
+    return spec.board_type if spec is not None else None
 
 
 @dataclass(frozen=True)
