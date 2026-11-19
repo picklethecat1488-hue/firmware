@@ -85,9 +85,3 @@ p
 [] [target] [INFO] 386.301825 INFO [36m[controller::shell_controller][0m command execution succeeded
 [] [target] [INFO] shell> 386.313980 INFO [36m[controller::motor_controller][0m Stopping motor...
 ```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-VERMIFORM-REDWORM-38.log](attachments/WORM-VERMIFORM-REDWORM-38/target_system_logs_WORM-VERMIFORM-REDWORM-38.log) | Target system and defmt logs from host daemon session |

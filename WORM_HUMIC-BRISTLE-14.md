@@ -77,12 +77,3 @@ Observed brief 184 mA startup transient on TMC6300 phase engagement prior to ste
 [] [target] [DEBUG] 26.150000 DEBUG [controller::sensor] VL53L0X ToF fusion: North=103mm East=102mm West=100mm (state=Active)
 [] [target] [INFO] 27.500000 INFO  [controller::battery] MAX17048 VCELL=4128mV SOC=94% | Core0 stack=18% Core1 stack=22%
 ```
-
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-HUMIC-BRISTLE-14.log](attachments/WORM-HUMIC-BRISTLE-14/target_system_logs_WORM-HUMIC-BRISTLE-14.log) | Target system and defmt logs from host daemon session |
-| `log` | [target_crash_log_WORM-HUMIC-BRISTLE-14.log](attachments/WORM-HUMIC-BRISTLE-14/target_crash_log_WORM-HUMIC-BRISTLE-14.log) | Target crash log retrieved via host_fs |
-| `reference` | [target_telemetry_WORM-HUMIC-BRISTLE-14.json](attachments/WORM-HUMIC-BRISTLE-14/target_telemetry_WORM-HUMIC-BRISTLE-14.json) | Target telemetry export retrieved via host_fs |
-| `reference` | [target_metadata_WORM-HUMIC-BRISTLE-14.txt](attachments/WORM-HUMIC-BRISTLE-14/target_metadata_WORM-HUMIC-BRISTLE-14.txt) | Filesystem metadata retrieved via host_fs |

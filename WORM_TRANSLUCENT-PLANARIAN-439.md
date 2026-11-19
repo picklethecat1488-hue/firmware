@@ -6,6 +6,7 @@
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `tools/host_daemon/provider/daemon/test_manager.py`
+- **Created**: `2026-11-19 03:49:45 UTC`
 
 #### Description
 

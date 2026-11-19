@@ -81,13 +81,6 @@ Can we disable support for the hall sensor until issues with the motor are resol
 [] [target] [INFO] 9.476556 INFO [36m[controller::shell_controller][0m command execution succeeded
 ```
 
-#### Attachments & References
-
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `reference` | [target_telemetry_WORM-UNDULATING-SERPULA-688.json](attachments/WORM-UNDULATING-SERPULA-688/target_telemetry_WORM-UNDULATING-SERPULA-688.json) | Target telemetry export retrieved via host_fs |
-| `log` | [target_system_logs_WORM-UNDULATING-SERPULA-688.log](attachments/WORM-UNDULATING-SERPULA-688/target_system_logs_WORM-UNDULATING-SERPULA-688.log) | Target system and defmt logs from host daemon session |
-
 #### Resolution Notes
 
 Disabled support for Hall effect speed sensor in cat_detector (replacing target SpeedSensorDevice with MockSpeedSensor::new(0) in Board::init) and removed zero-RPM stall detection in MotorController to allow freewheeling motor operation without false stall shutdowns.

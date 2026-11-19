@@ -1,6 +1,6 @@
 # 🟢 `[WORM-GROUNDED-TUNNELER-252]` Legacy resolved bug
 
-- **UUID**: `6cf417dc-2458-47fc-aea3-dda07c7142bd`
+- **UUID**: `a82ad924-0715-45da-8ea1-9ddb6094bc1d`
 - **ID**: `WORM-GROUNDED-TUNNELER-252`
 - **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
