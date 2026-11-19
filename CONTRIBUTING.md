@@ -31,7 +31,7 @@ To keep peripheral logic target-independent and clean, we decouple hardware impl
     *   `host/`: Common host-side developer tools utilities (e.g. ELF parsing, symbolication, GDB connections).
 *   **Peripheral Interfaces (`peripherals/`)**: Platform-independent implementations of hardware drivers over generic `embedded-hal` constraints.
 *   **Control Loop Coordinators (`controller/`)**: Project-agnostic domain orchestrators. Exposes CLI handlers that accept a reference to `ShellDeviceResolver` to lookup required peripherals on demand.
-*   **Projects (`projects/`)**: Configures microcontroller-specific packages (BSPs) to build driver setups and run application loops.
+*   **Board & Application Crates (`board/` & `app/`)**: Declaratively configure microcontroller-specific Board Support Packages (`board/board.toml`, `board/src/<board>.rs`) and application controller topologies + binaries (`app/app.toml`, `app/src/<app>.rs`, `app/src/<name>_shell.rs`, `app/src/<name>_app.rs`).
 
 ### 4. Platform-Specific Naming Conventions & CLI Routing
 *   **Peripherals & Controllers**: Do **not** prefix files or structs with MCU model numbers (e.g. do not name them `rp2040_sensor.rs`). Since they interact with generic drivers, they compile on any target.
@@ -284,11 +284,27 @@ To maintain code quality and style standards, run these checks before committing
     cargo clippy --package cat_detector --lib --bins --target thumbv6m-none-eabi -- -D warnings
     ```
 
-### Creating a New Project
-1.  Create a folder under `projects/` (e.g., `projects/my_project`).
-2.  Add a `Cargo.toml` and configure target settings in `.cargo/config.toml` and `memory.x`.
-3.  Implement target-specific pins, configure peripherals, and invoke your controllers.
-4.  Link the new project in the root [Cargo.toml](Cargo.toml) workspace members list.
+### Creating New Firmware Binaries & Board Targets
+All target binaries (`*_shell.rs`, `*_app.rs`) reside in the unified `app` crate (`package = "cat_detector"`) and share a declarative code-generation pipeline across `.cargo/config.toml`, `board/board.toml`, and `app/app.toml`:
+
+1. **Configure Target Linker & `.program_metadata` Layout (`.cargo/config.toml` & `platform/`)**:
+   - Register the target triple in [`.cargo/config.toml`](.cargo/config.toml) with `-Tlink.x`, `-Tdefmt.x`, and `-Tprogram_metadata.x` (e.g. `[target.thumbv6m-none-eabi]` for RP2040 and `[target.thumbv8m.main-none-eabihf]` for NXP MCX N947).
+   - Provide `memory.x` (including a dedicated 4 KB `PROGRAM_METADATA` flash region) and `program_metadata.x` under `platform/src/<mcu>/layouts/` and stage them in `build.rs` so `tools/host_fs board-type` can read board identity in O(1) at a fixed flash address.
+2. **Define the Board Support Package (`board/board.toml` & `board/src/<board>.rs`)**:
+   - Add `[boards.<board>]` in [`board/board.toml`](board/board.toml) specifying `chip`, `board_type`, `program_metadata_addr`, `flash_base`, `flash_size`, `sram_size`, stack bounds, pins, buses, and non-overlapping `storage` / `metadata` / `fs` / `telemetry` partitions.
+   - Generate `generated_<board>.rs` in [`board/build.rs`](board/build.rs) via `code_gen::generate_board_definitions(&content, "<board>")`.
+   - Create `board/src/<board>.rs` starting with `include!(concat!(env!("OUT_DIR"), "/generated_<board>.rs"));` immediately after module doc comments, and implement `Board::init` for both `target` (`no_std` ARM) and `host` (mock drivers for `cargo nextest`).
+3. **Declare Application Topology & Shell Config (`app/app.toml` & `app/src/<board>.rs`)**:
+   - Add `[apps.<board>]` in [`app/app.toml`](app/app.toml) declaring channels, controllers, partitions, and `shell_config`.
+   - Implement `<Board>ShellConfig` via `controller::impl_shell_config!`, `init_controllers(board, peripherals)`, `get_filesystem_config()`, and `declare_shell_pointers!`.
+4. **Create & Register the Binary Entrypoint (`app/Cargo.toml` & `app/src/<name>_shell.rs`)**:
+   - Register a unique `[[bin]]` entry in [`app/Cargo.toml`](app/Cargo.toml) (workspace binary names must be globally unique, enforced by `tools/build/build_firmware.sh`).
+   - Structure shell binaries cleanly after [`app/src/cat_detector_shell.rs`](app/src/cat_detector_shell.rs) and [`app/src/carrier_board_shell.rs`](app/src/carrier_board_shell.rs):
+     - Emit `.program_metadata` via `board::<board>::emit_project_metadata!();` (never hardcode flash addresses inline in binaries).
+     - Wire `#[panic_handler]` to `app::handle_panic(info)`.
+     - Declare CLI command dispatchers via `controller::declare_active_shell_commands!`.
+     - Use `#[embassy_executor::main] async fn main(spawner: Spawner)` to run `app::Board::init().await`, construct `CliBuilder` over `platform::rtt::RttTxWriter`, print the startup banner, call `core_monitor::init_core(...)`, bind `app::declare_shell_pointers!(...)`, and enter `platform::run_rtt_shell_loop!`.
+   - Register the binary in `KNOWN_TARGET_BINARIES` inside [`tools/device_tests/model.py`](tools/device_tests/model.py) so `@device_test(target_binary="<name>_shell")` can compile and flash it automatically via `python tools/host.py test`.
 
 ### Running Tests
 Validate all logic (including host-compatible board mocks) on the host. We use `cargo-nextest` for faster, parallel, and clean test execution:
@@ -421,7 +437,7 @@ We provide unified scripts and cargo aliases to make checking and verifying loca
 #### 1. Complete Pre-Commit Verification
 To verify code formatting, static tracing assertions, clippy rules, host unit/integration tests, and build checks before submitting code:
 ```bash
-./tools/verify.sh
+./tools/verify.py
 ```
 This script executes formatting/tracing checks in parallel, runs target compilation checks, and compiles host tools in debug mode (reusing the test compiler cache) to complete all verification checks in under 30 seconds.
 
@@ -432,7 +448,7 @@ tools/anvil provision                # Rent Vast.ai Ubuntu instance and configur
 tools/anvil bootstrap                # Install build tools, Rust, Miniforge, and Conda on remote VM
 tools/anvil status                   # Check instance health, IP/port, GPU, and lock state
 tools/anvil sync                     # Sync repository to cloud container (/workspace/firmware)
-tools/anvil verify                   # Run ./tools/verify.sh remotely
+tools/anvil verify                   # Run ./tools/verify.py remotely
 tools/anvil pytest [args...]         # Run pytest remotely on anvil
 tools/anvil cargo [args...]          # Run cargo checks/tests remotely on anvil
 tools/anvil cli <command...>         # Reverse proxy host CLI command to local host.py daemon
@@ -524,12 +540,10 @@ python tools/host.py stop
    - Direct host interaction with target sequential-storage flash partitions (`host_fs`).
    - Quick action triggers and manual commands: `ls`, `cat metadata`, `crash-log`, `export-telemetry`, and `format`.
    - Intelligent probe arbitration: automatically pauses background RTT streaming during filesystem flash accesses and cleanly restores streaming upon completion.
-3. **Bringup Verification Checklist Mode (`bringup>`)**:
-   - Automated and interactive bringup assistant supporting YAML checklist specifications (such as `app/cat_detector_bringup.yaml` and `app/carrier_board_bringup.yaml`).
-   - Multi-script selector allowing on-the-fly checklist switching between target designs.
-   - Comprehensive step support: `shell_command`, `host_command`, `hardware_check` (with test point voltage tables and control pin assignments), `interactive`, and `manual` procedures.
-   - Automated regex output matching, interactive user prompts (`Pass`, `Fail`, `Skip`), and real-time execution log console.
-   - Export structured Markdown verification reports (`bringup_report.md`).
+3. **Bringup & On-Device Suite Mode (`bringup>` / `host.py test`)**:
+   - Automated and interactive hardware-in-the-loop pytest suites (`tools/device_tests/suites/test_cat_detector_bringup.py` and `tools/device_tests/suites/test_carrier_board_bringup.py`) built on top of `host.py`.
+   - Automatic board identity discovery via `python tools/host.py fs board-type` (reading `.program_metadata` and `metadata` partitions in O(1) without scanning flash) with glob-based `@device_test(boards=...)` filtering and automatic `target_binary` flashing.
+   - Multi-scenario support (`smoke`, `integration`, `bringup`) executed in strict top-to-bottom source-line order, plus interactive benchtop prompts (`Pass`, `Fail`, `Skip`) and Markdown/JUnit verification reports.
 
 ### 3. Integrated Hardware Controls & Diagnostic Reporting
 
@@ -558,12 +572,13 @@ python tools/host.py fs ls
 python tools/host.py fs cat metadata
 python tools/host.py fs crash-log
 
-# Hardware bringup operations
-python tools/host.py bringup --list
-python tools/host.py bringup --script app/cat_detector_bringup.yaml --status
-python tools/host.py bringup --script app/cat_detector_bringup.yaml --run
-python tools/host.py bringup --script app/carrier_board_bringup.yaml --step
-python tools/host.py bringup --reset
+# On-device pytest suites & interactive bringup operations
+python tools/host.py fs board-type
+python tools/host.py test --list
+python tools/host.py test --scenario smoke --board "rp2040*"
+python tools/host.py test --scenario integration
+python tools/host.py test tools/device_tests/suites/test_cat_detector_bringup.py --interactive
+python tools/host.py test --script tools/device_tests/suites/test_carrier_board_bringup.py --interactive
 
 # Flash & debug probe controls
 python tools/host.py sync
@@ -689,7 +704,7 @@ The workstation employs a dual-layer storage architecture combining ACID transac
 
 When contributing changes, developers must adhere to the following workflow invariants:
 - **Single-Bug Focus**: Investigate, reproduce, and resolve ONE worm at a time. Write a minimal failing test before editing code, apply the targeted fix, verify regression tests pass, and resolve the worm atomically.
-- **Pre-Commit Script Execution**: Always execute `./tools/verify.sh` from the repository root before committing. All tests, linters, and MCU target builds must pass with `Verification PASSED`.
+- **Pre-Commit Script Execution**: Always execute `./tools/verify.py` from the repository root before committing. All tests, linters, and MCU target builds must pass with `Verification PASSED`.
 - **User-Managed Pull Requests**: Autonomous PR creation (`gh pr create`) and merging (`gh pr merge`) are strictly prohibited; peer review and PR operations are executed manually by project maintainers.
 
 ---

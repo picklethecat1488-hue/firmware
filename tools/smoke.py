@@ -18,11 +18,11 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TOOLS_DIR = REPO_ROOT / "tools"
 DASHBOARD_DIR = TOOLS_DIR / "dashboard"
-DAEMON_DIR = TOOLS_DIR / "host_daemon"
 
-for _p in (str(REPO_ROOT), str(TOOLS_DIR), str(DASHBOARD_DIR), str(DAEMON_DIR)):
-    if _p not in sys.path:
-        sys.path.insert(0, _p)
+for _p in (str(REPO_ROOT), str(TOOLS_DIR), str(DASHBOARD_DIR)):
+    if _p in sys.path:
+        sys.path.remove(_p)
+    sys.path.insert(0, _p)
 
 LOCALHOST = "127.0.0.1"
 EPHEMERAL_PORT = 0
@@ -164,7 +164,7 @@ class TestFirmwareSmoke:
                 assert "javascript" in js_headers.get("content-type", "")
                 assert len(js_bytes) > 0
 
-            for api_path in ("/api/status", "/api/logs", "/api/bringup/scripts", "/api/targets"):
+            for api_path in ("/api/status", "/api/logs", "/api/manual_prompt", "/api/targets"):
                 api_status, api_headers, api_bytes = _http_get(f"{base_url}{api_path}")
                 assert api_status == HTTP_OK
                 assert "application/json" in api_headers.get("content-type", "")

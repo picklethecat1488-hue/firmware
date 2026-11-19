@@ -23,10 +23,11 @@ The detailed architectural definitions and hardware integration specifications h
 
 ## Hardware Bringup & Verification
 
-For interactive bringup steps, target shell command checklists, and YAML verification profiles:
+For interactive bringup steps, target shell command checklists, and async pytest device suites:
 - **[Cat Detector Bringup Checklist](cat_detector.md)**
-- **[`app/cat_detector_bringup.yaml`](cat_detector_bringup.yaml)**
-- Bringup script execution:
+- **[`tools/device_tests/suites/test_cat_detector_bringup.py`](../tools/device_tests/suites/test_cat_detector_bringup.py)**
+- Device test & bringup execution:
   ```bash
-  conda run -n firmware-env python tools/host.py bringup --script projects/cat_detector_bringup.yaml --run
+  conda run -n firmware-env python tools/host.py test --board "rp2040*"
+  conda run -n firmware-env python tools/host.py test --script tools/device_tests/suites/test_cat_detector_bringup.py --interactive
   ```
