@@ -95,3 +95,7 @@ tools/device_tests/suites/test_cat_detector_smoke.py::test_battery_fuel_gauge_st
 tools/device_tests/suites/test_cat_detector_smoke.py::test_battery_alert_pin_assertion PASSED [ 54%]
 tools/device_tests/suites/test_cat_detector_smoke.py::test_tof_proximity_array_and_i2c_bus FAILED [ 63%]
 ```
+
+#### Review Tasks & Functional Checklist
+
+- [ ] Run host.py test --list-tests -k 'tof and not calibration' and verify only matching @device_test entries are listed | `python tools/host.py test --list-tests -k 'tof and not calibration'` <!-- id:1d29c161 -->
