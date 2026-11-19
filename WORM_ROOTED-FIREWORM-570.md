@@ -2,12 +2,13 @@
 
 - **UUID**: `9cfd6e9b-8a89-4c39-8593-22de71bb6c62`
 - **ID**: `WORM-ROOTED-FIREWORM-570`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `target`
 - **Created**: `2026-11-19 03:47:29 UTC`
 - **Resolved**: `2026-11-19 16:01:30 UTC`
+- **Accepted**: `2026-11-19 16:01:32 UTC`
 
 #### Description
 
