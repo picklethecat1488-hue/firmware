@@ -134,8 +134,14 @@ pub fn generate_app_topology(app_toml_content: &str, app_name: &str) -> String {
         .expect("Failed to parse board.toml inside app topology generation");
     let board_config = boards_config
         .boards
-        .get("cat_detector")
-        .expect("Failed to find board config for 'cat_detector' in board.toml");
+        .get(app_name)
+        .or_else(|| boards_config.boards.get("cat_detector"))
+        .unwrap_or_else(|| {
+            panic!(
+                "Failed to find board config for '{}' in board.toml",
+                app_name
+            )
+        });
 
     let mut resolved_partitions = Vec::new();
     for p in &app_topology.partitions {
