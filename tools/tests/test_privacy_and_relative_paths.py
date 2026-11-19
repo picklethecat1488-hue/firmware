@@ -11,6 +11,9 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 import subprocess
+from unittest import mock
+
+import pytest
 
 from model.code_review import CommentModel, ReviewSessionModel, ReviewSeverity, ReviewStatus
 from model.worm_report import WormCategory, WormDatabaseModel, WormReportModel, WormSeverity, WormStatus
@@ -29,6 +32,25 @@ from provider.worm_report.markdown_exporter import MarkdownWormExporter
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+@pytest.fixture(autouse=True)
+def _ensure_active_user_in_sanitizer():
+    """Ensure at least one non-reserved user is present in sanitizer when running as root in containers."""
+    usernames = [u for u in get_usernames_to_redact() if " " not in u]
+    if not usernames:
+        with mock.patch.dict(os.environ, {"USER": "testdeveloper", "LOGNAME": "testdeveloper"}):
+            get_personal_identifiers.cache_clear()
+            get_usernames_to_redact.cache_clear()
+            get_author_blacklist.cache_clear()
+            get_email_blacklist.cache_clear()
+            yield
+            get_personal_identifiers.cache_clear()
+            get_usernames_to_redact.cache_clear()
+            get_author_blacklist.cache_clear()
+            get_email_blacklist.cache_clear()
+    else:
+        yield
 
 
 def test_dynamic_personal_identifiers_discovered() -> None:
