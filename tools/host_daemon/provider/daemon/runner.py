@@ -10,13 +10,15 @@ import threading
 import time
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
-from host_daemon.provider.bringup.bringup_manager import BringupManager
+from host_daemon.model.manual_prompt import ManualPromptState
+from host_daemon.model.metadata import probe_attached_target_metadata
 from host_daemon.provider.daemon.config import infer_arm_target, load_last_session, save_last_session
 
 RTT_STDIN_SHUTDOWN_TIMEOUT_SEC: float = 2.5
 RTT_TERMINATE_TIMEOUT_SEC: float = 2.0
 RTT_STREAM_JOIN_TIMEOUT_SEC: float = 1.0
-RTT_STARTUP_EVENT_TIMEOUT_SEC: float = 0.3
+RTT_STARTUP_EVENT_TIMEOUT_SEC: float = 4.0
+RTT_CONSOLE_READY_SETTLE_SEC: float = 0.20
 PROBE_RELEASE_SETTLE_SEC: float = 0.25
 PROBE_RETRY_BACKOFF_SEC: float = 0.6
 MAX_PROBE_OPEN_RETRIES: int = 2
@@ -26,6 +28,14 @@ CLI_QUIET_SETTLE_SEC: float = 0.30
 CLI_COMPLETION_SETTLE_SEC: float = 0.30
 ANSI_CLEAR_LINE_SEQ: str = "\x1b[2K"
 SHELL_PROMPT_PREFIX: str = "shell>"
+RTT_SESSION_BANNER_PREFIXES: Tuple[str, ...] = (
+    "RTT connected. Active channels:",
+    "- Up Channel:",
+    "- Down Channel:",
+    "RTT Session Started",
+    "Interactive RTT console active.",
+    "Type 'help' to print usage.",
+)
 
 
 def _is_transient_probe_error(output: str) -> bool:
@@ -70,7 +80,7 @@ class DaemonRunner:
         self.elf_path: Optional[Path] = None
         self.host_cli_path: Optional[Path] = None
         self.host_fs_path: Optional[Path] = None
-        self.bringup_manager = BringupManager(runner=self, repo_root=self.repo_root)
+        self.manual_prompt = ManualPromptState()
 
         self.active_mode: str = "CLI"
         self._lock = threading.Lock()
@@ -352,7 +362,7 @@ class DaemonRunner:
             self.fs_outputs.append(entry)
 
     def set_mode(self, mode: str) -> None:
-        """Switch active workstation mode between CLI, FS, and BRINGUP, managing probe ownership."""
+        """Switch active workstation mode between CLI and FS, managing probe ownership."""
         mode = mode.upper()
         if mode == self.active_mode:
             return
@@ -361,9 +371,23 @@ class DaemonRunner:
             self.log("Switching to Filesystem mode (stopping RTT streaming to release probe)...", channel="system")
             self.stop_rtt_streaming()
             time.sleep(0.15)
-        elif mode in ("CLI", "BRINGUP"):
-            self.log(f"Switching to {mode} mode (starting RTT streaming)...", channel="system")
+        elif mode == "CLI":
+            self.log("Switching to CLI mode (starting RTT streaming)...", channel="system")
             self.start_rtt_streaming()
+
+    def update_manual_prompt(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Record a periodic manual test procedure & prompt heartbeat from `pytest`."""
+        with self._lock:
+            newly_activated = self.manual_prompt.apply_update(payload)
+            snapshot = self.manual_prompt.to_dict()
+        if newly_activated:
+            self.log(
+                f"[MANUAL TEST: {snapshot['test_name']}] Procedure: {snapshot['procedure']} | "
+                f"Expected: {snapshot['prompt']}",
+                channel="manual_test",
+            )
+            self.log_cli(f"[manual:{snapshot['test_name']}] {snapshot['procedure']} -> {snapshot['prompt']}")
+        return snapshot
 
     def build_target(self) -> Path:
         """Compile the target embedded firmware binary."""
@@ -677,6 +701,44 @@ class DaemonRunner:
             "output": out.strip() if out else "",
         }
 
+    def reboot_target(self) -> Dict[str, Any]:
+        """Reboot the attached target MCU over SWD and re-attach RTT streaming."""
+        res = self.reset_target()
+        res["message"] = (
+            "Target reboot completed" if res.get("probe_reset") else "Target reboot attempted and RTT reconnected"
+        )
+        return res
+
+    def query_target_metadata(self, elf_path: Optional[Path] = None) -> Dict[str, Any]:
+        """Query `.program_metadata` off the target via `host_fs query_metadata` and validate against target ELF."""
+        with self._lock:
+            sync_active = bool(self._sync_thread and self._sync_thread.is_alive())
+        if sync_active:
+            return {
+                "connected": False,
+                "matches_target": False,
+                "error": "Target synchronization is currently in progress",
+            }
+
+        with self._fs_lock:
+            rtt_was_running = (self.rtt_process is not None and self.rtt_process.poll() is None) or (
+                self._streaming_thread is not None and self._streaming_thread.is_alive()
+            )
+            if rtt_was_running:
+                self.stop_rtt_streaming()
+                time.sleep(PROBE_RELEASE_SETTLE_SEC)
+
+            target_elf = elf_path or self.elf_path or self.get_elf_path()
+            try:
+                return probe_attached_target_metadata(
+                    self.repo_root,
+                    preferred_elf=target_elf,
+                    host_fs_path=self.host_fs_path,
+                )
+            finally:
+                if rtt_was_running and self.active_mode == "CLI":
+                    self.start_rtt_streaming()
+
     def stop_rtt_streaming(self) -> None:
         """Gracefully stop active RTT streaming process to release the USB debug probe cleanly."""
         proc = self.rtt_process
@@ -725,8 +787,10 @@ class DaemonRunner:
         ]
 
         started_event = threading.Event()
+        session_ready = False
 
         def _stream_worker() -> None:
+            nonlocal session_ready
             try:
                 self.rtt_process = subprocess.Popen(
                     cmd,
@@ -737,12 +801,14 @@ class DaemonRunner:
                     bufsize=1,
                 )
                 self.is_connected = True
-                started_event.set()
                 self.log("RTT streaming process connected")
                 if self.rtt_process.stdout:
                     for line in iter(self.rtt_process.stdout.readline, ""):
                         stripped = line.rstrip("\r\n")
                         if stripped:
+                            if "RTT Session Started" in stripped or "Interactive RTT console active" in stripped:
+                                session_ready = True
+                                started_event.set()
                             if (
                                 "INFO" in stripped
                                 or "WARN" in stripped
@@ -780,6 +846,8 @@ class DaemonRunner:
         self._streaming_thread = threading.Thread(target=_stream_worker, daemon=True)
         self._streaming_thread.start()
         started_event.wait(timeout=RTT_STARTUP_EVENT_TIMEOUT_SEC)
+        if session_ready and self.rtt_process is not None and self.rtt_process.poll() is None:
+            time.sleep(RTT_CONSOLE_READY_SETTLE_SEC)
 
     def _collect_cli_output(
         self,
@@ -813,7 +881,10 @@ class DaemonRunner:
                 )
 
             meaningful_count = sum(
-                1 for text in new_cli if text.replace(ANSI_CLEAR_LINE_SEQ, "").strip() not in ("", "shell>")
+                1
+                for text in new_cli
+                if text.replace(ANSI_CLEAR_LINE_SEQ, "").strip() not in ("", "shell>")
+                and not text.replace(ANSI_CLEAR_LINE_SEQ, "").strip().startswith(RTT_SESSION_BANNER_PREFIXES)
             )
             if meaningful_count > prev_count:
                 prev_count = meaningful_count
@@ -842,7 +913,7 @@ class DaemonRunner:
             line = (
                 text.replace(ANSI_CLEAR_LINE_SEQ, "").rstrip().removeprefix("shell> ").removeprefix(SHELL_PROMPT_PREFIX)
             )
-            if line.strip():
+            if line.strip() and not line.strip().startswith(RTT_SESSION_BANNER_PREFIXES):
                 cleaned_lines.append(line)
         if cleaned_lines:
             return "\n".join(cleaned_lines)
@@ -972,6 +1043,7 @@ class DaemonRunner:
             "flashed": self.is_flashed,
             "mode": self.active_mode,
             "message": self.status_message,
+            "manual_prompt": self.manual_prompt.to_dict(),
         }
 
     def stop(self) -> None:

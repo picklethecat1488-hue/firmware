@@ -178,9 +178,13 @@ fn test_board_codegen() {
     assert!(generated.contains("pub const PUMP_UH_PIN: u32 = 16;"));
     assert!(generated.contains("pub const PUMP_UL_PIN: u32 = 17;"));
     assert!(generated.contains("pub const SPEED_SENSE_PIN: u32 = 26;"));
+    assert!(generated.contains("pub const METADATA_PARTITION_START: u32 = 0x001B0000;"));
     assert!(generated.contains("pub const FS_PARTITION_START: u32 = 0x001C0000;"));
+    assert!(generated.contains("pub const BOARD_TYPE: &'static str = \"rp2040_flash_2mb\";"));
+    assert!(generated.contains("pub const PROGRAM_METADATA_ADDR: u32 = 0x101AF000;"));
 
     assert!(generated.contains("chip: \"rp2040\""));
+    assert!(generated.contains("board_type: \"rp2040_flash_2mb\""));
 }
 
 #[test]
