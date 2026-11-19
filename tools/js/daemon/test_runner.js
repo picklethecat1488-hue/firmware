@@ -495,11 +495,18 @@ export class TestRunnerController {
         );
       }
 
-      const scenarioText = Array.isArray(item.scenarios) ? item.scenarios.join(", ") : "";
+      const scenarioBadges = Array.isArray(item.scenarios)
+        ? item.scenarios.map((scen) =>
+            createEl(this.ctx, "span", {
+              className: "badge",
+              text: String(scen),
+            }),
+          )
+        : [];
       const boardsText = Array.isArray(item.boards) ? item.boards.join(", ") : "*";
       const binText = item.target_binary || "none";
       const modeBadge = createEl(this.ctx, "span", {
-        className: item.manual ? "badge badge-amber" : "badge",
+        className: item.manual ? "badge badge-amber" : "badge badge-cyan",
         text: item.manual ? "MANUAL" : "AUTO",
       });
 
@@ -516,7 +523,7 @@ export class TestRunnerController {
           title: `Run ${item.name}`,
           "data-test-run-one": nodeId,
         },
-        style: { padding: "2px 6px" },
+        style: { padding: "2px 6px", flexShrink: "0" },
       });
       quickRunBtn.disabled = this.isRunning;
 
@@ -528,14 +535,20 @@ export class TestRunnerController {
           createEl(this.ctx, "td", { children: nameBlockChildren }),
           createEl(this.ctx, "td", { text: item.project || "" }),
           createEl(this.ctx, "td", {
-            children: [modeBadge, createEl(this.ctx, "span", { text: ` ${scenarioText}` })],
+            children: [
+              createEl(this.ctx, "div", {
+                className: "test-badge-group",
+                children: [modeBadge, ...scenarioBadges],
+              }),
+            ],
           }),
           createEl(this.ctx, "td", { text: boardsText }),
           createEl(this.ctx, "td", { text: binText }),
           createEl(this.ctx, "td", {
             children: [
               createEl(this.ctx, "div", {
-                style: { display: "flex", alignItems: "center", gap: "6px" },
+                className: "test-badge-group",
+                style: { justifyContent: "space-between", flexWrap: "nowrap", gap: "6px" },
                 children: [statusBadge, quickRunBtn],
               }),
             ],

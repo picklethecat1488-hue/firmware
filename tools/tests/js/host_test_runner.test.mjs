@@ -264,6 +264,17 @@ describe("Host Daemon Test Mode UI Controller (TestRunnerController)", () => {
     assert.equal(dom.tableBody.children.length, 2);
     assert.equal(dom.projectSelect.children.length, 3); // All + 2 projects
 
+    // Regression WORM-FOSSORIAL-NIGHTCRAWLER-861: Mode / Scenarios cell uses flex-wrap badge group
+    // with discrete scenario badges so wrapped items never overlap badge borders.
+    const firstRowCells = dom.tableBody.children[0].children;
+    const modeScenarioGroup = firstRowCells[4].children[0];
+    assert.ok(modeScenarioGroup, "Expected flex badge group wrapper inside Mode / Scenarios cell");
+    assert.equal(modeScenarioGroup.className, "test-badge-group");
+    assert.equal(modeScenarioGroup.children.length, 3); // AUTO + smoke + bringup
+    assert.equal(modeScenarioGroup.children[0].textContent, "AUTO");
+    assert.equal(modeScenarioGroup.children[1].textContent, "smoke");
+    assert.equal(modeScenarioGroup.children[2].textContent, "bringup");
+
     // Select all visible tests and execute `runSelected()`
     dom.selectAllCb.checked = true;
     dom.selectAllCb.dispatchEvent({ type: "change", bubbles: true });
