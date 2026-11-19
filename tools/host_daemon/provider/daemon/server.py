@@ -463,6 +463,35 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     )
                 )
 
+            # 1b. Attach test execution logs if filing from TEST mode (WORM-ROOTED-FIREWORM-570)
+            effective_mode = str(payload.get("mode") or getattr(runner, "active_mode", "CLI") or "CLI").upper()
+            test_exec_logs_content = ""
+            if effective_mode == "TEST" and bool(payload.get("attach_test_execution_logs", True)):
+                test_status = _get_test_manager(runner).get_status()
+                raw_test_console = test_status.get("console") or []
+                if raw_test_console:
+                    test_exec_logs_content = "\n".join(str(line) for line in raw_test_console)
+                else:
+                    test_exec_logs_content = (
+                        f"Host daemon Test Mode active at {now_str}. No test execution logs recorded yet."
+                    )
+
+                test_log_filename = f"target_test_execution_logs_{worm_id}.log"
+                test_log_path = worm_att_dir / test_log_filename
+                sanitized_test_logs = elide_personal_info(test_exec_logs_content)
+                test_log_path.write_text(sanitized_test_logs, encoding="utf-8")
+                attachments.append(
+                    WormAttachmentModel(
+                        id=f"att-{len(attachments) + 1}",
+                        filename=test_log_filename,
+                        file_type="log",
+                        file_path=f"attachments/{worm_id}/{test_log_filename}",
+                        size_bytes=len(sanitized_test_logs.encode("utf-8")),
+                        description="Test execution logs from host daemon Test Mode",
+                        created_at=now_str,
+                    )
+                )
+
             # 2. Attach target crash-log if selected
             if payload.get("attach_crash_log"):
                 try:
@@ -576,6 +605,9 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             # Build WormReportModel
             log_lines = logs_content.strip().splitlines()
             log_summary = "\n".join(log_lines[-50:]) if len(log_lines) > 50 else logs_content
+            if test_exec_logs_content:
+                test_tail = "\n".join(elide_personal_info(test_exec_logs_content).strip().splitlines()[-30:])
+                log_summary = f"{log_summary}\n\n--- Test Execution Log ---\n{test_tail}".strip()
 
             worm = WormReportModel(
                 id=worm_id,
