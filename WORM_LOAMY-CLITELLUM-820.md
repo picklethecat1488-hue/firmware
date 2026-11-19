@@ -1,12 +1,13 @@
-# 🔴 `[WORM-LOAMY-CLITELLUM-820]` investigate test failures
+# 🟢 `[WORM-LOAMY-CLITELLUM-820]` investigate test failures
 
 - **UUID**: `84515a48-b63e-482f-95f5-f34dd28638b5`
 - **ID**: `WORM-LOAMY-CLITELLUM-820`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-19 18:35:51 UTC`
+- **Resolved**: `2026-11-19 19:14:54 UTC`
 
 #### Description
 
@@ -123,3 +124,7 @@ FAILED tools/device_tests/suites/test_cat_detector_smoke.py::test_tof_proximity_
 
 - [ ] Run test_tof_proximity_array_and_i2c_bus on target via host.py test -k tof_proximity and verify both i2c scan and sensor status succeed cleanly | `python tools/host.py test -k tof_proximity` <!-- id:5adc0393 -->
 - [ ] Open host.py in TEST mode, run a smoke test, and inspect the TEST EXECUTION LOG tab to verify CLI commands and target responses appear with [device_ts] timestamps | `python tools/host.py --mode test` <!-- id:bba23cf2 -->
+
+#### Resolution Notes
+
+Serialized execute_cli(wait_for_output=True) with _fs_lock and cached verified .program_metadata per connected ELF so concurrent metadata probes and consecutive same-binary tests never tear down RTT mid-command, and integrated real-time [device_ts]-prefixed CLI/FS commands and outputs into Test Execution Logs.
