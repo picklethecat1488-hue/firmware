@@ -20,6 +20,19 @@ fn main() -> io::Result<()> {
     );
     spinner.enable_steady_tick(std::time::Duration::from_millis(80));
 
+    // Handle `query_metadata` using ELF-derived `.program_metadata` and `metadata` partition geometry
+    if let Commands::QueryMetadata { elf_only, json } = &cli.command {
+        let explicit_elf = cli.elf.as_deref().map(std::path::Path::new);
+        return futures::executor::block_on(host_fs::commands::query_metadata::run(
+            explicit_elf,
+            cli.dump.as_deref(),
+            cli.openocd_host.as_deref(),
+            *elf_only,
+            *json,
+            &spinner,
+        ));
+    }
+
     // Determine the explicit ELF path from either the subcommand or global flag
     let elf_path = match &cli.command {
         Commands::CrashLog { elf: Some(path) } => Some(std::path::PathBuf::from(path)),
@@ -319,6 +332,9 @@ fn main() -> io::Result<()> {
                     &mut unified_buf,
                 )
                 .await?;
+            }
+            Commands::QueryMetadata { .. } => {
+                unreachable!("QueryMetadata is handled before partition setup")
             }
         }
         Ok::<(), io::Error>(())

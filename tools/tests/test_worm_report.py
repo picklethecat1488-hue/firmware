@@ -124,7 +124,7 @@ def test_worm_report_server_initialization(tmp_path: Path) -> None:
 
     server = WormReportServer(
         host="127.0.0.1",
-        port=8799,
+        port=0,
         repo_root=tmp_path,
         markdown_output=md_file,
         state_file=json_file,
@@ -151,7 +151,7 @@ def test_worm_report_server_initialization(tmp_path: Path) -> None:
     # Re-initialize without fresh to ensure persistence reload
     reloaded_server = WormReportServer(
         host="127.0.0.1",
-        port=8799,
+        port=0,
         repo_root=tmp_path,
         markdown_output=md_file,
         state_file=json_file,
@@ -170,7 +170,7 @@ def test_worm_report_server_api_exit_and_document_upload(tmp_path: Path) -> None
 
     server = WormReportServer(
         host="127.0.0.1",
-        port=8798,
+        port=0,
         repo_root=tmp_path,
         markdown_output=md_file,
         state_file=json_file,

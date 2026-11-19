@@ -4,12 +4,11 @@ Verifies that:
 1. The carrier board 2.0 app is integrated into the app crate alongside cat_detector.
 2. carrier_board is not a separate standalone workspace member in Cargo.toml.
 3. The carrier board firmware design doc resides under app/carrier_board.md with all required design evaluations.
-4. app/carrier_board_bringup.yaml exists as the source of truth for bringup verification.
+4. tools/device_tests/suites/test_carrier_board_bringup.py exists as the source of truth for bringup verification.
 """
 
 from pathlib import Path
 import sys
-import yaml
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -320,21 +319,20 @@ def test_carrier_board_firmware_document() -> None:
     assert "without opening the enclosure" in content.lower() or "without opening" in content.lower()
 
 
-def test_carrier_board_bringup_yaml() -> None:
-    """Verify app/carrier_board_bringup.yaml exists as source of truth for bringup verification."""
-    yaml_path = WORKSPACE_ROOT / "app" / "carrier_board_bringup.yaml"
-    assert yaml_path.exists(), "app/carrier_board_bringup.yaml must exist"
+def test_carrier_board_device_test_suite() -> None:
+    """Verify modular Carrier Board `@device_test(project='carrier_board')` listings exist under device_tests."""
+    tools_dir = str(WORKSPACE_ROOT / "tools")
+    if tools_dir not in sys.path:
+        sys.path.insert(0, tools_dir)
 
-    data = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
-    assert data["project_name"] == "Carrier Board 2.0"
-    assert "MCXN947" in data["device_chip"]
-    assert "carrier_board_shell" in data["cargo_target"]
+    from device_tests.model import discover_device_tests
 
-    steps = data.get("steps", [])
-    assert len(steps) >= 10, "carrier_board_bringup.yaml must define comprehensive bringup steps"
+    assert not (WORKSPACE_ROOT / "app" / "carrier_board_bringup.yaml").exists()
+    entries = discover_device_tests(WORKSPACE_ROOT, project="carrier_board")
+    assert len(entries) >= 12, "Carrier Board project must define comprehensive smoke, integration, and bringup tests"
+    assert all(e["project"] == "carrier_board" for e in entries)
+    assert any(e["target_binary"] == "carrier_board_shell" for e in entries)
 
-    step_names = [s.get("name", "") for s in steps]
-    assert any("I3C" in name for name in step_names), "Must include I3C validation step"
-    assert any("Watchdog" in name or "Reset" in name for name in step_names), (
-        "Must include Watchdog/Reset validation step"
-    )
+    descriptions = " ".join(e["description"] for e in entries)
+    assert "I3C" in descriptions, "Must include I3C validation test"
+    assert "WATCHDOG" in descriptions or "WWDT0" in descriptions, "Must include Watchdog reset validation test"
