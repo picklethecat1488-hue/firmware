@@ -13,6 +13,7 @@
       font-size: calc(80% * var(--ui-scale, 1));
     }
     :root {
+      color-scheme: dark;
       --xerxes-bg: #04090c;
       --xerxes-panel: #08161d;
       --xerxes-panel-hover: #0e242f;
@@ -31,6 +32,29 @@
       --xerxes-text-muted: #7aa5b0;
       --xerxes-text-dim: #3a626c;
       --font-mono: "Share Tech Mono", ui-monospace, "SF Mono", "Courier New", monospace;
+    }
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: #0c3c47 #04090c;
+    }
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #04090c;
+      border-left: 1px solid #0a1c24;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #0c3c47;
+      border: 1px solid #148094;
+      border-radius: 2px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #125564;
+    }
+    ::-webkit-scrollbar-corner {
+      background: #04090c;
     }
     html {
       height: 100%;
@@ -156,9 +180,8 @@
     .test-stack-list {
       flex: 1;
       min-height: 150px;
-      overflow-y: scroll;
+      overflow-y: auto;
       overflow-x: hidden;
-      scrollbar-gutter: stable;
       padding: 6px;
       display: flex;
       flex-direction: column;
