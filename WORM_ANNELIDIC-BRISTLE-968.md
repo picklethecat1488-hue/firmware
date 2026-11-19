@@ -2,12 +2,13 @@
 
 - **UUID**: `4c9af3c3-00b4-41a1-bdbd-b73b67e47f0b`
 - **ID**: `WORM-ANNELIDIC-BRISTLE-968`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-19 18:33:25 UTC`
 - **Resolved**: `2026-11-19 19:40:15 UTC`
+- **Accepted**: `2026-11-19 19:40:18 UTC`
 
 #### Description
 
