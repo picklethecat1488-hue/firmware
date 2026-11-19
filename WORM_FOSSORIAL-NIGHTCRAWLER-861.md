@@ -70,6 +70,10 @@
 [] [manual_test] [INFO] [MANUAL TEST: test_motor_calibration_routine] Procedure: Ensure fountain reservoir is filled above minimum waterline before starting calibration. | Expected: Is the reservoir filled and clear of obstructions?
 ```
 
+#### Attached Commits
+
+- `f3c985e014c434f714065d6606b8e3ad440ee2f3`
+
 #### Review Tasks & Functional Checklist
 
 - [ ] Launch host.py in Test Mode and verify Mode/Scenarios and Status badges render as non-overlapping pills across full and split widths | `python tools/host.py --no-detach` <!-- id:bb45b342 -->
