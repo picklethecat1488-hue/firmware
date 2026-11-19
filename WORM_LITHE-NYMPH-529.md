@@ -1,12 +1,13 @@
-# 🔴 `[WORM-LITHE-NYMPH-529]` We should move the test list to the left panel
+# 🟢 `[WORM-LITHE-NYMPH-529]` We should move the test list to the left panel
 
 - **UUID**: `31aa2d4b-786e-4189-8bb0-ef76a8675378`
 - **ID**: `WORM-LITHE-NYMPH-529`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `target`
 - **Created**: `2026-11-19 03:43:19 UTC`
+- **Resolved**: `2026-11-19 04:15:50 UTC`
 
 #### Description
 
@@ -76,3 +77,7 @@ We should move the test list and filter menu to the left panel so that the manua
 #### Review Tasks & Functional Checklist
 
 - [ ] Switch host.py ACTIVE MODE to TEST and verify the left panel opens on the TEST SUITE tab with tab switching to SYSTEM LOGS and spacious right-panel manual prompt layout | `python tools/host.py --no-detach` <!-- id:a5c70ced -->
+
+#### Resolution Notes
+
+Moved the @device_test filter bar, run controls, and test list into #testSidebarView inside #logPanel with a left-panel tab switcher (TEST SUITE vs SYSTEM LOGS), freeing the right panel for spacious manual prompt interactions.
