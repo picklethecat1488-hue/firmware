@@ -8,7 +8,8 @@ from pathlib import Path
 import re
 import sys
 import threading
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
+import urllib.parse
 import uuid as uuid_pkg
 
 import jinja2
@@ -30,6 +31,17 @@ from provider.worm_report.markdown_exporter import MarkdownWormExporter
 from provider.worm_report.sqlite_store import SQLiteWormStore
 
 from host_daemon.provider.daemon.runner import DEFAULT_CLI_OUTPUT_TIMEOUT_SEC, DaemonRunner
+from host_daemon.provider.daemon.test_manager import DeviceTestRunnerManager
+
+
+def _get_test_manager(runner: Any) -> DeviceTestRunnerManager:
+    """Return `runner.test_manager`, lazily attaching a `DeviceTestRunnerManager` for mock/test runners."""
+    existing = getattr(runner, "test_manager", None)
+    if isinstance(existing, DeviceTestRunnerManager):
+        return existing
+    created = DeviceTestRunnerManager(runner)
+    setattr(runner, "test_manager", created)
+    return created
 
 
 class HostDaemonRequestHandler(BaseHTTPRequestHandler):
@@ -113,14 +125,32 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
         elif path == "/api/fs/output":
             with runner._lock:
                 self._send_json(list(runner.fs_outputs))
-        elif path == "/api/bringup/scripts":
-            from host_daemon.model.bringup import discover_bringup_scripts
-
-            self._send_json(discover_bringup_scripts(runner.repo_root))
-        elif path == "/api/bringup/status":
-            self._send_json(runner.bringup_manager.get_status())
-        elif path == "/api/bringup/report":
-            self._send_json({"success": True, "report": runner.bringup_manager.generate_report()})
+        elif path == "/api/manual_prompt":
+            if hasattr(runner, "manual_prompt"):
+                with runner._lock:
+                    self._send_json(runner.manual_prompt.to_dict())
+            else:
+                self._send_json({"active": False})
+        elif path == "/api/metadata":
+            if hasattr(runner, "query_target_metadata"):
+                self._send_json(runner.query_target_metadata())
+            else:
+                self._send_json({"connected": False, "matches_target": False})
+        elif path == "/api/tests":
+            raw_qs = self.path.partition("?")[2]
+            qs = urllib.parse.parse_qs(raw_qs)
+            filters: Dict[str, Any] = {
+                "project": qs.get("project", [None])[0],
+                "scenario": qs.get("scenario", [None])[0] or qs.get("scenarios", [None])[0],
+                "board": qs.get("board", [None])[0],
+                "binary": qs.get("binary", [None])[0] or qs.get("target_binary", [None])[0],
+                "manual": qs.get("manual", [None])[0],
+                "query": qs.get("q", [None])[0] or qs.get("query", [None])[0],
+            }
+            probe_flag = str(qs.get("probe", ["0"])[0]).lower() in ("1", "true", "yes")
+            self._send_json(_get_test_manager(runner).scan_tests(filters, probe_board=probe_flag))
+        elif path == "/api/tests/status":
+            self._send_json(_get_test_manager(runner).get_status())
         elif (
             path.startswith("/js/")
             or path.startswith("/static/")
@@ -302,38 +332,61 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"success": True, "output": output})
         elif path == "/api/mode":
             mode = payload.get("mode", "CLI").upper()
-            if mode in ("CLI", "FS", "BRINGUP"):
+            if mode in ("CLI", "FS", "TEST"):
                 runner.set_mode(mode)
                 self._send_json({"success": True, "mode": mode})
             else:
-                self._send_json({"error": "Invalid mode. Expected: CLI, FS, BRINGUP"}, status=400)
+                self._send_json({"error": "Invalid mode. Expected: CLI, FS, TEST"}, status=400)
+        elif path == "/api/tests/scan":
+            probe_board = bool(payload.get("probe_board", True))
+            res = _get_test_manager(runner).scan_tests(payload, probe_board=probe_board)
+            self._send_json({"success": True, **res})
+        elif path == "/api/tests/run":
+            server_host = str(self.server.server_address[0] or "127.0.0.1")
+            if server_host in ("0.0.0.0", "::"):
+                server_host = "127.0.0.1"
+            server_port = int(self.server.server_address[1])
+            try:
+                status = _get_test_manager(runner).start_run(
+                    payload,
+                    daemon_host=server_host,
+                    daemon_port=server_port,
+                )
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, status=400)
+                return
+            self._send_json({"success": True, "status": status})
+        elif path == "/api/tests/cancel":
+            status = _get_test_manager(runner).cancel_run()
+            self._send_json({"success": True, "status": status})
         elif path == "/api/reset":
             res = runner.reset_target()
             self._send_json(res)
-        elif path == "/api/bringup/load":
-            script_path = payload.get("script_path") or payload.get("script") or "app/cat_detector_bringup.yaml"
+        elif path == "/api/reboot":
+            if hasattr(runner, "reboot_target"):
+                res = runner.reboot_target()
+            else:
+                res = runner.reset_target()
+            self._send_json(res)
+        elif path == "/api/manual_prompt":
+            if hasattr(runner, "update_manual_prompt"):
+                state = runner.update_manual_prompt(payload)
+            else:
+                state = {"active": bool(payload.get("active", False))}
+            self._send_json({"success": True, "manual_prompt": state})
+        elif path == "/api/manual_prompt/respond":
             try:
-                cfg = runner.bringup_manager.load_script(script_path)
-                self._send_json(
-                    {"success": True, "config": cfg.to_dict(), "status": runner.bringup_manager.get_status()}
-                )
-            except Exception as e:
-                self._send_json({"error": f"Failed to load bringup script: {e}"}, status=400)
-        elif path == "/api/bringup/step":
-            res = runner.bringup_manager.step()
-            self._send_json(res)
-        elif path == "/api/bringup/respond":
-            action = payload.get("action") or "pass"
-            notes = payload.get("notes") or ""
-            res = runner.bringup_manager.respond(action=action, notes=notes)
-            self._send_json(res)
-        elif path == "/api/bringup/reset":
-            res = runner.bringup_manager.reset()
-            self._send_json(res)
-        elif path == "/api/bringup/report":
-            output_path = payload.get("output_path") or "bringup_report.md"
-            report_text = runner.bringup_manager.generate_report(output_path)
-            self._send_json({"success": True, "output_path": str(output_path), "report": report_text})
+                if hasattr(runner, "respond_manual_prompt"):
+                    state = runner.respond_manual_prompt(payload)
+                elif hasattr(runner, "manual_prompt"):
+                    with runner._lock:
+                        state = runner.manual_prompt.submit_response(payload)
+                else:
+                    raise ValueError("Manual prompt responder is not supported on this runner")
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, status=400)
+                return
+            self._send_json({"success": True, "manual_prompt": state})
         elif path == "/api/target_bug":
             title = (payload.get("title") or "").strip()
             if not title:

@@ -50,18 +50,30 @@ impl Board {
 platform::assert_partitions! {
     storage_range: (Board::STORAGE_PARTITION_START, Board::STORAGE_PARTITION_END),
     partition_ranges: [
+        (Board::METADATA_PARTITION_START, Board::METADATA_PARTITION_END),
         (Board::FS_PARTITION_START, Board::FS_PARTITION_END),
         (Board::TELEMETRY_PARTITION_START, Board::TELEMETRY_PARTITION_END)
     ]
 }
 
-platform::define_project_metadata! {
-    chip: "{{ chip }}",
-    flash_base: {{ flash_base_hex() }},
-    flash_write_size: Board::FLASH_WRITE_SIZE,
-    flash_erase_size: Board::FLASH_ERASE_SIZE,
-    fs_start: Board::FS_PARTITION_START,
-    fs_end: Board::FS_PARTITION_END,
-    telemetry_start: Board::TELEMETRY_PARTITION_START,
-    telemetry_end: Board::TELEMETRY_PARTITION_END
+/// Emit the `.program_metadata` flash descriptor for binaries built on this board.
+#[macro_export]
+macro_rules! emit_{{ name }}_project_metadata {
+    () => {
+        platform::define_project_metadata! {
+            chip: "{{ chip }}",
+            board_type: "{{ board_type }}",
+            flash_base: {{ flash_base_hex() }},
+            flash_write_size: $crate::{{ name }}::Board::FLASH_WRITE_SIZE,
+            flash_erase_size: $crate::{{ name }}::Board::FLASH_ERASE_SIZE,
+            fs_start: $crate::{{ name }}::Board::FS_PARTITION_START,
+            fs_end: $crate::{{ name }}::Board::FS_PARTITION_END,
+            telemetry_start: $crate::{{ name }}::Board::TELEMETRY_PARTITION_START,
+            telemetry_end: $crate::{{ name }}::Board::TELEMETRY_PARTITION_END,
+            metadata_start: $crate::{{ name }}::Board::METADATA_PARTITION_START,
+            metadata_end: $crate::{{ name }}::Board::METADATA_PARTITION_END
+        }
+    };
 }
+
+pub use emit_{{ name }}_project_metadata as emit_project_metadata;

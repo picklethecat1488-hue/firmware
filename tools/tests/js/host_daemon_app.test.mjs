@@ -81,26 +81,14 @@ function mountFullDaemonDom(ctx) {
     ["span", "cliPanelTitle"],
     ["button", "btnCopyWorkstation"],
     ["div", "fsToolbar"],
-    ["div", "bringupToolbar"],
-    ["select", "bringupScriptSelect"],
-    ["button", "btnBringupStep"],
-    ["button", "btnBringupRun"],
-    ["button", "btnBringupReset"],
-    ["button", "btnBringupReport"],
-    ["span", "bringupSummaryBadge"],
+    ["div", "manualPromptBanner"],
+    ["span", "manualPromptSummary"],
     ["div", "cliView"],
     ["div", "fsView"],
-    ["div", "bringupView"],
-    ["ul", "bringupStepList"],
-    ["span", "bringupCardTitle"],
-    ["span", "bringupCardType"],
-    ["div", "bringupCardDesc"],
-    ["div", "bringupCardDetails"],
-    ["div", "bringupPromptActionArea"],
-    ["div", "bringupPromptText"],
-    ["input", "bringupPromptNotes"],
-    ["div", "bringupConsoleOutput"],
-    ["button", "btnCopyBringupLog"],
+    ["div", "testView"],
+    ["div", "testManualPromptCard"],
+    ["tbody", "testTableBody"],
+    ["div", "testConsoleOutput"],
     ["div", "cliFuzzyHistory"],
     ["input", "fuzzySearchInput"],
     ["button", "btnCloseFuzzyHistory"],
@@ -125,7 +113,7 @@ function mountFullDaemonDom(ctx) {
 describe("Host Daemon Root Workstation Application (DaemonApp)", () => {
   it("boots from #app-boot-config JSON, coordinates all child controllers, scales UI via --ui-scale, and handles global shortcuts", async () => {
     let logsPollCount = 0;
-    let bringupScriptsLoaded = 0;
+    let activePromptState = { active: false };
 
     const ctx = createMockRuntimeContext({
       inIframe: true,
@@ -161,33 +149,22 @@ describe("Host Daemon Root Workstation Application (DaemonApp)", () => {
         "GET /api/fs/output": { status: 200, body: [] },
         "GET /api/cli/history": { status: 200, body: { history: ["help", "gpio status"] } },
         "GET /api/sync/status": { status: 200, body: { active: false, step: "idle", progress: 0 } },
-        "POST /api/mode": { status: 200, body: { success: true, mode: "BRINGUP" } },
-        "GET /api/bringup/scripts": () => {
-          bringupScriptsLoaded += 1;
-          return {
-            status: 200,
-            body: [
-              {
-                name: "Cat Detector",
-                chip: "RP2040",
-                path: "app/cat_detector_bringup.yaml",
-              },
-            ],
-          };
+        "POST /api/mode": { status: 200, body: { success: true, mode: "TEST" } },
+        "GET /api/manual_prompt": () => ({ status: 200, body: activePromptState }),
+        "POST /api/tests/scan": {
+          status: 200,
+          body: { success: true, tests: [], facets: {}, detected_board: null },
         },
-        "POST /api/bringup/load": { status: 200, body: { success: true } },
-        "GET /api/bringup/status": {
+        "GET /api/tests/status": () => ({
           status: 200,
           body: {
-            status: "idle",
-            current_step_idx: 0,
-            total_steps: 1,
-            summary: { passed: 0, failed: 0, skipped: 0 },
-            steps: [],
-            current_step: null,
-            logs: [],
+            active: false,
+            step: "idle",
+            results_map: {},
+            console: [],
+            manual_prompt: activePromptState,
           },
-        },
+        }),
       },
     });
 
@@ -228,9 +205,17 @@ describe("Host Daemon Root Workstation Application (DaemonApp)", () => {
     ctx.emitViewportEvent("keydown", { key: "Escape" });
     assert.equal(app.wormReporter.isModalOpen(), false);
 
-    // Switching mode to BRINGUP automatically discovers scripts
-    await app.cliConsole.setMode("BRINGUP");
-    assert.equal(bringupScriptsLoaded, 1);
+    // Manual pytest prompt banner updates from /api/manual_prompt
+    activePromptState = {
+      active: true,
+      project: "cat_detector",
+      test_name: "test_motor_calibration_routine",
+      procedure: "Fill reservoir above minimum waterline.",
+      prompt: "Confirm smooth pump flow.",
+    };
+    await app.pollManualPrompt();
+    assert.equal(dom.manualPromptBanner.style.display, "flex");
+    assert.ok(dom.manualPromptSummary.textContent.includes("test_motor_calibration_routine"));
 
     // Clear button clears both RTT and CLI views
     assert.equal(dom.logView.children.length, 1);
@@ -238,6 +223,12 @@ describe("Host Daemon Root Workstation Application (DaemonApp)", () => {
     dom.btnClearOutput.click();
     assert.equal(dom.logView.children.length, 0);
     assert.equal(dom.cliView.children.length, 0);
+
+    // Clicking #manualPromptBanner transitions workstation directly into TEST mode
+    dom.manualPromptBanner.click();
+    await Promise.resolve();
+    assert.equal(app.cliConsole.getMode(), "TEST");
+    assert.equal(dom.testView.style.display, "flex");
 
     // Periodic 1000ms background poll fires while active and stops after destroy()
     const beforeTick = logsPollCount;

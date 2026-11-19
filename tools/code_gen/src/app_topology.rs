@@ -132,10 +132,12 @@ pub fn generate_app_topology(app_toml_content: &str, app_name: &str) -> String {
         std::fs::read_to_string(&board_toml_path).expect("Failed to read board.toml");
     let boards_config: crate::board::BoardsConfig = toml::from_str(&board_toml_content)
         .expect("Failed to parse board.toml inside app topology generation");
-    let board_config = boards_config
-        .boards
-        .get("cat_detector")
-        .expect("Failed to find board config for 'cat_detector' in board.toml");
+    let board_config = boards_config.boards.get(app_name).unwrap_or_else(|| {
+        panic!(
+            "Failed to find board config for '{}' in board.toml",
+            app_name
+        )
+    });
 
     let mut resolved_partitions = Vec::new();
     for p in &app_topology.partitions {

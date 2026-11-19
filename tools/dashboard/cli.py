@@ -43,7 +43,7 @@ if str(_dashboard_dir) not in sys.path:
 if str(_tools_dir) not in sys.path:
     sys.path.insert(0, str(_tools_dir))
 
-from model.code_review import CommentModel, ReviewSeverity, ReviewStatus
+from model.code_review import CommentModel, CommentStatus, ReviewSeverity, ReviewStatus
 from model.worm_report import (
     WormCategory,
     WormReportModel,
@@ -81,6 +81,10 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         "migrate-resolved-bugs",
         "add-comment",
         "resolve-comment",
+        "close-comment",
+        "accept-comment",
+        "reopen-comment",
+        "reject-comment",
         "set-verdict",
         "stop",
         "restart",
@@ -306,7 +310,26 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--resolve-comment",
         type=str,
-        help="Mark a review comment ID as resolved (e.g. --resolve-comment abc123).",
+        help="Mark a review comment ID as RESOLVED (e.g. --resolve-comment abc123).",
+    )
+    parser.add_argument(
+        "--close-comment",
+        "--accept-comment",
+        dest="close_comment",
+        type=str,
+        help="Accept and close a review comment ID as CLOSED (e.g. --close-comment abc123).",
+    )
+    parser.add_argument(
+        "--reopen-comment",
+        "--reject-comment",
+        dest="reopen_comment",
+        type=str,
+        help="Reopen a resolved or closed review comment ID to OPEN (e.g. --reopen-comment abc123).",
+    )
+    parser.add_argument(
+        "--closed",
+        action="store_true",
+        help="When listing reviews, include CLOSED comments.",
     )
     parser.add_argument(
         "--all-users",
@@ -332,7 +355,8 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
 
     # list-reviews
     p_reviews = subparsers.add_parser("list-reviews", help="List active code review comments and exit.")
-    p_reviews.add_argument("--open", action="store_true", help="Only show unresolved review findings.")
+    p_reviews.add_argument("--open", action="store_true", help="Only show unresolved (OPEN) review findings.")
+    p_reviews.add_argument("--closed", action="store_true", help="Include CLOSED review findings.")
     p_reviews.add_argument(
         "--all-users", "--all", dest="all_users", action="store_true", help="Show reviews from all users."
     )
@@ -471,9 +495,30 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     p_add_c.add_argument("--commit", default="working")
 
     # resolve-comment
-    p_res_c = subparsers.add_parser("resolve-comment", help="Mark a review comment ID as resolved.")
+    p_res_c = subparsers.add_parser("resolve-comment", help="Mark a review comment ID as RESOLVED.")
     p_res_c.add_argument("id", nargs="?", default="", help="Comment ID.")
     p_res_c.add_argument("--id", dest="comment_id", default="")
+    p_res_c.add_argument("--notes", default="", help="Optional resolution notes.")
+
+    # close-comment
+    p_cls_c = subparsers.add_parser(
+        "close-comment",
+        aliases=["accept-comment"],
+        help="Accept and transition a review comment ID to CLOSED.",
+    )
+    p_cls_c.add_argument("id", nargs="?", default="", help="Comment ID.")
+    p_cls_c.add_argument("--id", dest="comment_id", default="")
+    p_cls_c.add_argument("--notes", default="", help="Optional acceptance notes.")
+
+    # reopen-comment
+    p_reopen_c = subparsers.add_parser(
+        "reopen-comment",
+        aliases=["reject-comment"],
+        help="Reopen a resolved or closed review comment ID to OPEN.",
+    )
+    p_reopen_c.add_argument("id", nargs="?", default="", help="Comment ID.")
+    p_reopen_c.add_argument("--id", dest="comment_id", default="")
+    p_reopen_c.add_argument("--notes", default="", help="Optional reopen feedback notes.")
 
     # set-verdict
     p_verd = subparsers.add_parser("set-verdict", help="Set overall review verdict from CLI.")
@@ -795,11 +840,12 @@ def print_cli_worms(
 def print_cli_reviews(
     server: DashboardServer,
     open_only: bool = False,
+    include_closed: bool = False,
     all_users: bool = False,
     filter_user: str = "",
     engine: Optional[GitEngine] = None,
 ) -> None:
-    """Print code review comments to terminal console with optional per-user filtering."""
+    """Print code review comments to terminal console with optional per-user and status filtering."""
     session = server.review_server.session
     print("\n" + "=" * 70)
     print("  SYSTEM SHOCK 2 // XERXES CODE REVIEW AUDIT")
@@ -810,7 +856,10 @@ def print_cli_reviews(
     curr_user = engine.get_current_user() if engine else {"name": "", "email": ""}
     comments = []
     for c in session.comments:
-        if open_only and c.resolved:
+        c_status = getattr(c, "status", CommentStatus.RESOLVED if c.resolved else CommentStatus.OPEN)
+        if open_only and (c.resolved or c_status != CommentStatus.OPEN):
+            continue
+        if not open_only and not include_closed and c_status == CommentStatus.CLOSED:
             continue
         # Per-user filtering (BUG-239)
         if not all_users and engine:
@@ -841,9 +890,13 @@ def print_cli_reviews(
         print("  No comments registered.\n")
     else:
         for c in comments:
-            chk = "[X]" if c.resolved else "[ ]"
+            c_status = getattr(c, "status", CommentStatus.RESOLVED if c.resolved else CommentStatus.OPEN)
+            status_val = c_status.value if hasattr(c_status, "value") else str(c_status)
+            chk = "[X]" if status_val == "CLOSED" else ("[?]" if c.resolved else "[ ]")
             summary_line = c.body.splitlines()[0] if c.body else ""
-            print(f"  {chk} [{c.id}] [{c.severity.value}] {c.file_path}:{c.start_line} -> {summary_line}")
+            print(
+                f"  {chk} [{c.id}] [{status_val}] [{c.severity.value}] {c.file_path}:{c.start_line} -> {summary_line}"
+            )
         print(f"\nShowing {len(comments)} comments ({unresolved_count} unresolved, {total_count} total).\n")
 
 
@@ -915,16 +968,30 @@ def main(cli_args: Optional[List[str]] = None) -> None:
         or getattr(args, "reviews", False)
         or getattr(args, "add_comment", None)
         or getattr(args, "resolve_comment", None)
+        or getattr(args, "close_comment", None)
+        or getattr(args, "reopen_comment", None)
         or getattr(args, "verdict", None)
         or (getattr(args, "list", False) and getattr(args, "db_file", None))
     )
 
     commits_arg = getattr(args, "commits", None)
     is_review_cmd = bool(
-        subcmd in ("list-reviews", "add-comment", "resolve-comment", "set-verdict")
+        subcmd
+        in (
+            "list-reviews",
+            "add-comment",
+            "resolve-comment",
+            "close-comment",
+            "accept-comment",
+            "reopen-comment",
+            "reject-comment",
+            "set-verdict",
+        )
         or getattr(args, "reviews", False)
         or getattr(args, "add_comment", None)
         or getattr(args, "resolve_comment", None)
+        or getattr(args, "close_comment", None)
+        or getattr(args, "reopen_comment", None)
         or getattr(args, "verdict", None)
         or commits_arg
     )
@@ -1028,6 +1095,7 @@ def main(cli_args: Optional[List[str]] = None) -> None:
             print_cli_reviews(
                 server,
                 open_only=getattr(args, "open", False),
+                include_closed=getattr(args, "closed", False),
                 all_users=all_users,
                 filter_user=filter_user,
                 engine=engine,
@@ -1315,17 +1383,36 @@ def main(cli_args: Optional[List[str]] = None) -> None:
             if not comment_id:
                 print("Error: Comment ID is required.", file=sys.stderr)
                 sys.exit(1)
-            target_c = None
-            for c in server.review_server.session.comments:
-                if c.id == comment_id:
-                    c.resolved = True
-                    target_c = c
-                    break
+            notes = getattr(args, "notes", "") or None
+            target_c = server.review_server.update_comment_status(comment_id, CommentStatus.RESOLVED, notes=notes)
             if not target_c:
                 print(f"Comment '{comment_id}' not found.", file=sys.stderr)
                 sys.exit(1)
-            server.review_server.save_and_sync()
             print(f"Resolved comment [{target_c.id}] on {target_c.file_path}:{target_c.start_line}")
+            return
+        case "close-comment" | "accept-comment":
+            comment_id = getattr(args, "comment_id", "") or getattr(args, "id", "")
+            if not comment_id:
+                print("Error: Comment ID is required.", file=sys.stderr)
+                sys.exit(1)
+            notes = getattr(args, "notes", "") or None
+            target_c = server.review_server.update_comment_status(comment_id, CommentStatus.CLOSED, notes=notes)
+            if not target_c:
+                print(f"Comment '{comment_id}' not found.", file=sys.stderr)
+                sys.exit(1)
+            print(f"Closed comment [{target_c.id}] on {target_c.file_path}:{target_c.start_line}")
+            return
+        case "reopen-comment" | "reject-comment":
+            comment_id = getattr(args, "comment_id", "") or getattr(args, "id", "")
+            if not comment_id:
+                print("Error: Comment ID is required.", file=sys.stderr)
+                sys.exit(1)
+            notes = getattr(args, "notes", "") or None
+            target_c = server.review_server.update_comment_status(comment_id, CommentStatus.OPEN, notes=notes)
+            if not target_c:
+                print(f"Comment '{comment_id}' not found.", file=sys.stderr)
+                sys.exit(1)
+            print(f"Reopened comment [{target_c.id}] on {target_c.file_path}:{target_c.start_line}")
             return
         case "set-verdict":
             server.review_server.session.verdict = ReviewStatus(args.verdict)
@@ -1345,6 +1432,7 @@ def main(cli_args: Optional[List[str]] = None) -> None:
             print_cli_reviews(
                 server,
                 open_only=getattr(args, "open", False),
+                include_closed=getattr(args, "closed", False),
                 all_users=all_users,
                 filter_user=filter_user,
                 engine=engine,
@@ -1362,6 +1450,7 @@ def main(cli_args: Optional[List[str]] = None) -> None:
         print_cli_reviews(
             server,
             open_only=getattr(args, "open", False),
+            include_closed=getattr(args, "closed", False),
             all_users=all_users,
             filter_user=filter_user,
             engine=engine,
@@ -1472,17 +1561,30 @@ def main(cli_args: Optional[List[str]] = None) -> None:
         return
 
     if getattr(args, "resolve_comment", None):
-        target_c = None
-        for c in server.review_server.session.comments:
-            if c.id == args.resolve_comment:
-                c.resolved = True
-                target_c = c
-                break
+        notes = getattr(args, "notes", "") or None
+        target_c = server.review_server.update_comment_status(args.resolve_comment, CommentStatus.RESOLVED, notes=notes)
         if not target_c:
             print(f"Comment '{args.resolve_comment}' not found.", file=sys.stderr)
             sys.exit(1)
-        server.review_server.save_and_sync()
         print(f"Resolved comment [{target_c.id}] on {target_c.file_path}:{target_c.start_line}")
+        return
+
+    if getattr(args, "close_comment", None):
+        notes = getattr(args, "notes", "") or None
+        target_c = server.review_server.update_comment_status(args.close_comment, CommentStatus.CLOSED, notes=notes)
+        if not target_c:
+            print(f"Comment '{args.close_comment}' not found.", file=sys.stderr)
+            sys.exit(1)
+        print(f"Closed comment [{target_c.id}] on {target_c.file_path}:{target_c.start_line}")
+        return
+
+    if getattr(args, "reopen_comment", None):
+        notes = getattr(args, "notes", "") or None
+        target_c = server.review_server.update_comment_status(args.reopen_comment, CommentStatus.OPEN, notes=notes)
+        if not target_c:
+            print(f"Comment '{args.reopen_comment}' not found.", file=sys.stderr)
+            sys.exit(1)
+        print(f"Reopened comment [{target_c.id}] on {target_c.file_path}:{target_c.start_line}")
         return
 
     if getattr(args, "verdict", None):
@@ -1497,6 +1599,7 @@ def main(cli_args: Optional[List[str]] = None) -> None:
         print_cli_reviews(
             server,
             open_only=getattr(args, "open", False),
+            include_closed=getattr(args, "closed", False),
             all_users=all_users,
             filter_user=filter_user,
             engine=engine,
