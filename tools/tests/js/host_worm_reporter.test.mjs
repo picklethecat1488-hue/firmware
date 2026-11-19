@@ -40,6 +40,13 @@ function buildWormDom(ctx) {
   attachTelemetry.checked = false;
   const attachMetadata = createEl(ctx, "input", { id: "attachMetadata" });
   attachMetadata.checked = true;
+  const attachTestExecutionLogs = createEl(ctx, "input", { id: "attachTestExecutionLogs" });
+  attachTestExecutionLogs.checked = false;
+  const attachTestExecLogsRow = createEl(ctx, "label", {
+    id: "attachTestExecLogsRow",
+    style: { display: "none" },
+    children: [attachTestExecutionLogs],
+  });
 
   const pasteBtn = createEl(ctx, "button", { id: "btnPasteTargetBugClipboard" });
   const dropzone = createEl(ctx, "div", { id: "targetBugDropzone", className: "dropzone" });
@@ -75,6 +82,7 @@ function buildWormDom(ctx) {
       attachCrashLog,
       attachTelemetry,
       attachMetadata,
+      attachTestExecLogsRow,
       pasteBtn,
       dropzone,
       fileInput,
@@ -99,6 +107,8 @@ function buildWormDom(ctx) {
     dropzone,
     attachmentsGrid,
     statusMsg,
+    attachTestExecLogsRow,
+    attachTestExecutionLogs,
   };
 }
 
@@ -149,12 +159,13 @@ describe("Host Daemon WORM-* Defect Reporter & Attachment Bundler", () => {
 
     const dom = buildWormDom(ctx);
     const createdWorms = [];
+    let activeMode = "CLI";
     const reporter = createWormReporter(ctx, {
       getTargetConfig: () => ({
         package: "cat_detector",
         binName: "cat_detector_shell",
         release: false,
-        mode: "CLI",
+        mode: activeMode,
       }),
       getCommandHistory: () => ["local_cmd"],
       onWormCreated: (res) => createdWorms.push(res.worm_id),
@@ -227,6 +238,8 @@ describe("Host Daemon WORM-* Defect Reporter & Attachment Bundler", () => {
     assert.equal(sent.attach_crash_log, true);
     assert.equal(sent.attach_telemetry, false);
     assert.equal(sent.attach_metadata, true);
+    assert.equal(sent.attach_test_execution_logs, false);
+    assert.equal(dom.attachTestExecLogsRow.style.display, "none");
     assert.equal(sent.manual_attachments.length, 2);
 
     // Modal auto-closes and clears attachments after 1500ms
@@ -234,10 +247,14 @@ describe("Host Daemon WORM-* Defect Reporter & Attachment Bundler", () => {
     assert.equal(reporter.isModalOpen(), false);
     assert.equal(reporter.getAttachments().length, 0);
 
-    // Re-opening pulls updated backend CLI history unconditionally
+    // Re-opening in TEST mode enables #attachTestExecLogsRow and includes attach_test_execution_logs=true
+    activeMode = "TEST";
     backendHistory = ["gpio read 14", "motor speed 100", "motor brake"];
     await reporter.openModal();
-    assert.ok(dom.stepsInput.value.includes("python tools/host.py cli motor brake"));
+    assert.equal(dom.attachTestExecLogsRow.style.display, "flex");
+    assert.equal(dom.attachTestExecutionLogs.checked, true);
+    assert.equal(reporter.buildPayload().attach_test_execution_logs, true);
+    assert.equal(reporter.buildPayload().mode, "TEST");
 
     reporter.destroy();
   });
