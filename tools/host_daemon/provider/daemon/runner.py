@@ -1012,21 +1012,19 @@ class DaemonRunner:
                                 or "Draining buffered defmt logs" in stripped
                             ):
                                 self.log(stripped, channel="target")
-                            elif stripped in ("shell>", "shell> "):
+                            elif stripped.replace(ANSI_CLEAR_LINE_SEQ, "").strip() == "":
                                 pass
-                            elif stripped.replace(ANSI_CLEAR_LINE_SEQ, "").strip() in ("", "shell>"):
-                                if ANSI_CLEAR_LINE_SEQ in stripped:
-                                    with self._lock:
-                                        self._cli_clear_seq += 1
+                            elif stripped in ("shell>", "shell> ") or (
+                                stripped.replace(ANSI_CLEAR_LINE_SEQ, "").strip() == "shell>"
+                            ):
+                                with self._lock:
+                                    self._cli_clear_seq += 1
                             else:
-                                if ANSI_CLEAR_LINE_SEQ in stripped:
+                                unescaped = stripped.replace(ANSI_CLEAR_LINE_SEQ, "")
+                                if unescaped.lstrip().startswith(SHELL_PROMPT_PREFIX):
                                     with self._lock:
                                         self._cli_clear_seq += 1
-                                cleaned_line = (
-                                    stripped.replace(ANSI_CLEAR_LINE_SEQ, "")
-                                    .removeprefix("shell> ")
-                                    .removeprefix(SHELL_PROMPT_PREFIX)
-                                )
+                                cleaned_line = unescaped.removeprefix("shell> ").removeprefix(SHELL_PROMPT_PREFIX)
                                 if cleaned_line:
                                     self.log_cli(cleaned_line)
             except Exception as e:
@@ -1095,7 +1093,9 @@ class DaemonRunner:
                 if (now - anchor) >= CLI_COMPLETION_SETTLE_SEC:
                     break
             elif last_output_time is not None:
-                quiet_settle = min(CLI_QUIET_SETTLE_MAX_SEC, max(CLI_QUIET_SETTLE_SEC, timeout * CLI_QUIET_TIMEOUT_RATIO))
+                quiet_settle = min(
+                    CLI_QUIET_SETTLE_MAX_SEC, max(CLI_QUIET_SETTLE_SEC, timeout * CLI_QUIET_TIMEOUT_RATIO)
+                )
                 if (now - last_output_time) >= quiet_settle:
                     break
 

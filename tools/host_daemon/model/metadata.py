@@ -6,12 +6,27 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 from typing import Any, Dict, List, Optional
 
 ATTACHED_INVALID_META_RE = re.compile(r"AttachedTargetMetadataInvalid\s*\(([^)]+)\)")
 BUILD_PROFILES: tuple[str, ...] = ("debug", "release")
 DEFAULT_QUERY_METADATA_TIMEOUT_SEC: float = 30.0
+MAX_METADATA_PROBE_RETRIES: int = 2
+METADATA_PROBE_RETRY_BACKOFF_SEC: float = 0.6
 _CARGO_TARGET_DIR_CACHE: Dict[Path, Path] = {}
+
+
+def _is_transient_metadata_probe_error(output: str) -> bool:
+    """Return True if `host_fs query_metadata` failed due to a transient USB/SWD probe lock or timeout."""
+    lowered = output.lower()
+    return (
+        "bulk write timed out" in lowered
+        or "bulk read timed out" in lowered
+        or "failed to open probe" in lowered
+        or "usb(custom" in lowered
+        or "communication timed out" in lowered
+    )
 
 
 def get_cargo_target_directory(repo_root: Path) -> Path:
@@ -65,6 +80,23 @@ def discover_compiled_elfs(repo_root: Path, preferred_elf: Optional[Path] = None
 
     target_dir = get_cargo_target_directory(repo_root)
     app_binaries = discover_app_binaries(repo_root)
+    if preferred_elf is None:
+        from host_daemon.provider.daemon.config import load_last_session
+
+        last_sess = load_last_session(repo_root)
+        if isinstance(last_sess, dict):
+            sess_bin = str(last_sess.get("bin") or "").strip()
+            sess_spec = app_binaries.get(sess_bin) if sess_bin else None
+            if sess_spec is not None and sess_spec.arm_target and sess_spec.bin_name:
+                sess_profile = "release" if bool(last_sess.get("release", False)) else "debug"
+                for prof in (sess_profile, *[p for p in BUILD_PROFILES if p != sess_profile]):
+                    sess_elf = target_dir / sess_spec.arm_target / prof / sess_spec.bin_name
+                    if sess_elf.is_file():
+                        resolved_sess = sess_elf.resolve()
+                        if resolved_sess not in seen_resolved:
+                            seen_resolved.add(resolved_sess)
+                            candidates.append(sess_elf)
+
     for spec in app_binaries.values():
         assert spec.arm_target is not None and spec.bin_name is not None
         for profile in BUILD_PROFILES:
@@ -187,21 +219,35 @@ def run_host_fs_query_metadata(
     env.pop("CARGO_BUILD_TARGET", None)
     env.pop("CARGO_ENCODED_RUSTFLAGS", None)
 
-    try:
-        proc = subprocess.run(
-            cmd,
-            cwd=str(repo_root),
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        return 1, str(exc)
+    max_attempts = 1 if elf_only else (MAX_METADATA_PROBE_RETRIES + 1)
+    rc_last = 1
+    combined_last = ""
+    for attempt in range(max_attempts):
+        try:
+            proc = subprocess.run(
+                cmd,
+                cwd=str(repo_root),
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            return 1, str(exc)
 
-    combined = f"{proc.stdout}\n{proc.stderr}".strip()
-    return proc.returncode, combined
+        combined_last = f"{proc.stdout}\n{proc.stderr}".strip()
+        rc_last = proc.returncode
+        if (
+            rc_last == 0
+            or elf_only
+            or not _is_transient_metadata_probe_error(combined_last)
+            or attempt >= max_attempts - 1
+        ):
+            break
+        time.sleep(METADATA_PROBE_RETRY_BACKOFF_SEC)
+
+    return rc_last, combined_last
 
 
 def probe_attached_target_metadata(
