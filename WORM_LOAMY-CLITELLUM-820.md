@@ -104,6 +104,7 @@ FAILED tools/device_tests/suites/test_cat_detector_integration.py::test_system_a
 
 - [ ] Run test_tof_proximity_array_and_i2c_bus on target via host.py test -k tof_proximity and verify both i2c scan and sensor status succeed cleanly | `python tools/host.py test -k tof_proximity` <!-- id:5adc0393 -->
 - [ ] Open host.py in TEST mode, run a smoke test, and inspect the TEST EXECUTION LOG tab to verify CLI commands and target responses appear with [device_ts] timestamps | `python tools/host.py --mode test` <!-- id:bba23cf2 -->
+- [ ] Run 10-iteration hardware stress suite via host.py test --stress-runs=10 and verify test_system_activity_async_log_watcher and all smoke/integration tests pass cleanly | `python tools/host.py test --stress-runs=10` <!-- id:ea263ca8 -->
 
 #### Resolution Notes
 
