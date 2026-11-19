@@ -1,12 +1,13 @@
-# 🔴 `[WORM-INCHING-MILLIPEDE-969]` White artifact to the right of the test stack
+# 🟢 `[WORM-INCHING-MILLIPEDE-969]` White artifact to the right of the test stack
 
 - **UUID**: `74318aac-d97f-48e5-bdd9-9a09197ce735`
 - **ID**: `WORM-INCHING-MILLIPEDE-969`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-19 18:29:11 UTC`
+- **Resolved**: `2026-11-19 18:51:43 UTC`
 
 #### Reproduction Steps
 
@@ -89,3 +90,7 @@ collecting ... collected 1 item
 #### Review Tasks & Functional Checklist
 
 - [ ] Open host.py in TEST mode and verify the right edge of the stacked Test Suite list renders with dark Xerxes scrollbars and zero white scrollbar-gutter bar | `python tools/host.py --mode test` <!-- id:6c74f2e5 -->
+
+#### Resolution Notes
+
+Removed scrollbar-gutter: stable and overflow-y: scroll from .test-stack-list (using overflow-y: auto), added color-scheme: dark on :root across common.css and host_daemon.html.j2, and styled scrollbars with dark Xerxes #04090c/#0c3c47 track and thumb rules.
