@@ -74,6 +74,10 @@ We should move the test list and filter menu to the left panel so that the manua
 [] [daemon] [INFO] Target bug created: WORM-FOSSORIAL-NIGHTCRAWLER-861 (Overlapping text in the test mode) with 2 attachments
 ```
 
+#### Attached Commits
+
+- `f20d3ec51ff63aef22169c685a13bdc0c4b849bb`
+
 #### Review Tasks & Functional Checklist
 
 - [ ] Switch host.py ACTIVE MODE to TEST and verify the left panel opens on the TEST SUITE tab with tab switching to SYSTEM LOGS and spacious right-panel manual prompt layout | `python tools/host.py --no-detach` <!-- id:a5c70ced -->
