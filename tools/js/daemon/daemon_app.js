@@ -68,6 +68,7 @@ export class DaemonApp {
 
     this.targetConfig = createTargetConfig(ctx, {
       bootConfig: this.bootConfig,
+      shouldSuppressAutoSyncModal: () => this.cliConsole.getMode() === WORKSTATION_MODES.TEST,
       onWorkstationDisabledChange: (disabled, msg) =>
         this.cliConsole.setWorkstationDisabled(disabled, msg),
       onShowSystemLogsChange: (show) => {

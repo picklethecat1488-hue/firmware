@@ -26,7 +26,9 @@ MAX_PROBE_OPEN_RETRIES: int = 2
 DEFAULT_CLI_OUTPUT_TIMEOUT_SEC: float = 2.5
 CLI_POLL_INTERVAL_SEC: float = 0.02
 CLI_QUIET_SETTLE_SEC: float = 0.30
-CLI_COMPLETION_SETTLE_SEC: float = 0.30
+CLI_QUIET_SETTLE_MAX_SEC: float = 2.0
+CLI_QUIET_TIMEOUT_RATIO: float = 0.45
+CLI_COMPLETION_SETTLE_SEC: float = 0.25
 ANSI_CLEAR_LINE_SEQ: str = "\x1b[2K"
 SHELL_PROMPT_PREFIX: str = "shell>"
 RTT_SESSION_BANNER_PREFIXES: Tuple[str, ...] = (
@@ -129,6 +131,13 @@ class DaemonRunner:
         self.is_sync_cancelled: bool = False
         self._active_sync_process: Optional[subprocess.Popen] = None
 
+        self.reboot_count: int = 0
+        self.mode_switch_count: int = 0
+        self.last_command: str = ""
+        self._lifecycle_phase: str = "idle"
+        self._lifecycle_detail: str = "Ready"
+        self._lifecycle_updated_at: float = 0.0
+
         self.flashed_commit: Optional[str] = None
         self.sync_status: Dict[str, Any] = {
             "active": False,
@@ -173,6 +182,34 @@ class DaemonRunner:
         self.log("Target synchronization cancelled by user", level="WARN")
         return {"success": True, "step": "cancelled"}
 
+    def _record_lifecycle(self, phase: str, detail: str, *, mark_recent: bool = True) -> None:
+        """Record a thread-safe target lifecycle event (`flashing`, `mode_switch`, `rebooting`, `idle`)."""
+        with self._lock:
+            self._lifecycle_phase = phase
+            self._lifecycle_detail = detail
+            self._lifecycle_updated_at = time.monotonic() if mark_recent else 0.0
+
+    def get_target_activity(self) -> Dict[str, Any]:
+        """Return a thread-safe snapshot of target flash, mode-switch, reboot, and command telemetry."""
+        with self._lock:
+            return {
+                "phase": self._lifecycle_phase,
+                "detail": self._lifecycle_detail,
+                "updated_at": self._lifecycle_updated_at,
+                "mode": self.active_mode,
+                "mode_switch_count": self.mode_switch_count,
+                "reboot_count": self.reboot_count,
+                "last_command": self.last_command,
+                "sync_active": bool(self.sync_status.get("active", False)),
+                "sync_step": str(self.sync_status.get("step", "idle")),
+                "sync_progress": int(self.sync_status.get("progress", 0)),
+                "sync_message": str(self.sync_status.get("message", "")),
+                "target_bin": self.bin_name,
+                "target_package": self.package,
+                "connected": self.is_connected,
+                "flashed": self.is_flashed,
+            }
+
     def _update_sync(
         self,
         step: str,
@@ -202,6 +239,14 @@ class DaemonRunner:
                     "console": list(self.sync_logs),
                 }
             )
+            if active:
+                self._lifecycle_phase = "flashing"
+                self._lifecycle_detail = message
+                self._lifecycle_updated_at = time.monotonic()
+            else:
+                self._lifecycle_phase = "idle"
+                self._lifecycle_detail = message
+                self._lifecycle_updated_at = 0.0
         self.log(f"[Sync] {message}")
 
     def resolve_current_elf_path(self) -> Optional[Path]:
@@ -399,7 +444,11 @@ class DaemonRunner:
         mode = mode.upper()
         if mode == self.active_mode:
             return
-        self.active_mode = mode
+        prev_mode = self.active_mode
+        with self._lock:
+            self.active_mode = mode
+            self.mode_switch_count += 1
+        self._record_lifecycle("mode_switch", f"Switched target mode from {prev_mode} to {mode}")
         if mode == "FS":
             self.log("Switching to Filesystem mode (stopping RTT streaming to release probe)...", channel="system")
             self.stop_rtt_streaming()
@@ -702,6 +751,7 @@ class DaemonRunner:
 
     def reset_target(self) -> Dict[str, Any]:
         """Reset the target microcontroller via debug probe and reconnect RTT streaming."""
+        self._record_lifecycle("rebooting", "Rebooting target MCU over SWD & reconnecting RTT...")
         self.log("Resetting target microcontroller...", channel="system")
         self.stop_rtt_streaming()
         time.sleep(PROBE_RELEASE_SETTLE_SEC)
@@ -737,6 +787,10 @@ class DaemonRunner:
 
         time.sleep(PROBE_RELEASE_SETTLE_SEC)
         self.start_rtt_streaming()
+        with self._lock:
+            self.reboot_count += 1
+        msg = "Target reboot completed & RTT reconnected" if reset_success else "Target reboot attempted & RTT reconnected"
+        self._record_lifecycle("rebooting", msg)
         return {
             "success": True,
             "probe_reset": reset_success,
@@ -943,8 +997,10 @@ class DaemonRunner:
                 anchor = max(done_seen_time, last_output_time or done_seen_time)
                 if (now - anchor) >= CLI_COMPLETION_SETTLE_SEC:
                     break
-            elif last_output_time is not None and (now - last_output_time) >= CLI_QUIET_SETTLE_SEC:
-                break
+            elif last_output_time is not None:
+                quiet_settle = min(CLI_QUIET_SETTLE_MAX_SEC, max(CLI_QUIET_SETTLE_SEC, timeout * CLI_QUIET_TIMEOUT_RATIO))
+                if (now - last_output_time) >= quiet_settle:
+                    break
 
             if self.rtt_process is None or self.rtt_process.poll() is not None:
                 break
@@ -981,6 +1037,7 @@ class DaemonRunner:
         if clean_cmd:
             with self._lock:
                 self.command_history.append(clean_cmd)
+                self.last_command = f"shell> {clean_cmd}"
         self.log_cli(f"shell> {command}", is_input=True)
         with self._lock:
             start_cli_seq = self._cli_seq
@@ -1020,6 +1077,7 @@ class DaemonRunner:
             full_fs_cmd = f"fs {clean_subcmd}" + (f" {' '.join(args)}" if args else "")
             with self._lock:
                 self.command_history.append(full_fs_cmd)
+                self.last_command = f"fs> {clean_subcmd}" + (f" {' '.join(args)}" if args else "")
         with self._lock:
             sync_active = bool(self._sync_thread and self._sync_thread.is_alive())
         if sync_active:
@@ -1038,6 +1096,7 @@ class DaemonRunner:
                 extra_args = args
 
             self.log_fs(f"fs> {subcmd} {' '.join(extra_args)}", is_input=True)
+            self._record_lifecycle("mode_switch", f"Probe switched to host_fs ({subcmd})")
 
             # Ensure probe is available by pausing RTT streaming if currently running or starting
             rtt_was_running = (self.rtt_process is not None and self.rtt_process.poll() is None) or (
@@ -1070,6 +1129,7 @@ class DaemonRunner:
             finally:
                 if rtt_was_running and self.active_mode in ("CLI", "TEST"):
                     self.start_rtt_streaming()
+                self._record_lifecycle("idle", f"Completed host_fs ({subcmd})", mark_recent=False)
 
     def get_status(self) -> Dict[str, Any]:
         """Return daemon status dictionary."""

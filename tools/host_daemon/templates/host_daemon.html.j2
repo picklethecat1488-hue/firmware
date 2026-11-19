@@ -688,6 +688,68 @@
       border-color: var(--xerxes-cyan);
       box-shadow: 0 0 10px rgba(0, 240, 255, 0.15);
     }
+    .test-progress-card {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 14px 16px;
+      border-color: var(--xerxes-border-mid);
+    }
+    .test-telemetry-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .test-telemetry-tile {
+      background: rgba(0, 240, 255, 0.03);
+      border: 1px solid var(--xerxes-border-dark);
+      border-radius: 2px;
+      padding: 7px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+    .test-telemetry-label {
+      font-size: 7.5px;
+      color: var(--xerxes-text-dim);
+      font-weight: bold;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+    }
+    .test-telemetry-value {
+      font-size: 9px;
+      color: var(--xerxes-text-light);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .test-run-feed {
+      flex: 1;
+      min-height: 80px;
+      overflow-y: auto;
+      background: rgba(2, 12, 18, 0.65);
+      border: 1px solid var(--xerxes-border-dark);
+      border-radius: 2px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 8.5px;
+    }
+    .test-run-feed-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 4px 6px;
+      border-bottom: 1px solid rgba(11, 89, 102, 0.25);
+    }
+    .test-run-feed-row:last-child {
+      border-bottom: none;
+    }
     .bringup-table {
       width: 100%;
       border-collapse: collapse;
@@ -1126,8 +1188,57 @@
         <div class="log-line log-line-info">&gt; Filesystem (host_fs) workstation ready. Type FS commands below (e.g. 'ls', 'cat metadata', 'format').</div>
       </div>
 
-      <!-- On-Device Test Runner Right-Panel Stage (Manual Prompt & Console) -->
+      <!-- On-Device Test Runner Right-Panel Stage (Progress/Status & Manual Prompt) -->
       <div id="testView" class="test-mode-container" style="display: {% if runner.active_mode == 'TEST' %}flex{% else %}none{% endif %};">
+        <!-- Interactive Test Progress & Target Lifecycle Status Card (shown when manual prompt is inactive) -->
+        <div id="testProgressCard" class="bringup-card test-progress-card" style="display: flex;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div style="display: inline-flex; align-items: center; gap: 8px;">
+              <span class="sync-status-dot" id="testProgressDot"></span>
+              <strong style="font-size: 10px; color: var(--xerxes-cyan); letter-spacing: 0.6px;">⚡ TEST EXECUTION &amp; TARGET STATUS</strong>
+            </div>
+            <div style="display: inline-flex; align-items: center; gap: 8px;">
+              <span id="testPhaseBadge" class="badge">READY</span>
+              <strong id="testProgressPct" style="font-size: 10.5px; color: var(--xerxes-cyan);">0%</strong>
+            </div>
+          </div>
+
+          <div class="sync-progress-container" style="margin: 0; height: 8px;">
+            <div class="sync-progress-bar" id="testProgressBar" style="width: 0%;"></div>
+          </div>
+
+          <div style="background: rgba(0, 240, 255, 0.04); border: 1px solid var(--xerxes-border-dark); border-radius: 2px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px;">
+            <div id="testActivityHeadline" style="font-size: 9.5px; font-weight: bold; color: var(--xerxes-cyan);">Ready to execute on-device @device_test suites</div>
+            <div id="testActivityDetail" style="font-size: 8.5px; color: var(--xerxes-text-muted);">Select tests in the left-panel TEST SUITE tab and click ▶ Run Selected or ▶ Run Filtered.</div>
+          </div>
+
+          <div class="test-telemetry-grid">
+            <div class="test-telemetry-tile">
+              <span class="test-telemetry-label">Target Binary &amp; Mode</span>
+              <span class="test-telemetry-value" id="testTelemetryMode">{{ runner.bin_name }} • MODE: {{ runner.active_mode }}</span>
+            </div>
+            <div class="test-telemetry-tile">
+              <span class="test-telemetry-label">Flash &amp; Probe State</span>
+              <span class="test-telemetry-value" id="testTelemetryFlash">Idle • Probe Standby</span>
+            </div>
+            <div class="test-telemetry-tile">
+              <span class="test-telemetry-label">Reboots &amp; Active Command</span>
+              <span class="test-telemetry-value" id="testTelemetryReboots">0 Reboots • No command dispatched</span>
+            </div>
+            <div class="test-telemetry-tile">
+              <span class="test-telemetry-label">Suite Progress</span>
+              <span class="test-telemetry-value" id="testTelemetryCounts">0 / 0 Completed • 0 Pass • 0 Fail • 0 Skip</span>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 4px;">
+            <span class="test-telemetry-label">Live Test Run Queue</span>
+            <div id="testRunFeedList" class="test-run-feed">
+              <span style="color: var(--xerxes-text-dim);">No active or recent test run in this session.</span>
+            </div>
+          </div>
+        </div>
+
         <!-- Interactive Manual Operator Prompt Card (YES/NO, Measured Value, Cancel with Comment) -->
         <div id="testManualPromptCard" class="bringup-card bringup-prompt-card" style="display: none; flex-direction: column; gap: 12px; padding: 14px 16px;">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">

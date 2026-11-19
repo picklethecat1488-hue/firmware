@@ -39,8 +39,48 @@ export const MANUAL_PROMPT_KINDS = Object.freeze({
   MEASUREMENT: "measurement",
 });
 
+export const TARGET_LIFECYCLE_PHASES = Object.freeze({
+  IDLE: "idle",
+  FLASHING: "flashing",
+  MODE_SWITCH: "mode_switch",
+  REBOOTING: "rebooting",
+  EXECUTING_TEST: "executing_test",
+  COMPLETE: "complete",
+  FAILED: "failed",
+  CANCELLED: "cancelled",
+});
+
 const CONSOLE_SCROLL_SLACK_PX = 30;
 const COPY_FEEDBACK_DURATION_MS = 1500;
+const MAX_PROGRESS_PCT = 100;
+
+/**
+ * Map a target lifecycle phase to a Xerxes badge CSS class.
+ *
+ * @param {string} phase - Lifecycle phase from `TARGET_LIFECYCLE_PHASES`.
+ * @returns {string}
+ */
+export function phaseBadgeClass(phase) {
+  const normalized = String(phase || TARGET_LIFECYCLE_PHASES.IDLE).toLowerCase();
+  if (normalized === TARGET_LIFECYCLE_PHASES.COMPLETE) {
+    return "badge badge-green";
+  }
+  if (normalized === TARGET_LIFECYCLE_PHASES.FAILED) {
+    return "badge test-badge-red";
+  }
+  if (
+    normalized === TARGET_LIFECYCLE_PHASES.FLASHING ||
+    normalized === TARGET_LIFECYCLE_PHASES.REBOOTING ||
+    normalized === TARGET_LIFECYCLE_PHASES.MODE_SWITCH ||
+    normalized === TARGET_LIFECYCLE_PHASES.CANCELLED
+  ) {
+    return "badge badge-amber";
+  }
+  if (normalized === TARGET_LIFECYCLE_PHASES.EXECUTING_TEST) {
+    return "badge badge-cyan";
+  }
+  return "badge";
+}
 
 /**
  * Map a per-test status string to a Xerxes badge CSS class.
@@ -123,6 +163,26 @@ export class TestRunnerController {
     this.summaryStats = resolveElement(ctx, options.summaryStats || "testSummaryStats");
     this.tableBody = resolveElement(ctx, options.tableBody || "testTableBody");
     this.consoleOutput = resolveElement(ctx, options.consoleOutput || "testConsoleOutput");
+
+    // Right-Panel Progress & Target Lifecycle Status Card
+    this.progressCard = resolveElement(ctx, options.progressCard || "testProgressCard");
+    this.progressDot = resolveElement(ctx, options.progressDot || "testProgressDot");
+    this.phaseBadge = resolveElement(ctx, options.phaseBadge || "testPhaseBadge");
+    this.progressPctEl = resolveElement(ctx, options.progressPctEl || "testProgressPct");
+    this.progressBar = resolveElement(ctx, options.progressBar || "testProgressBar");
+    this.activityHeadline = resolveElement(
+      ctx,
+      options.activityHeadline || "testActivityHeadline",
+    );
+    this.activityDetail = resolveElement(ctx, options.activityDetail || "testActivityDetail");
+    this.telemetryMode = resolveElement(ctx, options.telemetryMode || "testTelemetryMode");
+    this.telemetryFlash = resolveElement(ctx, options.telemetryFlash || "testTelemetryFlash");
+    this.telemetryReboots = resolveElement(
+      ctx,
+      options.telemetryReboots || "testTelemetryReboots",
+    );
+    this.telemetryCounts = resolveElement(ctx, options.telemetryCounts || "testTelemetryCounts");
+    this.runFeedList = resolveElement(ctx, options.runFeedList || "testRunFeedList");
 
     // Interactive Manual Prompt Card
     this.manualCard = resolveElement(ctx, options.manualCard || "testManualPromptCard");
@@ -247,6 +307,7 @@ export class TestRunnerController {
     }
 
     this._applyLeftTabDom();
+    this._syncRightPanelCards();
     this._syncActionButtons();
   }
 
@@ -838,8 +899,167 @@ export class TestRunnerController {
     }
 
     this.renderManualPrompt(snapshot.manual_prompt || null);
+    this.renderProgressCard(snapshot);
     this._renderTestTable();
     this._syncActionButtons();
+  }
+
+  /**
+   * Synchronize visibility between `#testProgressCard` and `#testManualPromptCard` on the right panel.
+   */
+  _syncRightPanelCards() {
+    const promptActive = Boolean(this.activePrompt);
+    if (this.manualCard) {
+      this.manualCard.style.display = promptActive ? "flex" : "none";
+    }
+    if (this.progressCard) {
+      this.progressCard.style.display = promptActive ? "none" : "flex";
+    }
+  }
+
+  /**
+   * Render the right-panel Test Progress & Target Lifecycle Status Card (`#testProgressCard`).
+   *
+   * @param {object} snapshot - Status payload from `/api/tests/status`.
+   */
+  renderProgressCard(snapshot) {
+    if (!this.progressCard || !snapshot || typeof snapshot !== "object") {
+      return;
+    }
+
+    const total = Number(snapshot.total || 0);
+    const completed = Number(snapshot.completed || 0);
+    const passed = Number(snapshot.passed || 0);
+    const failed = Number(snapshot.failed || 0);
+    const skipped = Number(snapshot.skipped || 0);
+    const fallbackPct =
+      total > 0 ? Math.min(MAX_PROGRESS_PCT, Math.round((completed / total) * MAX_PROGRESS_PCT)) : 0;
+    const pct = Math.max(
+      0,
+      Math.min(
+        MAX_PROGRESS_PCT,
+        typeof snapshot.progress_pct === "number" ? snapshot.progress_pct : fallbackPct,
+      ),
+    );
+
+    const activity = snapshot.target_activity || {};
+    const phase = String(
+      activity.phase ||
+        (snapshot.active ? TARGET_LIFECYCLE_PHASES.EXECUTING_TEST : snapshot.step || TARGET_LIFECYCLE_PHASES.IDLE),
+    ).toLowerCase();
+    const label = String(activity.label || phase.toUpperCase());
+
+    if (this.progressBar) {
+      this.progressBar.style.width = `${pct}%`;
+    }
+    if (this.progressPctEl) {
+      this.progressPctEl.textContent = `${pct}%`;
+    }
+    if (this.phaseBadge) {
+      this.phaseBadge.textContent = label;
+      this.phaseBadge.className = phaseBadgeClass(phase);
+    }
+    if (this.progressDot) {
+      if (phase === TARGET_LIFECYCLE_PHASES.COMPLETE) {
+        this.progressDot.className = "sync-status-dot success";
+      } else if (phase === TARGET_LIFECYCLE_PHASES.FAILED) {
+        this.progressDot.className = "sync-status-dot error";
+      } else if (
+        snapshot.active ||
+        phase === TARGET_LIFECYCLE_PHASES.FLASHING ||
+        phase === TARGET_LIFECYCLE_PHASES.REBOOTING ||
+        phase === TARGET_LIFECYCLE_PHASES.MODE_SWITCH
+      ) {
+        this.progressDot.className = "sync-status-dot pulse";
+      } else {
+        this.progressDot.className = "sync-status-dot";
+      }
+    }
+
+    if (this.activityHeadline) {
+      this.activityHeadline.textContent =
+        activity.headline ||
+        (snapshot.active
+          ? `Running ${snapshot.current_test || "device test suite"}...`
+          : "Ready to execute on-device @device_test suites");
+    }
+    if (this.activityDetail) {
+      this.activityDetail.textContent =
+        activity.detail ||
+        "Select tests in the left-panel TEST SUITE tab and click ▶ Run Selected or ▶ Run Filtered.";
+    }
+
+    if (this.telemetryMode) {
+      const binLabel = activity.target_bin || "none";
+      const modeLabel = activity.mode || "TEST";
+      const switches = Number(activity.mode_switch_count || 0);
+      this.telemetryMode.textContent = `${binLabel} • MODE: ${modeLabel} (${switches} switch${switches === 1 ? "" : "es"})`;
+    }
+
+    if (this.telemetryFlash) {
+      if (activity.sync_active || phase === TARGET_LIFECYCLE_PHASES.FLASHING) {
+        const syncPct = Number(activity.sync_progress || 0);
+        const syncStep = activity.sync_step || "flashing";
+        this.telemetryFlash.textContent = `Flashing (${syncPct}%) • ${syncStep}`;
+      } else if (activity.flashed) {
+        this.telemetryFlash.textContent = activity.connected
+          ? "Flashed • RTT Online"
+          : "Flashed • Probe Standby";
+      } else {
+        this.telemetryFlash.textContent = activity.connected
+          ? "RTT Online"
+          : "Idle • Probe Standby";
+      }
+    }
+
+    if (this.telemetryReboots) {
+      const reboots = Number(activity.reboot_count || 0);
+      const lastCmd = activity.last_command || "No command dispatched";
+      this.telemetryReboots.textContent = `Reboots: ${reboots} • ${lastCmd}`;
+    }
+
+    if (this.telemetryCounts) {
+      this.telemetryCounts.textContent = `${completed} / ${total} Completed • ${passed} Pass • ${failed} Fail • ${skipped} Skip`;
+    }
+
+    if (this.runFeedList) {
+      clearChildren(this.runFeedList);
+      const runItems = Array.isArray(snapshot.results) ? snapshot.results : [];
+      if (runItems.length === 0) {
+        this.runFeedList.appendChild(
+          createEl(this.ctx, "span", {
+            text: "No active or recent test run in this session.",
+            style: { color: "var(--xerxes-text-dim)" },
+          }),
+        );
+      } else {
+        for (const rec of runItems) {
+          const itemStatus = String(rec.status || "PENDING");
+          const durText =
+            typeof rec.duration_s === "number" ? ` (${rec.duration_s.toFixed(2)}s)` : "";
+          const row = createEl(this.ctx, "div", {
+            className: "test-run-feed-row",
+            children: [
+              createEl(this.ctx, "span", {
+                text: rec.name || rec.node_id || "test",
+                style: {
+                  color:
+                    itemStatus === "RUNNING"
+                      ? "var(--xerxes-cyan)"
+                      : "var(--xerxes-text-light)",
+                  fontWeight: itemStatus === "RUNNING" ? "bold" : "normal",
+                },
+              }),
+              createEl(this.ctx, "span", {
+                className: statusBadgeClass(itemStatus),
+                text: `${itemStatus}${durText}`,
+              }),
+            ],
+          });
+          this.runFeedList.appendChild(row);
+        }
+      }
+    }
   }
 
   /**
@@ -874,12 +1094,12 @@ export class TestRunnerController {
    */
   renderManualPrompt(promptData) {
     this.activePrompt = promptData && promptData.active ? promptData : null;
+    this._syncRightPanelCards();
     if (!this.manualCard) {
       return;
     }
 
     if (!this.activePrompt) {
-      this.manualCard.style.display = "none";
       this._lastPromptId = "";
       return;
     }
@@ -887,8 +1107,6 @@ export class TestRunnerController {
     const promptId = String(this.activePrompt.prompt_id || "");
     const isNewPrompt = promptId !== this._lastPromptId;
     this._lastPromptId = promptId;
-
-    this.manualCard.style.display = "flex";
     if (this.manualTitle) {
       this.manualTitle.textContent = `[${this.activePrompt.project || "device"}] ${this.activePrompt.test_name || "manual_test"}`;
     }
