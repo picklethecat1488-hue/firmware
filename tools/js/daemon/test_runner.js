@@ -53,6 +53,8 @@ export const TARGET_LIFECYCLE_PHASES = Object.freeze({
 const CONSOLE_SCROLL_SLACK_PX = 30;
 const COPY_FEEDBACK_DURATION_MS = 1500;
 const MAX_PROGRESS_PCT = 100;
+const INITIAL_OPTIMISTIC_PROGRESS_PCT = 5;
+const ORDER_PAD_WIDTH = 2;
 
 /**
  * Map a target lifecycle phase to a Xerxes badge CSS class.
@@ -127,6 +129,7 @@ export class TestRunnerController {
     this.activeLeftTab = LEFT_PANEL_TABS.LOGS;
     this._lastPromptId = "";
     this._initializedScan = false;
+    this._cardRefs = new Map();
     this._unsubscribers = [];
 
     this.viewEl = resolveElement(ctx, options.viewEl || "testView");
@@ -161,7 +164,7 @@ export class TestRunnerController {
 
     this.boardBadge = resolveElement(ctx, options.boardBadge || "testDetectedBoardBadge");
     this.summaryStats = resolveElement(ctx, options.summaryStats || "testSummaryStats");
-    this.tableBody = resolveElement(ctx, options.tableBody || "testTableBody");
+    this.stackList = resolveElement(ctx, options.stackList || "testStackList");
     this.consoleOutput = resolveElement(ctx, options.consoleOutput || "testConsoleOutput");
 
     // Right-Panel Progress & Target Lifecycle Status Card
@@ -265,9 +268,9 @@ export class TestRunnerController {
       });
     }
 
-    if (this.tableBody) {
+    if (this.stackList) {
       this._unsubscribers.push(
-        bindDelegatedEvent(this.tableBody, "change", "[data-test-select]", (_evt, cb) => {
+        bindDelegatedEvent(this.stackList, "change", "[data-test-select]", (_evt, cb) => {
           const nodeId = cb.getAttribute("data-test-select");
           if (nodeId) {
             this.toggleSelection(nodeId, Boolean(cb.checked));
@@ -276,11 +279,24 @@ export class TestRunnerController {
       );
 
       this._unsubscribers.push(
-        bindDelegatedEvent(this.tableBody, "click", "[data-test-run-one]", (evt, btn) => {
-          evt.preventDefault();
-          const nodeId = btn.getAttribute("data-test-run-one");
+        bindDelegatedEvent(this.stackList, "click", ".test-stack-node", (evt, card) => {
+          const rawTarget = evt.target;
+          const elTarget =
+            rawTarget && typeof rawTarget.closest === "function"
+              ? rawTarget
+              : rawTarget && rawTarget.parentElement
+                ? rawTarget.parentElement
+                : null;
+          if (
+            elTarget &&
+            typeof elTarget.closest === "function" &&
+            elTarget.closest("button, input, label, a")
+          ) {
+            return;
+          }
+          const nodeId = card.getAttribute("data-node-id");
           if (nodeId) {
-            this.runNodes([nodeId]);
+            this.toggleSelection(nodeId, !this.selectedNodeIds.has(nodeId));
           }
         }),
       );
@@ -462,7 +478,7 @@ export class TestRunnerController {
       }
 
       this._renderBoardBadge();
-      this._renderTestTable();
+      this._renderTestStack();
       this._syncActionButtons();
       return data;
     } catch (err) {
@@ -547,6 +563,7 @@ export class TestRunnerController {
     } else {
       this.selectedNodeIds.delete(nodeId);
     }
+    this._updateTestStackInPlace();
     this._syncSelectAllCheckbox();
     this._syncActionButtons();
   }
@@ -554,7 +571,7 @@ export class TestRunnerController {
   /**
    * Select or deselect all currently visible filtered tests.
    *
-   * @param {boolean} selectAll - True to select every visible row.
+   * @param {boolean} selectAll - True to select every visible card.
    */
   setSelectAllVisible(selectAll) {
     if (selectAll) {
@@ -566,12 +583,13 @@ export class TestRunnerController {
         this.selectedNodeIds.delete(item.node_id);
       }
     }
-    this._renderTestTable();
+    this._updateTestStackInPlace();
+    this._syncSelectAllCheckbox();
     this._syncActionButtons();
   }
 
   /**
-   * Keep `#testSelectAllCb` synchronized with row selections.
+   * Keep `#testSelectAllCb` synchronized with card selections.
    */
   _syncSelectAllCheckbox() {
     if (!this.selectAllCb) {
@@ -584,50 +602,123 @@ export class TestRunnerController {
   }
 
   /**
-   * Render the `@device_test` discovery and status table (`#testTableBody`).
+   * Compute VCS-style card CSS classes for a stacked test node.
+   *
+   * @param {boolean} isSelected - Whether the card is selected.
+   * @param {string} statusLabel - Normalized status label (`IDLE`, `RUNNING`, `PASSED`, `FAILED`, `SKIPPED`).
+   * @returns {string}
    */
-  _renderTestTable() {
-    if (!this.tableBody) {
+  _computeCardClassName(isSelected, statusLabel) {
+    const classes = ["test-stack-node"];
+    if (isSelected) {
+      classes.push("selected");
+    }
+    const upper = String(statusLabel || "IDLE").toUpperCase();
+    if (upper === "RUNNING") {
+      classes.push("running");
+    } else if (upper === "PASSED") {
+      classes.push("passed");
+    } else if (upper === "FAILED") {
+      classes.push("failed");
+    } else if (upper === "SKIPPED" || upper === "CANCELLED") {
+      classes.push("skipped");
+    }
+    return classes.join(" ");
+  }
+
+  /**
+   * Render the VCS-style stacked `@device_test` execution list (`#testStackList`) on scan updates.
+   */
+  _renderTestStack() {
+    if (!this.stackList) {
       return;
     }
-    clearChildren(this.tableBody);
+    this._cardRefs.clear();
+    clearChildren(this.stackList);
 
     if (this.tests.length === 0) {
-      const emptyRow = createEl(this.ctx, "tr", {
-        children: [
-          createEl(this.ctx, "td", {
-            text: "No @device_test cases match the active attribute filters.",
-            attrs: { colspan: "4" },
-            style: {
-              color: "var(--xerxes-text-dim)",
-              textAlign: "center",
-              padding: "14px",
-            },
-          }),
-        ],
+      const emptyCard = createEl(this.ctx, "div", {
+        text: "No @device_test cases match the active attribute filters.",
+        style: {
+          color: "var(--xerxes-text-dim)",
+          textAlign: "center",
+          padding: "16px",
+          fontSize: "8.5px",
+        },
       });
-      this.tableBody.appendChild(emptyRow);
+      this.stackList.appendChild(emptyCard);
       this._syncSelectAllCheckbox();
       return;
     }
 
     for (const item of this.tests) {
       const nodeId = String(item.node_id || "");
-      const isSelected = this.selectedNodeIds.has(nodeId);
-      const runInfo = this.resultsMap[nodeId] || item.last_result || null;
-      const statusLabel = runInfo && runInfo.status ? String(runInfo.status) : "IDLE";
-      const durationLabel =
-        runInfo && typeof runInfo.duration_s === "number"
-          ? ` (${runInfo.duration_s.toFixed(2)}s)`
-          : "";
-
-      const rowCb = createEl(this.ctx, "input", {
+      const checkboxEl = createEl(this.ctx, "input", {
+        className: "test-node-checkbox",
         attrs: {
           type: "checkbox",
           "data-test-select": nodeId,
+          title: `Select ${item.name}`,
         },
       });
-      rowCb.checked = isSelected;
+
+      const orderStr = String(item.order || "").padStart(ORDER_PAD_WIDTH, "0");
+      const orderEl = createEl(this.ctx, "span", {
+        className: "test-node-order",
+        text: `● #${orderStr}`,
+      });
+
+      const titleEl = createEl(this.ctx, "span", {
+        className: "test-node-title",
+        text: item.name,
+      });
+
+      const statusBadgeEl = createEl(this.ctx, "span", {
+        className: "badge",
+        text: "IDLE",
+      });
+
+      const playBtnEl = createEl(this.ctx, "button", {
+        className: "btn btn-cyan test-run-one-btn",
+        text: "▶",
+        attrs: {
+          type: "button",
+          title: `Run ${item.name}`,
+          "data-test-run-one": nodeId,
+        },
+        on: {
+          click: (evt) => {
+            if (evt && typeof evt.preventDefault === "function") {
+              evt.preventDefault();
+            }
+            if (evt && typeof evt.stopPropagation === "function") {
+              evt.stopPropagation();
+            }
+            if (!this.isRunning) {
+              this.runNodes([nodeId]);
+            }
+          },
+        },
+      });
+
+      const headerRow = createEl(this.ctx, "div", {
+        className: "test-node-header-row",
+        children: [
+          createEl(this.ctx, "div", {
+            style: { display: "flex", alignItems: "center", gap: "6px", minWidth: "0" },
+            children: [checkboxEl, orderEl, titleEl],
+          }),
+          createEl(this.ctx, "div", {
+            style: { display: "inline-flex", alignItems: "center", gap: "6px", flexShrink: "0" },
+            children: [statusBadgeEl, playBtnEl],
+          }),
+        ],
+      });
+
+      const subjectEl = createEl(this.ctx, "div", {
+        className: "test-node-subject",
+        text: item.description || "On-device hardware verification step.",
+      });
 
       const scenarioBadges = Array.isArray(item.scenarios)
         ? item.scenarios.map((scen) =>
@@ -645,7 +736,7 @@ export class TestRunnerController {
       });
       const projBadge = createEl(this.ctx, "span", {
         className: "badge",
-        text: item.project || "device",
+        text: `⎇ ${item.project || "device"}`,
       });
       const boardGlobBadge = createEl(this.ctx, "span", {
         className: "badge",
@@ -656,84 +747,67 @@ export class TestRunnerController {
         text: `bin:${binText}`,
       });
 
-      const nameBlockChildren = [
-        createEl(this.ctx, "div", {
-          text: item.name,
-          style: { fontWeight: "bold", color: "var(--xerxes-cyan)", wordBreak: "break-word" },
-        }),
-        createEl(this.ctx, "div", {
-          className: "test-badge-group",
-          style: { marginTop: "3px" },
-          children: [modeBadge, ...scenarioBadges, projBadge, boardGlobBadge, binBadge],
-        }),
-      ];
-      if (item.description) {
-        nameBlockChildren.push(
-          createEl(this.ctx, "div", {
-            text: item.description,
-            style: {
-              color: "var(--xerxes-text-muted)",
-              fontSize: "8px",
-              marginTop: "3px",
-              whiteSpace: "normal",
-              wordBreak: "break-word",
-            },
-          }),
-        );
-      }
-      if (runInfo && runInfo.detail) {
-        nameBlockChildren.push(
-          createEl(this.ctx, "div", {
-            text: runInfo.detail,
-            style: {
-              color: statusLabel === "FAILED" ? "var(--xerxes-red)" : "var(--xerxes-amber)",
-              fontSize: "8px",
-              marginTop: "3px",
-              whiteSpace: "normal",
-              wordBreak: "break-word",
-            },
-          }),
-        );
-      }
-
-      const statusBadge = createEl(this.ctx, "span", {
-        className: statusBadgeClass(statusLabel),
-        text: `${statusLabel}${durationLabel}`,
+      const tagsRow = createEl(this.ctx, "div", {
+        className: "test-badge-group",
+        style: { marginTop: "1px" },
+        children: [modeBadge, ...scenarioBadges, projBadge, boardGlobBadge, binBadge],
       });
 
-      const quickRunBtn = createEl(this.ctx, "button", {
-        className: "btn btn-cyan",
-        text: "▶",
-        attrs: {
-          type: "button",
-          title: `Run ${item.name}`,
-          "data-test-run-one": nodeId,
-        },
-        style: { padding: "2px 6px", flexShrink: "0" },
+      const detailEl = createEl(this.ctx, "div", {
+        className: "test-node-detail",
+        style: { display: "none" },
       });
-      quickRunBtn.disabled = this.isRunning;
 
-      const rowEl = createEl(this.ctx, "tr", {
+      const cardEl = createEl(this.ctx, "div", {
+        className: "test-stack-node",
         dataset: { nodeId },
-        children: [
-          createEl(this.ctx, "td", { children: [rowCb] }),
-          createEl(this.ctx, "td", { text: String(item.order || "") }),
-          createEl(this.ctx, "td", { children: nameBlockChildren }),
-          createEl(this.ctx, "td", {
-            children: [
-              createEl(this.ctx, "div", {
-                className: "test-badge-group",
-                style: { justifyContent: "space-between", flexWrap: "nowrap", gap: "6px" },
-                children: [statusBadge, quickRunBtn],
-              }),
-            ],
-          }),
-        ],
+        children: [headerRow, subjectEl, tagsRow, detailEl],
       });
-      this.tableBody.appendChild(rowEl);
+
+      this._cardRefs.set(nodeId, {
+        item,
+        cardEl,
+        checkboxEl,
+        statusBadgeEl,
+        playBtnEl,
+        detailEl,
+      });
+      this.stackList.appendChild(cardEl);
     }
 
+    this._updateTestStackInPlace();
     this._syncSelectAllCheckbox();
+  }
+
+  /**
+   * Update existing stacked test cards in-place so background 1s polling never detaches clicked buttons.
+   */
+  _updateTestStackInPlace() {
+    for (const [nodeId, refs] of this._cardRefs.entries()) {
+      const isSelected = this.selectedNodeIds.has(nodeId);
+      const runInfo = this.resultsMap[nodeId] || refs.item.last_result || null;
+      const statusLabel = runInfo && runInfo.status ? String(runInfo.status) : "IDLE";
+      const durationLabel =
+        runInfo && typeof runInfo.duration_s === "number"
+          ? ` (${runInfo.duration_s.toFixed(2)}s)`
+          : "";
+
+      refs.checkboxEl.checked = isSelected;
+      refs.cardEl.className = this._computeCardClassName(isSelected, statusLabel);
+      refs.statusBadgeEl.className = statusBadgeClass(statusLabel);
+      refs.statusBadgeEl.textContent = `${statusLabel}${durationLabel}`;
+      refs.playBtnEl.disabled = this.isRunning;
+
+      if (runInfo && runInfo.detail) {
+        refs.detailEl.style.display = "block";
+        refs.detailEl.style.color =
+          statusLabel === "FAILED" ? "var(--xerxes-red)" : "var(--xerxes-amber)";
+        refs.detailEl.textContent = String(runInfo.detail);
+      } else {
+        refs.detailEl.style.display = "none";
+        refs.detailEl.textContent = "";
+      }
+    }
   }
 
   /**
@@ -807,6 +881,41 @@ export class TestRunnerController {
     const enableManual = this.enableManualCb ? Boolean(this.enableManualCb.checked) : true;
     const boardArg = filters.board === "*" ? "auto" : filters.board;
 
+    const firstId = String(nodeIds[0]);
+    const firstName = firstId.split("::").pop() || firstId;
+    this.isRunning = true;
+    this.activeStep = TEST_RUN_STEPS.RUNNING;
+    for (let idx = 0; idx < nodeIds.length; idx += 1) {
+      const nid = String(nodeIds[idx]);
+      this.resultsMap[nid] = {
+        node_id: nid,
+        name: nid.split("::").pop() || nid,
+        status: idx === 0 ? "RUNNING" : "PENDING",
+        duration_s: null,
+        detail: "",
+      };
+    }
+    this._updateTestStackInPlace();
+    this._syncActionButtons();
+    this.renderProgressCard({
+      active: true,
+      step: TEST_RUN_STEPS.RUNNING,
+      total: nodeIds.length,
+      completed: 0,
+      passed: 0,
+      failed: 0,
+      skipped: 0,
+      progress_pct: INITIAL_OPTIMISTIC_PROGRESS_PCT,
+      current_test: firstId,
+      results: nodeIds.map((nid) => this.resultsMap[String(nid)]),
+      target_activity: {
+        phase: TARGET_LIFECYCLE_PHASES.EXECUTING_TEST,
+        label: "STARTING RUN",
+        headline: `[1/${nodeIds.length}] Starting ${firstName}`,
+        detail: "Launching on-device pytest runner & probing target metadata...",
+      },
+    });
+
     try {
       const res = await this.ctx.postJson("/api/tests/run", {
         node_ids: nodeIds,
@@ -821,6 +930,10 @@ export class TestRunnerController {
       }
       return res;
     } catch (err) {
+      this.isRunning = false;
+      this.activeStep = TEST_RUN_STEPS.FAILED;
+      this._updateTestStackInPlace();
+      this._syncActionButtons();
       showToast(
         this.ctx,
         `Failed to start test run: ${(err && err.message) || String(err)}`,
@@ -900,7 +1013,7 @@ export class TestRunnerController {
 
     this.renderManualPrompt(snapshot.manual_prompt || null);
     this.renderProgressCard(snapshot);
-    this._renderTestTable();
+    this._updateTestStackInPlace();
     this._syncActionButtons();
   }
 
