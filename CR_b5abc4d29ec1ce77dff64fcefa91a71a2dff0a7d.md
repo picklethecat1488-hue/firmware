@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Review Date** | `2026-10-15 22:16:27 UTC` |
+| **Review Date** | `2026-11-19 01:34:23 UTC` |
 | **Revisions** | `b5abc4d29ec1ce77dff64fcefa91a71a2dff0a7d` |
 | **Overall Verdict** | **`CHANGES_REQUESTED`** |
 | **Review Progress** | `0/7 files reviewed (0%)` |
@@ -27,6 +27,7 @@
 #### **[MUST FIX]** [bin/anvil:L152-L161](file:///Users/<username>/gh/firmware/bin/anvil#L152-L161)
 <!-- comment-uuid: 5f7acce9-89e4-4bec-ab9a-55ded2468e95 -->
 <!-- comment-commit: b5abc4d29ec1ce77dff64fcefa91a71a2dff0a7d -->
+<!-- comment-status: RESOLVED -->
 
 ```
 simulate)

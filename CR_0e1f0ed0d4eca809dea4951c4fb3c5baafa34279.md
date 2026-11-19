@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Review Date** | `2026-10-15 22:16:27 UTC` |
+| **Review Date** | `2026-11-19 01:34:23 UTC` |
 | **Revisions** | `0e1f0ed0d4eca809dea4951c4fb3c5baafa34279` |
 | **Overall Verdict** | **`CHANGES_REQUESTED`** |
 | **Review Progress** | `0/2 files reviewed (0%)` |
@@ -27,6 +27,7 @@
 #### **[MUST FIX]** [app/carrier_board.md:L835](file:///Users/<username>/gh/firmware/app/carrier_board.md#L835)
 <!-- comment-uuid: acea940c-10e4-4fc0-b758-6e3a281bcfd8 -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
+<!-- comment-status: RESOLVED -->
 
 ```markdown
 - **Temporal Gesture Classifier**: Core 1 evaluates sliding touch windows to classify discrete 1-finger gestures with confidence $\ge 0.85$.
@@ -37,6 +38,7 @@
 #### **[MUST FIX]** [app/carrier_board.md:L836](file:///Users/<username>/gh/firmware/app/carrier_board.md#L836)
 <!-- comment-uuid: 2ee14223-c270-4375-aed5-d550368a84fb -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
+<!-- comment-status: RESOLVED -->
 
 ```markdown
 - **Zero-Copy IPC Dispatch**: When a gesture is confirmed, Core 1 packages a typed `GestureEvent` struct into the lock-free shared SRAMX SPSC ring buffer (`0x2006_8000`), pulsing the hardware Messaging Unit (MU) doorbell to wake Core 0.
@@ -47,6 +49,7 @@
 #### **[MUST FIX]** [app/carrier_board.md:L833](file:///Users/<username>/gh/firmware/app/carrier_board.md#L833)
 <!-- comment-uuid: d678adc1-d8bb-4287-afa1-3bdff7e038d8 -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
+<!-- comment-status: RESOLVED -->
 
 ```markdown
 - **100 Hz Async eDMA Ingestion**: Core 1 runs an Embassy task polling the IQS7222A over $\text{I}^2\text{C}$ at 100 Hz upon `CAP_INT` assertion.
@@ -57,6 +60,7 @@
 #### **[MUST FIX]** [app/carrier_board.md:L837](file:///Users/<username>/gh/firmware/app/carrier_board.md#L837)
 <!-- comment-uuid: 77e5adf8-0009-46b2-9dfe-e13639e5fdc9 -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
+<!-- comment-status: RESOLVED -->
 
 ```markdown
 - **Controller Action Routing**: Core 0's `SensorController` and `SystemController` map incoming gestures to system state changes, UI feedback (RGB LED patterns via `LedController`, acoustic chimes via `SpeakerController`), and wireless BLE notifications via `BleController`.
@@ -67,6 +71,7 @@
 #### **[MUST FIX]** [app/carrier_board.md:L849-L850](file:///Users/<username>/gh/firmware/app/carrier_board.md#L849-L850)
 <!-- comment-uuid: 445a0d81-1f2a-4531-95b9-3d9ccc62337f -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
+<!-- comment-status: RESOLVED -->
 
 ```markdown
 | **1F Long Press** | Stationary contact held for $1.5\text{ s} \le T < 3.5\text{ s}$ with displacement drift $\Delta X < 2.5\,\text{mm}$. | **BLE Pairing Mode Trigger**: Enters BLE discoverable advertising mode for 60 seconds; if already connected, initiates graceful disconnect and re-advertising. | In `Sleep`, awakens system and initiates immediate BLE pairing sequence. | Rising dual-tone chime ($523\text{ Hz} \to 784\text{ Hz}$, $120\text{ ms}$); transition from Solid Cyan to Fast Blue Blink (`BLE_PAIRING` @ 2 Hz). | Emits `GestureType::LongPress { hold_duration_ms }`; Core 0 signals `BleController` to start fast advertising. |
@@ -78,6 +83,7 @@
 #### **[MUST FIX]** [app/carrier_board.md:L845-L848](file:///Users/<username>/gh/firmware/app/carrier_board.md#L845-L848)
 <!-- comment-uuid: b0cbe13a-5c8c-450e-82f9-667279d9924e -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
+<!-- comment-status: RESOLVED -->
 
 ```markdown
 | **1F Tap (Single Tap)** | Single contact: $50\,\text{ms} \le T < 300\,\text{ms}$, displacement $\Delta X < 3.0\,\text{mm}$. | **Toggle / Primary Action**: Toggles active feature state (e.g. telemetry sampling enable/pause); confirms active system prompt. | **Instant System Wake**: In `Sleep`, restores 150 MHz clocks ($\approx 250\,\mu\text{s}$). In `PowerDown`, triggers hardware WUU wake ($\le 1.8\,\text{ms}$). | `Gesture Confirmed Tone` ($784\text{ Hz}$, $60\text{ ms}$, $60\text{ dBA}$); momentary Cyan LED pulse ($150\text{ ms}$). | Emits `GestureType::SingleTap`; sends BLE GATT notification; appends CBOR record to NAND `telemetry` queue. |
@@ -91,6 +97,7 @@
 #### **[MUST FIX]** [app/carrier_board.md:L845-L850](file:///Users/<username>/gh/firmware/app/carrier_board.md#L845-L850)
 <!-- comment-uuid: db54a08e-e8fe-4789-9f50-e1cb6dc44785 -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
+<!-- comment-status: RESOLVED -->
 
 ```markdown
 | **1F Tap (Single Tap)** | Single contact: $50\,\text{ms} \le T < 300\,\text{ms}$, displacement $\Delta X < 3.0\,\text{mm}$. | **Toggle / Primary Action**: Toggles active feature state (e.g. telemetry sampling enable/pause); confirms active system prompt. | **Instant System Wake**: In `Sleep`, restores 150 MHz clocks ($\approx 250\,\mu\text{s}$). In `PowerDown`, triggers hardware WUU wake ($\le 1.8\,\text{ms}$). | `Gesture Confirmed Tone` ($784\text{ Hz}$, $60\text{ ms}$, $60\text{ dBA}$); momentary Cyan LED pulse ($150\text{ ms}$). | Emits `GestureType::SingleTap`; sends BLE GATT notification; appends CBOR record to NAND `telemetry` queue. |
@@ -106,6 +113,7 @@
 #### **[MUST FIX]** [app/carrier_board.md:L868-L877](file:///Users/<username>/gh/firmware/app/carrier_board.md#L868-L877)
 <!-- comment-uuid: 8ce91422-5ee7-4e84-b82b-65466e18233a -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
+<!-- comment-status: RESOLVED -->
 
 ```markdown
 #[repr(C)]
@@ -125,6 +133,7 @@ pub struct GestureEvent {
 #### **[MUST FIX]** [app/carrier_board.md:L857-L866](file:///Users/<username>/gh/firmware/app/carrier_board.md#L857-L866)
 <!-- comment-uuid: 9ff99b58-fa14-46ff-8334-8b45463359bf -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
+<!-- comment-status: RESOLVED -->
 
 ```markdown
 #[repr(u8)]
@@ -144,6 +153,7 @@ pub enum GestureType {
 #### **[MUST FIX]** [app/carrier_board.md:L883-L899](file:///Users/<username>/gh/firmware/app/carrier_board.md#L883-L899)
 <!-- comment-uuid: f6606db9-fb26-4162-a2de-6c21fc4e1277 -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
+<!-- comment-status: RESOLVED -->
 
 ```markdown
 flowchart TD
@@ -170,6 +180,7 @@ flowchart TD
 #### **[MUST FIX]** [app/carrier_board.md:L901](file:///Users/<username>/gh/firmware/app/carrier_board.md#L901)
 <!-- comment-uuid: 8c479a32-b0c2-4083-9c8d-a64114ffb782 -->
 <!-- comment-commit: 0e1f0ed0d4eca809dea4951c4fb3c5baafa34279 -->
+<!-- comment-status: RESOLVED -->
 
 > **Reviewer (Reviewer)**: we also need to support tap and long press for the action button. can you add the action button to this section?
 

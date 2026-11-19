@@ -6,7 +6,7 @@
 
 | Metric | Details |
 | :--- | :--- |
-| **Review Date** | `2026-10-17 22:40:22 UTC` |
+| **Review Date** | `2026-11-19 01:34:23 UTC` |
 | **Revisions** | `37979cdfc8a3b4fcb8f5cf5daafa14b2ce25d8d9` |
 | **Overall Verdict** | **`CHANGES_REQUESTED`** |
 | **Review Progress** | `0/3 files reviewed (0%)` |
@@ -27,6 +27,7 @@
 #### **[MUST FIX]** [tools/host_daemon/templates/host_daemon.html.j2:L1667-L1672](file:///Users/<username>/gh/firmware/tools/host_daemon/templates/host_daemon.html.j2#L1667-L1672)
 <!-- comment-uuid: cd712274-527c-43bb-a535-a9b9d4a36188 -->
 <!-- comment-commit: 37979cdfc8a3b4fcb8f5cf5daafa14b2ce25d8d9 -->
+<!-- comment-status: RESOLVED -->
 
 ```
 try {
