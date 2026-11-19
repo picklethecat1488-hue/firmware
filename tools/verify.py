@@ -93,6 +93,13 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         help="Board glob pattern filter for on-device suites (e.g. auto, rp2040*, carrier_board*).",
     )
     parser.add_argument(
+        "-k",
+        "--keyword",
+        dest="keyword",
+        default=None,
+        help="Optional pytest -k test name expression for on-device suites.",
+    )
+    parser.add_argument(
         "--manual",
         action="store_true",
         help="Enable operator prompts for @device_test(manual=True) bringup steps.",
@@ -148,6 +155,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "--board",
             args.board,
         ]
+        if args.keyword:
+            device_cmd.extend(["-k", args.keyword])
         if args.manual:
             device_cmd.append("--manual")
         run_step(device_cmd, cwd=repo_root, env=env)

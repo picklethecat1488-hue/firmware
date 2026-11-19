@@ -1089,3 +1089,44 @@ def test_worm_inching_millipede_969_no_white_scrollbar_gutter_artifact(tmp_path:
         server.server_close()
 
 
+def test_worm_annelidic_bristle_968_host_test_cli_keyword_filter(capsys: pytest.CaptureFixture[str]) -> None:
+    """Verify `host.py test -k <expr>` filters both `--list-tests` discovery and live `pytest -k` execution."""
+    import json
+
+    from host_daemon import cli as host_cli
+
+    # 1. `--list-tests -k` supports pytest-style boolean keyword expressions
+    rc_list = host_cli.main(["test", "--list-tests", "--json", "-k", "tof and not calibration"])
+    assert rc_list == 0
+    listed = json.loads(capsys.readouterr().out)
+    listed_names = [entry["name"] for entry in listed]
+    assert listed_names == ["test_tof_proximity_array_and_i2c_bus"]
+
+    # 2. `host.py test -k` forwards `-k` to pytest and runs ONLY the matching test
+    runner = SimulatedTargetRunner(
+        WORKSPACE_ROOT,
+        connected_board_type="rp2040_flash_2mb",
+        connected_chip="rp2040",
+        initial_bin="cat_detector_shell",
+    )
+    server, port = _start_ephemeral_daemon(runner)
+    try:
+        rc_run = host_cli.main(
+            [
+                "test",
+                "--project",
+                "cat_detector",
+                "--host-port",
+                str(port),
+                "-k",
+                "battery_fuel_gauge",
+            ]
+        )
+        assert rc_run == 0
+        assert runner.executed_cli_commands == ["battery status"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+
