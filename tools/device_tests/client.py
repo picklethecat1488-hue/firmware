@@ -172,7 +172,7 @@ class AsyncHostSessionClient:
         host: str = DEFAULT_DAEMON_HOST,
         port: int = DEFAULT_DAEMON_PORT,
         owns_daemon: bool = False,
-        interactive: bool = False,
+        manual_enabled: bool = False,
         runner: Any = None,
         prior_target_config: Optional[Dict[str, Any]] = None,
         spawned_proc: Optional[subprocess.Popen[Any]] = None,
@@ -183,7 +183,7 @@ class AsyncHostSessionClient:
         self.port = port
         self.base_url = f"http://{host}:{port}"
         self.owns_daemon = owns_daemon
-        self.interactive = interactive
+        self.manual_enabled = manual_enabled
         self._runner = runner
         self._prior_target_config = prior_target_config
         self._spawned_proc = spawned_proc
@@ -198,13 +198,13 @@ class AsyncHostSessionClient:
         cls,
         runner: Any,
         *,
-        interactive: bool = True,
+        manual_enabled: bool = True,
     ) -> "AsyncHostSessionClient":
         """Construct an in-process client bound directly to an active `DaemonRunner`."""
         return cls(
             repo_root=runner.repo_root,
             owns_daemon=False,
-            interactive=interactive,
+            manual_enabled=manual_enabled,
             runner=runner,
         )
 
@@ -215,7 +215,7 @@ class AsyncHostSessionClient:
         *,
         host: str = DEFAULT_DAEMON_HOST,
         port: Optional[int] = None,
-        interactive: bool = False,
+        manual_enabled: bool = False,
         spawn_if_needed: bool = True,
     ) -> "AsyncHostSessionClient":
         """Attach to a running host.py daemon (never stopping it) or spawn a temporary headless one."""
@@ -255,7 +255,7 @@ class AsyncHostSessionClient:
                         host=host,
                         port=candidate_port,
                         owns_daemon=False,
-                        interactive=interactive,
+                        manual_enabled=manual_enabled,
                         prior_target_config=prior_cfg,
                     )
             except (OSError, RuntimeError):
@@ -267,7 +267,7 @@ class AsyncHostSessionClient:
                 host=host,
                 port=port or DEFAULT_DAEMON_PORT,
                 owns_daemon=False,
-                interactive=interactive,
+                manual_enabled=manual_enabled,
             )
 
         bound_port = port or _find_free_local_port(host)
@@ -311,7 +311,7 @@ class AsyncHostSessionClient:
                         host=host,
                         port=bound_port,
                         owns_daemon=True,
-                        interactive=interactive,
+                        manual_enabled=manual_enabled,
                         spawned_proc=proc,
                     )
             except (OSError, RuntimeError):
@@ -401,7 +401,7 @@ class AsyncHostSessionClient:
         timeout: float = DEFAULT_SYNC_TIMEOUT_SEC,
     ) -> Optional[SyncOutcome]:
         """Ensure `target_binary` is compiled, flashed, and matches target ELF metadata on `host.py`."""
-        spec = resolve_target_binary(target_binary)
+        spec = resolve_target_binary(target_binary, repo_root=self.repo_root)
         if spec is None:
             return None
 
@@ -561,14 +561,20 @@ class AsyncHostSessionClient:
     async def publish_manual_prompt(
         self,
         *,
+        prompt_id: str = "",
+        kind: str = "yes_no",
+        unit: str = "",
         test_name: str,
         project: str,
         procedure: str,
         prompt: str,
         active: bool = True,
-    ) -> None:
-        """Send periodic manual test procedure & prompt context to `host.py` (`/api/manual_prompt`)."""
+    ) -> Dict[str, Any]:
+        """Send periodic manual test procedure & prompt context to `host.py` and return prompt/response state."""
         payload = {
+            "prompt_id": prompt_id,
+            "kind": kind,
+            "unit": unit,
             "test_name": test_name,
             "project": project,
             "procedure": procedure,
@@ -576,12 +582,16 @@ class AsyncHostSessionClient:
             "active": active,
         }
         if self._runner is not None and hasattr(self._runner, "update_manual_prompt"):
-            await asyncio.to_thread(self._runner.update_manual_prompt, payload)
-            return
+            res = await asyncio.to_thread(self._runner.update_manual_prompt, payload)
+            return dict(res) if isinstance(res, dict) else {}
         try:
-            await self._request("/api/manual_prompt", payload, timeout=3.0)
+            res = await self._request("/api/manual_prompt", payload, timeout=3.0)
+            if isinstance(res, dict):
+                prompt_state = res.get("manual_prompt")
+                return dict(prompt_state) if isinstance(prompt_state, dict) else dict(res)
         except (OSError, RuntimeError):
             pass
+        return {}
 
     async def close(self) -> None:
         """Tear down owned temporary daemon or restore prior target config on an existing daemon."""
@@ -605,16 +615,30 @@ class AsyncHostSessionClient:
             prior_bin = self._prior_target_config.get("bin")
             if prior_pkg and prior_bin:
                 try:
-                    await self.ensure_target_binary(
-                        TargetBinarySpec(
+                    prior_target = self._prior_target_config.get("target")
+                    prior_chip = self._prior_target_config.get("chip")
+                    prior_release = bool(self._prior_target_config.get("release", False))
+                    if prior_target and prior_chip:
+                        restore_spec = TargetBinarySpec(
                             package=str(prior_pkg),
                             bin_name=str(prior_bin),
-                            arm_target=str(self._prior_target_config.get("target") or "thumbv6m-none-eabi"),
-                            chip=str(self._prior_target_config.get("chip") or "rp2040"),
-                            release=bool(self._prior_target_config.get("release", False)),
+                            arm_target=str(prior_target),
+                            chip=str(prior_chip),
+                            release=prior_release,
                         )
-                    )
-                except (OSError, RuntimeError, AssertionError):
+                    else:
+                        inferred = resolve_target_binary(str(prior_bin), repo_root=self.repo_root)
+                        if inferred is None:
+                            return
+                        restore_spec = TargetBinarySpec(
+                            package=inferred.package,
+                            bin_name=inferred.bin_name,
+                            arm_target=inferred.arm_target,
+                            chip=inferred.chip,
+                            release=prior_release,
+                        )
+                    await self.ensure_target_binary(restore_spec)
+                except (OSError, RuntimeError, ValueError, AssertionError):
                     pass
 
 

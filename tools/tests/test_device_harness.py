@@ -22,17 +22,21 @@ for p in (str(WORKSPACE_ROOT), str(TOOLS_DIR), str(DASHBOARD_DIR)):
         sys.path.insert(0, p)
 
 from device_tests.client import AsyncHostSessionClient
-from device_tests.manual import ManualTestHelper
+from device_tests.manual import ManualPromptAction, ManualTestHelper
 from device_tests.model import (
     BoardType,
+    DetectedBoard,
     ScenarioTier,
+    TargetBinarySpec,
     check_regex,
+    discover_app_binaries,
     infer_scenario_from_script,
     matches_board_patterns,
     parse_query_metadata_output,
+    resolve_target_binary,
 )
 from host_daemon.model.manual_prompt import ManualPromptState
-from host_daemon.model.metadata import validate_metadata_matches_target
+from host_daemon.model.metadata import get_cargo_target_directory, validate_metadata_matches_target
 from host_daemon.provider.daemon.server import HostDaemonServer
 
 
@@ -414,6 +418,20 @@ def test_board_glob_matching_and_host_metadata_validation() -> None:
     assert parsed_kv.source == "metadata_partition"
 
     assert parse_query_metadata_output("Error: No debug probes connected") is None
+    assert parse_query_metadata_output('{"board_type":"rp2040_flash_2mb"}') is None
+    assert DetectedBoard.from_metadata_response({"board_type": "rp2040_flash_2mb", "chip": ""}) is None
+
+    with pytest.raises(ValueError, match="unset"):
+        TargetBinarySpec()
+    with pytest.raises(ValueError, match="Unknown target binary"):
+        resolve_target_binary("nonexistent_firmware_bin", repo_root=WORKSPACE_ROOT)
+
+    app_bins = discover_app_binaries(WORKSPACE_ROOT)
+    assert set(app_bins.keys()) >= {"cat_detector_shell", "cat_detector_app", "carrier_board_shell"}
+    assert app_bins["carrier_board_shell"].chip == "MCXN947"
+
+    cargo_target_dir = get_cargo_target_directory(WORKSPACE_ROOT)
+    assert cargo_target_dir.name == "target"
 
     target_spec = {
         "checksum": "0x9A3F",
@@ -553,26 +571,57 @@ async def test_async_client_reboot_checksum_resync_and_manual_heartbeats() -> No
         assert reboot_res.get("success") is True
         assert runner.reboot_count == 1
 
-        # Verify `ManualTestHelper` periodically streams procedure + prompt heartbeats to `host.py`
+        # Verify `ManualTestHelper` supports ask_yes_no, read_measurement, and cancel with comment
         def _delayed_operator_input(_prompt: str) -> str:
-            time.sleep(0.18)
-            return "p"
+            time.sleep(0.14)
+            return "yes"
 
         helper = ManualTestHelper(
             host=client,
             test_name="test_motor_calibration_routine",
             project="cat_detector",
-            interactive=True,
-            heartbeat_interval=0.05,
+            manual_enabled=True,
+            heartbeat_interval=0.04,
             prompt_reader=_delayed_operator_input,
         )
-        manual_res = await helper.verify(
+        manual_res = await helper.ask_yes_no(
             procedure="Fill reservoir above min waterline.",
-            prompt="Confirm smooth pump ramp.",
+            prompt="Did pump ramp smoothly?",
         )
+        assert manual_res.action == ManualPromptAction.YES
         assert manual_res.passed is True
         assert runner.peak_manual_heartbeats >= 2
         assert runner.manual_prompt.active is False
+
+        meas_helper = ManualTestHelper(
+            host=client,
+            test_name="test_power_rails_and_protection",
+            project="carrier_board",
+            manual_enabled=True,
+            heartbeat_interval=0.04,
+            prompt_reader=lambda _p: "5.02 V",
+        )
+        meas_res = await meas_helper.read_measurement(
+            procedure="Probe TP1 with DMM.",
+            prompt="Measure voltage on TP1",
+            unit="V",
+        )
+        assert meas_res.action == ManualPromptAction.MEASUREMENT
+        assert meas_res.measurement == pytest.approx(5.02)
+
+        cancel_helper = ManualTestHelper(
+            host=client,
+            test_name="test_power_rails_and_protection",
+            project="carrier_board",
+            manual_enabled=True,
+            heartbeat_interval=0.04,
+            prompt_reader=lambda _p: "cancel Bench DMM probe lead unplugged",
+        )
+        with pytest.raises(pytest.skip.Exception, match="Bench DMM probe lead unplugged"):
+            await cancel_helper.ask_yes_no(
+                procedure="Probe TP2.",
+                prompt="Is rail clean?",
+            )
 
         async def _delayed_log_emitter() -> None:
             await asyncio.sleep(0.08)
@@ -632,6 +681,11 @@ def test_host_test_optional_script_and_scenario_inference(tmp_path: Path) -> Non
         encoding="utf-8",
     )
     assert infer_scenario_from_script(smoke_script, WORKSPACE_ROOT) == "smoke"
+
+    unknown_script = tmp_path / "plain_helper.py"
+    unknown_script.write_text("async def helper_fn() -> None:\n    return None\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="Could not infer scenario tier"):
+        infer_scenario_from_script(unknown_script, WORKSPACE_ROOT)
 
     runner = SimulatedTargetRunner(WORKSPACE_ROOT, connected_board_type="rp2040_flash_2mb")
     server, port = _start_ephemeral_daemon(runner)

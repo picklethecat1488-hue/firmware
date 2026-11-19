@@ -49,10 +49,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Explicit TCP port of a running or to-be-spawned host.py daemon.",
     )
     group.addoption(
-        "--interactive",
+        "--manual",
         action="store_true",
         default=False,
-        help="Enable interactive operator prompts for manual/benchtop hardware steps.",
+        help="Enable operator prompts for @device_test(manual=True) benchtop hardware steps.",
     )
     group.addoption(
         "--report-md",
@@ -108,7 +108,7 @@ def pytest_collection_modifyitems(
             config.hook.pytest_deselected(items=deselected)
         items[:] = kept
 
-    interactive_enabled = bool(config.getoption("--interactive"))
+    manual_enabled = bool(config.getoption("--manual"))
     for order_idx, item in enumerate(items, start=1):
         meta = get_device_test_metadata(item)
         item.user_properties.append(("order", str(order_idx)))
@@ -125,16 +125,12 @@ def pytest_collection_modifyitems(
                 item.user_properties.append(("description", str(desc_mark.args[0])))
             bin_mark = item.get_closest_marker("target_binary")
             if bin_mark and bin_mark.args:
-                resolved = resolve_target_binary(bin_mark.args[0])
+                resolved = resolve_target_binary(bin_mark.args[0], repo_root=REPO_ROOT)
                 if resolved is not None:
                     item.user_properties.append(("target_binary", resolved.bin_name))
 
-        if not interactive_enabled and (
-            item.get_closest_marker("manual") is not None or item.get_closest_marker("interactive") is not None
-        ):
-            item.add_marker(
-                pytest.mark.skip(reason="Manual benchtop step skipped (pass --interactive to prompt operator)")
-            )
+        if not manual_enabled and item.get_closest_marker("manual") is not None:
+            item.add_marker(pytest.mark.skip(reason="Manual benchtop step skipped (pass --manual to prompt operator)"))
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -142,7 +138,7 @@ async def host(pytestconfig: pytest.Config) -> AsyncIterator[AsyncHostSessionCli
     """Provide a session-scoped `AsyncHostSessionClient` reusing any running host.py daemon."""
     host_addr = str(pytestconfig.getoption("--host-addr"))
     host_port = pytestconfig.getoption("--host-port")
-    interactive = bool(pytestconfig.getoption("--interactive"))
+    manual_enabled = bool(pytestconfig.getoption("--manual"))
 
     from device_tests.client import query_metadata_standalone
     from host_daemon.cli import get_lock_data
@@ -153,7 +149,7 @@ async def host(pytestconfig: pytest.Config) -> AsyncIterator[AsyncHostSessionCli
             REPO_ROOT,
             host=host_addr,
             port=None,
-            interactive=interactive,
+            manual_enabled=manual_enabled,
             spawn_if_needed=False,
         )
         try:
@@ -171,7 +167,7 @@ async def host(pytestconfig: pytest.Config) -> AsyncIterator[AsyncHostSessionCli
         REPO_ROOT,
         host=host_addr,
         port=host_port,
-        interactive=interactive,
+        manual_enabled=manual_enabled,
         spawn_if_needed=spawn_needed,
     )
     try:
@@ -230,7 +226,7 @@ async def _prepare_device_test(
     if bin_spec is None:
         bin_marker = request.node.get_closest_marker("target_binary")
         if bin_marker and bin_marker.args:
-            bin_spec = resolve_target_binary(bin_marker.args[0])
+            bin_spec = resolve_target_binary(bin_marker.args[0], repo_root=REPO_ROOT)
 
     if bin_spec is not None:
         await host.ensure_target_binary(bin_spec)
@@ -251,7 +247,7 @@ async def manual(
         host=host,
         test_name=request.node.name,
         project=project,
-        interactive=bool(pytestconfig.getoption("--interactive")),
+        manual_enabled=bool(pytestconfig.getoption("--manual")),
     )
 
 

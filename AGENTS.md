@@ -53,6 +53,7 @@ Host anvil
 ### 2. Firmware Target Compatibility Mandate
 * **Universal Target Compatibility**: Unless duly noted, any firmware code should apply to all firmware targets in the repository.
 * **Decoupled Architecture**: Avoid target-specific lock-in in core libraries, drivers, data models, state machines, and domain controllers. Peripheral and hardware specifics must be decoupled through `embedded-hal` trait interfaces and Board Support Package (BSP) abstractions so code is universally portable across all supported boards.
+* **Zero Default Chip, Target, Board, or Binary Fallbacks**: Never fall back to a default chip (e.g., `rp2040`), ARM target triple (e.g., `thumbv6m-none-eabi`), board type, or binary name in device code, BSPs, code generators, or host/test tooling. Declare per-binary hardware metadata explicitly in `app/Cargo.toml` (`[package.metadata.binaries.<bin>]`) and `board/board.toml`, resolve Cargo's single build output directory via `cargo metadata`, and fail explicitly when target or chip identity cannot be inferred.
 
 ### 3. Strict Code Cleanliness & Hygiene
 * **No Dead Code**: Unused code, dangling functions, dead branches, and parameters that do not affect execution must be removed from the repository.

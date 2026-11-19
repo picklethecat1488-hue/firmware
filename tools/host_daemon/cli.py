@@ -15,7 +15,13 @@ from typing import Any, Callable, Dict, List, Optional
 import urllib.error
 import urllib.request
 
-from host_daemon.provider.daemon.config import has_explicit_target_args, load_last_session, save_last_session
+from host_daemon.provider.daemon.config import (
+    discover_target_packages,
+    has_explicit_target_args,
+    infer_arm_target,
+    load_last_session,
+    save_last_session,
+)
 from host_daemon.provider.daemon.runner import DaemonRunner
 from host_daemon.provider.daemon.server import HostDaemonServer
 
@@ -195,20 +201,20 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--target",
         type=str,
-        default="thumbv6m-none-eabi",
-        help="Embedded target architecture triple.",
+        default=None,
+        help="Embedded target architecture triple (inferred from app/Cargo.toml when omitted).",
     )
     parser.add_argument(
         "--package",
         type=str,
-        default="cat_detector",
-        help="Cargo package name containing the firmware application.",
+        default=None,
+        help="Cargo package name containing the firmware application (inferred from app/Cargo.toml when omitted).",
     )
     parser.add_argument(
         "--bin",
         type=str,
-        default="cat_detector_shell",
-        help="Binary name to build and flash.",
+        default=None,
+        help="Binary name to build and flash (inferred from app/Cargo.toml default-run when omitted).",
     )
     parser.add_argument(
         "--release",
@@ -366,9 +372,9 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Target board_type or glob filter (e.g. auto, rp2040*, rp2040_flash_2mb, carrier_board*).",
     )
     test_parser.add_argument(
-        "--interactive",
+        "--manual",
         action="store_true",
-        help="Enable interactive operator prompts for manual/benchtop bringup steps.",
+        help="Enable operator prompts for @device_test(manual=True) benchtop steps.",
     )
     test_parser.add_argument(
         "--list-devices",
@@ -433,6 +439,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         if "chip" in last_session:
             args.chip = last_session["chip"]
     elif is_explicit and args.subcommand is None:
+        discovered_pkgs = discover_target_packages(repo_root)
+        if not args.package and discovered_pkgs:
+            args.package = str(discovered_pkgs[0]["package"])
+        if not args.bin and discovered_pkgs:
+            matched_pkg = next((p for p in discovered_pkgs if p["package"] == args.package), discovered_pkgs[0])
+            args.bin = str(matched_pkg["default_bin"])
+        if not args.target and args.package:
+            args.target = infer_arm_target(args.package, args.bin, chip=args.chip, repo_root=repo_root)
         save_last_session(
             repo_root,
             {
@@ -623,7 +637,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             else:
                 marker_expr = raw_scenario
         elif target_script:
-            marker_expr = infer_scenario_from_script(target_script, repo_root)
+            try:
+                marker_expr = infer_scenario_from_script(target_script, repo_root)
+            except ValueError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return 1
         else:
             marker_expr = "smoke or integration"
 
@@ -662,8 +680,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             pytest_cmd.extend(["-m", marker_expr])
         if args.host_port is not None:
             pytest_cmd.extend(["--host-port", str(args.host_port)])
-        if args.interactive:
-            pytest_cmd.append("--interactive")
+        if args.manual:
+            pytest_cmd.append("--manual")
         if args.report_md:
             pytest_cmd.extend(["--report-md", args.report_md])
         if args.junit_xml:
