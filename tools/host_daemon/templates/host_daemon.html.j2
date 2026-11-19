@@ -656,7 +656,6 @@
       <select id="modeSelect" class="select-dropdown">
         <option value="CLI" {% if runner.active_mode == 'CLI' %}selected{% endif %}>CLI (RTT Console)</option>
         <option value="FS" {% if runner.active_mode == 'FS' %}selected{% endif %}>FS (Filesystem)</option>
-        <option value="BRINGUP" {% if runner.active_mode == 'BRINGUP' %}selected{% endif %}>BRINGUP (Checklist)</option>
       </select>
       <label for="uiScaleSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">SCALE:</label>
       <select id="uiScaleSelect" class="select-dropdown" title="UI Scale (Shortcuts: Cmd/Ctrl +/- or 0 to reset)" style="padding: 2px 4px; font-size: 8.5px; height: 22px;">
@@ -953,62 +952,18 @@
         <button class="btn" data-fs-cmd="format">format</button>
       </div>
 
-      <!-- Optional Bringup Action Toolbar -->
-      <div id="bringupToolbar" class="bringup-toolbar" style="display: {% if runner.active_mode == 'BRINGUP' %}flex{% else %}none{% endif %};">
-        <label for="bringupScriptSelect" style="font-size: 8.5px; color: var(--xerxes-text-muted);">SCRIPT:</label>
-        <select id="bringupScriptSelect" class="select-dropdown">
-          <option value="">Loading bringup scripts...</option>
-        </select>
-        <button class="btn btn-cyan" id="btnBringupStep" title="Execute current checklist step">▶ Step</button>
-        <button class="btn btn-cyan" id="btnBringupRun" title="Auto-run remaining checklist steps">⚡ Run All</button>
-        <button class="btn btn-amber" id="btnBringupReset" title="Reset checklist to step 1">↺ Reset</button>
-        <button class="btn" id="btnBringupReport" title="Export markdown verification report">📄 Report</button>
-        <span id="bringupSummaryBadge" class="badge" style="margin-left: auto;">CHECKLIST: IDLE</span>
+      <!-- Active Manual Test Prompt Banner (populated from pytest /api/manual_prompt heartbeats) -->
+      <div id="manualPromptBanner" class="bringup-toolbar" style="display: none; border-color: var(--xerxes-amber); gap: 8px;">
+        <span class="badge" style="color: var(--xerxes-amber);">MANUAL TEST</span>
+        <span id="manualPromptSummary" style="font-size: 8.5px; color: var(--xerxes-text-light);"></span>
       </div>
 
-      <div class="panel-content" id="cliView" style="display: {% if runner.active_mode in ('FS', 'BRINGUP') %}none{% else %}block{% endif %};">
+      <div class="panel-content" id="cliView" style="display: {% if runner.active_mode == 'FS' %}none{% else %}block{% endif %};">
         <div class="log-line log-line-info">&gt; Interactive CLI workstation ready. Type commands below.</div>
       </div>
 
       <div class="panel-content" id="fsView" style="display: {% if runner.active_mode == 'FS' %}block{% else %}none{% endif %};">
         <div class="log-line log-line-info">&gt; Filesystem (host_fs) workstation ready. Type FS commands below (e.g. 'ls', 'cat metadata', 'format').</div>
-      </div>
-
-      <div class="panel-content bringup-panel-content" id="bringupView" style="display: {% if runner.active_mode == 'BRINGUP' %}flex{% else %}none{% endif %}; flex-direction: row; padding: 0; overflow: hidden; height: 100%;">
-        <!-- Left: Step list -->
-        <div class="bringup-sidebar">
-          <div class="bringup-sidebar-header">CHECKLIST STEPS</div>
-          <ul class="bringup-step-list" id="bringupStepList">
-            <li class="log-line log-line-info" style="padding: 8px;">Loading checklist steps...</li>
-          </ul>
-        </div>
-        <!-- Right: Active Step Details, Prompt Card & Live CLI Output -->
-        <div class="bringup-main-area">
-          <div class="bringup-card bringup-prompt-card" id="bringupPromptCard">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-              <span id="bringupCardTitle" style="font-weight: bold; color: var(--xerxes-cyan); font-size: 10px;">NO SCRIPT LOADED</span>
-              <span id="bringupCardType" class="badge">TYPE: --</span>
-            </div>
-            <div id="bringupCardDesc" style="font-size: 8.5px; color: var(--xerxes-text-light); margin-bottom: 8px;">Select a bringup script above to begin verification.</div>
-            <div id="bringupCardDetails" style="font-size: 8px; color: var(--xerxes-text-muted);"></div>
-            <div id="bringupPromptActionArea" style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--xerxes-border-mid); display: none;">
-              <div style="font-size: 8.5px; color: var(--xerxes-amber); font-weight: bold; margin-bottom: 6px;" id="bringupPromptText">ACTION REQUIRED: Verify step outcome</div>
-              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <input type="text" id="bringupPromptNotes" class="cmd-input" placeholder="Notes/observations (optional)..." style="flex: 1; min-width: 160px; height: 22px; font-size: 8.5px;">
-                <button class="btn btn-cyan" id="btnBringupPass" data-bringup-action="pass">✔ Pass</button>
-                <button class="btn btn-red" id="btnBringupFail" data-bringup-action="fail">✘ Fail</button>
-                <button class="btn btn-amber" id="btnBringupSkip" data-bringup-action="skip">⏭ Skip</button>
-              </div>
-            </div>
-          </div>
-          <div class="panel-header" style="background: var(--xerxes-header-bg); border-top: 1px solid var(--xerxes-border-mid); padding: 4px 8px;">
-            <span style="font-size: 8.5px; color: var(--xerxes-cyan);">LIVE BRINGUP LOGS &amp; CLI OUTPUT</span>
-            <button class="btn btn-copy" id="btnCopyBringupLog">📋 Copy Log</button>
-          </div>
-          <div class="panel-content" id="bringupConsoleOutput" style="flex: 1; overflow-y: auto; background: var(--xerxes-bg); border: 1px solid var(--xerxes-border-mid); padding: 6px; font-size: 8.5px; font-family: var(--font-mono);">
-            <div class="log-line log-line-info">&gt; Bringup workstation initialized.</div>
-          </div>
-        </div>
       </div>
     </div>
   </main>

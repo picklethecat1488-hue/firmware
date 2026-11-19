@@ -11,7 +11,6 @@ import { applyIframeContextClass, resolveElement } from "../core/dom.js";
 import { setupPanelResizer } from "../core/resizer.js";
 import { getRuntimeContext } from "../core/runtime_context.js";
 import { applyUiScale } from "../core/ui_scale.js";
-import { createBringupRunner } from "./bringup_runner.js";
 import { createCliConsole, WORKSTATION_MODES } from "./cli_console.js";
 import { createRttStream } from "./rtt_stream.js";
 import { createTargetConfig } from "./target_config.js";
@@ -56,17 +55,8 @@ export class DaemonApp {
       onCommandClick: (cmd) => this.cliConsole.handleCommandClick(cmd),
     });
 
-    this.bringupRunner = createBringupRunner(ctx);
-
     this.cliConsole = createCliConsole(ctx, {
       initialMode,
-      onModeChange: async (mode) => {
-        if (mode === WORKSTATION_MODES.BRINGUP) {
-          await this.bringupRunner.loadScripts();
-          await this.bringupRunner.pollStatus();
-        }
-      },
-      onBringupAction: (action) => this.bringupRunner.respond(action),
     });
 
     this.targetConfig = createTargetConfig(ctx, {
@@ -95,6 +85,8 @@ export class DaemonApp {
     this.clearOutputBtn = resolveElement(ctx, "btnClearOutput");
     this.copyLogBtn = resolveElement(ctx, "btnCopyLog");
     this.copyWorkstationBtn = resolveElement(ctx, "btnCopyWorkstation");
+    this.manualPromptBanner = resolveElement(ctx, "manualPromptBanner");
+    this.manualPromptSummary = resolveElement(ctx, "manualPromptSummary");
   }
 
   /**
@@ -127,16 +119,11 @@ export class DaemonApp {
     );
     this._unsubscribers.push(cleanupResizer);
 
-    this.bringupRunner.init();
     this.wormReporter.init();
     await this.cliConsole.init();
     await this.targetConfig.init();
 
     await this.pollAll();
-    if (this.cliConsole.getMode() === WORKSTATION_MODES.BRINGUP) {
-      await this.bringupRunner.loadScripts();
-      await this.bringupRunner.pollStatus();
-    }
 
     this.pollTimer = this.ctx.setInterval(() => {
       this.pollAll();
@@ -318,7 +305,30 @@ export class DaemonApp {
   }
 
   /**
-   * Poll RTT system logs, CLI/FS outputs, and (when active) Bringup status once.
+   * Poll `/api/manual_prompt` to display active manual pytest procedure & prompt context.
+   *
+   * @returns {Promise<void>}
+   */
+  async pollManualPrompt() {
+    if (!this.manualPromptBanner || !this.manualPromptSummary) {
+      return;
+    }
+    try {
+      const data = await this.ctx.fetchJson("/api/manual_prompt");
+      if (data && data.active) {
+        this.manualPromptBanner.style.display = "flex";
+        this.manualPromptSummary.textContent = `[${data.project || "device"}] ${data.test_name}: ${data.procedure} — ${data.prompt}`;
+      } else {
+        this.manualPromptBanner.style.display = "none";
+        this.manualPromptSummary.textContent = "";
+      }
+    } catch {
+      this.manualPromptBanner.style.display = "none";
+    }
+  }
+
+  /**
+   * Poll RTT system logs, CLI/FS outputs, and active manual prompt context once.
    *
    * @returns {Promise<void>}
    */
@@ -326,9 +336,7 @@ export class DaemonApp {
     await Promise.all([
       this.rttStream.pollLogs(),
       this.cliConsole.pollOutputs(),
-      this.cliConsole.getMode() === WORKSTATION_MODES.BRINGUP
-        ? this.bringupRunner.pollStatus()
-        : Promise.resolve(),
+      this.pollManualPrompt(),
     ]);
   }
 
@@ -346,7 +354,6 @@ export class DaemonApp {
     this._unsubscribers = [];
     this.rttStream.destroy();
     this.cliConsole.destroy();
-    this.bringupRunner.destroy();
     this.targetConfig.destroy();
     this.wormReporter.destroy();
   }
