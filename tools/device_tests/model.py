@@ -1,4 +1,4 @@
-"""Data models, glob board matchers, project discovery, and decorators for on-device pytest suites."""
+"""Data models, Cargo binary metadata parser, glob board matchers, and decorators for device suites."""
 
 from dataclasses import dataclass
 from enum import Enum
@@ -13,13 +13,25 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, TypeVar
 
 import pytest
 
-DEFAULT_PACKAGE_NAME: str = "cat_detector"
-RP2040_ARM_TARGET: str = "thumbv6m-none-eabi"
-MCXN947_ARM_TARGET: str = "thumbv8m.main-none-eabihf"
-DEFAULT_RP2040_CHIP: str = "rp2040"
-DEFAULT_MCXN947_CHIP: str = "MCXN947"
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
+
+DEFAULT_PACKAGE_NAME: Optional[str] = None
+DEFAULT_BIN_NAME: Optional[str] = None
+DEFAULT_ARM_TARGET: Optional[str] = None
+DEFAULT_CHIP: Optional[str] = None
+
+REPO_ROOT_DEFAULT: Path = Path(__file__).resolve().parents[2]
 
 F = TypeVar("F", bound=Callable[..., Any])
+
+
+def _is_unset_target_field(value: Optional[str]) -> bool:
+    """Return True if a target/chip/package/binary identifier is None, empty, or 'none'."""
+    cleaned = str(value or "").strip()
+    return not cleaned or cleaned.lower() == "none"
 
 
 class BoardType(str, Enum):
@@ -44,11 +56,22 @@ class ScenarioTier(str, Enum):
 class TargetBinarySpec:
     """Specification of the firmware binary required on target for a device test."""
 
-    package: str
-    bin_name: str
-    arm_target: str = RP2040_ARM_TARGET
-    chip: str = DEFAULT_RP2040_CHIP
+    package: Optional[str] = DEFAULT_PACKAGE_NAME
+    bin_name: Optional[str] = DEFAULT_BIN_NAME
+    arm_target: Optional[str] = DEFAULT_ARM_TARGET
+    chip: Optional[str] = DEFAULT_CHIP
     release: bool = False
+
+    def __post_init__(self) -> None:
+        """Fail fast if package, binary name, ARM target, or chip cannot be inferred."""
+        for attr_name in ("package", "bin_name", "arm_target", "chip"):
+            raw = getattr(self, attr_name)
+            if _is_unset_target_field(raw):
+                raise ValueError(
+                    f"TargetBinarySpec.{attr_name} is unset ('none'); target discovery requires "
+                    "explicit binary metadata in app/Cargo.toml without fallbacks."
+                )
+            object.__setattr__(self, attr_name, str(raw).strip())
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize target binary specification to a JSON-compatible dictionary."""
@@ -62,29 +85,43 @@ class TargetBinarySpec:
         }
 
 
-KNOWN_TARGET_BINARIES: Dict[str, TargetBinarySpec] = {
-    "cat_detector_shell": TargetBinarySpec(
-        package=DEFAULT_PACKAGE_NAME,
-        bin_name="cat_detector_shell",
-        arm_target=RP2040_ARM_TARGET,
-        chip=DEFAULT_RP2040_CHIP,
-        release=False,
-    ),
-    "cat_detector_app": TargetBinarySpec(
-        package=DEFAULT_PACKAGE_NAME,
-        bin_name="cat_detector_app",
-        arm_target=RP2040_ARM_TARGET,
-        chip=DEFAULT_RP2040_CHIP,
-        release=False,
-    ),
-    "carrier_board_shell": TargetBinarySpec(
-        package=DEFAULT_PACKAGE_NAME,
-        bin_name="carrier_board_shell",
-        arm_target=RP2040_ARM_TARGET,
-        chip=DEFAULT_MCXN947_CHIP,
-        release=False,
-    ),
-}
+def discover_app_binaries(repo_root: Optional[Path] = None) -> Dict[str, TargetBinarySpec]:
+    """Parse target binary specifications directly from `app/Cargo.toml` without fallbacks."""
+    root = (repo_root or REPO_ROOT_DEFAULT).resolve()
+    cargo_toml_path = root / "app" / "Cargo.toml"
+    if not cargo_toml_path.is_file():
+        raise FileNotFoundError(f"Application manifest not found at {cargo_toml_path}")
+
+    manifest = tomllib.loads(cargo_toml_path.read_text(encoding="utf-8"))
+    pkg_table = manifest.get("package") or {}
+    package_name = str(pkg_table.get("name") or "").strip()
+    if _is_unset_target_field(package_name):
+        raise ValueError(f"Missing [package].name in {cargo_toml_path}")
+
+    metadata_bins = ((pkg_table.get("metadata") or {}).get("binaries")) or {}
+    bin_entries = manifest.get("bin") or []
+    if not bin_entries:
+        raise ValueError(f"No [[bin]] targets declared in {cargo_toml_path}")
+
+    specs: Dict[str, TargetBinarySpec] = {}
+    for entry in bin_entries:
+        bin_name = str(entry.get("name") or "").strip()
+        if _is_unset_target_field(bin_name):
+            raise ValueError(f"Unnamed [[bin]] entry in {cargo_toml_path}")
+        bin_meta = metadata_bins.get(bin_name)
+        if not isinstance(bin_meta, dict):
+            raise ValueError(
+                f"Binary '{bin_name}' in {cargo_toml_path} is missing "
+                f"[package.metadata.binaries.{bin_name}] target/chip metadata"
+            )
+        specs[bin_name] = TargetBinarySpec(
+            package=package_name,
+            bin_name=bin_name,
+            arm_target=bin_meta.get("target"),
+            chip=bin_meta.get("chip"),
+            release=bool(bin_meta.get("release", False)),
+        )
+    return specs
 
 
 @dataclass(frozen=True)
@@ -100,13 +137,14 @@ class DetectedBoard:
 
     @classmethod
     def from_metadata_response(cls, payload: Dict[str, Any]) -> Optional["DetectedBoard"]:
-        """Construct `DetectedBoard` from a `/api/metadata` or `query_metadata` dictionary."""
+        """Construct `DetectedBoard` from a `/api/metadata` or `query_metadata` dictionary without fallbacks."""
         bt = str(payload.get("board_type") or "").strip()
-        if not bt:
+        chip = str(payload.get("chip") or "").strip()
+        if _is_unset_target_field(bt) or _is_unset_target_field(chip):
             return None
         return cls(
             board_type=bt,
-            chip=str(payload.get("chip") or DEFAULT_RP2040_CHIP).strip(),
+            chip=chip,
             source=str(payload.get("source") or "program_metadata").strip(),
             checksum=payload.get("checksum"),
             elf_checksum=payload.get("elf_checksum"),
@@ -158,26 +196,23 @@ class DeviceTestMetadata:
 def resolve_target_binary(
     binary: Union[None, str, TargetBinarySpec],
     *,
-    default_package: str = DEFAULT_PACKAGE_NAME,
+    repo_root: Optional[Path] = None,
 ) -> Optional[TargetBinarySpec]:
-    """Resolve a binary name or `TargetBinarySpec` into a canonical `TargetBinarySpec`."""
+    """Resolve a binary name or `TargetBinarySpec` from `app/Cargo.toml` without fallbacks."""
     if binary is None:
         return None
     if isinstance(binary, TargetBinarySpec):
         return binary
     cleaned = binary.strip()
-    if not cleaned:
-        return None
-    if cleaned in KNOWN_TARGET_BINARIES:
-        return KNOWN_TARGET_BINARIES[cleaned]
-    chip = DEFAULT_MCXN947_CHIP if "carrier_board" in cleaned else DEFAULT_RP2040_CHIP
-    return TargetBinarySpec(
-        package=default_package,
-        bin_name=cleaned,
-        arm_target=RP2040_ARM_TARGET,
-        chip=chip,
-        release=False,
-    )
+    if _is_unset_target_field(cleaned):
+        raise ValueError("Target binary identifier cannot be empty or 'none'")
+    known_binaries = discover_app_binaries(repo_root)
+    if cleaned not in known_binaries:
+        raise ValueError(
+            f"Unknown target binary '{cleaned}': not declared in app/Cargo.toml "
+            f"(available binaries: {sorted(known_binaries.keys())})"
+        )
+    return known_binaries[cleaned]
 
 
 def matches_board_patterns(board_type: str, patterns: Sequence[str]) -> bool:
@@ -221,19 +256,23 @@ def parse_query_metadata_output(raw_output: str) -> Optional[DetectedBoard]:
                 payload = json.loads(candidate)
             except json.JSONDecodeError:
                 payload = None
-            if isinstance(payload, dict) and payload.get("board_type"):
-                return DetectedBoard.from_metadata_response(payload)
+            if isinstance(payload, dict):
+                parsed = DetectedBoard.from_metadata_response(payload)
+                if parsed is not None:
+                    return parsed
 
     kv: Dict[str, str] = {}
     for line in cleaned.splitlines():
         if ":" in line and not line.strip().startswith("partition["):
             key, val = line.split(":", 1)
             kv[key.strip().lower()] = val.strip()
-    if "board_type" in kv and kv["board_type"]:
+    board_type = kv.get("board_type", "")
+    chip = kv.get("chip", "")
+    if not _is_unset_target_field(board_type) and not _is_unset_target_field(chip):
         matches_str = kv.get("matches_target", "true").lower()
         return DetectedBoard(
-            board_type=kv["board_type"],
-            chip=kv.get("chip", DEFAULT_RP2040_CHIP),
+            board_type=board_type,
+            chip=chip,
             source=kv.get("source", "program_metadata"),
             checksum=kv.get("checksum"),
             elf_checksum=kv.get("elf_checksum"),
@@ -300,7 +339,6 @@ def device_test(
             marked = getattr(pytest.mark, tier.value)(marked)
         if manual:
             marked = pytest.mark.manual(marked)
-            marked = pytest.mark.interactive(marked)
         setattr(marked, "__device_test_meta__", metadata)
         return marked
 
@@ -349,16 +387,40 @@ def load_device_test_file(file_path: Union[str, Path]) -> List[Tuple[Callable[..
     return [(fn, meta) for _, fn, meta in collected]
 
 
+def _board_filter_matches_test(board_filter: str, test_board_patterns: Sequence[str]) -> bool:
+    """Return True if a user-specified board filter matches a test's `@device_test(boards=...)` patterns."""
+    filt = board_filter.strip().lower()
+    if not filt or filt in ("*", "all", "any"):
+        return True
+    if matches_board_patterns(filt, test_board_patterns):
+        return True
+    return any(fnmatch.fnmatchcase(pat.strip().lower(), filt) for pat in test_board_patterns)
+
+
 def discover_device_tests(
     repo_root: Path,
     *,
     project: Optional[str] = None,
     script: Optional[Union[str, Path]] = None,
-    scenarios: Optional[Sequence[ScenarioTier]] = None,
+    scenarios: Optional[Sequence[Union[str, ScenarioTier]]] = None,
+    board: Optional[str] = None,
+    target_binary: Optional[str] = None,
+    manual: Optional[bool] = None,
+    query: Optional[str] = None,
+    detected_board_type: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Discover `@device_test` functions across `tools/device_tests/suites/` (or a specific script)."""
+    """Discover `@device_test` functions across `tools/device_tests/suites/` with attribute filtering."""
     project_norm = project.strip().lower() if project and project.strip().lower() not in ("all", "*") else None
-    scenario_filter = set(scenarios) if scenarios else None
+    scenario_filter = (
+        {s if isinstance(s, ScenarioTier) else ScenarioTier(str(s).strip().lower()) for s in scenarios}
+        if scenarios
+        else None
+    )
+    board_norm = board.strip() if board and board.strip().lower() not in ("all", "*") else None
+    if board_norm and board_norm.lower() == "auto":
+        board_norm = detected_board_type
+    binary_norm = target_binary.strip() if target_binary and target_binary.strip().lower() not in ("all", "*") else None
+    query_norm = query.strip().lower() if query and query.strip() else None
 
     if script is not None:
         file_part = str(script).partition("::")[0]
@@ -382,9 +444,26 @@ def discover_device_tests(
                 continue
             if scenario_filter and not (set(meta.scenarios) & scenario_filter):
                 continue
+            if board_norm and not _board_filter_matches_test(board_norm, meta.boards):
+                continue
+            if binary_norm is not None:
+                actual_bin = meta.target_binary.bin_name if meta.target_binary else "none"
+                if actual_bin.lower() != binary_norm.lower():
+                    continue
+            if manual is not None and bool(meta.manual) != bool(manual):
+                continue
+            if query_norm:
+                haystack = f"{meta.name} {meta.project} {meta.description} {rel_path}".lower()
+                if query_norm not in haystack:
+                    continue
+
             order_counter += 1
             entry = meta.to_dict(order_index=order_counter)
             entry["file_path"] = rel_path
+            entry["node_id"] = f"{rel_path}::{meta.name}"
+            entry["board_compatible"] = (
+                matches_board_patterns(detected_board_type, meta.boards) if detected_board_type else None
+            )
             results.append(entry)
     return results
 
@@ -393,7 +472,7 @@ def infer_scenario_from_script(
     script_spec: Union[str, Path],
     repo_root: Optional[Path] = None,
 ) -> str:
-    """Infer the pytest scenario marker expression from a `@device_test` script or node ID."""
+    """Infer the pytest scenario marker expression from a `@device_test` script or raise `ValueError`."""
     raw_spec = str(script_spec).strip()
     file_part, _, node_selector = raw_spec.partition("::")
     candidate = Path(file_part)
@@ -438,4 +517,8 @@ def infer_scenario_from_script(
     for tier in (ScenarioTier.SMOKE, ScenarioTier.INTEGRATION, ScenarioTier.BRINGUP):
         if tier.value in stem_tokens:
             return tier.value
-    return "smoke or integration"
+
+    raise ValueError(
+        f"Could not infer scenario tier from script '{script_spec}'; "
+        "decorate tests with @device_test(scenarios=...) or pass --scenario explicitly."
+    )

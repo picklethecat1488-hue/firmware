@@ -85,7 +85,7 @@ The official, executable source of truth for these bringup, integration, and smo
 
 ```bash
 conda run -n firmware-env python tools/host.py test --board "rp2040*"
-conda run -n firmware-env python tools/host.py test --script tools/device_tests/suites/test_cat_detector_bringup.py --interactive
+conda run -n firmware-env python tools/host.py test --script tools/device_tests/suites/test_cat_detector_bringup.py --manual
 ```
 
 ### 3.1. Verification Prerequisites

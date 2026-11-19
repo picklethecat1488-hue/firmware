@@ -304,7 +304,7 @@ All target binaries (`*_shell.rs`, `*_app.rs`) reside in the unified `app` crate
      - Wire `#[panic_handler]` to `app::handle_panic(info)`.
      - Declare CLI command dispatchers via `controller::declare_active_shell_commands!`.
      - Use `#[embassy_executor::main] async fn main(spawner: Spawner)` to run `app::Board::init().await`, construct `CliBuilder` over `platform::rtt::RttTxWriter`, print the startup banner, call `core_monitor::init_core(...)`, bind `app::declare_shell_pointers!(...)`, and enter `platform::run_rtt_shell_loop!`.
-   - Register the binary in `KNOWN_TARGET_BINARIES` inside [`tools/device_tests/model.py`](tools/device_tests/model.py) so `@device_test(target_binary="<name>_shell")` can compile and flash it automatically via `python tools/host.py test`.
+   - Declare `[package.metadata.binaries.<name>_shell]` (`board`, `chip`, `target`) in [`app/Cargo.toml`](app/Cargo.toml) so `tools/host.py` and `@device_test(target_binary="<name>_shell")` discover, compile, and flash it automatically without fallbacks.
 
 ### Running Tests
 Validate all logic (including host-compatible board mocks) on the host. We use `cargo-nextest` for faster, parallel, and clean test execution:
@@ -577,8 +577,8 @@ python tools/host.py fs board-type
 python tools/host.py test --list
 python tools/host.py test --scenario smoke --board "rp2040*"
 python tools/host.py test --scenario integration
-python tools/host.py test tools/device_tests/suites/test_cat_detector_bringup.py --interactive
-python tools/host.py test --script tools/device_tests/suites/test_carrier_board_bringup.py --interactive
+python tools/host.py test tools/device_tests/suites/test_cat_detector_bringup.py --manual
+python tools/host.py test --script tools/device_tests/suites/test_carrier_board_bringup.py --manual
 
 # Flash & debug probe controls
 python tools/host.py sync

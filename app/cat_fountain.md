@@ -29,5 +29,5 @@ For interactive bringup steps, target shell command checklists, and async pytest
 - Device test & bringup execution:
   ```bash
   conda run -n firmware-env python tools/host.py test --board "rp2040*"
-  conda run -n firmware-env python tools/host.py test --script tools/device_tests/suites/test_cat_detector_bringup.py --interactive
+  conda run -n firmware-env python tools/host.py test --script tools/device_tests/suites/test_cat_detector_bringup.py --manual
   ```

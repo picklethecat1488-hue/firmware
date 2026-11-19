@@ -1,4 +1,4 @@
-"""Target `.program_metadata` parsing, ELF discovery, and target specification validation on host.py."""
+"""Target `.program_metadata` parsing, Cargo output-directory discovery, and ELF validation on host.py."""
 
 import json
 import os
@@ -8,20 +8,52 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
-EMBEDDED_BUILD_REL_DIRS: tuple[str, ...] = (
-    "target/thumbv6m-none-eabi/debug",
-    "target/thumbv6m-none-eabi/release",
-    "target/thumbv8m.main-none-eabihf/debug",
-    "target/thumbv8m.main-none-eabihf/release",
-    "target/out/debug/embedded/cat_detector",
-    "target/out/debug/embedded/carrier_board",
-)
-
 ATTACHED_INVALID_META_RE = re.compile(r"AttachedTargetMetadataInvalid\s*\(([^)]+)\)")
+BUILD_PROFILES: tuple[str, ...] = ("debug", "release")
+_CARGO_TARGET_DIR_CACHE: Dict[Path, Path] = {}
+
+
+def get_cargo_target_directory(repo_root: Path) -> Path:
+    """Resolve the single Cargo output directory via `cargo metadata --format-version 1 --no-deps`."""
+    resolved_root = repo_root.resolve()
+    cached = _CARGO_TARGET_DIR_CACHE.get(resolved_root)
+    if cached is not None:
+        return cached
+
+    env = dict(os.environ)
+    env.pop("CARGO_BUILD_TARGET", None)
+    env.pop("CARGO_ENCODED_RUSTFLAGS", None)
+
+    try:
+        proc = subprocess.run(
+            ["cargo", "metadata", "--format-version", "1", "--no-deps"],
+            cwd=str(resolved_root),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15.0,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(f"Failed to invoke `cargo metadata` in {resolved_root}: {exc}") from exc
+
+    if proc.returncode != 0:
+        raise RuntimeError(f"`cargo metadata` failed in {resolved_root}: {proc.stderr.strip()}")
+
+    data = json.loads(proc.stdout)
+    target_dir_raw = str(data.get("target_directory") or "").strip()
+    if not target_dir_raw:
+        raise RuntimeError(f"`cargo metadata` returned an empty target_directory in {resolved_root}")
+
+    target_dir = Path(target_dir_raw)
+    _CARGO_TARGET_DIR_CACHE[resolved_root] = target_dir
+    return target_dir
 
 
 def discover_compiled_elfs(repo_root: Path, preferred_elf: Optional[Path] = None) -> List[Path]:
-    """Return candidate compiled embedded ELF binaries under `target/`, putting `preferred_elf` first."""
+    """Return compiled embedded ELF binaries from Cargo's output directory, putting `preferred_elf` first."""
+    from device_tests.model import discover_app_binaries
+
     candidates: List[Path] = []
     seen_resolved: set[Path] = set()
 
@@ -30,17 +62,18 @@ def discover_compiled_elfs(repo_root: Path, preferred_elf: Optional[Path] = None
         seen_resolved.add(resolved)
         candidates.append(preferred_elf)
 
-    for rel_dir in EMBEDDED_BUILD_REL_DIRS:
-        directory = repo_root / rel_dir
-        if not directory.is_dir():
-            continue
-        for child in sorted(directory.iterdir()):
-            if not child.is_file() or child.suffix != "":
+    target_dir = get_cargo_target_directory(repo_root)
+    app_binaries = discover_app_binaries(repo_root)
+    for spec in app_binaries.values():
+        assert spec.arm_target is not None and spec.bin_name is not None
+        for profile in BUILD_PROFILES:
+            elf_path = target_dir / spec.arm_target / profile / spec.bin_name
+            if not elf_path.is_file():
                 continue
-            resolved = child.resolve()
+            resolved = elf_path.resolve()
             if resolved not in seen_resolved:
                 seen_resolved.add(resolved)
-                candidates.append(child)
+                candidates.append(elf_path)
     return candidates
 
 
@@ -68,7 +101,7 @@ def parse_program_metadata_output(raw_output: str) -> Optional[Dict[str, Any]]:
         if ":" in line and not line.strip().startswith("partition["):
             key, val = line.split(":", 1)
             kv[key.strip().lower()] = val.strip()
-    if "board_type" in kv and "chip" in kv:
+    if "board_type" in kv and "chip" in kv and kv["board_type"] and kv["chip"]:
         return {
             "checksum": kv.get("checksum"),
             "chip": kv["chip"],
@@ -114,16 +147,14 @@ def validate_metadata_matches_target(
 
 
 def _resolve_host_fs_cmd_prefix(repo_root: Path, host_fs_path: Optional[Path] = None) -> List[str]:
-    """Return direct `host_fs` binary command prefix (falling back to `cargo run -q -p host_fs --`)."""
+    """Return direct `host_fs` binary command prefix from Cargo's output directory."""
     candidates: List[Path] = []
     if host_fs_path is not None:
         candidates.append(host_fs_path)
-    candidates.extend(
-        [
-            repo_root / "target" / "debug" / "host_fs",
-            repo_root / "target" / "release" / "host_fs",
-        ]
-    )
+
+    target_dir = get_cargo_target_directory(repo_root)
+    for profile in BUILD_PROFILES:
+        candidates.append(target_dir / profile / "host_fs")
     if sys.platform in ("win32", "win64"):
         candidates = [p.with_suffix(".exe") for p in candidates]
 
@@ -179,12 +210,20 @@ def probe_attached_target_metadata(
     host_fs_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """Probe the attached target using compiled ELFs and validate metadata against `preferred_elf`."""
-    elf_candidates = discover_compiled_elfs(repo_root, preferred_elf=preferred_elf)
+    try:
+        elf_candidates = discover_compiled_elfs(repo_root, preferred_elf=preferred_elf)
+    except (OSError, RuntimeError, ValueError) as exc:
+        return {
+            "connected": False,
+            "matches_target": False,
+            "error": str(exc),
+        }
+
     if not elf_candidates:
         return {
             "connected": False,
             "matches_target": False,
-            "error": "No compiled firmware ELFs available under target/ to resolve .program_metadata geometry",
+            "error": "No compiled firmware ELFs available in Cargo target_directory to resolve .program_metadata geometry",
         }
 
     expected_target_meta: Optional[Dict[str, Any]] = None
