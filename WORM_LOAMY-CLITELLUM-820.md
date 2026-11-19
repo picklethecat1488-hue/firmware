@@ -100,6 +100,7 @@ FAILED tools/device_tests/suites/test_cat_detector_integration.py::test_system_a
 #### Attached Commits
 
 - `f6832b10`
+- `6e131b77`
 
 #### Review Tasks & Functional Checklist
 
