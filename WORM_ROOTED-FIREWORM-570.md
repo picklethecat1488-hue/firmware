@@ -1,12 +1,13 @@
-# 🔴 `[WORM-ROOTED-FIREWORM-570]` Move this console widget into a “test execution log” on the left panel
+# 🟢 `[WORM-ROOTED-FIREWORM-570]` Move this console widget into a “test execution log” on the left panel
 
 - **UUID**: `9cfd6e9b-8a89-4c39-8593-22de71bb6c62`
 - **ID**: `WORM-ROOTED-FIREWORM-570`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `INFRASTRUCTURE`
 - **Component**: `target`
 - **Created**: `2026-11-19 03:47:29 UTC`
+- **Resolved**: `2026-11-19 04:26:19 UTC`
 
 #### Description
 
@@ -77,3 +78,7 @@ We should move this console widget into a “test execution log” tab on the le
 
 - [ ] Open host.py in TEST mode, click '📋 TEST EXECUTION LOG' in the left panel tab bar, run a smoke test, and verify pytest execution output streams into the left panel with a working COPY button | `python tools/host.py --mode test` <!-- id:bf848b80 -->
 - [ ] Click '🐛 FILE TARGET BUG' while in TEST mode vs CLI/FS mode and verify 'Attach Test Execution Logs' is visible/enabled only in TEST mode and attaches target_test_execution_logs_<id>.log to the worm report | `python tools/forge.py list-worms --open` <!-- id:6b7ebe66 -->
+
+#### Resolution Notes
+
+Moved the Test Execution Log console widget into a dedicated '📋 TEST EXECUTION LOG' tab on the left panel alongside Test Suite and System Logs, and wired Target Bug Reports to attach sanitized test execution logs exclusively when filed from TEST mode.
