@@ -124,4 +124,14 @@ pub enum Commands {
     },
     /// Erase and format the sequential-storage partition on the device
     Format,
+    /// Read and dump the target's `.program_metadata` section (and provisioned `metadata` overrides) to stdout
+    #[command(name = "query_metadata")]
+    QueryMetadata {
+        /// Dump the `.program_metadata` section from `--elf` directly without attaching to a target probe
+        #[arg(long)]
+        elf_only: bool,
+        /// Output structured JSON instead of key-value text
+        #[arg(long)]
+        json: bool,
+    },
 }

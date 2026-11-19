@@ -15,10 +15,22 @@ pub struct BoardsConfig {
 pub struct BoardConfig {
     /// Name of the MCU chip (e.g. `"rp2040"`).
     pub chip: String,
+    /// Optional canonical board type identifier (e.g. `"rp2040_flash_2mb"`, `"carrier_board"`).
+    #[serde(default)]
+    pub board_type: Option<String>,
+    /// Optional fixed address of the `.program_metadata` flash descriptor sector.
+    #[serde(default)]
+    pub program_metadata_addr: Option<u32>,
     /// Base address of target's flash memory.
     pub flash_base: u32,
     /// Total size of flash memory in bytes.
     pub flash_size: u32,
+    /// Optional minimum flash write block size in bytes.
+    #[serde(default)]
+    pub flash_write_size: Option<usize>,
+    /// Optional minimum flash erase sector size in bytes.
+    #[serde(default)]
+    pub flash_erase_size: Option<usize>,
     /// Total size of target SRAM memory in bytes.
     pub sram_size: u32,
     /// Stack size allocated for Core 0 execution.
@@ -162,6 +174,7 @@ pub struct BoardConstant {
 pub struct GeneratedBoardTemplate {
     pub name: String,
     pub chip: String,
+    pub board_type: String,
     pub flash_base: u32,
     pub constants: Vec<BoardConstant>,
     pub bus_assigned_pins: Vec<u32>,
@@ -528,6 +541,51 @@ pub fn generate_board_definitions(toml_content: &str, board_name: &str) -> Strin
         });
     }
 
+    if !board_config.partitions.contains_key("metadata") {
+        let fallback_start = board_config
+            .partitions
+            .get("storage")
+            .map(|p| p.start)
+            .unwrap_or(0x001B_0000);
+        let fallback_end = board_config
+            .partitions
+            .get("fs")
+            .map(|p| p.start)
+            .unwrap_or(fallback_start + 0x0001_0000);
+        constants.push(BoardConstant {
+            name: "METADATA_PARTITION_START".to_string(),
+            const_type: "u32".to_string(),
+            val_str: format!("0x{:08X}", fallback_start),
+            doc: "Start address of metadata partition".to_string(),
+        });
+        constants.push(BoardConstant {
+            name: "METADATA_PARTITION_END".to_string(),
+            const_type: "u32".to_string(),
+            val_str: format!("0x{:08X}", fallback_end),
+            doc: "End address of metadata partition".to_string(),
+        });
+    }
+
+    let resolved_board_type = board_config.board_type.clone().unwrap_or_else(|| {
+        let flash_mb = (board_config.flash_size / (1024 * 1024)).max(1);
+        format!("{}_flash_{}mb", board_config.chip.to_lowercase(), flash_mb)
+    });
+    let resolved_program_metadata_addr = board_config.program_metadata_addr.unwrap_or(0x101A_F000);
+
+    constants.push(BoardConstant {
+        name: "BOARD_TYPE".to_string(),
+        const_type: "&'static str".to_string(),
+        val_str: format!("\"{}\"", resolved_board_type),
+        doc: "Canonical board type identifier for device test discovery.".to_string(),
+    });
+    constants.push(BoardConstant {
+        name: "PROGRAM_METADATA_ADDR".to_string(),
+        const_type: "u32".to_string(),
+        val_str: format!("0x{:08X}", resolved_program_metadata_addr),
+        doc: "Fixed virtual flash address of the `.program_metadata` descriptor section."
+            .to_string(),
+    });
+
     // Stack top and core sizes
     constants.push(BoardConstant {
         name: "CORE0_STACK_TOP".to_string(),
@@ -580,10 +638,13 @@ pub fn generate_board_definitions(toml_content: &str, board_name: &str) -> Strin
         doc: "Ending address of target flash memory.".to_string(),
     });
 
-    let (write_size, erase_size) = match board_config.chip.as_str() {
+    let (default_write_size, default_erase_size) = match board_config.chip.as_str() {
         "rp2040" => (1, 4096),
+        "MCXN947" | "mcxn947" => (128, 8192),
         _ => (1, 4096),
     };
+    let write_size = board_config.flash_write_size.unwrap_or(default_write_size);
+    let erase_size = board_config.flash_erase_size.unwrap_or(default_erase_size);
     constants.push(BoardConstant {
         name: "FLASH_WRITE_SIZE".to_string(),
         const_type: "usize".to_string(),
@@ -690,6 +751,7 @@ pub fn generate_board_definitions(toml_content: &str, board_name: &str) -> Strin
     let template = GeneratedBoardTemplate {
         name: board_name.to_string(),
         chip: board_config.chip.clone(),
+        board_type: resolved_board_type,
         flash_base: board_config.flash_base,
         constants,
         bus_assigned_pins,

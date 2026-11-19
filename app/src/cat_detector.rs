@@ -295,11 +295,9 @@ pub type SensorControllerType = controller::sensor_controller::SensorController<
     controller::sensor_controller::ProximityReader,
 >;
 
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
-/// Mock sensor controller structure for the host shell.
+/// Mock sensor controller structure for shell configurations without dedicated proximity tasks.
 pub struct MockSensorController;
 
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
 impl controller::ProximityReader for MockSensorController {
     async fn read_distance(
         &mut self,
@@ -308,13 +306,11 @@ impl controller::ProximityReader for MockSensorController {
     }
 }
 
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
 impl model::calibration::Calibration for MockSensorController {
     const CALIBRATION_FILE_NAME: &'static str = "vl53l0x_cal.cbor";
     type Store = model::calibration::Vl53l0xCalibration;
 }
 
-#[cfg(not(all(target_arch = "arm", target_os = "none")))]
 impl model::calibration::ApplyCalibration for MockSensorController {
     type Input = model::types::SensorReading;
     type Output = model::types::SensorReading;
