@@ -4,7 +4,7 @@
 - **ID**: `WORM-FOSSORIAL-NIGHTCRAWLER-861`
 - **Status**: `OPEN`
 - **Severity**: `LOW`
-- **Category**: `FIRMWARE`
+- **Category**: `INFRASTRUCTURE`
 - **Component**: `target`
 - **Created**: `2026-11-19 03:41:27 UTC`
 
