@@ -25,7 +25,7 @@ def test_agents_markdown_core_skills_and_back_compat_mandate() -> None:
     content = agents_path.read_text(encoding="utf-8")
 
     # 1. Verification & Process hygiene
-    assert "./tools/verify.sh" in content
+    assert "./tools/verify.py" in content
     assert "Process Management & Rerun Hygiene" in content
     assert "Remote Cloud Server (`anvil`)" in content
     assert "tools/anvil" in content
