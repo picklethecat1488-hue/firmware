@@ -11,3 +11,7 @@
 #### Description
 
 In Test Mode UI, selecting 'All Binaries' currently includes @device_test suites and binary facets targeting incompatible board types (e.g. carrier_board* tests when rp2040_flash_2mb / cat_detector is active). 'All Binaries' should exclude tests and binaries that target a different board type.
+
+#### Review Tasks & Functional Checklist
+
+- [ ] Open host.py Test Mode with RP2040 attached and confirm 'All Binaries' lists only rp2040* tests and cat_detector_* binaries | `python tools/host.py test --list-devices` <!-- id:7c2b3c8a -->
