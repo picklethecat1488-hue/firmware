@@ -73,10 +73,15 @@ function mountFullDaemonDom(ctx) {
     ["button", "btnCancelTargetConfig"],
     ["button", "btnConfirmTargetConfig"],
     ["div", "logPanel"],
+    ["button", "btnLeftTabTests"],
+    ["button", "btnLeftTabLogs"],
+    ["span", "leftPanelTestTools"],
+    ["span", "leftPanelLogTools"],
     ["button", "btnCopyLog"],
     ["button", "btnCollapseLog"],
     ["span", "logAutoScrollBadge"],
     ["div", "logView"],
+    ["div", "testSidebarView"],
     ["div", "vSplitter"],
     ["span", "cliPanelTitle"],
     ["button", "btnCopyWorkstation"],
@@ -85,6 +90,10 @@ function mountFullDaemonDom(ctx) {
     ["span", "manualPromptSummary"],
     ["div", "cliView"],
     ["div", "fsView"],
+    ["div", "testView"],
+    ["div", "testManualPromptCard"],
+    ["div", "testStackList"],
+    ["div", "testConsoleOutput"],
     ["div", "cliFuzzyHistory"],
     ["input", "fuzzySearchInput"],
     ["button", "btnCloseFuzzyHistory"],
@@ -145,8 +154,22 @@ describe("Host Daemon Root Workstation Application (DaemonApp)", () => {
         "GET /api/fs/output": { status: 200, body: [] },
         "GET /api/cli/history": { status: 200, body: { history: ["help", "gpio status"] } },
         "GET /api/sync/status": { status: 200, body: { active: false, step: "idle", progress: 0 } },
-        "POST /api/mode": { status: 200, body: { success: true, mode: "FS" } },
+        "POST /api/mode": { status: 200, body: { success: true, mode: "TEST" } },
         "GET /api/manual_prompt": () => ({ status: 200, body: activePromptState }),
+        "POST /api/tests/scan": {
+          status: 200,
+          body: { success: true, tests: [], facets: {}, detected_board: null },
+        },
+        "GET /api/tests/status": () => ({
+          status: 200,
+          body: {
+            active: false,
+            step: "idle",
+            results_map: {},
+            console: [],
+            manual_prompt: activePromptState,
+          },
+        }),
       },
     });
 
@@ -205,6 +228,16 @@ describe("Host Daemon Root Workstation Application (DaemonApp)", () => {
     dom.btnClearOutput.click();
     assert.equal(dom.logView.children.length, 0);
     assert.equal(dom.cliView.children.length, 0);
+
+    // Clicking #manualPromptBanner transitions workstation directly into TEST mode and opens left TEST SUITE tab
+    dom.manualPromptBanner.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    assert.equal(app.cliConsole.getMode(), "TEST");
+    assert.equal(dom.testView.style.display, "flex");
+    assert.equal(app.rttStream.isPanelVisible(), true);
+    assert.equal(app.testRunner.getActiveLeftTab(), "TESTS");
+    assert.equal(dom.testSidebarView.style.display, "flex");
 
     // Periodic 1000ms background poll fires while active and stops after destroy()
     const beforeTick = logsPollCount;

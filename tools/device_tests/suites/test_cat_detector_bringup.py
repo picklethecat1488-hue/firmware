@@ -1,10 +1,13 @@
 """Full hardware bringup, calibration, fault-injection, and manual benchtop tests for Cat Detector."""
 
+import asyncio
 import re
 
 from device_tests.client import AsyncHostSessionClient
 from device_tests.manual import ManualTestHelper
 from device_tests.model import ScenarioTier, device_test
+
+FS_FORMAT_REBOOT_SETTLE_SEC: float = 2.5
 
 
 @device_test(
@@ -17,6 +20,10 @@ async def test_flash_filesystem_format_and_recovery(host: AsyncHostSessionClient
     """Format the `sequential-storage` flash filesystem (`fs format`) and verify clean directory state."""
     fmt = await host.cli("fs format", timeout=15.0)
     assert re.search(r"(Format|formatted|success|OK)", fmt, re.IGNORECASE), fmt
+
+    # `fs format` schedules an `SCB::sys_reset()` after 2s on target; wait and re-attach RTT cleanly.
+    await asyncio.sleep(FS_FORMAT_REBOOT_SETTLE_SEC)
+    await host.reboot()
 
     ls_out = await host.cli("fs ls")
     assert re.search(r"(No files found|Listing directory|empty)", ls_out, re.IGNORECASE), ls_out
@@ -34,15 +41,15 @@ async def test_motor_calibration_routine(
     manual: ManualTestHelper,
 ) -> None:
     """Run BLDC motor calibration (`motor calibrate`) and confirm smooth water flow on the bench."""
-    await manual.verify(
+    await manual.ask_yes_no(
         procedure="Ensure fountain reservoir is filled above minimum waterline before starting calibration.",
-        prompt="Confirm reservoir is filled and clear of obstructions.",
+        prompt="Is the reservoir filled and clear of obstructions?",
     )
     cal = await host.cli("motor calibrate", timeout=20.0)
     assert cal.strip() != ""
-    result = await manual.verify(
+    result = await manual.ask_yes_no(
         procedure="Observe pump ramp and acoustic noise during `motor calibrate`.",
-        prompt="Confirm pump ramped smoothly with steady flow and zero DIAG fault assertions.",
+        prompt="Did the pump ramp smoothly with steady flow and zero DIAG fault assertions?",
     )
     assert result.passed
 
@@ -59,15 +66,15 @@ async def test_tof_sensor_calibration_sequence(
     manual: ManualTestHelper,
 ) -> None:
     """Execute VL53L0X near, far, and crosstalk calibration with a gray target card."""
-    await manual.verify(
+    await manual.ask_yes_no(
         procedure="Place a flat 17% gray calibration target at 100 mm in front of the North ToF window.",
-        prompt="Confirm 100 mm calibration target is positioned.",
+        prompt="Is the 100 mm calibration target positioned?",
     )
     await host.cli("sensor cal_near", timeout=15.0)
 
-    await manual.verify(
+    await manual.ask_yes_no(
         procedure="Move calibration target to 300 mm for far-field ranging.",
-        prompt="Confirm 300 mm far target is positioned.",
+        prompt="Is the 300 mm far target positioned?",
     )
     await host.cli("sensor cal_far", timeout=15.0)
     await host.cli("sensor cal_xtalk", timeout=15.0)
@@ -88,9 +95,9 @@ async def test_core_panic_and_crash_dump_decoding(
     manual: ManualTestHelper,
 ) -> None:
     """Trigger controlled panic (`core crash`), reboot RP2040, and decode CBOR crash dump via `host_fs`."""
-    await manual.verify(
+    await manual.ask_yes_no(
         procedure="Prepare to trigger a controlled Core 0 panic (`core crash`) to test flash crash dump persistence.",
-        prompt="Confirm ready to trigger controlled fault injection and target reboot.",
+        prompt="Are you ready to trigger controlled fault injection and target reboot?",
     )
     await host.cli("core crash")
     await host.reboot()
@@ -111,11 +118,11 @@ async def test_cat_presence_approach_and_departure_journey(
 ) -> None:
     """Verify full physical cat arrival wake, fountain activation, and return to sleep on `cat_detector_app`."""
     del host
-    result = await manual.verify(
+    result = await manual.ask_yes_no(
         procedure=(
             "Hold hand ~150 mm in front of the North ToF window for 3 seconds to simulate cat arrival, "
             "confirm fountain pump + LED activation, then withdraw hand and wait for idle sleep."
         ),
-        prompt="Confirm application wakes from Sleep to Active, drives pump + LED, and returns cleanly to Sleep.",
+        prompt="Did the application wake from Sleep to Active, drive pump + LED, and return cleanly to Sleep?",
     )
     assert result.passed

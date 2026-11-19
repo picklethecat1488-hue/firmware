@@ -87,7 +87,7 @@ def test_all_markdown_mermaid_blocks_compile_with_mmdc() -> None:
                     text=True,
                     capture_output=True,
                 )
-                if proc.returncode != 0 and "ProtocolError" in proc.stderr:
+                if proc.returncode != 0 and ("ProtocolError" in proc.stderr or "TimeoutError" in proc.stderr):
                     proc = subprocess.run(
                         cmd,
                         input=block,

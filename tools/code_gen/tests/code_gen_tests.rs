@@ -366,6 +366,21 @@ fn test_validate_app_toml_parsing_and_generation() {
 }
 
 #[test]
+#[should_panic(expected = "Failed to find board config for 'unregistered_board' in board.toml")]
+fn test_generate_app_topology_rejects_missing_board_without_fallback() {
+    let synthetic_app_toml = r#"
+[apps.unregistered_board]
+shell_config = "UnregisteredShellConfig"
+core1_enabled = false
+cli_handlers = []
+channels = {}
+controllers = []
+partitions = []
+"#;
+    let _ = code_gen::generate_app_topology(synthetic_app_toml, "unregistered_board");
+}
+
+#[test]
 fn test_list_boards_apps_peripherals() {
     // 1. Boards
     let board_toml_path = code_gen::find_board_toml();
