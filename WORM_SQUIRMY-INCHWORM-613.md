@@ -1,12 +1,13 @@
-# 🔴 `[WORM-SQUIRMY-INCHWORM-613]` Transient INA219 current spike during 50% BLDC pump spin-up
+# 🟢 `[WORM-SQUIRMY-INCHWORM-613]` Transient INA219 current spike during 50% BLDC pump spin-up
 
 - **UUID**: `363a63f3-02de-40d9-b0b4-dec4a62ba732`
 - **ID**: `WORM-SQUIRMY-INCHWORM-613`
-- **Status**: `OPEN`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `CONTROLLER`
 - **Component**: `target`
 - **Created**: `2026-11-16 02:25:57 UTC`
+- **Resolved**: `2026-11-19 16:02:03 UTC`
 
 #### Description
 
