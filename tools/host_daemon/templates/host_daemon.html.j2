@@ -106,7 +106,38 @@
       align-items: center;
       gap: 4px;
     }
-    .test-mode-container {
+    .left-panel-tabs {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .left-panel-tab {
+      background: rgba(4, 9, 12, 0.7);
+      border: 1px solid var(--xerxes-border-mid);
+      color: var(--xerxes-text-muted);
+      font-family: var(--font-mono);
+      font-size: 8.5px;
+      font-weight: bold;
+      padding: 3px 8px;
+      border-radius: 2px;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .left-panel-tab:hover {
+      border-color: var(--xerxes-cyan);
+      color: var(--xerxes-cyan);
+    }
+    .left-panel-tab.active {
+      background: rgba(0, 240, 255, 0.18);
+      border-color: var(--xerxes-cyan);
+      color: var(--xerxes-cyan);
+      box-shadow: inset 0 0 6px rgba(0, 240, 255, 0.25);
+    }
+    .test-sidebar-view {
       display: flex;
       flex: 1;
       flex-direction: column;
@@ -114,23 +145,32 @@
       gap: 6px;
       padding: 6px 8px;
     }
+    .test-mode-container {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      overflow: hidden;
+      gap: 10px;
+      padding: 10px 12px;
+    }
     .test-table-scroll {
       flex: 1;
       min-height: 150px;
       overflow-y: auto;
+      overflow-x: hidden;
       border: 1px solid var(--xerxes-border-mid);
       background: rgba(4, 9, 12, 0.6);
     }
     .test-console-box {
-      height: 165px;
-      min-height: 110px;
+      flex: 1;
+      min-height: 140px;
       background: var(--xerxes-bg);
       border: 1px solid var(--xerxes-border-mid);
       border-radius: 2px;
       overflow-y: auto;
-      padding: 6px 8px;
+      padding: 8px 10px;
       font-size: 9px;
-      line-height: 1.4;
+      line-height: 1.45;
       white-space: pre-wrap;
       word-break: break-all;
     }
@@ -958,18 +998,80 @@
   </div>
 
   <main class="workspace-body">
-    <!-- Left Panel: System / Target Logging -->
+    <!-- Left Panel: Tabbed Test Suite & System / Target Logging -->
     <div class="panel-container log-panel" id="logPanel" style="display: none;">
-      <div class="panel-header">
-        <span>SYSTEM LOGGING MONITOR (defmt / RTT)</span>
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <button class="btn btn-copy" id="btnCopyLog" title="Copy log output">📋 Copy</button>
-          <button class="btn btn-copy" id="btnCollapseLog" title="Show logging monitor">▶ Show</button>
-          <span id="logAutoScrollBadge" style="font-size: 8px; color: var(--xerxes-text-dim); cursor: pointer;">AUTO-SCROLL: ON</span>
+      <div class="panel-header" style="gap: 8px; flex-wrap: wrap;">
+        <div class="left-panel-tabs">
+          <button type="button" class="left-panel-tab {% if runner.active_mode == 'TEST' %}active{% endif %}" id="btnLeftTabTests" style="display: {% if runner.active_mode == 'TEST' %}inline-flex{% else %}none{% endif %};">🧪 TEST SUITE</button>
+          <button type="button" class="left-panel-tab {% if runner.active_mode != 'TEST' %}active{% endif %}" id="btnLeftTabLogs">📜 SYSTEM LOGS (defmt / RTT)</button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span id="leftPanelTestTools" style="display: {% if runner.active_mode == 'TEST' %}inline-flex{% else %}none{% endif %}; align-items: center; gap: 6px;">
+            <span id="testDetectedBoardBadge" class="badge badge-amber">BOARD: NOT SCANNED</span>
+            <button type="button" class="btn btn-cyan" id="btnTestScan" style="padding: 2px 6px;">🔄 Scan</button>
+          </span>
+          <span id="leftPanelLogTools" style="display: {% if runner.active_mode == 'TEST' %}none{% else %}inline-flex{% endif %}; align-items: center; gap: 6px;">
+            <button class="btn btn-copy" id="btnCopyLog" title="Copy log output">📋 Copy</button>
+            <span id="logAutoScrollBadge" style="font-size: 8px; color: var(--xerxes-text-dim); cursor: pointer;">AUTO-SCROLL: ON</span>
+          </span>
+          <button class="btn btn-copy" id="btnCollapseLog" title="Toggle left panel">◀ Hide</button>
         </div>
       </div>
-      <div class="panel-content" id="logView">
+
+      <div class="panel-content" id="logView" style="display: {% if runner.active_mode == 'TEST' %}none{% else %}block{% endif %};">
         <div class="log-line log-line-info">&gt; Host daemon online. Attached to {{ runner.package }}.</div>
+      </div>
+
+      <div id="testSidebarView" class="test-sidebar-view" style="display: {% if runner.active_mode == 'TEST' %}flex{% else %}none{% endif %};">
+        <div class="bringup-toolbar" style="padding: 6px 8px; border: 1px solid var(--xerxes-border-mid); border-radius: 2px; gap: 6px;">
+          <select id="testFilterProject" class="select-dropdown" title="Filter by @device_test(project=...)">
+            <option value="all" selected>All Projects</option>
+          </select>
+          <select id="testFilterScenario" class="select-dropdown" title="Filter by @device_test(scenarios=...)">
+            <option value="all" selected>All Scenarios</option>
+            <option value="default">Smoke + Integration</option>
+            <option value="smoke">Smoke</option>
+            <option value="integration">Integration</option>
+            <option value="bringup">Bringup</option>
+          </select>
+          <select id="testFilterBinary" class="select-dropdown" title="Filter by @device_test(target_binary=...)">
+            <option value="all" selected>All Binaries</option>
+          </select>
+          <select id="testFilterManual" class="select-dropdown" title="Filter by manual vs automated tests">
+            <option value="all" selected>All Modes</option>
+            <option value="automated">Automated Only</option>
+            <option value="manual">Manual Only</option>
+          </select>
+          <input type="text" id="testFilterBoard" class="cmd-input" value="auto" placeholder="Board glob (auto, rp2040*)" style="width: 110px; flex: none; padding: 3px 6px; font-size: 8.5px;" title="Filter by board_type glob pattern or 'auto'">
+          <input type="text" id="testFilterSearch" class="cmd-input" placeholder="Search tests..." style="min-width: 120px; flex: 1; padding: 3px 6px; font-size: 8.5px;">
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 6px; flex-wrap: wrap; padding: 0 2px;">
+          <span id="testSummaryStats" style="font-size: 8.5px; color: var(--xerxes-text-muted);">0 Shown | 0 Selected | 0 Passed • 0 Failed • 0 Skipped [IDLE]</span>
+          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 8.5px; color: var(--xerxes-text-muted); cursor: pointer;">
+              <input type="checkbox" id="testEnableManualCb" checked>
+              <span>Prompt Manual</span>
+            </label>
+            <button type="button" class="btn btn-cyan" id="btnTestRunSelected">▶ Run Selected (0)</button>
+            <button type="button" class="btn btn-cyan" id="btnTestRunFiltered">▶ Run Filtered (0)</button>
+            <button type="button" class="btn btn-red" id="btnTestCancel" disabled>⏹ Stop</button>
+          </div>
+        </div>
+
+        <div class="test-table-scroll">
+          <table class="bringup-table" style="margin-top: 0; table-layout: fixed;">
+            <thead>
+              <tr>
+                <th style="width: 28px;"><input type="checkbox" id="testSelectAllCb" title="Select all filtered tests"></th>
+                <th style="width: 30px;">#</th>
+                <th>Test, Attributes &amp; Description</th>
+                <th style="width: 122px;">Status</th>
+              </tr>
+            </thead>
+            <tbody id="testTableBody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -1012,101 +1114,43 @@
         <div class="log-line log-line-info">&gt; Filesystem (host_fs) workstation ready. Type FS commands below (e.g. 'ls', 'cat metadata', 'format').</div>
       </div>
 
-      <!-- On-Device Test Runner Mode (supersedes legacy bringup workstation) -->
+      <!-- On-Device Test Runner Right-Panel Stage (Manual Prompt & Console) -->
       <div id="testView" class="test-mode-container" style="display: {% if runner.active_mode == 'TEST' %}flex{% else %}none{% endif %};">
-        <div class="bringup-toolbar" style="padding: 6px 8px; border: 1px solid var(--xerxes-border-mid); border-radius: 2px; justify-content: space-between;">
-          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-            <button type="button" class="btn btn-cyan" id="btnTestScan">🔄 Scan</button>
-            <select id="testFilterProject" class="select-dropdown" title="Filter by @device_test(project=...)">
-              <option value="all" selected>All Projects</option>
-            </select>
-            <select id="testFilterScenario" class="select-dropdown" title="Filter by @device_test(scenarios=...)">
-              <option value="all" selected>All Scenarios</option>
-              <option value="default">Smoke + Integration</option>
-              <option value="smoke">Smoke</option>
-              <option value="integration">Integration</option>
-              <option value="bringup">Bringup</option>
-            </select>
-            <input type="text" id="testFilterBoard" class="cmd-input" value="auto" placeholder="Board glob (auto, rp2040*, carrier_board*)" style="width: 130px; flex: none; padding: 3px 6px; font-size: 8.5px;" title="Filter by board_type glob pattern or 'auto'">
-            <select id="testFilterBinary" class="select-dropdown" title="Filter by @device_test(target_binary=...)">
-              <option value="all" selected>All Binaries</option>
-            </select>
-            <select id="testFilterManual" class="select-dropdown" title="Filter by manual vs automated tests">
-              <option value="all" selected>All Modes</option>
-              <option value="automated">Automated Only</option>
-              <option value="manual">Manual Only</option>
-            </select>
-            <input type="text" id="testFilterSearch" class="cmd-input" placeholder="Filter name / description..." style="width: 155px; flex: none; padding: 3px 6px; font-size: 8.5px;">
-          </div>
-          <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-            <span id="testDetectedBoardBadge" class="badge badge-amber">BOARD: NOT SCANNED</span>
-            <label style="display: inline-flex; align-items: center; gap: 4px; font-size: 8.5px; color: var(--xerxes-text-muted); cursor: pointer;">
-              <input type="checkbox" id="testEnableManualCb" checked>
-              <span>Prompt Manual</span>
-            </label>
-            <button type="button" class="btn btn-cyan" id="btnTestRunSelected">▶ Run Selected (0)</button>
-            <button type="button" class="btn btn-cyan" id="btnTestRunFiltered">▶ Run Filtered (0)</button>
-            <button type="button" class="btn btn-red" id="btnTestCancel" disabled>⏹ Stop</button>
-          </div>
-        </div>
-
-        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 8.5px; color: var(--xerxes-text-muted); padding: 0 2px;">
-          <span id="testSummaryStats">0 Shown | 0 Selected | 0 Passed • 0 Failed • 0 Skipped [IDLE]</span>
-          <span>Top-to-bottom deterministic suite order</span>
-        </div>
-
         <!-- Interactive Manual Operator Prompt Card (YES/NO, Measured Value, Cancel with Comment) -->
-        <div id="testManualPromptCard" class="bringup-card bringup-prompt-card" style="display: none; flex-direction: column; gap: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div id="testManualPromptCard" class="bringup-card bringup-prompt-card" style="display: none; flex-direction: column; gap: 12px; padding: 14px 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
             <span class="badge badge-amber">⚡ MANUAL BENCHTOP PROMPT</span>
-            <strong id="testManualTitle" style="font-size: 9.5px; color: var(--xerxes-cyan);"></strong>
+            <strong id="testManualTitle" style="font-size: 10.5px; color: var(--xerxes-cyan);"></strong>
           </div>
-          <div style="font-size: 9px; color: var(--xerxes-text-muted);">
-            <strong>Procedure:</strong> <span id="testManualProcedure" style="color: var(--xerxes-text-light);"></span>
+          <div style="font-size: 10px; line-height: 1.5; color: var(--xerxes-text-muted); background: rgba(0, 240, 255, 0.04); border: 1px solid var(--xerxes-border-dark); padding: 8px 10px; border-radius: 2px;">
+            <strong style="color: var(--xerxes-cyan);">Procedure:</strong>
+            <span id="testManualProcedure" style="color: var(--xerxes-text-light);"></span>
           </div>
-          <div style="font-size: 9.5px; color: var(--xerxes-amber); font-weight: bold;">
+          <div style="font-size: 10.5px; line-height: 1.5; color: var(--xerxes-amber); font-weight: bold;">
             <span>Prompt:</span> <span id="testManualPromptText" style="color: var(--xerxes-text-light);"></span>
           </div>
 
-          <div id="testManualYesNoRow" style="display: flex; align-items: center; gap: 8px;">
-            <button type="button" class="btn btn-cyan" id="btnManualYes">✓ YES</button>
-            <button type="button" class="btn btn-red" id="btnManualNo">✕ NO</button>
+          <div id="testManualYesNoRow" style="display: flex; align-items: center; gap: 10px;">
+            <button type="button" class="btn btn-cyan" id="btnManualYes" style="padding: 6px 16px; font-size: 9.5px;">✓ YES</button>
+            <button type="button" class="btn btn-red" id="btnManualNo" style="padding: 6px 16px; font-size: 9.5px;">✕ NO</button>
           </div>
 
-          <div id="testManualMeasurementRow" style="display: none; align-items: center; gap: 8px;">
-            <label for="testManualValueInput" style="font-size: 8.5px; color: var(--xerxes-text-muted);">MEASURED VALUE:</label>
-            <input type="text" id="testManualValueInput" class="cmd-input" placeholder="e.g. 5.01" style="max-width: 150px; flex: none;">
-            <span id="testManualUnitLabel" style="font-size: 9px; color: var(--xerxes-cyan); font-weight: bold;"></span>
-            <button type="button" class="btn btn-cyan" id="btnManualSubmitValue">Submit Measurement</button>
+          <div id="testManualMeasurementRow" style="display: none; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <label for="testManualValueInput" style="font-size: 9px; color: var(--xerxes-text-muted);">MEASURED VALUE:</label>
+            <input type="text" id="testManualValueInput" class="cmd-input" placeholder="e.g. 5.01" style="max-width: 180px; flex: none; padding: 6px 8px; font-size: 10px;">
+            <span id="testManualUnitLabel" style="font-size: 10px; color: var(--xerxes-cyan); font-weight: bold;"></span>
+            <button type="button" class="btn btn-cyan" id="btnManualSubmitValue" style="padding: 6px 12px;">Submit Measurement</button>
           </div>
 
-          <div style="display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--xerxes-border-dark); padding-top: 6px;">
-            <input type="text" id="testManualCommentInput" class="cmd-input" placeholder="Required comment to cancel this manual test..." style="font-size: 8.5px;">
-            <button type="button" class="btn btn-amber" id="btnManualCancel">Cancel Test</button>
+          <div style="display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--xerxes-border-dark); padding-top: 8px;">
+            <input type="text" id="testManualCommentInput" class="cmd-input" placeholder="Required comment to cancel this manual test..." style="font-size: 9px; padding: 5px 8px;">
+            <button type="button" class="btn btn-amber" id="btnManualCancel" style="padding: 5px 10px;">Cancel Test</button>
           </div>
-          <div id="testManualErrorMsg" style="display: none; font-size: 8.5px; color: var(--xerxes-red);"></div>
-        </div>
-
-        <div class="test-table-scroll">
-          <table class="bringup-table" style="margin-top: 0;">
-            <thead>
-              <tr>
-                <th style="width: 26px;"><input type="checkbox" id="testSelectAllCb" title="Select all filtered tests"></th>
-                <th style="width: 34px;">#</th>
-                <th>Test &amp; Description</th>
-                <th style="width: 105px;">Project</th>
-                <th style="width: 150px;">Mode / Scenarios</th>
-                <th style="width: 115px;">Boards</th>
-                <th style="width: 145px;">Target Binary</th>
-                <th style="width: 140px;">Status</th>
-              </tr>
-            </thead>
-            <tbody id="testTableBody"></tbody>
-          </table>
+          <div id="testManualErrorMsg" style="display: none; font-size: 9px; color: var(--xerxes-red);"></div>
         </div>
 
         <div class="test-console-box" id="testConsoleOutput">
-          <span class="term-dim">&gt; Click 🔄 Scan or switch to TEST mode to discover @device_test suites.</span>
+          <span class="term-dim">&gt; Select tests in the left TEST SUITE panel and click ▶ Run Selected or ▶ Run Filtered.</span>
         </div>
       </div>
     </div>

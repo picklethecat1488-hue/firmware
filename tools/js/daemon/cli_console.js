@@ -429,6 +429,9 @@ export class CliConsoleController {
     this.currentMode = normalized;
     this._applyModeDom(normalized);
 
+    const modeCallbackPromise =
+      typeof this.onModeChange === "function" ? this.onModeChange(normalized) : null;
+
     if (options.notifyServer !== false) {
       try {
         await this.ctx.postJson("/api/mode", { mode: normalized });
@@ -438,8 +441,8 @@ export class CliConsoleController {
       }
     }
 
-    if (typeof this.onModeChange === "function") {
-      await this.onModeChange(normalized);
+    if (modeCallbackPromise) {
+      await modeCallbackPromise;
     }
   }
 
