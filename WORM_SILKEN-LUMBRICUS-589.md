@@ -80,6 +80,10 @@ We should add a test progress and status indicator to the right panel to be show
 | :--- | :--- | :--- |
 | `log` | [target_system_logs_WORM-SILKEN-LUMBRICUS-589.log](attachments/WORM-SILKEN-LUMBRICUS-589/target_system_logs_WORM-SILKEN-LUMBRICUS-589.log) | Target system and defmt logs from host daemon session |
 
+#### Attached Commits
+
+- `2e02dd3d`
+
 #### Review Tasks & Functional Checklist
 
 - [ ] Launch host.py in TEST mode, run a multi-binary suite (e.g. cat_detector smoke + integration), and verify the right-panel Test Progress & Target Status card updates percentage, target flashing, mode switches, reboots, and active test queue in real time | `python tools/host.py --mode test` <!-- id:b9340829 -->
