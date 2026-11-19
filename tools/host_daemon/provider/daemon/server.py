@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import sys
 import threading
+import time
 from typing import Any, Dict, List, Optional
 import urllib.parse
 import uuid as uuid_pkg
@@ -42,6 +43,18 @@ def _get_test_manager(runner: Any) -> DeviceTestRunnerManager:
     created = DeviceTestRunnerManager(runner)
     setattr(runner, "test_manager", created)
     return created
+
+
+def _resolve_runner_device_ts(runner: Any) -> str:
+    """Return a target monotonic device timestamp string (`e.g. '0.412000s'`) for `runner`."""
+    if hasattr(runner, "get_device_timestamp_str"):
+        return str(runner.get_device_timestamp_str())
+    anchor = getattr(runner, "_sim_boot_mono", None)
+    now = time.monotonic()
+    if anchor is None:
+        anchor = now
+        setattr(runner, "_sim_boot_mono", anchor)
+    return f"{max(0.0, now - float(anchor)):.6f}s"
 
 
 class HostDaemonRequestHandler(BaseHTTPRequestHandler):
@@ -323,12 +336,27 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 output = runner.execute_cli(cmd, wait_for_output=True, timeout=timeout)
             else:
                 output = runner.execute_cli(cmd)
+            if not getattr(runner, "_streams_live_cli", False):
+                _get_test_manager(runner).record_cli_exchange(
+                    cmd,
+                    output if wait_for_output else "",
+                    device_ts=_resolve_runner_device_ts(runner),
+                    prefix="shell>",
+                )
             self._send_json({"success": True, "output": output})
         elif path == "/api/fs/execute":
             cmd = payload.get("command", "")
             subcmd = payload.get("subcommand", cmd)
             args = payload.get("args", [])
             output = runner.execute_fs(subcmd, args)
+            if not getattr(runner, "_streams_live_cli", False):
+                fs_cmd_label = f"{subcmd} {' '.join(str(a) for a in args)}".strip()
+                _get_test_manager(runner).record_cli_exchange(
+                    fs_cmd_label,
+                    output,
+                    device_ts=_resolve_runner_device_ts(runner),
+                    prefix="fs>",
+                )
             self._send_json({"success": True, "output": output})
         elif path == "/api/mode":
             mode = payload.get("mode", "CLI").upper()
