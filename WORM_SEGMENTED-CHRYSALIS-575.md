@@ -88,3 +88,7 @@ bt
 | Type | Filename | Description |
 | :--- | :--- | :--- |
 | `log` | [target_system_logs_WORM-SEGMENTED-CHRYSALIS-575.log](attachments/WORM-SEGMENTED-CHRYSALIS-575/target_system_logs_WORM-SEGMENTED-CHRYSALIS-575.log) | Target system and defmt logs from host daemon session |
+
+#### Review Tasks & Functional Checklist
+
+- [ ] Verify host.py debug sync-symbols and target-info dynamically resolve active debug/release ELF and target device | `python tools/host.py debug sync-symbols --json` <!-- id:5e6e0c5e -->
