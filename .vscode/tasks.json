@@ -53,13 +53,30 @@
       "problemMatcher": ["$rustc"]
     },
     {
+      "label": "cargo: build cat_detector_shell (release)",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "build",
+        "--release",
+        "--target",
+        "thumbv6m-none-eabi",
+        "--package",
+        "cat_detector",
+        "--bin",
+        "cat_detector_shell"
+      ],
+      "group": "build",
+      "problemMatcher": ["$rustc"]
+    },
+    {
       "label": "cargo: build carrier_board_shell (debug)",
       "type": "shell",
       "command": "cargo",
       "args": [
         "build",
         "--target",
-        "thumbv6m-none-eabi",
+        "thumbv8m.main-none-eabihf",
         "--package",
         "cat_detector",
         "--bin",
@@ -67,6 +84,30 @@
       ],
       "group": "build",
       "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "cargo: build carrier_board_shell (release)",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "build",
+        "--release",
+        "--target",
+        "thumbv8m.main-none-eabihf",
+        "--package",
+        "cat_detector",
+        "--bin",
+        "carrier_board_shell"
+      ],
+      "group": "build",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "host: sync active target symbols",
+      "type": "shell",
+      "command": "python",
+      "args": ["tools/host.py", "debug", "sync-symbols"],
+      "problemMatcher": []
     },
     {
       "label": "host: start target debug server (host.py debug start)",

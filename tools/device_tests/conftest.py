@@ -61,6 +61,19 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=None,
         help="Optional path to export a Markdown verification report upon completion.",
     )
+    group.addoption(
+        "--debug-server",
+        dest="enable_debug_server",
+        action="store_true",
+        default=None,
+        help="Enable symbolic target GDB server (host_debug + :50000 RTT bridge) on the session daemon.",
+    )
+    group.addoption(
+        "--no-debug-server",
+        dest="enable_debug_server",
+        action="store_false",
+        help="Disable symbolic target GDB server and use direct probe-rs RTT streaming on the session daemon.",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -140,6 +153,7 @@ async def host(pytestconfig: pytest.Config) -> AsyncIterator[AsyncHostSessionCli
     host_addr = str(pytestconfig.getoption("--host-addr"))
     host_port = pytestconfig.getoption("--host-port")
     manual_enabled = bool(pytestconfig.getoption("--manual"))
+    enable_debug_server = pytestconfig.getoption("enable_debug_server")
 
     from device_tests.client import query_metadata_standalone
     from host_daemon.cli import get_lock_data
@@ -170,6 +184,7 @@ async def host(pytestconfig: pytest.Config) -> AsyncIterator[AsyncHostSessionCli
         port=host_port,
         manual_enabled=manual_enabled,
         spawn_if_needed=spawn_needed,
+        enable_debug_server=enable_debug_server,
     )
     try:
         yield client

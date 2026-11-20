@@ -177,6 +177,7 @@ class AsyncHostSessionClient:
         manual_enabled: bool = False,
         runner: Any = None,
         prior_target_config: Optional[Dict[str, Any]] = None,
+        prior_debug_server: Optional[Dict[str, Any]] = None,
         spawned_proc: Optional[subprocess.Popen[Any]] = None,
     ) -> None:
         """Initialize client state for either HTTP IPC or direct in-process DaemonRunner."""
@@ -188,8 +189,10 @@ class AsyncHostSessionClient:
         self.manual_enabled = manual_enabled
         self._runner = runner
         self._prior_target_config = prior_target_config
+        self._prior_debug_server = prior_debug_server
         self._spawned_proc = spawned_proc
         self._reconfigured_existing_daemon = False
+        self._reconfigured_debug_server = False
         self._cached_board: Optional[DetectedBoard] = None
         self._board_queried = False
         self._verified_binary_key: Optional[Tuple[str, str, str]] = None
@@ -220,6 +223,7 @@ class AsyncHostSessionClient:
         port: Optional[int] = None,
         manual_enabled: bool = False,
         spawn_if_needed: bool = True,
+        enable_debug_server: Optional[bool] = None,
     ) -> "AsyncHostSessionClient":
         """Attach to a running host.py daemon (never stopping it) or spawn a temporary headless one."""
         from host_daemon.cli import get_lock_data
@@ -244,6 +248,7 @@ class AsyncHostSessionClient:
                 )
                 if isinstance(status, dict) and status.get("status") == "running":
                     prior_cfg: Optional[Dict[str, Any]] = None
+                    prior_dbg = dict(status["debug_server"]) if isinstance(status.get("debug_server"), dict) else None
                     if bool(status.get("flashed")):
                         targets_info = await asyncio.to_thread(
                             _http_json_sync,
@@ -253,14 +258,25 @@ class AsyncHostSessionClient:
                         )
                         if isinstance(targets_info, dict):
                             prior_cfg = dict(targets_info.get("current", {}))
-                    return cls(
+                    client = cls(
                         repo_root=repo_root,
                         host=host,
                         port=candidate_port,
                         owns_daemon=False,
                         manual_enabled=manual_enabled,
                         prior_target_config=prior_cfg,
+                        prior_debug_server=prior_dbg,
                     )
+                    if enable_debug_server is not None:
+                        cur_enabled = bool((prior_dbg or {}).get("enabled", False))
+                        if enable_debug_server and not cur_enabled:
+                            client._reconfigured_debug_server = True
+                            if bool(status.get("flashed")):
+                                await client.start_debug_server(halt_on_reset=False, reset=False)
+                        elif not enable_debug_server and cur_enabled:
+                            client._reconfigured_debug_server = True
+                            await client.stop_debug_server()
+                    return client
             except (OSError, RuntimeError):
                 continue
 
@@ -275,17 +291,33 @@ class AsyncHostSessionClient:
 
         bound_port = port or _find_free_local_port(host)
         host_py = repo_root / "tools" / "host.py"
+        spawn_cmd = [
+            sys.executable,
+            str(host_py),
+            "--no-detach",
+            "--no-browser",
+            "--host",
+            host,
+            "--port",
+            str(bound_port),
+        ]
+        if enable_debug_server is True:
+            spawn_cmd.extend(
+                [
+                    "--debug-server",
+                    "--gdb-core0-port",
+                    str(_find_free_local_port(host)),
+                    "--gdb-core1-port",
+                    str(_find_free_local_port(host)),
+                    "--rtt-bridge-port",
+                    str(_find_free_local_port(host)),
+                ]
+            )
+        elif enable_debug_server is False:
+            spawn_cmd.append("--no-debug-server")
+
         proc = subprocess.Popen(
-            [
-                sys.executable,
-                str(host_py),
-                "--no-detach",
-                "--no-browser",
-                "--host",
-                host,
-                "--port",
-                str(bound_port),
-            ],
+            spawn_cmd,
             cwd=str(repo_root),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
@@ -713,6 +745,21 @@ class AsyncHostSessionClient:
                     await self.ensure_target_binary(restore_spec)
                 except (OSError, RuntimeError, ValueError, AssertionError):
                     pass
+
+        if self._reconfigured_debug_server and self._prior_debug_server is not None:
+            try:
+                if bool(self._prior_debug_server.get("enabled", False)):
+                    await self.start_debug_server(
+                        gdb_core0_port=self._prior_debug_server.get("gdb_core0_port"),
+                        gdb_core1_port=self._prior_debug_server.get("gdb_core1_port"),
+                        rtt_bridge_port=self._prior_debug_server.get("rtt_bridge_port"),
+                        halt_on_reset=False,
+                        reset=False,
+                    )
+                else:
+                    await self.stop_debug_server()
+            except (OSError, RuntimeError):
+                pass
 
 
 class _DeferredLogStreamContext:

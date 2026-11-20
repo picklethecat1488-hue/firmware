@@ -484,6 +484,12 @@ pub struct ProjectMetadata<'a> {
     /// Canonical board type identifier (e.g. "rp2040_flash_2mb", "carrier_board")
     #[n(6)]
     pub board_type: &'a str,
+    /// Compiled Cargo binary target name (e.g. "cat_detector_shell", "cat_detector_app")
+    #[n(7)]
+    pub bin_name: Option<&'a str>,
+    /// Compiled Cargo profile identifier ("debug" or "release")
+    #[n(8)]
+    pub build_profile: Option<&'a str>,
 }
 
 impl<'a> ProjectMetadata<'a> {
@@ -492,6 +498,8 @@ impl<'a> ProjectMetadata<'a> {
     pub const fn serialize(
         chip: &'a str,
         board_type: &'a str,
+        bin_name: &'a str,
+        build_profile: &'a str,
         flash_write_size: u32,
         flash_erase_size: u32,
         stack_scan_limit: u32,
@@ -502,9 +510,9 @@ impl<'a> ProjectMetadata<'a> {
         telemetry_size: u32,
         metadata_address: u32,
         metadata_size: u32,
-    ) -> crate::cbor::ConstCborWriter<192> {
-        crate::cbor::ConstCborWriter::<192>::new()
-            .write_array_header(7)
+    ) -> crate::cbor::ConstCborWriter<256> {
+        crate::cbor::ConstCborWriter::<256>::new()
+            .write_array_header(9)
             .write_str(chip)
             .write_u32(flash_write_size)
             .write_u32(flash_erase_size)
@@ -527,6 +535,8 @@ impl<'a> ProjectMetadata<'a> {
             .write_u32(metadata_address)
             .write_u32(metadata_size)
             .write_str(board_type)
+            .write_str(bin_name)
+            .write_str(build_profile)
             .prepend_crc16()
     }
 }
@@ -824,10 +834,19 @@ macro_rules! define_project_metadata {
         metadata_start: $metadata_start:expr,
         metadata_end: $metadata_end:expr $(,)?
     ) => {
-        const METADATA_WRITER: $crate::cbor::ConstCborWriter<192> =
+        const METADATA_WRITER: $crate::cbor::ConstCborWriter<256> =
             $crate::types::ProjectMetadata::serialize(
                 $chip,
                 $board_type,
+                match option_env!("CARGO_BIN_NAME") {
+                    Some(bin) => bin,
+                    None => env!("CARGO_PKG_NAME"),
+                },
+                if cfg!(debug_assertions) {
+                    "debug"
+                } else {
+                    "release"
+                },
                 $flash_write_size as u32,
                 $flash_erase_size as u32,
                 $crate::types::STACK_SCAN_LIMIT,

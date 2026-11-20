@@ -8,7 +8,9 @@ automatic `cat_detector_app` binary switching.
 import asyncio
 from pathlib import Path
 import re
+import shutil
 import socket
+import subprocess
 
 from device_tests.client import AsyncHostSessionClient, _find_free_local_port
 from device_tests.model import ScenarioTier, device_test
@@ -231,6 +233,35 @@ async def test_dual_core_gdb_reset_handler_to_loc(host: AsyncHostSessionClient) 
         await asyncio.sleep(0.25)
         core_out = await host.cli("core status")
         assert "Core Monitor Status:" in core_out, core_out
+
+        gdb_bin = shutil.which("arm-none-eabi-gdb")
+        active_link = dbg.get("active_elf_link") or dbg.get("executable")
+        if gdb_bin and active_link and Path(str(active_link)).is_file():
+            gdb_proc = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    gdb_bin,
+                    "--nx",
+                    "--batch",
+                    "-ex",
+                    f"target extended-remote 127.0.0.1:{int(dbg['gdb_core1_port'])}",
+                    "-ex",
+                    "bt",
+                    "-ex",
+                    "detach",
+                    str(active_link),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=15.0,
+                check=False,
+            )
+            bt_combined = f"{gdb_proc.stdout}\n{gdb_proc.stderr}"
+            assert gdb_proc.returncode == 0, bt_combined
+            assert "Core1_Reset_Handler" in bt_combined, bt_combined
+            assert "sequential_storage" not in bt_combined, bt_combined
+            assert "0x00000000 in ??" not in bt_combined, bt_combined
+            assert "Remote replied unexpectedly" not in bt_combined, bt_combined
     finally:
         if was_debug_enabled:
             await host.start_debug_server(

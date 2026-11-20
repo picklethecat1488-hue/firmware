@@ -23,6 +23,9 @@ const TELEMETRY_PARTITION_KIND: u32 = 1;
 /// Partition kind discriminant for the `metadata` (`sequential_storage::map`) partition.
 const METADATA_PARTITION_KIND: u32 = 2;
 
+/// Maximum serialized `.program_metadata` descriptor read window in bytes within its 4 KB flash sector.
+const MAX_PROGRAM_METADATA_READ_LEN: usize = 256;
+
 /// Complete decoded `.program_metadata` dump returned by `host_fs query_metadata`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QueriedProgramMetadata {
@@ -80,6 +83,14 @@ impl QueriedProgramMetadata {
             Some(val) => format!("\"{}\"", json_escape(val)),
             None => "null".to_string(),
         };
+        let bin_json = match &self.info.bin_name {
+            Some(val) => format!("\"{}\"", json_escape(val)),
+            None => "null".to_string(),
+        };
+        let profile_json = match &self.info.build_profile {
+            Some(val) => format!("\"{}\"", json_escape(val)),
+            None => "null".to_string(),
+        };
         let parts_json: Vec<String> = self
             .info
             .partitions
@@ -89,6 +100,7 @@ impl QueriedProgramMetadata {
         format!(
             "{{\"checksum\":\"0x{:04X}\",\"chip\":\"{}\",\"board_type\":\"{}\",\
              \"program_metadata_board_type\":\"{}\",\"provisioned_board_type\":{},\
+             \"bin_name\":{},\"build_profile\":{},\
              \"source\":\"{}\",\"flash_start\":{},\"flash_write_size\":{},\
              \"flash_erase_size\":{},\"stack_scan_limit\":{},\
              \"program_metadata_addr\":{},\"program_metadata_size\":{},\
@@ -98,6 +110,8 @@ impl QueriedProgramMetadata {
             json_escape(&self.effective_board_type),
             json_escape(&self.info.board_type),
             provisioned_json,
+            bin_json,
+            profile_json,
             self.source,
             self.info.flash_start,
             self.info.flash_write_size,
@@ -117,6 +131,12 @@ impl QueriedProgramMetadata {
             format!("board_type: {}", self.effective_board_type),
             format!("program_metadata_board_type: {}", self.info.board_type),
         ];
+        if let Some(ref bin) = self.info.bin_name {
+            lines.push(format!("bin_name: {}", bin));
+        }
+        if let Some(ref prof) = self.info.build_profile {
+            lines.push(format!("build_profile: {}", prof));
+        }
         if let Some(ref prov) = self.provisioned_board_type {
             lines.push(format!("provisioned_board_type: {}", prov));
         }
@@ -235,10 +255,13 @@ pub async fn query_from_dump_bytes(
         ));
     }
 
+    let dump_window = prog_size
+        .max(MAX_PROGRAM_METADATA_READ_LEN)
+        .min(dump.len().saturating_sub(prog_offset));
     let decoded_info = ProjectInfo::decode_bytes(
-        &dump[prog_offset..prog_offset + prog_size],
+        &dump[prog_offset..prog_offset + dump_window],
         spec.program_metadata_addr,
-        prog_size,
+        0,
     )?;
 
     if let Some(meta_part) = spec.metadata_partition() {
@@ -273,18 +296,19 @@ pub async fn query_from_target(
     elf_info: &ProjectInfo,
     gdb_bridge: Option<&str>,
 ) -> Result<QueriedProgramMetadata, String> {
-    let prog_read_len = elf_info.program_metadata_size;
-    if prog_read_len == 0 {
+    if elf_info.program_metadata_size == 0 {
         return Err("ELF .program_metadata section size is zero".to_string());
     }
+    let prog_read_len = elf_info
+        .program_metadata_size
+        .max(MAX_PROGRAM_METADATA_READ_LEN);
 
     if let Some(host) = gdb_bridge {
         let addr = normalize_rtt_bridge_addr(host);
         let mut gdb = tool_common::GdbClient::connect(&addr)?;
         let mut meta_buf = vec![0u8; prog_read_len];
         gdb.read_mem(elf_info.program_metadata_addr, &mut meta_buf)?;
-        let decoded =
-            ProjectInfo::decode_bytes(&meta_buf, elf_info.program_metadata_addr, prog_read_len)?;
+        let decoded = ProjectInfo::decode_bytes(&meta_buf, elf_info.program_metadata_addr, 0)?;
         let bt = decoded.board_type.clone();
         return Ok(QueriedProgramMetadata {
             info: decoded,
@@ -330,38 +354,33 @@ pub async fn query_from_target(
             )
         })?;
 
-        let decoded = match ProjectInfo::decode_bytes(
-            &prog_meta_buf,
-            elf_info.program_metadata_addr,
-            prog_read_len,
-        ) {
-            Ok(info) => info,
-            Err(_) => {
-                // If XIP was momentarily disabled (e.g. mid-flash write or halted
-                // inside SRAM bootrom routines), reset and run briefly so boot2
-                // re-enables XIP before re-reading `.program_metadata`.
-                let _ = core.reset();
-                let _ = core.run();
-                std::thread::sleep(std::time::Duration::from_millis(40));
-                read_probe_memory_fast(
-                    &mut core,
-                    elf_info.program_metadata_addr,
-                    &mut prog_meta_buf,
-                )
-                .map_err(|e| {
-                    format!(
-                        "Failed to re-read .program_metadata at 0x{:08X}: {:?}",
-                        elf_info.program_metadata_addr, e
+        let decoded =
+            match ProjectInfo::decode_bytes(&prog_meta_buf, elf_info.program_metadata_addr, 0) {
+                Ok(info) => info,
+                Err(_) => {
+                    // If XIP was momentarily disabled (e.g. mid-flash write or halted
+                    // inside SRAM bootrom routines), reset and run briefly so boot2
+                    // re-enables XIP before re-reading `.program_metadata`.
+                    let _ = core.reset();
+                    let _ = core.run();
+                    std::thread::sleep(std::time::Duration::from_millis(40));
+                    read_probe_memory_fast(
+                        &mut core,
+                        elf_info.program_metadata_addr,
+                        &mut prog_meta_buf,
                     )
-                })?;
-                ProjectInfo::decode_bytes(
-                    &prog_meta_buf,
-                    elf_info.program_metadata_addr,
-                    prog_read_len,
-                )
-                .map_err(|e| format!("AttachedTargetMetadataInvalid ({}): {}", elf_info.chip, e))?
-            }
-        };
+                    .map_err(|e| {
+                        format!(
+                            "Failed to re-read .program_metadata at 0x{:08X}: {:?}",
+                            elf_info.program_metadata_addr, e
+                        )
+                    })?;
+                    ProjectInfo::decode_bytes(&prog_meta_buf, elf_info.program_metadata_addr, 0)
+                        .map_err(|e| {
+                            format!("AttachedTargetMetadataInvalid ({}): {}", elf_info.chip, e)
+                        })?
+                }
+            };
 
         let r2 = if let Some(ref mp) = meta_part_spec {
             let erase_sz = (elf_info.flash_erase_size as usize).max(4096);

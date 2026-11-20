@@ -385,6 +385,17 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": True, "debug": dbg})
             except Exception as exc:
                 self._send_json({"error": str(exc)}, status=400)
+        elif path == "/api/debug/sync_symbols":
+            try:
+                if hasattr(runner, "sync_active_symbols"):
+                    dbg = runner.sync_active_symbols()
+                elif hasattr(runner, "get_debug_status"):
+                    dbg = runner.get_debug_status()
+                else:
+                    dbg = {}
+                self._send_json({"success": True, "debug": dbg})
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, status=400)
         elif path == "/api/sync/cancel":
             res = runner.cancel_sync()
             self._send_json(res)

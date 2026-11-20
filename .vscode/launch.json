@@ -2,14 +2,14 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Host Daemon: Attach Shell Core 0 (GDB)",
+      "name": "Host Daemon: Attach Core 0 (GDB)",
       "type": "cortex-debug",
       "request": "attach",
       "servertype": "external",
       "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
+      "executable": "${workspaceFolder}/target/active_target.elf",
       "gdbTarget": "127.0.0.1:${input:gdbCore0Port}",
-      "device": "RP2040",
+      "preLaunchTask": "host: sync active target symbols",
       "overrideRestartCommands": [
         "monitor reset halt",
         "maintenance flush register-cache"
@@ -19,65 +19,14 @@
       }
     },
     {
-      "name": "Host Daemon: Attach Shell Core 1 (GDB)",
+      "name": "Host Daemon: Attach Core 1 (GDB)",
       "type": "cortex-debug",
       "request": "attach",
       "servertype": "external",
       "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
+      "executable": "${workspaceFolder}/target/active_target.elf",
       "gdbTarget": "127.0.0.1:${input:gdbCore1Port}",
-      "device": "RP2040",
-      "overrideRestartCommands": [
-        "monitor reset halt",
-        "maintenance flush register-cache"
-      ],
-      "sourceFileMap": {
-        "firmware": "${workspaceFolder}"
-      }
-    },
-    {
-      "name": "Host Daemon: Attach App Core 0 (GDB)",
-      "type": "cortex-debug",
-      "request": "attach",
-      "servertype": "external",
-      "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
-      "gdbTarget": "127.0.0.1:${input:gdbCore0Port}",
-      "device": "RP2040",
-      "overrideRestartCommands": [
-        "monitor reset halt",
-        "maintenance flush register-cache"
-      ],
-      "sourceFileMap": {
-        "firmware": "${workspaceFolder}"
-      }
-    },
-    {
-      "name": "Host Daemon: Attach App Core 1 (GDB)",
-      "type": "cortex-debug",
-      "request": "attach",
-      "servertype": "external",
-      "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
-      "gdbTarget": "127.0.0.1:${input:gdbCore1Port}",
-      "device": "RP2040",
-      "overrideRestartCommands": [
-        "monitor reset halt",
-        "maintenance flush register-cache"
-      ],
-      "sourceFileMap": {
-        "firmware": "${workspaceFolder}"
-      }
-    },
-    {
-      "name": "Host Daemon: Attach Carrier Board Shell (GDB)",
-      "type": "cortex-debug",
-      "request": "attach",
-      "servertype": "external",
-      "cwd": "${workspaceFolder}",
-      "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/carrier_board_shell",
-      "gdbTarget": "127.0.0.1:${input:gdbCore0Port}",
-      "device": "MCXN947",
+      "preLaunchTask": "host: sync active target symbols",
       "overrideRestartCommands": [
         "monitor reset halt",
         "maintenance flush register-cache"
@@ -233,8 +182,9 @@
       },
       "args": [
         "--elf",
-        "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell"
+        "${workspaceFolder}/target/active_target.elf"
       ],
+      "preLaunchTask": "host: sync active target symbols",
       "cwd": "${workspaceFolder}"
     },
     {
@@ -265,7 +215,7 @@
       "coreConfigs": [
         {
           "coreIndex": 0,
-          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
+          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/${input:targetBuildProfile}/cat_detector_shell",
           "rttEnabled": true,
           "rttChannelFormats": [
             {
@@ -279,8 +229,7 @@
             }
           ]
         }
-      ],
-      "preLaunchTask": "cargo: build cat_detector_shell (debug)"
+      ]
     },
     {
       "type": "probe-rs-debug",
@@ -295,7 +244,7 @@
       "coreConfigs": [
         {
           "coreIndex": 0,
-          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
+          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/${input:targetBuildProfile}/cat_detector_app",
           "rttEnabled": true,
           "rttChannelFormats": [
             {
@@ -305,8 +254,7 @@
             }
           ]
         }
-      ],
-      "preLaunchTask": "cargo: build cat_detector_app (debug)"
+      ]
     },
     {
       "type": "probe-rs-debug",
@@ -321,7 +269,7 @@
       "coreConfigs": [
         {
           "coreIndex": 0,
-          "programBinary": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/carrier_board_shell",
+          "programBinary": "${workspaceFolder}/target/thumbv8m.main-none-eabihf/${input:targetBuildProfile}/carrier_board_shell",
           "rttEnabled": true,
           "rttChannelFormats": [
             {
@@ -335,23 +283,15 @@
             }
           ]
         }
-      ],
-      "preLaunchTask": "cargo: build carrier_board_shell (debug)"
+      ]
     }
   ],
   "compounds": [
     {
-      "name": "Host Daemon: Attach Shell Dual-Core (GDB)",
+      "name": "Host Daemon: Attach Dual-Core (GDB)",
       "configurations": [
-        "Host Daemon: Attach Shell Core 0 (GDB)",
-        "Host Daemon: Attach Shell Core 1 (GDB)"
-      ]
-    },
-    {
-      "name": "Host Daemon: Attach App Dual-Core (GDB)",
-      "configurations": [
-        "Host Daemon: Attach App Core 0 (GDB)",
-        "Host Daemon: Attach App Core 1 (GDB)"
+        "Host Daemon: Attach Core 0 (GDB)",
+        "Host Daemon: Attach Core 1 (GDB)"
       ]
     }
   ],
@@ -367,6 +307,16 @@
       "type": "promptString",
       "description": "Core 1 GDB RSP TCP port exposed by host.py / host_debug",
       "default": "3334"
+    },
+    {
+      "id": "targetBuildProfile",
+      "type": "pickString",
+      "description": "Cargo build profile for standalone probe-rs launch (debug or release)",
+      "options": [
+        "debug",
+        "release"
+      ],
+      "default": "debug"
     },
     {
       "id": "deviceTestKeyword",
