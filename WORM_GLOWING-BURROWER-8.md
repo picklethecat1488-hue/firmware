@@ -2,12 +2,13 @@
 
 - **UUID**: `d256f589-959d-470f-b27f-45783e44556a`
 - **ID**: `WORM-GLOWING-BURROWER-8`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-20 02:18:34 UTC`
 - **Resolved**: `2026-11-20 20:18:39 UTC`
+- **Accepted**: `2026-11-20 20:18:42 UTC`
 
 #### Description
 
