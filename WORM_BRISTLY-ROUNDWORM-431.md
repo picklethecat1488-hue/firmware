@@ -1,12 +1,13 @@
-# 🔴 `[WORM-BRISTLY-ROUNDWORM-431]` GDB warning when running flushregs
+# 🟢 `[WORM-BRISTLY-ROUNDWORM-431]` GDB warning when running flushregs
 
 - **UUID**: `fe7d1a81-6a36-4e65-8526-3284d9b1f281`
 - **ID**: `WORM-BRISTLY-ROUNDWORM-431`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-20 20:19:09 UTC`
+- **Resolved**: `2026-11-20 22:46:06 UTC`
 
 #### Description
 
@@ -68,3 +69,7 @@ Use 'maintenance flush register-cache'.
 
 - [ ] Verify batch GDB attach, reset halt, and maintenance flush register-cache emit zero file-transfer or deprecation warnings | `python tools/host.py debug start && arm-none-eabi-gdb -q -batch -ex 'set sysroot /' -ex 'target extended-remote 127.0.0.1:3333' -ex 'monitor reset halt' -ex 'maintenance flush register-cache' -ex 'detach' -ex 'disconnect'` <!-- id:f88585f5 -->
 - [ ] Inspect .vscode/launch.json Cortex-Debug preAttachCommands and overrideRestartCommands | `python tools/host.py debug status` <!-- id:21f6344a -->
+
+#### Resolution Notes
+
+Added 'set sysroot /' to Cortex-Debug preAttachCommands in .vscode/launch.json so arm-none-eabi-gdb resolves qXfer:exec-file:read symbols directly from the local filesystem without remote file-transfer warnings, replaced deprecated 'flushregs' references with 'maintenance flush register-cache', and added live arm-none-eabi-gdb regression test test_worm_bristly_roundworm_431_gdb_zero_warnings_on_exec_file_and_reg_cache_flush.
