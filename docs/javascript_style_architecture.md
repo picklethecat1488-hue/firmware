@@ -52,9 +52,9 @@ JavaScript modules are held to the exact same engineering rigor as Rust firmware
 ## 5. Isolated Parallel Unit Testing & Pre-Commit Validation
 
 * **Test Isolation**: All JavaScript unit tests live in `tools/tests/js/*.test.mjs`, completely separated from production modules under `tools/js/`.
-* **Parallel Execution**: Run the Node built-in test runner concurrently across CPU cores (invoked automatically by `./tools/verify.sh`):
+* **Parallel Execution**: Run the Node built-in test runner concurrently across CPU cores (invoked automatically by `./tools/verify.py`):
   ```bash
   node --test --test-concurrency=$(nproc 2>/dev/null || sysctl -n hw.ncpu || echo 4) tools/tests/js/*.test.mjs
   ```
 * **Functional Behavioral Testing Mandate**: JavaScript unit tests MUST exercise real module execution, DOM state transitions (via `createMockRuntimeContext()`), SSE/CLI command flows, diff rendering, and DAG selection behavior. Never write tests that merely read `.js` or `.html.j2` files as strings to assert regex/token presence.
-* **Unified Verification (`./tools/verify.sh`)**: `./tools/verify.sh` runs `tools/validation/validate_all.py` (enforcing `oxlint --deny-warnings`, zero-globals compliance outside `runtime_context.js`, zero inline template `on*="..."` attributes, and valid JSON boot blocks) alongside parallel `node --test` suites.
+* **Unified Verification (`./tools/verify.py`)**: `./tools/verify.py` runs `tools/validation/validate_all.py` (enforcing `oxlint --deny-warnings`, zero-globals compliance outside `runtime_context.js`, zero inline template `on*="..."` attributes, and valid JSON boot blocks) alongside parallel `node --test` suites.
