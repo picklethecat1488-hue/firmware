@@ -63,3 +63,7 @@ Use 'maintenance flush register-cache'.
 | Type | Filename | Description |
 | :--- | :--- | :--- |
 | `log` | [target_system_logs_WORM-BRISTLY-ROUNDWORM-431.log](attachments/WORM-BRISTLY-ROUNDWORM-431/target_system_logs_WORM-BRISTLY-ROUNDWORM-431.log) | Target system and defmt logs from host daemon session |
+
+#### Review Tasks & Functional Checklist
+
+- [ ] Verify batch GDB attach, reset halt, and maintenance flush register-cache emit zero file-transfer or deprecation warnings | `python tools/host.py debug start && arm-none-eabi-gdb -q -batch -ex 'set sysroot /' -ex 'target extended-remote 127.0.0.1:3333' -ex 'monitor reset halt' -ex 'maintenance flush register-cache' -ex 'detach' -ex 'disconnect'` <!-- id:f88585f5 -->
