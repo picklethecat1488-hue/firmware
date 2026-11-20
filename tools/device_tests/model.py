@@ -11,12 +11,13 @@ import re
 import sys
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, TypeVar, Union
 
-import pytest
-
 if sys.version_info >= (3, 11):
     import tomllib
 else:
-    import tomli as tomllib
+    try:
+        import tomli as tomllib
+    except ImportError:  # pragma: no cover
+        tomllib = None  # type: ignore[assignment]
 
 DEFAULT_PACKAGE_NAME: Optional[str] = None
 DEFAULT_BIN_NAME: Optional[str] = None
@@ -362,17 +363,22 @@ def device_test(
         )
         setattr(fn, "__device_test_meta__", metadata)
 
-        marked: Any = pytest.mark.asyncio(fn)
-        marked = pytest.mark.project(normalized_project)(marked)
-        marked = pytest.mark.boards(*board_patterns)(marked)
+        try:
+            import pytest as _pytest
+        except ImportError:
+            return fn
+
+        marked: Any = _pytest.mark.asyncio(fn)
+        marked = _pytest.mark.project(normalized_project)(marked)
+        marked = _pytest.mark.boards(*board_patterns)(marked)
         if resolved_bin is not None:
-            marked = pytest.mark.target_binary(resolved_bin.bin_name)(marked)
+            marked = _pytest.mark.target_binary(resolved_bin.bin_name)(marked)
         if doc_summary:
-            marked = pytest.mark.description(doc_summary)(marked)
+            marked = _pytest.mark.description(doc_summary)(marked)
         for tier in scenario_tiers:
-            marked = getattr(pytest.mark, tier.value)(marked)
+            marked = getattr(_pytest.mark, tier.value)(marked)
         if manual:
-            marked = pytest.mark.manual(marked)
+            marked = _pytest.mark.manual(marked)
         setattr(marked, "__device_test_meta__", metadata)
         return marked
 

@@ -142,6 +142,7 @@ class DaemonRunner:
         self.gdb_core0_port: int = int(gdb_core0_port)
         self.gdb_core1_port: int = int(gdb_core1_port)
         self.rtt_bridge_port: int = int(rtt_bridge_port)
+        self._saved_user_debug_ports: Optional[Tuple[int, int, int]] = None
         self.probe_selector: Optional[str] = probe_selector
         self.trace_mode: TraceMode = normalize_trace_mode(trace_mode)
 
@@ -363,6 +364,8 @@ class DaemonRunner:
         rtt_bridge_port: Optional[int] = None,
         probe_selector: Optional[str] = None,
         trace_mode: Optional[str] = None,
+        *,
+        persist_session: bool = True,
     ) -> None:
         """Dynamically update runner configuration parameters and resolved paths."""
         trace_mode_changed = False
@@ -423,22 +426,23 @@ class DaemonRunner:
             )
         if trace_mode_changed:
             self.trace_store.clear()
-        save_last_session(
-            self.repo_root,
-            {
-                "package": self.package,
-                "bin": self.bin_name,
-                "release": self.release,
-                "target": self.target,
-                "speed": self.speed,
-                "chip": self.chip,
-                "trace_mode": self.trace_mode.value,
-                "enable_debug_server": self.enable_debug_server,
-                "halt_on_reset": self.halt_on_reset,
-                "gdb_core0_port": self.gdb_core0_port,
-                "gdb_core1_port": self.gdb_core1_port,
-            },
-        )
+        if persist_session:
+            save_last_session(
+                self.repo_root,
+                {
+                    "package": self.package,
+                    "bin": self.bin_name,
+                    "release": self.release,
+                    "target": self.target,
+                    "speed": self.speed,
+                    "chip": self.chip,
+                    "trace_mode": self.trace_mode.value,
+                    "enable_debug_server": self.enable_debug_server,
+                    "halt_on_reset": self.halt_on_reset,
+                    "gdb_core0_port": self.gdb_core0_port,
+                    "gdb_core1_port": self.gdb_core1_port,
+                },
+            )
         self.log(
             f"Updated configuration: package={self.package}, bin={self.bin_name}, target={self.target}, "
             f"profile={'release' if self.release else 'debug'}, trace_mode={self.trace_mode.value}, speed={self.speed}, "
@@ -1332,6 +1336,13 @@ class DaemonRunner:
     ) -> Dict[str, Any]:
         """Enable and start `host_debug` on the running daemon, re-routing RTT over its `:50000` bridge."""
         with self._fs_lock:
+            with self._lock:
+                if self._saved_user_debug_ports is None:
+                    self._saved_user_debug_ports = (
+                        self.gdb_core0_port,
+                        self.gdb_core1_port,
+                        self.rtt_bridge_port,
+                    )
             self.update_config(
                 enable_debug_server=True,
                 halt_on_reset=halt_on_reset,
@@ -1339,6 +1350,7 @@ class DaemonRunner:
                 gdb_core1_port=gdb_core1_port,
                 rtt_bridge_port=rtt_bridge_port,
                 probe_selector=probe_selector,
+                persist_session=False,
             )
             was_busy = (self.rtt_process is not None and self.rtt_process.poll() is None) or self.debug_server_active
             self.stop_rtt_streaming()
@@ -1367,7 +1379,17 @@ class DaemonRunner:
     def disable_live_debug_server(self) -> Dict[str, Any]:
         """Stop `host_debug` and return RTT streaming to direct USB probe mode without resetting."""
         with self._fs_lock:
-            self.update_config(enable_debug_server=False, halt_on_reset=False)
+            with self._lock:
+                restored_ports = self._saved_user_debug_ports
+                self._saved_user_debug_ports = None
+            self.update_config(
+                enable_debug_server=False,
+                halt_on_reset=False,
+                gdb_core0_port=restored_ports[0] if restored_ports is not None else None,
+                gdb_core1_port=restored_ports[1] if restored_ports is not None else None,
+                rtt_bridge_port=restored_ports[2] if restored_ports is not None else None,
+                persist_session=False,
+            )
             was_active = (self.rtt_process is not None and self.rtt_process.poll() is None) or self.debug_server_active
             self.stop_rtt_streaming()
             self.stop_debug_server()

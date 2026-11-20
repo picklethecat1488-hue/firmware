@@ -9,7 +9,10 @@ from typing import Any, Dict, List, Optional
 if sys.version_info >= (3, 11):
     import tomllib
 else:
-    import tomli as tomllib
+    try:
+        import tomli as tomllib
+    except ImportError:  # pragma: no cover
+        tomllib = None  # type: ignore[assignment]
 
 SESSION_FILE_NAME: str = "host_session.json"
 

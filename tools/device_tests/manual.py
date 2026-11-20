@@ -6,8 +6,6 @@ from typing import Any, Callable, Dict, NoReturn, Optional
 import sys
 import uuid
 
-import pytest
-
 from device_tests.client import AsyncHostSessionClient
 from host_daemon.model.manual_prompt import (
     ManualPromptAction,
@@ -81,6 +79,8 @@ class ManualTestHelper:
 
     def cancel(self, comment: str) -> NoReturn:
         """Cancel the current manual test with a required operator comment."""
+        import pytest
+
         cleaned = comment.strip()
         if not cleaned:
             raise ValueError("Manual test cancellation requires a non-empty comment")
@@ -166,6 +166,8 @@ class ManualTestHelper:
         fail_on_no: bool = True,
     ) -> ManualPromptResult:
         """Prompt the operator to answer `YES`, `NO`, or `CANCEL` with a comment."""
+        import pytest
+
         if not self.manual_enabled:
             pytest.skip(f"Manual step '{self.test_name}' skipped (pass --manual): {prompt}")
 
@@ -222,6 +224,8 @@ class ManualTestHelper:
         unit: str = "",
     ) -> ManualPromptResult:
         """Prompt the operator to enter a numeric measured value (or cancel with a comment)."""
+        import pytest
+
         if not self.manual_enabled:
             pytest.skip(f"Manual step '{self.test_name}' skipped (pass --manual): {prompt}")
 

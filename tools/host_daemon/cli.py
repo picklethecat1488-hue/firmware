@@ -22,8 +22,6 @@ from host_daemon.provider.daemon.config import (
     load_last_session,
     save_last_session,
 )
-from host_daemon.provider.daemon.runner import DaemonRunner
-from host_daemon.provider.daemon.server import HostDaemonServer
 
 _repo_root = Path(__file__).resolve().parent.parent.parent
 if str(_repo_root) not in sys.path:
@@ -390,9 +388,17 @@ def _add_debug_subparser(subparsers: Any) -> None:
     debug_parser.add_argument(
         "debug_action",
         nargs="?",
-        choices=["status", "start", "stop", "target-info", "sync-symbols"],
+        choices=["status", "start", "stop", "target-info", "sync-symbols", "gdb-proxy"],
         default="status",
-        help="Debug server lifecycle or target symbol inspection action (default: status).",
+        help="Debug server lifecycle, symbol sync, or GDB stdio-to-TCP proxy action (default: status).",
+    )
+    debug_parser.add_argument(
+        "--core",
+        dest="dbg_core",
+        type=int,
+        choices=[0, 1],
+        default=0,
+        help="Target MCU core index (0 or 1) when running `host.py debug gdb-proxy`.",
     )
     debug_parser.add_argument(
         "--field",
@@ -791,12 +797,19 @@ def _add_test_subparser(subparsers: Any) -> None:
     )
 
 
+DEFAULT_GDB_CORE0_PORT: int = 3333
+DEFAULT_GDB_CORE1_PORT: int = 3334
+GDB_PROXY_BUFFER_BYTES: int = 4096
+
+
 def _resolve_offline_debug_target_info(
     effective_root: Path,
     *,
     sync_symbols: bool,
 ) -> Dict[str, Any]:
     """Resolve active target ELF (`debug` or `release`) and device from `host_session.json` when no daemon is active."""
+    from host_daemon.provider.daemon.runner import DaemonRunner
+
     sess = load_last_session(effective_root) or {}
     offline_runner = DaemonRunner(
         repo_root=effective_root,
@@ -808,12 +821,102 @@ def _resolve_offline_debug_target_info(
         chip=sess.get("chip"),
         enable_debug_server=bool(sess.get("enable_debug_server", False)),
         halt_on_reset=bool(sess.get("halt_on_reset", False)),
-        gdb_core0_port=int(sess.get("gdb_core0_port", 3333)),
-        gdb_core1_port=int(sess.get("gdb_core1_port", 3334)),
+        gdb_core0_port=int(sess.get("gdb_core0_port", DEFAULT_GDB_CORE0_PORT)),
+        gdb_core1_port=int(sess.get("gdb_core1_port", DEFAULT_GDB_CORE1_PORT)),
     )
     if sync_symbols:
         return offline_runner.sync_active_symbols()
     return offline_runner.get_debug_status()
+
+
+def _run_gdb_stdio_proxy(
+    *,
+    core_idx: int,
+    repo_root: Path,
+    host: str,
+    host_port: Optional[int],
+) -> int:
+    """Bridge GDB Remote Serial Protocol stdio (`target extended-remote | ...`) to the active Core 0/1 TCP port."""
+    port_key = "gdb_core1_port" if core_idx == 1 else "gdb_core0_port"
+    default_port = DEFAULT_GDB_CORE1_PORT if core_idx == 1 else DEFAULT_GDB_CORE0_PORT
+    target_port: Optional[int] = None
+
+    try:
+        dbg = send_daemon_request("/api/debug/status", None, port=host_port, host=host)
+        if isinstance(dbg, dict):
+            if not dbg.get("active"):
+                started = send_daemon_request("/api/debug/start", {"reset": False}, port=host_port, host=host)
+                if isinstance(started, dict):
+                    dbg = started.get("debug") or started
+            raw_port = dbg.get(port_key)
+            if raw_port is not None:
+                target_port = int(raw_port)
+    except RuntimeError:
+        target_port = None
+
+    if target_port is None:
+        sess = load_last_session(repo_root) or {}
+        target_port = int(sess.get(port_key) or default_port)
+
+    try:
+        sock = socket.create_connection((host, target_port), timeout=10.0)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        sock.settimeout(None)
+    except OSError as exc:
+        print(
+            f"host.py debug gdb-proxy: failed to connect to Core {core_idx} GDB server at {host}:{target_port}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
+
+    def _forward_sigint(_signum: int, _frame: Any) -> None:
+        try:
+            sock.sendall(b"\x03")
+        except OSError:
+            pass
+
+    try:
+        signal.signal(signal.SIGINT, _forward_sigint)
+    except (OSError, ValueError):
+        pass
+
+    in_fd = sys.stdin.fileno()
+    out_fd = sys.stdout.fileno()
+
+    def _stdin_to_sock() -> None:
+        try:
+            while True:
+                chunk = os.read(in_fd, GDB_PROXY_BUFFER_BYTES)
+                if not chunk:
+                    break
+                sock.sendall(chunk)
+        except OSError:
+            pass
+        finally:
+            try:
+                sock.shutdown(socket.SHUT_WR)
+            except OSError:
+                pass
+
+    pump = threading.Thread(target=_stdin_to_sock, daemon=True)
+    pump.start()
+    try:
+        while True:
+            try:
+                rx = sock.recv(GDB_PROXY_BUFFER_BYTES)
+            except InterruptedError:
+                continue
+            if not rx:
+                break
+            os.write(out_fd, rx)
+    except OSError:
+        pass
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
+    return 0
 
 
 def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
@@ -940,6 +1043,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.subcommand == "debug":
         action = str(getattr(args, "debug_action", "status") or "status").lower()
         effective_dbg_root = Path(args.dbg_repo_root).resolve() if getattr(args, "dbg_repo_root", None) else repo_root
+        if action == "gdb-proxy":
+            return _run_gdb_stdio_proxy(
+                core_idx=int(getattr(args, "dbg_core", 0)),
+                repo_root=effective_dbg_root,
+                host=args.host,
+                host_port=args.host_port,
+            )
         try:
             if action in ("target-info", "sync-symbols"):
                 sync_flag = action == "sync-symbols"
@@ -1574,6 +1684,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(f"➜ Host daemon running at http://{args.host}:{args.port} (PID {proc.pid}).")
         print("➜ Detached from terminal.")
         return 0
+
+    from host_daemon.provider.daemon.runner import DaemonRunner
+    from host_daemon.provider.daemon.server import HostDaemonServer
 
     runner = DaemonRunner(
         repo_root=repo_root,

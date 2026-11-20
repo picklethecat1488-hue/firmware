@@ -2954,3 +2954,136 @@ def test_trace_session_store_rerun_bridge_and_http_cli_endpoints(
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_worm_moist_bristle_687_stdlib_sync_symbols_ephemeral_port_isolation_and_gdb_proxy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify `host.py debug sync-symbols` runs without `pytest`, ephemeral debug ports never pollute session defaults, and `gdb-proxy` tracks Target Selection ports."""
+    import socket
+
+    from host_daemon.model import metadata as host_meta
+    from host_daemon.provider.daemon.config import load_last_session, save_last_session
+    from host_daemon.provider.daemon.runner import DaemonRunner
+
+    # 1. `tools/host.py debug sync-symbols` must succeed in a Python environment WITHOUT `pytest` installed!
+    fake_repo = tmp_path / "stdlib_repo"
+    (fake_repo / "app").mkdir(parents=True)
+    (fake_repo / "Cargo.toml").write_text('[workspace]\nmembers = ["app"]\n', encoding="utf-8")
+    (fake_repo / "app" / "Cargo.toml").write_text(
+        '[package]\nname = "cat_detector"\nversion = "0.1.0"\ndefault-run = "cat_detector_shell"\n\n'
+        '[[bin]]\nname = "cat_detector_shell"\npath = "src/main.rs"\n\n'
+        "[package.metadata.binaries.cat_detector_shell]\n"
+        'target = "thumbv6m-none-eabi"\nchip = "rp2040"\nboard = "cat_detector"\n',
+        encoding="utf-8",
+    )
+    rel_elf = fake_repo / "target" / "thumbv6m-none-eabi" / "release" / "cat_detector_shell"
+    rel_elf.parent.mkdir(parents=True, exist_ok=True)
+    rel_elf.write_bytes(b"\x7fELF_REL")
+    save_last_session(
+        fake_repo,
+        {
+            "package": "cat_detector",
+            "bin": "cat_detector_shell",
+            "release": True,
+            "target": "thumbv6m-none-eabi",
+            "chip": "rp2040",
+            "gdb_core0_port": 3333,
+            "gdb_core1_port": 3334,
+        },
+    )
+
+    no_pytest_code = (
+        "import runpy, sys\n"
+        "sys.modules['pytest'] = None\n"
+        f"sys.argv = [{str(WORKSPACE_ROOT / 'tools' / 'host.py')!r}, 'debug', 'sync-symbols', '--repo-root', {str(fake_repo)!r}, '--json']\n"
+        f"runpy.run_path({str(WORKSPACE_ROOT / 'tools' / 'host.py')!r}, run_name='__main__')\n"
+    )
+    proc_sync = subprocess.run(
+        [sys.executable, "-c", no_pytest_code],
+        cwd=str(WORKSPACE_ROOT),
+        capture_output=True,
+        text=True,
+        timeout=15.0,
+        check=False,
+    )
+    assert proc_sync.returncode == 0, f"sync-symbols failed without pytest:\n{proc_sync.stdout}\n{proc_sync.stderr}"
+    assert "ModuleNotFoundError" not in proc_sync.stderr
+
+    # 2. Ephemeral `enable_live_debug_server` / `disable_live_debug_server` ports must NOT clobber Target Selection ports (3333/3334)!
+    monkeypatch.setattr(host_meta, "get_cargo_target_directory", lambda _r: fake_repo / "target")
+    runner = DaemonRunner(
+        repo_root=fake_repo,
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+        target="thumbv6m-none-eabi",
+        chip="rp2040",
+        release=True,
+        gdb_core0_port=3333,
+        gdb_core1_port=3334,
+    )
+    monkeypatch.setattr(runner, "start_debug_server", lambda **_kw: runner.get_debug_status())
+    monkeypatch.setattr(runner, "stop_debug_server", lambda: None)
+    monkeypatch.setattr(runner, "start_rtt_streaming", lambda **_kw: None)
+    monkeypatch.setattr(runner, "stop_rtt_streaming", lambda: None)
+
+    runner.enable_live_debug_server(gdb_core0_port=56947, gdb_core1_port=56948, rtt_bridge_port=56949)
+    assert runner.gdb_core0_port == 56947
+    runner.disable_live_debug_server()
+    assert runner.gdb_core0_port == 3333
+    assert runner.gdb_core1_port == 3334
+    persisted = load_last_session(fake_repo)
+    assert persisted is not None
+    assert persisted["gdb_core0_port"] == 3333
+    assert persisted["gdb_core1_port"] == 3334
+
+    # 3. `.vscode/launch.json` must use `gdb-proxy` (zero stale 3333/3334 input prompts) and bridge dynamically to Target Selection ports!
+    launch_text = (WORKSPACE_ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8")
+    assert "gdbCore0Port" not in launch_text
+    assert "gdbCore1Port" not in launch_text
+    assert "gdb-proxy --core 0" in launch_text
+    assert "gdb-proxy --core 1" in launch_text
+
+    rsp_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    rsp_listener.bind(("127.0.0.1", 0))
+    rsp_listener.listen(1)
+    custom_c0_port = int(rsp_listener.getsockname()[1])
+
+    def _echo_rsp_once() -> None:
+        conn, _ = rsp_listener.accept()
+        try:
+            rx = conn.recv(64)
+            if rx:
+                conn.sendall(b"+$OK#9a")
+        finally:
+            conn.close()
+            rsp_listener.close()
+
+    threading.Thread(target=_echo_rsp_once, daemon=True).start()
+    runner.update_config(enable_debug_server=True, gdb_core0_port=custom_c0_port, gdb_core1_port=custom_c0_port + 1)
+    runner.debug_server_active = True
+    server, daemon_port = _start_ephemeral_daemon(runner)
+    try:
+        proxy_proc = subprocess.run(
+            [
+                sys.executable,
+                "-u",
+                str(WORKSPACE_ROOT / "tools" / "host.py"),
+                "debug",
+                "gdb-proxy",
+                "--core",
+                "0",
+                "--host-port",
+                str(daemon_port),
+            ],
+            input=b"+$?#3f",
+            capture_output=True,
+            timeout=10.0,
+            check=False,
+        )
+        assert proxy_proc.returncode == 0, proxy_proc.stderr.decode(errors="ignore")
+        assert b"+$OK#9a" in proxy_proc.stdout
+    finally:
+        server.shutdown()
+        server.server_close()

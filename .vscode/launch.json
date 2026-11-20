@@ -8,7 +8,7 @@
       "servertype": "external",
       "cwd": "${workspaceFolder}",
       "executable": "${workspaceFolder}/target/active_target.elf",
-      "gdbTarget": "127.0.0.1:${input:gdbCore0Port}",
+      "gdbTarget": "| python3 -u tools/host.py debug gdb-proxy --core 0",
       "preLaunchTask": "host: sync active target symbols",
       "preAttachCommands": [
         "set sysroot /"
@@ -28,7 +28,7 @@
       "servertype": "external",
       "cwd": "${workspaceFolder}",
       "executable": "${workspaceFolder}/target/active_target.elf",
-      "gdbTarget": "127.0.0.1:${input:gdbCore1Port}",
+      "gdbTarget": "| python3 -u tools/host.py debug gdb-proxy --core 1",
       "preLaunchTask": "host: sync active target symbols",
       "preAttachCommands": [
         "set sysroot /"
@@ -302,18 +302,6 @@
     }
   ],
   "inputs": [
-    {
-      "id": "gdbCore0Port",
-      "type": "promptString",
-      "description": "Core 0 GDB RSP TCP port exposed by host.py / host_debug",
-      "default": "3333"
-    },
-    {
-      "id": "gdbCore1Port",
-      "type": "promptString",
-      "description": "Core 1 GDB RSP TCP port exposed by host.py / host_debug",
-      "default": "3334"
-    },
     {
       "id": "targetBuildProfile",
       "type": "pickString",

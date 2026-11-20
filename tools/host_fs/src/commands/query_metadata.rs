@@ -366,27 +366,44 @@ pub async fn query_from_target(
             match ProjectInfo::decode_bytes(&prog_meta_buf, elf_info.program_metadata_addr, 0) {
                 Ok(info) => info,
                 Err(_) => {
-                    // If XIP was momentarily disabled (e.g. mid-flash write or halted
-                    // inside SRAM bootrom routines), reset and run briefly so boot2
-                    // re-enables XIP before re-reading `.program_metadata`.
-                    let _ = core.reset();
-                    let _ = core.run();
-                    std::thread::sleep(std::time::Duration::from_millis(40));
-                    read_probe_memory_fast(
-                        &mut core,
-                        elf_info.program_metadata_addr,
-                        &mut prog_meta_buf,
-                    )
-                    .map_err(|e| {
-                        format!(
-                            "Failed to re-read .program_metadata at 0x{:08X}: {:?}",
-                            elf_info.program_metadata_addr, e
+                    // An active SRAM NOR-flash transaction (e.g. `sequential_storage` during boot)
+                    // temporarily disables XIP on RP2040 (`0x00` reads) for a few milliseconds.
+                    // Poll non-destructively first before falling back to a brief reset + boot2 XIP init.
+                    let mut recovered: Option<ProjectInfo> = None;
+                    for attempt in 0..6 {
+                        if attempt == 3 {
+                            let _ = core.reset();
+                            let _ = core.run();
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(25));
+                        if read_probe_memory_fast(
+                            &mut core,
+                            elf_info.program_metadata_addr,
+                            &mut prog_meta_buf,
                         )
-                    })?;
-                    ProjectInfo::decode_bytes(&prog_meta_buf, elf_info.program_metadata_addr, 0)
+                        .is_ok()
+                        {
+                            if let Ok(info) = ProjectInfo::decode_bytes(
+                                &prog_meta_buf,
+                                elf_info.program_metadata_addr,
+                                0,
+                            ) {
+                                recovered = Some(info);
+                                break;
+                            }
+                        }
+                    }
+                    match recovered {
+                        Some(info) => info,
+                        None => ProjectInfo::decode_bytes(
+                            &prog_meta_buf,
+                            elf_info.program_metadata_addr,
+                            0,
+                        )
                         .map_err(|e| {
                             format!("AttachedTargetMetadataInvalid ({}): {}", elf_info.chip, e)
-                        })?
+                        })?,
+                    }
                 }
             };
 
