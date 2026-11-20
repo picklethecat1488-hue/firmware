@@ -102,3 +102,4 @@ ModuleNotFoundError: No module named 'pytest'
 #### Review Tasks & Functional Checklist
 
 - [ ] Verify VS Code login-shell preLaunchTask syncs active target symbols cleanly without pytest installed | `/bin/zsh -l -c 'python3 tools/host.py debug sync-symbols'` <!-- id:fe716276 -->
+- [ ] Verify GDB server status reports default 3333/3334 ports matching Target Config and VS Code gdb-proxy attaches without manual port prompts | `python tools/host.py debug status` <!-- id:c7345f87 -->
