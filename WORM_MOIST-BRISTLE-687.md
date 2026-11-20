@@ -1,12 +1,13 @@
-# 🔴 `[WORM-MOIST-BRISTLE-687]` Tracebacks in debug terminal
+# 🟢 `[WORM-MOIST-BRISTLE-687]` Tracebacks in debug terminal
 
 - **UUID**: `f41aed47-84ea-4145-8070-f64b63da97d8`
 - **ID**: `WORM-MOIST-BRISTLE-687`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-20 20:12:07 UTC`
+- **Resolved**: `2026-11-20 23:03:48 UTC`
 
 #### Description
 
@@ -103,3 +104,7 @@ ModuleNotFoundError: No module named 'pytest'
 
 - [ ] Verify VS Code login-shell preLaunchTask syncs active target symbols cleanly without pytest installed | `/bin/zsh -l -c 'python3 tools/host.py debug sync-symbols'` <!-- id:fe716276 -->
 - [ ] Verify GDB server status reports default 3333/3334 ports matching Target Config and VS Code gdb-proxy attaches without manual port prompts | `python tools/host.py debug status` <!-- id:c7345f87 -->
+
+#### Resolution Notes
+
+Eliminated eager pytest/daemon imports so 'python3 tools/host.py debug sync-symbols' runs cleanly on pure Python 3 stdlib in any VS Code login shell, isolated ephemeral test debug ports in DaemonRunner.enable_live_debug_server/disable_live_debug_server so Target Selection defaults (3333/3334) are never overwritten, and added 'host.py debug gdb-proxy --core 0/1' in .vscode/launch.json so VS Code attaches automatically to the active ports configured in Target Selection.
