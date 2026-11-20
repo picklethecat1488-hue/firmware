@@ -100,6 +100,10 @@ ModuleNotFoundError: No module named 'pytest'
 [] [daemon] [INFO] [Sync] Target synchronized & GDB server active on :56947/:56948.
 ```
 
+#### Attached Commits
+
+- `0e036c49`
+
 #### Review Tasks & Functional Checklist
 
 - [ ] Verify VS Code login-shell preLaunchTask syncs active target symbols cleanly without pytest installed | `/bin/zsh -l -c 'python3 tools/host.py debug sync-symbols'` <!-- id:fe716276 -->
