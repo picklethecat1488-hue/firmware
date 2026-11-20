@@ -99,8 +99,6 @@ ModuleNotFoundError: No module named 'pytest'
 [] [daemon] [INFO] [Sync] Target synchronized & GDB server active on :56947/:56948.
 ```
 
-#### Attachments & References
+#### Review Tasks & Functional Checklist
 
-| Type | Filename | Description |
-| :--- | :--- | :--- |
-| `log` | [target_system_logs_WORM-MOIST-BRISTLE-687.log](attachments/WORM-MOIST-BRISTLE-687/target_system_logs_WORM-MOIST-BRISTLE-687.log) | Target system and defmt logs from host daemon session |
+- [ ] Verify VS Code login-shell preLaunchTask syncs active target symbols cleanly without pytest installed | `/bin/zsh -l -c 'python3 tools/host.py debug sync-symbols'` <!-- id:fe716276 -->
