@@ -2,12 +2,13 @@
 
 - **UUID**: `90ac8a8d-d26e-4dcf-850f-0e483b8f54d2`
 - **ID**: `WORM-SEGMENTED-CHRYSALIS-575`
-- **Status**: `RESOLVED`
+- **Status**: `CLOSED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-20 02:21:16 UTC`
 - **Resolved**: `2026-11-20 20:16:08 UTC`
+- **Accepted**: `2026-11-20 20:16:10 UTC`
 
 #### Description
 
