@@ -92,3 +92,4 @@ bt
 #### Review Tasks & Functional Checklist
 
 - [ ] Verify host.py debug sync-symbols and target-info dynamically resolve active debug/release ELF and target device | `python tools/host.py debug sync-symbols --json` <!-- id:5e6e0c5e -->
+- [ ] Verify .program_metadata encodes bin_name and build_profile with distinct 16-bit CRCs for debug vs release builds | `./target/release/host_fs --elf target/thumbv6m-none-eabi/release/cat_detector_shell query_metadata --elf-only` <!-- id:ed3a0fff -->
