@@ -65,3 +65,4 @@ Also saw a error message trying to disconnect from target.
 #### Review Tasks & Functional Checklist
 
 - [ ] Start target debug server via host.py and verify GDB Core 0/Core 1 RSP listeners are active | `python tools/host.py debug start && python tools/host.py debug status` <!-- id:5076079d -->
+- [ ] Connect arm-none-eabi-gdb via extended-remote, execute monitor reset halt + flushregs, and disconnect cleanly without vMustReplyEmpty or detach errors | `arm-none-eabi-gdb -q -batch -ex 'target extended-remote 127.0.0.1:3333' -ex 'monitor reset halt' -ex 'flushregs' -ex 'detach' -ex 'disconnect'` <!-- id:28deace6 -->
