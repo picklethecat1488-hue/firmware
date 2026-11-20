@@ -3,6 +3,9 @@ use probe_rs::probe::list::Lister;
 use probe_rs::MemoryInterface;
 pub use tool_common::autodetect_project_info;
 
+/// Default SWD clock speed in kHz when attaching `host_fs` to a target probe.
+const DEFAULT_SWD_SPEED_KHZ: u32 = 1000;
+
 /// A mock flash driver that implements the embedded-storage-async traits
 /// over an in-memory buffer containing the pulled raw flash binary image.
 pub struct HostFlash {
@@ -112,9 +115,10 @@ impl ProbeFlash {
         let probe_info = probes
             .first()
             .ok_or_else(|| "No debug probes connected".to_string())?;
-        let probe = probe_info
+        let mut probe = probe_info
             .open()
             .map_err(|e| format!("Failed to open probe: {:?}", e))?;
+        let _ = probe.set_speed(DEFAULT_SWD_SPEED_KHZ);
 
         let mut session = probe
             .attach(chip, probe_rs::Permissions::default())
@@ -174,6 +178,10 @@ impl ProbeFlash {
             loader
                 .commit(&mut self.session, options)
                 .map_err(|e| format!("Failed to commit flash data: {:?}", e))?;
+            // Reset target CPU after RAM flash loader execution so boot2 restores QSPI XIP mapping.
+            if let Ok(mut core) = self.session.core(0) {
+                let _ = core.reset();
+            }
         }
 
         // Reset dirty tracking
