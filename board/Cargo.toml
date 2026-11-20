@@ -17,6 +17,7 @@ peripheral = { path = "../peripheral", features = ["mock"] }
 controller = { path = "../controller" }
 embedded-hal = "1.0.0"
 embedded-hal-async = "1.0.0"
+embedded-storage = "0.3"
 embassy-sync = "0.6.2"
 embassy-futures = "0.1.0"
 embedded-io = "0.6.0"
