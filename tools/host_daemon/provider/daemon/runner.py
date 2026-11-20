@@ -10,22 +10,35 @@ import threading
 import time
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
-from host_daemon.provider.bringup.bringup_manager import BringupManager
-from host_daemon.provider.daemon.config import infer_arm_target, load_last_session, save_last_session
+from host_daemon.model.manual_prompt import ManualPromptState
+from host_daemon.model.metadata import get_cargo_target_directory, probe_attached_target_metadata
+from host_daemon.provider.daemon.config import discover_target_packages, save_last_session
+from host_daemon.provider.daemon.test_manager import DeviceTestRunnerManager
 
 RTT_STDIN_SHUTDOWN_TIMEOUT_SEC: float = 2.5
 RTT_TERMINATE_TIMEOUT_SEC: float = 2.0
 RTT_STREAM_JOIN_TIMEOUT_SEC: float = 1.0
-RTT_STARTUP_EVENT_TIMEOUT_SEC: float = 0.3
+RTT_STARTUP_EVENT_TIMEOUT_SEC: float = 4.0
+RTT_CONSOLE_READY_SETTLE_SEC: float = 0.20
 PROBE_RELEASE_SETTLE_SEC: float = 0.25
 PROBE_RETRY_BACKOFF_SEC: float = 0.6
 MAX_PROBE_OPEN_RETRIES: int = 2
 DEFAULT_CLI_OUTPUT_TIMEOUT_SEC: float = 2.5
 CLI_POLL_INTERVAL_SEC: float = 0.02
 CLI_QUIET_SETTLE_SEC: float = 0.30
-CLI_COMPLETION_SETTLE_SEC: float = 0.30
+CLI_QUIET_SETTLE_MAX_SEC: float = 2.0
+CLI_QUIET_TIMEOUT_RATIO: float = 0.45
+CLI_COMPLETION_SETTLE_SEC: float = 0.25
 ANSI_CLEAR_LINE_SEQ: str = "\x1b[2K"
 SHELL_PROMPT_PREFIX: str = "shell>"
+RTT_SESSION_BANNER_PREFIXES: Tuple[str, ...] = (
+    "RTT connected. Active channels:",
+    "- Up Channel:",
+    "- Down Channel:",
+    "RTT Session Started",
+    "Interactive RTT console active.",
+    "Type 'help' to print usage.",
+)
 
 
 def _is_transient_probe_error(output: str) -> bool:
@@ -47,9 +60,9 @@ class DaemonRunner:
     def __init__(
         self,
         repo_root: Path,
-        target: str = "thumbv6m-none-eabi",
-        package: str = "cat_detector",
-        bin_name: str = "cat_detector_shell",
+        target: Optional[str] = None,
+        package: Optional[str] = None,
+        bin_name: Optional[str] = None,
         release: bool = False,
         speed: int = 1000,
         chip: Optional[str] = None,
@@ -58,19 +71,44 @@ class DaemonRunner:
     ) -> None:
         """Initialize DaemonRunner with workspace configuration and build parameters."""
         self.repo_root = repo_root
-        self.target = target
-        self.package = package
-        self.bin_name = bin_name
+
+        resolved_pkg = package
+        resolved_bin = bin_name
+        resolved_target = target
+        resolved_chip = chip
+        if (repo_root / "app" / "Cargo.toml").is_file():
+            discovered = discover_target_packages(repo_root)
+            if discovered:
+                pkg_entry = (
+                    next((p for p in discovered if p["package"] == resolved_pkg), None)
+                    if resolved_pkg
+                    else discovered[0]
+                )
+                if pkg_entry is not None:
+                    if not resolved_pkg:
+                        resolved_pkg = str(pkg_entry["package"])
+                    if not resolved_bin:
+                        resolved_bin = str(pkg_entry["default_bin"])
+                    bin_cfg = (pkg_entry.get("binary_configs") or {}).get(resolved_bin or "") or {}
+                    if not resolved_target:
+                        resolved_target = str(bin_cfg.get("target") or pkg_entry.get("inferred_target") or "") or None
+                    if not resolved_chip and bin_cfg.get("chip"):
+                        resolved_chip = str(bin_cfg["chip"])
+
+        self.target: Optional[str] = resolved_target
+        self.package: Optional[str] = resolved_pkg
+        self.bin_name: Optional[str] = resolved_bin
         self.release = release
         self.speed = speed
-        self.chip = chip
+        self.chip: Optional[str] = resolved_chip
         self.package_selection_mode = package_selection_mode
         self.show_system_logs = show_system_logs
 
         self.elf_path: Optional[Path] = None
         self.host_cli_path: Optional[Path] = None
         self.host_fs_path: Optional[Path] = None
-        self.bringup_manager = BringupManager(runner=self, repo_root=self.repo_root)
+        self.manual_prompt = ManualPromptState()
+        self.test_manager = DeviceTestRunnerManager(self)
 
         self.active_mode: str = "CLI"
         self._lock = threading.Lock()
@@ -92,6 +130,13 @@ class DaemonRunner:
         self.sync_logs: Deque[str] = deque(maxlen=2000)
         self.is_sync_cancelled: bool = False
         self._active_sync_process: Optional[subprocess.Popen] = None
+
+        self.reboot_count: int = 0
+        self.mode_switch_count: int = 0
+        self.last_command: str = ""
+        self._lifecycle_phase: str = "idle"
+        self._lifecycle_detail: str = "Ready"
+        self._lifecycle_updated_at: float = 0.0
 
         self.flashed_commit: Optional[str] = None
         self.sync_status: Dict[str, Any] = {
@@ -137,6 +182,34 @@ class DaemonRunner:
         self.log("Target synchronization cancelled by user", level="WARN")
         return {"success": True, "step": "cancelled"}
 
+    def _record_lifecycle(self, phase: str, detail: str, *, mark_recent: bool = True) -> None:
+        """Record a thread-safe target lifecycle event (`flashing`, `mode_switch`, `rebooting`, `idle`)."""
+        with self._lock:
+            self._lifecycle_phase = phase
+            self._lifecycle_detail = detail
+            self._lifecycle_updated_at = time.monotonic() if mark_recent else 0.0
+
+    def get_target_activity(self) -> Dict[str, Any]:
+        """Return a thread-safe snapshot of target flash, mode-switch, reboot, and command telemetry."""
+        with self._lock:
+            return {
+                "phase": self._lifecycle_phase,
+                "detail": self._lifecycle_detail,
+                "updated_at": self._lifecycle_updated_at,
+                "mode": self.active_mode,
+                "mode_switch_count": self.mode_switch_count,
+                "reboot_count": self.reboot_count,
+                "last_command": self.last_command,
+                "sync_active": bool(self.sync_status.get("active", False)),
+                "sync_step": str(self.sync_status.get("step", "idle")),
+                "sync_progress": int(self.sync_status.get("progress", 0)),
+                "sync_message": str(self.sync_status.get("message", "")),
+                "target_bin": self.bin_name,
+                "target_package": self.package,
+                "connected": self.is_connected,
+                "flashed": self.is_flashed,
+            }
+
     def _update_sync(
         self,
         step: str,
@@ -166,7 +239,27 @@ class DaemonRunner:
                     "console": list(self.sync_logs),
                 }
             )
+            if active:
+                self._lifecycle_phase = "flashing"
+                self._lifecycle_detail = message
+                self._lifecycle_updated_at = time.monotonic()
+            else:
+                self._lifecycle_phase = "idle"
+                self._lifecycle_detail = message
+                self._lifecycle_updated_at = 0.0
         self.log(f"[Sync] {message}")
+
+    def resolve_current_elf_path(self) -> Optional[Path]:
+        """Resolve the single Cargo output ELF path for the active target/profile/binary, if built."""
+        if not self.target or not self.bin_name or not (self.repo_root / "Cargo.toml").is_file():
+            return None
+        try:
+            target_dir = get_cargo_target_directory(self.repo_root)
+        except (OSError, RuntimeError, ValueError):
+            return None
+        profile_dir = "release" if self.release else "debug"
+        elf = target_dir / self.target / profile_dir / self.bin_name
+        return elf if elf.is_file() else None
 
     def update_config(
         self,
@@ -195,14 +288,9 @@ class DaemonRunner:
             if show_system_logs is not None:
                 self.show_system_logs = show_system_logs
 
-            profile_dir = "release" if self.release else "debug"
-            elf = self.repo_root / "target" / self.target / profile_dir / self.bin_name
-            if not elf.exists():
-                alt_elf = self.repo_root / "target" / "out" / profile_dir / "embedded" / self.package / self.bin_name
-                if alt_elf.exists():
-                    elf = alt_elf
-            if elf.exists():
-                self.elf_path = elf
+            resolved_elf = self.resolve_current_elf_path()
+            if resolved_elf is not None:
+                self.elf_path = resolved_elf
 
             self.sync_status.update(
                 {
@@ -352,21 +440,62 @@ class DaemonRunner:
             self.fs_outputs.append(entry)
 
     def set_mode(self, mode: str) -> None:
-        """Switch active workstation mode between CLI, FS, and BRINGUP, managing probe ownership."""
+        """Switch active workstation mode among CLI, FS, and TEST, managing probe ownership."""
         mode = mode.upper()
         if mode == self.active_mode:
             return
-        self.active_mode = mode
+        prev_mode = self.active_mode
+        with self._lock:
+            self.active_mode = mode
+            self.mode_switch_count += 1
+        self._record_lifecycle("mode_switch", f"Switched target mode from {prev_mode} to {mode}")
         if mode == "FS":
             self.log("Switching to Filesystem mode (stopping RTT streaming to release probe)...", channel="system")
             self.stop_rtt_streaming()
             time.sleep(0.15)
-        elif mode in ("CLI", "BRINGUP"):
-            self.log(f"Switching to {mode} mode (starting RTT streaming)...", channel="system")
+        elif mode == "CLI":
+            self.log("Switching to CLI mode (starting RTT streaming)...", channel="system")
             self.start_rtt_streaming()
+        elif mode == "TEST":
+            self.log("Switching to Test mode (on-device @device_test runner active)...", channel="system")
+            if self.is_flashed and not self.is_connected:
+                self.start_rtt_streaming()
+
+    def update_manual_prompt(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Record a periodic manual test procedure & prompt heartbeat from `pytest`."""
+        with self._lock:
+            newly_activated = self.manual_prompt.apply_update(payload)
+            snapshot = self.manual_prompt.to_dict()
+        if newly_activated:
+            self.log(
+                f"[MANUAL TEST: {snapshot['test_name']}] Procedure: {snapshot['procedure']} | "
+                f"Expected: {snapshot['prompt']}",
+                channel="manual_test",
+            )
+            self.log_cli(f"[manual:{snapshot['test_name']}] {snapshot['procedure']} -> {snapshot['prompt']}")
+        return snapshot
+
+    def respond_manual_prompt(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Record an operator decision (`yes`, `no`, `measurement`, or `cancel` with comment) from the UI."""
+        with self._lock:
+            snapshot = self.manual_prompt.submit_response(payload)
+        resp = snapshot.get("response") or {}
+        action = resp.get("action", "")
+        detail = (
+            f"value={resp.get('measurement')}"
+            if action == "measurement"
+            else (f"comment={resp.get('comment')}" if resp.get("comment") else "")
+        )
+        suffix = f" ({detail})" if detail else ""
+        self.log(f"[MANUAL TEST RESPONSE] action={action}{suffix}", channel="manual_test")
+        return snapshot
 
     def build_target(self) -> Path:
-        """Compile the target embedded firmware binary."""
+        """Compile the target embedded firmware binary into Cargo's single target_directory."""
+        if not self.package or not self.bin_name or not self.target:
+            raise RuntimeError(
+                f"Target build configuration is incomplete (package={self.package}, bin={self.bin_name}, target={self.target})"
+            )
         self.log(
             f"Building target firmware: package={self.package}, bin={self.bin_name}, target={self.target}, release={self.release}"
         )
@@ -380,14 +509,9 @@ class DaemonRunner:
             self.log(err_msg, level="ERROR")
             raise RuntimeError(err_msg)
 
+        target_dir = get_cargo_target_directory(self.repo_root)
         profile_dir = "release" if self.release else "debug"
-        elf = self.repo_root / "target" / self.target / profile_dir / self.bin_name
-        if not elf.exists():
-            # Check target/out
-            alt_elf = self.repo_root / "target" / "out" / profile_dir / "embedded" / self.package / self.bin_name
-            if alt_elf.exists():
-                elf = alt_elf
-
+        elf = target_dir / self.target / profile_dir / self.bin_name
         if not elf.exists():
             raise FileNotFoundError(f"Target ELF not found at {elf}")
 
@@ -396,7 +520,7 @@ class DaemonRunner:
         return elf
 
     def build_host_tools(self) -> Tuple[Path, Path]:
-        """Compile host CLI and FS tools."""
+        """Compile host CLI and FS tools into Cargo's single target_directory."""
         self.log("Building host utilities: host_cli and host_fs")
         cmd = ["cargo", "build", "-p", "host_cli", "-p", "host_fs"]
         if self.release:
@@ -413,18 +537,11 @@ class DaemonRunner:
             self.log(err_msg, level="ERROR")
             raise RuntimeError(err_msg)
 
+        target_dir = get_cargo_target_directory(self.repo_root)
         profile_dir = "release" if self.release else "debug"
-        cli_cand = self.repo_root / "target" / profile_dir / "host_cli"
-        fs_cand = self.repo_root / "target" / profile_dir / "host_fs"
-
-        if not cli_cand.exists():
-            alt = self.repo_root / "target" / "out" / profile_dir / "macos" / "host_cli"
-            if alt.exists():
-                cli_cand = alt
-        if not fs_cand.exists():
-            alt = self.repo_root / "target" / "out" / profile_dir / "macos" / "host_fs"
-            if alt.exists():
-                fs_cand = alt
+        exe_suffix = ".exe" if os.name == "nt" else ""
+        cli_cand = target_dir / profile_dir / f"host_cli{exe_suffix}"
+        fs_cand = target_dir / profile_dir / f"host_fs{exe_suffix}"
 
         if not cli_cand.exists() or not fs_cand.exists():
             missing = []
@@ -634,18 +751,18 @@ class DaemonRunner:
 
     def reset_target(self) -> Dict[str, Any]:
         """Reset the target microcontroller via debug probe and reconnect RTT streaming."""
+        self._record_lifecycle("rebooting", "Rebooting target MCU over SWD & reconnecting RTT...")
         self.log("Resetting target microcontroller...", channel="system")
         self.stop_rtt_streaming()
         time.sleep(PROBE_RELEASE_SETTLE_SEC)
 
         chip_name = self.chip
         if not chip_name and self.elf_path and self.elf_path.exists():
-            try:
-                chip_name = self.detect_chip()
-            except Exception:
-                chip_name = "rp2040"
+            chip_name = self.detect_chip()
         if not chip_name:
-            chip_name = "rp2040"
+            raise RuntimeError(
+                "Target chip could not be inferred for reset; configure target metadata or build target ELF first."
+            )
 
         cmd_args = ["reset", "--chip", chip_name]
         if self.speed:
@@ -670,12 +787,56 @@ class DaemonRunner:
 
         time.sleep(PROBE_RELEASE_SETTLE_SEC)
         self.start_rtt_streaming()
+        with self._lock:
+            self.reboot_count += 1
+        msg = "Target reboot completed & RTT reconnected" if reset_success else "Target reboot attempted & RTT reconnected"
+        self._record_lifecycle("rebooting", msg)
         return {
             "success": True,
             "probe_reset": reset_success,
             "message": "Target reset completed" if reset_success else "Target reset attempted and RTT reconnected",
             "output": out.strip() if out else "",
         }
+
+    def reboot_target(self) -> Dict[str, Any]:
+        """Reboot the attached target MCU over SWD and re-attach RTT streaming."""
+        res = self.reset_target()
+        res["message"] = (
+            "Target reboot completed" if res.get("probe_reset") else "Target reboot attempted and RTT reconnected"
+        )
+        return res
+
+    def query_target_metadata(self, elf_path: Optional[Path] = None) -> Dict[str, Any]:
+        """Query `.program_metadata` off the target via `host_fs query_metadata` and validate against target ELF."""
+        with self._lock:
+            sync_active = bool(self._sync_thread and self._sync_thread.is_alive())
+        if sync_active:
+            return {
+                "connected": False,
+                "matches_target": False,
+                "error": "Target synchronization is currently in progress",
+            }
+
+        with self._fs_lock:
+            self._record_lifecycle("mode_switch", "Probing target .program_metadata over SWD...")
+            rtt_was_running = (self.rtt_process is not None and self.rtt_process.poll() is None) or (
+                self._streaming_thread is not None and self._streaming_thread.is_alive()
+            )
+            if rtt_was_running:
+                self.stop_rtt_streaming()
+                time.sleep(PROBE_RELEASE_SETTLE_SEC)
+
+            target_elf = elf_path or self.elf_path or self.resolve_current_elf_path()
+            try:
+                return probe_attached_target_metadata(
+                    self.repo_root,
+                    preferred_elf=target_elf,
+                    host_fs_path=self.host_fs_path,
+                )
+            finally:
+                if rtt_was_running and self.active_mode in ("CLI", "TEST"):
+                    self.start_rtt_streaming()
+                self._record_lifecycle("idle", "Target metadata probe complete", mark_recent=False)
 
     def stop_rtt_streaming(self) -> None:
         """Gracefully stop active RTT streaming process to release the USB debug probe cleanly."""
@@ -725,8 +886,10 @@ class DaemonRunner:
         ]
 
         started_event = threading.Event()
+        session_ready = False
 
         def _stream_worker() -> None:
+            nonlocal session_ready
             try:
                 self.rtt_process = subprocess.Popen(
                     cmd,
@@ -737,12 +900,14 @@ class DaemonRunner:
                     bufsize=1,
                 )
                 self.is_connected = True
-                started_event.set()
                 self.log("RTT streaming process connected")
                 if self.rtt_process.stdout:
                     for line in iter(self.rtt_process.stdout.readline, ""):
                         stripped = line.rstrip("\r\n")
                         if stripped:
+                            if "RTT Session Started" in stripped or "Interactive RTT console active" in stripped:
+                                session_ready = True
+                                started_event.set()
                             if (
                                 "INFO" in stripped
                                 or "WARN" in stripped
@@ -780,6 +945,8 @@ class DaemonRunner:
         self._streaming_thread = threading.Thread(target=_stream_worker, daemon=True)
         self._streaming_thread.start()
         started_event.wait(timeout=RTT_STARTUP_EVENT_TIMEOUT_SEC)
+        if session_ready and self.rtt_process is not None and self.rtt_process.poll() is None:
+            time.sleep(RTT_CONSOLE_READY_SETTLE_SEC)
 
     def _collect_cli_output(
         self,
@@ -813,7 +980,10 @@ class DaemonRunner:
                 )
 
             meaningful_count = sum(
-                1 for text in new_cli if text.replace(ANSI_CLEAR_LINE_SEQ, "").strip() not in ("", "shell>")
+                1
+                for text in new_cli
+                if text.replace(ANSI_CLEAR_LINE_SEQ, "").strip() not in ("", "shell>")
+                and not text.replace(ANSI_CLEAR_LINE_SEQ, "").strip().startswith(RTT_SESSION_BANNER_PREFIXES)
             )
             if meaningful_count > prev_count:
                 prev_count = meaningful_count
@@ -829,8 +999,10 @@ class DaemonRunner:
                 anchor = max(done_seen_time, last_output_time or done_seen_time)
                 if (now - anchor) >= CLI_COMPLETION_SETTLE_SEC:
                     break
-            elif last_output_time is not None and (now - last_output_time) >= CLI_QUIET_SETTLE_SEC:
-                break
+            elif last_output_time is not None:
+                quiet_settle = min(CLI_QUIET_SETTLE_MAX_SEC, max(CLI_QUIET_SETTLE_SEC, timeout * CLI_QUIET_TIMEOUT_RATIO))
+                if (now - last_output_time) >= quiet_settle:
+                    break
 
             if self.rtt_process is None or self.rtt_process.poll() is not None:
                 break
@@ -842,7 +1014,7 @@ class DaemonRunner:
             line = (
                 text.replace(ANSI_CLEAR_LINE_SEQ, "").rstrip().removeprefix("shell> ").removeprefix(SHELL_PROMPT_PREFIX)
             )
-            if line.strip():
+            if line.strip() and not line.strip().startswith(RTT_SESSION_BANNER_PREFIXES):
                 cleaned_lines.append(line)
         if cleaned_lines:
             return "\n".join(cleaned_lines)
@@ -867,6 +1039,7 @@ class DaemonRunner:
         if clean_cmd:
             with self._lock:
                 self.command_history.append(clean_cmd)
+                self.last_command = f"shell> {clean_cmd}"
         self.log_cli(f"shell> {command}", is_input=True)
         with self._lock:
             start_cli_seq = self._cli_seq
@@ -906,6 +1079,7 @@ class DaemonRunner:
             full_fs_cmd = f"fs {clean_subcmd}" + (f" {' '.join(args)}" if args else "")
             with self._lock:
                 self.command_history.append(full_fs_cmd)
+                self.last_command = f"fs> {clean_subcmd}" + (f" {' '.join(args)}" if args else "")
         with self._lock:
             sync_active = bool(self._sync_thread and self._sync_thread.is_alive())
         if sync_active:
@@ -924,6 +1098,7 @@ class DaemonRunner:
                 extra_args = args
 
             self.log_fs(f"fs> {subcmd} {' '.join(extra_args)}", is_input=True)
+            self._record_lifecycle("mode_switch", f"Probe switched to host_fs ({subcmd})")
 
             # Ensure probe is available by pausing RTT streaming if currently running or starting
             rtt_was_running = (self.rtt_process is not None and self.rtt_process.poll() is None) or (
@@ -954,8 +1129,9 @@ class DaemonRunner:
                 out = out.strip() or f"Completed {subcmd} (exit code {ret})"
                 return out
             finally:
-                if rtt_was_running and self.active_mode == "CLI":
+                if rtt_was_running and self.active_mode in ("CLI", "TEST"):
                     self.start_rtt_streaming()
+                self._record_lifecycle("idle", f"Completed host_fs ({subcmd})", mark_recent=False)
 
     def get_status(self) -> Dict[str, Any]:
         """Return daemon status dictionary."""
@@ -972,11 +1148,13 @@ class DaemonRunner:
             "flashed": self.is_flashed,
             "mode": self.active_mode,
             "message": self.status_message,
+            "manual_prompt": self.manual_prompt.to_dict(),
         }
 
     def stop(self) -> None:
-        """Terminate active RTT processes, sync tasks, and release hardware debug probes."""
+        """Terminate active RTT processes, sync tasks, test runs, and release hardware debug probes."""
         self.is_sync_cancelled = True
+        self.test_manager.cancel_run(silent=True)
         self.stop_rtt_streaming()
         if self._active_sync_process and self._active_sync_process.poll() is None:
             try:
