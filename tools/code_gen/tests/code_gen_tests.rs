@@ -178,9 +178,13 @@ fn test_board_codegen() {
     assert!(generated.contains("pub const PUMP_UH_PIN: u32 = 16;"));
     assert!(generated.contains("pub const PUMP_UL_PIN: u32 = 17;"));
     assert!(generated.contains("pub const SPEED_SENSE_PIN: u32 = 26;"));
+    assert!(generated.contains("pub const METADATA_PARTITION_START: u32 = 0x001B0000;"));
     assert!(generated.contains("pub const FS_PARTITION_START: u32 = 0x001C0000;"));
+    assert!(generated.contains("pub const BOARD_TYPE: &'static str = \"rp2040_flash_2mb\";"));
+    assert!(generated.contains("pub const PROGRAM_METADATA_ADDR: u32 = 0x101AF000;"));
 
     assert!(generated.contains("chip: \"rp2040\""));
+    assert!(generated.contains("board_type: \"rp2040_flash_2mb\""));
 }
 
 #[test]
@@ -359,6 +363,21 @@ fn test_validate_app_toml_parsing_and_generation() {
     assert!(!rendered.is_empty());
     assert!(rendered.contains("pub struct CatDetectorFeatureSet"));
     assert!(rendered.contains("pub fn create_default_feature_set"));
+}
+
+#[test]
+#[should_panic(expected = "Failed to find board config for 'unregistered_board' in board.toml")]
+fn test_generate_app_topology_rejects_missing_board_without_fallback() {
+    let synthetic_app_toml = r#"
+[apps.unregistered_board]
+shell_config = "UnregisteredShellConfig"
+core1_enabled = false
+cli_handlers = []
+channels = {}
+controllers = []
+partitions = []
+"#;
+    let _ = code_gen::generate_app_topology(synthetic_app_toml, "unregistered_board");
 }
 
 #[test]

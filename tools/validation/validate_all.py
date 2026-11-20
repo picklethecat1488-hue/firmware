@@ -312,13 +312,16 @@ def main():
         (
             "Python Lint (Ruff)",
             run_cmd,
-            (["ruff", "check", "tools/validation/", "tools/helpers/"], output_file),
+            (
+                ["ruff", "check", "tools/validation/", "tools/helpers/", "tools/device_tests/"],
+                output_file,
+            ),
         ),
         (
             "Python Format (Ruff)",
             run_cmd,
             (
-                ["ruff", "format", "--check", "tools/validation/", "tools/helpers/"],
+                ["ruff", "format", "--check", "tools/validation/", "tools/helpers/", "tools/device_tests/"],
                 output_file,
             ),
         ),
