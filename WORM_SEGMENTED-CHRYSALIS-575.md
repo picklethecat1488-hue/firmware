@@ -1,12 +1,13 @@
-# 🔴 `[WORM-SEGMENTED-CHRYSALIS-575]` Core 1: garbled stack
+# 🟢 `[WORM-SEGMENTED-CHRYSALIS-575]` Core 1: garbled stack
 
 - **UUID**: `90ac8a8d-d26e-4dcf-850f-0e483b8f54d2`
 - **ID**: `WORM-SEGMENTED-CHRYSALIS-575`
-- **Status**: `OPEN`
+- **Status**: `RESOLVED`
 - **Severity**: `MEDIUM`
 - **Category**: `FIRMWARE`
 - **Component**: `target`
 - **Created**: `2026-11-20 02:21:16 UTC`
+- **Resolved**: `2026-11-20 04:21:19 UTC`
 
 #### Description
 
@@ -93,3 +94,7 @@ bt
 
 - [ ] Verify host.py debug sync-symbols and target-info dynamically resolve active debug/release ELF and target device | `python tools/host.py debug sync-symbols --json` <!-- id:5e6e0c5e -->
 - [ ] Verify .program_metadata encodes bin_name and build_profile with distinct 16-bit CRCs for debug vs release builds | `./target/release/host_fs --elf target/thumbv6m-none-eabi/release/cat_detector_shell query_metadata --elf-only` <!-- id:ed3a0fff -->
+
+#### Resolution Notes
+
+Embedded bin_name and build_profile in .program_metadata with distinct 16-bit CRCs, added DWARF CFI .cfi_undefined lr root-frame termination on Core1_Reset_Handler, synchronized target/active_target.elf via host.py debug sync-symbols / target-info, and updated .vscode/launch.json and tasks.json to dynamically track both debug and release executables across all targets.
