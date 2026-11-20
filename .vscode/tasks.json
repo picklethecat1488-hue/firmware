@@ -1,0 +1,93 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cargo: build cat_detector_shell (debug)",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "build",
+        "--target",
+        "thumbv6m-none-eabi",
+        "--package",
+        "cat_detector",
+        "--bin",
+        "cat_detector_shell"
+      ],
+      "group": "build",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "cargo: build cat_detector_app (debug)",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "build",
+        "--target",
+        "thumbv6m-none-eabi",
+        "--package",
+        "cat_detector",
+        "--bin",
+        "cat_detector_app"
+      ],
+      "group": "build",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "cargo: build cat_detector_app (release + tracing)",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "build",
+        "--release",
+        "--features",
+        "tracing",
+        "--target",
+        "thumbv6m-none-eabi",
+        "--package",
+        "cat_detector",
+        "--bin",
+        "cat_detector_app"
+      ],
+      "group": "build",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "cargo: build carrier_board_shell (debug)",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "build",
+        "--target",
+        "thumbv6m-none-eabi",
+        "--package",
+        "cat_detector",
+        "--bin",
+        "carrier_board_shell"
+      ],
+      "group": "build",
+      "problemMatcher": ["$rustc"]
+    },
+    {
+      "label": "host: start target debug server (host.py debug start)",
+      "type": "shell",
+      "command": "python",
+      "args": ["tools/host.py", "debug", "start"],
+      "problemMatcher": []
+    },
+    {
+      "label": "host: stop target debug server (host.py debug stop)",
+      "type": "shell",
+      "command": "python",
+      "args": ["tools/host.py", "debug", "stop"],
+      "problemMatcher": []
+    },
+    {
+      "label": "host: stop host.py daemon (release USB probe)",
+      "type": "shell",
+      "command": "python",
+      "args": ["tools/host.py", "stop"],
+      "problemMatcher": []
+    }
+  ]
+}

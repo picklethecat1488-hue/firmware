@@ -234,6 +234,14 @@ export class WormReporterController {
     this.attachCrashLog = resolveElement(ctx, options.attachCrashLog || "attachCrashLog");
     this.attachTelemetry = resolveElement(ctx, options.attachTelemetry || "attachTelemetry");
     this.attachMetadata = resolveElement(ctx, options.attachMetadata || "attachMetadata");
+    this.attachTestExecLogsRow = resolveElement(
+      ctx,
+      options.attachTestExecLogsRow || "attachTestExecLogsRow",
+    );
+    this.attachTestExecutionLogs = resolveElement(
+      ctx,
+      options.attachTestExecutionLogs || "attachTestExecutionLogs",
+    );
 
     this.pasteBtn = resolveElement(ctx, options.pasteBtn || "btnPasteTargetBugClipboard");
     this.dropzone = resolveElement(ctx, options.dropzone || "targetBugDropzone");
@@ -375,6 +383,14 @@ export class WormReporterController {
     if (this.actualInput) this.actualInput.value = "";
 
     const targetInfo = this.getTargetConfig();
+    const isTestMode = String(targetInfo.mode || "CLI").toUpperCase() === "TEST";
+    if (this.attachTestExecLogsRow) {
+      this.attachTestExecLogsRow.style.display = isTestMode ? "flex" : "none";
+    }
+    if (this.attachTestExecutionLogs) {
+      this.attachTestExecutionLogs.checked = isTestMode;
+    }
+
     const localCmds = this.getCommandHistory();
     if (this.stepsInput) {
       this.stepsInput.value = buildReproSteps(localCmds, targetInfo);
@@ -704,6 +720,15 @@ export class WormReporterController {
    * @returns {object}
    */
   buildPayload() {
+    const targetInfo = this.getTargetConfig();
+    const currentMode = String(targetInfo.mode || "CLI").toUpperCase();
+    const isTestMode = currentMode === "TEST";
+    const includeTestExecLogs = isTestMode
+      ? this.attachTestExecutionLogs
+        ? Boolean(this.attachTestExecutionLogs.checked)
+        : true
+      : false;
+
     return {
       title: this.titleInput ? this.titleInput.value.trim() : "",
       severity: (this.severitySelect && this.severitySelect.value) || "MEDIUM",
@@ -713,7 +738,9 @@ export class WormReporterController {
       reproduction_steps: (this.stepsInput && this.stepsInput.value.trim()) || "",
       expected_behavior: (this.expectedInput && this.expectedInput.value.trim()) || "",
       actual_behavior: (this.actualInput && this.actualInput.value.trim()) || "",
+      mode: currentMode,
       attach_system_logs: this.attachSystemLogs ? Boolean(this.attachSystemLogs.checked) : true,
+      attach_test_execution_logs: includeTestExecLogs,
       attach_crash_log: this.attachCrashLog ? Boolean(this.attachCrashLog.checked) : false,
       attach_telemetry: this.attachTelemetry ? Boolean(this.attachTelemetry.checked) : false,
       attach_metadata: this.attachMetadata ? Boolean(this.attachMetadata.checked) : false,

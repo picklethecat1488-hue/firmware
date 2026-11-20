@@ -747,4 +747,54 @@ fn test_sensor_calibration_bounds_checking() {
         "Unexpected output: {}",
         output_str_far
     );
+
+    // 3. Verify async commands emit log_success/log_failure strictly AFTER execute_pending() completes
+    shell_proc.controller.reset_completion_counts();
+    let deferred_writer = SharedWriter::new();
+    let mut deferred_cli = CliBuilder::default()
+        .writer(deferred_writer.clone())
+        .build()
+        .unwrap();
+    for b in b"sensor status\n" {
+        let _ = deferred_cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
+    }
+    assert!(
+        shell_proc.controller.has_pending_command(),
+        "sensor status should queue a deferred pending command"
+    );
+    assert_eq!(
+        shell_proc.controller.completion_counts(),
+        (0, 0),
+        "log_success must NOT fire before execute_pending() runs"
+    );
+
+    let _ = deferred_cli.write(|writer| {
+        let res = futures::executor::block_on(shell_proc.controller.execute_pending(writer));
+        assert!(res.is_ok());
+        Ok::<(), core::convert::Infallible>(())
+    });
+    assert_eq!(
+        shell_proc.controller.completion_counts(),
+        (1, 0),
+        "log_success must fire after execute_pending() completes"
+    );
+
+    for b in b"sensor cal_near north\n" {
+        let _ = deferred_cli.process_byte::<CliCommand, _>(*b, &mut shell_proc);
+    }
+    assert_eq!(
+        shell_proc.controller.completion_counts(),
+        (1, 0),
+        "log_failure/log_success must NOT fire before execute_pending() runs"
+    );
+    let _ = deferred_cli.write(|writer| {
+        let res = futures::executor::block_on(shell_proc.controller.execute_pending(writer));
+        assert!(res.is_err());
+        Ok::<(), core::convert::Infallible>(())
+    });
+    assert_eq!(
+        shell_proc.controller.completion_counts(),
+        (1, 1),
+        "log_failure must fire when execute_pending() returns Err"
+    );
 }

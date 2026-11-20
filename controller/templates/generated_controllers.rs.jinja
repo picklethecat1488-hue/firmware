@@ -367,18 +367,32 @@ impl<'a, C: crate::shell_controller::ShellConfig> crate::shell_controller::Shell
         E: crate::embedded_io::Error,
     {
         if let Some(pending) = self.pending_command.take() {
-            match pending {
-                {%- for cmd in cli_commands %}
-                {%- if cmd.async_cli %}
-                crate::PendingCommand::{{ cmd.variant }} { subcommand, {%- for arg in cmd.args_slice() %}{{ arg.name }}, {% endfor %} } => {
-                    {%- if cmd.handler.contains("::") && !cmd.handler.starts_with("platform::") %}
-                    crate::{{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_deref(){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
-                    {%- else %}
-                    {{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_deref(){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
+            let exec_res: Result<(), &'static str> = async {
+                match pending {
+                    {%- for cmd in cli_commands %}
+                    {%- if cmd.async_cli %}
+                    crate::PendingCommand::{{ cmd.variant }} { subcommand, {%- for arg in cmd.args_slice() %}{{ arg.name }}, {% endfor %} } => {
+                        {%- if cmd.handler.contains("::") && !cmd.handler.starts_with("platform::") %}
+                        crate::{{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_deref(){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
+                        {%- else %}
+                        {{ cmd.handler|safe }}(self, subcommand, {%- for arg in cmd.args_slice() %}{% if arg.arg_type == "string" %}{{ arg.name }}.as_deref(){% else %}{{ arg.name }}{% endif %}, {% endfor %} writer).await?;
+                        {%- endif %}
+                    }
                     {%- endif %}
+                    {%- endfor %}
                 }
-                {%- endif %}
-                {%- endfor %}
+                Ok(())
+            }
+            .await;
+            match exec_res {
+                Ok(()) => {
+                    self.record_command_success();
+                    return Ok(());
+                }
+                Err(err) => {
+                    self.record_command_failure(err);
+                    return Err(err);
+                }
             }
         }
         Ok(())

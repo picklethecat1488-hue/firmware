@@ -16,13 +16,9 @@ export const LAST_PACKAGE_STORAGE_KEY = "xerxes_last_target_package";
 export const LAST_BIN_STORAGE_KEY = "xerxes_last_target_bin";
 export const LAST_RELEASE_STORAGE_KEY = "xerxes_last_target_release";
 
-const DEFAULT_FALLBACK_BINARIES = Object.freeze([
-  "cat_detector_shell",
-  "cat_detector_app",
-  "carrier_board_shell",
-]);
-const DEFAULT_ARM_TARGET = "thumbv6m-none-eabi";
 const DEFAULT_PROBE_SPEED_KHZ = 1000;
+const DEFAULT_GDB_CORE0_PORT = 3333;
+const DEFAULT_GDB_CORE1_PORT = 3334;
 const SYNC_POLL_INTERVAL_MS = 500;
 const SYNC_AUTO_DISMISS_DELAY_MS = 1500;
 const RESET_BUTTON_HOLD_MS = 1200;
@@ -63,13 +59,20 @@ export class TargetConfigController {
     const boot = options.bootConfig || {};
 
     this.currentConfig = {
-      package: boot.package || "cat_detector",
-      binName: boot.binName || boot.bin_name || boot.bin || "cat_detector_shell",
-      target: boot.target || DEFAULT_ARM_TARGET,
+      package: boot.package || "",
+      binName: boot.binName || boot.bin_name || boot.bin || "",
+      target: boot.target || "",
       release: Boolean(boot.release),
       speed: Number(boot.speed) || DEFAULT_PROBE_SPEED_KHZ,
       chip: boot.chip || null,
       showSystemLogs: Boolean(boot.showSystemLogs ?? boot.show_system_logs),
+      enableDebugServer: Boolean(boot.enableDebugServer ?? boot.enable_debug_server),
+      haltOnReset: Boolean(boot.haltOnReset ?? boot.halt_on_reset),
+      gdbCore0Port:
+        Number(boot.gdbCore0Port ?? boot.gdb_core0_port) || DEFAULT_GDB_CORE0_PORT,
+      gdbCore1Port:
+        Number(boot.gdbCore1Port ?? boot.gdb_core1_port) || DEFAULT_GDB_CORE1_PORT,
+      debugServerActive: Boolean(boot.debugServerActive ?? boot.debug_server_active),
     };
 
     this.discoveredPackages = Array.isArray(boot.targetPackages || boot.target_packages)
@@ -83,6 +86,7 @@ export class TargetConfigController {
     this.onWorkstationDisabledChange = options.onWorkstationDisabledChange || null;
     this.onShowSystemLogsChange = options.onShowSystemLogsChange || null;
     this.onSyncComplete = options.onSyncComplete || null;
+    this.shouldSuppressAutoSyncModal = options.shouldSuppressAutoSyncModal || null;
 
     this.syncPollTimer = null;
     this.syncAutoDismissTimer = null;
@@ -91,6 +95,10 @@ export class TargetConfigController {
     // Header elements
     this.targetBadge = resolveElement(ctx, options.targetBadge || "targetBadge");
     this.binBadge = resolveElement(ctx, options.binBadge || "binBadge");
+    this.debugServerBadge = resolveElement(
+      ctx,
+      options.debugServerBadge || "debugServerBadge",
+    );
     this.syncBtn = resolveElement(ctx, options.syncBtn || "btnSync");
     this.resetBtn = resolveElement(ctx, options.resetBtn || "btnReset");
     this.targetConfigBtn = resolveElement(ctx, options.targetConfigBtn || "btnTargetConfig");
@@ -113,6 +121,22 @@ export class TargetConfigController {
     this.cfgShowLogsCheckbox = resolveElement(
       ctx,
       options.cfgShowLogsCheckbox || "cfgShowLogsCheckbox",
+    );
+    this.cfgDebugServerCheckbox = resolveElement(
+      ctx,
+      options.cfgDebugServerCheckbox || "cfgDebugServerCheckbox",
+    );
+    this.cfgHaltOnResetCheckbox = resolveElement(
+      ctx,
+      options.cfgHaltOnResetCheckbox || "cfgHaltOnResetCheckbox",
+    );
+    this.cfgGdbCore0Port = resolveElement(
+      ctx,
+      options.cfgGdbCore0Port || "cfgGdbCore0Port",
+    );
+    this.cfgGdbCore1Port = resolveElement(
+      ctx,
+      options.cfgGdbCore1Port || "cfgGdbCore1Port",
     );
     this.cfgStatusMsg = resolveElement(ctx, options.cfgStatusMsg || "cfgStatusMsg");
     this.cfgCancelBtn = resolveElement(ctx, options.cfgCancelBtn || "btnCancelTargetConfig");
@@ -147,6 +171,13 @@ export class TargetConfigController {
     const initialPkg =
       (this.cfgPackageSelect && this.cfgPackageSelect.value) || this.currentConfig.package;
     this.populateTargetBinaries(initialPkg, this.currentConfig.binName);
+    this.updateDebugBadge({
+      enabled: this.currentConfig.enableDebugServer,
+      active: this.currentConfig.debugServerActive,
+      halt_on_reset: this.currentConfig.haltOnReset,
+      gdb_core0_port: this.currentConfig.gdbCore0Port,
+      gdb_core1_port: this.currentConfig.gdbCore1Port,
+    });
 
     if (this.packageSelectionMode) {
       this.openConfigModal();
@@ -266,7 +297,22 @@ export class TargetConfigController {
           speed: Number(data.current.speed) || this.currentConfig.speed,
           chip: data.current.chip ?? this.currentConfig.chip,
           showSystemLogs: Boolean(data.current.show_system_logs),
+          enableDebugServer:
+            typeof data.current.enable_debug_server === "boolean"
+              ? data.current.enable_debug_server
+              : this.currentConfig.enableDebugServer,
+          haltOnReset:
+            typeof data.current.halt_on_reset === "boolean"
+              ? data.current.halt_on_reset
+              : this.currentConfig.haltOnReset,
+          gdbCore0Port:
+            Number(data.current.gdb_core0_port) || this.currentConfig.gdbCore0Port,
+          gdbCore1Port:
+            Number(data.current.gdb_core1_port) || this.currentConfig.gdbCore1Port,
         };
+        if (data.current.debug_server) {
+          this.updateDebugBadge(data.current.debug_server);
+        }
       }
       return data;
     } catch {
@@ -286,7 +332,9 @@ export class TargetConfigController {
     const binaries =
       Array.isArray(rawBinaries) && rawBinaries.length > 0
         ? rawBinaries
-        : DEFAULT_FALLBACK_BINARIES;
+        : preferredBinName
+          ? [preferredBinName]
+          : [];
 
     if (this.cfgBinSelect) {
       clearChildren(this.cfgBinSelect);
@@ -313,14 +361,22 @@ export class TargetConfigController {
   }
 
   /**
-   * Update inferred ARM target triple readout for `pkgName`.
+   * Update inferred ARM target triple readout for `pkgName` and active binary selection.
    *
    * @param {string} pkgName - Selected Cargo package name.
    */
   updateInferredArchDisplay(pkgName) {
     const pkgData = this.discoveredPackages.find((p) => p.package === pkgName) || null;
+    const selectedBin = (this.cfgBinSelect && this.cfgBinSelect.value) || "";
+    const binCfg =
+      pkgData && pkgData.binary_configs && selectedBin
+        ? pkgData.binary_configs[selectedBin]
+        : null;
     const target =
-      (pkgData && pkgData.inferred_target) || this.currentConfig.target || DEFAULT_ARM_TARGET;
+      (binCfg && binCfg.target) ||
+      (pkgData && pkgData.inferred_target) ||
+      this.currentConfig.target ||
+      "";
 
     if (this.cfgArchDisplay) {
       this.cfgArchDisplay.textContent = target;
@@ -369,6 +425,34 @@ export class TargetConfigController {
         storedShow !== null ? storedShow === "true" : this.currentConfig.showSystemLogs;
     }
 
+    if (this.cfgDebugServerCheckbox) {
+      this.cfgDebugServerCheckbox.checked =
+        this.lastSession && typeof this.lastSession.enable_debug_server === "boolean"
+          ? this.lastSession.enable_debug_server
+          : this.currentConfig.enableDebugServer;
+    }
+
+    if (this.cfgHaltOnResetCheckbox) {
+      this.cfgHaltOnResetCheckbox.checked =
+        this.lastSession && typeof this.lastSession.halt_on_reset === "boolean"
+          ? this.lastSession.halt_on_reset
+          : this.currentConfig.haltOnReset;
+    }
+
+    if (this.cfgGdbCore0Port) {
+      const c0Port =
+        (this.lastSession && this.lastSession.gdb_core0_port) ||
+        this.currentConfig.gdbCore0Port;
+      this.cfgGdbCore0Port.value = String(c0Port);
+    }
+
+    if (this.cfgGdbCore1Port) {
+      const c1Port =
+        (this.lastSession && this.lastSession.gdb_core1_port) ||
+        this.currentConfig.gdbCore1Port;
+      this.cfgGdbCore1Port.value = String(c1Port);
+    }
+
     if (this.cfgStatusMsg) {
       this.cfgStatusMsg.style.display = "none";
       this.cfgStatusMsg.textContent = "";
@@ -407,6 +491,24 @@ export class TargetConfigController {
     const showLogs = this.cfgShowLogsCheckbox
       ? Boolean(this.cfgShowLogsCheckbox.checked)
       : false;
+    const enableDebugServer = this.cfgDebugServerCheckbox
+      ? Boolean(this.cfgDebugServerCheckbox.checked)
+      : this.currentConfig.enableDebugServer;
+    const haltOnReset = this.cfgHaltOnResetCheckbox
+      ? Boolean(this.cfgHaltOnResetCheckbox.checked)
+      : this.currentConfig.haltOnReset;
+    const gdbCore0Port =
+      Number.parseInt(
+        (this.cfgGdbCore0Port && this.cfgGdbCore0Port.value) ||
+          String(this.currentConfig.gdbCore0Port),
+        10,
+      ) || DEFAULT_GDB_CORE0_PORT;
+    const gdbCore1Port =
+      Number.parseInt(
+        (this.cfgGdbCore1Port && this.cfgGdbCore1Port.value) ||
+          String(this.currentConfig.gdbCore1Port),
+        10,
+      ) || DEFAULT_GDB_CORE1_PORT;
 
     if (this.cfgConfirmBtn) {
       this.cfgConfirmBtn.disabled = true;
@@ -420,6 +522,10 @@ export class TargetConfigController {
         speed,
         target,
         show_system_logs: showLogs,
+        enable_debug_server: enableDebugServer,
+        halt_on_reset: haltOnReset,
+        gdb_core0_port: gdbCore0Port,
+        gdb_core1_port: gdbCore1Port,
       });
 
       if (data && data.success) {
@@ -437,6 +543,10 @@ export class TargetConfigController {
           speed,
           target: data.target || target,
           showSystemLogs: showLogs,
+          enableDebugServer,
+          haltOnReset,
+          gdbCore0Port,
+          gdbCore1Port,
         };
         this.lastSession = {
           package: pkg,
@@ -444,8 +554,20 @@ export class TargetConfigController {
           release,
           target: this.currentConfig.target,
           speed,
+          enable_debug_server: enableDebugServer,
+          halt_on_reset: haltOnReset,
+          gdb_core0_port: gdbCore0Port,
+          gdb_core1_port: gdbCore1Port,
         };
         this.packageSelectionMode = false;
+
+        this.updateDebugBadge({
+          enabled: enableDebugServer,
+          active: enableDebugServer,
+          halt_on_reset: haltOnReset,
+          gdb_core0_port: gdbCore0Port,
+          gdb_core1_port: gdbCore1Port,
+        });
 
         this._updateHeaderAndSyncMetadata({
           target: this.currentConfig.target,
@@ -493,6 +615,56 @@ export class TargetConfigController {
       this.cfgStatusMsg.textContent = message;
     }
     showToast(this.ctx, message, "error");
+  }
+
+  /**
+   * Update the passive `#debugServerBadge` header indicator from a `/api/debug/status` snapshot.
+   *
+   * @param {object|null} debugState - Debug server status snapshot.
+   */
+  updateDebugBadge(debugState) {
+    if (!this.debugServerBadge || !debugState) {
+      return;
+    }
+    const isActive = Boolean(debugState.active);
+    const isEnabled = Boolean(debugState.enabled);
+    const c0Port = Number(debugState.gdb_core0_port) || this.currentConfig.gdbCore0Port;
+    const c1Port = debugState.gdb_core1_port ?? this.currentConfig.gdbCore1Port;
+    this.currentConfig.debugServerActive = isActive;
+    if (typeof debugState.enabled === "boolean") {
+      this.currentConfig.enableDebugServer = isEnabled;
+    }
+    if (isActive || isEnabled) {
+      const portLabel = c1Port ? `:${c0Port}/:${c1Port}` : `:${c0Port}`;
+      const stateSuffix = !isActive
+        ? " (SYNC)"
+        : debugState.halted_on_reset || debugState.halt_on_reset
+          ? " [HALTED]"
+          : "";
+      this.debugServerBadge.textContent = `GDB ${portLabel}${stateSuffix}`;
+      this.debugServerBadge.style.display = "inline-block";
+    } else {
+      this.debugServerBadge.style.display = "none";
+    }
+  }
+
+  /**
+   * Poll `GET /api/debug/status` to keep `#debugServerBadge` synchronized with CLI/API changes.
+   *
+   * @returns {Promise<void>}
+   */
+  async pollDebugStatus() {
+    if (!this.debugServerBadge) {
+      return;
+    }
+    try {
+      const data = await this.ctx.fetchJson("/api/debug/status");
+      if (data) {
+        this.updateDebugBadge(data);
+      }
+    } catch {
+      // Ignore transient polling failures.
+    }
   }
 
   /**
@@ -736,7 +908,12 @@ export class TargetConfigController {
     try {
       const data = await this.ctx.fetchJson("/api/sync/status");
       if (data && (data.active || (data.progress > 0 && data.progress < 100))) {
-        this.openSyncModal();
+        const suppressModal =
+          typeof this.shouldSuppressAutoSyncModal === "function" &&
+          Boolean(this.shouldSuppressAutoSyncModal());
+        if (!suppressModal) {
+          this.openSyncModal();
+        }
         this.startSyncPolling();
       }
     } catch {
