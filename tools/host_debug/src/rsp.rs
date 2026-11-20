@@ -70,11 +70,13 @@ pub enum RspFrame {
 /// Post-command action requested by [`RspCoreHandler::handle_packet`].
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum RspAction {
-    /// Send the optional RSP reply payload immediately and wait for the next client command.
+    /// Send a single RSP reply payload immediately and wait for the next client command.
     Reply(String),
+    /// Send an ordered sequence of RSP packets (e.g. `O<hex>` console output followed by `OK`).
+    ReplyPackets(Vec<String>),
     /// Target core has been resumed (`c` / `vCont;c`); poll for halt or `0x03` interrupt before replying.
     WaitForHalt,
-    /// Send the optional RSP reply (if `Some`) and close the client TCP connection (`D` / `k`).
+    /// Send the optional RSP reply (if `Some`) and close the client TCP connection (`D` / `k` / `vKill`).
     Disconnect(Option<String>),
 }
 
@@ -390,6 +392,64 @@ impl RspCoreHandler {
         }
     }
 
+    /// Handle pure protocol handshake/metadata packets that do not require locking [`DebugBackend`].
+    pub fn handle_stateless_packet(&mut self, payload: &[u8]) -> Option<RspAction> {
+        if payload.starts_with(b"X") {
+            return None;
+        }
+        let cmd = match std::str::from_utf8(payload) {
+            Ok(s) => s,
+            Err(_) => return Some(RspAction::Reply("E01".to_string())),
+        };
+
+        if cmd == "QStartNoAckMode" {
+            self.no_ack_mode = true;
+            return Some(RspAction::Reply("OK".to_string()));
+        }
+        if cmd.starts_with("qSupported") {
+            return Some(RspAction::Reply(
+                "PacketSize=4096;qXfer:features:read+;QStartNoAckMode+;vContSupported+;hwbreak+;swbreak+"
+                    .to_string(),
+            ));
+        }
+        if cmd == "!" {
+            return Some(RspAction::Reply("OK".to_string()));
+        }
+        if cmd == "vMustReplyEmpty" || cmd == "qOffsets" || cmd == "qTStatus" {
+            return Some(RspAction::Reply(String::new()));
+        }
+        if cmd == "vCont?" {
+            return Some(RspAction::Reply("vCont;c;C;s;S;t".to_string()));
+        }
+        if cmd == "qAttached" {
+            return Some(RspAction::Reply("1".to_string()));
+        }
+        if cmd == "qC" {
+            return Some(RspAction::Reply("QC01".to_string()));
+        }
+        if cmd == "qfThreadInfo" {
+            return Some(RspAction::Reply("m01".to_string()));
+        }
+        if cmd == "qsThreadInfo" {
+            return Some(RspAction::Reply("l".to_string()));
+        }
+        if cmd.starts_with("qThreadExtraInfo") {
+            let info = format!("Core {}", self.core_idx);
+            return Some(RspAction::Reply(encode_hex(info.as_bytes())));
+        }
+        if cmd.starts_with("qSymbol")
+            || cmd.starts_with("Hg")
+            || cmd.starts_with("Hc")
+            || cmd.starts_with('T')
+        {
+            return Some(RspAction::Reply("OK".to_string()));
+        }
+        if let Some(xfer_args) = cmd.strip_prefix("qXfer:features:read:target.xml:") {
+            return Some(RspAction::Reply(self.handle_target_xml_read(xfer_args)));
+        }
+        None
+    }
+
     /// Process a single unframed RSP packet payload against `backend` and `breakpoints`.
     pub fn handle_packet<B: DebugBackend + ?Sized>(
         &mut self,
@@ -397,6 +457,9 @@ impl RspCoreHandler {
         backend: &mut B,
         breakpoints: &mut CoreBreakpointTable,
     ) -> RspAction {
+        if let Some(stateless) = self.handle_stateless_packet(payload) {
+            return stateless;
+        }
         if let Some(rest) = payload.strip_prefix(b"X") {
             return RspAction::Reply(self.handle_binary_write(rest, backend));
         }
@@ -406,45 +469,6 @@ impl RspCoreHandler {
             Err(_) => return RspAction::Reply("E01".to_string()),
         };
 
-        if cmd == "QStartNoAckMode" {
-            self.no_ack_mode = true;
-            return RspAction::Reply("OK".to_string());
-        }
-        if cmd.starts_with("qSupported") {
-            return RspAction::Reply(
-                "PacketSize=4096;qXfer:features:read+;QStartNoAckMode+;vContSupported+;hwbreak+;swbreak+"
-                    .to_string(),
-            );
-        }
-        if cmd == "vMustReplyEmpty" || cmd == "qOffsets" || cmd == "qTStatus" {
-            return RspAction::Reply(String::new());
-        }
-        if cmd == "qAttached" {
-            return RspAction::Reply("1".to_string());
-        }
-        if cmd == "qC" {
-            return RspAction::Reply("QC01".to_string());
-        }
-        if cmd == "qfThreadInfo" {
-            return RspAction::Reply("m01".to_string());
-        }
-        if cmd == "qsThreadInfo" {
-            return RspAction::Reply("l".to_string());
-        }
-        if cmd.starts_with("qThreadExtraInfo") {
-            let info = format!("Core {}", self.core_idx);
-            return RspAction::Reply(encode_hex(info.as_bytes()));
-        }
-        if cmd.starts_with("qSymbol")
-            || cmd.starts_with("Hg")
-            || cmd.starts_with("Hc")
-            || cmd.starts_with('T')
-        {
-            return RspAction::Reply("OK".to_string());
-        }
-        if let Some(xfer_args) = cmd.strip_prefix("qXfer:features:read:target.xml:") {
-            return RspAction::Reply(self.handle_target_xml_read(xfer_args));
-        }
         if cmd == "?" {
             if !backend.core_halted(self.core_idx).unwrap_or(true) {
                 let _ = backend.halt_core(self.core_idx);
@@ -481,9 +505,6 @@ impl RspCoreHandler {
         if cmd.starts_with("z0,") || cmd.starts_with("z1,") {
             return RspAction::Reply(self.handle_remove_bp(&cmd[3..], backend, breakpoints));
         }
-        if cmd == "vCont?" {
-            return RspAction::Reply("vCont;c;C;s;S;t".to_string());
-        }
         if cmd == "s" || cmd.starts_with("s") && cmd[1..].chars().all(|c| c.is_ascii_hexdigit()) {
             if cmd.len() > 1 {
                 if let Ok(addr) = u32::from_str_radix(&cmd[1..], 16) {
@@ -513,15 +534,21 @@ impl RspCoreHandler {
             return self.resume_core_execution(opt_addr, backend, breakpoints);
         }
         if let Some(rcmd_hex) = cmd.strip_prefix("qRcmd,") {
-            return RspAction::Reply(self.handle_monitor_command(rcmd_hex, backend, breakpoints));
+            return self.handle_monitor_command(rcmd_hex, backend, breakpoints);
         }
         if cmd == "D" || cmd.starts_with("D;") {
             let _ = breakpoints.clear_all(backend, self.core_idx);
             let _ = backend.resume_core(self.core_idx);
             return RspAction::Disconnect(Some("OK".to_string()));
         }
+        if cmd == "vKill" || cmd.starts_with("vKill;") {
+            let _ = breakpoints.clear_all(backend, self.core_idx);
+            let _ = backend.resume_core(self.core_idx);
+            return RspAction::Disconnect(Some("OK".to_string()));
+        }
         if cmd == "k" {
             let _ = breakpoints.clear_all(backend, self.core_idx);
+            let _ = backend.resume_core(self.core_idx);
             return RspAction::Disconnect(None);
         }
 
@@ -856,10 +883,10 @@ impl RspCoreHandler {
         rcmd_hex: &str,
         backend: &mut B,
         breakpoints: &CoreBreakpointTable,
-    ) -> String {
+    ) -> RspAction {
         let cmd_bytes = match decode_hex(rcmd_hex.trim()) {
             Ok(b) => b,
-            Err(_) => return "E01".to_string(),
+            Err(_) => return RspAction::Reply("E01".to_string()),
         };
         let monitor_cmd = String::from_utf8_lossy(&cmd_bytes)
             .trim()
@@ -867,23 +894,28 @@ impl RspCoreHandler {
         match monitor_cmd.as_str() {
             "reset halt" => {
                 if backend.reset_and_halt_core(0).is_err() {
-                    return "E05".to_string();
+                    return RspAction::Reply("E05".to_string());
                 }
                 let _ = breakpoints.ensure_hw_breakpoints_armed(backend, self.core_idx);
-                encode_hex(b"Target reset and halted at Reset_Handler\n")
+                let out_pkt = format!(
+                    "O{}",
+                    encode_hex(b"Target reset and halted at Reset_Handler\n")
+                );
+                RspAction::ReplyPackets(vec![out_pkt, "OK".to_string()])
             }
             "reset" | "reset run" => {
                 if backend.reset_and_run_core(0).is_err() {
-                    return "E05".to_string();
+                    return RspAction::Reply("E05".to_string());
                 }
                 let _ = breakpoints.ensure_hw_breakpoints_armed(backend, self.core_idx);
-                encode_hex(b"Target reset and running\n")
+                let out_pkt = format!("O{}", encode_hex(b"Target reset and running\n"));
+                RspAction::ReplyPackets(vec![out_pkt, "OK".to_string()])
             }
             "halt" => match backend.halt_core(self.core_idx) {
-                Ok(_) => "OK".to_string(),
-                Err(_) => "E05".to_string(),
+                Ok(_) => RspAction::Reply("OK".to_string()),
+                Err(_) => RspAction::Reply("E05".to_string()),
             },
-            _ => "OK".to_string(),
+            _ => RspAction::Reply("OK".to_string()),
         }
     }
 }

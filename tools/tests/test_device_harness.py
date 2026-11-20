@@ -1654,6 +1654,10 @@ def test_symbolic_test_debugging_dap_breakpoint_and_vscode_config(
     assert "rust-analyzer.cargo.target" not in settings_cfg, (
         "rust-analyzer.cargo.target must not be locked to an MCU triple so host #[test] CodeLens debugging works"
     )
+    assert settings_cfg.get("OcpCadViewer.advanced.watchByDefault") is False, (
+        "OcpCadViewer wildcard debug tracker must be disabled by default in firmware to prevent GDB 'from' errors"
+    )
+    assert settings_cfg.get("OcpCadViewer.advanced.autostart") is False
     pytest_args = settings_cfg.get("python.testing.pytestArgs", [])
     assert "-o" in pytest_args and any(str(a).startswith("addopts=") for a in pytest_args)
     assert "tools/device_tests/suites" in pytest_args
@@ -1666,6 +1670,10 @@ def test_symbolic_test_debugging_dap_breakpoint_and_vscode_config(
     assert "probe-rs (Secondary): Debug Shell (RP2040)" in config_names
     for cfg in launch_cfg.get("configurations", []):
         assert cfg.get("servertype") != "openocd", f"Legacy OpenOCD config must be removed: {cfg['name']}"
+        if cfg.get("type") == "cortex-debug":
+            assert cfg.get("overrideRestartCommands") == ["monitor reset halt", "flushregs"], (
+                f"cortex-debug config {cfg['name']!r} must flush GDB register cache after monitor reset halt"
+            )
         pre_task = cfg.get("preLaunchTask")
         if pre_task:
             assert pre_task in defined_tasks, f"Missing preLaunchTask {pre_task!r} in .vscode/tasks.json"

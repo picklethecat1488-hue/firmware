@@ -10,6 +10,10 @@
       "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
       "gdbTarget": "127.0.0.1:${input:gdbCore0Port}",
       "device": "RP2040",
+      "overrideRestartCommands": [
+        "monitor reset halt",
+        "flushregs"
+      ],
       "sourceFileMap": {
         "firmware": "${workspaceFolder}"
       }
@@ -23,6 +27,10 @@
       "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_shell",
       "gdbTarget": "127.0.0.1:${input:gdbCore1Port}",
       "device": "RP2040",
+      "overrideRestartCommands": [
+        "monitor reset halt",
+        "flushregs"
+      ],
       "sourceFileMap": {
         "firmware": "${workspaceFolder}"
       }
@@ -36,6 +44,10 @@
       "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
       "gdbTarget": "127.0.0.1:${input:gdbCore0Port}",
       "device": "RP2040",
+      "overrideRestartCommands": [
+        "monitor reset halt",
+        "flushregs"
+      ],
       "sourceFileMap": {
         "firmware": "${workspaceFolder}"
       }
@@ -49,6 +61,10 @@
       "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/cat_detector_app",
       "gdbTarget": "127.0.0.1:${input:gdbCore1Port}",
       "device": "RP2040",
+      "overrideRestartCommands": [
+        "monitor reset halt",
+        "flushregs"
+      ],
       "sourceFileMap": {
         "firmware": "${workspaceFolder}"
       }
@@ -62,6 +78,10 @@
       "executable": "${workspaceFolder}/target/thumbv6m-none-eabi/debug/carrier_board_shell",
       "gdbTarget": "127.0.0.1:${input:gdbCore0Port}",
       "device": "MCXN947",
+      "overrideRestartCommands": [
+        "monitor reset halt",
+        "flushregs"
+      ],
       "sourceFileMap": {
         "firmware": "${workspaceFolder}"
       }
