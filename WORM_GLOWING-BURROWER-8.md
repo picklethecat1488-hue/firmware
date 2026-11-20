@@ -63,6 +63,10 @@ Also saw a error message trying to disconnect from target.
 | :--- | :--- | :--- |
 | `screenshot` | [image.png](attachments/WORM-GLOWING-BURROWER-8/image.png) | Pasted screenshot |
 
+#### Attached Commits
+
+- `60212087b14ed46c15fd6ce77f31ea4866f5d535`
+
 #### Review Tasks & Functional Checklist
 
 - [ ] Start target debug server via host.py and verify GDB Core 0/Core 1 RSP listeners are active | `python tools/host.py debug start && python tools/host.py debug status` <!-- id:5076079d -->
