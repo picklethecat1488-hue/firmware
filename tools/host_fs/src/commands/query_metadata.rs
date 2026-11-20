@@ -8,7 +8,9 @@ use std::io;
 use std::path::Path;
 use tool_common::metadata::PartitionInfo;
 use tool_common::{
-    autodetect_project_info, normalize_rtt_bridge_addr, ProjectInfo, DEFAULT_SWD_SPEED_KHZ,
+    autodetect_project_info, normalize_rtt_bridge_addr, EnumeratedInterfaceDevice,
+    InterfaceAvailability, InterfaceStatusReport, ProjectInfo, TargetInterfaceKind,
+    DEFAULT_SWD_SPEED_KHZ,
 };
 
 /// Map key inside the `metadata` partition that can override compiled `board_type`.
@@ -87,9 +89,10 @@ impl QueriedProgramMetadata {
             Some(val) => format!("\"{}\"", json_escape(val)),
             None => "null".to_string(),
         };
-        let profile_json = match &self.info.build_profile {
-            Some(val) => format!("\"{}\"", json_escape(val)),
-            None => "null".to_string(),
+        let release_json = match self.info.release_build {
+            Some(true) => "true",
+            Some(false) => "false",
+            None => "null",
         };
         let trace_mode_json = match &self.info.trace_mode {
             Some(val) => format!("\"{}\"", json_escape(val)),
@@ -104,7 +107,7 @@ impl QueriedProgramMetadata {
         format!(
             "{{\"checksum\":\"0x{:04X}\",\"chip\":\"{}\",\"board_type\":\"{}\",\
              \"program_metadata_board_type\":\"{}\",\"provisioned_board_type\":{},\
-             \"bin_name\":{},\"build_profile\":{},\"trace_mode\":{},\
+             \"bin_name\":{},\"release_build\":{},\"trace_mode\":{},\
              \"source\":\"{}\",\"flash_start\":{},\"flash_write_size\":{},\
              \"flash_erase_size\":{},\"stack_scan_limit\":{},\
              \"program_metadata_addr\":{},\"program_metadata_size\":{},\
@@ -115,7 +118,7 @@ impl QueriedProgramMetadata {
             json_escape(&self.info.board_type),
             provisioned_json,
             bin_json,
-            profile_json,
+            release_json,
             trace_mode_json,
             self.source,
             self.info.flash_start,
@@ -139,8 +142,8 @@ impl QueriedProgramMetadata {
         if let Some(ref bin) = self.info.bin_name {
             lines.push(format!("bin_name: {}", bin));
         }
-        if let Some(ref prof) = self.info.build_profile {
-            lines.push(format!("build_profile: {}", prof));
+        if let Some(rel) = self.info.release_build {
+            lines.push(format!("release_build: {}", rel));
         }
         if let Some(ref tmode) = self.info.trace_mode {
             lines.push(format!("trace_mode: {}", tmode));
@@ -299,13 +302,31 @@ pub async fn query_from_dump_bytes(
     })
 }
 
+/// Structured target metadata query failure carrying typed USB/SWD availability state.
+#[derive(Debug, Clone)]
+pub struct TargetQueryFailure {
+    /// Structured interface status report (`Disconnected`, `InUse`, `TransientIo`, or `InvalidMetadata`).
+    pub status: InterfaceStatusReport,
+    /// Human-readable error message.
+    pub message: String,
+}
+
 /// Read and decode `.program_metadata` (and optional `metadata` override) from a live target using ELF geometry.
 pub async fn query_from_target(
     elf_info: &ProjectInfo,
     gdb_bridge: Option<&str>,
-) -> Result<QueriedProgramMetadata, String> {
+) -> Result<QueriedProgramMetadata, TargetQueryFailure> {
     if elf_info.program_metadata_size == 0 {
-        return Err("ELF .program_metadata section size is zero".to_string());
+        let msg = "ELF .program_metadata section size is zero".to_string();
+        return Err(TargetQueryFailure {
+            status: InterfaceStatusReport {
+                interface: TargetInterfaceKind::SwdUsb,
+                availability: InterfaceAvailability::InvalidMetadata,
+                devices: Vec::new(),
+                error: Some(msg.clone()),
+            },
+            message: msg,
+        });
     }
     let prog_read_len = elf_info
         .program_metadata_size
@@ -313,10 +334,39 @@ pub async fn query_from_target(
 
     if let Some(host) = gdb_bridge {
         let addr = normalize_rtt_bridge_addr(host);
-        let mut gdb = tool_common::GdbClient::connect(&addr)?;
+        let mut gdb = tool_common::GdbClient::connect(&addr).map_err(|msg| TargetQueryFailure {
+            status: InterfaceStatusReport {
+                interface: TargetInterfaceKind::SwdUsb,
+                availability: InterfaceAvailability::TransientIo,
+                devices: Vec::new(),
+                error: Some(msg.clone()),
+            },
+            message: msg,
+        })?;
         let mut meta_buf = vec![0u8; prog_read_len];
-        gdb.read_mem(elf_info.program_metadata_addr, &mut meta_buf)?;
-        let decoded = ProjectInfo::decode_bytes(&meta_buf, elf_info.program_metadata_addr, 0)?;
+        gdb.read_mem(elf_info.program_metadata_addr, &mut meta_buf)
+            .map_err(|msg| TargetQueryFailure {
+                status: InterfaceStatusReport {
+                    interface: TargetInterfaceKind::SwdUsb,
+                    availability: InterfaceAvailability::TransientIo,
+                    devices: Vec::new(),
+                    error: Some(msg.clone()),
+                },
+                message: msg,
+            })?;
+        let decoded = ProjectInfo::decode_bytes(&meta_buf, elf_info.program_metadata_addr, 0)
+            .map_err(|e| {
+                let msg = format!("AttachedTargetMetadataInvalid ({}): {}", elf_info.chip, e);
+                TargetQueryFailure {
+                    status: InterfaceStatusReport {
+                        interface: TargetInterfaceKind::SwdUsb,
+                        availability: InterfaceAvailability::InvalidMetadata,
+                        devices: Vec::new(),
+                        error: Some(msg.clone()),
+                    },
+                    message: msg,
+                }
+            })?;
         let bt = decoded.board_type.clone();
         return Ok(QueriedProgramMetadata {
             info: decoded,
@@ -328,25 +378,71 @@ pub async fn query_from_target(
 
     let lister = Lister::new();
     let probes = lister.list_all();
-    let probe_info = probes
-        .first()
-        .ok_or_else(|| "No debug probes connected".to_string())?;
-    let mut probe = probe_info
-        .open()
-        .map_err(|e| format!("Failed to open probe: {:?}", e))?;
+    let devices: Vec<EnumeratedInterfaceDevice> = probes
+        .iter()
+        .map(|info| EnumeratedInterfaceDevice {
+            identifier: info.identifier.clone(),
+            vid_pid: Some(format!("{:04x}:{:04x}", info.vendor_id, info.product_id)),
+            serial_number: info.serial_number.clone(),
+        })
+        .collect();
+    let probe_info = probes.first().ok_or_else(|| {
+        let msg = "No debug probes connected".to_string();
+        TargetQueryFailure {
+            status: InterfaceStatusReport {
+                interface: TargetInterfaceKind::SwdUsb,
+                availability: InterfaceAvailability::Disconnected,
+                devices: Vec::new(),
+                error: Some(msg.clone()),
+            },
+            message: msg,
+        }
+    })?;
+    let mut probe = probe_info.open().map_err(|e| {
+        let msg = format!("Failed to open probe: {:?}", e);
+        TargetQueryFailure {
+            status: InterfaceStatusReport {
+                interface: TargetInterfaceKind::SwdUsb,
+                availability: InterfaceAvailability::InUse,
+                devices: devices.clone(),
+                error: Some(msg.clone()),
+            },
+            message: msg,
+        }
+    })?;
     let _ = probe.set_speed(DEFAULT_SWD_SPEED_KHZ);
     let mut session = probe
         .attach(&elf_info.chip, probe_rs::Permissions::default())
-        .map_err(|e| format!("Failed to attach as {}: {:?}", elf_info.chip, e))?;
+        .map_err(|e| {
+            let msg = format!("Failed to attach as {}: {:?}", elf_info.chip, e);
+            TargetQueryFailure {
+                status: InterfaceStatusReport {
+                    interface: TargetInterfaceKind::SwdUsb,
+                    availability: InterfaceAvailability::TransientIo,
+                    devices: devices.clone(),
+                    error: Some(msg.clone()),
+                },
+                message: msg,
+            }
+        })?;
 
     let mut prog_meta_buf = vec![0u8; prog_read_len];
     let meta_part_spec = elf_info.metadata_partition().cloned();
     let mut meta_part_buf = vec![0u8; meta_part_spec.as_ref().map(|p| p.size).unwrap_or(0)];
 
     let (decoded, part_read_ok) = {
-        let mut core = session
-            .core(0)
-            .map_err(|e| format!("Failed to access core 0 on {}: {:?}", elf_info.chip, e))?;
+        let mut core = session.core(0).map_err(|e| {
+            let msg = format!("Failed to access core 0 on {}: {:?}", elf_info.chip, e);
+            TargetQueryFailure {
+                status: InterfaceStatusReport {
+                    interface: TargetInterfaceKind::SwdUsb,
+                    availability: InterfaceAvailability::TransientIo,
+                    devices: devices.clone(),
+                    error: Some(msg.clone()),
+                },
+                message: msg,
+            }
+        })?;
         // Read non-intrusively over AHB-AP without halting Core 0 so an active
         // SRAM NOR flash routine (which temporarily disables XIP on RP2040) can
         // complete and re-enable XIP naturally.
@@ -356,10 +452,19 @@ pub async fn query_from_target(
             &mut prog_meta_buf,
         )
         .map_err(|e| {
-            format!(
+            let msg = format!(
                 "Failed to read .program_metadata at 0x{:08X}: {:?}",
                 elf_info.program_metadata_addr, e
-            )
+            );
+            TargetQueryFailure {
+                status: InterfaceStatusReport {
+                    interface: TargetInterfaceKind::SwdUsb,
+                    availability: InterfaceAvailability::TransientIo,
+                    devices: devices.clone(),
+                    error: Some(msg.clone()),
+                },
+                message: msg,
+            }
         })?;
 
         let decoded =
@@ -401,7 +506,17 @@ pub async fn query_from_target(
                             0,
                         )
                         .map_err(|e| {
-                            format!("AttachedTargetMetadataInvalid ({}): {}", elf_info.chip, e)
+                            let msg =
+                                format!("AttachedTargetMetadataInvalid ({}): {}", elf_info.chip, e);
+                            TargetQueryFailure {
+                                status: InterfaceStatusReport {
+                                    interface: TargetInterfaceKind::SwdUsb,
+                                    availability: InterfaceAvailability::InvalidMetadata,
+                                    devices: devices.clone(),
+                                    error: Some(msg.clone()),
+                                },
+                                message: msg,
+                            }
                         })?,
                     }
                 }
@@ -493,7 +608,17 @@ pub async fn run(
         })
     } else if let Some(dump_file) = dump_path {
         let bytes = std::fs::read(dump_file)?;
-        query_from_dump_bytes(&bytes, elf_info.as_ref()).await
+        query_from_dump_bytes(&bytes, elf_info.as_ref())
+            .await
+            .map_err(|msg| TargetQueryFailure {
+                status: InterfaceStatusReport {
+                    interface: TargetInterfaceKind::SwdUsb,
+                    availability: InterfaceAvailability::InvalidMetadata,
+                    devices: Vec::new(),
+                    error: Some(msg.clone()),
+                },
+                message: msg,
+            })
     } else {
         let info = elf_info.as_ref().ok_or_else(|| {
             spinner.finish_and_clear();
@@ -515,6 +640,11 @@ pub async fn run(
             }
             Ok(())
         }
-        Err(err) => Err(io::Error::other(err)),
+        Err(failure) => {
+            if json {
+                println!("{}", failure.status.to_json());
+            }
+            Err(io::Error::other(failure.message))
+        }
     }
 }

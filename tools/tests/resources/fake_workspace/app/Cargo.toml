@@ -1,0 +1,22 @@
+[package]
+name = "cat_detector"
+version = "0.1.0"
+default-run = "cat_detector_shell"
+
+[[bin]]
+name = "cat_detector_shell"
+path = "src/main.rs"
+
+[[bin]]
+name = "carrier_board_shell"
+path = "src/cb.rs"
+
+[package.metadata.binaries.cat_detector_shell]
+target = "thumbv6m-none-eabi"
+chip = "rp2040"
+board = "cat_detector"
+
+[package.metadata.binaries.carrier_board_shell]
+target = "thumbv8m.main-none-eabihf"
+chip = "MCXN947"
+board = "carrier_board"

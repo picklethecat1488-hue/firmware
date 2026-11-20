@@ -26,6 +26,12 @@ from host_daemon.model.trace_mode import (
     get_external_trace_viewer,
     normalize_trace_mode,
 )
+from host_daemon.model.transport import (
+    InterfaceAvailability,
+    TargetInterfaceType,
+    parse_interface_status_output,
+    query_target_interface_status,
+)
 from host_daemon.provider.daemon.config import discover_target_packages, save_last_session
 from host_daemon.provider.daemon.rerun_bridge import open_trace_in_rerun
 from host_daemon.provider.daemon.test_manager import DeviceTestRunnerManager
@@ -66,19 +72,6 @@ RTT_SESSION_BANNER_PREFIXES: Tuple[str, ...] = (
     "|,4-  )",
     "'---''(_",
 )
-
-
-def _is_transient_probe_error(output: str) -> bool:
-    """Return True if subprocess output indicates a transient USB debug probe lock or timeout."""
-    lowered = output.lower()
-    return (
-        "bulk write timed out" in lowered
-        or "bulk read timed out" in lowered
-        or "failed to open probe" in lowered
-        or "usb(custom" in lowered
-        or "no debug probes connected" in lowered
-        or "no debug probes were found" in lowered
-    )
 
 
 class DaemonRunner:
@@ -887,6 +880,22 @@ class DaemonRunner:
         self.log(err_msg, level="ERROR")
         raise RuntimeError(err_msg)
 
+    def _should_retry_probe_operation(self, output: str) -> bool:
+        """Query USB/transport interface status (`host_fs probe-status --json`) to decide whether a failed probe op is retryable."""
+        parsed = parse_interface_status_output(output, default_interface=TargetInterfaceType.SWD_USB)
+        if parsed is not None:
+            return parsed.is_retryable
+        host_fs_prefix = (
+            [str(self.host_fs_path)] if self.host_fs_path and self.host_fs_path.exists() else ["cargo", "host-fs"]
+        )
+        status = query_target_interface_status(
+            self.repo_root,
+            interface=TargetInterfaceType.SWD_USB,
+            host_fs_cmd_prefix=host_fs_prefix,
+            probe_selector=self.probe_selector,
+        )
+        return status.availability != InterfaceAvailability.DISCONNECTED or status.is_retryable
+
     def flash_target(self, use_cargo_run: bool = True) -> bool:
         """Flash target device by invoking cargo run or probe-rs download."""
         if not self.elf_path or not self.elf_path.exists():
@@ -909,7 +918,7 @@ class DaemonRunner:
             ret, out = 1, ""
             for attempt in range(MAX_PROBE_OPEN_RETRIES + 1):
                 ret, out = self._run_command_streaming(cmd, log_to_cli=False, log_channel="flash")
-                if ret == 0 or not _is_transient_probe_error(out) or attempt >= MAX_PROBE_OPEN_RETRIES:
+                if ret == 0 or attempt >= MAX_PROBE_OPEN_RETRIES or not self._should_retry_probe_operation(out):
                     break
                 self.log(
                     f"Transient USB probe timeout during flash (attempt {attempt + 1}); retrying...",
@@ -936,7 +945,7 @@ class DaemonRunner:
             ret, out = 1, ""
             for attempt in range(MAX_PROBE_OPEN_RETRIES + 1):
                 ret, out = self.run_probe_rs(cmd_args)
-                if ret == 0 or not _is_transient_probe_error(out) or attempt >= MAX_PROBE_OPEN_RETRIES:
+                if ret == 0 or attempt >= MAX_PROBE_OPEN_RETRIES or not self._should_retry_probe_operation(out):
                     break
                 self.log(
                     f"Transient USB probe timeout during probe-rs download (attempt {attempt + 1}); retrying...",
@@ -995,7 +1004,7 @@ class DaemonRunner:
             ret, out = 1, ""
             for attempt in range(MAX_PROBE_OPEN_RETRIES + 1):
                 ret, out = self.run_probe_rs(cmd_args)
-                if ret == 0 or not _is_transient_probe_error(out) or attempt >= MAX_PROBE_OPEN_RETRIES:
+                if ret == 0 or attempt >= MAX_PROBE_OPEN_RETRIES or not self._should_retry_probe_operation(out):
                     break
                 self.log(
                     f"Transient USB probe timeout during reset (attempt {attempt + 1}); retrying...",
@@ -1870,7 +1879,7 @@ class DaemonRunner:
                 ret, out = 1, ""
                 for attempt in range(MAX_PROBE_OPEN_RETRIES + 1):
                     ret, out = self.run_host_fs(fs_args)
-                    if ret == 0 or not _is_transient_probe_error(out) or attempt >= MAX_PROBE_OPEN_RETRIES:
+                    if ret == 0 or attempt >= MAX_PROBE_OPEN_RETRIES or not self._should_retry_probe_operation(out):
                         break
                     self.log(
                         f"Transient USB probe contention during host_fs '{subcmd}' (attempt {attempt + 1}); retrying...",

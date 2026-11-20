@@ -10,6 +10,14 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
+from host_daemon.model.transport import (
+    InterfaceAvailability,
+    InterfaceStatus,
+    TargetInterfaceType,
+    parse_interface_status_output,
+    query_target_interface_status,
+)
+
 ATTACHED_INVALID_META_RE = re.compile(r"AttachedTargetMetadataInvalid\s*\(([^)]+)\)")
 ACTIVE_TARGET_ELF_FILENAME: str = "active_target.elf"
 BUILD_PROFILES: tuple[str, ...] = ("debug", "release")
@@ -53,20 +61,28 @@ def sync_active_target_elf_link(repo_root: Path, elf_path: Optional[Path]) -> Op
         return None
 
 
-def _is_transient_metadata_probe_error(output: str) -> bool:
-    """Return True if `host_fs query_metadata` failed due to a transient USB/SWD probe lock or timeout."""
-    lowered = output.lower()
-    if os.environ.get("XERXES_REQUIRE_CONNECTED_TARGET") == "1" and "no debug probes connected" in lowered:
-        return True
-    return (
-        "bulk write timed out" in lowered
-        or "bulk read timed out" in lowered
-        or "failed to open probe" in lowered
-        or "usb(custom" in lowered
-        or "communication timed out" in lowered
-        or "access port or debug port" in lowered
-        or "arm(dap" in lowered
-        or "jaylink" in lowered
+def check_metadata_transport_status(
+    repo_root: Path,
+    raw_output: str,
+    *,
+    interface: TargetInterfaceType = TargetInterfaceType.SWD_USB,
+    host_fs_path: Optional[Path] = None,
+    probe_selector: Optional[str] = None,
+    serial_port: Optional[Path] = None,
+    ble_address: Optional[str] = None,
+) -> InterfaceStatus:
+    """Resolve structured target interface availability from `host_fs --json` or a direct USB/OS probe query."""
+    parsed = parse_interface_status_output(raw_output, default_interface=interface)
+    if parsed is not None:
+        return parsed
+    prefix = _resolve_host_fs_cmd_prefix(repo_root, host_fs_path) if interface == TargetInterfaceType.SWD_USB else None
+    return query_target_interface_status(
+        repo_root,
+        interface=interface,
+        host_fs_cmd_prefix=prefix,
+        probe_selector=probe_selector,
+        serial_port=serial_port,
+        ble_address=ble_address,
     )
 
 
@@ -176,6 +192,10 @@ def parse_program_metadata_output(raw_output: str) -> Optional[Dict[str, Any]]:
             key, val = line.split(":", 1)
             kv[key.strip().lower()] = val.strip()
     if "board_type" in kv and "chip" in kv and kv["board_type"] and kv["chip"]:
+        raw_rel = kv.get("release_build")
+        parsed_rel: Optional[bool] = None
+        if raw_rel is not None:
+            parsed_rel = str(raw_rel).strip().lower() in ("true", "1", "yes")
         return {
             "checksum": kv.get("checksum"),
             "chip": kv["chip"],
@@ -183,7 +203,7 @@ def parse_program_metadata_output(raw_output: str) -> Optional[Dict[str, Any]]:
             "program_metadata_board_type": kv.get("program_metadata_board_type", kv["board_type"]),
             "provisioned_board_type": kv.get("provisioned_board_type"),
             "bin_name": kv.get("bin_name"),
-            "build_profile": kv.get("build_profile"),
+            "release_build": parsed_rel,
             "trace_mode": kv.get("trace_mode"),
             "source": kv.get("source", "program_metadata"),
         }
@@ -216,9 +236,9 @@ def validate_metadata_matches_target(
     if dev_bin and tgt_bin and dev_bin != tgt_bin:
         return False
 
-    dev_prof = str(device_meta.get("build_profile") or "").strip().lower()
-    tgt_prof = str(target_meta.get("build_profile") or "").strip().lower()
-    if dev_prof and tgt_prof and dev_prof != tgt_prof:
+    dev_rel = device_meta.get("release_build")
+    tgt_rel = target_meta.get("release_build")
+    if isinstance(dev_rel, bool) and isinstance(tgt_rel, bool) and dev_rel != tgt_rel:
         return False
 
     dev_tmode = str(device_meta.get("trace_mode") or "").strip().lower()
@@ -300,12 +320,14 @@ def run_host_fs_query_metadata(
 
         combined_last = f"{proc.stdout}\n{proc.stderr}".strip()
         rc_last = proc.returncode
-        if (
-            rc_last == 0
-            or elf_only
-            or not _is_transient_metadata_probe_error(combined_last)
-            or attempt >= max_attempts - 1
-        ):
+        if rc_last == 0 or elf_only or attempt >= max_attempts - 1:
+            break
+        status = check_metadata_transport_status(
+            repo_root,
+            combined_last,
+            host_fs_path=host_fs_path,
+        )
+        if not status.is_retryable:
             break
         time.sleep(METADATA_PROBE_RETRY_BACKOFF_SEC)
 
@@ -396,14 +418,32 @@ def probe_attached_target_metadata(
                 }
 
         last_error = out_dev
-        if "no debug probes connected" in out_dev.lower():
+        status_dev = parse_interface_status_output(out_dev)
+        if (
+            status_dev is not None and status_dev.availability == InterfaceAvailability.DISCONNECTED
+        ) or "no debug probes connected" in out_dev.lower():
             return {
                 "connected": False,
                 "matches_target": False,
+                "interface": TargetInterfaceType.SWD_USB.value,
+                "availability": InterfaceAvailability.DISCONNECTED.value,
+                "in_use": False,
                 "error": "No debug probes connected",
             }
 
-        attached_unprogrammed = ATTACHED_INVALID_META_RE.search(out_dev)
+        if status_dev is not None and status_dev.in_use:
+            return {
+                "connected": False,
+                "matches_target": False,
+                "interface": status_dev.interface.value,
+                "availability": status_dev.availability.value,
+                "in_use": True,
+                "error": status_dev.error or "Target interface is currently in use",
+            }
+
+        attached_unprogrammed = (
+            status_dev is not None and status_dev.availability == InterfaceAvailability.INVALID_METADATA
+        ) or bool(ATTACHED_INVALID_META_RE.search(out_dev))
         if attached_unprogrammed:
             reference_meta = expected_target_meta or cand_spec
             return {

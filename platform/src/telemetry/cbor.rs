@@ -78,6 +78,13 @@ impl<const N: usize> ConstCborWriter<N> {
         self.write_u32(key)
     }
 
+    /// Writes a boolean value as a 1-byte CBOR simple value (`0xf5` for `true`, `0xf4` for `false`).
+    pub const fn write_bool(mut self, val: bool) -> Self {
+        self.buf[self.len] = if val { 0xf5 } else { 0xf4 };
+        self.len += 1;
+        self
+    }
+
     /// Writes a u32 value in CBOR format.
     pub const fn write_u32(mut self, val: u32) -> Self {
         if val <= 23 {

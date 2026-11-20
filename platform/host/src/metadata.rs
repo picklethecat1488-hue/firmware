@@ -26,8 +26,8 @@ pub struct ProjectInfo {
     pub board_type: String,
     /// Optional compiled Cargo binary target name (e.g. "cat_detector_shell", "cat_detector_app").
     pub bin_name: Option<String>,
-    /// Optional compiled Cargo profile identifier ("debug" or "release").
-    pub build_profile: Option<String>,
+    /// Optional compiled Cargo release flag (`true` = release, `false` = debug).
+    pub release_build: Option<bool>,
     /// Optional compile-time tracing mode identifier ("none", "sensor", "perf", "audio").
     pub trace_mode: Option<String>,
     /// Flash write alignment/size in bytes.
@@ -94,7 +94,7 @@ impl ProjectInfo {
             chip: metadata.chip.to_string(),
             board_type: metadata.board_type.to_string(),
             bin_name: metadata.bin_name.map(str::to_string),
-            build_profile: metadata.build_profile.map(str::to_string),
+            release_build: metadata.release_build,
             trace_mode: metadata.trace_mode.map(|m| m.as_str().to_string()),
             flash_write_size: metadata.flash_write_size,
             flash_erase_size: metadata.flash_erase_size,

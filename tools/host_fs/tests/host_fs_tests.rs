@@ -433,7 +433,7 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
         "rp2040",
         "rp2040_flash_2mb",
         "cat_detector_shell",
-        "release",
+        true,
         platform::types::FirmwareTraceMode::Sensor,
         1,
         4096,
@@ -511,7 +511,7 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
     assert!(stdout.contains("\"board_type\":\"rp2040_flash_2mb\""));
     assert!(stdout.contains("\"chip\":\"rp2040\""));
     assert!(stdout.contains("\"bin_name\":\"cat_detector_shell\""));
-    assert!(stdout.contains("\"build_profile\":\"release\""));
+    assert!(stdout.contains("\"release_build\":true"));
     assert!(stdout.contains("\"trace_mode\":\"sensor\""));
     assert!(stdout.contains("\"source\":\"program_metadata\""));
     assert!(stdout.contains("\"stack_scan_limit\":2048"));
@@ -562,7 +562,7 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
         "MCXN947",
         "carrier_board",
         "carrier_board_shell",
-        "debug",
+        false,
         platform::types::FirmwareTraceMode::Perf,
         128,
         8192,
@@ -590,9 +590,20 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
     assert!(stdout_cb.contains("board_type: carrier_board"));
     assert!(stdout_cb.contains("chip: MCXN947"));
     assert!(stdout_cb.contains("bin_name: carrier_board_shell"));
-    assert!(stdout_cb.contains("build_profile: debug"));
+    assert!(stdout_cb.contains("release_build: false"));
     assert!(stdout_cb.contains("trace_mode: perf"));
     assert!(stdout_cb.contains("partition[2] (metadata): address=0x001E0000 size=32768"));
+
+    // 5. Verify `probe-status --json` emits structured interface availability JSON without resetting target
+    let out_probe_status = Command::new(bin_path)
+        .args(["probe-status", "--probe", "ffff:ffff:nonexistent", "--json"])
+        .output()
+        .unwrap();
+    assert!(out_probe_status.status.success());
+    let probe_json = String::from_utf8(out_probe_status.stdout).unwrap();
+    assert!(probe_json.contains("\"interface\":\"swd_usb\""));
+    assert!(probe_json.contains("\"availability\":\"disconnected\""));
+    assert!(probe_json.contains("\"in_use\":false"));
 
     let _ = std::fs::remove_dir_all(&temp_dir);
 }

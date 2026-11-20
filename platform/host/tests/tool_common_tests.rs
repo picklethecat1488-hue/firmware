@@ -15,7 +15,7 @@ fn test_autodetect_project_info() {
         "rp2040",
         "rp2040_flash_2mb",
         "cat_detector_shell",
-        "debug",
+        false,
         platform::types::FirmwareTraceMode::None,
         4,
         4096,
@@ -32,7 +32,7 @@ fn test_autodetect_project_info() {
         "rp2040",
         "rp2040_flash_2mb",
         "cat_detector_shell",
-        "release",
+        true,
         platform::types::FirmwareTraceMode::None,
         4,
         4096,
@@ -49,7 +49,7 @@ fn test_autodetect_project_info() {
         "rp2040",
         "rp2040_flash_2mb",
         "cat_detector_shell",
-        "release",
+        true,
         platform::types::FirmwareTraceMode::Perf,
         4,
         4096,
@@ -108,15 +108,24 @@ fn main() {{}}
     assert_eq!(info.chip, "rp2040");
     assert_eq!(info.board_type, "rp2040_flash_2mb");
     assert_eq!(info.bin_name.as_deref(), Some("cat_detector_shell"));
-    assert_eq!(info.build_profile.as_deref(), Some("debug"));
+    assert_eq!(info.release_build, Some(false));
     assert_eq!(info.trace_mode.as_deref(), Some("none"));
+    assert_eq!(
+        writer.len, release_writer.len,
+        "1-byte CBOR boolean release_build must have identical compact length for debug & release"
+    );
+    assert!(
+        release_writer.len <= 98,
+        "Expected compact .program_metadata <= 98 bytes after release_build: Option<bool>, got {}",
+        release_writer.len
+    );
     let release_info = tool_common::ProjectInfo::decode_bytes(
         &release_writer.buf[..release_writer.len],
         0,
         release_writer.len,
     )
     .unwrap();
-    assert_eq!(release_info.build_profile.as_deref(), Some("release"));
+    assert_eq!(release_info.release_build, Some(true));
     assert_eq!(release_info.trace_mode.as_deref(), Some("none"));
     assert_ne!(
         info.checksum, release_info.checksum,
@@ -160,4 +169,20 @@ fn main() {{}}
         "Unexpected error: {}",
         err
     );
+
+    let in_use_report = tool_common::InterfaceStatusReport {
+        interface: tool_common::TargetInterfaceKind::SwdUsb,
+        availability: tool_common::InterfaceAvailability::InUse,
+        devices: vec![tool_common::EnumeratedInterfaceDevice {
+            identifier: "J-Link".to_string(),
+            vid_pid: Some("1366:0105".to_string()),
+            serial_number: Some("000123456".to_string()),
+        }],
+        error: Some("USB probe 'J-Link' is currently in use".to_string()),
+    };
+    let in_use_json = in_use_report.to_json();
+    assert!(in_use_json.contains("\"interface\":\"swd_usb\""));
+    assert!(in_use_json.contains("\"availability\":\"in_use\""));
+    assert!(in_use_json.contains("\"in_use\":true"));
+    assert!(in_use_json.contains("\"retryable\":true"));
 }

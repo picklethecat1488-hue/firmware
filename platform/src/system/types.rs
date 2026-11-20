@@ -533,9 +533,9 @@ pub struct ProjectMetadata<'a> {
     /// Compiled Cargo binary target name (e.g. "cat_detector_shell", "cat_detector_app")
     #[n(7)]
     pub bin_name: Option<&'a str>,
-    /// Compiled Cargo profile identifier ("debug" or "release")
+    /// Whether the firmware was compiled in release profile (`true` = release, `false` = debug)
     #[n(8)]
-    pub build_profile: Option<&'a str>,
+    pub release_build: Option<bool>,
     /// Optional compile-time tracing mode (`None`, `Sensor`, `Perf`, `Audio`).
     #[n(9)]
     pub trace_mode: Option<FirmwareTraceMode>,
@@ -548,7 +548,7 @@ impl<'a> ProjectMetadata<'a> {
         chip: &'a str,
         board_type: &'a str,
         bin_name: &'a str,
-        build_profile: &'a str,
+        release_build: bool,
         trace_mode: FirmwareTraceMode,
         flash_write_size: u32,
         flash_erase_size: u32,
@@ -586,7 +586,7 @@ impl<'a> ProjectMetadata<'a> {
             .write_u32(metadata_size)
             .write_str(board_type)
             .write_str(bin_name)
-            .write_str(build_profile)
+            .write_bool(release_build)
             .write_u32(trace_mode as u32)
             .prepend_crc16()
     }
@@ -893,11 +893,7 @@ macro_rules! define_project_metadata {
                     Some(bin) => bin,
                     None => env!("CARGO_PKG_NAME"),
                 },
-                if cfg!(debug_assertions) {
-                    "debug"
-                } else {
-                    "release"
-                },
+                !cfg!(debug_assertions),
                 $crate::types::FirmwareTraceMode::active(),
                 $flash_write_size as u32,
                 $flash_erase_size as u32,

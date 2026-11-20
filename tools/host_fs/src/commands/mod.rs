@@ -4,5 +4,6 @@ pub mod crash_log;
 pub mod export_telemetry;
 pub mod format;
 pub mod ls;
+pub mod probe_status;
 pub mod query_metadata;
 pub mod rm;

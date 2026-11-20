@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import shutil
 import socket
 import subprocess
 import sys
@@ -19,9 +20,42 @@ import pytest
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 TOOLS_DIR = WORKSPACE_ROOT / "tools"
 DASHBOARD_DIR = TOOLS_DIR / "dashboard"
+TEST_RESOURCES_DIR = Path(__file__).resolve().parent / "resources"
 for p in (str(WORKSPACE_ROOT), str(TOOLS_DIR), str(DASHBOARD_DIR)):
     if p not in sys.path:
         sys.path.insert(0, p)
+
+
+def _copy_resource_tree(resource_rel_dir: str, dest_dir: Path) -> Path:
+    """Copy a directory fixture from `tools/tests/resources/<resource_rel_dir>` into `dest_dir`."""
+    src_dir = TEST_RESOURCES_DIR / resource_rel_dir
+    shutil.copytree(src_dir, dest_dir, dirs_exist_ok=True)
+    return dest_dir
+
+
+def _make_resource_launcher(
+    dest_exe: Path,
+    resource_rel_path: str,
+    *,
+    env_overrides: Optional[Dict[str, str]] = None,
+    forward_args: bool = True,
+) -> Path:
+    """Create an executable shell wrapper invoking `tools/tests/resources/<resource_rel_path>`."""
+    script_path = (TEST_RESOURCES_DIR / resource_rel_path).resolve()
+    if script_path.suffix == ".sh":
+        shutil.copy2(script_path, dest_exe)
+        dest_exe.chmod(0o755)
+        return dest_exe
+
+    lines = ["#!/bin/sh"]
+    for key, val in (env_overrides or {}).items():
+        lines.append(f"export {key}='{val}'")
+    tail = ' "$@"' if forward_args else ""
+    lines.append(f"exec '{sys.executable}' -u '{script_path}'{tail}")
+    dest_exe.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    dest_exe.chmod(0o755)
+    return dest_exe
+
 
 from device_tests.client import AsyncHostSessionClient, _http_json_sync
 from device_tests.manual import ManualPromptAction, ManualTestHelper
@@ -1009,25 +1043,11 @@ def test_host_test_optional_script_and_scenario_inference(tmp_path: Path) -> Non
     )
 
     smoke_script = tmp_path / "custom_battery_smoke_suite.py"
-    smoke_script.write_text(
-        "import re\n"
-        "from device_tests.client import AsyncHostSessionClient\n"
-        "from device_tests.model import ScenarioTier, device_test\n\n"
-        "@device_test(\n"
-        "    project='cat_detector',\n"
-        "    boards=('rp2040*',),\n"
-        "    scenarios=(ScenarioTier.SMOKE,),\n"
-        "    target_binary='cat_detector_shell',\n"
-        ")\n"
-        "async def test_custom_smoke(host: AsyncHostSessionClient) -> None:\n"
-        "    out = await host.cli('battery status')\n"
-        "    assert re.search(r'Voltage:', out), out\n",
-        encoding="utf-8",
-    )
+    shutil.copy2(TEST_RESOURCES_DIR / "suites" / "custom_battery_smoke_suite.py", smoke_script)
     assert infer_scenario_from_script(smoke_script, WORKSPACE_ROOT) == "smoke"
 
     unknown_script = tmp_path / "plain_helper.py"
-    unknown_script.write_text("async def helper_fn() -> None:\n    return None\n", encoding="utf-8")
+    shutil.copy2(TEST_RESOURCES_DIR / "suites" / "plain_helper.py", unknown_script)
     with pytest.raises(ValueError, match="Could not infer scenario tier"):
         infer_scenario_from_script(unknown_script, WORKSPACE_ROOT)
 
@@ -1540,28 +1560,8 @@ def test_worm_loamy_clitellum_820_concurrent_probe_lock_and_timestamped_cli_test
     runner.elf_path = fake_elf
     runner.is_flashed = True
 
-    mock_rtt_script = (
-        "import os, queue, sys, threading, time\n"
-        "q = queue.Queue()\n"
-        "def _stdin_reader():\n"
-        "    for line in sys.stdin:\n"
-        "        q.put(line.strip())\n"
-        "    os._exit(0)\n"
-        "threading.Thread(target=_stdin_reader, daemon=True).start()\n"
-        "print('RTT Session Started', flush=True)\n"
-        "print('0.023200 INFO [platform::core_monitor] MPU stack guard configured', flush=True)\n"
-        "while True:\n"
-        "    cmd = q.get()\n"
-        "    if cmd == 'sensor status':\n"
-        "        time.sleep(0.25)\n"
-        "        print('0.714500 INFO [controller::shell_controller] received command Sensor', flush=True)\n"
-        "        print('north                                   east                                    west', flush=True)\n"
-        "        print('1098mm                                  INVALID                                 546mm', flush=True)\n"
-        "        print('0.714900 INFO [controller::shell_controller] command execution succeeded', flush=True)\n"
-        "        print('\\x1b[2Kshell> ', flush=True)\n"
-    )
     rtt_proc = sp.Popen(
-        [sys.executable, "-u", "-c", mock_rtt_script],
+        [sys.executable, "-u", str(TEST_RESOURCES_DIR / "mock_rtt_sensor_cli.py")],
         stdin=sp.PIPE,
         stdout=sp.PIPE,
         stderr=sp.STDOUT,
@@ -1739,35 +1739,13 @@ def test_host_test_stress_runs_and_async_cli_prompt_completion(
         target="thumbv6m-none-eabi",
         chip="rp2040",
     )
-    fake_cli = tmp_path / "host_cli_mock"
+    fake_cli = _make_resource_launcher(
+        tmp_path / "host_cli_mock",
+        "mock_rtt_thermal_slow.py",
+        forward_args=False,
+    )
     fake_elf = tmp_path / "cat_detector_shell"
     fake_elf.write_bytes(b"\x7fELF")
-    mock_rtt_py = tmp_path / "mock_rtt.py"
-    mock_rtt_py.write_text(
-        "import json, os, queue, sys, threading, time\n"
-        "q = queue.Queue()\n"
-        "def _reader():\n"
-        "    for line in sys.stdin:\n"
-        "        q.put(line.strip())\n"
-        "    os._exit(0)\n"
-        "threading.Thread(target=_reader, daemon=True).start()\n"
-        "print(json.dumps({'event': 'session_started', 'chip': 'rp2040', 'defmt': True, 'cli_up': True, 'cli_down': True}), flush=True)\n"
-        "print(json.dumps({'event': 'shell_idle', 'epoch': 1}), flush=True)\n"
-        "while True:\n"
-        "    cmd = q.get()\n"
-        "    if cmd == 'thermal status':\n"
-        "        print('\\x1b[2K', flush=True)\n"
-        "        time.sleep(0.45)\n"
-        "        print(json.dumps({'event': 'cli_output', 'text': 'Thermal: 24.8 C'}), flush=True)\n"
-        "        print(json.dumps({'event': 'command_completed', 'success': True, 'error': None, 'device_ts': 0.95}), flush=True)\n"
-        "        print(json.dumps({'event': 'shell_idle', 'epoch': 2}), flush=True)\n",
-        encoding="utf-8",
-    )
-    fake_cli.write_text(
-        f"#!/bin/sh\nexec '{sys.executable}' -u '{mock_rtt_py}'\n",
-        encoding="utf-8",
-    )
-    fake_cli.chmod(0o755)
     runner.host_cli_path = fake_cli
     runner.elf_path = fake_elf
     runner.start_rtt_streaming()
@@ -1777,13 +1755,18 @@ def test_host_test_stress_runs_and_async_cli_prompt_completion(
     finally:
         runner.stop_rtt_streaming()
 
-    # 4. `run_host_fs_query_metadata(..., elf_only=False)` retries transient USB probe timeout errors
+    # 4. `run_host_fs_query_metadata(..., elf_only=False)` retries structured `in_use` / `transient_io` USB status
     probe_attempts: List[int] = []
 
     def _flaky_probe_run(cmd: List[str], **_kwargs: Any) -> sp.CompletedProcess[str]:
         probe_attempts.append(len(probe_attempts) + 1)
         if len(probe_attempts) == 1:
-            return sp.CompletedProcess(cmd, 1, stdout="", stderr='Error: USB(Custom("bulk write timed out"))')
+            return sp.CompletedProcess(
+                cmd,
+                1,
+                stdout='{"connected":false,"interface":"swd_usb","availability":"in_use","in_use":true,"retryable":true,"error":"USB probe in use"}\n',
+                stderr="",
+            )
         return sp.CompletedProcess(
             cmd,
             0,
@@ -2014,42 +1997,11 @@ def test_worm_loamy_clitellum_820_post_host_fs_delayed_rtt_boot_and_json_events(
     )
     fake_elf = tmp_path / "cat_detector_shell"
     fake_elf.write_bytes(b"\x7fELF")
-    fake_cli = tmp_path / "host_cli_json_mock"
-    mock_script = tmp_path / "mock_json_rtt.py"
-
-    # Simulate a 0.6s USB reconnect + 0.35s Board::init() boot where any stdin sent BEFORE
-    # `session_started` + `cli_prompt` is wiped by `core.reset()`, matching WORM-LOAMY-CLITELLUM-820!
-    mock_script.write_text(
-        "import json, os, queue, sys, threading, time\n"
-        "assert '--json-events' in sys.argv, f'Expected --json-events in {sys.argv}'\n"
-        "q = queue.Queue()\n"
-        "def _reader():\n"
-        "    for line in sys.stdin:\n"
-        "        q.put(line.strip())\n"
-        "    os._exit(0)\n"
-        "threading.Thread(target=_reader, daemon=True).start()\n"
-        "time.sleep(0.60)\n"
-        "# Hardware reset wipes any stdin commands sent prematurely before RTT session started!\n"
-        "while not q.empty():\n"
-        "    q.get_nowait()\n"
-        "print(json.dumps({'event': 'session_started', 'chip': 'rp2040', 'defmt': True, 'cli_up': True, 'cli_down': True}), flush=True)\n"
-        "time.sleep(0.30)\n"
-        "print(json.dumps({'event': 'defmt', 'level': 'INFO', 'module': 'platform::core_monitor', 'device_ts': 0.023, 'message': 'MPU stack guard configured', 'formatted': '0.023000 INFO [platform::core_monitor] MPU stack guard configured'}), flush=True)\n"
-        "print(json.dumps({'event': 'shell_idle', 'epoch': 1}), flush=True)\n"
-        "while True:\n"
-        "    cmd = q.get()\n"
-        "    if cmd == 'system activity':\n"
-        "        print(json.dumps({'event': 'defmt', 'level': 'INFO', 'module': 'controller::shell_controller', 'device_ts': 0.412, 'message': 'received command System', 'formatted': '0.412000 INFO [controller::shell_controller] received command System'}), flush=True)\n"
-        "        print(json.dumps({'event': 'cli_output', 'text': 'System activity recorded.'}), flush=True)\n"
-        "        print(json.dumps({'event': 'command_completed', 'success': True, 'error': None, 'device_ts': 0.413}), flush=True)\n"
-        "        print(json.dumps({'event': 'shell_idle', 'epoch': 2}), flush=True)\n",
-        encoding="utf-8",
+    fake_cli = _make_resource_launcher(
+        tmp_path / "host_cli_json_mock",
+        "mock_rtt_delayed_boot.py",
+        forward_args=True,
     )
-    fake_cli.write_text(
-        f"#!/bin/sh\nexec '{sys.executable}' -u '{mock_script}' \"$@\"\n",
-        encoding="utf-8",
-    )
-    fake_cli.chmod(0o755)
 
     runner.host_cli_path = fake_cli
     runner.elf_path = fake_elf
@@ -2210,43 +2162,20 @@ def test_host_py_debug_server_cli_and_single_reset_sync(
     fake_elf = tmp_path / "cat_detector_shell"
     fake_elf.write_bytes(b"\x7fELF")
 
-    # Mock `host_debug` emitting structured `ready` event and recording argv to verify flags
+    # Mock `host_debug`, `host_cli`, and `host_fs` from `tools/tests/resources/`
     dbg_argv_log = tmp_path / "host_debug_argv.json"
-    mock_dbg_py = tmp_path / "mock_host_debug.py"
-    mock_dbg_py.write_text(
-        "import json, os, sys\n"
-        f"open({str(dbg_argv_log)!r}, 'w').write(json.dumps(sys.argv[1:]))\n"
-        "c0 = int(sys.argv[sys.argv.index('--gdb-core0-port') + 1])\n"
-        "c1 = int(sys.argv[sys.argv.index('--gdb-core1-port') + 1])\n"
-        "rtt = int(sys.argv[sys.argv.index('--rtt-bridge-port') + 1])\n"
-        "halted = '--halt-on-reset' in sys.argv\n"
-        "print(json.dumps({'event': 'ready', 'chip': 'rp2040', 'cores': 2, "
-        "'gdb_core0_port': c0, 'gdb_core1_port': c1, 'rtt_bridge_port': rtt, 'halted_on_reset': halted}), flush=True)\n"
-        "sys.stdin.read()\n"
-        "print(json.dumps({'event': 'stopped'}), flush=True)\n",
-        encoding="utf-8",
+    fake_dbg = _make_resource_launcher(
+        tmp_path / "host_debug_mock",
+        "mock_host_debug.py",
+        env_overrides={"XERXES_MOCK_DEBUG_ARGV_LOG": str(dbg_argv_log)},
     )
-    fake_dbg = tmp_path / "host_debug_mock"
-    fake_dbg.write_text(f"#!/bin/sh\nexec '{sys.executable}' -u '{mock_dbg_py}' \"$@\"\n", encoding="utf-8")
-    fake_dbg.chmod(0o755)
-
     cli_argv_log = tmp_path / "host_cli_argv.json"
-    mock_cli_py = tmp_path / "mock_host_cli.py"
-    mock_cli_py.write_text(
-        "import json, sys\n"
-        f"open({str(cli_argv_log)!r}, 'w').write(json.dumps(sys.argv[1:]))\n"
-        "print(json.dumps({'event': 'session_started', 'chip': 'rp2040', 'defmt': True, 'cli_up': True, 'cli_down': True}), flush=True)\n"
-        "print(json.dumps({'event': 'shell_idle', 'epoch': 1}), flush=True)\n"
-        "sys.stdin.read()\n",
-        encoding="utf-8",
+    fake_cli = _make_resource_launcher(
+        tmp_path / "host_cli_mock",
+        "mock_host_cli.py",
+        env_overrides={"XERXES_MOCK_CLI_ARGV_LOG": str(cli_argv_log)},
     )
-    fake_cli = tmp_path / "host_cli_mock"
-    fake_cli.write_text(f"#!/bin/sh\nexec '{sys.executable}' -u '{mock_cli_py}' \"$@\"\n", encoding="utf-8")
-    fake_cli.chmod(0o755)
-
-    fake_fs = tmp_path / "host_fs_mock"
-    fake_fs.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    fake_fs.chmod(0o755)
+    fake_fs = _make_resource_launcher(tmp_path / "host_fs_mock", "mock_host_fs_noop.sh")
 
     runner = DaemonRunner(
         repo_root=tmp_path,
@@ -2347,35 +2276,23 @@ def test_worm_segmented_chrysalis_575_debug_release_symbols_and_active_target_el
     from host_daemon.provider.daemon.config import save_last_session
     from host_daemon.provider.daemon.runner import DaemonRunner
 
-    # 1. `validate_metadata_matches_target` must reject `debug` vs `release` or `shell` vs `app` mismatches
+    # 1. `validate_metadata_matches_target` must reject `debug` vs `release` (`release_build` bool) or `shell` vs `app` mismatches
     base_meta = {
         "checksum": "0x1234",
         "chip": "rp2040",
         "board_type": "rp2040_flash_2mb",
         "program_metadata_board_type": "rp2040_flash_2mb",
         "bin_name": "cat_detector_shell",
-        "build_profile": "release",
+        "release_build": True,
     }
     assert host_meta.validate_metadata_matches_target(base_meta, dict(base_meta)) is True
-    debug_meta = {**base_meta, "build_profile": "debug"}
+    debug_meta = {**base_meta, "release_build": False}
     assert host_meta.validate_metadata_matches_target(base_meta, debug_meta) is False
     app_meta = {**base_meta, "bin_name": "cat_detector_app"}
     assert host_meta.validate_metadata_matches_target(base_meta, app_meta) is False
 
-    # 2. Fake workspace with both `debug` and `release` ELFs to verify `target/active_target.elf` & `host.py debug`
-    fake_repo = tmp_path / "repo"
-    (fake_repo / "app").mkdir(parents=True)
-    (fake_repo / "Cargo.toml").write_text('[workspace]\nmembers = ["app"]\n', encoding="utf-8")
-    (fake_repo / "app" / "Cargo.toml").write_text(
-        '[package]\nname = "cat_detector"\nversion = "0.1.0"\ndefault-run = "cat_detector_shell"\n\n'
-        '[[bin]]\nname = "cat_detector_shell"\npath = "src/main.rs"\n\n'
-        '[[bin]]\nname = "carrier_board_shell"\npath = "src/cb.rs"\n\n'
-        "[package.metadata.binaries.cat_detector_shell]\n"
-        'target = "thumbv6m-none-eabi"\nchip = "rp2040"\nboard = "cat_detector"\n\n'
-        "[package.metadata.binaries.carrier_board_shell]\n"
-        'target = "thumbv8m.main-none-eabihf"\nchip = "MCXN947"\nboard = "carrier_board"\n',
-        encoding="utf-8",
-    )
+    # 2. Fake workspace from `tools/tests/resources/fake_workspace` with both `debug` and `release` ELFs
+    fake_repo = _copy_resource_tree("fake_workspace", tmp_path / "repo")
     target_dir = fake_repo / "target"
     dbg_elf = target_dir / "thumbv6m-none-eabi" / "debug" / "cat_detector_shell"
     rel_elf = target_dir / "thumbv6m-none-eabi" / "release" / "cat_detector_shell"
@@ -2513,9 +2430,10 @@ def test_worm_segmented_chrysalis_575_debug_release_symbols_and_active_target_el
 
 
 def test_host_py_test_explicit_debug_server_and_no_debug_server_flags(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Verify `host.py test --debug-server` and `host.py test --no-debug-server` propagate explicit GDB server mode."""
+    """Verify `host.py test --[no-]debug-server` flags and multi-transport `SWD_USB` / `USB_UART` / `BLE` availability checks."""
     from device_tests.model import DetectedBoard
     from host_daemon import cli as host_cli_mod
 
@@ -2558,14 +2476,68 @@ def test_host_py_test_explicit_debug_server_and_no_debug_server_flags(
     assert "--no-debug-server" in captured_cmds[-1]
     assert "--debug-server" not in captured_cmds[-1]
 
-    from host_daemon.model import metadata as host_meta
+    from host_daemon.model.transport import (
+        InterfaceAvailability,
+        TargetInterfaceType,
+        parse_interface_status_output,
+        query_ble_interface_status,
+        query_usb_uart_port_status,
+    )
     from host_daemon.provider.daemon.config import has_explicit_target_args
 
     assert has_explicit_target_args(["--no-detach", "--no-browser", "--no-debug-server"]) is False
-    assert host_meta._is_transient_metadata_probe_error("Failed to attach as rp2040: Arm(Dap(NoAcknowledge))") is True
-    assert host_meta._is_transient_metadata_probe_error("Error: No debug probes connected") is False
+
+    # Structured `SWD_USB` JSON status parsing (`in_use` vs `disconnected` + `XERXES_REQUIRE_CONNECTED_TARGET`)
+    swd_busy = parse_interface_status_output(
+        '{"interface":"swd_usb","availability":"in_use","in_use":true,"device_count":1,"devices":[{"identifier":"J-Link"}]}'
+    )
+    assert swd_busy is not None
+    assert swd_busy.interface == TargetInterfaceType.SWD_USB
+    assert swd_busy.availability == InterfaceAvailability.IN_USE
+    assert swd_busy.in_use is True
+    assert swd_busy.is_retryable is True
+
+    swd_disc = parse_interface_status_output(
+        '{"interface":"swd_usb","availability":"disconnected","in_use":false,"device_count":0,"devices":[]}'
+    )
+    assert swd_disc is not None
+    assert swd_disc.availability == InterfaceAvailability.DISCONNECTED
+    monkeypatch.delenv("XERXES_REQUIRE_CONNECTED_TARGET", raising=False)
+    assert swd_disc.is_retryable is False
     monkeypatch.setenv("XERXES_REQUIRE_CONNECTED_TARGET", "1")
-    assert host_meta._is_transient_metadata_probe_error("Error: No debug probes connected") is True
+    assert swd_disc.is_retryable is True
+
+    # `USB_UART` non-blocking POSIX lock check (`DISCONNECTED`, `AVAILABLE`, `IN_USE`)
+    missing_uart = query_usb_uart_port_status(tmp_path / "cu.usbserial-missing")
+    assert missing_uart.availability == InterfaceAvailability.DISCONNECTED
+    fake_uart = tmp_path / "cu.usbserial-mock"
+    fake_uart.write_bytes(b"")
+    avail_uart = query_usb_uart_port_status(fake_uart)
+    assert avail_uart.availability == InterfaceAvailability.AVAILABLE
+    if os.name != "nt":
+        import fcntl
+
+        with fake_uart.open("r+b") as locked_fh:
+            fcntl.flock(locked_fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            busy_uart = query_usb_uart_port_status(fake_uart)
+            assert busy_uart.availability == InterfaceAvailability.IN_USE
+            assert busy_uart.in_use is True
+
+    # `BLE` GATT lease status (`DISCONNECTED`, `AVAILABLE`, `IN_USE`)
+    assert query_ble_interface_status(None).availability == InterfaceAvailability.DISCONNECTED
+    assert (
+        query_ble_interface_status(
+            "AA:BB:CC:11:22:33",
+            lease_probe=lambda _a: {"visible": True, "claimed_by_other": False, "name": "Xerxes-NINA"},
+        ).availability
+        == InterfaceAvailability.AVAILABLE
+    )
+    ble_busy = query_ble_interface_status(
+        "AA:BB:CC:11:22:33",
+        lease_probe=lambda _a: {"visible": True, "claimed_by_other": True, "name": "Xerxes-NINA"},
+    )
+    assert ble_busy.availability == InterfaceAvailability.IN_USE
+    assert ble_busy.in_use is True
 
 
 def test_collect_cli_output_ignores_pre_completion_shell_idle_in_json_mode(tmp_path: Path) -> None:
@@ -2581,37 +2553,11 @@ def test_collect_cli_output_ignores_pre_completion_shell_idle_in_json_mode(tmp_p
     )
     fake_elf = tmp_path / "cat_detector_shell"
     fake_elf.write_bytes(b"\x7fELF")
-    fake_cli = tmp_path / "host_cli"
-    mock_rtt_py = tmp_path / "mock_rtt_reconnect.py"
-    mock_rtt_py.write_text(
-        "import json, os, queue, sys, threading, time\n"
-        "q = queue.Queue()\n"
-        "def _reader():\n"
-        "    for line in sys.stdin:\n"
-        "        q.put(line.strip())\n"
-        "    os._exit(0)\n"
-        "threading.Thread(target=_reader, daemon=True).start()\n"
-        "print(json.dumps({'event': 'session_started', 'chip': 'rp2040', 'defmt': True, 'cli_up': True, 'cli_down': True}), flush=True)\n"
-        "print(json.dumps({'event': 'shell_idle', 'epoch': 1}), flush=True)\n"
-        "while True:\n"
-        "    cmd = q.get()\n"
-        "    if cmd == 'battery status':\n"
-        "        # Simulate both a duplicate reconnect epoch=1 and a pre-command idle epoch=2\n"
-        "        # followed by a 0.40s (> CLI_COMPLETION_SETTLE_SEC=0.25s) I2C transaction.\n"
-        "        print(json.dumps({'event': 'shell_idle', 'epoch': 1}), flush=True)\n"
-        "        print(json.dumps({'event': 'shell_idle', 'epoch': 2}), flush=True)\n"
-        "        time.sleep(0.40)\n"
-        "        print(json.dumps({'event': 'cli_output', 'text': 'Battery Status:'}), flush=True)\n"
-        "        print(json.dumps({'event': 'cli_output', 'text': '  Voltage: 4022 mV'}), flush=True)\n"
-        "        print(json.dumps({'event': 'command_completed', 'success': True, 'error': None, 'device_ts': 0.85}), flush=True)\n"
-        "        print(json.dumps({'event': 'shell_idle', 'epoch': 3}), flush=True)\n",
-        encoding="utf-8",
+    fake_cli = _make_resource_launcher(
+        tmp_path / "host_cli",
+        "mock_rtt_reconnect_idle.py",
+        forward_args=False,
     )
-    fake_cli.write_text(
-        f"#!/bin/sh\nexec '{sys.executable}' -u '{mock_rtt_py}'\n",
-        encoding="utf-8",
-    )
-    fake_cli.chmod(0o755)
     runner.host_cli_path = fake_cli
     runner.elf_path = fake_elf
     runner.start_rtt_streaming()
@@ -2971,16 +2917,7 @@ def test_worm_moist_bristle_687_stdlib_sync_symbols_ephemeral_port_isolation_and
     from host_daemon.provider.daemon.runner import DaemonRunner
 
     # 1. `tools/host.py debug sync-symbols` must succeed in a Python environment WITHOUT `pytest` installed!
-    fake_repo = tmp_path / "stdlib_repo"
-    (fake_repo / "app").mkdir(parents=True)
-    (fake_repo / "Cargo.toml").write_text('[workspace]\nmembers = ["app"]\n', encoding="utf-8")
-    (fake_repo / "app" / "Cargo.toml").write_text(
-        '[package]\nname = "cat_detector"\nversion = "0.1.0"\ndefault-run = "cat_detector_shell"\n\n'
-        '[[bin]]\nname = "cat_detector_shell"\npath = "src/main.rs"\n\n'
-        "[package.metadata.binaries.cat_detector_shell]\n"
-        'target = "thumbv6m-none-eabi"\nchip = "rp2040"\nboard = "cat_detector"\n',
-        encoding="utf-8",
-    )
+    fake_repo = _copy_resource_tree("fake_workspace", tmp_path / "stdlib_repo")
     rel_elf = fake_repo / "target" / "thumbv6m-none-eabi" / "release" / "cat_detector_shell"
     rel_elf.parent.mkdir(parents=True, exist_ok=True)
     rel_elf.write_bytes(b"\x7fELF_REL")

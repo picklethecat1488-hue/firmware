@@ -66,10 +66,11 @@ python tools/host.py bug "ToF sensor NACK under motor load" --severity HIGH --ca
 python tools/host.py cli motor speed 100
 python tools/host.py cli battery status
 
-# Inspect or manipulate the target sequential-storage flash filesystem
+# Inspect or manipulate the target sequential-storage flash filesystem & USB probe status
 python tools/host.py fs ls
 python tools/host.py fs cat metadata
 python tools/host.py fs crash-log
+cargo host-fs probe-status --json    # Non-resetting USB probe enumeration & in-use lock check
 
 # Auto-discover board_type via host_fs and run async pytest device suites
 python tools/host.py fs board-type
@@ -160,6 +161,14 @@ tools/anvil verify
 tools/anvil cargo nextest run
 tools/anvil pytest
 ```
+
+### Adding Host Test Resource Artifacts (`tools/tests/resources/`)
+
+Host Python test suites (`tools/tests/`) keep dummy Cargo workspaces, sample `@device_test` modules, and mock `host_cli` / `host_debug` / `host_fs` executables as standalone files under `tools/tests/resources/` rather than embedding inline script strings:
+
+1. **Directory & Manifest Fixtures (`tools/tests/resources/fake_workspace/`, `tools/tests/resources/suites/`)**: Add static `Cargo.toml` manifests or sample `@device_test` Python modules under `tools/tests/resources/` and materialize an isolated per-test copy in `tmp_path` via `_copy_resource_tree("<subdir>", tmp_path / "...")`.
+2. **Executable Mock Tool Scripts (`tools/tests/resources/mock_*.py`, `mock_*.sh`)**: Place mock RTT/CLI/debug tool scripts in `tools/tests/resources/` and wrap them into `tmp_path` via `_make_resource_launcher(tmp_path / "mock_bin", "mock_<name>.py", env_overrides={"XERXES_MOCK_...": str(tmp_path / "out.json")})` so `pytest -n auto` workers remain completely isolated.
+3. **Multi-Transport Target Interface Probing (`tools/host_daemon/model/transport.py`)**: `host.py` determines target availability without brittle stderr substring checks across `SWD_USB` (`cargo host-fs probe-status --json`), `USB_UART` (non-blocking POSIX `flock`), and `BLE` (GATT adapter lease callbacks).
 
 See [Remote Cloud Runner (`anvil` / Vast.ai)](remote_cloud_runner.md) for remote provisioning and reverse-proxied hardware CLI execution (`tools/anvil cli ...`).
 

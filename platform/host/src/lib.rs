@@ -4,6 +4,7 @@ pub mod gdb;
 pub mod metadata;
 pub mod symbolicate;
 pub mod telemetry;
+pub mod transport;
 
 /// Default SWD debug probe clock frequency in kHz (`1000` kHz = 1 MHz).
 pub const DEFAULT_SWD_SPEED_KHZ: u32 = 1000;
@@ -36,3 +37,6 @@ pub use symbolicate::{
     print_crash_dump, resolve_breakpoint_target, symbolicate_addr, SymbolicatedFrame,
 };
 pub use telemetry::{FlashTelemetryParser, TelemetryParser, TraceTelemetryParser};
+pub use transport::{
+    EnumeratedInterfaceDevice, InterfaceAvailability, InterfaceStatusReport, TargetInterfaceKind,
+};
