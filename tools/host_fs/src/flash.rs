@@ -208,6 +208,8 @@ impl ProbeFlash {
             // Reset target CPU after RAM flash loader execution so boot2 restores QSPI XIP mapping.
             if let Ok(mut core) = self.session.core(0) {
                 let _ = core.reset();
+                let _ = core.run();
+                std::thread::sleep(std::time::Duration::from_millis(50));
             }
         }
 

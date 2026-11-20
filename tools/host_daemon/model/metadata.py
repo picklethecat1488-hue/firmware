@@ -56,12 +56,17 @@ def sync_active_target_elf_link(repo_root: Path, elf_path: Optional[Path]) -> Op
 def _is_transient_metadata_probe_error(output: str) -> bool:
     """Return True if `host_fs query_metadata` failed due to a transient USB/SWD probe lock or timeout."""
     lowered = output.lower()
+    if os.environ.get("XERXES_REQUIRE_CONNECTED_TARGET") == "1" and "no debug probes connected" in lowered:
+        return True
     return (
         "bulk write timed out" in lowered
         or "bulk read timed out" in lowered
         or "failed to open probe" in lowered
         or "usb(custom" in lowered
         or "communication timed out" in lowered
+        or "access port or debug port" in lowered
+        or "arm(dap" in lowered
+        or "jaylink" in lowered
     )
 
 

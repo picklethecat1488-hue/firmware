@@ -190,6 +190,7 @@ def has_explicit_target_args(args_list: Optional[List[str]] = None) -> bool:
         "--show-system-logs",
         "--show-logs",
         "--debug-server",
+        "--no-debug-server",
         "--halt-on-reset",
         "--gdb-core0-port",
         "--gdb-port",

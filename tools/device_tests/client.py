@@ -341,6 +341,18 @@ class AsyncHostSessionClient:
                     1.5,
                 )
                 if isinstance(st, dict) and st.get("status") == "running":
+                    if proc.stdout is not None:
+                        import threading
+
+                        def _drain_daemon_stdout(stream: Any) -> None:
+                            for _ in iter(stream.readline, ""):
+                                pass
+
+                        threading.Thread(
+                            target=_drain_daemon_stdout,
+                            args=(proc.stdout,),
+                            daemon=True,
+                        ).start()
                     return cls(
                         repo_root=repo_root,
                         host=host,
