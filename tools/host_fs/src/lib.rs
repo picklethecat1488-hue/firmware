@@ -81,9 +81,9 @@ pub struct Cli {
     #[arg(long)]
     pub size: Option<usize>,
 
-    /// Connect to an existing OpenOCD GDB server session (e.g. "localhost:3333" or "127.0.0.1")
-    #[arg(short = 'o', long)]
-    pub openocd_host: Option<String>,
+    /// Connect via a `host_debug` GDB RSP memory bridge (e.g. "127.0.0.1:50000")
+    #[arg(short = 'b', long)]
+    pub gdb_bridge: Option<String>,
 
     /// Subcommand to run against the dump
     #[command(subcommand)]
@@ -124,4 +124,14 @@ pub enum Commands {
     },
     /// Erase and format the sequential-storage partition on the device
     Format,
+    /// Read and dump the target's `.program_metadata` section (and provisioned `metadata` overrides) to stdout
+    #[command(name = "query_metadata")]
+    QueryMetadata {
+        /// Dump the `.program_metadata` section from `--elf` directly without attaching to a target probe
+        #[arg(long)]
+        elf_only: bool,
+        /// Output structured JSON instead of key-value text
+        #[arg(long)]
+        json: bool,
+    },
 }
