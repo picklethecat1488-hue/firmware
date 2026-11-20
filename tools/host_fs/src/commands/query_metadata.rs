@@ -1,14 +1,15 @@
 //! Read and dump the entire `.program_metadata` section (and provisioned `metadata`
 //! partition overrides) to stdout using section/partition geometry from the target ELF.
 
-use crate::flash::HostFlash;
+use crate::flash::{read_probe_memory_fast, HostFlash};
 use crate::string_to_key;
 use probe_rs::probe::list::Lister;
-use probe_rs::MemoryInterface;
 use std::io;
 use std::path::Path;
 use tool_common::metadata::PartitionInfo;
-use tool_common::{autodetect_project_info, ProjectInfo};
+use tool_common::{
+    autodetect_project_info, normalize_rtt_bridge_addr, ProjectInfo, DEFAULT_SWD_SPEED_KHZ,
+};
 
 /// Map key inside the `metadata` partition that can override compiled `board_type`.
 pub const BOARD_TYPE_MAP_KEY: &str = "board_type";
@@ -21,9 +22,6 @@ const TELEMETRY_PARTITION_KIND: u32 = 1;
 
 /// Partition kind discriminant for the `metadata` (`sequential_storage::map`) partition.
 const METADATA_PARTITION_KIND: u32 = 2;
-
-/// Default SWD clock speed in kHz when attaching `query_metadata` to a target probe.
-const DEFAULT_SWD_SPEED_KHZ: u32 = 1000;
 
 /// Complete decoded `.program_metadata` dump returned by `host_fs query_metadata`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -281,11 +279,7 @@ pub async fn query_from_target(
     }
 
     if let Some(host) = gdb_bridge {
-        let addr = if host.contains(':') {
-            host.to_string()
-        } else {
-            format!("{}:50000", host)
-        };
+        let addr = normalize_rtt_bridge_addr(host);
         let mut gdb = tool_common::GdbClient::connect(&addr)?;
         let mut meta_buf = vec![0u8; prog_read_len];
         gdb.read_mem(elf_info.program_metadata_addr, &mut meta_buf)?;
@@ -317,44 +311,84 @@ pub async fn query_from_target(
     let meta_part_spec = elf_info.metadata_partition().cloned();
     let mut meta_part_buf = vec![0u8; meta_part_spec.as_ref().map(|p| p.size).unwrap_or(0)];
 
-    let part_read_ok = {
+    let (decoded, part_read_ok) = {
         let mut core = session
             .core(0)
             .map_err(|e| format!("Failed to access core 0 on {}: {:?}", elf_info.chip, e))?;
-        let was_running = core.core_halted().map(|h| !h).unwrap_or(true);
-        if was_running {
-            let _ = core.halt(std::time::Duration::from_millis(250));
-        }
-        let prog_res = core
-            .read_8(elf_info.program_metadata_addr, &mut prog_meta_buf)
-            .map_err(|e| {
-                format!(
-                    "Failed to read .program_metadata at 0x{:08X}: {:?}",
-                    elf_info.program_metadata_addr, e
+        // Read non-intrusively over AHB-AP without halting Core 0 so an active
+        // SRAM NOR flash routine (which temporarily disables XIP on RP2040) can
+        // complete and re-enable XIP naturally.
+        read_probe_memory_fast(
+            &mut core,
+            elf_info.program_metadata_addr,
+            &mut prog_meta_buf,
+        )
+        .map_err(|e| {
+            format!(
+                "Failed to read .program_metadata at 0x{:08X}: {:?}",
+                elf_info.program_metadata_addr, e
+            )
+        })?;
+
+        let decoded = match ProjectInfo::decode_bytes(
+            &prog_meta_buf,
+            elf_info.program_metadata_addr,
+            prog_read_len,
+        ) {
+            Ok(info) => info,
+            Err(_) => {
+                // If XIP was momentarily disabled (e.g. mid-flash write or halted
+                // inside SRAM bootrom routines), reset and run briefly so boot2
+                // re-enables XIP before re-reading `.program_metadata`.
+                let _ = core.reset();
+                let _ = core.run();
+                std::thread::sleep(std::time::Duration::from_millis(40));
+                read_probe_memory_fast(
+                    &mut core,
+                    elf_info.program_metadata_addr,
+                    &mut prog_meta_buf,
                 )
-            });
+                .map_err(|e| {
+                    format!(
+                        "Failed to re-read .program_metadata at 0x{:08X}: {:?}",
+                        elf_info.program_metadata_addr, e
+                    )
+                })?;
+                ProjectInfo::decode_bytes(
+                    &prog_meta_buf,
+                    elf_info.program_metadata_addr,
+                    prog_read_len,
+                )
+                .map_err(|e| format!("AttachedTargetMetadataInvalid ({}): {}", elf_info.chip, e))?
+            }
+        };
+
         let r2 = if let Some(ref mp) = meta_part_spec {
-            if !meta_part_buf.is_empty() {
-                core.read_8(mp.address as u64, &mut meta_part_buf).is_ok()
+            let erase_sz = (elf_info.flash_erase_size as usize).max(4096);
+            let mut has_active_sector = false;
+            let mut sec_off = 0usize;
+            while sec_off + 8 <= mp.size {
+                let mut hdr = [0u8; 8];
+                if read_probe_memory_fast(&mut core, mp.address as u64 + sec_off as u64, &mut hdr)
+                    .is_ok()
+                    && hdr != [0xFF; 8]
+                    && hdr != [0x00; 8]
+                {
+                    has_active_sector = true;
+                    break;
+                }
+                sec_off += erase_sz;
+            }
+            if has_active_sector && !meta_part_buf.is_empty() {
+                read_probe_memory_fast(&mut core, mp.address as u64, &mut meta_part_buf).is_ok()
             } else {
                 false
             }
         } else {
             false
         };
-        if was_running {
-            let _ = core.run();
-        }
-        prog_res?;
-        r2
+        (decoded, r2)
     };
-
-    let decoded = ProjectInfo::decode_bytes(
-        &prog_meta_buf,
-        elf_info.program_metadata_addr,
-        prog_read_len,
-    )
-    .map_err(|e| format!("AttachedTargetMetadataInvalid ({}): {}", elf_info.chip, e))?;
 
     if part_read_ok {
         if let Some(override_bt) =

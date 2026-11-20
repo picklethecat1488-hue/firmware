@@ -823,13 +823,28 @@ fn test_cancel_echo_preserves_target_output() {
 }
 
 #[test]
-fn test_structured_json_events_and_cli_chunk_parser() {
+fn test_structured_json_events_rtt_shell_idle_flag_and_cli_chunk_parser() {
     let mut parser = host_cli::CliChunkParser::new();
+    let mut poller = host_cli::ShellIdlePoller::new();
 
-    // 1. Empty `\x1b[2K\r` (`cli.set_prompt("")` when an async command begins) must NOT emit CliPrompt
+    // 1. Encode/decode RTT control flags (`RTT_SHELL_IDLE_FLAG` + 16-bit wrapping epoch)
+    let busy_flags = tool_common::encode_rtt_shell_flags(1, false, 0);
+    assert_eq!(tool_common::decode_rtt_shell_flags(busy_flags), (false, 0));
+    assert_eq!(poller.poll(busy_flags, true, true), None);
+
+    let idle_epoch1 = tool_common::encode_rtt_shell_flags(1, true, 1);
+    assert_eq!(tool_common::decode_rtt_shell_flags(idle_epoch1), (true, 1));
+    // Must wait until both `cli_up` and `cli_down` ring buffers are empty before reporting idle!
+    assert_eq!(poller.poll(idle_epoch1, false, true), None);
+    assert_eq!(poller.poll(idle_epoch1, true, false), None);
+    assert_eq!(poller.poll(idle_epoch1, true, true), Some(1));
+    // Polling the same epoch again does not emit a duplicate idle event.
+    assert_eq!(poller.poll(idle_epoch1, true, true), None);
+
+    // 2. Empty `\x1b[2K\r` (`cli.set_prompt("")` when an async command begins) produces no events
     assert!(parser.push_bytes(b"\x1b[2K\r").is_empty());
 
-    // 2. Partial line split across RTT chunks + trailing `\x1b[2Kshell> ` WITHOUT newline
+    // 3. Partial line split across RTT chunks + `\x1b[2K\r\n<prompt>` followed by RTT idle flag epoch 2
     let ev1 = parser.push_bytes(b"Battery Status:\r\n  Voltage: 40");
     assert_eq!(
         ev1,
@@ -838,18 +853,25 @@ fn test_structured_json_events_and_cli_chunk_parser() {
         }]
     );
 
-    let ev2 = parser.push_bytes(b"22 mV\r\n\x1b[2Kshell> ");
+    let ev2 = parser.push_bytes(b"22 mV\r\n\x1b[2K\r\nshell> ");
     assert_eq!(
         ev2,
-        vec![
-            host_cli::HostCliEvent::CliOutput {
-                text: "  Voltage: 4022 mV".to_string()
-            },
-            host_cli::HostCliEvent::CliPrompt,
-        ]
+        vec![host_cli::HostCliEvent::CliOutput {
+            text: "  Voltage: 4022 mV".to_string()
+        }]
     );
 
-    // 3. Verify `detect_shell_completion_event` and JSON serialization
+    let idle_epoch2 = tool_common::encode_rtt_shell_flags(1, true, 2);
+    let epoch = poller
+        .poll(idle_epoch2, true, true)
+        .expect("epoch 2 must trigger ShellIdle");
+    let idle_ev = parser.on_shell_idle(epoch);
+    assert_eq!(idle_ev, host_cli::HostCliEvent::ShellIdle { epoch: 2 });
+    let idle_json: serde_json::Value = serde_json::from_str(&idle_ev.to_json_line()).unwrap();
+    assert_eq!(idle_json["event"], "shell_idle");
+    assert_eq!(idle_json["epoch"], 2);
+
+    // 4. Verify `detect_shell_completion_event` and JSON serialization
     let ok_ev = host_cli::detect_shell_completion_event(
         "0.412300 INFO command execution succeeded",
         Some(0.4123),

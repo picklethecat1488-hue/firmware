@@ -1618,22 +1618,23 @@ def test_host_test_stress_runs_and_async_cli_prompt_completion(
     fake_elf.write_bytes(b"\x7fELF")
     mock_rtt_py = tmp_path / "mock_rtt.py"
     mock_rtt_py.write_text(
-        "import os, queue, sys, threading, time\n"
+        "import json, os, queue, sys, threading, time\n"
         "q = queue.Queue()\n"
         "def _reader():\n"
         "    for line in sys.stdin:\n"
         "        q.put(line.strip())\n"
         "    os._exit(0)\n"
         "threading.Thread(target=_reader, daemon=True).start()\n"
-        "print('RTT Session Started', flush=True)\n"
+        "print(json.dumps({'event': 'session_started', 'chip': 'rp2040', 'defmt': True, 'cli_up': True, 'cli_down': True}), flush=True)\n"
+        "print(json.dumps({'event': 'shell_idle', 'epoch': 1}), flush=True)\n"
         "while True:\n"
         "    cmd = q.get()\n"
         "    if cmd == 'thermal status':\n"
         "        print('\\x1b[2K', flush=True)\n"
         "        time.sleep(0.45)\n"
-        "        print('Thermal: 24.8 C', flush=True)\n"
-        "        print('0.950000 INFO [controller::shell_controller] command execution succeeded', flush=True)\n"
-        "        print('\\x1b[2Kshell> ', flush=True)\n",
+        "        print(json.dumps({'event': 'cli_output', 'text': 'Thermal: 24.8 C'}), flush=True)\n"
+        "        print(json.dumps({'event': 'command_completed', 'success': True, 'error': None, 'device_ts': 0.95}), flush=True)\n"
+        "        print(json.dumps({'event': 'shell_idle', 'epoch': 2}), flush=True)\n",
         encoding="utf-8",
     )
     fake_cli.write_text(
@@ -1715,9 +1716,10 @@ def test_symbolic_test_debugging_dap_breakpoint_and_vscode_config(
     for cfg in launch_cfg.get("configurations", []):
         assert cfg.get("servertype") != "openocd", f"Legacy OpenOCD config must be removed: {cfg['name']}"
         if cfg.get("type") == "cortex-debug":
-            assert cfg.get("overrideRestartCommands") == ["monitor reset halt", "flushregs"], (
-                f"cortex-debug config {cfg['name']!r} must flush GDB register cache after monitor reset halt"
-            )
+            assert cfg.get("overrideRestartCommands") == [
+                "monitor reset halt",
+                "maintenance flush register-cache",
+            ], f"cortex-debug config {cfg['name']!r} must flush GDB register cache after monitor reset halt"
         pre_task = cfg.get("preLaunchTask")
         if pre_task:
             assert pre_task in defined_tasks, f"Missing preLaunchTask {pre_task!r} in .vscode/tasks.json"
@@ -1907,14 +1909,14 @@ def test_worm_loamy_clitellum_820_post_host_fs_delayed_rtt_boot_and_json_events(
         "print(json.dumps({'event': 'session_started', 'chip': 'rp2040', 'defmt': True, 'cli_up': True, 'cli_down': True}), flush=True)\n"
         "time.sleep(0.30)\n"
         "print(json.dumps({'event': 'defmt', 'level': 'INFO', 'module': 'platform::core_monitor', 'device_ts': 0.023, 'message': 'MPU stack guard configured', 'formatted': '0.023000 INFO [platform::core_monitor] MPU stack guard configured'}), flush=True)\n"
-        "print(json.dumps({'event': 'cli_prompt'}), flush=True)\n"
+        "print(json.dumps({'event': 'shell_idle', 'epoch': 1}), flush=True)\n"
         "while True:\n"
         "    cmd = q.get()\n"
         "    if cmd == 'system activity':\n"
         "        print(json.dumps({'event': 'defmt', 'level': 'INFO', 'module': 'controller::shell_controller', 'device_ts': 0.412, 'message': 'received command System', 'formatted': '0.412000 INFO [controller::shell_controller] received command System'}), flush=True)\n"
         "        print(json.dumps({'event': 'cli_output', 'text': 'System activity recorded.'}), flush=True)\n"
         "        print(json.dumps({'event': 'command_completed', 'success': True, 'error': None, 'device_ts': 0.413}), flush=True)\n"
-        "        print(json.dumps({'event': 'cli_prompt'}), flush=True)\n",
+        "        print(json.dumps({'event': 'shell_idle', 'epoch': 2}), flush=True)\n",
         encoding="utf-8",
     )
     fake_cli.write_text(
@@ -2108,7 +2110,7 @@ def test_host_py_debug_server_cli_and_single_reset_sync(
         "import json, sys\n"
         f"open({str(cli_argv_log)!r}, 'w').write(json.dumps(sys.argv[1:]))\n"
         "print(json.dumps({'event': 'session_started', 'chip': 'rp2040', 'defmt': True, 'cli_up': True, 'cli_down': True}), flush=True)\n"
-        "print(json.dumps({'event': 'cli_prompt'}), flush=True)\n"
+        "print(json.dumps({'event': 'shell_idle', 'epoch': 1}), flush=True)\n"
         "sys.stdin.read()\n",
         encoding="utf-8",
     )

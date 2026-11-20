@@ -1,12 +1,10 @@
-//! Structured NDJSON event protocol and stateful RTT CLI chunk parser for `host_cli --json-events`.
+//! Structured NDJSON event protocol, RTT shell-idle flag poller, and CLI chunk parser for `host_cli --json-events`.
 
 use serde_json::json;
+use tool_common::decode_rtt_shell_flags;
 
-/// ANSI erase-line control sequence emitted by `embedded-cli` before redrawing prompts.
+/// ANSI erase-line control sequence emitted by `embedded-cli` when redrawing its input/prompt line.
 pub const ANSI_CLEAR_LINE: &str = "\x1b[2K";
-
-/// Canonical embedded shell prompt token.
-pub const SHELL_PROMPT_TOKEN: &str = "shell>";
 
 /// Structured single-line JSON event emitted by `host_cli --json-events` on stdout.
 #[derive(Clone, Debug, PartialEq)]
@@ -35,13 +33,16 @@ pub enum HostCliEvent {
         /// Colorized / namespace-annotated display string for UI log streams.
         formatted: String,
     },
-    /// Complete target CLI output line (excluding shell prompts and empty clears).
+    /// Complete target CLI output line (excluding line-editor redraws).
     CliOutput {
         /// Cleaned single line of CLI output text.
         text: String,
     },
-    /// Emitted immediately whenever the target shell restores its `shell> ` prompt.
-    CliPrompt,
+    /// Emitted when the target's RTT control flag (`RTT_SHELL_IDLE_FLAG`) indicates the shell is idle.
+    ShellIdle {
+        /// Wrapping 16-bit idle-transition epoch read from `_SEGGER_RTT.down_channels[0].flags`.
+        epoch: u16,
+    },
     /// Emitted when `controller::shell_controller` logs synchronous or async command completion.
     CommandCompleted {
         /// True when the command succeeded, false when `command execution failed` was logged.
@@ -92,8 +93,9 @@ impl HostCliEvent {
                 "event": "cli_output",
                 "text": text,
             }),
-            Self::CliPrompt => json!({
-                "event": "cli_prompt",
+            Self::ShellIdle { epoch } => json!({
+                "event": "shell_idle",
+                "epoch": epoch,
             }),
             Self::CommandCompleted {
                 success,
@@ -153,10 +155,49 @@ pub fn detect_shell_completion_event(
     None
 }
 
-/// Stateful line & prompt parser assembling arbitrary RTT CLI byte chunks into [`HostCliEvent`]s.
+/// Stateful poller tracking `_SEGGER_RTT.down_channels[0].flags` idle transitions and epochs.
+#[derive(Default, Debug, Clone)]
+pub struct ShellIdlePoller {
+    last_emitted_epoch: Option<u16>,
+}
+
+impl ShellIdlePoller {
+    /// Construct a new [`ShellIdlePoller`].
+    pub fn new() -> Self {
+        Self {
+            last_emitted_epoch: None,
+        }
+    }
+
+    /// Evaluate the raw 32-bit `down_channels[0].flags` word alongside `cli_up_empty` and `cli_down_empty`.
+    ///
+    /// Emits `Some(epoch)` strictly once per idle epoch after both up and down CLI ring buffers are drained.
+    pub fn poll(
+        &mut self,
+        down_flags: u32,
+        cli_up_empty: bool,
+        cli_down_empty: bool,
+    ) -> Option<u16> {
+        if !cli_up_empty || !cli_down_empty {
+            return None;
+        }
+        let (is_idle, epoch) = decode_rtt_shell_flags(down_flags);
+        if !is_idle {
+            return None;
+        }
+        if self.last_emitted_epoch == Some(epoch) {
+            return None;
+        }
+        self.last_emitted_epoch = Some(epoch);
+        Some(epoch)
+    }
+}
+
+/// Stateful line parser assembling arbitrary RTT CLI byte chunks into [`HostCliEvent::CliOutput`] lines.
 #[derive(Default, Debug)]
 pub struct CliChunkParser {
     pending: String,
+    in_editor_redraw: bool,
 }
 
 impl CliChunkParser {
@@ -164,10 +205,11 @@ impl CliChunkParser {
     pub fn new() -> Self {
         Self {
             pending: String::new(),
+            in_editor_redraw: false,
         }
     }
 
-    /// Push echo-cancelled RTT CLI bytes and return any completed output line and prompt events.
+    /// Push echo-cancelled RTT CLI bytes and return completed [`HostCliEvent::CliOutput`] events.
     pub fn push_bytes(&mut self, bytes: &[u8]) -> Vec<HostCliEvent> {
         if bytes.is_empty() {
             return Vec::new();
@@ -177,45 +219,51 @@ impl CliChunkParser {
 
         while let Some(nl_pos) = self.pending.find('\n') {
             let raw_line: String = self.pending.drain(..=nl_pos).collect();
+            let had_clear = raw_line.contains(ANSI_CLEAR_LINE);
             let cleaned = raw_line
                 .trim_end_matches(['\r', '\n'])
                 .replace(ANSI_CLEAR_LINE, "");
-            let trimmed = cleaned.trim();
-            if trimmed.is_empty() {
+            if self.in_editor_redraw {
+                self.in_editor_redraw = false;
                 continue;
             }
-            if trimmed == SHELL_PROMPT_TOKEN {
-                events.push(HostCliEvent::CliPrompt);
-            } else if let Some(after_prompt) = cleaned
-                .strip_prefix("shell> ")
-                .or_else(|| cleaned.strip_prefix(SHELL_PROMPT_TOKEN))
-            {
-                events.push(HostCliEvent::CliPrompt);
-                if !after_prompt.trim().is_empty() {
-                    events.push(HostCliEvent::CliOutput {
-                        text: after_prompt.to_string(),
-                    });
-                }
-            } else {
-                events.push(HostCliEvent::CliOutput { text: cleaned });
+            if had_clear && cleaned.trim().is_empty() {
+                // `embedded-cli` emits `\x1b[2K\r\n<prompt>` when drawing a multi-char prompt:
+                // mark the unterminated tail immediately following `\x1b[2K\r\n` as editor redraw.
+                self.in_editor_redraw = true;
+                continue;
             }
+            if cleaned.trim().is_empty() {
+                continue;
+            }
+            events.push(HostCliEvent::CliOutput { text: cleaned });
         }
 
-        let unescaped_tail = self.pending.replace(ANSI_CLEAR_LINE, "").replace('\r', "");
-        if unescaped_tail.is_empty() {
-            // Empty `\x1b[2K\r` (`cli.set_prompt("")` when an async command begins): drop without prompt event!
-            self.pending.clear();
-        } else if unescaped_tail == "shell> " || unescaped_tail == SHELL_PROMPT_TOKEN {
-            self.pending.clear();
-            events.push(HostCliEvent::CliPrompt);
+        if self.pending.contains(ANSI_CLEAR_LINE) {
+            let stripped = self.pending.replace(ANSI_CLEAR_LINE, "").replace('\r', "");
+            if stripped.is_empty() {
+                self.pending.clear();
+            } else {
+                self.in_editor_redraw = true;
+            }
         }
 
         events
     }
 
-    /// Flush any trailing non-empty partial line on session teardown.
+    /// Discard any unterminated prompt redraw sitting in `pending` when `ShellIdlePoller` observes idle,
+    /// and return the structured [`HostCliEvent::ShellIdle`] event.
+    pub fn on_shell_idle(&mut self, epoch: u16) -> HostCliEvent {
+        self.pending.clear();
+        self.in_editor_redraw = false;
+        HostCliEvent::ShellIdle { epoch }
+    }
+
+    /// Flush any trailing non-empty output line on session teardown.
     pub fn flush_remaining(&mut self) -> Vec<HostCliEvent> {
-        if self.pending.is_empty() {
+        if self.pending.is_empty() || self.in_editor_redraw {
+            self.pending.clear();
+            self.in_editor_redraw = false;
             return Vec::new();
         }
         let cleaned = std::mem::take(&mut self.pending)
@@ -224,8 +272,6 @@ impl CliChunkParser {
             .to_string();
         if cleaned.trim().is_empty() {
             Vec::new()
-        } else if cleaned.trim() == SHELL_PROMPT_TOKEN {
-            vec![HostCliEvent::CliPrompt]
         } else {
             vec![HostCliEvent::CliOutput { text: cleaned }]
         }

@@ -8,7 +8,7 @@ This guide covers toolchain prerequisites, host-based unit testing, embedded tar
 
 ### Rust Toolchain & Debug Probe Utilities
 
-Install the target Cortex-M toolchains and `probe-rs` for SWD/JTAG flashing, RTT `defmt` streaming, and debugging:
+Install the target Cortex-M toolchains and `probe-rs` for SWD/JTAG flashing, RTT `defmt` streaming, and debugging (see [Microcontroller Decoupling & BSPs](mcu_decoupling.md) for the step-by-step checklist on adding support for a new processor in `host.py` and `host_debug`):
 
 ```bash
 rustup target add thumbv6m-none-eabi          # Cortex-M0+ (RP2040)

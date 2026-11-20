@@ -12,7 +12,7 @@
       "device": "RP2040",
       "overrideRestartCommands": [
         "monitor reset halt",
-        "flushregs"
+        "maintenance flush register-cache"
       ],
       "sourceFileMap": {
         "firmware": "${workspaceFolder}"
@@ -29,7 +29,7 @@
       "device": "RP2040",
       "overrideRestartCommands": [
         "monitor reset halt",
-        "flushregs"
+        "maintenance flush register-cache"
       ],
       "sourceFileMap": {
         "firmware": "${workspaceFolder}"
@@ -46,7 +46,7 @@
       "device": "RP2040",
       "overrideRestartCommands": [
         "monitor reset halt",
-        "flushregs"
+        "maintenance flush register-cache"
       ],
       "sourceFileMap": {
         "firmware": "${workspaceFolder}"
@@ -63,7 +63,7 @@
       "device": "RP2040",
       "overrideRestartCommands": [
         "monitor reset halt",
-        "flushregs"
+        "maintenance flush register-cache"
       ],
       "sourceFileMap": {
         "firmware": "${workspaceFolder}"
@@ -80,7 +80,7 @@
       "device": "MCXN947",
       "overrideRestartCommands": [
         "monitor reset halt",
-        "flushregs"
+        "maintenance flush register-cache"
       ],
       "sourceFileMap": {
         "firmware": "${workspaceFolder}"
