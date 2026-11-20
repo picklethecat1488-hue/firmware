@@ -184,6 +184,7 @@ def parse_program_metadata_output(raw_output: str) -> Optional[Dict[str, Any]]:
             "provisioned_board_type": kv.get("provisioned_board_type"),
             "bin_name": kv.get("bin_name"),
             "build_profile": kv.get("build_profile"),
+            "trace_mode": kv.get("trace_mode"),
             "source": kv.get("source", "program_metadata"),
         }
     return None
@@ -218,6 +219,11 @@ def validate_metadata_matches_target(
     dev_prof = str(device_meta.get("build_profile") or "").strip().lower()
     tgt_prof = str(target_meta.get("build_profile") or "").strip().lower()
     if dev_prof and tgt_prof and dev_prof != tgt_prof:
+        return False
+
+    dev_tmode = str(device_meta.get("trace_mode") or "").strip().lower()
+    tgt_tmode = str(target_meta.get("trace_mode") or "").strip().lower()
+    if dev_tmode and tgt_tmode and dev_tmode != tgt_tmode:
         return False
 
     for scalar_field in ("flash_start", "flash_write_size", "flash_erase_size", "stack_scan_limit"):

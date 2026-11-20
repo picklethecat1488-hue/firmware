@@ -14,6 +14,26 @@ export const DEFAULT_BOOT_CONFIG_ID = "app-boot-config";
 const DEFAULT_VIEWPORT_WIDTH_PX = 1280;
 const DEFAULT_VIEWPORT_HEIGHT_PX = 800;
 const DEFAULT_FRAME_DT_MS = 16.6667;
+const PERFETTO_UI_ORIGIN = "https://ui.perfetto.dev";
+const PERFETTO_PING_INTERVAL_MS = 100;
+const PERFETTO_HANDSHAKE_TIMEOUT_MS = 12000;
+
+/**
+ * Normalize a trace payload (`ArrayBuffer`, `Uint8Array`, or UTF-8 string) into an `ArrayBuffer`.
+ *
+ * @param {ArrayBuffer|Uint8Array|string} payload - Trace payload.
+ * @returns {ArrayBuffer}
+ */
+function toTraceArrayBuffer(payload) {
+  if (payload instanceof ArrayBuffer) {
+    return payload;
+  }
+  if (ArrayBuffer.isView(payload)) {
+    return payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength);
+  }
+  const encoded = new globalThis.TextEncoder().encode(String(payload ?? ""));
+  return encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength);
+}
 
 /**
  * Create an in-memory key-value store matching the Web Storage API.
@@ -405,6 +425,106 @@ export function createBrowserRuntimeContext() {
       if (typeof globalThis.open === "function") {
         globalThis.open(url, target, "noopener,noreferrer");
       }
+    },
+
+    /**
+     * Open a Perfetto JSON trace directly inside `https://ui.perfetto.dev` via `PING`/`PONG` `postMessage`,
+     * falling back to `https://ui.perfetto.dev/#!/?url=<fallbackUrl>` if popup scripting is unavailable.
+     *
+     * @param {{buffer: ArrayBuffer|Uint8Array|string, title?: string, fileName?: string, fallbackUrl?: string}} [options]
+     * @returns {Promise<boolean>} True if pushed over `postMessage` or opened via fallback URL.
+     */
+    openPerfettoTrace(options = {}) {
+      const title = String(options.title || "Firmware Perfetto Trace");
+      const fileName = String(options.fileName || "trace.perfetto.json");
+      const fallbackUrl = String(options.fallbackUrl || "");
+      const arrayBuffer = toTraceArrayBuffer(options.buffer ?? "");
+
+      if (typeof globalThis.open !== "function") {
+        return Promise.resolve(false);
+      }
+
+      const win = globalThis.open(PERFETTO_UI_ORIGIN);
+      if (!win) {
+        if (fallbackUrl) {
+          ctx.openExternalUrl(`${PERFETTO_UI_ORIGIN}/#!/?url=${encodeURIComponent(fallbackUrl)}`);
+          return Promise.resolve(true);
+        }
+        return Promise.resolve(false);
+      }
+
+      return new Promise((resolve) => {
+        let settled = false;
+        let pingHandle = null;
+        let timeoutHandle = null;
+
+        const cleanup = () => {
+          if (pingHandle !== null) {
+            globalThis.clearInterval(pingHandle);
+            pingHandle = null;
+          }
+          if (timeoutHandle !== null) {
+            globalThis.clearTimeout(timeoutHandle);
+            timeoutHandle = null;
+          }
+          if (typeof globalThis.removeEventListener === "function") {
+            globalThis.removeEventListener("message", onMessage);
+          }
+        };
+
+        const onMessage = (evt) => {
+          if (settled || evt.origin !== PERFETTO_UI_ORIGIN || evt.data !== "PONG") {
+            return;
+          }
+          settled = true;
+          cleanup();
+          win.postMessage(
+            {
+              perfetto: {
+                buffer: arrayBuffer,
+                title,
+                fileName,
+              },
+            },
+            PERFETTO_UI_ORIGIN,
+          );
+          resolve(true);
+        };
+
+        if (typeof globalThis.addEventListener === "function") {
+          globalThis.addEventListener("message", onMessage);
+        }
+
+        pingHandle = globalThis.setInterval(() => {
+          if (win.closed) {
+            settled = true;
+            cleanup();
+            resolve(false);
+            return;
+          }
+          win.postMessage("PING", PERFETTO_UI_ORIGIN);
+        }, PERFETTO_PING_INTERVAL_MS);
+
+        timeoutHandle = globalThis.setTimeout(() => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          cleanup();
+          if (fallbackUrl && !win.closed && win.location) {
+            try {
+              win.location.href = `${PERFETTO_UI_ORIGIN}/#!/?url=${encodeURIComponent(fallbackUrl)}`;
+              resolve(true);
+              return;
+            } catch {
+              // Cross-origin navigation blocked; leave opened tab as-is.
+            }
+          }
+          resolve(false);
+        }, PERFETTO_HANDSHAKE_TIMEOUT_MS);
+
+        win.postMessage("PING", PERFETTO_UI_ORIGIN);
+      });
     },
 
     /**
@@ -1216,6 +1336,7 @@ export function createMockRuntimeContext(overrides = {}) {
   const parentMessages = [];
   const downloads = [];
   const openedUrls = [];
+  const openedPerfettoTraces = [];
   const historyEntries = [];
   let copiedText = "";
   let clockMs = overrides.initialTimeMs ?? 1000;
@@ -1489,6 +1610,18 @@ export function createMockRuntimeContext(overrides = {}) {
       openedUrls.push({ url, target });
     },
 
+    async openPerfettoTrace(options = {}) {
+      const arrayBuffer = toTraceArrayBuffer(options.buffer ?? "");
+      openedPerfettoTraces.push({
+        title: String(options.title || "Firmware Perfetto Trace"),
+        fileName: String(options.fileName || "trace.perfetto.json"),
+        fallbackUrl: String(options.fallbackUrl || ""),
+        byteLength: arrayBuffer.byteLength,
+        buffer: arrayBuffer,
+      });
+      return overrides.perfettoOpenResult !== false;
+    },
+
     postParentMessage(message, targetOrigin = "*") {
       parentMessages.push({ message, targetOrigin });
     },
@@ -1552,6 +1685,7 @@ export function createMockRuntimeContext(overrides = {}) {
     parentMessages,
     downloads,
     openedUrls,
+    openedPerfettoTraces,
     historyEntries,
     rafQueue,
   };

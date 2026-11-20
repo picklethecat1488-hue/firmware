@@ -1,9 +1,15 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, punctuated::Punctuated, ItemFn, Meta, Token};
+use syn::{parse_macro_input, parse_quote, punctuated::Punctuated, ItemFn, Meta, Token};
 
 /// Procedural macro wrapper for function instrumentation.
+///
+/// Supports an optional `domain = "sensor" | "audio" | "perf"` attribute argument:
+/// - Default (`perf`): emits `::tracing_defmt::instrument` gated on `feature = "trace-perf"`.
+/// - `domain = "sensor"`: gates span emission on `feature = "trace-sensor-spans"` so `PERF`
+///   mode excludes sensor polling spans while keeping AST instrumentation attributes intact.
+/// - `domain = "audio"`: gates span emission on `feature = "trace-audio"`.
 #[proc_macro_attribute]
 pub fn instrument(args: TokenStream, item: TokenStream) -> TokenStream {
     let args_parsed = if args.is_empty() {
@@ -12,10 +18,11 @@ pub fn instrument(args: TokenStream, item: TokenStream) -> TokenStream {
         parse_macro_input!(args with Punctuated::<Meta, Token![,]>::parse_terminated)
     };
 
-    let item_fn = parse_macro_input!(item as ItemFn);
+    let mut item_fn = parse_macro_input!(item as ItemFn);
     let fn_name = item_fn.sig.ident.to_string();
 
     let mut custom_name = None;
+    let mut custom_domain = None;
     let mut other_args = Vec::new();
 
     for meta in args_parsed {
@@ -43,10 +50,26 @@ pub fn instrument(args: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 }
             }
+        } else if path.is_ident("domain") {
+            if let Meta::NameValue(nv) = &meta {
+                if let syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Str(lit),
+                    ..
+                }) = &nv.value
+                {
+                    custom_domain = Some(lit.value());
+                }
+            }
         } else {
             other_args.push(meta);
         }
     }
+
+    let feature_gate = match custom_domain.as_deref() {
+        Some("sensor") => "trace-sensor-spans",
+        Some("audio") => "trace-audio",
+        _ => "trace-perf",
+    };
 
     let name_val = custom_name.unwrap_or(fn_name);
     let other_args_tokens: Vec<proc_macro2::TokenStream> =
@@ -62,20 +85,27 @@ pub fn instrument(args: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
+    let core0_prefixed_name = format!("Core 0: {}", name_val);
+
+    if item_fn.sig.constness.is_none() {
+        let host_guard_stmt: syn::Stmt = parse_quote! {
+            #[cfg(all(not(all(target_arch = "arm", target_os = "none")), feature = #feature_gate))]
+            let _host_trace_span_guard = ::platform::tracing::HostSpanGuard::enter(#core0_prefixed_name, module_path!());
+        };
+        item_fn.block.stmts.insert(0, host_guard_stmt);
+    }
+
     if is_core1 {
         let core1_prefixed_name = format!("Core 1: {}", name_val);
-        let core0_prefixed_name = format!("Core 0: {}", name_val);
 
         quote! {
-            #[cfg_attr(all(feature = "tracing", target_arch = "arm"), ::tracing_defmt::instrument(name = #core1_prefixed_name, #(#other_args_tokens),*))]
-            #[cfg_attr(all(feature = "tracing", not(target_arch = "arm")), ::tracing_defmt::instrument(name = #core0_prefixed_name, #(#other_args_tokens),*))]
+            #[cfg_attr(all(feature = #feature_gate, target_arch = "arm"), ::tracing_defmt::instrument(name = #core1_prefixed_name, #(#other_args_tokens),*))]
+            #[cfg_attr(all(feature = #feature_gate, not(target_arch = "arm")), ::tracing_defmt::instrument(name = #core0_prefixed_name, #(#other_args_tokens),*))]
             #item_fn
         }
     } else {
-        let core0_prefixed_name = format!("Core 0: {}", name_val);
-
         quote! {
-            #[cfg_attr(feature = "tracing", ::tracing_defmt::instrument(name = #core0_prefixed_name, #(#other_args_tokens),*))]
+            #[cfg_attr(feature = #feature_gate, ::tracing_defmt::instrument(name = #core0_prefixed_name, #(#other_args_tokens),*))]
             #item_fn
         }
     }

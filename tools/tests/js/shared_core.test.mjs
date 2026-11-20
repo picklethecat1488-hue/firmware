@@ -152,5 +152,17 @@ describe("Shared Core Modules (Sanitize, ANSI, Fuzzy, UI Scale, Progress, DOM)",
     const confirmPromise = showConfirmModal(ctx, { title: "Discard?", message: "Sure?" });
     ctx.emitViewportEvent("keydown", { key: "Enter" });
     assert.equal(await confirmPromise, true);
+
+    const openedTrace = await ctx.openPerfettoTrace({
+      buffer: '{"traceEvents":[]}',
+      title: "Cat Detector Perf",
+      fileName: "cat_detector.perfetto.json",
+      fallbackUrl: "http://127.0.0.1:8899/api/trace/perfetto.json",
+    });
+    assert.equal(openedTrace, true);
+    assert.equal(ctx.openedPerfettoTraces.length, 1);
+    assert.equal(ctx.openedPerfettoTraces[0].title, "Cat Detector Perf");
+    assert.equal(ctx.openedPerfettoTraces[0].fileName, "cat_detector.perfetto.json");
+    assert.ok(ctx.openedPerfettoTraces[0].byteLength > 0);
   });
 });

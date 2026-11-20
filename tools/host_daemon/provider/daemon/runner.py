@@ -20,8 +20,16 @@ from host_daemon.model.metadata import (
     probe_attached_target_metadata,
     sync_active_target_elf_link,
 )
+from host_daemon.model.trace_mode import (
+    TraceMode,
+    get_cargo_feature_args,
+    get_external_trace_viewer,
+    normalize_trace_mode,
+)
 from host_daemon.provider.daemon.config import discover_target_packages, save_last_session
+from host_daemon.provider.daemon.rerun_bridge import open_trace_in_rerun
 from host_daemon.provider.daemon.test_manager import DeviceTestRunnerManager
+from host_daemon.provider.daemon.trace_store import TraceSessionStore
 
 RTT_STDIN_SHUTDOWN_TIMEOUT_SEC: float = 2.5
 RTT_TERMINATE_TIMEOUT_SEC: float = 2.0
@@ -93,6 +101,7 @@ class DaemonRunner:
         gdb_core1_port: int = DEFAULT_GDB_CORE1_PORT,
         rtt_bridge_port: int = DEFAULT_RTT_BRIDGE_PORT,
         probe_selector: Optional[str] = None,
+        trace_mode: Optional[str] = None,
     ) -> None:
         """Initialize DaemonRunner with workspace configuration and build parameters."""
         self.repo_root = repo_root
@@ -134,6 +143,7 @@ class DaemonRunner:
         self.gdb_core1_port: int = int(gdb_core1_port)
         self.rtt_bridge_port: int = int(rtt_bridge_port)
         self.probe_selector: Optional[str] = probe_selector
+        self.trace_mode: TraceMode = normalize_trace_mode(trace_mode)
 
         self.elf_path: Optional[Path] = self.resolve_current_elf_path()
         if self.elf_path is not None:
@@ -143,6 +153,7 @@ class DaemonRunner:
         self.host_debug_path: Optional[Path] = None
         self.manual_prompt = ManualPromptState()
         self.test_manager = DeviceTestRunnerManager(self)
+        self.trace_store = TraceSessionStore()
         self._streams_live_cli: bool = True
 
         self.active_mode: str = "CLI"
@@ -199,6 +210,7 @@ class DaemonRunner:
             "package": self.package,
             "bin": self.bin_name,
             "profile": "release" if self.release else "debug",
+            "trace_mode": self.trace_mode.value,
             "speed": self.speed,
             "flashed_commit": None,
             "error": None,
@@ -306,6 +318,7 @@ class DaemonRunner:
                     "package": self.package,
                     "bin": self.bin_name,
                     "profile": "release" if self.release else "debug",
+                    "trace_mode": self.trace_mode.value,
                     "speed": self.speed,
                     "flashed_commit": self.flashed_commit,
                     "error": error,
@@ -349,8 +362,10 @@ class DaemonRunner:
         gdb_core1_port: Optional[int] = None,
         rtt_bridge_port: Optional[int] = None,
         probe_selector: Optional[str] = None,
+        trace_mode: Optional[str] = None,
     ) -> None:
         """Dynamically update runner configuration parameters and resolved paths."""
+        trace_mode_changed = False
         with self._lock:
             if target:
                 self.target = target
@@ -378,8 +393,14 @@ class DaemonRunner:
                 self.rtt_bridge_port = int(rtt_bridge_port)
             if probe_selector is not None:
                 self.probe_selector = probe_selector or None
+            if trace_mode is not None:
+                normalized_tm = normalize_trace_mode(trace_mode)
+                trace_mode_changed = normalized_tm != self.trace_mode
+                self.trace_mode = normalized_tm
 
-            binary_identity_changed = any(val is not None for val in (target, package, bin_name, release))
+            binary_identity_changed = (
+                any(val is not None for val in (target, package, bin_name, release)) or trace_mode_changed
+            )
             resolved_elf = self.resolve_current_elf_path()
             if resolved_elf is not None:
                 self.elf_path = resolved_elf
@@ -396,9 +417,12 @@ class DaemonRunner:
                     "package": self.package,
                     "bin": self.bin_name,
                     "profile": "release" if self.release else "debug",
+                    "trace_mode": self.trace_mode.value,
                     "speed": self.speed,
                 }
             )
+        if trace_mode_changed:
+            self.trace_store.clear()
         save_last_session(
             self.repo_root,
             {
@@ -408,6 +432,7 @@ class DaemonRunner:
                 "target": self.target,
                 "speed": self.speed,
                 "chip": self.chip,
+                "trace_mode": self.trace_mode.value,
                 "enable_debug_server": self.enable_debug_server,
                 "halt_on_reset": self.halt_on_reset,
                 "gdb_core0_port": self.gdb_core0_port,
@@ -416,7 +441,7 @@ class DaemonRunner:
         )
         self.log(
             f"Updated configuration: package={self.package}, bin={self.bin_name}, target={self.target}, "
-            f"profile={'release' if self.release else 'debug'}, speed={self.speed}, "
+            f"profile={'release' if self.release else 'debug'}, trace_mode={self.trace_mode.value}, speed={self.speed}, "
             f"debug_server={self.enable_debug_server} (GDB :{self.gdb_core0_port}/:{self.gdb_core1_port})"
         )
 
@@ -480,6 +505,7 @@ class DaemonRunner:
             # 4. Start RTT streaming (and host_debug GDB server if enabled, with 1 single reset)
             if self.is_sync_cancelled:
                 return dict(self.sync_status)
+            self.trace_store.clear()
             step4_msg = (
                 f"Starting probe-rs GDB server (:{self.gdb_core0_port}/:{self.gdb_core1_port}) & RTT bridge..."
                 if self.enable_debug_server
@@ -586,7 +612,7 @@ class DaemonRunner:
             self.test_manager.record_device_cli_line(message, is_input=is_input, device_ts=device_ts)
 
     def set_mode(self, mode: str) -> None:
-        """Switch active workstation mode among CLI, FS, and TEST, managing probe ownership."""
+        """Switch active workstation mode among CLI, FS, TEST, and TRACE, managing probe ownership."""
         mode = mode.upper()
         if mode == self.active_mode:
             return
@@ -602,9 +628,14 @@ class DaemonRunner:
             time.sleep(0.15)
         elif mode == "CLI":
             self.log("Switching to CLI mode (starting RTT streaming)...", channel="system")
-            self.start_rtt_streaming()
+            if prev_mode == "FS" or not self.is_connected:
+                self.start_rtt_streaming()
         elif mode == "TEST":
             self.log("Switching to Test mode (on-device @device_test runner active)...", channel="system")
+            if self.is_flashed and not self.is_connected:
+                self.start_rtt_streaming()
+        elif mode == "TRACE":
+            self.log(f"Switching to Trace mode (trace_mode={self.trace_mode.value})...", channel="system")
             if self.is_flashed and not self.is_connected:
                 self.start_rtt_streaming()
 
@@ -643,12 +674,16 @@ class DaemonRunner:
             raise RuntimeError(
                 f"Target build configuration is incomplete (package={self.package}, bin={self.bin_name}, target={self.target})"
             )
+        feature_args = get_cargo_feature_args(self.trace_mode)
         self.log(
-            f"Building target firmware: package={self.package}, bin={self.bin_name}, target={self.target}, release={self.release}"
+            f"Building target firmware: package={self.package}, bin={self.bin_name}, target={self.target}, "
+            f"release={self.release}, trace_mode={self.trace_mode.value}"
         )
         cmd = ["cargo", "build", "--target", self.target, "-p", self.package, "--bin", self.bin_name]
         if self.release:
             cmd.append("--release")
+        if feature_args:
+            cmd.extend(feature_args)
 
         ret, out = self._run_command_streaming(cmd, log_to_cli=False, log_channel="build")
         if ret != 0:
@@ -1047,7 +1082,7 @@ class DaemonRunner:
                         self._cached_metadata_elf = target_elf
                 return res
             finally:
-                if rtt_was_running and self.active_mode in ("CLI", "TEST"):
+                if rtt_was_running and self.active_mode in ("CLI", "TEST", "TRACE"):
                     time.sleep(PROBE_RELEASE_SETTLE_SEC)
                     self.start_rtt_streaming(reset_on_attach=False)
                 self._record_lifecycle("idle", "Target metadata probe complete", mark_recent=False)
@@ -1493,6 +1528,13 @@ class DaemonRunner:
                     self._cmd_done_seq += 1
                     self._cmd_done_clear_floor = self._cli_clear_seq
                     self._last_cmd_error = str(err_msg) if (not ok and err_msg) else (None if ok else "Command failed")
+            elif ev_type == "trace_event":
+                raw_ts_us = ev_obj.get("ts_us")
+                if isinstance(raw_ts_us, (int, float)) and not isinstance(raw_ts_us, bool) and float(raw_ts_us) >= 0.0:
+                    with self._lock:
+                        self._last_device_ts_sec = float(raw_ts_us) / 1_000_000.0
+                        self._last_device_ts_mono = time.monotonic()
+                self.trace_store.ingest_event(ev_obj)
             elif ev_type == "session_disconnected":
                 self.is_connected = False
 
@@ -1567,7 +1609,12 @@ class DaemonRunner:
         started_event.wait(timeout=RTT_STARTUP_EVENT_TIMEOUT_SEC)
         if session_ready and self.rtt_process is not None and self.rtt_process.poll() is None:
             boot_ok = boot_ready_event.wait(timeout=RTT_BOOT_READY_TIMEOUT_SEC)
-            if not boot_ok and _retry_on_boot_timeout and self.rtt_process is not None and self.rtt_process.poll() is None:
+            if (
+                not boot_ok
+                and _retry_on_boot_timeout
+                and self.rtt_process is not None
+                and self.rtt_process.poll() is None
+            ):
                 self.log(
                     "Target boot/idle signal timed out after RTT attach; issuing recovery reset...",
                     level="WARN",
@@ -1798,10 +1845,67 @@ class DaemonRunner:
                 out = out.strip() or f"Completed {subcmd} (exit code {ret})"
                 return out
             finally:
-                if rtt_was_running and self.active_mode in ("CLI", "TEST"):
+                if rtt_was_running and self.active_mode in ("CLI", "TEST", "TRACE"):
                     time.sleep(PROBE_RELEASE_SETTLE_SEC)
                     self.start_rtt_streaming(reset_on_attach=False)
                 self._record_lifecycle("idle", f"Completed host_fs ({subcmd})", mark_recent=False)
+
+    def get_trace_events(self, after_seq: int = 0, limit: int = 10_000) -> Dict[str, Any]:
+        """Return incremental live trace slices/counters, track summaries, and active viewer metadata."""
+        payload = self.trace_store.get_events(after_seq=after_seq, limit=limit)
+        payload["trace_mode"] = self.trace_mode.value
+        payload["external_viewer"] = get_external_trace_viewer(self.trace_mode).value
+        payload["chip"] = self.chip
+        payload["bin"] = self.bin_name
+        return payload
+
+    def control_trace_session(self, action: str) -> Dict[str, Any]:
+        """Execute a live trace playback/session control action (`'clear'`, `'pause'`, `'resume'`)."""
+        cleaned = str(action or "").strip().lower()
+        if cleaned == "clear":
+            self.trace_store.clear()
+        elif cleaned == "pause":
+            self.trace_store.set_recording(False)
+        elif cleaned == "resume":
+            self.trace_store.set_recording(True)
+        else:
+            raise ValueError(f"Unsupported trace control action '{action}'. Expected: clear, pause, resume.")
+        return {
+            "success": True,
+            "action": cleaned,
+            "recording": self.trace_store.recording,
+            "trace_mode": self.trace_mode.value,
+        }
+
+    def export_trace_session(self, fmt: str, path: Optional[str] = None) -> Dict[str, Any]:
+        """Export the active buffered trace session to disk in `'csv'` or `'perfetto'` format."""
+        stem = f"{self.bin_name or 'target'}_{self.trace_mode.value.lower()}"
+        return self.trace_store.export_to_disk(
+            self.repo_root,
+            fmt,
+            path,
+            chip=self.chip,
+            default_stem=stem,
+        )
+
+    def open_trace_in_rerun(
+        self,
+        *,
+        spawn: bool = True,
+        save_rrd_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Stream the active buffered trace session directly into the Rerun Viewer via `rerun-sdk`."""
+        rrd_path: Optional[Path] = None
+        if save_rrd_path and str(save_rrd_path).strip():
+            raw = Path(str(save_rrd_path).strip())
+            rrd_path = raw if raw.is_absolute() else (self.repo_root / raw)
+        app_id = f"{self.bin_name or 'xerxes'}_{self.trace_mode.value.lower()}"
+        return open_trace_in_rerun(
+            self.trace_store.snapshot_all(),
+            app_id=app_id,
+            spawn=spawn,
+            save_rrd_path=rrd_path,
+        )
 
     def get_status(self) -> Dict[str, Any]:
         """Return daemon status dictionary."""
@@ -1811,6 +1915,8 @@ class DaemonRunner:
             "package": self.package,
             "bin": self.bin_name,
             "profile": "release" if self.release else "debug",
+            "trace_mode": self.trace_mode.value,
+            "external_viewer": get_external_trace_viewer(self.trace_mode).value,
             "elf": str(self.elf_path) if self.elf_path else None,
             "chip": self.chip,
             "speed": self.speed,

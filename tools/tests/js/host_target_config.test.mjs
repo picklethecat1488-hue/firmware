@@ -10,6 +10,7 @@ import {
   LAST_BIN_STORAGE_KEY,
   LAST_PACKAGE_STORAGE_KEY,
   LAST_RELEASE_STORAGE_KEY,
+  LAST_TRACE_MODE_STORAGE_KEY,
 } from "../../js/daemon/target_config.js";
 
 function buildTargetConfigDom(ctx) {
@@ -18,6 +19,10 @@ function buildTargetConfigDom(ctx) {
   const binBadge = createEl(ctx, "span", { id: "binBadge", text: "cat_detector_shell" });
   const debugServerBadge = createEl(ctx, "span", {
     id: "debugServerBadge",
+    style: { display: "none" },
+  });
+  const traceModeBadge = createEl(ctx, "span", {
+    id: "traceModeBadge",
     style: { display: "none" },
   });
   const syncBtn = createEl(ctx, "button", { id: "btnSync", text: "⚡ Sync" });
@@ -32,6 +37,22 @@ function buildTargetConfigDom(ctx) {
   const cfgArchDisplay = createEl(ctx, "span", { id: "cfgInferredArchDisplay" });
   const cfgArchNote = createEl(ctx, "span", { id: "cfgInferredArchNote" });
   const cfgArchInput = createEl(ctx, "input", { id: "cfgTargetArchInput" });
+  const cfgTraceModeTriggerLabel = createEl(ctx, "span", { id: "cfgTraceModeTriggerLabel" });
+  const cfgTraceModeTrigger = createEl(ctx, "button", {
+    id: "cfgTraceModeTrigger",
+    children: [cfgTraceModeTriggerLabel],
+  });
+  const cfgTraceModeMenu = createEl(ctx, "div", {
+    id: "cfgTraceModeMenu",
+    style: { display: "none" },
+  });
+  const cfgTraceModeInput = createEl(ctx, "input", { id: "cfgTraceModeInput", attrs: { value: "NONE" } });
+  cfgTraceModeInput.value = "NONE";
+  const cfgTraceModeDropdown = createEl(ctx, "div", {
+    id: "cfgTraceModeDropdown",
+    children: [cfgTraceModeTrigger, cfgTraceModeMenu, cfgTraceModeInput],
+  });
+  const cfgTraceModeFlags = createEl(ctx, "div", { id: "cfgTraceModeFlags" });
   const cfgShowLogsCheckbox = createEl(ctx, "input", { id: "cfgShowLogsCheckbox" });
   const cfgDebugServerCheckbox = createEl(ctx, "input", { id: "cfgDebugServerCheckbox" });
   const cfgHaltOnResetCheckbox = createEl(ctx, "input", { id: "cfgHaltOnResetCheckbox" });
@@ -55,6 +76,8 @@ function buildTargetConfigDom(ctx) {
       cfgArchDisplay,
       cfgArchNote,
       cfgArchInput,
+      cfgTraceModeDropdown,
+      cfgTraceModeFlags,
       cfgShowLogsCheckbox,
       cfgDebugServerCheckbox,
       cfgHaltOnResetCheckbox,
@@ -102,6 +125,7 @@ function buildTargetConfigDom(ctx) {
   doc.body.appendChild(targetBadge);
   doc.body.appendChild(binBadge);
   doc.body.appendChild(debugServerBadge);
+  doc.body.appendChild(traceModeBadge);
   doc.body.appendChild(syncBtn);
   doc.body.appendChild(resetBtn);
   doc.body.appendChild(targetConfigBtn);
@@ -112,6 +136,7 @@ function buildTargetConfigDom(ctx) {
     targetBadge,
     binBadge,
     debugServerBadge,
+    traceModeBadge,
     syncBtn,
     resetBtn,
     targetConfigBtn,
@@ -123,6 +148,11 @@ function buildTargetConfigDom(ctx) {
     cfgArchDisplay,
     cfgArchNote,
     cfgArchInput,
+    cfgTraceModeTrigger,
+    cfgTraceModeTriggerLabel,
+    cfgTraceModeMenu,
+    cfgTraceModeInput,
+    cfgTraceModeFlags,
     cfgShowLogsCheckbox,
     cfgDebugServerCheckbox,
     cfgHaltOnResetCheckbox,
@@ -230,6 +260,21 @@ describe("Host Daemon Target Configuration, Sync Flash Matrix & Reset Controller
     dom.cfgHaltOnResetCheckbox.checked = true;
     dom.cfgGdbCore0Port.value = "4333";
     dom.cfgGdbCore1Port.value = "4334";
+
+    // Open scrollable trace mode dropdown, verify 4 options (including disabled AUDIO [PLANNED]), and select PERF
+    dom.cfgTraceModeTrigger.click();
+    assert.equal(dom.cfgTraceModeMenu.style.display, "flex");
+    assert.equal(dom.cfgTraceModeMenu.children.length, 4);
+    // Clicking disabled AUDIO [PLANNED] item (index 3) does not select it
+    dom.cfgTraceModeMenu.children[3].click();
+    assert.equal(dom.cfgTraceModeInput.value, "NONE");
+    // Clicking PERF item (index 2) selects PERF, previews `--features trace-perf`, and closes dropdown
+    dom.cfgTraceModeMenu.children[2].click();
+    assert.equal(dom.cfgTraceModeInput.value, "PERF");
+    assert.equal(dom.cfgTraceModeMenu.style.display, "none");
+    assert.ok(dom.cfgTraceModeFlags.textContent.includes("--features trace-perf"));
+    assert.ok(dom.cfgTraceModeFlags.textContent.includes("PERFETTO"));
+
     await controller.submitConfig();
 
     assert.equal(configuredPayloads.length, 1);
@@ -238,12 +283,16 @@ describe("Host Daemon Target Configuration, Sync Flash Matrix & Reset Controller
     assert.equal(configuredPayloads[0].release, true);
     assert.equal(configuredPayloads[0].speed, 4000);
     assert.equal(configuredPayloads[0].show_system_logs, true);
+    assert.equal(configuredPayloads[0].trace_mode, "PERF");
     assert.equal(configuredPayloads[0].enable_debug_server, true);
     assert.equal(configuredPayloads[0].halt_on_reset, true);
     assert.equal(configuredPayloads[0].gdb_core0_port, 4333);
     assert.equal(configuredPayloads[0].gdb_core1_port, 4334);
     assert.equal(dom.debugServerBadge.style.display, "inline-block");
     assert.equal(dom.debugServerBadge.textContent, "GDB :4333/:4334 [HALTED]");
+    assert.equal(dom.traceModeBadge.style.display, "inline-block");
+    assert.equal(dom.traceModeBadge.textContent, "TRACE: PERF");
+    assert.equal(ctx.getStorage().getItem(LAST_TRACE_MODE_STORAGE_KEY), "PERF");
 
     assert.equal(ctx.getStorage().getItem(LAST_PACKAGE_STORAGE_KEY), "carrier_board");
     assert.equal(ctx.getStorage().getItem(LAST_BIN_STORAGE_KEY), "carrier_board_shell");

@@ -188,6 +188,11 @@ class SimulatedTargetRunner:
         self.package_selection_mode = False
         self.show_system_logs = False
         self.active_mode = "CLI"
+        self.trace_mode = "NONE"
+        self._trace_ts_us = 1_000_000
+        from host_daemon.provider.daemon.trace_store import TraceSessionStore
+
+        self.trace_store = TraceSessionStore()
         self.is_flashed = initial_flashed
         self.is_connected = initial_flashed
         self.metadata_matches_target = metadata_matches_target
@@ -266,6 +271,7 @@ class SimulatedTargetRunner:
             "connected": self.is_connected,
             "flashed": self.is_flashed,
             "mode": self.active_mode,
+            "trace_mode": self.trace_mode,
             "message": self.status_message,
             "manual_prompt": self.manual_prompt.to_dict(),
         }
@@ -282,6 +288,8 @@ class SimulatedTargetRunner:
             "source": "program_metadata",
             "checksum": dev_crc,
             "elf_checksum": "0x9A3F",
+            "trace_mode": self.trace_mode,
+            "elf_trace_mode": self.trace_mode,
             "matches_target": self.metadata_matches_target,
         }
 
@@ -294,6 +302,7 @@ class SimulatedTargetRunner:
         speed: Optional[int] = None,
         chip: Optional[str] = None,
         show_system_logs: Optional[bool] = None,
+        trace_mode: Optional[str] = None,
         enable_debug_server: Optional[bool] = None,
         halt_on_reset: Optional[bool] = None,
         gdb_core0_port: Optional[int] = None,
@@ -315,6 +324,11 @@ class SimulatedTargetRunner:
             self.speed = speed
         if chip:
             self.chip = chip
+        if trace_mode is not None:
+            normalized_tm = str(trace_mode).strip().upper()
+            if normalized_tm != self.trace_mode:
+                self.trace_store.clear()
+            self.trace_mode = normalized_tm
         if enable_debug_server is not None:
             self.enable_debug_server = bool(enable_debug_server)
         if halt_on_reset is not None:
@@ -457,6 +471,7 @@ class SimulatedTargetRunner:
         cmd = command.strip()
         self.executed_cli_commands.append(cmd)
         self.command_history.append(cmd)
+        self._emit_simulated_trace_for_cli(cmd)
 
         if cmd == "fs format":
             self.virtual_fs.clear()
@@ -534,6 +549,104 @@ class SimulatedTargetRunner:
 
         return f"Executed: {cmd}"
 
+    def _emit_simulated_trace_for_cli(self, cmd: str) -> None:
+        """Emit realistic simulated `PERF` spans or `SENSOR` reports matching firmware trace features."""
+        if self.trace_mode == "PERF":
+            if cmd.startswith(("battery", "motor", "fs", "led", "core", "system")):
+                self._trace_ts_us += 10_000
+                span_id = f"sim_{self._trace_ts_us}"
+                span_name = (
+                    "max17048::read_voltage_mv"
+                    if cmd.startswith("battery")
+                    else "ina219::read_current_ma"
+                    if cmd.startswith("motor")
+                    else f"shell::{cmd.split()[0]}"
+                )
+                self.trace_store.ingest_event(
+                    {
+                        "ts_us": self._trace_ts_us,
+                        "track": "CPU Core 0",
+                        "ph": "B",
+                        "category": "span",
+                        "name": span_name,
+                        "span_id": span_id,
+                        "module": "controller",
+                        "args": {"core": 0},
+                    }
+                )
+                self._trace_ts_us += 2_400
+                self.trace_store.ingest_event(
+                    {
+                        "ts_us": self._trace_ts_us,
+                        "track": "CPU Core 0",
+                        "ph": "E",
+                        "category": "span",
+                        "name": span_name,
+                        "span_id": span_id,
+                        "module": "controller",
+                        "args": {"core": 0},
+                    }
+                )
+                self.trace_store.ingest_event(
+                    {
+                        "ts_us": self._trace_ts_us,
+                        "track": "Core 0 CPU Usage",
+                        "ph": "C",
+                        "category": "cpu_usage",
+                        "name": "Core 0 CPU Usage (%)",
+                        "value": 34.5,
+                        "unit": "%",
+                        "args": {"core": 0},
+                    }
+                )
+        elif self.trace_mode == "SENSOR":
+            if cmd == "sensor status":
+                for direction, val, valid in [("North", 125.0, True), ("East", 180.0, True), ("West", None, False)]:
+                    self._trace_ts_us += 1_500
+                    self.trace_store.ingest_event(
+                        {
+                            "ts_us": self._trace_ts_us,
+                            "track": f"Proximity ({direction})",
+                            "ph": "C" if valid else "i",
+                            "category": "sensor",
+                            "name": f"Proximity ({direction})" if valid else f"Proximity ({direction}) Invalid",
+                            "value": val,
+                            "unit": "mm",
+                            "args": {
+                                "record_type": "Proximity",
+                                "direction": direction,
+                                "valid": valid,
+                                "value": int(val) if val is not None else None,
+                                "csv": [
+                                    "Valid" if valid else "Invalid",
+                                    str(int(val)) if val is not None else "",
+                                    direction,
+                                    "",
+                                ],
+                            },
+                        }
+                    )
+            elif cmd in ("thermal status", "thermal mcu"):
+                self._trace_ts_us += 1_500
+                temp_mc = 26_500.0 if cmd == "thermal status" else 28_125.0
+                self.trace_store.ingest_event(
+                    {
+                        "ts_us": self._trace_ts_us,
+                        "track": "MCU / Board Thermal",
+                        "ph": "C",
+                        "category": "sensor",
+                        "name": "MCU Temperature (mC)",
+                        "value": temp_mc,
+                        "unit": "mC",
+                        "args": {
+                            "record_type": "Thermal",
+                            "value": int(temp_mc),
+                            "overheating": False,
+                            "csv": [str(int(temp_mc)), "false", "", ""],
+                        },
+                    }
+                )
+
     def execute_fs(self, command_or_subcommand: str, args: Optional[List[str]] = None) -> str:
         """Simulate `host_fs` subcommands (`query_metadata`, `cp`, `ls`, `cat`, `rm`, `crash-log`)."""
         tokens = command_or_subcommand.strip().split() + [str(a) for a in (args or [])]
@@ -549,9 +662,13 @@ class SimulatedTargetRunner:
                     f'{{"checksum":"{crc}","chip":"{self.connected_chip}",'
                     f'"board_type":"{self.connected_board_type}",'
                     f'"program_metadata_board_type":"{self.connected_board_type}",'
+                    f'"trace_mode":"{self.trace_mode}",'
                     f'"source":"program_metadata"}}'
                 )
-            return f"checksum: {crc}\nchip: {self.connected_chip}\nboard_type: {self.connected_board_type}\nsource: program_metadata"
+            return (
+                f"checksum: {crc}\nchip: {self.connected_chip}\n"
+                f"board_type: {self.connected_board_type}\ntrace_mode: {self.trace_mode}\nsource: program_metadata"
+            )
 
         if subcmd == "cp" and len(rest) == 2:
             src, dst = rest
@@ -712,9 +829,15 @@ def test_rp2040_smoke_integration_project_filter_and_binary_sync() -> None:
         runner.executed_cli_commands.clear()
         integ_res = _run_device_pytest(port, ["--project", "cat_detector", "-m", "integration"])
         assert integ_res.returncode == 0, f"Integration failed:\n{integ_res.stdout}\n{integ_res.stderr}"
-        assert "5 passed" in integ_res.stdout
+        assert "7 passed" in integ_res.stdout
         assert "battery status" not in runner.executed_cli_commands
-        assert runner.sync_history == ["cat_detector_shell", "cat_detector_app", "cat_detector_shell"]
+        assert runner.sync_history == [
+            "cat_detector_shell",
+            "cat_detector_shell",
+            "cat_detector_shell",
+            "cat_detector_app",
+            "cat_detector_shell",
+        ]
     finally:
         server.shutdown()
         server.server_close()
@@ -2495,3 +2618,339 @@ def test_collect_cli_output_ignores_pre_completion_shell_idle_in_json_mode(tmp_p
         assert "Voltage: 4022 mV" in out
     finally:
         runner.stop_rtt_streaming()
+
+
+def test_trace_mode_cargo_features_and_external_viewer_mapping(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify `TraceMode` passes exact Cargo `--features` flags and maps `PERF`->Perfetto vs `SENSOR`/`AUDIO`->Rerun."""
+    from host_daemon.model import metadata as meta_mod
+    from host_daemon.model.trace_mode import (
+        ExternalTraceViewer,
+        TraceMode,
+        get_cargo_feature_args,
+        get_external_trace_viewer,
+        normalize_trace_mode,
+    )
+    from host_daemon.provider.daemon.runner import DaemonRunner
+
+    assert normalize_trace_mode(None) == TraceMode.NONE
+    assert normalize_trace_mode("sensor") == TraceMode.SENSOR
+    assert normalize_trace_mode("PERF") == TraceMode.PERF
+    assert normalize_trace_mode("audio") == TraceMode.AUDIO
+    with pytest.raises(ValueError):
+        normalize_trace_mode("bogus")
+
+    assert get_cargo_feature_args(TraceMode.NONE) == []
+    assert get_cargo_feature_args(TraceMode.SENSOR) == ["--features", "trace-sensors"]
+    assert get_cargo_feature_args(TraceMode.PERF) == ["--features", "trace-perf"]
+    assert get_cargo_feature_args(TraceMode.AUDIO) == ["--features", "trace-audio"]
+
+    assert get_external_trace_viewer(TraceMode.NONE) == ExternalTraceViewer.NONE
+    assert get_external_trace_viewer(TraceMode.PERF) == ExternalTraceViewer.PERFETTO
+    assert get_external_trace_viewer(TraceMode.SENSOR) == ExternalTraceViewer.RERUN
+    assert get_external_trace_viewer(TraceMode.AUDIO) == ExternalTraceViewer.RERUN
+
+    fake_target_dir = tmp_path / "target"
+    elf_dir = fake_target_dir / "thumbv6m-none-eabi" / "release"
+    elf_dir.mkdir(parents=True)
+    fake_elf = elf_dir / "cat_detector_app"
+    fake_elf.write_bytes(b"\x7fELF")
+    monkeypatch.setattr(meta_mod, "get_cargo_target_directory", lambda _root: fake_target_dir)
+    monkeypatch.setattr("host_daemon.provider.daemon.runner.get_cargo_target_directory", lambda _root: fake_target_dir)
+
+    captured_cmds: List[List[str]] = []
+    runner = DaemonRunner(
+        repo_root=tmp_path,
+        target="thumbv6m-none-eabi",
+        package="cat_detector",
+        bin_name="cat_detector_app",
+        release=True,
+        trace_mode="PERF",
+    )
+    monkeypatch.setattr(
+        runner,
+        "_run_command_streaming",
+        lambda cmd, **_kw: (captured_cmds.append(list(cmd)) or 0, "ok"),
+    )
+
+    runner.build_target()
+    assert captured_cmds[-1] == [
+        "cargo",
+        "build",
+        "--target",
+        "thumbv6m-none-eabi",
+        "-p",
+        "cat_detector",
+        "--bin",
+        "cat_detector_app",
+        "--release",
+        "--features",
+        "trace-perf",
+    ]
+
+    runner.update_config(trace_mode="SENSOR")
+    assert runner.get_status()["external_viewer"] == "rerun"
+    runner.build_target()
+    assert captured_cmds[-1][-2:] == ["--features", "trace-sensors"]
+
+    runner.update_config(trace_mode="NONE")
+    assert runner.get_status()["external_viewer"] == "none"
+    runner.build_target()
+    assert "--features" not in captured_cmds[-1]
+
+
+def test_trace_session_store_rerun_bridge_and_http_cli_endpoints(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify `TraceSessionStore`, `open_trace_in_rerun`, `/api/trace/*` HTTP routes, and `host.py trace` CLI."""
+    from host_daemon import cli as host_cli_mod
+    from host_daemon.provider.daemon import rerun_bridge
+    from host_daemon.provider.daemon.runner import DaemonRunner
+    from host_daemon.provider.daemon.server import HostDaemonServer
+
+    class MockRerunRecorder:
+        def __init__(self) -> None:
+            self.inits: List[tuple[str, Optional[str]]] = []
+            self.spawned: int = 0
+            self.saved_paths: List[str] = []
+            self.times: List[tuple[str, float]] = []
+            self.logs: List[tuple[str, tuple[str, Any]]] = []
+
+        def init(self, app_id: str, recording_id: Optional[str] = None) -> None:
+            self.inits.append((app_id, recording_id))
+
+        def spawn(self) -> None:
+            self.spawned += 1
+
+        def save(self, path: str) -> None:
+            self.saved_paths.append(path)
+
+        def set_time(self, timeline: str, *, duration: float) -> None:
+            self.times.append((timeline, duration))
+
+        def Scalars(self, val: float) -> tuple[str, float]:  # noqa: N802
+            return ("Scalars", float(val))
+
+        def TextDocument(self, text: str) -> tuple[str, str]:  # noqa: N802
+            return ("TextDocument", str(text))
+
+        def log(self, entity: str, payload: tuple[str, Any]) -> None:
+            self.logs.append((entity, payload))
+
+    runner = DaemonRunner(
+        repo_root=tmp_path,
+        target="thumbv6m-none-eabi",
+        package="cat_detector",
+        bin_name="cat_detector_shell",
+        chip="rp2040",
+        trace_mode="SENSOR",
+    )
+    # Ingest nested spans + sensor reports
+    runner.trace_store.ingest_event(
+        {
+            "ts_us": 1_000_000,
+            "track": "CPU Core 1",
+            "ph": "B",
+            "category": "span",
+            "name": "motor_task",
+            "span_id": "s1",
+            "module": "controller::motor_controller",
+            "args": {"core": 1},
+        }
+    )
+    runner.trace_store.ingest_event(
+        {
+            "ts_us": 1_005_000,
+            "track": "CPU Core 1",
+            "ph": "B",
+            "category": "span",
+            "name": "motor_controller::update",
+            "span_id": "s2",
+            "parent_id": "s1",
+            "module": "controller::motor_controller",
+            "args": {"core": 1},
+        }
+    )
+    runner.trace_store.ingest_event(
+        {
+            "ts_us": 1_041_000,
+            "track": "CPU Core 1",
+            "ph": "E",
+            "category": "span",
+            "name": "motor_controller::update",
+            "span_id": "s2",
+        }
+    )
+    runner.trace_store.ingest_event(
+        {
+            "ts_us": 1_050_000,
+            "track": "CPU Core 1",
+            "ph": "E",
+            "category": "span",
+            "name": "motor_task",
+            "span_id": "s1",
+        }
+    )
+    runner.trace_store.ingest_event(
+        {
+            "ts_us": 5_204_110,
+            "track": "Proximity (North)",
+            "ph": "C",
+            "category": "sensor",
+            "name": "Proximity (North)",
+            "value": 118.0,
+            "unit": "mm",
+            "args": {
+                "record_type": "Proximity",
+                "direction": "North",
+                "valid": True,
+                "value": 118,
+                "csv": ["Valid", "118", "North", ""],
+            },
+        }
+    )
+    runner.trace_store.ingest_event(
+        {
+            "ts_us": 5_250_000,
+            "track": "MCU / Board Thermal",
+            "ph": "C",
+            "category": "sensor",
+            "name": "MCU Temperature (mC)",
+            "value": 25_000.0,
+            "unit": "mC",
+            "args": {
+                "record_type": "Thermal",
+                "value": 25_000,
+                "overheating": False,
+                "csv": ["25000", "false", "", ""],
+            },
+        }
+    )
+    runner.trace_store.ingest_event(
+        {
+            "ts_us": 5_300_000,
+            "track": "Gesture & Touch",
+            "ph": "i",
+            "category": "sensor",
+            "name": "Gesture::DualLongPress",
+            "args": {
+                "record_type": "Gesture",
+                "gesture": "DualLongPress",
+                "csv": ["DualLongPress", "", "", ""],
+            },
+        }
+    )
+
+    mock_rr = MockRerunRecorder()
+    rr_res = rerun_bridge.open_trace_in_rerun(
+        runner.trace_store.snapshot_all(),
+        app_id="test_sensor_trace",
+        spawn=True,
+        rr_module=mock_rr,
+    )
+    assert rr_res["success"] is True
+    assert rr_res["viewer"] == "rerun"
+    assert mock_rr.spawned == 1
+    logged_map = dict(mock_rr.logs)
+    assert logged_map["proximity/north/distance"] == ("Scalars", 118.0)
+    assert logged_map["proximity/north/state"] == ("TextDocument", "Valid")
+    assert logged_map["thermal/temperature"] == ("Scalars", 25.0)
+    assert logged_map["gesture"] == ("TextDocument", "DualLongPress")
+
+    monkeypatch.setattr(
+        "host_daemon.provider.daemon.runner.open_trace_in_rerun",
+        lambda events, **kw: rerun_bridge.open_trace_in_rerun(events, rr_module=mock_rr, **kw),
+    )
+
+    server = HostDaemonServer("127.0.0.1", 0, runner)
+    port = int(server.server_address[1])
+    srv_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    srv_thread.start()
+    try:
+        # 1. Switch mode to TRACE
+        mode_res = host_cli_mod.send_daemon_request("/api/mode", {"mode": "TRACE"}, port=port, host="127.0.0.1")
+        assert mode_res == {"success": True, "mode": "TRACE"}
+        assert runner.active_mode == "TRACE"
+
+        # 2. Poll incremental events and verify span durations & depths
+        ev_res = host_cli_mod.send_daemon_request("/api/trace/events?after_seq=0", None, port=port, host="127.0.0.1")
+        assert ev_res["trace_mode"] == "SENSOR"
+        assert ev_res["external_viewer"] == "rerun"
+        assert ev_res["total_events"] == 5
+        by_name = {e["name"]: e for e in ev_res["events"]}
+        assert by_name["motor_task"]["dur_us"] == 50_000
+        assert by_name["motor_task"]["depth"] == 0
+        assert by_name["motor_controller::update"]["dur_us"] == 36_000
+        assert by_name["motor_controller::update"]["depth"] == 1
+
+        # 3. Export CSV & Perfetto JSON via CLI subcommand
+        csv_dest = tmp_path / "exports" / "session_out.csv"
+        assert (
+            host_cli_mod.main(
+                [
+                    "--host",
+                    "127.0.0.1",
+                    "trace",
+                    "export",
+                    "--format",
+                    "csv",
+                    "--output",
+                    str(csv_dest),
+                    "--host-port",
+                    str(port),
+                ]
+            )
+            == 0
+        )
+        assert csv_dest.is_file()
+        csv_text = csv_dest.read_text(encoding="utf-8")
+        assert "5204110,Proximity (North),C,sensor,Proximity (North),,118,mm,Proximity,Valid,118,North," in csv_text
+
+        json_dest = tmp_path / "exports" / "session_out.perfetto.json"
+        assert (
+            host_cli_mod.main(
+                [
+                    "--host",
+                    "127.0.0.1",
+                    "trace",
+                    "export",
+                    "--format",
+                    "perfetto",
+                    "--output",
+                    str(json_dest),
+                    "--host-port",
+                    str(port),
+                ]
+            )
+            == 0
+        )
+        perfetto_doc = json.loads(json_dest.read_text(encoding="utf-8"))
+        assert perfetto_doc["displayTimeUnit"] == "ms"
+        assert any(
+            e.get("name") == "motor_controller::update" and e.get("dur") == 36_000 for e in perfetto_doc["traceEvents"]
+        )
+
+        # 4. Trigger Open in Rerun via CLI subcommand
+        assert host_cli_mod.main(["--host", "127.0.0.1", "trace", "open-rerun", "--host-port", str(port)]) == 0
+        assert mock_rr.spawned == 2
+
+        # 5. Pause -> ingest ignored -> resume -> clear
+        assert host_cli_mod.main(["--host", "127.0.0.1", "trace", "pause", "--host-port", str(port)]) == 0
+        assert (
+            runner.trace_store.ingest_event(
+                {"ts_us": 6_000_000, "track": "Proximity (North)", "ph": "C", "value": 99.0}
+            )
+            is None
+        )
+        assert host_cli_mod.main(["--host", "127.0.0.1", "trace", "resume", "--host-port", str(port)]) == 0
+        assert (
+            runner.trace_store.ingest_event(
+                {"ts_us": 6_000_000, "track": "Proximity (North)", "ph": "C", "value": 99.0}
+            )
+            is not None
+        )
+        assert host_cli_mod.main(["--host", "127.0.0.1", "trace", "clear", "--host-port", str(port)]) == 0
+        assert len(runner.trace_store.snapshot_all()) == 0
+    finally:
+        server.shutdown()
+        server.server_close()

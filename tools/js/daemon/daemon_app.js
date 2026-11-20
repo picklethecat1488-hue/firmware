@@ -15,6 +15,7 @@ import { createCliConsole, WORKSTATION_MODES } from "./cli_console.js";
 import { createRttStream } from "./rtt_stream.js";
 import { createTargetConfig } from "./target_config.js";
 import { createTestRunner, LEFT_PANEL_TABS } from "./test_runner.js";
+import { createTraceViewer } from "./trace_viewer.js";
 import { createWormReporter } from "./worm_reporter.js";
 
 export const UI_SCALES = Object.freeze([
@@ -59,10 +60,19 @@ export class DaemonApp {
 
     this.testRunner = createTestRunner(ctx);
 
+    this.traceViewer = createTraceViewer(ctx, {
+      initialTraceMode: this.bootConfig.traceMode || this.bootConfig.trace_mode || "NONE",
+      initialBinName: this.bootConfig.binName || this.bootConfig.bin_name || "firmware",
+      onOpenTargetConfig: () => this.targetConfig.openConfigModal(),
+    });
+
     this.cliConsole = createCliConsole(ctx, {
       initialMode,
       onModeChange: async (mode) => {
         await this._syncLeftPanelForMode(mode);
+        if (mode === WORKSTATION_MODES.TRACE) {
+          await this.traceViewer.pollEvents();
+        }
       },
     });
 
@@ -73,6 +83,9 @@ export class DaemonApp {
         this.cliConsole.setWorkstationDisabled(disabled, msg),
       onShowSystemLogsChange: (show) => {
         this.rttStream.togglePanel(Boolean(show));
+      },
+      onTraceModeChange: (traceMode, meta) => {
+        this.traceViewer.setTraceMode(traceMode, meta);
       },
       onSyncComplete: () => {
         this.pollAll();
@@ -129,6 +142,7 @@ export class DaemonApp {
 
     this.wormReporter.init();
     this.testRunner.init();
+    this.traceViewer.init();
     await this.cliConsole.init();
     await this._syncLeftPanelForMode(this.cliConsole.getMode());
     await this.targetConfig.init();
@@ -342,6 +356,15 @@ export class DaemonApp {
         event.preventDefault();
         this.targetConfig.closeSyncModal();
       }
+      return;
+    }
+
+    if (
+      this.cliConsole.getMode() === WORKSTATION_MODES.TRACE &&
+      !this.cliConsole.isFuzzyOpen &&
+      !this.wormReporter.isModalOpen()
+    ) {
+      this.traceViewer.handleKeyDown(event);
     }
   }
 
@@ -352,6 +375,9 @@ export class DaemonApp {
     this.rttStream.clear();
     this.cliConsole.clear();
     this.testRunner.clearConsole();
+    if (this.cliConsole.getMode() === WORKSTATION_MODES.TRACE) {
+      this.traceViewer.clearTrace();
+    }
   }
 
   /**
@@ -398,6 +424,12 @@ export class DaemonApp {
     ) {
       tasks.push(this.testRunner.pollStatus());
     }
+    if (
+      this.cliConsole.getMode() === WORKSTATION_MODES.TRACE ||
+      this.targetConfig.getCurrentConfig().traceMode !== "NONE"
+    ) {
+      tasks.push(this.traceViewer.pollEvents());
+    }
     await Promise.all(tasks);
   }
 
@@ -416,6 +448,7 @@ export class DaemonApp {
     this.rttStream.destroy();
     this.cliConsole.destroy();
     this.testRunner.destroy();
+    this.traceViewer.destroy();
     this.targetConfig.destroy();
     this.wormReporter.destroy();
   }

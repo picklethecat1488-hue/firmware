@@ -3,6 +3,8 @@
 #![cfg_attr(all(target_arch = "arm", target_os = "none"), no_std)]
 #![deny(missing_docs)]
 
+extern crate self as platform;
+
 /// CLI-related helpers and structures.
 #[path = "services/cli.rs"]
 pub mod cli;

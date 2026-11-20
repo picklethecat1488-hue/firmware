@@ -556,7 +556,7 @@ impl<I: I2c> ProximitySensor for Vl53l0x<I> {
         all(target_arch = "arm", feature = "sensors-core"),
         link_section = ".data.core1_func"
     )]
-    #[tracing::instrument(core1 = "core1", level = "trace")]
+    #[tracing::instrument(domain = "sensor", core1 = "core1", level = "trace")]
     async fn read_distance_mm(&mut self) -> Result<SensorReading, Self::Error> {
         let (raw_reading, _) = self.read_raw_distance_and_rate_internal().await?;
         Ok(raw_reading)
@@ -632,7 +632,7 @@ impl<I: I2c> ApplyCalibration for Vl53l0x<I> {
 impl<I: I2c> Probeable for Vl53l0x<I> {
     type Error = PeripheralError;
 
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(domain = "sensor", level = "trace")]
     async fn read_chip_id(&mut self) -> Result<u16, Self::Error> {
         let mut buf = [0u8; 1];
         if self
@@ -656,7 +656,7 @@ impl<I: I2c> Probeable for Vl53l0x<I> {
         }
     }
 
-    #[tracing::instrument(level = "trace")]
+    #[tracing::instrument(domain = "sensor", level = "trace")]
     async fn reset(&mut self) -> Result<(), Self::Error> {
         // No software-initiated reset register on the VL53L0X.
         // It relies on the hardware XSHUT pin for reset, so this is a no-op.

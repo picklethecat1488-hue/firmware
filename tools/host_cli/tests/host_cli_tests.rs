@@ -895,3 +895,152 @@ fn test_structured_json_events_rtt_shell_idle_flag_and_cli_chunk_parser() {
         "WARN"
     );
 }
+
+#[test]
+fn test_live_trace_stream_processor_perf_spans_sensor_reports_and_exports() {
+    use host_cli::{
+        export_trace_events_to_csv, export_trace_events_to_perfetto_json, HostCliEvent,
+        LiveTraceStreamProcessor,
+    };
+    use model::telemetry::TelemetryRecord;
+    use model::types::{
+        Direction, Gesture, GestureSource, SensorReading, SensorTelemetry, ThermalStatus,
+    };
+
+    let mut proc = LiveTraceStreamProcessor::new();
+
+    // 1. PERF execution spans on Core 0 and Core 1 + CPU Idle counter
+    let mut emitted = Vec::new();
+    emitted.extend(proc.process_defmt_frame(
+        "1.122000 TRACE [controller::motor_controller] ctx=10 parent=0 span_enter: Core 1: motor_controller::update",
+        "ctx=10 parent=0 span_enter: Core 1: motor_controller::update",
+        Some("controller::motor_controller"),
+        Some(1_122_000.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.158000 TRACE [controller::motor_controller] 10 parent=0 span_exit: Core 1: motor_controller::update",
+        "10 parent=0 span_exit: Core 1: motor_controller::update",
+        Some("controller::motor_controller"),
+        Some(1_158_000.0),
+    ));
+    emitted.extend(proc.process_defmt_frame(
+        "1.200000 TRACE [platform::system] ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=1200000",
+        "ctx=cpu_idle_c0 parent=0 span_enter: Core 0: CPU Idle Core 0 ts=1200000",
+        Some("platform::system"),
+        Some(1_200_000.0),
+    ));
+
+    // 2. SENSOR CBOR Device Telemetry frames (Proximity North 118 mm, Thermal 25062 mC, Gesture DualLongPress)
+    let format_device_telemetry = |ts_us: u64, rec: TelemetryRecord| -> String {
+        let serialized = rec.serialize(ts_us);
+        let len = serialized[0] as usize;
+        let payload = &serialized[1..1 + len];
+        let joined = payload
+            .iter()
+            .map(|b| b.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("Device Telemetry: [{}]", joined)
+    };
+
+    let prox_msg = format_device_telemetry(
+        5_204_110,
+        TelemetryRecord::Proximity(SensorTelemetry::Status(
+            Direction::North,
+            SensorReading::Proximity(118),
+        )),
+    );
+    emitted.extend(proc.process_defmt_frame(
+        &format!("5.204110 TRACE {}", prox_msg),
+        &prox_msg,
+        Some("platform::tracing"),
+        Some(5_204_110.0),
+    ));
+
+    let therm_msg = format_device_telemetry(
+        5_150_880,
+        TelemetryRecord::Thermal(ThermalStatus::TempOverheating(25_062, false)),
+    );
+    emitted.extend(proc.process_defmt_frame(
+        &format!("5.150880 TRACE {}", therm_msg),
+        &therm_msg,
+        Some("platform::tracing"),
+        Some(5_150_880.0),
+    ));
+
+    let gest_msg = format_device_telemetry(
+        5_810_220,
+        TelemetryRecord::Gesture(Gesture::DualLongPress(GestureSource::Proximity)),
+    );
+    emitted.extend(proc.process_defmt_frame(
+        &format!("5.810220 TRACE {}", gest_msg),
+        &gest_msg,
+        Some("platform::tracing"),
+        Some(5_810_220.0),
+    ));
+
+    // Verify span B/E events, CPU usage counter, and sensor value events
+    assert!(emitted.iter().any(|ev| matches!(
+        ev,
+        HostCliEvent::Trace {
+            ts_us: 1_122_000,
+            track,
+            ph,
+            category,
+            name,
+            ..
+        } if track == "CPU Core 1" && ph == "B" && category == "span" && name == "motor_controller::update"
+    )));
+    assert!(emitted.iter().any(|ev| matches!(
+        ev,
+        HostCliEvent::Trace {
+            ts_us: 5_204_110,
+            track,
+            ph,
+            category,
+            value: Some(v),
+            unit: Some(u),
+            ..
+        } if track == "Proximity (North)" && ph == "C" && category == "sensor" && (*v - 118.0).abs() < 1e-6 && u == "mm"
+    )));
+    assert!(emitted.iter().any(|ev| matches!(
+        ev,
+        HostCliEvent::Trace {
+            ts_us: 5_150_880,
+            track,
+            category,
+            value: Some(v),
+            unit: Some(u),
+            ..
+        } if track == "MCU / Board Thermal" && category == "sensor" && (*v - 25_062.0).abs() < 1e-6 && u == "mC"
+    )));
+
+    // Verify NDJSON serialization, CSV export, and Perfetto JSON export
+    let ndjson: serde_json::Value = serde_json::from_str(&emitted[0].to_json_line()).unwrap();
+    assert_eq!(ndjson["event"], "trace_event");
+    assert_eq!(ndjson["track"], "CPU Core 1");
+
+    let csv_out = export_trace_events_to_csv(&emitted);
+    assert!(csv_out.starts_with(
+        "timestamp_us,track,phase,category,name,value,unit,record_type,val1,val2,val3,val4\n"
+    ));
+    assert!(csv_out.contains(
+        "5204110,Proximity (North),C,sensor,Proximity (North),118,mm,Proximity,Valid,118,North,"
+    ));
+    assert!(csv_out.contains(
+        "5150880,MCU / Board Thermal,C,sensor,MCU Temperature (mC),25062,mC,Thermal,25062,false,,"
+    ));
+
+    let perfetto_str = export_trace_events_to_perfetto_json(&emitted, "rp2040");
+    let perfetto_doc: serde_json::Value = serde_json::from_str(&perfetto_str).unwrap();
+    let trace_events = perfetto_doc["traceEvents"].as_array().unwrap();
+    assert!(trace_events
+        .iter()
+        .any(|e| e["name"] == "process_name" && e["args"]["name"] == "RP2040 MCU"));
+    assert!(trace_events
+        .iter()
+        .any(|e| e["name"] == "motor_controller::update" && e["ph"] == "B" && e["tid"] == 2));
+    assert!(trace_events.iter().any(|e| e["name"] == "Proximity (North)"
+        && e["ph"] == "C"
+        && e["args"]["value"] == 118.0));
+}

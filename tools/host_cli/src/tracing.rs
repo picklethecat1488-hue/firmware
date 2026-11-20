@@ -1341,13 +1341,18 @@ impl TraceStage for SpanProcessor {
     }
 }
 
-/// Serializes processed events back to the trace file path.
+/// Serializes processed events back to the trace file path (Perfetto JSON or `.csv`).
 fn save_processed_trace(
     path: &str,
     processed_events: Vec<serde_json::Value>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let serialized = serde_json::to_string_pretty(&processed_events)?;
-    fs::write(path, serialized)?;
+    if path.ends_with(".csv") {
+        let csv_text = format_perfetto_events_as_csv(&processed_events);
+        fs::write(path, csv_text)?;
+    } else {
+        let serialized = serde_json::to_string_pretty(&processed_events)?;
+        fs::write(path, serialized)?;
+    }
     Ok(())
 }
 
@@ -1834,4 +1839,759 @@ pub fn format_target_namespace(raw: &str) -> String {
 
     // 5. Single segment
     non_compiler[0].to_string()
+}
+
+/// Stateful real-time RTT trace decoder converting `defmt` span and telemetry frames into [`crate::HostCliEvent::Trace`] events.
+#[derive(Default)]
+pub struct LiveTraceStreamProcessor {
+    span_cores: std::collections::HashMap<String, i64>,
+    cores_seen_idle: std::collections::HashSet<i64>,
+}
+
+impl LiveTraceStreamProcessor {
+    /// Construct a new empty [`LiveTraceStreamProcessor`].
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Decode a single `defmt` frame (`plain_line` + `raw_message`) into zero or more [`crate::HostCliEvent::Trace`] events.
+    pub fn process_defmt_frame(
+        &mut self,
+        plain_line: &str,
+        raw_message: &str,
+        module: Option<&str>,
+        device_ts_us: Option<f64>,
+    ) -> Vec<crate::HostCliEvent> {
+        if let Some(parsed) = ParsedTracingLine::parse(plain_line) {
+            return self.process_span_transition(&parsed, module, device_ts_us);
+        }
+
+        let telem_str = if raw_message.starts_with("Device Telemetry: ") {
+            Some(raw_message)
+        } else {
+            plain_line
+                .find("Device Telemetry: ")
+                .map(|idx| &plain_line[idx..])
+        };
+
+        if let Some(msg) = telem_str {
+            return self.process_device_telemetry(msg, device_ts_us);
+        }
+
+        Vec::new()
+    }
+
+    fn process_span_transition(
+        &mut self,
+        parsed: &ParsedTracingLine<'_>,
+        module: Option<&str>,
+        device_ts_us: Option<f64>,
+    ) -> Vec<crate::HostCliEvent> {
+        let ts_us = parsed
+            .device_ts()
+            .or(device_ts_us)
+            .unwrap_or(0.0)
+            .max(0.0)
+            .round() as u64;
+        let (span_id, parent_id) = parsed.parse_ids();
+        let meta = CoreMetadata::new(parsed.span_name());
+
+        let resolved_core = if let Some(c) = meta.core {
+            c
+        } else if !span_id.is_empty() {
+            *self.span_cores.get(&span_id).unwrap_or(&0)
+        } else if !parent_id.is_empty() {
+            *self.span_cores.get(&parent_id).unwrap_or(&0)
+        } else {
+            0
+        };
+
+        if parsed.is_enter() && !span_id.is_empty() {
+            self.span_cores.insert(span_id.clone(), resolved_core);
+        }
+
+        if meta.is_idle {
+            let mut out = Vec::new();
+            let track = format!("Core {} CPU Usage (%)", resolved_core);
+            if self.cores_seen_idle.insert(resolved_core) && ts_us > 0 {
+                out.push(crate::HostCliEvent::Trace {
+                    ts_us: 0,
+                    track: track.clone(),
+                    ph: "C".to_string(),
+                    category: "cpu_usage".to_string(),
+                    name: track.clone(),
+                    span_id: None,
+                    parent_id: None,
+                    module: None,
+                    value: Some(100.0),
+                    unit: Some("%".to_string()),
+                    args: serde_json::json!({ "core": resolved_core, "value": 100 }),
+                });
+            }
+            let usage_pct = if parsed.is_enter() { 0.0 } else { 100.0 };
+            out.push(crate::HostCliEvent::Trace {
+                ts_us,
+                track: track.clone(),
+                ph: "C".to_string(),
+                category: "cpu_usage".to_string(),
+                name: track,
+                span_id: None,
+                parent_id: None,
+                module: None,
+                value: Some(usage_pct),
+                unit: Some("%".to_string()),
+                args: serde_json::json!({ "core": resolved_core, "value": usage_pct as i64 }),
+            });
+            return out;
+        }
+
+        let mut cleaned_name = meta.name;
+        if let Some(mod_str) = module {
+            if (cleaned_name == "run" || cleaned_name == "task") && !mod_str.is_empty() {
+                if let Some(seg) = mod_str.rsplit("::").find(|&s| is_root_segment(s)) {
+                    cleaned_name = seg.to_string();
+                }
+            }
+        }
+
+        vec![crate::HostCliEvent::Trace {
+            ts_us,
+            track: format!("CPU Core {}", resolved_core),
+            ph: if parsed.is_enter() {
+                "B".to_string()
+            } else {
+                "E".to_string()
+            },
+            category: "span".to_string(),
+            name: cleaned_name,
+            span_id: if span_id.is_empty() {
+                None
+            } else {
+                Some(span_id)
+            },
+            parent_id: if parent_id.is_empty() {
+                None
+            } else {
+                Some(parent_id)
+            },
+            module: module.filter(|m| !m.is_empty()).map(str::to_string),
+            value: None,
+            unit: None,
+            args: serde_json::json!({ "core": resolved_core }),
+        }]
+    }
+
+    fn process_device_telemetry(
+        &self,
+        msg: &str,
+        fallback_ts_us: Option<f64>,
+    ) -> Vec<crate::HostCliEvent> {
+        use tool_common::TelemetryParser as _;
+        let Some(array_str) = msg.strip_prefix("Device Telemetry: ").map(str::trim) else {
+            return Vec::new();
+        };
+        if !array_str.starts_with('[') || !array_str.ends_with(']') {
+            return Vec::new();
+        }
+        let content = &array_str[1..array_str.len() - 1];
+        let mut bytes = Vec::new();
+        for part in content.split(',') {
+            let trimmed = part.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let Ok(byte) = trimmed.parse::<u8>() else {
+                return Vec::new();
+            };
+            bytes.push(byte);
+        }
+
+        let parser =
+            tool_common::TraceTelemetryParser::new(ThreadId::DeviceLogsAndTelemetry as u64);
+        let Some((cbor_ts_us, record)) = parser.deserialize_raw_cbor(&bytes) else {
+            return Vec::new();
+        };
+        let ts_us = if cbor_ts_us > 0 {
+            cbor_ts_us
+        } else {
+            fallback_ts_us.unwrap_or(0.0).max(0.0).round() as u64
+        };
+        telemetry_record_to_trace_events(ts_us, &record)
+    }
+}
+
+/// Convert a decoded [`model::telemetry::TelemetryRecord`] into structured [`crate::HostCliEvent::Trace`] events.
+pub fn telemetry_record_to_trace_events(
+    ts_us: u64,
+    rec: &model::telemetry::TelemetryRecord,
+) -> Vec<crate::HostCliEvent> {
+    use model::telemetry::TelemetryRecord;
+    match rec {
+        TelemetryRecord::Proximity(model::types::SensorTelemetry::Status(dir, reading)) => {
+            let dir_str = match dir {
+                model::types::Direction::North => "North",
+                model::types::Direction::East => "East",
+                model::types::Direction::West => "West",
+            };
+            let track = format!("Proximity ({})", dir_str);
+            match reading {
+                model::types::SensorReading::Proximity(distance_mm) => {
+                    vec![crate::HostCliEvent::Trace {
+                        ts_us,
+                        track: track.clone(),
+                        ph: "C".to_string(),
+                        category: "sensor".to_string(),
+                        name: track,
+                        span_id: None,
+                        parent_id: None,
+                        module: Some("controller::sensor_controller".to_string()),
+                        value: Some(*distance_mm as f64),
+                        unit: Some("mm".to_string()),
+                        args: serde_json::json!({
+                            "record_type": "Proximity",
+                            "direction": dir_str,
+                            "valid": true,
+                            "value": distance_mm,
+                            "csv": ["Valid", distance_mm.to_string(), dir_str, ""],
+                        }),
+                    }]
+                }
+                model::types::SensorReading::Invalid => {
+                    vec![crate::HostCliEvent::Trace {
+                        ts_us,
+                        track: track.clone(),
+                        ph: "i".to_string(),
+                        category: "sensor".to_string(),
+                        name: track,
+                        span_id: None,
+                        parent_id: None,
+                        module: Some("controller::sensor_controller".to_string()),
+                        value: None,
+                        unit: Some("mm".to_string()),
+                        args: serde_json::json!({
+                            "record_type": "Proximity",
+                            "direction": dir_str,
+                            "valid": false,
+                            "value": null,
+                            "csv": ["Invalid", "0", dir_str, ""],
+                        }),
+                    }]
+                }
+            }
+        }
+        TelemetryRecord::Thermal(model::types::ThermalStatus::TempOverheating(
+            temp_mc,
+            overheating,
+        )) => {
+            vec![crate::HostCliEvent::Trace {
+                ts_us,
+                track: "MCU / Board Thermal".to_string(),
+                ph: "C".to_string(),
+                category: "sensor".to_string(),
+                name: "MCU Temperature (mC)".to_string(),
+                span_id: None,
+                parent_id: None,
+                module: Some("controller::thermal_controller".to_string()),
+                value: Some(*temp_mc as f64),
+                unit: Some("mC".to_string()),
+                args: serde_json::json!({
+                    "record_type": "Thermal",
+                    "value": temp_mc,
+                    "temp_c": (*temp_mc as f64) / 1000.0,
+                    "overheating": overheating,
+                    "csv": [temp_mc.to_string(), overheating.to_string(), "", ""],
+                }),
+            }]
+        }
+        TelemetryRecord::Gesture(g) => {
+            let g_str = match g {
+                model::types::Gesture::DualLongPress(_) => "DualLongPress",
+                model::types::Gesture::SingleTap(_) => "SingleTap",
+                model::types::Gesture::DoubleTap(_) => "DoubleTap",
+                model::types::Gesture::SwipeForward(_) => "SwipeForward",
+                model::types::Gesture::SwipeBack(_) => "SwipeBack",
+                model::types::Gesture::LongPress(_) => "LongPress",
+                model::types::Gesture::ExtraLongPress(_) => "ExtraLongPress",
+            };
+            vec![crate::HostCliEvent::Trace {
+                ts_us,
+                track: "Gesture & Touch".to_string(),
+                ph: "i".to_string(),
+                category: "sensor".to_string(),
+                name: format!("Gesture::{}", g_str),
+                span_id: None,
+                parent_id: None,
+                module: Some("controller::sensor_controller".to_string()),
+                value: None,
+                unit: None,
+                args: serde_json::json!({
+                    "record_type": "Gesture",
+                    "gesture": g_str,
+                    "csv": [g_str, "", "", ""],
+                }),
+            }]
+        }
+        TelemetryRecord::Battery(model::types::BatteryStatus::VolTempState(
+            vol,
+            temp,
+            state,
+            locks,
+        )) => {
+            let state_str = format!("{:?}", state);
+            vec![crate::HostCliEvent::Trace {
+                ts_us,
+                track: "System & Power Events".to_string(),
+                ph: "i".to_string(),
+                category: "telemetry".to_string(),
+                name: "Battery Status".to_string(),
+                span_id: None,
+                parent_id: None,
+                module: Some("controller::battery_controller".to_string()),
+                value: Some(*vol as f64),
+                unit: Some("mV".to_string()),
+                args: serde_json::json!({
+                    "record_type": "Battery",
+                    "voltage_mv": vol,
+                    "temp_mc": temp,
+                    "state": state_str,
+                    "active_locks": locks,
+                    "csv": [vol.to_string(), temp.to_string(), state_str, locks.to_string()],
+                }),
+            }]
+        }
+        TelemetryRecord::FuelGauge(model::types::FuelGaugeTelemetry::VolSoc(vol, soc)) => {
+            vec![crate::HostCliEvent::Trace {
+                ts_us,
+                track: "System & Power Events".to_string(),
+                ph: "i".to_string(),
+                category: "telemetry".to_string(),
+                name: "FuelGauge Voltage / SoC".to_string(),
+                span_id: None,
+                parent_id: None,
+                module: Some("controller::battery_controller".to_string()),
+                value: Some(*vol as f64),
+                unit: Some("mV".to_string()),
+                args: serde_json::json!({
+                    "record_type": "FuelGauge",
+                    "voltage_mv": vol,
+                    "soc_pct": soc,
+                    "csv": [vol.to_string(), soc.to_string(), "", ""],
+                }),
+            }]
+        }
+        TelemetryRecord::Motor(motor) => match motor {
+            model::types::MotorStatus::Brake => vec![crate::HostCliEvent::Trace {
+                ts_us,
+                track: "System & Power Events".to_string(),
+                ph: "i".to_string(),
+                category: "telemetry".to_string(),
+                name: "Motor Brake".to_string(),
+                span_id: None,
+                parent_id: None,
+                module: Some("controller::motor_controller".to_string()),
+                value: Some(0.0),
+                unit: Some("%".to_string()),
+                args: serde_json::json!({
+                    "record_type": "Motor",
+                    "speed": 0,
+                    "running": false,
+                    "csv": ["0", "false", "25000", ""],
+                }),
+            }],
+            model::types::MotorStatus::Running(telem) => vec![crate::HostCliEvent::Trace {
+                ts_us,
+                track: "System & Power Events".to_string(),
+                ph: "i".to_string(),
+                category: "telemetry".to_string(),
+                name: "Motor Telemetry".to_string(),
+                span_id: None,
+                parent_id: None,
+                module: Some("controller::motor_controller".to_string()),
+                value: Some(telem.measured_rpm as f64),
+                unit: Some("RPM".to_string()),
+                args: serde_json::json!({
+                    "record_type": "Motor",
+                    "speed": telem.speed.get(),
+                    "running": true,
+                    "current_ma": telem.current_ma,
+                    "measured_rpm": telem.measured_rpm,
+                    "estimated_rpm": telem.estimated_rpm,
+                    "csv": [telem.speed.get().to_string(), "true", telem.current_ma.to_string(), telem.measured_rpm.to_string()],
+                }),
+            }],
+        },
+        TelemetryRecord::System(sys) => {
+            let s_str = format!("{:?}", sys);
+            vec![crate::HostCliEvent::Trace {
+                ts_us,
+                track: "System & Power Events".to_string(),
+                ph: "i".to_string(),
+                category: "telemetry".to_string(),
+                name: format!("System::{}", s_str),
+                span_id: None,
+                parent_id: None,
+                module: Some("controller::system_controller".to_string()),
+                value: None,
+                unit: None,
+                args: serde_json::json!({
+                    "record_type": "System",
+                    "status": s_str,
+                    "csv": [s_str, "", "", ""],
+                }),
+            }]
+        }
+        TelemetryRecord::Led(led) => {
+            let l_str = format!("{:?}", led);
+            vec![crate::HostCliEvent::Trace {
+                ts_us,
+                track: "System & Power Events".to_string(),
+                ph: "i".to_string(),
+                category: "telemetry".to_string(),
+                name: format!("LED::{}", l_str),
+                span_id: None,
+                parent_id: None,
+                module: Some("controller::led_controller".to_string()),
+                value: None,
+                unit: None,
+                args: serde_json::json!({
+                    "record_type": "Led",
+                    "led": l_str,
+                    "csv": [l_str, "", "", ""],
+                }),
+            }]
+        }
+        TelemetryRecord::FlashTelemetry(ft) => {
+            vec![crate::HostCliEvent::Trace {
+                ts_us,
+                track: "System & Power Events".to_string(),
+                ph: "i".to_string(),
+                category: "telemetry".to_string(),
+                name: format!("Flash Erase s{}", ft.sector),
+                span_id: None,
+                parent_id: None,
+                module: Some("controller::filesystem_controller".to_string()),
+                value: Some(ft.duration_ms as f64),
+                unit: Some("ms".to_string()),
+                args: serde_json::json!({
+                    "record_type": "FlashTelemetry",
+                    "sector": ft.sector,
+                    "duration_ms": ft.duration_ms,
+                    "erase_count": ft.erase_count,
+                    "csv": [ft.sector.to_string(), ft.duration_ms.to_string(), ft.erase_count.to_string(), ""],
+                }),
+            }]
+        }
+        TelemetryRecord::ChargerState(ch) => {
+            let c_str = format!("{:?}", ch);
+            vec![crate::HostCliEvent::Trace {
+                ts_us,
+                track: "System & Power Events".to_string(),
+                ph: "i".to_string(),
+                category: "telemetry".to_string(),
+                name: format!("Charger::{}", c_str),
+                span_id: None,
+                parent_id: None,
+                module: Some("controller::battery_controller".to_string()),
+                value: None,
+                unit: None,
+                args: serde_json::json!({
+                    "record_type": "ChargerState",
+                    "state": c_str,
+                    "csv": [c_str, "", "", ""],
+                }),
+            }]
+        }
+        TelemetryRecord::PeripheralError(err) => {
+            let err_str = format!("{:?}", err);
+            vec![crate::HostCliEvent::Trace {
+                ts_us,
+                track: "System & Power Events".to_string(),
+                ph: "i".to_string(),
+                category: "telemetry".to_string(),
+                name: format!("PeripheralError::{}", err_str),
+                span_id: None,
+                parent_id: None,
+                module: None,
+                value: None,
+                unit: None,
+                args: serde_json::json!({
+                    "record_type": "PeripheralError",
+                    "error": err_str,
+                    "csv": [err_str, "", "", ""],
+                }),
+            }]
+        }
+        TelemetryRecord::Boot(reason) => {
+            let r_str = format!("{:?}", reason);
+            vec![crate::HostCliEvent::Trace {
+                ts_us,
+                track: "System & Power Events".to_string(),
+                ph: "i".to_string(),
+                category: "telemetry".to_string(),
+                name: format!("Boot::{}", r_str),
+                span_id: None,
+                parent_id: None,
+                module: None,
+                value: None,
+                unit: None,
+                args: serde_json::json!({
+                    "record_type": "Boot",
+                    "reason": r_str,
+                    "csv": [r_str, "", "", ""],
+                }),
+            }]
+        }
+        TelemetryRecord::PeriodicInterval(device, interval) => {
+            let d_str = format!("{:?}", device);
+            let i_str = match interval {
+                model::types::PeriodicInterval::None => "None".to_string(),
+                model::types::PeriodicInterval::UpdateMs(ms) => ms.to_string(),
+            };
+            vec![crate::HostCliEvent::Trace {
+                ts_us,
+                track: "System & Power Events".to_string(),
+                ph: "i".to_string(),
+                category: "telemetry".to_string(),
+                name: format!("PeriodicInterval::{}", d_str),
+                span_id: None,
+                parent_id: None,
+                module: None,
+                value: None,
+                unit: Some("ms".to_string()),
+                args: serde_json::json!({
+                    "record_type": "PeriodicInterval",
+                    "device": d_str,
+                    "interval": i_str,
+                    "csv": [d_str, i_str, "", ""],
+                }),
+            }]
+        }
+    }
+}
+
+fn csv_escape_field(val: &str) -> String {
+    if val.contains(',') || val.contains('"') || val.contains('\n') {
+        format!("\"{}\"", val.replace('"', "\"\""))
+    } else {
+        val.to_string()
+    }
+}
+
+fn format_perfetto_events_as_csv(events: &[serde_json::Value]) -> String {
+    let mut out = String::from(
+        "timestamp_us,track,phase,category,name,value,unit,record_type,val1,val2,val3,val4\n",
+    );
+    for ev in events {
+        let Some(obj) = ev.as_object() else {
+            continue;
+        };
+        let ph = obj.get("ph").and_then(|v| v.as_str()).unwrap_or("");
+        if ph == "M" {
+            continue;
+        }
+        let ts_us = obj
+            .get("ts")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0)
+            .round() as i64;
+        let tid = obj.get("tid").and_then(|v| v.as_i64()).unwrap_or(1);
+        let track = match tid {
+            1 => "CPU Core 0",
+            2 => "CPU Core 1",
+            _ => "Device Logs & Telemetry",
+        };
+        let cat = obj.get("cat").and_then(|v| v.as_str()).unwrap_or("");
+        let name = obj.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        let val = obj
+            .get("args")
+            .and_then(|a| a.get("value"))
+            .map(|v| v.to_string())
+            .unwrap_or_default();
+        out.push_str(&format!(
+            "{},{},{},{},{},{},,,,,,\n",
+            ts_us,
+            csv_escape_field(track),
+            csv_escape_field(ph),
+            csv_escape_field(cat),
+            csv_escape_field(name),
+            csv_escape_field(&val)
+        ));
+    }
+    out
+}
+
+/// Export a slice of [`crate::HostCliEvent::Trace`] events into canonical CSV text.
+pub fn export_trace_events_to_csv(events: &[crate::HostCliEvent]) -> String {
+    let mut out = String::from(
+        "timestamp_us,track,phase,category,name,value,unit,record_type,val1,val2,val3,val4\n",
+    );
+    for ev in events {
+        if let crate::HostCliEvent::Trace {
+            ts_us,
+            track,
+            ph,
+            category,
+            name,
+            value,
+            unit,
+            args,
+            ..
+        } = ev
+        {
+            let val_str = value.map(|v| format!("{}", v)).unwrap_or_default();
+            let unit_str = unit.as_deref().unwrap_or("");
+            let rec_type = args
+                .get("record_type")
+                .and_then(|r| r.as_str())
+                .unwrap_or(category.as_str());
+            let mut csv_cols = [String::new(), String::new(), String::new(), String::new()];
+            if let Some(arr) = args.get("csv").and_then(|c| c.as_array()) {
+                for (idx, item) in arr.iter().take(4).enumerate() {
+                    if let Some(s) = item.as_str() {
+                        csv_cols[idx] = s.to_string();
+                    } else if !item.is_null() {
+                        csv_cols[idx] = item.to_string();
+                    }
+                }
+            }
+            out.push_str(&format!(
+                "{},{},{},{},{},{},{},{},{},{},{},{}\n",
+                ts_us,
+                csv_escape_field(track),
+                csv_escape_field(ph),
+                csv_escape_field(category),
+                csv_escape_field(name),
+                csv_escape_field(&val_str),
+                csv_escape_field(unit_str),
+                csv_escape_field(rec_type),
+                csv_escape_field(&csv_cols[0]),
+                csv_escape_field(&csv_cols[1]),
+                csv_escape_field(&csv_cols[2]),
+                csv_escape_field(&csv_cols[3]),
+            ));
+        }
+    }
+    out
+}
+
+/// Export a slice of [`crate::HostCliEvent::Trace`] events into Chrome / Perfetto JSON Trace Event Format.
+pub fn export_trace_events_to_perfetto_json(
+    events: &[crate::HostCliEvent],
+    chip_name: &str,
+) -> String {
+    let mut trace_events = Vec::new();
+    let proc_label = format!("{} MCU", chip_name.to_uppercase());
+    trace_events.push(serde_json::json!({
+        "name": "process_name",
+        "ph": "M",
+        "pid": 1,
+        "args": { "name": proc_label }
+    }));
+
+    let mut track_tids: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    track_tids.insert("CPU Core 0".to_string(), ThreadId::Core0 as i64);
+    track_tids.insert("CPU Core 1".to_string(), ThreadId::Core1 as i64);
+    track_tids.insert(
+        "System & Power Events".to_string(),
+        ThreadId::DeviceLogsAndTelemetry as i64,
+    );
+    let mut next_tid: i64 = 10;
+
+    for (track_name, tid) in [
+        ("CPU Core 0", ThreadId::Core0 as i64),
+        ("CPU Core 1", ThreadId::Core1 as i64),
+        (
+            "System & Power Events",
+            ThreadId::DeviceLogsAndTelemetry as i64,
+        ),
+    ] {
+        trace_events.push(serde_json::json!({
+            "name": "thread_name",
+            "ph": "M",
+            "pid": 1,
+            "tid": tid,
+            "args": { "name": track_name }
+        }));
+    }
+
+    for ev in events {
+        if let crate::HostCliEvent::Trace {
+            ts_us,
+            track,
+            ph,
+            category,
+            name,
+            span_id,
+            parent_id,
+            module,
+            value,
+            unit,
+            args,
+        } = ev
+        {
+            if ph == "C" {
+                trace_events.push(serde_json::json!({
+                    "cat": category,
+                    "name": track,
+                    "ph": "C",
+                    "pid": 1,
+                    "ts": *ts_us as f64,
+                    "args": {
+                        "value": value.unwrap_or(0.0),
+                        "unit": unit,
+                    }
+                }));
+                continue;
+            }
+
+            let tid = if let Some(&existing) = track_tids.get(track) {
+                existing
+            } else {
+                let assigned = next_tid;
+                next_tid += 1;
+                track_tids.insert(track.clone(), assigned);
+                trace_events.push(serde_json::json!({
+                    "name": "thread_name",
+                    "ph": "M",
+                    "pid": 1,
+                    "tid": assigned,
+                    "args": { "name": track }
+                }));
+                assigned
+            };
+
+            let mut ev_args = args.clone();
+            if let Some(obj) = ev_args.as_object_mut() {
+                if let Some(m) = module {
+                    obj.insert("module".to_string(), serde_json::json!(m));
+                }
+                if let Some(sid) = span_id {
+                    obj.insert("span_id".to_string(), serde_json::json!(sid));
+                }
+                if let Some(pid_str) = parent_id {
+                    obj.insert("parent_id".to_string(), serde_json::json!(pid_str));
+                }
+                if let Some(u) = unit {
+                    obj.insert("unit".to_string(), serde_json::json!(u));
+                }
+            }
+
+            trace_events.push(serde_json::json!({
+                "cat": category,
+                "name": name,
+                "ph": ph,
+                "pid": 1,
+                "tid": tid,
+                "ts": *ts_us as f64,
+                "s": if ph == "i" { Some("t") } else { None },
+                "args": ev_args,
+            }));
+        }
+    }
+
+    serde_json::to_string_pretty(&serde_json::json!({
+        "traceEvents": trace_events,
+        "displayTimeUnit": "ms"
+    }))
+    .unwrap_or_else(|_| "{\"traceEvents\":[]}".to_string())
 }

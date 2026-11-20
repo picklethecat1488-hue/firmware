@@ -12,8 +12,17 @@ fn main() {
     let dest_path = std::path::Path::new(&out_dir).join("generated_gpio.rs");
     std::fs::write(&dest_path, generated).expect("Failed to write generated_gpio.rs");
 
-    // If the tracing feature is enabled, override compile-time DEFMT_LOG level for this crate
-    if std::env::var("CARGO_FEATURE_TRACING").is_ok() {
+    // If any tracing mode feature is enabled, override compile-time DEFMT_LOG level for this crate
+    if [
+        "CARGO_FEATURE_TRACING",
+        "CARGO_FEATURE_TRACE_PERF",
+        "CARGO_FEATURE_TRACE_SENSORS",
+        "CARGO_FEATURE_TRACE_SENSOR_SPANS",
+        "CARGO_FEATURE_TRACE_AUDIO",
+    ]
+    .iter()
+    .any(|var| std::env::var(var).is_ok())
+    {
         println!("cargo:rustc-env=DEFMT_LOG={}", LOG_LEVEL);
     }
 

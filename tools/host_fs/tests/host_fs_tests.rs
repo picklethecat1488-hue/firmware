@@ -434,6 +434,7 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
         "rp2040_flash_2mb",
         "cat_detector_shell",
         "release",
+        platform::types::FirmwareTraceMode::Sensor,
         1,
         4096,
         2048,
@@ -511,6 +512,7 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
     assert!(stdout.contains("\"chip\":\"rp2040\""));
     assert!(stdout.contains("\"bin_name\":\"cat_detector_shell\""));
     assert!(stdout.contains("\"build_profile\":\"release\""));
+    assert!(stdout.contains("\"trace_mode\":\"sensor\""));
     assert!(stdout.contains("\"source\":\"program_metadata\""));
     assert!(stdout.contains("\"stack_scan_limit\":2048"));
     assert!(stdout.contains(&format!("\"0x{:04X}\"", elf_info.checksum)));
@@ -561,6 +563,7 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
         "carrier_board",
         "carrier_board_shell",
         "debug",
+        platform::types::FirmwareTraceMode::Perf,
         128,
         8192,
         2048,
@@ -588,6 +591,7 @@ fn test_query_metadata_elf_geometry_checksum_and_metadata_override() {
     assert!(stdout_cb.contains("chip: MCXN947"));
     assert!(stdout_cb.contains("bin_name: carrier_board_shell"));
     assert!(stdout_cb.contains("build_profile: debug"));
+    assert!(stdout_cb.contains("trace_mode: perf"));
     assert!(stdout_cb.contains("partition[2] (metadata): address=0x001E0000 size=32768"));
 
     let _ = std::fs::remove_dir_all(&temp_dir);

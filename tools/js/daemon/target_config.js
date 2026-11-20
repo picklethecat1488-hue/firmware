@@ -15,6 +15,42 @@ import { renderTerminalHtml, SHOW_SYSTEM_LOGS_STORAGE_KEY } from "./rtt_stream.j
 export const LAST_PACKAGE_STORAGE_KEY = "xerxes_last_target_package";
 export const LAST_BIN_STORAGE_KEY = "xerxes_last_target_bin";
 export const LAST_RELEASE_STORAGE_KEY = "xerxes_last_target_release";
+export const LAST_TRACE_MODE_STORAGE_KEY = "xerxes_last_trace_mode";
+
+export const DEFAULT_TRACE_MODE_OPTIONS = Object.freeze([
+  Object.freeze({
+    id: "NONE",
+    label: "NONE — Standard Build (No Trace Overhead)",
+    cargo_features: [],
+    external_viewer: "NONE",
+    enabled: true,
+    planned: false,
+  }),
+  Object.freeze({
+    id: "SENSOR",
+    label: "SENSOR — Sensor Reports & Values Only",
+    cargo_features: ["trace-sensors"],
+    external_viewer: "RERUN",
+    enabled: true,
+    planned: false,
+  }),
+  Object.freeze({
+    id: "PERF",
+    label: "PERF — Execution Spans & Telemetry (Excl. Sensors)",
+    cargo_features: ["trace-perf"],
+    external_viewer: "PERFETTO",
+    enabled: true,
+    planned: false,
+  }),
+  Object.freeze({
+    id: "AUDIO",
+    label: "AUDIO — Audio I2S / Codec Stream [PLANNED]",
+    cargo_features: ["trace-audio"],
+    external_viewer: "RERUN",
+    enabled: false,
+    planned: true,
+  }),
+]);
 
 const DEFAULT_PROBE_SPEED_KHZ = 1000;
 const DEFAULT_GDB_CORE0_PORT = 3333;
@@ -73,7 +109,15 @@ export class TargetConfigController {
       gdbCore1Port:
         Number(boot.gdbCore1Port ?? boot.gdb_core1_port) || DEFAULT_GDB_CORE1_PORT,
       debugServerActive: Boolean(boot.debugServerActive ?? boot.debug_server_active),
+      traceMode: String(boot.traceMode || boot.trace_mode || "NONE").toUpperCase(),
     };
+
+    const rawTraceModes = boot.traceModes || boot.trace_modes;
+    this.traceModeOptions =
+      Array.isArray(rawTraceModes) && rawTraceModes.length > 0
+        ? rawTraceModes
+        : DEFAULT_TRACE_MODE_OPTIONS;
+    this.isTraceDropdownOpen = false;
 
     this.discoveredPackages = Array.isArray(boot.targetPackages || boot.target_packages)
       ? [...(boot.targetPackages || boot.target_packages)]
@@ -85,6 +129,7 @@ export class TargetConfigController {
 
     this.onWorkstationDisabledChange = options.onWorkstationDisabledChange || null;
     this.onShowSystemLogsChange = options.onShowSystemLogsChange || null;
+    this.onTraceModeChange = options.onTraceModeChange || null;
     this.onSyncComplete = options.onSyncComplete || null;
     this.shouldSuppressAutoSyncModal = options.shouldSuppressAutoSyncModal || null;
 
@@ -98,6 +143,10 @@ export class TargetConfigController {
     this.debugServerBadge = resolveElement(
       ctx,
       options.debugServerBadge || "debugServerBadge",
+    );
+    this.traceModeBadge = resolveElement(
+      ctx,
+      options.traceModeBadge || "traceModeBadge",
     );
     this.syncBtn = resolveElement(ctx, options.syncBtn || "btnSync");
     this.resetBtn = resolveElement(ctx, options.resetBtn || "btnReset");
@@ -118,6 +167,30 @@ export class TargetConfigController {
     );
     this.cfgArchNote = resolveElement(ctx, options.cfgArchNote || "cfgInferredArchNote");
     this.cfgArchInput = resolveElement(ctx, options.cfgArchInput || "cfgTargetArchInput");
+    this.cfgTraceModeDropdown = resolveElement(
+      ctx,
+      options.cfgTraceModeDropdown || "cfgTraceModeDropdown",
+    );
+    this.cfgTraceModeTrigger = resolveElement(
+      ctx,
+      options.cfgTraceModeTrigger || "cfgTraceModeTrigger",
+    );
+    this.cfgTraceModeTriggerLabel = resolveElement(
+      ctx,
+      options.cfgTraceModeTriggerLabel || "cfgTraceModeTriggerLabel",
+    );
+    this.cfgTraceModeMenu = resolveElement(
+      ctx,
+      options.cfgTraceModeMenu || "cfgTraceModeMenu",
+    );
+    this.cfgTraceModeInput = resolveElement(
+      ctx,
+      options.cfgTraceModeInput || "cfgTraceModeInput",
+    );
+    this.cfgTraceModeFlags = resolveElement(
+      ctx,
+      options.cfgTraceModeFlags || "cfgTraceModeFlags",
+    );
     this.cfgShowLogsCheckbox = resolveElement(
       ctx,
       options.cfgShowLogsCheckbox || "cfgShowLogsCheckbox",
@@ -152,6 +225,10 @@ export class TargetConfigController {
     this.syncInfoPackage = resolveElement(ctx, options.syncInfoPackage || "syncInfoPackage");
     this.syncInfoProfile = resolveElement(ctx, options.syncInfoProfile || "syncInfoProfile");
     this.syncInfoSpeed = resolveElement(ctx, options.syncInfoSpeed || "syncInfoSpeed");
+    this.syncInfoTraceMode = resolveElement(
+      ctx,
+      options.syncInfoTraceMode || "syncInfoTraceMode",
+    );
     this.syncStatusDot = resolveElement(ctx, options.syncStatusDot || "syncStatusDot");
     this.syncProgressMsg = resolveElement(ctx, options.syncProgressMsg || "syncProgressMsg");
     this.syncProgressBar = resolveElement(ctx, options.syncProgressBar || "syncProgressBar");
@@ -171,6 +248,8 @@ export class TargetConfigController {
     const initialPkg =
       (this.cfgPackageSelect && this.cfgPackageSelect.value) || this.currentConfig.package;
     this.populateTargetBinaries(initialPkg, this.currentConfig.binName);
+    this._renderTraceModeDropdown(this.currentConfig.traceMode);
+    this.updateTraceBadge(this.currentConfig.traceMode);
     this.updateDebugBadge({
       enabled: this.currentConfig.enableDebugServer,
       active: this.currentConfig.debugServerActive,
@@ -206,6 +285,36 @@ export class TargetConfigController {
     bindClick(this.cfgCancelBtn, () => this.closeConfigModal());
     bindClick(this.cfgCloseBtn, () => this.closeConfigModal());
     bindClick(this.cfgConfirmBtn, () => this.submitConfig());
+
+    if (this.cfgTraceModeTrigger) {
+      bindClick(this.cfgTraceModeTrigger, (evt) => {
+        if (evt && typeof evt.stopPropagation === "function") {
+          evt.stopPropagation();
+        }
+        this.toggleTraceModeDropdown();
+      });
+    }
+
+    const doc = this.ctx.getDocument();
+    if (doc && this.cfgTraceModeMenu) {
+      const onDocClick = (evt) => {
+        if (!this.isTraceDropdownOpen) {
+          return;
+        }
+        const tgt = evt && evt.target;
+        if (
+          tgt &&
+          this.cfgTraceModeDropdown &&
+          typeof tgt.closest === "function" &&
+          tgt.closest("#cfgTraceModeDropdown")
+        ) {
+          return;
+        }
+        this.toggleTraceModeDropdown(false);
+      };
+      doc.addEventListener("click", onDocClick);
+      this._unsubscribers.push(() => doc.removeEventListener("click", onDocClick));
+    }
 
     bindClick(this.syncCloseBtn, () => this.closeSyncModal());
     bindClick(this.syncDismissBtn, () => this.closeSyncModal());
@@ -309,7 +418,14 @@ export class TargetConfigController {
             Number(data.current.gdb_core0_port) || this.currentConfig.gdbCore0Port,
           gdbCore1Port:
             Number(data.current.gdb_core1_port) || this.currentConfig.gdbCore1Port,
+          traceMode: String(
+            data.current.trace_mode || this.currentConfig.traceMode || "NONE",
+          ).toUpperCase(),
         };
+        if (Array.isArray(data.trace_modes) && data.trace_modes.length > 0) {
+          this.traceModeOptions = data.trace_modes;
+        }
+        this.updateTraceBadge(this.currentConfig.traceMode);
         if (data.current.debug_server) {
           this.updateDebugBadge(data.current.debug_server);
         }
@@ -453,6 +569,15 @@ export class TargetConfigController {
       this.cfgGdbCore1Port.value = String(c1Port);
     }
 
+    const initialTraceMode = String(
+      (this.lastSession && this.lastSession.trace_mode) ||
+        this.ctx.getStorage().getItem(LAST_TRACE_MODE_STORAGE_KEY) ||
+        this.currentConfig.traceMode ||
+        "NONE",
+    ).toUpperCase();
+    this.selectTraceModeOption(initialTraceMode);
+    this.toggleTraceModeDropdown(false);
+
     if (this.cfgStatusMsg) {
       this.cfgStatusMsg.style.display = "none";
       this.cfgStatusMsg.textContent = "";
@@ -465,7 +590,149 @@ export class TargetConfigController {
    * Close the Target Configuration modal.
    */
   closeConfigModal() {
+    this.toggleTraceModeDropdown(false);
     hideModal(this.ctx, this.configModal);
+  }
+
+  /**
+   * Toggle or explicitly set the open state of the scrollable `#cfgTraceModeMenu` dropdown.
+   *
+   * @param {boolean} [forceOpen] - Explicit open state.
+   */
+  toggleTraceModeDropdown(forceOpen) {
+    this.isTraceDropdownOpen =
+      typeof forceOpen === "boolean" ? forceOpen : !this.isTraceDropdownOpen;
+    if (this.cfgTraceModeMenu) {
+      if (this.isTraceDropdownOpen) {
+        this.cfgTraceModeMenu.classList.add("open");
+        this.cfgTraceModeMenu.style.display = "flex";
+      } else {
+        this.cfgTraceModeMenu.classList.remove("open");
+        this.cfgTraceModeMenu.style.display = "none";
+      }
+    }
+  }
+
+  /**
+   * Select a trace mode (`NONE`, `SENSOR`, `PERF`) inside the Target Config dropdown.
+   *
+   * @param {string} modeId - Trace mode identifier.
+   */
+  selectTraceModeOption(modeId) {
+    const upper = String(modeId || "NONE").toUpperCase();
+    const matched =
+      this.traceModeOptions.find((m) => String(m.id || "").toUpperCase() === upper) ||
+      this.traceModeOptions[0];
+    if (matched && matched.enabled === false) {
+      return;
+    }
+    const chosenId = matched ? String(matched.id).toUpperCase() : "NONE";
+    if (this.cfgTraceModeInput) {
+      this.cfgTraceModeInput.value = chosenId;
+    }
+    this._renderTraceModeDropdown(chosenId);
+    this.toggleTraceModeDropdown(false);
+  }
+
+  /**
+   * Render the scrollable `#cfgTraceModeMenu` items and update `#cfgTraceModeTriggerLabel` + `#cfgTraceModeFlags`.
+   *
+   * @param {string} selectedId - Selected trace mode ID.
+   */
+  _renderTraceModeDropdown(selectedId) {
+    const activeId = String(selectedId || "NONE").toUpperCase();
+    const selectedMeta =
+      this.traceModeOptions.find((m) => String(m.id || "").toUpperCase() === activeId) ||
+      this.traceModeOptions[0];
+
+    if (this.cfgTraceModeTriggerLabel && selectedMeta) {
+      this.cfgTraceModeTriggerLabel.textContent =
+        selectedMeta.label || selectedMeta.id || activeId;
+    }
+
+    if (this.cfgTraceModeFlags && selectedMeta) {
+      const features = Array.isArray(selectedMeta.cargo_features)
+        ? selectedMeta.cargo_features
+        : [];
+      const viewer = String(selectedMeta.external_viewer || "NONE").toUpperCase();
+      if (features.length === 0) {
+        this.cfgTraceModeFlags.textContent = "Cargo Flags: (none — standard build)";
+      } else {
+        const viewerNote =
+          viewer && viewer !== "NONE" ? ` • External Viewer: ${viewer}` : "";
+        this.cfgTraceModeFlags.textContent = `Cargo Flags: --features ${features.join(",")} (DEFMT_LOG=trace)${viewerNote}`;
+      }
+    }
+
+    if (!this.cfgTraceModeMenu) {
+      return;
+    }
+    clearChildren(this.cfgTraceModeMenu);
+
+    for (const opt of this.traceModeOptions) {
+      const optId = String(opt.id || "").toUpperCase();
+      const isDisabled = opt.enabled === false || Boolean(opt.planned);
+      const isSelected = optId === activeId;
+      const features = Array.isArray(opt.cargo_features) ? opt.cargo_features : [];
+      const viewer = String(opt.external_viewer || "NONE").toUpperCase();
+      const subText =
+        features.length > 0
+          ? `--features ${features.join(",")} • Viewer: ${viewer}`
+          : "Zero runtime trace overhead";
+
+      const itemEl = createEl(this.ctx, "div", {
+        className: `trace-dropdown-item${isSelected ? " selected" : ""}${isDisabled ? " disabled" : ""}`,
+        attrs: {
+          "data-trace-mode": optId,
+          "aria-disabled": isDisabled ? "true" : "false",
+        },
+        children: [
+          createEl(this.ctx, "strong", {
+            style: { color: isDisabled ? "var(--xerxes-text-dim)" : "var(--xerxes-cyan)", fontSize: "9.5px" },
+            text: opt.label || optId,
+          }),
+          createEl(this.ctx, "span", {
+            style: { color: "var(--xerxes-text-muted)", fontSize: "8px" },
+            text: subText,
+          }),
+        ],
+      });
+
+      if (!isDisabled) {
+        itemEl.addEventListener("click", (evt) => {
+          if (evt && typeof evt.stopPropagation === "function") {
+            evt.stopPropagation();
+          }
+          this.selectTraceModeOption(optId);
+        });
+      }
+      this.cfgTraceModeMenu.appendChild(itemEl);
+    }
+  }
+
+  /**
+   * Update the passive `#traceModeBadge` header indicator and `#syncInfoTraceMode`.
+   *
+   * @param {string} traceMode - Active firmware trace mode.
+   */
+  updateTraceBadge(traceMode) {
+    const normalized = String(traceMode || "NONE").toUpperCase();
+    this.currentConfig.traceMode = normalized;
+    if (this.syncInfoTraceMode) {
+      this.syncInfoTraceMode.textContent = normalized;
+    }
+    if (!this.traceModeBadge) {
+      return;
+    }
+    if (normalized === "NONE") {
+      this.traceModeBadge.style.display = "none";
+      this.traceModeBadge.textContent = "TRACE: NONE";
+    } else {
+      this.traceModeBadge.style.display = "inline-block";
+      this.traceModeBadge.textContent = `TRACE: ${normalized}`;
+      this.traceModeBadge.className =
+        normalized === "PERF" ? "badge badge-purple" : "badge badge-green";
+    }
   }
 
   /**
@@ -509,6 +776,11 @@ export class TargetConfigController {
           String(this.currentConfig.gdbCore1Port),
         10,
       ) || DEFAULT_GDB_CORE1_PORT;
+    const traceMode = String(
+      (this.cfgTraceModeInput && this.cfgTraceModeInput.value) ||
+        this.currentConfig.traceMode ||
+        "NONE",
+    ).toUpperCase();
 
     if (this.cfgConfirmBtn) {
       this.cfgConfirmBtn.disabled = true;
@@ -522,6 +794,7 @@ export class TargetConfigController {
         speed,
         target,
         show_system_logs: showLogs,
+        trace_mode: traceMode,
         enable_debug_server: enableDebugServer,
         halt_on_reset: haltOnReset,
         gdb_core0_port: gdbCore0Port,
@@ -529,10 +802,12 @@ export class TargetConfigController {
       });
 
       if (data && data.success) {
+        const resolvedTraceMode = String(data.trace_mode || traceMode).toUpperCase();
         const storage = this.ctx.getStorage();
         storage.setItem(LAST_PACKAGE_STORAGE_KEY, pkg);
         storage.setItem(LAST_BIN_STORAGE_KEY, bin);
         storage.setItem(LAST_RELEASE_STORAGE_KEY, String(release));
+        storage.setItem(LAST_TRACE_MODE_STORAGE_KEY, resolvedTraceMode);
         storage.setItem(SHOW_SYSTEM_LOGS_STORAGE_KEY, String(showLogs));
 
         this.currentConfig = {
@@ -543,6 +818,7 @@ export class TargetConfigController {
           speed,
           target: data.target || target,
           showSystemLogs: showLogs,
+          traceMode: resolvedTraceMode,
           enableDebugServer,
           haltOnReset,
           gdbCore0Port,
@@ -554,12 +830,18 @@ export class TargetConfigController {
           release,
           target: this.currentConfig.target,
           speed,
+          trace_mode: resolvedTraceMode,
           enable_debug_server: enableDebugServer,
           halt_on_reset: haltOnReset,
           gdb_core0_port: gdbCore0Port,
           gdb_core1_port: gdbCore1Port,
         };
         this.packageSelectionMode = false;
+
+        this.updateTraceBadge(resolvedTraceMode);
+        if (typeof this.onTraceModeChange === "function") {
+          this.onTraceModeChange(resolvedTraceMode, { binName: bin });
+        }
 
         this.updateDebugBadge({
           enabled: enableDebugServer,

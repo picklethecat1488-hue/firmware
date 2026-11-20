@@ -15,6 +15,7 @@ export const WORKSTATION_MODES = Object.freeze({
   CLI: "CLI",
   FS: "FS",
   TEST: "TEST",
+  TRACE: "TRACE",
 });
 
 const FOLLOWUP_POLL_SHORT_MS = 100;
@@ -62,9 +63,11 @@ export class CliConsoleController {
     this._unsubscribers = [];
 
     this.modeSelect = resolveElement(ctx, options.modeSelect || "modeSelect");
+    this.modeTabGroup = resolveElement(ctx, options.modeTabGroup || "modeTabGroup");
     this.cliView = resolveElement(ctx, options.cliView || "cliView");
     this.fsView = resolveElement(ctx, options.fsView || "fsView");
     this.testView = resolveElement(ctx, options.testView || "testView");
+    this.traceView = resolveElement(ctx, options.traceView || "traceView");
     this.fsToolbar = resolveElement(ctx, options.fsToolbar || "fsToolbar");
     this.footerBar = resolveElement(ctx, options.footerBar || "cliInputBar");
     this.promptLabel = resolveElement(ctx, options.promptLabel || "promptLabel");
@@ -94,6 +97,17 @@ export class CliConsoleController {
       this.modeSelect.addEventListener("change", onModeSelectChange);
       this._unsubscribers.push(() =>
         this.modeSelect.removeEventListener("change", onModeSelectChange),
+      );
+    }
+
+    if (this.modeTabGroup) {
+      this._unsubscribers.push(
+        bindDelegatedEvent(this.modeTabGroup, "click", "[data-mode]", (_evt, btn) => {
+          const nextMode = btn.getAttribute("data-mode");
+          if (nextMode) {
+            this.setMode(nextMode);
+          }
+        }),
       );
     }
 
@@ -369,10 +383,36 @@ export class CliConsoleController {
       this.modeSelect.value = mode;
     }
 
+    if (this.modeTabGroup) {
+      const buttons = this.modeTabGroup.querySelectorAll("[data-mode]");
+      for (const btn of buttons) {
+        if (String(btn.getAttribute("data-mode") || "").toUpperCase() === mode) {
+          btn.classList.add("active");
+        } else {
+          btn.classList.remove("active");
+        }
+      }
+    }
+
     const doc = this.ctx.getDocument();
     const footerEl = this.footerBar || (doc ? doc.querySelector(".cli-input-bar") : null);
 
     let nextPlaceholder = DEFAULT_CLI_PLACEHOLDER;
+    if (mode === WORKSTATION_MODES.TRACE) {
+      if (this.cliView) this.cliView.style.display = "none";
+      if (this.fsView) this.fsView.style.display = "none";
+      if (this.fsToolbar) this.fsToolbar.style.display = "none";
+      if (this.testView) this.testView.style.display = "none";
+      if (this.traceView) this.traceView.style.display = "flex";
+      if (footerEl) footerEl.style.display = "none";
+      if (this.panelTitle) {
+        this.panelTitle.textContent = "PERFETTO TRACE & SENSOR TELEMETRY WORKSTATION";
+      }
+      return;
+    }
+
+    if (this.traceView) this.traceView.style.display = "none";
+
     if (mode === WORKSTATION_MODES.TEST) {
       if (this.cliView) this.cliView.style.display = "none";
       if (this.fsView) this.fsView.style.display = "none";

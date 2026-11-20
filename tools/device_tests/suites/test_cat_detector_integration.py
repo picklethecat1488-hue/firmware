@@ -279,6 +279,89 @@ async def test_dual_core_gdb_reset_handler_to_loc(host: AsyncHostSessionClient) 
     project="cat_detector",
     boards=("rp2040*",),
     scenarios=(ScenarioTier.INTEGRATION, ScenarioTier.BRINGUP),
+    target_binary="cat_detector_shell",
+    trace_mode="PERF",
+)
+async def test_trace_mode_perf_emits_spans_and_excludes_sensors(
+    host: AsyncHostSessionClient,
+) -> None:
+    """Verify `PERF` trace mode (`--features trace-perf`) emits spans/CPU usage while excluding sensor reports."""
+    repo_root = Path(__file__).resolve().parents[3]
+    csv_out = repo_root / "target" / "_test_perf_trace.csv"
+    perfetto_out = repo_root / "target" / "_test_perf_trace.perfetto.json"
+    for p in (csv_out, perfetto_out):
+        if p.exists():
+            p.unlink()
+
+    await host.control_trace("clear")
+
+    await host.cli("motor current")
+    await host.cli("fs ls")
+    await host.cli("sensor status")
+    await host.cli("thermal status")
+
+    events = []
+    for _ in range(25):
+        snap = await host.get_trace_events(after_seq=0, limit=5000)
+        events = list(snap.get("events") or [])
+        if any(e.get("category") == "span" for e in events):
+            break
+        await asyncio.sleep(0.12)
+
+    span_events = [e for e in events if e.get("category") == "span"]
+    sensor_events = [e for e in events if e.get("category") == "sensor"]
+    assert len(span_events) >= 1, f"Expected >= 1 span in PERF mode, got: {events[:10]}"
+    assert len(sensor_events) == 0, f"PERF mode must exclude sensor reports, got: {sensor_events[:5]}"
+
+    csv_res = await host.export_trace("csv", str(csv_out))
+    perfetto_res = await host.export_trace("perfetto", str(perfetto_out))
+    assert csv_res.get("success") is True and csv_out.is_file() and csv_out.stat().st_size > 0
+    assert perfetto_res.get("success") is True and perfetto_out.is_file() and perfetto_out.stat().st_size > 0
+    csv_out.unlink()
+    perfetto_out.unlink()
+
+
+@device_test(
+    project="cat_detector",
+    boards=("rp2040*",),
+    scenarios=(ScenarioTier.INTEGRATION, ScenarioTier.BRINGUP),
+    target_binary="cat_detector_shell",
+    trace_mode="SENSOR",
+)
+async def test_trace_mode_sensor_emits_sensor_reports_only(
+    host: AsyncHostSessionClient,
+) -> None:
+    """Verify `SENSOR` trace mode (`--features trace-sensors`) emits measured sensor values with zero spans."""
+    await host.control_trace("clear")
+
+    await host.cli("sensor status")
+    await host.cli("thermal status")
+    await host.cli("motor current")
+
+    events = []
+    for _ in range(25):
+        snap = await host.get_trace_events(after_seq=0, limit=5000)
+        events = list(snap.get("events") or [])
+        has_prox = any("Proximity" in str(e.get("track", "")) for e in events)
+        has_therm = any("Thermal" in str(e.get("track", "")) for e in events)
+        if has_prox and has_therm:
+            break
+        await asyncio.sleep(0.12)
+
+    sensor_events = [e for e in events if e.get("category") == "sensor"]
+    span_events = [e for e in events if e.get("category") == "span"]
+    assert len(sensor_events) >= 2, f"Expected sensor reports in SENSOR mode, got: {events}"
+    assert any("Proximity" in str(e.get("track", "")) for e in sensor_events), sensor_events
+    assert any(
+        "Thermal" in str(e.get("track", "")) and isinstance(e.get("value"), (int, float)) for e in sensor_events
+    ), sensor_events
+    assert len(span_events) == 0, f"SENSOR mode must not emit execution spans, got: {span_events[:5]}"
+
+
+@device_test(
+    project="cat_detector",
+    boards=("rp2040*",),
+    scenarios=(ScenarioTier.INTEGRATION, ScenarioTier.BRINGUP),
     target_binary="cat_detector_app",
 )
 async def test_standalone_app_binary_boot_lifecycle(host: AsyncHostSessionClient) -> None:

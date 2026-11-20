@@ -205,6 +205,7 @@ class DeviceTestMetadata:
     description: str = ""
     definition_lineno: int = 0
     file_path: str = ""
+    trace_mode: Optional[str] = None
 
     def to_dict(self, order_index: int = 1) -> Dict[str, Any]:
         """Serialize test metadata with its 1-based listing order index."""
@@ -215,6 +216,7 @@ class DeviceTestMetadata:
             "boards": list(self.boards),
             "scenarios": [s.value for s in self.scenarios],
             "target_binary": self.target_binary.bin_name if self.target_binary else None,
+            "trace_mode": self.trace_mode,
             "manual": self.manual,
             "description": self.description,
             "lineno": self.definition_lineno,
@@ -316,6 +318,7 @@ def device_test(
     boards: Union[str, Sequence[Union[str, BoardType]]] = ("*",),
     scenarios: Sequence[Union[str, ScenarioTier]] = (ScenarioTier.SMOKE,),
     target_binary: Union[None, str, TargetBinarySpec] = None,
+    trace_mode: Optional[str] = None,
     manual: bool = False,
 ) -> Callable[[F], F]:
     """Attach project, board-glob, scenario-tier, and `target_binary` attributes to an async pytest test.
@@ -344,6 +347,7 @@ def device_test(
             src_file = ""
 
         doc_summary = inspect.getdoc(fn) or ""
+        normalized_trace = str(trace_mode).strip().upper() if trace_mode else None
         metadata = DeviceTestMetadata(
             name=fn.__name__,
             project=normalized_project,
@@ -354,6 +358,7 @@ def device_test(
             description=doc_summary,
             definition_lineno=lineno,
             file_path=src_file,
+            trace_mode=normalized_trace,
         )
         setattr(fn, "__device_test_meta__", metadata)
 

@@ -12,7 +12,10 @@ pub use events::{
 };
 pub use stream::{cancel_echo, stream_logs};
 pub use tool_common::autodetect_project_info;
-pub use tracing::format_target_namespace;
+pub use tracing::{
+    export_trace_events_to_csv, export_trace_events_to_perfetto_json, format_target_namespace,
+    LiveTraceStreamProcessor,
+};
 
 /// Trait abstracting a defmt log source.
 pub trait DefmtLogSource {

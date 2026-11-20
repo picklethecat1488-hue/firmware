@@ -252,17 +252,28 @@ To identify latencies, stuck buses, or slow I/O polling, any potentially blockin
         // ...
     }
     ```
-*   **Enabling Tracing (Compile Time)**:
-    Tracing is compiled out by default. To enable it on the target, compile/run with the `tracing` cargo feature:
+*   **Domain-Scoped Tracing Modes (`NONE`, `SENSOR`, `PERF`, and planned `AUDIO`)**:
+    Tracing is compiled out by default (`NONE`). Target selection in `python tools/host.py` (`🎯 Target Config` scrollable dropdown or `--trace-mode`) passes mode-specific Cargo feature flags and embeds `FirmwareTraceMode` into `.program_metadata`:
+    *   `NONE`: Standard build with zero runtime trace overhead.
+    *   `PERF` (`--features trace-perf`): Enables all non-sensor `#[tracing::instrument]` execution spans, `Core 0/1 CPU Usage (%)`, and non-sensor `TelemetryRecord` trace events (excluding `#[tracing::instrument(domain = "sensor")]` and sensor telemetry reports). Opens externally in **Perfetto UI** (`ui.perfetto.dev`).
+    *   `SENSOR` (`--features trace-sensors`): Enables real-time sensor telemetry reports and measured values only (`Proximity` mm + valid/invalid, `Thermal` mC, `Gesture` via `platform::tracing::trace_sensor_report`), with zero function-span overhead. Streams externally into **Rerun Viewer** (`rerun-sdk`).
+    *   `AUDIO` (`--features trace-audio`, `[PLANNED]`): Reserved for I2S / codec streaming into **Rerun Viewer**.
     ```bash
-    cargo build --package cat_detector --features tracing --target thumbv6m-none-eabi
+    # Launch workstation in PERF or SENSOR trace mode:
+    python tools/host.py --trace-mode PERF
+    python tools/host.py --trace-mode SENSOR
+
+    # Export buffered trace to .csv or Perfetto JSON (.perfetto.json) or open in Rerun from CLI:
+    python tools/host.py trace export --format csv --output recordings/traces/session.csv
+    python tools/host.py trace export --format perfetto --output recordings/traces/session.perfetto.json
+    python tools/host.py trace open-rerun
     ```
-*   **Reconstructing Spans & Perfetto Export (Host)**:
-    To capture and view the spans, run the host CLI tool with the `--trace <FILE>` option:
+*   **Standalone `host_cli` Span & CSV / Perfetto Export**:
+    You can also capture directly via `host_cli --trace <FILE>` (`.perfetto.json` or `.csv`):
     ```bash
-    cargo run -p host_cli -- --elf target/thumbv6m-none-eabi/debug/cat_detector --trace perfetto_trace.json
+    cargo host-cli --elf target/thumbv6m-none-eabi/debug/cat_detector_shell --trace recordings/traces/trace.perfetto.json
+    cargo host-cli --elf target/thumbv6m-none-eabi/debug/cat_detector_shell --trace recordings/traces/trace.csv
     ```
-    This generates a trace file in Chrome JSON format. Load this file in [ui.perfetto.dev](https://ui.perfetto.dev) to interactively inspect execution timelines, spans, and nested events.
 
 ---
 
@@ -498,23 +509,10 @@ When introducing or modifying telemetry records, filesystem files, or crash logs
    cargo run -p host_fs -- --dump <flash_dump.bin> crash-log --elf target/thumbv6m-none-eabi/debug/cat_detector_app
    ```
    Verify that all frames resolve demangled function names, filenames, and correct source line numbers.
-4. **Rerun Telemetry Visualization**: Plot the exported telemetry CSV in Rerun:
-   - Ensure the Rerun Python SDK is installed:
-     ```bash
-     pip install rerun-sdk
-     ```
-   - Start the Rerun Viewer:
-     ```bash
-     rerun
-     ```
-   - Stream the CSV into the running viewer:
-     ```bash
-     python tools/helpers/rerun-loader-csv telemetry.csv
-     ```
-   *(Optional)* Symlink `tools/helpers/rerun-loader-csv` into your system `PATH` (e.g., `/usr/local/bin/rerun-loader-csv` or `~/.local/bin/rerun-loader-csv`) to enable direct drag-and-drop or CLI loading via:
-     ```bash
-     rerun telemetry.csv
-     ```
+4. **Live Trace Workstation, Perfetto UI & Rerun Telemetry Visualization**:
+   - Select **`PERF`** or **`SENSOR`** under **`PERFETTO / DEFMT TRACING MODE`** in `python tools/host.py` (`🎯 Target Config`) and click **⚡ Flash & Connect**, then open the **`TRACE`** header tab.
+   - Use the hovering bottom trackbar above the slice/sample inspector to pause/resume (`Space`), clear, filter tracks, or zoom/pan (`W`/`+`, `S`/`-`, `A`/`←`, `D`/`→`, `F` to fit, or mouse scroll wheel).
+   - Export directly to `.csv` or `.perfetto.json`, click **🚀 Open in Perfetto** (in `PERF` mode), or click **🚀 Open in Rerun** (in `SENSOR` / `AUDIO` modes, or run `python tools/host.py trace open-rerun`) to stream scalar time-series directly into Rerun via `rerun-sdk`.
 
 ---
 

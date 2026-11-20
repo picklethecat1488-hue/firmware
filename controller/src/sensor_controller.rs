@@ -260,6 +260,10 @@ impl<
     }
 
     /// Gets the sensor direction.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
     pub fn direction(&self) -> Direction {
         self.metadata.direction
     }
@@ -530,6 +534,10 @@ where
     }
 
     /// Gets the sensor direction.
+    #[cfg_attr(
+        all(target_arch = "arm", feature = "sensors-core"),
+        link_section = ".data.core1_func"
+    )]
     pub fn direction(&self) -> Direction {
         self.state_manager.direction()
     }
@@ -553,7 +561,12 @@ where
         all(target_arch = "arm", feature = "sensors-core"),
         link_section = ".data.core1_func"
     )]
-    #[tracing::instrument(core1 = "core1", name = "sensor_controller::update", level = "trace")]
+    #[tracing::instrument(
+        domain = "sensor",
+        core1 = "core1",
+        name = "sensor_controller::update",
+        level = "trace"
+    )]
     pub async fn update(&mut self) -> Result<Reader::Data, Reader::Error> {
         let raw_data = Reader::read_data(self.state_manager.sensor_mut(), &self.context).await?;
         let data = self
@@ -563,6 +576,9 @@ where
             .unwrap_or(raw_data);
 
         self.latest_data = data;
+        platform::tracing::trace_sensor_report(&model::telemetry::TelemetryRecord::Proximity(
+            model::types::SensorTelemetry::Status(self.direction(), data),
+        ));
 
         self.notify_upstream(data);
 
@@ -575,6 +591,7 @@ where
         link_section = ".data.core1_func"
     )]
     #[tracing::instrument(
+        domain = "sensor",
         core1 = "core1",
         name = "sensor_controller::handle_command",
         level = "info",
@@ -595,6 +612,11 @@ where
                             .apply_calibration(raw_d)
                             .unwrap_or(raw_d);
                         self.latest_data = d;
+                        platform::tracing::trace_sensor_report(
+                            &model::telemetry::TelemetryRecord::Proximity(
+                                model::types::SensorTelemetry::Status(self.direction(), d),
+                            ),
+                        );
                         d
                     })
                     .map_err(|_| PeripheralError::DeviceNotAvailable);

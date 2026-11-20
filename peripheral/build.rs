@@ -7,7 +7,16 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rustc-check-cfg=cfg(target_has_embassy_rp)");
 
-    if env::var("CARGO_FEATURE_TRACING").is_ok() {
+    if [
+        "CARGO_FEATURE_TRACING",
+        "CARGO_FEATURE_TRACE_PERF",
+        "CARGO_FEATURE_TRACE_SENSORS",
+        "CARGO_FEATURE_TRACE_SENSOR_SPANS",
+        "CARGO_FEATURE_TRACE_AUDIO",
+    ]
+    .iter()
+    .any(|var| env::var(var).is_ok())
+    {
         println!("cargo:rustc-env=DEFMT_LOG=trace");
     }
 

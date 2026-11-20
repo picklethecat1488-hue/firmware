@@ -52,6 +52,31 @@ pub enum HostCliEvent {
         /// Optional target Embassy timestamp in seconds.
         device_ts: Option<f64>,
     },
+    /// Structured live trace or telemetry event decoded from target RTT `defmt` frames.
+    Trace {
+        /// Monotonic target timestamp in microseconds (`embassy_time`).
+        ts_us: u64,
+        /// Logical timeline track name (`"CPU Core 0"`, `"Proximity (North)"`, etc.).
+        track: String,
+        /// Perfetto phase code (`"B"`, `"E"`, `"C"`, `"i"`).
+        ph: String,
+        /// Domain category (`"span"`, `"cpu_usage"`, `"sensor"`, `"telemetry"`).
+        category: String,
+        /// Span, counter, or sensor report name.
+        name: String,
+        /// Optional span identifier for pairing `B`/`E` slices into completed durations.
+        span_id: Option<String>,
+        /// Optional parent span identifier.
+        parent_id: Option<String>,
+        /// Optional Rust module path.
+        module: Option<String>,
+        /// Optional scalar value (for sensor distances, temperatures, CPU %, RPM, mV, mA).
+        value: Option<f64>,
+        /// Optional physical unit string (`"mm"`, `"mC"`, `"%"`, `"mV"`, `"mA"`, `"RPM"`).
+        unit: Option<String>,
+        /// Structured key-value arguments for inspector, CSV, Perfetto, and Rerun export.
+        args: serde_json::Value,
+    },
     /// Emitted when the active RTT session disconnects or terminates.
     SessionDisconnected {
         /// Optional error string if the session terminated due to a probe/read error.
@@ -106,6 +131,32 @@ impl HostCliEvent {
                 "success": success,
                 "error": error,
                 "device_ts": device_ts,
+            }),
+            Self::Trace {
+                ts_us,
+                track,
+                ph,
+                category,
+                name,
+                span_id,
+                parent_id,
+                module,
+                value,
+                unit,
+                args,
+            } => json!({
+                "event": "trace_event",
+                "ts_us": ts_us,
+                "track": track,
+                "ph": ph,
+                "category": category,
+                "name": name,
+                "span_id": span_id,
+                "parent_id": parent_id,
+                "module": module,
+                "value": value,
+                "unit": unit,
+                "args": args,
             }),
             Self::SessionDisconnected { error } => json!({
                 "event": "session_disconnected",

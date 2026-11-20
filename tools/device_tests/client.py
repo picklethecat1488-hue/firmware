@@ -195,7 +195,7 @@ class AsyncHostSessionClient:
         self._reconfigured_debug_server = False
         self._cached_board: Optional[DetectedBoard] = None
         self._board_queried = False
-        self._verified_binary_key: Optional[Tuple[str, str, str]] = None
+        self._verified_binary_key: Optional[Tuple[str, str, str, str]] = None
         self.last_boot_log_cursor: int = 0
         self.last_output_log: str = ""
 
@@ -444,22 +444,26 @@ class AsyncHostSessionClient:
         self,
         target_binary: Union[TargetBinarySpec, str, None],
         *,
+        trace_mode: Optional[str] = None,
         force: bool = False,
         timeout: float = DEFAULT_SYNC_TIMEOUT_SEC,
     ) -> Optional[SyncOutcome]:
-        """Ensure `target_binary` is compiled, flashed, and matches target ELF metadata on `host.py`."""
+        """Ensure `target_binary` (and `trace_mode`) is compiled, flashed, and matches target ELF metadata on `host.py`."""
         spec = resolve_target_binary(target_binary, repo_root=self.repo_root)
         if spec is None:
             return None
 
         status = await self.get_status()
         desired_profile = "release" if spec.release else "debug"
-        bin_key = (spec.package, spec.bin_name, desired_profile)
+        desired_trace_mode = str(trace_mode or "NONE").strip().upper()
+        cur_trace_mode = str(status.get("trace_mode") or "NONE").strip().upper()
+        bin_key = (spec.package, spec.bin_name, desired_profile, desired_trace_mode)
         already_active = (
             not force
             and status.get("package") == spec.package
             and status.get("bin") == spec.bin_name
             and status.get("profile") == desired_profile
+            and cur_trace_mode == desired_trace_mode
             and bool(status.get("flashed"))
             and bool(status.get("connected"))
         )
@@ -499,6 +503,7 @@ class AsyncHostSessionClient:
                 bin_name=spec.bin_name,
                 release=spec.release,
                 chip=spec.chip,
+                trace_mode=desired_trace_mode,
             )
             sync_state = await asyncio.to_thread(self._runner.sync)
         else:
@@ -510,6 +515,7 @@ class AsyncHostSessionClient:
                     "target": spec.arm_target,
                     "chip": spec.chip,
                     "release": spec.release,
+                    "trace_mode": desired_trace_mode,
                 },
                 timeout=15.0,
             )
@@ -754,7 +760,10 @@ class AsyncHostSessionClient:
                             chip=inferred.chip,
                             release=prior_release,
                         )
-                    await self.ensure_target_binary(restore_spec)
+                    await self.ensure_target_binary(
+                        restore_spec,
+                        trace_mode=self._prior_target_config.get("trace_mode"),
+                    )
                 except (OSError, RuntimeError, ValueError, AssertionError):
                     pass
 
@@ -772,6 +781,30 @@ class AsyncHostSessionClient:
                     await self.stop_debug_server()
             except (OSError, RuntimeError):
                 pass
+
+    async def get_trace_events(self, after_seq: int = 0, limit: int = 10_000) -> Dict[str, Any]:
+        """Fetch incremental live trace slices, counters, and track metadata from `host.py`."""
+        if self._runner is not None:
+            return await asyncio.to_thread(self._runner.get_trace_events, after_seq, limit)
+        res = await self._request(f"/api/trace/events?after_seq={after_seq}&limit={limit}", None, timeout=5.0)
+        return res if isinstance(res, dict) else {"events": [], "tracks": []}
+
+    async def control_trace(self, action: str) -> Dict[str, Any]:
+        """Dispatch a trace control command (`'clear'`, `'pause'`, `'resume'`) to `host.py`."""
+        if self._runner is not None:
+            return await asyncio.to_thread(self._runner.control_trace_session, action)
+        res = await self._request("/api/trace/control", {"action": action}, timeout=5.0)
+        return res if isinstance(res, dict) else {}
+
+    async def export_trace(self, fmt: str, path: Optional[str] = None) -> Dict[str, Any]:
+        """Export buffered live trace events to disk in `'csv'` or `'perfetto'` format via `host.py`."""
+        if self._runner is not None:
+            return await asyncio.to_thread(self._runner.export_trace_session, fmt, path)
+        payload: Dict[str, Any] = {"format": fmt}
+        if path is not None:
+            payload["path"] = path
+        res = await self._request("/api/trace/export", payload, timeout=10.0)
+        return res if isinstance(res, dict) else {}
 
 
 class _DeferredLogStreamContext:

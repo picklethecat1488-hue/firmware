@@ -30,11 +30,22 @@ conda activate firmware-env
 
 ## 2. Interactive Xerxes Host Workstation & Daemon (`tools/host.py`)
 
-`tools/host.py` provides a System Shock 2 – Xerxes styled desktop/web workstation and background daemon for target synchronization (`⚡ Sync`), real-time RTT `defmt` log streaming, bidirectional embedded shell commands (`CLI` mode), sequential-storage flash filesystem management (`FS` mode), interactive `@device_test` scanning/filtering/execution (`TEST` mode, superseding the legacy bringup UI), and one-click **Target Bug** (`WORM-*`) diagnostic packaging:
+`tools/host.py` provides a System Shock 2 – Xerxes styled desktop/web workstation and background daemon for target synchronization (`⚡ Sync`), real-time RTT `defmt` log streaming, bidirectional embedded shell commands (`CLI` mode), sequential-storage flash filesystem management (`FS` mode), interactive `@device_test` scanning/filtering/execution (`TEST` mode, superseding the legacy bringup UI), live Perfetto/Rerun timeline visualization & `.csv`/`.perfetto.json` export (`TRACE` mode with `NONE`, `SENSOR`, and `PERF` Target Config modes), and one-click **Target Bug** (`WORM-*`) diagnostic packaging:
 
 ```bash
 # Launch interactive workstation (defaults to port 8899 in native desktop window)
 python tools/host.py
+
+# Launch with PERF (--features trace-perf -> Perfetto) or SENSOR (--features trace-sensors -> Rerun) tracing
+python tools/host.py --trace-mode PERF
+python tools/host.py --trace-mode SENSOR
+
+# Inspect, switch, export (.csv / .perfetto.json), or stream live trace sessions to Rerun
+python tools/host.py trace status
+python tools/host.py trace mode PERF --sync
+python tools/host.py trace export --format csv --output recordings/traces/session.csv
+python tools/host.py trace export --format perfetto --output recordings/traces/session.perfetto.json
+python tools/host.py trace open-rerun
 
 # Launch with probe-rs dual-core GDB server (:3333/:3334) and :50000 RTT bridge enabled
 python tools/host.py --debug-server --gdb-core0-port 3333 --gdb-core1-port 3334

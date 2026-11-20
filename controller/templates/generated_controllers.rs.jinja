@@ -30,13 +30,20 @@ macro_rules! run_{{ ctrl.name|lower }}_task {
         #[allow(non_snake_case)]
         mod $task_module {
             use super::*;
-            #[cfg(feature = "tracing")]
+            {% if ctrl.is_sensor_domain() %}
+            #[cfg(feature = "trace-sensor-spans")]
+            {% else %}
+            #[cfg(feature = "trace-perf")]
+            {% endif %}
             use $crate::tracing::tracing_defmt;
 
             {% for attr in ctrl.attributes_slice() %}
                 {{ attr|safe }}
             {% endfor %}
             #[ $crate::tracing::instrument(
+                {% if ctrl.is_sensor_domain() %}
+                domain = "sensor",
+                {% endif %}
                 name = stringify!($task_module),
                 level = "info",
                 skip(
@@ -90,13 +97,20 @@ macro_rules! run_{{ ctrl.name|lower }}_task {
         #[allow(non_snake_case)]
         mod $task_module {
             use super::*;
-            #[cfg(feature = "tracing")]
+            {% if ctrl.is_sensor_domain() %}
+            #[cfg(feature = "trace-sensor-spans")]
+            {% else %}
+            #[cfg(feature = "trace-perf")]
+            {% endif %}
             use $crate::tracing::tracing_defmt;
 
             {% for attr in ctrl.attributes_slice() %}
                 {{ attr|safe }}
             {% endfor %}
             #[ $crate::tracing::instrument(
+                {% if ctrl.is_sensor_domain() %}
+                domain = "sensor",
+                {% endif %}
                 name = stringify!($task_module),
                 level = "info",
                 skip(

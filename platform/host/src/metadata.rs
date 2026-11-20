@@ -28,6 +28,8 @@ pub struct ProjectInfo {
     pub bin_name: Option<String>,
     /// Optional compiled Cargo profile identifier ("debug" or "release").
     pub build_profile: Option<String>,
+    /// Optional compile-time tracing mode identifier ("none", "sensor", "perf", "audio").
+    pub trace_mode: Option<String>,
     /// Flash write alignment/size in bytes.
     pub flash_write_size: u32,
     /// Flash erase sector size in bytes.
@@ -93,6 +95,7 @@ impl ProjectInfo {
             board_type: metadata.board_type.to_string(),
             bin_name: metadata.bin_name.map(str::to_string),
             build_profile: metadata.build_profile.map(str::to_string),
+            trace_mode: metadata.trace_mode.map(|m| m.as_str().to_string()),
             flash_write_size: metadata.flash_write_size,
             flash_erase_size: metadata.flash_erase_size,
             stack_scan_limit: metadata.stack_scan_limit,

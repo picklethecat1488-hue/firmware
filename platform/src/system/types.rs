@@ -458,6 +458,52 @@ pub struct PartitionMetadata {
     pub size: u32,
 }
 
+/// Compile-time firmware tracing mode embedded in `.program_metadata`.
+#[derive(Clone, Copy, PartialEq, Eq, Encode, Decode)]
+#[cfg_attr(not(all(target_arch = "arm", target_os = "none")), derive(Debug))]
+#[cfg_attr(all(target_arch = "arm", target_os = "none"), derive(defmt::Format))]
+#[cbor(index_only)]
+#[repr(u8)]
+pub enum FirmwareTraceMode {
+    /// Standard build with no trace instrumentation (`NONE`).
+    #[n(0)]
+    None = 0,
+    /// Sensor reports & measured values only (`SENSOR`).
+    #[n(1)]
+    Sensor = 1,
+    /// Execution spans, CPU usage %, and non-sensor telemetry (`PERF`).
+    #[n(2)]
+    Perf = 2,
+    /// Audio subsystem stream & DSP frame tracing (`AUDIO`).
+    #[n(3)]
+    Audio = 3,
+}
+
+impl FirmwareTraceMode {
+    /// Resolve the active compile-time firmware trace mode from Cargo features.
+    pub const fn active() -> Self {
+        if cfg!(feature = "trace-perf") {
+            Self::Perf
+        } else if cfg!(feature = "trace-sensors") {
+            Self::Sensor
+        } else if cfg!(feature = "trace-audio") {
+            Self::Audio
+        } else {
+            Self::None
+        }
+    }
+
+    /// Return the canonical lowercase mode identifier (`"none"`, `"sensor"`, `"perf"`, `"audio"`).
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Sensor => "sensor",
+            Self::Perf => "perf",
+            Self::Audio => "audio",
+        }
+    }
+}
+
 /// Project metadata struct embedded in the `.program_metadata` ELF/flash section
 /// to allow autodetecting chip, board type, and partition layout without scanning flash.
 #[derive(Clone, Encode, Decode)]
@@ -490,6 +536,9 @@ pub struct ProjectMetadata<'a> {
     /// Compiled Cargo profile identifier ("debug" or "release")
     #[n(8)]
     pub build_profile: Option<&'a str>,
+    /// Optional compile-time tracing mode (`None`, `Sensor`, `Perf`, `Audio`).
+    #[n(9)]
+    pub trace_mode: Option<FirmwareTraceMode>,
 }
 
 impl<'a> ProjectMetadata<'a> {
@@ -500,6 +549,7 @@ impl<'a> ProjectMetadata<'a> {
         board_type: &'a str,
         bin_name: &'a str,
         build_profile: &'a str,
+        trace_mode: FirmwareTraceMode,
         flash_write_size: u32,
         flash_erase_size: u32,
         stack_scan_limit: u32,
@@ -512,7 +562,7 @@ impl<'a> ProjectMetadata<'a> {
         metadata_size: u32,
     ) -> crate::cbor::ConstCborWriter<256> {
         crate::cbor::ConstCborWriter::<256>::new()
-            .write_array_header(9)
+            .write_array_header(10)
             .write_str(chip)
             .write_u32(flash_write_size)
             .write_u32(flash_erase_size)
@@ -537,6 +587,7 @@ impl<'a> ProjectMetadata<'a> {
             .write_str(board_type)
             .write_str(bin_name)
             .write_str(build_profile)
+            .write_u32(trace_mode as u32)
             .prepend_crc16()
     }
 }
@@ -847,6 +898,7 @@ macro_rules! define_project_metadata {
                 } else {
                     "release"
                 },
+                $crate::types::FirmwareTraceMode::active(),
                 $flash_write_size as u32,
                 $flash_erase_size as u32,
                 $crate::types::STACK_SCAN_LIMIT,

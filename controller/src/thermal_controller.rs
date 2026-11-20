@@ -102,6 +102,7 @@ impl<'a, M: RawMutex, B: TemperatureSensor, const SYS_CAP: usize>
 
     /// Updates the thermal status by locking and reading the peripheral.
     #[tracing::instrument(
+        domain = "sensor",
         name = "thermal_controller::update",
         level = "info",
         skip(telemetry_client)
@@ -184,6 +185,14 @@ impl<'a, M: RawMutex, B: TemperatureSensor, const SYS_CAP: usize>
                     }
                 }
 
+                platform::tracing::trace_sensor_report(
+                    &model::telemetry::TelemetryRecord::Thermal(
+                        model::types::ThermalStatus::TempOverheating(
+                            temp,
+                            self.state == ThermalState::Overheating,
+                        ),
+                    ),
+                );
                 if let Some(ref mut client) = telemetry_client {
                     client.report((temp, self.state));
                 }
@@ -249,9 +258,16 @@ where
 {
     fn read_temperature(&self) -> Result<i32, PeripheralError> {
         if let Ok(mut guard) = self.temp.try_lock() {
-            guard
+            let temp = guard
                 .read_temperature_milli_c()
-                .map_err(|e| e.to_peripheral_error())
+                .map_err(|e| e.to_peripheral_error())?;
+            platform::tracing::trace_sensor_report(&model::telemetry::TelemetryRecord::Thermal(
+                model::types::ThermalStatus::TempOverheating(
+                    temp,
+                    self.state == ThermalState::Overheating,
+                ),
+            ));
+            Ok(temp)
         } else {
             Err(PeripheralError::DeviceNotAvailable)
         }
@@ -310,6 +326,9 @@ pub async fn handle_thermal_cli<
             let temp = sensor
                 .read_temperature_milli_c()
                 .map_err(|_| "Direct system temperature reading failed")?;
+            platform::tracing::trace_sensor_report(&model::telemetry::TelemetryRecord::Thermal(
+                model::types::ThermalStatus::TempOverheating(temp, false),
+            ));
             let _ = core::writeln!(
                 writer,
                 "\r\nDirect system temperature reading (RP2040): {}.{:03} C",

@@ -17,6 +17,18 @@ use std::path::Path;
 /// 4. Writes the generated constants module to `generated_board.rs` inside the compilation `OUT_DIR`.
 fn main() {
     println!("cargo:rerun-if-changed=board.toml");
+    if [
+        "CARGO_FEATURE_TRACING",
+        "CARGO_FEATURE_TRACE_PERF",
+        "CARGO_FEATURE_TRACE_SENSORS",
+        "CARGO_FEATURE_TRACE_SENSOR_SPANS",
+        "CARGO_FEATURE_TRACE_AUDIO",
+    ]
+    .iter()
+    .any(|var| env::var(var).is_ok())
+    {
+        println!("cargo:rustc-env=DEFMT_LOG=trace");
+    }
 
     let out_dir = env::var("OUT_DIR").unwrap();
     let toml_path = code_gen::find_board_toml();

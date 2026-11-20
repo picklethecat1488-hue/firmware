@@ -233,6 +233,14 @@ def _add_root_daemon_arguments(parser: argparse.ArgumentParser) -> None:
         help="Target chip name override (autodetected from ELF if omitted).",
     )
     parser.add_argument(
+        "--trace-mode",
+        dest="trace_mode",
+        type=str.upper,
+        choices=["NONE", "SENSOR", "PERF", "AUDIO"],
+        default=None,
+        help="Compile-time and runtime target tracing mode ('none', 'sensor', 'perf', or 'audio').",
+    )
+    parser.add_argument(
         "--port",
         type=int,
         default=8899,
@@ -482,6 +490,49 @@ def _add_lifecycle_subparsers(subparsers: Any) -> None:
     subparsers.add_parser("reboot", help="Reboot the target device and re-attach RTT via active host daemon")
     subparsers.add_parser("metadata", help="Query target .program_metadata and validate against target ELF")
     subparsers.add_parser("stop", help="Stop running host daemon")
+
+
+def _add_trace_subparser(subparsers: Any) -> None:
+    """Register the `host.py trace` live trace control, export, and Rerun viewer subcommand parser."""
+    trace_parser = subparsers.add_parser(
+        "trace",
+        help="Inspect, pause/resume/clear, export (.csv / Perfetto .json), or open Rerun viewer for live traces",
+    )
+    trace_parser.add_argument(
+        "trace_action",
+        nargs="?",
+        choices=["status", "clear", "pause", "resume", "export", "open-rerun"],
+        default="status",
+        help="Trace session operation to perform on the active host.py daemon.",
+    )
+    trace_parser.add_argument(
+        "--format",
+        "-f",
+        dest="trace_format",
+        type=str.lower,
+        choices=["csv", "perfetto", "json"],
+        default="perfetto",
+        help="Export format when running `host.py trace export` ('csv' or 'perfetto').",
+    )
+    trace_parser.add_argument(
+        "--output",
+        "-o",
+        dest="trace_output",
+        type=str,
+        default=None,
+        help="Optional output path for `host.py trace export` or `.rrd` path for `open-rerun`.",
+    )
+    trace_parser.add_argument(
+        "--host-port",
+        type=int,
+        default=None,
+        help="Optional explicit TCP port of a running host.py daemon.",
+    )
+    trace_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Format trace subcommand output as JSON.",
+    )
 
 
 def _add_bug_subparser(subparsers: Any) -> None:
@@ -776,6 +827,7 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
     _add_cli_subparser(subparsers)
     _add_fs_subparser(subparsers)
     _add_debug_subparser(subparsers)
+    _add_trace_subparser(subparsers)
     _add_lifecycle_subparsers(subparsers)
     _add_bug_subparser(subparsers)
     _add_test_subparser(subparsers)
@@ -820,6 +872,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             args.speed = last_session["speed"]
         if "chip" in last_session:
             args.chip = last_session["chip"]
+        if getattr(args, "trace_mode", None) is None and "trace_mode" in last_session:
+            args.trace_mode = str(last_session["trace_mode"]).upper()
         if not has_cli_debug_flag:
             if "enable_debug_server" in last_session:
                 args.enable_debug_server = bool(last_session["enable_debug_server"])
@@ -838,6 +892,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             args.bin = str(matched_pkg["default_bin"])
         if not args.target and args.package:
             args.target = infer_arm_target(args.package, args.bin, chip=args.chip, repo_root=repo_root)
+        if getattr(args, "trace_mode", None) is None:
+            args.trace_mode = str((last_session or {}).get("trace_mode") or "NONE").upper()
         save_last_session(
             repo_root,
             {
@@ -847,6 +903,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 "target": args.target,
                 "speed": args.speed,
                 "chip": args.chip,
+                "trace_mode": args.trace_mode,
                 "enable_debug_server": bool(getattr(args, "enable_debug_server", False)),
                 "halt_on_reset": bool(getattr(args, "halt_on_reset", False)),
                 "gdb_core0_port": int(getattr(args, "gdb_core0_port", 3333)),
@@ -974,6 +1031,70 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 0
         except Exception as e:
             print(f"Host daemon is not running ({e}).")
+            return 1
+
+    if args.subcommand == "trace":
+        action = str(getattr(args, "trace_action", "status") or "status").lower()
+        try:
+            if action == "status":
+                res = send_daemon_request(
+                    "/api/trace/events?after_seq=0&limit=1", None, port=args.host_port, host=args.host
+                )
+                if args.json:
+                    print(json.dumps(res, indent=2))
+                else:
+                    print(
+                        f"Trace Session: {'RECORDING' if res.get('recording') else 'PAUSED'}\n"
+                        f"  Trace Mode     : {res.get('trace_mode')}\n"
+                        f"  External Viewer: {res.get('external_viewer')}\n"
+                        f"  Buffered Events: {res.get('total_events')}\n"
+                        f"  Active Tracks  : {len(res.get('tracks') or [])}"
+                    )
+                return 0
+            if action in ("clear", "pause", "resume"):
+                res = send_daemon_request(
+                    "/api/trace/control",
+                    {"action": action},
+                    port=args.host_port,
+                    host=args.host,
+                )
+                if "error" in res:
+                    print(f"Error: {res['error']}", file=sys.stderr)
+                    return 1
+                if args.json:
+                    print(json.dumps(res, indent=2))
+                else:
+                    print(f"Trace session '{action}' applied (recording={res.get('recording')}).")
+                return 0
+            if action == "export":
+                req_payload: Dict[str, Any] = {"format": getattr(args, "trace_format", "perfetto")}
+                if getattr(args, "trace_output", None):
+                    req_payload["path"] = args.trace_output
+                res = send_daemon_request("/api/trace/export", req_payload, port=args.host_port, host=args.host)
+                if "error" in res:
+                    print(f"Error: {res['error']}", file=sys.stderr)
+                    return 1
+                if args.json:
+                    print(json.dumps(res, indent=2))
+                else:
+                    print(f"Exported {res.get('event_count')} trace events ({res.get('format')}) -> {res.get('path')}")
+                return 0
+            if action == "open-rerun":
+                rr_payload: Dict[str, Any] = {"spawn": True}
+                if getattr(args, "trace_output", None):
+                    rr_payload["rrd_path"] = args.trace_output
+                res = send_daemon_request("/api/trace/open_rerun", rr_payload, port=args.host_port, host=args.host)
+                if "error" in res:
+                    print(f"Error: {res['error']}", file=sys.stderr)
+                    return 1
+                if args.json:
+                    print(json.dumps(res, indent=2))
+                else:
+                    print(f"Opened Rerun Viewer ({res.get('logged_entities')} entities logged).")
+                return 0
+            return 1
+        except Exception as exc:
+            print(f"Error: {exc}", file=sys.stderr)
             return 1
 
     if args.subcommand in ("sync", "flash"):
@@ -1362,27 +1483,32 @@ def main(argv: Optional[List[str]] = None) -> int:
                 remove_lock_file()
             else:
                 req_profile = "release" if args.release else "debug"
+                req_trace_mode = getattr(args, "trace_mode", None)
                 config_changed = is_explicit and (
                     (args.bin and args.bin != existing.get("bin"))
                     or (args.package and args.package != existing.get("package"))
                     or (args.target and args.target != existing.get("target"))
                     or (req_profile != existing.get("profile"))
+                    or (req_trace_mode and req_trace_mode != existing.get("trace_mode"))
                     or (args.speed and args.speed != existing.get("speed"))
                 )
                 if config_changed:
                     print(f"➜ Host daemon is running (PID {pid} on port {port}).")
                     print(f"➜ Reconfiguring and flashing target: {args.package} ({args.bin}) [{req_profile}]...")
                     try:
+                        sync_body: Dict[str, Any] = {
+                            "target": args.target,
+                            "package": args.package,
+                            "bin": args.bin,
+                            "release": args.release,
+                            "speed": args.speed,
+                            "chip": args.chip,
+                        }
+                        if req_trace_mode:
+                            sync_body["trace_mode"] = req_trace_mode
                         send_daemon_request(
                             "/api/sync",
-                            {
-                                "target": args.target,
-                                "package": args.package,
-                                "bin": args.bin,
-                                "release": args.release,
-                                "speed": args.speed,
-                                "chip": args.chip,
-                            },
+                            sync_body,
                             port=port,
                             host=args.host,
                         )
@@ -1465,6 +1591,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         gdb_core1_port=int(getattr(args, "gdb_core1_port", 3334)),
         rtt_bridge_port=int(getattr(args, "rtt_bridge_port", 50000)),
         probe_selector=getattr(args, "probe_selector", None),
+        trace_mode=getattr(args, "trace_mode", None),
     )
     atexit.register(runner.stop)
     atexit.register(remove_lock_file)
@@ -1500,6 +1627,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             "package": args.package,
             "bin": args.bin,
             "profile": "release" if args.release else "debug",
+            "trace_mode": runner.trace_mode.value,
             "url": url,
             "browser": getattr(args, "browser", "webview"),
             "no_browser": getattr(args, "no_browser", False),

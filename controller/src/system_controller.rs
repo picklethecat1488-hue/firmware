@@ -400,6 +400,9 @@ impl<MutexRaw: RawMutex + 'static, F: SystemFeatureSet<MutexRaw, N>, const N: us
             },
 
             SystemCommand::Gesture(gesture) => {
+                platform::tracing::trace_sensor_report(
+                    &model::telemetry::TelemetryRecord::Gesture(gesture),
+                );
                 #[cfg(all(target_arch = "arm", target_os = "none"))]
                 {
                     let gest_str = match gesture {

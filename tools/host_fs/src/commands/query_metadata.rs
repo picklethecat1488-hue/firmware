@@ -91,6 +91,10 @@ impl QueriedProgramMetadata {
             Some(val) => format!("\"{}\"", json_escape(val)),
             None => "null".to_string(),
         };
+        let trace_mode_json = match &self.info.trace_mode {
+            Some(val) => format!("\"{}\"", json_escape(val)),
+            None => "null".to_string(),
+        };
         let parts_json: Vec<String> = self
             .info
             .partitions
@@ -100,7 +104,7 @@ impl QueriedProgramMetadata {
         format!(
             "{{\"checksum\":\"0x{:04X}\",\"chip\":\"{}\",\"board_type\":\"{}\",\
              \"program_metadata_board_type\":\"{}\",\"provisioned_board_type\":{},\
-             \"bin_name\":{},\"build_profile\":{},\
+             \"bin_name\":{},\"build_profile\":{},\"trace_mode\":{},\
              \"source\":\"{}\",\"flash_start\":{},\"flash_write_size\":{},\
              \"flash_erase_size\":{},\"stack_scan_limit\":{},\
              \"program_metadata_addr\":{},\"program_metadata_size\":{},\
@@ -112,6 +116,7 @@ impl QueriedProgramMetadata {
             provisioned_json,
             bin_json,
             profile_json,
+            trace_mode_json,
             self.source,
             self.info.flash_start,
             self.info.flash_write_size,
@@ -136,6 +141,9 @@ impl QueriedProgramMetadata {
         }
         if let Some(ref prof) = self.info.build_profile {
             lines.push(format!("build_profile: {}", prof));
+        }
+        if let Some(ref tmode) = self.info.trace_mode {
+            lines.push(format!("trace_mode: {}", tmode));
         }
         if let Some(ref prov) = self.provisioned_board_type {
             lines.push(format!("provisioned_board_type: {}", prov));

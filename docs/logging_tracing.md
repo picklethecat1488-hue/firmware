@@ -11,10 +11,11 @@ To provide deterministic, zero-allocation structured telemetry on embedded targe
 * **defmt Instrumentation**: Instrument all async tasks, controller loops, state machine transitions, and application entry points using `defmt` logging macros (`defmt::info!`, `defmt::debug!`, `defmt::warn!`, `defmt::error!`) for startup, heartbeat ticks, and command processing.
 * **No Format String Allocations**: Never use standard library formatting (`format!`, `println!`) in target firmware. All logging formats must be resolved statically via `defmt` symbol tables to minimize Flash consumption and runtime execution overhead.
 
-### 2. Consolidated Tracing Facade
+### 2. Consolidated Tracing Facade & Domain-Scoped Trace Modes
 * **Platform Facade**: Always use the consolidated tracing facade module `use crate::tracing;` (which re-exports `platform::tracing`).
 * **No External Tracing Crate**: Do NOT import the standard crates.io `tracing` crate directly in target code, as it requires dynamic heap allocation (`alloc`) and runtime string buffers incompatible with bare-metal `no_std` constraints.
-* **Instrument Skip Rules**: When annotating methods with `#[tracing::instrument]`, do NOT list `self` in the `skip(...)` attribute.
+* **Instrument Skip Rules & Domain Tagging**: When annotating methods with `#[tracing::instrument]`, do NOT list `self` in the `skip(...)` attribute. Annotate sensor peripheral/controller methods with `#[tracing::instrument(domain = "sensor")]` (and future audio paths with `domain = "audio"`) so `PERF` mode (`--features trace-perf`) captures all non-sensor execution spans and CPU usage while excluding sensor spans, whereas `SENSOR` mode (`--features trace-sensors`) emits real-time measured sensor reports only (`platform::tracing::trace_sensor_report`) with zero span overhead.
+* **Target Selection, `TRACE` Tab & External Viewers (`Perfetto` vs `Rerun`)**: `tools/host.py` embeds `FirmwareTraceMode` (`None`, `Sensor`, `Perf`, `Audio`) in `.program_metadata`, streams structured `HostCliEvent::Trace` records into the **`TRACE`** workstation tab (with a separate hovering bottom playback/zoom/filter trackbar), exports `.csv` and `.perfetto.json` files to disk, opens **`PERF`** traces in `ui.perfetto.dev` (**🚀 Open in Perfetto**), and streams **`SENSOR`** / **`AUDIO`** traces directly into Rerun via `rerun-sdk` (**🚀 Open in Rerun** / `python tools/host.py trace open-rerun`).
 
 ### 3. Host Diagnostic & Debugging Tooling
 * **Filesystem Inspection (`tools/host_fs` / `cargo host-fs`)**: Host-based Flash filesystem debugging, sequential storage inspection, directory tree walks, and raw partition read/write operations must be performed using `tools/host_fs`:

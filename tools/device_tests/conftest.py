@@ -251,7 +251,8 @@ async def _prepare_device_test(
             bin_spec = resolve_target_binary(bin_marker.args[0], repo_root=REPO_ROOT)
 
     if bin_spec is not None:
-        await host.ensure_target_binary(bin_spec)
+        desired_trace_mode = meta.trace_mode if (meta and meta.trace_mode) else "NONE"
+        await host.ensure_target_binary(bin_spec, trace_mode=desired_trace_mode)
 
     yield
 

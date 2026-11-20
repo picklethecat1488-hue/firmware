@@ -383,6 +383,7 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut is_reconnecting = false;
     let mut shell_idle_poller = host_cli::ShellIdlePoller::new();
+    let mut live_trace_processor = host_cli::LiveTraceStreamProcessor::new();
     let mut pending_stdin = std::collections::VecDeque::<Vec<u8>>::new();
     loop {
         if shutdown_requested.load(std::sync::atomic::Ordering::SeqCst) {
@@ -732,6 +733,20 @@ pub fn run_rtt(opts: RttOptions<'_>) -> Result<(), Box<dyn std::error::Error>> {
                                             .and_then(|s| s.trim().parse::<f64>().ok());
                                         let device_ts =
                                             device_ts_sec.map(|ts_sec| ts_sec * 1_000_000.0);
+                                        let raw_msg = frame.display_message().to_string();
+
+                                        if json_events {
+                                            for trace_ev in live_trace_processor
+                                                .process_defmt_frame(
+                                                    &plain_line,
+                                                    &raw_msg,
+                                                    clean_module.as_deref(),
+                                                    device_ts,
+                                                )
+                                            {
+                                                emit_json(&trace_ev);
+                                            }
+                                        }
 
                                         match handle_tracing_line(
                                             &line_str,

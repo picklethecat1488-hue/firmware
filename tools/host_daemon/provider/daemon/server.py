@@ -15,9 +15,17 @@ dashboard_dir = Path(__file__).resolve().parents[3] / "dashboard"
 if str(dashboard_dir) not in sys.path:
     sys.path.insert(0, str(dashboard_dir))
 
+from host_daemon.model.trace_mode import (
+    TRACE_MODE_DESCRIPTORS,
+    TraceMode,
+    get_external_trace_viewer,
+    normalize_trace_mode,
+)
 from host_daemon.provider.daemon.bug_report_service import create_target_worm_report
+from host_daemon.provider.daemon.rerun_bridge import open_trace_in_rerun
 from host_daemon.provider.daemon.runner import DEFAULT_CLI_OUTPUT_TIMEOUT_SEC, DaemonRunner
 from host_daemon.provider.daemon.test_manager import DeviceTestRunnerManager
+from host_daemon.provider.daemon.trace_store import TraceSessionStore
 
 
 def _get_test_manager(runner: Any) -> DeviceTestRunnerManager:
@@ -28,6 +36,22 @@ def _get_test_manager(runner: Any) -> DeviceTestRunnerManager:
     created = DeviceTestRunnerManager(runner)
     setattr(runner, "test_manager", created)
     return created
+
+
+def _get_trace_store(runner: Any) -> TraceSessionStore:
+    """Return `runner.trace_store`, lazily attaching a `TraceSessionStore` for mock/test runners."""
+    existing = getattr(runner, "trace_store", None)
+    if isinstance(existing, TraceSessionStore):
+        return existing
+    created = TraceSessionStore()
+    setattr(runner, "trace_store", created)
+    return created
+
+
+def _get_runner_trace_mode(runner: Any) -> TraceMode:
+    """Return the normalized `TraceMode` on `runner` (defaulting to `TraceMode.NONE`)."""
+    raw = getattr(runner, "trace_mode", TraceMode.NONE)
+    return raw if isinstance(raw, TraceMode) else normalize_trace_mode(str(raw))
 
 
 def _resolve_runner_device_ts(runner: Any) -> str:
@@ -57,8 +81,19 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
         self.wfile.write(payload)
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        """Respond to CORS preflight requests (e.g. from `https://ui.perfetto.dev`)."""
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
         """Handle GET requests for UI and telemetry APIs."""
@@ -70,11 +105,15 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 from host_daemon.provider.daemon.config import discover_target_packages, load_last_session
 
                 template = self.server.jinja_env.get_template("host_daemon.html.j2")
+                active_tmode = _get_runner_trace_mode(runner)
                 html = template.render(
                     runner=runner,
                     package_selection_mode=getattr(runner, "package_selection_mode", False),
                     target_packages=discover_target_packages(runner.repo_root),
                     last_session=load_last_session(runner.repo_root),
+                    trace_modes=list(TRACE_MODE_DESCRIPTORS),
+                    active_trace_mode=active_tmode.value,
+                    active_external_viewer=get_external_trace_viewer(active_tmode).value,
                 )
                 body = html.encode("utf-8")
                 self.send_response(200)
@@ -93,9 +132,11 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             from host_daemon.provider.daemon.config import discover_target_packages, load_last_session
 
             dbg_status = runner.get_debug_status() if hasattr(runner, "get_debug_status") else {}
+            cur_tmode = _get_runner_trace_mode(runner)
             self._send_json(
                 {
                     "packages": discover_target_packages(runner.repo_root),
+                    "trace_modes": list(TRACE_MODE_DESCRIPTORS),
                     "last_session": load_last_session(runner.repo_root),
                     "current": {
                         "package": runner.package,
@@ -104,6 +145,8 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                         "target": runner.target,
                         "speed": runner.speed,
                         "chip": runner.chip,
+                        "trace_mode": cur_tmode.value,
+                        "external_viewer": get_external_trace_viewer(cur_tmode).value,
                         "show_system_logs": getattr(runner, "show_system_logs", False),
                         "enable_debug_server": getattr(runner, "enable_debug_server", False),
                         "halt_on_reset": getattr(runner, "halt_on_reset", False),
@@ -170,6 +213,48 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             self._send_json(_get_test_manager(runner).scan_tests(filters, probe_board=probe_flag))
         elif path == "/api/tests/status":
             self._send_json(_get_test_manager(runner).get_status())
+        elif path == "/api/trace/events":
+            raw_qs = self.path.partition("?")[2]
+            qs = urllib.parse.parse_qs(raw_qs)
+            raw_after = qs.get("after_seq", qs.get("after_id", ["0"]))[0]
+            raw_limit = qs.get("limit", ["10000"])[0]
+            after_seq = int(raw_after) if str(raw_after).isdigit() else 0
+            limit_val = int(raw_limit) if str(raw_limit).isdigit() else 10_000
+            if hasattr(runner, "get_trace_events"):
+                self._send_json(runner.get_trace_events(after_seq=after_seq, limit=limit_val))
+            else:
+                store = _get_trace_store(runner)
+                cur_tmode = _get_runner_trace_mode(runner)
+                data = store.get_events(after_seq=after_seq, limit=limit_val)
+                data["trace_mode"] = cur_tmode.value
+                data["external_viewer"] = get_external_trace_viewer(cur_tmode).value
+                data["chip"] = getattr(runner, "chip", None)
+                data["bin"] = getattr(runner, "bin_name", None)
+                self._send_json(data)
+        elif path in ("/api/trace/perfetto.json", "/api/trace/download"):
+            raw_qs = self.path.partition("?")[2]
+            qs = urllib.parse.parse_qs(raw_qs)
+            fmt = "perfetto" if path == "/api/trace/perfetto.json" else str(qs.get("format", ["perfetto"])[0]).lower()
+            store = _get_trace_store(runner)
+            cur_tmode = _get_runner_trace_mode(runner)
+            stem = f"{getattr(runner, 'bin_name', None) or 'target'}_{cur_tmode.value.lower()}"
+            if fmt == "csv":
+                body = store.format_csv().encode("utf-8")
+                ctype = "text/csv; charset=utf-8"
+                fname = f"{stem}.csv"
+            else:
+                body = store.format_perfetto_json(chip=getattr(runner, "chip", None)).encode("utf-8")
+                ctype = "application/json; charset=utf-8"
+                fname = f"{stem}.perfetto.json"
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Private-Network", "true")
+            if path == "/api/trace/download":
+                self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
+            self.end_headers()
+            self.wfile.write(body)
         elif (
             path.startswith("/js/")
             or path.startswith("/static/")
@@ -255,6 +340,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     gdb_core1_port=payload.get("gdb_core1_port"),
                     rtt_bridge_port=payload.get("rtt_bridge_port"),
                     probe_selector=payload.get("probe"),
+                    trace_mode=payload.get("trace_mode"),
                 )
                 try:
                     from host_daemon.cli import get_lock_data, write_lock_file
@@ -266,6 +352,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                             "package": runner.package,
                             "bin": runner.bin_name,
                             "profile": "release" if runner.release else "debug",
+                            "trace_mode": _get_runner_trace_mode(runner).value,
                             "speed": runner.speed,
                         }
                     )
@@ -296,6 +383,15 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             c1_port = payload.get("gdb_core1_port") or getattr(runner, "gdb_core1_port", 3334)
             rtt_port = payload.get("rtt_bridge_port") or getattr(runner, "rtt_bridge_port", 50000)
             probe_sel = payload.get("probe") if "probe" in payload else getattr(runner, "probe_selector", None)
+            try:
+                resolved_tm = (
+                    normalize_trace_mode(payload.get("trace_mode"))
+                    if "trace_mode" in payload and payload.get("trace_mode") is not None
+                    else _get_runner_trace_mode(runner)
+                )
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, status=400)
+                return
 
             if not tgt:
                 tgt = infer_arm_target(pkg, bin_name, chip=chp, repo_root=runner.repo_root)
@@ -314,6 +410,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                 gdb_core1_port=int(c1_port),
                 rtt_bridge_port=int(rtt_port),
                 probe_selector=probe_sel,
+                trace_mode=resolved_tm.value,
             )
             runner.package_selection_mode = False
             save_last_session(
@@ -325,6 +422,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     "target": tgt,
                     "speed": spd,
                     "chip": chp,
+                    "trace_mode": resolved_tm.value,
                     "enable_debug_server": bool(enable_dbg),
                     "halt_on_reset": bool(halt_rst),
                     "gdb_core0_port": int(c0_port),
@@ -341,6 +439,7 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                         "package": runner.package,
                         "bin": runner.bin_name,
                         "profile": "release" if runner.release else "debug",
+                        "trace_mode": resolved_tm.value,
                         "speed": runner.speed,
                     }
                 )
@@ -357,6 +456,8 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
                     "package": pkg,
                     "bin": bin_name,
                     "profile": "release" if rel else "debug",
+                    "trace_mode": resolved_tm.value,
+                    "external_viewer": get_external_trace_viewer(resolved_tm).value,
                     "enable_debug_server": bool(enable_dbg),
                     "halt_on_reset": bool(halt_rst),
                     "gdb_core0_port": int(c0_port),
@@ -431,11 +532,74 @@ class HostDaemonRequestHandler(BaseHTTPRequestHandler):
             self._send_json({"success": True, "output": output})
         elif path == "/api/mode":
             mode = payload.get("mode", "CLI").upper()
-            if mode in ("CLI", "FS", "TEST"):
+            if mode in ("CLI", "FS", "TEST", "TRACE"):
                 runner.set_mode(mode)
                 self._send_json({"success": True, "mode": mode})
             else:
-                self._send_json({"error": "Invalid mode. Expected: CLI, FS, TEST"}, status=400)
+                self._send_json({"error": "Invalid mode. Expected: CLI, FS, TEST, TRACE"}, status=400)
+        elif path == "/api/trace/control":
+            action = str(payload.get("action") or "").strip().lower()
+            try:
+                if hasattr(runner, "control_trace_session"):
+                    res = runner.control_trace_session(action)
+                else:
+                    store = _get_trace_store(runner)
+                    if action == "clear":
+                        store.clear()
+                    elif action == "pause":
+                        store.set_recording(False)
+                    elif action == "resume":
+                        store.set_recording(True)
+                    else:
+                        raise ValueError(f"Unsupported trace control action '{action}'.")
+                    res = {
+                        "success": True,
+                        "action": action,
+                        "recording": store.recording,
+                        "trace_mode": _get_runner_trace_mode(runner).value,
+                    }
+                self._send_json(res)
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, status=400)
+        elif path == "/api/trace/export":
+            fmt = str(payload.get("format") or "perfetto")
+            dest_raw = payload.get("path")
+            try:
+                if hasattr(runner, "export_trace_session"):
+                    res = runner.export_trace_session(fmt, dest_raw)
+                else:
+                    store = _get_trace_store(runner)
+                    cur_tmode = _get_runner_trace_mode(runner)
+                    stem = f"{getattr(runner, 'bin_name', None) or 'target'}_{cur_tmode.value.lower()}"
+                    res = store.export_to_disk(
+                        runner.repo_root,
+                        fmt,
+                        dest_raw,
+                        chip=getattr(runner, "chip", None),
+                        default_stem=stem,
+                    )
+                self._send_json(res)
+            except (OSError, ValueError) as exc:
+                self._send_json({"error": str(exc)}, status=400)
+        elif path == "/api/trace/open_rerun":
+            spawn_viewer = bool(payload.get("spawn", True))
+            rrd_raw = payload.get("rrd_path")
+            try:
+                if hasattr(runner, "open_trace_in_rerun"):
+                    res = runner.open_trace_in_rerun(spawn=spawn_viewer, save_rrd_path=rrd_raw)
+                else:
+                    store = _get_trace_store(runner)
+                    cur_tmode = _get_runner_trace_mode(runner)
+                    rrd_path = Path(str(rrd_raw)) if rrd_raw else None
+                    res = open_trace_in_rerun(
+                        store.snapshot_all(),
+                        app_id=f"{getattr(runner, 'bin_name', None) or 'xerxes'}_{cur_tmode.value.lower()}",
+                        spawn=spawn_viewer,
+                        save_rrd_path=rrd_path,
+                    )
+                self._send_json(res)
+            except (OSError, RuntimeError, ValueError) as exc:
+                self._send_json({"error": str(exc)}, status=400)
         elif path == "/api/tests/scan":
             probe_board = bool(payload.get("probe_board", True))
             res = _get_test_manager(runner).scan_tests(payload, probe_board=probe_board)

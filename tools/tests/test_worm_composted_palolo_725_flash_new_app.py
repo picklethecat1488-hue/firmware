@@ -70,6 +70,7 @@ def test_api_sync_endpoint_updates_config():
             gdb_core1_port=None,
             rtt_bridge_port=None,
             probe_selector=None,
+            trace_mode=None,
         )
         runner.sync_async.assert_called_once()
         handler._send_json.assert_called_once()

@@ -22,6 +22,7 @@ embassy-sync = "0.6.2"
 embassy-futures = "0.1.0"
 embedded-io = "0.6.0"
 heapless = "0.8.0"
+tracing-defmt = { version = "0.1.2", optional = true }
 
 [target.'cfg(all(target_arch = "arm", target_os = "none"))'.dependencies]
 embassy-executor = { version = "0.7.0", features = ["task-arena-size-32768", "arch-cortex-m", "executor-thread"] }
@@ -43,4 +44,27 @@ code_gen = { path = "../tools/code_gen" }
 
 [features]
 default = []
-tracing = []
+trace-perf = [
+    "platform/trace-perf",
+    "peripheral/trace-perf",
+    "controller/trace-perf",
+    "dep:tracing-defmt",
+]
+trace-sensors = [
+    "platform/trace-sensors",
+    "peripheral/trace-sensors",
+    "controller/trace-sensors",
+]
+trace-sensor-spans = [
+    "platform/trace-sensor-spans",
+    "peripheral/trace-sensor-spans",
+    "controller/trace-sensor-spans",
+    "dep:tracing-defmt",
+]
+trace-audio = [
+    "platform/trace-audio",
+    "peripheral/trace-audio",
+    "controller/trace-audio",
+    "dep:tracing-defmt",
+]
+tracing = ["trace-perf", "trace-sensors", "trace-sensor-spans"]
